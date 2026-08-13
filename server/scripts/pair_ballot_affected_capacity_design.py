@@ -26,6 +26,7 @@ import pair_ballot_affected_states as STATES
 
 
 SCHEMA = "pair-ballot-affected-capacity-design-v1"
+SUMMARY_SCHEMA = "pair-ballot-affected-capacity-defender-summary-v1"
 PARENT_REVIEW_GIT = "22ddfa3728f1d66cac22e98d64725184dd71efd6"
 PARENT_REVIEW_RECORD_SHA256 = (
     "82c36d3604de0c3b8c59bef82e1bf7e16edbcefafddb13a87dad0b005bc79341"
@@ -50,6 +51,22 @@ SPLITS = ("dev", "calib")
 BANDS = ("early", "mid", "late")
 ROWS_PER_SPLIT = 512
 BAND_ROWS_PER_SPLIT = {"early": 448, "mid": 48, "late": 16}
+DEFENDER_ROWS = 1_023
+ATTACKER_ROWS = 1
+DEFENDER_DEAL_CLUSTERS = 990
+DEFENDER_ROWS_BY_SPLIT = {"dev": 512, "calib": 511}
+DEFENDER_ROWS_BY_BAND = {"early": 895, "mid": 96, "late": 32}
+SOURCE_TRAJECTORY_POLICY = "smart"
+CAPACITY_ROUTES = {
+    "POLICY_AND_SOURCE_PROMISING_TEST_NATURAL_DOSE":
+        "POLICY_AND_SOURCE_PROMISING_MEASURE_LIVE_CHAMPION_DOSE",
+    "SOURCE_PROMISING_SELECTOR_NOT_EXPLOITING":
+        "SOURCE_PROMISING_SELECTOR_NOT_EXPLOITING",
+    "POLICY_POSITIVE_WITHOUT_INSERTED_PAIR_HEADROOM_AUDIT_EVICTIONS":
+        "POLICY_POSITIVE_WITHOUT_INSERTED_PAIR_HEADROOM_AUDIT_EVICTIONS",
+    "FIXED_WIDTH_RETENTION_NOT_PROMISING_TRY_CONTEXTUAL_PAIR_SOURCE":
+        "FIXED_WIDTH_RETENTION_NOT_PROMISING_TRY_CONTEXTUAL_PAIR_SOURCE",
+}
 SHARD_COUNT = 16
 BALLOT_WIDTH = 14
 SELECTION_WORLDS = 30
@@ -106,10 +123,51 @@ def _manifest_row(row: dict) -> dict:
     }
 
 
+def _defender_rows(rows: list[dict]) -> list[dict]:
+    """Return the exact combined DEV/CALIB defender population or refuse.
+
+    The frozen source has one attacker case study.  It is retained for a
+    descriptive report but cannot enter the primary estimator or its power
+    calculation.  Thirty-three defender deals contribute both an early and a
+    mid row, so state rows are not independent clusters.
+    """
+    if (not isinstance(rows, list)
+            or len(rows) != len(SPLITS) * ROWS_PER_SPLIT
+            or any(row.get("split") not in SPLITS for row in rows)
+            or len({row.get("state_id") for row in rows}) != len(rows)):
+        raise CapacityDesignRefused("combined DEV/CALIB population drift")
+    role_counts = Counter(row.get("role") for row in rows)
+    split_counts = Counter(row.get("split") for row in rows)
+    defenders = [row for row in rows if row.get("role") == "defender"]
+    if (role_counts != Counter({
+            "defender": DEFENDER_ROWS, "attacker": ATTACKER_ROWS})
+            or split_counts != Counter({split: ROWS_PER_SPLIT
+                                        for split in SPLITS})
+            or Counter(row["split"] for row in defenders)
+            != Counter(DEFENDER_ROWS_BY_SPLIT)
+            or Counter(row.get("band") for row in defenders)
+            != Counter(DEFENDER_ROWS_BY_BAND)
+            or len({row.get("deal_seed") for row in defenders})
+            != DEFENDER_DEAL_CLUSTERS):
+        raise CapacityDesignRefused("defender role/cluster population drift")
+    return defenders
+
+
 def _planning_sensitivity(*, band_weights: dict[str, float],
-                          counts: dict[str, int]) -> dict:
-    variance_factor = sum(
-        band_weights[band] ** 2 / counts[band] for band in BANDS)
+                          defender_rows: list[dict]) -> dict:
+    """Plan against unique defender deal clusters under the fixed weights."""
+    counts = Counter(row["band"] for row in defender_rows)
+    cluster_weights: dict[int, float] = {}
+    for row in defender_rows:
+        deal_seed = int(row["deal_seed"])
+        cluster_weights[deal_seed] = cluster_weights.get(deal_seed, 0.0) + (
+            band_weights[row["band"]] / counts[row["band"]])
+    if (len(cluster_weights) != DEFENDER_DEAL_CLUSTERS
+            or not math.isclose(sum(cluster_weights.values()), 1.0,
+                                abs_tol=1e-12)):
+        raise CapacityDesignRefused("defender planning cluster drift")
+    variance_factor = sum(weight * weight
+                          for weight in cluster_weights.values())
     effective_clusters = 1.0 / variance_factor
     planning_se = PLANNING_CLUSTER_SD * math.sqrt(variance_factor)
     mde = (Z_ALPHA + Z_POWER) * planning_se
@@ -121,12 +179,80 @@ def _planning_sensitivity(*, band_weights: dict[str, float],
         "target_power": TARGET_POWER,
         "planning_cluster_sd": PLANNING_CLUSTER_SD,
         "worthwhile_conditional_effect": WORTHWHILE_CONDITIONAL_EFFECT,
+        "primary_role": "defender",
+        "state_rows": len(defender_rows),
+        "independent_deal_clusters": len(cluster_weights),
+        "rows_by_band": dict(sorted(counts.items())),
         "effective_clusters_under_band_weights": effective_clusters,
         "planning_se": planning_se,
         "mde_at_target_power": mde,
         "power_at_worthwhile_effect": power,
         "adequately_powered_at_worthwhile_effect": power >= TARGET_POWER,
         "confirmatory_claim": False,
+    }
+
+
+def defender_combined_summary(rows: list[dict],
+                              band_weights: dict[str, float]) -> dict:
+    """Route one combined DEV+CALIB exploration result on defenders only.
+
+    ``rows`` must already have passed the reviewed per-shard result validator.
+    This capacity-specific layer then proves the complete two-split population,
+    removes the lone attacker case study from inference, and computes both the
+    primary combined estimate and split diagnostics with deal clustering.
+    It is deliberately not a terminal strength or natural-dose estimator.
+    """
+    defenders = _defender_rows(rows)
+    for row in defenders:
+        estimands = row.get("estimands")
+        if (not isinstance(estimands, dict)
+                or set(estimands) != set(AGG.METRICS)
+                or any(not isinstance(estimands[name], (int, float))
+                       or isinstance(estimands[name], bool)
+                       or not math.isfinite(float(estimands[name]))
+                       for name in AGG.METRICS)):
+            raise CapacityDesignRefused("defender estimand population drift")
+
+    combined = {
+        metric: AGG.weighted_cluster_stats(defenders, metric, band_weights)
+        for metric in AGG.METRICS
+    }
+    if any(stats["deal_clusters"] != DEFENDER_DEAL_CLUSTERS
+           for stats in combined.values()):
+        raise CapacityDesignRefused("defender summary cluster drift")
+    by_split = {
+        split: {
+            metric: AGG.weighted_cluster_stats(
+                [row for row in defenders if row["split"] == split],
+                metric, band_weights)
+            for metric in AGG.METRICS
+        }
+        for split in SPLITS
+    }
+    policy_mean = combined["retained_policy_minus_current"][
+        "capture_event_band_weighted_mean"]
+    source_mean = combined["best_inserted_pair_minus_current"][
+        "capture_event_band_weighted_mean"]
+    reviewed_route = AGG.diagnostic_route(policy_mean, source_mean)
+    return {
+        "schema": SUMMARY_SCHEMA,
+        "primary_population": "combined DEV+CALIB defender rows",
+        "primary_role": "defender",
+        "rows": len(defenders),
+        "deal_clusters": DEFENDER_DEAL_CLUSTERS,
+        "attacker_case_study_rows_excluded": ATTACKER_ROWS,
+        "metrics": combined,
+        "split_diagnostics": by_split,
+        "routing_basis": "combined_defender_dev_calib",
+        "diagnostic_route": CAPACITY_ROUTES[reviewed_route],
+        "weight_provenance": (
+            "SmartBot-trajectory search-reachable omission events; "
+            "not live-champion dose"),
+        "selected_role_mix_is_natural_dose": False,
+        "exact_natural_decision_estimand": False,
+        "exact_whole_round_estimand": False,
+        "terminal_selection": False,
+        "strength_claim": False,
     }
 
 
@@ -163,6 +289,7 @@ def build_design(population: Path) -> dict:
     if (split_counts != Counter({split: ROWS_PER_SPLIT for split in SPLITS})
             or band_counts != Counter(expected_bands)):
         raise CapacityDesignRefused("fixed split/band schedule drift")
+    defender_rows = _defender_rows(selected)
     for row in selected:
         if (row["search_eligible"] is not True
                 or len(row["current_ballot"]) != BALLOT_WIDTH
@@ -196,9 +323,16 @@ def build_design(population: Path) -> dict:
         band: float(payload["search_eligible_weights"][band])
         for band in BANDS
     }
-    combined_band_counts = {band: band_counts[band] for band in BANDS}
     natural_events = int(payload["search_eligible_denominator"])
     max_deals = int(payload["max_deals"])
+    if payload.get("source_policy") != SOURCE_TRAJECTORY_POLICY:
+        raise CapacityDesignRefused("source trajectory policy drift")
+    # The capture does not publish role-specific natural denominators.  The
+    # selected population's 1,023/1 role split is therefore a scope warning,
+    # not a valid estimate that 99.9% of natural omission events are defender
+    # events.  Keep whole-round dose role-agnostic until a fresh census counts
+    # every eligible event by role.
+    role_dose_available = False
     design = {
         "schema": SCHEMA,
         "ancestry": {
@@ -243,37 +377,54 @@ def build_design(population: Path) -> dict:
                 len(selected) * MAX_WORK_PER_STATE),
         },
         "estimands": {
-            "primary": "retained_policy_minus_current",
-            "secondary": "best_inserted_pair_minus_current",
+            "primary": "defender_retained_policy_minus_current",
+            "secondary": "defender_best_inserted_pair_minus_current",
+            "primary_row_filter": "role == defender",
+            "primary_splits": list(SPLITS),
             "cluster_unit": "deal_seed",
             "band_weights": band_weights,
-            "band_weight_unit": "all_search_reachable_omission_events",
+            "band_weight_unit": (
+                "SmartBot-trajectory search-reachable omission events"),
             "within_band_sampling_unit": (
                 "first_affected_state_per_deal_band_in_frozen_population"),
-            "split_results_reported_separately": True,
+            "implementation": (
+                "pair_ballot_affected_capacity_design."
+                "defender_combined_summary"),
+            "combined_dev_calib_primary": True,
+            "split_results_are_diagnostics": True,
+            "attacker_case_study_is_descriptive_only": True,
             "combined_dev_calib_summary": "predeclared exploration only",
             "exact_natural_decision_estimand": False,
             "exact_whole_round_estimand": False,
             "terminal_selection": False,
         },
         "dose": {
+            "source_trajectory_policy": SOURCE_TRAJECTORY_POLICY,
             "search_eligible_omission_events": natural_events,
             "capture_deals": max_deals,
-            "events_per_captured_deal": natural_events / max_deals,
+            "events_per_captured_smartbot_deal": natural_events / max_deals,
+            "is_live_champion_dose": False,
+            "live_champion_role_specific_dose_available": False,
             "translation_to_whole_round_is_approximate": True,
         },
         "scope": {
             "defender_states": role_counts["defender"],
             "attacker_states": role_counts["attacker"],
-            "primary_role_inference": "defender",
+            "primary_role_inference": "defender-selected-state population",
             "attacker_effect_estimable": False,
             "attacker_row_use": "descriptive case study only",
             "all_role_generalization_authorized": False,
             "role_stratified_reporting_required": True,
+            "selected_role_mix_is_natural_dose": False,
+            "role_specific_natural_dose_available": role_dose_available,
+            "role_conditional_band_weights_available": False,
+            "all_role_smartbot_band_weights_used_for_exploration": True,
+            "role_specific_capture_census_required_before_whole_round_claim":
+                True,
             "late_band_use": "diagnostic slice; natural weight is below 0.001",
         },
         "power": _planning_sensitivity(
-            band_weights=band_weights, counts=combined_band_counts),
+            band_weights=band_weights, defender_rows=defender_rows),
         "capacity": {
             "preferred_future_host_class": "cpx62-x86-16-vcpu-32gb",
             "preferred_host_is_runtime_qualified": False,
@@ -288,8 +439,10 @@ def build_design(population: Path) -> dict:
             "cap_is_fail_closed_not_a_throughput_claim": True,
         },
         "routing": {
+            "decision_statistic": "combined DEV+CALIB defender summary",
             "always_publish_both_metrics_and_all_split_band_slices": True,
-            "policy_and_source_positive": "design natural-dose whole-game test",
+            "policy_and_source_positive": (
+                "measure live-champion natural dose, then design whole-game test"),
             "source_only_positive": "improve selector before whole-game test",
             "no_source_headroom": "stop forced retention; try contextual source",
         },
@@ -334,10 +487,42 @@ def validate_design(design: object) -> None:
         raise CapacityDesignRefused("capacity design authority escalation")
     if (design.get("selection", {}).get("report_permitted") is not False
             or design.get("selection", {}).get("splits") != list(SPLITS)
+            or design.get("estimands", {}).get("primary")
+            != "defender_retained_policy_minus_current"
+            or design.get("estimands", {}).get("primary_row_filter")
+            != "role == defender"
+            or design.get("estimands", {}).get(
+                "combined_dev_calib_primary") is not True
+            or design.get("estimands", {}).get("implementation")
+            != ("pair_ballot_affected_capacity_design."
+                "defender_combined_summary")
+            or design.get("routing", {}).get("decision_statistic")
+            != "combined DEV+CALIB defender summary"
             or design.get("power", {}).get(
                 "adequately_powered_at_worthwhile_effect") is not True
+            or design.get("power", {}).get("primary_role") != "defender"
+            or design.get("power", {}).get("state_rows") != DEFENDER_ROWS
+            or design.get("power", {}).get("independent_deal_clusters")
+            != DEFENDER_DEAL_CLUSTERS
             or design.get("capacity", {}).get(
-                "preflight_required_before_scored_execution") is not True):
+                "preflight_required_before_scored_execution") is not True
+            or design.get("dose", {}).get("source_trajectory_policy")
+            != SOURCE_TRAJECTORY_POLICY
+            or design.get("dose", {}).get("is_live_champion_dose") is not False
+            or design.get("dose", {}).get(
+                "live_champion_role_specific_dose_available") is not False
+            or design.get("scope", {}).get(
+                "selected_role_mix_is_natural_dose") is not False
+            or design.get("scope", {}).get(
+                "role_specific_natural_dose_available") is not False
+            or design.get("scope", {}).get(
+                "role_conditional_band_weights_available") is not False
+            or design.get("scope", {}).get(
+                "all_role_smartbot_band_weights_used_for_exploration")
+                is not True
+            or design.get("scope", {}).get(
+                "role_specific_capture_census_required_before_whole_round_claim")
+                is not True):
         raise CapacityDesignRefused("capacity design boundary drift")
 
 

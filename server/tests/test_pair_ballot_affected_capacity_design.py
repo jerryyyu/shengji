@@ -25,8 +25,17 @@ def population_payload() -> dict:
         offset = split_index * 100_000
         row_index = 0
         for band, count in DESIGN.BAND_ROWS_PER_SPLIT.items():
-            for _ in range(count):
+            for band_index in range(count):
                 seed = offset + row_index
+                # Mirror the reviewed population's deal clustering: 16 DEV
+                # and 17 CALIB defender deals contribute both early and mid
+                # rows.  The lone CALIB attacker remains its own deal.
+                overlap = 16 if split == "dev" else 17
+                if band == "mid" and band_index < overlap:
+                    early_index = band_index
+                    if split == "calib" and band_index == 0:
+                        early_index = 32
+                    seed = offset + early_index
                 current = _cards("c")
                 retained = copy.deepcopy(current)
                 retained[-1] = [f"p{row_index}", f"p{row_index}"]
@@ -56,6 +65,7 @@ def population_payload() -> dict:
         },
         "search_eligible_denominator": 146_112,
         "max_deals": 12_000_000,
+        "source_policy": DESIGN.SOURCE_TRAJECTORY_POLICY,
     }
 
 
@@ -102,6 +112,7 @@ def test_full_dev_calib_schedule_is_fixed_and_adequately_powered(
     assert design["selection"]["states_by_role"] == {
         "attacker": 1, "defender": 1_023,
     }
+    assert design["selection"]["unique_deal_clusters"] == 991
     assert design["schedule"]["logical_lanes"] == 16
     assert design["schedule"]["outputs"] == 32
     assert len(design["schedule"]["lanes"]) == 16
@@ -110,19 +121,132 @@ def test_full_dev_calib_schedule_is_fixed_and_adequately_powered(
     assert design["work"]["max_candidate_world_rollouts_per_state"] == 2_940
     assert design["work"]["max_candidate_world_rollouts_total"] == 3_010_560
     assert design["power"]["mde_at_target_power"] == pytest.approx(
-        0.04043108370862586)
+        0.040889289223836306)
+    assert design["power"]["state_rows"] == 1_023
+    assert design["power"]["independent_deal_clusters"] == 990
+    assert design["power"]["effective_clusters_under_band_weights"] \
+        == pytest.approx(924.8524611365071)
     assert design["power"]["power_at_worthwhile_effect"] > 0.9
     assert design["power"]["adequately_powered_at_worthwhile_effect"] is True
     assert design["scope"] == {
         "defender_states": 1_023,
         "attacker_states": 1,
-        "primary_role_inference": "defender",
+        "primary_role_inference": "defender-selected-state population",
         "attacker_effect_estimable": False,
         "attacker_row_use": "descriptive case study only",
         "all_role_generalization_authorized": False,
         "role_stratified_reporting_required": True,
+        "selected_role_mix_is_natural_dose": False,
+        "role_specific_natural_dose_available": False,
+        "role_conditional_band_weights_available": False,
+        "all_role_smartbot_band_weights_used_for_exploration": True,
+        "role_specific_capture_census_required_before_whole_round_claim": True,
         "late_band_use": "diagnostic slice; natural weight is below 0.001",
     }
+    assert design["estimands"]["primary"] \
+        == "defender_retained_policy_minus_current"
+    assert design["estimands"]["combined_dev_calib_primary"] is True
+    assert design["routing"]["decision_statistic"] \
+        == "combined DEV+CALIB defender summary"
+    assert design["dose"] == {
+        "source_trajectory_policy": "smart",
+        "search_eligible_omission_events": 146_112,
+        "capture_deals": 12_000_000,
+        "events_per_captured_smartbot_deal": 146_112 / 12_000_000,
+        "is_live_champion_dose": False,
+        "live_champion_role_specific_dose_available": False,
+        "translation_to_whole_round_is_approximate": True,
+    }
+
+
+def test_combined_summary_is_defender_only_and_routes_on_both_splits(
+        population_payload):
+    rows = [copy.deepcopy(row) for row in population_payload["states"]
+            if row["split"] in DESIGN.SPLITS]
+    for row in rows:
+        if row["role"] == "attacker":
+            policy_value, source_value = -1000.0, -2000.0
+        elif row["split"] == "dev":
+            policy_value, source_value = -0.2, -0.3
+        else:
+            policy_value, source_value = 0.4, 0.5
+        row["estimands"] = {
+            "retained_policy_minus_current": policy_value,
+            "best_inserted_pair_minus_current": source_value,
+        }
+    summary = DESIGN.defender_combined_summary(
+        rows, population_payload["search_eligible_weights"])
+    assert summary["schema"] == DESIGN.SUMMARY_SCHEMA
+    assert summary["primary_population"] == "combined DEV+CALIB defender rows"
+    assert summary["rows"] == 1_023
+    assert summary["deal_clusters"] == 990
+    assert summary["attacker_case_study_rows_excluded"] == 1
+    assert summary["routing_basis"] == "combined_defender_dev_calib"
+    assert summary["diagnostic_route"] \
+        == "POLICY_AND_SOURCE_PROMISING_MEASURE_LIVE_CHAMPION_DOSE"
+    assert set(summary["split_diagnostics"]) == {"dev", "calib"}
+    policy = summary["metrics"]["retained_policy_minus_current"][
+        "capture_event_band_weighted_mean"]
+    source = summary["metrics"]["best_inserted_pair_minus_current"][
+        "capture_event_band_weighted_mean"]
+    dev_policy = summary["split_diagnostics"]["dev"][
+        "retained_policy_minus_current"]["capture_event_band_weighted_mean"]
+    calib_policy = summary["split_diagnostics"]["calib"][
+        "retained_policy_minus_current"]["capture_event_band_weighted_mean"]
+    assert dev_policy == pytest.approx(-0.2)
+    assert calib_policy == pytest.approx(0.4)
+    assert dev_policy < policy < calib_policy
+    assert policy > 0
+    assert source > 0
+    assert summary["selected_role_mix_is_natural_dose"] is False
+    assert summary["strength_claim"] is False
+
+
+def test_combined_summary_refuses_role_or_cluster_drift(population_payload):
+    rows = [copy.deepcopy(row) for row in population_payload["states"]
+            if row["split"] in DESIGN.SPLITS]
+    for row in rows:
+        row["estimands"] = {metric: 0.0 for metric in DESIGN.AGG.METRICS}
+    next(row for row in rows if row["role"] == "defender")["role"] = "attacker"
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="role/cluster population drift"):
+        DESIGN.defender_combined_summary(
+            rows, population_payload["search_eligible_weights"])
+
+
+def test_selected_role_mix_cannot_be_relabelled_natural_dose(
+        pinned_sources, population_path):
+    design = DESIGN.build_design(population_path)
+    design["scope"]["selected_role_mix_is_natural_dose"] = True
+    _rehash(design)
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="boundary drift"):
+        DESIGN.validate_design(design)
+
+
+def test_source_trajectory_cannot_be_relabelled_champion(
+        pinned_sources, population_payload, population_path):
+    population_payload["source_policy"] = "mc-s0-report-lcb"
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="trajectory policy drift"):
+        DESIGN.build_design(population_path)
+
+
+def test_rehashed_primary_estimator_or_power_cluster_drift_refuses(
+        pinned_sources, population_path):
+    design = DESIGN.build_design(population_path)
+    design["estimands"]["primary_row_filter"] = "all roles"
+    _rehash(design)
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="boundary drift"):
+        DESIGN.validate_design(design)
+
+    design = DESIGN.build_design(population_path)
+    design["power"]["independent_deal_clusters"] = 1_023
+    _rehash(design)
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="boundary drift"):
+        DESIGN.validate_design(design)
 
 
 def test_report_is_present_in_source_but_absent_from_design(

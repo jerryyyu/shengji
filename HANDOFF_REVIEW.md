@@ -6386,3 +6386,47 @@ No run, strength inference, promotion, deployment or production restart is
 authorized by this request.
 
 ---
+
+## Codex — 2026-08-13 00:02 EDT — launch-blocking review request: S5 one-shot x86 portability (stacked PR #74, `ff9bed5`)
+
+Please prioritize exact PR #74 head
+`ff9bed51fce729f23205167df105d7eadd938e84`, stacked on already reviewed S5
+PR #70 head `f8083cf0ce9d575f875e601f1e8862280f587e0d`. This is a construction and
+portability boundary only: do not run the 320-decision diagnostic and do not
+open or publish an S5 result.
+
+Independently verify:
+
+1. The original producer `06d837de…` and design `59c63e16…` remain unchanged
+   at detached base `f8083cf`; historical ARM parent `9c9e77fb…` / `59fa033d…`
+   is preserved rather than rewritten.
+2. The adapter binds Linux/x86_64, Python 3.14.4, native `b4e5e319…`, ballot
+   `ec84724ab56a`, full policy contract `f04fa58f…`, and normalized non-ballot
+   contract `6898c2e4…`, which must equal the historical ARM semantics.
+3. Canonical fixture file `a9a10e54…` / payload `8e83e959…` replays a real
+   report-LCB lead override and follow fallback on both ARM and x86 with exact
+   candidates, final action/reason, work and sampler counters.
+4. Exact pre-PR71 heuristic `a99dfb08…`, gameplay-source provenance, sealed
+   closeout bytes, architecture, binary, ballot, policy and fixture mutations
+   all fail closed.
+5. Execution requires both original raw S5 markers plus this marker, then
+   consumes one canonical x86 admission before any work from a clean detached
+   `f8083cf` producer with one fixed result path. No PR71 substitution occurs.
+6. This does not create a second diagnostic or retry and grants no strength
+   execution/claim, training, promotion or deployment authority.
+
+Codex already reproduced 16/16 focused ARM tests plus exact fixture replay;
+ARM refuses `verify-x86`; the real isolated x86 host passes unmocked
+`verify-fixture` and `verify-x86`; architecture/binary/ballot/heuristic mutation
+probes refuse. No S5 diagnostic or result was run or opened.
+
+If and only if clean, append this controller-generated raw marker at column one
+exactly once:
+
+S5_FINAL_CHAMPION_X86_PORTABILITY_V1_REVIEW {"base_design_sha256":"59c63e16c740bb8d9afef2c8a4e1a3d0edb16fb8039f319dc2b6f4f56b160521","base_git":"f8083cf0ce9d575f875e601f1e8862280f587e0d","base_script_sha256":"06d837de717ba14f971ad7456aa1f930dbd577c0876e5611f59cc6ba7b547e07","existing_one_diagnostic_may_execute_on_x86":true,"fixture_file_sha256":"a9a10e543d9d9edce1ce07a9942e9c69f2c035b467e086706486222af5e12446","fixture_payload_sha256":"8e83e9595942e6fbb92118afe562bd71dd0290a32d3a210718c778e8f3ac4e50","historical_arm_parent_preserved":true,"historical_fast_binary_sha256":"9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1","new_diagnostic_execution_authorized":false,"original_s5_review_required":true,"policy_contract_without_ballot_sha256":"6898c2e42f42502e8cebe6b74543a4c3fdbba33f0286a7cc3969bab1ca8c2e05","portable_fixture_replayed_on_arm_and_x86":true,"pr71_source_substitution":false,"production_deployment":false,"production_promotion":false,"retry_authorized":false,"schema":"s5-final-champion-x86-portability-review-v1","strength_claim":false,"strength_execution_authorized":false,"training_authorized":false,"verdict":"PASS","wrapper_git":"ff9bed51fce729f23205167df105d7eadd938e84","wrapper_sha256":"91519061cafeab14611d1ccb500ef0fea737cd46269b42194cbb44e40e85ba3a","x86_ballot":"mc_candidates@v1[ec84724ab56a]","x86_fast_binary_sha256":"b4e5e319309be37c483ebabc681a87bb9885e89dcde2b0c6c0f776cd2ceb9b8e","x86_policy_contract_sha256":"f04fa58fb518dec5f54a630bf5e5e2dd25a40f465bf449e601d4ffc1f188768a","x86_runtime":{"machine":"x86_64","python":"3.14.4","system":"Linux"}}
+
+This marker only lets PR #70's already-reviewed one diagnostic use the x86
+binding. It does not authorize a new execution or retry. Post the same verdict
+to PR #74.
+
+---

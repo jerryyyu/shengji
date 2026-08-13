@@ -173,7 +173,7 @@ def _defender_rows(rows: list[dict]) -> list[dict]:
     if (_membership_sha256(rows) != REVIEWED_IDENTITY_MEMBERSHIP_SHA256
             or _membership_sha256(defenders)
             != REVIEWED_DEFENDER_MEMBERSHIP_SHA256):
-        raise CapacityDesignRefused("reviewed role membership drift")
+        raise CapacityDesignRefused("reviewed identity/role membership drift")
     if (role_counts != Counter({
             "defender": DEFENDER_ROWS, "attacker": ATTACKER_ROWS})
             or split_counts != Counter({split: ROWS_PER_SPLIT

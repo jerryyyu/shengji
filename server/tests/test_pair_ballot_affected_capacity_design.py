@@ -268,6 +268,76 @@ def test_coordinated_same_cell_role_swap_cannot_change_primary_membership(
         DESIGN.defender_combined_summary(rows, design)
 
 
+def test_coordinated_same_cell_split_swap_cannot_change_primary_membership(
+        pinned_sources, population_payload, population_path):
+    design = DESIGN.build_design(population_path)
+    rows = [copy.deepcopy(row) for row in population_payload["states"]
+            if row["split"] in DESIGN.SPLITS]
+    for row in rows:
+        row["estimands"] = {metric: 0.0 for metric in DESIGN.AGG.METRICS}
+    dev = next(row for row in rows
+               if row["split"] == "dev" and row["band"] == "early"
+               and row["role"] == "defender")
+    calib = next(row for row in rows
+                 if row["split"] == "calib" and row["band"] == "early"
+                 and row["role"] == "defender")
+    dev["split"], calib["split"] = calib["split"], dev["split"]
+    assert sum(row["split"] == "dev" for row in rows) == 512
+    assert sum(row["split"] == "calib" for row in rows) == 512
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused,
+            match="identity/role membership drift"):
+        DESIGN.defender_combined_summary(rows, design)
+
+
+def test_report_row_cannot_replace_dev_row_with_marginals_preserved(
+        pinned_sources, population_payload, population_path):
+    dev = next(row for row in population_payload["states"]
+               if row["split"] == "dev" and row["band"] == "early"
+               and row["role"] == "defender")
+    report = next(row for row in population_payload["states"]
+                  if row["split"] == "report" and row["band"] == "early"
+                  and row["role"] == "defender")
+    dev["split"], report["split"] = report["split"], dev["split"]
+    selected = [row for row in population_payload["states"]
+                if row["split"] in DESIGN.SPLITS]
+    assert len(selected) == 1_024
+    assert sum(row["split"] == "dev" for row in selected) == 512
+    assert sum(row["split"] == "calib" for row in selected) == 512
+    assert sum(row["band"] == "early" for row in selected) == 896
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused,
+            match="identity/role membership drift"):
+        DESIGN.build_design(population_path)
+
+
+def test_attacker_estimand_cannot_change_primary_metrics_or_route(
+        pinned_sources, population_payload, population_path):
+    design = DESIGN.build_design(population_path)
+    rows = [copy.deepcopy(row) for row in population_payload["states"]
+            if row["split"] in DESIGN.SPLITS]
+    for row in rows:
+        row["estimands"] = {
+            "retained_policy_minus_current": (
+                0.0 if row["role"] == "attacker" else 0.1),
+            "best_inserted_pair_minus_current": (
+                0.0 if row["role"] == "attacker" else 0.2),
+        }
+    before = DESIGN.defender_combined_summary(rows, design)
+    attacker = next(row for row in rows if row["role"] == "attacker")
+    attacker["estimands"] = {
+        "retained_policy_minus_current": -1_000_000.0,
+        "best_inserted_pair_minus_current": 1_000_000.0,
+    }
+    after = DESIGN.defender_combined_summary(rows, design)
+    assert DESIGN._canonical(before["metrics"]) \
+        == DESIGN._canonical(after["metrics"])
+    assert DESIGN._canonical(before["split_diagnostics"]) \
+        == DESIGN._canonical(after["split_diagnostics"])
+    assert DESIGN._canonical({"route": before["diagnostic_route"]}) \
+        == DESIGN._canonical({"route": after["diagnostic_route"]})
+
+
 def test_selected_role_mix_cannot_be_relabelled_natural_dose(
         pinned_sources, population_path):
     design = DESIGN.build_design(population_path)
@@ -318,6 +388,18 @@ def test_rehashed_semantic_drifts_refuse_source_bound_validation(
     design[section][field] = value
     _rehash(design)
     with pytest.raises(DESIGN.CapacityDesignRefused, match="drift"):
+        DESIGN.validate_design(design, population=population_path)
+
+
+def test_rehashed_arbitrary_normalized_band_weights_refuse(
+        pinned_sources, population_path):
+    design = DESIGN.build_design(population_path)
+    design["estimands"]["band_weights"] = {
+        "early": 0.5, "mid": 0.25, "late": 0.25,
+    }
+    _rehash(design)
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="estimand drift"):
         DESIGN.validate_design(design, population=population_path)
 
 

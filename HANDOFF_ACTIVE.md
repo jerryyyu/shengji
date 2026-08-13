@@ -31,9 +31,9 @@ The lower lane table is historical detail. Current executable truth is:
   unchanged. Both await external review. Separately, a native common-case
   winner-selection path has fresh internal evidence of 7.73% lower wall time
   across six pairs with exact normalized semantics, and the one-Counter lead
-  edit adds 4.01% over that native base across three fresh pairs. This stack is
-  not yet pushed or externally reviewed. The mixed-revision 3.37% prepared-
-  world claim is retired.
+  edit adds 4.01% over that native base across three fresh pairs. Draft PR #81
+  exact `c6c7126` is now stacked on #77 for external review; it has no deploy or
+  strength authority. The mixed-revision 3.37% prepared-world claim is retired.
 - **S5 remains closed.** Claude PASSed PR #76 `e285f47` at canonical commit
   `e91f3b4` as a validation-only incident repair. It permanently disables the
   spent PR #74 run and separates requests from reviewer attestations. Its raw
@@ -44,6 +44,12 @@ The lower lane table is historical detail. Current executable truth is:
   it cannot launch, aggregate, retry, promote, deploy or write files.
   Conditional Pair-cap PR #73 remains behind the broad Pair terminal result and
   its own economics.
+- **Human-data repair is reviewable, not abandoned.** Draft PR #82 exact
+  `82f19fd` replaces the false all-or-nothing H0 candidate-count assumption
+  with direct engine legality and emits only score-free geometry. It reproduces
+  both discarded seven-card decisions as 12 legal live choices versus three
+  generic-analysis choices. It cannot score, reopen the old partial utilities,
+  train, launch or deploy; 57 strict H0 tests pass.
 - **Live compute:** T4 is healthy on Mini at the safe known minimum
   5,596/12,288 sequential arm-rounds (45.5%). Broad Pair is healthy on Air with
   all eight workers alive, and S6's reviewed preflight queue sleeps behind it.
@@ -82,6 +88,10 @@ Nothing below this section supersedes these exact priorities or authorities.
    explicitly mark exact-head merge readiness so the already-reviewed clean
    stack #55 → #60 `7468828` → #61 `22ddfa3` → #72 `373de84` can merge in
    order. Do not mutate the stack while PR #79 review is active.
+5. **New nonblocking code reviews:** PR #81 exact `c6c7126` (native winner +
+   one-Counter performance stack, durable raw evidence) and PR #82 exact
+   `82f19fd` (score-free H0 geometry only). Review these after the utilization
+   and terminal-closeout blockers above; neither grants execution authority.
 
 **Operational disclosure:** while testing the terminal helper, two broad
 pytest children accidentally ran on Mini alongside T4 for about 1m27s and 41s

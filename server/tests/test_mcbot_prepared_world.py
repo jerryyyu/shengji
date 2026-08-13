@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 import random
+import statistics
 from collections import Counter
+from pathlib import Path
 from types import MethodType
 
 import pytest
@@ -42,8 +45,6 @@ def _round_in_bury(seed: int):
 
 
 def _incident_state():
-    from pathlib import Path
-
     fixture = Path(__file__).with_name("data") / "mc_override_variance.json"
     payload = json.loads(fixture.read_text())
     rnd = rebuild_round(payload["events"])
@@ -67,6 +68,19 @@ def _semantic_record(bot):
 def _reference_prepare(self, _rnd, _seat, sampled, *, buried):
     """The pre-change path: pass the mapping through and validate per arm."""
     return sampled
+
+
+def _count_world_completions(bot):
+    """Count the expensive validate/canonicalise boundary on one bot."""
+    original = bot._complete_determinized_hands
+    calls = {"count": 0}
+
+    def counted(self, *args, **kwargs):
+        calls["count"] += 1
+        return original(*args, **kwargs)
+
+    bot._complete_determinized_hands = MethodType(counted, bot)
+    return calls
 
 
 def test_prepared_world_returns_fresh_hands_and_retains_burial_snapshot():
@@ -168,6 +182,66 @@ def test_one_completion_per_accepted_world_across_selection_and_report():
     assert bot.last_decision_record["work"]["complete"] is True
 
 
+def test_adaptive_prepares_once_per_accepted_selection_and_report_world():
+    rnd, seat = _incident_state()
+    bot = make_bot("mc-s0-adaptive", seed=238)
+    bot.N_DETERMINIZATIONS = 4
+    bot.REPORT_FOLD_WORLDS = 30
+    calls = _count_world_completions(bot)
+
+    before = bot._sampler_snapshot()
+    bot.decide_play(rnd, seat)
+    delta = bot._sampler_delta(before)
+
+    assert bot.last_alloc["mode"] == "deterministic_adaptive"
+    assert bot.last_decision_record["report_fold"]["complete"] is True
+    assert calls["count"] == delta["accepted_worlds"] == 34
+    assert bot.last_decision_record["work"]["complete"] is True
+
+
+def test_uniform_residual_prepares_its_dummy_world_once():
+    rnd, seat = _incident_state()
+    bot = make_bot("mc-s0-uniform-work", seed=91)
+    bot.N_DETERMINIZATIONS = 4
+    # The fixture has eleven candidates: 4*11+7 buys four complete common
+    # worlds plus seven explicit dummy evaluations on one additional world.
+    bot.EXTRA_SELECTION_WORK = 7
+    calls = _count_world_completions(bot)
+
+    before = bot._sampler_snapshot()
+    bot.decide_play(rnd, seat)
+    delta = bot._sampler_delta(before)
+
+    assert bot.last_alloc["worlds"] == 4
+    assert bot.last_alloc["dummy_rollouts"] == 7
+    assert bot.last_alloc["short"] is False
+    assert calls["count"] == delta["accepted_worlds"] == 5
+    assert bot.last_decision_record["work"]["complete"] is True
+
+
+def test_exact_endgame_prepares_once_per_world_before_session_reuse():
+    rnd = _round_in_play(20)
+    heuristic = HeuristicBot()
+    while rnd.phase == "play" and max(len(hand) for hand in rnd.hands) > 3:
+        actor = rnd.turn
+        assert actor is not None
+        rnd.play(actor, heuristic.decide_play(rnd, actor))
+    assert rnd.phase == "play" and rnd.turn is not None
+
+    bot = make_bot("mc-exact-endgame", seed=1020)
+    bot.N_DETERMINIZATIONS = 2
+    calls = _count_world_completions(bot)
+    before = bot._sampler_snapshot()
+    bot.decide_play(rnd, rnd.turn)
+    delta = bot._sampler_delta(before)
+
+    assert calls["count"] == delta["accepted_worlds"] == 2
+    assert bot.exact_endgame_sessions == 2
+    assert bot.exact_endgame_calls > bot.exact_endgame_sessions
+    assert bot.exact_endgame_refusals == 0
+    assert bot.last_decision_record["work"]["complete"] is True
+
+
 def test_sampler_rejection_and_all_counters_match_reference_path():
     rnd, seat = _incident_state()
     optimized = make_bot("mc-strong", seed=73)
@@ -230,3 +304,65 @@ def test_structured_bury_matches_reference_and_prepares_once_per_world():
     assert optimized.rng.getstate() == reference.rng.getstate()
     assert optimized._sampler_snapshot() == reference._sampler_snapshot()
     assert calls == optimized_record["work"]["worlds_used"] == 3
+
+
+def test_exact_head_performance_receipt_recomputes_and_retires_mixed_claim():
+    receipt_path = (Path(__file__).with_name("data") /
+                    "prepared_world_perf_exact_head.v1.json")
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["schema"] == "prepared-world-perf-exact-head-v1"
+    assert receipt["supersedes"]["status"] == "retired_mixed_revision"
+    assert receipt["claim_boundary"] == {
+        "performance_only": True,
+        "production_deployment": False,
+        "strength_claim": False,
+    }
+
+    # This is a historical receipt, so never compare it to the moving live
+    # source.  Pin the reviewed identities literally while allowing a future
+    # mcbot edit to report drift instead of forcing evidence rewriting.
+    assert receipt["base"] == {
+        "git": "093ec33d8d9e137d276b84ffd907ca4417ba44af",
+        "mcbot_sha256": (
+            "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957"
+        ),
+    }
+    assert receipt["head"] == {
+        "implementation_git": "fe97a1f341e28d9c890cd46eaaf1a28665756db9",
+        "mcbot_sha256": (
+            "f88b7ad9060132b4abfb76000845618aaafe95ee18ad6d548bb7eeb868b18ebe"
+        ),
+    }
+    assert receipt["design"]["pairs"] == len(receipt["records"]) == 6
+    assert [row["seed"] for row in receipt["records"]] == \
+        receipt["design"]["seeds"]
+    assert [row["order"] for row in receipt["records"]] == [
+        "base_head", "head_base", "base_head",
+        "head_base", "base_head", "head_base",
+    ]
+    assert all(row["base"]["transcript_sha256"] ==
+               row["head"]["transcript_sha256"]
+               for row in receipt["records"])
+    assert all(row["base"]["rollouts"] == row["head"]["rollouts"]
+               for row in receipt["records"])
+    for row in receipt["records"]:
+        for field in ("short_search_decisions", "zero_world_decisions"):
+            assert row["base"][field] == row["head"][field] == [0, 0, 0, 0]
+
+    base = [row["base"]["elapsed_seconds"] for row in receipt["records"]]
+    head = [row["head"]["elapsed_seconds"] for row in receipt["records"]]
+    relative = [(left - right) / left for left, right in zip(base, head)]
+    paired_mean = statistics.mean(relative)
+    paired_se = statistics.stdev(relative) / math.sqrt(len(relative))
+    critical = receipt["design"]["one_sided_t95_df5"]
+    aggregate = receipt["aggregate"]
+    assert sum(base) == pytest.approx(aggregate["base_wall_seconds"], abs=1e-12)
+    assert sum(head) == pytest.approx(aggregate["head_wall_seconds"], abs=1e-12)
+    assert 100 * (sum(base) - sum(head)) / sum(base) == pytest.approx(
+        aggregate["wall_reduction_percent"], abs=1e-12)
+    assert 100 * (sum(base) / sum(head) - 1) == pytest.approx(
+        aggregate["throughput_increase_percent"], abs=1e-12)
+    assert 100 * paired_mean == pytest.approx(
+        aggregate["paired_relative_mean_percent"], abs=1e-12)
+    assert 100 * (paired_mean - critical * paired_se) == pytest.approx(
+        aggregate["paired_one_sided_95_lb_percent"], abs=1e-12)

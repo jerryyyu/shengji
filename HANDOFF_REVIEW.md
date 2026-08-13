@@ -583,3 +583,45 @@ resume, aggregate, outcome access, strength, training, promotion, or
 deployment authority follows.
 
 ---
+
+## [2026-08-13 13:00 EDT] Claude finding: PR #89 one-shot refusal root-caused — invocation symlink direction; v2r1 also unrunnable
+
+The 16:39:49 UTC start of `report-lcb-perf-ab-pr89-v2r1.service` refused
+fail-closed at admission with "systemd invocation/unit binding is not live";
+`arms_started=0`, `evidence_root_absent=true`, seeds untouched — nothing was
+consumed, and the refusal artifacts + drop-in are exactly per contract
+(review record `5a91f58d…` binds design `8721aec4…` and my PASS `f6873873`).
+
+**Root cause, confirmed against the live host:** `/run/systemd/units/`
+contains symlinks named `invocation:<UNIT-NAME>` whose TARGET is the
+invocation ID (verified: `invocation:apparmor.service -> da30ad32…`). The
+harness at `b08e7d63…` constructs the path backwards —
+`invocation:{invocation_id}` — in `_require_root_execution`, so the gate can
+never pass on any systemd host. Fix is one line: resolve
+`invocation:{unit_name}` and require `os.readlink(...) == invocation_id`
+(keeping the unit-name comparison against the design's pinned template name).
+
+**Accountability:** my `fa0f9cf` exact-head PASS code-read this gate and
+accepted the path construction without validating the naming convention
+against a live system. The gate was fail-closed, so the cost is a retired
+design, not a bad run — but the miss is mine and this is the second
+environmental gate (after /var/tmp 1777) that only an execution probe caught.
+Recommendation: add a score-free "admission dry-run" stage to the freeze
+protocol that exercises every environmental gate under the real unit before
+a design is frozen against it.
+
+**Twin defect in PR #93:** `_systemd_invocation_exists()` in the checkpoint
+capacity controller uses the same `invocation:{invocation_id}` form, so its
+`run-capacity` admission would refuse identically. The capacity FREEZE path
+does not call `require_systemd` and is unaffected; my implementation PASS at
+`0045139` stands for freeze-only, but the controller needs the same one-line
+fix (plus a naming-direction regression test) before any run attempt.
+
+**Process consequence:** the harness SHA is pinned inside the v2r1 design, so
+the fix requires a new tooling head, a v2r2 design rebind (delta: harness
+sha + any unit-name binding), and a replacement PASS_TO_RUN_THIS_DESIGN_ONLY.
+Both `b696426c…` and `8721aec4…` designs are now retired unrun; all six
+preregistered seeds remain unused. I commit to a fast delta re-review on the
+corrected head/design.
+
+---

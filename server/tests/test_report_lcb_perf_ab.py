@@ -213,14 +213,16 @@ def test_design_requires_balanced_fresh_batch_and_exact_identities(tmp_path):
     assert harness.HEAD_GIT == \
         "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
     assert harness.EXPERIMENT_ID == \
-        "report-lcb-perf-accepted-stack-pr90-v3-systemd-repair"
+        "report-lcb-perf-accepted-stack-pr90-v4-source-archive-repair"
     assert harness.PAIR_SEEDS == (
-        2552710799, 3117477128, 1009088913,
-        3804486078, 4075261754, 2363873674,
+        1325809612, 3286110, 1702447446,
+        2457851339, 3102784513, 3313536938,
     )
     assert set(harness.PAIR_SEEDS).isdisjoint({
         3368250205, 194578860, 2724771798,
         2228922925, 1533007193, 1686527578,
+        2552710799, 3117477128, 1009088913,
+        3804486078, 4075261754, 2363873674,
     })
 
     design = _design(tmp_path)
@@ -476,6 +478,42 @@ def test_actual_identity_binds_git_sources_and_native_binary(tmp_path):
     source.write_text("ROUND = 2\n")
     with pytest.raises(harness.HarnessRefused, match="worktree is dirty"):
         harness._actual_identity("fixture", expected)
+
+
+def test_prearm_staging_archives_portable_actual_identity(tmp_path):
+    """Regression for the spent V3 KeyError before the first benchmark arm."""
+
+    repo = tmp_path / "repo"
+    source = repo / "server/shengji/engine/round.py"
+    native = repo / "server/shengji/engine/_fast.test.so"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"ROUND = 1\n")
+    native.write_bytes(b"synthetic-native")
+    expected = {
+        "repo": str(repo),
+        "git": "a" * 40,
+        "source_sha256s": {
+            "server/shengji/engine/round.py": _sha(source.read_bytes()),
+        },
+        "native": {
+            "path": "server/shengji/engine/_fast.test.so",
+            "sha256": _sha(native.read_bytes()),
+        },
+    }
+    # This is the portable value returned by _actual_identity: no repo key.
+    actual = {key: expected[key]
+              for key in ("git", "source_sha256s", "native")}
+    root = tmp_path / "evidence"
+    root.mkdir()
+
+    harness._stage_arm_identity(root, "base", expected, actual)
+
+    assert harness.load_json_bytes(
+        (root / "base.identity.json").read_bytes()) == actual
+    validator._validate_source_archive(
+        root / "base.source.tar", actual["source_sha256s"])
+    assert (root / "base.native.bin").read_bytes() == native.read_bytes()
+    assert all(not path.stat().st_mode & 0o222 for path in root.iterdir())
 
 
 def test_imported_shengji_modules_must_resolve_inside_bound_repo(

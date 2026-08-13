@@ -46,15 +46,16 @@ N_DETERMINIZATIONS = 30
 REPORT_WORLDS = 300
 BASE_GIT = "093ec33d8d9e137d276b84ffd907ca4417ba44af"
 HEAD_GIT = "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
-# The v2r1 invocation was refused before evidence creation because its
-# systemd provenance check used the inverse of systemd's real symlink shape.
-# A repaired run is a fresh experiment, with fresh seeds and namespace; v2r1
-# remains spent and must never be restarted.
+# V3 admitted successfully but refused before its first arm: the setup path
+# passed the portable runtime identity (which intentionally omits the absolute
+# repo path) into the source archiver.  V2r1 and V3 remain spent and must never
+# be restarted.  A repaired run is a fresh experiment, with fresh seeds and
+# namespace.
 EXPERIMENT_ID = \
-    "report-lcb-perf-accepted-stack-pr90-v3-systemd-repair"
+    "report-lcb-perf-accepted-stack-pr90-v4-source-archive-repair"
 PAIR_SEEDS = (
-    2552710799, 3117477128, 1009088913,
-    3804486078, 4075261754, 2363873674,
+    1325809612, 3286110, 1702447446,
+    2457851339, 3102784513, 3313536938,
 )
 PAIR_ORDERS = (
     "base_head", "head_base", "base_head",
@@ -720,10 +721,10 @@ def _exclusive_copy(path: Path, source: Path) -> None:
         os.close(fd)
 
 
-def _source_archive(path: Path, identity: dict[str, Any]) -> None:
-    repo = Path(identity["repo"])
+def _source_archive(path: Path, repo: Path,
+                    source_sha256s: dict[str, str]) -> None:
     with tarfile.open(path, "x") as archive:
-        for relative in sorted(identity["source_sha256s"]):
+        for relative in sorted(source_sha256s):
             payload = (repo / relative).read_bytes()
             info = tarfile.TarInfo(relative)
             info.size = len(payload)
@@ -733,6 +734,23 @@ def _source_archive(path: Path, identity: dict[str, Any]) -> None:
             info.mtime = 0
             archive.addfile(info, io.BytesIO(payload))
     path.chmod(0o444)
+
+
+def _stage_arm_identity(root: Path, label: str, expected: dict[str, Any],
+                        actual: dict[str, Any]) -> None:
+    """Freeze one portable identity plus its source/native bytes.
+
+    ``actual`` deliberately excludes the host-local repo path.  The reviewed
+    design is the authority for that path; keeping the two inputs explicit
+    prevents the V3 pre-arm KeyError from recurring.
+    """
+
+    repo = Path(expected["repo"])
+    _exclusive_write(root / f"{label}.identity.json", canonical(actual))
+    _source_archive(
+        root / f"{label}.source.tar", repo, actual["source_sha256s"])
+    _exclusive_copy(
+        root / f"{label}.native.bin", repo / actual["native"]["path"])
 
 
 def _actual_identity(label: str, expected: dict[str, Any]) -> dict[str, Any]:
@@ -1191,11 +1209,7 @@ def _run_batch(design_path: Path) -> None:
         root / "host-profile.json",
         Path(design["execution"]["host_profile"]["path"]).read_bytes())
     for label, identity in identities.items():
-        _exclusive_write(root / f"{label}.identity.json", canonical(identity))
-        _source_archive(root / f"{label}.source.tar", identity)
-        _exclusive_copy(
-            root / f"{label}.native.bin",
-            Path(identity["repo"]) / identity["native"]["path"])
+        _stage_arm_identity(root, label, design[label], identity)
     _exclusive_copy(root / "python.bin", Path(design["python"]["resolved"]))
 
     env = dict(FIXED_CHILD_ENVIRONMENT)

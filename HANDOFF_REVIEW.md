@@ -697,3 +697,54 @@ resume, aggregate, outcome access, strength, training, promotion, or
 deployment authority.
 
 ---
+
+## [2026-08-13 13:58 EDT] Claude review: PR #89 V3 host design — PASS_TO_RUN_THIS_DESIGN_ONLY
+
+REPORT_LCB_PERF_AB_PR89_V3_DESIGN_REVIEW_V1: PASS_TO_RUN_THIS_DESIGN_ONLY design_sha256=e0a0386c677c8b08f69bd7587428d679cbe3a670b341124534afebdab9cfd7f4
+
+**Frozen V3 design** `/var/tmp/report-lcb-perf-ab-pr89-v3.design.json`:
+root:root 0444 nlink 1, 17,067 B, byte-exactly its canonical serialization,
+SHA `e0a0386c…f7f4`. **Parsed-tree delta from retired v2r1 is exactly the
+expected systemd-repair rebind**: evidence root → `/var/lib/…-pr89-v3/evidence`
+(parent root:root 0755, empty; root absent), unit path/sha → v3 template
+`5232a26b…` (ExecStart pins the repaired tooling + this design; Restart=no;
+KillMode=control-group), host profile → `2c4e5fd9…` (carries the v3
+experiment id, live boot id, exact RAM), harness → `307f4087…` at exact
+clean checkout `52e13f2` (my source-PASSed repair head; validator unchanged
+`1e69d103…`), experiment id `…-pr90-v3-systemd-repair`, and the six fresh
+seeds. Nothing else changed: endpoints `093ec33d`/`a91eb271`, both 69-path
+closures (recomputed again, zero mismatches), natives, python `b8d8288f…`.
+
+**Seed freshness:** v1/v2/v2r1 all preregistered the SAME spent six; the V3
+six are fully disjoint from that set. Harness constants at `52e13f2` equal
+the design's seeds/orders exactly.
+
+**All 146 named inputs verified immutable** (regular, root-owned, nlink 1,
+no write bits — per-file stat over the design's own closure enumeration,
+zero violations). Live host reconciled: boot `d0c9be4d…` unchanged since
+freeze; systemd convention witnessed
+(`invocation:ssh.service -> ea45bacc…`); host compute-idle.
+
+**Falsification on the V3 bytes:** `check-design` VALID at the exact SHA;
+seed/order/base-git/gate/authority/extra-normalization/relative-root all
+refused; unit-sha, profile-sha and python-sha value mutations refused at
+`_require_runtime` admission. Run-batch semantics (12-arm monotonic ledger,
+attempted-vs-engine-adjusted, RNG/work/sampler continuity, exactly 330
+accepted worlds per search, zero short/zero/bury work, sealed manifest,
+offline revalidation) stand as verified at `fa0f9cf` and re-checked in the
+`52e13f2` delta review.
+
+**Independently generated review record** (for Codex to freeze root-owned
+0444 nlink 1; not copied from any request):
+
+`{"design_sha256":"e0a0386c677c8b08f69bd7587428d679cbe3a670b341124534afebdab9cfd7f4","reviewer":"Claude","schema":"report-lcb-perf-ab-review-v1","summary":"V3 host-design PASS_TO_RUN_THIS_DESIGN_ONLY, recorded as HANDOFF_REVIEW.md marker REPORT_LCB_PERF_AB_PR89_V3_DESIGN_REVIEW_V1 on 2026-08-13: tooling rebind to repaired head 52e13f2 with six fresh seeds under experiment report-lcb-perf-accepted-stack-pr90-v3-systemd-repair; authorizes exactly one six-pair batch, no retry or tuning.","verdict":"PASS"}`
+
+SHA-256 `be6ca9c4867731d6214c947d11fa59d9b15969426e35cedbf93eac22d633b5d1` — bind it via PERF_AB_REVIEW_RECORD_SHA256/PATH with
+PERF_AB_EXTERNAL_DESIGN_SHA256=e0a0386c… and the v3 experiment id.
+
+**Boundary:** exactly one six-pair N=30/R=300 batch under these frozen
+bytes; no retry or tuning; integrity refusals are exceptions, never DROP;
+the v2/v2r1 designs must never run. No merge, strength, production,
+training, promotion, or deployment authority.
+
+---

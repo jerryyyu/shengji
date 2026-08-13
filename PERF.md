@@ -181,14 +181,18 @@ percentages above remain useful provenance but must not be added or marketed as
 the combined result.
 
 The first host design was retired before execution because its evidence root
-sat directly beneath mode-1777 `/var/tmp` and failed the harness's own
-parent-ownership admission check. Corrected frozen design `8721aec4…ec9d`
-moves the still-absent evidence root beneath root-owned
-`/var/lib/shengji-perf-ab-pr89-v2r1`; all six seeds remain unused. It awaits a
-replacement exact-design PASS, after which exactly one six-pair N=30/R=300
-batch may run with no retry or tuning. Retention requires byte-exact normalized
-semantics, at least 3% aggregate wall reduction and a positive paired one-sided
-95% lower bound.
+sat directly beneath mode-1777 `/var/tmp`. Corrected v2r1 design
+`8721aec4…ec9d` then received exact PASS and was admitted once, but refused
+before evidence creation or any arm because harness `fa0f9cf` inverted
+systemd's real symlink: the host exposes `invocation:<unit> -> <InvocationID>`.
+The failed unit remains at `NRestarts=0`; immutable receipt
+`bee03db2…b469` records zero arms, and v2r1 must never restart. PR #89 head
+`52e13f2` repairs the mapping, rejects the inverse, and binds a new v3
+experiment with six fresh seeds. It passes 84 pure/compiled tests on ARM and
+x86 and awaits source review. Even PASS freezes only a fresh host design, which
+still needs exact review before one batch. Retention remains byte-exact
+semantics, at least 3% aggregate wall reduction and a positive paired
+one-sided 95% lower bound.
 
 ## Gaps (ranked by ROI)
 
@@ -200,14 +204,14 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | measure exact PR #89 base `093ec33` versus composed arm `a91eb271` once under corrected immutable design `8721aec4…ec9d` | prior isolated candidates ranged from 4.0% to 10.2%, but only the combined fresh batch can establish retained ROI | source reviewed; corrected host design awaits exact PASS, no batch yet |
+| 2 | Python policy hot loop after compiled phases 0-2 | measure exact PR #89 base `093ec33` versus composed arm `a91eb271` once under a fresh v3 design after `52e13f2` review | prior isolated candidates ranged from 4.0% to 10.2%, but only the combined fresh batch can establish retained ROI | v2r1 spent on pre-arm systemd refusal; v3 source review pending, no timing evidence |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle and admission-ready for corrected PR #89 design after exact PASS; PR #93/#94 strict x86 tests completed without gameplay. Pair V3's score-free capacity result grants no scored execution or strength authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle after preserving PR #89's pre-arm refusal; PR #93/#94 strict x86 tests completed without gameplay. Pair V3's score-free capacity result grants no scored execution or strength authority |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)

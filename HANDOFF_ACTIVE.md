@@ -9,31 +9,31 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 12:23 EDT from canonical main `6e0cb8b`.
+Last reconciled: 2026-08-13 12:50 EDT from canonical main `4534ea0`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
 | **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are alive and CPU-bound. Treatment is complete and all eight matched-null shards have reached 400/512, so the safe lower bound is 7,296/12,288 = 59.38%; 0/8 terminal. The worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or shard-result access. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Every reviewed score-free shard counter has reached 320/896, totaling 2,560/7,168 = 35.71%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live; the reviewed score-free lower bound is 448/8,192 = 5.47% of tranche two. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
-| **Performance Cloud** | corrected PR #89 v2r1 design frozen; no live worker | Claude PASSed exact source/tooling head `fa0f9cf` and the original host design `b696426c…82d8`. A final admission probe then proved that design could not run because its evidence parent `/var/tmp` is mode 1777; it was retired before unit install, evidence creation or any arm. Corrected design `/var/tmp/report-lcb-perf-ab-pr89-v2r1.design.json` has SHA `8721aec4…ec9d`, moves the absent evidence root beneath root-owned mode-0755 `/var/lib/shengji-perf-ab-pr89-v2r1`, and awaits a replacement `PASS_TO_RUN_THIS_DESIGN_ONLY`. All six seeds remain unused. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven reviewed score-free shard counters are 320/896 and one is 336/896, totaling 2,576/7,168 = 35.94%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live; the reviewed score-free lower bound is 636/8,192 = 7.76% of tranche two. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
+| **Performance Cloud** | PR #89 v2r1 spent before evidence; fresh v3 repair awaiting review | Exact design `8721aec4…ec9d` was admitted once under systemd and immediately refused before evidence creation or any arm because harness `fa0f9cf` checked systemd's invocation symlink backwards. The failed unit is preserved at `NRestarts=0`; immutable refusal receipt `bee03db2…b469` records zero arms and v2r1 must never restart. PR #89 head `52e13f2` fixes the unit-name→InvocationID mapping, pins six fresh seeds and a new experiment ID, and passes 84 pure/compiled tests on ARM and x86. It awaits source review; even PASS may freeze only a fresh v3 host design. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
 
-1. **PR #89 corrected performance design.** Review exact frozen design SHA
-   `8721aec4765bd7965eb0c47addaf46629e1cc6aead2402c1e50cbceaaf84ec9d`.
-   The delta from the previously reviewed but unrunnable design is only the
-   root-owned evidence location and matching unit path/hash. A new
-   `PASS_TO_RUN_THIS_DESIGN_ONLY` may authorize exactly one six-pair N=30/R=300
-   batch, with no retry/tuning. The old `b696426c…82d8` design must never run.
-2. **Pair checkpoint capacity PR #93.** Claude HOLDed `2eb55d0` only because
-   four sole-defense tests were missing. Exact repair head `0045139` adds those
-   four tests; production controller bytes are unchanged, focused count is 100,
-   and exact-head delta re-review is pending. PASS may authorize only a
-   host-specific capacity-packet freeze; the packet still needs a separate PASS.
+1. **PR #89 systemd-provenance repair.** Review exact head `52e13f2`. The
+   v2r1 invocation is spent with zero arms/evidence and may never restart. The
+   repair binds systemd's real unit-name→InvocationID symlink, refuses the old
+   inverse shape and uses six fresh seeds under a new v3 experiment. PASS may
+   freeze only a fresh host-specific design; that design still needs exact PASS.
+2. **Pair checkpoint capacity PR #93.** Claude PASSed repaired science/code at
+   `0045139`, but the V1 raw marker was introduced by a Jerry-authored commit
+   and correctly cannot satisfy the controller's independent-Claude gate. Exact
+   head `4ae52fd` retires V1 and requires a fresh Claude-authored V2 marker;
+   101 tests pass. V2 PASS may authorize packet freeze only; the packet still
+   needs separate review before one capacity run.
 3. **S6 scored-DEV controller PR #94.** Exact head `3ee600b` implements the
    reviewed PR #91 design; 88 focused design/scorer/controller tests pass and
    implementation review is pending. PASS may authorize packet freeze only;

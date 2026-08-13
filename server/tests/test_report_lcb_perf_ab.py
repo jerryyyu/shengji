@@ -213,10 +213,10 @@ def test_design_requires_balanced_fresh_batch_and_exact_identities(tmp_path):
     assert harness.HEAD_GIT == \
         "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
     assert harness.EXPERIMENT_ID == \
-        "report-lcb-perf-accepted-stack-pr90-v5-bytecode-repair"
+        "report-lcb-perf-accepted-stack-pr90-v6-root-immutability-repair"
     assert harness.PAIR_SEEDS == (
-        3241160913, 309165843, 623399655,
-        1506812366, 1286062863, 2808674107,
+        2140201484, 3839701668, 732966754,
+        3662276730, 407237572, 644946600,
     )
     assert set(harness.PAIR_SEEDS).isdisjoint({
         3368250205, 194578860, 2724771798,
@@ -225,6 +225,8 @@ def test_design_requires_balanced_fresh_batch_and_exact_identities(tmp_path):
         3804486078, 4075261754, 2363873674,
         1325809612, 3286110, 1702447446,
         2457851339, 3102784513, 3313536938,
+        3241160913, 309165843, 623399655,
+        1506812366, 1286062863, 2808674107,
     })
 
     design = _design(tmp_path)
@@ -402,6 +404,63 @@ def test_immutable_design_is_required_before_a_batch(tmp_path):
         harness._require_immutable_design(path)
     path.chmod(0o444)
     assert harness._require_immutable_design(path) == path.read_bytes()
+
+
+def test_design_freeze_reuses_the_full_root_immutability_gate(
+        monkeypatch, tmp_path):
+    """V5's writable inputs must refuse before a design can be frozen."""
+
+    output = tmp_path / "design.json"
+    validator_path = tmp_path / "validator.py"
+    unit = tmp_path / "unit.service"
+    profile = tmp_path / "host.json"
+    for path in (validator_path, unit, profile):
+        path.write_text("fixture\n")
+    identity = {
+        "repo": str(tmp_path / "repo"),
+        "git": harness.BASE_GIT,
+        "source_sha256s": {"server/shengji/a.py": "a" * 64},
+        "native": {"path": "server/native.so", "sha256": "b" * 64},
+    }
+    monkeypatch.setattr(
+        harness, "_python_identity",
+        lambda _path: copy.deepcopy(_design(tmp_path)["python"]))
+    monkeypatch.setattr(
+        harness, "_collect_identity",
+        lambda label, *_args: {
+            **copy.deepcopy(identity),
+            "git": harness.BASE_GIT if label == "base" else harness.HEAD_GIT,
+        })
+    calls = []
+
+    def refuse_writable_inputs(design):
+        calls.append(design)
+        raise harness.HarnessRefused("harness must be root-owned")
+
+    monkeypatch.setattr(
+        harness, "_require_root_frozen_inputs", refuse_writable_inputs)
+    with pytest.raises(harness.HarnessRefused, match="root-owned"):
+        harness._prepare_design(
+            output, tmp_path / "evidence", Path(sys.executable),
+            tmp_path / "base", "server/native.so",
+            tmp_path / "head", "server/native.so",
+            validator_path, unit, profile)
+    assert len(calls) == 1
+    assert not output.exists()
+
+
+def test_frozen_input_gate_refuses_the_v5_writable_harness(tmp_path):
+    design = _design(tmp_path)
+    writable = tmp_path / "report_lcb_perf_ab.py"
+    writable.write_text("# exact bytes are not enough when mode is 0644\n")
+    design["harness"] = {
+        "path": str(writable),
+        "sha256": _sha(writable.read_bytes()),
+    }
+    with pytest.raises(
+            harness.HarnessRefused,
+            match="harness must be root-owned, regular, unlinked and non-writable"):
+        harness._require_root_frozen_inputs(design)
 
 
 def test_json_reader_refuses_duplicate_keys_and_nonfinite_values():

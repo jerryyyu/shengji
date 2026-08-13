@@ -48,14 +48,16 @@ BASE_GIT = "093ec33d8d9e137d276b84ffd907ca4417ba44af"
 HEAD_GIT = "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
 # V4 admitted and ran the first base round, then correctly refused before raw
 # publication because ``-I`` ignored PYTHONDONTWRITEBYTECODE and the imported
-# runtime created bytecode that failed the post-round closure check.  V2r1,
-# V3 and V4 remain spent and must never be restarted.  The repaired experiment
-# uses fresh deterministic seeds and a fresh namespace.
+# runtime created bytecode that failed the post-round closure check.  V5
+# refused before creating its evidence root or starting an arm because its
+# reviewed tooling/runtime files were still owner-writable.  V2r1 through V5
+# remain spent and must never be restarted.  The repaired experiment uses
+# fresh deterministic seeds and a fresh namespace.
 EXPERIMENT_ID = \
-    "report-lcb-perf-accepted-stack-pr90-v5-bytecode-repair"
+    "report-lcb-perf-accepted-stack-pr90-v6-root-immutability-repair"
 PAIR_SEEDS = (
-    3241160913, 309165843, 623399655,
-    1506812366, 1286062863, 2808674107,
+    2140201484, 3839701668, 732966754,
+    3662276730, 407237572, 644946600,
 )
 PAIR_ORDERS = (
     "base_head", "head_base", "base_head",
@@ -1009,6 +1011,11 @@ def _prepare_design(output: Path, evidence_root: Path, python: Path,
             "head", head_repo, head_native, HEAD_GIT),
     }
     require_design(design)
+    # Apply the same immutable-input gate used by the real batch before a
+    # design can be frozen and sent for independent review.  V5 proved that
+    # byte-accurate identities alone are insufficient: owner-writable source
+    # files would make the reviewed unit refuse immediately at admission.
+    _require_root_frozen_inputs(design)
     _exclusive_write(output.resolve(), canonical(design))
     return design
 
@@ -1068,11 +1075,9 @@ def _review_record(path: Path, expected_sha: str,
     return value, payload
 
 
-def _require_root_execution(design_path: Path, design: dict[str, Any],
-                            invocation_id: str) -> None:
-    if os.geteuid() != 0:
-        raise HarnessRefused("one-shot batch must run as root under systemd")
-    _require_root_owned_regular(design_path, "design")
+def _require_root_frozen_inputs(design: dict[str, Any]) -> None:
+    """Authenticate every host input before design freeze or execution."""
+
     for label in ("harness", "validator"):
         _require_root_owned_regular(Path(design[label]["path"]), label)
     for label in ("host_profile", "systemd_unit"):
@@ -1093,6 +1098,14 @@ def _require_root_execution(design_path: Path, design: dict[str, Any],
                 current = current.parent
     parent = Path(design["evidence_root"]).parent
     _require_root_owned_directory(parent, "evidence parent")
+
+
+def _require_root_execution(design_path: Path, design: dict[str, Any],
+                            invocation_id: str) -> None:
+    if os.geteuid() != 0:
+        raise HarnessRefused("one-shot batch must run as root under systemd")
+    _require_root_owned_regular(design_path, "design")
+    _require_root_frozen_inputs(design)
     _require_systemd_invocation(
         Path(design["execution"]["systemd_unit"]["path"]), invocation_id)
 

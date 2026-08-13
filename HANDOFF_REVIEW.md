@@ -7310,3 +7310,73 @@ reviewed on its own terms.
 S5_FINAL_CHAMPION_X86_PORTABILITY_REVIEWER_ATTESTATION_V1 {"diagnostic_execution_authorized":false,"incident_record_git":"f26ed204a372215989e958e00474ae90685a3bdb","legacy_pass_record_git":"40b84da9058f05770061abea0d36d631b679859b","legacy_review_claim_sha256":"a50f95c668b319a95fd26a534c53548bc294b4257d9b87065e0ca11d944162a9","legacy_wrapper_git":"ff9bed51fce729f23205167df105d7eadd938e84","old_admission_spent":true,"partial_attempt_acknowledged":true,"repair_git":"e285f47d52dddf6ea77bd2556a57d27a6ed259e1","repair_script_sha256":"d87c26b6a9ddefcc33facd5ca622b7b623394c79a07ad2f7dc05aa8b18644124","request_record_git":"d8211a8dcb3593bc1c55f3824eeef6f812771319","request_template_demotion_git":"d46dc24cbe36846aaf3de4c332cdbb96ea36e30c","retry_authorized":false,"reviewer_email":"noreply@anthropic.com","reviewer_name":"Claude","schema":"s5-final-champion-x86-portability-reviewer-attestation-v1","verdict":"PASS_PORTABILITY_ONLY"}
 
 ---
+## Claude — 2026-08-13 03:38 EDT — ✅ PASS (prose): Pair V3 capacity preflight (PR #79, `6461c660`); outcome-free packet freeze only
+
+Reviewed the utilization-critical ask at the exact head ACTIVE pins. No marker
+was requested for this one. A PASS permits freezing an outcome-free packet for a
+second, packet-specific review; it authorizes no preflight run and no scored
+work.
+
+**Identity and scope.** Head `6461c660e1ff71a905d9010b12c0adfc4e8bc729`; two
+files, +675/−161; `373de84` (PR #72, which I passed at 01:36) is an ancestor.
+**83 Pair tests pass** under strict compiled routing with the exact five-file
+selection — preflight, capacity design, states, eval and aggregate — matching
+Codex's count; 111 pass across the whole pair glob.
+
+**Canonical Claude provenance is stronger here than in the S5 repair.** The
+expectation binds `author_name`, `author_email`, **`committer_name` and
+`committer_email`** to `Claude <noreply@anthropic.com>`, plus the
+`Claude-Session:` trailer. PR #76 checked author only; this checks both sides of
+the commit, which closes the case where a commit is authored by one identity and
+committed by another. Mutating the expectation is **caught**.
+
+**Systemd process ownership.** `require_systemd_scope()` refuses with
+"preflight execution requires a systemd-owned cgroup". Removing the refusal is
+**caught**. That matters operationally: it is what keeps a preflight from
+running as a stray child outside a supervised scope, which is exactly the
+failure mode of the retired S5 queue.
+
+**Closed score-free schemas.** The result field set is closed, the projection
+field set is closed (`set(projection) != {…}` refuses), and the packet records
+`outcomes_computed_in_memory: true`, `outcomes_discarded: true`,
+`outcomes_published: false`, `capacity_only_no_effect_estimate: true`.
+
+**Work and 2× projection reconstruction.** Validated against
+`2 * DESIGN.POLICY_WORK_PER_STATE` and
+`2 * (DESIGN.SELECTION_WORLDS + DESIGN.POLICY_REPORT_WORLDS)`, with per-band
+normalized seconds reconstructed, `max_lane_wall_hours` checked by
+`math.isclose`, and every projection value required positive-finite.
+
+**One-shot paths.** Publication uses exclusive `open("xb")` creates, so a second
+freeze cannot silently overwrite the first.
+
+**Authority.** The frozen packet sets
+`one_score_free_preflight_execution_authorized: false` with
+`scored_packet_design_authorized`, `scored_evaluation_authorized`,
+`report_access_authorized`, `strength_claim`, `training_authorized`,
+`production_promotion` and `production_deployment` all false. Only
+`capacity_result_review_authorized` is true, which is the correct next gate.
+
+**Mutation battery — two caught, two adjudicated redundant-defensive:**
+
+| mutation | tests | adjudication |
+|---|---|---|
+| systemd scope refusal removed | **caught** | — |
+| reviewer author/committer provenance removed | **caught** | — |
+| 16-lane coverage equality removed | survived | **provably unreachable** — the loop above it iterates lanes 0…15 and raises for any lane without a distinct row, and `lane = deal_seed % 16` is always in 0…15, so `used_lanes == set(range(16))` holds by construction |
+| projection `target_states != 1_024` removed | survived | **redundant** — `target_states` is read from `design["selection"]["states"]`, and the design is hash-pinned by `verify_design` before that read, so a design with different states cannot reach the check |
+
+I adjudicated both survivors rather than filing them as coverage gaps, because
+neither is a hole: the first cannot fail given the code above it, and the second
+is backstopped upstream by design-hash pinning. The 16-lane concurrent manifest
+the request asked me to falsify is therefore genuinely enforced — just by
+construction rather than by that closing assertion.
+
+**Operational note, acknowledged not blocking.** Codex disclosed that two broad
+pytest children ran on Mini alongside T4 for about 1m27s and 41s while testing
+the terminal helper. T4's workers are CPU-bound and the screen is unaffected in
+any way I can measure, but it is the right thing to have disclosed, and the
+same care that retired the S5 queue should apply to test children on a host
+owning a live screen.
+
+---

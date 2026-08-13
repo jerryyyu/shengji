@@ -319,3 +319,88 @@ training, promotion, or deployment authority. Integrity refusals during the
 run are exceptions, never DROP.
 
 ---
+
+## [2026-08-13 12:24 EDT] Claude review: PR #93 checkpoint capacity controller (exact 2eb55d0) — HOLD
+
+⛔ HOLD (exact head): PR #93 `2eb55d0dfb5bcf21e0c1a935848c16d10f09d2fa` — code
+verifies on every request item; the HOLD is four missing regression tests that
+leave sole-defense guards unpinned (their removal is invisible to the suite).
+
+**Verified (all measured, none transcribed):** head is a direct child of
+`52a4c1e` stacked on reviewed PR #85 head `111314f0`; scope vs #85 is exactly
+2 files / 1,794 additions; controller SHA `472d08db…5399f7` and test SHA
+`883f6428…b85246` match the request byte-for-byte. Design binding pins
+`DESIGN_GIT=111314f0` and the design source SHA; the duel executes only from
+exact pre-hashed bytes (tripwire test proves no execution before hash
+refusal); transitive preloaded `shengji.*` modules refuse at command time;
+single-native + whole-server shadow scan; O_NOFOLLOW single-FD reads with
+before/after fd+path identity septuples; systemd gate pins
+Id/InvocationID/loaded/active/running/Type=exec/Restart=no/
+KillMode=control-group/WorkingDirectory/NRestarts=0/root-UID/system.slice
+cgroup + live membership; 16 spawn children re-derive the full runtime
+snapshot and compare its digest to the packet profile behind a common start
+barrier; lanes carry exactly eight design-strided clusters; per-cluster
+validation covers all three mirrored arms and both flips, then discards
+records — only lane index/clusters/elapsed cross the process boundary;
+recursive forbidden-key scan; O_EXCL partial+link publication; closed
+packet/admission/receipt schemas with authority fields pinned False and
+self-digests; CLI is exactly freeze/verify/run-capacity. Implementation and
+packet review namespaces are distinct prefixes; the introducing commit must
+be Claude-authored+committed, session-bound, single-parent, ledger-only,
+ancestor of canonical main.
+
+**Suite (measured):** focused = exactly 96 passed (56 controller + 40
+design) under `python -B`; neighboring Pair set = **151 passed in BOTH pure
+and strict compiled modes on macOS/ARM** at exact head. Two request claims do
+not reproduce: (1) claimed 149 on macOS/ARM — no platform gate exists in any
+of the seven files (grep confirms zero skipif/platform markers); the 149 was
+almost certainly an environment without `-B`, where
+`test_modified_duel_source_refuses_before_import` fails on the
+dont_write_bytecode refusal ordering, not a platform-gated case; (2) without
+`-B` the focused file shows 55/56 — the pinned invocation should state
+`python -B -m pytest` explicitly.
+
+**Mutation battery: 6 killed / 5 survived; 4 survivors are real gaps.**
+Killed: parent self-admission (request text in parent), forbidden-key
+aliases, systemd Restart pin, duel source SHA, stable-reader identity
+(symlink/hardlink/path-swap), double admission / exclusive publication.
+Survived, adjudicated:
+
+1. **Commit-vs-parent ledger rewrite** — removing the parent-prefix
+   append-only comparison leaves 96/96 green. The existing append-only test
+   mutates only the TIP blob; the commit-that-rewrites-its-parent branch is
+   never exercised, and it is the sole defense for that vector.
+2. **Tip marker duplication (S5 self-admission class)** — removing the
+   tip-exact-once comparison leaves 96/96 green. No test constructs a tip
+   ledger containing a second copy of the marker (e.g., a later request-text
+   echo at column 1). This is precisely the S5 incident vector; the guard
+   exists but the suite cannot detect its removal.
+3. **Worker runtime drift** — removing the child digest-vs-packet comparison
+   leaves 96/96 green. The 16-lane test stubs Process/Event so the real
+   worker preflight never executes; a worker whose runtime differs from the
+   frozen packet would run. Named explicitly in the request mutation list.
+4. **Start-barrier not-ok admission** (lower severity) — removing the
+   ready-message ok check leaves 96/96 green; failure mode degrades to a
+   4-hour queue timeout crash (fail-closed but unpinned).
+
+Survivor adjudicated redundant-defensive (no blocker): weakening the
+exactly-one-native count is refused independently by the untracked-shadow
+scan for any second loadable.
+
+**Blockers (all test-only; no controller code change expected):** add four
+regressions — (a) parent-rewrite refusal where the commit ledger does not
+extend the parent ledger while tip still extends the commit; (b) tip
+duplicate-marker refusal with the marker appearing twice at
+`origin/main:HANDOFF_REVIEW.md`; (c) a lane/worker preflight test where the
+recomputed runtime digest differs from `runtime_profile_sha256` and the ready
+message reports not-ok; (d) a barrier test where one ready message is not-ok
+and `measure_capacity` refuses before `start.set()`. Also pin the suite
+invocation as `python -B -m pytest` and restate the expected counts (my
+measurement: 96 focused; 151 Pair-set on ARM both modes).
+
+Re-request review at the repaired head; the four tests plus my re-run of the
+battery close this HOLD. No capacity freeze, packet, execution, screen,
+resume, aggregate, outcome access, strength, training, promotion, or
+deployment authority follows from this entry.
+
+---

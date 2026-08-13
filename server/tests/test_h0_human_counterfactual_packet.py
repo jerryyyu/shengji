@@ -91,6 +91,30 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _historical_execution_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict:
+    """Reopen the frozen H0 contract without blessing current source bytes.
+
+    H0-v3 permanently names the heuristic bytes it actually scored.  Static
+    contract-shape tests should keep inspecting that historical object after
+    the live heuristic evolves, while the real execution entry point must
+    still refuse those moving bytes.  Mock only this one frozen identity; do
+    not rewrite the production constant or relax ``validate_source``.
+    """
+    frozen_path = h0.REPO / h0.ROLLOUT_POLICY_LOGICAL_PATH
+    actual_sha256_file = h0.sha256_file
+
+    def historical_sha256_file(path) -> str:
+        if Path(path) == frozen_path:
+            return h0.ROLLOUT_POLICY_SHA256
+        return actual_sha256_file(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(h0, "sha256_file", historical_sha256_file)
+        return h0.execution_contract()
+
+
 def test_corpus_validation_binds_artifacts_and_authority(tmp_path: Path) -> None:
     corpus = tmp_path / "human"
     corpus.mkdir()
@@ -223,8 +247,10 @@ def test_v3_bury_is_a_separate_bounded_surface() -> None:
     ]
 
 
-def test_v3_names_root_policy_and_real_rollout_continuation_separately() -> None:
-    contract = h0.execution_contract()
+def test_v3_names_root_policy_and_real_rollout_continuation_separately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = _historical_execution_contract(monkeypatch)
     assert contract["play_root_reference"]["policy"] == "mc-s0-report-lcb"
     assert contract["play_root_reference"][
         "separate_from_pilot_selection_and_report_folds"] is True
@@ -244,21 +270,25 @@ def test_v3_names_root_policy_and_real_rollout_continuation_separately() -> None
     assert '"production_continuation": "mc-s0-report-lcb"' not in encoded
 
 
-def test_v3_work_ceiling_reconciles_from_named_actions_and_worlds() -> None:
+def test_v3_work_ceiling_reconciles_from_named_actions_and_worlds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert h0.PLAY_REFERENCE_MAX_CANDIDATE_WORLDS == 14 * 30 + 2 * 300
     assert h0.PLAY_PILOT_MAX_CANDIDATE_WORLDS == 17 * 30 + 3 * 300
     assert h0.PLAY_MAX_CANDIDATE_WORLDS == 2430
     assert h0.BURY_MAX_CANDIDATE_WORLDS == 33 * 30 + 3 * 300 == 1890
     expected = 512 * 2430 + 45 * 1890
     assert h0.TOTAL_MAX_CANDIDATE_WORLDS == expected == 1_329_210
-    work = h0.execution_contract()["work_ceiling"]
+    work = _historical_execution_contract(monkeypatch)["work_ceiling"]
     assert work["selected_play_rows"] == 512
     assert work["selected_bury_rows"] == 45
     assert work["all_rows_max_candidate_worlds"] == expected
 
 
-def test_v3_reports_source_survival_not_undefined_candidate_recall() -> None:
-    contract = h0.execution_contract()
+def test_v3_reports_source_survival_not_undefined_candidate_recall(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = _historical_execution_contract(monkeypatch)
     outputs = contract["outputs"]
     assert outputs["candidate_recall_claimed"] is False
     assert outputs["report_estimands"] == [
@@ -278,3 +308,13 @@ def test_v3_source_identity_drift_refuses(
     with pytest.raises(h0.H0PacketError, match="source SHA-256 drift"):
         h0.validate_source(
             h0.ROLLOUT_POLICY_LOGICAL_PATH, h0.ROLLOUT_POLICY_SHA256)
+
+
+def test_v3_frozen_rollout_sha_is_unchanged_and_live_drift_refuses() -> None:
+    assert h0.ROLLOUT_POLICY_SHA256 == (
+        "a99dfb089fd17e7c17ddcc4d76542552d317598fbe233269c3e7c0501b9b15ef"
+    )
+    live_path = h0.REPO / h0.ROLLOUT_POLICY_LOGICAL_PATH
+    assert h0.sha256_file(live_path) != h0.ROLLOUT_POLICY_SHA256
+    with pytest.raises(h0.H0PacketError, match="source SHA-256 drift"):
+        h0.execution_contract()

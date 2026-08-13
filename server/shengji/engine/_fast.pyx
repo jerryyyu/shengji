@@ -846,6 +846,136 @@ def forced_follow(list hand, list lead, ordering, bint void_dump,
     return picked[:n]
 
 
+cdef object _cheapest_combo_in(list cards, object comp, long min_top,
+                               object ordering, tuple ctx):
+    """Native core for HeuristicBot._cheapest_winning's ``combo_in``.
+
+    Preserve Python's stable tie rules exactly: singles use the first card at
+    the lowest winning level; pairs use Counter insertion order at equal
+    levels; tractors use the existing canonical/memoized enumerator and its
+    first winning run.
+    """
+    cdef dict code2id = <dict>ctx[4]
+    cdef const unsigned char *lvl = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[2])
+    cdef unsigned char ids[MAX_CARDS]
+    cdef Py_ssize_t n = _ids_of(cards, code2id, ids), i
+    cdef Py_ssize_t best_i = -1
+    cdef int best_level = MAX_LEVEL + 1, current, cid
+    cdef int cnt[N_CODES]
+
+    if comp.kind == KIND_SINGLE:
+        for i in range(n):
+            current = lvl[ids[i]]
+            if current > min_top and current < best_level:
+                best_level = current
+                best_i = i
+        return [cards[best_i]] if best_i >= 0 else None
+
+    if comp.kind == KIND_PAIR:
+        memset(cnt, 0, sizeof(cnt))
+        for i in range(n):
+            cnt[ids[i]] += 1
+        # Scan the original list: the first occurrence of each code is
+        # Counter.items() insertion order, and strict-less retains stable ties.
+        for i in range(n):
+            cid = ids[i]
+            if cnt[cid] < 2:
+                continue
+            current = lvl[cid]
+            if current > min_top and current < best_level:
+                best_level = current
+                best_i = i
+            cnt[cid] = -cnt[cid]       # mark this code already considered
+        return ([cards[best_i], cards[best_i]]
+                if best_i >= 0 else None)
+
+    # Pure creates all runs, filters on top, and returns the first survivor.
+    # Reuse the already-compiled canonical enumerator so equal-level physical
+    # codes and defensive-copy semantics remain one shared contract.
+    runs = find_tractor_runs(cards, ordering, <int>comp.pair_len)
+    for run in runs:
+        if lvl[<int>code2id[run[len(run) - 1]]] > min_top:
+            return run
+    return None
+
+
+def cheapest_winning(bot, list hand, list lead, incumbent_suit,
+                     incumbent_top, ordering):
+    """HeuristicBot._cheapest_winning drop-in.
+
+    The high-frequency one-component cases stay in native arrays.  The rare
+    multi-component throw retains the existing Python shape picker, then uses
+    the compiled ``beats`` kernel; this deliberately preserves its greedy
+    run/pair/single choice and ``VOID_DUMP``-dependent lowest-card tie-break.
+    """
+    cdef tuple ctx = _get_ctx(ordering)
+    cdef dict code2id = <dict>ctx[4]
+    cdef const unsigned char *efftab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[3])
+    cdef unsigned char lids[MAX_CARDS]
+    cdef unsigned char hids[MAX_CARDS]
+    cdef Py_ssize_t nl = len(lead), nh = len(hand), i
+
+    # Preserve pure evaluation order: decompose first, then uniform_suit's
+    # assertion.  Empty and mixed-suit leads therefore remain AssertionError.
+    lead_dec = _decompose_memo(lead, ordering, ctx)
+    if nl == 0:
+        raise AssertionError
+    _ids_of(lead, code2id, lids)
+    cdef int lead_eff = efftab[lids[0]]
+    for i in range(1, nl):
+        if efftab[lids[i]] != lead_eff:
+            raise AssertionError
+    cdef object lead_suit = EFF_NAMES[lead_eff]
+
+    _ids_of(hand, code2id, hids)
+    cdef list h_lead = []
+    cdef list trumps
+    for i in range(nh):
+        if efftab[hids[i]] == lead_eff:
+            h_lead.append(hand[i])
+
+    comps = lead_dec.components
+    if len(comps) != 1:
+        # A throw is beatable only by matching its whole shape in trump.
+        if lead_eff == 4 or h_lead:
+            return None
+        trumps = []
+        for i in range(nh):
+            if efftab[hids[i]] == 4:
+                trumps.append(hand[i])
+        if len(trumps) < nl:
+            return None
+        play = bot._trump_shape_match(trumps, lead_dec, ordering)
+        if play is not None:
+            won, _ = beats(play, lead, incumbent_suit, incumbent_top,
+                           ordering)
+            if won:
+                return play
+        return None
+
+    comp = comps[0]
+    if len(h_lead) >= nl:
+        if incumbent_suit == lead_suit:
+            return _cheapest_combo_in(h_lead, comp, <long>incumbent_top,
+                                      ordering, ctx)
+        return None                    # someone trumped; in-suit cannot win
+    if h_lead:
+        return None                    # all residual led-suit cards are forced
+    if lead_eff != 4:
+        trumps = []
+        for i in range(nh):
+            if efftab[hids[i]] == 4:
+                trumps.append(hand[i])
+        if len(trumps) >= nl:
+            return _cheapest_combo_in(
+                trumps, comp,
+                <long>incumbent_top if incumbent_suit == "T" else -1,
+                ordering, ctx)
+    return None
+
+
 def validate_follow(list play, list hand, list lead, ordering):
     """legal.validate_follow drop-in — identical rule order, identical
     IllegalPlay messages, same memoized decompose calls on lead/play."""

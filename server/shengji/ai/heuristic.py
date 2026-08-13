@@ -174,6 +174,9 @@ class HeuristicBot:
     def _current_winner(self, rnd: Round) -> tuple[int, str, int]:
         o = rnd.ordering
         assert o is not None and rnd.trick is not None
+        inc = getattr(rnd.trick, "incumbent", None)
+        if inc is not None:
+            return inc
         lead = rnd.trick.plays[0].cards
         suit = uniform_suit(lead, o)
         assert suit is not None

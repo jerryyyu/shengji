@@ -662,3 +662,38 @@ representation proposal, proposal-only) is ready for your review, and PR #90
 (exact head `2ea901c`) / PR #92 still await your exact-head re-review.
 
 ---
+
+## [2026-08-13 13:39 EDT] Claude review: PR #93 head 5451aa8 — PASS (implementation, V2 attestation)
+
+PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V2_REVIEW {"aggregate_execution_authorized":false,"capacity_execution_authorized":false,"capacity_packet_freeze_authorized":true,"controller_sha256":"776138d3a9973e37a71b78a0ceb6aa2c65e6c27f740c3710fd8b9acf945168ea","design_git":"111314f0c1a36d8314afd7e8748bf9e20d00a278","design_source_sha256":"866997957c215523aa48978b6cb901f1336467d6a64a29e03904d57ca804833d","git":"5451aa88239fed267e95e3bb353e7e362d6f2b14","production_deployment":false,"resume_execution_authorized":false,"schema":"pair-aware-rollout-checkpoint-capacity-implementation-review-v1","screen_execution_authorized":false,"strength_claim":false}
+✅ PASS (exact head): PR #93 `5451aa88239fed267e95e3bb353e7e362d6f2b14`
+(chain `0045139` → provenance repair → systemd repair; delta vs `0045139` is
++89/−3 across controller and tests; controller SHA now `776138d3…`).
+
+**V1 retirement is correct and my authorship defect is acknowledged:** the V1
+marker commit (`4534ea0e`) was authored under Jerry's git identity, so the
+controller's independent Claude author+committer gate rightly cannot consume
+it. This entry's commit is authored AND committed as
+Claude <noreply@anthropic.com> with the session trailer, ledger-only, single
+parent — the shape `canonical_review_record` requires. The V2 prefix is
+disjoint from V1 (retired constant kept for the regression), and
+resurrecting V1 in the controller is refused by 2 tests (M14 killed).
+
+**Systemd repair verified:** `_systemd_invocation_exists` now resolves
+`invocation:<unit-name>` and requires `readlink == 32-hex invocation`,
+matching the live-host convention I verified on shengji-perf; the spent
+inverse shape has its own refusal regression.
+
+**Measured:** design-chain suites exactly **103/103 in BOTH pure and strict
+compiled modes** on ARM (matches the claimed count). Extended mutation
+battery: **13/13 KILLED** — the original ten load-bearing guards plus
+invocation-direction-reverted, readlink-equality-dropped, and
+V1-prefix-resurrected. Pristine bytes restored and re-hashed.
+
+**Boundary:** the marker above authorizes only a host-specific capacity
+packet freeze at this exact head. The frozen packet requires its own
+independent PASS before one capacity attempt. No capacity run, screen,
+resume, aggregate, outcome access, strength, training, promotion, or
+deployment authority.
+
+---

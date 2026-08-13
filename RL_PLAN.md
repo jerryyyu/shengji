@@ -65,9 +65,10 @@ This section keeps only the research conclusions that change what we try next.
   packet-specific PASS landed at `88866f25`; the one score-free preflight then
   completed in 157.535 seconds wall time with no surviving worker or partial.
   Result `544499d1…` / internal `ca36d1af…` awaits independent review through
-  read-only PR #84 exact head `2614841788e229fb194158503cf959376b87dcc0`;
-  self-audit superseded its unreviewed first head at canonical `0b7f18c` and
-  pinned five dependency paths and hashes. Prevalence remains
+  read-only PR #84 exact head `a9a619f17ab80d09083542982f385a2341b0597a`;
+  its final self-audit supersession at canonical `5939ef9` snapshots five
+  dependency names before imports and refuses same-path forged preloads.
+  Prevalence remains
   SmartBot-trajectory rather than champion-natural dose, so no scored run or
   whole-round claim is authorized.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
@@ -414,8 +415,8 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   frozen there. Packet review PASSed at `88866f25`; the sole score-free
   preflight completed and produced result `544499d1…` / internal `ca36d1af…`.
   The result-review request is canonical `fe3a59d`, and read-only PR #84 exact
-  head `2614841788e229fb194158503cf959376b87dcc0` awaits external review after
-  its unreviewed predecessor was superseded at canonical `0b7f18c`. A PASS can
+  head `a9a619f17ab80d09083542982f385a2341b0597a` awaits external review after
+  its final self-audit supersession at canonical `5939ef9`. A PASS can
   authorize scored-packet design only. SmartBot-trajectory prevalence still
   must be replaced by
   champion-natural dose before whole-round inference. The parent stack also

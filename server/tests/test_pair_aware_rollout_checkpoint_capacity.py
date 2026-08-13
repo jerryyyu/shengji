@@ -658,6 +658,12 @@ def test_systemd_gate_pins_one_shot_service_cgroup_and_fragment(
         "NRestarts": "0",
         "FragmentPath": f"/etc/systemd/system/{C.SYSTEMD_UNIT}",
         "DropInPaths": "",
+        "NeedDaemonReload": "no",
+        "Environment": (
+            "PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 SHENGJI_FAST=1 "
+            "SHENGJI_REQUIRE_VOIDS=1 PYTHONPATH=server:server/scripts"
+        ),
+        "Nice": "5", "RuntimeMaxUSec": "4h",
     }
     monkeypatch.setenv("INVOCATION_ID", invocation)
     monkeypatch.setattr(C.os, "geteuid", lambda: 0)
@@ -686,6 +692,25 @@ def test_systemd_gate_pins_one_shot_service_cgroup_and_fragment(
     with pytest.raises(C.CapacityRefused, match="one-shot"):
         C.require_systemd(expected)
     properties["DropInPaths"] = ""
+    properties["NeedDaemonReload"] = "yes"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["NeedDaemonReload"] = "no"
+    properties["Environment"] = "SHENGJI_FAST=0"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["Environment"] = (
+        "PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 SHENGJI_FAST=1 "
+        "SHENGJI_REQUIRE_VOIDS=1 PYTHONPATH=server:server/scripts"
+    )
+    properties["Nice"] = "0"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["Nice"] = "5"
+    properties["RuntimeMaxUSec"] = "infinity"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd(expected)
+    properties["RuntimeMaxUSec"] = "4h"
     fragment.write_bytes(C.systemd_unit_bytes() + b"# drift\n")
     with pytest.raises(C.CapacityRefused, match="unit bytes drift"):
         C.require_systemd(expected)

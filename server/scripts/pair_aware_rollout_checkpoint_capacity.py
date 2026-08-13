@@ -1031,6 +1031,7 @@ def _systemd_properties(unit: str) -> dict[str, str]:
         "Id", "InvocationID", "LoadState", "ActiveState", "SubState",
         "Type", "Restart", "KillMode", "UID", "ControlGroup",
         "WorkingDirectory", "NRestarts", "FragmentPath", "DropInPaths",
+        "NeedDaemonReload", "Environment", "Nice", "RuntimeMaxUSec",
     )
     completed = subprocess.run(
         ["systemctl", "show", unit, "--no-pager",
@@ -1084,6 +1085,12 @@ def require_systemd(expected_unit_sha256: str) -> str:
         "WorkingDirectory": str(REPO), "NRestarts": "0",
         "FragmentPath": f"/etc/systemd/system/{SYSTEMD_UNIT}",
         "DropInPaths": "",
+        "NeedDaemonReload": "no",
+        "Environment": (
+            "PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 SHENGJI_FAST=1 "
+            "SHENGJI_REQUIRE_VOIDS=1 PYTHONPATH=server:server/scripts"
+        ),
+        "Nice": "5", "RuntimeMaxUSec": "4h",
     }
     if (any(properties.get(key) != value for key, value in expected.items())
             or properties.get("UID") not in {"0", "[not set]"}

@@ -842,3 +842,58 @@ aggregation, retry/resume, strength, training, promotion, or deployment
 authority follows from this entry.
 
 ---
+
+## [2026-08-13 14:18 EDT] Claude review: PR #89 V4 archival repair df730d79 — PASS (V4 design freeze only)
+
+✅ PASS (exact head): PR #89 `df730d79493a893b54d4f7d56488d6e810ddc68f`
+(direct child of source-PASSed `52e13f2`; two files +70/−18; harness
+`2f5f9a36…`, tests `18b1eb0b…`, validator byte-identical `1e69d103…`;
+optimized arm untouched at `a91eb271`).
+
+**V3 incident verified on-host:** refusal receipt `f8152b6c…` with
+`arms_started=0`, `arms_completed=0`, `seeds_used=[]`, NRestarts=0; the
+evidence directory holds exactly 7 static setup files (including
+`base.identity.json`, written just before the crash) and zero seed/arm
+artifacts. The KeyError was real and — notably — **predates V3: the same
+mismatch existed at `fa0f9cf`/`fd0b13f`, which I exact-head PASSed. No
+batch under this family could ever have completed its staging.** Fourth
+harness finding with my name on the earlier PASS; recorded for the audit
+trail.
+
+**Repair verified:** `_source_archive(path, repo, source_sha256s)` takes the
+design's reviewed repo explicitly; `_stage_arm_identity` stages portable
+identity (no absolute paths) + archive + native from reauthenticated actual
+hashes. Fresh V4 namespace: id `…-pr90-v4-source-archive-repair`, six new
+seeds **disjoint from both spent sets** (verified: empty intersections).
+
+**Measured:** focused 48/48 in pure AND strict compiled modes. Mutations:
+requested shapes B (hard-require `actual["repo"]` — the exact V3 vector),
+C (drop archive source) and E (leak absolute repo into identity.json) all
+KILLED; D (stage expected hashes without reauth) adjudicated
+**inert-by-construction** — `_actual_identity` refuses unless actual equals
+expected, so staged bytes are value-identical whenever staging runs;
+A (revert the `_run_batch` caller to actual-only) **survives the suite** —
+adjudicated fail-closed pre-arm crash (identity/evidence integrity cannot be
+affected; the cost is another burned namespace, which is exactly what V3
+paid). **Required before any V5 head: a caller-shape regression** (test-only)
+so the suite, not just the reviewer, refuses the revert.
+
+**Claim notes:** the "85/85 broader suite" does not decompose on ARM — my
+nearest selection is 55 with 1 pre-existing frozen-corpus replay failure
+that fails identically at parent `52e13f2` (platform drift, unrelated to
+this delta; same class as the rlcb carve-outs). Please pin exact file lists
+with claimed counts.
+
+**Process (now two pre-arm burns):** I repeat, with more force, the
+admission/staging dry-run recommendation — an offline rehearsal that
+exercises the full pre-arm staging path against a scratch root before any
+design freeze. V2r1 and V3 each died on a path a rehearsal would have
+exercised.
+
+**Boundary:** this PASS authorizes only freezing a new root-owned V4
+host-specific design and unit under a fresh absent namespace; that design
+still requires its own exact PASS_TO_RUN_THIS_DESIGN_ONLY. V2r1 and V3 are
+spent and must never restart. No benchmark, retry, merge, strength,
+production, training, promotion, or deployment authority.
+
+---

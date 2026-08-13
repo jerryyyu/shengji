@@ -9,7 +9,7 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 19:32 EDT from canonical main `5d76727`.
+Last reconciled: 2026-08-13 19:42 EDT from canonical main `ec4cdd2`.
 
 ## Live fleet
 
@@ -18,7 +18,7 @@ Last reconciled: 2026-08-13 19:32 EDT from canonical main `5d76727`.
 | **Mini** | T4 terminal gate | All eight shards completed cleanly before cutoff. Claude's score-free prose review at `aa6d755` PASSed the seal without opening outcomes, but omitted the exact raw marker required by the runtime parser. Aggregate and its admission remain absent pending that one-line correction. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 416/896 and one is 432/896: 3,344/7,168 = 46.65%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,191/8,192 = 51.16%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
-| **Performance Cloud** | PR #89 merge-shape cleanup and PR #94 source re-review; host idle | Claude terminally VERIFIED the immutable V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only. V5 is consumed forever and V6 `cd8eb15` is superseded. Next is a clean production delta/merge review, not another benchmark. PR #94's unexecuted V1 packet is retired after a loaded-unit provenance gap; no admission/records/final exists and no V2 packet is frozen. |
+| **Performance Cloud** | S6 V2 packet review; host idle | Claude terminally VERIFIED the immutable PR #89 V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only and never rerun V5. PR #94 source head `08ee055` PASSed at `ec4cdd2`; fresh V2 packet `dd7709e…4adca` is frozen and verified. Its packet-review snapshot, admission, records, final and unit installation remain absent pending packet review. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
@@ -83,9 +83,15 @@ Last reconciled: 2026-08-13 19:32 EDT from canonical main `5d76727`.
    exact head `08ee055` uses V2 run/path/schema/marker namespaces and requires
    canonical fragment bytes, no drop-ins, `NeedDaemonReload=no`, exact loaded
    environment, nice, timeout, invocation and cgroup before admission. The
-   full chain passes 101/101 pure plus 101/101 strict compiled. Await exact-head
-   source review, then freeze and separately review a fresh V2 host packet
-   before one serial 64-state run. After a terminal run, the built-in
+   full chain passes 101/101 pure plus 101/101 strict compiled. Claude's exact
+   source PASS is canonical at `ec4cdd2`. On the unchanged idle x86 host, the
+   controller froze and independently verified fresh packet
+   `dd7709e9…4adca` (internal `1fb61cb7…e589`, runtime profile
+   `69906c5a…a775`), bound to host profile `11b5237a…c0260`, frozen unit
+   `83b04930…e35f`, native `d2e20db3…910f` and Python `b8d8288f…9700`.
+   Implementation snapshot `10808ed6…1466` is exact; packet-review snapshot,
+   admission, records, final and installed unit remain absent. Await the exact
+   packet marker before one serial 64-state run. After a terminal run, the built-in
    `verify-final` reopens only the score-free final, admission and review
    snapshot; it must pass before terminal review, and no scored record may be
    opened. No downstream authority follows.
@@ -112,7 +118,7 @@ Last reconciled: 2026-08-13 19:32 EDT from canonical main `5d76727`.
    their reviewed controllers run. No outcome aggregation or sealed result
    access is allowed before each explicit terminal gate.
 
-Documentation-only PR #97 exact `af971ff` records the same terminal/fleet
+Documentation-only PR #97 exact `07fcca1` records the same terminal/fleet
 truth and awaits accuracy/merge review; it changes no handoff or authority.
 
 PR #78's opened-DEV capacity code/result and PR #91's design are reviewed.

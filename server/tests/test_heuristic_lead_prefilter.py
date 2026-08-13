@@ -14,6 +14,7 @@ import pytest
 
 from shengji.ai import heuristic
 from shengji.ai.heuristic import HeuristicBot
+from shengji.engine import fast
 from shengji.engine.cards import Ordering, make_deck
 from shengji.engine.round import Round
 
@@ -26,6 +27,12 @@ CONFIGS = (
     (None, "A"),
     ("C", "10"),
 )
+
+
+def _pure_lead(bot: HeuristicBot, rnd: Round, seat: int) -> list[str]:
+    """Call the saved pure policy even when suite-wide fast routing is live."""
+    fn = fast._saved.get("HeuristicBot._lead")
+    return fn(bot, rnd, seat) if fn is not None else bot._lead(rnd, seat)
 
 
 def _round(hand: list[str], trump_suit: str | None, trump_rank: str) -> Round:
@@ -49,8 +56,8 @@ def _lead_before_prefilter(
     """
     with monkeypatch.context() as patch:
         patch.setattr(heuristic, "pair_count", lambda _cards: 5)
-        return HeuristicBot()._lead(
-            _round(hand, trump_suit, trump_rank), 0)
+        return _pure_lead(
+            HeuristicBot(), _round(hand, trump_suit, trump_rank), 0)
 
 
 def _assert_old_new_equal(
@@ -61,8 +68,8 @@ def _assert_old_new_equal(
 ) -> list[str]:
     old = _lead_before_prefilter(
         monkeypatch, hand, trump_suit, trump_rank)
-    new = HeuristicBot()._lead(
-        _round(hand, trump_suit, trump_rank), 0)
+    new = _pure_lead(
+        HeuristicBot(), _round(hand, trump_suit, trump_rank), 0)
     assert new == old, (hand, trump_suit, trump_rank, old, new)
     return new
 
@@ -140,7 +147,7 @@ def test_lead_prefilter_never_asks_for_an_impossible_length(
         "S3", "S3", "S4", "S4", "S5", "S5",
         "H3", "H3", "C4", "D5", "LJ",
     ]
-    HeuristicBot()._lead(_round(hand, "D", "7"), 0)
+    _pure_lead(HeuristicBot(), _round(hand, "D", "7"), 0)
 
     assert calls
     assert all(k <= heuristic.pair_count(cards) for cards, k in calls)

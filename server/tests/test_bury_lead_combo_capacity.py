@@ -16,6 +16,8 @@ sys.path.insert(0, str(SCRIPTS))
 import bury_lead_combo_capacity as C  # noqa: E402
 import bury_lead_combo_population as P  # noqa: E402
 
+GIT = "1" * 40
+
 
 def _row(offset: int = 0, combos: int = 3) -> dict:
     seed = P.DEAL_SEED0 + offset
@@ -44,9 +46,9 @@ def _selection_summary() -> dict:
 
 def _runtime() -> dict:
     return {
-        "git": "1" * 40,
+        "git": GIT,
         "tree_dirty": False,
-        "python": "3.14.4",
+        "python": C.EXPECTED_PYTHON,
         "fast_binary_sha256": "a" * 64,
         "population_source_sha256": "b" * 64,
         "scorer_source_sha256": "c" * 64,
@@ -91,14 +93,16 @@ def _raw(mode: str, count: int = 3) -> dict:
         "status": "COMPLETE_EXPLORATION",
         "candidate_count": count,
         "scoring_contract": {
-            "bot_class": "Bot",
+            "bot_class": "MCS0ReportLCB",
             "baseline_rollout_policy_class": "HeuristicBot",
             "continuation_mode": mode,
-            "continuation_policy_class": "HeuristicBot",
+            "continuation_policy_class": (
+                "HeuristicBot" if mode == "baseline"
+                else "S6ThrowRolloutPolicy"),
             "continuation_actor_visible": True,
             "recursive_mc_continuation": False,
-            "level_objective": True,
-            "exact_endgame": True,
+            "level_objective": False,
+            "exact_endgame": False,
             "perspective": "banker_value_is_negative_attacker_objective",
         },
         "continuation_dose": _dose(mode),
@@ -194,6 +198,27 @@ def test_census_is_full_selection_is_32_plus_32_and_widest_wins(monkeypatch):
     assert row == rows[3]
 
 
+def test_widest_state_uses_lexical_state_id_tie_break(monkeypatch):
+    first = _row(1, 9)
+    second = _row(2, 9)
+    assert first["state_id"] < second["state_id"]
+    materialized = {
+        "selection": {
+            "shape_rich": 32,
+            "hash_uniform_anchor": 32,
+            "total": 64,
+            "rows": [second, first],
+            "rows_sha256": "c" * 64,
+        },
+    }
+    monkeypatch.setattr(P, "POPULATION_STATES", 2)
+    monkeypatch.setattr(P, "census_state", lambda seed: {"seed": seed})
+    monkeypatch.setattr(P, "select_dev_states", lambda _rows: materialized)
+    monkeypatch.setattr(P, "selection_problems", lambda _value: [])
+    _, row = C._selection()
+    assert row == first
+
+
 class _Bot:
     def __init__(self, *, hidden=False):
         self.rng = random.Random(7)
@@ -241,6 +266,11 @@ def test_measurement_retains_only_telemetry_and_commitment(monkeypatch):
     lambda raw: raw["work"].__setitem__("worlds_used", 0),
     lambda raw: raw["work"].__setitem__("winner_points", 80),
     lambda raw: raw["continuation_dose"].__setitem__("utility", 1.0),
+    lambda raw: raw["scoring_contract"].__setitem__("exact_endgame", True),
+    lambda raw: raw["scoring_contract"].__setitem__(
+        "continuation_policy_class", "RecursiveMCBot"),
+    lambda raw: raw["sampler_counters"]["delta"].__setitem__(
+        "impossible_worlds", 1),
 ])
 def test_measurement_refuses_recursive_hidden_incomplete_or_open_schema(
         monkeypatch, mutate):
@@ -259,6 +289,7 @@ def test_result_requires_same_state_ballot_rng_and_sampled_world():
             ("state_id", "different"),
             ("ballot_sha256", "0" * 64),
             ("pre_rng_sha256", "1" * 64),
+            ("post_rng_sha256", "6" * 64),
             ("sampled_world_commitment", "2" * 64)):
         value = _result()
         value["arms"][2][field] = replacement
@@ -267,6 +298,43 @@ def test_result_requires_same_state_ballot_rng_and_sampled_world():
         value["internal_sha256"] = C._digest(material)
         assert any("common-world" in item
                    for item in C.result_problems(value)), field
+
+
+def test_result_refuses_balanced_negative_timing_and_nonzero_prior_dose():
+    value = _result()
+    value["arms"][0]["elapsed_seconds"] = -1.0
+    value["arms"][1]["elapsed_seconds"] = 3.0
+    value["total_arm_seconds"] = 4.0
+    before = value["arms"][1]["continuation_dose"]["before"]
+    after = value["arms"][1]["continuation_dose"]["after"]
+    for key in before:
+        before[key] = 5
+        after[key] = 5
+    material = dict(value)
+    material.pop("internal_sha256")
+    value["internal_sha256"] = C._digest(material)
+    assert "baseline arm contract" in C.result_problems(value)
+    assert "all_boss arm contract" in C.result_problems(value)
+
+
+def test_runtime_requires_exact_exploration_head_and_python(monkeypatch):
+    monkeypatch.setattr(C.JOURNAL, "strict_runtime", lambda: _runtime())
+    monkeypatch.setattr(C, "_sha256", lambda _path: "f" * 64)
+    assert C._runtime(GIT)["git"] == GIT
+    bad = _runtime()
+    bad["git"] = "0" * 40
+    monkeypatch.setattr(C.JOURNAL, "strict_runtime", lambda: bad)
+    with pytest.raises(C.CapacityRefused, match="runtime identity"):
+        C._runtime(GIT)
+    with pytest.raises(C.CapacityRefused, match="full lowercase"):
+        C._runtime("main")
+    assert "runtime fields" in C.result_problems(
+        _result(), expected_git="0" * 40)
+    bad = _runtime()
+    bad["python"] = "3.15.0"
+    monkeypatch.setattr(C.JOURNAL, "strict_runtime", lambda: bad)
+    with pytest.raises(C.CapacityRefused, match="runtime identity"):
+        C._runtime(GIT)
 
 
 def test_closed_output_and_authority_boundary_refuse_rehashed_mutations():
@@ -283,16 +351,42 @@ def test_closed_output_and_authority_boundary_refuse_rehashed_mutations():
     assert "arm fields" in problems
 
 
+@pytest.mark.parametrize(("field", "replacement"), [
+    ("selection_reason", "attacker_points=225"),
+    ("source_state_id", "sealed/REPORT/outcome.json"),
+    ("selection_group", "report_selected"),
+])
+def test_capacity_row_refuses_outcome_or_report_aliases(field, replacement):
+    value = _result()
+    value["capacity_state"][field] = replacement
+    material = dict(value)
+    material.pop("internal_sha256")
+    value["internal_sha256"] = C._digest(material)
+    assert "capacity state" in C.result_problems(value)
+
+
 def test_atomic_output_refuses_overwrite_and_invalid_build(tmp_path):
     output = tmp_path / "capacity.json"
     result = _result()
-    assert C.run(output, build=lambda: result) == result
+    assert C.run(output, GIT, build=lambda: result) == result
     assert json.loads(output.read_bytes()) == result
     with pytest.raises(C.CapacityRefused, match="overwrite"):
-        C.run(output, build=lambda: result)
+        C.run(output, GIT, build=lambda: result)
     bad = copy.deepcopy(result)
     bad["strength_claim"] = True
     bad_output = tmp_path / "bad.json"
     with pytest.raises(C.CapacityRefused):
-        C.run(bad_output, build=lambda: bad)
+        C.run(bad_output, GIT, build=lambda: bad)
     assert not bad_output.exists()
+
+
+def test_concurrent_writer_created_during_build_is_preserved(tmp_path):
+    output = tmp_path / "capacity.json"
+
+    def racing_build():
+        output.write_text("rival\n")
+        return _result()
+
+    with pytest.raises(C.CapacityRefused, match="overwrite"):
+        C.run(output, GIT, build=racing_build)
+    assert output.read_text() == "rival\n"

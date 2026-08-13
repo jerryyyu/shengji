@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Telemetry-only capacity probe for the opened bury/S6 DEV workbench.
 
-Reconstruct the opened 512-state DEV population, make its reviewed 32-shape +
-32-anchor selection, choose the widest ballot, and time one accepted common
-world under ``baseline``, ``all_boss`` and ``boss_near``.  Candidate values
-are discarded; only work, timing, sampler, dose, and identity are published.
-
-Normal code review is the gate: no PASS parser, admission, or deploy authority.
+Reconstruct opened DEV, make its reviewed 32-shape + 32-anchor selection, choose
+the widest ballot, and time one common world across all three continuation
+modes. Values are discarded; only work/timing/dose/identity are published.
+Normal review is the gate: no PASS parser, admission, or deploy authority.
 """
 from __future__ import annotations
 
@@ -24,7 +22,6 @@ SCRIPT = Path(__file__).resolve()
 SERVER = SCRIPT.parents[1]
 sys.path.insert(0, str(SERVER))
 sys.path.insert(0, str(SCRIPT.parent))
-
 import bury_lead_combo_dev_journal as JOURNAL  # noqa: E402
 import bury_lead_combo_exploration as EXPLORE  # noqa: E402
 import bury_lead_combo_population as POPULATION  # noqa: E402
@@ -35,7 +32,7 @@ MODES = CONTINUATION.S6_CONTINUATION_MODES
 BASE_SEED = 20_260_813
 ATTEMPT_FACTOR = 20
 MAX_COMBOS = 1_088
-
+EXPECTED_PYTHON = "3.14.4"
 RUNTIME_FIELDS = frozenset({
     "git", "tree_dirty", "python", "fast_binary_sha256",
     "population_source_sha256", "scorer_source_sha256",
@@ -69,7 +66,8 @@ ARM_FIELDS = frozenset({
 RESULT_FIELDS = frozenset({
     "schema", "runtime", "selection", "capacity_state", "arms",
     "capacity_complete", "candidate_rollouts", "total_arm_seconds",
-    "telemetry_only", "opened_reusable_dev", "source_outcomes_read", "outcomes_published",
+    "telemetry_only", "opened_reusable_dev", "source_outcomes_read",
+    "outcomes_published",
     "confirmatory_inference", "strength_claim",
     "production_promotion", "production_deployment", "internal_sha256",
 })
@@ -80,10 +78,8 @@ FORBIDDEN_KEYS = frozenset({
     "raw_winner_index", "raw_gap_vs_candidate_zero",
     "paired_gap_vs_candidate_zero", "paired_se_vs_candidate_zero",
 })
-
 class CapacityRefused(RuntimeError):
     """The diagnostic cannot honor its telemetry-only contract."""
-
 def _canonical(value: object) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"),
@@ -95,9 +91,32 @@ def _sha256(path: Path) -> str:
 def _hex(value: object) -> bool:
     return (isinstance(value, str) and len(value) == 64
             and all(char in "0123456789abcdef" for char in value))
+def _git_sha(value: object) -> bool:
+    return (isinstance(value, str) and len(value) == 40
+            and all(char in "0123456789abcdef" for char in value))
 def _nonnegative_int(value: object) -> bool:
     return not isinstance(value, bool) and isinstance(value, int) and value >= 0
-
+def _row_problems(row: object) -> list[str]:
+    if not isinstance(row, Mapping) or set(row) != POPULATION.SELECTION_ROW_KEYS:
+        return ["capacity row fields"]
+    seed, count = row.get("deal_seed"), row.get("combo_count")
+    if (not _nonnegative_int(seed)
+            or not POPULATION.DEAL_SEED0 <= seed <
+            POPULATION.DEAL_SEED0 + POPULATION.POPULATION_STATES
+            or not _nonnegative_int(count) or not 1 <= count <= MAX_COMBOS):
+        return ["capacity row numeric identity"]
+    state_prefix = f"{POPULATION.POPULATION_ID}:deal:{seed}:banker:"
+    source_prefix = f"s3a-bury-pilot-v2:deal:{seed}:banker:"
+    state_id, source_id = row.get("state_id"), row.get("source_state_id")
+    if (not isinstance(state_id, str) or not state_id.startswith(state_prefix)
+            or state_id.removeprefix(state_prefix) not in {"0", "1", "2", "3"}
+            or source_id != source_prefix + state_id.removeprefix(state_prefix)
+            or row.get("selection_group") not in {
+                "shape_rich", "hash_uniform_anchor"}
+            or row.get("selection_reason") not in
+            set(POPULATION.METRICS) | {"uniform_anchor"}):
+        return ["capacity row semantic identity"]
+    return []
 def _forbidden(value: object, path: str = "$") -> list[str]:
     problems = []
     if isinstance(value, Mapping):
@@ -109,7 +128,6 @@ def _forbidden(value: object, path: str = "$") -> list[str]:
         for index, child in enumerate(value):
             problems.extend(_forbidden(child, f"{path}[{index}]"))
     return problems
-
 def _write_exclusive(path: Path, value: Mapping[str, object]) -> None:
     """Atomically publish one artifact, refusing links and overwrites."""
     if os.path.lexists(path):
@@ -130,13 +148,18 @@ def _write_exclusive(path: Path, value: Mapping[str, object]) -> None:
         except FileNotFoundError:
             pass
 
-def _runtime() -> dict:
+def _runtime(expected_git: str) -> dict:
+    if not _git_sha(expected_git):
+        raise CapacityRefused("expected Git is not a full lowercase SHA")
     try:
         runtime = dict(JOURNAL.strict_runtime())
     except JOURNAL.JournalRefused as exc:
         raise CapacityRefused(str(exc)) from exc
     runtime["controller_source_sha256"] = _sha256(SCRIPT)
-    if set(runtime) != RUNTIME_FIELDS or runtime.get("tree_dirty") is not False:
+    if (set(runtime) != RUNTIME_FIELDS
+            or runtime.get("tree_dirty") is not False
+            or runtime.get("git") != expected_git
+            or runtime.get("python") != EXPECTED_PYTHON):
         raise CapacityRefused("runtime identity field drift")
     for field in RUNTIME_FIELDS - {"git", "tree_dirty", "python"}:
         if not _hex(runtime.get(field)):
@@ -171,8 +194,9 @@ def _selection() -> tuple[dict, dict]:
     row = dict(min(
         selected["rows"],
         key=lambda item: (-int(item["combo_count"]), str(item["state_id"]))))
-    if set(row) != POPULATION.SELECTION_ROW_KEYS:
-        raise CapacityRefused("capacity row field drift")
+    problems = _row_problems(row)
+    if problems:
+        raise CapacityRefused("; ".join(problems))
     return summary, row
 
 def _capture_samples(bot) -> list[str]:
@@ -206,7 +230,9 @@ def _dose_problems(dose: object, mode: str) -> list[str]:
     }
     if any(dose.get(key) != value for key, value in expected.items()):
         problems.append(f"{mode} continuation contract")
-    before, after, delta = dose.get("before"), dose.get("after"), dose.get("delta")
+    before = dose.get("before")
+    after = dose.get("after")
+    delta = dose.get("delta")
     if mode == "baseline":
         if (before, after, delta) != (None, None, None):
             problems.append("baseline continuation counters")
@@ -220,8 +246,11 @@ def _dose_problems(dose: object, mode: str) -> list[str]:
                    for item in (before, after, delta)
                    for value in item.values()):
                 problems.append(f"{mode} continuation counter values")
-            elif any(delta[name] != after[name] - before[name]
-                     for name in fields):
+            elif any(before[name] != 0 for name in fields):
+                problems.append(f"{mode} continuation counter origin")
+            elif (any(delta[name] != after[name] for name in fields)
+                  or any(delta[name] != after[name] - before[name]
+                         for name in fields)):
                 problems.append(f"{mode} continuation counter delta")
             else:
                 try:
@@ -232,7 +261,8 @@ def _dose_problems(dose: object, mode: str) -> list[str]:
 
 def _work_problems(work: object, sampler: object, count: int) -> list[str]:
     if (not isinstance(work, Mapping) or set(work) != WORK_FIELDS
-            or not isinstance(sampler, Mapping) or set(sampler) != SAMPLER_FIELDS):
+            or not isinstance(sampler, Mapping)
+            or set(sampler) != SAMPLER_FIELDS):
         return ["work/sampler fields"]
     numeric = [work[key] for key in (
         "worlds_requested", "worlds_used", "attempts", "attempt_cap",
@@ -254,7 +284,9 @@ def _work_problems(work: object, sampler: object, count: int) -> list[str]:
             or sampler.get("sample_attempts") != work.get("attempts")
             or sampler.get("sample_attempts") !=
             sampler.get("accepted_worlds", 0) + sampler.get("failed_worlds", 0)
-            or sampler.get("rejected_worlds", 0) > sampler.get("failed_worlds", 0)):
+            or sampler.get("rejected_worlds", 0) >
+            sampler.get("failed_worlds", 0)
+            or sampler.get("impossible_worlds") != 0):
         problems.append("sampler reconciliation")
     return problems
 
@@ -287,19 +319,30 @@ def _measure(mode: str, row: Mapping[str, object], *,
         "recursive_mc_continuation", "level_objective", "exact_endgame",
         "perspective",
     }
+    expected_policy = (
+        "HeuristicBot" if mode == "baseline" else "S6ThrowRolloutPolicy")
     if (raw.get("schema") != EXPLORE.SCHEMA
             or raw.get("status") != "COMPLETE_EXPLORATION"
             or raw.get("candidate_count") != count
-            or not isinstance(scoring, Mapping) or set(scoring) != scoring_fields
+            or not isinstance(scoring, Mapping)
+            or set(scoring) != scoring_fields
             or scoring.get("continuation_mode") != mode
+            or scoring.get("bot_class") != "MCS0ReportLCB"
+            or scoring.get("baseline_rollout_policy_class") != "HeuristicBot"
+            or scoring.get("continuation_policy_class") != expected_policy
             or scoring.get("continuation_actor_visible") is not True
             or scoring.get("recursive_mc_continuation") is not False
+            or scoring.get("level_objective") is not False
+            or scoring.get("exact_endgame") is not False
+            or scoring.get("perspective") !=
+            "banker_value_is_negative_attacker_objective"
             or len(commitments) != 1
             or not isinstance(sampler, Mapping)
             or set(sampler) != {"before", "after", "delta"}
             or not isinstance(sampler.get("delta"), Mapping)
             or _work_problems(work, sampler.get("delta"), count)
-            or not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool)
+            or not isinstance(elapsed, (int, float))
+            or isinstance(elapsed, bool)
             or not math.isfinite(elapsed) or elapsed < 0):
         raise CapacityRefused(f"{mode} capacity contract drift")
     problems = _dose_problems(dose, mode)
@@ -324,7 +367,8 @@ def _measure(mode: str, row: Mapping[str, object], *,
         raise CapacityRefused(f"{mode} telemetry output drift")
     return arm
 
-def result_problems(value: object) -> list[str]:
+def result_problems(value: object, *, expected_git: str | None = None) \
+        -> list[str]:
     if not isinstance(value, Mapping):
         return ["result is not an object"]
     problems = _forbidden(value)
@@ -348,10 +392,14 @@ def result_problems(value: object) -> list[str]:
         value.get("capacity_state"), value.get("arms"))
     if (not isinstance(runtime, Mapping) or set(runtime) != RUNTIME_FIELDS
             or runtime.get("tree_dirty") is not False
+            or (expected_git is not None and runtime.get("git") != expected_git)
+            or runtime.get("python") != EXPECTED_PYTHON
+            or not _git_sha(runtime.get("git"))
             or any(not _hex(runtime.get(field)) for field in RUNTIME_FIELDS
                    - {"git", "tree_dirty", "python"})):
         problems.append("runtime fields")
-    if (not isinstance(selection, Mapping) or set(selection) != SELECTION_FIELDS
+    if (not isinstance(selection, Mapping)
+            or set(selection) != SELECTION_FIELDS
             or selection.get("population_id") != POPULATION.POPULATION_ID
             or selection.get("census_states") != POPULATION.POPULATION_STATES
             or selection.get("shape_rich_states") != 32
@@ -361,9 +409,7 @@ def result_problems(value: object) -> list[str]:
             or not _hex(selection.get("selection_rows_sha256"))):
         problems.append("selection fields")
     count = row.get("combo_count") if isinstance(row, Mapping) else None
-    if (not isinstance(row, Mapping)
-            or set(row) != POPULATION.SELECTION_ROW_KEYS
-            or not _nonnegative_int(count) or not 1 <= count <= MAX_COMBOS):
+    if _row_problems(row):
         problems.append("capacity state")
     if (not isinstance(arms, list) or len(arms) != len(MODES)
             or any(not isinstance(arm, Mapping) or set(arm) != ARM_FIELDS
@@ -379,6 +425,7 @@ def result_problems(value: object) -> list[str]:
             problems.append(f"common-world {field}")
     for mode, arm in zip(MODES, arms, strict=True):
         work, sampler = arm["work"], arm["sampler_delta"]
+        arm_elapsed = arm.get("elapsed_seconds")
         if (arm["mode"] != mode or arm["state_id"] != row.get("state_id")
                 or arm["deal_seed"] != row.get("deal_seed")
                 or arm["candidate_count"] != count
@@ -386,6 +433,9 @@ def result_problems(value: object) -> list[str]:
                 or any(not _hex(arm[field]) for field in (
                     "ballot_sha256", "pre_rng_sha256", "post_rng_sha256",
                     "sampled_world_commitment"))
+                or not isinstance(arm_elapsed, (int, float))
+                or isinstance(arm_elapsed, bool)
+                or not math.isfinite(arm_elapsed) or arm_elapsed < 0
                 or arm["raw_candidate_values_discarded"] != count
                 or _dose_problems(arm["continuation_dose"], mode)):
             problems.append(f"{mode} arm contract")
@@ -398,8 +448,8 @@ def result_problems(value: object) -> list[str]:
         problems.append("elapsed total")
     return sorted(set(problems))
 
-def build_result(*, measure: Callable = _measure) -> dict:
-    runtime = _runtime()
+def build_result(expected_git: str, *, measure: Callable = _measure) -> dict:
+    runtime = _runtime(expected_git)
     selection, row = _selection()
     arms = []
     for mode in MODES:
@@ -425,16 +475,17 @@ def build_result(*, measure: Callable = _measure) -> dict:
         "production_deployment": False,
     }
     value["internal_sha256"] = _digest(value)
-    problems = result_problems(value)
+    problems = result_problems(value, expected_git=expected_git)
     if problems:
         raise CapacityRefused("; ".join(problems))
     return value
 
-def run(output: Path, *, build: Callable[[], dict] = build_result) -> dict:
+def run(output: Path, expected_git: str, *,
+        build: Callable[[], dict] | None = None) -> dict:
     if os.path.lexists(output):
         raise CapacityRefused(f"refusing to overwrite {output}")
-    value = build()
-    problems = result_problems(value)
+    value = build_result(expected_git) if build is None else build()
+    problems = result_problems(value, expected_git=expected_git)
     if problems:
         raise CapacityRefused("; ".join(problems))
     _write_exclusive(output, value)
@@ -443,8 +494,9 @@ def run(output: Path, *, build: Callable[[], dict] = build_result) -> dict:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--expected-git", required=True)
     args = parser.parse_args(argv)
-    print(_canonical(run(args.output)).decode())
+    print(_canonical(run(args.output, args.expected_git)).decode())
 
 if __name__ == "__main__":
     main()

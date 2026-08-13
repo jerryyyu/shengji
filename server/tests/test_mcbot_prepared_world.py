@@ -69,7 +69,7 @@ def _reference_prepare(self, _rnd, _seat, sampled, *, buried):
     return sampled
 
 
-def test_prepared_world_returns_fresh_hands_and_binds_burial():
+def test_prepared_world_returns_fresh_hands_and_retains_burial_snapshot():
     rnd = _round_in_play(5)
     seat = rnd.banker
     bot = MCBot(seed=17)

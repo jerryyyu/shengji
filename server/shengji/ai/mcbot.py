@@ -1274,8 +1274,10 @@ class MCBot(SmartBot):
 
         Direct/private callers that still supply the sampler mapping retain the
         original validate-on-every-call contract.  Search loops pass a prepared
-        immutable world after validating it once.  The buried multiset remains
-        bound so a prepared world cannot accidentally cross kitty contexts.
+        immutable world after validating it once.  This helper only copies its
+        hands: ordinary-play ``_rollout`` reads the kitty context from the
+        prepared world's immutable ``buried`` field, while a bury rollout
+        deliberately begins before any cards have been buried.
         """
         if not isinstance(sampled, _CanonicalDeterminization):
             return self._complete_determinized_hands(

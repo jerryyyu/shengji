@@ -12,11 +12,46 @@ running that packet.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import stat
 import sys
+import types
 from pathlib import Path
+
+
+class CapacityResultReviewRefused(RuntimeError):
+    """The score-free capacity evidence or its authority chain drifted."""
+
+
+_HASHLIB_SHA256 = hashlib.sha256
+
+
+def _sha256_file(path: Path) -> str:
+    """Hash a file without trusting any reviewed Pair dependency."""
+    digest = _HASHLIB_SHA256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_bytes(value: bytes) -> str:
+    """Hash bytes without trusting any reviewed Pair dependency."""
+    return _HASHLIB_SHA256(value).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (isinstance(value, str) and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def _digest(value: object) -> str:
+    encoded = (json.dumps(
+        value, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    return _sha256_bytes(encoded)
+
 
 DEPENDENCY_IMPORT_NAMES = (
     "pair_ballot_affected_aggregate",
@@ -25,14 +60,85 @@ DEPENDENCY_IMPORT_NAMES = (
     "pair_ballot_affected_eval",
     "pair_ballot_affected_states",
 )
+EXPECTED_DEPENDENCY_SHA256S = {
+    "pair_ballot_affected_aggregate.py": (
+        "a1908a32853ea62e0c775dd1975b7b7ad7316f662dc19b8fe108b25282099ba0"),
+    "pair_ballot_affected_capacity_design.py": (
+        "caa2d0d9c5580c56828e72c39e3e5ad0cf5be0d3eb7a8a77603e31c73e786317"),
+    "pair_ballot_affected_capacity_preflight.py": (
+        "cab2caa01f58c02d932365993c856894f811408853c8a2bef9ca42a75721ebaa"),
+    "pair_ballot_affected_eval.py": (
+        "2d4adfd06d0de7517bb190ebf5d190bd95f848d9ab25fb5eb9a29f27b3cd7488"),
+    "pair_ballot_affected_states.py": (
+        "e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce"),
+}
 PRELOADED_DEPENDENCIES = tuple(
     name for name in DEPENDENCY_IMPORT_NAMES if name in sys.modules)
 
-import pair_ballot_affected_aggregate as AGG
-import pair_ballot_affected_capacity_design as DESIGN
-import pair_ballot_affected_eval as EVAL
-import pair_ballot_affected_capacity_preflight as CAPACITY
-import pair_ballot_affected_states as STATES
+
+def _preimport_dependency_sources() -> dict[str, tuple[Path, bytes]]:
+    """Read and authenticate every dependency before any can execute."""
+    if not sys.dont_write_bytecode:
+        raise CapacityResultReviewRefused(
+            "review requires PYTHONDONTWRITEBYTECODE=1")
+    if PRELOADED_DEPENDENCIES:
+        raise CapacityResultReviewRefused(
+            "review dependency was preloaded before the reviewer: "
+            + ",".join(PRELOADED_DEPENDENCIES))
+    expected_names = {f"{name}.py" for name in DEPENDENCY_IMPORT_NAMES}
+    if (set(EXPECTED_DEPENDENCY_SHA256S) != expected_names
+            or not all(_is_sha256(value)
+                       for value in EXPECTED_DEPENDENCY_SHA256S.values())):
+        raise CapacityResultReviewRefused("review dependency population drift")
+    scripts = Path(__file__).resolve().parent
+    verified_sources: dict[str, tuple[Path, bytes]] = {}
+    for import_name in DEPENDENCY_IMPORT_NAMES:
+        name = f"{import_name}.py"
+        expected_path = scripts / name
+        try:
+            resolved_path = expected_path.resolve(strict=True)
+            source = resolved_path.read_bytes()
+        except OSError as exc:
+            raise CapacityResultReviewRefused(
+                f"review dependency source is unreadable before import: {name}") \
+                from exc
+        if (resolved_path != expected_path
+                or _sha256_bytes(source)
+                != EXPECTED_DEPENDENCY_SHA256S[name]):
+            raise CapacityResultReviewRefused(
+                f"review dependency source drift before import: {name}")
+        verified_sources[name] = (resolved_path, source)
+    return verified_sources
+
+
+PREIMPORT_DEPENDENCY_SOURCES = _preimport_dependency_sources()
+
+
+def _load_verified_dependency(import_name: str) -> types.ModuleType:
+    """Execute only the exact source bytes authenticated above."""
+    name = f"{import_name}.py"
+    path, source = PREIMPORT_DEPENDENCY_SOURCES[name]
+    module = types.ModuleType(import_name)
+    module.__file__ = str(path)
+    module.__package__ = ""
+    module.__cached__ = None
+    sys.modules[import_name] = module
+    try:
+        exec(compile(source, str(path), "exec", dont_inherit=True),
+             module.__dict__)
+    except BaseException:
+        if sys.modules.get(import_name) is module:
+            del sys.modules[import_name]
+        raise
+    return module
+
+
+# Topological order: later Pair modules import only earlier Pair modules.
+STATES = _load_verified_dependency("pair_ballot_affected_states")
+EVAL = _load_verified_dependency("pair_ballot_affected_eval")
+AGG = _load_verified_dependency("pair_ballot_affected_aggregate")
+DESIGN = _load_verified_dependency("pair_ballot_affected_capacity_design")
+CAPACITY = _load_verified_dependency("pair_ballot_affected_capacity_preflight")
 
 
 EXPECTED_GIT = "6461c660e1ff71a905d9010b12c0adfc4e8bc729"
@@ -46,18 +152,6 @@ RESULT_REVIEW_PREFIX = (
     "PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW ")
 RESULT_REVIEW_SCHEMA = (
     "pair-ballot-affected-capacity-preflight-result-review-v1")
-EXPECTED_DEPENDENCY_SHA256S = {
-    "pair_ballot_affected_aggregate.py": (
-        "a1908a32853ea62e0c775dd1975b7b7ad7316f662dc19b8fe108b25282099ba0"),
-    "pair_ballot_affected_capacity_design.py": (
-        "caa2d0d9c5580c56828e72c39e3e5ad0cf5be0d3eb7a8a77603e31c73e786317"),
-    "pair_ballot_affected_capacity_preflight.py": (
-        "cab2caa01f58c02d932365993c856894f811408853c8a2bef9ca42a75721ebaa"),
-    "pair_ballot_affected_eval.py": (
-        "2d4adfd06d0de7517bb190ebf5d190bd95f848d9ab25fb5eb9a29f27b3cd7488"),
-    "pair_ballot_affected_states.py": (
-        "e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce"),
-}
 DEPENDENCY_MODULES = {
     "pair_ballot_affected_aggregate.py": AGG,
     "pair_ballot_affected_capacity_design.py": DESIGN,
@@ -65,10 +159,6 @@ DEPENDENCY_MODULES = {
     "pair_ballot_affected_eval.py": EVAL,
     "pair_ballot_affected_states.py": STATES,
 }
-
-
-class CapacityResultReviewRefused(RuntimeError):
-    """The score-free capacity evidence or its authority chain drifted."""
 
 
 def _is_hex(value: object, length: int) -> bool:
@@ -95,21 +185,36 @@ def _require_dependency_sources() -> None:
             "review dependency was preloaded before the reviewer: "
             + ",".join(PRELOADED_DEPENDENCIES))
     scripts = Path(__file__).resolve().parent
-    if set(DEPENDENCY_MODULES) != set(EXPECTED_DEPENDENCY_SHA256S):
+    if (set(DEPENDENCY_MODULES) != set(EXPECTED_DEPENDENCY_SHA256S)
+            or set(PREIMPORT_DEPENDENCY_SOURCES)
+            != set(EXPECTED_DEPENDENCY_SHA256S)):
         raise CapacityResultReviewRefused("review dependency population drift")
     for name, module in DEPENDENCY_MODULES.items():
         expected_path = scripts / name
-        module_path = Path(str(getattr(module, "__file__", ""))).resolve()
-        if (module_path != expected_path
+        try:
+            resolved_path = expected_path.resolve(strict=True)
+            module_path = Path(
+                str(getattr(module, "__file__", ""))).resolve(strict=True)
+            observed_sha256 = _sha256_file(resolved_path)
+        except OSError as exc:
+            raise CapacityResultReviewRefused(
+                f"review dependency identity drift: {name}") from exc
+        if (resolved_path != expected_path
+                or PREIMPORT_DEPENDENCY_SOURCES[name][0] != expected_path
+                or _sha256_bytes(PREIMPORT_DEPENDENCY_SOURCES[name][1])
+                != EXPECTED_DEPENDENCY_SHA256S[name]
+                or module_path != expected_path
                 or sys.modules.get(module.__name__) is not module
-                or CAPACITY.sha256_file(expected_path)
-                != EXPECTED_DEPENDENCY_SHA256S[name]):
+                or observed_sha256 != EXPECTED_DEPENDENCY_SHA256S[name]):
             raise CapacityResultReviewRefused(
                 f"review dependency identity drift: {name}")
 
 
+_require_dependency_sources()
+
+
 def _load_exact_json(path: Path, expected_sha256: str, *, label: str) -> dict:
-    if not CAPACITY.is_sha256(expected_sha256):
+    if not _is_sha256(expected_sha256):
         raise CapacityResultReviewRefused(f"{label} expected SHA-256 drift")
     partial = Path(str(path) + ".partial")
     try:
@@ -120,7 +225,7 @@ def _load_exact_json(path: Path, expected_sha256: str, *, label: str) -> dict:
             or os.path.lexists(partial)):
         raise CapacityResultReviewRefused(
             f"{label} is linked, nonregular, or partial")
-    if CAPACITY.sha256_file(path) != expected_sha256:
+    if _sha256_file(path) != expected_sha256:
         raise CapacityResultReviewRefused(f"{label} file SHA-256 drift")
     try:
         value = json.loads(
@@ -150,7 +255,7 @@ def _packet_review(packet: dict, review_snapshot_path: Path) -> tuple[dict, byte
     except CAPACITY.CapacityPreflightRefused as exc:
         raise CapacityResultReviewRefused(str(exc)) from exc
     if (review_snapshot_path.read_bytes() != marker
-            or CAPACITY.sha256_file(review_snapshot_path)
+            or _sha256_file(review_snapshot_path)
             != review["marker_sha256"]):
         raise CapacityResultReviewRefused(
             "Pair V3 packet review snapshot drift")
@@ -199,8 +304,8 @@ def _admission_problems(admission: object, *, packet: dict,
             problems.append(f"admission authority escalation: {field}")
     body = dict(admission)
     observed = body.pop("internal_sha256")
-    if (not CAPACITY.is_sha256(observed)
-            or observed != CAPACITY.digest(body)):
+    if (not _is_sha256(observed)
+            or observed != _digest(body)):
         problems.append("admission internal digest")
     if packet.get("internal_sha256") != EXPECTED_PACKET_INTERNAL_SHA256:
         problems.append("admission packet binding")
@@ -221,7 +326,7 @@ def result_review_claim(*, admission_sha256: str, result_sha256: str,
         "production_promotion": False,
         "report_access_authorized": False,
         "reviewer_dependency_sha256s": EXPECTED_DEPENDENCY_SHA256S,
-        "result_reviewer_script_sha256": CAPACITY.sha256_file(Path(__file__)),
+        "result_reviewer_script_sha256": _sha256_file(Path(__file__)),
         "result_internal_sha256": result_internal_sha256,
         "result_sha256": result_sha256,
         "run_id": CAPACITY.RUN_ID,
@@ -265,6 +370,12 @@ def verify(*, population_path: Path, design_path: Path, packet_path: Path,
     result = _load_exact_json(
         result_path, expected_result_sha256,
         label="Pair V3 score-free capacity result")
+    result_body = dict(result)
+    result_internal_sha256 = result_body.pop("internal_sha256", None)
+    if (not _is_sha256(result_internal_sha256)
+            or result_internal_sha256 != _digest(result_body)):
+        raise CapacityResultReviewRefused(
+            "capacity result internal digest")
     try:
         design = DESIGN.verify_design(population_path, design_path)
     except Exception as exc:

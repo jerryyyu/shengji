@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import copy
+import importlib.util
 import json
+import py_compile
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -13,6 +16,16 @@ import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+# The production reviewer must start in a fresh process.  Recreate that exact
+# boundary even when pytest collected another Pair module first.
+sys.dont_write_bytecode = True
+for _dependency_name in (
+        "pair_ballot_affected_aggregate",
+        "pair_ballot_affected_capacity_design",
+        "pair_ballot_affected_capacity_preflight",
+        "pair_ballot_affected_eval",
+        "pair_ballot_affected_states"):
+    sys.modules.pop(_dependency_name, None)
 import pair_ballot_affected_capacity_result_review as R  # noqa: E402
 
 
@@ -229,7 +242,7 @@ def test_verified_claim_authorizes_design_only(tmp_path, monkeypatch):
     assert claim["retry_authorized"] is False
     assert claim["extension_authorized"] is False
     assert claim["result_reviewer_script_sha256"] == (
-        R.CAPACITY.sha256_file(Path(R.__file__)))
+        R._sha256_file(Path(R.__file__)))
     assert claim["reviewer_dependency_sha256s"] == (
         R.EXPECTED_DEPENDENCY_SHA256S)
 
@@ -287,6 +300,26 @@ def test_file_hash_and_self_hash_both_fail_closed(tmp_path, monkeypatch):
         R.verify(**args)
 
 
+def test_dishonest_capacity_file_hasher_cannot_bypass_result_hash(
+        tmp_path, monkeypatch):
+    args = _fixture(tmp_path, monkeypatch)
+    result_path = args["result_path"]
+    expected_result_sha256 = args["expected_result_sha256"]
+    result_path.write_bytes(result_path.read_bytes() + b"\n")
+
+    def dishonest_sha256_file(path: Path) -> str:
+        if Path(path) == result_path:
+            return expected_result_sha256
+        return R._sha256_file(Path(path))
+
+    monkeypatch.setattr(
+        R.CAPACITY, "sha256_file", dishonest_sha256_file)
+    with pytest.raises(
+            R.CapacityResultReviewRefused,
+            match="score-free capacity result file SHA-256 drift"):
+        R.verify(**args)
+
+
 @pytest.mark.parametrize("payload", [
     b'{"schema":"x","schema":"y"}',
     b'{"schema":"x","elapsed":NaN}',
@@ -315,12 +348,84 @@ def test_dependency_source_and_loaded_module_identity_fail_closed(monkeypatch):
         R._require_dependency_sources()
 
 
+def test_dishonest_capacity_hasher_cannot_bypass_dependency_source_gate(
+        monkeypatch):
+    name = "pair_ballot_affected_capacity_preflight.py"
+    monkeypatch.setitem(R.EXPECTED_DEPENDENCY_SHA256S, name, "0" * 64)
+    monkeypatch.setattr(
+        R.CAPACITY, "sha256_file", lambda _path: "0" * 64)
+    with pytest.raises(
+            R.CapacityResultReviewRefused,
+            match="dependency identity drift"):
+        R._require_dependency_sources()
+
+
 def test_preloaded_dependency_refuses_even_with_expected_source_path(monkeypatch):
     monkeypatch.setattr(
         R, "PRELOADED_DEPENDENCIES",
         ("pair_ballot_affected_capacity_preflight",))
     with pytest.raises(R.CapacityResultReviewRefused, match="was preloaded"):
         R._require_dependency_sources()
+
+
+def test_modified_dependency_never_executes_before_preimport_refusal(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    reviewer_name = Path(R.__file__).name
+    copied_names = [
+        reviewer_name,
+        *(f"{name}.py" for name in R.DEPENDENCY_IMPORT_NAMES),
+    ]
+    for name in copied_names:
+        (scripts / name).write_bytes((SCRIPTS / name).read_bytes())
+
+    tripwire = tmp_path / "dependency-imported"
+    target = scripts / "pair_ballot_affected_capacity_preflight.py"
+    source = target.read_text()
+    future = "from __future__ import annotations\n"
+    side_effect = (
+        future
+        + "\nfrom pathlib import Path as _TripwirePath\n"
+        + f"_TripwirePath({str(tripwire)!r}).write_text('executed')\n")
+    target.write_text(source.replace(future, side_effect, 1))
+
+    completed = subprocess.run(
+        [sys.executable, "-B", str(scripts / reviewer_name)],
+        cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert completed.returncode != 0
+    assert "review dependency source drift before import" in completed.stderr
+    assert not tripwire.exists()
+
+
+def test_unchecked_dependency_pyc_is_never_executed(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    reviewer_name = Path(R.__file__).name
+    copied_names = [
+        reviewer_name,
+        *(f"{name}.py" for name in R.DEPENDENCY_IMPORT_NAMES),
+    ]
+    for name in copied_names:
+        (scripts / name).write_bytes((SCRIPTS / name).read_bytes())
+
+    tripwire = tmp_path / "dependency-pyc-imported"
+    target = scripts / "pair_ballot_affected_capacity_preflight.py"
+    hostile_source = tmp_path / "hostile_capacity.py"
+    hostile_source.write_text(
+        "from pathlib import Path\n"
+        + f"Path({str(tripwire)!r}).write_text('executed')\n")
+    cache = Path(importlib.util.cache_from_source(str(target)))
+    cache.parent.mkdir()
+    py_compile.compile(
+        str(hostile_source), cfile=str(cache), dfile=str(target), doraise=True,
+        invalidation_mode=py_compile.PycInvalidationMode.UNCHECKED_HASH)
+
+    completed = subprocess.run(
+        [sys.executable, "-B", str(scripts / reviewer_name)],
+        cwd=tmp_path, capture_output=True, text=True, check=False)
+    assert completed.returncode == 2
+    assert "the following arguments are required" in completed.stderr
+    assert not tripwire.exists()
 
 
 def test_reviewer_source_has_no_writer_or_launcher_surface():

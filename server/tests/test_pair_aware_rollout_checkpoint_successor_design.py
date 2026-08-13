@@ -97,6 +97,29 @@ def test_design_is_fresh_checkpointed_and_non_authorizing():
     assert "atomically renames" in DESIGN.DESIGN["screen"][
         "atomic_complete_bundle_directory"]
     assert not any(DESIGN.DESIGN["authority"].values())
+    assert DESIGN.MAX_PLANNED_WALL_HOURS == 52.0
+    assert DESIGN.DESIGN["capacity"][
+        "score_free_refusal_receipt_required"] is True
+    assert DESIGN.DESIGN["capacity"][
+        "refusal_receipt_includes_all_lane_timings"] is True
+    assert DESIGN.DESIGN["capacity"][
+        "52h_budget_requires_new_independent_review"] is True
+    assert DESIGN.DESIGN["prior_capacity_attempt"] == {
+        "run_id": "pair-aware-whole-round-concurrent-capacity-v1",
+        "git": DESIGN.PRIOR_CAPACITY_GIT,
+        "terminal_review_commit":
+            DESIGN.PRIOR_CAPACITY_TERMINAL_REVIEW_COMMIT,
+        "admission_sha256": DESIGN.PRIOR_CAPACITY_ADMISSION_SHA256,
+        "systemd_invocation_id": DESIGN.PRIOR_CAPACITY_INVOCATION_ID,
+        "wall_seconds": 2_063.512,
+        "cpu_seconds": 30_156.886,
+        "all_16_lanes_completed": True,
+        "projection_exceeded_reviewed_48h_cap": True,
+        "capacity_result_published": False,
+        "execution_receipt_published": False,
+        "retry_or_extension_authorized": False,
+        "lane_timings_reusable_as_result": False,
+    }
 
 
 def test_fresh_capacity_and_screen_ranges_avoid_all_reserved_ranges():
@@ -168,24 +191,38 @@ def test_capacity_refuses_boolean_lane_indices_and_noninteger_worker_count():
         result, expected_workers=16.0, runtime_profile_sha256=PROFILE)
 
 
-def test_capacity_refuses_worker_count_whose_seed_range_reaches_screen():
+def test_capacity_refuses_unreviewed_worker_geometry():
     result = _capacity(workers=42)
     assert DESIGN.concurrent_capacity_problems(
-        result, expected_workers=42, runtime_profile_sha256=PROFILE) == [
-            "capacity population overlaps a reserved population"]
+        result, expected_workers=42, runtime_profile_sha256=PROFILE)
 
 
 def test_capacity_projection_uses_integer_microshards_and_enforces_wall_cap():
-    result = _capacity(workers=17, seconds=800.0)
+    result = _capacity(workers=16, seconds=800.0)
     projected = DESIGN.capacity_projection(
-        result, expected_workers=17, runtime_profile_sha256=PROFILE)
-    planned = 816.0 / 8 * DESIGN.CONCURRENT_CAPACITY_SAFETY_FACTOR
+        result, expected_workers=16, runtime_profile_sha256=PROFILE)
+    planned = 815.0 / 8 * DESIGN.CONCURRENT_CAPACITY_SAFETY_FACTOR
     assert projected["projected_wall_hours"] == pytest.approx(
         14 * DESIGN.MICROSHARD_CLUSTERS * planned / 3_600.0)
     slow = _capacity(seconds=10_000.0)
+    details = DESIGN.capacity_projection_details(
+        slow, expected_workers=16, runtime_profile_sha256=PROFILE)
+    assert details["projected_wall_hours"] > \
+        DESIGN.MAX_PLANNED_WALL_HOURS
     with pytest.raises(DESIGN.DesignRefused, match="planned wall cap"):
         DESIGN.capacity_projection(
             slow, expected_workers=16, runtime_profile_sha256=PROFILE)
+
+
+def test_spent_v1_capacity_population_is_reserved_from_v2():
+    v2 = DESIGN.Population(
+        DESIGN.CAPACITY_SEED0,
+        DESIGN.MIN_WORKERS * DESIGN.CAPACITY_CLUSTERS_PER_WORKER)
+    spent = next(row for row in DESIGN.RESERVED_POPULATIONS
+                 if row["name"] ==
+                 "pair-aware-whole-round-concurrent-capacity-v1")
+    assert not DESIGN.populations_overlap(
+        v2, DESIGN._reserved_population(spent))
 
 
 @pytest.mark.parametrize("mutation", [

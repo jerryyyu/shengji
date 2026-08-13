@@ -7574,3 +7574,98 @@ read-only CLI. Its emitted authority remains scored-packet design only; launch
 nothing.
 
 ---
+## Claude — 2026-08-13 05:38 EDT — ✅ PASS (prose): Pair V3 score-free capacity result; scored execution stays closed
+
+Reviewed the exact artifacts on `shengji-perf` under the score-free review
+authority. Prose only — no marker appended, per the request. **Headline: capacity
+is not a constraint.** The full 1,024-state scored evaluation projects to
+**1.05 fleet-hours** against a 64-hour cap, with a worst lane at **0.088 hours**
+against a 4-hour cap.
+
+**The authority chain is intact and consumed exactly once.** The packet review
+commit `88866f25f3763f26996be6f45fbcfcdfe3854f30` is my own 04:43 PASS. The
+admission `759fc5b7d23ee619fa7a6920…` exists once with `links=1`; the result
+`544499d17df03d08aea908c3…` is a single regular unlinked file; the packet
+review snapshot is `678cedca164093599757e999…`. The namespace holds exactly four
+files, no partials, and no processes remain.
+
+**Result identity re-derived, not read off:** internal
+`ca36d1af3dda376884b09b1fb5ed4d7142a2f6c64b5af8c0b4153f20123a4fb2` recomputed
+under the canonical recipe. Bindings match the packet exactly — git
+`6461c660`, packet `e054c5e5…`, packet internal `25b1888c…`, admission
+`759fc5b7…`, and a runtime block equal to the packet's (16 cores, x86_64,
+py3.14.4, engine `45323eaf…`).
+
+**Closed-schema validator re-run: CLEAN.**
+
+**Structure.** 16 timing rows covering 16 distinct lane indices 0…15 and all
+six split×band cells. Every numeric field is finite and non-negative:
+`elapsed_seconds` 0.603–1.931, `normalized_max_work_seconds` 0.649–2.057,
+`observed_candidate_world_rollouts` 2,640–2,940.
+
+**Timing normalization reproduced.** Row 0 normalizes 1.623178 s to 1.807630 s,
+a ratio of 1.113636 — exactly 2940/2640, i.e. each lane normalized to the
+maximum observed work, as the packet's `normalize_each_timing_to_max_work`
+declares.
+
+**Band-weighted projection recomputed to the last digit.** Using the design's
+own `states_by_band` (896 early, 96 mid, 32 late, summing to 1,024) and the
+result's per-band normalized seconds:
+
+```
+(896×1.9198377638958535 + 96×1.5469505800000332 + 32×0.6601950375781847)
+    × 2.0 / 3600  =  1.0498934074073278
+```
+
+which equals the reported `fleet_hours` exactly. `max_lane_wall_hours`
+0.0877279930623274 equals the maximum of the sixteen lane values. Both caps
+hold with two orders of magnitude of headroom.
+
+**Work and dose totals.** current-policy 16,320 and retained-policy 16,320
+rollouts with 10,200 external comparisons; sampler 15,360 attempts and 15,360
+accepted with **zero** failed, rejected or impossible worlds; selector dose
+records 2 policy-action changes.
+
+**Score-free boundary — one thing worth naming precisely.** A recursive scan of
+every key path flags twelve names. Ten are the authority declarations
+themselves (`outcomes_computed_in_memory: true`, `outcomes_discarded: true`,
+`outcomes_published: false`, `score_free: true`, and the six false authority
+flags). The other two are `selector_dose.current_raw_winner_evictions` and
+`selector_dose.retained_raw_winner_insertions`, **both 0**. Those contain the
+substring "winner" but are ballot-selection counters — how often the raw
+selection winner was evicted or inserted — not trick or game winners. There is
+no outcome, utility, points, REPORT, training, promotion or deployment payload.
+`records_discarded: 16` confirms all per-state records were dropped.
+
+**Falsification battery — 12 probes, all refused:**
+
+| probe | refusal |
+|---|---|
+| alternate outcome alias injected | top-level field population |
+| non-finite / negative timing | internal digest |
+| lane loss (row dropped) | criteria reconstruction |
+| work drift | criteria reconstruction |
+| dose drift | internal digest |
+| rehashed projection | **projection math** |
+| admission substitution | internal digest |
+| runtime substitution | internal digest |
+| `scored_evaluation_authorized` flipped | authority escalation |
+| `report_access_authorized` flipped | authority escalation |
+| status flipped | internal digest |
+
+Worth distinguishing: several refuse via the self-hash, which catches any byte
+edit but would not catch a *producer-side* error that recomputed the hash. The
+ones that fired semantically — field population, criteria reconstruction,
+projection math and authority escalation — are the load-bearing checks for that
+case, and they cover the alias, lane-loss, work-drift, rehash and escalation
+classes directly.
+
+**Terminal state.** `status: AUTHORIZE_CAPACITY_RESULT_REVIEW`,
+`complete: true`, `retry_or_extension_authorized: false`.
+
+This PASS may authorize only implementation and review of a **scored packet
+design**. Scored execution, REPORT access, strength claims, training, promotion
+and deployment all remain closed, and I am appending no authority marker from
+this prose.
+
+---

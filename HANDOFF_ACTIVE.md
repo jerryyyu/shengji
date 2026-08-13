@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-13 02:03 EDT.
+Last reconciled: 2026-08-13 02:59 EDT.
 
 ## CURRENT LAUNCH BLOCKER — read before the older lane detail below
 
@@ -28,19 +28,27 @@ The lower lane table is historical detail. Current executable truth is:
   binds PR #71 compatibility with the correct 64-character native-code
   identity; PR #77 `0381081` prepares accepted hidden worlds once and measured
   2.62% lower wall time on six exact-head pairs with normalized semantics
-  unchanged. Both await external review. The mixed-revision 3.37% claim is
-  retired.
-- **S5 remains closed.** PR #76 `e285f47` awaits validation-only review. It
-  permanently disables the spent PR #74 run and separates requests from
-  reviewer attestations. No retry, recovery namespace or diagnostic execution
-  is authorized.
-- **Other pending reviews:** opened-DEV bury/S6 telemetry PR #78 `f4b80f0` and
-  docs PR #64 `feeb9be` await prose review. Conditional Pair-cap PR #73 remains
-  behind the broad Pair terminal result and its own economics.
+  unchanged. Both await external review. Separately, a native common-case
+  winner-selection path has fresh internal evidence of 7.73% lower wall time
+  across six pairs with exact normalized semantics, and the one-Counter lead
+  edit adds 4.01% over that native base across three fresh pairs. This stack is
+  not yet pushed or externally reviewed. The mixed-revision 3.37% prepared-
+  world claim is retired.
+- **S5 remains closed.** Claude PASSed PR #76 `e285f47` at canonical commit
+  `e91f3b4` as a validation-only incident repair. It permanently disables the
+  spent PR #74 run and separates requests from reviewer attestations. Its raw
+  marker explicitly authorizes no retry, recovery namespace or diagnostic.
+- **Other pending reviews:** opened-DEV bury/S6 telemetry PR #78 `f4b80f0`,
+  docs PR #64 `feeb9be`, and no-write terminal-review PR #80 `5419c0a` await
+  review. PR #80 only reconstructs already-published T4/Pair terminal evidence;
+  it cannot launch, aggregate, retry, promote, deploy or write files.
+  Conditional Pair-cap PR #73 remains behind the broad Pair terminal result and
+  its own economics.
 - **Live compute:** T4 is healthy on Mini at the safe known minimum
-  4,896/12,288 sequential arm-rounds (39.8%). Broad Pair is healthy on Air and
-  S6's reviewed preflight queue sleeps behind it. S4 is healthy on strength
-  Cloud at 3,325/8,192 look-one clusters (40.6%). Outcomes remain sealed.
+  5,596/12,288 sequential arm-rounds (45.5%). Broad Pair is healthy on Air with
+  all eight workers alive, and S6's reviewed preflight queue sleeps behind it.
+  S4 is healthy on strength Cloud at 3,948/8,192 look-one clusters (48.2%).
+  Outcomes remain sealed.
 - **Performance Cloud:** exact PR #77 profiling is complete. Trick-state
   caching was rejected after its safe repair ran 10.56% slower; Memory reuse
   was rejected because it is only 0.073–0.078% of current round time. A tiny
@@ -49,6 +57,29 @@ The lower lane table is historical detail. Current executable truth is:
   composition. Never substitute optimized code into frozen strength evidence.
 
 Nothing below this section supersedes these exact priorities or authorities.
+
+### Current review asks — newest first
+
+1. **Utilization-critical: PR #79 exact `6461c660`.** Reproduce the 83 Pair
+   tests and falsify canonical Claude provenance, the 16-lane concurrent
+   manifest, systemd process ownership, closed score-free schemas, exact work /
+   2x projection reconstruction and one-shot paths. A PASS permits only
+   freezing an outcome-free packet for a second packet-specific review; it
+   does not authorize the preflight run or any scored work.
+2. **Closeout-readiness: PR #80 exact `5419c0a`.** Confirm the three small
+   read-only modules pin exact T4/Pair source heads, authenticate aggregate and
+   admission records before opening any shard bytes, delegate lane semantics to
+   the reviewed pure validators, recursively rebuild the full terminal result,
+   and expose no writer, lock, launcher, aggregation or deployment path. Nine
+   focused synthetic tests pass. This review grants no execution authority.
+3. Continue with PR #75, #77, #78 and #64 in that order after #79 unless a
+   terminal supervisor final appears first.
+
+**Operational disclosure:** while testing the terminal helper, two broad
+pytest children accidentally ran on Mini alongside T4 for about 1m27s and 41s
+(roughly two core-minutes total). Codex detected and stopped only those exact
+PIDs. They used `PYTHONDONTWRITEBYTECODE`, wrote no evidence and did not alter
+the live run; no further broad tests will run on a strength host.
 
 ### ⛔ 00:16 incident HOLD — do not run or retry PR #74
 

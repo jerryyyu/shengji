@@ -1,0 +1,168 @@
+{
+  "schema": "heuristic-lead-native-perf-exploratory-v1",
+  "claim": "a single ordinary exploratory batch measured the repaired native HeuristicBot lead route against exact PR81 with exact normalized report-LCB semantics",
+  "claim_boundary": {
+    "confirmatory": false,
+    "exploratory_only": true,
+    "merge_authority": false,
+    "performance_only": true,
+    "production_deployment": false,
+    "review_authority": false,
+    "sampling_or_rng_change": false,
+    "strength_claim": false
+  },
+  "evidence": {
+    "remote_root": "/var/tmp/perf-lead-simple-exploratory-20260813",
+    "design_sha256": "a54da73e6b09518ddac14fd182bdcc751ef150fc05d835a459a429913e4014d4",
+    "result_sha256": "022e9ed8ecd1f6eb665e971ffe7fa07e8a87240e4da310148d943933bb779f42",
+    "harness_sha256": "4830bffdc97b99d364d4fd182475de575e85baccb34a93345f2ce38ab9bfb684",
+    "runner_sha256": "967733d24c7b694b24982cfec6fb89652f2bd80f56b905d7a058f861de2cc215",
+    "manifest_present": false,
+    "manifest_sha256": null,
+    "raw_artifacts_committed": false,
+    "raw_artifacts_preserved_at_remote_root": true,
+    "result_schema": "cheapest-winning-native-perf-result-v2",
+    "result_schema_disclosure": "the reused generic runner retained its historical cheapest-winning result-schema label; the byte-pinned design, exact source identities, and this receipt identify the measured mechanism as native heuristic lead"
+  },
+  "base": {
+    "git": "c6c7126804231ec9ad5b029c011c4687ca778fdb",
+    "fast_pyx_sha256": "5615d74b309db04d5fb6ff07be15d876b2b14dcfc4fe4abe0d07538872f4c211",
+    "fast_router_sha256": "f68c1d311112c203371ee11cbeaf839c9540e59e50543b0c723c2003c589adba",
+    "fast_engine_elf_text_sha256": "f552d6367f50ef4c8353428eef38d53a9b463af2308c93582dce7835d5b91d32",
+    "fast_engine_elf_text_bytes": 121006,
+    "heuristic_sha256": "e2d282e8fcc710f60a0f9ccf431fcbf97bdab87e5e3c7f9760ab49e6a8dfbfe8"
+  },
+  "head": {
+    "git": "8e698e1456ab8d57dd515c6ca5fbf48c45a4b674",
+    "fast_pyx_sha256": "df9d544c4503cf74461d6431f84952538d4f3c5da63e196fdf123c545b927cff",
+    "fast_router_sha256": "730182cc4bffdd638ed1024c831ee5f33f7a246e57051964e6fb4721fddb52e6",
+    "fast_engine_elf_text_sha256": "60464b59ac7f9124ee1f1d2a0bdf1760f9f0c5a8ecc51a10a44d1020d6262104",
+    "fast_engine_elf_text_bytes": 133198,
+    "heuristic_sha256": "e2d282e8fcc710f60a0f9ccf431fcbf97bdab87e5e3c7f9760ab49e6a8dfbfe8",
+    "native_lead_test_sha256": "41dc5ae75ffe57e1d003c36ef56b9a58fe3b8cd44ddfadc0fcc1d37be152751a",
+    "lead_prefilter_test_sha256": "49d53fbb8affaf6720ba474a495908dac6372778df01a4f21fb1973e04a12df4"
+  },
+  "runtime": {
+    "kernel": "Linux 7.0.0-29-generic",
+    "machine": "x86_64",
+    "processor": "AMD EPYC-Genoa Processor",
+    "logical_cpus": 16,
+    "boot_id": "d0c9be4d-4e0a-4679-9177-99b4f60ded66",
+    "python_version": "3.14.4",
+    "python_resolved": "/usr/bin/python3.14",
+    "python_sha256": "b8d8288faefdd300201f43fcf00f6f539a27218eeed3a3dff5ab10b9c4c99700",
+    "pythonhashseed": "unset",
+    "compiled_engine_required": true,
+    "void_respecting_sampler_required": true,
+    "execution": "durable tmux with sequential arms"
+  },
+  "normalization": {
+    "capture_omitted_before_serialization": [
+      "decision_records[*].record.search_secs",
+      "decision_records[*].record.code"
+    ],
+    "removed_for_arm_comparison": [
+      "decision_records[*].record.ballot.digest",
+      "decision_records[*].record.ballot.display",
+      "decision_records[*].record.ballot.source_digest"
+    ],
+    "all_other_serialized_bytes_compared_exactly": true,
+    "exact_scope_includes": [
+      "actions and complete game history",
+      "search work and rollout counts",
+      "bot and decision RNG states",
+      "sampler counters and states",
+      "policy configuration and outputs"
+    ]
+  },
+  "design": {
+    "policy": "mc-s0-report-lcb",
+    "n_determinizations": 30,
+    "report_fold_worlds": 300,
+    "pairs": 3,
+    "seeds": [3847, 3923, 4001],
+    "orders": ["base_head", "head_base", "base_head"],
+    "one_sided_t_critical": 2.919985580354,
+    "one_sided_t_df": 2,
+    "one_fresh_batch_no_tuning_or_retry": true
+  },
+  "validation": {
+    "every_searched_decision_n30_r300": true,
+    "searched_decisions_by_seed": {"3847": 52, "3923": 41, "4001": 53},
+    "unsearched_leads_by_seed": {"3847": 12, "3923": 15, "4001": 11},
+    "short_search_decisions": 0,
+    "zero_world_decisions": 0
+  },
+  "records": [
+    {
+      "seed": 3847,
+      "order": "base_head",
+      "base": {
+        "elapsed_seconds": 14.159499349000725,
+        "raw_semantic_sha256": "67d2e53a6d3f0d1a0fd4425637678775966820daadcee3bd52cde87165b7c2b0",
+        "normalized_semantic_sha256": "9cc2beacec677eba08af8caef2590ed1d127fc3aba9ae4c2f214b147a4ff6d70",
+        "rollouts": [10080, 11670, 9750, 10530],
+        "search_calls": [13, 14, 12, 13],
+        "normalization_removals_per_field": 52
+      },
+      "head": {
+        "elapsed_seconds": 12.804072906999863,
+        "raw_semantic_sha256": "e5a1dd22b0153ca37c60222f3dd7678561e130c7f4baf4e0bd0bc564d41f0bd8",
+        "normalized_semantic_sha256": "9cc2beacec677eba08af8caef2590ed1d127fc3aba9ae4c2f214b147a4ff6d70",
+        "rollouts": [10080, 11670, 9750, 10530],
+        "search_calls": [13, 14, 12, 13],
+        "normalization_removals_per_field": 52
+      }
+    },
+    {
+      "seed": 3923,
+      "order": "head_base",
+      "base": {
+        "elapsed_seconds": 10.873776532999727,
+        "raw_semantic_sha256": "8c4a3b2d2547a6ce5964601c1ebc85d45765051039c4cbf6a065823d9b380ea5",
+        "normalized_semantic_sha256": "913c47013052deef91e6d8c5e0312a5fa14d95157fd8ffd61650de46775925ad",
+        "rollouts": [8700, 6330, 11430, 7200],
+        "search_calls": [11, 8, 13, 9],
+        "normalization_removals_per_field": 41
+      },
+      "head": {
+        "elapsed_seconds": 9.706232882999757,
+        "raw_semantic_sha256": "c4740276412865774fe165f90c92bec8e69da797165688af681d71777ccf7f75",
+        "normalized_semantic_sha256": "913c47013052deef91e6d8c5e0312a5fa14d95157fd8ffd61650de46775925ad",
+        "rollouts": [8700, 6330, 11430, 7200],
+        "search_calls": [11, 8, 13, 9],
+        "normalization_removals_per_field": 41
+      }
+    },
+    {
+      "seed": 4001,
+      "order": "base_head",
+      "base": {
+        "elapsed_seconds": 15.757242939000207,
+        "raw_semantic_sha256": "1129dfd95bbe0cb935b812c424d78d58d0e3c6a196b52169077901bfa7bb83a8",
+        "normalized_semantic_sha256": "af5f4e9f0b5d51ed24ccc491e4cce322d87234bc917fae9d28d06edca43f10f4",
+        "rollouts": [9990, 12570, 9540, 9750],
+        "search_calls": [13, 15, 12, 13],
+        "normalization_removals_per_field": 53
+      },
+      "head": {
+        "elapsed_seconds": 14.119008445999498,
+        "raw_semantic_sha256": "8cb3e01ac18f24c978c005ddde6e1ca89207b6907ef7f7de3128192808392d7c",
+        "normalized_semantic_sha256": "af5f4e9f0b5d51ed24ccc491e4cce322d87234bc917fae9d28d06edca43f10f4",
+        "rollouts": [9990, 12570, 9540, 9750],
+        "search_calls": [13, 15, 12, 13],
+        "normalization_removals_per_field": 53
+      }
+    }
+  ],
+  "aggregate": {
+    "base_wall_seconds": 40.79051882100066,
+    "head_wall_seconds": 36.62931423599912,
+    "wall_reduction_percent": 10.2014014660171,
+    "throughput_increase_percent": 11.360312557836338,
+    "paired_relative_mean_percent": 10.235502780394578,
+    "paired_one_sided_95_lb_percent": 9.225942561077886,
+    "normalized_semantics_exact": true,
+    "interpretation": "positive exploratory performance signal; not a confirmatory verdict or authority"
+  }
+}

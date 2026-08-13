@@ -716,6 +716,107 @@ def heuristic_lowest(list cards, ordering, bint void_dump, bint avoid_points,
                              void_dump, avoid_points, seek_points, avoid)]
 
 
+def heuristic_lead(bot, rnd, int seat):
+    """HeuristicBot._lead drop-in over one native hand scan.
+
+    This preserves the pure policy's suit order, first-maximum tractor tie,
+    lexical pair/suit tie-breaks, and original hand ordering.  The existing
+    compiled tractor enumerator and ``bot._lowest`` remain the authorities for
+    those sub-decisions; this kernel only removes repeated Python scans and
+    temporary Counters from the high-frequency rollout lead path.
+    """
+    ordering = rnd.ordering
+    if ordering is None:
+        raise AssertionError
+    hand = rnd.hands[seat]
+    cdef tuple ctx = _get_ctx(ordering)
+    cdef dict code2id = <dict>ctx[4]
+    cdef const unsigned char *efftab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[3])
+    cdef const unsigned char *lvltab = \
+        <const unsigned char *>PyBytes_AS_STRING(ctx[2])
+    cdef unsigned char ids[MAX_CARDS]
+    cdef Py_ssize_t n = _ids_of(hand, code2id, ids), i
+    cdef list groups = [[], [], [], [], []]
+    cdef int counts[N_CODES]
+    cdef int e, c, k, available_pairs
+    memset(counts, 0, sizeof(counts))
+    for i in range(n):
+        c = ids[i]
+        counts[c] += 1
+        e = efftab[c]
+        (<list>groups[e]).append(hand[i])
+
+    # Longest tractor anywhere; on equal lengths the first SHDCT suit wins.
+    best_tr = None
+    for e in (0, 1, 3, 2, 4):
+        cards = <list>groups[e]
+        available_pairs = pair_count(cards)
+        if available_pairs < 2:
+            continue
+        for k in range(min(5, available_pairs), 1, -1):
+            runs = find_tractor_runs(cards, ordering, k)
+            if runs and (best_tr is None or
+                         len(runs[len(runs) - 1]) > len(best_tr)):
+                best_tr = runs[len(runs) - 1]
+                break
+    if best_tr:
+        return best_tr
+
+    cdef int top_plain = len(ordering.plain_ranks) - 1
+    # Ace pair, then lone ace, in SHDC order and original hand order.
+    for e in (0, 1, 3, 2):
+        aces = []
+        cards = <list>groups[e]
+        for i in range(len(cards)):
+            c = <int>code2id[cards[i]]
+            if lvltab[c] == top_plain:
+                aces.append(cards[i])
+        if len(aces) >= 2:
+            return aces[:2]
+    for e in (0, 1, 3, 2):
+        cards = <list>groups[e]
+        for i in range(len(cards)):
+            if lvltab[<int>code2id[cards[i]]] == top_plain:
+                return cards[i:i + 1]
+
+    # ``max((level, card))`` among plain pairs: highest level, then lexical
+    # card code.  Scan the original objects so the returned strings are the
+    # same hand objects as the pure policy.
+    cdef int best_level = -1
+    best_card = None
+    for i in range(n):
+        c = ids[i]
+        if counts[c] >= 2 and efftab[c] < 4:
+            if (lvltab[c] > best_level or
+                    (lvltab[c] == best_level and
+                     (best_card is None or hand[i] > best_card))):
+                best_level = lvltab[c]
+                best_card = hand[i]
+    if best_card is not None and best_level >= top_plain - 3:
+        return [best_card, best_card]
+
+    # ``max((length, suit))`` across non-empty plain suits.  Python's lexical
+    # string comparison is retained explicitly for tied lengths.
+    cdef int best_suit = -1, best_len = -1, current_len
+    best_suit_name = None
+    for e in range(4):
+        cards = <list>groups[e]
+        current_len = len(cards)
+        if current_len == 0:
+            continue
+        if (current_len > best_len or
+                (current_len == best_len and
+                 (best_suit_name is None or EFF_NAMES[e] > best_suit_name))):
+            best_len = current_len
+            best_suit = e
+            best_suit_name = EFF_NAMES[e]
+    if best_suit >= 0:
+        return [bot._lowest(<list>groups[best_suit], ordering,
+                            avoid_points=True)]
+    return [bot._lowest(<list>groups[4], ordering, avoid_points=True)]
+
+
 def forced_follow(list hand, list lead, ordering, bint void_dump,
                   bint prefer_points, avoid=None):
     """HeuristicBot._forced_follow drop-in: construct a legal minimal

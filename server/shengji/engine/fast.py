@@ -34,6 +34,7 @@ from . import cards as _cards
 from . import combos, legal
 from .cards import Ordering, make_deck
 from .combos import Decomposition
+from .round import HAND_SIZE, KITTY_SIZE
 
 try:
     from . import _fast  # compiled extension; see setup.py
@@ -45,6 +46,7 @@ except ImportError:  # not built — pure Python fallback
 ID2CODE: list[str] = sorted(set(make_deck()))  # 54 codes, deterministic ids
 CODE2ID: dict[str, int] = {c: i for i, c in enumerate(ID2CODE)}
 EFF_ID = {"S": 0, "H": 1, "C": 2, "D": 3, "T": 4}
+_MAX_ENGINE_HAND_CARDS = HAND_SIZE + KITTY_SIZE
 
 
 def _ctx(ordering: Ordering) -> tuple:
@@ -171,6 +173,28 @@ def _forced_follow_fast(self, hand, lead, o, prefer_points, avoid=None):
                                avoid)
 
 
+def _lead_fast(self, rnd, seat):
+    # ``heuristic_lead`` deliberately disables Cython bounds/wraparound
+    # checks in its engine-only kernel.  Keep malformed/public calls on the
+    # pure method: besides preserving Python's indexing semantics (including
+    # bool and negative indices), this prevents an invalid seat from becoming
+    # an unchecked native list access.  The largest real hand is the banker's
+    # 25 dealt cards plus the 8-card kitty.
+    hands = getattr(rnd, "hands", None)
+    if (type(getattr(rnd, "ordering", None)) is not Ordering
+            or type(seat) is not int or type(hands) is not list
+            or len(hands) != 4 or not 0 <= seat < len(hands)):
+        return _saved["HeuristicBot._lead"](self, rnd, seat)
+    hand = hands[seat]
+    if type(hand) is not list or not 0 < len(hand) <= _MAX_ENGINE_HAND_CARDS:
+        return _saved["HeuristicBot._lead"](self, rnd, seat)
+    # The native kernel delegates tractor/lowest sub-decisions back through
+    # the currently routed bot methods.  On malformed synthetic objects a
+    # subclass/public override may reject the otherwise list-shaped input;
+    # retain pure behavior instead of letting that partial native route leak.
+    return _fast.heuristic_lead(self, rnd, seat)
+
+
 def _cheapest_winning_fast(self, hand, lead, inc_suit, inc_top, o):
     # Engine-produced comparison tops are -1..15.  Keep the native call on
     # that exact domain; the method remains public/testable, so malformed or
@@ -183,11 +207,16 @@ def _cheapest_winning_fast(self, hand, lead, inc_suit, inc_top, o):
 
 
 _METHOD_ROUTED = (
-    # (save-key, class attr on HeuristicBot, wrapper)
-    ("HeuristicBot._lowest", "_lowest", _lowest_fast),
-    ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast),
+    # (save-key, class attr on HeuristicBot, wrapper,
+    #  require-no-subclass-override).  A subclass's own `_lead` wins normal
+    # Python dispatch and is therefore safe to preserve; the other wrappers
+    # are shared policy primitives whose semantics must remain uniform.
+    ("HeuristicBot._lowest", "_lowest", _lowest_fast, True),
+    ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast,
+     True),
+    ("HeuristicBot._lead", "_lead", _lead_fast, False),
     ("HeuristicBot._cheapest_winning", "_cheapest_winning",
-     _cheapest_winning_fast),
+     _cheapest_winning_fast, True),
 )
 
 
@@ -208,12 +237,15 @@ def activate() -> bool:
         _saved[key] = getattr(mod, attr)
         mapping[_saved[key]] = globals()[key]
     _rebind(mapping)
-    for key, attr, wrapper in _METHOD_ROUTED:
-        # The wrappers hard-code HeuristicBot semantics: a subclass override
-        # would be silently bypassed on instances of that subclass only if
-        # it overrode these — refuse loudly instead of drifting.
-        assert all(attr not in vars(k) for k in _subclasses(HeuristicBot)), \
-            f"a HeuristicBot subclass overrides {attr}; fast path unsafe"
+    for key, attr, wrapper, require_unoverridden in _METHOD_ROUTED:
+        # The strict wrappers are shared policy primitives; refuse a subclass
+        # override instead of silently changing its meaning.  `_lead` is a
+        # normal dispatch leaf: subclass overrides continue to win through
+        # Python's method resolution and are intentionally allowed.
+        if require_unoverridden:
+            assert all(attr not in vars(k)
+                       for k in _subclasses(HeuristicBot)), \
+                f"a HeuristicBot subclass overrides {attr}; fast path unsafe"
         _saved[key] = getattr(HeuristicBot, attr)
         setattr(HeuristicBot, attr, wrapper)
     return True
@@ -233,6 +265,6 @@ def deactivate() -> None:
     if not _saved:
         return
     from ..ai.heuristic import HeuristicBot
-    for key, attr, _ in _METHOD_ROUTED:
+    for key, attr, _, _ in _METHOD_ROUTED:
         setattr(HeuristicBot, attr, _saved.pop(key))
     _rebind({globals()[key]: _saved.pop(key) for key, _, _ in _ROUTED})

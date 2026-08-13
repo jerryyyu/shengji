@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -50,6 +52,19 @@ def _states() -> list[dict]:
             "trick": {"early": 1, "mid": 7, "late": 20}[band],
             "seat": index % 4,
         })
+    for lane in (0, 1, 2, 3, 10, 11, 12, 13, 14, 15):
+        index = len(rows)
+        rows.append({
+            "state_id": f"state-{index}",
+            "state_sha256": f"{index + 1:064x}",
+            "deal_seed": 160 + lane,
+            "split": ("dev" if index % 2 == 0 else "calib"),
+            "band": "early",
+            "role": "defender",
+            "search_eligible": True,
+            "trick": 1,
+            "seat": index % 4,
+        })
     return rows
 
 
@@ -66,10 +81,15 @@ def _manifest(rows: list[dict]) -> list[dict]:
 
 
 def _packet(rows: list[dict]) -> dict:
+    marker = C._canonical_marker(
+        C.DESIGN_REVIEW_PREFIX, C.expected_design_review_claim())
     return {
         "git": "a" * 40,
         "internal_sha256": "b" * 64,
         "runtime": _runtime(),
+        "design_review": {
+            "marker_sha256": C.sha256_file_from_bytes(marker),
+        },
         "preflight": {"states": _manifest(rows)},
     }
 
@@ -122,24 +142,60 @@ def test_expected_design_marker_uses_corrected_source_digests():
         "3c9993bc8432d2fc419cfb75c2f766119de3aa4eacdf87dc3c238e1a484b29ab"
 
 
-def test_design_review_requires_one_raw_exact_marker(tmp_path):
+def test_design_review_requires_reviewer_introduced_canonical_commit(
+        tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    ledger = repo / C.REVIEW_LEDGER
+    ledger.write_text("# review ledger\n")
+
+    def commit(*, name: str, email: str, message: str) -> str:
+        env = dict(os.environ)
+        env.update({
+            "GIT_AUTHOR_NAME": name, "GIT_AUTHOR_EMAIL": email,
+            "GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email,
+        })
+        subprocess.run(["git", "add", C.REVIEW_LEDGER], cwd=repo,
+                       check=True, env=env)
+        subprocess.run(["git", "commit", "-q", "-m", message], cwd=repo,
+                       check=True, env=env)
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+            capture_output=True, text=True).stdout.strip()
+
+    parent = commit(name="Jerry Yu", email="jerry@example.com",
+                    message="Initialize ledger")
     claim = C.expected_design_review_claim()
-    review = _review(tmp_path / "review.md", C.DESIGN_REVIEW_PREFIX, claim)
-    assert C.parse_marker(
-        review, C.DESIGN_REVIEW_PREFIX, claim,
-        label="design review")["claim"] == claim
+    ledger.write_bytes(ledger.read_bytes() + C._canonical_marker(
+        C.DESIGN_REVIEW_PREFIX, claim))
+    review_commit = commit(
+        name=C.REVIEWER_NAME, email=C.REVIEWER_EMAIL,
+        message="Independent PASS\n\n" + C.REVIEWER_SESSION_TRAILER + "test")
+    monkeypatch.setattr(C, "REPO", repo)
+    record, marker = C.canonical_review_record(
+        commit=review_commit, prefix=C.DESIGN_REVIEW_PREFIX,
+        expected=claim, label="design review", expected_parent=parent,
+        canonical_ref="HEAD")
+    assert record["claim"] == claim
+    assert marker == C._canonical_marker(C.DESIGN_REVIEW_PREFIX, claim)
 
-    review.write_text("    " + review.read_text())
-    with pytest.raises(C.CapacityPreflightRefused, match="raw marker"):
-        C.parse_marker(review, C.DESIGN_REVIEW_PREFIX, claim,
-                       label="design review")
+    with pytest.raises(C.CapacityPreflightRefused, match="parent commit drift"):
+        C.canonical_review_record(
+            commit=review_commit, prefix=C.DESIGN_REVIEW_PREFIX,
+            expected=claim, label="design review", expected_parent="0" * 40,
+            canonical_ref="HEAD")
 
-    review.write_text(
-        C.DESIGN_REVIEW_PREFIX + json.dumps(claim) + "\n"
-        + C.DESIGN_REVIEW_PREFIX + json.dumps(claim) + "\n")
-    with pytest.raises(C.CapacityPreflightRefused, match="exactly one"):
-        C.parse_marker(review, C.DESIGN_REVIEW_PREFIX, claim,
-                       label="design review")
+    self_prefix = "SELF_AUTH_REVIEW "
+    ledger.write_bytes(
+        ledger.read_bytes() + C._canonical_marker(self_prefix, claim))
+    self_commit = commit(name="Jerry Yu", email="jerry@example.com",
+                         message="Copy request as authority")
+    with pytest.raises(
+            C.CapacityPreflightRefused, match="independent reviewer"):
+        C.canonical_review_record(
+            commit=self_commit, prefix=self_prefix, expected=claim,
+            label="self-auth review", canonical_ref="HEAD")
 
 
 def test_manifest_covers_every_split_band_without_report():
@@ -151,16 +207,19 @@ def test_manifest_covers_every_split_band_without_report():
             "split": "report",
         }]})
     assert {(row["split"], row["band"]) for row in manifest} \
-        == set(C.PREFLIGHT_CELLS)
-    assert len({row["deal_seed"] for row in manifest}) == 6
+        >= set(C.PREFLIGHT_CELLS)
+    assert len({row["deal_seed"] for row in manifest}) == 16
+    assert {row["lane_index"] for row in manifest} == set(range(16))
     assert all(row["split"] != "report" for row in manifest)
     assert all(row["role"] == "defender" for row in manifest)
 
 
 def test_manifest_refuses_attacker_substitution():
     rows = _states()
-    rows[0]["role"] = "attacker"
-    with pytest.raises(C.CapacityPreflightRefused, match="no distinct defender"):
+    for row in rows:
+        if row["split"] == "dev" and row["band"] == "early":
+            row["role"] = "attacker"
+    with pytest.raises(C.CapacityPreflightRefused, match="defender/lane"):
         C.preflight_manifest({"states": rows})
 
 
@@ -180,11 +239,16 @@ def test_runtime_requires_x86_capacity_and_strict_compiled_route(monkeypatch):
         assert any(expected in problem for problem in C.runtime_problems(runtime))
 
 
+def test_execution_requires_systemd_owned_cgroup(monkeypatch):
+    monkeypatch.delenv("INVOCATION_ID", raising=False)
+    with pytest.raises(C.CapacityPreflightRefused, match="systemd-owned"):
+        C.require_systemd_scope()
+    monkeypatch.setenv("INVOCATION_ID", "a" * 32)
+    assert C.require_systemd_scope() == "a" * 32
+
+
 def test_packet_reconstruction_refuses_authority_and_runtime_mutations(
         tmp_path, monkeypatch):
-    review = _review(
-        tmp_path / "review.md", C.DESIGN_REVIEW_PREFIX,
-        C.expected_design_review_claim())
     rows = _states()
     fake_design = {
         "design_sha256": C.expected_design_review_claim()[
@@ -200,10 +264,19 @@ def test_packet_reconstruction_refuses_authority_and_runtime_mutations(
     monkeypatch.setattr(C.fast, "HAVE_FAST", True)
     monkeypatch.setattr(C.fast, "decompose", object())
     monkeypatch.setattr(C.combos, "decompose", C.fast.decompose)
+    review_record = {
+        "commit": C.DESIGN_REVIEW_GIT,
+        "parent_commit": C.DESIGN_REVIEW_PARENT_GIT,
+        "canonical_ref": C.CANONICAL_REVIEW_REF,
+        "ledger_blob_sha256": "e" * 64,
+        "marker_sha256": "f" * 64,
+        "claim": C.expected_design_review_claim(),
+    }
+    monkeypatch.setattr(C, "canonical_review_record", lambda **_kwargs: (
+        copy.deepcopy(review_record), b"marker\n"))
     packet = C.packet_payload(
         expected_git="a" * 40, population_path=tmp_path / "population.json",
-        design_path=tmp_path / "design.json",
-        design_review_record=review, runtime=_runtime())
+        design_path=tmp_path / "design.json", runtime=_runtime())
     assert packet["authority"] == {
         "one_score_free_preflight_execution_authorized": False,
         "capacity_result_review_authorized": True,
@@ -218,8 +291,7 @@ def test_packet_reconstruction_refuses_authority_and_runtime_mutations(
     assert C.packet_problems(
         packet, expected_git="a" * 40,
         population_path=tmp_path / "population.json",
-        design_path=tmp_path / "design.json",
-        design_review_record=review) == []
+        design_path=tmp_path / "design.json") == []
 
     for mutate in (
             lambda value: value["authority"].__setitem__(
@@ -236,8 +308,7 @@ def test_packet_reconstruction_refuses_authority_and_runtime_mutations(
         assert C.packet_problems(
             changed, expected_git="a" * 40,
             population_path=tmp_path / "population.json",
-            design_path=tmp_path / "design.json",
-            design_review_record=review)
+            design_path=tmp_path / "design.json")
 
 
 def test_score_free_guard_rejects_nested_outcomes():
@@ -245,7 +316,8 @@ def test_score_free_guard_rejects_nested_outcomes():
             "selector_dose": {"policy_action_changes": 2}}
     assert C.score_free_result_problems(safe) == []
     for key in ("estimands", "raw_attacker_points", "attacker_points",
-                "level_change", "cards", "records"):
+                "level_change", "cards", "records", "reward", "scores",
+                "winner_index"):
         changed = copy.deepcopy(safe)
         changed["nested"] = {key: []}
         assert C.score_free_result_problems(changed)
@@ -260,27 +332,39 @@ def test_measurement_discards_outcomes_and_projects_exact_band_mix(monkeypatch):
     monkeypatch.setattr(C.AGG, "_validate_source_binding",
                         lambda *_args, **_kwargs: None)
     monkeypatch.setattr(C.DESIGN, "build_design", lambda _path: _design())
-    ticks = iter((0.0, 1.0, 1.0, 3.0, 3.0, 4.0,
-                  4.0, 6.0, 6.0, 7.0, 7.0, 9.0))
+    monkeypatch.setattr(C, "require_qualified_runtime", lambda: _runtime())
+    ticks = iter(float(value) for value in range(32))
     result = C.measure_preflight(
-        _packet(rows), Path("unused"), clock=lambda: next(ticks))
-    assert result["records_discarded"] == 6
+        _packet(rows), Path("unused"), clock=lambda: next(ticks),
+        parallel=False)
+    assert result["records_discarded"] == 16
     assert result["selector_dose"] == {
         "current_raw_winner_evictions": 0,
-        "policy_action_changes": 6,
-        "retained_raw_winner_insertions": 6,
+        "policy_action_changes": 16,
+        "retained_raw_winner_insertions": 16,
     }
     assert result["projection"]["normalized_seconds_per_state_by_band"] == {
-        "early": 1.5, "late": 1.5, "mid": 1.5}
+        "early": 1.0, "late": 1.0, "mid": 1.0}
     assert result["projection"]["fleet_hours"] == pytest.approx(
-        1_024 * 1.5 * 2 / 3_600)
+        1_024 * 1.0 * 2 / 3_600)
     assert result["projection"]["max_lane_wall_hours"] == pytest.approx(
-        64 * 1.5 * 2 / 3_600)
+        64 * 1.0 * 2 / 3_600)
     assert result["criteria"]["all"] is True
     assert result["status"] == "AUTHORIZE_CAPACITY_RESULT_REVIEW"
     assert result["scored_packet_design_authorized"] is False
     assert result["scored_evaluation_authorized"] is False
-    assert C.score_free_result_problems(result) == []
+    assert C.score_free_result_problems(result, design=_design()) == []
+    changed = copy.deepcopy(result)
+    changed["harmless_new_field"] = 0
+    assert "capacity result top-level field population" \
+        in C.score_free_result_problems(changed, design=_design())
+    changed = copy.deepcopy(result)
+    changed["projection"]["fleet_hours"] *= 0.5
+    changed["criteria"]["fleet_hours_le_cap"] = True
+    changed["criteria"]["all"] = all(
+        item for name, item in changed["criteria"].items() if name != "all")
+    assert "capacity projection math" \
+        in C.score_free_result_problems(changed, design=_design())
 
 
 def test_measurement_refuses_report_or_incomplete_work(monkeypatch):
@@ -299,10 +383,12 @@ def test_measurement_refuses_report_or_incomplete_work(monkeypatch):
     monkeypatch.setattr(C.AGG, "_validate_result", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(C.AGG, "_validate_source_binding",
                         lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(C, "require_qualified_runtime", lambda: _runtime())
     ticks = iter((0.0, 1.0))
     with pytest.raises(C.CapacityPreflightRefused, match="exact work drift"):
         C.measure_preflight(
-            _packet(rows), Path("unused"), clock=lambda: next(ticks))
+            _packet(rows), Path("unused"), clock=lambda: next(ticks),
+            parallel=False)
 
 
 def test_packet_review_authorizes_only_one_score_free_preflight():
@@ -330,6 +416,13 @@ def test_missing_packet_review_refuses_before_admission_or_gameplay(
     monkeypatch.setattr(C, "load_packet", lambda *_args, **_kwargs: packet)
     monkeypatch.setattr(C, "require_qualified_runtime",
                         lambda: packet["runtime"])
+    monkeypatch.setattr(C, "require_systemd_scope", lambda: "f" * 32)
+    design_review.write_bytes(C._canonical_marker(
+        C.DESIGN_REVIEW_PREFIX, C.expected_design_review_claim()))
+    monkeypatch.setattr(
+        C, "canonical_review_record",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            C.CapacityPreflightRefused("review provenance is missing")))
     called = False
 
     def measure(*_args, **_kwargs):
@@ -342,9 +435,9 @@ def test_missing_packet_review_refuses_before_admission_or_gameplay(
         expected_git="a" * 40, population="population.json",
         design="design.json", packet="packet.json",
         expected_packet_sha256="d" * 64,
-        packet_review_record=str(tmp_path / "missing.md"),
+        packet_review_commit="e" * 40,
         admission=str(admission), out=str(result))
-    with pytest.raises(C.CapacityPreflightRefused, match="review is missing"):
+    with pytest.raises(C.CapacityPreflightRefused, match="provenance"):
         C.run_command(args)
     assert not admission.exists()
     assert called is False
@@ -364,10 +457,18 @@ def test_admission_is_consumed_before_measurement(tmp_path, monkeypatch):
     monkeypatch.setattr(C, "load_packet", lambda *_args, **_kwargs: packet)
     monkeypatch.setattr(C, "require_qualified_runtime",
                         lambda: packet["runtime"])
+    monkeypatch.setattr(C, "require_systemd_scope", lambda: "f" * 32)
+    design_review.write_bytes(C._canonical_marker(
+        C.DESIGN_REVIEW_PREFIX, C.expected_design_review_claim()))
     claim = C.packet_review_claim(
         expected_git="a" * 40, packet_sha256="d" * 64,
         packet_internal_sha256=packet["internal_sha256"])
-    review = _review(tmp_path / "review.md", C.PACKET_REVIEW_PREFIX, claim)
+    review_marker = C._canonical_marker(C.PACKET_REVIEW_PREFIX, claim)
+    monkeypatch.setattr(C, "canonical_review_record", lambda **_kwargs: ({
+        "commit": "e" * 40,
+        "marker_sha256": C.sha256_file_from_bytes(review_marker),
+        "claim": claim,
+    }, review_marker))
 
     def fail_after_admission(*_args, **_kwargs):
         assert admission.exists()
@@ -378,7 +479,7 @@ def test_admission_is_consumed_before_measurement(tmp_path, monkeypatch):
         expected_git="a" * 40, population="population.json",
         design="design.json", packet="packet.json",
         expected_packet_sha256="d" * 64,
-        packet_review_record=str(review), admission=str(admission),
+        packet_review_commit="e" * 40, admission=str(admission),
         out=str(result))
     with pytest.raises(C.CapacityPreflightRefused, match="synthetic"):
         C.run_command(args)

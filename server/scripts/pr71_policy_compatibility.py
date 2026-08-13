@@ -90,10 +90,10 @@ PARITY_RUNTIME = {
     ),
     "elf_text_section_bytes": 108_462,
     "base_elf_text_sha256": (
-        "5f53fdd25a7d801b003bddb5dd9170daa44eabde276efda5c2a1254b8344fa5"
+        "5f53fdd25a7d801b003bddb5dd9170daa44aeabde276efda5c2a1254b8344fa5"
     ),
     "current_elf_text_sha256": (
-        "5f53fdd25a7d801b003bddb5dd9170daa44eabde276efda5c2a1254b8344fa5"
+        "5f53fdd25a7d801b003bddb5dd9170daa44aeabde276efda5c2a1254b8344fa5"
     ),
     "architecture_normalization": "SHA256(ELF .text section bytes)",
 }

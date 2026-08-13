@@ -9,7 +9,7 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 13:06 EDT from canonical main `6a21adc`.
+Last reconciled: 2026-08-13 13:13 EDT from canonical main `5aef594`.
 
 ## Live fleet
 
@@ -37,11 +37,14 @@ Last reconciled: 2026-08-13 13:06 EDT from canonical main `6a21adc`.
    suites are 103/103, including a live-host unit-name→InvocationID witness.
    V2 PASS may authorize packet freeze only; the packet still needs separate
    review before one capacity run.
-3. **S6 scored-DEV controller PR #94.** Exact head `3ee600b` implements the
-   reviewed PR #91 design; 88 focused design/scorer/controller tests pass and
-   implementation review is pending. PASS may authorize packet freeze only;
-   packet review, one-shot admission and later score-free terminal review remain
-   separate. No S6 scored run is currently authorized.
+3. **S6 scored-DEV controller PR #94.** Current head `a8d5b24` implements the
+   reviewed PR #91 design and repairs the same backwards systemd invocation
+   check before packet freeze. Its local controller suite is 29/29 and the
+   fresh strict x86 design/scorer/controller suite is 91/91, including a
+   live-host unit-name→InvocationID witness. Implementation review is pending.
+   PASS may authorize packet freeze only; packet review, one-shot admission and
+   later score-free terminal review remain separate. No S6 scored run is
+   currently authorized.
 4. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
    remains separate compatibility evidence for PR #71 and awaits exact-head
    external review. It grants no strength or deployment authority.

@@ -14,6 +14,8 @@
     "design_sha256": "4f45f4c45f6a169f54f6fdcf39090a508f4ef4636601222e1817efda7ae9fca6",
     "external_on_host_validator_sha256": "7256f99680378d47416b8ace6bc14104c4bc452f12835879394fe82dde267428",
     "external_on_host_validation": "VERIFIED_ON_HOST",
+    "committed_generic_validator_sha256": "ad81380d1e1bb391838ddd1764b24a3abea18b3fa34d4f8bc4c41301338a9c93",
+    "committed_generic_validator_validation": "VERIFIED_ON_HOST",
     "bundled_validator_limitation": "the frozen generic validator assumed six pairs; the source-pinned external validator removed that assumption and independently revalidated all three records",
     "raw_artifacts_preserved": true,
     "separate_normalized_arm_artifacts_preserved": true

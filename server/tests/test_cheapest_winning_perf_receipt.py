@@ -90,6 +90,11 @@ def test_one_counter_composition_receipt_reconciles():
     assert record["durable_evidence"]["raw_artifacts_preserved"] is True
     assert record["durable_evidence"]["external_on_host_validation"] == \
         "VERIFIED_ON_HOST"
+    assert record["durable_evidence"][
+        "committed_generic_validator_sha256"] == \
+        "ad81380d1e1bb391838ddd1764b24a3abea18b3fa34d4f8bc4c41301338a9c93"
+    assert record["durable_evidence"][
+        "committed_generic_validator_validation"] == "VERIFIED_ON_HOST"
     rows, design = record["records"], record["design"]
     assert len(rows) == design["pairs"] == 3
     assert [row["seed"] for row in rows] == design["seeds"]

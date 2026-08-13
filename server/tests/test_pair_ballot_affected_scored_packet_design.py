@@ -220,14 +220,25 @@ def test_review_commit_must_preserve_parent_ledger_bytes(
             expected=DESIGN._capacity_result_claim())
 
 
-def test_canonical_tip_must_preserve_review_commit_ledger_bytes(monkeypatch):
+def test_canonical_rotation_archive_must_preserve_review_commit_ledger_bytes(
+        monkeypatch):
     original = DESIGN._git_bytes
-    canonical_args = (
+    canonical = original(
         "show", f"{DESIGN.CANONICAL_REVIEW_REF}:{DESIGN.REVIEW_LEDGER}")
+    rotation_lines = [
+        line for line in canonical.splitlines(keepends=True)
+        if line.startswith(DESIGN.REVIEW_ROTATION_PREFIX.encode())
+    ]
+    assert len(rotation_lines) == 1
+    rotation = json.loads(
+        rotation_lines[0][len(DESIGN.REVIEW_ROTATION_PREFIX):])
+    archive_args = (
+        "show",
+        f"{DESIGN.CANONICAL_REVIEW_REF}:{rotation['archive_path']}")
 
     def rewritten(*args):
         value = original(*args)
-        if args == canonical_args:
+        if args == archive_args:
             replacement = b"X" if value[100:101] != b"X" else b"Y"
             return value[:100] + replacement + value[101:]
         return value
@@ -235,7 +246,7 @@ def test_canonical_tip_must_preserve_review_commit_ledger_bytes(monkeypatch):
     monkeypatch.setattr(DESIGN, "_git_bytes", rewritten)
     with pytest.raises(
             DESIGN.ScoredPacketDesignRefused,
-            match="rewrite lacks one rotation record"):
+            match="rotation archive drift"):
         DESIGN._canonical_review_record(
             commit=DESIGN.CAPACITY_RESULT_REVIEW_COMMIT,
             parent=DESIGN.CAPACITY_RESULT_REVIEW_PARENT,

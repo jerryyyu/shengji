@@ -5837,3 +5837,100 @@ review. REPORT stays closed.
 PAIR_BALLOT_AFFECTED_ARTIFACT_EVALUATOR_V1_REVIEW {"aggregate_reconstruction_verified":true,"aggregate_sha256":"a1908a32853ea62e0c775dd1975b7b7ad7316f662dc19b8fe108b25282099ba0","capacity_packet_design_authorized":true,"capture_source_sha256":"e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce","dev_calib_only":true,"equal_width_complete_policy_verified":true,"evaluator_sha256":"2d4adfd06d0de7517bb190ebf5d190bd95f848d9ab25fb5eb9a29f27b3cd7488","formal_artifact_sha256":"6e62bf4bd43558da6233118fea13d49cd6f90ed4d2632b628b56ccd0f470d4d7","formal_population_sha256":"6a3f8d9d5317db642b6fae75a042c26a3b1085f6275e48d233b7b851ac2339ae","formal_population_verified":true,"fresh_common_report_verified":true,"git":"22ddfa3728f1d66cac22e98d64725184dd71efd6","population_content_open_authorized":true,"production_deployment":false,"production_promotion":false,"report_refusal_verified":true,"report_worlds":300,"rows":1536,"schema":"pair-ballot-affected-artifact-evaluator-review-v1","scored_evaluation_authorized":false,"strength_claim":false,"training_authorized":false,"verdict":"PASS"}
 
 ---
+## Claude — 2026-08-12 22:10 EDT — ⛔ HOLD: incremental attacker-gated pair-cap (PR #69, `bb4e492`); the parent-matched claim is not witnessed
+
+Review per the 19:50 request. **No marker is appended.** The implementation is
+sound and I could reproduce every hash, but the one property this PR exists to
+establish — that the control arm is *parent-matched to v1* rather than
+champion-matched — is not distinguishable by any test in the repo.
+
+**What verifies cleanly:**
+
+- Head `bb4e492774df4157678f49b9e93b64584bad2a1c` with parent
+  `8b83cec46e59f8d53ca9f8c6b95fffac862fdffc`, exactly the PR #62 head I signed.
+  Policy `75ab11a4…` and test `eee3c3fc…` both hash as claimed; two files
+  touched. 34 focused tests pass under `SHENGJI_FAST=1` (91 across the whole
+  pair suite).
+- **Component work is identical by construction.** `_lead` calls
+  `self._v1.decide_play` and `self._v3.decide_play` on *every* rollout lead in
+  both arms; only `apply_incremental` selects which action is returned.
+  `_validate` then reconciles `lead_calls` across outer/v1/v3, requires
+  `triggers == opportunities == v1_v3_action_differences == cap.triggers`,
+  requires `v3.triggers == v1.triggers + cap.triggers`, and pins
+  `changes`/`matched_parent_noops` to the arm.
+- **The attacker gate holds:** `defender_triggers` must be 0 in both the outer
+  and cap counters, and a defender-side change raises.
+- **Root isolation holds.** The wrapper replaces only `rollout_policy`; the
+  factory refuses a non-heuristic base or any S3 feature, and root search,
+  ballot and RNG come from the unmodified champion class.
+- **Telemetry is truthful:** it declares `components_are_counterfactual_
+  analyses: true`, and the outer `changes`/`matched_parent_noops` counters are
+  the only ones bound to the action actually returned.
+
+**Falsification battery — four of the five requested seams behave as claimed:**
+
+| seam | result |
+|---|---|
+| 1. parent arm skips v3 analysis | **caught** (3 tests) |
+| 3. attacker role gate removed | **caught** (3 tests) |
+| 4. RNG identity perturbed on the returned bot | **caught** (1 test) |
+| 5. nested telemetry labels components as counterfactual | verified by reading |
+| **2. parent arm returns champion instead of v1** | **SURVIVED — all 34 tests pass** |
+
+**The blocker.** Replacing the parent arm's `result = v1_play` with
+`HeuristicBot._lead(self, rnd, seat)` — i.e. reintroducing exactly the
+champion-matched control this PR was written to eliminate — leaves the entire
+suite green.
+
+The cause is a fixture that is degenerate in the operative dimension. The
+parent-arm return at line 197 is only reachable inside `if differs:`, so the
+only state that exercises it is `_pair_cap_only_state()`. Measured at that
+state:
+
+- v1 action `['SA']`, plain heuristic action `['SA']` — **identical**;
+- `v1_pair_aware.triggers == 0` at the witness, i.e. v1 contributes nothing
+  there.
+
+So the assertion `parent_null.decide_play(...) == ["SA"]` is satisfied equally
+by a v1-matched control and by a champion-matched one. The second test
+(`test_defender_declines_incremental_rule_but_preserves_v1`) does build a state
+where v1 genuinely fires (`DQ,DQ`), but it asserts `v3_pair_cap.triggers == 0`
+there, so v1 and v3 agree and the code returns at the earlier
+`if not differs` branch — line 197 is never reached. Each fixture supplies one
+half of what is needed and neither supplies both.
+
+This is not a hypothetical: v1's action differs from the plain heuristic action
+on **31 of 742** rollout leads I sampled across 40 deals (4.2%), so the two
+controls are materially different policies.
+
+**Smallest exact repair.** Add one witness in which the attacker pair-cap fires
+*and* v1's pair-aware rule fires, then assert that the parent arm returns v1's
+live action and that this action differs from `HeuristicBot`'s. Concretely, in
+`test_pair_cap_incremental_rollout.py`:
+
+```python
+expected_v1 = PairAwareRolloutPolicy(apply_treatment=True).decide_play(
+    copy.deepcopy(rnd), 0)
+assert parent_null.decide_play(copy.deepcopy(rnd), 0) == expected_v1
+assert expected_v1 != HeuristicBot().decide_play(copy.deepcopy(rnd), 0)
+telemetry = parent_null.pair_cap_incremental_telemetry()["counters"]
+assert telemetry["v1_pair_aware"]["triggers"] >= 1   # v1 is not degenerate
+assert telemetry["v3_pair_cap"]["triggers"] == 1     # line 197 is reached
+```
+
+The two existing fixtures already contain both halves — the pair-cap trigger
+and a firing v1 boss-pair rule — so combining them into a single state should
+be mechanical. The last two assertions are the important ones: without them a
+future fixture can silently go degenerate again.
+
+I would sign `component_work_identical`, `attacker_only_incremental_dose`,
+`root_ballot_unchanged`, `public_information_only` and
+`literal_champion_separate_arm_required` today. I will not sign
+`parent_v1_preserved:true` on a suite that cannot tell a v1-matched parent from
+a champion-matched one, because that is precisely the defect being fixed and it
+would be free to regress unnoticed.
+
+Nothing else blocks: no run, packet or capacity authority is affected, and the
+in-flight pair-aware screen is untouched by this PR.
+
+---

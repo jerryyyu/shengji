@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-13 04:31 EDT
+## Current synthesis — 2026-08-13 06:41 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -55,8 +55,11 @@ This section keeps only the research conclusions that change what we try next.
   reusable diagnostic source. Any recovery needs a newly authorized namespace.
   None is yet a new strength claim; S3a's broader bury recipe remains closed.
 - **Pair understanding:** the broad continuation screen is running on Air.
-  The attacker-only incremental semantics passed external review and await a
-  capacity decision. Pair-ballot PR #72's defender-only, cross-Python-stable
+  Draft PR #85 exact head `59119b6` is a CI-green, 27-test checkpointed
+  successor design for terminal timeout contingency only; it grants no run,
+  retry, extension or result authority. The attacker-only incremental
+  semantics passed external review and await a capacity decision. Pair-ballot
+  PR #72's defender-only, cross-Python-stable
   capacity design PASSed external review. Claude then PASSed PR #79's repaired
   16-lane score-free preflight code at canonical `1cf9521`. The complete
   reviewed population and 16 receipts were copied to the performance host,
@@ -64,21 +67,23 @@ This section keeps only the research conclusions that change what we try next.
   `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Claude's
   packet-specific PASS landed at `88866f25`; the one score-free preflight then
   completed in 157.535 seconds wall time with no surviving worker or partial.
-  Result `544499d1…` / internal `ca36d1af…` awaits independent review through
-  read-only PR #84 exact head `a9a619f17ab80d09083542982f385a2341b0597a`;
-  its final self-audit supersession at canonical `5939ef9` snapshots five
-  dependency names before imports and refuses same-path forged preloads.
-  Prevalence remains
-  SmartBot-trajectory rather than champion-natural dose, so no scored run or
-  whole-round claim is authorized.
+  Final read-only PR #84 exact head
+  `f571146f631914eb6899ce435ef466d70d9f9330` then passed Claude's exact CLI
+  reproduction and four falsifications under raw marker
+  `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical
+  `16af447`. Prevalence remains SmartBot-trajectory rather than
+  champion-natural dose, so only scored-packet design is open; freeze,
+  execution, scoring, REPORT and every strength or deployment claim remain
+  closed.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
   Stage-C model all selected none under different gates. This does not close
   RL. It says the next experiment must change data, objective, credit or model
   use—not merely train longer on the same target.
 - **Human evidence:** `human_v8` contains 2,830 plays and 45 buries. H0's one
   counterfactual run completed 555/557 rows and correctly published no
-  aggregate. Score-free PR #82 now reproduces the underlying geometry—12 legal
-  live choices versus three generic analyzer choices on each refused throw—and
+  aggregate. Score-free PR #82 exact head `a498bf5` passes 30 focused plus 64
+  adjacent tests and CI; it reproduces the underlying geometry—12 legal live
+  choices versus three generic analyzer choices on each refused throw—and
   replaces cardinality with direct legality without reopening scores. Human
   actions remain candidate and diagnosis sources; ultimate people strength
   requires the separate blinded HUMAN-C1 ladder.
@@ -414,14 +419,14 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   `be21b547…f439` and packet `e054c5e5…e492` / internal `25b1888c…a14b5` were
   frozen there. Packet review PASSed at `88866f25`; the sole score-free
   preflight completed and produced result `544499d1…` / internal `ca36d1af…`.
-  The result-review request is canonical `fe3a59d`, and read-only PR #84 exact
-  head `a9a619f17ab80d09083542982f385a2341b0597a` awaits external review after
-  its final self-audit supersession at canonical `5939ef9`. A PASS can
-  authorize scored-packet design only. SmartBot-trajectory prevalence still
-  must be replaced by
-  champion-natural dose before whole-round inference. The parent stack also
-  waits for a narrow exact-head merge review of PR #55 `24b421d`; no scored
-  run is authorized.
+  Final read-only PR #84 exact head `f571146f631914eb6899ce435ef466d70d9f9330`
+  passed the exact result-review CLI and four falsifications; raw marker
+  `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` is canonical at
+  `16af447`. That PASS opens scored-packet design only. SmartBot-trajectory
+  prevalence still must be replaced by champion-natural dose before
+  whole-round inference. The parent stack also waits for a narrow exact-head
+  merge review of PR #55 `24b421d`; packet freeze, scored execution and every
+  downstream claim remain unauthorized.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
   retry. S3b-v2 is terminal after its first four-card treatment cluster
   exceeded the frozen cumulative 250k-node budget. Start from naturally
@@ -560,10 +565,11 @@ outcomes were opened. Because the two failures were exactly complex throw
 states, dropping them and averaging the other 555 could bias the answer toward
 easier decisions. The runtime therefore withheld every aggregate utility. The
 exact stream is closed; it neither supports a human/V11 Teacher rule nor proves
-those proposals are weak. Score-free PR #82 `82f19fd` is the bounded repair: it
-reproduces both 12-live/3-analysis geometries, validates the full live menu
-directly through the engine, closes source/refusal schemas, and cannot score,
-read old utilities, train, launch or promote. It still needs adversarial review
+those proposals are weak. Score-free PR #82 exact head `a498bf5` is the bounded
+repair: it reproduces both 12-live/3-analysis geometries, validates the full
+live menu directly through the engine, closes source/refusal schemas, passes
+30 focused plus 64 adjacent tests and CI, and cannot score, read old utilities,
+train, launch or promote. It still needs adversarial review
 before any separately authorized opened-DEV prevalidation. A future scored H0
 successor must validate all candidate geometry first and use a new
 population/world stream; this scientific direction is not closed.

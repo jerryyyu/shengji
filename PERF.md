@@ -191,7 +191,7 @@ one-off experiment controllers.
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; native-lead measurement is complete and awaiting review in PR #83. Pair V3's sole score-free capacity preflight also completed here; its result awaits review and grants no scored authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; native-lead measurement is complete and awaiting review in PR #83. Pair V3's sole score-free capacity result PASSed at canonical `16af447`; scored-packet design alone is open and the host has no scored execution or strength authority |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -218,9 +218,10 @@ one-off experiment controllers.
 6. Reconsider incremental Memory only if a Memory-aware rollout policy becomes
    active; it is not a current-champion hotspot.
 7. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
-   physically and logically separate. Pair V3's score-free capacity run is
-   complete there, but result review may authorize scored-packet design only;
-   it is not permission to freeze or run scored strength work.
+   physically and logically separate. Pair V3's score-free capacity result
+   passed external review at canonical `16af447`, opening scored-packet design
+   only. It is not permission to freeze, run or score strength work, open
+   REPORT, train, promote or deploy.
 
 ## Fast-path evidence and boundaries
 

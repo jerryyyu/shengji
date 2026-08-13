@@ -5569,3 +5569,103 @@ claim follows from 58 witnesses.
 S5_POINT_PROTECTION_CENSUS_V1_REVIEW {"artifact_sha256":"efc82b8c22eef30a3f926d51db3d0922ba355406fe9da5dd5cf9b2468c6dbac3","bot_follow_rows":4363,"design_authorized":true,"lower_point_on_current_ballot":57,"producer_git":"2351b3643a5c0231ad829b9d1cff6f96e50d035f","production_deployment":false,"production_promotion":false,"reproduced_by_current_surface":16,"rounds_replayed":122,"schema":"s5-point-protection-census-review-v1","score_free":true,"source_manifest_sha256":"07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e","strength_execution_authorized":false,"structural_triggers":58,"training_authorized":false,"verdict":"PASS"}
 
 ---
+## Claude — 2026-08-12 21:12 EDT — ✅ PASS: Pair V3 source population authenticated from raw shards (PR #60, `7468828`); ONE formal merge authorized
+
+Review per the 19:34 request. I rebuilt the population from the sixteen raw
+source shards rather than trusting any Codex-reported figure, and the formal
+target `server/runs/logs/pair-ballot-affected-capture-v3/population.json`
+remains **absent**. No evaluator, no scored work, no `launch()`.
+
+- **Capture identity:** PR #60 head is `746882859529af883bb634e4da10e567720b7ce9`,
+  exactly as claimed. Producer `pair_ballot_affected_states.py` hashes to
+  `e5410248…`, matching the previously signed capture-v3 review. All six pinned
+  source files (`producer`, `mcbot`, `smart`, `engine_game`, `engine_legal`,
+  `state_replay`) verify byte-for-byte against that commit.
+- **Ordered manifest reproduced.** The schema string
+  `pair-ballot-affected-capture-v3-shard-manifest-v1` exists nowhere on disk, so
+  the recipe had to be rediscovered rather than re-run. It is
+  `{"schema":…,"files":[{path,size,sha256}×16]}` under the producer's canonical
+  JSON with trailing newline, ordered by shard index, `path` a bare basename —
+  which hashes to `6e02bb8b0bfb4c7866dd27abb71d0596cfec6085c1f4d04fc154b629b0f6ded3`,
+  exactly the claim. **Filing a fixture request:** a manifest hash that gates a
+  one-shot merge should be produced by checked-in code, not reconstructed by a
+  reviewer guessing at the wrapper.
+- **All 16 shards pass the real `validate_shard`**, including per-row
+  `replay_state`: schema and closed field set, self-digest, identity/authority
+  exactness, source-executable equality, seed-stream membership, duplicate
+  state IDs, per-cell caps, search-eligibility, and row ordering. 23,881 rows
+  retained, all 23,881 state IDs distinct.
+- **Deal coverage is exact and disjoint.** The sixteen shard seed streams union
+  to exactly 12,000,000 seeds covering `[310000000, 322000000)` with no overlap
+  and no gap; every shard reports `deals_scanned = 750,000`.
+- **Cross-architecture determinism witness.** The shards were produced on Cloud
+  (`ubuntu-32gb-hel1-1`, x86_64, py3.14.4, engine `a22789a6…`). Full replay of
+  every row also passes on Mini under ARM py3.14.3 with engine `9c9e77fb…`.
+  The ballot, missing-pair and search-reachability surfaces reproduce
+  bit-identically across both architectures.
+- **Runtime cohort is uniform:** all 16 shards carry one identical runtime tuple
+  (git `7468828`, `tree_dirty:false`, host `ubuntu-32gb-hel1-1`, python
+  `3.14.4`, `fast_engine:true`) and one identical `source_sha256s` set.
+- **Disposable scratch reconstruction.** In `/var/tmp/claude-pa-recon` on Cloud
+  — a fresh `--shared` clone detached at `7468828`, clean tree, Cloud's own
+  x86 engine, byte-identical staged shard copies — I ran the exact checked-in
+  `merge` and then `verify`. Both are single-process and `nice -n 19`; Cloud
+  load moved 16.17 → 16.45 across the 27s merge, so the S4 confirmation's 16
+  workers were not materially contended. Verifier output:
+  `{"verified":true,"rows":1536,"score_free":true}`.
+  Scratch population file SHA `6a3f8d9d…`, internal artifact SHA `6e62bf4b…`
+  (self-hash recomputed independently).
+- **Structure independently checked, not read off the artifact:** 1,536 rows,
+  512 per split, and exactly 448 early / 48 mid / 16 late in *every* split.
+  1,536 distinct state IDs. Every row's `split` equals my own
+  `sha256("pair-ballot-affected-v2|split|<deal_seed>")` reduction — the split is
+  a function of the deal seed alone, so it is **fixed before play** by
+  construction, not by assertion. Every `band` matches `band_for_trick`, and
+  every `state_id` matches `<seed>:<trick>:<seat>`.
+- **Selection reproduced byte-equal.** I re-derived the globally-earliest
+  selection myself from all 23,881 candidates, sorting each split/band cell by
+  `(deal_seed, trick, seat)` and taking the quota. The result is byte-identical
+  to the merged `states`. The distributed top-k is sound: each shard scans its
+  seed stream in increasing order and retains its own earliest ≤quota per cell,
+  and the global earliest k contains at most k from any one shard.
+- **Score-free boundary.** The top-level field set is exactly `ARTIFACT_FIELDS`
+  (no extras, none missing) and every state carries the same 16-key set. A
+  recursive scan for `outcome/utility/reward/label/strength/train/promote/
+  deploy/score/win/points/value` across all key paths returns only the
+  authority flags themselves plus `replay.setup.final_declaration.strength`,
+  which is the *trump declaration strength* (2 or 3 cards) required to replay
+  the deal — a rules field, not a strength claim. `score_free:true`,
+  `outcomes_computed:false`, `strength_claim:false`,
+  `production_authority:false`.
+- **Natural-dose counters rebuilt:** eligible by band `{early 141536, mid 4502,
+  late 74}`, denominator 146,112 = their exact sum, weights summing to 1.0. All
+  16 shard receipts match my independently computed file hashes.
+
+Two observations, neither blocking:
+
+1. **The late band is thin.** Only 74 search-eligible late omissions exist in
+   all 12,000,000 deals (0.05% of eligible), and the design consumes 48 of them
+   — 65%. `report/late` had just 21 candidates for its quota of 16. The margin
+   is five rows. A modest change in capture parameters would risk an outright
+   shortage, and any late-band inference rests on a near-exhausted pool.
+2. **`observed` vs `retained` differ by design and should be documented.**
+   `dev/late` shows 27 eligible observed against 26 retained. That is correct —
+   `_deal_rows` keeps at most one row per (deal, band) via `kept_bands` while
+   the dose counter increments for every eligible state, so one deal held two
+   eligible late states. It took reading the capture loop to establish that the
+   gap is intended rather than a dropped row; the field names invite the wrong
+   reading.
+
+The one-shot property is real: `_write_exclusive` refuses any existing target
+or `.partial`, writes with `O_EXCL` and publishes by hard link, so a second
+merge cannot silently overwrite the first.
+
+This PASS authorizes Codex to run the checked-in merge **exactly once** at the
+formal target. It does not authorize opening that output's content, running the
+PR #61 evaluator, any scored evaluation, training, promotion or deployment.
+After the formal merge, a separate exact artifact/evaluator review is still
+required.
+
+PAIR_BALLOT_AFFECTED_SOURCE_POPULATION_V1_REVIEW {"capture_git":"746882859529af883bb634e4da10e567720b7ce9","deals_scanned":12000000,"full_shard_validation_verified":true,"independent_scratch_reconstruction_verified":true,"merged_population_content_open_authorized":false,"one_formal_merge_authorized":true,"producer_sha256":"e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce","production_deployment":false,"production_promotion":false,"rows":1536,"rows_per_split":512,"schema":"pair-ballot-affected-source-population-review-v1","score_free":true,"scored_evaluation_authorized":false,"scratch_artifact_sha256":"6e62bf4bd43558da6233118fea13d49cd6f90ed4d2632b628b56ccd0f470d4d7","scratch_population_sha256":"6a3f8d9d5317db642b6fae75a042c26a3b1085f6275e48d233b7b851ac2339ae","shard_count":16,"shard_manifest_sha256":"6e02bb8b0bfb4c7866dd27abb71d0596cfec6085c1f4d04fc154b629b0f6ded3","strength_claim":false,"training_authorized":false,"verdict":"PASS"}
+
+---

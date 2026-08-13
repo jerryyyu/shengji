@@ -9,12 +9,12 @@ normalising the binary-derived ballot field, and replaying two synthetic,
 score-free champion decisions against a byte-pinned cross-architecture
 fixture.
 
-The ``run`` command is a narrow adapter around an *independent clean worktree*
-at the frozen S5 commit.  It requires both the original S5 marker and a new
-x86-portability marker, fixes the output and one-shot admission paths, and
-then calls the unchanged reviewed producer.  A failed admitted run consumes
-the slot: this module grants no retry.  It grants no strength, training,
-promotion, or deployment authority.
+The original ``run`` command admitted one partial attempt from a marker
+template in its own review request.  That attempt consumed its one-shot slot.
+This repaired revision is therefore validation-only: it authenticates a
+distinct reviewer attestation and the historical x86 binding, but can never
+consume an admission or invoke the producer.  A future retry, if any, requires
+a new reviewed controller, admission, and output namespace.
 """
 from __future__ import annotations
 
@@ -30,7 +30,6 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Mapping
 
 
@@ -42,6 +41,25 @@ SCHEMA = "s5-final-champion-x86-portability-v1"
 FIXTURE_SCHEMA = "s5-final-champion-portable-fixture-v1"
 REVIEW_SCHEMA = "s5-final-champion-x86-portability-review-v1"
 REVIEW_PREFIX = "S5_FINAL_CHAMPION_X86_PORTABILITY_V1_REVIEW "
+ATTESTATION_SCHEMA = "s5-final-champion-x86-portability-reviewer-attestation-v1"
+ATTESTATION_PREFIX = \
+    "S5_FINAL_CHAMPION_X86_PORTABILITY_REVIEWER_ATTESTATION_V1 "
+
+# The request template first appeared in this canonical-main commit.  A valid
+# attestation must be introduced by a later, independently attributable
+# reviewer commit; merely copying the request payload can never satisfy it.
+REQUEST_RECORD_GIT = "d8211a8dcb3593bc1c55f3824eeef6f812771319"
+INCIDENT_RECORD_GIT = "f26ed204a372215989e958e00474ae90685a3bdb"
+LEGACY_PASS_RECORD_GIT = "40b84da9058f05770061abea0d36d631b679859b"
+REQUEST_TEMPLATE_DEMOTION_GIT = \
+    "d46dc24cbe36846aaf3de4c332cdbb96ea36e30c"
+REVIEWER_NAME = "Claude"
+REVIEWER_EMAIL = "noreply@anthropic.com"
+REVIEWER_TRAILER_PREFIX = "Claude-Session: https://claude.ai/code/session_"
+LEGACY_WRAPPER_GIT = "ff9bed51fce729f23205167df105d7eadd938e84"
+LEGACY_WRAPPER_SHA256 = (
+    "91519061cafeab14611d1ccb500ef0fea737cd46269b42194cbb44e40e85ba3a"
+)
 
 BASE_GIT = "f8083cf0ce9d575f875e601f1e8862280f587e0d"
 BASE_SCRIPT_RELATIVE = Path("server/scripts/s5_final_champion_replay.py")
@@ -501,10 +519,12 @@ def require_x86_parent(s5) -> dict:
 
 
 def review_claim(*, wrapper_git: str) -> dict:
+    if wrapper_git != LEGACY_WRAPPER_GIT:
+        raise PortabilityRefused("legacy review claim requires exact PR74 head")
     return {
         "schema": REVIEW_SCHEMA,
         "wrapper_git": wrapper_git,
-        "wrapper_sha256": sha256_file(SCRIPT),
+        "wrapper_sha256": LEGACY_WRAPPER_SHA256,
         "base_git": BASE_GIT,
         "base_script_sha256": BASE_SCRIPT_SHA256,
         "base_design_sha256": BASE_DESIGN_SHA256,
@@ -533,22 +553,197 @@ def review_claim(*, wrapper_git: str) -> dict:
     }
 
 
-def require_review_marker(path: Path, *, wrapper_git: str) -> dict:
+def review_claim_sha256() -> str:
+    return sha256_bytes(canonical_json(
+        review_claim(wrapper_git=LEGACY_WRAPPER_GIT)))
+
+
+def reviewer_attestation(*, wrapper_git: str) -> dict:
+    return {
+        "schema": ATTESTATION_SCHEMA,
+        "request_record_git": REQUEST_RECORD_GIT,
+        "incident_record_git": INCIDENT_RECORD_GIT,
+        "legacy_pass_record_git": LEGACY_PASS_RECORD_GIT,
+        "request_template_demotion_git": REQUEST_TEMPLATE_DEMOTION_GIT,
+        "legacy_wrapper_git": LEGACY_WRAPPER_GIT,
+        "legacy_review_claim_sha256": review_claim_sha256(),
+        "repair_git": wrapper_git,
+        "repair_script_sha256": sha256_file(SCRIPT),
+        "reviewer_name": REVIEWER_NAME,
+        "reviewer_email": REVIEWER_EMAIL,
+        "partial_attempt_acknowledged": True,
+        "old_admission_spent": True,
+        "retry_authorized": False,
+        "diagnostic_execution_authorized": False,
+        "verdict": "PASS_PORTABILITY_ONLY",
+    }
+
+
+def _canonical_commit_problems(repo: Path, *, main_ref: str,
+                               record_relative: Path,
+                               attestation_line: str) -> list[str]:
+    """Bind the attestation to one independently authored main commit."""
+    problems = []
+    try:
+        commits = _git(
+            repo, "log", main_ref, "--format=%H", "--fixed-strings",
+            f"-S{attestation_line}", "--", record_relative.as_posix(),
+        ).splitlines()
+        if len(commits) != 1:
+            return ["attestation has no unique introducing main commit"]
+        commit = commits[0]
+        parents = _git(repo, "show", "-s", "--format=%P", commit).split()
+        name = _git(repo, "show", "-s", "--format=%an", commit)
+        email = _git(repo, "show", "-s", "--format=%ae", commit)
+        message = _git(repo, "show", "-s", "--format=%B", commit)
+        changed = _git(
+            repo, "diff-tree", "--no-commit-id", "--name-only", "-r",
+            commit).splitlines()
+        committed = _git(repo, "show", f"{commit}:{record_relative}").splitlines()
+        required_ancestors = (REQUEST_RECORD_GIT, INCIDENT_RECORD_GIT,
+                              LEGACY_PASS_RECORD_GIT,
+                              REQUEST_TEMPLATE_DEMOTION_GIT)
+        ancestors = [subprocess.run(
+            ["git", "merge-base", "--is-ancestor", required, commit],
+            cwd=repo, capture_output=True).returncode == 0
+            for required in required_ancestors]
+        on_main = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", commit, main_ref],
+            cwd=repo, capture_output=True).returncode == 0
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [f"cannot authenticate reviewer commit: {type(exc).__name__}"]
+    if len(parents) != 1:
+        problems.append("reviewer commit must have exactly one parent")
+    if not all(ancestors) or commit in required_ancestors or not on_main:
+        problems.append("reviewer commit does not descend from incident chain")
+    if name != REVIEWER_NAME or email != REVIEWER_EMAIL:
+        problems.append("reviewer commit author provenance drift")
+    if not any(line.startswith(REVIEWER_TRAILER_PREFIX)
+               for line in message.splitlines()):
+        problems.append("reviewer commit session provenance drift")
+    if changed != [record_relative.as_posix()]:
+        problems.append("reviewer commit changed files beyond canonical ledger")
+    if committed.count(attestation_line) != 1:
+        problems.append("reviewer commit does not introduce one exact attestation")
+    if parents:
+        try:
+            parent_lines = _git(
+                repo, "show", f"{parents[0]}:{record_relative}").splitlines()
+        except (OSError, subprocess.SubprocessError):
+            problems.append("cannot authenticate reviewer parent ledger")
+        else:
+            if parent_lines.count(attestation_line) != 0:
+                problems.append(
+                    "attestation was already present before reviewer commit")
+    return problems
+
+
+def _legacy_marker_problems(repo: Path, *, main_ref: str,
+                            record_relative: Path,
+                            request_line: str) -> list[str]:
+    """Recognise the request and late legacy PASS, never either as approval."""
+    problems = []
+    try:
+        request_lines = _git(
+            repo, "show", f"{REQUEST_RECORD_GIT}:{record_relative}").splitlines()
+        legacy_lines = _git(
+            repo, "show", f"{LEGACY_PASS_RECORD_GIT}:{record_relative}").splitlines()
+        demoted_lines = _git(
+            repo, "show",
+            f"{REQUEST_TEMPLATE_DEMOTION_GIT}:{record_relative}").splitlines()
+        current_lines = _git(
+            repo, "show", f"{main_ref}:{record_relative}").splitlines()
+        history = _git(
+            repo, "rev-list", "--first-parent", "--reverse", main_ref,
+            "--", record_relative.as_posix(),
+        ).splitlines()
+        changes = []
+        prior_count = 0
+        for historical_commit in history:
+            historical_lines = _git(
+                repo, "show",
+                f"{historical_commit}:{record_relative}").splitlines()
+            current_count = historical_lines.count(request_line)
+            if current_count != prior_count:
+                changes.append(historical_commit)
+            prior_count = current_count
+        incident_ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", INCIDENT_RECORD_GIT,
+             LEGACY_PASS_RECORD_GIT], cwd=repo, capture_output=True,
+        ).returncode == 0
+        demotion_ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", LEGACY_PASS_RECORD_GIT,
+             REQUEST_TEMPLATE_DEMOTION_GIT], cwd=repo, capture_output=True,
+        ).returncode == 0
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [f"cannot authenticate legacy marker chain: {type(exc).__name__}"]
+    if request_lines.count(request_line) != 1:
+        problems.append("request commit does not contain one exact template")
+    if legacy_lines.count(request_line) != 2:
+        problems.append("legacy PASS commit does not contain the known duplicate")
+    if demoted_lines.count(request_line) != 1:
+        problems.append("request demotion did not leave one legacy PASS marker")
+    if current_lines.count(request_line) != 1:
+        problems.append("unexpected duplicate/removal of legacy request marker")
+    if set(changes) != {REQUEST_RECORD_GIT, LEGACY_PASS_RECORD_GIT,
+                        REQUEST_TEMPLATE_DEMOTION_GIT}:
+        problems.append("legacy marker changed outside the pinned incident chain")
+    if not incident_ancestor:
+        problems.append("legacy PASS does not descend from incident record")
+    if not demotion_ancestor:
+        problems.append("request demotion does not descend from legacy PASS")
+    return problems
+
+
+def require_review_marker(path: Path, *, wrapper_git: str,
+                          canonical_repo: Path = REPO,
+                          record_relative: Path = Path("HANDOFF_REVIEW.md"),
+                          main_ref: str = "origin/main") -> dict:
     try:
         lines = path.read_text().splitlines()
     except OSError as exc:
         raise PortabilityRefused("review record is unreadable") from exc
-    matches = [line for line in lines if line.startswith(REVIEW_PREFIX)]
+    requests = [line for line in lines if line.startswith(REVIEW_PREFIX)]
+    if len(requests) != 1:
+        raise PortabilityRefused(
+            "exactly one demoted-history legacy PASS marker is required")
+    try:
+        request = json.loads(requests[0][len(REVIEW_PREFIX):])
+    except (TypeError, ValueError) as exc:
+        raise PortabilityRefused("S5 x86 request marker is invalid JSON") from exc
+    if request != review_claim(wrapper_git=LEGACY_WRAPPER_GIT):
+        raise PortabilityRefused("S5 x86 request marker differs from contract")
+    matches = [line for line in lines if line.startswith(ATTESTATION_PREFIX)]
     if len(matches) != 1:
         raise PortabilityRefused(
-            "exactly one raw S5 x86 portability marker is required")
+            "exactly one reviewer attestation is required; request is not PASS")
     try:
-        marker = json.loads(matches[0][len(REVIEW_PREFIX):])
+        attestation = json.loads(matches[0][len(ATTESTATION_PREFIX):])
     except (TypeError, ValueError) as exc:
-        raise PortabilityRefused("S5 x86 review marker is invalid JSON") from exc
-    if marker != review_claim(wrapper_git=wrapper_git):
-        raise PortabilityRefused("S5 x86 review marker differs from contract")
-    return marker
+        raise PortabilityRefused("reviewer attestation is invalid JSON") from exc
+    expected = reviewer_attestation(wrapper_git=wrapper_git)
+    if attestation != expected:
+        raise PortabilityRefused("reviewer attestation differs from contract")
+    canonical_repo = canonical_repo.resolve()
+    try:
+        canonical_bytes = subprocess.run(
+            ["git", "show", f"{main_ref}:{record_relative.as_posix()}"],
+            cwd=canonical_repo, check=True, capture_output=True,
+        ).stdout
+        if path.read_bytes() != canonical_bytes:
+            raise PortabilityRefused(
+                "review record is not byte-identical to canonical main")
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise PortabilityRefused("cannot resolve canonical review ledger") from exc
+    problems = _legacy_marker_problems(
+        canonical_repo, main_ref=main_ref, record_relative=record_relative,
+        request_line=requests[0])
+    problems += _canonical_commit_problems(
+        canonical_repo, main_ref=main_ref, record_relative=record_relative,
+        attestation_line=matches[0])
+    if problems:
+        raise PortabilityRefused("; ".join(problems))
+    return attestation
 
 
 def _require_wrapper_head(expected_git: str) -> None:
@@ -563,79 +758,23 @@ def _require_wrapper_head(expected_git: str) -> None:
         raise PortabilityRefused("wrapper worktree has tracked changes")
 
 
-def _consume_admission(base: Path, *, wrapper_git: str,
-                       marker: Mapping[str, object]) -> Path:
+def canonical_admission_path(base: Path) -> Path:
+    """Return the sole historical admission path that is now spent."""
     base = base.resolve()
     path = (base / ADMISSION_RELATIVE).resolve()
     if not _is_under(path, base):
         raise PortabilityRefused("S5 x86 admission path escaped base")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "schema": "s5-final-champion-x86-execution-admission-v1",
-        "base_git": BASE_GIT,
-        "wrapper_git": wrapper_git,
-        "review_marker_sha256": sha256_bytes(
-            (REVIEW_PREFIX + json.dumps(
-                marker, sort_keys=True, separators=(",", ":")) + "\n").encode()),
-        "retry_authorized": False,
-        "strength_execution_authorized": False,
-        "production_deployment": False,
-    }
-    try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except FileExistsError as exc:
-        raise PortabilityRefused("S5 x86 one-shot admission already consumed") \
-            from exc
-    with os.fdopen(fd, "wb") as handle:
-        handle.write(canonical_json(payload))
-        handle.flush()
-        os.fsync(handle.fileno())
     return path
 
 
 def run(args) -> dict:
-    _require_wrapper_head(args.expected_wrapper_git)
-    base = validate_base_worktree(Path(args.base_root))
-    s5 = _load_base_s5(base)
-    design = s5.build_design(Path(args.census))
-    if design.get("design_sha256") != BASE_DESIGN_SHA256:
-        raise PortabilityRefused("frozen S5 design identity drift")
-    review_record = Path(args.review_record).resolve()
-    s5._census_review_marker(review_record)
-    s5._review_marker(
-        review_record, expected_git=BASE_GIT, design=design)
-    marker = require_review_marker(
-        review_record, wrapper_git=args.expected_wrapper_git)
-    binding = require_x86_parent(s5)
-    out = Path(args.out).resolve()
-    canonical_out = (base / CANONICAL_OUTPUT_RELATIVE).resolve()
-    if out != canonical_out or not _is_under(out, base):
-        raise PortabilityRefused("S5 x86 output is not canonical")
-    if out.exists() or out.is_symlink():
-        raise PortabilityRefused("S5 x86 output already exists")
-
-    # The reviewed producer calls the historical ARM-only entry point.  Replace
-    # that one call in-memory only after the separate x86 parent has passed;
-    # all S5 source/design/review checks and the producer's own HEAD check stay
-    # unchanged and run from the detached f8083cf worktree.
-    def compatible_parent() -> dict:
-        reopened = require_x86_parent(s5)
-        if reopened != binding:
-            raise PortabilityRefused("x86 binding changed during admission")
-        return dict(reopened["historical_parent"])
-
-    s5.LIVE_PARENT.require_portable_live_champion_parent = compatible_parent
-    _consume_admission(
-        base, wrapper_git=args.expected_wrapper_git, marker=marker)
-    forwarded = SimpleNamespace(
-        census=args.census,
-        source_manifest=args.source_manifest,
-        source_root=args.source_root,
-        review_record=str(review_record),
-        expected_git=BASE_GIT,
-        out=str(out),
-    )
-    return s5.run(forwarded)
+    # The original x86 admission was consumed by the 2026-08-13 partial
+    # self-admission incident.  Refuse before any review, source, result, or
+    # admission access so this revision cannot accidentally become retry
+    # authority.
+    raise PortabilityRefused(
+        "S5 x86 diagnostic is permanently held after spent partial attempt; "
+        "this revision grants no retry")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -650,6 +789,8 @@ def parser() -> argparse.ArgumentParser:
     verify.add_argument("--expected-wrapper-git", required=True)
     claim = commands.add_parser("review-claim")
     claim.add_argument("--wrapper-git", required=True)
+    attestation = commands.add_parser("reviewer-attestation")
+    attestation.add_argument("--wrapper-git", required=True)
     execute = commands.add_parser("run")
     execute.add_argument("--base-root", required=True)
     execute.add_argument("--census", required=True)
@@ -667,6 +808,15 @@ def main(argv: list[str] | None = None) -> None:
         print(canonical_json(review_claim(
             wrapper_git=args.wrapper_git)).decode(), end="")
         return
+    if args.command == "reviewer-attestation":
+        print(ATTESTATION_PREFIX + canonical_json(reviewer_attestation(
+            wrapper_git=args.wrapper_git)).decode(), end="")
+        return
+    if args.command == "run":
+        # Dispatch the permanently retired execution surface before opening a
+        # worktree, review ledger, source, output, or admission path.
+        run(args)
+        raise AssertionError("retired S5 run unexpectedly returned")
     _require_wrapper_head(args.expected_wrapper_git)
     base = validate_base_worktree(Path(args.base_root))
     s5 = _load_base_s5(base)
@@ -685,6 +835,7 @@ def main(argv: list[str] | None = None) -> None:
         record = Path(args.review_record).resolve()
         s5._census_review_marker(record)
         s5._review_marker(record, expected_git=BASE_GIT, design=design)
+        require_review_marker(record, wrapper_git=args.expected_wrapper_git)
         binding = require_x86_parent(s5)
         print(json.dumps({
             "status": "S5_X86_PORTABILITY_VERIFIED",
@@ -697,13 +848,7 @@ def main(argv: list[str] | None = None) -> None:
             "strength_claim": False,
         }, sort_keys=True))
         return
-    result = run(args)
-    print(json.dumps({
-        "status": result["decision"],
-        "result_sha256": sha256_file(Path(args.out).resolve()),
-        "diagnostic_executed": True,
-        "strength_claim": False,
-    }, sort_keys=True))
+    raise AssertionError(f"unhandled command: {args.command}")
 
 
 if __name__ == "__main__":

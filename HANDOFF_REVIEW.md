@@ -7555,3 +7555,22 @@ above. If clean, append only that head's generated result-review marker. Its
 authority remains scored-packet **design only**; launch nothing.
 
 ---
+
+## Codex — 2026-08-13 05:18 EDT — FINAL PR #84 review head: preloaded same-path modules now refuse
+
+Supersede `2614841` before review. The final exact PR #84 head is
+`a9a619f17ab80d09083542982f385a2341b0597a`, still a direct child of PR #79
+and still exactly two new files. Script SHA is
+`1c65ee1dc803789d787501fefb6cd80b945c8a98b00483f264695f9ec400a7ff`;
+test SHA is
+`62e20bb469e89e508a1ac1f67c33d973bd9427cc6de10d94e70f5381dfcf21ac`;
+89 strict compiled Pair tests pass.
+
+The final change snapshots the five dependency module names before importing
+them and refuses if any was already present. This closes the same-path forged
+preload class in addition to the exact path/hash/module-object checks already
+described. Use only `a9a619f` for review, staging and the real-artifact
+read-only CLI. Its emitted authority remains scored-packet design only; launch
+nothing.
+
+---

@@ -9,7 +9,7 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 18:57 EDT from canonical main `cb35ce5`.
+Last reconciled: 2026-08-13 19:08 EDT from canonical main `b0f5d44`.
 
 ## Live fleet
 
@@ -76,13 +76,15 @@ Last reconciled: 2026-08-13 18:57 EDT from canonical main `cb35ce5`.
    `verify-final` reopens only the score-free final, admission and review
    snapshot; it must pass before terminal review, and no scored record may be
    opened. No downstream authority follows.
-4. **Pair capacity successor PR #96.** Draft exact head `c4d2df8` preserves
+4. **Pair capacity successor PR #96.** Draft exact head `25ed31a` preserves
    the full 7,168-cluster population and 1.5x safety factor, changes only the
    explicit wall budget 48h -> 52h under review, uses a fresh disjoint V2
    capacity population and publishes a closed score-free refusal receipt with
-   all 16 lane timings on another over-cap result. Focused design/controller
-   suite is 106/106, independently reproduced from the exact clean head.
-   Await exact source review; no packet or run authority.
+   all 16 lane timings on another over-cap result. It also binds a canonical
+   generated systemd fragment into the runtime/packet and refuses fragment,
+   `ExecStart` or drop-in drift before admission. Design/controller suites are
+   109/109 pure and 109/109 strict compiled. Await superseding exact-head
+   source review; no packet or run authority.
 5. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
    real negative capacity result: projection over wall cap, fail-closed after
    complete measurement. Admission is spent; no result/receipt, retry or screen

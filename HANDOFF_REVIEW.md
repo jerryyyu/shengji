@@ -7844,3 +7844,130 @@ authority. T4 remains live at `matched_null 300/512` with `supervisor-final.json
 absent; I opened no outcome bytes.
 
 ---
+## Claude — 2026-08-13 07:39 EDT — ✅ PASS (design only): Pair V3 scored packet design (PR #86, `a43a17c`); future controller-design review only
+
+Reviewed the design-only specification per the adversarial request. Two files,
++217/−2, stacked on the PR #84 verifier I passed at 06:37. **This authorizes
+only a future controller-design review** — never packet implementation, freeze,
+run, evidence access, scoring, REPORT, aggregation, retry, strength, training,
+promotion or deployment.
+
+**The five-marker chain is exactly my own attestations.** It authenticates
+`PAIR_BALLOT_AFFECTED_SOURCE_POPULATION_V1_REVIEW`,
+`…ARTIFACT_EVALUATOR_V1_REVIEW`, `…CAPACITY_DESIGN_V1_REVIEW`,
+`…CAPACITY_PREFLIGHT_PACKET_V1_REVIEW` and
+`…CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` — the five markers I signed between
+21:12 and 06:37. That is a real chain of independently produced attestations,
+not a restatement.
+
+**And the authentication is live, not decorative.** Corrupting a single field of
+one expected claim makes `build_design()` refuse at import with *"review
+2dc95529 marker is not exactly once on canonical main"* — naming my own
+source-population PASS commit. It reads the canonical ledger and compares.
+
+**Cross-runtime determinism reproduced independently.** Python **3.11.14**,
+**3.12.12** and **3.14.3** each emit the identical canonical design digest
+`6fb5b5eb3938856234ef362b…` with identical internal `0e909f6c…`, matching the
+claim exactly.
+
+**No execution surface.** The only `subprocess` use is read-only git —
+`rev-parse`, `status`, and `merge-base --is-ancestor` for canonical-ref checks.
+No write mode, `O_CREAT`, `Popen`, `mkdir`, `rename` or `unlink` anywhere. The
+authority block sets `population_open_authorized_now`,
+`capacity_result_open_authorized_now`, `controller_implementation_authorized`,
+`scored_packet_implementation_authorized`, `scored_packet_freeze_authorized`,
+`scored_packet_run_authorized`, `scored_evaluation_authorized`,
+`scored_output_access_authorized` and `aggregation_authorized` all false.
+
+**Tests:** 73 focused pass; 177 pass across the whole Pair capacity chain
+(Codex's 134 is a narrower selection, consistent).
+
+**Mutation battery:**
+
+| mutation | result |
+|---|---|
+| corrupt one expected marker claim | **caught** (73 errors) |
+| change `MAX_WORK_PER_STATE` 2,940 → 2,939 | **caught** (59 errors) |
+| neuter the canonical-ref ancestor check | survived — fixture request |
+
+The survivor: replacing `merge-base --is-ancestor commit canonical_ref` with a
+trivially-true comparison leaves the suite green, so nothing pins that a cited
+review commit is actually *on* canonical main. It is partly backstopped — the
+marker-exactly-once check reads canonical main's ledger content and fired in the
+first mutation — but the ancestry layer itself has no negative fixture.
+Requesting one.
+
+**One correction of my own:** I first recorded this mutation as surviving when
+in fact my anchored `sed` had silently failed to apply, so the "mutant" was the
+original file. I caught it because the internal digest was unchanged, which it
+could not have been. Re-applied properly, the claim corruption is caught. The
+lesson is the one from earlier tonight: confirm the mutation actually changed
+the bytes before believing a survival.
+
+The recorded limitations read honestly — the SmartBot trajectory dose is
+declared, and a separately reviewed exact-champion natural role/band census is
+required before any whole-game or value-per-compute claim.
+
+---
+## Claude — 2026-08-13 07:42 EDT — verdicts: PR #78 ✅, PR #82 ✅ (one fixture request), PR #85 ✅, PR #55 ✅ merge-ready
+
+Four bounded reviews at the exact heads requested. All four heads match; every
+stated no-run boundary is preserved; I launched nothing and opened no sealed
+outcome bytes.
+
+**PR #78 `8ab5db26` — opened-DEV bury/S6 capacity diagnostic. ✅ PASS.**
+Two files, +81/−11. **27 tests pass.** Zero write, launch, `O_CREAT`, `Popen`
+or `subprocess` tokens in the script. Authority records
+`outcomes_published: false`, `source_outcomes_read: false`,
+`strength_claim: false`, promotion and deployment false. Flipping
+`strength_claim` to true is **caught by 3 tests**, so the authority boundary is
+pinned rather than merely declared.
+
+**PR #82 `a498bf5e` — score-free H0 legality/geometry repair. ✅ PASS with one
+fixture request.** Two files, +183/−11. **30 tests pass.** Zero write or launch
+tokens. Authority records `score_free: true` with `scoring_authorized`,
+`outcomes_computed`, `labels_authorized`, `report_population_authorized`,
+`confirmatory_inference_authorized`, promotion and deployment all false.
+
+*The fixture request:* flipping `scoring_authorized` to true leaves all 30
+tests green. That constant appears exactly once — in the `AUTHORITY` dict at
+line 47 — and is consumed nowhere and asserted by no test, so it is a published
+authority declaration that nothing pins. Its siblings in PR #78 and PR #85 are
+both caught by tests. One equality assertion over the whole `AUTHORITY` mapping
+would close this and every field beside it at once. Not a blocker: the module
+computes no scores and has no execution surface, so the risk is a wrong
+*declaration* propagating downstream, not a wrong action.
+
+**PR #85 `111314f0` — checkpointed Pair screen contingency design. ✅ PASS.**
+Two files, +116/−13. **40 tests pass.** The two `launch` tokens I scanned are
+both docstrings *stating the module has none* — "This module deliberately has no
+gameplay or launch command" and "this function cannot launch or read a shard".
+Authority records `resume_execution_authorized`, `screen_execution_authorized`,
+`capacity_execution_authorized`, `aggregate_execution_authorized` and
+`current_namespace_retry_or_extension_authorized` all false. Flipping
+`resume_execution_authorized` is **caught**. Design only; it authorizes no
+resume, screen, capacity or aggregate execution, and no retry or extension of
+the current namespace.
+
+**PR #55 `24b421d` — narrow merge-readiness. ✅ READY at this exact head.**
+The one-commit delta over `5696144` is exactly what was described: two files,
++20/−0, adding the preserved census fixture and its regression. The fixture
+hashes to
+`557df62773ce6e2f37b1a4af36ea40b7b11b030b359c892ceda6429a293c61f3`, matching
+the pinned value exactly. The added test calls the real
+`REVIEW.load_and_verify` and asserts the complete expected mapping — including
+`score_free: true`, `strength_claim: false`, and promotion/deployment false —
+rather than merely checking that it returns. **9 tests pass.** No runtime or
+authority change.
+
+On that basis the already-reviewed clean stack **#55 → #60 `7468828` → #61
+`22ddfa3` → #72 `373de84`** is merge-ready in that order at those exact heads.
+Each link was independently reviewed: #60/#61 source population and evaluator,
+#72 capacity design on the corrected marker. Merging in order preserves the
+ancestry each later review depended on; merging out of order would invalidate
+the stacked-base reasoning in those verdicts.
+
+None of these four grants execution, scoring, REPORT, aggregation, retry,
+strength, training, promotion or deployment authority.
+
+---

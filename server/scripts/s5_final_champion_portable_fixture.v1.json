@@ -1,0 +1,141 @@
+{
+  "authority": {
+    "production_deployment": false,
+    "round_outcomes_read": false,
+    "score_free": true,
+    "sealed_s5_evidence_read": false,
+    "strength_claim": false,
+    "synthetic_states_only": true,
+    "utilities_read": false
+  },
+  "base_git": "f8083cf0ce9d575f875e601f1e8862280f587e0d",
+  "cases": [
+    {
+      "candidates": [
+        [
+          "DA"
+        ],
+        [
+          "S10",
+          "S10"
+        ],
+        [
+          "SK"
+        ],
+        [
+          "D6",
+          "D6"
+        ],
+        [
+          "C9",
+          "C9"
+        ],
+        [
+          "C10"
+        ],
+        [
+          "H2",
+          "H2"
+        ],
+        [
+          "HA",
+          "HA"
+        ],
+        [
+          "BJ"
+        ],
+        [
+          "S8"
+        ],
+        [
+          "D6"
+        ],
+        [
+          "C9"
+        ],
+        [
+          "HQ"
+        ]
+      ],
+      "champion_seed": 7001,
+      "expected_banker": 3,
+      "follow_position": 1,
+      "game_seed": 2,
+      "name": "lead",
+      "played": [
+        "S10",
+        "S10"
+      ],
+      "played_index": 1,
+      "raw_winner_index": 1,
+      "reason": "report_lcb_override",
+      "sampler_counters": {
+        "accepted_worlds": 330,
+        "failed_worlds": 0,
+        "impossible_worlds": 0,
+        "rejected_worlds": 0,
+        "sample_attempts": 330
+      },
+      "state_sha256": "93b8975a92e85ec9812ff0a055ad80d995e5f881103dff00c4f086e3b956c390",
+      "target_seat": 3,
+      "work": {
+        "complete": true,
+        "report_budget": 600,
+        "report_rollouts": 600,
+        "selection_budget": 390,
+        "selection_rollouts": 390,
+        "total_budget": 990,
+        "total_rollouts": 990
+      }
+    },
+    {
+      "candidates": [
+        [
+          "D8"
+        ],
+        [
+          "D10"
+        ],
+        [
+          "D5"
+        ],
+        [
+          "DJ"
+        ]
+      ],
+      "champion_seed": 7002,
+      "expected_banker": 3,
+      "follow_position": 2,
+      "game_seed": 2,
+      "name": "follow",
+      "played": [
+        "D8"
+      ],
+      "played_index": 0,
+      "raw_winner_index": 0,
+      "reason": "report_lcb_below_min_gain",
+      "sampler_counters": {
+        "accepted_worlds": 330,
+        "failed_worlds": 0,
+        "impossible_worlds": 0,
+        "rejected_worlds": 0,
+        "sample_attempts": 330
+      },
+      "state_sha256": "7219d7979495e78882754d952ae9714812f0389ed7657d451b79d6ac89ee248a",
+      "target_seat": 0,
+      "work": {
+        "complete": true,
+        "report_budget": 600,
+        "report_rollouts": 600,
+        "selection_budget": 120,
+        "selection_rollouts": 120,
+        "total_budget": 720,
+        "total_rollouts": 720
+      }
+    }
+  ],
+  "cases_sha256": "b484f1829f7dda8be8af88dbe0b4c7169d252a4a931283c0c5fb71987eecef23",
+  "champion": "mc-s0-report-lcb",
+  "fixture_sha256": "8e83e9595942e6fbb92118afe562bd71dd0290a32d3a210718c778e8f3ac4e50",
+  "schema": "s5-final-champion-portable-fixture-v1"
+}

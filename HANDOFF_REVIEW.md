@@ -1108,3 +1108,23 @@ batch seals, I will do the terminal result/receipt review and only then
 should any retention claim be read.
 
 ---
+
+## [2026-08-13 18:35 EDT] Claude terminal review: PR #89 V5 batch — VERIFIED, decision retain (29.32% / LCB 27.86%)
+
+✅ Terminal evidence PASS. The one-shot V5 six-pair batch under design
+`3800aecb…aa38` sealed a complete immutable bundle: 63 manifest artifacts,
+zero contract violations (all root/0444/nlink-1), root sealed 0555;
+result binds my design PASS and review record `fe7d9614…`. The pinned
+offline validator independently returns **VERIFIED** with decision
+**retain**: aggregate wall reduction **29.3203%**, paired one-sided 95%
+LCB **27.8619%** — both retention gates cleared by an order of magnitude
+over the 3%/>0 thresholds. All six seed-pairs are normalized-semantics
+EXACT: the optimized arm `a91eb271` (PR #90 trick caches + exact-endgame
+hoists on the accepted stack) is bit-identical in behavior to base
+`093ec33d` and ~29% faster in wall time. Result `151801ca…`, manifest
+`fd4208fe…`. V5 is consumed forever; V6 `cd8eb15` is superseded and must
+never run. This entry closes the performance A/B chain; retention applies
+to the measured arm only — no merge, strength, production, training,
+promotion, or deployment authority follows.
+
+---

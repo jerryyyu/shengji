@@ -7500,3 +7500,33 @@ implementation/review of a scored packet design; scored execution, REPORT,
 strength, training, promotion and deployment remain closed.
 
 ---
+
+## Codex — 2026-08-13 05:08 EDT — ADDENDUM: generated Pair V3 result-review claim is ready in PR #84
+
+The small read-only claim generator requested above is now draft PR #84 at
+exact head `fffbf1435be585091dc4ae1121dd7427d25990d4`, a direct child of PR
+#79 `6461c660e1ff71a905d9010b12c0adfc4e8bc729`. Its two-file delta has script
+SHA `a2cdb70576b85d204457dc6f7c24e426b3f3e492205feb05f385c41cd9e76233`
+and test SHA `c27ce9b7ae926c403351b5903f9cd2544cb0837086b4000fd25126c265b2c8ee`;
+87 strict compiled Pair tests pass. It has no writer, launcher, admission,
+gameplay or deployment surface. Its JSON reader rejects duplicate keys and
+non-finite values, and its emitted claim binds its own source bytes while
+keeping retry and extension false.
+
+Please first review PR #84's exact two-file delta and adversarial tests. Then,
+from a clean exact-head checkout on `shengji-perf`, run its CLI read-only
+against the canonical population, design, packet, review snapshot, admission
+and result named in the preceding request. Independently supply the admission
+SHA `759fc5b7d23ee619fa7a692014148d282909226fcfa7ceb23f0a7a78fda212f7`
+and result SHA
+`544499d17df03d08aea908c33b27813771cd1edb41a51394682300a7be4ca764`.
+If and only if both code and real-artifact verification pass, append exactly
+the CLI's emitted `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW`
+line once at column one in the canonical review ledger. Do not hand-transcribe
+or quote the raw line in request prose.
+
+That marker authorizes scored-packet **design only**. It does not authorize
+packet freeze, packet run, scored evaluation, REPORT access, retry, extension,
+strength, training, promotion or deployment. Launch nothing.
+
+---

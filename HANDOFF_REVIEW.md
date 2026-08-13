@@ -6108,3 +6108,72 @@ regression protection for a lane that is explicitly meant to be *resumed*
 later, which is exactly when a silent derivation or material drift would hurt.
 
 ---
+## Claude — 2026-08-12 23:09 EDT — ✅ PASS: S6-aware post-bury continuation arms (PR #54, `959cdbd`)
+
+Reviewed against its stacked base `fd7b434` (PR #52 head, passed at 23:06): two
+commits, +541/−13, one new module `shengji/ai/throw_rollout.py`. Prose only —
+no marker requested, no run, strength, promotion or deployment authority.
+32 focused tests pass under `SHENGJI_FAST=1`.
+
+**Continuation semantics.** Three bounded modes. `all_boss` leads an S6 bundle
+only when every component is currently boss under public memory and no ruff
+warning is raised; `boss_near` additionally admits the source's bounded
+near-boss component and is documented as the deliberately more aggressive
+exploratory arm; `baseline` returns the literal unmodified policy object.
+
+**Candidate zero is preserved.** `_lead` computes `super()._lead(...)` first in
+every mode and returns it unchanged whenever no candidate qualifies or the
+qualified selection matches it. The bury/lead ballot construction is untouched.
+
+**Equal work.** Because the baseline lead is computed first in all three modes,
+the arms pay identical baseline work; the S6 arms add only public-information
+sourcing, never extra rollouts or a second search.
+
+**Deterministic.** No RNG anywhere in the policy. Selection is
+`min(qualified)` over a total-order key — certainty first, then more
+cards/components shed, then own points exposed — so ties are stable and
+explicit rather than incidental.
+
+**Public-information bound, verified not assumed.** The policy reads the acting
+hand, public trick history and (for the banker) its own kitty via
+`Memory(..., own_kitty=True)`. I audited the sourcing module directly:
+`throw_sourcing.py` contains exactly **one** hand access, `rnd.hands[seat]` —
+the acting seat's own. No sampled opponent hand is ever inspected to choose an
+action, even though the determinized rollout clone has them populated.
+
+**Hidden-ruff pricing is split honestly.** The source declines any candidate
+carrying a *public* ruff warning; an unobserved void can still exist, and the
+determinized engine — not this source — prices that hidden risk during the
+rollout. That is the correct division and it is stated in the module docstring
+rather than left implicit.
+
+**No recursive MC.** The module imports zero MC machinery (`make_bot`/`MCBot`
+references: 0); it is a `HeuristicBot` subclass over the reviewed S6 sourcing.
+The journal record contract independently asserts
+`recursive_mc_continuation is False`.
+
+**Mode/dose journal binding.** The run manifest carries `continuation_mode`
+plus `continuation_source_sha256` (a hash of the continuation module itself),
+refuses any mode outside `S6_CONTINUATION_MODES`, and `record_problems` fails
+if a record's `continuation_mode` disagrees with the manifest. The exploration
+schema was correctly bumped `…-exploration-v1` → `-v2` for the changed record
+shape rather than silently reusing v1.
+
+**Mutation battery — 4 of 4 caught:**
+
+| mutation | result |
+|---|---|
+| ruff-risk decline removed | **caught** |
+| `BOSS_NEAR_BUNDLE` source bound removed | **caught** (2 tests) |
+| `all_boss` mode gate removed | **caught** |
+| `baseline` mode returns a policy instead of the literal baseline | **caught** (`test_factory_preserves_literal_baseline_and_registers_no_policy`) |
+
+The last was re-run as a precise single-line mutation after my first attempt
+replaced every `return baseline` site at once; targeting only the factory
+branch still fails, so the literal-baseline property is genuinely pinned.
+
+The hidden-kitty refusal added in PR #51 remains in force on this path. Nothing
+here registers a bot, alters the production rollout policy, or converts a
+sensitivity arm into strength evidence.
+
+---

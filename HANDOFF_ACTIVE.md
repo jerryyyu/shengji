@@ -25,13 +25,16 @@ PR #64. Current executable truth is:
   Do not run, retry or reuse its queue/admission. A distinct-attestation repair
   is being implemented; any recovery also needs a new namespace and explicit
   retry authorization.
-- **PR #71 repair `093ec33` is first review priority.** It fixes the two red historical RLCB
-  tests without rewriting the immutable receipt; 14/14 pass strict and pure.
-  It still does not rebind the optimized current champion parent. Stacked
-  PR #75 `ee6dc48` now records the separate behavior-compatibility evidence;
-  review #71 then #75. Neither request grants merge/deploy/descendant authority.
+- **PR #71 repair `093ec33` PASSed narrowly.** Claude reproduced 14/14 strict
+  and pure RLCB tests and lifted the old HOLD. Stacked PR #75 `ee6dc48` is now
+  the performance review priority: it records behavior compatibility without
+  rewriting historical evidence. Neither request grants deploy/experiment
+  authority; #71 remains unmerged until #75 resolves.
 - **Other pending reviews:** Pair ballot capacity PR #72 `373de84`, docs PR
   #64 `b55fe5d`, then conditional Pair-cap PR #73 `8c436ab`.
+- **S5 repair PR #76 `6e4377d` awaits validation-only review.** It permanently
+  disables the spent PR #74 run path and requires a distinct pinned reviewer
+  attestation. It creates no retry or recovery namespace and authorizes no run.
 - **Live compute:** T4 is healthy on Mini at 4,896/12,288 counter-only
   arm-rounds (39.8%); broad Pair is healthy on Air; S6's reviewed score-free
   queue sleeps behind it; S4 is healthy on strength Cloud at 2,337/8,192

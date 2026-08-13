@@ -180,23 +180,29 @@ hoists. Source/tooling head `fa0f9cf` PASSed external review. The isolated
 percentages above remain useful provenance but must not be added or marketed as
 the combined result.
 
-Several one-shot designs then proved the admission path fail-closed before a
-usable timing result. V4 ran one base child and rejected bytecode created
-because `-I` ignored the environment-only no-bytecode flag. V5 added explicit
-`-B`, received exact source and host-design PASS, and was consumed once, but
-refused before evidence creation or any arm because the actual root-owned
-tooling/runtime files were still mode 0644 while only rehearsal copies were
-immutable. Every spent namespace remains preserved at `NRestarts=0` and never
-retries; none supplies a performance estimate.
+Several one-shot designs proved the admission path fail-closed before the
+usable result. V4 ran one base child and rejected bytecode created because
+`-I` ignored the environment-only no-bytecode flag. V5 added explicit `-B`,
+but its first start refused before namespace creation because the actual
+root-owned inputs were mode 0644 while only rehearsal copies were immutable.
+Claude's canonical `1a72fec` adjudication authenticated the unchanged bytes,
+classified that pre-evidence refusal as unconsumed and authorized only removing
+write bits from the 142 exact inputs plus one start. No source, seed, design,
+threshold or timing choice changed.
 
-PR #89 V6 head `cd8eb15` moves the complete root-owned/non-writable input gate
-into `prepare-design`, so an operationally invalid design cannot reach review.
-It uses a fresh namespace and six seeds disjoint from all 24 spent seeds, and
-passes 52 focused plus 89 pure/89 compiled tests. Source review is pending; a
-PASS may only stage immutable inputs and freeze another host design, which
-still needs exact review before one batch. Retention remains byte-exact
-semantics, at least 3% aggregate wall reduction and a positive paired
-one-sided 95% lower bound.
+That single V5 batch completed successfully under invocation
+`7bae1e195c2247de8beb37efc8c343e0`. Exact base `093ec33` took
+111.464028121 seconds and optimized arm `a91eb271` took 78.782401934 seconds:
+**29.3203% lower aggregate wall time** and 41.4834% higher throughput. All six
+paired reductions were positive; the paired mean was 29.0626% and its
+one-sided t5 95% lower bound was **27.8619%**. Across 355 searched and 77
+legitimate forced/no-search decisions, normalized actions, histories, work,
+RNG and sampler records were byte-identical after removing only the three
+predeclared ballot identity fields. The immutable bundle manifest is
+`fd4208fe…9aae`, result `151801ca…b78f`; its copied frozen validator independently
+returned VERIFIED/retain. Claude reopened all 63 artifacts and terminally
+VERIFIED/retain at canonical `e5818ee`. V5 never runs again, and V6 `cd8eb15`
+is superseded rather than a new benchmark.
 
 ## Gaps (ranked by ROI)
 
@@ -208,27 +214,26 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | measure exact PR #89 base `093ec33` versus composed arm `a91eb271` once under a fresh V6 design after `cd8eb15` review | prior isolated candidates ranged from 4.0% to 10.2%, but only the combined fresh batch can establish retained ROI | V2r1–V5 spent on fail-closed pre-result refusals; V6 source review pending, no combined timing evidence |
+| 2 | Python policy hot loop after compiled phases 0-2 | retain exact PR #89 base `093ec33` versus composed arm `a91eb271`, then extract a production-only merge delta | measured 29.3203% lower aggregate wall; paired one-sided 95% lower bound 27.8619%; exact normalized semantics | immutable V5 batch and terminal external review VERIFIED/retain; no rerun or historical pooling |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle after preserving PR #89 V5's pre-arm refusal; PR #94 packet review is pending. Pair V3's score-free capacity result grants no scored execution or strength authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle after the completed immutable PR #89 V5 batch; PR #94 packet review is pending. Pair V3's score-free capacity result grants no scored execution or strength authority |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. Keep PR #77 retired after missing its 3% gate. Review PR #89 V6, stage the
-   actual source/runtime inputs immutable, then freeze and review one fresh
-   six-pair design for base `093ec33` versus optimized arm `a91eb271`; no
-   retry, tuning or cross-baseline pooling.
-2. Retain the composed stack only if every normalized semantic/work/RNG record
-   is exact, aggregate wall reduction is at least 3% and the paired one-sided
-   lower bound is positive. Otherwise drop it as a unit and profile before
-   choosing a smaller successor.
-3. After exact-stack measurement and review, profile the accepted stack
+1. Keep PR #77 retired after missing its 3% gate. The exact V5 bundle measuring
+   base `093ec33` versus optimized arm `a91eb271` is terminally reviewed;
+   never rerun, tune or pool historical baselines.
+2. Extract only the measured implementation/tests from the experimental
+   harness lineage, rebase that production delta and obtain exact-head merge
+   review. The 29.3203% result is performance evidence, not a strength or
+   deployment authorization.
+3. After terminal review and merge-shape cleanup, profile the accepted stack
    again. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.

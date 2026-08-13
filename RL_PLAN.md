@@ -61,10 +61,13 @@ This section keeps only the research conclusions that change what we try next.
   16-lane score-free preflight code at canonical `1cf9521`. The complete
   reviewed population and 16 receipts were copied to the performance host,
   exact design `be21b547…f439` was rebuilt, and outcome-free packet
-  `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Its packet-specific
-  review is now the gate; no admission, result or preflight exists. Prevalence
-  remains SmartBot-trajectory rather than champion-natural dose, so no scored
-  run or whole-round claim is authorized.
+  `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Claude's
+  packet-specific PASS landed at `88866f25`; the one score-free preflight then
+  completed in 157.535 seconds wall time with no surviving worker or partial.
+  Result `544499d1…` / internal `ca36d1af…` awaits independent review through
+  read-only PR #84 `fffbf14`. Prevalence remains SmartBot-trajectory rather
+  than champion-natural dose, so no scored run or whole-round claim is
+  authorized.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
   Stage-C model all selected none under different gates. This does not close
   RL. It says the next experiment must change data, objective, credit or model
@@ -405,10 +408,12 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   population/weight identity; its external design review PASSed. Claude PASSed
   PR #79 `6461c66` at canonical `1cf9521`. The exact reviewed population plus
   16 source receipts now reside on Performance Cloud; design
-  `be21b547…f439` and packet `e054c5e5…e492` / internal `25b1888c…a14b5` are
-  frozen there. The packet-specific review requested at canonical `023850d`
-  must PASS before one score-free capacity preflight; no admission or result
-  exists. SmartBot-trajectory prevalence still must be replaced by
+  `be21b547…f439` and packet `e054c5e5…e492` / internal `25b1888c…a14b5` were
+  frozen there. Packet review PASSed at `88866f25`; the sole score-free
+  preflight completed and produced result `544499d1…` / internal `ca36d1af…`.
+  The result-review request is canonical `fe3a59d`, and read-only PR #84 exact
+  head `fffbf14` awaits external review. A PASS can authorize scored-packet
+  design only. SmartBot-trajectory prevalence still must be replaced by
   champion-natural dose before whole-round inference. The parent stack also
   waits for a narrow exact-head merge review of PR #55 `24b421d`; no scored
   run is authorized.

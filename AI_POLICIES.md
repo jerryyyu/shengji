@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-13 04:31 EDT
+## Current synthesis — 2026-08-13 05:05 EDT
 
 ### At a glance
 
@@ -58,7 +58,7 @@ does not replace the plain-English strategy.
 | **H0** | **Human moves as proposals** | Add the human move to the search ballot and price it counterfactually rather than treating imitation as truth. | **No scientific result; score-free geometry repair under review** | The only scored run completed 555 of 557 decisions and published no aggregate. PR #82 reproduces why: production legally offered 12 choices on each refused seven-card throw while the generic analyzer exposed only three. | This was a false cardinality assumption, not evidence against human moves. The repair uses direct engine legality and cannot score or reopen old utilities. Review it, prevalidate a new opened-DEV population score-free, then design any new scored comparison separately. |
 | **S6** | **Ballot sourcing** | Keep every legal throw visible, but spend extra search only on the late full-hand boss/near shape that repeatedly showed value. | **Selector passed reused-state screen; fresh preflight queued** | Exact-oracle value was `+0.234` levels (lower bound `+0.100`); the actor-visible selector realized `+0.307` (lower bound `+0.175`) and naturally triggered in 13/512 champion rounds. | Air will run the reviewed four-cluster preflight after its pair screen; a fresh whole-round treatment/null/champion test is still required before any strength claim. |
 | **PAIR-ROLL** | **Pair-aware continuation** | Track which higher pairs have already disappeared so simulations can recognize when a low pair has become boss. | **Whole-game screen running** | Selected-root diagnostics favored the change on most finite-search disagreements, but points and level utility disagreed on one root. | The powered Air screen is the first whole-game strength read. Its result decides whether broad pair awareness, an attacker-only gate, or neither deserves another large run. |
-| **PAIR-BALLOT** | **Retain legal pairs on the ballot** | Keep a legal pair from being crowded out before search can price it. | **Real, rare, defender-heavy gap; execution code passed and frozen capacity packet awaits review** | Census found 15,187 omissions across 18.6M SmartBot-trajectory leads (`0.0816%`), 97.6% early. The 1,024 selected rows are 1,023 defender and one attacker; the defender rows span 990 deal clusters. | Claude PASSed PR #79. Exact design `be21b547…f439` and outcome-free packet `e054c5e5…e492` are frozen on the 16-core performance host, with no admission or run. A packet-specific PASS is required before one score-free capacity preflight. Champion-natural dose is still required before whole-round inference; no scored run is authorized. |
+| **PAIR-BALLOT** | **Retain legal pairs on the ballot** | Keep a legal pair from being crowded out before search can price it. | **Real, rare, defender-heavy gap; score-free capacity passed and awaits review** | Census found 15,187 omissions across 18.6M SmartBot-trajectory leads (`0.0816%`), 97.6% early. The 1,024 selected rows are 1,023 defender and one attacker; the defender rows span 990 deal clusters. | Claude PASSed the frozen packet at `88866f25`; its sole score-free preflight completed in 157.535 seconds wall time with no surviving worker or partial. Result `544499d1…` / internal `ca36d1af…` is awaiting independent review through read-only PR #84. Scored work remains closed; champion-natural dose is still required before whole-round inference. |
 | **S3B / S5** | **Exact endgames and defensive point protection** | Solve genuinely small endgames and stop avoidable point donations only when actor-visible play rules out a useful partner feed. | **Endgame mechanics bounded; S5 old one-shot spent and closed after INC-18** | Four-card exact search exceeded its node limit. S5 replay found 58 strict hindsight triggers; only 16 still match today's rollout, and 57/58 already have a lower-point ballot action. A request-template defect spent the one-shot admission without a result. The validation-only refusal repair PASSed; PRs #74/#76 were then closed, while PR #70 retains the reusable diagnostic source. | Start exact search at real two-card endings. Any S5 recovery needs an explicit new retry decision plus a fresh admission/result namespace; never reuse the spent chain or generalize this to “never discard points.” |
 
 ### How to read a negative result
@@ -286,10 +286,14 @@ current policy conclusions above.
   review. Claude PASSed PR #79 `6461c66` at canonical `1cf9521`. The complete
   reviewed population plus all 16 source receipts were copied to the separate
   performance host, exact design `be21b547…f439` was rebuilt, and outcome-free
-  packet `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Packet review
-  was requested at canonical `023850d`; no admission, preflight or result
-  exists. Conditional utility still cannot become a whole-round claim until
-  champion-natural dose is measured, and no scored run is authorized.
+  packet `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Claude's
+  packet-specific PASS landed at `88866f25`; the single score-free preflight
+  completed in 157.535 seconds wall / 182.430 seconds CPU with a 543.1 MB peak
+  and left no worker or partial. Result `544499d1…` / internal `ca36d1af…` is
+  bound by the review request at canonical `fe3a59d`; read-only verifier PR #84
+  `fffbf14` awaits review. Conditional utility still cannot become a
+  whole-round claim until champion-natural dose is measured, and no scored run
+  is authorized.
 - **Teacher Stage C:** the first 1,536-state, eight-seed generation selected
   none, and its protected play policy selected none on fresh REPORT. At 7,040
   DESIGN/CALIB states, the second generation selected a stable bury-ranking

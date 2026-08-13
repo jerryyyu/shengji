@@ -191,7 +191,7 @@ one-off experiment controllers.
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; native-lead measurement is complete and awaiting review in PR #83. A frozen Pair V3 capacity packet also pins this host, but has no admission or execution authority before packet-specific review |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; native-lead measurement is complete and awaiting review in PR #83. Pair V3's sole score-free capacity preflight also completed here; its result awaits review and grants no scored authority |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -209,14 +209,18 @@ one-off experiment controllers.
    today's compiled globals.
 4. Consider moving int-card conversion to the rollout boundary and compiling
    `Round.play`/trick resolution only if that fresh profile still names them.
+   The first trick-resolution candidate was retired before timing because its
+   frozen normal harness rejected 11/72 forced no-search plays before reaching
+   the head arm. Do not retry that evidence slot; future harnesses must accept
+   normal forced plays while separately pinning that the optimized seam fired.
 5. Add a concurrent-room production capacity test; event-loop isolation alone
    is not a capacity proof.
 6. Reconsider incremental Memory only if a Memory-aware rollout policy becomes
    active; it is not a current-champion hotspot.
 7. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
-   physically and logically separate. Pair V3's frozen packet pins the latter
-   host, but only a packet-specific PASS may authorize its score-free capacity
-   preflight; this is not permission to run scored strength work there.
+   physically and logically separate. Pair V3's score-free capacity run is
+   complete there, but result review may authorize scored-packet design only;
+   it is not permission to freeze or run scored strength work.
 
 ## Fast-path evidence and boundaries
 

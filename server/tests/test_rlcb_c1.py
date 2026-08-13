@@ -30,6 +30,9 @@ FROZEN_POLICY_CONTRACT_SHA256S = {
     ),
 }
 FROZEN_BALLOT_SOURCE_IDENTITY = "mc_candidates@v1[a68f7b8bced6]"
+FROZEN_MCBOT_SOURCE_SHA256 = (
+    "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957"
+)
 
 
 def _counters(*, searches=1, accepted=30, failed=0):
@@ -78,7 +81,9 @@ def test_literal_protocol_is_one_fresh_three_arm_confirmation():
     # transitively in the ballot identity, so both pure and compiled current
     # trees must report drift instead of rewriting historical RLCB-C1.
     assert C1.protocol_problems() == [
-        "freeze receipt policy contract drifted"]
+        "freeze receipt policy contract drifted",
+        "freeze receipt transitive source drifted",
+    ]
     assert C1.selection_identity() == {
         "schema": "rlcb-c1-shard-v1",
         "aggregate_schema": "rlcb-c1-aggregate-v1",
@@ -107,7 +112,12 @@ def test_immutable_freeze_reopens_exact_sources_contracts_and_stream_proof():
     receipt = C1.load_freeze_receipt()
     assert receipt["selection_identity"] == C1.selection_identity()
     assert receipt["selection_digest"] == C1.selection_digest()
-    assert receipt["source_sha256s"] == C1.source_sha256s()
+    current_sources = C1.source_sha256s()
+    assert receipt["source_sha256s"] == {
+        **current_sources,
+        "mcbot": FROZEN_MCBOT_SOURCE_SHA256,
+    }
+    assert current_sources["mcbot"] != FROZEN_MCBOT_SOURCE_SHA256
     assert receipt["policy_contract_sha256s"] == \
         FROZEN_POLICY_CONTRACT_SHA256S
     current_contracts = {
@@ -119,6 +129,14 @@ def test_immutable_freeze_reopens_exact_sources_contracts_and_stream_proof():
     assert len(current_ballots) == 1
     assert FROZEN_BALLOT_SOURCE_IDENTITY not in current_ballots
     assert C1.policy_contract_sha256s() != FROZEN_POLICY_CONTRACT_SHA256S
+    # The source-derived ballot stamp is the only policy-contract field that
+    # moved: normalizing it back to the immutable receipt's value reconstructs
+    # every frozen contract digest exactly.
+    normalized_contract_sha256s = {}
+    for name, contract in current_contracts.items():
+        contract["ballot"] = FROZEN_BALLOT_SOURCE_IDENTITY
+        normalized_contract_sha256s[name] = C1.stable_digest(contract)
+    assert normalized_contract_sha256s == FROZEN_POLICY_CONTRACT_SHA256S
     assert receipt["stream_proof"] == C1.stream_proof()
 
 

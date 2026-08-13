@@ -1,0 +1,168 @@
+{
+  "schema": "prepared-world-perf-exact-head-v1",
+  "claim": "one-time determinization preparation reduces compiled report-LCB whole-round wall time without changing the round transcript or registered work",
+  "claim_boundary": {
+    "performance_only": true,
+    "production_deployment": false,
+    "strength_claim": false
+  },
+  "supersedes": {
+    "status": "retired_mixed_revision",
+    "wall_reduction_percent": 3.369244730856033,
+    "reason": "The first six of those nine pairs used intermediate mcbot source 935d9efd1c539f59ce8d80abaf17ad59f3553a5ac27a1af4f0f4ea6cf80a8c96; only the final three used the final behavior. This receipt contains a fresh run whose six pairs all used the exact final source."
+  },
+  "base": {
+    "git": "093ec33d8d9e137d276b84ffd907ca4417ba44af",
+    "mcbot_sha256": "45a82f44b95d1bce5126c63b1a5af6baaed54270aca9d55677b2e0bbb9c9d957"
+  },
+  "head": {
+    "implementation_git": "fe97a1f341e28d9c890cd46eaaf1a28665756db9",
+    "mcbot_sha256": "f88b7ad9060132b4abfb76000845618aaafe95ee18ad6d548bb7eeb868b18ebe"
+  },
+  "runtime": {
+    "machine": "x86_64",
+    "python": "3.14.4",
+    "fast_engine": true,
+    "fast_engine_elf_text_sha256": "5f53fdd25a7d801b003bddb5dd9170daa44eabde276efda5c2a1254b8344fa5",
+    "environment": {
+      "PYTHONHASHSEED": "0",
+      "SHENGJI_FAST": "1",
+      "SHENGJI_REQUIRE_VOIDS": "1"
+    }
+  },
+  "harness": {
+    "basename": "profile_report_lcb_round.py",
+    "sha256": "9f9f12b8d88ac8825bcb1ff0d0bc18fb6e79f0b7b107eab6fe48294e38567535"
+  },
+  "raw_log": {
+    "basename": "audit-perf-world-exact-fe97a1f.log",
+    "sha256": "2184b8972e5b9958f318e426acf8e65472405d9c9fa146ba03fe1d045310f8c6"
+  },
+  "design": {
+    "policy": "mc-s0-report-lcb",
+    "n_determinizations": 30,
+    "report_fold_worlds": 300,
+    "pairs": 6,
+    "seeds": [941, 977, 1013, 1049, 1087, 1123],
+    "balanced_execution_order": true,
+    "one_sided_t95_df5": 2.0150483733330233
+  },
+  "records": [
+    {
+      "seed": 941,
+      "order": "base_head",
+      "base": {
+        "elapsed_seconds": 21.766900908000025,
+        "transcript_sha256": "e2fddb69f4ec52cecce1c0e242851635d518b7f28a0054de861dda8640947c87",
+        "rollouts": [11790, 13320, 12360, 12180],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      },
+      "head": {
+        "elapsed_seconds": 21.628919177999705,
+        "transcript_sha256": "e2fddb69f4ec52cecce1c0e242851635d518b7f28a0054de861dda8640947c87",
+        "rollouts": [11790, 13320, 12360, 12180],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      }
+    },
+    {
+      "seed": 977,
+      "order": "head_base",
+      "base": {
+        "elapsed_seconds": 19.47048711699972,
+        "transcript_sha256": "d79b7c5e191d52623e703397f1cde82cba0e4df826ea538e4cf22af975d155ca",
+        "rollouts": [12360, 11010, 11460, 11730],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      },
+      "head": {
+        "elapsed_seconds": 19.149929654000516,
+        "transcript_sha256": "d79b7c5e191d52623e703397f1cde82cba0e4df826ea538e4cf22af975d155ca",
+        "rollouts": [12360, 11010, 11460, 11730],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      }
+    },
+    {
+      "seed": 1013,
+      "order": "base_head",
+      "base": {
+        "elapsed_seconds": 20.785215022000557,
+        "transcript_sha256": "ca53bcd22bf7cf4ff264a4eb02f68fb8df4523d2dc6f4aaef36b59f5199b807f",
+        "rollouts": [13080, 11490, 11730, 11910],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      },
+      "head": {
+        "elapsed_seconds": 20.221247257999494,
+        "transcript_sha256": "ca53bcd22bf7cf4ff264a4eb02f68fb8df4523d2dc6f4aaef36b59f5199b807f",
+        "rollouts": [13080, 11490, 11730, 11910],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      }
+    },
+    {
+      "seed": 1049,
+      "order": "head_base",
+      "base": {
+        "elapsed_seconds": 12.273493916998632,
+        "transcript_sha256": "daf353c18288d6836a4318d1ebd23485a9c9164150cb8cd489c976669fb5aa4a",
+        "rollouts": [8310, 8160, 10260, 9120],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      },
+      "head": {
+        "elapsed_seconds": 11.709925053999541,
+        "transcript_sha256": "daf353c18288d6836a4318d1ebd23485a9c9164150cb8cd489c976669fb5aa4a",
+        "rollouts": [8310, 8160, 10260, 9120],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      }
+    },
+    {
+      "seed": 1087,
+      "order": "base_head",
+      "base": {
+        "elapsed_seconds": 19.66490302499915,
+        "transcript_sha256": "9b8ef867d6b6e9dd0d9b9785a845a2d1af17118d03c6148734591289d3b19f96",
+        "rollouts": [12690, 12690, 10470, 12270],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      },
+      "head": {
+        "elapsed_seconds": 19.145475358998738,
+        "transcript_sha256": "9b8ef867d6b6e9dd0d9b9785a845a2d1af17118d03c6148734591289d3b19f96",
+        "rollouts": [12690, 12690, 10470, 12270],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      }
+    },
+    {
+      "seed": 1123,
+      "order": "head_base",
+      "base": {
+        "elapsed_seconds": 22.43056498400074,
+        "transcript_sha256": "ee7dd8a3183aa6b8498bc1c6e407342ef4df5eaf1eaf3b6a2ae1306d80b65f20",
+        "rollouts": [13560, 11640, 10380, 14340],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      },
+      "head": {
+        "elapsed_seconds": 21.48264322400064,
+        "transcript_sha256": "ee7dd8a3183aa6b8498bc1c6e407342ef4df5eaf1eaf3b6a2ae1306d80b65f20",
+        "rollouts": [13560, 11640, 10380, 14340],
+        "short_search_decisions": [0, 0, 0, 0],
+        "zero_world_decisions": [0, 0, 0, 0]
+      }
+    }
+  ],
+  "aggregate": {
+    "base_wall_seconds": 116.39156497299882,
+    "head_wall_seconds": 113.33813972699863,
+    "wall_reduction_percent": 2.6234076728056186,
+    "throughput_increase_percent": 2.6940844920827933,
+    "paired_relative_mean_percent": 2.7421286471080622,
+    "paired_one_sided_95_lb_percent": 1.506561171000079
+  }
+}

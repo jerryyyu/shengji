@@ -45,8 +45,8 @@ POLICY = "mc-s0-report-lcb"
 N_DETERMINIZATIONS = 30
 REPORT_WORLDS = 300
 BASE_GIT = "093ec33d8d9e137d276b84ffd907ca4417ba44af"
-HEAD_GIT = "bfec965cc9a266ae519fc9efa1d44a12cc81dbb4"
-EXPERIMENT_ID = "report-lcb-perf-accepted-stack-v1"
+HEAD_GIT = "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
+EXPERIMENT_ID = "report-lcb-perf-accepted-stack-pr90-v2"
 PAIR_SEEDS = (
     3368250205, 194578860, 2724771798,
     2228922925, 1533007193, 1686527578,

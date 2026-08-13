@@ -200,6 +200,19 @@ def _arm(*, ballot_suffix: str = "base", seed: int = 101) -> dict:
 
 
 def test_design_requires_balanced_fresh_batch_and_exact_identities(tmp_path):
+    # These are the two review-sensitive constants that the first source audit
+    # found were only transitively frozen into a later host design.  Pin them
+    # directly so a weakened threshold or broadened normalization cannot keep
+    # the tooling suite green before design review.
+    assert harness.MINIMUM_AGGREGATE_REDUCTION_PERCENT == 3.0
+    assert harness.NORMALIZED_BALLOT_FIELDS == (
+        "decision_records[*].record.ballot.digest",
+        "decision_records[*].record.ballot.display",
+        "decision_records[*].record.ballot.source_digest",
+    )
+    assert harness.HEAD_GIT == \
+        "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
+
     design = _design(tmp_path)
     assert harness.design_problems(design) == []
 

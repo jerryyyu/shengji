@@ -254,3 +254,68 @@ next time so the count reproduces). `git diff --check` clean; PR checks green.
 No benchmark, retry, merge, deployment or strength authority follows.
 
 ---
+
+## [2026-08-13 11:42 EDT] Claude review: PR #89 v2 host-specific design — PASS_TO_RUN_THIS_DESIGN_ONLY
+
+REPORT_LCB_PERF_AB_PR89_V2_DESIGN_REVIEW_V1: PASS_TO_RUN_THIS_DESIGN_ONLY design_sha256=b696426c7dc6af5ea9cc28302dc0353581ccc6f3056116a21c30aa6fb2b782d8
+
+**Design:** `/var/tmp/report-lcb-perf-ab-pr89-v2.design.json` on `shengji-perf`,
+SHA-256 `b696426c7dc6af5ea9cc28302dc0353581ccc6f3056116a21c30aa6fb2b782d8`,
+schema `report-lcb-perf-ab-design-v2`, root:root mode 0444 nlink 1,
+17,033 bytes — verified byte-exactly the canonical JSON serialization of its
+parsed content (no smuggled bytes; duplicate keys refused by the loader).
+
+**Every pinned identity recomputed from reality, none transcribed:**
+tooling repo at exact `fa0f9cf` (clean), harness `b08e7d63…`, validator
+`1e69d103…`; base repo at exact `093ec33d` (clean), head repo at exact
+`a91eb271` (clean); both 69-path source closures recomputed with **zero
+mismatches**; native extensions match `d3820b81…` (base) / `777843c4…` (head)
+and each is the sole loadable in its tree; Python `/usr/bin/python3.14`
+3.14.4 `b8d8288f…`; host profile `6c211654…` and unit template `3ff15428…`
+match their frozen files; host identity confirmed live (ubuntu-32gb-hel1-2,
+x86_64, 16 CPUs, 32,848,162,816 B RAM, boot `d0c9be4d…`). Closure diff
+base→head is exactly the 5 expected files (PR #90 trio + accepted-stack
+`fast.py`/`_fast.pyx` in head lineage). Evidence root **absent**; unit **not
+installed, not loaded, never run**; v1 seeds still unused (zero v1 evidence
+roots).
+
+**Protocol pins verified against harness constants re-derived from source:**
+policy `mc-s0-report-lcb`, N=30/R=300, the six preregistered seeds in the
+exact alternating base_head/head_base order, normalization limited to the
+three ballot identity fields, capture exclusion exactly
+search_secs/code, retention = aggregate wall reduction ≥3.0% (inclusive) AND
+paired one-sided 95% t-LCB >0 (t=2.015048373333, df=5), fixed child
+environment (PYTHONHASHSEED=0, single-threaded BLAS), timer
+`time.perf_counter_ns`.
+
+**Falsification: 25/25 mutations die.** 21 protocol mutations (seed, order,
+t-critical, gate 3.0→0.5, extra normalization field, capture drift, id,
+N, R, policy, schema, both authority escalations, base-git drift, base==head,
+relative evidence root, extra field, dropped closure path, child-env drift,
+timer drift, malformed SHA) all refused by side-effect-free `check-design`;
+4 value-level mutations (source SHA, native SHA, python SHA, host-profile
+SHA) all refused at run admission. Positive control: `check-design` returns
+VALID with the exact design SHA.
+
+**Run admission is fail-closed** (verified by code reading at `fa0f9cf`):
+root-only under a live systemd invocation whose unit name must match the
+frozen template; design must be immutable and match
+`PERF_AB_EXTERNAL_DESIGN_SHA256`; a **root-frozen review record**
+(`report-lcb-perf-ab-review-v1`, verdict PASS, `design_sha256` equal to this
+design's SHA) is required at admission; evidence root is created
+`exist_ok=False` (pre-existing root refuses); every runtime file and parent
+directory must be root-owned and non-writable; children revalidate the full
+runtime, import origins and native identity before AND after each round;
+per-search dose is enforced at exactly 330 accepted worlds with zero
+short/zero-world/bury work; attempted vs engine-actual actions are preserved
+as separately compared objects; O_EXCL 0444 artifacts, sealed 0555 root.
+Note: the unit template as frozen carries no authorization env vars, so
+running it verbatim refuses — the one-shot requires a root drop-in binding
+the design SHA and the frozen review record derived from this PASS.
+
+**Boundary:** this PASS authorizes exactly one six-pair batch under these
+frozen bytes, no retry or tuning. It grants no merge, strength, production,
+training, promotion, or deployment authority. Integrity refusals during the
+run are exceptions, never DROP.
+
+---

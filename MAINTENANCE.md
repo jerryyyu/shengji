@@ -92,6 +92,16 @@ entry is an independent-reviewer heading rather than the implementer's request.
 Uniqueness and valid JSON are necessary but do not establish provenance. Every
 request must name one literal marker prefix; see INC-17.
 
+For an **executable** gate, formatting and the preceding heading are still
+insufficient. Request templates and reviewer attestations must use different
+prefixes. Read the attestation from a pinned Git review commit, bind its claim
+digest and request ancestor, and prove the request commit contains no
+attestation while the review commit adds exactly one. The mutable working tree
+alone is never authority. Tests must make request text, dirty injection,
+duplicate templates, the request commit itself and wrong-provenance descendants
+refuse. Queue and controller must share one canonical admission-path constant;
+never duplicate or guess the lock filename. See INC-18.
+
 When a deep review will outlive the lightweight blocker scan, post one
 ephemeral `REVIEW_IN_PROGRESS` PR comment naming the exact request/head before
 starting. This is coordination telemetry, never authority: it must not appear

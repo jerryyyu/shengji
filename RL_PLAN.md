@@ -48,9 +48,11 @@ This section keeps only the research conclusions that change what we try next.
   champion screen is running on Mini; no strength verdict exists yet.
 - **Direct search:** S4 stayed positive twice and now has a future-only
   8,192/16,384-cluster confirmation running on Cloud; old outcomes do not enter
-  its estimator. S6's narrow shuai-pai selector has a fresh preflight queued,
-  and S5 has one reviewed-but-unrun final-champion diagnostic. None is yet a
-  new strength claim; S3a's broader bury recipe remains closed.
+  its estimator. S6's narrow shuai-pai selector has a fresh preflight queued.
+  S5's x86 construction PASSed, but a request-template authority defect spent
+  its one-shot admission without a result; recovery is closed until a distinct
+  attestation protocol and explicit retry review exist. None is yet a new
+  strength claim; S3a's broader bury recipe remains closed.
 - **Pair understanding:** the broad continuation screen is running on Air.
   The attacker-only incremental semantics passed external review and await a
   capacity decision. Pair-ballot PR #72 at exact head `373de84` now has a
@@ -70,9 +72,10 @@ This section keeps only the research conclusions that change what we try next.
   mechanics-only; two-card is the first meaningful action-selection problem.
 - **Throughput:** the Cython `_current_winner` path was slower and is dropped.
   Pair-count pruning reduced matched x86/ARM whole-round time by roughly
-  12–16% with byte-identical transcripts. Its audit also repaired an H0 source-
-  binding hole. Draft PR #71 at `414fe29` and CI pass internally; external
-  semantics/benchmark review remains before merge.
+  12–16% with byte-identical transcripts. PR #71 repair `093ec33` preserves
+  historical H0/RLCB identity; stacked PR #75 `ee6dc48` binds current behavior
+  compatibility without rewriting evidence. A prepared-world seam adds about
+  3.4% pooled x86 throughput and remains under adversarial review.
 
 ### Decisions that survive
 
@@ -333,9 +336,9 @@ The hybrid successor is active and promising, not yet closed or strong.
 
 S4 replication is terminal positive-but-inconclusive `SELECT_NONE`; its fresh
 8,192/16,384-cluster sequential successor is now running on Cloud. S6
-preflight, the reviewed-but-unrun S5 diagnostic, pair preparation and
-code/document cleanup use implementation time without competing for the three
-live scored jobs.
+preflight, S5's fail-closed recovery design, pair preparation and code/document
+cleanup use implementation time without competing for the three live scored
+jobs.
 ### Lane A — improve search directly
 
 - **S3a structured bury** tested the observed point-shy kitty policy. Explicit
@@ -358,9 +361,11 @@ live scored jobs.
   reproduced by today's rollout, 16 still match candidate zero/rollout, and
   57/58 already contain a lower-point current-ballot action. That rules out a
   broad ballot-sourcing explanation and points at a small continuation-choice
-  surface. External review now authorizes one ten-witness × 32-seed replay of
-  the literal champion's final played action on the first noncontended
-  qualified host; it has not run. A successor then gates only on actor-visible
+  surface. The ten-witness × 32-seed diagnostic and x86 portability construction
+  both PASSed review, but INC-18's request-template bug consumed the one-shot
+  admission during a 41.7-second partial attempt and published no result. No
+  retry is authorized. Recovery first needs a distinct reviewer attestation,
+  a new admission/result namespace and explicit retry marker. A successor then gates only on actor-visible
   states where point protection cannot be confused with a plausible partner
   feed, compares a behavior-identical matched null on fresh trigger-matched
   states, and lets whole-game search price card-retention cost.

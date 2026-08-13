@@ -59,7 +59,7 @@ does not replace the plain-English strategy.
 | **S6** | **Ballot sourcing** | Keep every legal throw visible, but spend extra search only on the late full-hand boss/near shape that repeatedly showed value. | **Selector passed reused-state screen; fresh preflight queued** | Exact-oracle value was `+0.234` levels (lower bound `+0.100`); the actor-visible selector realized `+0.307` (lower bound `+0.175`) and naturally triggered in 13/512 champion rounds. | Air will run the reviewed four-cluster preflight after its pair screen; a fresh whole-round treatment/null/champion test is still required before any strength claim. |
 | **PAIR-ROLL** | **Pair-aware continuation** | Track which higher pairs have already disappeared so simulations can recognize when a low pair has become boss. | **Whole-game screen running** | Selected-root diagnostics favored the change on most finite-search disagreements, but points and level utility disagreed on one root. | The powered Air screen is the first whole-game strength read. Its result decides whether broad pair awareness, an attacker-only gate, or neither deserves another large run. |
 | **PAIR-BALLOT** | **Retain legal pairs on the ballot** | Keep a legal pair from being crowded out before search can price it. | **Real, rare, defender-heavy gap; capacity design awaiting external review** | Census found 15,187 omissions across 18.6M SmartBot-trajectory leads (`0.0816%`), 97.6% early. The 1,024 selected rows are 1,023 defender and one attacker; the defender rows span 990 deal clusters. | Draft PR #72 at exact head `373de84` excludes the attacker, combines DEV+CALIB and binds exact membership/weights. Independent local builds on Python 3.11/3.12/3.14 are byte-identical after replacing version-sensitive `sum()` with `math.fsum`. External design review is pending; champion-natural dose is still required before whole-round inference. No preflight or run is authorized. |
-| **S3B / S5** | **Exact endgames and defensive point protection** | Solve genuinely small endgames and stop avoidable point donations only when actor-visible play rules out a useful partner feed. | **Endgame mechanics bounded; one S5 diagnostic authorized but not run** | Four-card exact search exceeded its node limit. S5 replay found 58 strict hindsight triggers in 4,363 bot follows; only 16 still match today's rollout, and 57/58 already have a lower-point ballot action. | Start exact search at real two-card endings. Claude PASSed a ten-witness × 32-seed final-champion replay; run it once on the first noncontended qualified host before designing a narrow no-partner-rescue treatment. Never generalize this to “never discard points.” |
+| **S3B / S5** | **Exact endgames and defensive point protection** | Solve genuinely small endgames and stop avoidable point donations only when actor-visible play rules out a useful partner feed. | **Endgame mechanics bounded; S5 diagnostic execution HOLD after INC-18** | Four-card exact search exceeded its node limit. S5 replay found 58 strict hindsight triggers; only 16 still match today's rollout, and 57/58 already have a lower-point ballot action. The x86 portability construction PASSed, but its request template self-authorized a partial attempt and spent the one-shot admission without a result. | Start exact search at real two-card endings. For S5, first review the distinct-attestation repair; any recovery needs a new namespace and explicit retry marker. Only then run one final-champion diagnostic before designing a narrow no-partner-rescue treatment. Never generalize this to “never discard points.” |
 
 ### How to read a negative result
 
@@ -263,10 +263,12 @@ current policy conclusions above.
   triggers, but only 16 are reproduced by today's candidate-zero/rollout
   surface and a lower-point action is already on the current ballot in 57/58.
   This localizes the surviving hypothesis to continuation choice/ranking, not
-  broad sourcing. The census and PR #70 design are externally PASSed; one
-  320-decision final-champion diagnostic is authorized on the first
-  noncontended qualified host but has not run. No treatment or strength result
-  exists. Any successor must use only actor-visible information, distinguish
+  broad sourcing. The census, PR #70 design and PR #74 portability construction
+  are externally PASSed, but INC-18 consumed the one-shot admission in a
+  partial request-self-authorized attempt and published no result. Its marker
+  explicitly forbids retry. No treatment or strength result exists. Any
+  recovery needs a distinct reviewer attestation, new namespace and explicit
+  retry authority; any successor must use only actor-visible information, distinguish
   point protection from intentional partner feeding, and retain a matched
   null—not become “never discard points.”
 - **Pair understanding:** the broad continuation hypothesis is already in a

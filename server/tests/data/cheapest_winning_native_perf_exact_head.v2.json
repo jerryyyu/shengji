@@ -1,0 +1,121 @@
+{
+  "schema": "cheapest-winning-native-perf-exact-head-v2",
+  "claim": "the native HeuristicBot._cheapest_winning route reduces compiled report-LCB whole-round wall time while preserving all normalized gameplay, search-work, sampler, and RNG bytes",
+  "claim_boundary": {
+    "performance_only": true,
+    "production_deployment": false,
+    "strength_claim": false
+  },
+  "supersedes": {
+    "schema": "cheapest-winning-native-perf-exact-head-v1",
+    "status": "hold_unverifiable_raw_evidence",
+    "reason": "v1 deleted its per-arm semantic artifacts and its self-test trusted a boolean instead of recomputing equality"
+  },
+  "durable_evidence": {
+    "local_directory": "/private/tmp/perf-cheapest-winning-exact-ab-v2-backup",
+    "archive": "/private/tmp/perf-cheapest-winning-exact-ab-v2-backup.tar.gz",
+    "archive_sha256": "299998717da524c712614377b42c219e49b7e5616f0750631603198b0930d218",
+    "bundle_manifest_sha256": "22fc864c6a88ec1cfc8fd209857f7c4197685a3be4e9355b1e3b3e6dd71731be",
+    "result_sha256": "2ea54bdd2cb669c2a854c1721b47117f6e8b1e310859173d5cec9b9c46c9e123",
+    "design_sha256": "d65521bf0f55fe1eaf3fe73b04d85abe71431ae32faf9561299d5ab284f8b370",
+    "environment_sha256": "e1fe368210d892455791f7cefcf43b011a3ef4156ca5a4bdaf5792de4bfc72aa",
+    "harness_sha256": "4830bffdc97b99d364d4fd182475de575e85baccb34a93345f2ce38ab9bfb684",
+    "runner_sha256": "1d97180ec0203bd8d2a227ea9948a2f643a6b8a714d6f966a8f94aefd991f843",
+    "on_host_validator_sha256": "f841ca13880b1b26885a3e8ccc998f411f13c719b4bec3d6caec16f7a49b7b7c",
+    "file_count_excluding_manifest": 61,
+    "raw_artifacts_preserved": true,
+    "separate_normalized_arm_artifacts_preserved": true
+  },
+  "base": {
+    "git": "0381081fe5c7077d81d8fae2d4f9d7101c7a38b9",
+    "fast_pyx_sha256": "a7525f756c654ab19aae6aaa9b09df30e9120553ab77d45c8312efbb9fefebc0",
+    "fast_router_sha256": "f2506d5c51b8ad37303f04dce59899de0d7c1179633b08ce61f48eb86cec1a3e",
+    "fast_engine_elf_text_sha256": "5f53fdd25a7d801b003bddb5dd9170daa44aeabde276efda5c2a1254b8344fa5",
+    "fast_engine_elf_text_bytes": 108462
+  },
+  "head": {
+    "implementation_git": "2303020f67012108e202e5e5d6529323d4be3c01",
+    "fast_pyx_sha256": "5615d74b309db04d5fb6ff07be15d876b2b14dcfc4fe4abe0d07538872f4c211",
+    "fast_router_sha256": "aeb2fd947e2fd862c0178325c2ff17c05f14a618f291d6958084c647de6ee74a",
+    "parity_test_sha256": "944c8056abf74f8f46fc25dbefbd9864bada904dc5891583877b8fb0b043ca1a",
+    "fast_engine_elf_text_sha256": "f552d6367f50ef4c8353428eef38d53a9b463af2308c93582dce7835d5b91d32",
+    "fast_engine_elf_text_bytes": 121006
+  },
+  "runtime": {
+    "machine": "x86_64-16-vcpu-performance-host",
+    "processor": "AMD EPYC-Genoa Processor",
+    "boot_id": "d0c9be4d-4e0a-4679-9177-99b4f60ded66",
+    "python_version": "3.14.4",
+    "python_resolved": "/usr/bin/python3.14",
+    "python_sha256": "b8d8288faefdd300201f43fcf00f6f539a27218eeed3a3dff5ab10b9c4c99700",
+    "pythonhashseed": "unset",
+    "exclusive_sequential_execution": true,
+    "disclosure": "the invoked virtualenv path was non-durable; it resolved to the byte-pinned interpreter above, and a durable pinned environment is required for future production-grade claims"
+  },
+  "normalization": {
+    "capture_omitted_before_serialization": [
+      "decision_records[*].record.search_secs",
+      "decision_records[*].record.code"
+    ],
+    "removed_for_arm_comparison": [
+      "decision_records[*].record.ballot.digest",
+      "decision_records[*].record.ballot.display",
+      "decision_records[*].record.ballot.source_digest"
+    ],
+    "all_other_serialized_bytes_compared_exactly": true
+  },
+  "design": {
+    "policy": "mc-s0-report-lcb",
+    "n_determinizations": 30,
+    "report_fold_worlds": 300,
+    "pairs": 6,
+    "seeds": [2711, 2777, 2843, 2909, 2971, 3037],
+    "orders": ["base_head", "head_base", "base_head", "head_base", "base_head", "head_base"],
+    "one_sided_t_critical": 2.015048373333,
+    "one_sided_t_df": 5,
+    "minimum_wall_reduction_percent": 3.0,
+    "one_fresh_batch_no_retry": true
+  },
+  "records": [
+    {
+      "seed": 2711, "order": "base_head",
+      "base": {"elapsed_seconds": 25.578946471999984, "raw_semantic_sha256": "db1d6b9f2f88712c23b23a1271d094597da3d848d1436e4a3ca29c96c3716eff", "normalized_semantic_sha256": "910e9e3b395a03d6d56a1f94b36556d884f502a1ddf76c7bf1b3f41a68e303d1", "rollouts": [13860, 16590, 13920, 14190], "search_calls": [18, 21, 18, 19]},
+      "head": {"elapsed_seconds": 23.62853539599996, "raw_semantic_sha256": "c04e273cc0a9588855e38d875e819124b4aa6ecb1eaf6be48d9ed0d087966e00", "normalized_semantic_sha256": "910e9e3b395a03d6d56a1f94b36556d884f502a1ddf76c7bf1b3f41a68e303d1", "rollouts": [13860, 16590, 13920, 14190], "search_calls": [18, 21, 18, 19]}
+    },
+    {
+      "seed": 2777, "order": "head_base",
+      "base": {"elapsed_seconds": 23.26182643599998, "raw_semantic_sha256": "b5bf2a7fcd0ae216589040f6cac16ad7b0afb888ad79e96e854515dd62ab5bac", "normalized_semantic_sha256": "b110bfe16d3562ead9797077aa626e9dde24c1d91e008df66ee94baf8dd6fd6c", "rollouts": [13950, 14520, 14610, 11490], "search_calls": [18, 19, 19, 16]},
+      "head": {"elapsed_seconds": 21.961523817999932, "raw_semantic_sha256": "3377eac51198e0c7e8da7ac0e85df83c43d0ddef9db4cacd3874715c787155ab", "normalized_semantic_sha256": "b110bfe16d3562ead9797077aa626e9dde24c1d91e008df66ee94baf8dd6fd6c", "rollouts": [13950, 14520, 14610, 11490], "search_calls": [18, 19, 19, 16]}
+    },
+    {
+      "seed": 2843, "order": "base_head",
+      "base": {"elapsed_seconds": 15.654666131999988, "raw_semantic_sha256": "6f01d920c3064d9f76684320e43627b14b3c9fa563cc9e1e603e573bc68bb364", "normalized_semantic_sha256": "4e0ce80c2ce5c536d5f1f91e729a04074a8628f1c87b5adc7afdd7eabdecc718", "rollouts": [12420, 10470, 11340, 12960], "search_calls": [16, 13, 15, 16]},
+      "head": {"elapsed_seconds": 14.527836348999926, "raw_semantic_sha256": "10cb0aa44705cbace3e8e70824e5eff1dd0727229e0b1b4bb2b4d4053e41ea8a", "normalized_semantic_sha256": "4e0ce80c2ce5c536d5f1f91e729a04074a8628f1c87b5adc7afdd7eabdecc718", "rollouts": [12420, 10470, 11340, 12960], "search_calls": [16, 13, 15, 16]}
+    },
+    {
+      "seed": 2909, "order": "head_base",
+      "base": {"elapsed_seconds": 21.144211099000017, "raw_semantic_sha256": "f7039d0aea7b606fece5b6d8115206de740c32b1f12313f9a80df17fb8e70bec", "normalized_semantic_sha256": "6ae3905bb5f6bdc5d934158c2894c167f7aec4f783263735ee2567f49c48dbde", "rollouts": [11670, 13920, 12540, 12300], "search_calls": [15, 17, 16, 16]},
+      "head": {"elapsed_seconds": 18.816790115000003, "raw_semantic_sha256": "74d33c6d421114ed9f1f01449e843ad06f0836f2fdf8108a2d2d5c3a2b4ef656", "normalized_semantic_sha256": "6ae3905bb5f6bdc5d934158c2894c167f7aec4f783263735ee2567f49c48dbde", "rollouts": [11670, 13920, 12540, 12300], "search_calls": [15, 17, 16, 16]}
+    },
+    {
+      "seed": 2971, "order": "base_head",
+      "base": {"elapsed_seconds": 17.118408596999984, "raw_semantic_sha256": "9337277257f5c658cec94be8ed4940a8814cb0b38d62718ffd185f12d6ca9a5e", "normalized_semantic_sha256": "3eb0b2cc2ad50bfc83981a126e7360a7bb40b41ddac4be731f75a7dc25282ed7", "rollouts": [11130, 10020, 10800, 8550], "search_calls": [14, 13, 14, 11]},
+      "head": {"elapsed_seconds": 15.723487194000086, "raw_semantic_sha256": "826774179eaab3e73b21dcf4d8fc01eb60f0dcfb7f7802505f04fc9bd9b3a111", "normalized_semantic_sha256": "3eb0b2cc2ad50bfc83981a126e7360a7bb40b41ddac4be731f75a7dc25282ed7", "rollouts": [11130, 10020, 10800, 8550], "search_calls": [14, 13, 14, 11]}
+    },
+    {
+      "seed": 3037, "order": "head_base",
+      "base": {"elapsed_seconds": 18.55225959200004, "raw_semantic_sha256": "f8786c6502633f3fc4bb364d954f4721b0a5ab940eedc1cef92e8e9e47755af1", "normalized_semantic_sha256": "a0e1f167be09c778f435bd0d1c2153630b1f11494a48115fc6722bed1a3b7c75", "rollouts": [9090, 12300, 11760, 12960], "search_calls": [12, 16, 15, 16]},
+      "head": {"elapsed_seconds": 17.274087561999977, "raw_semantic_sha256": "839a8b06035afbff4d37643e81d89cdf25fafd2b5e8e4ef124ea5c9570d5e97e", "normalized_semantic_sha256": "a0e1f167be09c778f435bd0d1c2153630b1f11494a48115fc6722bed1a3b7c75", "rollouts": [9090, 12300, 11760, 12960], "search_calls": [12, 16, 15, 16]}
+    }
+  ],
+  "aggregate": {
+    "base_wall_seconds": 121.310318328,
+    "head_wall_seconds": 111.93226043399989,
+    "wall_reduction_percent": 7.73063497256979,
+    "throughput_increase_percent": 8.378333339859445,
+    "paired_relative_mean_percent": 7.743095100637163,
+    "paired_one_sided_95_lb_percent": 6.248880760761661,
+    "normalized_semantics_exact": true,
+    "decision": "retain"
+  }
+}

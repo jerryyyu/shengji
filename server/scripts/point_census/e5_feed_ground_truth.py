@@ -1,63 +1,89 @@
-"""E5: ground truth for human mid-trick feed decisions (partner currently winning)."""
-import glob, json, sys
-from collections import defaultdict
-sys.path.insert(0, "server")
-from shengji.ai.heuristic import HeuristicBot
-from shengji.engine.cards import points
-from shengji.rl.replay_log import group_rounds, rebuild_round, EXCLUDE_PLAYERS
+"""E5: observational feed outcomes with legality filter and actor attribution.
 
-hb = HeuristicBot()
-agg = defaultdict(lambda: dict(n=0, held=0, pts_kept=0, pts_lost=0))
-for path in glob.glob("logs/*.jsonl"):
-    try:
+An opportunity requires at least one LEGAL point-bearing follow (engine
+ballot).  Actor-contributed points are reported separately from total trick
+value.  Hold rates carry Wilson 95% intervals; no causal claim is made.
+Stdout only.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "server")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import (emit, identity_receipt, legal_point_actions,  # noqa: E402
+                    load_validated_manifest, trick_context, wilson)
+from shengji.engine.cards import points  # noqa: E402
+from shengji.rl.replay_log import (EXCLUDE_PLAYERS, group_rounds,  # noqa: E402
+                                   rebuild_round)
+import json  # noqa: E402
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--logs-dir", default="logs")
+    ap.add_argument("--manifest",
+                    default="server/scripts/point_census/manifest.json")
+    args = ap.parse_args()
+    manifest, ordered = load_validated_manifest(args.manifest, args.logs_dir)
+    groups = {g: {"n": 0, "held": 0, "actor_pts_played": 0,
+                  "trick_pts_kept": 0, "trick_pts_lost": 0}
+              for g in ("FED", "HELD")}
+    for path in ordered:
         first = next((json.loads(l) for l in open(path)
                       if json.loads(l).get("e") == "round_start"), None)
-    except Exception:
-        continue
-    if not first:
-        continue
-    excluded = {p["seat"] for p in first["players"]
-                if p["name"] in EXCLUDE_PLAYERS}
-    for rno, evs in sorted(group_rounds(path).items()):
-        rnd = rebuild_round(evs)
-        if rnd is None:
+        if not first:
             continue
-        plays = [e for e in evs if e["e"] == "play"]
-        tricks = [e for e in evs if e["e"] == "trick"]
-        in_trick, ti, pending = 0, 0, []
-        for e in plays:
-            seat, cards = e["seat"], e["cards"]
-            if (0 < in_trick < 3 and not e.get("bot")
-                    and seat not in excluded and rnd.trick and rnd.trick.plays):
-                try:
-                    win_seat, _, _ = hb._current_winner(rnd)
-                except Exception:
-                    win_seat = None
-                if win_seat is not None and win_seat % 2 == seat % 2:
-                    if any(points(c) for c in rnd.hands[seat]):
-                        fed = sum(points(c) for c in cards) > 0
-                        pending.append(("FED" if fed else "HELD", seat, ti))
-            try:
-                rnd.play(seat, list(cards))
-            except Exception:
-                pending = []
-                break
-            in_trick += 1
-            if in_trick == 4:
-                in_trick = 0
-                ti += 1
-        for grp, s, k in pending:
-            if k >= len(tricks):
+        excluded = {p["seat"] for p in first["players"]
+                    if p["name"] in EXCLUDE_PLAYERS}
+        for rno, evs in sorted(group_rounds(str(path)).items()):
+            rnd = rebuild_round(evs)
+            if rnd is None:
                 continue
-            tk = tricks[k]
-            held = tk["winner"] % 2 == s % 2
-            a = agg[grp]
-            a["n"] += 1
-            a["held"] += held
-            (a.__setitem__("pts_kept", a["pts_kept"] + tk["points"]) if held
-             else a.__setitem__("pts_lost", a["pts_lost"] + tk["points"]))
-for g in ("FED", "HELD"):
-    a = agg[g]
-    n = a["n"] or 1
-    print(f"{g}: n={a['n']} partner_held={a['held']} ({100*a['held']/n:.0f}%) "
-          f"pts_kept_total={a['pts_kept']} pts_lost_total={a['pts_lost']}")
+            plays = [e for e in evs if e["e"] == "play"]
+            tricks = [e for e in evs if e["e"] == "trick"]
+            in_trick, ti, pending = 0, 0, []
+            for e in plays:
+                seat, cards = e["seat"], e["cards"]
+                if (0 < in_trick < 3 and not e.get("bot")
+                        and seat not in excluded):
+                    is_lead, winning, partner, _, _ = trick_context(rnd, seat)
+                    if not is_lead and partner and legal_point_actions(rnd, seat):
+                        played_pts = sum(points(c) for c in cards)
+                        pending.append(
+                            ("FED" if played_pts > 0 else "HELD",
+                             seat, ti, played_pts))
+                try:
+                    rnd.play(seat, list(cards))
+                except Exception:
+                    pending = []
+                    break
+                in_trick += 1
+                if in_trick == 4:
+                    in_trick, ti = 0, ti + 1
+            for grp, seat, k, played_pts in pending:
+                if k >= len(tricks):
+                    continue
+                trick = tricks[k]
+                held = trick["winner"] % 2 == seat % 2
+                g = groups[grp]
+                g["n"] += 1
+                g["held"] += held
+                g["actor_pts_played"] += played_pts
+                g["trick_pts_kept" if held else "trick_pts_lost"] += trick["points"]
+    for g in groups.values():
+        g["hold_rate_wilson95"] = wilson(g["held"], g["n"])
+    emit({
+        "schema": "point-census-e5-v2",
+        "receipt": identity_receipt(manifest),
+        "note": ("observational only; opportunity requires a legal "
+                 "point-bearing follow; trick totals include points "
+                 "contributed by other seats"),
+        "groups": groups,
+    })
+
+
+if __name__ == "__main__":
+    main()

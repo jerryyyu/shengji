@@ -1,84 +1,121 @@
-"""E2: production MC vs human on E1's disagreement classes.
-E3: LEVEL_OBJECTIVE flip census on the same states (same seed => same worlds)."""
-import copy, json, sys
-from collections import Counter, defaultdict
-sys.path.insert(0, "server")
-from shengji.ai.registry import make_bot
-from shengji.engine.cards import points
-from shengji.engine.legal import beats
-from shengji.rl.replay_log import iter_human_decisions
+"""E2: production MC vs human on census classes.  E3: LEVEL_OBJECTIVE flips
+with verified same-worlds binding (RNG/sampler/candidate equality), failing
+closed on any refusal.  Stdout only.
+"""
+from __future__ import annotations
 
-LOGS = "logs/*.jsonl"  # run from repo root
-smart = make_bot("smart")
+import argparse
+import copy
+import hashlib
+import sys
+from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, "server")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import (canonical, decision_key, emit,  # noqa: E402
+                    identity_receipt, legal_point_actions,
+                    load_validated_manifest, iter_decisions, sha256_bytes,
+                    trick_context)
+from shengji.ai.registry import make_bot  # noqa: E402
+from shengji.engine.cards import points  # noqa: E402
+from shengji.engine.legal import beats  # noqa: E402
+
 CAP = 40
 
-def classify(rnd, seat, human, b):
-    t = rnd.trick
-    hpts, bpts = sum(points(c) for c in human), sum(points(c) for c in b)
-    if t is None or not t.plays:
-        if (hpts > 0) != (bpts > 0):
-            return "LEAD-POINT-SPLIT"
-        return None
-    o, lead = rnd.ordering, t.plays[0].cards
-    win_seat, inc_suit, inc_top = smart._current_winner(rnd)
-    partner = win_seat % 2 == seat % 2
-    tpts = sum(points(c) for tp in t.plays for c in tp.cards)
-    is_last = len(t.plays) == 3
-    if partner:
-        if hpts > bpts and not is_last: return "FEED-EARLIER"
-        if hpts < bpts and is_last: return "BANK-AT-LAST"
-        return None
-    hw = beats(human, lead, inc_suit, inc_top, o)[0]
-    bw = beats(b, lead, inc_suit, inc_top, o)[0]
-    if hw and not bw and tpts < 10: return "CONTEST-LOW"
-    if bw and not hw and tpts < 10 and len(rnd.hands[seat]) <= 8:
-        return "DECLINE-END"
-    return None
 
-# pass 1: collect
-per = defaultdict(list); control = []; endgame = []
-i = 0
-for rnd, seat, human in iter_human_decisions([LOGS]):
-    i += 1
-    try:
-        b = smart.decide_play(copy.deepcopy(rnd), seat)
-    except Exception:
-        continue
-    same = sorted(human) == sorted(b)
-    cls = None if same else classify(rnd, seat, human, b)
-    if cls and len(per[cls]) < CAP:
-        per[cls].append((copy.deepcopy(rnd), seat, human, b))
-    if i % 60 == 0 and len(control) < 30:
-        control.append((copy.deepcopy(rnd), seat, human, b))
-    if len(rnd.hands[seat]) <= 8 and i % 7 == 0 and len(endgame) < CAP:
-        endgame.append((copy.deepcopy(rnd), seat, human, b))
-per["CONTROL"] = control
-per["ENDGAME-ALL"] = endgame
-print({k: len(v) for k, v in per.items()}, flush=True)
+def snapshot(bot) -> dict:
+    return {"rng": sha256_bytes(repr(bot.rng.getstate()).encode()),
+            "sampler": bot._sampler_snapshot(),
+            "rollouts": int(getattr(bot, "rollouts", 0))}
 
-Base = type(make_bot("mc-s0-report-lcb", seed=0))
-Level = type("Level", (Base,), {"LEVEL_OBJECTIVE": True})
 
-out = {}
-k_i = 0
-for cls, states in per.items():
-    mc_h = mc_s = mc_other = flips = flip_to_h = n = 0
-    for j, (rnd, seat, human, b) in enumerate(states):
-        k_i += 1
-        seed = 90_000 + k_i
+def bound_decision(cls_maker, seed, rnd, seat):
+    bot = cls_maker(seed=seed)
+    before = snapshot(bot)
+    action = bot.decide_play(copy.deepcopy(rnd), seat)
+    record = bot.last_decision_record
+    candidates = tuple(tuple(c) for c in record["candidates"]) if record else None
+    return action, before, snapshot(bot), candidates
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--logs-dir", default="logs")
+    ap.add_argument("--manifest",
+                    default="server/scripts/point_census/manifest.json")
+    args = ap.parse_args()
+    manifest, ordered = load_validated_manifest(args.manifest, args.logs_dir)
+    msha = sha256_bytes(canonical(manifest))
+    smart = make_bot("smart")
+    Base = type(make_bot("mc-s0-report-lcb", seed=0))
+    Level = type("Level", (Base,), {"LEVEL_OBJECTIVE": True})
+
+    per: dict[str, list] = {"FEED-EARLIER": [], "DECLINE-END": [],
+                            "CONTROL": [], "ENDGAME-ALL": []}
+    for file, rno, index, rnd, seat, human in iter_decisions(ordered):
+        key = decision_key(msha, file, rno, index)
+        is_lead, winning, partner, tpts, _ = trick_context(rnd, seat)
         try:
-            a_mc = Base(seed=seed).decide_play(copy.deepcopy(rnd), seat)
-            a_lv = Level(seed=seed).decide_play(copy.deepcopy(rnd), seat)
+            b = smart.decide_play(copy.deepcopy(rnd), seat)
         except Exception:
-            continue
-        n += 1
-        if sorted(a_mc) == sorted(human): mc_h += 1
-        elif sorted(a_mc) == sorted(b): mc_s += 1
-        else: mc_other += 1
-        if sorted(a_lv) != sorted(a_mc):
-            flips += 1
-            if sorted(a_lv) == sorted(human): flip_to_h += 1
-    out[cls] = dict(n=n, mc_matches_human=mc_h, mc_matches_smart=mc_s,
-                    mc_other=mc_other, level_flips=flips, flips_to_human=flip_to_h)
-    print(cls, out[cls], flush=True)
-json.dump(out, open("point_census_e2e3.json", "w"), indent=1)
+            raise SystemExit("REFUSED: policy replay failed")
+        same = sorted(human) == sorted(b)
+        hpts = sum(points(c) for c in human)
+        bpts = sum(points(c) for c in b)
+        state = (copy.deepcopy(rnd), seat, human, b, key)
+        if (not same and not is_lead and partner and hpts > bpts
+                and len(rnd.trick.plays) < 3 and legal_point_actions(rnd, seat)
+                and len(per["FEED-EARLIER"]) < CAP):
+            per["FEED-EARLIER"].append(state)
+        elif not same and not is_lead and not partner and tpts < 10 \
+                and len(rnd.hands[seat]) <= 8 and len(per["DECLINE-END"]) < CAP:
+            o, lead = rnd.ordering, rnd.trick.plays[0].cards
+            hw = beats(human, lead, winning[1], winning[2], o)[0]
+            bw = beats(b, lead, winning[1], winning[2], o)[0]
+            if bw and not hw:
+                per["DECLINE-END"].append(state)
+        if key % 97 == 0 and len(per["CONTROL"]) < 30:
+            per["CONTROL"].append(state)
+        if (len(rnd.hands[seat]) <= 8 and key % 11 == 0
+                and len(per["ENDGAME-ALL"]) < CAP):
+            per["ENDGAME-ALL"].append(state)
+
+    out = {}
+    for cls, states in per.items():
+        row = Counter()
+        for rnd, seat, human, b, key in states:
+            a_mc, pre1, post1, cand1 = bound_decision(Base, 90_000 + key, rnd, seat)
+            a_lv, pre2, post2, cand2 = bound_decision(Level, 90_000 + key, rnd, seat)
+            if pre1["rng"] != pre2["rng"]:
+                raise SystemExit("REFUSED: pre-decision RNG states differ")
+            binding_ok = (cand1 == cand2
+                          and post1["sampler"] == post2["sampler"]
+                          and post1["rollouts"] == post2["rollouts"])
+            row["n"] += 1
+            row["binding_verified"] += binding_ok
+            if not binding_ok:
+                row["binding_failures"] += 1
+                continue
+            if sorted(a_mc) == sorted(human):
+                row["mc_matches_human"] += 1
+            elif sorted(a_mc) == sorted(b):
+                row["mc_matches_smart"] += 1
+            else:
+                row["mc_other"] += 1
+            if sorted(a_lv) != sorted(a_mc):
+                row["level_flips"] += 1
+                row["flips_to_human"] += sorted(a_lv) == sorted(human)
+        out[cls] = dict(row)
+    emit({
+        "schema": "point-census-e2e3-v2",
+        "receipt": identity_receipt(manifest),
+        "binding": ("same-seed twins verified by pre-RNG hash, candidate-list "
+                    "equality, sampler snapshot and rollout-counter equality; "
+                    "binding failures are counted, never silently skipped"),
+        "classes": out,
+    })
+
+
+if __name__ == "__main__":
+    main()

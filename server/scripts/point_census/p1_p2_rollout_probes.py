@@ -1,69 +1,111 @@
-"""P1: feed-rate of the rollout policy inside MC worlds vs humans.
-P2: points_left() at the DECLINE-END census states."""
-import copy, sys
+"""P1: boss-class table for feed opportunities — human games AND MC rollout
+worlds, classified with public info (Memory).  P2: points_left at human
+endgame decline states.  Stdout only.
+"""
+from __future__ import annotations
+
+import argparse
+import copy
+import sys
 from collections import Counter
+from pathlib import Path
+
 sys.path.insert(0, "server")
-from shengji.ai.heuristic import HeuristicBot
-from shengji.ai.memory import Memory
-from shengji.ai.registry import make_bot
-from shengji.engine.cards import points
-from shengji.engine.legal import beats
-from shengji.rl.replay_log import iter_human_decisions
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import (classify_boss, decision_key, emit,  # noqa: E402
+                    identity_receipt, legal_point_actions,
+                    load_validated_manifest, iter_decisions, sha256_bytes,
+                    canonical, trick_context)
+from shengji.ai.heuristic import HeuristicBot  # noqa: E402
+from shengji.ai.memory import Memory  # noqa: E402
+from shengji.ai.registry import make_bot  # noqa: E402
+from shengji.engine.cards import points  # noqa: E402
+from shengji.engine.legal import beats  # noqa: E402
 
-LOGS = "logs/*.jsonl"  # run from repo root
-tally = Counter()
+TABLE_KEYS = ("literal", "inferred_strict", "inferred_loose", "open", "complex")
 
-class CountingHeuristic(HeuristicBot):
-    def _follow(self, rnd, seat):
-        action = super()._follow(rnd, seat)
-        t = rnd.trick
-        if t is not None and 0 < len(t.plays) < 3:
-            win_seat, _, _ = self._current_winner(rnd)
-            if win_seat % 2 == seat % 2 and any(points(c) for c in rnd.hands[seat]):
-                tally["opportunities"] += 1
-                if sum(points(c) for c in action) > 0:
-                    tally["fed"] += 1
-        return action
 
-smart = make_bot("smart")
-Base = type(make_bot("mc-s0-report-lcb", seed=0))
-decline_pl, states_p1 = [], []
-i = 0
-for rnd, seat, human in iter_human_decisions([LOGS]):
-    i += 1
-    t = rnd.trick
-    # P2 collection: DECLINE-END (opp winning, low pts, endgame, human declines win)
-    if t is not None and t.plays and len(rnd.hands[seat]) <= 8:
-        try:
-            b = smart.decide_play(copy.deepcopy(rnd), seat)
-        except Exception:
-            continue
-        if sorted(human) != sorted(b):
-            o, lead = rnd.ordering, t.plays[0].cards
-            win_seat, inc_suit, inc_top = smart._current_winner(rnd)
-            if win_seat % 2 != seat % 2:
-                tpts = sum(points(c) for tp in t.plays for c in tp.cards)
-                hw = beats(human, lead, inc_suit, inc_top, o)[0]
-                bw = beats(b, lead, inc_suit, inc_top, o)[0]
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--logs-dir", default="logs")
+    ap.add_argument("--manifest",
+                    default="server/scripts/point_census/manifest.json")
+    ap.add_argument("--rollout-states", type=int, default=12)
+    args = ap.parse_args()
+    manifest, ordered = load_validated_manifest(args.manifest, args.logs_dir)
+    msha = sha256_bytes(canonical(manifest))
+    smart = make_bot("smart")
+
+    # P1a: human feed opportunities classified by boss class.
+    human = {k: Counter() for k in TABLE_KEYS}
+    rollout_sample = []
+    decline_points_left = []
+    for file, rno, index, rnd, seat, hcards in iter_decisions(ordered):
+        is_lead, winning, partner, tpts, to_act = trick_context(rnd, seat)
+        if not is_lead and partner and len(rnd.trick.plays) < 3 \
+                and legal_point_actions(rnd, seat):
+            cls, _ = classify_boss(rnd, seat, winning[0], winning[1],
+                                   winning[2], to_act)
+            fed = sum(points(c) for c in hcards) > 0
+            human[cls]["n"] += 1
+            human[cls]["fed"] += fed
+        if not is_lead and not partner and len(rnd.hands[seat]) <= 8:
+            try:
+                b = smart.decide_play(copy.deepcopy(rnd), seat)
+            except Exception:
+                raise SystemExit("REFUSED: policy replay failed")
+            if sorted(hcards) != sorted(b):
+                o, lead = rnd.ordering, rnd.trick.plays[0].cards
+                hw = beats(hcards, lead, winning[1], winning[2], o)[0]
+                bw = beats(b, lead, winning[1], winning[2], o)[0]
                 if bw and not hw and tpts < 10:
-                    mem = Memory(rnd, seat)
-                    decline_pl.append(mem.points_left())
-    # P1 collection: every ~150th contested mid-round state
-    if i % 150 == 0 and t is not None and t.plays and len(states_p1) < 12:
-        states_p1.append((copy.deepcopy(rnd), seat))
+                    decline_points_left.append(Memory(rnd, seat).points_left())
+        if (rnd.trick is not None and rnd.trick.plays
+                and len(rollout_sample) < args.rollout_states
+                and decision_key(msha, file, rno, index) % 149 == 0):
+            rollout_sample.append((copy.deepcopy(rnd), seat,
+                                   decision_key(msha, file, rno, index)))
 
-print(f"P2 DECLINE-END n={len(decline_pl)} points_left distribution:")
-buckets = Counter("0" if p == 0 else "1-15" if p <= 15 else "16-40" if p <= 40 else ">40"
-                  for p in decline_pl)
-print("  ", dict(buckets), " median:", sorted(decline_pl)[len(decline_pl)//2] if decline_pl else None)
+    # P1b: rollout-policy feed behavior by boss class inside MC worlds.
+    tallies = {k: Counter() for k in TABLE_KEYS}
 
-for k, (rnd, seat) in enumerate(states_p1):
-    bot = Base(seed=7000 + k)
-    bot.rollout_policy = CountingHeuristic()
-    try:
-        bot.decide_play(copy.deepcopy(rnd), seat)
-    except Exception:
-        continue
-print(f"P1 rollout-policy feed rate inside MC worlds: fed={tally['fed']} / "
-      f"opportunities={tally['opportunities']} "
-      f"({100*tally['fed']/max(1,tally['opportunities']):.1f}%)  [human: 55% fed, 82% hold]")
+    class CountingHeuristic(HeuristicBot):
+        def _follow(self, rnd, seat):
+            action = super()._follow(rnd, seat)
+            t = rnd.trick
+            if t is not None and 0 < len(t.plays) < 3:
+                is_lead, winning, partner, _, to_act = trick_context(rnd, seat)
+                if partner and any(points(c) for c in rnd.hands[seat]):
+                    cls, _ = classify_boss(rnd, seat, winning[0], winning[1],
+                                           winning[2], to_act)
+                    tallies[cls]["n"] += 1
+                    tallies[cls]["fed"] += sum(points(c) for c in action) > 0
+            return action
+
+    Base = type(make_bot("mc-s0-report-lcb", seed=0))
+    for rnd, seat, key in rollout_sample:
+        bot = Base(seed=key)
+        bot.rollout_policy = CountingHeuristic()
+        try:
+            bot.decide_play(copy.deepcopy(rnd), seat)
+        except Exception:
+            raise SystemExit("REFUSED: rollout probe failed")
+
+    decline_points_left.sort()
+    emit({
+        "schema": "point-census-p1p2-v2",
+        "receipt": identity_receipt(manifest),
+        "p1_human_by_class": {k: dict(v) for k, v in human.items()},
+        "p1_rollout_by_class": {k: dict(v) for k, v in tallies.items()},
+        "p1_rollout_states": len(rollout_sample),
+        "p2_decline_end": {
+            "n": len(decline_points_left),
+            "points_left_zero": sum(1 for p in decline_points_left if p == 0),
+            "points_left_median": (decline_points_left[len(decline_points_left) // 2]
+                                   if decline_points_left else None),
+        },
+    })
+
+
+if __name__ == "__main__":
+    main()

@@ -8,12 +8,12 @@ from pathlib import Path
 
 try:
     from terminal_review_common import (
-        ReviewRefused, exact_source, import_script, load_json, marker,
-        reviewer_sources, sha256)
+        ReviewRefused, exact_source, import_script, marker,
+        load_json_with_sha256, require_sha256, reviewer_sources, sha256)
 except ModuleNotFoundError:  # package import in focused tests
     from .terminal_review_common import (
-        ReviewRefused, exact_source, import_script, load_json, marker,
-        reviewer_sources, sha256)
+        ReviewRefused, exact_source, import_script, marker,
+        load_json_with_sha256, require_sha256, reviewer_sources, sha256)
 
 
 GIT = "c89c87121fb44ee98ec16753efce0ae5c825eea4"
@@ -43,19 +43,30 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
     runtime = import_script(
         repo, "teacher_stage_c_midlate_composition_runtime",
         "server/scripts/teacher_stage_c_midlate_composition_runtime.py",
-        DEPENDENCIES).BASE
+        DEPENDENCIES, git=GIT).BASE
     ctrl, screen = runtime.CTRL, runtime.SCREEN
     aggregate_path = (runtime.REPO / ctrl.RESULT_PATH).resolve()
     # Terminal-only: refuse before loading any other evidence unless the
     # aggregate already exists.
-    aggregate = load_json(aggregate_path, "T4 aggregate")
+    aggregate, aggregate_sha = load_json_with_sha256(
+        aggregate_path, "T4 aggregate")
     packet_path = (runtime.REPO / ctrl.PACKET_PATH).resolve()
     receipt_path = (runtime.REPO / ctrl.RECEIPT_PATH).resolve()
     capacity_path = (runtime.REPO / ctrl.CAPACITY_RESULT_PATH).resolve()
     final_path = (runtime.REPO / ctrl.SUPERVISOR_FINAL_PATH).resolve()
+    packet_snapshot, packet_file_sha = load_json_with_sha256(
+        packet_path, "T4 packet")
+    receipt_snapshot, receipt_sha = load_json_with_sha256(
+        receipt_path, "T4 receipt")
+    capacity_snapshot, capacity_sha = load_json_with_sha256(
+        capacity_path, "T4 capacity result")
+    final_snapshot, final_sha = load_json_with_sha256(
+        final_path, "T4 supervisor final")
+    packet_review_sha = sha256(packet_review)
+    capacity_review_sha = sha256(capacity_review)
     packet, _ = runtime._packet(packet_path, PACKET_SHA)
-    receipt_sha, capacity_sha, final_sha = map(
-        sha256, (receipt_path, capacity_path, final_path))
+    if packet != packet_snapshot:
+        raise ReviewRefused("T4 packet changed during validation")
     receipt, capacity = runtime._receipt(
         receipt_path, receipt_sha, packet, PACKET_SHA, packet_review,
         capacity_path, capacity_sha, capacity_review)
@@ -65,6 +76,10 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
         controller_review_record=packet_review, capacity_result=capacity,
         capacity_result_sha256=capacity_sha,
         capacity_review_record=capacity_review)
+    if receipt != receipt_snapshot or capacity != capacity_snapshot:
+        raise ReviewRefused("T4 receipt/capacity changed during validation")
+    if final != final_snapshot:
+        raise ReviewRefused("T4 supervisor final changed during validation")
     supervisor_claim = runtime._supervisor_review_claim(
         supervisor_review, packet, PACKET_SHA, final, final_sha)
     review_sha = sha256(supervisor_review)
@@ -102,13 +117,14 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
     for index, sealed in enumerate(final["shards"]):
         path = (runtime.REPO / ctrl.SHARD_PATHS[index]).resolve()
         log = (runtime.REPO / ctrl.SHARD_LOG_PATHS[index]).resolve()
-        shard = load_json(path, f"T4 shard {index}")
+        shard, shard_sha = load_json_with_sha256(
+            path, f"T4 shard {index}")
         runtime.validate_shard(
             shard, packet=packet, packet_sha256=PACKET_SHA,
             receipt_sha256=receipt_sha, review_record=packet_review,
             index=index, supervisor_slot_sha256=str(
                 final["supervisor_admission_slot_sha256"]))
-        if (sha256(path) != sealed["external_sha256"]
+        if (shard_sha != sealed["external_sha256"]
                 or shard["shard_sha256"] != sealed["internal_sha256"]
                 or sha256(log) != sealed["log_sha256"]):
             raise ReviewRefused(f"T4 sealed shard {index} drift")
@@ -116,7 +132,7 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
             merged[label].extend(shard["records"][label])
         manifest.append({
             "index": index, "logical_path": ctrl.SHARD_PATHS[index],
-            "external_sha256": sha256(path),
+            "external_sha256": shard_sha,
             "internal_sha256": shard["shard_sha256"]})
     rebuilt = screen.aggregate_screen(
         merged, expected_seed0=ctrl.SCREEN_SEED0,
@@ -145,6 +161,31 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
     expected["result_sha256"] = runtime.self_hash(expected, "result_sha256")
     if aggregate != expected:
         raise ReviewRefused("T4 recursive aggregate reconstruction drift")
+    stable = [
+        (aggregate_path, aggregate_sha, "T4 aggregate"),
+        (packet_path, packet_file_sha, "T4 packet"),
+        (receipt_path, receipt_sha, "T4 receipt"),
+        (capacity_path, capacity_sha, "T4 capacity result"),
+        (final_path, final_sha, "T4 supervisor final"),
+        (packet_review, packet_review_sha, "T4 packet review"),
+        (capacity_review, capacity_review_sha, "T4 capacity review"),
+        (supervisor_review, review_sha, "T4 supervisor review"),
+        ((runtime.REPO / ctrl.AGGREGATE_ADMISSION_PATH).resolve(),
+         aggregate["aggregate_admission_slot_sha256"],
+         "T4 aggregate admission"),
+        ((runtime.REPO / ctrl.SUPERVISOR_ADMISSION_PATH).resolve(),
+         final["supervisor_admission_slot_sha256"],
+         "T4 supervisor admission"),
+    ]
+    for index, shard in enumerate(final["shards"]):
+        stable.extend((
+            ((runtime.REPO / ctrl.SHARD_PATHS[index]).resolve(),
+             shard["external_sha256"], f"T4 shard {index}"),
+            ((runtime.REPO / ctrl.SHARD_LOG_PATHS[index]).resolve(),
+             shard["log_sha256"], f"T4 shard log {index}"),
+        ))
+    for path, digest, label in stable:
+        require_sha256(path, digest, label)
     return {
         "schema": "teacher-stage-c-midlate-composition-result-review-v1",
         "git": GIT, "run_id": ctrl.RUN_ID, "packet_sha256": PACKET_SHA,
@@ -152,7 +193,7 @@ def review(repo: Path, packet_review: Path, capacity_review: Path,
         "supervisor_review_record_sha256": review_sha,
         "aggregate_admission_sha256": aggregate[
             "aggregate_admission_slot_sha256"],
-        "aggregate_sha256": sha256(aggregate_path),
+        "aggregate_sha256": aggregate_sha,
         "aggregate_internal_sha256": aggregate["result_sha256"],
         "decision": aggregate["decision"], "screen": aggregate["screen"],
         "recursive_statistic_reconstruction": True,

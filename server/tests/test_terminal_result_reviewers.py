@@ -61,6 +61,7 @@ def t4_fixture(tmp_path: Path, monkeypatch):
         RECEIPT_PATH="server/runs/logs/t4/receipt.json",
         CAPACITY_RESULT_PATH="server/runs/logs/t4/capacity.json",
         SUPERVISOR_FINAL_PATH="server/runs/logs/t4/final.json",
+        SUPERVISOR_ADMISSION_PATH="server/runs/locks/t4.supervisor.json",
         AGGREGATE_ADMISSION_PATH="server/runs/locks/t4.aggregate.json",
         SHARD_PATHS=[f"server/runs/logs/t4/shard-{i}.json" for i in range(2)],
         SHARD_LOG_PATHS=[f"server/runs/logs/t4/shard-{i}.log" for i in range(2)],
@@ -85,8 +86,11 @@ def t4_fixture(tmp_path: Path, monkeypatch):
                        "log_sha256": file_sha(log_path)})
         for label in T4Screen.LABELS:
             merged[label].extend(records[label])
+    supervisor_admission = write(
+        tmp_path / ctrl.SUPERVISOR_ADMISSION_PATH, {"kind": "supervisor"})
     final = {"final_sha256": "f" * 64,
-             "supervisor_admission_slot_sha256": "s" * 64,
+             "supervisor_admission_slot_sha256": file_sha(
+                 supervisor_admission),
              "shards": sealed}
     final_path = write(tmp_path / ctrl.SUPERVISOR_FINAL_PATH, final)
     final_sha = file_sha(final_path)
@@ -130,7 +134,9 @@ def t4_fixture(tmp_path: Path, monkeypatch):
             {k: v for k, v in value.items() if k != field}, newline=True))
         load_json = staticmethod(lambda path: json.loads(path.read_text()))
         _packet = staticmethod(lambda *_args: (packet, None))
-        _receipt = staticmethod(lambda *_args, **_kwargs: ({}, {}))
+        _receipt = staticmethod(lambda *_args, **_kwargs: (
+            json.loads((tmp_path / ctrl.RECEIPT_PATH).read_text()),
+            json.loads((tmp_path / ctrl.CAPACITY_RESULT_PATH).read_text())))
         _supervisor_final = staticmethod(lambda **_kwargs: final)
         _supervisor_review_claim = staticmethod(
             lambda *_args: supervisor_claim)
@@ -151,7 +157,8 @@ def t4_fixture(tmp_path: Path, monkeypatch):
 
     module = SimpleNamespace(BASE=Runtime)
     monkeypatch.setattr(T4_REVIEW, "exact_source", lambda *_args: None)
-    monkeypatch.setattr(T4_REVIEW, "import_script", lambda *_args: module)
+    monkeypatch.setattr(
+        T4_REVIEW, "import_script", lambda *_args, **_kwargs: module)
     return (packet_review, capacity_review, supervisor_review,
             admission_path, aggregate_path, tmp_path / ctrl.SHARD_PATHS[0])
 
@@ -229,25 +236,64 @@ def pair_fixture(tmp_path: Path, monkeypatch):
     screen.RECEIPT_PATH = run / "receipt.json"
     screen.SUPERVISOR_FINAL_PATH = run / "final.json"
     screen.AGGREGATE_ADMISSION_PATH = locks / "aggregate.json"
+    screen.EXECUTION_ADMISSION_PATH = locks / "execution.json"
+    screen.SUPERVISOR_ADMISSION_PATH = locks / "supervisor.json"
     screen.SHARD_PATHS = [run / f"shard-{i}.json" for i in range(2)]
     screen.SHARD_LOG_PATHS = [run / f"shard-{i}.log" for i in range(2)]
+    screen.SHARD_ADMISSION_PATHS = [
+        locks / f"shard-{i}.json" for i in range(2)]
     packet = {"git": PAIR_REVIEW.GIT, "internal_sha256": "p" * 64}
     write(screen.PACKET_PATH, packet)
     write(screen.CAPACITY_RESULT_PATH, {})
     write(screen.PLANNING_REVIEW_PATH, b"planning\n")
-    receipt = {"receipt": True}
-    write(screen.RECEIPT_PATH, receipt)
-    receipt_sha = file_sha(screen.RECEIPT_PATH)
     packet_claim = {"packet": PAIR_REVIEW.PACKET_SHA, "verdict": "PASS"}
     packet_review = marker(tmp_path / "packet-review", "PACKET ", packet_claim)
+
+    def admission(schema, **extra):
+        value = {
+            "schema": schema, "run_id": screen.RUN_ID,
+            "git": PAIR_REVIEW.GIT,
+            "packet_sha256": PAIR_REVIEW.PACKET_SHA,
+            "nonce": "a" * 64, "created_time_ns": 1,
+            "retry_or_extension_authorized": False,
+            "production_deployment": False, **extra}
+        value["internal_sha256"] = digest(value)
+        return value
+
+    execution = admission(
+        "pair-aware-rollout-screen-execution-admission-v1",
+        packet_review_record_sha256=file_sha(packet_review))
+    write(screen.EXECUTION_ADMISSION_PATH, execution)
+    receipt = {
+        "receipt": True,
+        "execution_admission_sha256": file_sha(
+            screen.EXECUTION_ADMISSION_PATH)}
+    write(screen.RECEIPT_PATH, receipt)
+    receipt_sha = file_sha(screen.RECEIPT_PATH)
     shards = []
     for index, path in enumerate(screen.SHARD_PATHS):
+        shard_admission = admission(
+            "pair-aware-rollout-screen-shard-admission-v1",
+            receipt_sha256=receipt_sha, shard_index=index)
+        write(screen.SHARD_ADMISSION_PATHS[index], shard_admission)
         shard = {"index": index, "values": [index + 1, index + 2]}
+        shard["shard_admission_sha256"] = file_sha(
+            screen.SHARD_ADMISSION_PATHS[index])
         shard["internal_sha256"] = digest(shard)
         write(path, shard)
         write(screen.SHARD_LOG_PATHS[index], b"done\n")
         shards.append(shard)
-    final = {"shards": [{"index": i} for i in range(2)]}
+    supervisor_admission = admission(
+        "pair-aware-rollout-screen-supervisor-admission-v1",
+        receipt_sha256=receipt_sha)
+    write(screen.SUPERVISOR_ADMISSION_PATH, supervisor_admission)
+    final = {
+        "shards": [
+            {"index": i, "log_sha256": file_sha(
+                screen.SHARD_LOG_PATHS[i])}
+            for i in range(2)],
+        "supervisor_admission_sha256": file_sha(
+            screen.SUPERVISOR_ADMISSION_PATH)}
     write(screen.SUPERVISOR_FINAL_PATH, final)
     final_sha = file_sha(screen.SUPERVISOR_FINAL_PATH)
     supervisor_claim = {"final": final_sha, "verdict": "PASS"}
@@ -314,18 +360,34 @@ def pair_fixture(tmp_path: Path, monkeypatch):
     expected["internal_sha256"] = digest(expected)
     write(screen.AGGREGATE_PATH, expected)
     monkeypatch.setattr(PAIR_REVIEW, "exact_source", lambda *_args: None)
-    monkeypatch.setattr(PAIR_REVIEW, "import_script", lambda *_args: screen)
+    monkeypatch.setattr(
+        PAIR_REVIEW, "import_script", lambda *_args, **_kwargs: screen)
     return (packet_review, supervisor_review, screen.AGGREGATE_ADMISSION_PATH,
             screen.AGGREGATE_PATH, screen.SHARD_PATHS[0])
 
 
 def test_pair_recursive_review_is_read_only(tmp_path, monkeypatch):
     packet, supervisor, *_ = pair_fixture(tmp_path, monkeypatch)
+    admission_schemas = []
+    real_admission = PAIR_REVIEW._admission
+
+    def recording_admission(*args, **kwargs):
+        admission_schemas.append(kwargs["schema"])
+        return real_admission(*args, **kwargs)
+
+    monkeypatch.setattr(PAIR_REVIEW, "_admission", recording_admission)
     before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
     claim = PAIR_REVIEW.review(tmp_path, packet, supervisor)
     after = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
     assert before == after
     assert claim["recursive_statistic_reconstruction"] is True
+    assert admission_schemas == [
+        "pair-aware-rollout-screen-execution-admission-v1",
+        "pair-aware-rollout-screen-supervisor-admission-v1",
+        "pair-aware-rollout-screen-aggregate-admission-v1",
+        "pair-aware-rollout-screen-shard-admission-v1",
+        "pair-aware-rollout-screen-shard-admission-v1",
+    ]
 
 
 def test_pair_admission_refuses_before_malformed_shard_open(tmp_path, monkeypatch):
@@ -351,6 +413,28 @@ def test_common_rejects_hardlink_and_nonfinite_json(tmp_path):
     nonfinite.write_text('{"value":NaN}\n')
     with pytest.raises(ReviewRefused, match="strict JSON"):
         COMMON.load_json(nonfinite, "nonfinite")
+
+
+def test_common_single_fd_reader_refuses_path_replacement(
+        tmp_path, monkeypatch):
+    target = write(tmp_path / "target.json", {"value": 1})
+    replacement = write(tmp_path / "replacement.json", {"value": 2})
+    displaced = tmp_path / "displaced.json"
+    real_read = COMMON.os.read
+    swapped = False
+
+    def replacing_read(descriptor, size):
+        nonlocal swapped
+        value = real_read(descriptor, size)
+        if not swapped:
+            swapped = True
+            target.rename(displaced)
+            replacement.rename(target)
+        return value
+
+    monkeypatch.setattr(COMMON.os, "read", replacing_read)
+    with pytest.raises(ReviewRefused, match="changed while reading"):
+        COMMON.load_json_with_sha256(target, "raced JSON")
 
 
 def test_common_rejects_dirty_tracked_dependency(tmp_path):
@@ -427,6 +511,61 @@ def test_common_rejects_dependency_import_path_drift(tmp_path, monkeypatch):
             repo, "terminal_review_test_lane", str(lane.relative_to(repo)),
             {"terminal_review_test_dependency":
              str(dependency.relative_to(repo))})
+
+
+def test_common_rejects_preloaded_transitive_shengji_module(
+        tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    write(repo / "server/scripts/lane.py", b"VALUE = 1\n")
+    write(repo / "server/shengji/__init__.py", b"")
+    dependency = write(
+        repo / "server/shengji/dependency.py", b"VALUE = 1\n")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.test"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo,
+                   check=True)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo,
+                   check=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, check=True,
+        text=True, capture_output=True).stdout.strip()
+    monkeypatch.setitem(
+        sys.modules, "shengji.dependency",
+        SimpleNamespace(__file__=str(dependency), VALUE="forged"))
+    with pytest.raises(ReviewRefused, match="preloaded source module"):
+        COMMON.import_script(
+            repo, "lane", "server/scripts/lane.py", git=head)
+
+
+def test_pair_rejects_rehashed_execution_admission_authority(
+        tmp_path, monkeypatch):
+    packet, supervisor, *_ = pair_fixture(tmp_path, monkeypatch)
+    screen = PAIR_REVIEW.import_script(None, None, None)
+    admission = json.loads(screen.EXECUTION_ADMISSION_PATH.read_text())
+    admission["production_deployment"] = True
+    admission["internal_sha256"] = digest(
+        {key: value for key, value in admission.items()
+         if key != "internal_sha256"})
+    write(screen.EXECUTION_ADMISSION_PATH, admission)
+    receipt = json.loads(screen.RECEIPT_PATH.read_text())
+    receipt["execution_admission_sha256"] = file_sha(
+        screen.EXECUTION_ADMISSION_PATH)
+    write(screen.RECEIPT_PATH, receipt)
+    screen.load_receipt = staticmethod(lambda *_args, **_kwargs: receipt)
+    with pytest.raises(ReviewRefused, match="execution-admission.*binding"):
+        PAIR_REVIEW.review(tmp_path, packet, supervisor)
+
+
+def test_pair_refuses_hash_then_parse_substitution(tmp_path, monkeypatch):
+    packet_review, supervisor_review, *_ = pair_fixture(tmp_path, monkeypatch)
+    screen = PAIR_REVIEW.import_script(None, None, None)
+    forged = json.loads(screen.PACKET_PATH.read_text())
+    forged["forged_after_hash"] = True
+    screen.load_packet = staticmethod(lambda *_args, **_kwargs: forged)
+    with pytest.raises(ReviewRefused, match="packet changed during validation"):
+        PAIR_REVIEW.review(tmp_path, packet_review, supervisor_review)
 
 
 @pytest.mark.parametrize("lane", ["t4", "pair"])

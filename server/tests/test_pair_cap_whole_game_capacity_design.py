@@ -124,6 +124,20 @@ def _record(design: dict, label: str, *, index: int = 0,
     }
 
 
+def _collection(design: dict) -> list[dict]:
+    rows = []
+    for index in range(DESIGN.CAPACITY_CLUSTERS):
+        for flip in DESIGN.FLIPS:
+            for label in DESIGN.LABEL_ORDER:
+                record = _record(design, label, index=index, flip=flip)
+                record["root_roles"] = (
+                    {"attacker_searches": 1, "defender_searches": 0}
+                    if flip == 0 else
+                    {"attacker_searches": 0, "defender_searches": 1})
+                rows.append(record)
+    return rows
+
+
 def _keys(value: object) -> set[str]:
     found = set()
     if isinstance(value, dict):
@@ -250,9 +264,9 @@ def test_two_required_contrasts_have_predeclared_joint_power_and_work_caps():
     assert design["power"]["mde_at_80pct_marginal_power"] == pytest.approx(
         0.05860677450422228)
     assert design["power"]["marginal_power_at_target_effect"] == \
-        pytest.approx(0.9074135709493715)
+        0.9074135709493716
     assert design["power"]["joint_power_union_bound_floor_at_target_effect"] \
-        == pytest.approx(0.814827141898743)
+        == 0.8148271418987432
     assert design["power"]["sensitivity_by_effect"]["0.05"] == {
         "marginal_power_each": pytest.approx(0.6831290430800078),
         "joint_power_union_bound_floor": pytest.approx(0.36625808616001554),
@@ -273,6 +287,83 @@ def test_two_required_contrasts_have_predeclared_joint_power_and_work_caps():
     assert design["work_ceiling"]["max_projected_compute_hours"] == 768.0
     assert design["work_ceiling"]["max_projected_lane_hours"] == 48.0
     assert design["work_ceiling"]["resource_or_machine_binding"] is False
+
+
+def test_complete_capacity_collection_enforces_population_dose_and_caps():
+    design = DESIGN.build_design()
+    records = _collection(design)
+    assert DESIGN.capacity_collection_problems(records, design) == []
+
+    duplicate = copy.deepcopy(records)
+    duplicate[-1] = copy.deepcopy(duplicate[0])
+    assert "capacity collection identity population" in \
+        DESIGN.capacity_collection_problems(duplicate, design)
+
+    missing_problems = DESIGN.capacity_collection_problems(
+        records[:-1], design)
+    assert "capacity collection row count" in missing_problems
+    assert "capacity collection identity population" in missing_problems
+
+    no_defender = copy.deepcopy(records)
+    for record in no_defender:
+        record["root_roles"] = {
+            "attacker_searches": 1, "defender_searches": 0}
+    assert any("missing root role" in problem for problem in
+               DESIGN.capacity_collection_problems(no_defender, design))
+
+    no_change = copy.deepcopy(records)
+    for record in no_change:
+        if record["label"] == "treatment":
+            record["natural_dose"] = {
+                "shared_prefix_root_decisions": 3,
+                "root_action_changed": False,
+                "change_phase": None,
+                "change_role": None,
+            }
+    assert "capacity has zero natural incremental root changes" in \
+        DESIGN.capacity_collection_problems(no_change, design)
+
+
+def test_capacity_collection_rejects_unbacked_change_and_aggregate_work():
+    design = DESIGN.build_design()
+    records = _collection(design)
+    treatment = next(
+        record for record in records if record["label"] == "treatment")
+    treatment["incremental"] = _incremental("treatment", triggers=0)
+    assert "capacity root change without incremental trigger dose" in \
+        DESIGN.capacity_collection_problems(records, design)
+
+    records = _collection(design)
+    records[0]["arm_root_work"] = _root_work(
+        searches=100, rollouts=100 * 660)
+    records[0]["root_roles"] = {
+        "attacker_searches": 100, "defender_searches": 0}
+    assert "capacity per-round root-search cap" in \
+        DESIGN.capacity_collection_problems(records, design)
+
+    records = _collection(design)
+    records[0]["arm_root_work"]["search_secs"] = 2.0
+    assert "capacity root-search time exceeds round time" in \
+        DESIGN.capacity_collection_problems(records, design)
+
+
+def test_capacity_collection_rejects_elapsed_and_projection_caps():
+    design = DESIGN.build_design()
+    records = _collection(design)
+    for record in records:
+        record["elapsed_seconds"] = 200.0
+    problems = DESIGN.capacity_collection_problems(records, design)
+    assert "capacity collection total elapsed cap" in problems
+    assert "capacity projected compute-hour cap" in problems
+    assert "capacity projected lane-hour cap" in problems
+
+    records = _collection(design)
+    for record in records:
+        record["elapsed_seconds"] = 60.0
+    problems = DESIGN.capacity_collection_problems(records, design)
+    assert "capacity collection total elapsed cap" not in problems
+    assert "capacity projected compute-hour cap" in problems
+    assert "capacity projected lane-hour cap" in problems
 
 
 @pytest.mark.parametrize("mutate", (
@@ -399,6 +490,11 @@ def test_rng_population_and_exact_root_work_drift_refuse():
     record["arm_root_work"]["short_searches"] = 1
     assert "arm root work forbidden short_searches" in \
         DESIGN.capacity_record_problems(record, design)
+
+    record = _record(design, "treatment")
+    record["flip"] = False
+    assert DESIGN.capacity_record_problems(record, design) == [
+        "capacity record identity"]
 
 
 def test_zero_change_dose_is_explicit_hold_without_extension():

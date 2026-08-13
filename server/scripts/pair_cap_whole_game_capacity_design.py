@@ -179,6 +179,18 @@ def _stable_digest(value: object) -> str:
     return hashlib.sha256(_canonical(value)).hexdigest()
 
 
+def _normal_cdf(value: float) -> float:
+    """Return the standard-normal CDF with cross-Python-stable arithmetic.
+
+    ``statistics.NormalDist.cdf`` changed its last bit between CPython 3.12
+    and 3.14 for the values in this design.  Those floats are persisted inside
+    the byte-pinned design, so the mathematically immaterial drift changed the
+    complete artifact identity.  ``math.erf`` is identical on every supported
+    fleet interpreter for this fixed expression.
+    """
+    return 0.5 * (1.0 + math.erf(value / math.sqrt(2.0)))
+
+
 def _sha256_path(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -323,10 +335,11 @@ def _planning() -> dict[str, object]:
     z_alpha = NormalDist().inv_cdf(1.0 - ONE_SIDED_ALPHA)
     z_power80 = NormalDist().inv_cdf(TARGET_JOINT_POWER_FLOOR)
     z_power_each = NormalDist().inv_cdf(TARGET_POWER_EACH)
-    marginal_power = NormalDist().cdf(TARGET_EFFECT / standard_error - z_alpha)
+    marginal_power = _normal_cdf(
+        TARGET_EFFECT / standard_error - z_alpha)
     sensitivity = {}
     for effect in (0.05, 0.06, TARGET_EFFECT):
-        power = NormalDist().cdf(effect / standard_error - z_alpha)
+        power = _normal_cdf(effect / standard_error - z_alpha)
         sensitivity[f"{effect:.2f}"] = {
             "marginal_power_each": power,
             "joint_power_union_bound_floor": max(0.0, 2.0 * power - 1.0),
@@ -499,7 +512,9 @@ def build_design() -> dict[str, object]:
             "projection_uses_measured_sum_of_three_arm_times": True,
             "projection_formula": (
                 "2.0 * (sum elapsed seconds for all 48 fixed capacity "
-                "records / 8 clusters) * 4608 clusters"),
+                "records / 8 clusters) * 4608 clusters / 3600"),
+            "lane_projection_formula": (
+                "projected compute hours / 16 fixed equal-count lanes"),
             "champion_time_reported_separately": True,
             "resource_or_machine_binding": False,
         },
@@ -523,6 +538,9 @@ def build_design() -> dict[str, object]:
             "raw_actions_or_histories_retained": False,
             "design_build_scores_or_outcomes_computed": False,
             "future_capacity_scores_or_outcomes_retained_or_published": False,
+            "complete_collection_required_before_projection": True,
+            "capacity_collection_rows": (
+                CAPACITY_CLUSTERS * len(FLIPS) * len(LABEL_ORDER)),
         },
         "role_dose_scope": {
             "mirrored_policy_team_roles": ["attacker", "defender"],
@@ -801,6 +819,7 @@ def capacity_record_problems(record: object, design: object) -> list[str]:
             or not 0 <= index < CAPACITY_CLUSTERS
             or record["deal_seed"]
             != CAPACITY_SEED0 + STREAM_STRIDE * index
+            or isinstance(flip, bool) or not isinstance(flip, int)
             or flip not in FLIPS
             or label not in LABEL_ORDER):
         problems.append("capacity record identity")
@@ -854,4 +873,124 @@ def capacity_record_problems(record: object, design: object) -> list[str]:
             problems.append("treatment natural-dose attribution")
     elif dose["change_phase"] is not None or dose["change_role"] is not None:
         problems.append("treatment zero-dose attribution")
+    return sorted(set(problems))
+
+
+def capacity_collection_problems(records: object,
+                                 design: object) -> list[str]:
+    """Validate the complete future score-free capacity preflight.
+
+    Per-record validity is insufficient for a preflight claim: duplicates can
+    hide missing arms, individually legal elapsed times can exceed the whole
+    budget, and a claimed natural root change is impossible without any
+    incremental continuation trigger on the shared prefix.  This collection
+    validator closes those seams without launching or scoring gameplay.
+    """
+    try:
+        validate_design(design)
+    except CapacityDesignRefused as exc:
+        return [f"design: {exc}"]
+    if not isinstance(records, list):
+        return ["capacity collection is not a list"]
+
+    expected_rows = CAPACITY_CLUSTERS * len(FLIPS) * len(LABEL_ORDER)
+    problems = []
+    if len(records) != expected_rows:
+        problems.append("capacity collection row count")
+
+    identities = []
+    valid_rows = []
+    for position, record in enumerate(records):
+        row_problems = capacity_record_problems(record, design)
+        problems.extend(
+            f"record {position}: {problem}" for problem in row_problems)
+        if not row_problems:
+            assert isinstance(record, dict)
+            valid_rows.append(record)
+            identities.append((
+                record["cluster_index"], record["flip"], record["label"]))
+
+    expected_identities = {
+        (index, flip, label)
+        for index in range(CAPACITY_CLUSTERS)
+        for flip in FLIPS
+        for label in LABEL_ORDER
+    }
+    if len(valid_rows) == len(records) and (
+            len(set(identities)) != len(identities)
+            or set(identities) != expected_identities):
+        problems.append("capacity collection identity population")
+    if problems:
+        return sorted(set(problems))
+
+    elapsed_seconds = math.fsum(
+        float(record["elapsed_seconds"]) for record in valid_rows)
+    if elapsed_seconds > CAPACITY_MAX_TOTAL_ELAPSED_SECONDS:
+        problems.append("capacity collection total elapsed cap")
+
+    projected_compute_hours = (
+        CAPACITY_SAFETY_FACTOR
+        * elapsed_seconds / CAPACITY_CLUSTERS
+        * EVALUATION_CLUSTERS / 3_600.0)
+    projected_lane_hours = projected_compute_hours / LOGICAL_LANES
+    if projected_compute_hours > MAX_PROJECTED_COMPUTE_HOURS:
+        problems.append("capacity projected compute-hour cap")
+    if projected_lane_hours > MAX_PROJECTED_LANE_HOURS:
+        problems.append("capacity projected lane-hour cap")
+
+    total_searches = 0
+    total_accepted_worlds = 0
+    total_rollouts = 0
+    for record in valid_rows:
+        arm = record["arm_root_work"]
+        opponent = record["opponent_root_work"]
+        round_searches = arm["searches"] + opponent["searches"]
+        if round_searches > MAX_ROOT_ACTIONS_PER_ROUND:
+            problems.append("capacity per-round root-search cap")
+        total_searches += round_searches
+        total_accepted_worlds += (
+            arm["accepted_worlds"] + opponent["accepted_worlds"])
+        total_rollouts += arm["rollouts"] + opponent["rollouts"]
+        if math.fsum((float(arm["search_secs"]),
+                      float(opponent["search_secs"]))) > (
+                          float(record["elapsed_seconds"]) + 0.01):
+            problems.append("capacity root-search time exceeds round time")
+
+    ceiling = design["work_ceiling"]["capacity"]
+    if total_searches > ceiling["max_all_bot_root_searches"]:
+        problems.append("capacity aggregate root-search cap")
+    if total_accepted_worlds > ceiling["max_accepted_worlds"]:
+        problems.append("capacity aggregate accepted-world cap")
+    if total_rollouts > ceiling["max_candidate_world_rollouts"]:
+        problems.append("capacity aggregate candidate-world cap")
+
+    role_totals = {
+        label: {"attacker_searches": 0, "defender_searches": 0}
+        for label in LABEL_ORDER
+    }
+    changed_roots = 0
+    for record in valid_rows:
+        label = record["label"]
+        for role in role_totals[label]:
+            role_totals[label][role] += record["root_roles"][role]
+        if label != "treatment":
+            continue
+        dose = record["natural_dose"]
+        assert isinstance(dose, dict)
+        changed = dose["root_action_changed"]
+        changed_roots += int(changed)
+        outer = record["incremental"]["counters"]["outer"]
+        if changed and outer["triggers"] <= 0:
+            problems.append(
+                "capacity root change without incremental trigger dose")
+        if dose["shared_prefix_root_decisions"] > \
+                MAX_ROOT_ACTIONS_PER_ROUND:
+            problems.append("capacity shared-prefix root-decision cap")
+
+    for label, totals in role_totals.items():
+        if any(totals[role] <= 0 for role in totals):
+            problems.append(f"capacity {label} missing root role")
+    if changed_roots < design["role_dose_scope"][
+            "natural_treatment_parent_root_changes_required_for_capacity_pass"]:
+        problems.append("capacity has zero natural incremental root changes")
     return sorted(set(problems))

@@ -88,6 +88,14 @@ class DesignRefused(RuntimeError):
     """A construction, capacity, checkpoint, or resume contract drifted."""
 
 
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
 @dataclass(frozen=True)
 class Population:
     seed0: int
@@ -259,6 +267,15 @@ def concurrent_capacity_problems(result: object, *, expected_workers: int,
         return ["capacity result is not an object"]
     lanes = result.get("lanes")
     problems = []
+    workers_valid = (
+        isinstance(expected_workers, int)
+        and not isinstance(expected_workers, bool)
+        and expected_workers >= MIN_WORKERS
+    )
+    if not workers_valid:
+        problems.append("capacity expected worker population drift")
+    if not _is_sha256(runtime_profile_sha256):
+        problems.append("capacity runtime profile SHA-256 is malformed")
     expected_fields = {
         "schema", "run_id", "seed0", "workers", "clusters_per_worker",
         "runtime_profile_sha256", "score_free", "outcomes_published",
@@ -270,7 +287,7 @@ def concurrent_capacity_problems(result: object, *, expected_workers: int,
             or result.get("run_id") != CAPACITY_RUN_ID
             or result.get("seed0") != CAPACITY_SEED0
             or result.get("workers") != expected_workers
-            or expected_workers < MIN_WORKERS
+            or not workers_valid
             or result.get("clusters_per_worker")
             != CAPACITY_CLUSTERS_PER_WORKER
             or result.get("outcomes_published") is not False
@@ -278,11 +295,20 @@ def concurrent_capacity_problems(result: object, *, expected_workers: int,
             or result.get("exact_work_complete") is not True
             or result.get("concurrent_saturation_verified") is not True
             or result.get("runtime_profile_sha256")
-            != runtime_profile_sha256):
+            != runtime_profile_sha256
+            or not _is_sha256(result.get("runtime_profile_sha256"))):
         problems.append("capacity identity/work/runtime drift")
-    if not isinstance(lanes, list) or len(lanes) != expected_workers:
+    if (not isinstance(lanes, list) or not workers_valid
+            or len(lanes) != expected_workers):
         problems.append("capacity lane population drift")
         return sorted(set(problems))
+    capacity = Population(
+        CAPACITY_SEED0, expected_workers * CAPACITY_CLUSTERS_PER_WORKER)
+    screen = Population(SCREEN_SEED0, SCREEN_CLUSTERS)
+    if populations_overlap(capacity, screen) or any(
+            populations_overlap(capacity, _reserved_population(reserved))
+            for reserved in RESERVED_POPULATIONS):
+        problems.append("capacity population overlaps a reserved population")
     expected_indices = list(range(expected_workers))
     if [lane.get("index") for lane in lanes if isinstance(lane, dict)] \
             != expected_indices:
@@ -290,6 +316,8 @@ def concurrent_capacity_problems(result: object, *, expected_workers: int,
     for lane in lanes:
         if (not isinstance(lane, dict)
                 or set(lane) != {"index", "clusters", "elapsed_seconds"}
+                or isinstance(lane.get("index"), bool)
+                or not isinstance(lane.get("index"), int)
                 or lane.get("clusters") != CAPACITY_CLUSTERS_PER_WORKER
                 or isinstance(lane.get("elapsed_seconds"), bool)
                 or not isinstance(lane.get("elapsed_seconds"), (int, float))
@@ -314,11 +342,16 @@ def capacity_projection(result: dict, *, expected_workers: int,
         lane["elapsed_seconds"] / lane["clusters"]
         for lane in result["lanes"])
     planned = slowest * CONCURRENT_CAPACITY_SAFETY_FACTOR
+    projected_wall_hours = (
+        math.ceil(MICROSHARDS / expected_workers)
+        * MICROSHARD_CLUSTERS * planned / 3_600.0
+    )
+    if projected_wall_hours > MAX_PLANNED_WALL_HOURS:
+        raise DesignRefused("capacity projection exceeds planned wall cap")
     return {
         "measured_slowest_lane_seconds_per_cluster": slowest,
         "planning_seconds_per_cluster": planned,
-        "projected_wall_hours": (
-            SCREEN_CLUSTERS / expected_workers * planned / 3_600.0),
+        "projected_wall_hours": projected_wall_hours,
         "microshard_timeout_seconds": (
             MICROSHARD_CLUSTERS * planned + 300.0),
     }
@@ -331,6 +364,10 @@ def manifest_problems(value: object, *, packet_sha256: str,
         return ["microshard manifest is not an object"]
     rows = value.get("completed")
     problems = []
+    if not _is_sha256(packet_sha256):
+        problems.append("packet SHA-256 is malformed")
+    if not _is_sha256(runtime_profile_sha256):
+        problems.append("campaign runtime profile SHA-256 is malformed")
     if set(value) != {
             "schema", "run_id", "packet_sha256", "outcomes_opened",
             "statistics_published", "aggregate_execution_authorized",
@@ -349,6 +386,8 @@ def manifest_problems(value: object, *, packet_sha256: str,
             }
             or value.get("campaign_runtime_profile_sha256")
             != runtime_profile_sha256
+            or not _is_sha256(
+                value.get("campaign_runtime_profile_sha256"))
             or value.get("outcomes_opened") is not False
             or value.get("statistics_published") is not False
             or value.get("aggregate_execution_authorized") is not False):
@@ -371,9 +410,7 @@ def manifest_problems(value: object, *, packet_sha256: str,
                 or row.get("seed0") != SCREEN_SEED0 + STREAM_STRIDE * (
                     row["microshard_index"] * MICROSHARD_CLUSTERS)
                 or row.get("clusters") != MICROSHARD_CLUSTERS
-                or not isinstance(row.get("sha256"), str)
-                or len(row["sha256"]) != 64
-                or any(char not in "0123456789abcdef" for char in row["sha256"])
+                or not _is_sha256(row.get("sha256"))
                 or isinstance(row.get("elapsed_seconds"), bool)
                 or not isinstance(row.get("elapsed_seconds"), (int, float))
                 or not math.isfinite(row["elapsed_seconds"])
@@ -399,12 +436,11 @@ def missing_microshards(value: dict, *, packet_sha256: str,
         runtime_profile_sha256=runtime_profile_sha256)
     if problems:
         raise DesignRefused("; ".join(problems))
-    if surviving_prior_workers != 0:
+    if (not isinstance(surviving_prior_workers, int)
+            or isinstance(surviving_prior_workers, bool)
+            or surviving_prior_workers != 0):
         raise DesignRefused("prior microshard workers still survive")
-    if (not isinstance(manifest_sha256, str)
-            or len(manifest_sha256) != 64
-            or any(character not in "0123456789abcdef"
-                   for character in manifest_sha256)):
+    if not _is_sha256(manifest_sha256):
         raise DesignRefused("manifest file SHA-256 is malformed")
     if (not isinstance(manifest_review, dict)
             or set(manifest_review) != {

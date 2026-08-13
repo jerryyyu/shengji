@@ -148,6 +148,46 @@ def test_capacity_uses_slowest_concurrent_lane_not_mean():
         pytest.approx(815.0 / 8 * 1.5)
 
 
+@pytest.mark.parametrize("profile", [None, "", "not-a-sha", "A" * 64])
+def test_capacity_refuses_malformed_runtime_profile_hash(profile):
+    result = _capacity()
+    result["runtime_profile_sha256"] = profile
+    assert DESIGN.concurrent_capacity_problems(
+        result, expected_workers=16, runtime_profile_sha256=profile)
+
+
+def test_capacity_refuses_boolean_lane_indices_and_noninteger_worker_count():
+    result = _capacity()
+    result["lanes"][0]["index"] = False
+    result["lanes"][1]["index"] = True
+    assert DESIGN.concurrent_capacity_problems(
+        result, expected_workers=16, runtime_profile_sha256=PROFILE)
+    result = _capacity()
+    result["workers"] = 16.0
+    assert DESIGN.concurrent_capacity_problems(
+        result, expected_workers=16.0, runtime_profile_sha256=PROFILE)
+
+
+def test_capacity_refuses_worker_count_whose_seed_range_reaches_screen():
+    result = _capacity(workers=42)
+    assert DESIGN.concurrent_capacity_problems(
+        result, expected_workers=42, runtime_profile_sha256=PROFILE) == [
+            "capacity population overlaps a reserved population"]
+
+
+def test_capacity_projection_uses_integer_microshards_and_enforces_wall_cap():
+    result = _capacity(workers=17, seconds=800.0)
+    projected = DESIGN.capacity_projection(
+        result, expected_workers=17, runtime_profile_sha256=PROFILE)
+    planned = 816.0 / 8 * DESIGN.CONCURRENT_CAPACITY_SAFETY_FACTOR
+    assert projected["projected_wall_hours"] == pytest.approx(
+        14 * DESIGN.MICROSHARD_CLUSTERS * planned / 3_600.0)
+    slow = _capacity(seconds=10_000.0)
+    with pytest.raises(DESIGN.DesignRefused, match="planned wall cap"):
+        DESIGN.capacity_projection(
+            slow, expected_workers=16, runtime_profile_sha256=PROFILE)
+
+
 @pytest.mark.parametrize("mutation", [
     lambda row: row.update(outcomes_opened=True),
     lambda row: row.update(statistics_published=True),
@@ -190,6 +230,23 @@ def test_manifest_cannot_relabel_parent_population_or_parent_run():
         runtime_profile_sha256=PROFILE)
 
 
+@pytest.mark.parametrize("packet,profile", [
+    (None, PROFILE),
+    ("", PROFILE),
+    (PACKET, None),
+    (PACKET, "not-a-sha"),
+])
+def test_manifest_refuses_unbound_packet_or_runtime_hash(packet, profile):
+    manifest = _manifest()
+    manifest["packet_sha256"] = packet
+    manifest["campaign_runtime_profile_sha256"] = profile
+    for row in manifest["completed"]:
+        row["worker_runtime_profile_sha256"] = profile
+    assert DESIGN.manifest_problems(
+        manifest, packet_sha256=packet,
+        runtime_profile_sha256=profile)
+
+
 def test_resume_refuses_surviving_worker_or_missing_review():
     with pytest.raises(DESIGN.DesignRefused, match="workers still survive"):
         DESIGN.missing_microshards(
@@ -210,3 +267,13 @@ def test_resume_refuses_surviving_worker_or_missing_review():
             _manifest(), packet_sha256=PACKET,
             runtime_profile_sha256=PROFILE, manifest_review=_review(),
             manifest_sha256="not-a-hash", surviving_prior_workers=0)
+
+
+@pytest.mark.parametrize("worker_count", [False, 0.0])
+def test_resume_requires_exact_integer_zero_surviving_workers(worker_count):
+    with pytest.raises(DESIGN.DesignRefused, match="workers still survive"):
+        DESIGN.missing_microshards(
+            _manifest(), packet_sha256=PACKET,
+            runtime_profile_sha256=PROFILE, manifest_review=_review(),
+            manifest_sha256=MANIFEST_SHA,
+            surviving_prior_workers=worker_count)

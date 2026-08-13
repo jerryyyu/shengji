@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -320,7 +321,10 @@ class _Process:
 
     def start(self):
         self.alive = True
-        self.args[3].put({"index": self.args[0], "ok": True})
+        self.args[3].put({
+            "index": self.args[0],
+            "ok": self.args[0] != self.context.not_ok_index,
+        })
 
     def join(self, timeout):
         assert timeout == 10
@@ -348,8 +352,9 @@ class _Event:
 
 
 class _Context:
-    def __init__(self):
+    def __init__(self, *, not_ok_index=None):
         self.processes = []
+        self.not_ok_index = not_ok_index
 
     def Queue(self):
         return _Queue()
@@ -374,6 +379,29 @@ def test_measurement_uses_all_16_concurrent_lanes_and_score_free_schema(
         result, expected_workers=16,
         runtime_profile_sha256=result["runtime_profile_sha256"]) == []
     assert not C._forbidden_keys(result)
+
+
+def test_lane_process_reports_not_ok_when_worker_runtime_digest_drifts(
+        monkeypatch):
+    ready = _Queue()
+    results = _Queue()
+    monkeypatch.setattr(C, "runtime_snapshot", lambda expected_git: {
+        "git": expected_git, "worker": "drifted"})
+    monkeypatch.setattr(C, "run_lane", lambda *args: {
+        "unexpected": "runtime guard was bypassed"})
+    C._lane_process(
+        7, GIT, "0" * 64, ready,
+        SimpleNamespace(wait=lambda: None), results)
+    assert ready.values == [{"index": 7, "ok": False}]
+    assert results.values == []
+
+
+def test_measurement_refuses_not_ok_worker_before_start_barrier(monkeypatch):
+    context = _Context(not_ok_index=7)
+    monkeypatch.setattr(C.multiprocessing, "get_context", lambda method: (
+        context if method == "spawn" else None))
+    with pytest.raises(C.CapacityRefused, match="start-barrier"):
+        C.measure_capacity(_packet())
 
 
 @pytest.mark.parametrize("key", [
@@ -637,6 +665,86 @@ def test_review_marker_requires_claude_commit_and_append_only_ledger(
     blobs[f"{C.CANONICAL_REVIEW_REF}:{C.REVIEW_LEDGER}"] = \
         b"rewritten\n" + marker
     with pytest.raises(C.CapacityRefused, match="append-only"):
+        C.canonical_review_record(
+            commit=commit, prefix=C.IMPLEMENTATION_REVIEW_PREFIX,
+            expected=claim, label="test review")
+
+
+def test_review_marker_refuses_commit_that_rewrites_parent(monkeypatch):
+    commit = "8" * 40
+    parent = "9" * 40
+    claim = C.implementation_review_claim(expected_git=GIT)
+    marker = C._canonical_marker(C.IMPLEMENTATION_REVIEW_PREFIX, claim)
+
+    class Result:
+        returncode = 0
+
+    monkeypatch.setattr(C.subprocess, "run", lambda *a, **k: Result())
+
+    def fake_git(*args):
+        joined = " ".join(args)
+        if "--format=%P" in joined:
+            return parent
+        if "--format=%an" in joined or "--format=%cn" in joined:
+            return C.REVIEWER_NAME
+        if "--format=%ae" in joined or "--format=%ce" in joined:
+            return C.REVIEWER_EMAIL
+        if "--format=%B" in joined:
+            return C.REVIEWER_SESSION_TRAILER
+        if args and args[0] == "diff-tree":
+            return C.REVIEW_LEDGER
+        raise AssertionError(args)
+
+    rewritten = b"rewritten parent history\n" + marker
+    blobs = {
+        f"{commit}:{C.REVIEW_LEDGER}": rewritten,
+        f"{parent}:{C.REVIEW_LEDGER}": b"original parent history\n",
+        f"{C.CANONICAL_REVIEW_REF}:{C.REVIEW_LEDGER}":
+            rewritten + b"later\n",
+    }
+    monkeypatch.setattr(C, "git", fake_git)
+    monkeypatch.setattr(C, "git_bytes", lambda *args: blobs[args[-1]])
+    with pytest.raises(C.CapacityRefused, match="append-only"):
+        C.canonical_review_record(
+            commit=commit, prefix=C.IMPLEMENTATION_REVIEW_PREFIX,
+            expected=claim, label="test review")
+
+
+def test_review_marker_refuses_duplicate_at_canonical_tip(monkeypatch):
+    commit = "8" * 40
+    parent = "9" * 40
+    claim = C.implementation_review_claim(expected_git=GIT)
+    marker = C._canonical_marker(C.IMPLEMENTATION_REVIEW_PREFIX, claim)
+    before = b"prior ledger\n"
+    current = before + marker
+
+    class Result:
+        returncode = 0
+
+    monkeypatch.setattr(C.subprocess, "run", lambda *a, **k: Result())
+
+    def fake_git(*args):
+        joined = " ".join(args)
+        if "--format=%P" in joined:
+            return parent
+        if "--format=%an" in joined or "--format=%cn" in joined:
+            return C.REVIEWER_NAME
+        if "--format=%ae" in joined or "--format=%ce" in joined:
+            return C.REVIEWER_EMAIL
+        if "--format=%B" in joined:
+            return C.REVIEWER_SESSION_TRAILER
+        if args and args[0] == "diff-tree":
+            return C.REVIEW_LEDGER
+        raise AssertionError(args)
+
+    blobs = {
+        f"{commit}:{C.REVIEW_LEDGER}": current,
+        f"{parent}:{C.REVIEW_LEDGER}": before,
+        f"{C.CANONICAL_REVIEW_REF}:{C.REVIEW_LEDGER}": current + marker,
+    }
+    monkeypatch.setattr(C, "git", fake_git)
+    monkeypatch.setattr(C, "git_bytes", lambda *args: blobs[args[-1]])
+    with pytest.raises(C.CapacityRefused, match="provenance drift"):
         C.canonical_review_record(
             commit=commit, prefix=C.IMPLEMENTATION_REVIEW_PREFIX,
             expected=claim, label="test review")

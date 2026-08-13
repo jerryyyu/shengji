@@ -10,7 +10,7 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-13 00:35 EDT.
+Last reconciled: 2026-08-13 00:53 EDT.
 
 ## CURRENT LAUNCH BLOCKER — read before the older lane detail below
 
@@ -30,19 +30,30 @@ PR #64. Current executable truth is:
   the performance review priority: it records behavior compatibility without
   rewriting historical evidence. Neither request grants deploy/experiment
   authority; #71 remains unmerged until #75 resolves.
-- **Other pending reviews:** Pair ballot capacity PR #72 `373de84`, docs PR
-  #64 `b55fe5d`, then conditional Pair-cap PR #73 `8c436ab`.
-- **S5 repair PR #76 `6e4377d` awaits validation-only review.** It permanently
+- **Other pending reviews:** Pair ballot capacity PR #72 `373de84` now has a
+  source-derived corrected marker request at main `97547af`; PR #75
+  `ee6dc48` awaits its compatibility review; docs PR #64 `b55fe5d` awaits
+  prose-only review; conditional Pair-cap PR #73 `8c436ab` remains behind
+  #72.
+- **S5 repair PR #76 `e285f47` awaits validation-only review under the
+  superseding main request `9e73694`.** Do not review the stale `6e4377d`
+  request. The final head passes 21/21 on both ARM and clean x86. It permanently
   disables the spent PR #74 run path and requires a distinct pinned reviewer
   attestation. It creates no retry or recovery namespace and authorizes no run.
 - **Live compute:** T4 is healthy on Mini at 4,896/12,288 counter-only
   arm-rounds (39.8%); broad Pair is healthy on Air; S6's reviewed score-free
-  queue sleeps behind it; S4 is healthy on strength Cloud at 2,337/8,192
-  look-one clusters (28.5%). Outcomes remain sealed.
+  queue sleeps behind it; S4 is healthy on strength Cloud at 2,835/8,192
+  look-one clusters (34.6%). Outcomes remain sealed.
 - **Performance Cloud:** bounded performance measurement and current-parent
   compatibility replay are safe uses. Do not give it to S5 under PR #74; the
   old admission is spent and no recovery execution is authorized. Never
   substitute optimized code into frozen strength evidence.
+- **Prepared-world performance seam:** an exact-head independent audit passed
+  semantics across every MC mode. Six fresh x86 round pairs measured 2.62%
+  lower wall time (2.69% greater throughput; one-sided lower bound 1.51%) with
+  identical transcripts and work counters. The older quoted 3.37% pooled
+  figure mixed two revisions and is retired. Three extra call-count
+  regressions are being added before publication.
 
 Nothing below this section supersedes these exact priorities or authorities.
 

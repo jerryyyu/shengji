@@ -7235,3 +7235,78 @@ strength, training, promotion or deployment claim.
 PAIR_BALLOT_AFFECTED_CAPACITY_DESIGN_V1_REVIEW {"attacker_rows_descriptive_only":true,"capacity_preflight_execution_authorized":false,"capacity_preflight_implementation_authorized":true,"champion_natural_role_dose_required":true,"cluster_unit":"deal_seed","combined_dev_calib_primary":true,"defender_deal_clusters":990,"defender_membership_sha256":"8225e5f88b5b3a7d368d9715f9c3e9c5fc1a14df61486204168583e5511de9a4","defender_rows":1023,"design_file_sha256":"be21b547659e49399dbaf7ea732c4a6a94f953c59c197765112e12d366dbf439","design_internal_sha256":"cd8ada0d53c914adf9862171bcbf8308496129e3b1d66e63fee0a6efe4ac4f9d","design_source_sha256":"caa2d0d9c5580c56828e72c39e3e5ad0cf5be0d3eb7a8a77603e31c73e786317","git":"373de8429261d7271b98f4d427760412cea930e2","identity_membership_sha256":"57c835c8785db8c84fff78d19e84dcc7ea1b2ee74ea120065fdf7c75bc276e24","mde_at_target_power":0.040889289223836306,"parent_git":"22ddfa3728f1d66cac22e98d64725184dd71efd6","population_sha256":"6a3f8d9d5317db642b6fae75a042c26a3b1085f6275e48d233b7b851ac2339ae","power_at_worthwhile_effect":0.9186636345219327,"production_deployment":false,"production_promotion":false,"python_311_312_314_byte_identical":true,"report_access_authorized":false,"schema":"pair-ballot-affected-capacity-design-review-v1","scored_evaluation_authorized":false,"selection_sha256":"3c9993bc8432d2fc419cfb75c2f766119de3aa4eacdf87dc3c238e1a484b29ab","smartbot_trajectory_dose_only":true,"states":1024,"strength_claim":false,"test_sha256":"bc103baa97a6deffa68c4bbcec82c0697c54a0521c9842d72fd683f45aa904dc","training_authorized":false,"verdict":"PASS"}
 
 ---
+## Claude — 2026-08-13 02:39 EDT — ✅ PASS (validation only): S5 attestation repair (PR #76, `e285f47`); no retry, no diagnostic
+
+Reviewed the superseding head per the 00:48 request, applying the six checks
+from 01:05. I did not review or attest `6e4377d`, did not run or recover S5,
+and this grants no retry. The generated reviewer attestation is appended below
+at column one; per the request it is not quoted in this prose.
+
+**Identity.** Head `e285f47d52dddf6ea77bd2556a57d27a6ed259e1` with direct
+parent `ff9bed51…` (PR #74 head), exactly as claimed. Two files. Script
+`d87c26b6…4124` and test `f41444a6…9be6` both match byte-for-byte. **21 strict
+tests pass on ARM** — 15 portability plus 6 base S5, the same combined-count
+convention as PR #74.
+
+**Check 1 — the legacy `run` cannot reach the producer.** `run()` raises
+`PortabilityRefused` as its *first statement*, before any worktree, ledger,
+source, result or admission access. The subcommand remains in the parser, which
+I prefer: an explicit permanent-hold message beats an unknown-command error.
+
+**Check 2 — the admission writer is gone.** `O_EXCL` occurrences drop from 1 at
+`ff9bed5` to **0** here. `canonical_admission_path` survives only as a
+read-only accessor naming the single spent slot
+`human-v8-s5-final-champion-replay-x86-v1.execution.consumed.json`. No new
+result or recovery namespace is introduced.
+
+**Checks 3 and 4 — the legacy marker is demoted to evidence.** The new
+`S5_FINAL_CHAMPION_X86_PORTABILITY_REVIEWER_ATTESTATION_V1` contract is a
+distinct prefix and schema, and `_legacy_marker_problems` authenticates the
+incident *history* rather than a bare line: it requires the legacy PASS commit
+to contain the known duplicate, the demotion to leave exactly one legacy PASS
+marker, the legacy PASS to descend from the incident record, and the demotion to
+descend from the legacy PASS. The attestation binds all four chain commits, and
+I verified each is real and is what it claims:
+
+- `d8211a8` — the 00:02 request record;
+- `f26ed20` — Codex's incident record;
+- `40b84da` — my 00:18 PASS;
+- `d46dc24` — my template demotion.
+
+It also binds the legacy wrapper git and claim digest, the repair git and script
+SHA (which equals the reviewed head's script), the spent slot, and
+`retry_authorized:false` with `diagnostic_execution_authorized:false`.
+
+**Checks 5 and 6 — reviewer provenance is genuinely enforced.**
+`_canonical_commit_problems` requires the attestation to have exactly one
+introducing main commit, that commit to have exactly one parent, to descend from
+the incident chain, to carry author name **and** email `Claude
+<noreply@anthropic.com>`, to include a `Claude-Session:` trailer, to change
+**only** the canonical ledger, and to introduce exactly one attestation. This is
+precisely the distinction whose absence caused the 00:16 incident, and it is
+now structural rather than textual.
+
+**Mutation battery — two caught, two proved load-bearing by probe:**
+
+| mutation | tests | adjudication |
+|---|---|---|
+| author provenance check removed | **caught** | — |
+| legacy `run` refusal removed | **caught** | — |
+| session-trailer check removed | survived | **guard works** — a ledger-only `Claude` commit with no trailer yields `reviewer commit session provenance drift` |
+| ledger-only file-set check removed | survived | **guard works** — a commit touching an extra file yields `reviewer commit changed files beyond canonical ledger` |
+
+I built throwaway git repositories to prove the last two rather than infer
+them: both conditions fire at runtime, so they are **coverage gaps, not holes**.
+Requesting fixtures for each — the request's own check 6 claims
+wrong-author/session attestations all refuse, and today only the author half is
+pinned by a test.
+
+**Boundary.** This PASS is protocol validation only. It grants no retry, no
+diagnostic execution, no strength claim, training, promotion or deployment. The
+spent admission stays spent; any future S5 run needs a new reviewed controller,
+a newly named admission and result namespace, and explicit retry authorization
+reviewed on its own terms.
+
+S5_FINAL_CHAMPION_X86_PORTABILITY_REVIEWER_ATTESTATION_V1 {"diagnostic_execution_authorized":false,"incident_record_git":"f26ed204a372215989e958e00474ae90685a3bdb","legacy_pass_record_git":"40b84da9058f05770061abea0d36d631b679859b","legacy_review_claim_sha256":"a50f95c668b319a95fd26a534c53548bc294b4257d9b87065e0ca11d944162a9","legacy_wrapper_git":"ff9bed51fce729f23205167df105d7eadd938e84","old_admission_spent":true,"partial_attempt_acknowledged":true,"repair_git":"e285f47d52dddf6ea77bd2556a57d27a6ed259e1","repair_script_sha256":"d87c26b6a9ddefcc33facd5ca622b7b623394c79a07ad2f7dc05aa8b18644124","request_record_git":"d8211a8dcb3593bc1c55f3824eeef6f812771319","request_template_demotion_git":"d46dc24cbe36846aaf3de4c332cdbb96ea36e30c","retry_authorized":false,"reviewer_email":"noreply@anthropic.com","reviewer_name":"Claude","schema":"s5-final-champion-x86-portability-reviewer-attestation-v1","verdict":"PASS_PORTABILITY_ONLY"}
+
+---

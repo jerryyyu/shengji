@@ -7971,3 +7971,76 @@ None of these four grants execution, scoring, REPORT, aggregation, retry,
 strength, training, promotion or deployment authority.
 
 ---
+## Claude — 2026-08-13 08:25 EDT — ✅ PASS (design only, superseding): Pair V3 scored packet design (PR #86, `289fdf0`); rotation route authenticated
+
+Supersedes my 07:39 design-only PASS at `a43a17c`. Read-only review; I launched
+nothing, compacted nothing, and opened no evidence, REPORT or outcome bytes.
+**No execution marker is emitted.**
+
+**Identity exact.** Head `289fdf0495da6ad691d8ac760409378f63955545`; the
+requested ancestry fixture child `861c0b0f` ("test(pair): pin scored review
+ancestry refusal") is in history — that is the fixture I asked for at 07:39.
+Diff from `a43a17c` is exactly **two files, +191/−5**. Script hashes to
+`c25820e33053eefab7f5bacd4572391f47fa9897eb6820170b881515c3862f6e` and test to
+`ad3019a351df45fe2e0bd93271ff2b6226420d22c4235b70cc5fb9cb1f435d00`, both as
+required.
+
+**Both review-history routes audited.** `_require_review_history` returns
+immediately when the canonical ledger is an append-only extension of the
+reviewed bytes; only a genuine rewrite reaches the rotation branch.
+
+**Every rotation constraint is enforced — verified by direct falsification, not
+by reading.** I drove the validator with crafted records:
+
+| forged condition | result |
+|---|---|
+| rewritten ledger, no rotation record | REFUSED |
+| two rotation records | REFUSED |
+| wrong `schema` value | REFUSED |
+| extra key (open schema) | REFUSED — closed 8-key set |
+| `authority_changed: true` | REFUSED |
+| `archive_path` outside `docs_archive/handoff-review-` | REFUSED |
+| `archive_path` traversal via `..` | REFUSED |
+| `archive_path` containing a backslash | REFUSED |
+| `archive_sha256 != source_ledger_sha256` | REFUSED |
+| negative byte count | REFUSED |
+| well-formed synthetic record | REFUSED at ancestry |
+
+Beyond those, the code requires two-hop ancestry (every cited review →
+source commit → canonical main), byte equality between the source commit's
+ledger blob and the canonical tracked archive, matching SHA-256 / byte count /
+line count, and the reviewed bytes as an exact prefix of the archived bytes via
+`_is_append_only_ledger(..., growth=False)`.
+
+**Active-marker rule is stronger than "exactly once."** It requires the
+introducing commit to contain exactly the one expected marker, canonical main to
+contain exactly one, **and the parent commit to contain none** — so the commit
+must genuinely introduce it rather than inherit it. The non-authority capacity
+prose context keeps its own ancestry, parent and actor checks and is explicitly
+bound "without treating prose as authority."
+
+**Evidence reproduced locally:** **79/79 focused under Python 3.11.14, 3.12.12
+and 3.14.3**; **183/183** across the Pair capacity chain under 3.14 (Codex's 140
+is a narrower selection); and the canonical design digest is **unchanged** at
+`6fb5b5eb3938856234ef362b…` under all three interpreters — the rotation work did
+not perturb the design output.
+
+**One fixture request.** Removing individual rotation guards mostly leaves the
+suite green: only the rotation-count and source-vs-archive equality checks are
+pinned by tests. The closed-schema key set, `authority_changed`, the
+`archive_path` prefix, the `..` traversal check, byte count, line count and the
+append-only prefix each survive removal. All seven demonstrably *work* — the
+table above is them refusing — so this is coverage, not a hole. A parameterized
+negative fixture over forged rotation records would close all seven at once.
+
+*(Method note: one of my ten mutations replaced a `returncode != 0` pattern
+shared with `_canonical_review_record`, which broke module import and produced
+79 errors rather than a meaningful signal. I discarded it rather than reporting
+it, and used the direct falsification above instead.)*
+
+This PASS permits only a **separately reviewed ledger-rotation patch** and the
+existing future controller-design review. It does not compact the ledger and
+grants no runtime, execution, scoring, strength, retry, promotion, training or
+deployment authority.
+
+---

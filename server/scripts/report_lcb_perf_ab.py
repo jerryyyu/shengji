@@ -46,10 +46,15 @@ N_DETERMINIZATIONS = 30
 REPORT_WORLDS = 300
 BASE_GIT = "093ec33d8d9e137d276b84ffd907ca4417ba44af"
 HEAD_GIT = "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
-EXPERIMENT_ID = "report-lcb-perf-accepted-stack-pr90-v2"
+# The v2r1 invocation was refused before evidence creation because its
+# systemd provenance check used the inverse of systemd's real symlink shape.
+# A repaired run is a fresh experiment, with fresh seeds and namespace; v2r1
+# remains spent and must never be restarted.
+EXPERIMENT_ID = \
+    "report-lcb-perf-accepted-stack-pr90-v3-systemd-repair"
 PAIR_SEEDS = (
-    3368250205, 194578860, 2724771798,
-    2228922925, 1533007193, 1686527578,
+    2552710799, 3117477128, 1009088913,
+    3804486078, 4075261754, 2363873674,
 )
 PAIR_ORDERS = (
     "base_head", "head_base", "base_head",
@@ -989,6 +994,25 @@ def _require_root_owned_directory(path: Path, label: str) -> None:
             f"{label} must be root-owned and not group/world writable")
 
 
+def _require_systemd_invocation(
+        systemd_unit: Path, invocation_id: str, *,
+        units_dir: Path = Path("/run/systemd/units")) -> None:
+    """Bind this process to the reviewed unit's live systemd invocation.
+
+    systemd exposes ``invocation:<unit-name> -> <32-hex InvocationID>``.
+    The earlier v2r1 gate accidentally checked the inverse mapping; on the
+    target host that correctly refused before any benchmark arm started.
+    """
+    if (len(invocation_id) != 32
+            or any(char not in "0123456789abcdef" for char in invocation_id)):
+        raise HarnessRefused("systemd invocation identity is malformed")
+    invocation = units_dir / f"invocation:{systemd_unit.name}"
+    if (not os.path.lexists(invocation)
+            or not invocation.is_symlink()
+            or os.readlink(invocation) != invocation_id):
+        raise HarnessRefused("systemd invocation/unit binding is not live")
+
+
 def _review_record(path: Path, expected_sha: str,
                    design_sha: str) -> tuple[dict[str, Any], bytes]:
     payload = _require_root_owned_regular(path, "review record")
@@ -1032,12 +1056,8 @@ def _require_root_execution(design_path: Path, design: dict[str, Any],
                 current = current.parent
     parent = Path(design["evidence_root"]).parent
     _require_root_owned_directory(parent, "evidence parent")
-    invocation = Path(f"/run/systemd/units/invocation:{invocation_id}")
-    if (not os.path.lexists(invocation)
-            or not invocation.is_symlink()
-            or Path(os.readlink(invocation)).name !=
-            Path(design["execution"]["systemd_unit"]["path"]).name):
-        raise HarnessRefused("systemd invocation/unit binding is not live")
+    _require_systemd_invocation(
+        Path(design["execution"]["systemd_unit"]["path"]), invocation_id)
 
 
 def paired_statistics(rows: list[dict[str, Any]]) -> dict[str, Any]:

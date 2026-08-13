@@ -212,6 +212,16 @@ def test_design_requires_balanced_fresh_batch_and_exact_identities(tmp_path):
     )
     assert harness.HEAD_GIT == \
         "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
+    assert harness.EXPERIMENT_ID == \
+        "report-lcb-perf-accepted-stack-pr90-v3-systemd-repair"
+    assert harness.PAIR_SEEDS == (
+        2552710799, 3117477128, 1009088913,
+        3804486078, 4075261754, 2363873674,
+    )
+    assert set(harness.PAIR_SEEDS).isdisjoint({
+        3368250205, 194578860, 2724771798,
+        2228922925, 1533007193, 1686527578,
+    })
 
     design = _design(tmp_path)
     assert harness.design_problems(design) == []
@@ -240,6 +250,35 @@ def test_design_requires_balanced_fresh_batch_and_exact_identities(tmp_path):
     native_gap["head"]["native"]["sha256"] = "not-a-sha"
     assert any("head native SHA" in problem
                for problem in harness.design_problems(native_gap))
+
+
+def test_systemd_invocation_binding_uses_real_unit_to_id_symlink(tmp_path):
+    units = tmp_path / "units"
+    units.mkdir()
+    unit = Path("/etc/systemd/system/report-lcb-perf-ab-pr89-v3.service")
+    invocation_id = "a" * 32
+    live = units / f"invocation:{unit.name}"
+    live.symlink_to(invocation_id)
+
+    harness._require_systemd_invocation(
+        unit, invocation_id, units_dir=units)
+
+    live.unlink()
+    # This is the inverse mapping used by the spent v2r1 implementation.  It
+    # does not match systemd's /run/systemd/units contract and must refuse.
+    (units / f"invocation:{invocation_id}").symlink_to(unit.name)
+    with pytest.raises(harness.HarnessRefused, match="binding is not live"):
+        harness._require_systemd_invocation(
+            unit, invocation_id, units_dir=units)
+
+    (units / f"invocation:{unit.name}").symlink_to("b" * 32)
+    with pytest.raises(harness.HarnessRefused, match="binding is not live"):
+        harness._require_systemd_invocation(
+            unit, invocation_id, units_dir=units)
+
+    with pytest.raises(harness.HarnessRefused, match="identity is malformed"):
+        harness._require_systemd_invocation(
+            unit, "not-an-invocation", units_dir=units)
 
 
 def test_forced_no_search_is_valid_counted_and_disclosed(tmp_path):

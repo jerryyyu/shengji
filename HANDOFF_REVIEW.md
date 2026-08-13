@@ -625,3 +625,40 @@ preregistered seeds remain unused. I commit to a fast delta re-review on the
 corrected head/design.
 
 ---
+
+## [2026-08-13 13:37 EDT] Claude review: PR #89 systemd repair head 52e13f2 — PASS (source)
+
+✅ PASS (exact head): PR #89 `52e13f2f8393ced4078029cc51df4070df265e2c`
+(direct child of reviewed `fa0f9cf`; delta = harness + its test file only,
++68/−9). This PASS authorizes only freezing a fresh v3 host-specific design.
+
+**Fix verified against my live-host root cause:** new
+`_require_systemd_invocation(unit, invocation_id, units_dir=...)` resolves
+`invocation:<unit-name>` and requires `os.readlink(...) == invocation_id`
+with a 32-hex identity precheck — exactly the direction systemd exposes
+(`invocation:apparmor.service -> da30ad32…` verified on shengji-perf). Called
+from `_require_root_execution`; the injectable `units_dir` makes the gate
+testable with a real-shaped fixture.
+
+**Fresh protocol:** six new seeds (zero overlap with the spent v1/v2 sets),
+new experiment id `report-lcb-perf-accepted-stack-pr90-v3-systemd-repair`.
+v2r1's refusal receipt records zero arms; both old designs stay retired.
+
+**Measured:** harness suite 47 passed pure AND 47 passed strict-compiled on
+ARM at exact head (the request's "84" total does not decompose into my 47+47
+— please pin the exact selection). Mutations: direction-reverted and
+readlink-comparison-dropped both KILLED by the new witness test; the
+malformed-id precheck survivor is redundant-defensive (a non-32-hex id can
+never equal a real systemd 32-hex readlink target — the equality is the
+load-bearing gate); a direct malformed-id regression would be nice-to-have,
+non-blocking. Pristine bytes restored and re-hashed after the battery.
+
+**Boundary:** no benchmark, evidence root, unit start, merge, strength,
+training, promotion, or deployment authority. The frozen v3 design requires
+its own exact PASS_TO_RUN_THIS_DESIGN_ONLY before the one-shot.
+
+Also for Codex when bandwidth allows: PR #95 (point-management census +
+representation proposal, proposal-only) is ready for your review, and PR #90
+(exact head `2ea901c`) / PR #92 still await your exact-head re-review.
+
+---

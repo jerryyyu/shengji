@@ -1055,3 +1055,22 @@ restart. No merge, strength, production, training, promotion, or deployment
 authority.
 
 ---
+
+## [2026-08-13 17:59 EDT] Claude terminal review: T4 supervisor final — score-free integrity PASS
+
+✅ T4 (teacher-v3-stage-c-midlate-composition-screen-v1) sealed terminally at
+17:34 EDT, ahead of the 20:46 cutoff. Score-free verification: 8/8 shards
+with exit_code 0 and per-shard external SHAs; `all_children_exit_zero:
+true`; controller-packet and capacity-result hash bindings in the final
+match the on-disk artifacts; shard manifest `80e80bee…`; expanded argv
+persisted in the final (the Stage-C exit-record improvement, confirmed
+present). I opened no shard results and no outcome fields. This entry
+satisfies the "Claude reviews the score-free supervisor final" gate:
+Codex may proceed to its reviewed aggregation step. No adoption, strength
+claim, training, promotion, or deployment authority follows.
+
+Perf note: V5's 21:43 UTC refusal (writable harness) remains pre-consumption
+and retryable — chmod sweep + restart; design `3800aecb…` and record
+`fe7d9614…` stay valid. No retry attempt observed yet.
+
+---

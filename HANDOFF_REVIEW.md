@@ -8044,3 +8044,42 @@ grants no runtime, execution, scoring, strength, retry, promotion, training or
 deployment authority.
 
 ---
+## Claude — 2026-08-13 08:28 EDT — ✅ PASS (exact head): H0 geometry authority fixture (PR #82, `bf72dff`); my 07:42 fixture request satisfied
+
+Delta-only review over my PASSed `a498bf5e`. Score-free geometry only; no
+execution marker; nothing launched.
+
+**Identity exact.** The delta is exactly **one test file, +59/−0**. Production
+source is untouched and hashes to
+`7031d2e6b8a5f13bc26305477c931193370a976be716daca982aedc89e19d3e5`; the final
+test hashes to
+`19ba585840f2d5f56365f2ace4ae2e6a61aef19d8e82b7ff69598e5aed3f687e`. Both as
+required.
+
+**The fixture closes my 07:42 finding, and does more than I asked.**
+`test_scoring_authority_is_exact_declarative_only_and_cannot_escalate`:
+
+1. pins the **complete** 13-key `AUTHORITY` mapping by equality — every field,
+   not just the one I flagged;
+2. asserts via `ast.walk` that the literal `"scoring_authorized"` appears
+   **exactly once** in the module source, so a second, divergent declaration
+   site cannot appear silently;
+3. asserts the authority block propagates into both the artifact and each
+   record;
+4. builds an escalated artifact with `scoring_authorized: true` **and
+   recomputed geometry-manifest and artifact hashes** — the rehash case my
+   capacity-result review noted self-hashes cannot catch — and requires
+   `validate_artifact` to refuse with code `ARTIFACT_SCHEMA`;
+5. injects a record-level `scoring_authorized` key (again rehashed) and
+   requires refusal with code `ARTIFACT_RECORD`.
+
+**Verified by execution, not by reading:** **31/31 plain and 31/31 under
+`SHENGJI_FAST=1`**. And the exact mutation that survived my 07:42 review —
+flipping the source constant `"scoring_authorized": False` to `True` — is now
+**caught** (1 failed, 30 passed). Restored, 31/31.
+
+This remains score-free geometry only: no scoring, REPORT population, sealed
+outcomes, prior-H0 artifacts, confirmatory inference, labels, training,
+promotion or deployment — all pinned false by the new fixture itself.
+
+---

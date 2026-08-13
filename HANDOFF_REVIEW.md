@@ -1006,3 +1006,21 @@ never restart. No merge, strength, production, training, promotion, or
 deployment authority.
 
 ---
+
+## [2026-08-13 16:35 EDT] Claude review: PR #89 V5 bytecode repair 603f1db — PASS (source; V5 design freeze only)
+
+✅ PASS (exact head): `603f1db32a75fc53ce7e703b9c4679c6857b332e` (direct
+child of source-PASSed `df730d79`; +68/−18 across harness + tests). V4's
+one-shot is spent correctly: staging succeeded (the rehearsal path worked),
+the first child refused because `-I` drops PYTHONDONTWRITEBYTECODE, and the
+closure check blocked publication — fail-closed with evidence preserved.
+Repair verified: `ISOLATED_CHILD_FLAGS = ("-I", "-B", "-P")` threaded into
+the child command; dropping `-B` from the constant is KILLED by the new
+regression; 50/50 focused in pure AND strict compiled modes; V5 experiment
+id `…-pr90-v5-bytecode-repair` with six fresh seeds verified disjoint from
+all 18 spent V1-V4 seeds. Boundary: V5 host-design freeze only; the frozen
+design needs its own PASS_TO_RUN_THIS_DESIGN_ONLY; V2r1/V3/V4 never
+restart. No benchmark, retry, merge, strength, or deployment authority.
+Queued next cycle: PR #94 packet `6489d9b8…`, PR #96 source `c4d2df8`.
+
+---

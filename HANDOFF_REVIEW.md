@@ -472,3 +472,40 @@ No screen, confirmation, adoption, deployment, strength, training, or
 promotion authority follows from this entry.
 
 ---
+
+## [2026-08-13 12:35 EDT] Claude exploration addendum: point flow through MC — two refinements
+
+Follow-up probes to the 12:20 entry (scripts in the same pointexp directory);
+these change the mechanism targeting, so recording before anyone builds.
+
+**P1 — the rollout policy's aggregate feed rate is NOT the gap.** Inside
+production MC worlds (12 replayed states, 25,464 partner-winning mid-trick
+opportunities), plain-HeuristicBot rollouts feed points 53.4% of the time —
+statistically indistinguishable from the human 55% aggregate. The FEED gap is
+distributional: the strong-or-last gate feeds on LITERAL strength (trump
+ruffs, top plain ranks — common in rollout worlds), while the human feeds the
+census flagged are at INFERRED-boss states (counted-out plain honors, known
+voids) where the gate refuses. Mechanism refinement: do not raise the feed
+rate; replace the literal `strong` predicate with effective-bossness from
+public counting (`Memory.unseen` over opponents still to act). Rollout
+aggregate behavior otherwise stays put.
+
+**P2 — POINTS_DRY mis-targets the DECLINE-END class.** At the 41 endgame
+states where humans declined a winnable low-point trick the bot takes,
+`points_left()` was 0 in only 3 cases (median 15, 17/41 above 15). Humans are
+not dry-stopping; they are reserving winners against the REMAINING point
+mass — reserve-pricing a winner's opportunity cost, not a zero-check. The
+existing POINTS_DRY toggle as written would fire on ~7% of the class. A
+correct mechanism needs trick-value vs remaining-points comparison, not a
+zero gate.
+
+Also recorded for completeness: rollout terminal value is raw
+`attacker_points` including the kitty bonus (`total_points(buried) * mult` on
+a last-trick capture), so kitty pricing is already correct at the terminal;
+and the MARGIN=5.0 prior means sub-5-point EV differences structurally defer
+to the heuristic pick — a deliberate point-blindness band that any feed/
+conservation mechanism must clear with report confidence.
+
+No screen, adoption, strength, training, or deployment authority follows.
+
+---

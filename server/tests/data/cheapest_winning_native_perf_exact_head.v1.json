@@ -1,0 +1,130 @@
+{
+  "schema": "cheapest-winning-native-perf-exact-head-v1",
+  "claim": "the compiled HeuristicBot._cheapest_winning drop-in reduces compiled report-LCB whole-round wall time while preserving normalized gameplay, search work, sampler state, and RNG semantics",
+  "claim_boundary": {
+    "performance_only": true,
+    "production_deployment": false,
+    "strength_claim": false
+  },
+  "retention_rule": {
+    "minimum_wall_reduction_percent": 3.0,
+    "requires_exact_normalized_semantics": true,
+    "decision": "retain"
+  },
+  "base": {
+    "git": "0381081fe5c7077d81d8fae2d4f9d7101c7a38b9",
+    "fast_engine_elf_text_sha256": "5f53fdd25a7d801b003bddb5dd9170daa44aeabde276efda5c2a1254b8344fa5",
+    "fast_engine_elf_text_bytes": 108462
+  },
+  "head": {
+    "implementation_git": "2303020f67012108e202e5e5d6529323d4be3c01",
+    "fast_pyx_sha256": "5615d74b309db04d5fb6ff07be15d876b2b14dcfc4fe4abe0d07538872f4c211",
+    "fast_router_sha256": "aeb2fd947e2fd862c0178325c2ff17c05f14a618f291d6958084c647de6ee74a",
+    "parity_test_sha256": "944c8056abf74f8f46fc25dbefbd9864bada904dc5891583877b8fb0b043ca1a",
+    "fast_engine_elf_text_sha256": "f552d6367f50ef4c8353428eef38d53a9b463af2308c93582dce7835d5b91d32",
+    "fast_engine_elf_text_bytes": 121006
+  },
+  "runtime": {
+    "machine": "x86_64-16-vcpu-performance-host",
+    "python": "3.14.4",
+    "fast_engine": true,
+    "environment": {
+      "PYTHONHASHSEED": "unset",
+      "SHENGJI_FAST": "1",
+      "SHENGJI_REQUIRE_VOIDS": "1"
+    }
+  },
+  "harness": {
+    "basename": "perf_world_round_ab.py",
+    "sha256": "4830bffdc97b99d364d4fd182475de575e85baccb34a93345f2ce38ab9bfb684"
+  },
+  "semantic_normalization": {
+    "removed_fields": [
+      "decision_records[*].record.ballot.digest",
+      "decision_records[*].record.ballot.display",
+      "decision_records[*].record.ballot.source_digest"
+    ],
+    "reason": "these three fields identify the source revision; all ballot contents, actions, full histories, outcomes, decision records, RNG states, sampler snapshots, and work counters remain in the comparison"
+  },
+  "design": {
+    "policy": "mc-s0-report-lcb",
+    "n_determinizations": 30,
+    "report_fold_worlds": 300,
+    "pairs": 6,
+    "seeds": [1709, 1777, 1847, 1913, 1987, 2053],
+    "balanced_execution_order": true,
+    "one_sided_t95_df5": 2.015048373333,
+    "single_six_seed_full_policy_experiment": true
+  },
+  "records": [
+    {
+      "seed": 1709,
+      "order": "base_head",
+      "base_seconds": 18.97854995200032,
+      "head_seconds": 17.722359372999563,
+      "base_raw_semantic_sha256": "97ed6fa95e978a4132f5250467ce30372279c8ad2fe765aebc8fd5e5845ce03a",
+      "head_raw_semantic_sha256": "ab396d3974eaea8e9c386fb11531511be01d312f072d039fbb9bcaa5879b0697",
+      "normalized_semantic_sha256": "eb1403de5036c4e4d8aa2060668a1d42dff09b392afa70a680cd49142637e586"
+    },
+    {
+      "seed": 1777,
+      "order": "head_base",
+      "base_seconds": 18.588300129000345,
+      "head_seconds": 17.52967897599956,
+      "base_raw_semantic_sha256": "8d7703cb472cba6d1b5a4faefe20c4ec418d9b0c6a2fbd97aafab5efaab204ea",
+      "head_raw_semantic_sha256": "118e343968a5522bbad1c7f8793178840026cc3ffe6539f6ee746d6d8e7d1572",
+      "normalized_semantic_sha256": "bf342df40ef01a5d3473c39ee93a4c6890c22dd5b217fd82f81051ae4cf08eb2"
+    },
+    {
+      "seed": 1847,
+      "order": "base_head",
+      "base_seconds": 15.909741677000056,
+      "head_seconds": 15.038945330999923,
+      "base_raw_semantic_sha256": "83dfd7780bf06e478a0dcdfda81c5bd353f519fe3443489b7915206f6658bbf4",
+      "head_raw_semantic_sha256": "7345eb71d4fd8aede3518844d63ad6d5f3997daafcf9d2a07a6b68d219de3c6b",
+      "normalized_semantic_sha256": "58f080a9de5d39d2e1bc5e0b810eeec5638199278fcd5ad9a56aae988329ed32"
+    },
+    {
+      "seed": 1913,
+      "order": "head_base",
+      "base_seconds": 20.13547259600091,
+      "head_seconds": 18.735848874999647,
+      "base_raw_semantic_sha256": "ed345d0f15ab34be8b0ae6969a8c05543ac9b80ab61563b506a91d4fe237d91b",
+      "head_raw_semantic_sha256": "57a6f05152299c9c2900ada9c69b2a27e95c11d27174bcd632f056e2126d6a38",
+      "normalized_semantic_sha256": "58b9089b47fa2c5829e2275ad285faebedc80042cb54a5d9143333aa35bdba56"
+    },
+    {
+      "seed": 1987,
+      "order": "base_head",
+      "base_seconds": 18.122626630000013,
+      "head_seconds": 16.97028905800107,
+      "base_raw_semantic_sha256": "db430a17704f2301473093e3fa3910bf9f37e78bc0a114b15b22ca332756419e",
+      "head_raw_semantic_sha256": "06c7cb46177cc95c7cf130d8969ec6b4090bbb6b453ca4fa4b8039127784cc5b",
+      "normalized_semantic_sha256": "77a4b0f95c21f1cb46f0d532924e7610e66273df413a7ce4583e1f3f559dde63"
+    },
+    {
+      "seed": 2053,
+      "order": "head_base",
+      "base_seconds": 17.663696854999216,
+      "head_seconds": 15.902359711999452,
+      "base_raw_semantic_sha256": "ca4ecf36c3c683dc7039e00c58480a5bd7bdee0bfd7dcc377af5b08c8310f781",
+      "head_raw_semantic_sha256": "e02229ca598db0042b74541bc6bde96bfcc17b0556c8afefeb5b476adcc4c7b0",
+      "normalized_semantic_sha256": "07e9e0d316d0b924feb13b4182dfdbc6ac5bd8c69ce954476946a83ad8e3a56c"
+    }
+  ],
+  "aggregate": {
+    "base_wall_seconds": 109.39838783900086,
+    "head_wall_seconds": 101.89948132499921,
+    "wall_reduction_percent": 6.8546773514045,
+    "throughput_increase_percent": 7.359121377747302,
+    "paired_relative_mean_percent": 6.84475835051758,
+    "paired_one_sided_95_lb_percent": 5.504198133708151,
+    "normalized_semantics_exact": true
+  },
+  "validation": {
+    "weighted_pure_native_differential_calls": 30000,
+    "named_branch_and_exception_witnesses": 11,
+    "focused_compiled_tests_passed": 82,
+    "focused_arm_tests_passed": 82
+  }
+}

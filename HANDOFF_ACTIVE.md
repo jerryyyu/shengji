@@ -9,9 +9,9 @@
 > Full earlier history is preserved in `docs_archive/`. This file is only the
 > current executable truth; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 06:08 EDT from canonical main `8843be7`.
+Last reconciled: 2026-08-13 06:46 EDT from canonical main `3f7916d`.
 
-## Utilization-critical blocker
+## Pair V3 capacity gate
 
 The frozen Pair V3 capacity packet PASS at canonical commit `88866f25` was
 authenticated and consumed exactly once on the performance Cloud. The
@@ -19,50 +19,44 @@ systemd-owned **score-free** preflight finished in 157.535 wall seconds and
 182.430 CPU seconds, used 543.1 MB peak memory, and left no workers or partial
 files. Its one result is `544499d1…a764` / internal `ca36d1af…a4fb`; scored
 evaluation, REPORT access, strength claims, training, promotion and deployment
-all remain closed. Codex has not opened the result payload.
+all remain closed.
 
 Claude independently reproduced the result science in canonical commit
 `8843be7`: 1.0499 projected fleet-hours against the 64-hour cap, 0.088 hours
-on the worst lane against 4 hours, closed score-free schema and no retry. That
-entry is deliberately prose only and emitted no raw authority marker.
+on the worst lane against 4 hours, closed score-free schema and no retry.
+Claude then reviewed final PR #84 head `f571146`, ran its read-only verifier
+against the canonical artifacts and appended the generated raw PASS marker at
+canonical commit `16af447`. The verifier binds the exact dependency bytes and
+stable single-read artifact identities; script SHA is `5ca14e1f…646a1`, test
+SHA is `d7959903…9f3b`, and 21 focused tests pass.
 
-**Claude review of the final repaired PR #84 head `f571146` is now the sole
-Pair utilization blocker.** Two internal adversarial HOLDs on `a9a619f` were
-real and are superseded: dependency code could lie about its own hash, and
-owner-writable evidence was hashed then reopened for parsing. Final PR #84 is
-still a read-only two-file claim generator. It authenticates and executes the
-exact dependency source bytes before import, refuses preload/source/pyc
-substitution, hashes and parses every terminal artifact from one stable inode
-read, and brackets population, design and all 16 source shards byte-for-byte
-around reconstruction. Script SHA is `5ca14e1f…646a1`; test SHA is
-`d7959903…9f3b`; 21 focused tests pass. Claude should review only this exact
-head, run its CLI read-only against the canonical artifacts on
-`shengji-perf`, and append only the generated result marker if validation
-passes. A PASS permits
-**scored-packet design only**. It does not permit packet freeze, execution,
-retry, extension or any downstream strength authority.
+That marker opens **scored-packet design only**, and the Pair scored-design
+lane is underway. Packet freeze, packet execution, scored evaluation, REPORT
+access, retry, extension, strength claims, training, production promotion and
+deployment all remain explicitly closed. Do not create or run a scored packet
+until its eventual exact design and authority chain receive separate review.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | Knife-edge but still live. Shard 3 has reached matched-null 300/512; the other seven are at least 200/512. The slow tail still projects to about 16:59 EDT; after that the champion arm must average no more than 26.7 seconds per cluster to beat the 20:46 child deadline. Monitor only. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
+| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are live. The safe lower bound is 6,296/12,288 = 51.24%: treatment is complete, six shards have reached matched-null 300/512 and two have reached 200/512. The deadline remains knife-edge; the slow tail projects to about 16:59 EDT, after which the champion arm must average no more than 26.7 seconds per cluster to beat the 20:46 child deadline. Monitor only. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | Every shard has reached 240/896 clusters. The current pace is on a substantive timeout trajectory; do not inspect shard outcomes or intervene. A terminal supervisor final, including timeout, needs score-free review before aggregation. Reviewed S6 preflight remains queued behind this run. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | Score-free look-one counter is 5,388/8,192 = 65.77%; current look-one ETA is late morning. The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
-| **Performance Cloud** | Pair V3 score-free preflight is complete; no live strength worker | Idle by gate while PR #84/result review is pending. The completed preflight namespace is one-shot and must not be retried or altered. Performance exploration must not mutate frozen strength code or evidence. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | All workers are healthy. The reviewed score-free look-one counter is 5,915/8,192 = 72.20%, with shards at 363–376/512; current look-one ETA is late morning. The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
+| **Performance Cloud** | Pair V3 score-free preflight is complete; no live strength worker | Idle because the new authority is design-only. The completed preflight namespace is one-shot and must not be retried or altered. Performance exploration must not mutate frozen strength code or evidence. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review queue
 
-1. **Pair capacity result / PR #84 `f571146` — utilization-critical.** Review
-   only the final dependency-authentication and stable-read successor, then
-   run it read-only on the already prose-PASSed result as described above.
-   `a9a619f` and `6fdf68a` are superseded. Launch nothing.
-2. **Terminal closeout helper / PR #80 `e0c23e6`.** Confirm strict shard loads
-   occur only after aggregate/final/admission gates and that exact target and
-   transitive import origins reject same-path preload forgeries. This helper
-   cannot write, launch, aggregate, retry, promote or deploy.
-3. **Performance stack, in dependency order.** PR #75 `90c5630` binds PR #71
+1. **Terminal closeout helper follow-up / PR #80 `9c896e2`.** Claude prose
+   PASSed this exact head at canonical `3f7916d`: strict shard-load ordering
+   and same-path preload refusal are real and pinned, 17/17 plain tests and CI
+   are green, and the helper has no write or execution surface. Before T4
+   lands, add negative fixtures for aggregate pre-open binding, final-change
+   TOCTOU and sealed-shard drift, and isolate the dependency-path test that is
+   currently 16/17 under `SHENGJI_FAST=1`. These are fixture requests, not a
+   reversal of the prose PASS, and grant no execution authority.
+2. **Performance stack, in dependency order.** PR #75 `90c5630` binds PR #71
    compatibility to the corrected 64-character native identity; PR #77
    `0381081` prepares accepted hidden worlds once; PR #81 `c6c7126` adds the
    native common-case winner path; PR #83 `69ff44e` adds the guarded native
@@ -72,23 +66,29 @@ retry, extension or any downstream strength authority.
    owner-writable and is not authoritative strength evidence. The attempted
    resolve-trick successor is retired: its forced/no-search harness refused, so
    no timing claim was made. None of these PRs changes strength authority.
-4. **Exploration/docs.** PR #78 `f4b80f0` is the opened-DEV bury/S6 diagnostic;
-   PR #82 `82f19fd` is score-free H0 legality/geometry repair. Docs PR #64 is
-   currently `7b31ac3`; its last explicit exact-head review request named the
-   superseded `c731bf8`, so request/review only the current head after the
-   technical blockers.
+3. **Exploration/docs.** PR #78 `8ab5db2` is the opened-DEV bury/S6 diagnostic;
+   83 tests and CI are green. PR #82 `a498bf5` is the score-free H0
+   legality/geometry repair; 30 focused plus 64 adjacent tests and CI are
+   green. Both superseding heads await review. Docs PR #64 is currently
+   `c7782be`; request and review only that exact head after the technical
+   blockers.
+4. **Air timeout contingency / PR #85 `59119b6`.** This design-only successor
+   has 27 tests and green CI. It may be reviewed while the current Air run is
+   untouched, but it authorizes no replacement launch, retry or extension.
 5. **Pair stack merge gap.** PR #55 exact head `24b421d` still needs review of
    its one artifact-preservation commit beyond the passed `5696144` boundary.
    If clean, merge readiness can cover #55 → #60 `7468828` → #61
    `22ddfa3` → #72 `373de84` in order. Do not mutate this stack during the
-   PR #84 result review.
+   active Pair scored-design lane.
 
 Already reviewed: PRs #51, #52 and #54 passed for bounded bury/S6 exploration;
-PR #69 passed for the incremental attacker-gated Pair-cap design; PR #50's S6
-v2 packet passed for one score-free preflight and sleeps behind Air. PR #73
-remains conditional on the broad Pair terminal result and its economics. S5 is
-closed: its old admission is spent, PR #76 is validation-only, and no retry or
-diagnostic execution is authorized.
+PR #69 passed for the incremental attacker-gated Pair-cap design; PR #80
+`9c896e2` prose-PASSed at canonical `3f7916d` with the follow-up fixtures above;
+PR #84 `f571146` passed at canonical `16af447` for scored-packet design only;
+PR #50's S6 v2 packet passed for one score-free preflight and sleeps behind
+Air. PR #73 remains conditional on the broad Pair terminal result and its
+economics. S5 is closed: its old admission is spent, PR #76 is validation-only,
+and no retry or diagnostic execution is authorized.
 
 ## Terminal sequences
 

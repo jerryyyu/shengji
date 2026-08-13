@@ -525,6 +525,26 @@ def test_systemd_gate_refuses_unowned_process(monkeypatch):
         C.require_systemd()
 
 
+def test_systemd_invocation_uses_unit_name_to_invocation_id(tmp_path):
+    invocation = "a" * 32
+    live = tmp_path / f"invocation:{C.SYSTEMD_UNIT}"
+    os.symlink(invocation, live)
+
+    assert C._systemd_invocation_exists(invocation, units_dir=tmp_path)
+    assert not C._systemd_invocation_exists("b" * 32, units_dir=tmp_path)
+    assert not C._systemd_invocation_exists("A" * 32, units_dir=tmp_path)
+    assert not C._systemd_invocation_exists("short", units_dir=tmp_path)
+    assert not C._systemd_invocation_exists(
+        invocation, unit="other.service", units_dir=tmp_path)
+
+
+def test_systemd_invocation_refuses_spent_inverse_shape(tmp_path):
+    invocation = "a" * 32
+    os.symlink(C.SYSTEMD_UNIT, tmp_path / f"invocation:{invocation}")
+
+    assert not C._systemd_invocation_exists(invocation, units_dir=tmp_path)
+
+
 def test_fresh_process_refuses_preloaded_shengji_dependency(monkeypatch):
     monkeypatch.setattr(
         C, "PRELOADED_SHENGJI_MODULES", ("shengji.engine.fast",))

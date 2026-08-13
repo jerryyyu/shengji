@@ -937,8 +937,24 @@ def _systemd_properties(unit: str) -> dict[str, str]:
     return result
 
 
-def _systemd_invocation_exists(invocation: str) -> bool:
-    return Path(f"/run/systemd/units/invocation:{invocation}").exists()
+def _systemd_invocation_exists(
+        invocation: str, *, unit: str = SYSTEMD_UNIT,
+        units_dir: Path = Path("/run/systemd/units")) -> bool:
+    """Return whether systemd binds *unit* to this exact invocation.
+
+    systemd exposes ``invocation:<unit-name> -> <32-hex InvocationID>``.
+    Checking the inverse shape would make every real capacity attempt refuse
+    before work starts, as the first PR89 performance attempt demonstrated.
+    """
+    if (len(invocation) != 32
+            or any(char not in "0123456789abcdef" for char in invocation)):
+        return False
+    link = units_dir / f"invocation:{unit}"
+    try:
+        return (os.path.lexists(link) and link.is_symlink()
+                and os.readlink(link) == invocation)
+    except OSError:
+        return False
 
 
 def _current_cgroups() -> list[str]:

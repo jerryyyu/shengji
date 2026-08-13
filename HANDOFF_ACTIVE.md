@@ -10,20 +10,21 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-13 02:59 EDT.
+Last reconciled: 2026-08-13 03:45 EDT.
 
 ## CURRENT LAUNCH BLOCKER — read before the older lane detail below
 
 The lower lane table is historical detail. Current executable truth is:
 
-- **Pair V3 design PR #72 PASSed. PR #79 `6461c66` is now the utilization-
-  critical review blocker.** It implements only a score-free capacity
-  preflight: 16 concurrent distinct defender deals cover all logical lanes and
-  every DEV/CALIB × early/mid/late cell. The repaired controller requires
-  canonical Claude provenance, a systemd-owned process tree, closed
-  telemetry-only output and exact 2× projections. Internal audit and 83 tests
-  pass. **Review does not authorize execution**; a PASS lets Codex freeze one
-  outcome-free packet for a second packet-specific review.
+- **Claude PASSed PR #79 `6461c66` at canonical commit `1cf9521`; the frozen
+  Pair V3 packet is now the utilization-critical review blocker.** Codex copied
+  the complete reviewed score-free population plus all 16 byte-pinned source
+  receipts to the idle performance Cloud, rebuilt the exact reviewed design
+  `be21b547…f439`, and froze one packet there. Packet
+  `e054c5e5…e492` / internal `25b1888c…a14b5` binds the 16-core x86 runtime,
+  keeps execution false and publishes no outcomes. **Do not run it yet.** A
+  packet-specific raw Claude PASS is the sole next gate for one score-free
+  capacity preflight.
 - **Pending performance reviews:** PR #75 exact corrected head `90c5630`
   binds PR #71 compatibility with the correct 64-character native-code
   identity; PR #77 `0381081` prepares accepted hidden worlds once and measured
@@ -57,7 +58,7 @@ The lower lane table is historical detail. Current executable truth is:
 - **Live compute:** T4 is healthy on Mini at the safe known minimum
   5,596/12,288 sequential arm-rounds (45.5%). Broad Pair is healthy on Air with
   all eight workers alive, and S6's reviewed preflight queue sleeps behind it.
-  S4 is healthy on strength Cloud at 4,126/8,192 look-one clusters (50.4%).
+  S4 is healthy on strength Cloud at 4,279/8,192 look-one clusters (52.2%).
   Outcomes remain sealed.
 - **Performance Cloud:** exact PR #77 profiling is complete. Trick-state
   caching was rejected after its safe repair ran 10.56% slower; Memory reuse
@@ -70,12 +71,20 @@ Nothing below this section supersedes these exact priorities or authorities.
 
 ### Current review asks — newest first
 
-1. **Utilization-critical: PR #79 exact `6461c660`.** Reproduce the 83 Pair
-   tests and falsify canonical Claude provenance, the 16-lane concurrent
-   manifest, systemd process ownership, closed score-free schemas, exact work /
-   2x projection reconstruction and one-shot paths. A PASS permits only
-   freezing an outcome-free packet for a second packet-specific review; it
-   does not authorize the preflight run or any scored work.
+1. **Utilization-critical: frozen Pair V3 packet review.** On
+   `shengji-perf`, independently authenticate exact head `6461c660`, population
+   `6a3f8d9d…39ae` plus all 16 source receipts, design
+   `be21b547…f439`, packet `e054c5e5…e492` / internal
+   `25b1888c…a14b5`, and the bound 16-core runtime/native binary. Re-run the
+   controller's `verify` path and falsify packet reconstruction, closed
+   authority, regular-unlinked inputs, host/runtime drift, review provenance,
+   one-shot paths, and the 16-way systemd-owned execution boundary. If clean,
+   append the following generated marker exactly once at column one in a
+   Claude-authored canonical `HANDOFF_REVIEW.md`-only commit. This authorizes
+   one **score-free capacity preflight only**—no scoring, REPORT, strength,
+   training, promotion or deployment:
+
+       PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_PACKET_V1_REVIEW {"git":"6461c660e1ff71a905d9010b12c0adfc4e8bc729","independent_review":true,"one_score_free_preflight_authorized":true,"packet_internal_sha256":"25b1888c62ff772c18e065b30a7bfcc2d724c645f5ad054c4e6823dfd56a14b5","packet_sha256":"e054c5e582c1e665da9bc8ab413639f4c015ffe31a85f22c83275b7f4b4de492","production_deployment":false,"production_promotion":false,"report_access_authorized":false,"run_id":"pair-ballot-affected-capacity-preflight-v1","schema":"pair-ballot-affected-capacity-preflight-packet-review-v1","scored_evaluation_authorized":false,"strength_claim":false,"training_authorized":false,"verdict":"PASS"}
 2. **Closeout-readiness: PR #80 exact `e0c23e6`.** Confirm the two internal
    HOLDs are closed: T4 duplicate/non-finite shard JSON refuses only after the
    reviewed aggregate/final/admission boundary, and preloaded target or

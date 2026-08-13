@@ -748,3 +748,51 @@ the v2/v2r1 designs must never run. No merge, strength, production,
 training, promotion, or deployment authority.
 
 ---
+
+## [2026-08-13 14:02 EDT] Claude review: PR #93 capacity packet — PASS (one capacity execution)
+
+PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_PACKET_V1_REVIEW {"aggregate_execution_authorized":false,"git":"5451aa88239fed267e95e3bb353e7e362d6f2b14","one_capacity_execution_authorized":true,"packet_internal_sha256":"0748bb8e193306e8d943ede4ec6516ac49847d642e6f6cf23d7c825049bfad99","packet_sha256":"3a282f5121eadd2c36de40636551e72ed5548956e49886e1532476f08a165aa3","production_deployment":false,"resume_execution_authorized":false,"runtime_profile_sha256":"287dde15a8aba5597bdc7a599c4cc159cb757cd3baa98e9c1787a2e4f2aa2649","schema":"pair-aware-rollout-checkpoint-capacity-packet-review-v1","screen_execution_authorized":false,"strength_claim":false}
+✅ PASS (exact packet): PR #93 checkpoint-capacity packet at source
+`5451aa88…`, external SHA `3a282f51…5aa3`, internal `0748bb8e…ad99`,
+runtime profile `287dde15…2649` — all three recomputed independently from
+the frozen bytes; the exact controller's fresh-process `verify` re-opened
+the packet successfully on the host.
+
+**Verified:** checkout exact clean `5451aa8`, controller `776138d3…`
+byte-identical to my reviewed head; packet root:root 0444 nlink 1 10,521 B;
+run dir contains exactly the two freeze artifacts; the capacity admission,
+result, receipt, packet-review snapshot and unit are all absent
+(`LoadState=not-found`; the two tokens in `runs/locks/` are historical
+preflight-v2/v3 run-ids, not this run). Implementation-review snapshot
+byte-equals my V2 marker (`dd9555fa…`) from Claude-authored commit
+`8daef0b8` (parent `91024a77`). 72-path closure recomputed: zero
+mismatches, zero writable/non-root; native `96eaa142…`, python
+`b8d8288f…`, live boot `d0c9be4d…` unchanged; geometry pinned to the
+reviewed design (16 workers × 8 clusters, seed0 499000000000, stride
+3000017, concurrent start, no outcomes); all packet authority bits False.
+
+**Shadow incident adjudicated:** the pre-freeze refusal (duplicate ignored
+native under `server/build/`) consumed nothing — freeze collision checks
+precede writes, exactly two freeze artifacts exist, and the packet records
+`loadable_shadows=[]` with the build directory now outside the repo.
+
+**Falsification:** re-signed mutations (workers 16→15; authority flip with
+recomputed internal hash) both refused via constant pinning; any byte change
+also breaks the external SHA binding at `load_packet`. The 13/13 guard
+battery from my `5451aa8` review stands (controller bytes unchanged).
+
+**Operational note for Jerry/Codex:** this capacity run and the PR #89 V3
+six-pair batch both require exclusive compute on `shengji-perf` — sequence
+them, never overlap; I suggest the shorter PR #89 batch first.
+
+**PR #95 priority bump (Jerry):** Codex's methodology HOLD on `0b20dfe3` is
+accepted in full — population manifest, E5 legality/attribution, P1
+classification table, E3 world-fingerprint equality, stdout-only outputs +
+fixtures. Repairing it is my next work item after the PR #94 review.
+
+**Boundary:** the marker above authorizes exactly one score-free 16-lane
+capacity run under systemd on this packet. No scored screen, resume,
+aggregate, outcome access, strength, retry/extension, training, promotion,
+or deployment authority.
+
+---

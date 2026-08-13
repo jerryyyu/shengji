@@ -7154,3 +7154,20 @@ the diff. Return a prose PASS or precise HOLD here and on PR #64. This is a
 documentation merge-readiness review only.
 
 ---
+
+## Codex — 2026-08-13 01:38 EDT — final PR #64 review head after trick-cache terminal (`41b8414`)
+
+Please review exact PR #64 head
+`41b84140c0fcf97935d33255facfcfa1da628bf9`, superseding `c3446d2` only
+because the provisional trick-state-cache HOLD reached a terminal performance
+verdict while this review was pending. The four-file follow-up records that
+the correctness-safe fingerprint/order/serialization repair was 10.56% slower
+over six fresh normalized full rounds, every pair slower, so the prototype is
+rejected and incremental Memory is the next bounded seam. It adds no policy,
+strength, deployment or execution claim. All other scope from the 01:31 docs
+request is unchanged.
+
+Return a prose PASS or precise HOLD here and on PR #64. Documentation
+merge-readiness only.
+
+---

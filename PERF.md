@@ -9,7 +9,7 @@ teacher data (gen-v3: ~28h fleet-wide), duels, tournaments, and MC's
 live latency all sit on the same rollout loop. Rough math: 10x here =
 overnight gens become 3h, and every gate duel runs in minutes.
 
-## Current production performance — release 17
+## Current production performance — release 18
 
 Production runs compiled `mc-s0-report-lcb`, not the older policies in the
 historical table below. A matched Mini benchmark measured 0.390s per decision
@@ -18,7 +18,7 @@ for report-LCB versus 0.127s for `mc-strong`; that extra work buys the confirmed
 searched turns could block room interaction and then pay a separate fixed 0.7s
 pacing delay.
 
-Release 17 preserves the exact N=30/R=300 decision semantics while searching an
+Release 17 introduced the performance change: it preserves the exact N=30/R=300 decision semantics while searching an
 isolated snapshot off the event loop and overlapping the pacing window. It
 revalidates room/round/phase/turn/controller before commit, discarding stale
 actions and cloned RNG/counters. The live ship gate kept 25 concurrent
@@ -27,7 +27,8 @@ ordinary post-fix human room produced 195 search-like turns with
 search p50/p95/max `0.896/1.714/1.906s` and full-turn
 `0.904/1.716/1.907s`; all 249 bot turns were offloaded and isolated.
 
-This fixes event-loop blocking and removes an additive wait. It does not make
+Release 18 keeps that runtime and adds kitty X-ray only; it does not change the
+policy or search cost. This fixes event-loop blocking and removes an additive wait. It does not make
 search free, precompute a response before the latest play, or prove concurrent
 multi-room capacity. Release 16 is the runtime rollback; `mc-strong` is the
 separate policy rollback. See `DEPLOY.md`.
@@ -88,14 +89,15 @@ compare only under like-for-like load.
 | 08-03 | compiled phases 0-2: caller-order caches, rules kernels and policy leaves | **3.42x** round (5.74 -> 1.68s) | 10k+ randomized parity cases, six byte-identical seeded histories; opt-in `SHENGJI_FAST=1` |
 | 08-07 | release-17 speculative scheduler + off-loop X-ray | live searched-turn p95 `1.714s`; WebSockets responsive during search | Decision semantics unchanged; overlaps pacing, validates before commit, discards stale snapshot state. This is responsiveness isolation, not rollout-throughput speedup. |
 
-## Current candidate — independently audited, external review
+## Current candidates — independently audited, external review
 
 The Cython `_current_winner` path is dropped. Corrected microbenchmarks against
 the production baseline found it about 4% slower on both ARM and x86; the
 earlier roughly 6x leaf microbenchmark did not represent production work. The
 combined `b7476e4` timing was confounded and is not a merge-candidate result.
 
-The live candidate is exact local head `414fe29`: a pair-count tractor
+The lead candidate implementation is `414fe29`, with historical-evidence test
+repair at exact PR #71 head `093ec33`: a pair-count tractor
 prefilter plus redundant import cleanup, with no Cython leaf. The optimization
 uses a necessary condition—a `k`-pair tractor cannot exist when fewer than `k`
 physical pairs exist—so it avoids impossible enumerations without pruning a
@@ -121,9 +123,25 @@ every runtime reopen; the test shim now returns the exact frozen byte count
 instead of a hybrid record. Fifty focused and 134 broader strict compiled tests
 pass. A second independent audit reproduced the complete guard mutations and
 found 16.22% lower median ARM whole-round time across alternating 2,000-round
-trials with identical transcript SHA. Exact head `414fe29` is draft PR #71;
+trials with identical transcript SHA. Exact head `093ec33` is draft PR #71;
 CI passes. Merge still waits for Claude's independent semantics/benchmark
 review and user approval.
+
+Corrected compatibility receipt PR #75 head `90c5630` keeps the historical
+RLCB/H0 identities immutable while binding the current heuristic, ballot,
+three-policy contracts and the exact 64-character native `.text` identity.
+It is compatibility evidence only: it authorizes no deployment or strength
+evaluation.
+
+Prepared-world PR #77 head `0381081` validates each accepted determinized
+world once, then gives every candidate fresh non-aliased hand lists. Six fresh
+exact-head x86 pairs measured `116.392s -> 113.338s`: **2.62% lower wall time**
+and **2.69% higher throughput**, with normalized decisions, RNG, sampler/work
+counters and transcripts identical. The earlier 3.37% nine-pair number mixed
+two code revisions and is retired. A larger trick-state-cache prototype is
+not a candidate yet: adversarial review found stale values after same-length
+play mutation, changed trump ordering and serialization drift. It must be
+repaired and remeasured or discarded before review.
 
 ## Gaps (ranked by ROI)
 
@@ -142,23 +160,26 @@ one-off experiment controllers.
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; candidate measurements complete, final audit in progress |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; PR #75/#77 measurements complete, host available for bounded follow-up work |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. Complete external review of PR #71 head `414fe29`; merge only if the exact
-   H0 guard, action/history parity and isolated speedups reproduce.
-2. Re-profile the merged compiled baseline on `shengji-perf`; do not infer the
+1. Complete external review of PR #75 head `90c5630` and PR #77 head
+   `0381081`; merge only the exact semantics-preserving pieces whose identities
+   and isolated speedups reproduce. PR #71 remains their reviewed base.
+2. Repair and remeasure the trick-state cache against PR #77, or discard it if
+   mutation/order/serialization safety erases the gain.
+3. Re-profile the merged compiled baseline on `shengji-perf`; do not infer the
    next hotspot from the old profile or from Cython microbenchmarks that bypass
    today's compiled globals.
-3. Move int-card conversion to the rollout boundary, then compile
+4. Move int-card conversion to the rollout boundary, then compile
    `Round.play`/trick resolution under the same differential gate.
-4. Add a concurrent-room production capacity test; event-loop isolation alone
+5. Add a concurrent-room production capacity test; event-loop isolation alone
    is not a capacity proof.
-5. Measure incremental Memory and clone reuse after the next profile rather
+6. Measure incremental Memory and clone reuse after the next profile rather
    than assuming the old percentages still hold.
-6. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
+7. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
    physically and logically separate. A future strength controller needs its
    own host/runtime review before it may use the performance worker.
 

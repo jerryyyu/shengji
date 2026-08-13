@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-12 23:25 EDT
+## Current synthesis — 2026-08-13 01:26 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -50,8 +50,9 @@ This section keeps only the research conclusions that change what we try next.
   8,192/16,384-cluster confirmation running on Cloud; old outcomes do not enter
   its estimator. S6's narrow shuai-pai selector has a fresh preflight queued.
   S5's x86 construction PASSed, but a request-template authority defect spent
-  its one-shot admission without a result; recovery is closed until a distinct
-  attestation protocol and explicit retry review exist. None is yet a new
+  its one-shot admission without a result. PR #76 now permanently refuses the
+  spent run and separates reviewer attestations from requests; it still grants
+  no retry. None is yet a new
   strength claim; S3a's broader bury recipe remains closed.
 - **Pair understanding:** the broad continuation screen is running on Air.
   The attacker-only incremental semantics passed external review and await a
@@ -73,9 +74,11 @@ This section keeps only the research conclusions that change what we try next.
 - **Throughput:** the Cython `_current_winner` path was slower and is dropped.
   Pair-count pruning reduced matched x86/ARM whole-round time by roughly
   12–16% with byte-identical transcripts. PR #71 repair `093ec33` preserves
-  historical H0/RLCB identity; stacked PR #75 `ee6dc48` binds current behavior
-  compatibility without rewriting evidence. A prepared-world seam adds about
-  3.4% pooled x86 throughput and remains under adversarial review.
+  historical H0/RLCB identity; corrected compatibility receipt PR #75
+  `90c5630` binds the exact old/new native identity without rewriting evidence.
+  Prepared-world PR #77 `0381081` adds 2.62% lower wall time on six fresh
+  exact-head pairs with identical normalized decisions, RNG, work and
+  transcripts. The older 3.37% number mixed revisions and is retired.
 
 ### Decisions that survive
 

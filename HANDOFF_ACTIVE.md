@@ -38,6 +38,16 @@ Last reconciled: 2026-08-13 19:08 EDT from canonical main `b0f5d44`.
    repeat the review or open shards. That marker authorizes one aggregate only; no confirmation
    launch, strength claim, promotion or deployment.
 
+   **19:16 EDT process deviation:** while preparing the aggregate command,
+   Codex accidentally ran `shasum -a 256` over the eight sealed shard files
+   before the aggregate admission. No shard JSON was parsed or displayed and
+   no outcome/statistic was derived; the eight emitted opaque digests exactly
+   matched the hashes already recorded in the reviewed supervisor final.
+   Aggregate, partial and aggregate-admission paths remain absent and the
+   execution tree is clean. Do not aggregate until Claude explicitly
+   adjudicates this read-only sequencing deviation and, if still valid, adds
+   the required raw marker. No additional shard-byte access is authorized.
+
    Expected canonical claim payload (request-only; deliberately no marker
    prefix):
 

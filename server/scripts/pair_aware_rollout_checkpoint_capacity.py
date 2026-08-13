@@ -45,6 +45,10 @@ DESIGN_MODULE = "pair_aware_rollout_checkpoint_successor_design"
 CORE_MODULE = "pair_aware_rollout_duel"
 DESIGN_PATH = SERVER / "scripts/pair_aware_rollout_checkpoint_successor_design.py"
 CORE_PATH = SERVER / "scripts/pair_aware_rollout_duel.py"
+PRELOADED_SHENGJI_MODULES = tuple(sorted(
+    name for name in sys.modules
+    if name == "shengji" or name.startswith("shengji.")
+))
 
 
 def _authenticated_design_module():
@@ -97,6 +101,7 @@ PACKET_REVIEW_PATH = RUN_DIR / "packet-review-snapshot.md"
 RESULT_PATH = RUN_DIR / "capacity.json"
 RECEIPT_PATH = RUN_DIR / "execution-receipt.json"
 ADMISSION_PATH = LOCK_DIR / f"{RUN_ID}.admission.consumed.json"
+SYSTEMD_UNIT = f"{RUN_ID}.service"
 
 MIN_MEMORY_BYTES = 30 * 1024 ** 3
 CAPACITY_WORKER_TIMEOUT_SECONDS = 4 * 60 * 60
@@ -187,17 +192,46 @@ def require_regular_unlinked(path: Path, *, label: str,
                              root_owned: bool = False,
                              nonwritable: bool = False) -> bytes:
     partial = Path(str(path) + ".partial")
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
-        info = path.lstat()
-    except FileNotFoundError as exc:
+        descriptor = os.open(path, flags)
+    except (FileNotFoundError, OSError) as exc:
         raise CapacityRefused(f"{label} is missing") from exc
-    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+    try:
+        before = os.fstat(descriptor)
+        path_before = path.lstat()
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        path_after = path.lstat()
+    except (FileNotFoundError, OSError) as exc:
+        raise CapacityRefused(f"{label} changed during read") from exc
+    finally:
+        os.close(descriptor)
+    identity = lambda info: (
+        info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+        info.st_uid, info.st_size, info.st_mtime_ns,
+    )
+    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or identity(before) != identity(after)
+            or identity(before) != identity(path_before)
+            or identity(before) != identity(path_after)
             or os.path.lexists(partial)
-            or (root_owned and info.st_uid != 0)
-            or (nonwritable and info.st_mode & 0o222)):
+            or (root_owned and before.st_uid != 0)
+            or (nonwritable and before.st_mode & 0o222)):
         raise CapacityRefused(
-            f"{label} is linked, nonregular, partial, writable, or unowned")
-    return path.read_bytes()
+            f"{label} is linked, nonregular, partial, writable, unowned, "
+            "or unstable")
+    raw = b"".join(chunks)
+    if len(raw) != before.st_size:
+        raise CapacityRefused(f"{label} size changed during read")
+    return raw
 
 
 def write_bytes_exclusive(path: Path, raw: bytes) -> None:
@@ -307,7 +341,8 @@ def _shadow_paths(native: Path) -> list[str]:
 
 
 def require_fresh_process() -> None:
-    if DESIGN_WAS_PRELOADED or CORE_WAS_PRELOADED:
+    if (DESIGN_WAS_PRELOADED or CORE_WAS_PRELOADED
+            or PRELOADED_SHENGJI_MODULES):
         raise CapacityRefused(
             "capacity command requires fresh, unpreloaded dependencies")
 
@@ -329,7 +364,15 @@ def _load_core(expected_git: str):
     if shadows:
         raise CapacityRefused(
             "runtime contains untracked loadable shadows: " + ",".join(shadows))
-    module = importlib.import_module(CORE_MODULE)
+    module = types.ModuleType(CORE_MODULE)
+    module.__file__ = str(CORE_PATH)
+    module.__package__ = ""
+    sys.modules[CORE_MODULE] = module
+    try:
+        exec(compile(raw, str(CORE_PATH), "exec"), module.__dict__)
+    except BaseException:
+        sys.modules.pop(CORE_MODULE, None)
+        raise
     _loaded_origin(module, CORE_PATH, label="Pair duel")
     CORE = module
     return CORE
@@ -347,6 +390,9 @@ def runtime_snapshot(expected_git: str) -> dict:
     from shengji.engine import _fast, fast
 
     native = Path(_fast.__file__).resolve()
+    candidates = sorted((SERVER / "shengji/engine").glob("_fast.*.so"))
+    if len(candidates) != 1 or native != candidates[0].resolve():
+        raise CapacityRefused("imported native extension identity drift")
     origins = {
         "controller": str(Path(__file__).resolve()),
         "design": _loaded_origin(
@@ -866,11 +912,56 @@ def reopen_exact(path: Path, *, label: str) -> tuple[object, str]:
     return strict_json(raw), sha256_bytes(raw)
 
 
+def _systemd_properties(unit: str) -> dict[str, str]:
+    fields = (
+        "Id", "InvocationID", "LoadState", "ActiveState", "SubState",
+        "Type", "Restart", "KillMode", "UID", "ControlGroup",
+        "WorkingDirectory", "NRestarts",
+    )
+    completed = subprocess.run(
+        ["systemctl", "show", unit, "--no-pager",
+         *[f"--property={field}" for field in fields]],
+        check=True, capture_output=True, text=True)
+    result = {}
+    for line in completed.stdout.splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key in fields and key not in result:
+            result[key] = value
+    return result
+
+
+def _systemd_invocation_exists(invocation: str) -> bool:
+    return Path(f"/run/systemd/units/invocation:{invocation}").exists()
+
+
+def _current_cgroups() -> list[str]:
+    return Path("/proc/self/cgroup").read_text().splitlines()
+
+
 def require_systemd() -> str:
     invocation = os.environ.get("INVOCATION_ID", "")
     if (os.geteuid() != 0 or not invocation
-            or not Path(f"/run/systemd/units/invocation:{invocation}").exists()):
+            or not _systemd_invocation_exists(invocation)):
         raise CapacityRefused("capacity run requires a live root systemd unit")
+    properties = _systemd_properties(SYSTEMD_UNIT)
+    expected = {
+        "Id": SYSTEMD_UNIT, "InvocationID": invocation,
+        "LoadState": "loaded", "ActiveState": "active",
+        "SubState": "running", "Type": "exec", "Restart": "no",
+        "KillMode": "control-group",
+        "WorkingDirectory": str(REPO), "NRestarts": "0",
+    }
+    if (any(properties.get(key) != value for key, value in expected.items())
+            or properties.get("UID") not in {"0", "[not set]"}
+            or not properties.get("ControlGroup", "").startswith("/system.slice/")):
+        raise CapacityRefused("capacity systemd one-shot identity drift")
+    try:
+        memberships = _current_cgroups()
+    except OSError as exc:
+        raise CapacityRefused("cannot authenticate capacity cgroup") from exc
+    control_group = properties["ControlGroup"]
+    if not any(line.endswith(f":{control_group}") for line in memberships):
+        raise CapacityRefused("capacity process is outside the reviewed cgroup")
     return invocation
 
 

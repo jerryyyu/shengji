@@ -142,6 +142,25 @@ def test_modified_duel_source_refuses_before_import(monkeypatch, tmp_path):
     assert called == []
 
 
+def test_preloaded_shengji_dependency_refuses_in_fresh_cli(tmp_path):
+    sitecustomize = tmp_path / "sitecustomize.py"
+    sitecustomize.write_text(
+        "import sys, types\n"
+        "module = types.ModuleType('shengji.engine.fast')\n"
+        f"module.__file__ = {str(SCRIPTS / '../shengji/engine/fast.py')!r}\n"
+        "sys.modules['shengji.engine.fast'] = module\n")
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        (str(tmp_path), str(SCRIPTS), str(SCRIPTS.parent)))
+    completed = subprocess.run(
+        [sys.executable, "-B", str(Path(C.__file__)), "verify",
+         "--expected-git", GIT, "--packet", str(tmp_path / "packet.json"),
+         "--expected-packet-sha256", PACKET_SHA],
+        cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert completed.returncode != 0
+    assert "unpreloaded dependencies" in completed.stderr
+
+
 def test_packet_is_closed_and_nonexecuting_before_review():
     packet = _packet()
     assert C.packet_problems(packet, expected_git=GIT) == []
@@ -476,10 +495,83 @@ def test_systemd_gate_refuses_unowned_process(monkeypatch):
         C.require_systemd()
 
 
+def test_fresh_process_refuses_preloaded_shengji_dependency(monkeypatch):
+    monkeypatch.setattr(
+        C, "PRELOADED_SHENGJI_MODULES", ("shengji.engine.fast",))
+    with pytest.raises(C.CapacityRefused, match="unpreloaded"):
+        C.require_fresh_process()
+
+
+def test_systemd_gate_pins_one_shot_service_and_cgroup(monkeypatch):
+    invocation = "a" * 32
+    group = "/system.slice/" + C.SYSTEMD_UNIT
+    properties = {
+        "Id": C.SYSTEMD_UNIT, "InvocationID": invocation,
+        "LoadState": "loaded", "ActiveState": "active",
+        "SubState": "running", "Type": "exec", "Restart": "no",
+        "KillMode": "control-group", "UID": "[not set]",
+        "ControlGroup": group, "WorkingDirectory": str(C.REPO),
+        "NRestarts": "0",
+    }
+    monkeypatch.setenv("INVOCATION_ID", invocation)
+    monkeypatch.setattr(C.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(C, "_systemd_invocation_exists", lambda value: True)
+    monkeypatch.setattr(C, "_systemd_properties", lambda unit: properties)
+    monkeypatch.setattr(C, "_current_cgroups", lambda: [f"0::{group}"])
+    assert C.require_systemd() == invocation
+
+    properties["Restart"] = "always"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd()
+    properties["Restart"] = "no"
+    properties["KillMode"] = "process"
+    with pytest.raises(C.CapacityRefused, match="one-shot"):
+        C.require_systemd()
+    properties["KillMode"] = "control-group"
+    monkeypatch.setattr(C, "_current_cgroups", lambda: ["0::/other"])
+    with pytest.raises(C.CapacityRefused, match="outside"):
+        C.require_systemd()
+
+
 def test_frozen_runtime_requires_root(monkeypatch):
     monkeypatch.setattr(C.os, "geteuid", lambda: 501)
     with pytest.raises(C.CapacityRefused, match="root-owned"):
         C.require_frozen_runtime_inputs(_runtime())
+
+
+def test_stable_reader_refuses_symlink_and_hardlink(tmp_path):
+    source = tmp_path / "source.json"
+    source.write_bytes(b"{}\n")
+    alias = tmp_path / "alias.json"
+    alias.symlink_to(source)
+    with pytest.raises(C.CapacityRefused):
+        C.require_regular_unlinked(alias, label="symlink")
+
+    hardlink = tmp_path / "hardlink.json"
+    os.link(source, hardlink)
+    with pytest.raises(C.CapacityRefused, match="linked"):
+        C.require_regular_unlinked(source, label="hardlink")
+
+
+def test_stable_reader_refuses_path_swap_during_read(tmp_path, monkeypatch):
+    source = tmp_path / "source.json"
+    source.write_bytes(b'{"value":"authenticated"}\n')
+    replacement = tmp_path / "replacement.json"
+    replacement.write_bytes(b'{"value":"swapped"}\n')
+    real_read = C.os.read
+    swapped = False
+
+    def racing_read(descriptor, size):
+        nonlocal swapped
+        raw = real_read(descriptor, size)
+        if not swapped:
+            swapped = True
+            os.replace(replacement, source)
+        return raw
+
+    monkeypatch.setattr(C.os, "read", racing_read)
+    with pytest.raises(C.CapacityRefused, match="unstable"):
+        C.require_regular_unlinked(source, label="racing input")
 
 
 def test_runtime_shadow_scan_refuses_ignored_loadable_code(tmp_path,

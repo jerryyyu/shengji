@@ -91,6 +91,24 @@ def pinned_sources(monkeypatch, population_payload, population_path):
     monkeypatch.setattr(DESIGN.STATES, "sha256_file", fake_sha)
     monkeypatch.setattr(
         DESIGN.EVAL, "load_population", lambda path: population_payload)
+    selected = sorted(
+        (row for row in population_payload["states"]
+         if row["split"] in DESIGN.SPLITS),
+        key=lambda row: (
+            DESIGN.SPLITS.index(row["split"]), row["deal_seed"],
+            row["trick"], row["seat"]),
+    )
+    defenders = [row for row in selected if row["role"] == "defender"]
+    monkeypatch.setattr(
+        DESIGN, "REVIEWED_IDENTITY_MEMBERSHIP_SHA256",
+        DESIGN._membership_sha256(selected))
+    monkeypatch.setattr(
+        DESIGN, "REVIEWED_DEFENDER_MEMBERSHIP_SHA256",
+        DESIGN._membership_sha256(defenders))
+    monkeypatch.setattr(
+        DESIGN, "REVIEWED_SELECTION_SHA256",
+        DESIGN._sha256(DESIGN._canonical(
+            [DESIGN._manifest_row(row) for row in selected])))
 
 
 def _rehash(design: dict) -> None:
@@ -113,6 +131,10 @@ def test_full_dev_calib_schedule_is_fixed_and_adequately_powered(
         "attacker": 1, "defender": 1_023,
     }
     assert design["selection"]["unique_deal_clusters"] == 991
+    assert design["selection"]["identity_membership_sha256"] \
+        == DESIGN.REVIEWED_IDENTITY_MEMBERSHIP_SHA256
+    assert design["selection"]["defender_membership_sha256"] \
+        == DESIGN.REVIEWED_DEFENDER_MEMBERSHIP_SHA256
     assert design["schedule"]["logical_lanes"] == 16
     assert design["schedule"]["outputs"] == 32
     assert len(design["schedule"]["lanes"]) == 16
@@ -160,7 +182,8 @@ def test_full_dev_calib_schedule_is_fixed_and_adequately_powered(
 
 
 def test_combined_summary_is_defender_only_and_routes_on_both_splits(
-        population_payload):
+        pinned_sources, population_payload, population_path):
+    design = DESIGN.build_design(population_path)
     rows = [copy.deepcopy(row) for row in population_payload["states"]
             if row["split"] in DESIGN.SPLITS]
     for row in rows:
@@ -174,8 +197,7 @@ def test_combined_summary_is_defender_only_and_routes_on_both_splits(
             "retained_policy_minus_current": policy_value,
             "best_inserted_pair_minus_current": source_value,
         }
-    summary = DESIGN.defender_combined_summary(
-        rows, population_payload["search_eligible_weights"])
+    summary = DESIGN.defender_combined_summary(rows, design)
     assert summary["schema"] == DESIGN.SUMMARY_SCHEMA
     assert summary["primary_population"] == "combined DEV+CALIB defender rows"
     assert summary["rows"] == 1_023
@@ -202,16 +224,48 @@ def test_combined_summary_is_defender_only_and_routes_on_both_splits(
     assert summary["strength_claim"] is False
 
 
-def test_combined_summary_refuses_role_or_cluster_drift(population_payload):
+def test_combined_summary_refuses_role_or_cluster_drift(
+        pinned_sources, population_payload, population_path):
+    design = DESIGN.build_design(population_path)
     rows = [copy.deepcopy(row) for row in population_payload["states"]
             if row["split"] in DESIGN.SPLITS]
     for row in rows:
         row["estimands"] = {metric: 0.0 for metric in DESIGN.AGG.METRICS}
     next(row for row in rows if row["role"] == "defender")["role"] = "attacker"
     with pytest.raises(
-            DESIGN.CapacityDesignRefused, match="role/cluster population drift"):
-        DESIGN.defender_combined_summary(
-            rows, population_payload["search_eligible_weights"])
+            DESIGN.CapacityDesignRefused, match="role membership drift"):
+        DESIGN.defender_combined_summary(rows, design)
+
+
+def test_coordinated_same_cell_role_swap_cannot_change_primary_membership(
+        pinned_sources, population_payload, population_path):
+    design = DESIGN.build_design(population_path)
+    rows = [copy.deepcopy(row) for row in population_payload["states"]
+            if row["split"] in DESIGN.SPLITS]
+    for row in rows:
+        row["estimands"] = {metric: 0.0 for metric in DESIGN.AGG.METRICS}
+    attacker = next(row for row in rows
+                    if row["role"] == "attacker"
+                    and row["split"] == "calib" and row["band"] == "early")
+    defender_deal_counts = {
+        row["deal_seed"]: sum(other["deal_seed"] == row["deal_seed"]
+                              and other["role"] == "defender"
+                              for other in rows)
+        for row in rows if row["role"] == "defender"
+    }
+    defender = next(row for row in rows
+                    if row["role"] == "defender"
+                    and row["split"] == "calib" and row["band"] == "early"
+                    and defender_deal_counts[row["deal_seed"]] == 1)
+    attacker["role"], defender["role"] = "defender", "attacker"
+    # The old gate saw exactly the same aggregate cells and cluster count.
+    swapped_defenders = [row for row in rows if row["role"] == "defender"]
+    assert len(swapped_defenders) == DESIGN.DEFENDER_ROWS
+    assert len({row["deal_seed"] for row in swapped_defenders}) \
+        == DESIGN.DEFENDER_DEAL_CLUSTERS
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="membership drift"):
+        DESIGN.defender_combined_summary(rows, design)
 
 
 def test_selected_role_mix_cannot_be_relabelled_natural_dose(
@@ -220,8 +274,8 @@ def test_selected_role_mix_cannot_be_relabelled_natural_dose(
     design["scope"]["selected_role_mix_is_natural_dose"] = True
     _rehash(design)
     with pytest.raises(
-            DESIGN.CapacityDesignRefused, match="boundary drift"):
-        DESIGN.validate_design(design)
+            DESIGN.CapacityDesignRefused, match="scope drift"):
+        DESIGN.validate_design(design, population=population_path)
 
 
 def test_source_trajectory_cannot_be_relabelled_champion(
@@ -238,15 +292,47 @@ def test_rehashed_primary_estimator_or_power_cluster_drift_refuses(
     design["estimands"]["primary_row_filter"] = "all roles"
     _rehash(design)
     with pytest.raises(
-            DESIGN.CapacityDesignRefused, match="boundary drift"):
-        DESIGN.validate_design(design)
+            DESIGN.CapacityDesignRefused, match="estimand drift"):
+        DESIGN.validate_design(design, population=population_path)
 
     design = DESIGN.build_design(population_path)
     design["power"]["independent_deal_clusters"] = 1_023
     _rehash(design)
     with pytest.raises(
-            DESIGN.CapacityDesignRefused, match="boundary drift"):
+            DESIGN.CapacityDesignRefused, match="power drift"):
+        DESIGN.validate_design(design, population=population_path)
+
+
+@pytest.mark.parametrize(("section", "field", "value"), (
+    ("estimands", "primary_splits", ["dev"]),
+    ("estimands", "cluster_unit", "state_id"),
+    ("power", "alpha", 0.5),
+    ("scope", "attacker_effect_estimable", True),
+    ("estimands", "exact_whole_round_estimand", True),
+    ("estimands", "band_weight_unit",
+     "live-champion search-reachable omission events"),
+))
+def test_rehashed_semantic_drifts_refuse_source_bound_validation(
+        pinned_sources, population_path, section, field, value):
+    design = DESIGN.build_design(population_path)
+    design[section][field] = value
+    _rehash(design)
+    with pytest.raises(DESIGN.CapacityDesignRefused, match="drift"):
+        DESIGN.validate_design(design, population=population_path)
+
+
+def test_foreign_authority_field_and_unbound_validation_refuse(
+        pinned_sources, population_path):
+    design = DESIGN.build_design(population_path)
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="source reconstruction"):
         DESIGN.validate_design(design)
+
+    design["authority"]["launcher_authorized"] = True
+    _rehash(design)
+    with pytest.raises(
+            DESIGN.CapacityDesignRefused, match="authority field drift"):
+        DESIGN.validate_design(design, population=population_path)
 
 
 def test_report_is_present_in_source_but_absent_from_design(
@@ -316,7 +402,7 @@ def test_rehashed_authority_escalation_refuses(
     _rehash(design)
     with pytest.raises(
             DESIGN.CapacityDesignRefused, match="authority escalation"):
-        DESIGN.validate_design(design)
+        DESIGN.validate_design(design, population=population_path)
 
 
 def test_rehashed_report_admission_refuses(
@@ -325,8 +411,8 @@ def test_rehashed_report_admission_refuses(
     design["selection"]["report_permitted"] = True
     _rehash(design)
     with pytest.raises(
-            DESIGN.CapacityDesignRefused, match="boundary drift"):
-        DESIGN.validate_design(design)
+            DESIGN.CapacityDesignRefused, match="selection drift"):
+        DESIGN.validate_design(design, population=population_path)
 
 
 def test_verify_reconstructs_every_field(
@@ -341,7 +427,7 @@ def test_verify_reconstructs_every_field(
     _rehash(changed)
     design_path.write_bytes(DESIGN._canonical(changed))
     with pytest.raises(
-            DESIGN.CapacityDesignRefused, match="differs from reconstruction"):
+            DESIGN.CapacityDesignRefused, match="capacity drift"):
         DESIGN.verify_design(population_path, design_path)
 
 

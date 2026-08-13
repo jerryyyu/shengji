@@ -37,6 +37,15 @@ POPULATION_FILE_SHA256 = (
 POPULATION_ARTIFACT_SHA256 = (
     "6e62bf4bd43558da6233118fea13d49cd6f90ed4d2632b628b56ccd0f470d4d7"
 )
+REVIEWED_IDENTITY_MEMBERSHIP_SHA256 = (
+    "57c835c8785db8c84fff78d19e84dcc7ea1b2ee74ea120065fdf7c75bc276e24"
+)
+REVIEWED_DEFENDER_MEMBERSHIP_SHA256 = (
+    "8225e5f88b5b3a7d368d9715f9c3e9c5fc1a14df61486204168583e5511de9a4"
+)
+REVIEWED_SELECTION_SHA256 = (
+    "3c9993bc8432d2fc419cfb75c2f766119de3aa4eacdf87dc3c238e1a484b29ab"
+)
 CAPTURE_SHA256 = (
     "e54102482c2f1652186bfa5458f4f229fa01bd8bf74cdcb2d29c7fe133e6f4ce"
 )
@@ -57,6 +66,11 @@ DEFENDER_DEAL_CLUSTERS = 990
 DEFENDER_ROWS_BY_SPLIT = {"dev": 512, "calib": 511}
 DEFENDER_ROWS_BY_BAND = {"early": 895, "mid": 96, "late": 32}
 SOURCE_TRAJECTORY_POLICY = "smart"
+REVIEWED_BAND_WEIGHTS = {
+    "early": 0.9686815593517302,
+    "mid": 0.03081197985107315,
+    "late": 0.000506460797196671,
+}
 CAPACITY_ROUTES = {
     "POLICY_AND_SOURCE_PROMISING_TEST_NATURAL_DOSE":
         "POLICY_AND_SOURCE_PROMISING_MEASURE_LIVE_CHAMPION_DOSE",
@@ -123,6 +137,23 @@ def _manifest_row(row: dict) -> dict:
     }
 
 
+def _identity_row(row: dict) -> dict:
+    return {
+        "state_id": row["state_id"],
+        "state_sha256": row["state_sha256"],
+        "deal_seed": row["deal_seed"],
+        "split": row["split"],
+        "band": row["band"],
+        "role": row["role"],
+    }
+
+
+def _membership_sha256(rows: list[dict]) -> str:
+    """Hash identity + role membership independent of shard/result order."""
+    manifest = sorted((_identity_row(row) for row in rows), key=_canonical)
+    return _sha256(_canonical(manifest))
+
+
 def _defender_rows(rows: list[dict]) -> list[dict]:
     """Return the exact combined DEV/CALIB defender population or refuse.
 
@@ -139,6 +170,10 @@ def _defender_rows(rows: list[dict]) -> list[dict]:
     role_counts = Counter(row.get("role") for row in rows)
     split_counts = Counter(row.get("split") for row in rows)
     defenders = [row for row in rows if row.get("role") == "defender"]
+    if (_membership_sha256(rows) != REVIEWED_IDENTITY_MEMBERSHIP_SHA256
+            or _membership_sha256(defenders)
+            != REVIEWED_DEFENDER_MEMBERSHIP_SHA256):
+        raise CapacityDesignRefused("reviewed role membership drift")
     if (role_counts != Counter({
             "defender": DEFENDER_ROWS, "attacker": ATTACKER_ROWS})
             or split_counts != Counter({split: ROWS_PER_SPLIT
@@ -192,8 +227,7 @@ def _planning_sensitivity(*, band_weights: dict[str, float],
     }
 
 
-def defender_combined_summary(rows: list[dict],
-                              band_weights: dict[str, float]) -> dict:
+def defender_combined_summary(rows: list[dict], design: dict) -> dict:
     """Route one combined DEV+CALIB exploration result on defenders only.
 
     ``rows`` must already have passed the reviewed per-shard result validator.
@@ -202,6 +236,14 @@ def defender_combined_summary(rows: list[dict],
     primary combined estimate and split diagnostics with deal clustering.
     It is deliberately not a terminal strength or natural-dose estimator.
     """
+    _validate_design_structure(design)
+    selection = design["selection"]
+    if (selection["identity_membership_sha256"]
+            != REVIEWED_IDENTITY_MEMBERSHIP_SHA256
+            or selection["defender_membership_sha256"]
+            != REVIEWED_DEFENDER_MEMBERSHIP_SHA256):
+        raise CapacityDesignRefused("summary/design membership drift")
+    band_weights = design["estimands"]["band_weights"]
     defenders = _defender_rows(rows)
     for row in defenders:
         estimands = row.get("estimands")
@@ -241,6 +283,8 @@ def defender_combined_summary(rows: list[dict],
         "rows": len(defenders),
         "deal_clusters": DEFENDER_DEAL_CLUSTERS,
         "attacker_case_study_rows_excluded": ATTACKER_ROWS,
+        "identity_membership_sha256": REVIEWED_IDENTITY_MEMBERSHIP_SHA256,
+        "defender_membership_sha256": REVIEWED_DEFENDER_MEMBERSHIP_SHA256,
         "metrics": combined,
         "split_diagnostics": by_split,
         "routing_basis": "combined_defender_dev_calib",
@@ -300,6 +344,9 @@ def build_design(population: Path) -> dict:
                 "search eligibility/equal-width work geometry drift")
 
     manifest = [_manifest_row(row) for row in selected]
+    selection_sha256 = _sha256(_canonical(manifest))
+    if selection_sha256 != REVIEWED_SELECTION_SHA256:
+        raise CapacityDesignRefused("reviewed selection membership drift")
     lanes = []
     for index in range(SHARD_COUNT):
         lane_rows = [row for row in selected
@@ -323,6 +370,8 @@ def build_design(population: Path) -> dict:
         band: float(payload["search_eligible_weights"][band])
         for band in BANDS
     }
+    if band_weights != REVIEWED_BAND_WEIGHTS:
+        raise CapacityDesignRefused("reviewed SmartBot band weights drift")
     natural_events = int(payload["search_eligible_denominator"])
     max_deals = int(payload["max_deals"])
     if payload.get("source_policy") != SOURCE_TRAJECTORY_POLICY:
@@ -353,7 +402,11 @@ def build_design(population: Path) -> dict:
             "states_by_split": dict(sorted(split_counts.items())),
             "states_by_band": dict(sorted(band_counts.items())),
             "states_by_role": dict(sorted(role_counts.items())),
-            "selection_sha256": _sha256(_canonical(manifest)),
+            "identity_membership_sha256":
+                REVIEWED_IDENTITY_MEMBERSHIP_SHA256,
+            "defender_membership_sha256":
+                REVIEWED_DEFENDER_MEMBERSHIP_SHA256,
+            "selection_sha256": selection_sha256,
         },
         "schedule": {
             "logical_lanes": SHARD_COUNT,
@@ -460,70 +513,296 @@ def build_design(population: Path) -> dict:
         },
     }
     design["design_sha256"] = _sha256(_canonical(design))
-    validate_design(design)
+    _validate_design_structure(design)
     return design
 
 
-def validate_design(design: object) -> None:
-    if not isinstance(design, dict) or design.get("schema") != SCHEMA:
+def _require_fields(value: object, fields: set[str], label: str) -> dict:
+    if not isinstance(value, dict) or set(value) != fields:
+        raise CapacityDesignRefused(f"capacity design {label} field drift")
+    return value
+
+
+def _validate_design_structure(design: object) -> None:
+    """Validate the closed schema and every load-bearing semantic value.
+
+    This does not replace source reconstruction: public ``validate_design``
+    additionally rebuilds the complete object from the reviewed population.
+    Keeping the local schema closed makes the object safe to consume inside
+    ``defender_combined_summary`` without silently accepting new authority or
+    a relabelled estimator.
+    """
+    design = _require_fields(design, {
+        "schema", "ancestry", "selection", "schedule", "work",
+        "estimands", "dose", "scope", "power", "capacity", "routing",
+        "authority", "design_sha256",
+    }, "top-level")
+    if design["schema"] != SCHEMA:
         raise CapacityDesignRefused("capacity design schema drift")
     body = dict(design)
     observed = body.pop("design_sha256", None)
     if observed != _sha256(_canonical(body)):
         raise CapacityDesignRefused("capacity design digest drift")
-    authority = design.get("authority")
-    if (not isinstance(authority, dict)
-            or authority.get("capacity_design_only") is not True
-            or any(authority.get(name) is not False for name in (
-                "runtime_qualification_authorized",
-                "capacity_preflight_authorized",
-                "scored_evaluation_authorized",
-                "report_access_authorized",
-                "training_authorized",
-                "strength_claim",
-                "production_promotion",
-                "production_deployment",
-            ))):
-        raise CapacityDesignRefused("capacity design authority escalation")
-    if (design.get("selection", {}).get("report_permitted") is not False
-            or design.get("selection", {}).get("splits") != list(SPLITS)
-            or design.get("estimands", {}).get("primary")
-            != "defender_retained_policy_minus_current"
-            or design.get("estimands", {}).get("primary_row_filter")
-            != "role == defender"
-            or design.get("estimands", {}).get(
-                "combined_dev_calib_primary") is not True
-            or design.get("estimands", {}).get("implementation")
-            != ("pair_ballot_affected_capacity_design."
-                "defender_combined_summary")
-            or design.get("routing", {}).get("decision_statistic")
-            != "combined DEV+CALIB defender summary"
-            or design.get("power", {}).get(
-                "adequately_powered_at_worthwhile_effect") is not True
-            or design.get("power", {}).get("primary_role") != "defender"
-            or design.get("power", {}).get("state_rows") != DEFENDER_ROWS
-            or design.get("power", {}).get("independent_deal_clusters")
+
+    ancestry = _require_fields(design["ancestry"], {
+        "parent_review_git", "parent_review_record_sha256",
+        "population_file_sha256", "population_artifact_sha256",
+        "capture_sha256", "evaluator_sha256", "aggregate_sha256",
+    }, "ancestry")
+    if ancestry != {
+            "parent_review_git": PARENT_REVIEW_GIT,
+            "parent_review_record_sha256": PARENT_REVIEW_RECORD_SHA256,
+            "population_file_sha256": POPULATION_FILE_SHA256,
+            "population_artifact_sha256": POPULATION_ARTIFACT_SHA256,
+            "capture_sha256": CAPTURE_SHA256,
+            "evaluator_sha256": EVALUATOR_SHA256,
+            "aggregate_sha256": AGGREGATE_SHA256,
+    }:
+        raise CapacityDesignRefused("capacity design ancestry drift")
+
+    selection = _require_fields(design["selection"], {
+        "splits", "report_permitted", "rule", "states",
+        "unique_deal_clusters", "states_by_split", "states_by_band",
+        "states_by_role", "identity_membership_sha256",
+        "defender_membership_sha256", "selection_sha256",
+    }, "selection")
+    if selection != {
+            "splits": list(SPLITS),
+            "report_permitted": False,
+            "rule": "all frozen DEV and CALIB rows; no outcome filtering",
+            "states": 1_024,
+            "unique_deal_clusters": 991,
+            "states_by_split": {"calib": 512, "dev": 512},
+            "states_by_band": {"early": 896, "late": 32, "mid": 96},
+            "states_by_role": {"attacker": 1, "defender": 1_023},
+            "identity_membership_sha256":
+                REVIEWED_IDENTITY_MEMBERSHIP_SHA256,
+            "defender_membership_sha256":
+                REVIEWED_DEFENDER_MEMBERSHIP_SHA256,
+            "selection_sha256": REVIEWED_SELECTION_SHA256,
+    }:
+        raise CapacityDesignRefused("capacity design selection drift")
+
+    schedule = _require_fields(design["schedule"], {
+        "logical_lanes", "max_concurrent_lanes", "assignment", "outputs",
+        "no_outcome_dependent_extension", "lanes",
+    }, "schedule")
+    lanes = schedule["lanes"]
+    if (schedule["logical_lanes"] != SHARD_COUNT
+            or schedule["max_concurrent_lanes"] != MAX_CONCURRENT_LANES
+            or schedule["assignment"]
+            != "deal_seed modulo 16; DEV then CALIB in each lane"
+            or schedule["outputs"] != len(SPLITS) * SHARD_COUNT
+            or schedule["no_outcome_dependent_extension"] is not True
+            or not isinstance(lanes, list) or len(lanes) != SHARD_COUNT):
+        raise CapacityDesignRefused("capacity design schedule drift")
+    for index, lane in enumerate(lanes):
+        lane = _require_fields(lane, {
+            "lane_index", "state_count", "states_by_split",
+            "states_by_band", "max_candidate_world_rollouts",
+            "selection_sha256",
+        }, "lane")
+        if lane["lane_index"] != index:
+            raise CapacityDesignRefused("capacity design lane identity drift")
+
+    work = _require_fields(design["work"], {
+        "ballot_width", "selection_worlds_per_candidate",
+        "policy_report_worlds", "external_report_worlds",
+        "complete_policy_rollouts_per_arm", "policy_arms",
+        "max_external_actions", "max_external_rollouts_per_state",
+        "max_candidate_world_rollouts_per_state",
+        "max_candidate_world_rollouts_total",
+    }, "work")
+    if work != {
+            "ballot_width": BALLOT_WIDTH,
+            "selection_worlds_per_candidate": SELECTION_WORLDS,
+            "policy_report_worlds": POLICY_REPORT_WORLDS,
+            "external_report_worlds": EXTERNAL_REPORT_WORLDS,
+            "complete_policy_rollouts_per_arm": POLICY_WORK_PER_STATE,
+            "policy_arms": 2,
+            "max_external_actions": MAX_EXTERNAL_ACTIONS,
+            "max_external_rollouts_per_state": MAX_EXTERNAL_WORK_PER_STATE,
+            "max_candidate_world_rollouts_per_state": MAX_WORK_PER_STATE,
+            "max_candidate_world_rollouts_total": 1_024 * MAX_WORK_PER_STATE,
+    }:
+        raise CapacityDesignRefused("capacity design work drift")
+
+    estimands = _require_fields(design["estimands"], {
+        "primary", "secondary", "primary_row_filter", "primary_splits",
+        "cluster_unit", "band_weights", "band_weight_unit",
+        "within_band_sampling_unit", "implementation",
+        "combined_dev_calib_primary", "split_results_are_diagnostics",
+        "attacker_case_study_is_descriptive_only",
+        "combined_dev_calib_summary", "exact_natural_decision_estimand",
+        "exact_whole_round_estimand", "terminal_selection",
+    }, "estimands")
+    if estimands != {
+            "primary": "defender_retained_policy_minus_current",
+            "secondary": "defender_best_inserted_pair_minus_current",
+            "primary_row_filter": "role == defender",
+            "primary_splits": list(SPLITS),
+            "cluster_unit": "deal_seed",
+            "band_weights": REVIEWED_BAND_WEIGHTS,
+            "band_weight_unit":
+                "SmartBot-trajectory search-reachable omission events",
+            "within_band_sampling_unit":
+                "first_affected_state_per_deal_band_in_frozen_population",
+            "implementation": (
+                "pair_ballot_affected_capacity_design."
+                "defender_combined_summary"),
+            "combined_dev_calib_primary": True,
+            "split_results_are_diagnostics": True,
+            "attacker_case_study_is_descriptive_only": True,
+            "combined_dev_calib_summary": "predeclared exploration only",
+            "exact_natural_decision_estimand": False,
+            "exact_whole_round_estimand": False,
+            "terminal_selection": False,
+    }:
+        raise CapacityDesignRefused("capacity design estimand drift")
+
+    dose = _require_fields(design["dose"], {
+        "source_trajectory_policy", "search_eligible_omission_events",
+        "capture_deals", "events_per_captured_smartbot_deal",
+        "is_live_champion_dose",
+        "live_champion_role_specific_dose_available",
+        "translation_to_whole_round_is_approximate",
+    }, "dose")
+    if dose != {
+            "source_trajectory_policy": SOURCE_TRAJECTORY_POLICY,
+            "search_eligible_omission_events": 146_112,
+            "capture_deals": 12_000_000,
+            "events_per_captured_smartbot_deal": 146_112 / 12_000_000,
+            "is_live_champion_dose": False,
+            "live_champion_role_specific_dose_available": False,
+            "translation_to_whole_round_is_approximate": True,
+    }:
+        raise CapacityDesignRefused("capacity design dose drift")
+
+    scope = _require_fields(design["scope"], {
+        "defender_states", "attacker_states", "primary_role_inference",
+        "attacker_effect_estimable", "attacker_row_use",
+        "all_role_generalization_authorized",
+        "role_stratified_reporting_required",
+        "selected_role_mix_is_natural_dose",
+        "role_specific_natural_dose_available",
+        "role_conditional_band_weights_available",
+        "all_role_smartbot_band_weights_used_for_exploration",
+        "role_specific_capture_census_required_before_whole_round_claim",
+        "late_band_use",
+    }, "scope")
+    if scope != {
+            "defender_states": DEFENDER_ROWS,
+            "attacker_states": ATTACKER_ROWS,
+            "primary_role_inference": "defender-selected-state population",
+            "attacker_effect_estimable": False,
+            "attacker_row_use": "descriptive case study only",
+            "all_role_generalization_authorized": False,
+            "role_stratified_reporting_required": True,
+            "selected_role_mix_is_natural_dose": False,
+            "role_specific_natural_dose_available": False,
+            "role_conditional_band_weights_available": False,
+            "all_role_smartbot_band_weights_used_for_exploration": True,
+            "role_specific_capture_census_required_before_whole_round_claim":
+                True,
+            "late_band_use": "diagnostic slice; natural weight is below 0.001",
+    }:
+        raise CapacityDesignRefused("capacity design scope drift")
+
+    power = _require_fields(design["power"], {
+        "family", "alpha", "target_power", "planning_cluster_sd",
+        "worthwhile_conditional_effect", "primary_role", "state_rows",
+        "independent_deal_clusters", "rows_by_band",
+        "effective_clusters_under_band_weights", "planning_se",
+        "mde_at_target_power", "power_at_worthwhile_effect",
+        "adequately_powered_at_worthwhile_effect", "confirmatory_claim",
+    }, "power")
+    if (power["family"]
+            != "predeclared one-sided normal planning approximation"
+            or power["alpha"] != ONE_SIDED_ALPHA
+            or power["target_power"] != TARGET_POWER
+            or power["planning_cluster_sd"] != PLANNING_CLUSTER_SD
+            or power["worthwhile_conditional_effect"]
+            != WORTHWHILE_CONDITIONAL_EFFECT
+            or power["primary_role"] != "defender"
+            or power["state_rows"] != DEFENDER_ROWS
+            or power["independent_deal_clusters"]
             != DEFENDER_DEAL_CLUSTERS
-            or design.get("capacity", {}).get(
-                "preflight_required_before_scored_execution") is not True
-            or design.get("dose", {}).get("source_trajectory_policy")
-            != SOURCE_TRAJECTORY_POLICY
-            or design.get("dose", {}).get("is_live_champion_dose") is not False
-            or design.get("dose", {}).get(
-                "live_champion_role_specific_dose_available") is not False
-            or design.get("scope", {}).get(
-                "selected_role_mix_is_natural_dose") is not False
-            or design.get("scope", {}).get(
-                "role_specific_natural_dose_available") is not False
-            or design.get("scope", {}).get(
-                "role_conditional_band_weights_available") is not False
-            or design.get("scope", {}).get(
-                "all_role_smartbot_band_weights_used_for_exploration")
-                is not True
-            or design.get("scope", {}).get(
-                "role_specific_capture_census_required_before_whole_round_claim")
-                is not True):
-        raise CapacityDesignRefused("capacity design boundary drift")
+            or power["rows_by_band"] != DEFENDER_ROWS_BY_BAND
+            or power["adequately_powered_at_worthwhile_effect"] is not True
+            or power["confirmatory_claim"] is not False):
+        raise CapacityDesignRefused("capacity design power drift")
+
+    capacity = _require_fields(design["capacity"], {
+        "preferred_future_host_class", "preferred_host_is_runtime_qualified",
+        "fallback_host_alias", "fallback_currently_available",
+        "public_address_recorded", "host_qualification_required",
+        "measured_projection_available",
+        "preflight_required_before_scored_execution", "max_fleet_hours",
+        "max_lane_wall_hours", "cap_is_fail_closed_not_a_throughput_claim",
+    }, "capacity")
+    if capacity != {
+            "preferred_future_host_class": "cpx62-x86-16-vcpu-32gb",
+            "preferred_host_is_runtime_qualified": False,
+            "fallback_host_alias": "shengji-cloud",
+            "fallback_currently_available": False,
+            "public_address_recorded": False,
+            "host_qualification_required": True,
+            "measured_projection_available": False,
+            "preflight_required_before_scored_execution": True,
+            "max_fleet_hours": MAX_FLEET_HOURS,
+            "max_lane_wall_hours": MAX_LANE_WALL_HOURS,
+            "cap_is_fail_closed_not_a_throughput_claim": True,
+    }:
+        raise CapacityDesignRefused("capacity design capacity drift")
+
+    routing = _require_fields(design["routing"], {
+        "decision_statistic",
+        "always_publish_both_metrics_and_all_split_band_slices",
+        "policy_and_source_positive", "source_only_positive",
+        "no_source_headroom",
+    }, "routing")
+    if routing != {
+            "decision_statistic": "combined DEV+CALIB defender summary",
+            "always_publish_both_metrics_and_all_split_band_slices": True,
+            "policy_and_source_positive": (
+                "measure live-champion natural dose, then design whole-game test"),
+            "source_only_positive": "improve selector before whole-game test",
+            "no_source_headroom":
+                "stop forced retention; try contextual source",
+    }:
+        raise CapacityDesignRefused("capacity design routing drift")
+
+    authority = _require_fields(design["authority"], {
+        "capacity_design_only", "population_opened_for_design_only",
+        "runtime_qualification_authorized", "capacity_preflight_authorized",
+        "scored_evaluation_authorized", "report_access_authorized",
+        "training_authorized", "strength_claim", "production_promotion",
+        "production_deployment",
+    }, "authority")
+    if authority != {
+            "capacity_design_only": True,
+            "population_opened_for_design_only": True,
+            "runtime_qualification_authorized": False,
+            "capacity_preflight_authorized": False,
+            "scored_evaluation_authorized": False,
+            "report_access_authorized": False,
+            "training_authorized": False,
+            "strength_claim": False,
+            "production_promotion": False,
+            "production_deployment": False,
+    }:
+        raise CapacityDesignRefused("capacity design authority escalation")
+
+
+def validate_design(design: object, *, population: Path | None = None) -> None:
+    """Validate only by rebuilding from the reviewed population bytes."""
+    if population is None:
+        raise CapacityDesignRefused(
+            "capacity design validation requires source reconstruction")
+    _validate_design_structure(design)
+    expected = build_design(population)
+    if design != expected:
+        raise CapacityDesignRefused("capacity design differs from reconstruction")
 
 
 def verify_design(population: Path, design_path: Path) -> dict:
@@ -533,10 +812,7 @@ def verify_design(population: Path, design_path: Path) -> dict:
         observed = json.loads(design_path.read_bytes())
     except (OSError, ValueError) as exc:
         raise CapacityDesignRefused("capacity design unreadable") from exc
-    validate_design(observed)
-    expected = build_design(population)
-    if observed != expected:
-        raise CapacityDesignRefused("capacity design differs from reconstruction")
+    validate_design(observed, population=population)
     return observed
 
 

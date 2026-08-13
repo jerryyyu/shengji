@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+"""Read-only reviewer for the Pair V3 score-free capacity result.
+
+This module has no writer, launcher, admission, gameplay, or REPORT surface.
+It authenticates the frozen packet and its independent review, verifies the
+consumed admission, and delegates the capacity arithmetic and score-free
+boundary to the controller's pure validator.  A successful review authorizes
+only design of a future scored packet; it does not authorize freezing or
+running that packet.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import stat
+from pathlib import Path
+
+import pair_ballot_affected_capacity_design as DESIGN
+import pair_ballot_affected_capacity_preflight as CAPACITY
+
+
+EXPECTED_GIT = "6461c660e1ff71a905d9010b12c0adfc4e8bc729"
+EXPECTED_PACKET_SHA256 = (
+    "e054c5e582c1e665da9bc8ab413639f4c015ffe31a85f22c83275b7f4b4de492")
+EXPECTED_PACKET_INTERNAL_SHA256 = (
+    "25b1888c62ff772c18e065b30a7bfcc2d724c645f5ad054c4e6823dfd56a14b5")
+PACKET_REVIEW_GIT = "88866f25f3763f26996be6f45fbcfcdfe3854f30"
+PACKET_REVIEW_PARENT_GIT = "023850da1bc8f0737814b3ebb9bfceea928d2c3d"
+RESULT_REVIEW_PREFIX = (
+    "PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW ")
+RESULT_REVIEW_SCHEMA = (
+    "pair-ballot-affected-capacity-preflight-result-review-v1")
+
+
+class CapacityResultReviewRefused(RuntimeError):
+    """The score-free capacity evidence or its authority chain drifted."""
+
+
+def _is_hex(value: object, length: int) -> bool:
+    return (isinstance(value, str) and len(value) == length
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def _strict_object(pairs: list[tuple[str, object]]) -> dict:
+    value: dict = {}
+    for key, child in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON key: {key}")
+        value[key] = child
+    return value
+
+
+def _reject_constant(value: str) -> None:
+    raise ValueError(f"non-finite JSON number: {value}")
+
+
+def _load_exact_json(path: Path, expected_sha256: str, *, label: str) -> dict:
+    if not CAPACITY.is_sha256(expected_sha256):
+        raise CapacityResultReviewRefused(f"{label} expected SHA-256 drift")
+    partial = Path(str(path) + ".partial")
+    try:
+        info = path.lstat()
+    except FileNotFoundError as exc:
+        raise CapacityResultReviewRefused(f"{label} is missing") from exc
+    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+            or os.path.lexists(partial)):
+        raise CapacityResultReviewRefused(
+            f"{label} is linked, nonregular, or partial")
+    if CAPACITY.sha256_file(path) != expected_sha256:
+        raise CapacityResultReviewRefused(f"{label} file SHA-256 drift")
+    try:
+        value = json.loads(
+            path.read_bytes(), object_pairs_hook=_strict_object,
+            parse_constant=_reject_constant)
+    except (OSError, ValueError) as exc:
+        raise CapacityResultReviewRefused(f"{label} is unreadable") from exc
+    if not isinstance(value, dict):
+        raise CapacityResultReviewRefused(f"{label} is not an object")
+    return value
+
+
+def _packet_review(packet: dict, review_snapshot_path: Path) -> tuple[dict, bytes]:
+    claim = CAPACITY.packet_review_claim(
+        expected_git=EXPECTED_GIT,
+        packet_sha256=EXPECTED_PACKET_SHA256,
+        packet_internal_sha256=EXPECTED_PACKET_INTERNAL_SHA256)
+    try:
+        review, marker = CAPACITY.canonical_review_record(
+            commit=PACKET_REVIEW_GIT,
+            prefix=CAPACITY.PACKET_REVIEW_PREFIX,
+            expected=claim,
+            expected_parent=PACKET_REVIEW_PARENT_GIT,
+            label="Pair V3 preflight packet review")
+        CAPACITY.require_regular_unlinked(
+            review_snapshot_path, label="Pair V3 packet review snapshot")
+    except CAPACITY.CapacityPreflightRefused as exc:
+        raise CapacityResultReviewRefused(str(exc)) from exc
+    if (review_snapshot_path.read_bytes() != marker
+            or CAPACITY.sha256_file(review_snapshot_path)
+            != review["marker_sha256"]):
+        raise CapacityResultReviewRefused(
+            "Pair V3 packet review snapshot drift")
+    if (packet.get("git") != EXPECTED_GIT
+            or packet.get("internal_sha256")
+            != EXPECTED_PACKET_INTERNAL_SHA256):
+        raise CapacityResultReviewRefused("Pair V3 packet identity drift")
+    return review, marker
+
+
+def _admission_problems(admission: object, *, packet: dict,
+                        review: dict) -> list[str]:
+    if not isinstance(admission, dict):
+        return ["admission is not an object"]
+    expected_fields = {
+        "schema", "run_id", "git", "packet_sha256",
+        "packet_review_commit", "packet_review_marker_sha256", "nonce",
+        "created_time_ns", "systemd_invocation_id",
+        "one_score_free_preflight_authorized",
+        "scored_evaluation_authorized", "report_access_authorized",
+        "strength_claim", "production_deployment", "internal_sha256",
+    }
+    problems: list[str] = []
+    if set(admission) != expected_fields:
+        problems.append("admission field population")
+        return problems
+    if (admission["schema"] != CAPACITY.ADMISSION_SCHEMA
+            or admission["run_id"] != CAPACITY.RUN_ID
+            or admission["git"] != EXPECTED_GIT
+            or admission["packet_sha256"] != EXPECTED_PACKET_SHA256
+            or admission["packet_review_commit"] != PACKET_REVIEW_GIT
+            or admission["packet_review_marker_sha256"]
+            != review["marker_sha256"]
+            or not _is_hex(admission["nonce"], 64)
+            or not isinstance(admission["created_time_ns"], int)
+            or isinstance(admission["created_time_ns"], bool)
+            or admission["created_time_ns"] <= 0
+            or not _is_hex(admission["systemd_invocation_id"], 32)):
+        problems.append("admission identity")
+    if admission["one_score_free_preflight_authorized"] is not True:
+        problems.append("admission did not authorize the one score-free run")
+    for field in (
+            "scored_evaluation_authorized", "report_access_authorized",
+            "strength_claim", "production_deployment"):
+        if admission[field] is not False:
+            problems.append(f"admission authority escalation: {field}")
+    body = dict(admission)
+    observed = body.pop("internal_sha256")
+    if (not CAPACITY.is_sha256(observed)
+            or observed != CAPACITY.digest(body)):
+        problems.append("admission internal digest")
+    if packet.get("internal_sha256") != EXPECTED_PACKET_INTERNAL_SHA256:
+        problems.append("admission packet binding")
+    return sorted(set(problems))
+
+
+def result_review_claim(*, admission_sha256: str, result_sha256: str,
+                        result_internal_sha256: str) -> dict:
+    """Return the sole deterministic authority emitted by this reviewer."""
+    return {
+        "admission_sha256": admission_sha256,
+        "git": EXPECTED_GIT,
+        "independent_review": True,
+        "packet_internal_sha256": EXPECTED_PACKET_INTERNAL_SHA256,
+        "packet_review_commit": PACKET_REVIEW_GIT,
+        "packet_sha256": EXPECTED_PACKET_SHA256,
+        "production_deployment": False,
+        "production_promotion": False,
+        "report_access_authorized": False,
+        "result_reviewer_script_sha256": CAPACITY.sha256_file(Path(__file__)),
+        "result_internal_sha256": result_internal_sha256,
+        "result_sha256": result_sha256,
+        "run_id": CAPACITY.RUN_ID,
+        "schema": RESULT_REVIEW_SCHEMA,
+        "scored_evaluation_authorized": False,
+        "scored_packet_design_authorized": True,
+        "scored_packet_freeze_authorized": False,
+        "scored_packet_run_authorized": False,
+        "score_free_capacity_pass": True,
+        "strength_claim": False,
+        "training_authorized": False,
+        "retry_authorized": False,
+        "extension_authorized": False,
+        "verdict": "PASS",
+    }
+
+
+def verify(*, population_path: Path, design_path: Path, packet_path: Path,
+           packet_review_snapshot_path: Path, admission_path: Path,
+           expected_admission_sha256: str, result_path: Path,
+           expected_result_sha256: str) -> dict:
+    """Verify immutable evidence and return a design-only review claim."""
+    try:
+        packet = CAPACITY.load_packet(
+            packet_path, EXPECTED_PACKET_SHA256,
+            expected_git=EXPECTED_GIT,
+            population_path=population_path,
+            design_path=design_path)
+    except CAPACITY.CapacityPreflightRefused as exc:
+        raise CapacityResultReviewRefused(str(exc)) from exc
+    review, _marker = _packet_review(packet, packet_review_snapshot_path)
+
+    admission = _load_exact_json(
+        admission_path, expected_admission_sha256,
+        label="Pair V3 consumed admission")
+    problems = _admission_problems(admission, packet=packet, review=review)
+    if problems:
+        raise CapacityResultReviewRefused("; ".join(problems))
+
+    result = _load_exact_json(
+        result_path, expected_result_sha256,
+        label="Pair V3 score-free capacity result")
+    try:
+        design = DESIGN.verify_design(population_path, design_path)
+    except Exception as exc:
+        raise CapacityResultReviewRefused(
+            f"cannot reconstruct reviewed design: {type(exc).__name__}: {exc}") \
+            from exc
+    problems = CAPACITY.score_free_result_problems(result, design=design)
+    if result.get("git") != EXPECTED_GIT:
+        problems.append("result Git binding")
+    if result.get("packet_sha256") != EXPECTED_PACKET_SHA256:
+        problems.append("result packet file binding")
+    if (result.get("packet_internal_sha256")
+            != EXPECTED_PACKET_INTERNAL_SHA256):
+        problems.append("result packet internal binding")
+    if result.get("admission_sha256") != expected_admission_sha256:
+        problems.append("result admission binding")
+    if result.get("runtime") != packet.get("runtime"):
+        problems.append("result runtime differs from frozen packet")
+    criteria = result.get("criteria")
+    if (not isinstance(criteria, dict) or criteria.get("all") is not True
+            or result.get("status") != "AUTHORIZE_CAPACITY_RESULT_REVIEW"):
+        problems.append("capacity result did not pass every criterion")
+    if problems:
+        raise CapacityResultReviewRefused("; ".join(sorted(set(problems))))
+    return result_review_claim(
+        admission_sha256=expected_admission_sha256,
+        result_sha256=expected_result_sha256,
+        result_internal_sha256=result["internal_sha256"])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--population", type=Path, required=True)
+    parser.add_argument("--design", type=Path, required=True)
+    parser.add_argument("--packet", type=Path, required=True)
+    parser.add_argument("--packet-review-snapshot", type=Path, required=True)
+    parser.add_argument("--admission", type=Path, required=True)
+    parser.add_argument("--expected-admission-sha256", required=True)
+    parser.add_argument("--result", type=Path, required=True)
+    parser.add_argument("--expected-result-sha256", required=True)
+    args = parser.parse_args()
+    claim = verify(
+        population_path=args.population.resolve(),
+        design_path=args.design.resolve(), packet_path=args.packet.resolve(),
+        packet_review_snapshot_path=args.packet_review_snapshot.resolve(),
+        admission_path=args.admission.resolve(),
+        expected_admission_sha256=args.expected_admission_sha256,
+        result_path=args.result.resolve(),
+        expected_result_sha256=args.expected_result_sha256)
+    print(RESULT_REVIEW_PREFIX + json.dumps(
+        claim, sort_keys=True, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+    main()

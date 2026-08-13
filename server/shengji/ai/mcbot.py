@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 import time
 import subprocess
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -46,6 +46,20 @@ from ..engine.round import Round, Trick, TrickPlay
 
 class DeterminizationContractError(RuntimeError):
     """A sampled world is incomplete or inconsistent with the round cards."""
+
+
+@dataclass(frozen=True)
+class _CanonicalDeterminization:
+    """Validated immutable source for one sampled world.
+
+    Each rollout still receives fresh mutable hand lists because ``Round.play``
+    consumes cards in-place.  Keeping the canonical source immutable lets all
+    candidates on a paired world share the expensive validation/sorting work
+    without sharing mutable hands with one another.
+    """
+
+    hands: tuple[tuple[str, ...], ...]
+    buried: tuple[str, ...]
 
 
 STRUCTURED_BURY_TELEMETRY_FIELDS = (
@@ -333,11 +347,13 @@ class MCBot(SmartBot):
                 n_worlds += 1
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
+                world = self._prepare_play_world(
+                    rnd, seat, hands, buried=buried)
                 world_vals = []
                 for i, cand in enumerate(candidates):
                     val = self._score(
                         self._rollout(
-                            rnd, seat, hands, buried, cand,
+                            rnd, seat, world, buried, cand,
                             exact_session=exact_session))
                     val = val if i_attack else -val
                     totals[i] += val
@@ -361,9 +377,11 @@ class MCBot(SmartBot):
                     continue
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
+                world = self._prepare_play_world(
+                    rnd, seat, hands, buried=buried)
                 for cand in candidates[:residual]:
                     self._score(self._rollout(
-                        rnd, seat, hands, buried, cand,
+                        rnd, seat, world, buried, cand,
                         exact_session=exact_session))
                     dummy_rollouts += 1
 
@@ -735,10 +753,12 @@ class MCBot(SmartBot):
                     continue
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
-                va = self._score(self._rollout(rnd, seat, hands, buried,
+                world = self._prepare_play_world(
+                    rnd, seat, hands, buried=buried)
+                va = self._score(self._rollout(rnd, seat, world, buried,
                                                list(cand_a),
                                                exact_session=exact_session))
-                vb = self._score(self._rollout(rnd, seat, hands, buried,
+                vb = self._score(self._rollout(rnd, seat, world, buried,
                                                list(cand_b),
                                                exact_session=exact_session))
                 if not i_attack:
@@ -812,10 +832,12 @@ class MCBot(SmartBot):
                 continue
             hands, buried = sampled
             exact_session = self._new_exact_world_session(rnd, buried)
+            world = self._prepare_play_world(
+                rnd, seat, hands, buried=buried)
             worlds += 1
             vals = {}
             for i in alive:
-                v = self._score(self._rollout(rnd, seat, hands, buried,
+                v = self._score(self._rollout(rnd, seat, world, buried,
                                               candidates[i],
                                               exact_session=exact_session))
                 v = v if i_attack else -v
@@ -884,8 +906,10 @@ class MCBot(SmartBot):
                 continue
             hands, buried = sampled
             exact_session = self._new_exact_world_session(rnd, buried)
+            world = self._prepare_play_world(
+                rnd, seat, hands, buried=buried)
             for i in alive[:residual]:
-                self._score(self._rollout(rnd, seat, hands, buried,
+                self._score(self._rollout(rnd, seat, world, buried,
                                           candidates[i],
                                           exact_session=exact_session))
                 dummy_rollouts += 1
@@ -1029,10 +1053,12 @@ class MCBot(SmartBot):
                 continue
             n_worlds += 1
             hands, _ = sampled
+            world = self._prepare_bury_world(
+                rnd, seat, hands, buried=[])
             for i, cand in enumerate(cands):
                 # banker's perspective: minimize the attackers' value
                 totals[i] -= self._score(
-                    self._rollout_from_bury(rnd, seat, hands, cand))
+                    self._rollout_from_bury(rnd, seat, world, cand))
         rollouts = n_worlds * len(cands)
         if self.STRUCTURED_BURY and rollouts > self.BURY_MAX_ROLLOUTS:
             raise AssertionError("structured bury scorer exceeded work cap")
@@ -1135,7 +1161,8 @@ class MCBot(SmartBot):
         )
 
     def _rollout_from_bury(self, rnd: Round, seat: int,
-                           sampled: dict[int, list[str]],
+                           sampled: dict[int, list[str]] |
+                           _CanonicalDeterminization,
                            bury_cards: list[str]) -> float:
         clone: Round = copy.copy(rnd)
         # A determinization is a CARD MULTISET per seat.  The sampler's list
@@ -1144,7 +1171,7 @@ class MCBot(SmartBot):
         # after nothing more than a hand permutation, and one changed value
         # was enough to flip MC's argmax.  Canonicalise at the rollout-policy
         # boundary so every continuation sees one representation of a world.
-        clone.hands = self._complete_determinized_hands(
+        clone.hands = self._fresh_determinized_hands(
             rnd, seat, sampled, buried=[])
         clone.buried = []
         clone.trick = None
@@ -1201,6 +1228,59 @@ class MCBot(SmartBot):
                 f"missing={dict(sorted(missing.items()))}, "
                 f"extra={dict(sorted(extra.items()))}")
         return hands
+
+    def _prepare_determinized_world(
+            self, rnd: Round, seat: int, sampled: dict[int, list[str]], *,
+            buried: list[str]) -> _CanonicalDeterminization:
+        """Validate and canonicalise one accepted sampled world exactly once."""
+        hands = self._complete_determinized_hands(
+            rnd, seat, sampled, buried=buried)
+        return _CanonicalDeterminization(
+            hands=tuple(tuple(hand) for hand in hands),
+            buried=tuple(sorted(buried)),
+        )
+
+    def _prepare_play_world(
+            self, rnd: Round, seat: int, sampled: dict[int, list[str]], *,
+            buried: list[str]) -> (dict[int, list[str]] |
+                                    _CanonicalDeterminization):
+        """Prepare worlds only for the canonical MCBot rollout boundary.
+
+        Experimental subclasses and focused tests may replace ``_rollout``
+        with a boundary that consumes the sampler mapping directly.  The old
+        search loop passed that mapping through, so preserve that contract.
+        """
+        if getattr(self._rollout, "__func__", None) is not MCBot._rollout:
+            return sampled
+        return self._prepare_determinized_world(
+            rnd, seat, sampled, buried=buried)
+
+    def _prepare_bury_world(
+            self, rnd: Round, seat: int, sampled: dict[int, list[str]], *,
+            buried: list[str]) -> (dict[int, list[str]] |
+                                    _CanonicalDeterminization):
+        """Bury analogue of :meth:`_prepare_play_world`."""
+        if getattr(self._rollout_from_bury, "__func__", None) is not \
+                MCBot._rollout_from_bury:
+            return sampled
+        return self._prepare_determinized_world(
+            rnd, seat, sampled, buried=buried)
+
+    def _fresh_determinized_hands(
+            self, rnd: Round, seat: int,
+            sampled: dict[int, list[str]] | _CanonicalDeterminization, *,
+            buried: list[str]) -> list[list[str]]:
+        """Return non-aliased mutable hands for one rollout candidate.
+
+        Direct/private callers that still supply the sampler mapping retain the
+        original validate-on-every-call contract.  Search loops pass a prepared
+        immutable world after validating it once.  The buried multiset remains
+        bound so a prepared world cannot accidentally cross kitty contexts.
+        """
+        if not isinstance(sampled, _CanonicalDeterminization):
+            return self._complete_determinized_hands(
+                rnd, seat, sampled, buried=buried)
+        return [list(hand) for hand in sampled.hands]
 
     def _new_exact_world_session(self, rnd: Round, buried: list[str]):
         """Create one cache for one accepted ordinary-play determinization."""
@@ -1840,7 +1920,8 @@ class MCBot(SmartBot):
         return out
 
     # -------------------------------------------------------------- rollout
-    def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
+    def _rollout(self, rnd: Round, seat: int,
+                 sampled: dict[int, list[str]] | _CanonicalDeterminization,
                  buried: list[str], candidate: list[str], *,
                  exact_session=None) -> float:
         clone: Round = copy.copy(rnd)
@@ -1848,9 +1929,16 @@ class MCBot(SmartBot):
         # continuation policy is intentionally simple and walks a list, so it
         # must receive a canonical representation or `_rollout` is a function
         # of sampler insertion order rather than of the game state.
-        clone.hands = self._complete_determinized_hands(
-            rnd, seat, sampled, buried=buried)
-        clone.buried = sorted(buried)
+        if isinstance(sampled, _CanonicalDeterminization):
+            clone.hands = [list(hand) for hand in sampled.hands]
+            # A prepared world owns its validated kitty context.  Reading the
+            # immutable binding is both safer and cheaper than sorting or
+            # comparing the same burial once per candidate.
+            clone.buried = list(sampled.buried)
+        else:
+            clone.hands = self._complete_determinized_hands(
+                rnd, seat, sampled, buried=buried)
+            clone.buried = sorted(buried)
         assert rnd.trick is not None
         clone.trick = Trick(
             leader=rnd.trick.leader,

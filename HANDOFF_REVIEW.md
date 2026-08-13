@@ -6869,3 +6869,85 @@ strength claim, training, promotion or deployment. Post the same verdict to
 PR #76.
 
 ---
+## Claude — 2026-08-13 00:39 EDT — ⛔ HOLD: Pair V3 capacity design (PR #72, `373de84`) — the work is clean, the requested marker text is corrupted
+
+I rebuilt the design independently and it reproduces **byte-exactly**. I am not
+appending the requested marker, because two of its digests contradict both the
+reviewed source and the artifact I rebuilt. This is a text defect in the
+request, not a defect in the design.
+
+**Everything substantive verifies.**
+
+- Head `373de8429261d7271b98f4d427760412cea930e2` as claimed. `22ddfa3` (PR #61
+  head, which I passed at 21:53) is an ancestor — `parent_git` names the stacked
+  base, the same convention PR #69 used, so the differing immediate parent
+  `ea8ea9d` is not a mismatch. Purely additive: two new files, +1372/−0.
+- Design source `caa2d0d9…` and test `bc103baa…` match exactly.
+- The design pins the population I authenticated in PR #61: file
+  `6a3f8d9d…`, internal `6e62bf4b…`. The build refuses without the sixteen
+  source shards beside it — I had to stage the shards I preserved at 21:12
+  before it would proceed, which is the right fail-closed behaviour.
+- **Rebuilt from reviewed PR #61 bytes: file `be21b547659e49399dbaf7ea732c4a6a94f953c59c197765112e12d366dbf439`,
+  internal `cd8ada0d53c914adf9862171bcbf8308496129e3b1d66e63fee0a6efe4ac4f9d`** —
+  both exactly as claimed, `states: 1024`,
+  `max_candidate_world_rollouts: 3010560`.
+- **Cross-Python byte-identity independently confirmed.** Python **3.11.14**,
+  **3.12.12** and **3.14.3** each produce the identical file SHA
+  `be21b547…f439` and identical internal `cd8ada0d…4f9d`. The
+  `python_311_312_314_byte_identical` claim holds.
+- 26 focused tests pass under strict compiled routing. Authority flags in the
+  built artifact are all correct: `scored_evaluation_authorized`,
+  `report_access_authorized`, `strength_claim`, `training_authorized`,
+  `production_promotion`, `production_deployment` are every one `false`.
+- Structural constants are internally validated by the builder itself — 1,023
+  defender rows as 512 DEV + 511 CALIB and 895 early + 96 mid + 32 late, over
+  990 deal clusters. The build refuses on any mismatch, and it did not refuse.
+
+**The blocker — two corrupted digests in the requested marker.**
+
+| field | requested marker | rebuilt design **and** script constant |
+|---|---|---|
+| `identity_membership_sha256` | `57c835c89961fa70dddf24b1f37b41d04f38f4e3baa385c3c96f64b1e3276e24` | `57c835c8785db8c84fff78d19e84dcc7ea1b2ee74ea120065fdf7c75bc276e24` |
+| `defender_membership_sha256` | `8225e5f8db96740ca1a30c0b5ea5a790419fd00b78319aeb5163fe64ee1de9a4` | `8225e5f88b5b3a7d368d9715f9c3e9c5fc1a14df61486204168583e5511de9a4` |
+
+The rebuilt design's `selection.identity_membership_sha256` and
+`selection.defender_membership_sha256` agree with the script's own
+`REVIEWED_IDENTITY_MEMBERSHIP_SHA256` and `REVIEWED_DEFENDER_MEMBERSHIP_SHA256`
+constants exactly. So the design and its source are consistent with each other;
+only the marker text disagrees with both.
+
+**This is systemic, and it is the third instance.** The same signature appears
+in the PR #71 request I reviewed at 00:29: pinned test SHA
+`df7a4513482d32d1…` where the file is `df7a4513243ade2a…`. In all three cases
+the **first eight hex characters are preserved and the middle is replaced**
+(the identity digest even preserves its final six). That is not a stale value
+from an earlier revision — a stale hash would differ everywhere. It looks like
+the same handoff compaction that dropped the 23:23/23:30/23:39 entries is
+mangling long hex strings inside request text.
+
+Two consequences worth acting on:
+
+1. **No marker template issued after the compaction should be signed as
+   transcribed.** Every digest in one must be re-derived from source first. I
+   will do that from here on regardless.
+2. **Prefer producer-generated claims over transcribed ones.** PR #74's
+   `review-claim` subcommand emitted the marker directly from the controller,
+   and I could diff my generated copy against the request byte-for-byte. That
+   pattern would have caught all three corruptions at authoring time. Capacity
+   designs should expose the same subcommand.
+
+**Smallest exact repair:** re-issue the PR #72 marker with the two digests
+above corrected. Nothing else needs to change — I have already verified every
+other field in it, including the population, selection, design, source and test
+hashes, the counts, and the cross-Python identity. Post the corrected template
+and I will sign it immediately.
+
+I am deliberately not "fixing" the marker myself. After the 00:16 S5 incident,
+improvising reviewer marker text is exactly the wrong instinct: the attestation
+must be the bytes the requester asked for, verified, not the bytes the reviewer
+thought were meant.
+
+No authority is granted by this entry. Score-free preflight implementation
+remains unauthorized until a corrected marker is signed.
+
+---

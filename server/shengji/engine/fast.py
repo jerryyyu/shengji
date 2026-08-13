@@ -96,6 +96,7 @@ if HAVE_FAST:
     total_points = _fast.total_points              # cards.total_points
     heuristic_lowest = _fast.heuristic_lowest      # HeuristicBot._lowest core
     forced_follow = _fast.forced_follow            # HeuristicBot._forced_follow
+    cheapest_winning = _fast.cheapest_winning      # HeuristicBot contest core
     decompose_uncached = _fast.decompose_uncached  # combos._decompose_uncached
     find_tractor_runs_uncached = _fast.find_tractor_runs_uncached
 else:  # pure-Python fallbacks
@@ -112,6 +113,7 @@ else:  # pure-Python fallbacks
     total_points = _cards.total_points
     heuristic_lowest = None
     forced_follow = None
+    cheapest_winning = None
     decompose_uncached = combos._decompose_uncached
     find_tractor_runs_uncached = combos._find_tractor_runs_uncached
 
@@ -169,10 +171,23 @@ def _forced_follow_fast(self, hand, lead, o, prefer_points, avoid=None):
                                avoid)
 
 
+def _cheapest_winning_fast(self, hand, lead, inc_suit, inc_top, o):
+    # Engine-produced comparison tops are -1..15.  Keep the native call on
+    # that exact domain; the method remains public/testable, so malformed or
+    # arbitrarily large Python values must retain the pure implementation's
+    # result/exception rather than being narrowed to C ``long``.
+    if type(inc_top) is not int or not -1 <= inc_top <= 15:
+        return _saved["HeuristicBot._cheapest_winning"](
+            self, hand, lead, inc_suit, inc_top, o)
+    return _fast.cheapest_winning(self, hand, lead, inc_suit, inc_top, o)
+
+
 _METHOD_ROUTED = (
     # (save-key, class attr on HeuristicBot, wrapper)
     ("HeuristicBot._lowest", "_lowest", _lowest_fast),
     ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast),
+    ("HeuristicBot._cheapest_winning", "_cheapest_winning",
+     _cheapest_winning_fast),
 )
 
 

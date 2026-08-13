@@ -130,8 +130,11 @@ class HeuristicBot:
             if aces:
                 return aces[:1]
         # High plain pair.
-        pairs = [(o.level(c), c) for s in PLAIN_SUITS for c, n in
-                 Counter(by_suit[s]).items() if n >= 2]
+        # Count the hand once.  Building one Counter per plain suit was the
+        # hottest allocation inside rollout leads; tuple-max below already
+        # supplies the exact level/card tie-break, so item order is irrelevant.
+        pairs = [(o.level(c), c) for c, n in Counter(hand).items()
+                 if n >= 2 and o.eff_suit(c) in PLAIN_SUITS]
         if pairs:
             lv, c = max(pairs)
             if lv >= top_plain - 3:

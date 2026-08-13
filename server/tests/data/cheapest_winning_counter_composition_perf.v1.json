@@ -1,0 +1,72 @@
+{
+  "schema": "cheapest-winning-counter-composition-perf-v1",
+  "claim": "counting rollout lead pairs once per hand adds speed on top of the native cheapest-winner route and bounded public-input guard",
+  "claim_boundary": {
+    "performance_only": true,
+    "production_deployment": false,
+    "strength_claim": false
+  },
+  "durable_evidence": {
+    "local_archive": "/private/tmp/perf-cheapest-counter-composition-ab-v1.tar.gz",
+    "archive_sha256": "ee479f02ef615c69f41d2e125a0a024baa6440be02e959999a8e2c56c4304b6a",
+    "bundle_manifest_sha256": "0bc4cda107b92597c48e2ae36c0ae644db657e6ae91dc5dae320e10765224729",
+    "result_sha256": "6238c5b649b16cf605ff1afab4c65bdc6aaa989e03f3219d55bb8bfdbaaf3fa0",
+    "design_sha256": "4f45f4c45f6a169f54f6fdcf39090a508f4ef4636601222e1817efda7ae9fca6",
+    "external_on_host_validator_sha256": "7256f99680378d47416b8ace6bc14104c4bc452f12835879394fe82dde267428",
+    "external_on_host_validation": "VERIFIED_ON_HOST",
+    "committed_generic_validator_sha256": "ad81380d1e1bb391838ddd1764b24a3abea18b3fa34d4f8bc4c41301338a9c93",
+    "committed_generic_validator_validation": "VERIFIED_ON_HOST",
+    "bundled_validator_limitation": "the frozen generic validator assumed six pairs; the source-pinned external validator removed that assumption and independently revalidated all three records",
+    "raw_artifacts_preserved": true,
+    "separate_normalized_arm_artifacts_preserved": true
+  },
+  "base": {
+    "git": "1f6597bcb36b268383e29c36886b782a185bf328",
+    "heuristic_sha256": "84f1968697c2518fa719c79582f01f3e05f6df5a2c365d07be603fc5ebf88bd5",
+    "fast_router_sha256": "f68c1d311112c203371ee11cbeaf839c9540e59e50543b0c723c2003c589adba",
+    "fast_engine_elf_text_sha256": "f552d6367f50ef4c8353428eef38d53a9b463af2308c93582dce7835d5b91d32"
+  },
+  "head": {
+    "git": "876d5c626e0511428d236b8f1d23c36af9c2c0d6",
+    "heuristic_sha256": "e2d282e8fcc710f60a0f9ccf431fcbf97bdab87e5e3c7f9760ab49e6a8dfbfe8",
+    "fast_router_sha256": "f68c1d311112c203371ee11cbeaf839c9540e59e50543b0c723c2003c589adba",
+    "fast_engine_elf_text_sha256": "f552d6367f50ef4c8353428eef38d53a9b463af2308c93582dce7835d5b91d32"
+  },
+  "design": {
+    "pairs": 3,
+    "seeds": [3251, 3319, 3389],
+    "orders": ["base_head", "head_base", "base_head"],
+    "one_sided_t_critical": 2.919985580354,
+    "one_sided_t_df": 2,
+    "retention_statistic": "paired_one_sided_95_lb_percent",
+    "retention_minimum": 0.0,
+    "one_fresh_batch_no_retry": true
+  },
+  "records": [
+    {
+      "seed": 3251, "order": "base_head",
+      "base": {"elapsed_seconds": 15.178131847999794, "raw_semantic_sha256": "22a7edb5431ce2b7f619aebf3331daf8de9526b426d523f5760a7e623d98f870", "normalized_semantic_sha256": "83f6159d3f77bf2a3c51d567f7fe352dc592c62a62f635f120438d30ad86153b", "rollouts": [10410, 13740, 10410, 10230], "search_calls": [14, 17, 14, 14]},
+      "head": {"elapsed_seconds": 14.541104985999937, "raw_semantic_sha256": "e8b3f0b078919fb6d74471a17d1b4e3c5f5e5fa4ef6b432f5132230fd03ef5a6", "normalized_semantic_sha256": "83f6159d3f77bf2a3c51d567f7fe352dc592c62a62f635f120438d30ad86153b", "rollouts": [10410, 13740, 10410, 10230], "search_calls": [14, 17, 14, 14]}
+    },
+    {
+      "seed": 3319, "order": "head_base",
+      "base": {"elapsed_seconds": 24.226989847999903, "raw_semantic_sha256": "91f5cd37e54eeb7e1cb7d3d8ae8eec4b5114b03bff2e55b462b7fd5efa5eec7f", "normalized_semantic_sha256": "087687e76c4b515a288fffbe7d7b5fa8b91d68e3c11821d7ff3115ce56d69ce7", "rollouts": [15000, 14700, 15390, 15720], "search_calls": [19, 20, 20, 21]},
+      "head": {"elapsed_seconds": 23.1792332309999, "raw_semantic_sha256": "73c7f966140d6d1ec8666f29cfecfae071b9794c3576e950f65ac135f6a5b185", "normalized_semantic_sha256": "087687e76c4b515a288fffbe7d7b5fa8b91d68e3c11821d7ff3115ce56d69ce7", "rollouts": [15000, 14700, 15390, 15720], "search_calls": [19, 20, 20, 21]}
+    },
+    {
+      "seed": 3389, "order": "base_head",
+      "base": {"elapsed_seconds": 21.08620037500009, "raw_semantic_sha256": "c346387010197ae168d610dd53fd1a998107a85f8cdf658715a525467c8d127b", "normalized_semantic_sha256": "a022279c17fb45f1723deedddeb9e68f5911f96c9a4b3ed01255af50481cd255", "rollouts": [13650, 14580, 11910, 13830], "search_calls": [18, 19, 16, 18]},
+      "head": {"elapsed_seconds": 20.343819980000035, "raw_semantic_sha256": "29bbeb8ed17a71ea1bd1ba6ac3efa2e70c5200643f010f94c49e63af79df6e2c", "normalized_semantic_sha256": "a022279c17fb45f1723deedddeb9e68f5911f96c9a4b3ed01255af50481cd255", "rollouts": [13650, 14580, 11910, 13830], "search_calls": [18, 19, 16, 18]}
+    }
+  ],
+  "aggregate": {
+    "base_wall_seconds": 60.491322070999786,
+    "head_wall_seconds": 58.06415819699987,
+    "wall_reduction_percent": 4.012416642425353,
+    "throughput_increase_percent": 4.180141328778153,
+    "paired_relative_mean_percent": 4.014148983266728,
+    "paired_one_sided_95_lb_percent": 3.285704251385898,
+    "normalized_semantics_exact": true,
+    "decision": "retain"
+  }
+}

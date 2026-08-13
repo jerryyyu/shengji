@@ -27,6 +27,13 @@ class Trick:
     plays: list[TrickPlay] = field(default_factory=list)
     winner: int | None = None
     points: int = 0
+    # Incremental caches, maintained by Round.play() ONLY inside the private
+    # append-only MC rollout contract (rnd._trusted_rollout). None everywhere
+    # else -- live, public, hand-built, deepcopied-then-mutated and
+    # counterfactual rounds always take the legacy recomputation. Excluded
+    # from equality/repr: caches are not part of a trick's public identity.
+    incumbent: object = field(default=None, compare=False, repr=False)
+    running_points: object = field(default=None, compare=False, repr=False)
 
 
 class Round:
@@ -189,6 +196,26 @@ class Round:
             validate_follow(cards, self.hands[seat], lead, self.ordering)
         self._remove(seat, cards)
         self.trick.plays.append(TrickPlay(seat, list(cards)))
+        if getattr(self, "_trusted_rollout", False):
+            played = self.trick.plays[-1].cards
+            _pts = total_points(played)
+            if len(self.trick.plays) == 1:
+                self.trick.running_points = _pts
+                _suit = uniform_suit(played, self.ordering)
+                if _suit is not None:
+                    self.trick.incumbent = (
+                        seat, _suit,
+                        decompose(played, self.ordering).top_level())
+            else:
+                if self.trick.running_points is not None:
+                    self.trick.running_points += _pts
+                if self.trick.incumbent is not None:
+                    _w, _s, _t = self.trick.incumbent
+                    _won, _top = beats(played, self.trick.plays[0].cards,
+                                       _s, _t, self.ordering)
+                    if _won:
+                        self.trick.incumbent = (
+                            seat, self.ordering.eff_suit(played[0]), _top)
         if len(self.trick.plays) == 4:
             self._resolve_trick()
         else:
@@ -196,17 +223,25 @@ class Round:
 
     def _resolve_trick(self) -> None:
         assert self.trick and self.ordering
-        lead = self.trick.plays[0].cards
-        inc_suit = uniform_suit(lead, self.ordering)
-        assert inc_suit is not None
-        inc_top = decompose(lead, self.ordering).top_level()
-        winner = self.trick.plays[0].seat
-        for tp in self.trick.plays[1:]:
-            won, top = beats(tp.cards, lead, inc_suit, inc_top, self.ordering)
-            if won:
-                winner, inc_top = tp.seat, top
-                inc_suit = self.ordering.eff_suit(tp.cards[0])
-        pts = total_points(c for tp in self.trick.plays for c in tp.cards)
+        if (getattr(self, "_trusted_rollout", False)
+                and self.trick.incumbent is not None):
+            winner = self.trick.incumbent[0]
+        else:
+            lead = self.trick.plays[0].cards
+            inc_suit = uniform_suit(lead, self.ordering)
+            assert inc_suit is not None
+            inc_top = decompose(lead, self.ordering).top_level()
+            winner = self.trick.plays[0].seat
+            for tp in self.trick.plays[1:]:
+                won, top = beats(
+                    tp.cards, lead, inc_suit, inc_top, self.ordering)
+                if won:
+                    winner, inc_top = tp.seat, top
+                    inc_suit = self.ordering.eff_suit(tp.cards[0])
+        pts = (self.trick.running_points
+               if (getattr(self, "_trusted_rollout", False)
+                   and self.trick.running_points is not None) else
+               total_points(c for tp in self.trick.plays for c in tp.cards))
         self.trick.winner, self.trick.points = winner, pts
         if self.is_attacker(winner):
             self.attacker_points += pts

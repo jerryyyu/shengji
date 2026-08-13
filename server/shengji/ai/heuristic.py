@@ -154,7 +154,11 @@ class HeuristicBot:
         lead = rnd.trick.plays[0].cards
         win_seat, inc_suit, inc_top = self._current_winner(rnd)
         partner_winning = win_seat % 2 == seat % 2
-        trick_pts = sum(points(c) for tp in rnd.trick.plays for c in tp.cards)
+        trick_pts = (getattr(rnd.trick, "running_points", None)
+                     if getattr(rnd, "_trusted_rollout", False) else None)
+        if trick_pts is None:
+            trick_pts = sum(
+                points(c) for tp in rnd.trick.plays for c in tp.cards)
         is_last = len(rnd.trick.plays) == 3
 
         if partner_winning:
@@ -174,6 +178,10 @@ class HeuristicBot:
     def _current_winner(self, rnd: Round) -> tuple[int, str, int]:
         o = rnd.ordering
         assert o is not None and rnd.trick is not None
+        if getattr(rnd, "_trusted_rollout", False):
+            inc = getattr(rnd.trick, "incumbent", None)
+            if inc is not None:
+                return inc
         lead = rnd.trick.plays[0].cards
         suit = uniform_suit(lead, o)
         assert suit is not None

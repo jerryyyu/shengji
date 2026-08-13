@@ -195,3 +195,62 @@ implementation or freeze, no execution, no scored-record access, aggregation,
 retry, extension, strength, training, promotion or deployment.
 
 ---
+## Claude — 2026-08-13 11:23 EDT — ✅ PASS (exact head): PR #89 v2 rebind (`fa0f9cf`); v2 host-specific design freeze only
+
+Exact-head review per the delta request. I did not run the batch, created no
+evidence root, and this PASS authorizes only freezing the new v2 host-specific
+design measuring `093ec33d…` vs `a91eb271…`; the frozen design still requires a
+second exact-design PASS before its one-shot run.
+
+**Topology verified.** The arm head `a91eb2716917bcc3c431d9f6841efd02f4fc8b00`
+is exactly my three PR #90 commits cherry-picked onto accepted parent
+`bfec965c` — round.py, heuristic.py and the trick-cache tests are
+**byte-identical to my branch**, and mcbot.py's diff against `bfec965c` is
+exactly the two exact-endgame hoists and nothing else (the byte difference vs
+my branch is the PR #77 prepared-world base, which is in `bfec965c` ancestry,
+not reintroduced code). The harness measures the arm head, not the merge
+`b27c126` or tooling head. All six delta-file SHAs match; the offline validator
+is byte-identical at `1e69d103…`.
+
+**Item-by-item:**
+
+1–2. The trusted-rollout provenance and staleness witnesses are the PR #90
+repair suite, byte-identical here. **Failed-throw witness constructed live on
+the x86 build:** trump-rank-7 hand attempting the six-card throw
+`C7 C7 D7 D7 H7 H7` with an opposing `S7 S7`; the engine penalized to a single
+pair and the caches derived from the **engine-actual stored play** — incumbent
+`(0,"T",12)` and `running_points 0` both equal the legacy recomputation over
+the stored bytes, not the attempt. (My construction's penalty selected `C7 C7`
+where the request's example names `D7 D7`; which component the penalty picks is
+construction detail — the property under test is attempt-vs-actual, and it
+holds.)
+
+3. The mcbot delta is exactly the two guarded hoists; disabled-solver bypass is
+regression-pinned and enabled behavior is unchanged by construction.
+
+4. `BASE_GIT = 093ec33d…`, `HEAD_GIT = a91eb271…` read directly from source.
+
+5. **Both new direct assertions bite:** mutating
+`MINIMUM_AGGREGATE_REDUCTION_PERCENT` 3.0→0.5 fails 1 test; prepending `"work"`
+to `NORMALIZED_BALLOT_FIELDS` fails 1 test — both survivors from my `fd0b13f`
+review are closed.
+
+6. **The six seeds are unused.** On the perf host the v1 artifacts are
+design/host/service documents only; there are **zero** evidence roots and no
+arm or result files. v1's experiment id is `…-accepted-stack-v1`; the harness
+now carries `report-lcb-perf-accepted-stack-pr90-v2`, so the preregistered
+seeds remain fresh for v2. The obsolete v1 design must never run, as stated.
+
+7. No PR #77 code beyond ancestry; no historical percentages pooled (fresh v2
+identity). The RLCB/H0 rebind remains a separate descendant gate — and is the
+**only** red anywhere: my broader family run shows exactly the two known
+`test_rlcb_c1` frozen-source failures, which item 7 carves out.
+
+**Suite:** fresh x86 build at `fa0f9cf`; my selection runs **147 passed,
+2 skipped, 1 missing-corpus deselected**, all green — four tests short of the
+claimed 151 on family mix, with the same shape (please name the exact selection
+next time so the count reproduces). `git diff --check` clean; PR checks green.
+
+No benchmark, retry, merge, deployment or strength authority follows.
+
+---

@@ -897,3 +897,31 @@ spent and must never restart. No benchmark, retry, merge, strength,
 production, training, promotion, or deployment authority.
 
 ---
+
+## [2026-08-13 14:45 EDT] Claude review: PR #94 repair head 0dd8f11 — PASS (implementation attestation)
+
+BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V1 {"aggregation_authorized":false,"controller_sha256":"9b75d8f4a02857dfc55d6b1f654d594178253ad0c9e141b7ebf48b540d25a513","design_canonical_sha256":"a79743a711137493ea77e9c0695022e5527618b925dc78bab500c72560292b92","design_git":"d31995d695b8bdfd013517982f6e5341678124c3","design_review_commit":"dbed4ae4ed82718819c325ae9e9d739466f1ce97","design_source_sha256":"0a63916f0bb83c46080ad0efdd41ac1e4ef9941f323bc3ad9d0b4e8404a34496","execution_authorized":false,"extension_authorized":false,"git":"0dd8f11e8b11300cec019ab9bb83bb493131e827","packet_freeze_authorized":true,"production_deployment":false,"production_promotion":false,"report_access_authorized":false,"retry_authorized":false,"schema":"bury-lead-combo-scored-dev-controller-review-v1","scored_record_access_authorized":false,"scorer_sha256":"3d26bc17f2ad88fb54765c227092041f4db5ec22e1fbc2d591b193a38ea9a91b","source_manifest_sha256":"d15f6b1caba3d4d9976064d04963b9980aa810a4b4a59962584306219342eae5","strength_claim":false,"training_authorized":false}
+✅ PASS (exact head): PR #94 `0dd8f11e8b11300cec019ab9bb83bb493131e827`
+(direct child of my HOLD head `a8d5b24`; delta is the test file only,
++131 lines; **production controller byte-identical** `9b75d8f4…a513`).
+
+**All eight HOLD blockers are closed and proven:** re-running my 12-guard
+mutation battery against the repaired suite kills **12/12** — the ledger
+trio (parent-rewrite, tip-duplicate, request-in-parent), design-review
+Claude-identity, wall cap, live-runtime-vs-packet binding, duplicate deal
+seeds, records-remain-sealed pin, plus the previously-killed invocation
+direction, readlink equality, exclusive publication and systemd property
+pins. Pristine bytes restored and re-hashed after every mutation.
+
+**Measured:** controller file 38/38; full design/scorer/controller chain
+**100/100 in BOTH pure and strict compiled modes** on ARM at exact head.
+This pre-empts the queued "battery after PR #93 releases the x86 host" —
+the battery is done; an x86 confirmation run remains optional.
+
+**Boundary:** the marker above authorizes one host-specific packet freeze
+only, on this exact head. Packet review, one-shot admission, and the later
+score-free terminal review remain separate gates. No scored execution,
+record/REPORT access, aggregation, retry/resume, strength, training,
+promotion, or deployment authority.
+
+---

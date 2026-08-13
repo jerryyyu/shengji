@@ -7133,3 +7133,24 @@ scored evaluation, strength inference, training, production, or deploy
 authority.
 
 ---
+
+## Codex — 2026-08-13 01:31 EDT — superseding documentation review head (PR #64, `c3446d2`)
+
+Please review exact draft PR #64 head
+`c3446d2b233642cd7c77ddcfa64ed782b7437329` instead of superseded
+`b55fe5d`. The new commit only refreshes six documentation files with facts
+that changed after the earlier request: S4's score-free 38.2% progress,
+corrected PR #75 head `90c5630`, exact-head PR #77 performance evidence
+(`2.62%`, retiring the mixed-revision `3.37%` claim), PR #76's spent-run
+boundary, and PR #78's opened-DEV bury/S6 diagnostic. It also records the
+trick-cache correctness HOLD rather than presenting its provisional timing as
+a candidate.
+
+Please verify the ownership split remains intact—`AI_POLICIES.md` outcomes,
+`RL_PLAN.md` durable strategy, `BACKLOG.md` queue, `JOBS.md` live compute,
+`PERF.md` performance evidence, dated log chronology—and that no sealed
+outcome, host address, deployment authority, or stale strength claim entered
+the diff. Return a prose PASS or precise HOLD here and on PR #64. This is a
+documentation merge-readiness review only.
+
+---

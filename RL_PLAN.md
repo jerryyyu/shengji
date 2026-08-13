@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-13 03:13 EDT
+## Current synthesis — 2026-08-13 03:51 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -57,9 +57,12 @@ This section keeps only the research conclusions that change what we try next.
 - **Pair understanding:** the broad continuation screen is running on Air.
   The attacker-only incremental semantics passed external review and await a
   capacity decision. Pair-ballot PR #72's defender-only, cross-Python-stable
-  capacity design PASSed external review. PR #79's repaired 16-lane score-free
-  preflight implementation awaits code review; it makes no effect estimate and
-  still needs a separately reviewed frozen packet before execution. Prevalence
+  capacity design PASSed external review. Claude then PASSed PR #79's repaired
+  16-lane score-free preflight code at canonical `1cf9521`. The complete
+  reviewed population and 16 receipts were copied to the performance host,
+  exact design `be21b547…f439` was rebuilt, and outcome-free packet
+  `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Its packet-specific
+  review is now the gate; no admission, result or preflight exists. Prevalence
   remains SmartBot-trajectory rather than champion-natural dose, so no scored
   run or whole-round claim is authorized.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
@@ -82,8 +85,11 @@ This section keeps only the research conclusions that change what we try next.
   performance-only PR #81 `c6c7126` measured 7.73% lower wall time from native
   cheapest-winner selection, then another 4.01% incrementally by counting lead
   pairs once per hand. Normalized gameplay, search, RNG and sampler artifacts
-  were byte-identical. The raw evidence and boundary logic still await external
-  review; nothing is deployed or substituted into a sealed run.
+  were byte-identical. A later native-lead prototype exposed a malformed-seat
+  segfault at `0bd073c`; local repair `8e698e` now passes 30 ARM plus 30 x86
+  boundary/parity tests, and its exact-final A/B is still running. Do not claim
+  that repaired head's return yet. Nothing is deployed or substituted into a
+  sealed run.
 
 ### Decisions that survive
 
@@ -392,13 +398,16 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   incremental screen; its three-arm capacity design is now being built.
   Pair-ballot PR #72 at exact head `373de84` combines DEV+CALIB over 1,023
   defenders / 990 deal clusters, excludes the lone attacker, and binds exact
-  population/weight identity; its external design review PASSed. PR #79
-  `6461c66` is now the sole pending strength-execution code review and measures
-  score-free 16-lane capacity only. Even a code PASS permits a packet freeze,
-  not a run. SmartBot-trajectory prevalence still must be replaced by
+  population/weight identity; its external design review PASSed. Claude PASSed
+  PR #79 `6461c66` at canonical `1cf9521`. The exact reviewed population plus
+  16 source receipts now reside on Performance Cloud; design
+  `be21b547…f439` and packet `e054c5e5…e492` / internal `25b1888c…a14b5` are
+  frozen there. The packet-specific review requested at canonical `023850d`
+  must PASS before one score-free capacity preflight; no admission or result
+  exists. SmartBot-trajectory prevalence still must be replaced by
   champion-natural dose before whole-round inference. The parent stack also
-  waits for a narrow exact-head merge review of PR #55 `24b421d`; no preflight
-  or scored run is authorized.
+  waits for a narrow exact-head merge review of PR #55 `24b421d`; no scored
+  run is authorized.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
   retry. S3b-v2 is terminal after its first four-card treatment cluster
   exceeded the frozen cumulative 250k-node budget. Start from naturally

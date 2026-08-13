@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-13 03:13 EDT. This file owns current compute and
+Last reconciled: 2026-08-13 03:51 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,10 +9,10 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Counter-only progress is 45.5% of the 12,288 sequential arm-rounds. Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
+| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Counter-only progress is `5,596/12,288` sequential arm-rounds (45.54%). Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
 | **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL.** Eight workers continue the admitted broad Pair screen with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` sleeps until the pair supervisor seals, publishes its score-free final and releases every worker. Do not inspect outcome-bearing shard JSON. |
-| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Look one is at `4,126/8,192` clusters (50.4%). No shard outcome or efficacy statistic has been opened. tmux: `s4-c2-360b-launch-queue-v2`. |
-| **Performance Cloud** | bounded performance engineering | **AVAILABLE / PERFORMANCE-ONLY.** PR #81 `c6c7126`, stacked on #77, measured 7.73% lower whole-round wall time from native cheapest-winner selection plus a 4.01% incremental reduction from counting lead pairs once per hand; normalized gameplay/search/RNG/sampler evidence remained byte-identical. External review remains; no deploy or strength authority exists. The safe trick cache (10.56% slower) and incremental Memory (0.073–0.078% of champion time) remain rejected. |
+| **Cloud** | `s4-point-banking-future-c2-360b-v1` | **HEALTHY / SATURATED; 0 TERMINAL.** Look one is at `4,279/8,192` clusters (52.23%). No shard outcome or efficacy statistic has been opened. tmux: `s4-c2-360b-launch-queue-v2`. |
+| **Performance Cloud** | repaired native-lead exact-final A/B; frozen Pair V3 packet waiting review | **BUSY WITH PERFORMANCE / NO STRENGTH RUN.** The original native-lead head `0bd073c` had a malformed-seat segfault; local repair `8e698e` passes 30 ARM and 30 x86 boundary/parity tests, and the repaired-head A/B is in flight. Do not claim its return yet. Separately, Pair V3 packet `e054c5e5…e492` / internal `25b1888c…a14b5` is frozen here with execution false and awaits packet-specific review. There is no admission, result, preflight or scored authority. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
@@ -20,7 +20,7 @@ compact terminal stubs. Historical detail is archived in
 | order | job | current gate |
 |---:|---|---|
 | 1 | Selective S6 shuai-pai preflight | **AIR AUTHORIZED / DURABLY QUEUED; MINI FALLBACK CLOSED.** Claude's 12:10 PASS permits one four-cluster score-free Air preflight from packet `19f3b2a3…79dd0`. Exact runtime/packet verification passed at 17:19; detached queue `s6-preflight-queue-v2` is fail-closed on pair supervisor final, worker absence and unused S6 targets. Draft PR #65 and its remote branch were closed without a packet or run. |
-| 2 | Pair affected-state capacity preflight | **SOLE PENDING STRENGTH-EXECUTION CODE REVIEW.** PR #72 `373de84` PASSed at main `d6db827`. PR #79 `6461c66` implements a 16-lane concurrent score-free preflight with canonical review provenance and systemd worker ownership; 83 tests pass. A PASS permits one packet freeze only. No packet, preflight or scored run is authorized. |
+| 2 | Pair affected-state capacity preflight | **PACKET-SPECIFIC REVIEW PENDING; NO RUN.** Claude PASSed PR #79 `6461c66` at canonical `1cf9521`. The complete reviewed score-free population and all 16 source receipts were copied to Performance Cloud, exact design `be21b547…f439` was rebuilt, and packet `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Review was requested at canonical `023850d`. Only a new raw PASS may authorize one score-free preflight; there is no admission or result. |
 | 3 | Attacker-gated pair-cap incremental control | **EXTERNAL ACTION-SEMANTICS PASS / CAPACITY DESIGN UNDERWAY.** Claude PASSed PR #69 `ca1913f` at 22:36. A three-arm incremental/matched-v1/literal-champion capacity design is being built; no packet or gameplay authority exists. |
 
 Pair-aware v3 owns Air and has no retry or extension authority. Every old S4 C2

@@ -158,6 +158,14 @@ artifact matched byte-for-byte; raw bundles and validators are retained for
 external review. These are performance-only measurements: #81 authorizes no
 deployment, policy change or substitution into a sealed strength run.
 
+The next native-lead prototype is not yet a publishable result. Its original
+head `0bd073c` could segfault on a malformed negative seat even though ordinary
+gameplay parity passed. Local repair `8e698e` restores the Python boundary and
+now passes 30 ARM plus 30 x86 boundary/parity cases. A fresh exact-final A/B is
+still running on that repaired head; retain no speed claim until its immutable
+result and validator finish. This is why adversarial boundary tests precede
+ROI reporting even for a semantics-preserving optimization.
+
 ## Gaps (ranked by ROI)
 
 The ordering below came from the pre-activation profile. Before choosing the
@@ -168,14 +176,14 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | externally review PR #81's native cheapest-winner and one-count lead composition; the unrelated Cython `_current_winner` attempt remains dropped | measured 7.73% plus 4.01% incremental | candidate; exact normalized semantics matched, raw evidence and boundary logic still need adversarial review |
+| 2 | Python policy hot loop after compiled phases 0-2 | externally review PR #81's native cheapest-winner and one-count lead composition; finish the repaired native-lead exact-final A/B | measured 7.73% plus 4.01% incremental for #81; repaired native-lead return pending | candidate; #81 exact normalized semantics matched, while the later lead port's original segfault is repaired and its final-head measurement is still in flight |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; PR #75/#77/#81 measurements complete, host remains performance-only |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | live; repaired native-lead A/B is in flight. A frozen Pair V3 capacity packet also pins this host, but has no admission or execution authority before packet-specific review |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -184,18 +192,22 @@ one-off experiment controllers.
    incremental bundles, together with underlying compatibility PR #75
    `90c5630` and prepared-world PR #77 `0381081`. Merge only exact reviewed
    pieces; PR #71 remains their reviewed base.
-2. After merge review, profile the exact accepted stack again. Do not infer the
+2. Finish the repaired native-lead exact-final A/B at local head `8e698e`, run
+   its immutable validator and publish only if the repaired boundary and exact
+   semantics both hold. Do not reuse the original head's provisional return.
+3. After merge review, profile the exact accepted stack again. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.
-3. Consider moving int-card conversion to the rollout boundary and compiling
+4. Consider moving int-card conversion to the rollout boundary and compiling
    `Round.play`/trick resolution only if that fresh profile still names them.
-4. Add a concurrent-room production capacity test; event-loop isolation alone
+5. Add a concurrent-room production capacity test; event-loop isolation alone
    is not a capacity proof.
-5. Reconsider incremental Memory only if a Memory-aware rollout policy becomes
+6. Reconsider incremental Memory only if a Memory-aware rollout policy becomes
    active; it is not a current-champion hotspot.
-6. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
-   physically and logically separate. A future strength controller needs its
-   own host/runtime review before it may use the performance worker.
+7. Keep `shengji-cloud` strength evidence and `shengji-perf` optimization work
+   physically and logically separate. Pair V3's frozen packet pins the latter
+   host, but only a packet-specific PASS may authorize its score-free capacity
+   preflight; this is not permission to run scored strength work there.
 
 ## Fast-path evidence and boundaries
 

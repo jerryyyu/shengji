@@ -10,50 +10,43 @@
 > `docs_archive/handoff-active-through-2026-08-11-10-22.md` and
 > `docs_archive/handoff-review-2026-08-08-through-2026-08-11-10-22.md`.
 
-Last reconciled: 2026-08-13 00:53 EDT.
+Last reconciled: 2026-08-13 02:03 EDT.
 
 ## CURRENT LAUNCH BLOCKER — read before the older lane detail below
 
-The lower lane table is the last merged snapshot and is being replaced by docs
-PR #64. Current executable truth is:
+The lower lane table is historical detail. Current executable truth is:
 
-- **S5 x86 portability PR #74 is scientifically reviewed but operationally
-  HOLD.** Claude's 00:18 PASS validates the x86 construction and explicitly
-  says `retry_authorized:false`. Before that PASS existed, the defective
-  request/attestation gate had already consumed the one-shot admission and
-  started a partial attempt. No result exists, but the old authority is spent.
-  Do not run, retry or reuse its queue/admission. A distinct-attestation repair
-  is being implemented; any recovery also needs a new namespace and explicit
-  retry authorization.
-- **PR #71 repair `093ec33` PASSed narrowly.** Claude reproduced 14/14 strict
-  and pure RLCB tests and lifted the old HOLD. Stacked PR #75 `ee6dc48` is now
-  the performance review priority: it records behavior compatibility without
-  rewriting historical evidence. Neither request grants deploy/experiment
-  authority; #71 remains unmerged until #75 resolves.
-- **Other pending reviews:** Pair ballot capacity PR #72 `373de84` now has a
-  source-derived corrected marker request at main `97547af`; PR #75
-  `ee6dc48` awaits its compatibility review; docs PR #64 `b55fe5d` awaits
-  prose-only review; conditional Pair-cap PR #73 `8c436ab` remains behind
-  #72.
-- **S5 repair PR #76 `e285f47` awaits validation-only review under the
-  superseding main request `9e73694`.** Do not review the stale `6e4377d`
-  request. The final head passes 21/21 on both ARM and clean x86. It permanently
-  disables the spent PR #74 run path and requires a distinct pinned reviewer
-  attestation. It creates no retry or recovery namespace and authorizes no run.
-- **Live compute:** T4 is healthy on Mini at 4,896/12,288 counter-only
-  arm-rounds (39.8%); broad Pair is healthy on Air; S6's reviewed score-free
-  queue sleeps behind it; S4 is healthy on strength Cloud at 2,835/8,192
-  look-one clusters (34.6%). Outcomes remain sealed.
-- **Performance Cloud:** bounded performance measurement and current-parent
-  compatibility replay are safe uses. Do not give it to S5 under PR #74; the
-  old admission is spent and no recovery execution is authorized. Never
-  substitute optimized code into frozen strength evidence.
-- **Prepared-world performance seam:** an exact-head independent audit passed
-  semantics across every MC mode. Six fresh x86 round pairs measured 2.62%
-  lower wall time (2.69% greater throughput; one-sided lower bound 1.51%) with
-  identical transcripts and work counters. The older quoted 3.37% pooled
-  figure mixed two revisions and is retired. Three extra call-count
-  regressions are being added before publication.
+- **Pair V3 design PR #72 PASSed. PR #79 `6461c66` is now the utilization-
+  critical review blocker.** It implements only a score-free capacity
+  preflight: 16 concurrent distinct defender deals cover all logical lanes and
+  every DEV/CALIB × early/mid/late cell. The repaired controller requires
+  canonical Claude provenance, a systemd-owned process tree, closed
+  telemetry-only output and exact 2× projections. Internal audit and 83 tests
+  pass. **Review does not authorize execution**; a PASS lets Codex freeze one
+  outcome-free packet for a second packet-specific review.
+- **Pending performance reviews:** PR #75 exact corrected head `90c5630`
+  binds PR #71 compatibility with the correct 64-character native-code
+  identity; PR #77 `0381081` prepares accepted hidden worlds once and measured
+  2.62% lower wall time on six exact-head pairs with normalized semantics
+  unchanged. Both await external review. The mixed-revision 3.37% claim is
+  retired.
+- **S5 remains closed.** PR #76 `e285f47` awaits validation-only review. It
+  permanently disables the spent PR #74 run and separates requests from
+  reviewer attestations. No retry, recovery namespace or diagnostic execution
+  is authorized.
+- **Other pending reviews:** opened-DEV bury/S6 telemetry PR #78 `f4b80f0` and
+  docs PR #64 `dd836b0` await prose review. Conditional Pair-cap PR #73 remains
+  behind the broad Pair terminal result and its own economics.
+- **Live compute:** T4 is healthy on Mini at the safe known minimum
+  4,896/12,288 sequential arm-rounds (39.8%). Broad Pair is healthy on Air and
+  S6's reviewed preflight queue sleeps behind it. S4 is healthy on strength
+  Cloud at 3,325/8,192 look-one clusters (40.6%). Outcomes remain sealed.
+- **Performance Cloud:** exact PR #77 profiling is complete. Trick-state
+  caching was rejected after its safe repair ran 10.56% slower; Memory reuse
+  was rejected because it is only 0.073–0.078% of current round time. A tiny
+  one-Counter lead edit was positive on all six seeds but missed the standalone
+  wall threshold by 0.009 percentage points; it is retained only for bounded
+  composition. Never substitute optimized code into frozen strength evidence.
 
 Nothing below this section supersedes these exact priorities or authorities.
 

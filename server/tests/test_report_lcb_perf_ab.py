@@ -213,16 +213,18 @@ def test_design_requires_balanced_fresh_batch_and_exact_identities(tmp_path):
     assert harness.HEAD_GIT == \
         "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
     assert harness.EXPERIMENT_ID == \
-        "report-lcb-perf-accepted-stack-pr90-v4-source-archive-repair"
+        "report-lcb-perf-accepted-stack-pr90-v5-bytecode-repair"
     assert harness.PAIR_SEEDS == (
-        1325809612, 3286110, 1702447446,
-        2457851339, 3102784513, 3313536938,
+        3241160913, 309165843, 623399655,
+        1506812366, 1286062863, 2808674107,
     )
     assert set(harness.PAIR_SEEDS).isdisjoint({
         3368250205, 194578860, 2724771798,
         2228922925, 1533007193, 1686527578,
         2552710799, 3117477128, 1009088913,
         3804486078, 4075261754, 2363873674,
+        1325809612, 3286110, 1702447446,
+        2457851339, 3102784513, 3313536938,
     })
 
     design = _design(tmp_path)
@@ -558,6 +560,39 @@ def test_internal_arm_cli_routes_all_bound_arguments(monkeypatch, tmp_path):
         lambda *args: called.append(args))
     harness.main()
     assert called == [(design.resolve(), "head", 101, raw.resolve())]
+
+
+def test_isolated_arm_flags_prevent_bytecode_despite_ignored_environment(
+        tmp_path):
+    assert harness.ISOLATED_CHILD_FLAGS == ("-I", "-B", "-P")
+    package = tmp_path / "bound_runtime"
+    package.mkdir()
+    (package / "__init__.py").write_text("VALUE = 7\n")
+    program = (
+        "import pathlib,sys;"
+        f"sys.path.insert(0,{str(tmp_path)!r});"
+        "import bound_runtime;"
+        "print(int(sys.flags.ignore_environment),"
+        "int(sys.dont_write_bytecode),bound_runtime.VALUE)"
+    )
+    environment = dict(harness.FIXED_CHILD_ENVIRONMENT)
+    completed = subprocess.run(
+        [sys.executable, *harness.ISOLATED_CHILD_FLAGS, "-c", program],
+        env=environment, check=True, capture_output=True, text=True)
+    assert completed.stdout.strip() == "1 1 7"
+    assert not (package / "__pycache__").exists()
+
+
+def test_batch_arm_command_uses_the_bytecode_safe_isolation_flags(tmp_path):
+    script = tmp_path / "harness.py"
+    design = tmp_path / "design.json"
+    raw = tmp_path / "arm.raw.json"
+    command = harness._isolated_arm_command(
+        "/usr/bin/python3.14", script, design, "base", 123, raw)
+    assert command[:5] == [
+        "/usr/bin/python3.14", "-I", "-B", "-P", "-c"]
+    assert command[-5:] == [
+        "run-arm", str(design), "base", "123", str(raw)]
 
 
 def test_batch_refuses_before_any_namespace_without_external_design_binding(

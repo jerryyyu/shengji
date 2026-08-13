@@ -46,16 +46,16 @@ N_DETERMINIZATIONS = 30
 REPORT_WORLDS = 300
 BASE_GIT = "093ec33d8d9e137d276b84ffd907ca4417ba44af"
 HEAD_GIT = "a91eb2716917bcc3c431d9f6841efd02f4fc8b00"
-# V3 admitted successfully but refused before its first arm: the setup path
-# passed the portable runtime identity (which intentionally omits the absolute
-# repo path) into the source archiver.  V2r1 and V3 remain spent and must never
-# be restarted.  A repaired run is a fresh experiment, with fresh seeds and
-# namespace.
+# V4 admitted and ran the first base round, then correctly refused before raw
+# publication because ``-I`` ignored PYTHONDONTWRITEBYTECODE and the imported
+# runtime created bytecode that failed the post-round closure check.  V2r1,
+# V3 and V4 remain spent and must never be restarted.  The repaired experiment
+# uses fresh deterministic seeds and a fresh namespace.
 EXPERIMENT_ID = \
-    "report-lcb-perf-accepted-stack-pr90-v4-source-archive-repair"
+    "report-lcb-perf-accepted-stack-pr90-v5-bytecode-repair"
 PAIR_SEEDS = (
-    1325809612, 3286110, 1702447446,
-    2457851339, 3102784513, 3313536938,
+    3241160913, 309165843, 623399655,
+    1506812366, 1286062863, 2808674107,
 )
 PAIR_ORDERS = (
     "base_head", "head_base", "base_head",
@@ -131,10 +131,29 @@ FIXED_CHILD_ENVIRONMENT = {
     "PYTHONNOUSERSITE": "1",
     "TZ": "UTC",
 }
+# ``-I`` implies ``-E`` and therefore ignores PYTHONDONTWRITEBYTECODE at
+# interpreter startup.  Keep the environment field for the imported program's
+# closed contract, but also require ``-B`` on every arm process so importing a
+# bound runtime cannot create an unmanifested ``__pycache__`` and then trip the
+# post-round source-closure check.
+ISOLATED_CHILD_FLAGS = ("-I", "-B", "-P")
 
 
 class HarnessRefused(RuntimeError):
     """Fail-closed contract refusal, distinct from a timed candidate result."""
+
+
+def _isolated_arm_command(
+        python_executable: str, script_path: Path, frozen_design: Path,
+        label: str, seed: int, raw: Path) -> list[str]:
+    """Build the exact isolated child command used for every timed arm."""
+    return [
+        python_executable, *ISOLATED_CHILD_FLAGS, "-c",
+        "import runpy,sys;"
+        "sys.argv=['report_lcb_perf_ab.py',*sys.argv[1:]];"
+        f"runpy.run_path({str(script_path)!r},run_name='__main__')",
+        "run-arm", str(frozen_design), label, str(seed), str(raw),
+    ]
 
 
 def _pairs_no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -1231,13 +1250,9 @@ def _run_batch(design_path: Path) -> None:
             raw = root / f"{stem}.raw.json"
             stdout = root / f"{stem}.stdout.jsonl"
             stderr = root / f"{stem}.stderr.log"
-            command = [
-                design["python"]["executable"], "-I", "-P", "-c",
-                "import runpy,sys;"
-                "sys.argv=['report_lcb_perf_ab.py',*sys.argv[1:]];"
-                f"runpy.run_path({str(script_path)!r},run_name='__main__')",
-                "run-arm", str(frozen_design), label, str(seed), str(raw),
-            ]
+            command = _isolated_arm_command(
+                design["python"]["executable"], script_path, frozen_design,
+                label, seed, raw)
             arm_started = time.monotonic_ns()
             with stdout.open("xb") as out, stderr.open("xb") as err:
                 process = subprocess.run(

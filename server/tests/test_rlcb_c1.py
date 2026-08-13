@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 import random
 import sys
 from pathlib import Path
@@ -19,6 +18,18 @@ from shengji.ai.registry import make_bot  # noqa: E402
 
 
 GIT = "1" * 40
+FROZEN_POLICY_CONTRACT_SHA256S = {
+    "mc-s0-report-lcb": (
+        "59fa033dc22d8a055b5d7f3fbcbaf9d7fb0b71993b74c4d9bb7587e3d90dc72b"
+    ),
+    "mc-strong": (
+        "64aa5d0a21dfc5608675c30adf2089f8da2668d528a8985be3fdd7f32e98a35d"
+    ),
+    "mc-strong-null-rlcb-c1": (
+        "5629a69390be122149c8e6809c0869e35288067948f315bde8415541d524b968"
+    ),
+}
+FROZEN_BALLOT_SOURCE_IDENTITY = "mc_candidates@v1[a68f7b8bced6]"
 
 
 def _counters(*, searches=1, accepted=30, failed=0):
@@ -62,13 +73,12 @@ def _records(seed0=C1.SEED0, clusters=2):
 
 def test_literal_protocol_is_one_fresh_three_arm_confirmation():
     assert C1.protocol_problems(require_receipt=False) == []
-    # The execution receipt intentionally binds the compiled ballot surface.
-    # A normal pure-Python suite must report that runtime mismatch; the strict
-    # compiled suite must reopen the receipt exactly.
-    assert C1.protocol_problems() == (
-        [] if os.environ.get("SHENGJI_FAST") == "1"
-        else ["freeze receipt policy contract drifted"]
-    )
+    # The immutable receipt names the exact historical ballot source.  The
+    # optimized heuristic is behavior-equivalent, but its source participates
+    # transitively in the ballot identity, so both pure and compiled current
+    # trees must report drift instead of rewriting historical RLCB-C1.
+    assert C1.protocol_problems() == [
+        "freeze receipt policy contract drifted"]
     assert C1.selection_identity() == {
         "schema": "rlcb-c1-shard-v1",
         "aggregate_schema": "rlcb-c1-aggregate-v1",
@@ -98,12 +108,17 @@ def test_immutable_freeze_reopens_exact_sources_contracts_and_stream_proof():
     assert receipt["selection_identity"] == C1.selection_identity()
     assert receipt["selection_digest"] == C1.selection_digest()
     assert receipt["source_sha256s"] == C1.source_sha256s()
-    if os.environ.get("SHENGJI_FAST") == "1":
-        assert receipt["policy_contract_sha256s"] == \
-            C1.policy_contract_sha256s()
-    else:
-        assert receipt["policy_contract_sha256s"] != \
-            C1.policy_contract_sha256s()
+    assert receipt["policy_contract_sha256s"] == \
+        FROZEN_POLICY_CONTRACT_SHA256S
+    current_contracts = {
+        name: C1.policy_contract(name)
+        for name in sorted(set(C1.LABELS.values()))
+    }
+    current_ballots = {
+        contract["ballot"] for contract in current_contracts.values()}
+    assert len(current_ballots) == 1
+    assert FROZEN_BALLOT_SOURCE_IDENTITY not in current_ballots
+    assert C1.policy_contract_sha256s() != FROZEN_POLICY_CONTRACT_SHA256S
     assert receipt["stream_proof"] == C1.stream_proof()
 
 

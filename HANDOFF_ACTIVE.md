@@ -9,15 +9,15 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 12:00 EDT from canonical main `f9989cc`.
+Last reconciled: 2026-08-13 12:23 EDT from canonical main `6e0cb8b`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
 | **Mini** | T4 mid/late Teacher whole-round screen, eight workers | All workers are alive and CPU-bound. Treatment is complete and all eight matched-null shards have reached 400/512, so the safe lower bound is 7,296/12,288 = 59.38%; 0/8 terminal. The worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or shard-result access. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Reviewed score-free shard counters are `[304,304,320,304,304,304,304,304]/896`, totaling 2,448/7,168 = 34.15%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Every reviewed score-free shard counter has reached 320/896, totaling 2,560/7,168 = 35.71%; 0/8 terminal. The run remains healthy but on a substantive timeout trajectory. Do not intervene or inspect shard outcomes. The reviewed S6 preflight queue remains asleep behind this run. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, tranche two | Look one completed cleanly. Integrity passed, but the predeclared early-efficacy boundary was not crossed, so the reviewed controller automatically released tranche two. All 16 tranche-two workers are live; the reviewed score-free lower bound is 448/8,192 = 5.47% of tranche two. This is continuation, not a failure or final efficacy verdict. Inspect only reviewed score-free progress; do not open either tranche. The controller has no hard runtime timeout and will publish one terminal result after tranche two. |
 | **Performance Cloud** | corrected PR #89 v2r1 design frozen; no live worker | Claude PASSed exact source/tooling head `fa0f9cf` and the original host design `b696426c…82d8`. A final admission probe then proved that design could not run because its evidence parent `/var/tmp` is mode 1777; it was retired before unit install, evidence creation or any arm. Corrected design `/var/tmp/report-lcb-perf-ab-pr89-v2r1.design.json` has SHA `8721aec4…ec9d`, moves the absent evidence root beneath root-owned mode-0755 `/var/lib/shengji-perf-ab-pr89-v2r1`, and awaits a replacement `PASS_TO_RUN_THIS_DESIGN_ONLY`. All six seeds remain unused. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 

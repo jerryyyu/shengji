@@ -172,6 +172,24 @@ make their remote storage immutable. Treat the number as a performance-only
 exploratory estimate with no strength, merge, review, deployment or sealed-run
 substitution authority.
 
+Those retained implementation ideas are now composed in PR #89 without the
+below-threshold PR #77 prepared-world seam. Exact measurement base is PR #71
+`093ec33`; optimized arm `a91eb271` combines native cheapest-winner, guarded
+native lead, trusted-rollout trick-state maintenance and disabled-exact-endgame
+hoists. Source/tooling head `fa0f9cf` PASSed external review. The isolated
+percentages above remain useful provenance but must not be added or marketed as
+the combined result.
+
+The first host design was retired before execution because its evidence root
+sat directly beneath mode-1777 `/var/tmp` and failed the harness's own
+parent-ownership admission check. Corrected frozen design `8721aec4…ec9d`
+moves the still-absent evidence root beneath root-owned
+`/var/lib/shengji-perf-ab-pr89-v2r1`; all six seeds remain unused. It awaits a
+replacement exact-design PASS, after which exactly one six-pair N=30/R=300
+batch may run with no retry or tuning. Retention requires byte-exact normalized
+semantics, at least 3% aggregate wall reduction and a positive paired one-sided
+95% lower bound.
+
 ## Gaps (ranked by ROI)
 
 The ordering below came from the pre-activation profile. Before choosing the
@@ -182,26 +200,26 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | split/rebase PR #81's retained native-winner and one-Counter candidates onto PR #71/#75, then remeasure; keep PR #83 exploratory | #81 measured 7.7306% and a separate 4.0124% incremental reduction on the rejected #77 stack; #83 measured 10.2014% in one exploratory batch | candidate; do not add cross-baseline gains, and #83's owner-writable remote evidence has no immutable manifest |
+| 2 | Python policy hot loop after compiled phases 0-2 | measure exact PR #89 base `093ec33` versus composed arm `a91eb271` once under corrected immutable design `8721aec4…ec9d` | prior isolated candidates ranged from 4.0% to 10.2%, but only the combined fresh batch can establish retained ROI | source reviewed; corrected host design awaits exact PASS, no batch yet |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle; PR #77 missed retention, PR #81 candidates await rebase/remeasurement and PR #83 remains exploratory. Pair V3's sole score-free capacity result PASSed at canonical `16af447`; PR #86 design review grants no scored execution or strength authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle and admission-ready for corrected PR #89 design after exact PASS; PR #93/#94 strict x86 tests completed without gameplay. Pair V3's score-free capacity result grants no scored execution or strength authority |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. Retire PR #77 `0381081` as-is after its exact result missed the 3% retain
-   gate. Split PR #81 `c6c7126` into its two retained candidates, rebase them
-   onto the accepted PR #71/#75 path and remeasure the exact composition.
-2. Review PR #83 `69ff44e` as semantics and implementation evidence only. Keep
-   its three-pair estimate exploratory because the remote raw files remain
-   owner-writable and lack an immutable manifest; any retained implementation
-   must follow the accepted/rebased parent stack.
-3. After exact-stack remeasurement and review, profile the accepted stack
+1. Keep PR #77 retired after missing its 3% gate. Run exactly one reviewed PR
+   #89 six-pair batch for base `093ec33` versus optimized arm `a91eb271` under
+   corrected design `8721aec4…ec9d`; no retry, tuning or cross-baseline pooling.
+2. Retain the composed stack only if every normalized semantic/work/RNG record
+   is exact, aggregate wall reduction is at least 3% and the paired one-sided
+   lower bound is positive. Otherwise drop it as a unit and profile before
+   choosing a smaller successor.
+3. After exact-stack measurement and review, profile the accepted stack
    again. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.

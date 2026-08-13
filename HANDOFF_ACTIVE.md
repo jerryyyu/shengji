@@ -74,6 +74,14 @@ Nothing below this section supersedes these exact priorities or authorities.
    focused synthetic tests pass. This review grants no execution authority.
 3. Continue with PR #75, #77, #78 and #64 in that order after #79 unless a
    terminal supervisor final appears first.
+4. **Repository-hygiene follow-up: PR #55 exact `24b421d`.** The existing raw
+   review marker authenticates the producer/content boundary at `5696144`, not
+   the final two-file artifact-preservation commit. Review only that one-commit
+   delta: the exact score-free census fixture SHA `557df627…61f3` and its
+   `load_and_verify` regression, with no runtime or authority change. If clean,
+   explicitly mark exact-head merge readiness so the already-reviewed clean
+   stack #55 → #60 `7468828` → #61 `22ddfa3` → #72 `373de84` can merge in
+   order. Do not mutate the stack while PR #79 review is active.
 
 **Operational disclosure:** while testing the terminal helper, two broad
 pytest children accidentally ran on Mini alongside T4 for about 1m27s and 41s

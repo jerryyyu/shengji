@@ -39,7 +39,8 @@ The lower lane table is historical detail. Current executable truth is:
   spent PR #74 run and separates requests from reviewer attestations. Its raw
   marker explicitly authorizes no retry, recovery namespace or diagnostic.
 - **Other pending reviews:** opened-DEV bury/S6 telemetry PR #78 `f4b80f0`
-  and docs PR #64 `feeb9be` await review. No-write terminal-review PR #80 is
+  and docs PR #64 `86f4eb2` await review. The docs head reconciles the newest
+  performance/H0/fleet/incident truth and is CI-green. No-write terminal-review PR #80 is
   repaired at exact `e0c23e6`: T4 shards now strict-load after the aggregate /
   final / admission gates, and exact target/dependency import origins refuse
   same-path preload forgeries. Thirteen focused tests pass. Its old `5419c0a`
@@ -56,7 +57,7 @@ The lower lane table is historical detail. Current executable truth is:
 - **Live compute:** T4 is healthy on Mini at the safe known minimum
   5,596/12,288 sequential arm-rounds (45.5%). Broad Pair is healthy on Air with
   all eight workers alive, and S6's reviewed preflight queue sleeps behind it.
-  S4 is healthy on strength Cloud at 3,948/8,192 look-one clusters (48.2%).
+  S4 is healthy on strength Cloud at 4,126/8,192 look-one clusters (50.4%).
   Outcomes remain sealed.
 - **Performance Cloud:** exact PR #77 profiling is complete. Trick-state
   caching was rejected after its safe repair ran 10.56% slower; Memory reuse

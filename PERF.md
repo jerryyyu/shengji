@@ -138,10 +138,11 @@ world once, then gives every candidate fresh non-aliased hand lists. Six fresh
 exact-head x86 pairs measured `116.392s -> 113.338s`: **2.62% lower wall time**
 and **2.69% higher throughput**, with normalized decisions, RNG, sampler/work
 counters and transcripts identical. The earlier 3.37% nine-pair number mixed
-two code revisions and is retired. A larger trick-state-cache prototype is
-not a candidate yet: adversarial review found stale values after same-length
-play mutation, changed trump ordering and serialization drift. It must be
-repaired and remeasured or discarded before review.
+two code revisions and is retired. The larger trick-state-cache prototype is
+rejected. Its initial gain relied on append-only/stable-order assumptions that
+the public mutable dataclasses and copying contracts do not guarantee; the
+fingerprint/order/pickle-safe repair was **10.56% slower** over six fresh
+normalized full rounds, every pair slower.
 
 ## Gaps (ranked by ROI)
 
@@ -168,8 +169,8 @@ one-off experiment controllers.
 1. Complete external review of PR #75 head `90c5630` and PR #77 head
    `0381081`; merge only the exact semantics-preserving pieces whose identities
    and isolated speedups reproduce. PR #71 remains their reviewed base.
-2. Repair and remeasure the trick-state cache against PR #77, or discard it if
-   mutation/order/serialization safety erases the gain.
+2. Explore incremental Memory reuse against PR #77, now that the correctness-
+   safe trick cache proved slower and has been dropped.
 3. Re-profile the merged compiled baseline on `shengji-perf`; do not infer the
    next hotspot from the old profile or from Cython microbenchmarks that bypass
    today's compiled globals.

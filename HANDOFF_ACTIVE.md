@@ -9,56 +9,72 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 16:45 EDT from canonical main `37374f9`.
+Last reconciled: 2026-08-13 17:48 EDT from canonical main `c9c4ac9`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen | Three workers remain CPU-bound and five shards have sealed terminally. Champion checkpoints are (500,500,500,500,500,400,400,200). Heartbeat lower bound: 11,692/12,288 = 95.15%; 5/8 terminal. Worker cutoff remains about 20:46:27 EDT. Keep Mini uncontended. |
+| **Mini** | T4 mid/late Teacher whole-round screen | All eight shards completed cleanly before cutoff. Score-free supervisor final SHA `27cc73f8…c60b` validates 8/8 child exits zero, no outcomes/statistics published and false downstream authority. Aggregate and its admission remain absent pending exact supervisor-final review. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Six shards are 384/896 and two are 368/896: 3,040/7,168 = 42.41%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 2,702/8,192 = 32.98%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. |
-| **Performance Cloud** | Review-gated PR #89 and PR #94; no execution live | PR #89 V4 remains spent after its fail-closed bytecode refusal. V5 source `603f1db` PASSed at canonical `37374f9`; fresh design `3800aecb…aa38`, native builds and closed pre-arm rehearsal are frozen under new paths, with evidence/review/unit still absent pending exact-design review. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. PR #93 remains a reviewed over-cap negative with its admission spent. |
+| **Performance Cloud** | Review-gated PR #89 and PR #94; no execution live | PR #89 V5 design `3800aecb…aa38` PASSed at canonical `c9c4ac9` and was consumed once. It refused in 0.171 CPU seconds before evidence creation or any arm because the actual root-owned tooling/runtime files were mode 0644; V5 is spent, no retry/result/claim. V6 source `cd8eb15` moves the full root-immutability gate into design freeze, uses a fresh namespace/seeds, passes 52 focused plus 89 pure/89 compiled, and awaits source review. PR #94 packet `6489d9b8…b9983` still awaits packet review; admission/records/final remain absent. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review and implementation queue
 
-1. **PR #89 V5 bytecode-isolation repair.** V4 design `98af5a3c…ab78` received
-   run authority and was consumed once under invocation `b5d046d6…`; the first
-   child returned 1 after 17.8 seconds because `-I` ignored
-   `PYTHONDONTWRITEBYTECODE`. The closure check prevented raw/result publication.
-   Exact V5 head `603f1db` uses `-I -B -P`, fresh disjoint seeds and a new
-   namespace; 50 focused and 87 broader tests pass in pure and strict-compiled
-   modes, with CI green. Source PASS is canonical at `37374f9`. Fresh host
-   design `3800aecb…aa38` and rehearsal manifest `af4129f1…5119f` reopen
-   exactly; evidence, review record and unit invocation remain absent. Await
-   exact-design `PASS_TO_RUN_THIS_DESIGN_ONLY`. V2r1/V3/V4 never restart.
-2. **S6 scored-DEV PR #94.** Claude exact-head PASSed test-only `0dd8f11` at
+1. **T4 score-free supervisor-final review.** Exact source `c89c871`; final
+   `/private/tmp/shengji-stagec-midlate-whole-game-v1/server/runs/logs/teacher-v3-stage-c-midlate-composition-screen-v1/supervisor-final.json`
+   has external SHA `27cc73f8…c60b`, internal `dee58b15…dfed`, shard manifest
+   `80e80bee…fc13`, 8/8 exits zero and elapsed 152,069.39953 seconds. The
+   frozen `_supervisor_final` validator passes without opening shard bytes;
+   aggregate/admission remain absent. Independently review only this score-free
+   seal and file-presence metadata. If exact, append the unique raw
+   `TEACHER_STAGE_C_MIDLATE_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW` claim to
+   `HANDOFF_REVIEW.md`. That PASS authorizes one aggregate only; no confirmation
+   launch, strength claim, promotion or deployment.
+
+   Expected canonical claim payload (request-only; deliberately no marker
+   prefix):
+
+   `{"all_children_exit_zero":true,"confirmation_launch_authorized":false,"git":"c89c87121fb44ee98ec16753efce0ae5c825eea4","independent_review":true,"one_aggregate_execution_authorized":true,"outcomes_or_statistics_read_by_reviewer":false,"packet_sha256":"713acb78fcd06cf0b7a503a1826b945b912e9fd5b17c9e2c40c605114da6db9c","production_deployment":false,"production_promotion":false,"run_id":"teacher-v3-stage-c-midlate-composition-screen-v1","schema":"teacher-stage-c-midlate-composition-supervisor-final-review-v1","screen_receipt_sha256":"200f5085180377324de36b1e793efd979e7ffffd5e8dcad7c01c87c8399e91ea","shard_manifest_sha256":"80e80bee7d5f7353ace805ac2f1408f04beb911d26e000a16c5b6177a0d1fc13","shards":8,"strength_claim":false,"supervisor_final_internal_sha256":"dee58b152bf731e43ab2eea26d69b72a8d781da4344984a9d764fa7aad61dfed","supervisor_final_sha256":"27cc73f843fc62dab2114087e95d51eb854e237eb5c515992c5377cf7c7c60b0","verdict":"PASS"}`
+2. **PR #89 V6 pre-freeze immutability repair.** V5 exact design
+   `3800aecb…aa38` received run authority at canonical `c9c4ac9` and was
+   consumed once under invocation `26246b50…`. It refused before namespace
+   creation or any arm because the actual root-owned harness/runtime files
+   were owner-writable mode 0644; the reviewed rehearsal copies alone were
+   immutable. Evidence root/result/manifest remain absent, `NRestarts=0`, and
+   V5 never retries. Exact V6 head `cd8eb15` makes design freeze reuse the full
+   runtime root-immutability gate, pins the reproduced writable-harness failure,
+   and uses a fresh namespace plus six seeds disjoint from all 24 spent seeds.
+   Validation is 52 focused, 89 pure and 89 strict-compiled. Await exact-head
+   source PASS; if approved, harden all actual inputs first, freeze a fresh V6
+   design, and obtain a separate design PASS before one run. V2r1–V5 are spent.
+3. **S6 scored-DEV PR #94.** Claude exact-head PASSed test-only `0dd8f11` at
    canonical `3b4752b`; 12/12 guards are pinned and the full chain passes
    100/100 pure plus 100/100 strict x86. Host packet `6489d9b8…b9983`
    (internal `68c250b4…1552c`) is frozen; execution remains false and every
    admission/output path is absent. A fresh read-only host check independently
    reproduced `verify-packet` and both packet hashes. Await exact packet review
    before one serial 64-state run; no record opening or downstream authority.
-3. **Pair capacity successor PR #96.** Draft exact head `c4d2df8` preserves
+4. **Pair capacity successor PR #96.** Draft exact head `c4d2df8` preserves
    the full 7,168-cluster population and 1.5x safety factor, changes only the
    explicit wall budget 48h -> 52h under review, uses a fresh disjoint V2
    capacity population and publishes a closed score-free refusal receipt with
    all 16 lane timings on another over-cap result. Focused design/controller
    suite is 106/106, independently reproduced from the exact clean head.
    Await exact source review; no packet or run authority.
-4. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
+5. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
    real negative capacity result: projection over wall cap, fail-closed after
    complete measurement. Admission is spent; no result/receipt, retry or screen
    authority. Any future checkpoint screen needs a revised design and fresh
    packet chain.
-5. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
+6. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
    remains separate compatibility evidence for PR #71 and awaits exact-head
    external review. It grants no strength or deployment authority.
-6. **Terminal reviews.** T4, broad Pair and S4 need no live review while their
-   reviewed controllers run. Their next review begins only after a terminal
-   score-free final exists. No outcome aggregation or sealed result access is
-   allowed before its explicit terminal gate.
+7. **Other terminal reviews.** Broad Pair and S4 need no live review while
+   their reviewed controllers run. No outcome aggregation or sealed result
+   access is allowed before each explicit terminal gate.
 
 PR #78's opened-DEV capacity code/result and PR #91's design are reviewed.
 PR #90 is an implementation source, not a direct merge candidate. PR #92's

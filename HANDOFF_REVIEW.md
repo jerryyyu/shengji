@@ -404,3 +404,71 @@ resume, aggregate, outcome access, strength, training, promotion, or
 deployment authority follows from this entry.
 
 ---
+
+## [2026-08-13 12:20 EDT] Claude exploration: point-management census on human game sources (proposal-only)
+
+Erratum: my PR #93 HOLD entry above is mis-stamped 12:24 EDT; it was pushed at
+~11:52 EDT. Append-only discipline forbids rewriting it; correcting here.
+
+Jerry asked whether S4 point banking is too narrow and where the larger
+point-management opportunities are. I ran a read-only exploration against the
+46 human game logs in `logs/*.jsonl` (the `human_v8` sources; manifest
+`allowed_use` includes teacher-disagreement-mining and counterfactual-pilot
+design). Scripts and raw outputs: `/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/pointexp/`.
+Method: rebuild every human play decision via `shengji.rl.replay_log`
+(3,539 decisions, 23 games, 7 players), compare against SmartBot and the
+production `mc-s0-report-lcb` policy, and read trick outcomes from the logs.
+
+**E1 — human-vs-SmartBot census (3,539 decisions, 60.1% exact agreement).**
+Largest point-relevant disagreement classes: mid-trick FEED-EARLIER — human
+feeds points to a partner-winning trick before last seat where the bot's
+strong-or-last gate refuses (136); LEAD point-card splits both directions
+(112 bot-leads-points vs 78 human-leads-points; context-dependent); CONTEST
+of low-point tricks the bot surrenders (82, mid-game heavy); human DECLINES
+of winnable empty tricks in the endgame that the bot takes (46, end-heavy);
+S4's bank-at-last class appears only 25 times = **0.7% of decisions** —
+Jerry's "too small" instinct is empirically confirmed.
+
+**E2 — does production search fix these? Mostly no.** On 40-state samples per
+class (0.51 s/decision, compiled engine, seed-pinned): FEED-EARLIER — MC
+recovers the human action only 8/40 (19/40 stay with the heuristic pick;
+MARGIN=5 tethering noted); LEAD splits 3/40 human; CONTEST-LOW 3/40 human
+with 19/40 third-action overrides; BANK-AT-LAST 1/25 human. Only DECLINE-END
+is half-recovered (16/40 human = 16/40 heuristic). Control baseline: MC
+matches the human 19/30 on random decisions, so these are class-specific
+failures, not general divergence.
+
+**E3 — LEVEL_OBJECTIVE flip census (same seed, same worlds, objective
+isolated).** `MCBot.LEVEL_OBJECTIVE` remains False in production; the bracket
+objective flips ~9% of decisions in the contested classes (concentrated in
+FEED-EARLIER, 9/40 with 4 toward the human action) and **0/40 in generic
+endgame states**. Real but modest at per-decision level; not the dominant
+lever I hypothesized. Cheap to screen; interacts with feeding.
+
+**E5 — ground truth on feeding from the games themselves.** Over all
+mid-trick partner-winning decisions where the human held point cards:
+FED n=304 → partner held the trick **82%** (4,795 pts kept vs 910 lost ≈
++12.8 pts realized per feed); HELD n=248 → partner held 79%. The
+near-identical hold rates say the risk was structural, not selective — the
+heuristic's strong-or-last feed gate is far more conservative than the
+empirical ~80% hold rate justifies. Caveats: 7 players/23 games, mixed skill,
+selection effects bound the effect size, not a strength claim.
+
+**Ranked directions (proposal only — nothing here authorizes any run):**
+1. FEED-ANTICIPATION mechanism: replace the literal strong-or-last gate in
+   the rollout `_follow` partner-winning branch with effective-bossness from
+   public info (`Memory.unseen` + void inference over the opponents still to
+   act). Largest class, survives search, ground-truth positive, and the
+   RTLT-verified ANTICIPATE_FEED note already queued matches it.
+2. Endgame winner conservation: the unused `POINTS_DRY`/`points_left()`
+   machinery pointed at the DECLINE-END class (46, end-heavy, half-recovered
+   by search) — cheapest screen of the set.
+3. Lead-point policy: large but context-split census; needs mechanism design
+   (cash-when-winning vs protect-when-not) before any screen.
+4. LEVEL_OBJECTIVE screen: modest flip rate; schedule behind 1-2.
+5. S4 banking: keep as-is; incidence caps its ceiling at ~0.7% of decisions.
+
+No screen, confirmation, adoption, deployment, strength, training, or
+promotion authority follows from this entry.
+
+---

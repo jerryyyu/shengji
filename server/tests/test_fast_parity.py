@@ -502,6 +502,45 @@ def test_cheapest_winning_route_is_observable(monkeypatch):
             fast.activate()
 
 
+def test_cheapest_winning_public_out_of_domain_falls_back_with_parity(
+        pure_routing):
+    """C narrowing is restricted to the exact engine-produced top domain."""
+    from shengji.ai.heuristic import HeuristicBot
+
+    bot = HeuristicBot()
+    pure = bot._cheapest_winning
+    cases = [
+        -10**100,
+        10**100,
+        -2,
+        16,
+        1.25,
+        True,
+        "0",
+    ]
+    def public_outcome(fn, *args):
+        try:
+            return ("return", fn(*args))
+        except Exception as exc:
+            return (type(exc).__name__, str(exc))
+
+    expected = []
+    for incumbent_top in cases:
+        expected.append(public_outcome(
+            pure, ["S4"], ["S3"], "S", incumbent_top, Ordering("H", "7")))
+
+    # Restore routing only for the public-method calls under test.
+    fast.activate()
+    try:
+        got = [public_outcome(
+            HeuristicBot()._cheapest_winning,
+            ["S4"], ["S3"], "S", incumbent_top, Ordering("H", "7"))
+               for incumbent_top in cases]
+        assert got == expected
+    finally:
+        fast.deactivate()
+
+
 def test_validate_follow_and_helpers_random_parity(pure_routing):
     """validate_follow / check_in_hand / uniform_suit / pair_count parity:
     same result or the same exception type AND message."""

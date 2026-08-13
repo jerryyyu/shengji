@@ -6475,3 +6475,83 @@ result namespace, and explicit retry authorization. Nothing in this entry asks
 for or grants that retry. PR #74 remains HOLD.
 
 ---
+## Claude — 2026-08-13 00:18 EDT — ✅ PASS: S5 one-shot x86 portability (PR #74, `ff9bed5`); PR #70's existing diagnostic may consume its one x86 admission
+
+Launch-blocking review per the 00:02 request. I did **not** run the 320-decision
+diagnostic and opened no S5 result. The marker below is byte-identical to the
+controller's own `review-claim` output.
+
+**Base preserved.** Head `ff9bed51fce729f23205167df105d7eadd938e84` is stacked on
+reviewed S5 head `f8083cf` (ancestor confirmed) and is **purely additive** —
+three new files, +1080/−0, no reviewed file modified. At the frozen base the
+producer still hashes `06d837de…`, the census `efc82b8c…`, and I rebuilt
+`design_sha256` from source to `59c63e16…`. Wrapper `91519061…` and fixture file
+`a9a10e54…` match exactly.
+
+**The portability claim, reproduced on two architectures and three binaries.**
+This is the heart of the review, because the marker asserts different ballot
+identities per platform. Measured:
+
+| host | arch / py | engine binary | ballot digest | normalized (no-ballot) contract |
+|---|---|---|---|---|
+| Mini | arm64 / 3.14.3 | `9c9e77fb…` | `a68f7b8bced6` | **`6898c2e4…`** |
+| pre-staged x86 (Codex) | x86_64 / 3.14.4 | `b4e5e319…` | `ec84724ab56a` | **`6898c2e4…`** |
+| Cloud x86 (mine, independent) | x86_64 / 3.14.4 | `a22789a6…` | `be864762a3fa` | **`6898c2e4…`** |
+
+Three distinct compiled binaries produce three distinct ballot digests and one
+identical platform-neutral contract. That is exactly the shape the design
+claims, and it demonstrates the popped `ballot` field is **binary-derived, not
+semantic**. I confirmed the normalization does not erase meaning: after
+`contract.pop("ballot")` the remainder still carries `MAX_CANDIDATES`,
+`LEAD_MAX…`, `FOLLOW_MAX…` and `WIDE_…`, so the candidate-cap semantics survive
+into the hashed object.
+
+**Canonical fixture replays identically across architectures.** `verify-fixture`
+returns `S5_PORTABLE_FIXTURE_VERIFIED` with payload
+`8e83e9595942e6fbb92118afe562bd71dd0290a32d3a210718c778e8f3ac4e50` — the exact
+claimed value — on **both** ARM and on a Cloud x86 host whose engine binary
+(`a22789a6…`) differs from the pre-staged host's. The same report-LCB override
+and follow fallback reproduce byte-for-byte on hardware I control.
+
+**Architecture gate is fail-closed.** On ARM, `verify-x86` refuses with `x86
+ballot identity drift; x86 compiled binary identity drift; x86 full champion
+contract drift; x86 runtime identity drift`.
+
+**Pre-PR71 source binding.** `BASE_HEURISTIC_SHA256` is `a99dfb08…` — the
+pre-optimization heuristic, not PR #71's `84f19686…`. I attempted the
+substitution twice: copying PR #71's heuristic into the frozen base refuses with
+`base S5 worktree has tracked changes`, and committing it so the tree is clean
+refuses with `base S5 worktree is not exact f8083cf`. The file-hash check at
+`_x86_policy_problems` is a third backstop I could not reach without first
+tripping the stronger two — which is the correct ordering, not a gap.
+
+**Execution gating (requirement 5).** `run` requires, in order: wrapper HEAD
+exact and clean; base worktree exactly `f8083cf` and clean; design SHA match;
+**both original S5 markers** (`_census_review_marker` and `_review_marker`,
+i.e. my 20:41 census PASS and my 21:45 replay PASS); this marker byte-equal to
+the controller's generated claim; the x86 parent binding, re-checked and
+compared during admission; a canonical output path that must not already exist;
+and one `O_EXCL` admission. 16 focused ARM tests pass (10 portability + 6 base
+S5), matching Codex's count.
+
+**What I did not independently reproduce, stated plainly.** I have no access to
+the pre-staged x86 host, so its specific `x86_fast_binary_sha256 b4e5e319…` and
+`x86_ballot ec84724ab56a` are Codex's measurements, not mine. That does not
+block a PASS, because both values are *runtime-enforced*: the `run` path
+requires `verify-x86`, which refuses on binary or ballot drift. If either value
+were wrong, the launch fails closed rather than producing mis-attributed
+evidence. My Cloud replication also shows the failure mode is a refused launch,
+not silent divergence — that host's differing binary yields a differing ballot
+while the semantic contract stays identical.
+
+One process note: my ARM `verify-x86` refusal also listed missing RLCB-C1
+aggregate/closeout artifacts, which simply are not present in a scratch
+worktree; the architecture-specific refusals fired independently of that.
+
+This marker only lets PR #70's already-reviewed **one** diagnostic use the x86
+binding. It authorizes no second run, no retry, no strength execution or claim,
+no training, promotion or deployment, and no opening of an S5 result.
+
+S5_FINAL_CHAMPION_X86_PORTABILITY_V1_REVIEW {"base_design_sha256":"59c63e16c740bb8d9afef2c8a4e1a3d0edb16fb8039f319dc2b6f4f56b160521","base_git":"f8083cf0ce9d575f875e601f1e8862280f587e0d","base_script_sha256":"06d837de717ba14f971ad7456aa1f930dbd577c0876e5611f59cc6ba7b547e07","existing_one_diagnostic_may_execute_on_x86":true,"fixture_file_sha256":"a9a10e543d9d9edce1ce07a9942e9c69f2c035b467e086706486222af5e12446","fixture_payload_sha256":"8e83e9595942e6fbb92118afe562bd71dd0290a32d3a210718c778e8f3ac4e50","historical_arm_parent_preserved":true,"historical_fast_binary_sha256":"9c9e77fbdc4c6caceec195465155f37ec6369e409462fd838bc142bf8a0be4c1","new_diagnostic_execution_authorized":false,"original_s5_review_required":true,"policy_contract_without_ballot_sha256":"6898c2e42f42502e8cebe6b74543a4c3fdbba33f0286a7cc3969bab1ca8c2e05","portable_fixture_replayed_on_arm_and_x86":true,"pr71_source_substitution":false,"production_deployment":false,"production_promotion":false,"retry_authorized":false,"schema":"s5-final-champion-x86-portability-review-v1","strength_claim":false,"strength_execution_authorized":false,"training_authorized":false,"verdict":"PASS","wrapper_git":"ff9bed51fce729f23205167df105d7eadd938e84","wrapper_sha256":"91519061cafeab14611d1ccb500ef0fea737cd46269b42194cbb44e40e85ba3a","x86_ballot":"mc_candidates@v1[ec84724ab56a]","x86_fast_binary_sha256":"b4e5e319309be37c483ebabc681a87bb9885e89dcde2b0c6c0f776cd2ceb9b8e","x86_policy_contract_sha256":"f04fa58fb518dec5f54a630bf5e5e2dd25a40f465bf449e601d4ffc1f188768a","x86_runtime":{"machine":"x86_64","python":"3.14.4","system":"Linux"}}
+
+---

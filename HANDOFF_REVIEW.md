@@ -6649,3 +6649,82 @@ receipt reviewable for later merge planning only. It does not itself change
 the live-parent acceptance code and authorizes no deploy or experiment.
 
 ---
+## Claude — 2026-08-13 00:29 EDT — ✅ PASS (narrow): historical RLCB identity repair (PR #71, `093ec33`); my 23:39/23:49 HOLD is cleared — two record corrections required
+
+Reviewed `414fe29..093ec33` per the 23:59 request. Prose only, no marker. **My
+earlier HOLD is lifted**: `test_rlcb_c1.py` is green at this head.
+
+**Claim 1 — verified directly.** Historical parent `2443be9`: **14/14** strict.
+Repaired head `093ec33`: **14/14 strict and 14/14 pure**. That is precisely the
+red suite my 23:39 HOLD rested on.
+
+**Claim 2 — substance verified, wording needs fixing.** The frozen freeze
+receipt still carries all three policy contracts, keyed by policy:
+`mc-s0-report-lcb 59fa033d…`, `mc-strong 64aa5d0a…`,
+`mc-strong-null-rlcb-c1 5629a693…`. No evidence byte changed — the diff is one
+test file.
+
+But the ballot source `a68f7b8bced6` is **not** in the receipt, and appears in
+no frozen evidence file under `server/runs`. It is a static assertion in the
+repaired test (`FROZEN_BALLOT_SOURCE_IDENTITY = "mc_candidates@v1[a68f7b8bced6]"`),
+derivable from the historical contract rather than stored alongside it. The
+request's phrasing — "the frozen receipt still carries contracts …, with ballot
+source `a68f7b8bced6`" — reads as though the receipt records it. It does not.
+The repair is still correct; the sentence should be corrected so a later reader
+does not go looking for a receipt field that was never there.
+
+**Claim 3 — exact.** Every current-identity value reproduces:
+
+| quantity | measured | claimed |
+|---|---|---|
+| current ballot | `mc_candidates@v1[fb231baf1959]` | `fb231baf1959` |
+| current full champion contract | `a8475fb372d2410f…` | `a8475f…d446` |
+| current heuristic | `84f1968697c2518f…` | `84f196…8bd5` |
+| normalized non-ballot contract | `6898c2e42f42502e…` | historical `6898c2…c2e05` |
+
+So the optimized tree differs **only** in the transitive ballot surface while
+the platform-neutral policy semantics remain the historical ones — the same
+structure I measured independently for PR #74 across three binaries.
+
+**Claim 4 — verified.** `live_champion_parent._current_policy_problems(fast)`
+returns `['current champion policy/registry contract drifted']`; it refuses the
+optimized contract.
+
+**Claim 5 — batteries green, with one selection caveat of my own.** My strict
+compiled selection (RLCB, H0 controller/packet, lead parity, live parent, S0
+search) is **86/86**. In pure mode the same selection showed one failure,
+`test_execution_runtime_requires_fast_strict_voids_and_no_experiments` — an H0
+controller test that requires the strict compiled runtime, so it was my
+selection error, not a repair defect. Restricting the pure run to suites that
+are meaningful without the compiled engine gives **29/29**, and RLCB itself is
+14/14 in both modes.
+
+**One material discrepancy — the pinned SHA does not reproduce.** The request
+pins the delta as `server/tests/test_rlcb_c1.py … SHA-256
+df7a4513482d32d10dc5a735626b43dba5322d178dc86307bdc91087ce28fe95`. Measured
+three independent ways (`git show`, `git cat-file`, and a checked-out
+worktree), the file at `093ec33` is:
+
+```
+df7a4513243ade2ab03ced682ce794c013c0a0fbbe3fdf5863ec64958fdda58b   (11,282 bytes)
+```
+
+It matches no commit in the branch — `414fe29`, `2202c3d` and `2443be9` all
+carry `20c12c67d33820ff…` (10,605 bytes). Note the first eight hex characters
+agree (`df7a4513`) and then diverge, which looks like a transcription splice
+rather than a stale value.
+
+I am signing the **repair**, not that hash. Nothing here emits a marker, so no
+authority flows from the wrong digest — but the ledger is the audit trail, and
+a future reader authenticating this delta by the quoted SHA would fail. Please
+correct the record to `df7a4513243ade2a…fdda58b`.
+
+The +29/−14 and single-file scope both check out, and the H0 refusal remains
+intentional as established at 23:49.
+
+This is a narrow historical-identity repair only. It is not merge, experiment,
+deployment or parent-rebind authority, and PR #71 stays non-mergeable for
+production or new descendant experiments until the separate compatibility
+receipt passes its own falsification review.
+
+---

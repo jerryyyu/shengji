@@ -181,6 +181,75 @@ def test_t4_admission_refuses_before_malformed_shard_open(tmp_path, monkeypatch)
         T4_REVIEW.review(tmp_path, packet, capacity, supervisor)
 
 
+def test_t4_aggregate_preopen_binding_drift_refuses_before_shard_open(
+        tmp_path, monkeypatch):
+    packet, capacity, supervisor, _, aggregate_path, shard_path = t4_fixture(
+        tmp_path, monkeypatch)
+    aggregate = json.loads(aggregate_path.read_text())
+    aggregate["confirmation_launch_authorized"] = True
+    aggregate["result_sha256"] = digest(
+        {key: value for key, value in aggregate.items()
+         if key != "result_sha256"}, newline=True)
+    write(aggregate_path, aggregate)
+    shard_path.write_bytes(b"outcome bytes must remain unopened")
+    with pytest.raises(ReviewRefused, match="aggregate pre-open binding drift"):
+        T4_REVIEW.review(tmp_path, packet, capacity, supervisor)
+
+
+def test_t4_supervisor_final_changed_during_validation_refuses(
+        tmp_path, monkeypatch):
+    packet, capacity, supervisor, *_ = t4_fixture(tmp_path, monkeypatch)
+    runtime = T4_REVIEW.import_script(None, None, None).BASE
+    final_path = tmp_path / runtime.CTRL.SUPERVISOR_FINAL_PATH
+    original = copy.deepcopy(runtime._supervisor_final())
+
+    def changed_final(**_kwargs):
+        changed = copy.deepcopy(original)
+        changed["final_sha256"] = "0" * 64
+        write(final_path, changed)
+        return changed
+
+    monkeypatch.setattr(runtime, "_supervisor_final", changed_final)
+    with pytest.raises(ReviewRefused, match="final changed during validation"):
+        T4_REVIEW.review(tmp_path, packet, capacity, supervisor)
+
+
+@pytest.mark.parametrize("drift", ["external", "internal", "log"])
+def test_t4_sealed_shard_drift_refuses(tmp_path, monkeypatch, drift):
+    packet, capacity, supervisor, _, aggregate_path, shard_path = t4_fixture(
+        tmp_path, monkeypatch)
+    runtime = T4_REVIEW.import_script(None, None, None).BASE
+    ctrl = runtime.CTRL
+    if drift == "log":
+        (tmp_path / ctrl.SHARD_LOG_PATHS[0]).write_bytes(b"changed log\n")
+    else:
+        shard = json.loads(shard_path.read_text())
+        shard["records"]["treatment"][0]["value"] += 1
+        shard["shard_sha256"] = digest(
+            {key: value for key, value in shard.items()
+             if key != "shard_sha256"}, newline=True)
+        write(shard_path, shard)
+        if drift == "internal":
+            final = runtime._supervisor_final()
+            final["shards"][0]["external_sha256"] = file_sha(shard_path)
+            final_path = tmp_path / ctrl.SUPERVISOR_FINAL_PATH
+            write(final_path, final)
+            final_sha = file_sha(final_path)
+            claim = runtime._supervisor_review_claim()
+            claim["final"] = final_sha
+            marker(supervisor, "SUP ", claim)
+            aggregate = json.loads(aggregate_path.read_text())
+            aggregate["supervisor_final_sha256"] = final_sha
+            aggregate["supervisor_review_record_sha256"] = file_sha(supervisor)
+            aggregate["supervisor_review_claim"] = claim
+            aggregate["result_sha256"] = digest(
+                {key: value for key, value in aggregate.items()
+                 if key != "result_sha256"}, newline=True)
+            write(aggregate_path, aggregate)
+    with pytest.raises(ReviewRefused, match="sealed shard 0 drift"):
+        T4_REVIEW.review(tmp_path, packet, capacity, supervisor)
+
+
 def test_t4_duplicate_key_shard_refuses_after_valid_seals(
         tmp_path, monkeypatch):
     packet, capacity, supervisor, _, aggregate_path, shard_path = t4_fixture(

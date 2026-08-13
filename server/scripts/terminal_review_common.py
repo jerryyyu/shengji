@@ -179,8 +179,8 @@ def import_script(repo: Path, name: str, logical: str,
     protected = set(expected_modules) | set(tracked)
     preloaded = sorted(
         module for module in sys.modules
-        if module in protected or module == "shengji"
-        or module.startswith("shengji."))
+        if module in protected or (git is not None and (
+            module == "shengji" or module.startswith("shengji."))))
     if preloaded:
         raise ReviewRefused(
             "refusing preloaded source module(s): " + ", ".join(preloaded))

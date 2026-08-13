@@ -14,6 +14,12 @@ assert SPEC and SPEC.loader
 h0 = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(h0)
 
+FROZEN_ROLLOUT_POLICY_LOGICAL_PATH = "server/shengji/ai/heuristic.py"
+FROZEN_ROLLOUT_POLICY_SHA256 = (
+    "a99dfb089fd17e7c17ddcc4d76542552d317598fbe233269c3e7c0501b9b15ef"
+)
+FROZEN_ROLLOUT_POLICY_BYTES = 13_967
+
 
 def _play(player: str, source: str, round_: int, event: int, *, trick: int,
           surface: str = "follow", role: str = "attacker",
@@ -102,16 +108,22 @@ def _historical_execution_contract(
     still refuse those moving bytes.  Mock only this one frozen identity; do
     not rewrite the production constant or relax ``validate_source``.
     """
-    frozen_path = h0.REPO / h0.ROLLOUT_POLICY_LOGICAL_PATH
-    actual_sha256_file = h0.sha256_file
+    actual_validate_source = h0.validate_source
 
-    def historical_sha256_file(path) -> str:
-        if Path(path) == frozen_path:
-            return h0.ROLLOUT_POLICY_SHA256
-        return actual_sha256_file(path)
+    def historical_validate_source(logical_path, expected_sha256) -> dict:
+        if (logical_path, expected_sha256) == (
+            FROZEN_ROLLOUT_POLICY_LOGICAL_PATH,
+            FROZEN_ROLLOUT_POLICY_SHA256,
+        ):
+            return {
+                "logical_path": FROZEN_ROLLOUT_POLICY_LOGICAL_PATH,
+                "sha256": FROZEN_ROLLOUT_POLICY_SHA256,
+                "bytes": FROZEN_ROLLOUT_POLICY_BYTES,
+            }
+        return actual_validate_source(logical_path, expected_sha256)
 
     with monkeypatch.context() as patch:
-        patch.setattr(h0, "sha256_file", historical_sha256_file)
+        patch.setattr(h0, "validate_source", historical_validate_source)
         return h0.execution_contract()
 
 
@@ -261,8 +273,9 @@ def test_v3_names_root_policy_and_real_rollout_continuation_separately(
     }
     rollout = contract["rollout_continuation"]
     assert rollout["policy"] == "HeuristicBot"
-    assert rollout["logical_path"] == "server/shengji/ai/heuristic.py"
+    assert rollout["logical_path"] == FROZEN_ROLLOUT_POLICY_LOGICAL_PATH
     assert rollout["sha256"] == h0.ROLLOUT_POLICY_SHA256
+    assert rollout["bytes"] == FROZEN_ROLLOUT_POLICY_BYTES
     assert rollout["report_lcb_is_not_recursive_continuation"] is True
     assert contract["rng_folds"][
         "all_three_world_folds_pairwise_disjoint"] is True
@@ -310,10 +323,26 @@ def test_v3_source_identity_drift_refuses(
             h0.ROLLOUT_POLICY_LOGICAL_PATH, h0.ROLLOUT_POLICY_SHA256)
 
 
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    (
+        ("ROLLOUT_POLICY_LOGICAL_PATH", h0.ANALYSIS_ACTIONS_LOGICAL_PATH),
+        ("ROLLOUT_POLICY_SHA256", "0" * 64),
+    ),
+)
+def test_v3_historical_override_is_exact_identity_only(
+    monkeypatch: pytest.MonkeyPatch,
+    attribute: str,
+    value: str,
+) -> None:
+    monkeypatch.setattr(h0, attribute, value)
+    with pytest.raises(h0.H0PacketError, match="source SHA-256 drift"):
+        _historical_execution_contract(monkeypatch)
+
+
 def test_v3_frozen_rollout_sha_is_unchanged_and_live_drift_refuses() -> None:
-    assert h0.ROLLOUT_POLICY_SHA256 == (
-        "a99dfb089fd17e7c17ddcc4d76542552d317598fbe233269c3e7c0501b9b15ef"
-    )
+    assert h0.ROLLOUT_POLICY_LOGICAL_PATH == FROZEN_ROLLOUT_POLICY_LOGICAL_PATH
+    assert h0.ROLLOUT_POLICY_SHA256 == FROZEN_ROLLOUT_POLICY_SHA256
     live_path = h0.REPO / h0.ROLLOUT_POLICY_LOGICAL_PATH
     assert h0.sha256_file(live_path) != h0.ROLLOUT_POLICY_SHA256
     with pytest.raises(h0.H0PacketError, match="source SHA-256 drift"):

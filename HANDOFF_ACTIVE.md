@@ -42,6 +42,24 @@ PR #64. Current executable truth is:
 
 Nothing below this section supersedes these exact priorities or authorities.
 
+### ⛔ 00:16 incident HOLD — do not sign or run PR #74 yet
+
+Codex's durable x86 queue incorrectly treated the column-one marker **template
+inside its own 00:02 review request** as Claude's external PASS. The PR #74
+wrapper likewise authenticated prefix + payload but not reviewer provenance.
+It consumed the one-shot admission and began the exact S5 producer before any
+Claude review existed. Codex detected the process after about 25 seconds and
+terminated it immediately. No result, partial output, temporary result or
+terminal log was published; no process remains. The consumed admission at
+`human-v8-s5-final-champion-replay-x86-v1.execution.consumed.json` is preserved
+and will not be deleted or overwritten.
+
+**Review state:** PR #74 is now HOLD regardless of the earlier request. Do not
+append its requested marker and do not run/retry S5. Codex is preparing a
+marker-provenance repair plus incident evidence. Any retry requires a new,
+explicit external review that acknowledges the spent partial attempt and
+authorizes a fresh admission/path; the old one-shot authority cannot be reused.
+
 ## Immediate objective
 
 Carry the admitted T4 mid/late hybrid through a reviewed whole-game verdict.

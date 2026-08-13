@@ -555,3 +555,31 @@ are exceptions, never DROP. The `b696426c…` design must never run. No merge,
 strength, production, training, promotion, or deployment authority.
 
 ---
+
+## [2026-08-13 12:38 EDT] Claude review: PR #93 repair head 0045139 — PASS (implementation)
+
+PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V1_REVIEW {"aggregate_execution_authorized":false,"capacity_execution_authorized":false,"capacity_packet_freeze_authorized":true,"controller_sha256":"472d08db6b74bf98a269947bbbde41d766b8e15e191851b2bab470a56b5399f7","design_git":"111314f0c1a36d8314afd7e8748bf9e20d00a278","design_source_sha256":"866997957c215523aa48978b6cb901f1336467d6a64a29e03904d57ca804833d","git":"0045139c087bed3714427ed2f59b22c0d19b165e","production_deployment":false,"resume_execution_authorized":false,"schema":"pair-aware-rollout-checkpoint-capacity-implementation-review-v1","screen_execution_authorized":false,"strength_claim":false}
+**Repair verified at exact head `0045139c087bed3714427ed2f59b22c0d19b165e`**
+(direct child of my HOLD head `2eb55d0`): the delta is the test file only
+(+110/−2; new SHA `7ab6b342…`); **production controller bytes are
+byte-identical** (`472d08db…`). The four added tests are exactly my HOLD
+blockers: parent-rewrite refusal, duplicate-marker-at-tip refusal, worker
+runtime-digest-drift not-ok preflight (the stub now executes the real
+`_lane_process`), and barrier refusal before `start.set()`.
+
+**Measured:** focused file 60 passed; both checkpoint files exactly
+**100 passed** under `python -B` (matches the claimed count). Re-ran my full
+11-guard mutation battery against the repaired suite: **10/11 KILLED — all
+four HOLD survivors (append-only parent rewrite, tip exact-once, worker
+reauth digest, start-barrier not-ok) now die**; the sole survivor remains the
+exactly-one-native count, adjudicated redundant-defensive at the HOLD (a
+second loadable is untracked and refused independently by the shadow scan).
+Pristine bytes restored and verified after every mutation.
+
+**Boundary:** the marker above authorizes only a host-specific capacity
+packet freeze on this exact head. The frozen packet requires its own
+independent PASS before one capacity attempt. No capacity run, screen,
+resume, aggregate, outcome access, strength, training, promotion, or
+deployment authority follows.
+
+---

@@ -7802,3 +7802,45 @@ need; T4 is presently mid-second-arm at `matched_null 300/512` with no
 `supervisor-final.json` yet.
 
 ---
+## Claude — 2026-08-13 07:35 EDT — ✅ PASS (exact head): T4/Pair terminal reviewers (PR #80, `e61975c`); all three fixture requests satisfied
+
+Delta-only review over my 06:42 prose PASS at `9c896e2`: two files, +71/−2.
+Read-only helper; no execution authority.
+
+**All three refusals I flagged as untested are now caught.** Re-running the
+exact mutations that survived before:
+
+| mutation | before | now |
+|---|---|---|
+| aggregate pre-open binding drift refusal removed | survived | **caught (1)** |
+| "supervisor final changed during validation" removed | survived | **caught (1)** |
+| sealed-shard drift refusal removed | survived | **caught (3)** |
+| preload refusal removed (control) | caught | caught (4) |
+
+The fixtures are well built rather than merely present. The pre-open test
+writes `b"outcome bytes must remain unopened"` into the shard path and then
+asserts the failure is `aggregate pre-open binding drift` — so it proves the
+refusal fires *before* the shard is opened, since a broken ordering would fail
+differently on that garbage. The TOCTOU test monkeypatches `_supervisor_final`
+to return a changed final mid-validation. The sealed-shard test is parameterized
+over `["external", "internal", "log"]`, covering all three sealed-manifest
+digests exactly.
+
+**Strict-mode isolation is fixed, and the fix does not weaken production.** The
+four-line change makes the `shengji`/`shengji.*` preload refusal conditional on
+`git is not None`. I checked every call site: both production entry points pass
+`git=GIT`, and `GIT` is a hard-coded 40-hex constant in each
+(`review_t4_terminal.py` `c89c8712…`, `review_pair_terminal.py` `cd206707…`),
+so it can never be `None` at runtime. The relaxation is reachable only from
+test fixtures that deliberately pass `git=None`. The strict guard on
+git-backed reviews is untouched, and removing it is still caught by four tests.
+
+**22/22 pass in strict compiled mode and 22/22 under a plain interpreter** — up
+from 17, and the 16/17 strict-mode failure I reported at 06:42 is gone.
+
+This closes every point from my earlier review. The helper still cannot write,
+launch, aggregate, retry, promote or deploy, and this grants no execution
+authority. T4 remains live at `matched_null 300/512` with `supervisor-final.json`
+absent; I opened no outcome bytes.
+
+---

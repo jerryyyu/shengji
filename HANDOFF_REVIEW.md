@@ -6177,3 +6177,98 @@ here registers a bot, alters the production rollout policy, or converts a
 sensitivity arm into strength evidence.
 
 ---
+## Claude — 2026-08-12 23:39 EDT — ⛔ HOLD: lead performance + H0 source repair (PR #71, `414fe29`); the two halves of this PR conflict
+
+**Provenance disclosure:** the lead-performance half implements the two
+optimizations from my own 23:0x performance audit. I reviewed it independently
+anyway and re-derived every claim from scratch rather than trusting my earlier
+work.
+
+The performance change is **correct and I can prove it**. The blocker is that
+the same PR both changes `server/shengji/ai/heuristic.py` and adds a guard that
+enforces that file's frozen hash, so the H0 controller now refuses on the
+unmutated tree.
+
+### The blocker
+
+`h0_human_counterfactual_packet.py` freezes
+`ROLLOUT_POLICY_LOGICAL_PATH = "server/shengji/ai/heuristic.py"` with
+`ROLLOUT_POLICY_SHA256 = a99dfb089fd1…` — which is exactly heuristic.py at the
+code parent `2443be9`. At this head heuristic.py is `84f1968697c2…`, and the
+packet module is unchanged. The new `require_historical_execution_sources()`
+reopens that identity. Called directly at the PR head:
+
+```
+heuristic.py   frozen=a99dfb089fd1  actual=84f1968697c2  MISMATCH
+actions.py     frozen=a109031cac72  actual=a109031cac72  MATCH
+bury.py        frozen=2fd2ca71ed75  actual=2fd2ca71ed75  MATCH
+
+require_historical_execution_sources() -> REFUSED: ControllerRefused
+  historical execution source refused: source SHA-256 drift:
+  server/shengji/ai/heuristic.py: 84f1968697c2518f…
+```
+
+So this PR's own repair fires against this PR's own optimization. The
+`one_counterfactual_execution_authorized: true` authority in the H0 V2/V3
+markers I signed becomes unusable; `server/runs/locks/` does not exist, so that
+single authorized execution appears unconsumed rather than spent.
+
+**Why CI is green.** Every H0 source-validation test monkeypatches
+`ctrl.DESIGN.validate_source` and returns a synthetic `{logical_path, sha256,
+bytes}` dict. The suite therefore verifies the *wiring* — that three identities
+are reopened in order and that a raised `H0PacketError` becomes a
+`ControllerRefused` — but never lets the real validator open real bytes. 50
+focused tests pass while the live call refuses. Requesting one test that
+invokes the real `DESIGN.validate_source` against the real tree; it would have
+caught this before review.
+
+### Smallest exact repair — a decision, not a patch
+
+Whether heuristic.py's historical bytes may move is a semantic call about the
+H0 identity, so it should be made explicitly rather than as a side effect:
+
+- **If H0 must remain executable:** re-freeze `ROLLOUT_POLICY_SHA256` to
+  `84f1968697c2518fa719c79582f01f3e05f6df5a2c365d07be603fc5ebf88bd5` in a
+  separate, explicitly reviewed change, citing the behaviour-identity evidence
+  below. The historical *policy* is unchanged in behaviour; only its bytes move.
+- **If the H0 counterfactual lane is closed:** say so in the ledger and retire
+  the `ROLLOUT_POLICY` entry from `HISTORICAL_EXECUTION_SOURCES`.
+
+Either way, land the H0 fail-closed repair **separately** from the change that
+trips it. The repair itself is good and I would sign it alone.
+
+### What verified cleanly
+
+- **The `pair_count` bound is provably safe.** `pair_count` is
+  `Σ floor(count/2)` — the total pair-units in the multiset. A k-pair tractor
+  consumes k pair-units, so `pair_count < k` implies no k-tractor exists,
+  independent of tied trump levels: ties change which pairs may be adjacent,
+  never how many pair-units exist. Empirically: **50,000 `(cards, k)` probes**
+  across 25 trump configurations — including tied trump-rank levels across
+  suits, jokers, and forced four-copy sets — produced 1,622 non-empty results
+  and **zero** violations of `pair_count < k ⇒ find_tractor_runs == []`.
+- **True old-vs-new parity, no monkeypatching.** I ran identical randomized and
+  adversarial hands through two separate worktrees, `2443be9` and `414fe29`:
+  **5,000 hands, identical lead actions**, across five trump suits × five
+  trump ranks. Feasible `k` scan order is unchanged — the loop still descends
+  from `min(5, available_pairs)`.
+- **Codex's own parity test is well built:** it reconstructs the old 5..2 scan
+  by forcing `pair_count` to return 5, so the two copies of the policy cannot
+  drift apart.
+- **The removed local import is safe.** `beats` was already bound at module
+  level; after removal `H.beats is legal.beats is fast.beats`, compiled routing
+  is active, and `combos.decompose is fast.decompose`.
+- **Scope is clean:** five files, two production, no Cython leaf or benchmark
+  artifact, and the H0 packet constants and reviewed artifacts are byte-identical.
+- **Performance:** I did not re-run an interleaved A/B, because the PR's
+  heuristic logic is character-for-character equivalent to the patch I already
+  measured (only a variable name and comment wording differ). My own
+  measurement was **3.202s → 2.719s (15.1%)** over 150 MC decisions with
+  **bit-identical** decision logs — every play and every per-candidate rollout
+  value across 7,450 rollouts. That is consistent with Codex's 16.22% ARM and
+  11.75% x86 figures.
+
+Nothing here blocks the optimization on correctness grounds. The blocker is
+purely the coupling to the frozen H0 source identity.
+
+---

@@ -99,7 +99,7 @@ def _result(seconds: float = 10.0):
 
 
 def test_controller_is_capacity_only_and_binds_reviewed_design():
-    assert C.DESIGN_GIT == "111314f0c1a36d8314afd7e8748bf9e20d00a278"
+    assert C.DESIGN_GIT == "36b3841f28e04a1b3ba066044db0ed8c992e8714"
     assert C.sha256_file(
         SCRIPTS / "pair_aware_rollout_checkpoint_successor_design.py"
     ) == C.DESIGN_SOURCE_SHA256
@@ -465,6 +465,85 @@ def test_receipt_binds_packet_admission_result_and_closes_later_authority():
         packet_review=review, admission_sha256="d" * 64,
         result_sha256="e" * 64, result=result,
         invocation_id="invocation")
+
+
+def test_refusal_receipt_preserves_lane_timings_and_closes_all_later_authority():
+    packet = _packet()
+    review = {"commit": "8" * 40, "marker_sha256": "9" * 64}
+    measurement = _result(seconds=10_000.0)
+    projection = C.DESIGN.capacity_projection_details(
+        measurement, expected_workers=C.DESIGN.MIN_WORKERS,
+        runtime_profile_sha256=packet["runtime_profile_sha256"])
+    assert projection["projected_wall_hours"] > \
+        C.DESIGN.MAX_PLANNED_WALL_HOURS
+    receipt = C.refusal_receipt_payload(
+        packet=packet, packet_sha256=PACKET_SHA, packet_review=review,
+        admission_sha256="d" * 64, measurement=measurement,
+        projection=projection, invocation_id="a" * 32)
+    assert receipt["measurement"]["lanes"] == measurement["lanes"]
+    assert receipt["capacity_terminal_review_authorized"] is True
+    assert not any(receipt[name] for name in (
+        "screen_packet_freeze_authorized", "screen_execution_authorized",
+        "resume_execution_authorized", "aggregate_execution_authorized",
+        "strength_claim", "production_deployment",
+        "retry_or_extension_authorized"))
+    assert C.refusal_receipt_problems(
+        receipt, packet=packet, packet_sha256=PACKET_SHA,
+        packet_review=review, admission_sha256="d" * 64,
+        measurement=measurement, projection=projection,
+        invocation_id="a" * 32) == []
+    forged = copy.deepcopy(receipt)
+    forged["measurement"]["lanes"][0]["elapsed_seconds"] += 1
+    forged["internal_sha256"] = C.digest({
+        key: value for key, value in forged.items()
+        if key != "internal_sha256"})
+    assert C.refusal_receipt_problems(
+        forged, packet=packet, packet_sha256=PACKET_SHA,
+        packet_review=review, admission_sha256="d" * 64,
+        measurement=measurement, projection=projection,
+        invocation_id="a" * 32)
+
+
+def test_run_publishes_score_free_refusal_receipt_before_over_cap_exit(
+        tmp_path, monkeypatch):
+    packet = _packet()
+    review = {"commit": "8" * 40, "marker_sha256": "9" * 64}
+    paths = {
+        "PACKET_PATH": tmp_path / "packet.json",
+        "PACKET_REVIEW_PATH": tmp_path / "packet-review.md",
+        "ADMISSION_PATH": tmp_path / "admission.json",
+        "RESULT_PATH": tmp_path / "capacity.json",
+        "RECEIPT_PATH": tmp_path / "execution-receipt.json",
+        "REFUSAL_RECEIPT_PATH": tmp_path / "capacity-refusal-receipt.json",
+    }
+    for name, path in paths.items():
+        monkeypatch.setattr(C, name, path)
+    monkeypatch.setattr(C, "require_fresh_process", lambda: None)
+    monkeypatch.setattr(C, "require_clean_exact_git", lambda git: None)
+    monkeypatch.setattr(C, "require_systemd", lambda: "a" * 32)
+    monkeypatch.setattr(C, "load_packet", lambda *args, **kwargs: packet)
+    monkeypatch.setattr(C, "runtime_snapshot", lambda git: packet["runtime"])
+    monkeypatch.setattr(C, "require_frozen_runtime_inputs", lambda value: None)
+    monkeypatch.setattr(
+        C, "canonical_review_record",
+        lambda **kwargs: (review, b"review marker\n"))
+    monkeypatch.setattr(C, "measure_capacity",
+                        lambda value: _result(seconds=10_000.0))
+    args = SimpleNamespace(
+        expected_git=GIT, packet=paths["PACKET_PATH"],
+        expected_packet_sha256=PACKET_SHA,
+        packet_review_commit=review["commit"],
+        admission=paths["ADMISSION_PATH"], result=paths["RESULT_PATH"],
+        receipt=paths["RECEIPT_PATH"],
+        refusal_receipt=paths["REFUSAL_RECEIPT_PATH"])
+    with pytest.raises(C.CapacityRefused, match="planned wall cap"):
+        C.run_command(args)
+    assert paths["REFUSAL_RECEIPT_PATH"].is_file()
+    refusal = json.loads(paths["REFUSAL_RECEIPT_PATH"].read_text())
+    assert refusal["status"] == "REFUSED_CAPACITY_PROJECTION"
+    assert len(refusal["measurement"]["lanes"]) == 16
+    assert not paths["RESULT_PATH"].exists()
+    assert not paths["RECEIPT_PATH"].exists()
 
 
 def test_admission_is_one_shot_capacity_only_and_closed():

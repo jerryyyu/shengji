@@ -34,9 +34,9 @@ REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
 REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
 
-DESIGN_GIT = "111314f0c1a36d8314afd7e8748bf9e20d00a278"
+DESIGN_GIT = "36b3841f28e04a1b3ba066044db0ed8c992e8714"
 DESIGN_SOURCE_SHA256 = (
-    "866997957c215523aa48978b6cb901f1336467d6a64a29e03904d57ca804833d"
+    "259e8dba94af04bb4d26e1146202587c5efcfce7812c3d3b3224ecd1a250bc34"
 )
 DUEL_SOURCE_SHA256 = (
     "c034f1cd04f97c6cd0e9877eb3fe186ee59194be27d93bb1b8d01e4e9ff9cc2b"
@@ -76,27 +76,30 @@ def _authenticated_design_module():
 DESIGN, DESIGN_WAS_PRELOADED = _authenticated_design_module()
 CORE_WAS_PRELOADED = CORE_MODULE in sys.modules
 CORE = None
-PACKET_SCHEMA = "pair-aware-rollout-checkpoint-capacity-packet-v1"
-ADMISSION_SCHEMA = "pair-aware-rollout-checkpoint-capacity-admission-v1"
-RECEIPT_SCHEMA = "pair-aware-rollout-checkpoint-capacity-receipt-v1"
+PACKET_SCHEMA = "pair-aware-rollout-checkpoint-capacity-packet-v2"
+ADMISSION_SCHEMA = "pair-aware-rollout-checkpoint-capacity-admission-v2"
+RECEIPT_SCHEMA = "pair-aware-rollout-checkpoint-capacity-receipt-v2"
+REFUSAL_RECEIPT_SCHEMA = (
+    "pair-aware-rollout-checkpoint-capacity-refusal-receipt-v1"
+)
 IMPLEMENTATION_REVIEW_SCHEMA = (
-    "pair-aware-rollout-checkpoint-capacity-implementation-review-v1"
+    "pair-aware-rollout-checkpoint-capacity-implementation-review-v2"
 )
 PACKET_REVIEW_SCHEMA = (
-    "pair-aware-rollout-checkpoint-capacity-packet-review-v1"
+    "pair-aware-rollout-checkpoint-capacity-packet-review-v2"
 )
 # The V1 marker was appended by a Jerry-authored/co-authored commit.  That
 # records a valid prose review, but it deliberately cannot satisfy this
 # controller's independent Claude author+committer gate.  Retire that
 # namespace and require a fresh, independently introduced V2 attestation.
 RETIRED_IMPLEMENTATION_REVIEW_PREFIX = (
-    "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V1_REVIEW "
-)
-IMPLEMENTATION_REVIEW_PREFIX = (
     "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V2_REVIEW "
 )
+IMPLEMENTATION_REVIEW_PREFIX = (
+    "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V3_REVIEW "
+)
 PACKET_REVIEW_PREFIX = (
-    "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_PACKET_V1_REVIEW "
+    "PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_PACKET_V2_REVIEW "
 )
 
 RUN_ID = DESIGN.CAPACITY_RUN_ID
@@ -107,6 +110,7 @@ IMPLEMENTATION_REVIEW_PATH = RUN_DIR / "implementation-review-snapshot.md"
 PACKET_REVIEW_PATH = RUN_DIR / "packet-review-snapshot.md"
 RESULT_PATH = RUN_DIR / "capacity.json"
 RECEIPT_PATH = RUN_DIR / "execution-receipt.json"
+REFUSAL_RECEIPT_PATH = RUN_DIR / "capacity-refusal-receipt.json"
 ADMISSION_PATH = LOCK_DIR / f"{RUN_ID}.admission.consumed.json"
 SYSTEMD_UNIT = f"{RUN_ID}.service"
 
@@ -787,11 +791,6 @@ def measure_capacity(packet: dict) -> dict:
         runtime_profile_sha256=packet["runtime_profile_sha256"])
     if problems:
         raise CapacityRefused("; ".join(problems))
-    projection = DESIGN.capacity_projection(
-        value, expected_workers=workers,
-        runtime_profile_sha256=packet["runtime_profile_sha256"])
-    if projection["projected_wall_hours"] > DESIGN.MAX_PLANNED_WALL_HOURS:
-        raise CapacityRefused("capacity projection exceeds planned wall cap")
     return value
 
 
@@ -911,6 +910,55 @@ def receipt_problems(value: object, *, packet: dict, packet_sha256: str,
         result_sha256=result_sha256, result=result,
         invocation_id=invocation_id)
     return [] if value == expected else ["capacity receipt drift"]
+
+
+def refusal_receipt_payload(
+        *, packet: dict, packet_sha256: str, packet_review: dict,
+        admission_sha256: str, measurement: dict, projection: dict,
+        invocation_id: str) -> dict:
+    value = {
+        "schema": REFUSAL_RECEIPT_SCHEMA, "run_id": RUN_ID,
+        "git": packet["git"], "packet_sha256": packet_sha256,
+        "packet_internal_sha256": packet["internal_sha256"],
+        "packet_review_commit": packet_review["commit"],
+        "packet_review_marker_sha256": packet_review["marker_sha256"],
+        "admission_sha256": admission_sha256,
+        "runtime_profile_sha256": packet["runtime_profile_sha256"],
+        "systemd_invocation_id": invocation_id,
+        "status": "REFUSED_CAPACITY_PROJECTION",
+        "reason": "capacity projection exceeds planned wall cap",
+        "score_free": True, "outcomes_published": False,
+        "measurement": measurement, "projection": projection,
+        "max_planned_wall_hours": DESIGN.MAX_PLANNED_WALL_HOURS,
+        "capacity_result_published": False,
+        "execution_receipt_published": False,
+        "capacity_terminal_review_authorized": True,
+        "screen_packet_freeze_authorized": False,
+        "screen_execution_authorized": False,
+        "resume_execution_authorized": False,
+        "aggregate_execution_authorized": False,
+        "strength_claim": False, "production_deployment": False,
+        "retry_or_extension_authorized": False,
+    }
+    value["internal_sha256"] = digest(value)
+    return value
+
+
+def refusal_receipt_problems(
+        value: object, *, packet: dict, packet_sha256: str,
+        packet_review: dict, admission_sha256: str,
+        measurement: dict, projection: dict,
+        invocation_id: str) -> list[str]:
+    if not isinstance(value, dict):
+        return ["capacity refusal receipt is not an object"]
+    if _forbidden_keys(value):
+        return ["capacity refusal receipt contains outcome-bearing keys"]
+    expected = refusal_receipt_payload(
+        packet=packet, packet_sha256=packet_sha256,
+        packet_review=packet_review, admission_sha256=admission_sha256,
+        measurement=measurement, projection=projection,
+        invocation_id=invocation_id)
+    return [] if value == expected else ["capacity refusal receipt drift"]
 
 
 def reopen_exact(path: Path, *, label: str) -> tuple[object, str]:
@@ -1037,7 +1085,9 @@ def run_command(args: argparse.Namespace) -> None:
     if (Path(args.packet).resolve() != PACKET_PATH.resolve()
             or Path(args.admission).resolve() != ADMISSION_PATH.resolve()
             or Path(args.result).resolve() != RESULT_PATH.resolve()
-            or Path(args.receipt).resolve() != RECEIPT_PATH.resolve()):
+            or Path(args.receipt).resolve() != RECEIPT_PATH.resolve()
+            or Path(args.refusal_receipt).resolve()
+            != REFUSAL_RECEIPT_PATH.resolve()):
         raise CapacityRefused("capacity execution path is not canonical")
     packet = load_packet(Path(args.packet), args.expected_packet_sha256,
                          expected_git=args.expected_git)
@@ -1050,7 +1100,8 @@ def run_command(args: argparse.Namespace) -> None:
         commit=args.packet_review_commit, prefix=PACKET_REVIEW_PREFIX,
         expected=claim, label="checkpoint capacity packet review")
     collisions = [path for path in (
-        PACKET_REVIEW_PATH, ADMISSION_PATH, RESULT_PATH, RECEIPT_PATH)
+        PACKET_REVIEW_PATH, ADMISSION_PATH, RESULT_PATH, RECEIPT_PATH,
+        REFUSAL_RECEIPT_PATH)
         if os.path.lexists(path) or os.path.lexists(str(path) + ".partial")]
     if collisions:
         raise CapacityRefused("capacity execution slot already consumed")
@@ -1079,6 +1130,41 @@ def run_command(args: argparse.Namespace) -> None:
         raise CapacityRefused("; ".join(problems))
     write_exclusive(ADMISSION_PATH, admission)
     result = measure_capacity(packet)
+    measurement_problems = DESIGN.concurrent_capacity_problems(
+        result, expected_workers=DESIGN.MIN_WORKERS,
+        runtime_profile_sha256=packet["runtime_profile_sha256"])
+    if _forbidden_keys(result):
+        measurement_problems.append(
+            "capacity measurement contains outcome-bearing keys")
+    if measurement_problems:
+        raise CapacityRefused("; ".join(sorted(set(measurement_problems))))
+    projection = DESIGN.capacity_projection_details(
+        result, expected_workers=DESIGN.MIN_WORKERS,
+        runtime_profile_sha256=packet["runtime_profile_sha256"])
+    if projection["projected_wall_hours"] > DESIGN.MAX_PLANNED_WALL_HOURS:
+        refusal = refusal_receipt_payload(
+            packet=packet, packet_sha256=args.expected_packet_sha256,
+            packet_review=review,
+            admission_sha256=sha256_file(ADMISSION_PATH),
+            measurement=result, projection=projection,
+            invocation_id=invocation)
+        problems = refusal_receipt_problems(
+            refusal, packet=packet,
+            packet_sha256=args.expected_packet_sha256,
+            packet_review=review,
+            admission_sha256=sha256_file(ADMISSION_PATH),
+            measurement=result, projection=projection,
+            invocation_id=invocation)
+        if problems:
+            raise CapacityRefused("; ".join(problems))
+        write_exclusive(REFUSAL_RECEIPT_PATH, refusal)
+        print(json.dumps({
+            "status": "REFUSED_CAPACITY_PROJECTION",
+            "refusal_receipt_sha256": sha256_file(REFUSAL_RECEIPT_PATH),
+            "screen_packet_freeze_authorized": False,
+        }, sort_keys=True), flush=True)
+        raise CapacityRefused(
+            "capacity projection exceeds planned wall cap")
     problems = capacity_result_problems(result, packet=packet)
     if problems:
         raise CapacityRefused("; ".join(problems))
@@ -1127,6 +1213,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--admission", type=Path, required=True)
     run.add_argument("--result", type=Path, required=True)
     run.add_argument("--receipt", type=Path, required=True)
+    run.add_argument("--refusal-receipt", type=Path, required=True)
     run.set_defaults(func=run_command)
     return root
 

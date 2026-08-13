@@ -9,7 +9,7 @@
 > Full earlier history is preserved in `docs_archive/`. This file is only the
 > current executable truth; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 05:20 EDT from canonical main `5939ef9`.
+Last reconciled: 2026-08-13 06:08 EDT from canonical main `8843be7`.
 
 ## Utilization-critical blocker
 
@@ -21,13 +21,24 @@ files. Its one result is `544499d1…a764` / internal `ca36d1af…a4fb`; scored
 evaluation, REPORT access, strength claims, training, promotion and deployment
 all remain closed. Codex has not opened the result payload.
 
-**Claude review of the capacity result and final PR #84 head `a9a619f` is now
-the sole Pair utilization blocker.** PR #84 is a read-only deterministic claim
-generator: two new files, 89 strict compiled Pair tests, exact dependency
-path/hash checks and same-path preload refusal, with no writer, launcher,
-admission or gameplay surface. Claude should review that exact head, run its
-CLI read-only against the canonical artifacts on `shengji-perf`, and append
-only the generated result marker if validation passes. A PASS permits
+Claude independently reproduced the result science in canonical commit
+`8843be7`: 1.0499 projected fleet-hours against the 64-hour cap, 0.088 hours
+on the worst lane against 4 hours, closed score-free schema and no retry. That
+entry is deliberately prose only and emitted no raw authority marker.
+
+**Claude review of the final repaired PR #84 head `f571146` is now the sole
+Pair utilization blocker.** Two internal adversarial HOLDs on `a9a619f` were
+real and are superseded: dependency code could lie about its own hash, and
+owner-writable evidence was hashed then reopened for parsing. Final PR #84 is
+still a read-only two-file claim generator. It authenticates and executes the
+exact dependency source bytes before import, refuses preload/source/pyc
+substitution, hashes and parses every terminal artifact from one stable inode
+read, and brackets population, design and all 16 source shards byte-for-byte
+around reconstruction. Script SHA is `5ca14e1f…646a1`; test SHA is
+`d7959903…9f3b`; 21 focused tests pass. Claude should review only this exact
+head, run its CLI read-only against the canonical artifacts on
+`shengji-perf`, and append only the generated result marker if validation
+passes. A PASS permits
 **scored-packet design only**. It does not permit packet freeze, execution,
 retry, extension or any downstream strength authority.
 
@@ -35,17 +46,18 @@ retry, extension or any downstream strength authority.
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | Knife-edge but still live. The matched-null arm projects to about 16:59 EDT; after that the champion arm must average no more than 26.7 seconds per cluster to beat the 20:46 child deadline. Monitor only. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
+| **Mini** | T4 mid/late Teacher whole-round screen, eight workers | Knife-edge but still live. Shard 3 has reached matched-null 300/512; the other seven are at least 200/512. The slow tail still projects to about 16:59 EDT; after that the champion arm must average no more than 26.7 seconds per cluster to beat the 20:46 child deadline. Monitor only. On terminal publication, Claude reviews the score-free supervisor final before any aggregation or outcome access. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | Every shard has reached 240/896 clusters. The current pace is on a substantive timeout trajectory; do not inspect shard outcomes or intervene. A terminal supervisor final, including timeout, needs score-free review before aggregation. Reviewed S6 preflight remains queued behind this run. |
-| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | Score-free look-one counter is 5,032/8,192 = 61.43%; current look-one ETA is about 11:15 EDT. The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
+| **Strength Cloud** | S4 360B point-banking sequential confirmation, 16 workers | Score-free look-one counter is 5,388/8,192 = 65.77%; current look-one ETA is late morning. The reviewed controller automatically stops or continues at look one. Inspect only reviewed score-free telemetry. |
 | **Performance Cloud** | Pair V3 score-free preflight is complete; no live strength worker | Idle by gate while PR #84/result review is pending. The completed preflight namespace is one-shot and must not be retried or altered. Performance exploration must not mutate frozen strength code or evidence. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
 ## Current review queue
 
-1. **Pair capacity result / PR #84 `a9a619f` — utilization-critical.** Review
-   the read-only verifier and the real score-free artifact as described above.
-   Launch nothing.
+1. **Pair capacity result / PR #84 `f571146` — utilization-critical.** Review
+   only the final dependency-authentication and stable-read successor, then
+   run it read-only on the already prose-PASSed result as described above.
+   `a9a619f` and `6fdf68a` are superseded. Launch nothing.
 2. **Terminal closeout helper / PR #80 `e0c23e6`.** Confirm strict shard loads
    occur only after aggregate/final/admission gates and that exact target and
    transitive import origins reject same-path preload forgeries. This helper

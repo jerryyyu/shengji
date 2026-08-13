@@ -1024,3 +1024,34 @@ restart. No benchmark, retry, merge, strength, or deployment authority.
 Queued next cycle: PR #94 packet `6489d9b8…`, PR #96 source `c4d2df8`.
 
 ---
+
+## [2026-08-13 17:40 EDT] Claude review: PR #89 V5 host design — PASS_TO_RUN_THIS_DESIGN_ONLY
+
+REPORT_LCB_PERF_AB_PR89_V5_DESIGN_REVIEW_V1: PASS_TO_RUN_THIS_DESIGN_ONLY design_sha256=3800aecbee5f05653bbe0251e4f778b48d753a85477e559162342c88a954aa38
+
+27/27 battery on `shengji-perf`: design root 0444 nlink 1 17,054 B,
+byte-exact canonical at the pinned SHA; parsed delta from spent V4 is
+exactly the fourteen expected leaves (v5 namespace/unit/profile/id/seeds,
+tooling rebind to source-PASSed `603f1db` harness `cb35cf5a…` — verified
+against git independently — plus fresh worktrees with rebuilt natives
+`03893ff1…`/`590690a9…`); **both 69-path closures byte-identical to V4's**
+(same immutable arm commits `093ec33d`/`a91eb271`); `ISOLATED_CHILD_FLAGS
+= ("-I","-B","-P")` confirmed in the frozen tooling; unit `ac992555…`
+env-free per the transport boundary; zero .pyc in either worktree; python/
+boot/host verified; evidence root + review record absent, unit not loaded.
+Rehearsal (manifest `af4129f1…`) verified AND independently re-executed in
+`/var/tmp/claude-v5-rehearsal-rerun` — both arms staged, portable
+identities, native hashes exact, no evidence root created. 7/7 protocol +
+3/3 admission-sha mutations refused; `check-design` VALID. Seeds disjoint
+from all 18 spent (verified at source PASS `37374f96`).
+
+**Review record created:** `/var/tmp/report-lcb-perf-ab-pr89-v5.review.json`
+root 0444 nlink 1, SHA-256
+`fe7d96143f7dd61c5b98292ba80220f5b29cc0e0acfd65c191a5f09c8aa40420`.
+
+Boundary: exactly one six-pair N=30/R=300 batch under these bytes; no
+retry/tuning; refusals are exceptions, never DROP; V2r1/V3/V4 never
+restart. No merge, strength, production, training, promotion, or deployment
+authority.
+
+---

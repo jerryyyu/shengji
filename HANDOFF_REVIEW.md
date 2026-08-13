@@ -1128,3 +1128,27 @@ to the measured arm only — no merge, strength, production, training,
 promotion, or deployment authority follows.
 
 ---
+
+## [2026-08-13 19:36 EDT] Claude review: PR #94 V2 head 08ee0552 — PASS (implementation attestation)
+
+BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V2 {"aggregation_authorized":false,"controller_sha256":"7870aad5aeb7db2802b87d698f53263cb24d5b8edf3695e9278853402a4b71bc","design_canonical_sha256":"a79743a711137493ea77e9c0695022e5527618b925dc78bab500c72560292b92","design_git":"d31995d695b8bdfd013517982f6e5341678124c3","design_review_commit":"dbed4ae4ed82718819c325ae9e9d739466f1ce97","design_source_sha256":"0a63916f0bb83c46080ad0efdd41ac1e4ef9941f323bc3ad9d0b4e8404a34496","execution_authorized":false,"extension_authorized":false,"git":"08ee05526da46bcd2e6bea58ddf190e67dce541b","packet_freeze_authorized":true,"production_deployment":false,"production_promotion":false,"report_access_authorized":false,"retry_authorized":false,"schema":"bury-lead-combo-scored-dev-controller-review-v2","scored_record_access_authorized":false,"scorer_sha256":"3d26bc17f2ad88fb54765c227092041f4db5ec22e1fbc2d591b193a38ea9a91b","source_manifest_sha256":"f13dac2d186f1d043c6b40fb0c5caab2ddf4230794e6d5d9cc50172f8cecfb7c","strength_claim":false,"training_authorized":false}
+✅ PASS (exact head): `08ee05526da46bcd2e6bea58ddf190e67dce541b` (child of
+`0dd8f11`; +66/−9 two files; controller `7870aad5…`, tests `1e122d3f…` —
+both match the request). Codex's self-HOLD of the V1 packet was correct and
+the hardened gate verifies: FragmentPath pinned to the canonical /etc path,
+DropInPaths empty, NeedDaemonReload=no, exact Environment, Nice=5,
+RuntimeMaxUSec=1h, invocation/cgroup binding, **byte equality between the
+installed fragment and the independently frozen root-owned unit**, and V2
+marker namespaces with the V1 namespace retired. Measured: 39/39 controller;
+**101/101 full chain in BOTH pure and strict compiled modes**. Battery:
+**12/12 prior guards + drop-ins-allowed + V1-resurrection all KILLED**; the
+fragment-path-unpin mutation survives and is adjudicated
+redundant-defensive (fragment byte-equality is load-bearing; a same-bytes
+fragment elsewhere is behaviorally identical) — a direct pin regression is
+nice-to-have, non-blocking. Boundary: the marker authorizes only freezing a
+fresh V2 host packet; packet review, one-shot admission and terminal review
+remain separate. V1 packet `6489d9b8…` retired, never attest or run. No
+scored execution, record access, aggregation, retry, strength, training,
+promotion, or deployment authority.
+
+---

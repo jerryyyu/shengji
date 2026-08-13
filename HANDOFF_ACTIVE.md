@@ -72,7 +72,10 @@ Last reconciled: 2026-08-13 18:57 EDT from canonical main `cb35ce5`.
    (internal `68c250b4…1552c`) is frozen; execution remains false and every
    admission/output path is absent. A fresh read-only host check independently
    reproduced `verify-packet` and both packet hashes. Await exact packet review
-   before one serial 64-state run; no record opening or downstream authority.
+   before one serial 64-state run. After a terminal run, the built-in
+   `verify-final` reopens only the score-free final, admission and review
+   snapshot; it must pass before terminal review, and no scored record may be
+   opened. No downstream authority follows.
 4. **Pair capacity successor PR #96.** Draft exact head `c4d2df8` preserves
    the full 7,168-cluster population and 1.5x safety factor, changes only the
    explicit wall budget 48h -> 52h under review, uses a fresh disjoint V2

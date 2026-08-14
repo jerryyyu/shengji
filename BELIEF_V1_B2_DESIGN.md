@@ -1,9 +1,9 @@
 # BELIEF-V1 B1/B2: opened-development corpus and calibration design
 
-Status: local implementation draft stacked on repaired PR #112 exact head
-`a9de2b866ee6fc939abdb46b40d6fb9c19331e88`, whose exact-head external
-re-review is still pending. The governing specification is PR #110 exact head
-`b8c2a4c25e918278c72facc472c6736428e65af3`.
+Status: local implementation draft on canonical merge `b31647030ae7e7f1afbee70889b478718fb88b96`
+of externally reviewed PR #112 exact head
+`a9de2b866ee6fc939abdb46b40d6fb9c19331e88`. The governing specification is
+merged PR #110 exact head `b8c2a4c25e918278c72facc472c6736428e65af3`.
 
 This document authorizes nothing. In particular it does not authorize corpus
 generation, training, cloud use, sampler changes, gameplay evidence, strength
@@ -171,8 +171,10 @@ scale and the same actor bytes produce bit-identical probability bytes.
 
 The learned layer represents soft receiver preferences, not every joint card
 correlation. Complete-world sampling and derived marginals remain separate B3
-work. If projected card marginals fail pair/tractor/top-rank calibration, this
-factorization closes; an autoregressive successor requires a new design.
+work. If projected card marginals fail receiver-count or linear-expectation
+calibration, this factorization closes; joint pair/tractor/top-rank event
+calibration is a B3 gate, and an autoregressive successor requires a new
+design.
 
 The primary candidate is the ordered equal-weight ensemble of all eight member
 predictions. Integer member count probabilities are summed with weight one and
@@ -260,10 +262,15 @@ higher-pair, nonpoint discard, or trump alternative. That privileged audit
 label is sealed with targets and is forbidden from actor rows and inference.
 This separation prevents “declined an available action” from leaking that the
 action really was available.
-3. **C3 reliability:** for receiver count, void, trump length, point count,
-   pair count, tractor length, and top-rank events with at least 1,000 examples,
-   report fixed-bin ECE and reliability slope. The concrete packet freezes bin
-   edges and tolerances from train/calibration only.
+3. **C3 reliability:** for each emitted receiver count class `0/1/2`, report
+   fixed 10-bin ECE and reliability slope overall and by frozen public role,
+   phase, declaration, and hidden-kitty strata when at least 1,000 probability
+   cells are present. Also report calibration/error for linear expectations
+   derivable from the ownership marginals: suit/trump length, point count, and
+   pair count. Void, tractor-length, boss/top-rank, and multi-card action-event
+   distributions are joint-posterior outputs and are therefore deferred to B3
+   complete-world sampling; B2 must not fabricate them with an unreviewed
+   independence assumption.
 4. **C4 exact synthetic posterior:** an independent small-domain instance of
    the same capture/encoder/projection training pipeline is trained on deals
    generated under a named known policy whose compatible worlds and action

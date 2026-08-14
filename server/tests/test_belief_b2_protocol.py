@@ -26,7 +26,7 @@ from shengji.rl.belief_corpus import decision_key, split_for_round_seed
 
 
 EXPECTED_PROTOCOL_SHA256 = (
-    "223ecb7f67aec4e254ee5fddea5b248530061c32b3a61beed4373d483f212de3")
+    "a3d5357ddf9ef38efb0bb79fc298f9cb95591f86f0dfd18ced7028d02dae4400")
 
 
 def test_population_splits_lanes_and_policy_seeds_are_exact():
@@ -70,6 +70,8 @@ def test_canonical_protocol_is_pinned_and_authorizes_nothing():
     assert set(payload["authority"].values()) == {False}
     assert payload["capture"]["retry_count"] == 0
     assert payload["capture"]["drop_count"] == 0
+    assert payload["reference"]["retry_count"] == 0
+    assert payload["reference"]["byte_cap"] == 4 * 1024**3
     assert payload["training"]["retry_count"] == 0
     assert payload["training"]["candidate_member_count"] == 8
     assert payload["training"][

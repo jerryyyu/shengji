@@ -19,6 +19,9 @@ from .belief_b2_protocol import (
     CAPTURE_BYTE_CAP,
     CAPTURE_CORE_HOUR_CAP,
     CAPTURE_WALL_SECOND_CAP,
+    REFERENCE_BYTE_CAP,
+    REFERENCE_CORE_HOUR_CAP,
+    REFERENCE_WALL_SECOND_CAP,
     TRAIN_BYTE_CAP,
     TRAIN_DEVICE_HOUR_CAP,
     TRAIN_WALL_SECOND_CAP,
@@ -130,10 +133,14 @@ class B2ResourceReceiptV1:
     capture_cpu_nanoseconds: int
     capture_wall_nanoseconds: int
     capture_artifact_bytes: int
+    reference_cpu_nanoseconds: int
+    reference_wall_nanoseconds: int
+    reference_artifact_bytes: int
     training_device_nanoseconds: int
     training_wall_nanoseconds: int
     training_artifact_bytes: int
     capture_retry_count: int
+    reference_retry_count: int
     training_retry_count: int
     test_split_open_count: int
     schema: str = RESOURCE_SCHEMA
@@ -146,12 +153,18 @@ class B2ResourceReceiptV1:
             and self.capture_wall_nanoseconds
             <= CAPTURE_WALL_SECOND_CAP * NS_PER_SECOND
             and self.capture_artifact_bytes <= CAPTURE_BYTE_CAP
+            and self.reference_cpu_nanoseconds
+            <= REFERENCE_CORE_HOUR_CAP * NS_PER_HOUR
+            and self.reference_wall_nanoseconds
+            <= REFERENCE_WALL_SECOND_CAP * NS_PER_SECOND
+            and self.reference_artifact_bytes <= REFERENCE_BYTE_CAP
             and self.training_device_nanoseconds
             <= TRAIN_DEVICE_HOUR_CAP * NS_PER_HOUR
             and self.training_wall_nanoseconds
             <= TRAIN_WALL_SECOND_CAP * NS_PER_SECOND
             and self.training_artifact_bytes <= TRAIN_BYTE_CAP
             and self.capture_retry_count == 0
+            and self.reference_retry_count == 0
             and self.training_retry_count == 0
             and self.test_split_open_count == 1)
 
@@ -165,6 +178,12 @@ class B2ResourceReceiptV1:
                 "wall_nanoseconds": self.capture_wall_nanoseconds,
                 "artifact_bytes": self.capture_artifact_bytes,
                 "retry_count": self.capture_retry_count,
+            },
+            "reference": {
+                "cpu_nanoseconds": self.reference_cpu_nanoseconds,
+                "wall_nanoseconds": self.reference_wall_nanoseconds,
+                "artifact_bytes": self.reference_artifact_bytes,
+                "retry_count": self.reference_retry_count,
             },
             "training": {
                 "device_nanoseconds": self.training_device_nanoseconds,
@@ -387,9 +406,13 @@ def _validate_resources(receipt: B2ResourceReceiptV1) -> None:
     values = (
         receipt.capture_cpu_nanoseconds, receipt.capture_wall_nanoseconds,
         receipt.capture_artifact_bytes,
+        receipt.reference_cpu_nanoseconds,
+        receipt.reference_wall_nanoseconds,
+        receipt.reference_artifact_bytes,
         receipt.training_device_nanoseconds,
         receipt.training_wall_nanoseconds,
         receipt.training_artifact_bytes, receipt.capture_retry_count,
+        receipt.reference_retry_count,
         receipt.training_retry_count, receipt.test_split_open_count)
     if type(receipt) is not B2ResourceReceiptV1 \
             or receipt.schema != RESOURCE_SCHEMA \

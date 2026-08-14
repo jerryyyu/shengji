@@ -45,6 +45,7 @@ DESIGN_SCHEMA = "belief-v1-b2-offline-execution-design-v1"
 SOURCE_SCHEMA = "belief-v1-b2-source-binding-v1"
 RUNTIME_SCHEMA = "belief-v1-b2-runtime-profile-v1"
 REVIEW_SCHEMA = "belief-v1-b2-offline-execution-review-v1"
+ADMISSION_SCHEMA = "belief-v1-b2-offline-pipeline-admission-v1"
 REVIEW_PREFIX = "BELIEF_V1_B2_OFFLINE_EXECUTION_V1_REVIEW "
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
 REVIEWER_NAME = "Claude"
@@ -235,6 +236,49 @@ class B2ExecutionDesignV1:
                 "deployment_authorized": False,
             },
         }
+
+    def sha256(self) -> str:
+        return _sha256(self.canonical_bytes())
+
+
+@dataclass(frozen=True)
+class B2PipelineAdmissionV1:
+    design_sha256: str
+    execution_git: str
+    source_manifest_sha256: str
+    review_commit: str
+    review_marker_sha256: str
+    evidence_root: str
+    schema: str = ADMISSION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "run_id": RUN_ID,
+            "protocol_sha256": protocol_sha256(),
+            "design_sha256": self.design_sha256,
+            "execution_git": self.execution_git,
+            "source_manifest_sha256": self.source_manifest_sha256,
+            "review_commit": self.review_commit,
+            "review_marker_sha256": self.review_marker_sha256,
+            "evidence_root": self.evidence_root,
+            "authority": {
+                "capture_authorized": True,
+                "reference_generation_authorized": True,
+                "training_authorized": True,
+                "one_test_split_open_authorized": True,
+                "terminal_reconstruction_authorized": True,
+                "retry_authorized": False,
+                "sampler_implementation_authorized": False,
+                "gameplay_strength_screen_authorized": False,
+                "strength_claim_authorized": False,
+                "promotion_authorized": False,
+                "deployment_authorized": False,
+            },
+        }
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_json_bytes(self.to_dict())
 
     def sha256(self) -> str:
         return _sha256(self.canonical_bytes())
@@ -566,3 +610,103 @@ def authenticate_review_commit(
         raise BeliefB2ExecutionError(
             "execution review marker introduction drift")
     return marker
+
+
+def build_pipeline_admission(
+        design: B2ExecutionDesignV1, *, review_commit: str,
+        review_marker: bytes) -> B2PipelineAdmissionV1:
+    """Build the single admission consumed by the complete offline run."""
+    validate_execution_design(design)
+    if not _is_git_sha(review_commit) or type(review_marker) is not bytes \
+            or review_marker != REVIEW_PREFIX.encode() \
+            + canonical_json_bytes(expected_review_claim(design)):
+        raise BeliefB2ExecutionError("pipeline admission review drift")
+    result = B2PipelineAdmissionV1(
+        design_sha256=design.sha256(), execution_git=design.execution_git,
+        source_manifest_sha256=design.source_manifest_sha256,
+        review_commit=review_commit,
+        review_marker_sha256=_sha256(review_marker),
+        evidence_root=design.evidence_root)
+    validate_pipeline_admission(design, result, review_marker=review_marker)
+    return result
+
+
+def validate_pipeline_admission(
+        design: B2ExecutionDesignV1, admission: B2PipelineAdmissionV1, *,
+        review_marker: bytes) -> None:
+    if type(admission) is not B2PipelineAdmissionV1 \
+            or admission.schema != ADMISSION_SCHEMA \
+            or admission.design_sha256 != design.sha256() \
+            or admission.execution_git != design.execution_git \
+            or admission.source_manifest_sha256 \
+            != design.source_manifest_sha256 \
+            or not _is_git_sha(admission.review_commit) \
+            or admission.review_marker_sha256 != _sha256(review_marker) \
+            or admission.evidence_root != design.evidence_root \
+            or review_marker != REVIEW_PREFIX.encode() \
+            + canonical_json_bytes(expected_review_claim(design)):
+        raise BeliefB2ExecutionError("pipeline admission identity drift")
+
+
+def pipeline_admission_from_bytes(
+        raw: bytes, *, design: B2ExecutionDesignV1,
+        review_marker: bytes) -> B2PipelineAdmissionV1:
+    """Strictly reopen and fully rederive the one consumed admission."""
+    if type(raw) is not bytes or not raw:
+        raise BeliefB2ExecutionError("pipeline admission bytes are empty")
+    try:
+        payload = json.loads(
+            raw.decode("ascii"), object_pairs_hook=_strict_object,
+            parse_float=_reject_number, parse_constant=_reject_number)
+    except BeliefB2ExecutionError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefB2ExecutionError(
+            "pipeline admission is not strict JSON") from exc
+    expected = {
+        "schema", "run_id", "protocol_sha256", "design_sha256",
+        "execution_git", "source_manifest_sha256", "review_commit",
+        "review_marker_sha256", "evidence_root", "authority"}
+    if type(payload) is not dict or set(payload) != expected \
+            or canonical_json_bytes(payload) != raw:
+        raise BeliefB2ExecutionError(
+            "pipeline admission field/canonical drift")
+    admission = B2PipelineAdmissionV1(
+        schema=payload["schema"],
+        design_sha256=payload["design_sha256"],
+        execution_git=payload["execution_git"],
+        source_manifest_sha256=payload["source_manifest_sha256"],
+        review_commit=payload["review_commit"],
+        review_marker_sha256=payload["review_marker_sha256"],
+        evidence_root=payload["evidence_root"])
+    validate_pipeline_admission(
+        design, admission, review_marker=review_marker)
+    if admission.canonical_bytes() != raw:
+        raise BeliefB2ExecutionError(
+            "pipeline admission reconstruction drift")
+    return admission
+
+
+def pipeline_admission_review_commit(raw: bytes) -> str:
+    """Extract only the closed full review SHA needed to authenticate first."""
+    if type(raw) is not bytes or not raw:
+        raise BeliefB2ExecutionError("pipeline admission bytes are empty")
+    try:
+        payload = json.loads(
+            raw.decode("ascii"), object_pairs_hook=_strict_object,
+            parse_float=_reject_number, parse_constant=_reject_number)
+    except BeliefB2ExecutionError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefB2ExecutionError(
+            "pipeline admission is not strict JSON") from exc
+    expected = {
+        "schema", "run_id", "protocol_sha256", "design_sha256",
+        "execution_git", "source_manifest_sha256", "review_commit",
+        "review_marker_sha256", "evidence_root", "authority"}
+    if type(payload) is not dict or set(payload) != expected \
+            or canonical_json_bytes(payload) != raw \
+            or not _is_git_sha(payload["review_commit"]):
+        raise BeliefB2ExecutionError(
+            "pipeline admission review-commit field drift")
+    return payload["review_commit"]

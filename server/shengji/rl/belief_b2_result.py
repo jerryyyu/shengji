@@ -196,7 +196,8 @@ class B2ArtifactInventoryV1:
     privileged_target_manifest_sha256: str
     split_seed_manifest_sha256: str
     reference_world_manifest_sha256: str
-    training_curve_sha256: str
+    candidate_training_curve_sha256: str
+    control_training_curve_sha256: str
     population_round_count: int
     population_decision_count: int
     test_round_count: int
@@ -204,7 +205,8 @@ class B2ArtifactInventoryV1:
     candidate_checkpoint_sha256s: tuple[str, ...]
     control_member_model_sha256s: tuple[str, ...]
     control_checkpoint_sha256s: tuple[str, ...]
-    selected_epoch: int
+    candidate_selected_epoch: int
+    control_selected_epoch: int
     mechanics_result_sha256: str
     resource_receipt_sha256: str
     c1_result_sha256: str
@@ -235,7 +237,11 @@ class B2ArtifactInventoryV1:
             "split_seed_manifest_sha256": self.split_seed_manifest_sha256,
             "reference_world_manifest_sha256": (
                 self.reference_world_manifest_sha256),
-            "training_curve_sha256": self.training_curve_sha256,
+            "training_curve_sha256s": {
+                "candidate": self.candidate_training_curve_sha256,
+                "hard_geometry_permuted_label": (
+                    self.control_training_curve_sha256),
+            },
             "population_round_count": self.population_round_count,
             "population_decision_count": self.population_decision_count,
             "test_round_count": self.test_round_count,
@@ -247,6 +253,7 @@ class B2ArtifactInventoryV1:
                 "checkpoint_sha256s": list(
                     self.candidate_checkpoint_sha256s),
                 "ensemble_sha256": self.candidate_ensemble_sha256,
+                "selected_common_epoch": self.candidate_selected_epoch,
             },
             "hard_geometry_permuted_label_cohort": {
                 "schema": COHORT_SCHEMA,
@@ -256,8 +263,8 @@ class B2ArtifactInventoryV1:
                 "checkpoint_sha256s": list(
                     self.control_checkpoint_sha256s),
                 "ensemble_sha256": self.control_ensemble_sha256,
+                "selected_common_epoch": self.control_selected_epoch,
             },
-            "selected_common_epoch": self.selected_epoch,
             "results": {
                 "mechanics": self.mechanics_result_sha256,
                 "resource_receipt": self.resource_receipt_sha256,
@@ -399,7 +406,9 @@ def _validate_inventory(inventory: B2ArtifactInventoryV1) -> None:
         inventory.privileged_target_manifest_sha256,
         inventory.split_seed_manifest_sha256,
         inventory.reference_world_manifest_sha256,
-        inventory.training_curve_sha256, inventory.mechanics_result_sha256,
+        inventory.candidate_training_curve_sha256,
+        inventory.control_training_curve_sha256,
+        inventory.mechanics_result_sha256,
         inventory.resource_receipt_sha256, inventory.c1_result_sha256,
         inventory.c2_result_sha256, inventory.c3_result_sha256,
         inventory.n2_result_sha256, inventory.c4_result_sha256,
@@ -425,8 +434,10 @@ def _validate_inventory(inventory: B2ArtifactInventoryV1) -> None:
             or inventory.population_decision_count < B2_ROUND_COUNT \
             or type(inventory.test_round_count) is not int \
             or inventory.test_round_count != len(b2_split_round_seeds("test")) \
-            or type(inventory.selected_epoch) is not int \
-            or not 1 <= inventory.selected_epoch <= 30:
+            or type(inventory.candidate_selected_epoch) is not int \
+            or not 1 <= inventory.candidate_selected_epoch <= 30 \
+            or type(inventory.control_selected_epoch) is not int \
+            or not 1 <= inventory.control_selected_epoch <= 30:
         raise BeliefB2ResultError("B2 artifact inventory drift")
     # Force exact cohort identity reconstruction rather than trusting payloads.
     inventory.candidate_ensemble_sha256

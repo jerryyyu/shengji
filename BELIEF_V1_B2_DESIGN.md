@@ -202,6 +202,12 @@ patience three epochs, and minimum improvement `1e-4`; all eight seeds stop at
 the same selected epoch. The test split is opened exactly once after candidate
 and negative-control cohorts are frozen.
 
+The candidate cohort and N2 permuted-label cohort each select one common
+epoch across their own eight members. They do not share an epoch across the
+two different training objectives. Both complete cohort curves and both
+selected epochs are frozen before the test split opens; neither choice may
+use test performance.
+
 A complete round is never split across optimizer batches. For epoch `e`, train
 rounds are ordered by `sha256(protocol_sha256|epoch-e|round_seed)` and packed in
 that order up to 256 decisions. Early stopping operates on integer cohort-mean
@@ -348,7 +354,8 @@ The offline run must publish immutable, separately reviewable artifacts:
 - capture source/runtime/work/cost receipt;
 - exact reference-world manifest and sampler counters;
 - eight candidate and eight permuted-label checkpoints plus cohort manifests;
-- train/calibration curves with no test payload;
+- separate candidate and permuted-label train/calibration curves and their
+  separately selected common cohort epochs, with no test payload;
 - one terminal test report with E/C/N/U1 metrics and per-stratum counts; and
 - a no-authority result envelope.
 

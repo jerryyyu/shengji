@@ -35,7 +35,8 @@ cdef enum:
     MAX_LEVEL = 16
     MAX_PER_LEVEL = 6
     N_CODES = 54
-    MAX_CARDS = 128   # plays/hands never exceed 33
+    MAX_CARDS = 128   # kernel buffer capacity only, NOT the engine domain
+    ENGINE_HAND_MAX = 33  # authoritative HAND_SIZE + KITTY_SIZE admission cap
     MAX_RUNS = 64     # bounded by MAX_CARDS/2 pair-runs in a shape
     MAX_PAIRS = 64
 
@@ -647,6 +648,15 @@ def total_points(codes):
     return tot
 
 
+cdef inline int _n_pairs_of(object dec) except -1:
+    """Decomposition.n_pairs (sum of component pair_len) without the Python
+    property + sum + genexpr — value-identical by construction."""
+    cdef int total = 0
+    for comp in dec.components:
+        total += <int>comp.pair_len
+    return total
+
+
 cdef inline long _low_key(int in_avoid, int trumpish, long pts, int vlen,
                           int lvl, bint avoid_points,
                           bint seek_points) noexcept:
@@ -719,6 +729,8 @@ def heuristic_lowest(list cards, ordering, bint void_dump, bint avoid_points,
 cdef object _POLICY_ORDERING_TYPE = None
 cdef object _PURE_FOLLOW = None
 cdef object _PURE_LEAD = None
+cdef object _PURE_DECIDE_PLAY = None
+cdef object _PURE_CHEAPEST_WINNING = None
 cdef object _PURE_PLAY = None
 cdef object _ROUND_CLS = None
 cdef object _TRICK_CLS = None
@@ -746,6 +758,20 @@ def set_lead_fallback(pure_lead):
     """Register the saved pure ``_lead`` for the entry-bound native lead."""
     global _PURE_LEAD
     _PURE_LEAD = pure_lead
+
+
+def set_decide_play_fallback(pure_decide_play):
+    """Register the saved pure ``decide_play`` for the entry-bound native."""
+    global _PURE_DECIDE_PLAY
+    _PURE_DECIDE_PLAY = pure_decide_play
+
+
+def set_cheapest_winning_fallback(pure_cheapest_winning):
+    """Register the saved pure ``_cheapest_winning`` for the entry-bound
+    native (used when the incumbent top is outside the engine's -1..15
+    comparison domain, where narrowing to C long would change semantics)."""
+    global _PURE_CHEAPEST_WINNING
+    _PURE_CHEAPEST_WINNING = pure_cheapest_winning
 
 
 def set_follow_fallback(ordering_type, pure_follow):
@@ -823,6 +849,64 @@ def heuristic_follow(bot, rnd, seat):
         if worth:
             return winning
     return forced_follow(hand, lead, ordering, bot.VOID_DUMP, False, None)
+
+
+def heuristic_decide_play(bot, rnd, seat):
+    """HeuristicBot.decide_play drop-in: the per-rollout-play Python frame
+    (assert + lead/follow dispatch + follow validation) at C speed.
+
+    Sub-decisions dispatch through ``bot._lead`` / ``bot._follow`` /
+    ``bot._forced_follow`` exactly like the pure body, so subclass overrides
+    (SmartBot, point-banking) keep normal Python method resolution; on
+    HeuristicBot itself those attributes are the entry-bound natives, so a
+    trusted rollout play crosses no Python frame at all.  A None trick or
+    ordering defers to the registered pure method for its AssertionError."""
+    if (_PURE_DECIDE_PLAY is None or rnd.trick is None
+            or rnd.ordering is None):
+        return _PURE_DECIDE_PLAY(bot, rnd, seat)
+    if not rnd.trick.plays:
+        return bot._lead(rnd, seat)
+    play = bot._follow(rnd, seat)
+    try:
+        validate_follow(play, rnd.hands[seat], rnd.trick.plays[0].cards,
+                        rnd.ordering)
+    except IllegalPlay:
+        play = bot._forced_follow(rnd.hands[seat], rnd.trick.plays[0].cards,
+                                  rnd.ordering, prefer_points=False)
+    return play
+
+
+def heuristic_lowest_m(bot, cards, ordering, avoid_points=False,
+                       seek_points=False, avoid=None):
+    """HeuristicBot._lowest drop-in bound directly on the class: reads
+    VOID_DUMP from the instance, then runs the existing kernel — replaces
+    the Python forwarding wrapper (one frame per rollout junk pick)."""
+    return heuristic_lowest(cards, ordering, bot.VOID_DUMP, avoid_points,
+                            seek_points, avoid)
+
+
+def heuristic_forced_follow(bot, hand, lead, ordering, prefer_points,
+                            avoid=None):
+    """HeuristicBot._forced_follow drop-in bound directly on the class
+    (VOID_DUMP from the instance, no Python wrapper frame)."""
+    return forced_follow(hand, lead, ordering, bot.VOID_DUMP, prefer_points,
+                         avoid)
+
+
+def heuristic_cheapest_winning(bot, hand, lead, incumbent_suit,
+                               incumbent_top, ordering):
+    """HeuristicBot._cheapest_winning drop-in bound directly on the class.
+
+    Engine-produced comparison tops are -1..15; anything else retains the
+    pure implementation's result/exception rather than being narrowed to a
+    C ``long`` (same domain guard the old Python wrapper enforced)."""
+    if (_PURE_CHEAPEST_WINNING is not None
+            and (type(incumbent_top) is not int
+                 or not -1 <= incumbent_top <= 15)):
+        return _PURE_CHEAPEST_WINNING(bot, hand, lead, incumbent_suit,
+                                      incumbent_top, ordering)
+    return cheapest_winning(bot, hand, lead, incumbent_suit, incumbent_top,
+                            ordering)
 
 
 def round_play(rnd, seat, cards):
@@ -937,7 +1021,11 @@ def heuristic_lead(bot, rnd, seat):
             and type(seat) is int and type(hands) is list
             and len(hands) == 4 and 0 <= seat < 4):
         hand = hands[seat]
-        if type(hand) is list and 0 < len(hand) <= MAX_CARDS:
+        # Engine domain is HAND_SIZE + KITTY_SIZE == 33 cards, not the
+        # kernel buffer capacity: anything larger is malformed input that
+        # must take the saved pure fallback, never the bounds-check-disabled
+        # kernel.
+        if type(hand) is list and 0 < len(hand) <= ENGINE_HAND_MAX:
             return _heuristic_lead_kernel(bot, rnd, seat)
     return _PURE_LEAD(bot, rnd, seat)
 
@@ -1117,8 +1205,8 @@ def forced_follow(list hand, list lead, ordering, bint void_dump,
             cnt[sid[i]] += 1
         for c in range(N_CODES):
             need += cnt[c] // 2                # pair_count(h_suit)
-        if <int>lead_dec.n_pairs < need:
-            need = <int>lead_dec.n_pairs
+        if _n_pairs_of(lead_dec) < need:
+            need = _n_pairs_of(lead_dec)
         need -= <int>len(picked) // 2          # pair_count(picked): all pairs
         if need > 0:
             # distinct pool codes with count >= 2, Counter (first-alive-
@@ -1340,7 +1428,7 @@ def validate_follow(list play, list hand, list lead, ordering):
         have_pairs = 0
         for c in range(N_CODES):
             have_pairs += cnths[c] // 2
-        need_pairs = <int>lead_dec.n_pairs
+        need_pairs = _n_pairs_of(lead_dec)
         if have_pairs < need_pairs:
             need_pairs = have_pairs
         play_pairs = 0

@@ -34,7 +34,6 @@ from . import cards as _cards
 from . import combos, legal
 from .cards import Ordering, make_deck
 from .combos import Decomposition
-from .round import HAND_SIZE, KITTY_SIZE
 
 try:
     from . import _fast  # compiled extension; see setup.py
@@ -46,7 +45,6 @@ except ImportError:  # not built — pure Python fallback
 ID2CODE: list[str] = sorted(set(make_deck()))  # 54 codes, deterministic ids
 CODE2ID: dict[str, int] = {c: i for i, c in enumerate(ID2CODE)}
 EFF_ID = {"S": 0, "H": 1, "C": 2, "D": 3, "T": 4}
-_MAX_ENGINE_HAND_CARDS = HAND_SIZE + KITTY_SIZE
 
 
 def _ctx(ordering: Ordering) -> tuple:
@@ -158,66 +156,26 @@ _ROUTED = (
 )
 
 
-# Method drop-ins for HeuristicBot (phase 2 partial): thin wrappers that
-# forward the per-instance VOID_DUMP flag into the kernels. Patched onto
-# the CLASS by activate() (SmartBot/MCBot inherit; no subclass overrides
-# these two — asserted at activation).
-def _lowest_fast(self, cards, o, avoid_points=False, seek_points=False,
-                 avoid=None):
-    return _fast.heuristic_lowest(cards, o, self.VOID_DUMP, avoid_points,
-                                  seek_points, avoid)
-
-
-def _forced_follow_fast(self, hand, lead, o, prefer_points, avoid=None):
-    return _fast.forced_follow(hand, lead, o, self.VOID_DUMP, prefer_points,
-                               avoid)
-
-
-def _lead_fast(self, rnd, seat):
-    # ``heuristic_lead`` deliberately disables Cython bounds/wraparound
-    # checks in its engine-only kernel.  Keep malformed/public calls on the
-    # pure method: besides preserving Python's indexing semantics (including
-    # bool and negative indices), this prevents an invalid seat from becoming
-    # an unchecked native list access.  The largest real hand is the banker's
-    # 25 dealt cards plus the 8-card kitty.
-    hands = getattr(rnd, "hands", None)
-    if (type(getattr(rnd, "ordering", None)) is not Ordering
-            or type(seat) is not int or type(hands) is not list
-            or len(hands) != 4 or not 0 <= seat < len(hands)):
-        return _saved["HeuristicBot._lead"](self, rnd, seat)
-    hand = hands[seat]
-    if type(hand) is not list or not 0 < len(hand) <= _MAX_ENGINE_HAND_CARDS:
-        return _saved["HeuristicBot._lead"](self, rnd, seat)
-    # The native kernel delegates tractor/lowest sub-decisions back through
-    # the currently routed bot methods.  On malformed synthetic objects a
-    # subclass/public override may reject the otherwise list-shaped input;
-    # retain pure behavior instead of letting that partial native route leak.
-    return _fast.heuristic_lead(self, rnd, seat)
-
-
-def _cheapest_winning_fast(self, hand, lead, inc_suit, inc_top, o):
-    # Engine-produced comparison tops are -1..15.  Keep the native call on
-    # that exact domain; the method remains public/testable, so malformed or
-    # arbitrarily large Python values must retain the pure implementation's
-    # result/exception rather than being narrowed to C ``long``.
-    if type(inc_top) is not int or not -1 <= inc_top <= 15:
-        return _saved["HeuristicBot._cheapest_winning"](
-            self, hand, lead, inc_suit, inc_top, o)
-    return _fast.cheapest_winning(self, hand, lead, inc_suit, inc_top, o)
-
-
+# Method drop-ins for HeuristicBot: every routed method now binds a compiled
+# entry directly on the class (no Python wrapper frame).  Entries that need
+# per-instance state (VOID_DUMP) read it from ``self`` inside the kernel;
+# entries with guard domains (`_cheapest_winning`'s -1..15 incumbent top,
+# `decide_play`'s None trick/ordering) carry a registered pure fallback.
 _METHOD_ROUTED = (
-    # (save-key, class attr on HeuristicBot, wrapper,
-    #  require-no-subclass-override).  A subclass's own `_lead` wins normal
-    # Python dispatch and is therefore safe to preserve; the other wrappers
-    # are shared policy primitives whose semantics must remain uniform.
-    ("HeuristicBot._lowest", "_lowest", _lowest_fast, True),
-    ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast,
-     True),
-    ("HeuristicBot._follow", "_follow", None, False),
-    ("HeuristicBot._lead", "_lead", None, False),
+    # (save-key, class attr on HeuristicBot, native entry in _fast,
+    #  require-no-subclass-override).  A subclass's own `decide_play`/
+    # `_lead`/`_follow` wins normal Python dispatch and is therefore safe to
+    # preserve; the other entries are shared policy primitives whose
+    # semantics must remain uniform.
+    ("HeuristicBot._lowest", "_lowest", "heuristic_lowest_m", True),
+    ("HeuristicBot._forced_follow", "_forced_follow",
+     "heuristic_forced_follow", True),
+    ("HeuristicBot._follow", "_follow", "heuristic_follow", False),
+    ("HeuristicBot._lead", "_lead", "heuristic_lead", False),
     ("HeuristicBot._cheapest_winning", "_cheapest_winning",
-     _cheapest_winning_fast, True),
+     "heuristic_cheapest_winning", True),
+    ("HeuristicBot.decide_play", "decide_play", "heuristic_decide_play",
+     False),
 )
 
 
@@ -238,23 +196,23 @@ def activate() -> bool:
         _saved[key] = getattr(mod, attr)
         mapping[_saved[key]] = globals()[key]
     _rebind(mapping)
-    for key, attr, wrapper, require_unoverridden in _METHOD_ROUTED:
-        # The strict wrappers are shared policy primitives; refuse a subclass
-        # override instead of silently changing its meaning.  `_lead` is a
-        # normal dispatch leaf: subclass overrides continue to win through
-        # Python's method resolution and are intentionally allowed.
+    for key, attr, native, require_unoverridden in _METHOD_ROUTED:
+        # The strict entries are shared policy primitives; refuse a subclass
+        # override instead of silently changing its meaning.  `decide_play`/
+        # `_lead`/`_follow` are normal dispatch leaves: subclass overrides
+        # continue to win through Python's method resolution and are
+        # intentionally allowed.
         if require_unoverridden:
             assert all(attr not in vars(k)
                        for k in _subclasses(HeuristicBot)), \
                 f"a HeuristicBot subclass overrides {attr}; fast path unsafe"
         _saved[key] = getattr(HeuristicBot, attr)
-        if wrapper is None:
-            # Entry-bound natives carry their own guards and pure fallback;
-            # bind the kernel directly so hot calls pay no wrapper frame.
-            wrapper = getattr(_fast, "heuristic" + attr)
-        setattr(HeuristicBot, attr, wrapper)
+        setattr(HeuristicBot, attr, getattr(_fast, native))
     _fast.set_follow_fallback(Ordering, _saved["HeuristicBot._follow"])
     _fast.set_lead_fallback(_saved["HeuristicBot._lead"])
+    _fast.set_decide_play_fallback(_saved["HeuristicBot.decide_play"])
+    _fast.set_cheapest_winning_fallback(
+        _saved["HeuristicBot._cheapest_winning"])
     from .round import KITTY_MULTIPLIER, Round, Trick, TrickPlay
     _saved["Round.play"] = Round.play
     _fast.set_play_deps(Round, Trick, TrickPlay, _saved["Round.play"],

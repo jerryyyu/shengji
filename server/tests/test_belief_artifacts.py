@@ -14,9 +14,11 @@ from shengji.ai.mcbot import MCBot
 from shengji.rl.belief_artifacts import (
     BeliefArtifactError,
     capture_bundle_bytes,
+    checkpoint_bundle_bytes,
     publish_exclusive_bytes,
     reference_round_bundle_bytes,
     reopen_capture_bundle,
+    reopen_checkpoint_bundle,
     reopen_reference_round_bundle,
     stable_read_bytes,
 )
@@ -31,6 +33,11 @@ from shengji.rl.belief_capture import (
     capture_champion_round,
     reopen_captured_round_artifacts,
 )
+from shengji.rl.belief_checkpoint import (
+    build_model_checkpoint,
+    reopen_model_checkpoint,
+)
+from shengji.rl.belief_cohort import COHORT_SEEDS
 from shengji.rl.belief_corpus import split_for_round_seed
 from shengji.rl.belief_evaluation import reopen_score_pair
 from shengji.rl.belief_refc_capture import (
@@ -40,6 +47,16 @@ from shengji.rl.belief_refc_capture import (
 from shengji.rl.belief_reference import (
     ReceiverCardsV1,
     SampledOwnershipWorldV1,
+)
+from shengji.rl.belief_model import new_from_scratch_model
+from shengji.rl.belief_trainer import (
+    model_state_sha256,
+    new_b2_optimizer,
+    train_epoch,
+)
+from shengji.rl.belief_training import (
+    build_training_example,
+    collate_training_examples,
 )
 
 
@@ -143,3 +160,29 @@ def test_manifest_byte_drift_refuses_even_if_framing_is_valid(monkeypatch):
     changed = replace(artifacts, manifest_bytes=manifest)
     with pytest.raises((BeliefArtifactError, ValueError)):
         capture_bundle_bytes(changed)
+
+
+def test_checkpoint_bundle_round_trip_has_no_pickle_surface(monkeypatch):
+    captured = _captured(monkeypatch, split="train")
+    examples = tuple(build_training_example(
+        pair, behavior_policy_ids=("mc-s0-report-lcb",))
+                     for pair in captured.pairs[:3])
+    batch = collate_training_examples(examples)
+    seed = COHORT_SEEDS[0]
+    model = new_from_scratch_model(seed)
+    receipt = train_epoch(
+        model, new_b2_optimizer(model), (batch,), epoch=1)
+    checkpoint = build_model_checkpoint(
+        model, initialization_seed=seed, selected_epoch=1,
+        final_epoch_receipt=receipt)
+    raw = checkpoint_bundle_bytes(checkpoint, receipt)
+    reopened, reopened_receipt = reopen_checkpoint_bundle(raw)
+    rebuilt = reopen_model_checkpoint(
+        reopened, final_epoch_receipt=reopened_receipt)
+    assert reopened_receipt == receipt
+    assert reopened.sha256() == checkpoint.sha256()
+    assert model_state_sha256(rebuilt) == model_state_sha256(model)
+    changed = bytearray(raw)
+    changed[-1] ^= 1
+    with pytest.raises(BeliefArtifactError):
+        reopen_checkpoint_bundle(bytes(changed))

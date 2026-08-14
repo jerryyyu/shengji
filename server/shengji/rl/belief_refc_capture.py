@@ -56,6 +56,18 @@ _COUNTERS = ("sample_attempts", "accepted_worlds", "failed_worlds",
              "rejected_worlds", "impossible_worlds")
 
 
+def _world_stream_sha256(
+        worlds: tuple[SampledOwnershipWorldV1, ...]) -> str:
+    if type(worlds) is not tuple or not worlds:
+        raise BeliefRefCCaptureError("REF-C world stream is empty")
+    digest = hashlib.sha256()
+    for world in worlds:
+        raw = world.canonical_bytes()
+        digest.update(len(raw).to_bytes(8, "big"))
+        digest.update(raw)
+    return digest.hexdigest()
+
+
 class BeliefRefCCaptureError(ValueError):
     """A current-sampler reference batch failed its exact-work contract."""
 
@@ -126,7 +138,7 @@ class ReferenceWorldBatchV1:
                 "after": dict(self.sampler_after),
                 "delta": dict(self.sampler_delta),
             },
-            "world_sha256s": [world.sha256() for world in self.worlds],
+            "world_stream_sha256": _world_stream_sha256(self.worlds),
             "contains_sampled_hidden_worlds": True,
             "contains_round_outcome": False,
             "runtime_input": False,
@@ -279,7 +291,7 @@ def validate_reference_world_batch(batch: ReferenceWorldBatchV1) -> None:
         "schema", "actor_observation_sha256", "sampler_seed",
         "sampler_source_sha256", "sampler_source_sha256s",
         "behavior_policy_ids", "accepted_world_count", "attempts",
-        "attempt_cap", "sampler_counters", "world_sha256s",
+        "attempt_cap", "sampler_counters", "world_stream_sha256",
         "contains_sampled_hidden_worlds", "contains_round_outcome",
         "runtime_input",
     }

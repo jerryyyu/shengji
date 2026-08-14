@@ -34,6 +34,9 @@ MAX_SEED = 2**63 - 1
 CAPTURE_CORE_HOUR_CAP = 16
 CAPTURE_WALL_SECOND_CAP = 2 * 60 * 60
 CAPTURE_BYTE_CAP = 4 * 1024**3
+REFERENCE_CORE_HOUR_CAP = 64
+REFERENCE_WALL_SECOND_CAP = 8 * 60 * 60
+REFERENCE_BYTE_CAP = 4 * 1024**3
 TRAIN_DEVICE_HOUR_CAP = 32
 TRAIN_WALL_SECOND_CAP = 8 * 60 * 60
 TRAIN_BYTE_CAP = 16 * 1024**3
@@ -143,6 +146,10 @@ def protocol_dict() -> dict[str, Any]:
                 REFERENCE_REPLICATE_DISAGREEMENT_FRACTION_PPB),
             "calibration_relative_disagreement_cap_ppb": (
                 REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB),
+            "core_hour_cap": REFERENCE_CORE_HOUR_CAP,
+            "wall_second_cap": REFERENCE_WALL_SECOND_CAP,
+            "byte_cap": REFERENCE_BYTE_CAP,
+            "retry_count": 0,
         },
         "training": {
             "ordered_initialization_seeds": list(COHORT_SEEDS),

@@ -30,7 +30,8 @@ from .belief_checkpoint import (
     FrozenModelCheckpointV1,
     validate_model_checkpoint,
 )
-from .belief_contract import canonical_json_bytes
+from .belief_contract import ActorObservationV1, canonical_json_bytes
+from .belief_ownership import receiver_sizes
 from .belief_refc_capture import (
     ReferenceCapturedRoundV1,
     ReferenceWorldBatchV1,
@@ -40,6 +41,7 @@ from .belief_refc_capture import (
 from .belief_reference import (
     ReceiverCardsV1,
     SampledOwnershipWorldV1,
+    validate_sampled_world,
 )
 from .belief_trainer import EpochTrainingReceiptV1
 from .belief_reopen import actor_observation_from_dict
@@ -48,6 +50,7 @@ from .belief_reopen import actor_observation_from_dict
 CAPTURE_MAGIC = b"BELIEF-V1-CAPTURE-BUNDLE-V1\0"
 REFERENCE_MAGIC = b"BELIEF-V1-REF-C-ROUND-V1\0"
 CHECKPOINT_MAGIC = b"BELIEF-V1-MODEL-CHECKPOINT-V1\0"
+WORLD_BLOCK_MAGIC = b"BELIEF-V1-OWNERSHIP-WORLD-BLOCK-V1\0"
 MAX_PART_BYTES = 512 * 1024**2
 MAX_PART_COUNT = 128 * (2 + 256) + 2
 SAMPLER_COUNTERS = (
@@ -159,45 +162,107 @@ def reopen_capture_bundle(raw: bytes) -> CapturedRoundArtifactsV1:
     return artifacts
 
 
-def _world_from_bytes(raw: bytes, *, actor_sha256: str) \
-        -> SampledOwnershipWorldV1:
-    value = _strict_json(raw, label="sampled world")
-    if set(value) != {"schema", "actor_observation_sha256", "receivers"} \
-            or value["actor_observation_sha256"] != actor_sha256 \
-            or type(value["receivers"]) is not list:
-        raise BeliefArtifactError("sampled world field population drift")
-    receivers = []
-    for row in value["receivers"]:
-        if type(row) is not dict or set(row) != {
-                "receiver", "cards", "card_count"} \
-                or type(row["receiver"]) is not str \
-                or type(row["cards"]) is not dict \
-                or type(row["card_count"]) is not int:
-            raise BeliefArtifactError("sampled receiver row drift")
-        cards = tuple(sorted(row["cards"].items()))
-        if any(type(card) is not str or type(count) is not int
-               for card, count in cards) \
-                or sum(count for _, count in cards) != row["card_count"]:
-            raise BeliefArtifactError("sampled receiver cards drift")
-        receivers.append(ReceiverCardsV1(
-            receiver=row["receiver"], cards=cards))
-    world = SampledOwnershipWorldV1(
-        schema=value["schema"],
-        actor_observation_sha256=value["actor_observation_sha256"],
-        receivers=tuple(receivers))
-    if world.canonical_bytes() != raw:
-        raise BeliefArtifactError("sampled world reconstruction drift")
-    return world
+def _world_block_bytes(batch: ReferenceWorldBatchV1) -> bytes:
+    """Encode count cells at two bits each; manifests retain world hashes."""
+    validate_reference_world_batch(batch)
+    cards = tuple(card for card, _ in batch.actor.deductions.unseen)
+    receivers = tuple(receiver for receiver, _ in batch.ownership().receiver_sizes)
+    cell_count = len(cards) * len(receivers)
+    bytes_per_world = (cell_count + 3) // 4
+    payload = bytearray()
+    for world in batch.worlds:
+        by_receiver = {
+            row.receiver: dict(row.cards) for row in world.receivers}
+        if set(by_receiver) != set(receivers):
+            raise BeliefArtifactError("world block receiver population drift")
+        encoded = bytearray(bytes_per_world)
+        for index, (card, receiver) in enumerate(
+                (card, receiver) for card in cards for receiver in receivers):
+            count = by_receiver[receiver].get(card, 0)
+            if type(count) is not int or count not in (0, 1, 2):
+                raise BeliefArtifactError("world block count drift")
+            encoded[index // 4] |= count << (6 - 2 * (index % 4))
+        payload.extend(encoded)
+    return b"".join((
+        WORLD_BLOCK_MAGIC,
+        len(batch.worlds).to_bytes(4, "big"),
+        len(cards).to_bytes(2, "big"),
+        len(receivers).to_bytes(1, "big"),
+        bytes_per_world.to_bytes(4, "big"),
+        bytes(payload),
+    ))
+
+
+def _worlds_from_block(
+        raw: bytes, *, actor: ActorObservationV1,
+        expected_count: int, expected_stream_sha256: str) \
+        -> tuple[SampledOwnershipWorldV1, ...]:
+    header = len(WORLD_BLOCK_MAGIC) + 11
+    if type(raw) is not bytes or len(raw) < header \
+            or not raw.startswith(WORLD_BLOCK_MAGIC):
+        raise BeliefArtifactError("world block header drift")
+    offset = len(WORLD_BLOCK_MAGIC)
+    world_count = int.from_bytes(raw[offset:offset + 4], "big")
+    card_count = int.from_bytes(raw[offset + 4:offset + 6], "big")
+    receiver_count = raw[offset + 6]
+    bytes_per_world = int.from_bytes(raw[offset + 7:offset + 11], "big")
+    payload = raw[header:]
+    cards = tuple(card for card, _ in actor.deductions.unseen)
+    receivers = tuple(receiver for receiver, _ in receiver_sizes(actor))
+    cell_count = len(cards) * len(receivers)
+    expected_bytes = (cell_count + 3) // 4
+    if world_count != expected_count or world_count <= 0 \
+            or card_count != len(cards) or receiver_count != len(receivers) \
+            or bytes_per_world != expected_bytes \
+            or len(payload) != world_count * bytes_per_world:
+        raise BeliefArtifactError("world block population/size drift")
+    worlds = []
+    for world_index in range(world_count):
+        encoded = payload[
+            world_index * bytes_per_world:
+            (world_index + 1) * bytes_per_world]
+        if cell_count % 4 and encoded[-1] & (
+                (1 << (8 - 2 * (cell_count % 4))) - 1):
+            raise BeliefArtifactError("world block padding drift")
+        counts = {receiver: {} for receiver in receivers}
+        for index, (card, receiver) in enumerate(
+                (card, receiver) for card in cards for receiver in receivers):
+            count = (encoded[index // 4]
+                     >> (6 - 2 * (index % 4))) & 3
+            if count == 3:
+                raise BeliefArtifactError("world block count code drift")
+            if count:
+                counts[receiver][card] = count
+        world = SampledOwnershipWorldV1(
+            actor_observation_sha256=actor.sha256(),
+            receivers=tuple(ReceiverCardsV1(
+                receiver=receiver,
+                cards=tuple(sorted(counts[receiver].items())))
+                            for receiver in receivers))
+        try:
+            validate_sampled_world(actor, world)
+        except ValueError as exc:
+            raise BeliefArtifactError("world block typed reopen refused") \
+                from exc
+        worlds.append(world)
+    digest = hashlib.sha256()
+    for world in worlds:
+        canonical = world.canonical_bytes()
+        digest.update(len(canonical).to_bytes(8, "big"))
+        digest.update(canonical)
+    if digest.hexdigest() != expected_stream_sha256:
+        raise BeliefArtifactError("world block canonical stream hash drift")
+    return tuple(worlds)
 
 
 def _batch_parts(batch: ReferenceWorldBatchV1) -> tuple[bytes, ...]:
     validate_reference_world_batch(batch)
     return (batch.manifest_bytes(), batch.actor.canonical_bytes(),
-            *(world.canonical_bytes() for world in batch.worlds))
+            _world_block_bytes(batch))
 
 
 def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
-    if len(parts) < 3:
+    if len(parts) != 3:
         raise BeliefArtifactError("REF-C batch parts are incomplete")
     manifest = _strict_json(parts[0], label="REF-C batch manifest")
     actor_payload = _strict_json(parts[1], label="REF-C actor")
@@ -209,7 +274,7 @@ def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
         "schema", "actor_observation_sha256", "sampler_seed",
         "sampler_source_sha256", "sampler_source_sha256s",
         "behavior_policy_ids", "accepted_world_count", "attempts",
-        "attempt_cap", "sampler_counters", "world_sha256s",
+        "attempt_cap", "sampler_counters", "world_stream_sha256",
         "contains_sampled_hidden_worlds", "contains_round_outcome",
         "runtime_input",
     }
@@ -224,10 +289,15 @@ def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
             or any(set(manifest["sampler_counters"][name])
                    != set(SAMPLER_COUNTERS)
                    for name in ("before", "after", "delta")) \
-            or manifest["accepted_world_count"] != len(parts) - 2:
+            or type(manifest["world_stream_sha256"]) is not str \
+            or len(manifest["world_stream_sha256"]) != 64 \
+            or any(char not in "0123456789abcdef"
+                   for char in manifest["world_stream_sha256"]):
         raise BeliefArtifactError("REF-C batch manifest field drift")
-    worlds = tuple(_world_from_bytes(
-        raw, actor_sha256=actor.sha256()) for raw in parts[2:])
+    worlds = _worlds_from_block(
+        parts[2], actor=actor,
+        expected_count=manifest["accepted_world_count"],
+        expected_stream_sha256=manifest["world_stream_sha256"])
     batch = ReferenceWorldBatchV1(
         schema=manifest["schema"], actor=actor,
         sampler_seed=manifest["sampler_seed"], attempts=manifest["attempts"],
@@ -249,8 +319,8 @@ def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
     except ValueError as exc:
         raise BeliefArtifactError("REF-C batch typed reopen refused") from exc
     if batch.manifest_bytes() != parts[0] \
-            or tuple(world.sha256() for world in worlds) != tuple(
-                manifest["world_sha256s"]):
+            or batch.manifest_dict()["world_stream_sha256"] \
+            != manifest["world_stream_sha256"]:
         raise BeliefArtifactError("REF-C batch reconstruction drift")
     return batch
 
@@ -279,7 +349,7 @@ def reopen_reference_round_bundle(raw: bytes) -> ReferenceCapturedRoundV1:
     captured = reopen_captured_round_artifacts(capture_artifacts)
     batch_count = manifest["decision_count"]
     world_count = manifest["accepted_world_count"] // batch_count
-    batch_part_count = 2 + world_count
+    batch_part_count = 3
     if world_count <= 0 \
             or len(parts) != 2 + batch_count * batch_part_count:
         raise BeliefArtifactError("REF-C round batch framing drift")

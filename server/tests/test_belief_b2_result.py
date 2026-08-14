@@ -153,8 +153,11 @@ def _evidence():
         runtime_profile_sha256=_sha("runtime"),
         capture_cpu_nanoseconds=1, capture_wall_nanoseconds=1,
         capture_artifact_bytes=1, training_device_nanoseconds=1,
+        reference_cpu_nanoseconds=1, reference_wall_nanoseconds=1,
+        reference_artifact_bytes=1,
         training_wall_nanoseconds=1, training_artifact_bytes=1,
-        capture_retry_count=0, training_retry_count=0,
+        capture_retry_count=0, reference_retry_count=0,
+        training_retry_count=0,
         test_split_open_count=1)
     candidate_models = tuple(_sha(f"candidate-model-{i}") for i in range(8))
     control_models = tuple(_sha(f"control-model-{i}") for i in range(8))

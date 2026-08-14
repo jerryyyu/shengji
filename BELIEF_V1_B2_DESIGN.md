@@ -222,6 +222,13 @@ drift invalidates the cohort; it is not retried under the same recipe. The
 concrete implementation review pins framework, numerical mode, device class,
 and deterministic-algorithm settings before any training.
 
+REF-C generation has its own explicit cap: 64 CPU-hours, 8 wall-hours, and
+4 GiB of immutable reference artifacts across both calibration replicates and
+the test-primary replicate, with zero retries. Reference worlds are stored as
+two-bit hidden-receiver count cells plus one ordered length-delimited canonical
+world-stream digest per decision. Terminal reopening reconstructs and validates
+every typed world; compact encoding does not weaken the reference contract.
+
 ## Exact mechanics gates
 
 Every checkpoint and every test row must satisfy:

@@ -87,8 +87,9 @@ A local compiled ARM preflight on one deterministic champion round at exact PR
 - mean actor row 5,775.7 bytes and target row 1,306.6 bytes.
 
 These figures are planning inputs, not a host qualification. The consolidated
-execution design must bind the concrete host and its 16-lane runtime before
-the one reviewed pipeline starts. Initial hard caps are:
+execution design must bind the concrete host and refuse fewer than 16 logical
+CPUs or 30 GiB of physical memory before the one reviewed pipeline starts.
+Initial hard caps are:
 
 - 16 capture core-hours;
 - 2 capture wall-hours on a 16-lane host;

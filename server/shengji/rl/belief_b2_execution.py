@@ -55,6 +55,8 @@ REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
 REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
 RUN_ID = "belief-v1-b2-open-dev-offline-v1"
+MIN_RUNTIME_CPU_COUNT = B2_CAPTURE_LANES
+MIN_RUNTIME_MEMORY_BYTES = 30 * 1024**3
 REQUIRED_ENVIRONMENT = (
     ("PYTHONDONTWRITEBYTECODE", "1"),
     ("PYTHONHASHSEED", "0"),
@@ -430,9 +432,9 @@ def validate_runtime_profile(profile: RuntimeProfileV1) -> None:
                 profile.python_executable_sha256,
                 profile.torch_config_sha256, profile.native_sha256)) \
             or type(profile.cpu_count) is not int \
-            or profile.cpu_count <= 0 \
+            or profile.cpu_count < MIN_RUNTIME_CPU_COUNT \
             or type(profile.memory_bytes) is not int \
-            or profile.memory_bytes <= 0 \
+            or profile.memory_bytes < MIN_RUNTIME_MEMORY_BYTES \
             or not _is_sha256(profile.boot_identity) \
             or profile.required_environment != REQUIRED_ENVIRONMENT \
             or profile.torch_num_threads != 1 \

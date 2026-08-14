@@ -8,15 +8,15 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 02:17 EDT from canonical main `9393ac5`.
+Last reconciled: 2026-08-14 02:29 EDT from canonical main `c8a57ed`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 1h44m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[480,480,496,480,480,480,480,480]/896`, totaling `3,856/7,168` (53.79%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `7,646/8,192` (93.33%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
+| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 2h19m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
+| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[496,496,496,496,496,496,480,480]/896`, totaling `3,936/7,168` (54.91%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; 14 workers remain alive and CPU-bound; shards 7 and 9 have sealed. Reviewed score-free progress is `8,035/8,192` (98.08%); 2/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. Exact clean Git plus runner/controller SHAs were reauthenticated for the terminal verifier. |
 | **Performance Cloud** | idle; PR #106, PR #108 and PR #103 reviews pending | The sole reviewed PR #103 six-pair batch under invocation `da6f9dd9…7fbe` exited success/0; Codex has not read its retain/drop claim. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` is clean/green and awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; exact aggregation PR #108 `d40182d` is clean/green and awaits its consolidated review before any record may be opened. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
@@ -54,12 +54,15 @@ Last reconciled: 2026-08-14 02:17 EDT from canonical main `9393ac5`.
    establish performance retention/merge-readiness only, not strength or
    deployment.
 
-4. **PR #107 performance wave-two code audit — not launch-critical.** Exact
-   head `1982c48` is clean/green atop PR #103 and claims a further 7.05% ARM
-   microbenchmark improvement from entry-bound policy kernels, a per-world
-   sampled-hands cache and native pair counting. It is outside the frozen PR
-   #103 A/B and needs an independent code/parity audit plus its own later x86
-   design before retention; it must not delay or reinterpret PR #103 results.
+4. **PR #107 performance wave-two repair — not launch-critical.** Exact head
+   `1982c48` is HOLD after Codex reproduced a stale mutable-world cache
+   (`110.0` cached versus `90.0` recomputed) and showed 34–128-card malformed
+   hands entering the bounds-check-disabled lead kernel instead of the reviewed
+   pure fallback. Repair both in one head with explicit per-world preparation
+   scope, fresh candidate copies and exact 33-card native admission; add the
+   decisive mutation/fallback fixtures and rerun pure/strict suites. Full
+   reproduction and smallest repair are in PR comment `5290233595`. Its prior
+   7.05% ARM timing is exploratory and must be remeasured after repair.
 
 5. **PR #105 PointContext/point-flow repair — non-launch-critical.** Repaired
    head `90fe978` remains HOLD after Codex follow-up. Atomic staging, factory-

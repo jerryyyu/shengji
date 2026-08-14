@@ -344,6 +344,10 @@ def test_design_review_refuses_non_claude_identity(monkeypatch):
      "work"),
     (lambda value: value["runtime"].update(tree_dirty=True), "runtime"),
     (lambda value: value["population"].update(states=63), "identity"),
+    (lambda value: value["retired_v2_incident"].update(
+        old_namespace_retry_authorized=True), "identity"),
+    (lambda value: value["retired_v2_incident"]["loadable_shadow"].update(
+        sha256="0" * 64), "identity"),
 ])
 def test_rehashed_packet_mutations_refuse(packet, mutation, expected):
     value = copy.deepcopy(packet)
@@ -595,10 +599,99 @@ def test_systemd_gate_pins_unit_properties_and_cgroup(monkeypatch):
         CTRL.require_systemd(runtime)
 
 
-def test_scored_dev_loaded_unit_repair_uses_fresh_namespace():
-    assert CTRL.RUN_ID == "bury-lead-combo-scored-dev-64-v2-loaded-unit"
-    assert CTRL.IMPLEMENTATION_REVIEW_PREFIX.endswith("_V2 ")
-    assert CTRL.PACKET_REVIEW_PREFIX.endswith("_V2 ")
+def test_scored_dev_shadow_recovery_uses_fresh_namespace_and_binds_incident():
+    assert CTRL.RUN_ID == "bury-lead-combo-scored-dev-64-v3-shadow-gate"
+    assert CTRL.IMPLEMENTATION_REVIEW_PREFIX.endswith("_V3 ")
+    assert CTRL.PACKET_REVIEW_PREFIX.endswith("_V3 ")
+    incident = CTRL.RETIRED_V2_INCIDENT
+    assert incident["run_id"] == "bury-lead-combo-scored-dev-64-v2-loaded-unit"
+    assert incident["packet_sha256"] == (
+        "dd7709e9b6ca5a08aea8d2949d38bd41c0f45fcec4975edf2b1f4ca2f2b4adca"
+    )
+    assert incident["loadable_shadow"]["sha256"] == (
+        "3bcf3c6f1a0b365ed1489d77995ccb36fc8f91016f6d1ef703630464e53a18c1"
+    )
+    assert incident["systemd_invocation_id"] == (
+        "fcdcb04e23fe43fdaaa78a727d50583d"
+    )
+    assert incident["admission_published"] is False
+    assert incident["gameplay_started"] is False
+    assert incident["old_namespace_retry_authorized"] is False
+    claim = CTRL.implementation_review_claim(expected_git="a" * 40)
+    assert claim["retired_v2_incident_sha256"] == CTRL.digest(incident)
+    assert claim["old_v2_namespace_retry_authorized"] is False
+    assert claim["live_shadow_recheck_before_packet_review_required"] is True
+
+
+def test_v2_packet_namespace_cannot_be_reused(packet):
+    value = copy.deepcopy(packet)
+    value["schema"] = "bury-lead-combo-scored-dev-controller-packet-v2"
+    value["run_id"] = CTRL.RETIRED_V2_INCIDENT["run_id"]
+    _rehash(value)
+    problems = CTRL.packet_problems(value, expected_git=packet["git"])
+    assert any("identity" in problem for problem in problems)
+
+
+def test_verify_packet_refuses_real_ignored_pyc_before_review_or_admission(
+        monkeypatch, tmp_path, packet):
+    server = tmp_path / "server"
+    native = server / "shengji/engine/_fast.cpython-314-x86_64-linux-gnu.so"
+    shadow = (server / "scripts/__pycache__/"
+              "bury_lead_combo_scored_dev_controller.cpython-314.pyc")
+    native.parent.mkdir(parents=True)
+    shadow.parent.mkdir(parents=True)
+    native.write_bytes(b"native")
+    shadow.write_bytes(b"ignored bytecode")
+    monkeypatch.setattr(CTRL, "SERVER", server)
+    monkeypatch.setattr(CTRL, "REPO", tmp_path)
+    monkeypatch.setattr(CTRL, "git", lambda *args: "")
+    monkeypatch.setattr(CTRL, "require_clean_exact_git", lambda value: None)
+    monkeypatch.setattr(CTRL, "require_fresh_process", lambda: None)
+    monkeypatch.setattr(CTRL, "load_packet", lambda *args, **kwargs: packet)
+    monkeypatch.setattr(CTRL.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(CTRL.os, "cpu_count", lambda: CTRL.MIN_CPUS)
+    monkeypatch.setattr(
+        CTRL, "_memory_bytes", lambda: CTRL.MIN_MEMORY_BYTES)
+    for name, value in CTRL.REQUIRED_ENVIRONMENT.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        CTRL, "_runtime_probe",
+        lambda value: pytest.fail(
+            "runtime probe reached despite a real loadable shadow"))
+    frozen_calls = []
+    monkeypatch.setattr(
+        CTRL, "require_frozen_runtime_inputs",
+        lambda value: frozen_calls.append(value))
+    admission = tmp_path / "admission.json"
+    monkeypatch.setattr(CTRL, "ADMISSION_PATH", admission)
+    args = argparse.Namespace(
+        expected_git=packet["git"], packet=str(tmp_path / "packet.json"),
+        expected_packet_sha256="d" * 64,
+    )
+    with pytest.raises(CTRL.ControllerRefused, match="loadable source shadows"):
+        CTRL.verify_packet_command(args)
+    assert frozen_calls == []
+    assert not admission.exists()
+
+
+def test_packet_review_claim_route_rechecks_live_runtime(
+        monkeypatch, packet):
+    monkeypatch.setattr(CTRL, "load_packet", lambda *args, **kwargs: packet)
+    monkeypatch.setattr(CTRL, "require_fresh_process", lambda: None)
+    calls = []
+
+    def refuse(value, *, expected_git):
+        calls.append((value, expected_git))
+        raise CTRL.ControllerRefused("live shadow refusal")
+
+    monkeypatch.setattr(CTRL, "require_live_packet_runtime", refuse)
+    with pytest.raises(CTRL.ControllerRefused, match="live shadow refusal"):
+        CTRL.main([
+            "packet-review-claim", "--expected-git", packet["git"],
+            "--packet", "/packet.json",
+            "--expected-packet-sha256", "d" * 64,
+        ])
+    assert calls == [(packet, packet["git"])]
 
 
 def _patch_run(monkeypatch, tmp_path, packet, *, fail_index=None):

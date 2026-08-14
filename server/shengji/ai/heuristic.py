@@ -104,7 +104,13 @@ class HeuristicBot:
         # Longest tractor anywhere (>=2 pairs) is a strong lead.
         best_tr: list[str] | None = None
         for s, cards in by_suit.items():
-            for k in range(5, 1, -1):
+            # A k-pair tractor needs at least k physical pairs.  Most rollout
+            # suits contain fewer than two, so avoid asking the tractor
+            # enumerator questions whose answer is provably empty.
+            available_pairs = pair_count(cards)
+            if available_pairs < 2:
+                continue
+            for k in range(min(5, available_pairs), 1, -1):
                 runs = find_tractor_runs(cards, o, k)
                 if runs and (best_tr is None or len(runs[-1]) > len(best_tr)):
                     best_tr = runs[-1]
@@ -124,8 +130,11 @@ class HeuristicBot:
             if aces:
                 return aces[:1]
         # High plain pair.
-        pairs = [(o.level(c), c) for s in PLAIN_SUITS for c, n in
-                 Counter(by_suit[s]).items() if n >= 2]
+        # Count the hand once.  Building one Counter per plain suit was the
+        # hottest allocation inside rollout leads; tuple-max below already
+        # supplies the exact level/card tie-break, so item order is irrelevant.
+        pairs = [(o.level(c), c) for c, n in Counter(hand).items()
+                 if n >= 2 and o.eff_suit(c) in PLAIN_SUITS]
         if pairs:
             lv, c = max(pairs)
             if lv >= top_plain - 3:
@@ -145,7 +154,11 @@ class HeuristicBot:
         lead = rnd.trick.plays[0].cards
         win_seat, inc_suit, inc_top = self._current_winner(rnd)
         partner_winning = win_seat % 2 == seat % 2
-        trick_pts = sum(points(c) for tp in rnd.trick.plays for c in tp.cards)
+        trick_pts = (getattr(rnd.trick, "running_points", None)
+                     if getattr(rnd, "_trusted_rollout", False) else None)
+        if trick_pts is None:
+            trick_pts = sum(
+                points(c) for tp in rnd.trick.plays for c in tp.cards)
         is_last = len(rnd.trick.plays) == 3
 
         if partner_winning:
@@ -163,9 +176,12 @@ class HeuristicBot:
         return self._forced_follow(hand, lead, o, prefer_points=False)
 
     def _current_winner(self, rnd: Round) -> tuple[int, str, int]:
-        from ..engine.legal import beats
         o = rnd.ordering
         assert o is not None and rnd.trick is not None
+        if getattr(rnd, "_trusted_rollout", False):
+            inc = getattr(rnd.trick, "incumbent", None)
+            if inc is not None:
+                return inc
         lead = rnd.trick.plays[0].cards
         suit = uniform_suit(lead, o)
         assert suit is not None

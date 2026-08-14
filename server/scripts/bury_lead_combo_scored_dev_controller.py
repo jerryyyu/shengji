@@ -48,7 +48,7 @@ DESIGN_CANONICAL_SHA256 = (
 DESIGN_PATH = SERVER / "scripts/bury_lead_combo_scored_dev_design.py"
 SCORER_PATH = SERVER / "scripts/bury_lead_combo_scored_dev.py"
 
-RUN_ID = "bury-lead-combo-scored-dev-64-v2-loaded-unit"
+RUN_ID = "bury-lead-combo-scored-dev-64-v3-shadow-gate"
 RUN_DIR = SERVER / "runs/logs" / RUN_ID
 LOCK_DIR = SERVER / "runs/locks"
 PACKET_PATH = RUN_DIR / "controller-packet.json"
@@ -59,20 +59,53 @@ FINAL_PATH = RUN_DIR / "supervisor-final.json"
 ADMISSION_PATH = LOCK_DIR / f"{RUN_ID}.admission.consumed.json"
 SYSTEMD_UNIT = f"{RUN_ID}.service"
 
-PACKET_SCHEMA = "bury-lead-combo-scored-dev-controller-packet-v2"
-ADMISSION_SCHEMA = "bury-lead-combo-scored-dev-admission-v2"
-FINAL_SCHEMA = "bury-lead-combo-scored-dev-supervisor-final-v2"
-STATE_RECEIPT_SCHEMA = "bury-lead-combo-scored-dev-state-receipt-v2"
+PACKET_SCHEMA = "bury-lead-combo-scored-dev-controller-packet-v3"
+ADMISSION_SCHEMA = "bury-lead-combo-scored-dev-admission-v3"
+FINAL_SCHEMA = "bury-lead-combo-scored-dev-supervisor-final-v3"
+STATE_RECEIPT_SCHEMA = "bury-lead-combo-scored-dev-state-receipt-v3"
 IMPLEMENTATION_REVIEW_SCHEMA = (
-    "bury-lead-combo-scored-dev-controller-review-v2"
+    "bury-lead-combo-scored-dev-controller-review-v3"
 )
-PACKET_REVIEW_SCHEMA = "bury-lead-combo-scored-dev-packet-review-v2"
+PACKET_REVIEW_SCHEMA = "bury-lead-combo-scored-dev-packet-review-v3"
 IMPLEMENTATION_REVIEW_PREFIX = (
-    "BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V2 "
+    "BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V3 "
 )
 PACKET_REVIEW_PREFIX = (
-    "BURY_LEAD_COMBO_SCORED_DEV_PACKET_REVIEWER_ATTESTATION_V2 "
+    "BURY_LEAD_COMBO_SCORED_DEV_PACKET_REVIEWER_ATTESTATION_V3 "
 )
+
+RETIRED_V2_INCIDENT = {
+    "schema": "bury-lead-combo-scored-dev-v2-pre-admission-shadow-incident-v1",
+    "git": "08ee05526da46bcd2e6bea58ddf190e67dce541b",
+    "run_id": "bury-lead-combo-scored-dev-64-v2-loaded-unit",
+    "packet_sha256": (
+        "dd7709e9b6ca5a08aea8d2949d38bd41c0f45fcec4975edf2b1f4ca2f2b4adca"
+    ),
+    "packet_internal_sha256": (
+        "1fb61cb7ac7a3fa72f2889d5ce7a8a68103470087858ead7abe614a36ceae589"
+    ),
+    "runtime_profile_sha256": (
+        "69906c5a32d72ff84b57e90b7f08f9c476d1bfab129bccb41e8f7bcac02aa775"
+    ),
+    "packet_review_commit": "fdfdf336449f835610ce72038d942c0e956a135b",
+    "systemd_invocation_id": "fcdcb04e23fe43fdaaa78a727d50583d",
+    "failure_stage": "live-shadow-check-before-admission",
+    "loadable_shadow": {
+        "path": (
+            "server/scripts/__pycache__/"
+            "bury_lead_combo_scored_dev_controller.cpython-314.pyc"
+        ),
+        "sha256": (
+            "3bcf3c6f1a0b365ed1489d77995ccb36fc8f91016f6d1ef703630464e53a18c1"
+        ),
+    },
+    "packet_review_snapshot_published": False,
+    "admission_published": False,
+    "records_directory_published": False,
+    "supervisor_final_published": False,
+    "gameplay_started": False,
+    "old_namespace_retry_authorized": False,
+}
 
 STATE_COUNT = 64
 TOTAL_CANDIDATE_ROLLOUTS = 816_480
@@ -580,6 +613,9 @@ def implementation_review_claim(*, expected_git: str) -> dict:
         "design_source_sha256": DESIGN_SOURCE_SHA256,
         "design_canonical_sha256": DESIGN_CANONICAL_SHA256,
         "design_review_commit": DESIGN_REVIEW_COMMIT,
+        "retired_v2_incident_sha256": digest(RETIRED_V2_INCIDENT),
+        "live_shadow_recheck_before_packet_review_required": True,
+        "old_v2_namespace_retry_authorized": False,
         "packet_freeze_authorized": True,
         "execution_authorized": False,
         "scored_record_access_authorized": False,
@@ -601,6 +637,9 @@ def packet_review_claim(*, packet: dict, packet_sha256: str) -> dict:
         "packet_sha256": packet_sha256,
         "packet_internal_sha256": packet["internal_sha256"],
         "runtime_profile_sha256": packet["runtime_profile_sha256"],
+        "retired_v2_incident_sha256": digest(RETIRED_V2_INCIDENT),
+        "live_shadow_recheck_verified": True,
+        "old_v2_namespace_retry_authorized": False,
         "one_scored_dev_execution_authorized": True,
         "scored_records_remain_sealed": True,
         "scored_record_access_authorized": False,
@@ -644,6 +683,7 @@ def packet_payload(*, expected_git: str, runtime: dict,
         "scorer_sha256": sha256_file(SCORER_PATH),
         "controller_sha256": sha256_file(SCRIPT),
         "implementation_review": implementation_review,
+        "retired_v2_incident": strict_json(canonical(RETIRED_V2_INCIDENT)),
         "runtime": runtime,
         "runtime_profile_sha256": digest(runtime),
         "population": {
@@ -683,7 +723,7 @@ def packet_problems(value: object, *, expected_git: str) -> list[str]:
         "schema", "run_id", "git", "design", "scorer_sha256",
         "controller_sha256", "implementation_review", "runtime",
         "runtime_profile_sha256", "population", "work", "paths",
-        "authority", "internal_sha256",
+        "authority", "retired_v2_incident", "internal_sha256",
     }
     problems = []
     material = dict(value)
@@ -698,6 +738,7 @@ def packet_problems(value: object, *, expected_git: str) -> list[str]:
                 "review_commit": DESIGN_REVIEW_COMMIT}
             or value.get("scorer_sha256") != sha256_file(SCORER_PATH)
             or value.get("controller_sha256") != sha256_file(SCRIPT)
+            or value.get("retired_v2_incident") != RETIRED_V2_INCIDENT
             or value.get("runtime_profile_sha256") != digest(
                 value.get("runtime"))
             or value.get("population") != {
@@ -761,6 +802,35 @@ def load_packet(path: Path, expected_sha256: str, *, expected_git: str) -> dict:
     if snapshot != marker or sha256_bytes(snapshot) != review["marker_sha256"]:
         raise ControllerRefused("implementation review snapshot drift")
     return value
+
+
+def require_live_packet_runtime(packet: Mapping[str, object],
+                                *, expected_git: str) -> None:
+    """Recheck the frozen runtime before packet review or execution.
+
+    In particular, ``runtime_snapshot`` scans for ignored loadable Python and
+    native shadows before its isolated import probe.  The V2 attempt reached
+    this check only after systemd start; V3 makes it a packet-review
+    prerequisite so a contaminated checkout cannot proceed to unit install.
+    """
+    runtime = packet.get("runtime")
+    if not isinstance(runtime, Mapping):
+        raise ControllerRefused("packet runtime is not an object")
+    systemd_unit = runtime.get("systemd_unit")
+    host_profile = runtime.get("host_profile")
+    if (not isinstance(systemd_unit, Mapping)
+            or not isinstance(systemd_unit.get("path"), str)
+            or not isinstance(host_profile, Mapping)
+            or not isinstance(host_profile.get("path"), str)):
+        raise ControllerRefused("packet runtime input paths drift")
+    live = runtime_snapshot(
+        expected_git,
+        systemd_unit=Path(systemd_unit["path"]),
+        host_profile=Path(host_profile["path"]),
+    )
+    if live != runtime:
+        raise ControllerRefused("live runtime differs from frozen packet")
+    require_frozen_runtime_inputs(runtime)
 
 
 def require_fresh_process() -> None:
@@ -1310,10 +1380,13 @@ def verify_packet_command(args: argparse.Namespace) -> None:
     packet = load_packet(
         Path(args.packet), args.expected_packet_sha256,
         expected_git=args.expected_git)
+    require_live_packet_runtime(packet, expected_git=args.expected_git)
     print(json.dumps({
         "verified": True,
         "packet_sha256": args.expected_packet_sha256,
         "packet_internal_sha256": packet["internal_sha256"],
+        "live_shadow_recheck_verified": True,
+        "safe_to_request_packet_review": True,
         "execution_authorized": False,
     }, sort_keys=True))
 
@@ -1378,13 +1451,7 @@ def run_command(args: argparse.Namespace) -> None:
     packet = load_packet(
         Path(args.packet), args.expected_packet_sha256,
         expected_git=args.expected_git)
-    live_runtime = runtime_snapshot(
-        args.expected_git,
-        systemd_unit=Path(packet["runtime"]["systemd_unit"]["path"]),
-        host_profile=Path(packet["runtime"]["host_profile"]["path"]))
-    if live_runtime != packet["runtime"]:
-        raise ControllerRefused("live runtime differs from frozen packet")
-    require_frozen_runtime_inputs(packet["runtime"])
+    require_live_packet_runtime(packet, expected_git=args.expected_git)
     invocation = require_systemd(packet["runtime"])
     claim = packet_review_claim(
         packet=packet, packet_sha256=args.expected_packet_sha256)
@@ -1496,9 +1563,11 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "verify-packet":
         verify_packet_command(args)
     elif args.command == "packet-review-claim":
+        require_fresh_process()
         packet = load_packet(
             Path(args.packet), args.expected_packet_sha256,
             expected_git=args.expected_git)
+        require_live_packet_runtime(packet, expected_git=args.expected_git)
         print(canonical(packet_review_claim(
             packet=packet,
             packet_sha256=args.expected_packet_sha256)).decode().rstrip())

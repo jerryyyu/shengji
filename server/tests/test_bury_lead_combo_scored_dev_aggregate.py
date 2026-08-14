@@ -4,6 +4,8 @@ import copy
 import importlib.util
 import json
 import os
+import subprocess
+import sys
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
@@ -347,6 +349,41 @@ def test_stable_bytes_and_strict_json_refuse_links_duplicates_nonfinite(
         AGG.strict_json(b'{"a":1,"a":2}')
     with pytest.raises(ValueError, match="nonfinite"):
         AGG.strict_json(b'{"a":NaN}')
+
+
+def test_unsafe_invocation_refuses_and_isolated_safe_path_blocks_shadow(
+        tmp_path):
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    unsafe = subprocess.run(
+        [sys.executable, "-B", str(PATH), "verify-inputs",
+         "--expected-git", GIT],
+        cwd=PATH.parents[2], env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert unsafe.returncode != 0
+    assert "isolated safe-path no-bytecode Python" in unsafe.stderr
+
+    scripts = tmp_path / "server/scripts"
+    scripts.mkdir(parents=True)
+    copied = scripts / PATH.name
+    copied.write_bytes(PATH.read_bytes())
+    sentinel = tmp_path / "PREIMPORT_SHADOW_EXECUTED"
+    (scripts / "json.py").write_text(
+        "with open(" + repr(str(sentinel)) + ", 'x') as handle:\n"
+        "    handle.write('executed before provenance checks\\n')\n"
+        "raise RuntimeError('PREIMPORT_SHADOW_EXECUTED')\n",
+        encoding="utf-8",
+    )
+    isolated = subprocess.run(
+        [sys.executable, "-I", "-P", "-B", str(copied),
+         "verify-inputs", "--expected-git", GIT],
+        cwd=tmp_path, env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert isolated.returncode != 0
+    assert not sentinel.exists()
+    assert "PREIMPORT_SHADOW_EXECUTED" not in isolated.stderr
 
 
 def test_parser_has_no_retry_resume_report_or_gameplay_command():

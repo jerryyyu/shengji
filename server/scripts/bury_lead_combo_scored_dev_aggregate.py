@@ -290,8 +290,17 @@ def load_controller() -> ModuleType:
 
 
 def require_fresh_process() -> None:
-    if not sys.dont_write_bytecode:
-        raise AggregateRefused("PYTHONDONTWRITEBYTECODE/-B is required")
+    # This check necessarily runs after Python has evaluated top-level imports.
+    # The reviewed invocation must therefore keep the script directory and
+    # ambient PYTHONPATH off sys.path before startup; otherwise a sibling
+    # ``json.py`` (or another stdlib-name shadow) can execute before any source
+    # or admission check.  -I implies environment isolation and -P safe-path;
+    # require both flags explicitly so a merely clean current tree cannot
+    # bless an unsafe launch command.
+    if (not sys.dont_write_bytecode or sys.flags.isolated != 1
+            or not sys.flags.safe_path):
+        raise AggregateRefused(
+            "exact isolated safe-path no-bytecode Python (-I -P -B) is required")
     for name, module in tuple(sys.modules.items()):
         if name == "__main__":
             continue

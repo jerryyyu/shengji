@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 09:48 EDT from canonical main `83c6909`.
+Last reconciled: 2026-08-14 09:58 EDT from canonical main `95242b4`.
 
 ## Live fleet
 
@@ -17,31 +17,19 @@ Last reconciled: 2026-08-14 09:48 EDT from canonical main `83c6909`.
 | **Mini** | idle | T4 is terminally reviewed `SELECT_NONE`. The PR #103 differential soak completed all 10,000,000 deterministic rounds / 744,566,732 plays, 8/8 PASS with no native/pure mismatch. It opened no sealed evidence and grants no strength authority. |
 | **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers remain alive and CPU-bound. Latest reviewed score-free floor is `4,640/7,168` (64.73%); 0/8 terminal. Only about 13.9 hours remain before the fixed ~23:29 EDT cutoff, so timeout is now the expected transition. Outcomes stay sealed; do not intervene. The selective-S6 queue remains asleep behind the supervisor. |
 | **Strength Cloud** | idle | S4 finished both tranches and independent canonical terminal review `15e8dbb` reproduced final SHA `0aef1ca8…e90` and `SELECT_NONE`. The PR #103 x86 differential soak also completed 2,000,000 rounds, PASS with no mismatch. No retry/candidate action follows. |
-| **Performance Cloud** | Pair checkpoint-successor packet frozen; no worker | PR #106 implementation PASS at `83c6909` authorized one packet freeze. Exact packet `f2878fff…a5c9c` / internal `48ccd1f6…daeee`, runtime profile `39a8c31e…f1f3c`, is root-owned, immutable and independently unreviewed; admission, manifest and service are absent. PR #103 retained 3.4074% lower wall / +1.0299% paired LCB. S6 is terminal `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`. |
+| **Performance Cloud** | fresh Pair checkpoint screen, 16 workers | Packet `f2878fff…a5c9c` PASSed at `95242b4` and started exactly once under systemd invocation `ac5425e0e106403e9a82a7bd8cb5b221`. First score-free heartbeat is 0/224 microshards, 16 workers alive, `outcomes_opened=false`; admission and review snapshot are immutable, manifest absent. Runtime cap is 52h. Do not restart, resume, open outcome bytes or aggregate. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
 
-1. **PR #106 concrete Pair checkpoint-screen packet review — launch-critical.**
-   Source head `71356b2c75e2c22c3c0a54615029ca1251b3712a` PASSed at canonical
-   `83c690968ddb34e9b909d7a684bb3ae751e7e3fb`. Independently review the one
-   frozen Performance Cloud packet `f2878ffff038cd62af41c286fabe2838ad2df2c0cc224620a239015d226a5c9c`
-   / internal `48ccd1f67a8c242ae8404126d34e40abf397cc1c6530c9ed465e051a40ddaeee`,
-   runtime profile `39a8c31e9eea5b3ae8cccc7dde5ae0c9785b97d4ea24958d5381d33d7d6f1f3c`
-   and systemd unit SHA `657a96fc…e6f4`. Re-run `verify`, authenticate the
-   implementation snapshot and reviewed Capacity V2 chain, require packet
-   population/geometry/runtime/authority exactness, and prove admission,
-   manifest, service and every bundle path absent. PASS may authorize this one
-   screen execution only; outcomes, aggregation, retry and strength stay false.
-
-2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+1. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
    identity cache in favor of explicit per-world prepared hands and restores
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
-3. **PR #105 PointContext/point-flow test-only delta acknowledgment —
+2. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
    added two independent mutation witnesses in exact child `c454aaaf` (+17
    test lines; production unchanged): valid-banker/bool-tally refusal and exact
@@ -64,11 +52,13 @@ PR comments alone are not queue state.
    no mismatch; they do not reinterpret the frozen timing result.
 
 2. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
-   confirms 47.88 projected hours <= the reviewed 52h cap. Exact PR #106
-   successor `71356b2` PASSed at `83c6909`; one packet `f2878fff…a5c9c` is
-   frozen and verified on Performance Cloud. Execution remains closed until
-   its exact packet marker lands. If authorized, install the byte-bound unit
-   and start exactly once; no resume, aggregate or outcome access follows.
+   confirms 47.88 projected hours <= the reviewed 52h cap. PR #106 source
+   `71356b2` PASSed at `83c6909`; exact packet `f2878fff…a5c9c` PASSed at
+   `95242b4` and started once at 09:56 EDT. Systemd owns all 16 workers under
+   invocation `ac5425e0e106403e9a82a7bd8cb5b221`; first heartbeat is 0/224,
+   outcomes unopened. Monitor score-free heartbeats only. Completion publishes
+   a score-free manifest for separate review; no resume or aggregate command
+   exists and any interruption spends the admission.
 
 3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
    V1 aggregate admission was spent by a deterministic canonical-key-order

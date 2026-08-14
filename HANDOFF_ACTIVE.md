@@ -8,54 +8,39 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 03:29 EDT from canonical main `99f3597`.
+Last reconciled: 2026-08-14 08:43 EDT from canonical main `0647ad4`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | PR #103 native-round differential soak, eight nice-15 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses independent repair commit `ed1d731` and compares native/pure state after every play across 10,000,000 deterministic rounds. Its production `_fast.pyx` SHA `ff3b4ed1…271` is byte-identical to pushed PR head `3044a2f`; the only Git delta is one test-line collection fix. All eight workers remain CPU-bound after 3h03m; all eight logs remain empty. It reads no sealed data and grants no benchmark, strength or merge authority. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[512,512,512,496,512,496,496,496]/896`, totaling `4,032/7,168` (56.25%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
-| **Strength Cloud** | PR #103 exact-head x86 native/pure differential soak, eight nice-15 workers | S4 exact source `e7551e4` finished both reviewed tranches; the pinned verifier returned `SELECT_NONE`, final SHA `0aef1ca8…e90`, and independent terminal review remains requested in PR #66 comment `5290507470`. The open-state soak uses exact PR head `3044a2f`, fresh synthetic seeds and 2,000,000 finite rounds under systemd invocation `0922da2f…b3f1`, `CPUQuota=800%` and `RuntimeMaxSec=12h`; all eight lanes have reached 50,000/250,000 (400,000/2,000,000, 20%) without a mismatch. Script SHA `d14fd343…698e`, runner SHA `8412075d…3ad`. Eight cores remain free for review. It reads no run artifact and grants no benchmark, strength, merge or deployment authority. |
-| **Performance Cloud** | idle; PR #106 and repaired PR #108 reviews pending | Claude terminal-review commit `95e0faf` independently reopened the sole PR #103 batch and returned VERIFIED/retain: 3.4074% lower x86 whole-round wall with paired one-sided 95% LCB 1.0299%; all six normalized semantic traces are exact. The consumed design can never rerun. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; repaired aggregation PR #108 `4b26c1a` awaits exact-head review before any record may be opened. |
+| **Mini** | idle | T4 is terminally reviewed `SELECT_NONE`. The PR #103 differential soak completed all 10,000,000 deterministic rounds / 744,566,732 plays, 8/8 PASS with no native/pure mismatch. It opened no sealed evidence and grants no strength authority. |
+| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers remain alive and CPU-bound. Latest reviewed score-free floor is `4,496/7,168` (62.72%); 0/8 terminal. Outcomes stay sealed and the timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
+| **Strength Cloud** | idle | S4 finished both tranches and independent canonical terminal review `15e8dbb` reproduced final SHA `0aef1ca8…e90` and `SELECT_NONE`. The PR #103 x86 differential soak also completed 2,000,000 rounds, PASS with no mismatch. No retry/candidate action follows. |
+| **Performance Cloud** | idle; S6 V2 recovery review is top priority | PR #103 terminal performance review retained 3.4074% lower wall / +1.0299% paired LCB. S6 aggregate V1 consumed its sole admission and refused on record 0 because canonical JSON reordered mode keys; no result or partial exists and V1 cannot retry. Incident/diagnosis is canonical at `0647ad4`. Distinct recovery head `b4417c7` passed 124 pure + 124 compiled tests and a real score-free host preflight (`scored_records_opened=false`); exact-head review is pending before one V2 opening. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
 
-1. **S4 360B terminal review.** On Strength Cloud, independently run only the
-   exact pinned read-only verifier at source `e7551e4`, runner SHA
-   `a6586be8…dda` and controller SHA `cd69a712…bb0a`. It must reproduce final
-   SHA `0aef1ca8…e90` and `status=SELECT_NONE`. Falsify packet/admission/
-   receipt bindings; exact 16+16 shard/log/exit populations; both aggregates;
-   automatic continuation and tranche-two release; null sentinel; terminal
-   transition/reconstruction; and authority closure. Exact command and all
-   artifact hashes are in PR #66 comment `5290507470`. Return prose PASS/HOLD
-   only; this grants no retry, candidate action, strength claim or deployment.
+1. **PR #108 S6 aggregate recovery V2 — launch-critical top priority.** Review
+   exact head `b4417c722ae1ed2cea83cb2ae07311bf25162c9c`, direct child of spent
+   V1 `32eec425`. Independently falsify the canonical mode-order diagnosis,
+   exact V1 gate/snapshot/admission hashes and absent V1 result, distinct V2
+   one-shot namespace, exact canonical bytes, exact three-mode set, temporary
+   validation-copy reorder, and the rule that any other scorer finding still
+   refuses. Reproduce 18 focused and 124 pure/strict-compiled chain tests plus
+   the real score-free host preflight. Exact SHAs, command and review boundary
+   are in PR comment `5293412990`. If clean, append only the generated raw V2
+   recovery marker. PASS authorizes one V2 aggregate opening the same 64
+   immutable records; no V1 retry, screen, REPORT or strength authority.
 
-2. **PR #106 Pair checkpoint-screen source review.** Independently audit exact
-   head `f1791f51b913fa91171a2337badb4a84cedd1319` over Capacity V2
-   `8a3ef59`; exact two-file SHAs are in PR comment `5289911149`. Reproduce
-   the 26 focused and 135 strict x86 chain tests; falsify the reviewed
-   capacity chain, 224 immutable 32-cluster bundles, at-most-16-worker/systemd
-   boundary, atomic review+admission gate, sealed outcome bundles, receipt-only
-   supervisor, and absence of resume/aggregate commands. If clean, append only
-   the controller-generated raw implementation marker. PASS may freeze one
-   host packet only; it cannot execute the screen or open outcomes.
+2. **PR #106 Pair checkpoint-screen HOLD successor — not yet actionable for
+   Claude.** Exact published `f1791f5` is held at canonical `627248b`. Codex has
+   locally repaired the three requested guards plus the independently found
+   pre-import source-authentication path; it will publish one successor only
+   after S6 recovery reaches its next reviewed boundary.
 
-3. **PR #108 S6 V3 aggregation exact-head repair review.** Codex held
-   `d40182d` after proving a sibling `server/scripts/json.py` could execute
-   before provenance checks. Exact repaired head `4b26c1a89dc1903478c958bc5ac309020d673e37`
-   requires `/usr/bin/python3.14 -I -P -B`; the hostile-shadow fixture cannot
-   execute, and real on-host score-free `verify-inputs` still passes with no
-   record opened. Reproduce 15 focused and 121 pure/strict-compiled chain
-   tests; then re-falsify the exact terminal chain, gate-before-open boundary,
-   all-64-record validation, exact statistics, result review and closed
-   authority. Exact SHAs and command are in PR comment `5290701147`. If clean,
-   append only the regenerated raw aggregate marker for `4b26c1a`. PASS
-   authorizes exactly one aggregate opening these 64 records; it authorizes no
-   downstream screen, retry, REPORT or strength claim.
-
-4. **PR #107 performance wave-two repair — not launch-critical.** Exact head
+3. **PR #107 performance wave-two repair — not launch-critical.** Exact head
    `1982c48` is HOLD after Codex reproduced a stale mutable-world cache
    (`110.0` cached versus `90.0` recomputed) and showed 34–128-card malformed
    hands entering the bounds-check-disabled lead kernel instead of the reviewed
@@ -65,7 +50,7 @@ Last reconciled: 2026-08-14 03:29 EDT from canonical main `99f3597`.
    reproduction and smallest repair are in PR comment `5290233595`. Its prior
    7.05% ARM timing is exploratory and must be remeasured after repair.
 
-5. **PR #105 PointContext/point-flow exact-head review — non-launch-critical.**
+4. **PR #105 PointContext/point-flow exact-head review — non-launch-critical.**
    Codex repaired all remaining gaps at exact head `f599be8c9917c5d314889c11aee81b42c1713296`;
    both CI checks and 26 focused tests in pure/strict modes pass. Independently
    falsify exact Trick/TrickPlay/card/point shape, empty-round banker/tally/
@@ -84,27 +69,29 @@ PR comments alone are not queue state.
    3.4074% lower x86 wall and positive 1.0299% paired one-sided LCB, with all
    six normalized semantic traces exact. The design is consumed forever; never
    restart or tune it. Any merge/rebase remains a separate code operation and
-   grants no strength or deployment authority. The Mini open-state soak may
-   finish independently but cannot reinterpret the frozen result.
+   grants no strength or deployment authority. Both independent differential
+   soaks are complete (10,000,000 Mini rounds and 2,000,000 x86 rounds), with
+   no mismatch; they do not reinterpret the frozen timing result.
 
 2. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
    confirms 47.88 projected hours <= the reviewed 52h cap. Exact PR #106
-   implementation `f1791f5` is published, CI-green and awaiting consolidated
-   source review. After its raw implementation PASS, freeze one host-specific
-   packet and request one separate packet execution review; do not start the
-   screen before that PASS.
+   implementation `f1791f5` is held at `627248b`. Codex has a local successor
+   closing all requested guards plus pre-import source authentication; it will
+   be published after the S6 recovery reaches its next gate. Only after that
+   successor passes may one host packet be frozen and separately reviewed.
 
-3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts with
-   no record opened. Exact repaired aggregation PR #108 `4b26c1a` is published
-   and awaiting its consolidated exact-head source + input review. After its
-   raw PASS, run the aggregate exactly once; keep the result unopened and
-   return it for independent terminal recomputation before acting on efficacy.
+3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
+   V1 aggregate admission was spent by a deterministic canonical-key-order
+   refusal on record 0; no aggregate exists and V1 can never retry. Exact V2
+   recovery `b4417c7` is published and score-free-preflight-clean. After its
+   raw recovery PASS, run the distinct V2 aggregate exactly once, keep the
+   result unopened, and return it for independent terminal recomputation.
 
 4. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
-   complete. The verifier returned `SELECT_NONE`, final SHA `0aef1ca8…e90`,
-   `strength_claim=false` and `production_promotion=false`. Await independent
-   terminal review from PR #66 comment `5290507470`; never retry or reinterpret
-   the terminal decision. Strength Cloud is otherwise idle.
+   complete. Canonical independent review `15e8dbb` reproduced `SELECT_NONE`,
+   final SHA `0aef1ca8…e90`, `strength_claim=false` and
+   `production_promotion=false`. Never retry or reinterpret the terminal
+   decision. Strength Cloud is idle.
 
 5. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
    If the supervisor publishes a valid score-free final, review it before any
@@ -115,9 +102,9 @@ PR comments alone are not queue state.
 ## Landed and closed anchors
 
 - **T4:** terminal `SELECT_NONE`; no retry or continuation.
-- **S4:** exact two-look controller completed and the pinned machine verifier
-  returned terminal `SELECT_NONE` at final SHA `0aef1ca8…e90`; independent
-  terminal evidence review is pending, with no retry or candidate action.
+- **S4:** exact two-look controller completed; canonical independent review
+  `15e8dbb` reproduced terminal `SELECT_NONE` at final SHA `0aef1ca8…e90`.
+  The lane is closed with no retry or candidate action.
 - **Docs:** PR #97 exact reviewed head `316d6b7` merged at `8bc2da1`.
 - **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
   exact normalized semantics; PR #98 merged the byte-identical production
@@ -129,7 +116,7 @@ PR comments alone are not queue state.
   hot-swap code.
 - **PR #103 benchmark envelope:** exact design `62e471e4…e075` passed at
   canonical `f46cad5`; its sole six-pair x86 batch is terminal success and
-  awaits independent result/manifest review.
+  independent result/manifest review `95e0faf` retained it.
 - **Pair ballot:** provenance-preserving foundation #55→#60→#61→#72→#79→#84
   →#86 is on main. Reviewed design-only PR #100 and PR #101 are also merged.
   They authorize separate implementation proposals only, not execution.
@@ -139,7 +126,9 @@ PR comments alone are not queue state.
 - **S6 V2/V3:** the V2 start refused on ignored bytecode before packet-review
   snapshot, admission, gameplay, records or final. V2 cannot retry; V3 binds
   that incident under a fresh namespace, completed cleanly and terminally
-  verified at `482119b`; all 64 scored records remain sealed.
+  verified at `482119b`. Aggregate V1 later opened record 0 under valid
+  authority but refused before exposing any score; the 64 source files remain
+  immutable, records 1–63 were not opened, and distinct V2 review is pending.
 - **Pair capacity V2 recovery:** the first start refused before admission/work
   on a Claude-created ignored pyc. Canonical recovery PASS `9a8843b` authorized
   exact quarantine plus one start; the preserved second invocation passed

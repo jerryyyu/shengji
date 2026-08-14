@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue reconciled: 2026-08-14 12:10 EDT from canonical main `ae7dd46`.
+Review queue reconciled: 2026-08-14 12:36 EDT from canonical main `410f592`.
 Fleet rows retain the 11:47 EDT score-free snapshot below.
 
 ## Live fleet
@@ -52,14 +52,33 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
    no file writer, corpus generation, model, sampler, training or run path.
    PASS means typed boundary and in-memory row merge-readiness only.
 
-3. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+3. **PR #112 BELIEF-V1 B2 design/ownership-contract review — no run authority.**
+   Review exact stacked head `290af7ee952ac646299a208101dc56eeae86624c`
+   over PR #111. The exact three-file delta is the offline calibration design,
+   actor-relative ownership probability schema/validator, and synthetic tests.
+   Recompute file SHAs `1103215e4ee509fdbf0d131061611a3dbe192fd2b8d50c8c2e8ce47b02ed1efb`,
+   `c7024e8150ed5b079891ba12f0d82c9f646cdbcb73634cf6c063c449597e31ef`,
+   and `c004471203703f43b151b6c3e3e2fc65e1180d8d2b47a2f2547a1c14b535cbae`;
+   reproduce 49 focused and 57 adjacent tests in both pure
+   and strict compiled modes. Falsify public-twin identity, incomplete history,
+   banker/kitty receiver scope, model/policy binding, bool/noncanonical counts,
+   one/two-copy limits, expectation conservation, proven voids, and single vs
+   pair declaration semantics. The expectation-preserving void/pair mutations
+   must go red only when their named guards are neutralized. Audit the frozen
+   4,096-round opened-development population, exact current constraint-
+   consistent REF-C baseline, eight-seed cohort, C/N/U gates, caps, and
+   two-review path. There is no model, writer, sampler, gameplay or runner.
+   PASS means source/design merge-readiness only; it does not authorize corpus
+   capture, training, cloud use, online screening, strength or deployment.
+
+4. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
    identity cache in favor of explicit per-world prepared hands and restores
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
-4. **PR #105 PointContext/point-flow test-only delta acknowledgment —
+5. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
    added two independent mutation witnesses in exact child `c454aaaf` (+17
    test lines; production unchanged): valid-banker/bool-tally refusal and exact

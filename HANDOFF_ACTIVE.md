@@ -24,7 +24,7 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
 ## Review queue — precise asks
 
 1. **PR #110 BELIEF-V1 research/spec review — no execution authority.**
-   Review exact head `8cd28224ee888cedc773f4eccd255ed02d1fa63b`, a
+   Review exact head `b8c2a4c25e918278c72facc472c6736428e65af3`, a
    three-file documentation-only delta: new `BELIEF_V1_SPEC.md`, new
    `RESEARCH_PRINCIPLES.md`, and one 30-line `RL_PLAN.md` milestone pointer.
    Confirm it extends PointContext rather than duplicating it; explicitly
@@ -32,8 +32,10 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
    distributions; treats declined-feed, forced-joker and unforced-discard
    signals as policy-bound probabilities; limits V1 to one ownership head and
    one constrained-sampler consumer; and adopts exact E1-E5, calibration
-   C1-C4, negative-control N1-N3 and usefulness U1-U2 gates against the current
-   uniform-consistent and Memory/PointContext references before online scale.
+   C1-C4, negative-control N1-N3 and usefulness U1-U2 gates against the exact
+   current constraint-consistent proposal and Memory/PointContext references
+   before online scale. Confirm it does not claim that the randomized current
+   sampler is mathematically uniform.
    PASS means roadmap/spec merge-readiness only—no corpus, training, run,
    strength, promotion, or deployment authority.
 

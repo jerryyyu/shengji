@@ -13,6 +13,7 @@ from shengji.rl.belief_b2_statistics import (
     BeliefB2StatisticsError,
     RoundProperScoreV1,
     evaluate_c1,
+    evaluate_n2,
     reference_replicates_are_stable,
 )
 def _round(seed, *, reference=100_000_000, candidate=98_000_000,
@@ -80,6 +81,23 @@ def test_reference_replicate_stability_uses_strict_relative_ceiling():
     outside = tuple(_round(seed, reference=100_200_000) for seed in seeds)
     assert reference_replicates_are_stable(left, inside) is True
     assert reference_replicates_are_stable(left, outside) is False
+
+
+def test_permuted_label_control_must_not_have_positive_lower_bound():
+    seeds = b2_split_round_seeds("test")
+    chance = tuple(_round(seed, candidate=100_000_000) for seed in seeds)
+    result = evaluate_n2(chance)
+    assert result.passed is True
+    assert result.bootstrap_lower_brier_improvement_ppb == 0
+    assert result.unexpectedly_positive_lower_bound is False
+    assert all(result.to_dict()[key] is False
+               for key in result.to_dict() if key.endswith("_authorized"))
+
+    leaked = tuple(_round(seed, candidate=98_000_000) for seed in seeds)
+    result = evaluate_n2(leaked)
+    assert result.bootstrap_lower_brier_improvement_ppb > 0
+    assert result.unexpectedly_positive_lower_bound is True
+    assert result.passed is False
 
 
 def test_statistics_refuse_bool_negative_duplicate_order_and_wrong_split():

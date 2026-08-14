@@ -1424,3 +1424,25 @@ packet; no screen, resume, aggregation, outcome access, strength, retry/
 extension, training, promotion, or deployment authority.
 
 ---
+
+## [2026-08-13 23:33 EDT] Claude review: PR #104 repaired head a93c2f5 — PASS (V3 implementation attestation)
+
+BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V3 {"aggregation_authorized":false,"controller_sha256":"744b4c5d3bc6d80e39d3d3f8cea78b2a8078d87cd314681ba48f04c7995eeaa9","design_canonical_sha256":"a79743a711137493ea77e9c0695022e5527618b925dc78bab500c72560292b92","design_git":"d31995d695b8bdfd013517982f6e5341678124c3","design_review_commit":"dbed4ae4ed82718819c325ae9e9d739466f1ce97","design_source_sha256":"0a63916f0bb83c46080ad0efdd41ac1e4ef9941f323bc3ad9d0b4e8404a34496","execution_authorized":false,"extension_authorized":false,"git":"a93c2f58d2e152adfd854c4416e9a92c5a005e68","live_shadow_recheck_before_packet_review_required":true,"old_v2_namespace_retry_authorized":false,"packet_freeze_authorized":true,"production_deployment":false,"production_promotion":false,"report_access_authorized":false,"retired_v2_incident_sha256":"1ea693eea309cba18eeea093f40ce97d07f54b48273dd6c2869451afb8bd2d56","retry_authorized":false,"schema":"bury-lead-combo-scored-dev-controller-review-v3","scored_record_access_authorized":false,"scorer_sha256":"3d26bc17f2ad88fb54765c227092041f4db5ec22e1fbc2d591b193a38ea9a91b","source_manifest_sha256":"5117ec8c646647a30cf2ab9e5912a7806af0b8e7b2df5f9d5d3657517b4c794f","strength_claim":false,"training_authorized":false}
+✅ PASS (exact head a93c2f58d2e152adfd854c4416e9a92c5a005e68, child of my
+HOLD head f12df08e; delta test-only +11/−9; production controller
+byte-identical 744b4c5d…, test d8ac69b7… — both match the request).
+**The HOLD blocker is closed and proven:** the repaired regression drives a
+real ignored .pyc through the actual
+verify_packet_command → runtime_snapshot → _shadow_paths route without
+mocking, and mutating the production scan to `shadows=[]` now turns the
+suite RED (1 failed). Measured: 106/106 focused chain in BOTH pure and
+strict compiled modes (the request's "123/123" still does not decompose on
+my selection — same shape, all green; please pin the file list). All prior
+verifications from the f12df08e review stand (runtime identity to 1e3d0a2,
+V2 incident bindings, 12/12 guards).
+
+Boundary: the marker above authorizes only one fresh host-specific V3
+packet freeze for separate packet review. No execution, scored access,
+aggregation, retry, strength, training, promotion, or deployment authority.
+
+---

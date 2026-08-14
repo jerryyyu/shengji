@@ -8,21 +8,31 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 00:38 EDT from canonical main `6079de0`.
+Last reconciled: 2026-08-14 00:41 EDT from canonical main `5b328cd`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses the repair bytes now pushed at PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 27 minutes; no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[464,480,480,464,480,464,464,464]/896`, totaling `3,760/7,168` (52.46%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue is asleep behind the supervisor. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `6,944/8,192` (84.77%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
-| **Performance Cloud** | Pair successor score-free capacity, 16 workers | PR #96 recovery PASS `9a8843b` bound the pre-admission ignored-pyc incident. The exact pyc is quarantined intact and invocation `b98b4e15…` started at 00:01 EDT after exact re-verification. The controller plus all 16 workers remain active and saturated after 25 minutes; packet snapshot and admission exist, while result/refusal is absent. The systemd deadline is 04:01 EDT. S6 V3 packet `0e9ee589…bbee` passed at `4679ea9` and waits only for zero Pair workers. |
+| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 41 minutes; no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
+| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[464,480,480,464,480,480,464,464]/896`, totaling `3,776/7,168` (52.68%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue is asleep behind the supervisor. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `7,066/8,192` (86.25%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
+| **Performance Cloud** | S6 V3 scored-DEV, serial | Pair capacity invocation `b98b4e15…` exited cleanly after 34m13s with result `c120ddbb…7762` and receipt `488bf140…f005`; both remain unopened pending score-free review. S6 exact packet `0e9ee589…bbee` launched at 00:39 EDT under invocation `94b212d2…e6ee`; admission `de8d6c01…d16a` is consumed, the sealed-record directory is unopened, and the systemd cutoff is 01:39 EDT. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
 
-1. **PR #103 x86 benchmark-envelope freeze.** Exact final head `3044a2f`
+1. **Pair capacity V2 terminal review.** On Performance Cloud, independently
+   review exact source `8a3ef59`, packet `b2d78d67…9f92f`, packet-review
+   commit `7490595`, admission `e3e51d2b…0128`, result
+   `c120ddbb…7762`, and execution receipt `488bf140…f005`. The root-owned,
+   mode-0444, nlink-one result/receipt were produced by successful invocation
+   `b98b4e15…c7c`; no refusal/partial or worker remains. Strictly recompute all
+   result, projection, receipt, runtime and authority invariants. PASS may
+   authorize successor screen-packet implementation/freeze only—not screen
+   execution, outcome access, strength, retry, extension or deployment.
+
+2. **PR #103 x86 benchmark-envelope freeze.** Exact final head `3044a2f`
    passed Codex's independent delta review: fresh ARM build, 41 native-route,
    33 engine/action and 74 combined focused tests; malformed cached values
    fall back before C casts and normal trusted states remain native. No repeat
@@ -35,7 +45,7 @@ Last reconciled: 2026-08-14 00:38 EDT from canonical main `6079de0`.
    review, then run exactly one no-retry batch only after PASS. No x86 A/B,
    merge, deploy or strength authority exists yet.
 
-2. **PR #105 PointContext/point-flow repair — non-launch-critical.** Repaired
+3. **PR #105 PointContext/point-flow repair — non-launch-critical.** Repaired
    head `90fe978` remains HOLD after Codex follow-up. Atomic staging, factory-
    built context immutability, bool-seat checks and neutral field names are
    real; 24 focused pure tests pass. Close the remaining exact-boundary gaps:
@@ -50,14 +60,14 @@ PR comments alone are not queue state.
 
 ## Execution and terminal queue
 
-1. **Pair capacity V2.** Monitor systemd invocation `b98b4e15…` only. Never
-   restart it. After exit, preserve all artifacts and request independent
-   score-free result/refusal review before any screen packet work.
+1. **Pair capacity V2.** Terminal success is preserved; never restart it.
+   Await the independent score-free result/receipt review before any successor
+   screen packet work.
 
-2. **S6 V3.** Packet PASS `4679ea9` authorizes one serial 64-state scored-DEV
-   execution. Install/start the exact staged unit only after Pair capacity
-   exits and zero Pair workers remain. Keep all scored records sealed; after
-   terminal, review only the score-free final before any record access.
+2. **S6 V3.** Exact serial execution is active under invocation
+   `94b212d2…e6ee`; never restart or overlap it. Keep every scored record
+   sealed. After terminal, review only the score-free final before any record
+   access.
 
 3. **PR #103 x86 A/B.** After S6 exits and zero S6/Pair workers remain, stage
    exact base `57a1c2b`, head `3044a2f` and tooling `e407d50`; populate the

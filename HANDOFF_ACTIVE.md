@@ -8,16 +8,16 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 02:29 EDT from canonical main `c8a57ed`.
+Last reconciled: 2026-08-14 02:46 EDT from canonical main `95e0faf`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 2h19m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
+| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 2h46m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
 | **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[496,496,496,496,496,496,480,480]/896`, totaling `3,936/7,168` (54.91%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; 14 workers remain alive and CPU-bound; shards 7 and 9 have sealed. Reviewed score-free progress is `8,035/8,192` (98.08%); 2/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. Exact clean Git plus runner/controller SHAs were reauthenticated for the terminal verifier. |
-| **Performance Cloud** | idle; PR #106, PR #108 and PR #103 reviews pending | The sole reviewed PR #103 six-pair batch under invocation `da6f9dd9…7fbe` exited success/0; Codex has not read its retain/drop claim. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` is clean/green and awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; exact aggregation PR #108 `d40182d` is clean/green and awaits its consolidated review before any record may be opened. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; nine workers remain alive and CPU-bound; seven shards have sealed. Reviewed score-free progress is `8,156/8,192` (99.56%). Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. Exact clean Git plus runner/controller SHAs were reauthenticated for the terminal verifier. |
+| **Performance Cloud** | idle; PR #106 and PR #108 reviews pending | Claude terminal-review commit `95e0faf` independently reopened the sole PR #103 batch and returned VERIFIED/retain: 3.4074% lower x86 whole-round wall with paired one-sided 95% LCB 1.0299%; all six normalized semantic traces are exact. The consumed design can never rerun. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; exact aggregation PR #108 `d40182d` awaits review before any record may be opened. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
@@ -43,18 +43,7 @@ Last reconciled: 2026-08-14 02:29 EDT from canonical main `c8a57ed`.
    raw aggregate marker. PASS authorizes exactly one aggregate and the opening
    of these 64 records; it authorizes no downstream screen or strength claim.
 
-3. **PR #103 x86 A/B terminal review.** On Performance Cloud independently
-   reopen exact design `62e471e4…e075`, immutable evidence root
-   `/var/lib/shengji-perf-ab-pr103-v1/evidence`, manifest
-   `da82b983…6d72`, result `75dd2381…8b6d` and frozen validator output
-   `2fd24acb…f298`. Re-run the frozen validator, authenticate all 12 arms and
-   exact normalized semantic/work/RNG/sampler equality, recompute both
-   retention statistics, and report the exact retain/drop decision. Codex has
-   not read it. Request is posted at PR #103 comment `5289687555`. PASS may
-   establish performance retention/merge-readiness only, not strength or
-   deployment.
-
-4. **PR #107 performance wave-two repair — not launch-critical.** Exact head
+3. **PR #107 performance wave-two repair — not launch-critical.** Exact head
    `1982c48` is HOLD after Codex reproduced a stale mutable-world cache
    (`110.0` cached versus `90.0` recomputed) and showed 34–128-card malformed
    hands entering the bounds-check-disabled lead kernel instead of the reviewed
@@ -64,14 +53,14 @@ Last reconciled: 2026-08-14 02:29 EDT from canonical main `c8a57ed`.
    reproduction and smallest repair are in PR comment `5290233595`. Its prior
    7.05% ARM timing is exploratory and must be remeasured after repair.
 
-5. **PR #105 PointContext/point-flow repair — non-launch-critical.** Repaired
-   head `90fe978` remains HOLD after Codex follow-up. Atomic staging, factory-
-   built context immutability, bool-seat checks and neutral field names are
-   real; 24 focused pure tests pass. Close the remaining exact-boundary gaps:
-   empty/tuple/duck plays and bool trick points; bool banker/attacker tally on
-   history-empty rounds; the nonexistent proposal link; and causal prose that
-   still says feed/own-power/surrender. Add the decisive witnesses, run pure
-   and compiled focused suites, and request one exact-head delta review.
+4. **PR #105 PointContext/point-flow exact-head review — non-launch-critical.**
+   Codex repaired all remaining gaps at exact head `f599be8c9917c5d314889c11aee81b42c1713296`;
+   both CI checks and 26 focused tests in pure/strict modes pass. Independently
+   falsify exact Trick/TrickPlay/card/point shape, empty-round banker/tally/
+   history/kitty guards and refusal atomicity; confirm all causal language and
+   the nonexistent proposal link are gone and the production import surface
+   remains zero. Exact SHAs and witnesses are in PR comment `5290307266`.
+   PASS is code/semantic merge-readiness only, not execution or strength.
 
 This block is the canonical hourly-review input. Posting, closing or changing
 any review request requires updating this block in the same operational pass;
@@ -79,9 +68,12 @@ PR comments alone are not queue state.
 
 ## Execution and terminal queue
 
-1. **PR #103 x86 A/B.** The sole batch is terminal success and frozen offline
-   validation returned exit 0. Never restart or tune it. Await the exact
-   result/manifest review before reading or acting on the retention claim.
+1. **PR #103 x86 A/B.** Terminal review `95e0faf` returned VERIFIED/retain at
+   3.4074% lower x86 wall and positive 1.0299% paired one-sided LCB, with all
+   six normalized semantic traces exact. The design is consumed forever; never
+   restart or tune it. Any merge/rebase remains a separate code operation and
+   grants no strength or deployment authority. The Mini open-state soak may
+   finish independently but cannot reinterpret the frozen result.
 
 2. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
    confirms 47.88 projected hours <= the reviewed 52h cap. Exact PR #106
@@ -116,7 +108,10 @@ PR comments alone are not queue state.
   exact normalized semantics; PR #98 merged the byte-identical production
   runtime as `fe04fa2`. A later current-main diagnostic failed its strict
   normalizer on an explicit false flag; its post-hoc 30.359% is not a
-  confirmation. Existing jobs never hot-swap code.
+  confirmation. PR #103 exact `3044a2f` independently retained at 3.4074%
+  lower x86 wall / 1.0299% one-sided LCB under terminal review `95e0faf`;
+  do not add ARM microbenchmarks or PR #107 claims. Existing jobs never
+  hot-swap code.
 - **PR #103 benchmark envelope:** exact design `62e471e4…e075` passed at
   canonical `f46cad5`; its sole six-pair x86 batch is terminal success and
   awaits independent result/manifest review.

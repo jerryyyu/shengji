@@ -255,6 +255,11 @@ def activate() -> bool:
         setattr(HeuristicBot, attr, wrapper)
     _fast.set_follow_fallback(Ordering, _saved["HeuristicBot._follow"])
     _fast.set_lead_fallback(_saved["HeuristicBot._lead"])
+    from .round import KITTY_MULTIPLIER, Round, Trick, TrickPlay
+    _saved["Round.play"] = Round.play
+    _fast.set_play_deps(Trick, TrickPlay, _saved["Round.play"],
+                        KITTY_MULTIPLIER)
+    Round.play = _fast.round_play
     return True
 
 
@@ -274,4 +279,7 @@ def deactivate() -> None:
     from ..ai.heuristic import HeuristicBot
     for key, attr, _, _ in _METHOD_ROUTED:
         setattr(HeuristicBot, attr, _saved.pop(key))
+    if "Round.play" in _saved:
+        from .round import Round
+        Round.play = _saved.pop("Round.play")
     _rebind({globals()[key]: _saved.pop(key) for key, _, _ in _ROUTED})

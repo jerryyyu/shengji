@@ -716,6 +716,87 @@ def heuristic_lowest(list cards, ordering, bint void_dump, bint avoid_points,
                              void_dump, avoid_points, seek_points, avoid)]
 
 
+def round_play(rnd, seat, cards):
+    """Round.play drop-in for trusted-rollout FOLLOW plays.
+
+    Leads always defer to the pure method: ``validate_lead`` and its throw
+    penalty change outcomes and stay on the audited Python path, which also
+    initializes the trusted trick caches.  Follows inside the trusted
+    append-only rollout contract skip re-validation (as the pure method
+    already does), maintain the incumbent/running-points caches, and resolve
+    completed tricks from the cache — all without Python frames.  Any miss
+    in the guard set defers to the pure method, byte-for-byte.
+    """
+    cdef long _pts, tpts, mult, kb
+    cdef int inc_top, winner
+    trick = getattr(rnd, "trick", None)
+    if _PURE_PLAY is None or getattr(rnd, "_trusted_rollout", False) is not True \
+            or trick is None:
+        return _PURE_PLAY(rnd, seat, cards)
+    plays = getattr(trick, "plays", None)
+    if (type(plays) is not list or not plays
+            or type(cards) is not list or not cards
+            or type(seat) is not int):
+        return _PURE_PLAY(rnd, seat, cards)
+    inc = trick.incumbent
+    pts_run = trick.running_points
+    ordering = rnd.ordering
+    hands = rnd.hands
+    banker = rnd.banker
+    if (type(inc) is not tuple or len(inc) != 3
+            or type(inc[0]) is not int or type(inc[2]) is not int
+            or type(pts_run) is not int or type(banker) is not int
+            or type(hands) is not list or len(hands) != 4
+            or not 0 <= seat < 4
+            or (_POLICY_ORDERING_TYPE is not None
+                and type(ordering) is not _POLICY_ORDERING_TYPE)
+            or rnd.phase != "play" or rnd.turn != seat):
+        return _PURE_PLAY(rnd, seat, cards)
+    rnd.message = None
+    hand = hands[seat]
+    for c in cards:
+        hand.remove(c)
+    plays.append(_TRICKPLAY_CLS(seat, list(cards)))
+    played = (<object>plays[len(plays) - 1]).cards
+    _pts = total_points(played)
+    trick.running_points = pts_run + _pts
+    inc_top = <int>(<object>inc[2])
+    res = beats(played, (<object>plays[0]).cards, inc[1], inc_top, ordering)
+    if res[0]:
+        trick.incumbent = (seat, ordering.eff_suit(played[0]), res[1])
+    if len(plays) == 4:
+        inc2 = trick.incumbent
+        winner = <int>(<object>inc2[0])
+        tpts = trick.running_points
+        trick.winner = winner
+        trick.points = tpts
+        if (winner % 2) != (banker % 2):
+            rnd.attacker_points = rnd.attacker_points + tpts
+        rnd.last_trick = trick
+        rnd.history.append(trick)
+        empty = True
+        for h in hands:
+            if len(<list>h):
+                empty = False
+                break
+        if empty:
+            rnd.last_trick_winner = winner
+            if (winner % 2) != (banker % 2):
+                mult = _KITTY_MULTIPLIER * len((<object>plays[0]).cards)
+                kb = total_points(rnd.buried) * mult
+                rnd.kitty_bonus = kb
+                rnd.attacker_points = rnd.attacker_points + kb
+            rnd.phase = "round_end"
+            rnd.turn = None
+            rnd.trick = None
+        else:
+            rnd.trick = _TRICK_CLS(leader=winner)
+            rnd.turn = winner
+    else:
+        rnd.turn = (seat + 1) % 4
+    return None
+
+
 def heuristic_lead(bot, rnd, seat):
     """HeuristicBot._lead drop-in: wrapper guards at C speed.
 
@@ -1026,6 +1107,23 @@ cdef object _cheapest_combo_in(list cards, object comp, long min_top,
 cdef object _POLICY_ORDERING_TYPE = None
 cdef object _PURE_FOLLOW = None
 cdef object _PURE_LEAD = None
+cdef object _PURE_PLAY = None
+cdef object _TRICK_CLS = None
+cdef object _TRICKPLAY_CLS = None
+cdef long _KITTY_MULTIPLIER = 0
+
+
+def set_play_deps(trick_cls, trickplay_cls, pure_play, kitty_multiplier):
+    """Register engine classes and the saved pure ``Round.play``.
+
+    Until registered the entry always defers, keeping import order and pure
+    mode untouched (same contract as the follow/lead fallbacks).
+    """
+    global _TRICK_CLS, _TRICKPLAY_CLS, _PURE_PLAY, _KITTY_MULTIPLIER
+    _TRICK_CLS = trick_cls
+    _TRICKPLAY_CLS = trickplay_cls
+    _PURE_PLAY = pure_play
+    _KITTY_MULTIPLIER = kitty_multiplier
 
 
 def set_lead_fallback(pure_lead):

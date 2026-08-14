@@ -16,8 +16,11 @@ from shengji.rl.belief_b2_execution import (
     SourceBindingV1,
     REVIEW_PREFIX,
     authenticate_review_commit,
+    build_pipeline_admission,
     execution_design_from_bytes,
     expected_review_claim,
+    pipeline_admission_from_bytes,
+    pipeline_admission_review_commit,
     validate_execution_design,
 )
 from shengji.rl.belief_contract import canonical_json_bytes
@@ -82,7 +85,7 @@ def test_design_refuses_missing_sources_runtime_and_authority_drift():
     with pytest.raises(BeliefB2ExecutionError, match="runtime profile"):
         validate_execution_design(replace(
             design, runtime=replace(design.runtime, torch_num_threads=2)))
-    with pytest.raises(BeliefB2ExecutionError, match="identity"):
+    with pytest.raises(BeliefB2ExecutionError, match="drift"):
         validate_execution_design(replace(
             design, evidence_root="relative/evidence"))
     with pytest.raises(BeliefB2ExecutionError, match="source binding"):
@@ -155,8 +158,38 @@ def test_one_canonical_claude_marker_authorizes_the_whole_offline_pipeline(
     _git(repo, "update-ref", "refs/remotes/origin/main", commit)
     assert authenticate_review_commit(
         design, repo=repo.resolve(), review_commit=commit) == marker
+    admission = build_pipeline_admission(
+        design, review_commit=commit, review_marker=marker)
+    assert pipeline_admission_from_bytes(
+        admission.canonical_bytes(), design=design,
+        review_marker=marker) == admission
+    assert pipeline_admission_review_commit(
+        admission.canonical_bytes()) == commit
+    assert admission.to_dict()["authority"] == {
+        "capture_authorized": True,
+        "reference_generation_authorized": True,
+        "training_authorized": True,
+        "one_test_split_open_authorized": True,
+        "terminal_reconstruction_authorized": True,
+        "retry_authorized": False,
+        "sampler_implementation_authorized": False,
+        "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "promotion_authorized": False,
+        "deployment_authorized": False,
+    }
 
     changed = replace(design, evidence_root="/different/evidence")
     with pytest.raises(BeliefB2ExecutionError, match="marker"):
         authenticate_review_commit(
             changed, repo=repo.resolve(), review_commit=commit)
+    with pytest.raises(BeliefB2ExecutionError, match="drift"):
+        pipeline_admission_from_bytes(
+            admission.canonical_bytes().replace(
+                b'"retry_authorized":false',
+                b'"retry_authorized":true'),
+            design=design, review_marker=marker)
+    with pytest.raises(BeliefB2ExecutionError, match="duplicate"):
+        pipeline_admission_review_commit(
+            admission.canonical_bytes().replace(
+                b'{"authority":', b'{"authority":{},"authority":', 1))

@@ -147,7 +147,12 @@ def protocol_dict() -> dict[str, Any]:
         "training": {
             "ordered_initialization_seeds": list(COHORT_SEEDS),
             "candidate_member_count": len(COHORT_SEEDS),
-            "permuted_label_member_count": len(COHORT_SEEDS),
+            "hard_geometry_permuted_label_member_count": len(COHORT_SEEDS),
+            "history_chronology_ablation_is_inference_only": True,
+            "history_chronology_ablation": (
+                "deterministic-within-decision-event-permutation-v1"),
+            "label_permutation": (
+                "hard-geometry-compatible-card-label-permutation-v1"),
             "device_hour_cap": TRAIN_DEVICE_HOUR_CAP,
             "wall_second_cap": TRAIN_WALL_SECOND_CAP,
             "byte_cap": TRAIN_BYTE_CAP,

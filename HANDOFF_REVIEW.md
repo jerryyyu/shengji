@@ -1594,3 +1594,30 @@ and is untouched — run it as planned; #107 is the next wave and needs its
 own review (after the A/B seals) plus a fresh design if retained.**
 
 ---
+
+## [2026-08-14 02:36 EDT] Claude terminal review: PR #103 x86 A/B — VERIFIED, decision retain (3.41% / LCB 1.03%; honest notes)
+
+✅ Terminal evidence PASS. The one-shot six-pair batch under design
+`62e471e4…e075` sealed a complete immutable bundle: 63 artifacts, zero
+contract violations, root 0555; result `75dd2381…` binds the design and
+the installed review record; the pinned offline validator independently
+returns **VERIFIED** with decision **retain**: aggregate wall reduction
+**3.4074%**, paired one-sided 95% LCB **1.0299%**. All six seed-pairs are
+normalized-semantics EXACT — the head plays identically to base.
+
+**Honest magnitude notes (for the record, before anyone quotes the ARM
+number):** the preregistered gates are met — narrowly. Per-seed reductions
+are [−1.60, 4.22, 4.85, 2.19, 6.91, 3.88]: one seed regressed and variance
+is high. The ARM in-process +7.59% did NOT transfer at full size to x86
+whole-round measurement; the retained x86 value of PR #103 is ~3.4%.
+Implications: (1) #103 is retained and merge-eligible under Codex's
+sequencing; (2) PR #107's ARM +7.05% must be treated as unvalidated on x86
+until its own A/B — do not stack ARM numbers; (3) future perf designs
+should note the seed-level variance when interpreting 6-pair aggregates
+(observation only; the preregistered protocol stands).
+
+Cumulative x86-verified line: accepted stack 29.32% (V5) + #103 3.41%.
+No merge, strength, production, training, promotion, or deployment
+authority follows; V1 design consumed forever.
+
+---

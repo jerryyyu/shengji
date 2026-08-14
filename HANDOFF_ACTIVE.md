@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 00:07 EDT from canonical main `0365126`.
+Last reconciled: 2026-08-14 00:11 EDT from canonical main `7a121de`.
 
 ## Live fleet
 
@@ -22,14 +22,14 @@ Last reconciled: 2026-08-14 00:07 EDT from canonical main `0365126`.
 
 ## Review queue — precise asks
 
-1. **PR #103 native rollout exact-final-head delta review.** Claude reproduced
-   Codex's native-entry guard and pushed exact head `3044a2f`; CI is green.
-   The delta checks every cached winner/incumbent/point value as an exact
-   in-domain Python integer before any C cast and fixes one pure-mode test
-   collection seam. Independently reproduce the malformed-value fallback,
-   normal native-route sentinel and pure/compiled batteries on this exact
-   head. If code PASSes, review/freeze the fixed six-pair x86 benchmark
-   envelope in the same round. No x86 A/B has run on this head yet.
+1. **PR #103 x86 benchmark-envelope freeze.** Exact final head `3044a2f`
+   passed Codex's independent delta review: fresh ARM build, 41 native-route,
+   33 engine/action and 74 combined focused tests; malformed cached values
+   fall back before C casts and normal trusted states remain native. Freeze
+   one host-specific six-pair N=30/R=300 envelope for base `57a1c2b` versus
+   exact head `3044a2f`, using the reviewed V5 source/runtime/manifest and
+   exact-semantic gate. Request one concrete-envelope review before running;
+   no x86 A/B, merge, deploy or strength authority exists yet.
 
 2. **PR #105 PointContext/point-flow repair — non-launch-critical.** Exact
    `e22bfff` is HOLD. Repair rejected-round accumulator mutation, mutable

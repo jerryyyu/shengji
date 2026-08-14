@@ -2,7 +2,7 @@
 
 Status: local draft stacked on PR #111 exact head
 `7ebfcf7959f5254fee3b3dda1fc2fd83600540e9`. The governing specification is
-PR #110 exact head `8cd28224ee888cedc773f4eccd255ed02d1fa63b`.
+PR #110 exact head `b8c2a4c25e918278c72facc472c6736428e65af3`.
 
 This document authorizes nothing. In particular it does not authorize corpus
 generation, training, cloud use, sampler changes, gameplay evidence, strength
@@ -13,7 +13,7 @@ claims, promotion, or deployment.
 The offline program answers one question:
 
 > Can a public-history ownership model predict the hidden allocation of cards
-> more accurately and more honestly calibrated than the current uniform-
+> more accurately and more honestly calibrated than the current constraint-
 > consistent sampler, without leaking hidden state or violating hard engine
 > constraints?
 
@@ -43,22 +43,22 @@ Its seed namespace is derived, rather than hand-picked:
 ```text
 seed_material =
   belief-v1-b2-open-dev-corpus|
-  8cd28224ee888cedc773f4eccd255ed02d1fa63b|
+  b8c2a4c25e918278c72facc472c6736428e65af3|
   7ebfcf7959f5254fee3b3dda1fc2fd83600540e9
 sha256(seed_material) =
-  798716c9d4ab463705ed2f4b035ee22aef78fed054a801143de94bf03974d9c0
+  d4b635bd6bc44b5e25b23881944fba68caef04c0c74b4cbae076ded191932ac6
 seed_start = first_64_bits_big_endian & (2**63 - 1), rounded down to 4096
-           = 8756993056557449216
-seed_end   = 8756993056557453311
+           = 6104125432620400640
+seed_end   = 6104125432620404735
 ```
 
 The exact B1 split function gives:
 
 | split | complete rounds |
 |---|---:|
-| train | 3,241 |
-| calibration | 410 |
-| test | 445 |
+| train | 3,279 |
+| calibration | 407 |
+| test | 410 |
 
 Each of 16 deterministic capture lanes receives exactly 256 round seeds. No
 decision, replay prefix, or target from one round may cross splits. No

@@ -8,59 +8,58 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-13 23:11 EDT from canonical main `63fa3fb`.
+Last reconciled: 2026-08-14 00:03 EDT from canonical main `4679ea9`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | idle after T4 | T4 is terminally reviewed `SELECT_NONE` at canonical `a165274`. Aggregate `f30a77c7…e652` passed recursive reproduction and exact work. No confirmation, retry, strength, promotion or deployment authority exists. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[448,464,464,448,464,464,448,448]/896`, totaling `3,648/7,168` (50.89%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The reviewed selective-S6 queue is asleep behind the Pair supervisor and must not bypass it. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `6,192/8,192` (75.59%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
-| **Performance Cloud** | review-gated Pair capacity and S6 V3 staging | No gameplay worker is live. PR #96 packet `b2d78d67…f69f92f` is frozen and verified but unreviewed/unexecuted. Optimized S6 V3 exact `a93c2f5` is staged with zero loadable shadows; no V3 packet exists. |
+| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses local repaired candidate `ed1d731` and compares native/pure state after every play across 10,000,000 deterministic rounds. It reads no sealed data and grants no benchmark, strength or merge authority. |
+| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[464,464,480,464,464,464,464,464]/896`, totaling `3,728/7,168` (52.01%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue is asleep behind the supervisor. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `6,667/8,192` (81.38%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
+| **Performance Cloud** | Pair successor score-free capacity, 16 workers | PR #96 recovery PASS `9a8843b` bound the pre-admission ignored-pyc incident. The exact pyc is quarantined intact and invocation `b98b4e15…` started at 00:01 EDT after exact re-verification. Packet snapshot and admission exist; result is absent; the systemd deadline is 04:01 EDT. S6 V3 packet `0e9ee589…bbee` passed at `4679ea9` and waits only for zero Pair workers. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
-## Immediate review and execution queue
+## Review queue — precise asks
 
-1. **PR #96 packet review — fastest path to useful host utilization.**
-   Source head `8a3ef59` passed external review and raw implementation marker
-   `035bb24` authorized one packet freeze. Root-owned packet
-   `b2d78d67…f69f92f` / internal `f9123d41…817f1b` binds runtime profile
-   `ff2dc8f1…7945` and canonical unit `8f8d0919…ae1f`; verification passes.
-   Packet-review snapshot, admission, result and installed unit are absent.
-   Await the exact raw `PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_PACKET_V2_REVIEW`
-   marker requested on PR #96. After authenticating it, install the exact
-   source-generated unit and start one score-free capacity execution. Never
-   restart it. A PASS does not authorize the Pair screen, resume, aggregate,
-   outcome access, strength or deployment.
+1. **PR #103 native rollout final-head repair.** Exact remote head `cbba3e5`
+   is HOLD because entry-bound `_follow` narrows huge cached Python integers
+   before fallback. Codex prepared local direct child `ed1d731` at
+   `/private/tmp/shengji-pr103-review-v1`: two files, +62/-3; fresh build,
+   41 native-route tests and 33 engine/action tests pass. Cherry-pick or
+   reproduce it onto PR #103, push, then request one exact-final-head review
+   covering both code and the fixed six-pair x86 benchmark envelope. Do not
+   benchmark `cbba3e5`.
 
-2. **PR #104 repaired S6 V3 source review.** Claude HOLDed `f12df08` at
-   canonical `63fa3fb` because its ignored-`.pyc` regression mocked
-   `runtime_snapshot`. Exact child `a93c2f5` changes only that test; production
-   controller SHA remains `744b4c5d…eaa9`. The real
-   `verify_packet -> runtime_snapshot -> _shadow_paths` route now refuses the
-   planted shadow, and replacing the production scan with `[]` makes the test
-   fail. The named five-file battery is 123/123 pure and 123/123 compiled.
-   The exact x86 checkout is staged with native `a11519ef…047`, frozen unit
-   `cee32e13…f4b` and runtime profile `05bc6e4d…76bf`; no packet/admission/unit
-   installation exists. Await the raw V3 implementation marker. Source PASS
-   may freeze one fresh host packet only; that packet needs a separate review
-   before any serial scored-DEV execution.
+2. **PR #105 PointContext/point-flow repair — non-launch-critical.** Exact
+   `e22bfff` is HOLD. Repair rejected-round accumulator mutation, mutable
+   `Memory` exposure, malformed trick/bool-seat admission, causal `fed` /
+   `discarded` naming, and the nonexistent proposal link. Preserve the
+   zero-production-import boundary, push one bounded child, then request one
+   exact-head delta review.
 
-3. **PR #97 final documentation review.** Exact docs head `316d6b7` changes
-   only `AI_POLICIES.md`, `BACKLOG.md`, `JOBS.md`, `PERF.md`, `RL_PLAN.md` and
-   the August-13 daily log. CI is green; diff/table/stale-state checks pass.
-   It records T4 terminal truth, current score-free fleet state, merged perf,
-   PR #96 packet state and S6 recovery without opening authority. Merge only
-   after exact-head documentation PASS.
+This block is the canonical hourly-review input. Posting, closing or changing
+any review request requires updating this block in the same operational pass;
+PR comments alone are not queue state.
 
-4. **S4 terminal sequence.** Let the controller finish tranche two naturally.
+## Execution and terminal queue
+
+1. **Pair capacity V2.** Monitor systemd invocation `b98b4e15…` only. Never
+   restart it. After exit, preserve all artifacts and request independent
+   score-free result/refusal review before any screen packet work.
+
+2. **S6 V3.** Packet PASS `4679ea9` authorizes one serial 64-state scored-DEV
+   execution. Install/start the exact staged unit only after Pair capacity
+   exits and zero Pair workers remain. Keep all scored records sealed; after
+   terminal, review only the score-free final before any record access.
+
+3. **S4 terminal sequence.** Let the controller finish tranche two naturally.
    Only after it exits, run the exact pinned read-only verifier at Git
    `e7551e4`; then request independent terminal review. Do not inspect shard
    outputs directly. The result may select a candidate, select none or HOLD;
    it never deploys automatically.
 
-5. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
+4. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
    If the supervisor publishes a valid score-free final, review it before any
    aggregation. If the immutable timeout fires, preserve the terminal HOLD;
    the sleeping S6 queue must not interpret that as a clean release. PR #96 is
@@ -69,6 +68,7 @@ Last reconciled: 2026-08-13 23:11 EDT from canonical main `63fa3fb`.
 ## Landed and closed anchors
 
 - **T4:** terminal `SELECT_NONE`; no retry or continuation.
+- **Docs:** PR #97 exact reviewed head `316d6b7` merged at `8bc2da1`.
 - **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
   exact normalized semantics; PR #98 merged the byte-identical production
   runtime as `fe04fa2`. A later current-main diagnostic failed its strict
@@ -82,7 +82,10 @@ Last reconciled: 2026-08-13 23:11 EDT from canonical main `63fa3fb`.
   training, strength or deployment authority.
 - **S6 V2:** the sole start refused on ignored bytecode before packet-review
   snapshot, admission, gameplay, records or final. V2 cannot retry; V3 binds
-  that incident under a fresh namespace.
+  that incident under a fresh namespace and now has a frozen packet.
+- **Pair capacity V2 recovery:** the first start refused before admission/work
+  on a Claude-created ignored pyc. Canonical recovery PASS `9a8843b` authorized
+  exact quarantine plus one start; the preserved second invocation is live.
 
 ## Standing invariants
 

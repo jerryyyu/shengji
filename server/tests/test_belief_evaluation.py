@@ -106,7 +106,7 @@ def test_truth_candidate_has_positive_exact_brier_and_log_loss_lift(
     assert len(score.canonical_bytes()) > 0
 
 
-def test_equal_predictions_score_exactly_equal(monkeypatch):
+def test_empirical_reference_clone_cannot_bank_sampling_bias(monkeypatch):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     pair, _, _, rnd, transcript = _state(10103)
     reference_batch = capture_ref_c_worlds(
@@ -115,7 +115,16 @@ def test_equal_predictions_score_exactly_equal(monkeypatch):
         reference_batch.ownership(), model_schema="history-ownership-v1-test",
         model_sha256="c" * 64)
     score = score_corpus_decision(pair, reference_batch, candidate)
-    assert score.brier_improvement_numerator == 0
+    assert score.reference_raw_brier_numerator \
+        == score.candidate_raw_brier_numerator
+    assert score.reference_finite_sample_bias_numerator > 0
+    assert score.reference_brier_numerator == (
+        score.reference_raw_brier_numerator * 255
+        - score.reference_finite_sample_bias_numerator)
+    assert score.candidate_brier_numerator \
+        == score.candidate_raw_brier_numerator * 255
+    assert score.brier_improvement_numerator \
+        == -score.reference_finite_sample_bias_numerator < 0
     assert score.log_loss_improvement_nanonats == 0
 
 

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from types import SimpleNamespace
 
 import pytest
 
 import shengji.rl.belief_b2_terminal_controller as terminal
+from shengji.rl.belief_b2_protocol import CAPTURE_WALL_SECOND_CAP
+from shengji.rl.belief_b2_result import NS_PER_SECOND
 from shengji.rl.belief_b2_execution import (
     REQUIRED_ENVIRONMENT, REQUIRED_EXACT_PATHS, REVIEW_PREFIX,
     B2ExecutionDesignV1, RuntimeProfileV1, SourceBindingV1,
@@ -119,3 +122,69 @@ def test_terminal_publication_and_reconstruction_are_closed(
     with pytest.raises(
             BeliefB2TerminalControllerError, match="reconstruction"):
         verify_terminal(root, design, admission)
+
+
+def test_coordinated_result_and_manifest_rehash_hits_result_guard_exactly(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    design, admission, marker = _authorized(root)
+    _stub_derivation(monkeypatch)
+    run_open_test(root, design, admission, review_marker=marker)
+    directory = root / "terminal"
+    result = directory / "result.json"
+    manifest = directory / "manifest.json"
+    altered = canonical_json_bytes({
+        "terminal": {"decision": "COORDINATED-REHASH-WITNESS"}})
+    result.chmod(0o600)
+    result.write_bytes(altered)
+    result.chmod(0o400)
+    manifest_row = json.loads(manifest.read_bytes())
+    manifest_row["files"]["result.json"] = hashlib.sha256(
+        altered).hexdigest()
+    manifest.chmod(0o600)
+    manifest.write_bytes(canonical_json_bytes(manifest_row))
+    manifest.chmod(0o400)
+    with pytest.raises(BeliefB2TerminalControllerError) as refusal:
+        verify_terminal(root, design, admission)
+    assert refusal.value.args == ("terminal result reconstruction drift",)
+
+
+def test_parallel_resource_windows_use_wall_span_and_enforce_cap(tmp_path):
+    design = _design((tmp_path / "evidence").resolve())
+
+    def row(start, finish, *, cpu=0, device=0, size=0):
+        return {"resources": {
+            "started_monotonic_nanoseconds": start,
+            "finished_monotonic_nanoseconds": finish,
+            "cpu_nanoseconds": cpu,
+            "device_nanoseconds": device,
+            "artifact_bytes": size,
+            "retry_count": 0,
+        }}
+
+    capture = (row(0, 10, cpu=7, size=3),
+               row(5, 20, cpu=11, size=5))
+    reference = (row(100, 110, cpu=13, size=7),
+                 row(102, 118, cpu=17, size=9))
+    training = (row(200, 230, device=19, size=11),
+                row(205, 240, device=23, size=13))
+    receipt = terminal._resources(
+        design, capture, reference, training)
+    assert receipt.capture_wall_nanoseconds == 20
+    assert receipt.capture_cpu_nanoseconds == 18
+    assert receipt.capture_artifact_bytes == 8
+    assert receipt.reference_wall_nanoseconds == 18
+    assert receipt.reference_cpu_nanoseconds == 30
+    assert receipt.training_wall_nanoseconds == 40
+    assert receipt.training_device_nanoseconds == 42
+    assert receipt.within_caps is True
+
+    over_cap = (row(
+        0, CAPTURE_WALL_SECOND_CAP * NS_PER_SECOND + 1,
+        cpu=1, size=1),)
+    refused = terminal._resources(
+        design, over_cap, reference, training)
+    assert refused.capture_wall_nanoseconds \
+        == CAPTURE_WALL_SECOND_CAP * NS_PER_SECOND + 1
+    assert refused.within_caps is False

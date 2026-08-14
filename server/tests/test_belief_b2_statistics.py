@@ -24,6 +24,8 @@ def _round(seed, *, reference=100_000_000, candidate=98_000_000,
         members = (98_500_000,) * 8
     return RoundProperScoreV1(
         round_seed=seed, decision_count=76,
+        reference_raw_brier_ppb=reference + 400_000,
+        reference_bias_correction_ppb=400_000,
         reference_brier_ppb=reference,
         candidate_brier_ppb=candidate,
         member_brier_ppb=members,
@@ -112,6 +114,10 @@ def test_decision_scores_reduce_to_equal_weight_round_unit():
             reference_ownership_sha256=f"{index + 21:064x}",
             candidate_ownership_sha256=f"{candidate:064x}",
             behavior_policy_ids=("mc-s0-report-lcb",), count_rows=3,
+            raw_brier_denominator=100,
+            reference_raw_brier_numerator=50,
+            candidate_raw_brier_numerator=(25 if index == 0 else 75),
+            reference_finite_sample_bias_numerator=0,
             brier_denominator=100, reference_brier_numerator=50,
             candidate_brier_numerator=(25 if index == 0 else 75),
             brier_improvement_numerator=(25 if index == 0 else -25),
@@ -124,6 +130,8 @@ def test_decision_scores_reduce_to_equal_weight_round_unit():
                           for index in range(2)) for member in range(8))
     result = build_round_proper_score(seed, candidate, members)
     assert result.decision_count == 2
+    assert result.reference_raw_brier_ppb == 500_000_000
+    assert result.reference_bias_correction_ppb == 0
     assert result.reference_brier_ppb == 500_000_000
     assert result.candidate_brier_ppb == 500_000_000
     assert result.reference_log_loss_nanonats == 100
@@ -137,6 +145,9 @@ def test_statistics_refuse_bool_negative_duplicate_order_and_wrong_split():
         evaluate_c1((replace(rows[0], candidate_brier_ppb=True), *rows[1:]))
     with pytest.raises(BeliefB2StatisticsError, match="schema/value"):
         evaluate_c1((replace(rows[0], candidate_brier_ppb=-1), *rows[1:]))
+    with pytest.raises(BeliefB2StatisticsError, match="schema/value"):
+        evaluate_c1((replace(rows[0], reference_bias_correction_ppb=1),
+                     *rows[1:]))
     with pytest.raises(BeliefB2StatisticsError, match="split/order"):
         evaluate_c1((rows[1], rows[0], *rows[2:]))
     with pytest.raises(BeliefB2StatisticsError, match="split/order"):

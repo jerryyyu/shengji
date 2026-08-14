@@ -103,9 +103,12 @@ It does **not** reveal the hidden deal. It represents uncertainty about it.
 
 The evidence orders the three pillars:
 
-1. **Search capacity:** preserve and confirm generic widening because it is the
-   measured positive. Spend the merged performance dividend on more worlds,
-   more candidates, or narrower confidence intervals.
+1. **Search capacity:** preserve generic widening as a measured hypothesis,
+   not a same-work win. Its positive T4 null arm used 14.8% more accepted
+   worlds and 80.9% more searches than champion. Confirm it with champion,
+   widening-at-champion-work, and widening-at-null-work arms before assigning
+   causality. Spend the merged performance dividend on more worlds, more
+   candidates, or narrower confidence intervals.
 2. **World representation:** use BELIEF-V1 first to improve which hidden worlds
    search evaluates. Test memory-aware continuations separately afterward.
 3. **Learning:** use the wider, belief-aware search as a teacher only after its
@@ -116,8 +119,8 @@ the wrong sampler, ballot, continuation, or target.
 
 It also preserves existing work rather than rebuilding it:
 
-- the already-positive same-work ballot-widening treatment should receive its
-  own confirmation independently of BELIEF-V1;
+- the positive but compute-confounded ballot-widening arm should receive its
+  own three-arm work-controlled confirmation independently of BELIEF-V1;
 - the running pair-aware terminal evidence should be read before choosing a
   memory-aware continuation experiment;
 - `MCSmartRoll` and `LEVEL_OBJECTIVE` are existing continuation/value assets,

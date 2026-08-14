@@ -136,6 +136,17 @@ REF-C replicates on the calibration split must disagree by less than one
 quarter of the 0.5%-relative Brier improvement floor below; otherwise the
 reference draw count returns for redesign before the test split opens.
 
+REF-C's empirical multinomial Brier is not compared raw with an unsampled
+candidate. For every receiver/card count row, subtract the unbiased finite-
+sample variance estimate
+`sum_k p_hat_k * (1 - p_hat_k) / (256 - 1)` from REF-C before C1, C2, N2 or
+U1 comparisons. The implementation stores raw REF-C Brier, the exact integer
+bias term and the corrected value separately. Candidate scores remain
+unchanged. This prevents a candidate that merely reproduces the
+constraint-consistent marginal distribution from banking the systematic
+`1/N` error of the 256-world baseline. Removing the correction must make the
+empirical-reference-clone regression fail.
+
 Reference RNG seeds are `sha256(protocol-schema|ref-c|replicate|decision_key)`
 truncated to a nonnegative 63-bit integer. The exact replicate labels are
 `calibration-replicate-0`, `calibration-replicate-1`, and `test-primary`.
@@ -261,7 +272,9 @@ The round is the bootstrap and uncertainty unit. All eight training seeds are
 reported; no best-seed metric exists.
 
 1. **C1 proper-score lift:** primary improvement is paired per-round hidden-
-   ownership count-Brier `REF-C - candidate`. The one-sided 95% lower bound
+   ownership count-Brier `bias-corrected REF-C - candidate`. The raw REF-C
+   mean and mean correction are reported alongside the corrected statistic.
+   The one-sided 95% lower bound
    over untouched test rounds must be strictly positive and the mean reduction
    must be at least 0.5% of REF-C mean Brier. At least six of eight individual
    seeds must have positive mean improvement. Smoothed log-loss improvement is

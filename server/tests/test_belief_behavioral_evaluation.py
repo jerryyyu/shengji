@@ -87,9 +87,17 @@ def test_behavioral_round_scores_only_confirmed_receiver_cells(
         >= pooled.confirmed_receiver_decision_count > 0
     assert pooled.probability_cell_count > 0
     assert pooled.candidate_brier_numerator == 0
+    assert pooled.reference_raw_brier_numerator > 0
+    assert pooled.reference_finite_sample_bias_numerator > 0
+    assert pooled.reference_brier_numerator == (
+        pooled.reference_raw_brier_numerator * 255
+        - pooled.reference_finite_sample_bias_numerator)
     assert pooled.reference_brier_numerator > 0
     assert pooled.history_ablated_brier_numerator \
-        == pooled.reference_brier_numerator
+        == pooled.reference_raw_brier_numerator * 255
+    assert pooled.history_ablated_brier_numerator \
+        == (pooled.reference_brier_numerator
+            + pooled.reference_finite_sample_bias_numerator)
     assert behavioral_round.to_dict()["privileged_targets_consumed"] is True
     assert behavioral_round.to_dict()["runtime_artifact"] is False
 

@@ -8,39 +8,38 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 09:34 EDT from canonical main `e31e9a2`.
+Last reconciled: 2026-08-14 09:48 EDT from canonical main `83c6909`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
 | **Mini** | idle | T4 is terminally reviewed `SELECT_NONE`. The PR #103 differential soak completed all 10,000,000 deterministic rounds / 744,566,732 plays, 8/8 PASS with no native/pure mismatch. It opened no sealed evidence and grants no strength authority. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers remain alive and CPU-bound. Latest reviewed score-free floor is `4,496/7,168` (62.72%); 0/8 terminal. Outcomes stay sealed and the timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
+| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers remain alive and CPU-bound. Latest reviewed score-free floor is `4,640/7,168` (64.73%); 0/8 terminal. Only about 13.9 hours remain before the fixed ~23:29 EDT cutoff, so timeout is now the expected transition. Outcomes stay sealed; do not intervene. The selective-S6 queue remains asleep behind the supervisor. |
 | **Strength Cloud** | idle | S4 finished both tranches and independent canonical terminal review `15e8dbb` reproduced final SHA `0aef1ca8…e90` and `SELECT_NONE`. The PR #103 x86 differential soak also completed 2,000,000 rounds, PASS with no mismatch. No retry/candidate action follows. |
-| **Performance Cloud** | idle | PR #103 terminal performance review retained 3.4074% lower wall / +1.0299% paired LCB. S6 V2 completed once and canonical independent terminal review `e31e9a2` reproduced result SHA `de1c4f33…d0bc` and `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`. The bury-source arm passed all criteria, but the required lead-source arm failed three; that asymmetry is hypothesis-only and authorizes no fresh design or run. |
+| **Performance Cloud** | Pair checkpoint-successor packet frozen; no worker | PR #106 implementation PASS at `83c6909` authorized one packet freeze. Exact packet `f2878fff…a5c9c` / internal `48ccd1f6…daeee`, runtime profile `39a8c31e…f1f3c`, is root-owned, immutable and independently unreviewed; admission, manifest and service are absent. PR #103 retained 3.4074% lower wall / +1.0299% paired LCB. S6 is terminal `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
 
-1. **PR #106 Pair checkpoint-screen final test-only re-review — launch-critical.**
-   Review exact `71356b2c75e2c22c3c0a54615029ca1251b3712a`, test-only child of
-   held `8e30c44`. The new isolated subprocess witness covers both hostile
-   wrong-`__file__` preload refusal and correctly originated preload
-   command-time fresh-process refusal; neutralizing either production guard
-   turns its leg red. Production remains byte-exact `7d83cae4…f0ed`; reproduce
-   31 focused and 195 pure/strict-compiled chain tests. Exact SHAs and mutation
-   evidence are in PR comment `5293867314`. PASS may freeze one host packet
-   only; no screen execution, outcomes, aggregation, retry or strength.
+1. **PR #106 concrete Pair checkpoint-screen packet review — launch-critical.**
+   Source head `71356b2c75e2c22c3c0a54615029ca1251b3712a` PASSed at canonical
+   `83c690968ddb34e9b909d7a684bb3ae751e7e3fb`. Independently review the one
+   frozen Performance Cloud packet `f2878ffff038cd62af41c286fabe2838ad2df2c0cc224620a239015d226a5c9c`
+   / internal `48ccd1f67a8c242ae8404126d34e40abf397cc1c6530c9ed465e051a40ddaeee`,
+   runtime profile `39a8c31e9eea5b3ae8cccc7dde5ae0c9785b97d4ea24958d5381d33d7d6f1f3c`
+   and systemd unit SHA `657a96fc…e6f4`. Re-run `verify`, authenticate the
+   implementation snapshot and reviewed Capacity V2 chain, require packet
+   population/geometry/runtime/authority exactness, and prove admission,
+   manifest, service and every bundle path absent. PASS may authorize this one
+   screen execution only; outcomes, aggregation, retry and strength stay false.
 
-2. **PR #107 performance wave-two repair — not launch-critical.** Exact head
-   `1982c48` is HOLD after Codex reproduced a stale mutable-world cache
-   (`110.0` cached versus `90.0` recomputed) and showed 34–128-card malformed
-   hands entering the bounds-check-disabled lead kernel instead of the reviewed
-   pure fallback. Repair both in one head with explicit per-world preparation
-   scope, fresh candidate copies and exact 33-card native admission; add the
-   decisive mutation/fallback fixtures and rerun pure/strict suites. Full
-   reproduction and smallest repair are in PR comment `5290233595`. Its prior
-   7.05% ARM timing is exploratory and must be remeasured after repair.
+2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+   Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
+   identity cache in favor of explicit per-world prepared hands and restores
+   the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
+   call/route witnesses and resolve its current failing CI before any x86 A/B.
+   The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
 3. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
@@ -66,9 +65,10 @@ PR comments alone are not queue state.
 
 2. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
    confirms 47.88 projected hours <= the reviewed 52h cap. Exact PR #106
-   successor `71356b2` is published and closes the final preload/origin test
-   boundary with both mutations killed. Only after its raw PASS may one host
-   packet be frozen and separately reviewed.
+   successor `71356b2` PASSed at `83c6909`; one packet `f2878fff…a5c9c` is
+   frozen and verified on Performance Cloud. Execution remains closed until
+   its exact packet marker lands. If authorized, install the byte-bound unit
+   and start exactly once; no resume, aggregate or outcome access follows.
 
 3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
    V1 aggregate admission was spent by a deterministic canonical-key-order

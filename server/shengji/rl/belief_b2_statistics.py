@@ -31,6 +31,7 @@ from .belief_corpus import split_for_round_seed
 
 ROUND_METRIC_SCHEMA = "belief-v1-b2-round-proper-score-v1"
 C1_RESULT_SCHEMA = "belief-v1-b2-primary-calibration-result-v1"
+N2_RESULT_SCHEMA = "belief-v1-b2-permuted-label-control-result-v1"
 PPB = 1_000_000_000
 
 
@@ -127,6 +128,47 @@ class C1CalibrationResultV1:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
+@dataclass(frozen=True)
+class N2PermutedLabelResultV1:
+    round_count: int
+    mean_brier_improvement_ppb: int
+    bootstrap_lower_brier_improvement_ppb: int
+    unexpectedly_positive_lower_bound: bool
+    passed: bool
+    schema: str = N2_RESULT_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "control": "hard-geometry-compatible-card-label-permutation-v1",
+            "round_count": self.round_count,
+            "mean_brier_improvement_ppb": self.mean_brier_improvement_ppb,
+            "bootstrap": {
+                "unit": "complete-round",
+                "replicates": PRIMARY_BOOTSTRAP_REPLICATES,
+                "seed": _n2_bootstrap_seed(),
+                "one_sided_percentile": 5,
+                "lower_brier_improvement_ppb": (
+                    self.bootstrap_lower_brier_improvement_ppb),
+            },
+            "unexpectedly_positive_lower_bound": (
+                self.unexpectedly_positive_lower_bound),
+            "passed": self.passed,
+            "privileged_targets_consumed": True,
+            "runtime_artifact": False,
+            "sampler_implementation_authorized": False,
+            "gameplay_authorized": False,
+            "strength_claim_authorized": False,
+            "deployment_authorized": False,
+        }
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_json_bytes(self.to_dict())
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
+
 def _validate_rounds(rounds: tuple[RoundProperScoreV1, ...], *, split: str) \
         -> None:
     if type(rounds) is not tuple or not rounds \
@@ -166,6 +208,12 @@ def reference_replicates_are_stable(
     return (2 * abs(left_sum - right_sum) * PPB
             < REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB
             * (left_sum + right_sum))
+
+
+def _n2_bootstrap_seed() -> int:
+    return int.from_bytes(hashlib.sha256(
+        b"belief-v1-b2|n2-permuted-label|paired-round-bootstrap").digest()[:8],
+                          "big") & (2**63 - 1)
 
 
 def evaluate_c1(
@@ -223,3 +271,26 @@ def evaluate_c1(
         passed=not reasons,
         refusal_reasons=tuple(reasons),
     )
+
+
+def evaluate_n2(
+        rounds: tuple[RoundProperScoreV1, ...]) -> N2PermutedLabelResultV1:
+    """Require the trainable permuted-label cohort to lack positive lift."""
+    _validate_rounds(rounds, split="test")
+    differences = tuple(row.reference_brier_ppb - row.candidate_brier_ppb
+                        for row in rounds)
+    count = len(differences)
+    mean = sum(differences) // count
+    generator = random.Random(_n2_bootstrap_seed())
+    bootstrap = sorted(sum(
+        differences[generator.randrange(count)] for _ in range(count))
+        for _ in range(PRIMARY_BOOTSTRAP_REPLICATES))
+    lower = bootstrap[
+        math.ceil(0.05 * PRIMARY_BOOTSTRAP_REPLICATES) - 1] // count
+    unexpectedly_positive = lower > 0
+    return N2PermutedLabelResultV1(
+        round_count=count,
+        mean_brier_improvement_ppb=mean,
+        bootstrap_lower_brier_improvement_ppb=lower,
+        unexpectedly_positive_lower_bound=unexpectedly_positive,
+        passed=not unexpectedly_positive)

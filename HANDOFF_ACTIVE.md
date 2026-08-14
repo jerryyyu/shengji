@@ -8,16 +8,16 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 00:15 EDT from canonical main `2a1d7e9`.
+Last reconciled: 2026-08-14 00:27 EDT from canonical main `2ca5122`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses the repair bytes now pushed at PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. It reads no sealed data and grants no benchmark, strength or merge authority. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[464,464,480,464,464,464,464,464]/896`, totaling `3,728/7,168` (52.01%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue is asleep behind the supervisor. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `6,848/8,192` (83.59%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
-| **Performance Cloud** | Pair successor score-free capacity, 16 workers | PR #96 recovery PASS `9a8843b` bound the pre-admission ignored-pyc incident. The exact pyc is quarantined intact and invocation `b98b4e15…` started at 00:01 EDT after exact re-verification. Packet snapshot and admission exist; result is absent; the systemd deadline is 04:01 EDT. S6 V3 packet `0e9ee589…bbee` passed at `4679ea9` and waits only for zero Pair workers. |
+| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses the repair bytes now pushed at PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 27 minutes; no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
+| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[464,480,480,464,480,464,464,464]/896`, totaling `3,760/7,168` (52.46%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue is asleep behind the supervisor. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `6,944/8,192` (84.77%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
+| **Performance Cloud** | Pair successor score-free capacity, 16 workers | PR #96 recovery PASS `9a8843b` bound the pre-admission ignored-pyc incident. The exact pyc is quarantined intact and invocation `b98b4e15…` started at 00:01 EDT after exact re-verification. The controller plus all 16 workers remain active and saturated after 25 minutes; packet snapshot and admission exist, while result/refusal is absent. The systemd deadline is 04:01 EDT. S6 V3 packet `0e9ee589…bbee` passed at `4679ea9` and waits only for zero Pair workers. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks

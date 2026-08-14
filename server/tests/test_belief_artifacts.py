@@ -29,6 +29,7 @@ from shengji.rl.belief_b2_protocol import (
     reference_sampler_seed,
 )
 from shengji.rl.belief_capture import (
+    CapturedActorRoundV1,
     captured_round_artifacts,
     capture_champion_round,
     reopen_captured_round_artifacts,
@@ -100,8 +101,13 @@ def _reference_round(monkeypatch):
             attempt_cap=256 * MCBot.SAMPLE_ATTEMPT_FACTOR,
             sampler_before=zero, sampler_after=counters,
             sampler_delta=counters, worlds=(world,) * 256))
+    actor_capture = CapturedActorRoundV1(
+        round_seed=captured.round_seed, policy_name=captured.policy_name,
+        policy_seeds=captured.policy_seeds,
+        actor_rows=tuple(pair.actor_bytes for pair in captured.pairs),
+        public_transcript=captured.public_transcript)
     return ReferenceCapturedRoundV1(
-        captured=captured, replicate="calibration-replicate-0",
+        captured=actor_capture, replicate="calibration-replicate-0",
         batches=tuple(batches))
 
 

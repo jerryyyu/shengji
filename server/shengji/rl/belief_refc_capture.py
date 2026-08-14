@@ -23,9 +23,10 @@ from ..engine.round import Round
 from .belief_b2_protocol import (B2_REFERENCE_REPLICATES,
                                  champion_policy_seeds,
                                  reference_sampler_seed)
-from .belief_capture import (CHAMPION_POLICY, CapturedBeliefRoundV1,
-                             capture_champion_round, validate_captured_round)
-from .belief_corpus import CorpusPairV1, reopen_actor_row, split_for_round_seed
+from .belief_capture import (CHAMPION_POLICY, CapturedActorRoundV1,
+                             capture_champion_actor_round,
+                             validate_actor_round)
+from .belief_corpus import reopen_actor_row, split_for_round_seed
 from .belief_contract import (ActorObservationV1, PublicTranscriptV1,
                               build_actor_observation, canonical_json_bytes)
 from .belief_ownership import BeliefOwnershipV1, KITTY_RECEIVER
@@ -74,7 +75,7 @@ class BeliefRefCCaptureError(ValueError):
 
 @dataclass(frozen=True)
 class ReferenceCapturedRoundV1:
-    captured: CapturedBeliefRoundV1
+    captured: CapturedActorRoundV1
     replicate: str
     batches: tuple[ReferenceWorldBatchV1, ...]
 
@@ -84,7 +85,7 @@ class ReferenceCapturedRoundV1:
             "round_seed": self.captured.round_seed,
             "split": split_for_round_seed(self.captured.round_seed),
             "replicate": self.replicate,
-            "capture_manifest_sha256": self.captured.manifest_sha256(),
+            "actor_capture_manifest_sha256": self.captured.manifest_sha256(),
             "decision_count": len(self.batches),
             "accepted_world_count": sum(
                 len(batch.worlds) for batch in self.batches),
@@ -315,9 +316,9 @@ def capture_champion_round_with_ref_c(
     batches = []
 
     def observe(rnd: Round, seat: int, transcript: PublicTranscriptV1,
-                pair: CorpusPairV1) -> None:
+                actor_row: bytes) -> None:
         try:
-            actor, metadata = reopen_actor_row(pair.actor_bytes)
+            actor, metadata = reopen_actor_row(actor_row)
         except ValueError as exc:
             raise BeliefRefCCaptureError(
                 "REF-C observed actor row refused") from exc
@@ -329,7 +330,7 @@ def capture_champion_round_with_ref_c(
                 "REF-C observed actor reconstruction drift")
         batches.append(batch)
 
-    captured = capture_champion_round(
+    captured = capture_champion_actor_round(
         round_seed, champion_policy_seeds(round_seed),
         decision_observer=observe)
     result = ReferenceCapturedRoundV1(
@@ -341,12 +342,12 @@ def capture_champion_round_with_ref_c(
 def validate_reference_captured_round(
         result: ReferenceCapturedRoundV1) -> None:
     if type(result) is not ReferenceCapturedRoundV1 \
-            or type(result.captured) is not CapturedBeliefRoundV1 \
+            or type(result.captured) is not CapturedActorRoundV1 \
             or type(result.batches) is not tuple \
             or result.replicate not in B2_REFERENCE_REPLICATES:
         raise BeliefRefCCaptureError("REF-C captured round schema drift")
     try:
-        validate_captured_round(result.captured)
+        validate_actor_round(result.captured)
     except ValueError as exc:
         raise BeliefRefCCaptureError("REF-C captured round refused") from exc
     split = split_for_round_seed(result.captured.round_seed)
@@ -354,13 +355,13 @@ def validate_reference_captured_round(
             and not result.replicate.startswith("calibration-replicate-")) \
             or (split == "test" and result.replicate != "test-primary") \
             or split == "train" \
-            or len(result.batches) != len(result.captured.pairs):
+            or len(result.batches) != len(result.captured.actor_rows):
         raise BeliefRefCCaptureError(
             "REF-C captured round replicate/population drift")
-    for pair, batch in zip(result.captured.pairs, result.batches,
+    for actor_row, batch in zip(result.captured.actor_rows, result.batches,
                            strict=True):
         try:
-            actor, metadata = reopen_actor_row(pair.actor_bytes)
+            actor, metadata = reopen_actor_row(actor_row)
             validate_reference_world_batch(batch)
         except ValueError as exc:
             raise BeliefRefCCaptureError(
@@ -373,7 +374,7 @@ def validate_reference_captured_round(
     manifest = result.manifest_dict()
     expected_keys = {
         "schema", "round_seed", "split", "replicate",
-        "capture_manifest_sha256", "decision_count",
+        "actor_capture_manifest_sha256", "decision_count",
         "accepted_world_count", "attempt_count",
         "batch_manifest_sha256s", "contains_sampled_hidden_worlds",
         "contains_round_outcome", "runtime_input",

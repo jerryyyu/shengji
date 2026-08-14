@@ -163,11 +163,15 @@ def test_full_replay_observes_every_calibration_decision_exactly(monkeypatch):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     monkeypatch.setattr(
         CAPTURE, "make_bot", lambda _name, *, seed: HeuristicBot())
+    monkeypatch.setattr(
+        CAPTURE, "capture_corpus_pair",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError(
+            "REF-C replay must never construct a privileged target row")))
     seed = b2_split_round_seeds("calibration")[0]
     result = capture_champion_round_with_ref_c(
         seed, replicate="calibration-replicate-0")
     validate_reference_captured_round(result)
-    assert len(result.batches) == len(result.captured.pairs)
+    assert len(result.batches) == len(result.captured.actor_rows)
     assert result.manifest_dict()["accepted_world_count"] \
         == len(result.batches) * REF_C_WORLD_COUNT
     assert result.manifest_dict()["contains_round_outcome"] is False

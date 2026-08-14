@@ -24,7 +24,8 @@ from .belief_contract import (BeliefContractError, CapturedDeclarationEvent,
                               CapturedPlayEvent, PublicTranscriptV1,
                               canonical_json_bytes)
 from .belief_corpus import (SPLITS, BeliefCorpusError, CorpusPairV1,
-                            capture_corpus_pair, split_for_round_seed,
+                            capture_actor_row, capture_corpus_pair,
+                            reopen_actor_row, split_for_round_seed,
                             validate_corpus_pair)
 
 
@@ -84,6 +85,39 @@ class CapturedBeliefRoundV1:
 
 
 @dataclass(frozen=True)
+class CapturedActorRoundV1:
+    """Target-blind replay used exclusively by REF-C generation."""
+
+    round_seed: int
+    policy_name: str
+    policy_seeds: tuple[int, int, int, int]
+    actor_rows: tuple[bytes, ...]
+    public_transcript: PublicTranscriptV1
+    schema: str = "belief-v1-score-free-actor-round-capture-v1"
+
+    def manifest_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema, "round_seed": self.round_seed,
+            "split": split_for_round_seed(self.round_seed),
+            "policy_name": self.policy_name,
+            "policy_seeds": list(self.policy_seeds),
+            "decision_count": len(self.actor_rows),
+            "public_transcript_sha256": hashlib.sha256(
+                _transcript_bytes(self.public_transcript)).hexdigest(),
+            "actor_row_sha256s": [hashlib.sha256(raw).hexdigest()
+                                  for raw in self.actor_rows],
+            "contains_privileged_targets": False,
+            "contains_round_outcome": False,
+            "runtime_input": False}
+
+    def manifest_bytes(self) -> bytes:
+        return canonical_json_bytes(self.manifest_dict())
+
+    def manifest_sha256(self) -> str:
+        return hashlib.sha256(self.manifest_bytes()).hexdigest()
+
+
+@dataclass(frozen=True)
 class CapturedRoundArtifactsV1:
     """Physically separated canonical bytes for one captured round."""
 
@@ -91,6 +125,13 @@ class CapturedRoundArtifactsV1:
     transcript_bytes: bytes
     actor_rows: tuple[bytes, ...]
     target_rows: tuple[bytes, ...]
+
+
+@dataclass(frozen=True)
+class CapturedActorRoundArtifactsV1:
+    manifest_bytes: bytes
+    transcript_bytes: bytes
+    actor_rows: tuple[bytes, ...]
 
 
 def _validate_seeds(round_seed: int,
@@ -124,6 +165,11 @@ def _transcript_dict(transcript: PublicTranscriptV1) -> dict[str, Any]:
 
 def _transcript_bytes(transcript: PublicTranscriptV1) -> bytes:
     return canonical_json_bytes(_transcript_dict(transcript))
+
+
+def public_transcript_bytes(transcript: PublicTranscriptV1) -> bytes:
+    _validate_transcript(transcript)
+    return _transcript_bytes(transcript)
 
 
 def _reject_number(value: str) -> None:
@@ -197,8 +243,8 @@ def _validate_transcript(transcript: PublicTranscriptV1) -> None:
 def _capture_with_policies(
         round_seed: int, policy_name: str,
         policy_seeds: tuple[int, int, int, int], policies: list[Any],
-        *, decision_observer: Any = None,
-        ) -> CapturedBeliefRoundV1:
+        *, decision_observer: Any = None, actor_only: bool = False,
+        ) -> CapturedBeliefRoundV1 | CapturedActorRoundV1:
     _validate_seeds(round_seed, policy_seeds)
     if type(policy_name) is not str or not policy_name \
             or type(policies) is not list or len(policies) != 4 \
@@ -232,26 +278,48 @@ def _capture_with_policies(
              policies[rnd.banker].decide_bury(rnd, rnd.banker))
 
     pairs: list[CorpusPairV1] = []
+    actor_rows: list[bytes] = []
     while rnd.phase == "play":
         seat = rnd.turn
-        pair = capture_corpus_pair(
-            rnd, seat, round_seed=round_seed,
-            decision_index=len(pairs), transcript=transcript)
-        if decision_observer is not None:
-            decision_observer(rnd, seat, transcript, pair)
-            repeated = capture_corpus_pair(
+        decision_index = len(actor_rows) if actor_only else len(pairs)
+        if actor_only:
+            actor_row = capture_actor_row(
                 rnd, seat, round_seed=round_seed,
-                decision_index=len(pairs), transcript=transcript)
-            if repeated != pair:
-                raise BeliefCaptureError(
-                    "capture decision observer mutated round state")
+                decision_index=decision_index, transcript=transcript)
+            if decision_observer is not None:
+                decision_observer(rnd, seat, transcript, actor_row)
+                repeated = capture_actor_row(
+                    rnd, seat, round_seed=round_seed,
+                    decision_index=decision_index, transcript=transcript)
+                if repeated != actor_row:
+                    raise BeliefCaptureError(
+                        "capture decision observer mutated round state")
+            actor_rows.append(actor_row)
+        else:
+            pair = capture_corpus_pair(
+                rnd, seat, round_seed=round_seed,
+                decision_index=decision_index, transcript=transcript)
+            if decision_observer is not None:
+                decision_observer(rnd, seat, transcript, pair)
+                repeated = capture_corpus_pair(
+                    rnd, seat, round_seed=round_seed,
+                    decision_index=decision_index, transcript=transcript)
+                if repeated != pair:
+                    raise BeliefCaptureError(
+                        "capture decision observer mutated round state")
+            pairs.append(pair)
         attempted = policies[seat].decide_play(rnd, seat)
         previous_last = rnd.last_trick
         rnd.play(seat, attempted)
         actual = actual_play_after(rnd, seat, previous_last)
         transcript = transcript.with_play(seat, attempted, actual)
-        pairs.append(pair)
-
+    if actor_only:
+        result = CapturedActorRoundV1(
+            round_seed=round_seed, policy_name=policy_name,
+            policy_seeds=policy_seeds, actor_rows=tuple(actor_rows),
+            public_transcript=transcript)
+        validate_actor_round(result)
+        return result
     captured = CapturedBeliefRoundV1(
         round_seed=round_seed,
         policy_name=policy_name,
@@ -271,9 +339,50 @@ def capture_champion_round(
     _validate_seeds(round_seed, policy_seeds)
     policies = [make_bot(CHAMPION_POLICY, seed=seed)
                 for seed in policy_seeds]
-    return _capture_with_policies(
+    result = _capture_with_policies(
         round_seed, CHAMPION_POLICY, policy_seeds, policies,
         decision_observer=decision_observer)
+    if type(result) is not CapturedBeliefRoundV1:
+        raise BeliefCaptureError("champion capture type drift")
+    return result
+
+
+def capture_champion_actor_round(
+        round_seed: int, policy_seeds: tuple[int, int, int, int], *,
+        decision_observer: Any = None) -> CapturedActorRoundV1:
+    """Replay the champion while constructing no privileged target object."""
+    _validate_seeds(round_seed, policy_seeds)
+    policies = [make_bot(CHAMPION_POLICY, seed=seed)
+                for seed in policy_seeds]
+    result = _capture_with_policies(
+        round_seed, CHAMPION_POLICY, policy_seeds, policies,
+        decision_observer=decision_observer, actor_only=True)
+    if type(result) is not CapturedActorRoundV1:
+        raise BeliefCaptureError("actor-only champion capture type drift")
+    return result
+
+
+def validate_actor_round(captured: CapturedActorRoundV1) -> None:
+    if type(captured) is not CapturedActorRoundV1 \
+            or captured.schema != "belief-v1-score-free-actor-round-capture-v1":
+        raise BeliefCaptureError("actor-only capture schema drift")
+    _validate_seeds(captured.round_seed, captured.policy_seeds)
+    _validate_transcript(captured.public_transcript)
+    if captured.policy_name != CHAMPION_POLICY \
+            or type(captured.actor_rows) is not tuple \
+            or not captured.actor_rows \
+            or len(captured.actor_rows) != len(captured.public_transcript.plays):
+        raise BeliefCaptureError("actor-only capture population drift")
+    for index, raw in enumerate(captured.actor_rows):
+        try:
+            _, metadata = reopen_actor_row(raw)
+        except BeliefCorpusError as exc:
+            raise BeliefCaptureError("actor-only row refused") from exc
+        if metadata["round_seed"] != captured.round_seed \
+                or metadata["decision_index"] != index:
+            raise BeliefCaptureError("actor-only row order drift")
+    if captured.manifest_dict()["contains_privileged_targets"] is not False:
+        raise BeliefCaptureError("actor-only capture authority drift")
 
 
 def captured_round_artifacts(
@@ -286,6 +395,15 @@ def captured_round_artifacts(
         actor_rows=tuple(pair.actor_bytes for pair in captured.pairs),
         target_rows=tuple(pair.target_bytes for pair in captured.pairs),
     )
+
+
+def captured_actor_round_artifacts(
+        captured: CapturedActorRoundV1) -> CapturedActorRoundArtifactsV1:
+    validate_actor_round(captured)
+    return CapturedActorRoundArtifactsV1(
+        manifest_bytes=captured.manifest_bytes(),
+        transcript_bytes=_transcript_bytes(captured.public_transcript),
+        actor_rows=captured.actor_rows)
 
 
 def _transcript_from_dict(payload: dict[str, Any]) -> PublicTranscriptV1:
@@ -365,6 +483,37 @@ def reopen_captured_round_artifacts(
         raise BeliefCaptureError("capture manifest bytes drift")
     if _transcript_bytes(transcript) != artifacts.transcript_bytes:
         raise BeliefCaptureError("capture transcript bytes drift")
+    return captured
+
+
+def reopen_captured_actor_round_artifacts(
+        artifacts: CapturedActorRoundArtifactsV1) -> CapturedActorRoundV1:
+    if type(artifacts) is not CapturedActorRoundArtifactsV1 \
+            or type(artifacts.actor_rows) is not tuple \
+            or not artifacts.actor_rows \
+            or any(type(raw) is not bytes for raw in artifacts.actor_rows):
+        raise BeliefCaptureError("actor-only artifact population drift")
+    manifest = _strict_json(
+        artifacts.manifest_bytes, label="actor-only capture manifest")
+    transcript = _transcript_from_dict(_strict_json(
+        artifacts.transcript_bytes, label="actor-only capture transcript"))
+    expected_keys = {
+        "schema", "round_seed", "split", "policy_name", "policy_seeds",
+        "decision_count", "public_transcript_sha256",
+        "actor_row_sha256s", "contains_privileged_targets",
+        "contains_round_outcome", "runtime_input"}
+    if set(manifest) != expected_keys \
+            or type(manifest["policy_seeds"]) is not list:
+        raise BeliefCaptureError("actor-only manifest field drift")
+    captured = CapturedActorRoundV1(
+        schema=manifest["schema"], round_seed=manifest["round_seed"],
+        policy_name=manifest["policy_name"],
+        policy_seeds=tuple(manifest["policy_seeds"]),
+        actor_rows=artifacts.actor_rows, public_transcript=transcript)
+    validate_actor_round(captured)
+    if captured.manifest_bytes() != artifacts.manifest_bytes \
+            or _transcript_bytes(transcript) != artifacts.transcript_bytes:
+        raise BeliefCaptureError("actor-only artifact byte drift")
     return captured
 
 

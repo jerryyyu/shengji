@@ -251,6 +251,27 @@ def score_corpus_decision(
     return score
 
 
+def score_corpus_candidates(
+        pair: CorpusPairV1,
+        reference_batch: ReferenceWorldBatchV1,
+        candidates: tuple[BeliefOwnershipV1, ...]) \
+        -> tuple[DecisionProperScoreV1, ...]:
+    """Score several candidates after one exact REF-C batch validation."""
+    if type(candidates) is not tuple or not candidates \
+            or any(type(candidate) is not BeliefOwnershipV1
+                   for candidate in candidates):
+        raise BeliefEvaluationError(
+            "offline candidate population is malformed")
+    actor, target, _ = reopen_score_pair(pair)
+    reference = _reference_for_pair(actor, reference_batch)
+    scores = tuple(_score_decision(
+        actor, target, reference, candidate) for candidate in candidates)
+    if len({score.candidate_ownership_sha256 for score in scores}) \
+            != len(scores):
+        raise BeliefEvaluationError("offline candidate identity is duplicated")
+    return scores
+
+
 def validate_decision_score(
         pair: CorpusPairV1,
         reference_batch: ReferenceWorldBatchV1,

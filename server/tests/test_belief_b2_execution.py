@@ -37,6 +37,7 @@ def _runtime() -> RuntimeProfileV1:
     return RuntimeProfileV1(
         hostname="opened-dev-host", operating_system="test-os",
         machine="x86_64", cpu_count=16, memory_bytes=32 << 30,
+        boot_identity=_sha("boot"),
         python_executable="/runtime/python",
         python_resolved_executable="/runtime/python3.14",
         python_executable_sha256=_sha("python"),

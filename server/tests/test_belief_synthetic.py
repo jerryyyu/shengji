@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-import copy
-import random
 from dataclasses import replace
 
 import pytest
 
-from shengji.ai.heuristic import HeuristicBot
-from shengji.engine.game import Game
-from shengji.engine.round import actual_play_after
-from shengji.rl.belief_contract import PublicTranscriptV1, build_actor_observation
-from shengji.rl.belief_corpus import capture_corpus_pair
 from shengji.rl.belief_projection import (project_count_weights,
                                           uniform_raw_count_weights)
 from shengji.rl.belief_evaluation import reopen_score_pair
@@ -22,55 +15,16 @@ from shengji.rl.belief_synthetic import (
     C4_MAX_EVENT_ERROR_PPB,
     C4_MAX_ROW_TOTAL_VARIATION_PPB,
     BeliefSyntheticError,
-    C4PublicTwinContextV1,
     C4SyntheticEvidenceV1,
+    build_c4_contexts,
     run_c4_synthetic_pipeline,
     validate_c4_synthetic_evidence,
 )
 
 
-def _context(context_index: int) -> C4PublicTwinContextV1:
-    seed = (10405, 10407, 10409, 10415)[context_index]
-    plays = 5 + context_index
-    rnd = Game(random.Random(seed)).start_round()
-    bot = HeuristicBot()
-    transcript = PublicTranscriptV1()
-    while rnd.phase == "deal":
-        rnd.deal_next()
-    rnd.finalize_declare()
-    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
-    for _ in range(plays):
-        seat = rnd.turn
-        attempted = bot.decide_play(rnd, seat)
-        previous_last = rnd.last_trick
-        rnd.play(seat, attempted)
-        transcript = transcript.with_play(
-            seat, attempted, actual_play_after(
-                rnd, seat, previous_last))
-    actor = build_actor_observation(rnd, rnd.turn, transcript)
-    changed = copy.deepcopy(rnd)
-    hidden = [seat for seat in range(4) if seat != rnd.turn]
-    left, right = next(
-        (left, right) for index, left in enumerate(hidden)
-        for right in hidden[index + 1:]
-        if len(changed.hands[left]) == len(changed.hands[right]))
-    changed.hands[left], changed.hands[right] = (
-        changed.hands[right], changed.hands[left])
-    assert build_actor_observation(
-        changed, rnd.turn, transcript).canonical_bytes() \
-        == actor.canonical_bytes()
-    pairs = tuple(capture_corpus_pair(
-        world, rnd.turn, round_seed=seed, decision_index=plays,
-        transcript=transcript) for world in (rnd, changed))
-    return C4PublicTwinContextV1(
-        context_id=C4_CONTEXT_IDS[context_index],
-        world_0=pairs[0], world_1=pairs[1])
-
-
 @pytest.fixture(scope="module")
 def evidence() -> C4SyntheticEvidenceV1:
-    return run_c4_synthetic_pipeline(tuple(
-        _context(index) for index in range(len(C4_CONTEXT_IDS))))
+    return run_c4_synthetic_pipeline(build_c4_contexts())
 
 
 def test_exact_synthetic_pipeline_recovers_enumerated_posterior(evidence):

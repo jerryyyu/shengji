@@ -46,6 +46,10 @@ from shengji.rl.belief_b2_controller import (  # noqa: E402
     run_reference_lane,
     run_training_cohort,
 )
+from shengji.rl.belief_b2_terminal_controller import (  # noqa: E402
+    run_open_test,
+    verify_terminal,
+)
 
 
 def freeze_design(args: argparse.Namespace) -> None:
@@ -202,6 +206,37 @@ def train_cohort(args: argparse.Namespace) -> None:
     }).decode("ascii"), end="")
 
 
+def open_test(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    design, admission, marker = _load_authorized_root(root)
+    result = run_open_test(
+        root, design, admission, review_marker=marker)
+    print(canonical_json_bytes({
+        "terminal_decision": result["terminal"]["decision"],
+        "terminal_result_sha256": hashlib.sha256(
+            canonical_json_bytes(result)).hexdigest(),
+        "test_split_open_count": 1,
+        "terminal_reproducibility_review_required": True,
+        "complete": True,
+    }).decode("ascii"), end="")
+
+
+def terminal_verify(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    design, admission, _ = _load_authorized_root(root)
+    result = verify_terminal(root, design, admission)
+    print(canonical_json_bytes({
+        "verified": True,
+        "terminal_decision": result["terminal"]["decision"],
+        "terminal_result_sha256": hashlib.sha256(
+            canonical_json_bytes(result)).hexdigest(),
+        "b3_sampler_implementation_authorized": False,
+        "sampler_run_authorized": False,
+        "gameplay_strength_screen_authorized": False,
+        "deployment_authorized": False,
+    }).decode("ascii"), end="")
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     commands = result.add_subparsers(dest="command", required=True)
@@ -232,6 +267,12 @@ def parser() -> argparse.ArgumentParser:
         "--kind", required=True,
         choices=("candidate", "hard-geometry-label-permutation"))
     train.set_defaults(function=train_cohort)
+    test = commands.add_parser("open-test")
+    test.add_argument("--root", required=True)
+    test.set_defaults(function=open_test)
+    terminal = commands.add_parser("verify-terminal")
+    terminal.add_argument("--root", required=True)
+    terminal.set_defaults(function=terminal_verify)
     return result
 
 

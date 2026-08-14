@@ -1458,3 +1458,25 @@ S6 V2 non-retryable, V3 repair at `a93c2f5`); authority wording widens
 nothing. Merge-ready. No execution or deployment authority.
 
 ---
+
+## [2026-08-13 23:59 EDT] Claude: PR #96 pre-admission recovery — PASS (quarantine + one restart)
+
+PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_V2_PREADMISSION_RECOVERY_REVIEW {"absent":["packet-review-snapshot","admission","capacity-result","execution-receipt","refusal-receipt"],"aggregate_execution_authorized":false,"authorizes":["quarantine-exact-shadow-to-root-owned-nonloadable-incident-dir","rerun-exact-packet-and-runtime-verification","reset-failed-unit-state","start-same-unit-exactly-once"],"failed_invocation_id":"a2f9115b82774b7bb0a0b694fa2c3fef","journal_failure":"REFUSED: runtime contains untracked loadable shadows: server/scripts/__pycache__/pair_aware_rollout_checkpoint_capacity.cpython-314.pyc","outcome_access_authorized":false,"packet_review_commit":"749059553357c11c1095a9f8ca8909f81258c98c","packet_sha256":"b2d78d67e0973d3e09a5ca8483e5cb2b7c24f7af0c78fce7782c19cb5f69f92f","production_deployment":false,"resume_execution_authorized":false,"retry_or_extension_beyond_this_one_restart":false,"schema":"pair-capacity-v2-preadmission-recovery-v1","screen_execution_authorized":false,"shadow_created_utc":"2026-08-14T03:31:29.755452","shadow_origin":"claude-review-marker-generation-import-without-dash-B","shadow_path":"server/scripts/__pycache__/pair_aware_rollout_checkpoint_capacity.cpython-314.pyc","shadow_sha256":"a7ba2ab24a79162ab7af279e4cb24171f21e872cf4531534b598c63271f9290a","source_git":"8a3ef59ff0b19759dc7eecd52fedb9c35e5e2d19","strength_claim":false,"surviving_processes":0,"void_if_any_absence_or_runtime_fact_changed":true}
+All incident facts independently verified on-host: exact shadow path/SHA,
+journal refusal text, unit failed state preserved, run directory holds only
+the two freeze artifacts, and all five artifacts are ABSENT (the single v2
+token in runs/locks is the historical preflight-v2 admission, a different
+run id). Timestamps confirm the shadow was created 19 seconds before my
+packet-PASS commit — **it was produced by my own marker-generation import
+running without -B during the packet review. My fault; the runbook-item
+hygiene rule now applies to my own on-host invocations, and every future
+import of controller modules by me uses -B.**
+
+The record above authorizes exactly: move that exact pyc intact to a
+root-owned non-loadable incident quarantine; re-run exact packet/runtime
+verification; reset the failed unit state; start the same unit exactly once
+more. Void if any bound fact has changed. All downstream authority remains
+false. This recovers a transport-only pre-admission refusal; it does not
+reinterpret any admission.
+
+---

@@ -20,7 +20,10 @@ from .belief_corpus import CorpusPairV1, validate_corpus_pair
 from .belief_ownership import (KITTY_RECEIVER, PROBABILITY_SCALE,
                                BeliefOwnershipV1, count_brier_fraction,
                                receiver_sizes, validate_ownership)
-from .belief_reference import REF_C_MODEL_SCHEMA, REF_C_WORLD_COUNT
+from .belief_refc_capture import (BeliefRefCCaptureError,
+                                  ReferenceWorldBatchV1,
+                                  validate_reference_world_batch)
+from .belief_reference import REF_C_WORLD_COUNT
 from .belief_reopen import (actor_observation_from_dict,
                             belief_targets_from_dict)
 
@@ -191,8 +194,6 @@ def _score_decision(
     except ValueError as exc:
         raise BeliefEvaluationError("offline ownership validation refused") \
             from exc
-    if reference.model_schema != REF_C_MODEL_SCHEMA:
-        raise BeliefEvaluationError("offline reference is not exact REF-C")
     if reference.behavior_policy_ids != candidate.behavior_policy_ids:
         raise BeliefEvaluationError("offline behavior-policy comparison drift")
     if tuple((row.card, row.receiver) for row in reference.probabilities) \
@@ -223,22 +224,40 @@ def _score_decision(
     )
 
 
+def _reference_for_pair(
+        actor: ActorObservationV1,
+        reference_batch: ReferenceWorldBatchV1) -> BeliefOwnershipV1:
+    if type(reference_batch) is not ReferenceWorldBatchV1:
+        raise BeliefEvaluationError("offline reference requires exact REF-C batch")
+    try:
+        validate_reference_world_batch(reference_batch)
+    except BeliefRefCCaptureError as exc:
+        raise BeliefEvaluationError("offline REF-C batch validation refused") \
+            from exc
+    if reference_batch.actor.canonical_bytes() != actor.canonical_bytes():
+        raise BeliefEvaluationError("offline REF-C actor binding drift")
+    return reference_batch.ownership()
+
+
 def score_corpus_decision(
         pair: CorpusPairV1,
-        reference: BeliefOwnershipV1,
+        reference_batch: ReferenceWorldBatchV1,
         candidate: BeliefOwnershipV1) -> DecisionProperScoreV1:
-    """Build and recompute one score from an exact hash-bound corpus pair."""
+    """Score one hash-bound corpus pair against an authenticated REF-C batch."""
     actor, target, _ = reopen_score_pair(pair)
+    reference = _reference_for_pair(actor, reference_batch)
     score = _score_decision(actor, target, reference, candidate)
-    validate_decision_score(pair, reference, candidate, score)
+    validate_decision_score(pair, reference_batch, candidate, score)
     return score
 
 
 def validate_decision_score(
         pair: CorpusPairV1,
-        reference: BeliefOwnershipV1, candidate: BeliefOwnershipV1,
+        reference_batch: ReferenceWorldBatchV1,
+        candidate: BeliefOwnershipV1,
         score: DecisionProperScoreV1) -> None:
     actor, target, _ = reopen_score_pair(pair)
+    reference = _reference_for_pair(actor, reference_batch)
     if type(score) is not DecisionProperScoreV1 \
             or score.schema != DECISION_SCORE_SCHEMA \
             or score.privileged_targets_consumed is not True \

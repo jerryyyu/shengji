@@ -716,7 +716,29 @@ def heuristic_lowest(list cards, ordering, bint void_dump, bint avoid_points,
                              void_dump, avoid_points, seek_points, avoid)]
 
 
-def heuristic_lead(bot, rnd, int seat):
+def heuristic_lead(bot, rnd, seat):
+    """HeuristicBot._lead drop-in: wrapper guards at C speed.
+
+    Mirrors the entry-bound ``heuristic_follow`` contract: engine-shaped
+    states run the native kernel with no Python wrapper frame; anything else
+    defers to the registered saved pure method (strict Ordering-type check
+    only once routing has registered it, keeping standalone kernel calls
+    behaviorally identical to the pre-entry wrapper era).
+    """
+    hands = getattr(rnd, "hands", None)
+    ordering = getattr(rnd, "ordering", None)
+    if (ordering is not None
+            and (_POLICY_ORDERING_TYPE is None
+                 or type(ordering) is _POLICY_ORDERING_TYPE)
+            and type(seat) is int and type(hands) is list
+            and len(hands) == 4 and 0 <= seat < 4):
+        hand = hands[seat]
+        if type(hand) is list and 0 < len(hand) <= MAX_CARDS:
+            return _heuristic_lead_kernel(bot, rnd, seat)
+    return _PURE_LEAD(bot, rnd, seat)
+
+
+def _heuristic_lead_kernel(bot, rnd, int seat):
     """HeuristicBot._lead drop-in over one native hand scan.
 
     This preserves the pure policy's suit order, first-maximum tractor tie,
@@ -1003,6 +1025,13 @@ cdef object _cheapest_combo_in(list cards, object comp, long min_top,
 
 cdef object _POLICY_ORDERING_TYPE = None
 cdef object _PURE_FOLLOW = None
+cdef object _PURE_LEAD = None
+
+
+def set_lead_fallback(pure_lead):
+    """Register the saved pure ``_lead`` for the entry-bound native lead."""
+    global _PURE_LEAD
+    _PURE_LEAD = pure_lead
 
 
 def set_follow_fallback(ordering_type, pure_follow):

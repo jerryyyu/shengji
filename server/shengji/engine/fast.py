@@ -215,7 +215,7 @@ _METHOD_ROUTED = (
     ("HeuristicBot._lowest", "_lowest", _lowest_fast, True),
     ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast,
      True),
-    ("HeuristicBot._lead", "_lead", _lead_fast, False),
+    ("HeuristicBot._lead", "_lead", None, False),
     ("HeuristicBot._cheapest_winning", "_cheapest_winning",
      _cheapest_winning_fast, True),
 )
@@ -254,6 +254,7 @@ def activate() -> bool:
             wrapper = getattr(_fast, "heuristic" + attr)
         setattr(HeuristicBot, attr, wrapper)
     _fast.set_follow_fallback(Ordering, _saved["HeuristicBot._follow"])
+    _fast.set_lead_fallback(_saved["HeuristicBot._lead"])
     return True
 
 

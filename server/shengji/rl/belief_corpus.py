@@ -17,6 +17,7 @@ from typing import Any
 from ..engine.round import Round
 from .belief_contract import (ACTOR_OBSERVATION_SCHEMA,
                               BELIEF_TARGETS_SCHEMA,
+                              ActorObservationV1,
                               BeliefContractError,
                               PublicTranscriptV1,
                               build_information_partition,
@@ -165,6 +166,45 @@ class CorpusPairV1:
         return _sha256(self.target_bytes)
 
 
+_ACTOR_ROW_KEYS = {
+    "schema", "round_seed", "decision_index", "actor_seat",
+    "decision_key", "split_schema", "split", "actor_schema",
+    "actor_sha256", "actor", "contains_privileged_targets",
+    "artifact_sha256",
+}
+
+
+def reopen_actor_row(actor_raw: bytes) \
+        -> tuple[ActorObservationV1, dict[str, Any]]:
+    """Reopen one target-blind actor row without consulting target bytes."""
+    actor = _strict_load(actor_raw, label="actor row")
+    if set(actor) != _ACTOR_ROW_KEYS:
+        raise BeliefCorpusError("actor row field population drift")
+    _validate_metadata(actor, schema=ACTOR_ROW_SCHEMA)
+    _validate_seal(actor)
+    if actor["actor_schema"] != ACTOR_OBSERVATION_SCHEMA \
+            or actor["contains_privileged_targets"] is not False \
+            or type(actor["actor"]) is not dict \
+            or actor["actor"].get("schema") != actor["actor_schema"] \
+            or actor["actor"].get("declaration_history_complete") is not True \
+            or actor["actor"].get(
+                "attempted_play_history_complete") is not True:
+        raise BeliefCorpusError("actor row authority/schema drift")
+    actor_payload_bytes = canonical_json_bytes(actor["actor"])
+    if _sha256(actor_payload_bytes) != actor["actor_sha256"]:
+        raise BeliefCorpusError("actor payload hash mismatch")
+    try:
+        typed_actor = actor_observation_from_dict(actor["actor"])
+    except BeliefReopenError as exc:
+        raise BeliefCorpusError("typed actor reconstruction refused") from exc
+    if typed_actor.sha256() != actor["actor_sha256"]:
+        raise BeliefCorpusError("typed actor hash reconstruction drift")
+    metadata = {key: actor[key] for key in (
+        "round_seed", "decision_index", "actor_seat", "decision_key",
+        "split_schema", "split")}
+    return typed_actor, metadata
+
+
 def capture_corpus_pair(rnd: Round, seat: int, *, round_seed: int,
                         decision_index: int,
                         transcript: PublicTranscriptV1) -> CorpusPairV1:
@@ -218,19 +258,13 @@ def validate_corpus_pair(actor_raw: bytes, target_raw: bytes) \
     """Reopen both canonical rows and rebind payloads, split, and pairing."""
     actor = _strict_load(actor_raw, label="actor row")
     target = _strict_load(target_raw, label="target row")
-    actor_keys = {
-        "schema", "round_seed", "decision_index", "actor_seat",
-        "decision_key", "split_schema", "split", "actor_schema",
-        "actor_sha256", "actor", "contains_privileged_targets",
-        "artifact_sha256",
-    }
     target_keys = {
         "schema", "round_seed", "decision_index", "actor_seat",
         "decision_key", "split_schema", "split", "actor_file_sha256",
         "actor_sha256", "target_schema", "target_sha256",
         "partition_sha256", "target", "runtime_input", "artifact_sha256",
     }
-    if set(actor) != actor_keys or set(target) != target_keys:
+    if set(actor) != _ACTOR_ROW_KEYS or set(target) != target_keys:
         raise BeliefCorpusError("corpus row field population drift")
     _validate_metadata(actor, schema=ACTOR_ROW_SCHEMA)
     _validate_metadata(target, schema=TARGET_ROW_SCHEMA)
@@ -266,13 +300,15 @@ def validate_corpus_pair(actor_raw: bytes, target_raw: bytes) \
     if _sha256(target_payload_bytes) != target["target_sha256"]:
         raise BeliefCorpusError("target payload hash mismatch")
     try:
-        typed_actor = actor_observation_from_dict(actor["actor"])
+        typed_actor, reopened_metadata = reopen_actor_row(actor_raw)
         typed_target = belief_targets_from_dict(
             target["target"], actor=typed_actor)
-    except BeliefReopenError as exc:
+    except (BeliefCorpusError, BeliefReopenError) as exc:
         raise BeliefCorpusError("typed actor/target reconstruction refused") \
             from exc
-    if typed_actor.sha256() != actor["actor_sha256"] \
+    if any(actor[field] != value
+           for field, value in reopened_metadata.items()) \
+            or typed_actor.sha256() != actor["actor_sha256"] \
             or typed_target.sha256() != target["target_sha256"]:
         raise BeliefCorpusError("typed actor/target hash reconstruction drift")
     partition_manifest = {

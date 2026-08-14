@@ -22,6 +22,7 @@ from shengji.rl.belief_corpus import (
     BeliefCorpusError,
     capture_corpus_pair,
     decision_key,
+    reopen_actor_row,
     split_for_round_seed,
     validate_corpus_pair,
 )
@@ -149,6 +150,14 @@ def test_capture_separates_actor_and_privileged_payloads():
         target["target"], actor=typed_actor)
     assert typed_actor.to_dict() == actor["actor"]
     assert typed_target.to_dict() == target["target"]
+
+    target_blind_actor, metadata = reopen_actor_row(pair.actor_bytes)
+    assert target_blind_actor == typed_actor
+    assert metadata == {key: actor[key] for key in (
+        "round_seed", "decision_index", "actor_seat", "decision_key",
+        "split_schema", "split")}
+    with pytest.raises(BeliefCorpusError, match="actor row"):
+        reopen_actor_row(pair.target_bytes)
 
 
 def test_all_decisions_from_one_round_stay_in_one_split():

@@ -1,8 +1,9 @@
 # BELIEF-V1 B1/B2: opened-development corpus and calibration design
 
-Status: local draft stacked on PR #111 exact head
-`7ebfcf7959f5254fee3b3dda1fc2fd83600540e9`. The governing specification is
-PR #110 exact head `b8c2a4c25e918278c72facc472c6736428e65af3`.
+Status: local implementation draft stacked on repaired PR #112 exact head
+`a9de2b866ee6fc939abdb46b40d6fb9c19331e88`, whose exact-head external
+re-review is still pending. The governing specification is PR #110 exact head
+`b8c2a4c25e918278c72facc472c6736428e65af3`.
 
 This document authorizes nothing. In particular it does not authorize corpus
 generation, training, cloud use, sampler changes, gameplay evidence, strength
@@ -128,6 +129,13 @@ REF-C replicates on the calibration split must disagree by less than one
 quarter of the 0.5%-relative Brier improvement floor below; otherwise the
 reference draw count returns for redesign before the test split opens.
 
+Reference RNG seeds are `sha256(protocol-schema|ref-c|replicate|decision_key)`
+truncated to a nonnegative 63-bit integer. The exact replicate labels are
+`calibration-replicate-0`, `calibration-replicate-1`, and `test-primary`.
+“One quarter of the floor” means a strict relative mean-Brier disagreement
+below `0.00125`, represented as `1,250,000` parts per billion; it does not mean
+a 25% absolute disagreement.
+
 ## Model `HistoryOwnershipV1`
 
 The first model is deliberately small and single-purpose.
@@ -166,6 +174,13 @@ correlation. Complete-world sampling and derived marginals remain separate B3
 work. If projected card marginals fail pair/tractor/top-rank calibration, this
 factorization closes; an autoregressive successor requires a new design.
 
+The primary candidate is the ordered equal-weight ensemble of all eight member
+predictions. Integer member count probabilities are summed with weight one and
+passed once more through the exact constrained projection. This restores any
+parts-per-billion card or receiver margin lost by independently rounded member
+outputs. The ordered eight checkpoint hashes, fixed initialization seeds, and
+final-projection flag define the ensemble identity; no member is selected.
+
 ### Training cohort
 
 Eight fixed initialization seeds are trained as one cohort:
@@ -184,6 +199,13 @@ at most 30 epochs. Early stopping uses cohort-mean calibration ownership loss,
 patience three epochs, and minimum improvement `1e-4`; all eight seeds stop at
 the same selected epoch. The test split is opened exactly once after candidate
 and negative-control cohorts are frozen.
+
+A complete round is never split across optimizer batches. For epoch `e`, train
+rounds are ordered by `sha256(protocol_sha256|epoch-e|round_seed)` and packed in
+that order up to 256 decisions. Early stopping operates on integer cohort-mean
+calibration loss in nanonats: an improvement is load-bearing only at
+`100,000` nanonats or more; three subsequent non-improving epochs stop the
+cohort and every member uses the same selected checkpoint epoch.
 
 Training hard caps are 32 CPU/GPU device-hours total for the eight candidate
 and eight permuted-label control models, 8 wall-hours, and 16 GiB of
@@ -221,7 +243,11 @@ reported; no best-seed metric exists.
    over untouched test rounds must be strictly positive and the mean reduction
    must be at least 0.5% of REF-C mean Brier. At least six of eight individual
    seeds must have positive mean improvement. Smoothed log-loss improvement is
-   confirmatory and must not materially reverse.
+   confirmatory and its mean improvement must be nonnegative. The lower bound
+   is the fifth percentile of exactly 20,000 paired complete-round bootstrap
+   resamples, using deterministic seed `4654505738542866658`. An integrity
+   failure or missing round refuses the result; it is never dropped from the
+   bootstrap population.
 2. **C2 behavioral strata:** report declined-feed, forced-trump/joker, and
    unforced-point-discard strata. A behavioral claim requires at least 500 test
    decisions in its stratum and a positive lower bound there. Sparse strata
@@ -287,6 +313,16 @@ The offline run must publish immutable, separately reviewable artifacts:
 - train/calibration curves with no test payload;
 - one terminal test report with E/C/N/U1 metrics and per-stratum counts; and
 - a no-authority result envelope.
+
+The corpus population envelope is canonical and binds all 4,096 rounds in
+ascending seed order. Each round row records its deterministic lane and policy
+seeds, split, decision count, capture-manifest and transcript hashes, separate
+length-delimited actor- and privileged-target-stream hashes, and a rederived
+round-bundle hash. The envelope recomputes exact `3,279/407/410` split counts,
+`256` rounds in every capture lane, the total decision count, protocol hash,
+and all-false execution/runtime authority. Terminal review must reopen the
+separated bytes and reproduce the entire envelope; a valid-looking population
+JSON alone is not evidence.
 
 Runtime packages may contain actor schema, model weights, and projection code.
 They may not contain target rows, target manifests, true hidden allocations, or

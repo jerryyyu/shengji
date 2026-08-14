@@ -79,6 +79,11 @@ def test_design_refuses_missing_sources_runtime_and_authority_drift():
     with pytest.raises(BeliefB2ExecutionError, match="identity"):
         validate_execution_design(replace(
             design, evidence_root="relative/evidence"))
+    with pytest.raises(BeliefB2ExecutionError, match="source binding"):
+        validate_execution_design(replace(
+            design, source_bindings=(replace(
+                design.source_bindings[0], byte_count=-1),
+                                     *design.source_bindings[1:])))
     changed = replace(
         design.source_bindings[-1], sha256="F" * 64)
     with pytest.raises(BeliefB2ExecutionError, match="source binding"):

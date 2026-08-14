@@ -355,7 +355,7 @@ def validate_execution_design(design: B2ExecutionDesignV1) -> None:
         if type(row) is not SourceBindingV1 or row.schema != SOURCE_SCHEMA \
                 or type(row.path) is not str or not row.path \
                 or row.path.startswith("/") or ".." in Path(row.path).parts \
-                or type(row.byte_count) is not int or row.byte_count <= 0 \
+                or type(row.byte_count) is not int or row.byte_count < 0 \
                 or not _is_sha256(row.sha256):
             raise BeliefB2ExecutionError("source binding row drift")
     if any(path not in {row.path for row in design.source_bindings}

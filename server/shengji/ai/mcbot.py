@@ -1160,10 +1160,11 @@ class MCBot(SmartBot):
         clone.bury(seat, list(bury_cards))
         clone._determinized_world = True
         policy = self.rollout_policy
+        _exact_on = self.EXACT_ENDGAME
         while clone.phase == "play":
             # A bury candidate changes the terminal kitty context, so it may
             # not share an exact cache with another bury candidate.
-            exact = self._exact_endgame_value(clone)
+            exact = self._exact_endgame_value(clone) if _exact_on else None
             if exact is not None:
                 return exact
             s = clone.turn
@@ -1884,8 +1885,10 @@ class MCBot(SmartBot):
         clone._determinized_world = True
         clone.play(seat, list(candidate))
         policy = self.rollout_policy
+        _exact_on = self.EXACT_ENDGAME
         while clone.phase == "play":
-            exact = self._exact_endgame_value(clone, exact_session)
+            exact = (self._exact_endgame_value(clone, exact_session)
+                     if _exact_on else None)
             if exact is not None:
                 return exact
             s = clone.turn

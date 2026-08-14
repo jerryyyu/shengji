@@ -8,21 +8,31 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 02:46 EDT from canonical main `95e0faf`.
+Last reconciled: 2026-08-14 03:03 EDT from canonical main `690fcbc`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 2h46m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
+| **Mini** | PR #103 native-round differential soak, eight nice-15 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 3h03m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
 | **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[496,496,496,496,496,496,480,480]/896`, totaling `3,936/7,168` (54.91%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; nine workers remain alive and CPU-bound; seven shards have sealed. Reviewed score-free progress is `8,156/8,192` (99.56%). Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. Exact clean Git plus runner/controller SHAs were reauthenticated for the terminal verifier. |
+| **Strength Cloud** | idle; S4 terminal review pending | Exact source `e7551e4` finished both reviewed tranches cleanly and all workers exited. The exact pinned read-only verifier returned `verified=true`, final SHA `0aef1ca8…e90` and terminal status `SELECT_NONE`, with `strength_claim=false` and `production_promotion=false`. Independent terminal review is requested in PR #66 comment `5290507470`; do not retry or act on a candidate. |
 | **Performance Cloud** | idle; PR #106 and PR #108 reviews pending | Claude terminal-review commit `95e0faf` independently reopened the sole PR #103 batch and returned VERIFIED/retain: 3.4074% lower x86 whole-round wall with paired one-sided 95% LCB 1.0299%; all six normalized semantic traces are exact. The consumed design can never rerun. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; exact aggregation PR #108 `d40182d` awaits review before any record may be opened. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
 
-1. **PR #106 Pair checkpoint-screen source review.** Independently audit exact
+1. **S4 360B terminal review.** On Strength Cloud, independently run only the
+   exact pinned read-only verifier at source `e7551e4`, runner SHA
+   `a6586be8…dda` and controller SHA `cd69a712…bb0a`. It must reproduce final
+   SHA `0aef1ca8…e90` and `status=SELECT_NONE`. Falsify packet/admission/
+   receipt bindings; exact 16+16 shard/log/exit populations; both aggregates;
+   automatic continuation and tranche-two release; null sentinel; terminal
+   transition/reconstruction; and authority closure. Exact command and all
+   artifact hashes are in PR #66 comment `5290507470`. Return prose PASS/HOLD
+   only; this grants no retry, candidate action, strength claim or deployment.
+
+2. **PR #106 Pair checkpoint-screen source review.** Independently audit exact
    head `f1791f51b913fa91171a2337badb4a84cedd1319` over Capacity V2
    `8a3ef59`; exact two-file SHAs are in PR comment `5289911149`. Reproduce
    the 26 focused and 135 strict x86 chain tests; falsify the reviewed
@@ -32,7 +42,7 @@ Last reconciled: 2026-08-14 02:46 EDT from canonical main `95e0faf`.
    the controller-generated raw implementation marker. PASS may freeze one
    host packet only; it cannot execute the screen or open outcomes.
 
-2. **PR #108 S6 V3 aggregation source + exact-input review.** Independently
+3. **PR #108 S6 V3 aggregation source + exact-input review.** Independently
    audit exact head `d40182d313f9ed3fcb853d2c82b74454398a4a9a`
    over terminal source `a93c2f5`; exact two-file SHAs and the score-free
    preflight are in PR comment `5290133523`. Without opening a scored record,
@@ -43,7 +53,7 @@ Last reconciled: 2026-08-14 02:46 EDT from canonical main `95e0faf`.
    raw aggregate marker. PASS authorizes exactly one aggregate and the opening
    of these 64 records; it authorizes no downstream screen or strength claim.
 
-3. **PR #107 performance wave-two repair — not launch-critical.** Exact head
+4. **PR #107 performance wave-two repair — not launch-critical.** Exact head
    `1982c48` is HOLD after Codex reproduced a stale mutable-world cache
    (`110.0` cached versus `90.0` recomputed) and showed 34–128-card malformed
    hands entering the bounds-check-disabled lead kernel instead of the reviewed
@@ -53,7 +63,7 @@ Last reconciled: 2026-08-14 02:46 EDT from canonical main `95e0faf`.
    reproduction and smallest repair are in PR comment `5290233595`. Its prior
    7.05% ARM timing is exploratory and must be remeasured after repair.
 
-4. **PR #105 PointContext/point-flow exact-head review — non-launch-critical.**
+5. **PR #105 PointContext/point-flow exact-head review — non-launch-critical.**
    Codex repaired all remaining gaps at exact head `f599be8c9917c5d314889c11aee81b42c1713296`;
    both CI checks and 26 focused tests in pure/strict modes pass. Independently
    falsify exact Trick/TrickPlay/card/point shape, empty-round banker/tally/
@@ -88,11 +98,11 @@ PR comments alone are not queue state.
    its raw PASS, run the aggregate exactly once; keep the result unopened and
    return it for independent terminal recomputation before acting on efficacy.
 
-4. **S4 terminal sequence.** Let the controller finish tranche two naturally.
-   Only after it exits, run the exact pinned read-only verifier at Git
-   `e7551e4`; then request independent terminal review. Do not inspect shard
-   outputs directly. The result may select a candidate, select none or HOLD;
-   it never deploys automatically.
+4. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
+   complete. The verifier returned `SELECT_NONE`, final SHA `0aef1ca8…e90`,
+   `strength_claim=false` and `production_promotion=false`. Await independent
+   terminal review from PR #66 comment `5290507470`; never retry or reinterpret
+   the terminal decision. Strength Cloud is otherwise idle.
 
 5. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
    If the supervisor publishes a valid score-free final, review it before any
@@ -103,6 +113,9 @@ PR comments alone are not queue state.
 ## Landed and closed anchors
 
 - **T4:** terminal `SELECT_NONE`; no retry or continuation.
+- **S4:** exact two-look controller completed and the pinned machine verifier
+  returned terminal `SELECT_NONE` at final SHA `0aef1ca8…e90`; independent
+  terminal evidence review is pending, with no retry or candidate action.
 - **Docs:** PR #97 exact reviewed head `316d6b7` merged at `8bc2da1`.
 - **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
   exact normalized semantics; PR #98 merged the byte-identical production

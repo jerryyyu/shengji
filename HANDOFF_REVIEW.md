@@ -1285,3 +1285,48 @@ against my PR #95 v2 repairs), design-only PRs #100 `7a27a52` and
 #101 `df93de1`.
 
 ---
+
+## [2026-08-13 22:21 EDT] Claude reviews: #96/#99/#100/#101 — all PASS (per-request boundaries)
+
+✅ **PR #96 `8a3ef59` (capacity successor source) — PASS.** Direct child of
+`25ed31a`, +32 two files; controller `9eec1a87…`, tests `0b50545c…` exact.
+Measured 68/68 focused and 109/109 combined in BOTH modes. Battery: 12 prior
+load-bearing guards + all 3 new loaded-state pins (NeedDaemonReload=no
+dropped, exact-Environment dropped, RuntimeMaxUSec dropped) KILLED; one
+legacy battery anchor does not exist on this branch's namespace (not a
+finding). PASS authorizes only freezing a fresh score-free capacity packet.
+
+✅ **PR #99 `0ee28a0` (census repair) — PASS.** Two-commit child of my HOLD
+head `0b4ef54e`; all six pinned SHAs exact; 23/23 tests in both modes
+(strict after native build). All literal private-corpus rows reproduce
+exactly on the disclosed manifest (`8d6cc27f…`): rollout
+literal 14664/14666, inferred-strict 302/989, inferred-loose 669/1956,
+open 1744/10231, complex 829/1787; E2/E3 binding 150/150, FEED
+mc-matches-human 17/40, flips 20 with 3 toward human. **The correction of
+my own v2 headline is verified and accepted: the legality-filtered rollout
+denominator turns 70%-vs-23% into 70%-vs-31% — still material, honestly
+restated — and the fresh-checkout reproducibility disclosure is present.**
+Descriptive tooling only; no run/training/strength/production authority.
+
+✅ **PR #100 `7a27a52` (Pair V3 scored-controller design) — PASS.** Two-file
+design-only scope; 21 focused pass (13 platform skips); canonical design
+SHA `49b3dc05…` reproduced exactly on 3.14 (Codex attests 3.11/3.12
+byte-identity; canonical primitive JSON is interpreter-stable);
+subprocess usage is the family-standard read-only git provenance check.
+PASS authorizes a separate implementation proposal only.
+
+✅ **PR #101 `df93de1` (champion natural-dose census design) — PASS.**
+Exactly two added files, both SHAs exact; 30/30 focused; pair chain 226
+passed (superset of the stated 205), both suites clean; canonical output
+`4629ccde…` and internal design `0e1a6006…` reproduced; PR #86 provenance
+authenticated (source `289fdf04` on main; design-review commit
+`6c5c0000` Claude-authored/committed); static surface clean (no gameplay
+imports; subprocess = read-only git provenance). Design-review-only; no
+implementation, packet, census execution, aggregation, or downstream
+authority.
+
+Per Jerry's instruction: #97 awaits its superseding docs head; #102 is mine
+and awaits Codex audit; S6 V3 awaits its exact head. No PASS above is
+execution authority.
+
+---

@@ -133,6 +133,7 @@ This section keeps only the research conclusions that change what we try next.
 4. Select whole multi-seed cohorts on DESIGN/CALIB. Never select a lucky seed.
 5. Keep ranking, calibrated outcome and proposal roles separate. A pairwise
    score is not automatically a scalar leaf.
+
 6. Human actions are proposals, not truth labels. Counterfactually price them
    before training or policy use.
 7. Local mechanism gains must survive fresh whole-game play; screens select and
@@ -150,6 +151,35 @@ This section keeps only the research conclusions that change what we try next.
 13. A negative screen closes its exact promotion claim, not all conditional
     learning. Preserve predeclared dose, role/phase effects, tail failures and
     disagreement states as labelled exploration inputs.
+
+### Next milestone — BELIEF-V1
+
+The next representation milestone is **BELIEF-V1: build and validate an
+actor-visible world model that improves same-work search**. The complete
+contract, leakage boundary, work packages, and stop rules live in
+`BELIEF_V1_SPEC.md`; the durable ordering principles live in
+`RESEARCH_PRINCIPLES.md`.
+
+This is materially different from extending the old 531-dimensional encoder
+or adding another tactical rule. `Memory` already supplies sound public facts
+and deductions, and MCBot already samples worlds consistent with many of those
+constraints. BELIEF-V1 estimates calibrated hidden ownership and hand-shape
+distributions, converts them into complete legal weighted worlds, and asks
+whether those worlds improve fixed-work search versus both the current sampler
+and a shuffled-belief null. Exact hidden hands remain simulator-only labels.
+
+The research order is deliberate: preserve the proven search-capacity lane;
+improve the worlds search evaluates; then use wider belief-aware search as a
+teacher for later Direct-Q, pairwise-ranking, or privileged-curriculum work.
+BELIEF-V1 must pass mechanics, leakage, calibration, sampler, causal same-work,
+and natural-dose/MDE gates before a whole-game design is even proposed.
+
+BELIEF-V1 is intentionally one head and one consumer, not a five-head model or
+four-screen program. Its model predicts hidden ownership/shape; its first
+consumer is the world sampler. Existing PointContext supplies the point/boss
+fact boundary and is extended rather than duplicated. MCSmartRoll,
+LEVEL_OBJECTIVE, Direct-Q, and v11pair remain separate hypotheses with their
+existing entry conditions.
 
 ### Post-null reset
 

@@ -13,12 +13,11 @@ from pathlib import Path
 
 sys.path.insert(0, "server")
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import (emit, identity_receipt, legal_point_actions,  # noqa: E402
-                    load_validated_manifest, trick_context, wilson)
+from common import (emit, group_events, identity_receipt,  # noqa: E402
+                    legal_point_actions, load_validated_manifest, log_events,
+                    trick_context, wilson)
 from shengji.engine.cards import points  # noqa: E402
-from shengji.rl.replay_log import (EXCLUDE_PLAYERS, group_rounds,  # noqa: E402
-                                   rebuild_round)
-import json  # noqa: E402
+from shengji.rl.replay_log import EXCLUDE_PLAYERS, rebuild_round  # noqa: E402
 
 
 def main() -> None:
@@ -26,19 +25,22 @@ def main() -> None:
     ap.add_argument("--logs-dir", default="logs")
     ap.add_argument("--manifest",
                     default="server/scripts/point_census/manifest.json")
+    ap.add_argument("--expected-manifest-sha256", required=True)
     args = ap.parse_args()
-    manifest, ordered = load_validated_manifest(args.manifest, args.logs_dir)
+    manifest, ordered, manifest_sha = load_validated_manifest(
+        args.manifest, args.logs_dir, args.expected_manifest_sha256)
     groups = {g: {"n": 0, "held": 0, "actor_pts_played": 0,
                   "trick_pts_kept": 0, "trick_pts_lost": 0}
               for g in ("FED", "HELD")}
-    for path in ordered:
-        first = next((json.loads(l) for l in open(path)
-                      if json.loads(l).get("e") == "round_start"), None)
+    for item in ordered:
+        events = log_events(item.raw, item.name)
+        first = next((event for event in events
+                      if event.get("e") == "round_start"), None)
         if not first:
             continue
         excluded = {p["seat"] for p in first["players"]
                     if p["name"] in EXCLUDE_PLAYERS}
-        for rno, evs in sorted(group_rounds(str(path)).items()):
+        for rno, evs in sorted(group_events(events, item.name).items()):
             rnd = rebuild_round(evs)
             if rnd is None:
                 continue
@@ -77,7 +79,7 @@ def main() -> None:
         g["hold_rate_wilson95"] = wilson(g["held"], g["n"])
     emit({
         "schema": "point-census-e5-v2",
-        "receipt": identity_receipt(manifest),
+        "receipt": identity_receipt(manifest, manifest_sha, Path(__file__)),
         "note": ("observational only; opportunity requires a legal "
                  "point-bearing follow; trick totals include points "
                  "contributed by other seats"),

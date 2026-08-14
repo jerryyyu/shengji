@@ -392,17 +392,19 @@ and the public endpoint is tested independently.
 
 ## Evaluation ladder
 
-Every quantitative belief claim names two references. They are called `REF-U`
+Every quantitative belief claim names two references. They are called `REF-C`
 and `REF-H` here to avoid collision with the B0-B5 work-package names below:
 
-- **REF-U — uniform-consistent** (the review-side B0): the current constraint
-  sampler, including all `Memory` hard facts, with equal weight among accepted
-  worlds; and
-- **REF-H — current hand-coded context** (the review-side B1): REF-U worlds
+- **REF-C — current constraint-consistent proposal** (the review-side B0,
+  sometimes described informally as “uniform-consistent”): the current sampler
+  with all `Memory` hard facts and its exact randomized backtracking/split
+  behavior. The project has not proved this proposal mathematically uniform
+  over accepted worlds, so V1 must not use that stronger label; and
+- **REF-H — current hand-coded context** (the review-side B1): REF-C worlds
   plus the exact `Memory`/`PointContext` fact and action-context fields
   available to today's decision code, but no learned behavioral likelihood.
 
-For hidden-ownership calibration REF-U and REF-H may have the same world
+For hidden-ownership calibration REF-C and REF-H may have the same world
 weights; that is an honest result, not a reason to invent a second prior. For
 derived action context and fixed-work search, REF-H is the stronger current-
 feature baseline. BELIEF-V1 must not win by withholding an existing hard fact
@@ -430,7 +432,7 @@ or PointContext field from a control.
 
 - **C1 — proper-score lift:** on untouched complete-round folds, BELIEF-V1 has
   a positive preregistered lower bound in ownership log-loss or Brier score
-  over REF-U and no material regression versus REF-H on load-bearing strata.
+  over REF-C and no material regression versus REF-H on load-bearing strata.
 - **C2 — behavioral-stratum lift:** improvement is reported separately after
   declined feeds, forced trump/joker evidence, and unforced point discards. A
   claimed behavioral model must improve at least one preregistered behavioral
@@ -442,7 +444,7 @@ or PointContext field from a control.
   public policy where all compatible worlds and action likelihoods can be
   enumerated, the learned/projected posterior agrees within a frozen tolerance.
 - **N1 — history ablation:** withholding or within-stratum shuffling the public
-  action chronology collapses behavioral lift toward REF-U. Residual lift is
+  action chronology collapses behavioral lift toward REF-C. Residual lift is
   audited as a possible side channel.
 - **N2 — permuted labels:** training on round-grouped shuffled hidden labels
   produces no held-out lift.
@@ -452,7 +454,7 @@ or PointContext field from a control.
 Before any online screen, two usefulness checks also have to pass:
 
 - **U1 — true-world likelihood:** held-out true hidden worlds receive higher
-  probability or lower proper loss under belief weighting than under REF-U;
+  probability or lower proper loss under belief weighting than under REF-C;
   and
 - **U2 — fixed-world value variance:** at equal world count and unchanged
   continuation, the belief sampler reduces preregistered rollout-value error or

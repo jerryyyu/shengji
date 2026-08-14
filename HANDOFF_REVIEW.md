@@ -1366,3 +1366,37 @@ Each of these refusals was fail-closed and cost only calendar time, but the
 class is now systematic and one checklist line removes it.
 
 ---
+
+## [2026-08-13 22:53 EDT] Claude review: PR #104 S6 V3 recovery f12df08e — HOLD (one blocker: shadow route unpinned)
+
+⛔ HOLD (exact head): PR #104 `f12df08eee7361b5b482486a7710dc52f4291742`
+on stacked base `08ee0552`. Everything verifies except one test-only gap.
+
+**Verified:** V3 delta exactly two files (controller `744b4c5d…`, tests
+`2d609da2…`); the nine intervening commits are the reviewed optimized
+runtime and all five runtime files are byte-identical to reviewed parent
+`1e3d0a2`; zero PR #102/#103 code present. Fresh V3 namespaces
+(`…-64-v3-shadow-gate`); the retired-V2 incident is bound as a structured
+record with all six pins (packet/internal/profile/review-commit/invocation/
+pyc SHA) and tampering a pin is KILLED by the suite. Measured: focused
+106/106 in BOTH modes (claimed 123 does not decompose — please pin
+selections; superset bury chain 165 green); optimized-parity slice 33
+green (claimed 51 likewise). 12/12 load-bearing guards killed including
+live-runtime-vs-packet at its new anchor. `git diff --check` clean.
+
+**Blocker (test-only):**
+`test_verify_packet_refuses_real_ignored_pyc_before_review_or_admission`
+monkeypatches a TEST-LOCAL reimplementation of the scan
+(`runtime_with_live_shadow`), so it proves `_shadow_paths` works while
+leaving the PRODUCTION route unpinned: mutating
+`runtime_snapshot`'s `shadows = _shadow_paths(native)` to `[]` leaves the
+entire suite green. This is the exact defect class that burned the V2
+attempt. Required: a route-level regression that plants a real `.pyc` and
+exercises the REAL `runtime_snapshot`/verify path (no scan monkeypatch),
+asserting refusal with the shadow message — the mutation above must turn
+the suite red. Re-request at the repaired head; I will re-run the battery
+and, on PASS, emit the machine-generated V3 attestation.
+
+No packet freeze, execution, or downstream authority follows.
+
+---

@@ -334,6 +334,71 @@ def test_record_metadata_population_permissions_and_links(tmp_path, monkeypatch)
         AGG._verify_record_metadata(manifest, require_root=False)
 
 
+def test_open_records_hashes_the_exact_bytes_it_parses(tmp_path, monkeypatch):
+    manifest = []
+    for index in range(AGG.STATE_COUNT):
+        record = {
+            "deal_seed": index,
+            "internal_sha256": f"{index + 1:064x}",
+            "state_id": str(index),
+        }
+        raw = AGG.canonical(record)
+        name = f"state-{index:02d}-of-{AGG.STATE_COUNT}.json"
+        path = tmp_path / name
+        path.write_bytes(raw)
+        path.chmod(0o444)
+        manifest.append({
+            "state_index": index,
+            "deal_seed": index,
+            "state_id": str(index),
+            "record_file": name,
+            "record_sha256": AGG.sha256_bytes(raw),
+            "record_internal_sha256": record["internal_sha256"],
+            "record_bytes": len(raw),
+        })
+
+    stable_bytes = AGG.stable_bytes
+    monkeypatch.setattr(AGG, "RECORDS_DIR", tmp_path)
+    monkeypatch.setattr(AGG, "_require_members", lambda *_a, **_k: None)
+    monkeypatch.setattr(AGG, "_validate_gate", lambda: None)
+    monkeypatch.setattr(AGG, "_require_loaded_origins", lambda _packet: None)
+    monkeypatch.setattr(
+        AGG, "stable_bytes",
+        lambda path, *, label: stable_bytes(
+            path, label=label, root_owned=False),
+    )
+    design = SimpleNamespace(
+        _selection_rows=lambda: [{} for _ in range(AGG.STATE_COUNT)])
+    scorer = SimpleNamespace(record_problems=lambda *_a, **_k: [])
+    controller = SimpleNamespace(
+        _load_scorer=lambda _packet: (design, scorer))
+    inputs = {"packet": {}, "record_manifest": manifest}
+    records, rows = AGG._open_records(
+        inputs=inputs, controller=controller, expected_root_members=set())
+    assert len(records) == len(rows) == AGG.STATE_COUNT
+
+    target = tmp_path / manifest[0]["record_file"]
+    original = target.read_bytes()
+    reordered = (json.dumps({
+        "state_id": "0",
+        "internal_sha256": f"{1:064x}",
+        "deal_seed": 0,
+    }, separators=(",", ":")) + "\n").encode()
+    assert len(reordered) == len(original)
+    assert json.loads(reordered) == json.loads(original)
+    assert AGG.sha256_bytes(reordered) != manifest[0]["record_sha256"]
+    target.chmod(0o644)
+    target.write_bytes(reordered)
+    target.chmod(0o444)
+
+    with pytest.raises(
+            AGG.AggregateRefused,
+            match="sealed scored record 0 SHA/size drift"):
+        AGG._open_records(
+            inputs=inputs, controller=controller,
+            expected_root_members=set())
+
+
 def test_stable_bytes_and_strict_json_refuse_links_duplicates_nonfinite(
         tmp_path):
     target = tmp_path / "target.json"

@@ -17,7 +17,7 @@ Cloud. Neither may be opened before its terminal gate.
 
 | lane | terminal result | conclusion |
 |---|---|---|
-| **T4 learned mid/late proposal** | `SELECT_NONE`; treatment-vs-champion mean `+0.01611`, LCB `-0.00759`; treatment-vs-matched-null mean `-0.00977`, LCB `-0.03313` | The selected-state signal did not transfer to whole games. The same-work uninformed proposal beat champion on this population, so generic ballot widening—not the learned source—explained the useful signal. |
+| **T4 learned mid/late proposal** | `SELECT_NONE`; treatment-vs-champion mean `+0.01611`, LCB `-0.00759`; treatment-vs-treatment-work-matched-null mean `-0.00977`, LCB `-0.03313` | The selected-state signal did not transfer to whole games. The uninformed proposal beat champion on this population, but used 14.8% more accepted worlds and 80.9% more searches than champion. It isolates the learned source as unhelpful; it does not isolate widening from added compute. |
 | **S4 point banking** | `SELECT_NONE` after a clean 16,384-cluster, two-look confirmation | The mechanism was real but too sparse and/or too small to clear the final efficacy boundary. Its observed decision incidence was about `0.7%`, which sharply limited its whole-game ceiling. |
 | **S6 shuai-pai sourcing** | `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN` after reconstructing all 64 scored DEV records | The bury-source arm passed every registered diagnostic, but the lead-source arm failed three. This preserves a bury-side hypothesis; it does not justify the combined selector, a fresh screen, or a strength claim. |
 | **Pair-aware continuation** | two disjoint runs active, both sealed | No conclusion yet. The admitted Air run must finish or fail closed without intervention. Fresh checkpoint packet `f2878fff…a5c9c` is running 224 immutable microshards on Performance Cloud under one consumed admission; it has no resume or aggregate authority and remains operational evidence, not a strength result. |
@@ -30,9 +30,11 @@ transfer problem between attractive local mechanisms and complete-game value:
 
 1. **Selected states overstated transport.** T4 and earlier S6 screens found
    conditional signal, but natural whole rounds diluted or changed it.
-2. **Causal controls mattered.** T4 could not beat a literal same-work,
-   uninformed proposal. The model's apparent benefit was not attributable to
-   learned targeting.
+2. **Causal controls mattered.** T4 could not beat an uninformed proposal
+   matched to treatment work. The model's apparent benefit was not
+   attributable to learned targeting. Because that control was not
+   work-matched to champion, its own positive contrast requires a future
+   three-arm confirmation rather than being called a widening win.
 3. **Natural dose was too small.** S4 affected roughly `0.7%` of decisions.
    Even a useful conditional action had little room to change the game-level
    estimator.

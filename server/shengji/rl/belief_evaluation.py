@@ -16,6 +16,7 @@ from typing import Any
 
 from .belief_contract import (ActorObservationV1, BeliefTargetsV1,
                               canonical_json_bytes)
+from .belief_b2_protocol import REFERENCE_BRIER_CORRECTION
 from .belief_corpus import CorpusPairV1, validate_corpus_pair
 from .belief_ownership import (KITTY_RECEIVER, PROBABILITY_SCALE,
                                BeliefOwnershipV1, count_brier_fraction,
@@ -28,7 +29,7 @@ from .belief_reopen import (actor_observation_from_dict,
                             belief_targets_from_dict)
 
 
-DECISION_SCORE_SCHEMA = "belief-v1-offline-decision-proper-score-v1"
+DECISION_SCORE_SCHEMA = "belief-v1-offline-decision-proper-score-v2"
 LOG_LOSS_SCALE = 1_000_000_000
 JEFFREYS_PSEUDOCOUNT_NUMERATOR = 1
 JEFFREYS_PSEUDOCOUNT_DENOMINATOR = 2
@@ -136,6 +137,10 @@ class DecisionProperScoreV1:
     candidate_ownership_sha256: str
     behavior_policy_ids: tuple[str, ...]
     count_rows: int
+    raw_brier_denominator: int
+    reference_raw_brier_numerator: int
+    candidate_raw_brier_numerator: int
+    reference_finite_sample_bias_numerator: int
     brier_denominator: int
     reference_brier_numerator: int
     candidate_brier_numerator: int
@@ -157,11 +162,27 @@ class DecisionProperScoreV1:
             "behavior_policy_ids": list(self.behavior_policy_ids),
             "count_rows": self.count_rows,
             "count_brier": {
-                "denominator": self.brier_denominator,
-                "reference_numerator": self.reference_brier_numerator,
-                "candidate_numerator": self.candidate_brier_numerator,
-                "reference_minus_candidate_numerator": (
-                    self.brier_improvement_numerator),
+                "raw": {
+                    "denominator": self.raw_brier_denominator,
+                    "reference_numerator": (
+                        self.reference_raw_brier_numerator),
+                    "candidate_numerator": (
+                        self.candidate_raw_brier_numerator),
+                },
+                "reference_finite_sample_bias_correction": {
+                    "method": REFERENCE_BRIER_CORRECTION,
+                    "world_count": REF_C_WORLD_COUNT,
+                    "numerator": (
+                        self.reference_finite_sample_bias_numerator),
+                    "denominator": self.brier_denominator,
+                },
+                "bias_corrected": {
+                    "denominator": self.brier_denominator,
+                    "reference_numerator": self.reference_brier_numerator,
+                    "candidate_numerator": self.candidate_brier_numerator,
+                    "reference_minus_candidate_numerator": (
+                        self.brier_improvement_numerator),
+                },
             },
             "smoothed_count_log_loss_nanonats": {
                 "reference": self.reference_log_loss_nanonats,
@@ -204,6 +225,20 @@ def _score_decision(
     candidate_brier = count_brier_fraction(candidate, counts)
     if reference_brier[1] != candidate_brier[1]:
         raise BeliefEvaluationError("offline Brier denominator drift")
+    # REF-C is an empirical multinomial marginal from exactly N worlds.  Its
+    # raw Brier contains the systematic estimator-variance term
+    # sum_c p_hat_c(1-p_hat_c)/(N-1).  Remove the unbiased estimate in exact
+    # integer arithmetic before comparing it with an unsampled candidate.
+    bias_numerator = sum(
+        probability * (PROBABILITY_SCALE - probability)
+        for row in reference.probabilities
+        for probability in (
+            row.count_0_ppb, row.count_1_ppb, row.count_2_ppb))
+    correction_multiplier = REF_C_WORLD_COUNT - 1
+    corrected_denominator = reference_brier[1] * correction_multiplier
+    corrected_reference = (
+        reference_brier[0] * correction_multiplier - bias_numerator)
+    corrected_candidate = candidate_brier[0] * correction_multiplier
     reference_log = _smoothed_count_log_loss_nanonats(reference, counts)
     candidate_log = _smoothed_count_log_loss_nanonats(candidate, counts)
     return DecisionProperScoreV1(
@@ -213,11 +248,15 @@ def _score_decision(
         candidate_ownership_sha256=candidate.sha256(),
         behavior_policy_ids=reference.behavior_policy_ids,
         count_rows=len(reference.probabilities),
-        brier_denominator=reference_brier[1],
-        reference_brier_numerator=reference_brier[0],
-        candidate_brier_numerator=candidate_brier[0],
+        raw_brier_denominator=reference_brier[1],
+        reference_raw_brier_numerator=reference_brier[0],
+        candidate_raw_brier_numerator=candidate_brier[0],
+        reference_finite_sample_bias_numerator=bias_numerator,
+        brier_denominator=corrected_denominator,
+        reference_brier_numerator=corrected_reference,
+        candidate_brier_numerator=corrected_candidate,
         brier_improvement_numerator=(
-            reference_brier[0] - candidate_brier[0]),
+            corrected_reference - corrected_candidate),
         reference_log_loss_nanonats=reference_log,
         candidate_log_loss_nanonats=candidate_log,
         log_loss_improvement_nanonats=reference_log - candidate_log,

@@ -55,6 +55,8 @@ def _sha(label: str) -> str:
 def _c1(passed=True):
     return C1CalibrationResultV1(
         round_count=410,
+        reference_raw_mean_brier_ppb=100_400_000,
+        reference_mean_bias_correction_ppb=400_000,
         reference_mean_brier_ppb=100_000_000,
         candidate_mean_brier_ppb=90_000_000,
         mean_brier_improvement_ppb=10_000_000,

@@ -30,9 +30,9 @@ from .belief_corpus import split_for_round_seed
 from .belief_evaluation import DecisionProperScoreV1
 
 
-ROUND_METRIC_SCHEMA = "belief-v1-b2-round-proper-score-v1"
-C1_RESULT_SCHEMA = "belief-v1-b2-primary-calibration-result-v1"
-N2_RESULT_SCHEMA = "belief-v1-b2-permuted-label-control-result-v1"
+ROUND_METRIC_SCHEMA = "belief-v1-b2-round-proper-score-v2"
+C1_RESULT_SCHEMA = "belief-v1-b2-primary-calibration-result-v2"
+N2_RESULT_SCHEMA = "belief-v1-b2-permuted-label-control-result-v2"
 PPB = 1_000_000_000
 
 
@@ -42,15 +42,19 @@ class BeliefB2StatisticsError(ValueError):
 
 def _round_divide(numerator: int, denominator: int) -> int:
     if type(numerator) is not int or type(denominator) is not int \
-            or numerator < 0 or denominator <= 0:
+            or denominator <= 0:
         raise BeliefB2StatisticsError("statistic ratio input is invalid")
-    return (2 * numerator + denominator) // (2 * denominator)
+    sign = -1 if numerator < 0 else 1
+    return sign * ((2 * abs(numerator) + denominator)
+                   // (2 * denominator))
 
 
 @dataclass(frozen=True)
 class RoundProperScoreV1:
     round_seed: int
     decision_count: int
+    reference_raw_brier_ppb: int
+    reference_bias_correction_ppb: int
     reference_brier_ppb: int
     candidate_brier_ppb: int
     member_brier_ppb: tuple[int, ...]
@@ -64,6 +68,9 @@ class RoundProperScoreV1:
             "round_seed": self.round_seed,
             "split": split_for_round_seed(self.round_seed),
             "decision_count": self.decision_count,
+            "reference_raw_brier_ppb": self.reference_raw_brier_ppb,
+            "reference_bias_correction_ppb": (
+                self.reference_bias_correction_ppb),
             "reference_brier_ppb": self.reference_brier_ppb,
             "candidate_brier_ppb": self.candidate_brier_ppb,
             "member_brier_ppb": list(self.member_brier_ppb),
@@ -77,6 +84,8 @@ class RoundProperScoreV1:
 @dataclass(frozen=True)
 class C1CalibrationResultV1:
     round_count: int
+    reference_raw_mean_brier_ppb: int
+    reference_mean_bias_correction_ppb: int
     reference_mean_brier_ppb: int
     candidate_mean_brier_ppb: int
     mean_brier_improvement_ppb: int
@@ -93,6 +102,10 @@ class C1CalibrationResultV1:
         return {
             "schema": self.schema,
             "round_count": self.round_count,
+            "reference_raw_mean_brier_ppb": (
+                self.reference_raw_mean_brier_ppb),
+            "reference_mean_bias_correction_ppb": (
+                self.reference_mean_bias_correction_ppb),
             "reference_mean_brier_ppb": self.reference_mean_brier_ppb,
             "candidate_mean_brier_ppb": self.candidate_mean_brier_ppb,
             "mean_brier_improvement_ppb": self.mean_brier_improvement_ppb,
@@ -183,8 +196,10 @@ def _validate_rounds(
             split_for_round_seed(seed) != split for seed in seeds):
         raise BeliefB2StatisticsError("round score split/order drift")
     for row in rounds:
-        values = (
-            row.reference_brier_ppb, row.candidate_brier_ppb,
+        nonnegative = (
+            row.reference_raw_brier_ppb,
+            row.reference_bias_correction_ppb,
+            row.candidate_brier_ppb,
             *row.member_brier_ppb, row.reference_log_loss_nanonats,
             row.candidate_log_loss_nanonats,
         )
@@ -193,7 +208,12 @@ def _validate_rounds(
                 or not 1 <= row.decision_count <= 128 \
                 or type(row.member_brier_ppb) is not tuple \
                 or len(row.member_brier_ppb) != len(COHORT_SEEDS) \
-                or any(type(value) is not int or value < 0 for value in values):
+                or type(row.reference_brier_ppb) is not int \
+                or abs(row.reference_raw_brier_ppb
+                       - row.reference_bias_correction_ppb
+                       - row.reference_brier_ppb) > 1 \
+                or any(type(value) is not int or value < 0
+                       for value in nonnegative):
             raise BeliefB2StatisticsError("round score schema/value drift")
 
 
@@ -217,9 +237,9 @@ def reference_replicates_are_stable(
 
 def _score_ppb(numerator: int, denominator: int) -> int:
     if type(numerator) is not int or type(denominator) is not int \
-            or numerator < 0 or denominator <= 0:
+            or denominator <= 0:
         raise BeliefB2StatisticsError("decision score ratio is invalid")
-    return (numerator * PPB + denominator // 2) // denominator
+    return _round_divide(numerator * PPB, denominator)
 
 
 def build_round_proper_score(
@@ -246,6 +266,9 @@ def build_round_proper_score(
          score.privileged_target_sha256,
          score.reference_ownership_sha256,
          score.behavior_policy_ids,
+         score.raw_brier_denominator,
+         score.reference_raw_brier_numerator,
+         score.reference_finite_sample_bias_numerator,
          score.reference_brier_numerator,
          score.brier_denominator,
          score.reference_log_loss_nanonats)
@@ -256,6 +279,9 @@ def build_round_proper_score(
                  score.privileged_target_sha256,
                  score.reference_ownership_sha256,
                  score.behavior_policy_ids,
+                 score.raw_brier_denominator,
+                 score.reference_raw_brier_numerator,
+                 score.reference_finite_sample_bias_numerator,
                  score.reference_brier_numerator,
                  score.brier_denominator,
                  score.reference_log_loss_nanonats)
@@ -271,6 +297,12 @@ def build_round_proper_score(
     def mean(values: tuple[int, ...]) -> int:
         return _round_divide(sum(values), len(values))
 
+    reference_raw_brier = mean(tuple(_score_ppb(
+        score.reference_raw_brier_numerator,
+        score.raw_brier_denominator) for score in candidate_scores))
+    reference_bias_correction = mean(tuple(_score_ppb(
+        score.reference_finite_sample_bias_numerator,
+        score.brier_denominator) for score in candidate_scores))
     reference_brier = mean(tuple(_score_ppb(
         score.reference_brier_numerator, score.brier_denominator)
                                  for score in candidate_scores))
@@ -282,6 +314,8 @@ def build_round_proper_score(
                               for score in rows)) for rows in member_scores)
     result = RoundProperScoreV1(
         round_seed=round_seed, decision_count=count,
+        reference_raw_brier_ppb=reference_raw_brier,
+        reference_bias_correction_ppb=reference_bias_correction,
         reference_brier_ppb=reference_brier,
         candidate_brier_ppb=candidate_brier,
         member_brier_ppb=members,
@@ -310,6 +344,10 @@ def evaluate_c1(
     _validate_rounds(rounds, split="test")
     count = len(rounds)
     reference_sum = sum(row.reference_brier_ppb for row in rounds)
+    reference_raw_sum = sum(
+        row.reference_raw_brier_ppb for row in rounds)
+    reference_bias_sum = sum(
+        row.reference_bias_correction_ppb for row in rounds)
     candidate_sum = sum(row.candidate_brier_ppb for row in rounds)
     if reference_sum <= 0:
         raise BeliefB2StatisticsError("test reference Brier is empty")
@@ -317,6 +355,8 @@ def evaluate_c1(
                         for row in rounds)
     difference_sum = sum(differences)
     reference_mean = _round_divide(reference_sum, count)
+    reference_raw_mean = _round_divide(reference_raw_sum, count)
+    reference_bias_mean = _round_divide(reference_bias_sum, count)
     candidate_mean = _round_divide(candidate_sum, count)
     mean_improvement = difference_sum // count
     relative_improvement = difference_sum * PPB // reference_sum
@@ -348,6 +388,8 @@ def evaluate_c1(
         reasons.append("smoothed-log-loss-materially-reversed")
     return C1CalibrationResultV1(
         round_count=count,
+        reference_raw_mean_brier_ppb=reference_raw_mean,
+        reference_mean_bias_correction_ppb=reference_bias_mean,
         reference_mean_brier_ppb=reference_mean,
         candidate_mean_brier_ppb=candidate_mean,
         mean_brier_improvement_ppb=mean_improvement,

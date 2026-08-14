@@ -54,6 +54,8 @@ REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB = (
     PRIMARY_RELATIVE_BRIER_FLOOR_PPB
     * REFERENCE_REPLICATE_DISAGREEMENT_FRACTION_PPB // 1_000_000_000)
 PRIMARY_BOOTSTRAP_REPLICATES = 20_000
+REFERENCE_BRIER_CORRECTION = (
+    "unbiased-multinomial-empirical-brier-v1")
 
 
 class BeliefB2ProtocolError(ValueError):
@@ -177,6 +179,11 @@ def protocol_dict() -> dict[str, Any]:
         },
         "primary_gate": {
             "metric": "paired-per-round-hidden-ownership-count-brier",
+            "reference_finite_sample_bias_correction": (
+                REFERENCE_BRIER_CORRECTION),
+            "reference_world_count": REF_C_WORLD_COUNT,
+            "bias_estimator": (
+                "sum(p_hat*(1-p_hat))/(reference_world_count-1)"),
             "reference_minus_candidate_mean_relative_floor_ppb": (
                 PRIMARY_RELATIVE_BRIER_FLOOR_PPB),
             "one_sided_95_percent_lower_bound_strictly_positive": True,

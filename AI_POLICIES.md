@@ -26,9 +26,12 @@ and put exact run detail in `JOBS.md` or the dated archive.
   null selections. Pair-aware continuation remains unresolved in two fresh
   whole-game executions.
 - **Learned-policy conclusion:** the model helped on selected trick-five+
-  states, but failed both whole-game conservative contrasts. A same-work
-  uninformed proposal beat champion on the same population; learned targeting
-  did not add value beyond generic ballot widening.
+  states, but failed both whole-game conservative contrasts. The uninformed
+  proposal beat champion on the same population and was matched to treatment,
+  so learned targeting added no value beyond that control. It was not
+  work-matched to champion: the control used 14.8% more accepted worlds and
+  80.9% more searches. Its apparent win is a compute-plus-width hypothesis,
+  not clean evidence that ballot widening alone is stronger.
 - **Rollout-policy conclusion:** S4 completed its full 16,384-cluster,
   two-look confirmation with integrity intact but final efficacy unmet. Its
   roughly 0.7% natural decision incidence sharply limited whole-game effect.

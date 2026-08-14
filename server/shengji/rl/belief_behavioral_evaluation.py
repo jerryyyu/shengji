@@ -20,6 +20,7 @@ from typing import Any
 
 from .belief_b2_protocol import (
     PRIMARY_BOOTSTRAP_REPLICATES,
+    REFERENCE_BRIER_CORRECTION,
     b2_split_round_seeds,
     protocol_sha256,
 )
@@ -31,7 +32,8 @@ from .belief_behavioral import (
 )
 from .belief_capture import CapturedBeliefRoundV1, validate_captured_round
 from .belief_contract import canonical_json_bytes
-from .belief_evaluation import reopen_score_pair, target_count_population
+from .belief_evaluation import (reopen_score_pair,
+                                target_count_population)
 from .belief_ownership import (
     PROBABILITY_SCALE,
     BeliefOwnershipV1,
@@ -41,16 +43,17 @@ from .belief_refc_capture import (
     ReferenceCapturedRoundV1,
     validate_reference_captured_round,
 )
+from .belief_reference import REF_C_WORLD_COUNT
 
 
 POOLED_STRATUM = "all-confirmed-choice-signals-v1"
 BEHAVIORAL_STRATA = (POOLED_STRATUM, *SIGNAL_KINDS)
 MIN_BEHAVIORAL_EXPOSURES = 500
 HISTORY_ABLATION_RETAIN_CAP_PPB = 250_000_000
-BEHAVIORAL_ROUND_SCHEMA = "belief-v1-b2-behavioral-round-score-v1"
+BEHAVIORAL_ROUND_SCHEMA = "belief-v1-b2-behavioral-round-score-v2"
 BEHAVIORAL_STRATUM_SCORE_SCHEMA = (
-    "belief-v1-b2-behavioral-round-stratum-score-v1")
-BEHAVIORAL_RESULT_SCHEMA = "belief-v1-b2-behavioral-calibration-result-v1"
+    "belief-v1-b2-behavioral-round-stratum-score-v2")
+BEHAVIORAL_RESULT_SCHEMA = "belief-v1-b2-behavioral-calibration-result-v2"
 PPB = 1_000_000_000
 
 
@@ -75,6 +78,9 @@ class BehavioralRoundStratumScoreV1:
     public_receiver_decision_count: int
     confirmed_receiver_decision_count: int
     probability_cell_count: int
+    raw_brier_denominator: int
+    reference_raw_brier_numerator: int
+    reference_finite_sample_bias_numerator: int
     brier_denominator: int
     reference_brier_numerator: int
     candidate_brier_numerator: int
@@ -91,11 +97,25 @@ class BehavioralRoundStratumScoreV1:
                 self.confirmed_receiver_decision_count),
             "probability_cell_count": self.probability_cell_count,
             "count_brier": {
-                "denominator": self.brier_denominator,
-                "reference_numerator": self.reference_brier_numerator,
-                "candidate_numerator": self.candidate_brier_numerator,
-                "history_ablated_numerator": (
-                    self.history_ablated_brier_numerator),
+                "raw": {
+                    "denominator": self.raw_brier_denominator,
+                    "reference_numerator": (
+                        self.reference_raw_brier_numerator),
+                },
+                "reference_finite_sample_bias_correction": {
+                    "method": REFERENCE_BRIER_CORRECTION,
+                    "world_count": REF_C_WORLD_COUNT,
+                    "numerator": (
+                        self.reference_finite_sample_bias_numerator),
+                    "denominator": self.brier_denominator,
+                },
+                "bias_corrected": {
+                    "denominator": self.brier_denominator,
+                    "reference_numerator": self.reference_brier_numerator,
+                    "candidate_numerator": self.candidate_brier_numerator,
+                    "history_ablated_numerator": (
+                        self.history_ablated_brier_numerator),
+                },
             },
         }
 
@@ -268,7 +288,9 @@ def build_behavioral_round_score(
         by_decision.setdefault(exposure.decision_key, []).append(exposure)
     public_keys = {name: set() for name in BEHAVIORAL_STRATA}
     confirmed_keys = {name: set() for name in BEHAVIORAL_STRATA}
-    totals = {name: [0, 0, 0, 0, 0]
+    # cells, raw denominator, raw reference, correction numerator,
+    # corrected denominator, corrected reference/candidate/ablation.
+    totals = {name: [0, 0, 0, 0, 0, 0, 0, 0]
               for name in BEHAVIORAL_STRATA}
     for pair, batch, prediction in zip(
             captured.pairs, reference_round.batches, predictions,
@@ -315,20 +337,35 @@ def build_behavioral_round_score(
                             "behavioral Brier population drift")
                     values.append(numerator)
                 row = totals[name]
+                bias = sum(
+                    probability * (PROBABILITY_SCALE - probability)
+                    for probability_row in reference.probabilities
+                    if probability_row.receiver == exposure.receiver
+                    for probability in (
+                        probability_row.count_0_ppb,
+                        probability_row.count_1_ppb,
+                        probability_row.count_2_ppb))
+                multiplier = REF_C_WORLD_COUNT - 1
                 row[0] += cells
                 row[1] += denominator
                 row[2] += values[0]
-                row[3] += values[1]
-                row[4] += values[2]
+                row[3] += bias
+                row[4] += denominator * multiplier
+                row[5] += values[0] * multiplier - bias
+                row[6] += values[1] * multiplier
+                row[7] += values[2] * multiplier
     strata = tuple(BehavioralRoundStratumScoreV1(
         stratum=name,
         public_receiver_decision_count=len(public_keys[name]),
         confirmed_receiver_decision_count=len(confirmed_keys[name]),
         probability_cell_count=totals[name][0],
-        brier_denominator=totals[name][1],
-        reference_brier_numerator=totals[name][2],
-        candidate_brier_numerator=totals[name][3],
-        history_ablated_brier_numerator=totals[name][4],
+        raw_brier_denominator=totals[name][1],
+        reference_raw_brier_numerator=totals[name][2],
+        reference_finite_sample_bias_numerator=totals[name][3],
+        brier_denominator=totals[name][4],
+        reference_brier_numerator=totals[name][5],
+        candidate_brier_numerator=totals[name][6],
+        history_ablated_brier_numerator=totals[name][7],
     ) for name in BEHAVIORAL_STRATA)
     result = BehavioralRoundScoreV1(
         round_seed=captured.round_seed,
@@ -360,37 +397,54 @@ def validate_behavioral_round_score(result: BehavioralRoundScoreV1) -> None:
         raise BeliefBehavioralEvaluationError(
             "behavioral round score schema/identity drift")
     for row in result.strata:
-        values = (
+        nonnegative = (
             row.public_receiver_decision_count,
             row.confirmed_receiver_decision_count,
-            row.probability_cell_count, row.brier_denominator,
-            row.reference_brier_numerator, row.candidate_brier_numerator,
+            row.probability_cell_count, row.raw_brier_denominator,
+            row.reference_raw_brier_numerator,
+            row.reference_finite_sample_bias_numerator,
+            row.brier_denominator,
+            row.candidate_brier_numerator,
             row.history_ablated_brier_numerator)
         if type(row) is not BehavioralRoundStratumScoreV1 \
                 or row.schema != BEHAVIORAL_STRATUM_SCORE_SCHEMA \
-                or any(type(value) is not int or value < 0 for value in values) \
+                or type(row.reference_brier_numerator) is not int \
+                or any(type(value) is not int or value < 0
+                       for value in nonnegative) \
                 or row.confirmed_receiver_decision_count \
                 > row.public_receiver_decision_count \
                 or (row.confirmed_receiver_decision_count == 0) \
                 != (row.brier_denominator == 0) \
                 or row.probability_cell_count % 3 \
-                or row.brier_denominator != (
+                or row.raw_brier_denominator != (
                     row.probability_cell_count // 3
                     * PROBABILITY_SCALE ** 2) \
+                or row.brier_denominator != (
+                    row.raw_brier_denominator
+                    * (REF_C_WORLD_COUNT - 1)) \
+                or row.reference_brier_numerator != (
+                    row.reference_raw_brier_numerator
+                    * (REF_C_WORLD_COUNT - 1)
+                    - row.reference_finite_sample_bias_numerator) \
                 or max(row.reference_brier_numerator,
                        row.candidate_brier_numerator,
                        row.history_ablated_brier_numerator) \
                 > 2 * row.brier_denominator \
-                or (row.brier_denominator == 0 and any(values[2:])):
+                or (row.brier_denominator == 0
+                    and (row.reference_brier_numerator != 0
+                         or any(nonnegative[2:]))):
             raise BeliefBehavioralEvaluationError(
                 "behavioral round score value drift")
 
 
 def _score_ppb(numerator: int, denominator: int) -> int:
-    if denominator <= 0:
+    if type(numerator) is not int or type(denominator) is not int \
+            or denominator <= 0:
         raise BeliefBehavioralEvaluationError(
             "behavioral score denominator is empty")
-    return (numerator * PPB + denominator // 2) // denominator
+    sign = -1 if numerator < 0 else 1
+    return sign * ((2 * abs(numerator) * PPB + denominator)
+                   // (2 * denominator))
 
 
 def _bootstrap_seed(stratum: str) -> int:

@@ -32,6 +32,7 @@ from shengji.rl.belief_b2_execution import (  # noqa: E402
     build_pipeline_admission,
     build_runtime_profile,
     build_source_bindings,
+    configure_numerical_runtime,
     execution_design_from_bytes,
     expected_review_claim,
     pipeline_admission_from_bytes,
@@ -43,6 +44,7 @@ from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
 from shengji.rl.belief_b2_controller import (  # noqa: E402
     run_capture_lane,
     run_reference_lane,
+    run_training_cohort,
 )
 
 
@@ -183,6 +185,23 @@ def reference_lane(args: argparse.Namespace) -> None:
     }).decode("ascii"), end="")
 
 
+def train_cohort(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    design, admission, marker = _load_authorized_root(root)
+    result = run_training_cohort(
+        root, design, admission, kind=args.kind, review_marker=marker)
+    print(canonical_json_bytes({
+        "cohort_kind": args.kind,
+        "epoch_count": result["epoch_count"],
+        "selected_common_epoch": result["selected_common_epoch"],
+        "manifest_sha256": hashlib.sha256(
+            canonical_json_bytes(result)).hexdigest(),
+        "test_split_opened": False,
+        "retry_count": 0,
+        "complete": True,
+    }).decode("ascii"), end="")
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     commands = result.add_subparsers(dest="command", required=True)
@@ -207,10 +226,17 @@ def parser() -> argparse.ArgumentParser:
     reference.add_argument("--root", required=True)
     reference.add_argument("--lane", required=True, type=int)
     reference.set_defaults(function=reference_lane)
+    train = commands.add_parser("train-cohort")
+    train.add_argument("--root", required=True)
+    train.add_argument(
+        "--kind", required=True,
+        choices=("candidate", "hard-geometry-label-permutation"))
+    train.set_defaults(function=train_cohort)
     return result
 
 
 def main() -> None:
+    configure_numerical_runtime()
     args = parser().parse_args()
     args.function(args)
 

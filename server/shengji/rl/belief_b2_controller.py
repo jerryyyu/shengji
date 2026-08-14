@@ -14,8 +14,11 @@ import hashlib
 import json
 import os
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
+
+import torch
 
 from .belief_artifacts import (
     capture_bundle_bytes,
@@ -23,6 +26,9 @@ from .belief_artifacts import (
     reopen_capture_bundle,
     reference_round_bundle_bytes,
     reopen_reference_round_bundle,
+    checkpoint_bundle_bytes,
+    reopen_checkpoint_bundle,
+    reopen_epoch_receipt,
     stable_read_bytes,
 )
 from .belief_b2_execution import (
@@ -42,24 +48,58 @@ from .belief_b2_protocol import (
     REFERENCE_CORE_HOUR_CAP,
     REFERENCE_WALL_SECOND_CAP,
     B2_REFERENCE_REPLICATES,
+    TRAIN_BATCH_DECISION_CAP,
+    TRAIN_BYTE_CAP,
+    TRAIN_DEVICE_HOUR_CAP,
+    TRAIN_MAX_EPOCHS,
+    TRAIN_WALL_SECOND_CAP,
+    b2_split_round_seeds,
     b2_round_seeds,
     capture_lane,
     champion_policy_seeds,
     protocol_sha256,
 )
 from .belief_capture import (
+    CHAMPION_POLICY,
     capture_champion_round,
     captured_round_artifacts,
     reopen_captured_round_artifacts,
 )
+from .belief_checkpoint import (
+    build_model_checkpoint,
+    reopen_model_checkpoint,
+)
+from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
 from .belief_corpus import split_for_round_seed
 from .belief_population import population_round_from_artifacts
 from .belief_refc_capture import capture_champion_round_with_ref_c
+from .belief_controls import (
+    LABEL_PERMUTATION_CONTROL,
+    build_control_example,
+    collate_control_examples,
+)
+from .belief_model import new_from_scratch_model
+from .belief_trainer import (
+    evaluate_calibration_cohort_stream_nanonats,
+    model_state_sha256,
+    new_b2_optimizer,
+    train_cohort_epoch_stream,
+)
+from .belief_training import (
+    build_training_example,
+    collate_training_examples,
+)
+from .belief_training_schedule import (
+    ordered_round_seeds_for_epoch,
+    select_common_epoch,
+)
 
 
 CAPTURE_LANE_SCHEMA = "belief-v1-b2-capture-lane-result-v1"
 REFERENCE_LANE_SCHEMA = "belief-v1-b2-reference-lane-result-v1"
+TRAINING_COHORT_SCHEMA = "belief-v1-b2-training-cohort-result-v1"
+TRAINING_KINDS = ("candidate", LABEL_PERMUTATION_CONTROL)
 NS_PER_SECOND = 1_000_000_000
 NS_PER_HOUR = 3600 * NS_PER_SECOND
 
@@ -552,4 +592,355 @@ def reopen_reference_lane(
         cpu_nanoseconds=resources["cpu_nanoseconds"])
     if canonical_json_bytes(expected) != canonical_json_bytes(payload):
         raise BeliefB2ControllerError("reference lane reconstruction drift")
+    return payload
+
+
+def _capture_path(root: Path, seed: int) -> Path:
+    lane = capture_lane(seed)
+    return root / "capture" / f"lane-{lane:02d}" / _round_filename(seed)
+
+
+def _round_examples(root: Path, seed: int, *, kind: str):
+    raw = stable_read_bytes(_capture_path(root, seed))
+    artifacts = reopen_capture_bundle(raw)
+    captured = reopen_captured_round_artifacts(artifacts)
+    if captured.round_seed != seed:
+        raise BeliefB2ControllerError("training capture seed drift")
+    if kind == "candidate":
+        return tuple(build_training_example(
+            pair, behavior_policy_ids=(CHAMPION_POLICY,))
+                     for pair in captured.pairs)
+    if kind == LABEL_PERMUTATION_CONTROL:
+        return tuple(build_control_example(
+            pair, behavior_policy_ids=(CHAMPION_POLICY,),
+            control_kind=LABEL_PERMUTATION_CONTROL)
+                     for pair in captured.pairs)
+    raise BeliefB2ControllerError("training cohort kind drift")
+
+
+def _iter_corpus_batches(
+        root: Path, *, split: str, kind: str, epoch: int | None = None):
+    """Yield exact complete-round-grouped batches from immutable bundles."""
+    seeds = b2_split_round_seeds(split)
+    if split == "train":
+        if epoch is None:
+            raise BeliefB2ControllerError("training batch epoch is missing")
+        seeds = ordered_round_seeds_for_epoch(seeds, epoch=epoch)
+    elif split != "calibration" or epoch is not None:
+        raise BeliefB2ControllerError("training batch split/epoch drift")
+    if kind not in TRAINING_KINDS:
+        raise BeliefB2ControllerError("training cohort kind drift")
+    pending = []
+    for seed in seeds:
+        rows = _round_examples(root, seed, kind=kind)
+        if not rows or len(rows) > TRAIN_BATCH_DECISION_CAP:
+            raise BeliefB2ControllerError(
+                "training round decision population drift")
+        if pending and len(pending) + len(rows) > TRAIN_BATCH_DECISION_CAP:
+            yield (collate_training_examples(tuple(pending))
+                   if kind == "candidate"
+                   else collate_control_examples(tuple(pending)))
+            pending = []
+        pending.extend(rows)
+    if pending:
+        yield (collate_training_examples(tuple(pending))
+               if kind == "candidate"
+               else collate_control_examples(tuple(pending)))
+
+
+def _training_manifest(
+        design: B2ExecutionDesignV1,
+        admission: B2PipelineAdmissionV1, *, kind: str,
+        epochs: list[dict[str, Any]], selected_epoch: int, stop_epoch: int,
+        stopped_for_patience: bool, checkpoints: list[dict[str, Any]],
+        wall_nanoseconds: int, device_nanoseconds: int) -> dict[str, Any]:
+    return {
+        "schema": TRAINING_COHORT_SCHEMA,
+        "protocol_sha256": protocol_sha256(),
+        "design_sha256": design.sha256(),
+        "admission_sha256": admission.sha256(),
+        "cohort_kind": kind,
+        "initialization_seeds": list(COHORT_SEEDS),
+        "epoch_count": len(epochs),
+        "epochs": epochs,
+        "selected_common_epoch": selected_epoch,
+        "stop_epoch": stop_epoch,
+        "stopped_for_patience": stopped_for_patience,
+        "checkpoints": checkpoints,
+        "resources": {
+            "wall_nanoseconds": wall_nanoseconds,
+            "device_nanoseconds": device_nanoseconds,
+            "artifact_bytes": sum(row["byte_count"] for row in checkpoints),
+            "retry_count": 0,
+        },
+        "test_split_opened": False,
+        "contains_optimizer_resume_state": False,
+        "contains_privileged_targets": False,
+        "runtime_research_package": True,
+        "test_split_open_authorized": False,
+        "sampler_implementation_authorized": False,
+        "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
+def run_training_cohort(
+        root: Path, design: B2ExecutionDesignV1,
+        admission: B2PipelineAdmissionV1, *, kind: str,
+        review_marker: bytes) -> dict[str, Any]:
+    """Train all eight members from one streamed batch pass per epoch."""
+    try:
+        validate_pipeline_admission(
+            design, admission, review_marker=review_marker)
+    except BeliefB2ExecutionError as exc:
+        raise BeliefB2ControllerError("training admission refused") from exc
+    if kind not in TRAINING_KINDS or root != Path(design.evidence_root) \
+            or root.is_symlink() or not root.is_dir():
+        raise BeliefB2ControllerError("training cohort input drift")
+    for lane in range(B2_CAPTURE_LANES):
+        reopen_capture_lane(
+            root / "capture" / f"lane-{lane:02d}", design=design,
+            admission=admission, lane=lane)
+    parent = root / "training"
+    if parent.is_symlink():
+        raise BeliefB2ControllerError("training parent is a symlink")
+    parent.mkdir(mode=0o700, exist_ok=True)
+    final = parent / kind
+    partial = parent / f"{kind}.partial"
+    if final.exists() or partial.exists() \
+            or final.is_symlink() or partial.is_symlink():
+        raise BeliefB2ControllerError("training cohort slot is occupied")
+    partial.mkdir(mode=0o700)
+    torch.set_num_threads(1)
+    torch.use_deterministic_algorithms(True)
+    if torch.get_num_threads() != 1 \
+            or not torch.are_deterministic_algorithms_enabled():
+        raise BeliefB2ControllerError("training numerical mode drift")
+    models = tuple(new_from_scratch_model(seed) for seed in COHORT_SEEDS)
+    optimizers = tuple(new_b2_optimizer(model) for model in models)
+    losses: list[list[int]] = [[] for _ in models]
+    epochs = []
+    selected_states = None
+    selected_receipts = None
+    start_wall = time.perf_counter_ns()
+    start_device = time.process_time_ns()
+    decision = None
+    for epoch in range(1, TRAIN_MAX_EPOCHS + 1):
+        receipts = train_cohort_epoch_stream(
+            models, optimizers,
+            _iter_corpus_batches(
+                root, split="train", kind=kind, epoch=epoch),
+            epoch=epoch)
+        calibration = evaluate_calibration_cohort_stream_nanonats(
+            models, _iter_corpus_batches(
+                root, split="calibration", kind=kind))
+        for row, value in zip(losses, calibration, strict=True):
+            row.append(value)
+        decision = select_common_epoch(tuple(tuple(row) for row in losses))
+        epochs.append({
+            "epoch": epoch,
+            "member_training_receipts": [
+                receipt.to_dict() for receipt in receipts],
+            "member_calibration_loss_nanonats": list(calibration),
+            "cohort_mean_calibration_loss_nanonats": (
+                sum(calibration) // len(calibration)),
+        })
+        if decision.selected_epoch == epoch:
+            selected_states = tuple(deepcopy(model.state_dict())
+                                    for model in models)
+            selected_receipts = receipts
+        if decision.stopped_for_patience:
+            break
+    if decision is None or selected_states is None \
+            or selected_receipts is None \
+            or decision.stop_epoch != len(epochs):
+        raise BeliefB2ControllerError("training common epoch drift")
+    for model, state in zip(models, selected_states, strict=True):
+        model.load_state_dict(state, strict=True)
+    checkpoint_rows = []
+    for index, (seed, model, receipt) in enumerate(zip(
+            COHORT_SEEDS, models, selected_receipts, strict=True)):
+        if receipt.epoch != decision.selected_epoch \
+                or receipt.model_state_sha256_after \
+                != model_state_sha256(model):
+            raise BeliefB2ControllerError(
+                "training selected model/receipt drift")
+        checkpoint = build_model_checkpoint(
+            model, initialization_seed=seed,
+            selected_epoch=decision.selected_epoch,
+            final_epoch_receipt=receipt)
+        raw = checkpoint_bundle_bytes(checkpoint, receipt)
+        filename = f"member-{index:02d}.bin"
+        digest = publish_exclusive_bytes(partial / filename, raw)
+        checkpoint_rows.append({
+            "member_index": index, "initialization_seed": seed,
+            "filename": filename, "byte_count": len(raw),
+            "bundle_sha256": digest,
+            "checkpoint_sha256": checkpoint.sha256(),
+            "model_state_sha256": model_state_sha256(model),
+            "final_epoch_receipt_sha256": receipt.sha256(),
+        })
+    wall = time.perf_counter_ns() - start_wall
+    device = time.process_time_ns() - start_device
+    manifest = _training_manifest(
+        design, admission, kind=kind, epochs=epochs,
+        selected_epoch=decision.selected_epoch,
+        stop_epoch=decision.stop_epoch,
+        stopped_for_patience=decision.stopped_for_patience,
+        checkpoints=checkpoint_rows, wall_nanoseconds=wall,
+        device_nanoseconds=device)
+    publish_exclusive_bytes(
+        partial / "manifest.json", canonical_json_bytes(manifest))
+    os.rename(partial, final)
+    _fsync_parent(final)
+    reopened = reopen_training_cohort(
+        final, design=design, admission=admission, kind=kind)
+    if reopened != manifest:
+        raise BeliefB2ControllerError("training cohort post-publish drift")
+    return reopened
+
+
+def reopen_training_cohort(
+        directory: Path, *, design: B2ExecutionDesignV1,
+        admission: B2PipelineAdmissionV1, kind: str) -> dict[str, Any]:
+    """Reopen the complete curve and all eight selected checkpoints."""
+    if kind not in TRAINING_KINDS or directory.is_symlink() \
+            or not directory.is_dir() or directory.name != kind:
+        raise BeliefB2ControllerError("training cohort directory drift")
+    expected_names = {"manifest.json", *(
+        f"member-{index:02d}.bin" for index in range(len(COHORT_SEEDS)))}
+    if {path.name for path in directory.iterdir()} != expected_names:
+        raise BeliefB2ControllerError("training cohort file population drift")
+    payload = _strict_json(stable_read_bytes(
+        directory / "manifest.json"), label="training cohort manifest")
+    expected_keys = {
+        "schema", "protocol_sha256", "design_sha256",
+        "admission_sha256", "cohort_kind", "initialization_seeds",
+        "epoch_count", "epochs", "selected_common_epoch", "stop_epoch",
+        "stopped_for_patience", "checkpoints", "resources",
+        "test_split_opened", "contains_optimizer_resume_state",
+        "contains_privileged_targets", "runtime_research_package",
+        "test_split_open_authorized", "sampler_implementation_authorized",
+        "gameplay_strength_screen_authorized", "strength_claim_authorized",
+        "deployment_authorized"}
+    if set(payload) != expected_keys \
+            or payload["schema"] != TRAINING_COHORT_SCHEMA \
+            or payload["protocol_sha256"] != protocol_sha256() \
+            or payload["design_sha256"] != design.sha256() \
+            or payload["admission_sha256"] != admission.sha256() \
+            or payload["cohort_kind"] != kind \
+            or payload["initialization_seeds"] != list(COHORT_SEEDS) \
+            or type(payload["epoch_count"]) is not int \
+            or not 1 <= payload["epoch_count"] <= TRAIN_MAX_EPOCHS \
+            or payload["stop_epoch"] != payload["epoch_count"] \
+            or type(payload["epochs"]) is not list \
+            or len(payload["epochs"]) != payload["epoch_count"] \
+            or type(payload["checkpoints"]) is not list \
+            or len(payload["checkpoints"]) != len(COHORT_SEEDS) \
+            or payload["test_split_opened"] is not False \
+            or payload["contains_optimizer_resume_state"] is not False \
+            or payload["contains_privileged_targets"] is not False \
+            or payload["runtime_research_package"] is not True \
+            or any(payload[key] is not False for key in (
+                "test_split_open_authorized",
+                "sampler_implementation_authorized",
+                "gameplay_strength_screen_authorized",
+                "strength_claim_authorized", "deployment_authorized")):
+        raise BeliefB2ControllerError("training cohort manifest identity drift")
+    member_losses = [[] for _ in COHORT_SEEDS]
+    receipt_rows = []
+    for epoch, row in enumerate(payload["epochs"], 1):
+        if type(row) is not dict or set(row) != {
+                "epoch", "member_training_receipts",
+                "member_calibration_loss_nanonats",
+                "cohort_mean_calibration_loss_nanonats"} \
+                or row["epoch"] != epoch \
+                or type(row["member_training_receipts"]) is not list \
+                or len(row["member_training_receipts"]) != len(COHORT_SEEDS) \
+                or type(row["member_calibration_loss_nanonats"]) is not list \
+                or len(row["member_calibration_loss_nanonats"]) \
+                != len(COHORT_SEEDS) \
+                or any(type(value) is not int or value < 0
+                       for value in row[
+                           "member_calibration_loss_nanonats"]):
+            raise BeliefB2ControllerError("training epoch curve drift")
+        receipts = tuple(reopen_epoch_receipt(canonical_json_bytes(value))
+                         for value in row["member_training_receipts"])
+        if any(receipt.epoch != epoch for receipt in receipts) \
+                or row["cohort_mean_calibration_loss_nanonats"] != sum(
+                    row["member_calibration_loss_nanonats"]) \
+                // len(COHORT_SEEDS):
+            raise BeliefB2ControllerError(
+                "training epoch receipt/loss drift")
+        receipt_rows.append(receipts)
+        for losses, value in zip(
+                member_losses, row["member_calibration_loss_nanonats"],
+                strict=True):
+            losses.append(value)
+    decision = select_common_epoch(tuple(
+        tuple(row) for row in member_losses))
+    if payload["selected_common_epoch"] != decision.selected_epoch \
+            or payload["stop_epoch"] != decision.stop_epoch \
+            or payload["stopped_for_patience"] \
+            is not decision.stopped_for_patience:
+        raise BeliefB2ControllerError(
+            "training common epoch reconstruction drift")
+    checkpoint_rows = []
+    selected_receipts = receipt_rows[decision.selected_epoch - 1]
+    for index, (seed, row, receipt) in enumerate(zip(
+            COHORT_SEEDS, payload["checkpoints"], selected_receipts,
+            strict=True)):
+        expected_filename = f"member-{index:02d}.bin"
+        if type(row) is not dict or set(row) != {
+                "member_index", "initialization_seed", "filename",
+                "byte_count", "bundle_sha256", "checkpoint_sha256",
+                "model_state_sha256", "final_epoch_receipt_sha256"} \
+                or row["member_index"] != index \
+                or row["initialization_seed"] != seed \
+                or row["filename"] != expected_filename:
+            raise BeliefB2ControllerError("training checkpoint row drift")
+        raw = stable_read_bytes(directory / expected_filename)
+        checkpoint, reopened_receipt = reopen_checkpoint_bundle(raw)
+        model = reopen_model_checkpoint(
+            checkpoint, final_epoch_receipt=reopened_receipt)
+        actual = {
+            "member_index": index, "initialization_seed": seed,
+            "filename": expected_filename, "byte_count": len(raw),
+            "bundle_sha256": hashlib.sha256(raw).hexdigest(),
+            "checkpoint_sha256": checkpoint.sha256(),
+            "model_state_sha256": model_state_sha256(model),
+            "final_epoch_receipt_sha256": reopened_receipt.sha256(),
+        }
+        if reopened_receipt != receipt or actual != row:
+            raise BeliefB2ControllerError(
+                "training checkpoint reconstruction drift")
+        checkpoint_rows.append(actual)
+    resources = payload["resources"]
+    if type(resources) is not dict or set(resources) != {
+            "wall_nanoseconds", "device_nanoseconds", "artifact_bytes",
+            "retry_count"} \
+            or any(type(resources[name]) is not int or resources[name] < 0
+                   for name in resources) \
+            or min(resources["wall_nanoseconds"],
+                   resources["device_nanoseconds"]) <= 0 \
+            or resources["artifact_bytes"] != sum(
+                row["byte_count"] for row in checkpoint_rows) \
+            or resources["retry_count"] != 0 \
+            or resources["wall_nanoseconds"] \
+            > TRAIN_WALL_SECOND_CAP * NS_PER_SECOND \
+            or resources["device_nanoseconds"] \
+            > TRAIN_DEVICE_HOUR_CAP * NS_PER_HOUR \
+            or resources["artifact_bytes"] > TRAIN_BYTE_CAP:
+        raise BeliefB2ControllerError("training cohort resource drift")
+    expected = _training_manifest(
+        design, admission, kind=kind, epochs=payload["epochs"],
+        selected_epoch=decision.selected_epoch,
+        stop_epoch=decision.stop_epoch,
+        stopped_for_patience=decision.stopped_for_patience,
+        checkpoints=checkpoint_rows,
+        wall_nanoseconds=resources["wall_nanoseconds"],
+        device_nanoseconds=resources["device_nanoseconds"])
+    if canonical_json_bytes(expected) != canonical_json_bytes(payload):
+        raise BeliefB2ControllerError("training cohort reconstruction drift")
     return payload

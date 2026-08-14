@@ -17,10 +17,12 @@ from shengji.rl.belief_model import new_from_scratch_model
 from shengji.rl.belief_trainer import (
     BeliefTrainerError,
     evaluate_calibration_loss_nanonats,
+    evaluate_calibration_cohort_stream_nanonats,
     evaluate_calibration_stream_nanonats,
     model_state_sha256,
     new_b2_optimizer,
     train_epoch,
+    train_cohort_epoch_stream,
     train_epoch_stream,
 )
 from shengji.rl.belief_training import (
@@ -120,3 +122,27 @@ def test_streaming_trainer_refuses_empty_and_cross_batch_duplicates():
             model, new_b2_optimizer(model), iter((train, train)), epoch=1)
     with pytest.raises(BeliefTrainerError, match="mutated model"):
         evaluate_calibration_stream_nanonats(model, iter(()))
+
+
+def test_cohort_stream_matches_individual_member_mechanics():
+    batches = (_batch(decisions=2, seed_index=0),
+               _batch(decisions=2, seed_index=1))
+    seeds = (495023836, 847673502, 1041799603, 588875658,
+             442958256, 517235703, 1114290105, 823748771)
+    models = tuple(new_from_scratch_model(seed) for seed in seeds)
+    optimizers = tuple(new_b2_optimizer(model) for model in models)
+    comparison = new_from_scratch_model(seeds[0])
+    expected = train_epoch_stream(
+        comparison, new_b2_optimizer(comparison), iter(batches), epoch=1)
+    receipts = train_cohort_epoch_stream(
+        models, optimizers, iter(batches), epoch=1)
+    assert receipts[0] == expected
+    assert model_state_sha256(models[0]) == model_state_sha256(comparison)
+
+    calibration = (_batch(split="calibration", decisions=2, seed_index=0),
+                   _batch(split="calibration", decisions=2, seed_index=1))
+    values = evaluate_calibration_cohort_stream_nanonats(
+        models, iter(calibration))
+    assert len(values) == 8
+    assert values[0] == evaluate_calibration_loss_nanonats(
+        models[0], calibration)

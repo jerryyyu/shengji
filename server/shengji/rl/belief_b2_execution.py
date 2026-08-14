@@ -358,6 +358,9 @@ def _memory_bytes() -> int:
 
 def build_runtime_profile() -> RuntimeProfileV1:
     """Capture the exact deterministic CPU runtime before a design review."""
+    if torch.get_num_threads() != 1 \
+            or not torch.are_deterministic_algorithms_enabled():
+        raise BeliefB2ExecutionError("runtime numerical mode drift")
     if fast.HAVE_FAST is not True or fast._fast is None:
         raise BeliefB2ExecutionError("compiled runtime is unavailable")
     native_path = Path(fast._fast.__file__).resolve()
@@ -383,6 +386,15 @@ def build_runtime_profile() -> RuntimeProfileV1:
         required_environment=environment)
     validate_runtime_profile(profile)
     return profile
+
+
+def configure_numerical_runtime() -> None:
+    """Select the exact deterministic CPU numerical mode used by every stage."""
+    torch.set_num_threads(1)
+    torch.use_deterministic_algorithms(True)
+    if torch.get_num_threads() != 1 \
+            or not torch.are_deterministic_algorithms_enabled():
+        raise BeliefB2ExecutionError("runtime numerical mode drift")
 
 
 def validate_runtime_profile(profile: RuntimeProfileV1) -> None:

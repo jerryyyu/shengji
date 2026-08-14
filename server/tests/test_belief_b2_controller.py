@@ -9,13 +9,16 @@ from types import SimpleNamespace
 import pytest
 
 import shengji.rl.belief_b2_controller as controller
+from shengji.ai.heuristic import HeuristicBot
 from shengji.rl.belief_b2_controller import (
     BeliefB2ControllerError,
     reference_lane_jobs,
     reopen_capture_lane,
     reopen_reference_lane,
+    reopen_training_cohort,
     run_capture_lane,
     run_reference_lane,
+    run_training_cohort,
 )
 from shengji.rl.belief_b2_execution import (
     REQUIRED_ENVIRONMENT,
@@ -28,6 +31,23 @@ from shengji.rl.belief_b2_execution import (
     expected_review_claim,
 )
 from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.belief_b2_protocol import (
+    b2_split_round_seeds,
+    champion_policy_seeds,
+)
+from shengji.rl.belief_capture import (
+    CHAMPION_POLICY,
+    _capture_with_policies,
+)
+from shengji.rl.belief_controls import (
+    LABEL_PERMUTATION_CONTROL,
+    build_control_example,
+    collate_control_examples,
+)
+from shengji.rl.belief_training import (
+    build_training_example,
+    collate_training_examples,
+)
 
 
 @dataclass(frozen=True)
@@ -155,3 +175,46 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
     assert reopen_reference_lane(
         reference_directory, capture_directory=directory,
         design=design, admission=admission, lane=0) == reference
+
+    def batch(split, kind):
+        seed = b2_split_round_seeds(split)[0]
+        captured = _capture_with_policies(
+            seed, CHAMPION_POLICY, champion_policy_seeds(seed),
+            [HeuristicBot() for _ in range(4)])
+        pairs = captured.pairs[:2]
+        if kind == "candidate":
+            return collate_training_examples(tuple(build_training_example(
+                pair, behavior_policy_ids=(CHAMPION_POLICY,))
+                for pair in pairs))
+        return collate_control_examples(tuple(build_control_example(
+            pair, behavior_policy_ids=(CHAMPION_POLICY,),
+            control_kind=LABEL_PERMUTATION_CONTROL) for pair in pairs))
+
+    batches = {
+        (split, kind): batch(split, kind)
+        for split in ("train", "calibration")
+        for kind in ("candidate", LABEL_PERMUTATION_CONTROL)}
+    monkeypatch.setattr(controller, "TRAIN_MAX_EPOCHS", 1)
+    monkeypatch.setattr(
+        controller, "reopen_capture_lane", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        controller, "_iter_corpus_batches",
+        lambda _root, *, split, kind, epoch=None:
+        iter((batches[(split, kind)],)))
+    for kind in ("candidate", LABEL_PERMUTATION_CONTROL):
+        trained = run_training_cohort(
+            root, design, admission, kind=kind, review_marker=marker)
+        training_directory = root / "training" / kind
+        assert trained["selected_common_epoch"] == 1
+        assert trained["test_split_opened"] is False
+        assert reopen_training_cohort(
+            training_directory, design=design, admission=admission,
+            kind=kind) == trained
+        foreign = training_directory / "foreign.json"
+        foreign.write_bytes(b"{}")
+        with pytest.raises(
+                BeliefB2ControllerError, match="file population"):
+            reopen_training_cohort(
+                training_directory, design=design, admission=admission,
+                kind=kind)
+        foreign.unlink()

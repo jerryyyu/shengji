@@ -91,8 +91,11 @@ def test_common_epoch_uses_cohort_mean_minimum_improvement_and_patience():
     decision = select_common_epoch(losses)
     assert decision.selected_epoch == 2
     assert decision.stop_epoch == 5
+    assert decision.stopped_for_patience is True
     assert decision.cohort_mean_loss_nanonats \
         == (1_000_000, 850_000, 810_000, 805_000, 804_000)
+    assert select_common_epoch(
+        tuple((1_000_000,) for _ in range(8))).stopped_for_patience is False
 
 
 def test_common_epoch_refuses_best_seed_missing_float_and_epoch_drift():

@@ -14,6 +14,7 @@ training, sampler, result opening, subprocess launch, or deployment surface.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import platform
 import subprocess
@@ -45,6 +46,10 @@ SOURCE_SCHEMA = "belief-v1-b2-source-binding-v1"
 RUNTIME_SCHEMA = "belief-v1-b2-runtime-profile-v1"
 REVIEW_SCHEMA = "belief-v1-b2-offline-execution-review-v1"
 REVIEW_PREFIX = "BELIEF_V1_B2_OFFLINE_EXECUTION_V1_REVIEW "
+REVIEW_LEDGER = "HANDOFF_REVIEW.md"
+REVIEWER_NAME = "Claude"
+REVIEWER_EMAIL = "noreply@anthropic.com"
+REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
 RUN_ID = "belief-v1-b2-open-dev-offline-v1"
 REQUIRED_ENVIRONMENT = (
     ("PYTHONDONTWRITEBYTECODE", "1"),
@@ -79,6 +84,21 @@ def _is_git_sha(value: Any) -> bool:
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _reject_number(value: str) -> None:
+    raise BeliefB2ExecutionError(
+        f"execution design contains invalid number {value}")
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise BeliefB2ExecutionError(
+                "execution design has duplicate JSON key")
+        result[key] = value
+    return result
 
 
 @dataclass(frozen=True)
@@ -368,6 +388,92 @@ def validate_execution_design(design: B2ExecutionDesignV1) -> None:
         raise BeliefB2ExecutionError("execution design digest closure drift")
 
 
+def execution_design_from_bytes(raw: bytes) -> B2ExecutionDesignV1:
+    """Strictly reconstruct the exact reviewed design file bytes."""
+    if type(raw) is not bytes or not raw:
+        raise BeliefB2ExecutionError("execution design bytes are empty")
+    try:
+        payload = json.loads(
+            raw.decode("ascii"), object_pairs_hook=_strict_object,
+            parse_float=_reject_number, parse_constant=_reject_number)
+    except BeliefB2ExecutionError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefB2ExecutionError(
+            "execution design is not strict JSON") from exc
+    expected = {
+        "schema", "run_id", "protocol_sha256", "execution_git",
+        "source_manifest_sha256", "source_bindings", "runtime",
+        "evidence_root", "population", "resource_caps", "review",
+        "authority",
+    }
+    if type(payload) is not dict or set(payload) != expected \
+            or canonical_json_bytes(payload) != raw \
+            or type(payload["source_bindings"]) is not list:
+        raise BeliefB2ExecutionError(
+            "execution design field/canonical population drift")
+    bindings = []
+    for row in payload["source_bindings"]:
+        if type(row) is not dict or set(row) != {
+                "schema", "path", "byte_count", "sha256"}:
+            raise BeliefB2ExecutionError("source binding field drift")
+        bindings.append(SourceBindingV1(
+            schema=row["schema"], path=row["path"],
+            byte_count=row["byte_count"], sha256=row["sha256"]))
+    runtime = payload["runtime"]
+    if type(runtime) is not dict or set(runtime) != {
+            "schema", "hostname", "operating_system", "machine",
+            "cpu_count", "memory_bytes", "python", "torch",
+            "numpy_version", "native", "required_environment"} \
+            or type(runtime["python"]) is not dict \
+            or set(runtime["python"]) != {
+                "executable", "resolved_executable", "executable_sha256",
+                "version"} \
+            or type(runtime["torch"]) is not dict \
+            or set(runtime["torch"]) != {
+                "version", "config_sha256", "num_threads",
+                "deterministic_algorithms", "device"} \
+            or type(runtime["native"]) is not dict \
+            or set(runtime["native"]) != {
+                "available", "path", "sha256"} \
+            or runtime["native"]["available"] is not True \
+            or type(runtime["required_environment"]) is not dict:
+        raise BeliefB2ExecutionError("runtime profile field drift")
+    python = runtime["python"]
+    torch_row = runtime["torch"]
+    native = runtime["native"]
+    profile = RuntimeProfileV1(
+        schema=runtime["schema"], hostname=runtime["hostname"],
+        operating_system=runtime["operating_system"],
+        machine=runtime["machine"], cpu_count=runtime["cpu_count"],
+        memory_bytes=runtime["memory_bytes"],
+        python_executable=python["executable"],
+        python_resolved_executable=python["resolved_executable"],
+        python_executable_sha256=python["executable_sha256"],
+        python_version=python["version"],
+        torch_version=torch_row["version"],
+        torch_config_sha256=torch_row["config_sha256"],
+        numpy_version=runtime["numpy_version"],
+        native_path=native["path"], native_sha256=native["sha256"],
+        required_environment=tuple(
+            runtime["required_environment"].items()),
+        torch_num_threads=torch_row["num_threads"],
+        torch_deterministic_algorithms=(
+            torch_row["deterministic_algorithms"]),
+        device=torch_row["device"])
+    design = B2ExecutionDesignV1(
+        schema=payload["schema"], execution_git=payload["execution_git"],
+        source_bindings=tuple(bindings), runtime=profile,
+        evidence_root=payload["evidence_root"])
+    validate_execution_design(design)
+    if design.canonical_bytes() != raw \
+            or payload["source_manifest_sha256"] \
+            != design.source_manifest_sha256:
+        raise BeliefB2ExecutionError(
+            "execution design reconstruction drift")
+    return design
+
+
 def expected_review_claim(design: B2ExecutionDesignV1) -> dict[str, Any]:
     """Return the sole external-review claim needed for the whole B2 run."""
     validate_execution_design(design)
@@ -386,3 +492,77 @@ def expected_review_claim(design: B2ExecutionDesignV1) -> dict[str, Any]:
         "promotion_authorized": False,
         "deployment_authorized": False,
     }
+
+
+def validate_live_execution(
+        design: B2ExecutionDesignV1, *, repo: Path) -> None:
+    """Recompute exact source and runtime identity before every stage."""
+    validate_execution_design(design)
+    if build_source_bindings(repo, expected_git=design.execution_git) \
+            != design.source_bindings \
+            or build_runtime_profile() != design.runtime:
+        raise BeliefB2ExecutionError("live execution identity drift")
+
+
+def authenticate_review_commit(
+        design: B2ExecutionDesignV1, *, repo: Path, review_commit: str,
+        canonical_ref: str = "origin/main") -> bytes:
+    """Authenticate the sole independently introduced pipeline marker."""
+    validate_execution_design(design)
+    if not isinstance(repo, Path) or not repo.is_absolute() \
+            or not _is_git_sha(review_commit) \
+            or type(canonical_ref) is not str or not canonical_ref:
+        raise BeliefB2ExecutionError("execution review input drift")
+    try:
+        if subprocess.run(
+                ("git", "merge-base", "--is-ancestor", review_commit,
+                 canonical_ref), cwd=repo, capture_output=True).returncode != 0:
+            raise BeliefB2ExecutionError(
+                "execution review is not on canonical main")
+        parents = str(_git(
+            repo, "show", "-s", "--format=%P", review_commit)).split()
+        if len(parents) != 1:
+            raise BeliefB2ExecutionError(
+                "execution review commit parent drift")
+        parent = parents[0]
+        identity = tuple(_git(
+            repo, "show", "-s", f"--format={field}", review_commit)
+                         for field in ("%an", "%ae", "%cn", "%ce"))
+        if identity != (
+                REVIEWER_NAME, REVIEWER_EMAIL,
+                REVIEWER_NAME, REVIEWER_EMAIL):
+            raise BeliefB2ExecutionError(
+                "execution review actor drift")
+        message = str(_git(
+            repo, "show", "-s", "--format=%B", review_commit))
+        if REVIEWER_SESSION_TRAILER not in message:
+            raise BeliefB2ExecutionError(
+                "execution review session provenance drift")
+        changed = str(_git(
+            repo, "diff-tree", "--no-commit-id", "--name-only", "-r",
+            review_commit)).splitlines()
+        if changed != [REVIEW_LEDGER]:
+            raise BeliefB2ExecutionError(
+                "execution review changed files beyond the ledger")
+        current = _git(
+            repo, "show", f"{review_commit}:{REVIEW_LEDGER}", binary=True)
+        previous = _git(
+            repo, "show", f"{parent}:{REVIEW_LEDGER}", binary=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BeliefB2ExecutionError(
+            "execution review Git authentication failed") from exc
+    if not isinstance(current, bytes) or not isinstance(previous, bytes) \
+            or not current.startswith(previous):
+        raise BeliefB2ExecutionError(
+            "execution review ledger is not append-only")
+    marker = REVIEW_PREFIX.encode() + canonical_json_bytes(
+        expected_review_claim(design))
+    prefix = REVIEW_PREFIX.encode()
+    current_matches = [line for line in current.splitlines(keepends=True)
+                       if line.startswith(prefix)]
+    previous_matches = [line for line in previous.splitlines(keepends=True)
+                        if line.startswith(prefix)]
+    if current_matches != [marker] or previous_matches:
+        raise BeliefB2ExecutionError(
+            "execution review marker introduction drift")
+    return marker

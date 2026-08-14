@@ -1744,6 +1744,13 @@ def freeze_command(args: argparse.Namespace) -> None:
     }, sort_keys=True))
 
 
+def implementation_review_claim_command(args: argparse.Namespace) -> None:
+    require_clean_exact_git(args.expected_git)
+    claim = implementation_review_claim(expected_git=args.expected_git)
+    sys.stdout.buffer.write(_canonical_marker(
+        IMPLEMENTATION_REVIEW_PREFIX, claim))
+
+
 def verify_command(args: argparse.Namespace) -> None:
     CAPACITY.require_fresh_process()
     packet = load_packet(Path(args.packet), args.expected_packet_sha256,
@@ -1804,6 +1811,9 @@ def parser() -> argparse.ArgumentParser:
     unit = commands.add_parser("unit-template")
     unit.set_defaults(func=lambda _args: sys.stdout.buffer.write(
         systemd_unit_bytes()))
+    implementation = commands.add_parser("implementation-review-claim")
+    implementation.add_argument("--expected-git", required=True)
+    implementation.set_defaults(func=implementation_review_claim_command)
     freeze = commands.add_parser("freeze")
     freeze.add_argument("--expected-git", required=True)
     freeze.add_argument("--implementation-review-commit", required=True)

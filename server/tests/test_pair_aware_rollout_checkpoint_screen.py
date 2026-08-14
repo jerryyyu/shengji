@@ -235,6 +235,22 @@ def test_implementation_review_can_freeze_only():
     assert claim["production_deployment"] is False
 
 
+def test_implementation_claim_command_emits_one_canonical_raw_line(
+        monkeypatch, capsysbinary):
+    monkeypatch.setattr(SCREEN, "require_clean_exact_git", lambda _git: None)
+    args = SimpleArgs(expected_git=GIT)
+    SCREEN.implementation_review_claim_command(args)
+    expected = (SCREEN.IMPLEMENTATION_REVIEW_PREFIX.encode()
+                + SCREEN.canonical(
+                    SCREEN.implementation_review_claim(expected_git=GIT)))
+    assert capsysbinary.readouterr().out == expected
+
+
+class SimpleArgs:
+    def __init__(self, **values):
+        self.__dict__.update(values)
+
+
 def test_packet_review_is_distinct_and_bounded_to_one_screen(monkeypatch):
     packet = _packet(monkeypatch)
     claim = SCREEN.packet_review_claim(packet=packet, packet_sha256=SHA)
@@ -537,8 +553,8 @@ def test_parser_exposes_no_resume_or_aggregate_command():
     commands = next(action for action in parser._actions
                     if getattr(action, "choices", None)).choices
     assert set(commands) == {
-        "unit-template", "freeze", "verify", "run-screen",
-        "run-microshard",
+        "unit-template", "implementation-review-claim", "freeze", "verify",
+        "run-screen", "run-microshard",
     }
 
 

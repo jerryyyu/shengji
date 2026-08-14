@@ -108,6 +108,32 @@ def _design(root) -> B2ExecutionDesignV1:
         runtime=runtime, evidence_root=str(root))
 
 
+def test_training_reader_refuses_test_and_unbound_target_bytes(
+        tmp_path, monkeypatch):
+    test_seed = b2_split_round_seeds("test")[0]
+    monkeypatch.setattr(
+        controller, "stable_read_bytes",
+        lambda *_args: (_ for _ in ()).throw(AssertionError(
+            "test target bytes must not be opened by training")))
+    with pytest.raises(
+            BeliefB2ControllerError, match="split boundary"):
+        controller._round_examples(
+            tmp_path, test_seed, split="test", kind="candidate",
+            capture_row={})
+
+    train_seed = b2_split_round_seeds("train")[0]
+    raw = b"self-consistent-but-unbound-capture"
+    monkeypatch.setattr(controller, "stable_read_bytes", lambda *_args: raw)
+    with pytest.raises(BeliefB2ControllerError, match="byte binding"):
+        controller._round_examples(
+            tmp_path, train_seed, split="train", kind="candidate",
+            capture_row={
+                "round_seed": train_seed,
+                "filename": controller._round_filename(train_seed),
+                "byte_count": len(raw),
+                "bundle_sha256": "0" * 64})
+
+
 def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -212,14 +238,16 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
     monkeypatch.setattr(controller, "TRAIN_MAX_EPOCHS", 1)
     monkeypatch.setattr(
         controller, "reopen_capture_lane_public_manifest",
-        lambda *args, **kwargs: {})
+        lambda *args, **kwargs: {"rounds": [
+            {"round_seed": seed}
+            for seed in controller.capture_lane_seeds(kwargs["lane"])]})
     monkeypatch.setattr(
         controller, "reopen_capture_lane",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError(
             "training must not reopen privileged lane bundles")))
     monkeypatch.setattr(
         controller, "_iter_corpus_batches",
-        lambda _root, *, split, kind, epoch=None:
+        lambda _root, *, split, kind, capture_rows, epoch=None:
         iter((batches[(split, kind)],)))
     for kind in ("candidate", LABEL_PERMUTATION_CONTROL):
         trained = run_training_cohort(

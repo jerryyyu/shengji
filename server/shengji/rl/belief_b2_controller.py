@@ -761,12 +761,21 @@ def _capture_path(root: Path, seed: int) -> Path:
 
 
 def _round_examples(
-        root: Path, seed: int, *, split: str, kind: str):
+        root: Path, seed: int, *, split: str, kind: str,
+        capture_row: dict[str, Any]):
     if split not in {"train", "calibration"} \
             or split_for_round_seed(seed) != split:
         raise BeliefB2ControllerError(
             "training capture split boundary drift")
     raw = stable_read_bytes(_capture_path(root, seed))
+    if type(capture_row) is not dict \
+            or capture_row.get("round_seed") != seed \
+            or capture_row.get("filename") != _round_filename(seed) \
+            or capture_row.get("byte_count") != len(raw) \
+            or capture_row.get("bundle_sha256") \
+            != hashlib.sha256(raw).hexdigest():
+        raise BeliefB2ControllerError(
+            "training capture byte binding drift")
     artifacts = reopen_capture_bundle(raw)
     captured = reopen_captured_round_artifacts(artifacts)
     if captured.round_seed != seed:
@@ -784,7 +793,9 @@ def _round_examples(
 
 
 def _iter_corpus_batches(
-        root: Path, *, split: str, kind: str, epoch: int | None = None):
+        root: Path, *, split: str, kind: str,
+        capture_rows: dict[int, dict[str, Any]],
+        epoch: int | None = None):
     """Yield exact complete-round-grouped batches from immutable bundles."""
     seeds = b2_split_round_seeds(split)
     if split == "train":
@@ -797,7 +808,14 @@ def _iter_corpus_batches(
         raise BeliefB2ControllerError("training cohort kind drift")
     pending = []
     for seed in seeds:
-        rows = _round_examples(root, seed, split=split, kind=kind)
+        try:
+            capture_row = capture_rows[seed]
+        except (KeyError, TypeError) as exc:
+            raise BeliefB2ControllerError(
+                "training capture manifest membership drift") from exc
+        rows = _round_examples(
+            root, seed, split=split, kind=kind,
+            capture_row=capture_row)
         if not rows or len(rows) > TRAIN_BATCH_DECISION_CAP:
             raise BeliefB2ControllerError(
                 "training round decision population drift")
@@ -868,10 +886,20 @@ def run_training_cohort(
     if kind not in TRAINING_KINDS or root != Path(design.evidence_root) \
             or root.is_symlink() or not root.is_dir():
         raise BeliefB2ControllerError("training cohort input drift")
+    capture_rows = {}
     for lane in range(B2_CAPTURE_LANES):
-        reopen_capture_lane_public_manifest(
+        manifest = reopen_capture_lane_public_manifest(
             root / "capture" / f"lane-{lane:02d}", design=design,
             admission=admission, lane=lane)
+        for row in manifest["rounds"]:
+            seed = row["round_seed"]
+            if seed in capture_rows:
+                raise BeliefB2ControllerError(
+                    "training capture manifest duplicate")
+            capture_rows[seed] = row
+    if set(capture_rows) != set(b2_round_seeds()):
+        raise BeliefB2ControllerError(
+            "training capture manifest population drift")
     parent = root / "training"
     if parent.is_symlink():
         raise BeliefB2ControllerError("training parent is a symlink")
@@ -900,11 +928,13 @@ def run_training_cohort(
         receipts = train_cohort_epoch_stream(
             models, optimizers,
             _iter_corpus_batches(
-                root, split="train", kind=kind, epoch=epoch),
+                root, split="train", kind=kind,
+                capture_rows=capture_rows, epoch=epoch),
             epoch=epoch)
         calibration = evaluate_calibration_cohort_stream_nanonats(
             models, _iter_corpus_batches(
-                root, split="calibration", kind=kind))
+                root, split="calibration", kind=kind,
+                capture_rows=capture_rows))
         for row, value in zip(losses, calibration, strict=True):
             row.append(value)
         decision = select_common_epoch(tuple(tuple(row) for row in losses))

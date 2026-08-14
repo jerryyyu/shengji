@@ -290,6 +290,18 @@ signal, the source's pre-play trump length and pair count.
    within preregistered tolerances. This validates the learning pipeline; its
    weights are never mixed with the full-deck candidate.
 
+   The frozen C4 instance contains four distinct public contexts. Each context
+   is represented by two real corpus rows with byte-identical actor
+   observations and different privileged hidden allocations. The two worlds
+   have equal prior mass; the observed public action has integer likelihood
+   weights `3:1`, yielding an exact posterior of `3/4:1/4`. Training uses 4,096
+   rows (1,024 per context), 16 rows per batch, the same GRU/count head, AdamW
+   step, and exact projection, for 30 epochs from seed `495023836`. The
+   untouched fold re-enumerates every receiver/card/count event. Both maximum
+   event-probability error and maximum categorical-row total variation must be
+   at most `20,000,000` ppb (2%). A uniform/no-learning control must fail. C4
+   weights are diagnostic only and never enter the candidate cohort.
+
 No metric may be repaired after the test fold opens.
 
 ## Negative controls

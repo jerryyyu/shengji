@@ -22,6 +22,7 @@ from shengji.engine.round import Round, Trick, TrickPlay
 if not fast.HAVE_FAST:
     pytest.skip("compiled engine required", allow_module_level=True)
 
+assert fast.activate()
 PURE_FOLLOW = fast._saved["HeuristicBot._follow"]
 
 

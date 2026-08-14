@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-13 12:18 EDT. This file owns current compute and
+Last reconciled: 2026-08-13 23:00 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,19 +9,21 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | `teacher-v3-stage-c-midlate-composition-screen-v1` | **HEALTHY / SATURATED; 0 TERMINAL; KNIFE-EDGE CUTOFF.** Safe counter-only progress is `7,296/12,288` sequential arm-rounds (59.38%): treatment is complete and all eight matched-null shards report 400/512. Worker cutoff remains about 20:46 EDT. Monitor only: no tests or competing Mini work. Outcomes remain sealed until score-free supervisor-final review. tmux: `t4-midlate-screen-v1`. |
-| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** Seven reviewed score-free counters are 320/896 and one is 336/896, totaling `2,576/7,168` clusters (35.94%), with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` remains asleep until the Pair supervisor seals and releases every worker. PR #93 V2 provenance repair `4ae52fd` grants no retry or extension authority. |
-| **Cloud** | `s4-point-banking-future-c2-360b-v1`, tranche two | **HEALTHY / SATURATED; 0 TERMINAL.** Look one completed with integrity intact but below the early-efficacy boundary, so the reviewed controller automatically continued. All 16 tranche-two workers are healthy; reviewed score-free progress is `636/8,192` (7.76%). No outcome or efficacy statistic has been opened. There is no hard runtime timeout. tmux: `s4-c2-360b-launch-queue-v2`. |
-| **Performance Cloud** | PR #89 v3 review gated; PR #93/#94 validation complete | **IDLE / NO STRENGTH AUTHORITY.** The approved v2r1 batch spent its only invocation on a pre-arm systemd-provenance refusal: zero evidence/arms, failed unit preserved at `NRestarts=0`, no retry. PR #89 `52e13f2` fixes the inverse symlink check and binds fresh v3 seeds; 84 strict x86 tests pass and source review is pending. PR #93 `4ae52fd` requires a fresh Claude-authored V2 implementation marker before packet freeze; PR #94 still awaits implementation review. |
+| **Mini** | T4 terminal closeout complete | **TERMINAL REVIEWED `SELECT_NONE`.** External aggregate `f30a77c7…e652`, admission `ec96102e…7a08`; the merged PR #80 helper recursively reproduced all statistics and canonical review `a165274` verified the result. No confirmation, retry or deployment is authorized. Mini has no live T4 worker. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** Reviewed score-free counters are `[448,464,464,448,464,464,448,448]/896`, totaling `3,648/7,168` clusters (50.89%), with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` remains asleep until the Pair supervisor seals and releases every worker. Current run has no retry or extension authority. |
+| **Cloud** | `s4-point-banking-future-c2-360b-v1`, tranche two | **HEALTHY / SATURATED; 0 TERMINAL.** Look one completed with integrity intact but below the early-efficacy boundary, so the reviewed controller automatically continued. All 16 tranche-two workers are healthy; reviewed score-free progress is `6,192/8,192` (75.59%). No outcome or efficacy statistic has been opened. There is no hard runtime timeout. |
+| **Performance Cloud** | Pair successor packet review; S6 V3 source review | **IDLE / REVIEW-GATED.** PR #96 source is reviewed; its root-owned score-free capacity packet `b2d78d67…f69f92f` / internal `f9123d41…817f1b` is frozen and verified, with packet review, admission, result and installed unit absent. S6 V2 refused before admission on an ignored `.pyc` and cannot retry. Optimized V3 PR #104 exact `a93c2f5` repairs the sole route-test HOLD; its exact x86 runtime is staged, but no V3 packet exists. No gameplay worker is live. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | Selective S6 shuai-pai preflight | **AIR AUTHORIZED / DURABLY QUEUED; MINI FALLBACK CLOSED.** Claude's 12:10 PASS permits one four-cluster score-free Air preflight from packet `19f3b2a3…79dd0`. Exact runtime/packet verification passed at 17:19; detached queue `s6-preflight-queue-v2` is fail-closed on pair supervisor final, worker absence and unused S6 targets. Draft PR #65 and its remote branch were closed without a packet or run. |
-| 2 | Pair affected-state controller design | **SCORED DESIGN EXTERNALLY PASSed / CONTROLLER DESIGN ONLY OPEN.** Claude PASSed PR #86 exact head `a43a17c` at canonical `fe6eb3b`; 73 focused and 177 chain tests pass, with a canonical-ref ancestry negative fixture requested. It grants no packet implementation/freeze/run, evidence access, scoring, REPORT, aggregation, retry, strength, training, promotion or deployment authority. |
-| 3 | Attacker-gated pair-cap incremental control | **EXTERNAL ACTION-SEMANTICS PASS / CAPACITY DESIGN UNDERWAY.** Claude PASSed PR #69 `ca1913f` at 22:36. A three-arm incremental/matched-v1/literal-champion capacity design is being built; no packet or gameplay authority exists. |
+| 1 | Pair screen checkpoint capacity successor | **PACKET REVIEW PENDING / PERF IDLE.** PR #96 exact `8a3ef59` passed source review. Packet `b2d78d67…f69f92f` is frozen and verified; packet-review snapshot, admission, result and installed unit are absent. A packet PASS may authorize one score-free capacity execution only. |
+| 2 | S6 opened-DEV V3 diagnostic | **SOURCE RE-REVIEW PENDING / PERF STAGED.** V2 refused before admission and cannot retry. PR #104 exact `a93c2f5` changes only the route-level shadow regression after Claude's test-only HOLD; production/runtime bytes are unchanged, 123/123 pure and compiled pass, and the optimized x86 checkout is clean. Source PASS may freeze one fresh V3 packet only; execution still needs packet review. |
+| 3 | Selective S6 shuai-pai preflight | **AIR AUTHORIZED / DURABLY QUEUED; MINI FALLBACK CLOSED.** Claude's 12:10 PASS permits one four-cluster score-free Air preflight from packet `19f3b2a3…79dd0`. Exact runtime/packet verification passed at 17:19; detached queue `s6-preflight-queue-v2` is fail-closed on pair supervisor final, worker absence and unused S6 targets. Draft PR #65 and its remote branch were closed without a packet or run. |
+| 4 | Pair affected-state successors | **DESIGNS REVIEWED AND MERGED; IMPLEMENTATIONS CLOSED.** Merged PR #100 specifies the future scored-controller boundary; merged PR #101 freezes the fresh exact-champion natural-dose census design. Each requires a separate implementation/review chain before any packet or execution. |
+| 5 | Attacker-gated pair-cap incremental control | **EXTERNAL ACTION-SEMANTICS PASS / CAPACITY DESIGN UNDERWAY.** Claude PASSed PR #69 `ca1913f` at 22:36. A three-arm incremental/matched-v1/literal-champion capacity design is being built; no packet or gameplay authority exists. |
 
 Pair-aware v3 owns Air and has no retry or extension authority. Every old S4 C2
 namespace and the complete 300-billion interval are quarantined and grant no
@@ -35,22 +37,25 @@ Read-only closeout helper PR #80 exact head `e61975c` PASSed external review
 and is merged on main. Its 22/22 tests pass both plain and under
 `SHENGJI_FAST=1`, including aggregate-binding, supervisor-final TOCTOU and
 sealed-shard drift refusals. It has no launch, aggregation, scoring or live-run
-authority and does not block natural T4 computation.
+authority. It recursively reproduced the sole completed aggregate, and
+independent terminal review closed it at `SELECT_NONE`.
 
-1. Supervisor and eight shards finish naturally; no retry or resize.
-2. External reviewer authenticates the score-free supervisor final.
-3. One aggregation is admitted only after that PASS.
+1. Supervisor and eight shards finish naturally; no retry or resize — **done**.
+2. External reviewer authenticates the score-free supervisor final — **done**.
+3. One aggregation is admitted only after that PASS — **done**.
 4. External reviewer independently reproduces the aggregate and posts the
-   terminal verdict.
+   terminal verdict — **done at canonical `a165274`: `SELECT_NONE`**.
 
-Safe monitoring: tmux/process state, CPU, supervisor console and durable
-heartbeats. Forbidden before review: opening or parsing `shard-*.json` or any
-outcome-bearing aggregate input.
+During execution and review, monitoring was limited to process state and
+reviewed score-free heartbeats. The terminal artifacts now remain sealed under
+their reviewed verifier; no ad hoc reopening or post-hoc analysis is authorized.
 
 ## Recent terminal stubs
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
+| 08-13 | S6 opened-DEV V2 start | **PRE-ADMISSION REFUSAL / V2 RETIRED:** the sole reviewed systemd start reached the live shadow gate and refused an ignored controller `.pyc` before packet-review snapshot, admission, gameplay, record-directory or final publication. V2 cannot retry. Optimized V3 PR #104 binds the incident and moves the same shadow check before packet review. | packet `dd7709e9…4adca`; invocation `fcdcb04e…583d`; shadow `3bcf3c6f…18c1`; PR #104 `a93c2f5` |
+| 08-13 | Pair checkpoint successor capacity packet | **FROZEN / AWAITING PACKET REVIEW:** exact PR #96 source PASS marker `035bb24` froze one root-owned packet `b2d78d67…f69f92f` / internal `f9123d41…817f1b`. Verification passes; review snapshot, admission, result and installed unit remain absent. | PR #96 `8a3ef59`; runtime profile `ff2dc8f1…7945` |
 | 08-13 | Mini helper-test contention | **MONITORING/PROCESS-DISCIPLINE INCIDENT:** a helper unintentionally launched two pytest processes beside the live T4 workers. The exact PIDs were caught and stopped after roughly two CPU-core-minutes total. Tests used no-bytecode mode; no evidence was written or outcome opened, and T4 remained healthy. Broad tests are no longer permitted on a scored host. | operational observation; no strength/evidence authority changed |
 | 08-13 | S5 x86 incident closeout | **VALIDATION PASS / DEAD CHAIN CLOSED:** PR #76 authenticated the spent admission and permanently refused execution. PRs #76/#74 were then closed rather than merged; PR #70 retains only reusable diagnostic source. No retry or result exists. | review main `e91f3b4`; PR #76 `e285f47`; PR #70 `f8083cf` |
 | 08-12 | S4 reviewer child-witness incident | **OLD PACKET/SEED BLOCK RETIRED:** a reviewer called real `launch()` behind an ineffective wrapper monkeypatch, starting 16 disposable gameplay workers for about five minutes. No completed result or observed outcome existed and the formal namespace remained unadmitted, but its immutable history was no longer true. Full 300-billion interval retired; disjoint 360-billion design is PR #66. | INC-15; retired packet `65c3cf8a…916e8`; PR #66 `8c262f7` |

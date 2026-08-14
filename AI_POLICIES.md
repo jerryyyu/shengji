@@ -15,21 +15,25 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-13 07:46 EDT
+## Current synthesis — 2026-08-13 23:00 EDT
 
 ### At a glance
 
 - **Live champion:** the two-stage Monte Carlo policy is still the only
   confirmed and deployed strength gain.
-- **Closest learned challenger:** the model now helps when it proposes one move
-  after trick five and fresh Monte Carlo search remains the judge. That passed
-  a fresh state test; its first whole-round screen is running with no verdict.
+- **Closest learned challenger:** the model helped on the selected trick-five+
+  states, but the complete-round aggregate selected none. Exact work and
+  integrity passed; the hybrid missed both required conservative contrasts and
+  independent terminal review formally closed the composition.
 - **Closest rollout challenger:** point-aware rollouts were positive twice. A
   fresh prospectively accumulated confirmation is now running on Cloud; old
   outcomes never enter its estimator.
-- **Other live strength tests:** the mid/late learned-search hybrid runs on
-  Mini and pair-aware continuation runs on Air. S6 is reviewed and queued
-  behind Air; none has a readable terminal outcome yet.
+- **Other live strength tests:** pair-aware continuation runs on Air and S4
+  tranche two runs on Cloud. T4 is terminal `SELECT_NONE`. The selective S6
+  Air preflight remains queued behind Pair. A separate opened-DEV V2 start on
+  the performance host refused before admission on an ignored `.pyc`; its
+  optimized V3 recovery is staged but still needs exact source and packet
+  review.
 - **Main model lesson:** more data produced stable outcome prediction, but a
   model choosing moves globally did not transfer. Specialization plus search
   protection is the first learned use to pass fresh evidence.
@@ -49,16 +53,16 @@ does not replace the plain-English strategy.
 | **S0-ALT** | **Other confidence and allocation rules** | Try wider search, adaptive allocation, and alternative confidence rules. | **Closed; no additional winner** | The formal suite failed before readable outcomes; separate wider/adaptive tests found no resolved gain. | Do not reinterpret the unread run. New work must change proposals, continuations, or model use rather than only reshuffle the same search budget. |
 | **T3-DATA** | **Teacher data and training** | Counterfactually label hard decisions, grow from 1,536 to 7,040 training states, and train complete eight-seed model cohorts. | **Reusable model/data capability; not a strength win** | The larger cohort was stable across seeds; outcome prediction improved strongly (`+0.47845`, lower bound `+0.44201`). | The pipeline and 7,040-state asset are useful. More identical rows are not enough; future data must contain meaningful alternative actions, source tags, and better continuation policies. |
 | **T4-GLOBAL** | **Model chooses moves globally** | Let the learned ranker choose or override moves across all phases. | **Closed for this model generation** | Protected fresh test: `-0.00823`, lower bound `-0.01894`. Powered uncertain-state test: `+0.01213`, lower bound `-0.00506`. | The model predicts outcomes better than it ranks actions. Do not deploy global model argmax or tune the spent tests. |
-| **T4-MIDLATE** | **Model proposes inside search after trick five** | Let the model offer one move only in middle/late play; fresh 300-world Monte Carlo search still decides whether to replace production's move. | **Fresh state screen passed; whole-game screen running** | Versus live: `+0.02020`, lower bound `+0.01275`. Versus an equally expensive uninformed proposal: `+0.01570`, lower bound `+0.00880`, on 256 fresh states. | First evidence that the learned model adds value inside search. The sole fresh whole-round screen is running on Mini; it must beat both live and same-work uninformed widening before a confirmation may be designed. |
-| **S4** | **Point-aware rollout policy** | In simulations, bank a point card when already winning a trick instead of mechanically spending the cheapest winner. | **Promising; fresh sequential confirmation running** | Whole-round estimates were `+0.08691` (lower bound `+0.03075`) and independently `+0.04883` (lower bound `-0.00688`). | Direction was positive twice. A disjoint, prospectively reviewed 8,192/16,384-cluster test now runs on Cloud to resolve a useful `+0.04` effect; old outcomes never enter its estimator. |
+| **T4-MIDLATE** | **Model proposes inside search after trick five** | Let the model offer one move only in middle/late play; fresh 300-world Monte Carlo search still decides whether to replace production's move. | **Terminal independently reviewed `SELECT_NONE`** | The 256-state screen was positive, but whole-game treatment-vs-live LCB was `-0.00759` and treatment-vs-matched-null LCB was `-0.03313`. | All eight shards, exact-work checks and integrity gates passed. The sole aggregate `f30a77c7…e652` was recursively reproduced and terminally verified at canonical `a165274`. No confirmation, retry or deployment opens; this exact composition is closed. |
+| **S4** | **Point-aware rollout policy** | In simulations, bank a point card when already winning a trick instead of mechanically spending the cheapest winner. | **Promising; tranche two running** | Whole-round estimates were `+0.08691` (lower bound `+0.03075`) and independently `+0.04883` (lower bound `-0.00688`). | Look one passed integrity but not its early-efficacy boundary, so the reviewed controller continued automatically. Tranche two is 6,192/8,192 with all 16 workers healthy; outcomes remain sealed. |
 | **S3A / T4-BURY** | **Kitty and bury choices** | Offer structured point/void/trump buries or use the learned bury ranker. | **Current versions closed; narrow signal remains** | Structured whole rounds: `+0.0464`, lower bound `-0.0041`. Learned bury on 32 fresh choices: `+0.0338`, lower bound `-0.0153`. | Both estimates were positive but inconclusive. Preserve the point-and-void clue for a candidate-rich, properly powered successor rather than retrying either spent recipe. |
 | **V11** | **V11 pairwise model** | Learn which ballot move beats the heuristic choice, then use that model directly or behind a protected fallback. | **Direct use closed** | Confirmed 57.7% versus SmartBot, but `-0.141 +/- 0.070` versus the live champion. | The model has proposal signal but does not beat current search. Retain it only as a proposal and disagreement source. |
 | **DIRECT-Q** | **Direct return learning** | Learn action values directly from complete-game returns instead of imitating Monte Carlo. | **Closed at learner gate** | Gameplay tail was `+0.163 +/- 0.059`, but held-out learning failed for one seed and both pooled roles. | Interesting clue, not a promotable model. A successor must change credit assignment or specialize surfaces and pass across seeds. |
 | **O0** | **Training with all cards visible** | Train an oracle with every hand visible and try to transfer its knowledge to a public-information policy. | **Tested recipes closed** | First aggregate `+0.073` was unstable across seeds; repaired shared-trajectory test was `+0.015`, lower bound `-0.067`; margin emphasis was worse. | These implementations did not transfer robustly. This does not rule out every privileged-information curriculum, but there is no authorized continuation now. |
-| **H0** | **Human moves as proposals** | Add the human move to the search ballot and price it counterfactually rather than treating imitation as truth. | **No scientific result; score-free geometry repair reviewed** | The only scored run completed 555 of 557 decisions and published no aggregate. PR #82 exact head `a498bf5` PASSed external review and reproduces why: production legally offered 12 choices on each refused seven-card throw while the generic analyzer exposed only three. | This was a false cardinality assumption, not evidence against human moves. The repair uses direct engine legality and cannot score or reopen old utilities. Add the requested whole-authority-map fixture before downstream reuse, then separately authorize any score-free prevalidation or scored design. |
-| **S6** | **Ballot sourcing** | Keep every legal throw visible, but spend extra search only on the late full-hand boss/near shape that repeatedly showed value. | **Selector passed reused-state screen; fresh preflight queued** | Exact-oracle value was `+0.234` levels (lower bound `+0.100`); the actor-visible selector realized `+0.307` (lower bound `+0.175`) and naturally triggered in 13/512 champion rounds. | Air will run the reviewed four-cluster preflight after its pair screen; a fresh whole-round treatment/null/champion test is still required before any strength claim. |
-| **PAIR-ROLL** | **Pair-aware continuation** | Track which higher pairs have already disappeared so simulations can recognize when a low pair has become boss. | **Whole-game screen running** | Selected-root diagnostics favored the change on most finite-search disagreements, but points and level utility disagreed on one root. | The powered Air screen is the first whole-game strength read. Its result decides whether broad pair awareness, an attacker-only gate, or neither deserves another large run. |
-| **PAIR-BALLOT** | **Retain legal pairs on the ballot** | Keep a legal pair from being crowded out before search can price it. | **Real, rare, defender-heavy gap; scored design externally passed** | Census found 15,187 omissions across 18.6M SmartBot-trajectory leads (`0.0816%`), 97.6% early. The 1,024 selected rows are 1,023 defender and one attacker; the defender rows span 990 deal clusters. | Claude PASSed design-only PR #86 exact head `a43a17c` at canonical `fe6eb3b`, opening only a future controller-design review. No packet implementation/freeze/run, evidence access, scoring, REPORT, aggregation, retry, strength, training, promotion or deployment is open; champion-natural dose is still required before whole-round inference. |
+| **H0** | **Human moves as proposals** | Add the human move to the search ballot and price it counterfactually rather than treating imitation as truth. | **No scientific result; score-free geometry repair merged** | The only scored run completed 555 of 557 decisions and published no aggregate. Merged PR #82 exact head `bf72dff` reproduces why: production legally offered 12 choices on each refused seven-card throw while the generic analyzer exposed only three. | This was a false cardinality assumption, not evidence against human moves. The repair uses direct engine legality, pins the full false authority map and cannot score or reopen old utilities. Any prevalidation or scored successor still needs separate authority and a fresh design. |
+| **S6** | **Ballot sourcing** | Keep every legal throw visible, but spend extra search only on the late full-hand boss/near shape that repeatedly showed value. | **Selector passed reused-state screen; recovery under review** | Exact-oracle value was `+0.234` levels (lower bound `+0.100`); the actor-visible selector realized `+0.307` (lower bound `+0.175`) and naturally triggered in 13/512 champion rounds. | The selective Air preflight remains queued. The separate opened-DEV V2 start refused before admission; repaired optimized V3 head `a93c2f5` closes the shadow-route test gap and awaits exact source review, then a distinct packet review. |
+| **PAIR-ROLL** | **Pair-aware continuation** | Track which higher pairs have already disappeared so simulations can recognize when a low pair has become boss. | **Whole-game screen running** | Selected-root diagnostics favored the change on most finite-search disagreements, but points and level utility disagreed on one root. | All eight Air workers are healthy at 3,648/7,168 (50.89%), but the 64-hour timeout trajectory remains unfavorable. Reviewed successor source PR #96 has frozen one fresh score-free capacity packet; packet review must precede capacity execution. |
+| **PAIR-BALLOT** | **Retain legal pairs on the ballot** | Keep a legal pair from being crowded out before search can price it. | **Real, rare, defender-heavy gap; designs reviewed and merged** | Census found 15,187 omissions across 18.6M SmartBot-trajectory leads (`0.0816%`), 97.6% early. The 1,024 selected rows are 1,023 defender and one attacker; the defender rows span 990 deal clusters. | Merged design-only PR #100 specifies the scored-controller boundary; merged design-only PR #101 freezes a fresh exact-champion natural split/role/band dose census. Each still needs a separate reviewed implementation and packet before any execution. |
 | **S3B / S5** | **Exact endgames and defensive point protection** | Solve genuinely small endgames and stop avoidable point donations only when actor-visible play rules out a useful partner feed. | **Endgame mechanics bounded; S5 old one-shot spent and closed after INC-18** | Four-card exact search exceeded its node limit. S5 replay found 58 strict hindsight triggers; only 16 still match today's rollout, and 57/58 already have a lower-point ballot action. A request-template defect spent the one-shot admission without a result. The validation-only refusal repair PASSed; PRs #74/#76 were then closed, while PR #70 retains the reusable diagnostic source. | Start exact search at real two-card endings. Any S5 recovery needs an explicit new retry decision plus a fresh admission/result namespace; never reuse the spent chain or generalize this to “never discard points.” |
 
 ### How to read a negative result
@@ -74,6 +78,16 @@ winning, **S5** protects points while losing after the partner has acted, and
 a future **ANTICIPATE_FEED** rule would model a partner or opponent feeding the
 winner. Test them separately for attribution. If several survive, compare a
 small named continuation-policy portfolio rather than silently bundling them.
+
+PR #99 corrects the descriptive census boundary before choosing among those
+rules. On the private opened 165-round corpus, humans used a literal point card
+in 164/204 legal point opportunities while rollout used one in 14,664/14,666;
+on the stricter inferred-follow surface the rates were 32/46 and 302/989. The
+old 70%-versus-23% headline used unlike denominators and is withdrawn. Exact
+150-row counterfactual binding found 20 policy flips but only three toward the
+human action. PR #99 passed external descriptive-tooling review; these remain
+proposal diagnostics only and grant
+no gameplay, training, strength or deployment authority.
 
 <details>
 <summary>Exact evidence identities and operational history</summary>
@@ -295,8 +309,8 @@ current policy conclusions above.
   through same-byte stable reads and authenticated dependency source. Claude
   ran the exact CLI plus four falsifications and appended raw marker
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical
-  `16af447`. Declarative scored-packet design PR #86 exact head `a43a17c`
-  PASSed external design-only review at canonical `fe6eb3b`. It opens only a
+  `16af447`. Declarative scored-packet design PR #86 exact head `289fdf0`
+  PASSed superseding external design-only review and merged. It opens only a
   future controller-design review. Conditional utility still cannot become a
   whole-round claim until champion-natural dose is measured; packet freeze,
   execution, scoring, REPORT, strength, training, promotion and deployment

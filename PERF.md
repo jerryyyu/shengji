@@ -33,6 +33,13 @@ search free, precompute a response before the latest play, or prove concurrent
 multi-room capacity. Release 16 is the runtime rollback; `mc-strong` is the
 separate policy rollback. See `DEPLOY.md`.
 
+The next rollout-throughput stack is now on `main`, but it has **not** been
+deployed or substituted into any pinned experiment. PR #71 merged as
+`c279a31`; production-only extraction PR #98 followed as `fe04fa2`. The exact
+terminal measurement remains base `093ec33` versus arm `a91eb271`, not release
+18 and not the current `main` merge tree. Production therefore remains on the
+release-18 numbers above until an explicitly approved release and restart.
+
 ## Historical deployment Pareto table (measured 2026-08-04)
 
 What could actually be shipped, strength against cost. Latency is per decision
@@ -123,15 +130,17 @@ every runtime reopen; the test shim now returns the exact frozen byte count
 instead of a hybrid record. Fifty focused and 134 broader strict compiled tests
 pass. A second independent audit reproduced the complete guard mutations and
 found 16.22% lower median ARM whole-round time across alternating 2,000-round
-trials with identical transcript SHA. Exact head `093ec33` is draft PR #71;
-CI passes. Merge still waits for Claude's independent semantics/benchmark
-review and user approval.
+trials with identical transcript SHA. Exact head `093ec33` passed external
+review and merged to `main` through merge commit `c279a31`. This landed source
+only; it did not deploy production or substitute code into a pinned strength
+run.
 
-Corrected compatibility receipt PR #75 head `90c5630` keeps the historical
+Corrected compatibility receipt PR #75 head `90c5630` passed external review
+and keeps the historical
 RLCB/H0 identities immutable while binding the current heuristic, ballot,
 three-policy contracts and the exact 64-character native `.text` identity.
-It is compatibility evidence only: it authorizes no deployment or strength
-evaluation.
+It remains separate construction evidence rather than a runtime-stack parent:
+it authorizes no deployment or strength evaluation.
 
 Prepared-world PR #77 head `0381081` validates each accepted determinized
 world once, then gives every candidate fresh non-aliased hand lists. Six fresh
@@ -180,19 +189,52 @@ hoists. Source/tooling head `fa0f9cf` PASSed external review. The isolated
 percentages above remain useful provenance but must not be added or marketed as
 the combined result.
 
-The first host design was retired before execution because its evidence root
-sat directly beneath mode-1777 `/var/tmp`. Corrected v2r1 design
-`8721aec4…ec9d` then received exact PASS and was admitted once, but refused
-before evidence creation or any arm because harness `fa0f9cf` inverted
-systemd's real symlink: the host exposes `invocation:<unit> -> <InvocationID>`.
-The failed unit remains at `NRestarts=0`; immutable receipt
-`bee03db2…b469` records zero arms, and v2r1 must never restart. PR #89 head
-`52e13f2` repairs the mapping, rejects the inverse, and binds a new v3
-experiment with six fresh seeds. It passes 84 pure/compiled tests on ARM and
-x86 and awaits source review. Even PASS freezes only a fresh host design, which
-still needs exact review before one batch. Retention remains byte-exact
-semantics, at least 3% aggregate wall reduction and a positive paired
-one-sided 95% lower bound.
+Several one-shot designs proved the admission path fail-closed before the
+usable result. V4 ran one base child and rejected bytecode created because
+`-I` ignored the environment-only no-bytecode flag. V5 added explicit `-B`,
+but its first start refused before namespace creation because the actual
+root-owned inputs were mode 0644 while only rehearsal copies were immutable.
+Claude's canonical `1a72fec` adjudication authenticated the unchanged bytes,
+classified that pre-evidence refusal as unconsumed and authorized only removing
+write bits from the 142 exact inputs plus one start. No source, seed, design,
+threshold or timing choice changed.
+
+That single V5 batch completed successfully under invocation
+`7bae1e195c2247de8beb37efc8c343e0`. Exact base `093ec33` took
+111.464028121 seconds and optimized arm `a91eb271` took 78.782401934 seconds:
+**29.3203% lower aggregate wall time** and 41.4834% higher throughput. All six
+paired reductions were positive; the paired mean was 29.0626% and its
+one-sided t5 95% lower bound was **27.8619%**. Across 355 searched and 77
+legitimate forced/no-search decisions, normalized actions, histories, work,
+RNG and sampler records were byte-identical after removing only the three
+predeclared ballot identity fields. The immutable bundle manifest is
+`fd4208fe…9aae`, result `151801ca…b78f`; its copied frozen validator independently
+returned VERIFIED/retain. Claude reopened all 63 artifacts and terminally
+VERIFIED/retain at canonical `e5818ee`. V5 never runs again, and V6 `cd8eb15`
+is superseded rather than a new benchmark.
+
+Claude then authenticated production extraction PR #98 exact `008d75e`: its
+runtime closure was blob-identical to measured arm `a91eb271`, its harness and
+one-shot machinery were absent, and CI was green. PR #98 merged as `fe04fa2`
+after PR #71. Post-merge composition matters, however: current `main` differs
+from `a91eb271` in exactly `server/shengji/ai/mcbot.py` and
+`server/shengji/engine/ballot.py`, where the separately merged Pair-retention
+lane adds the off-by-default `RETAIN_ALL_LEAD_PAIRS` surface and its ballot
+identity. The measured native/heuristic/round implementation is retained, but
+the complete current-main runtime is no longer byte-identical to the measured
+arm. Do not market **29.3203%** as an exact current-production measurement;
+first run a fresh bounded same-N/R current-main confirmation. Existing sealed
+runs stay on their originally pinned trees.
+
+A later one-batch, three-pair diagnostic compared exact base `093ec33` with
+exact merged head `fe04fa2` at the same N=30/R=300 work. The strict gate
+correctly refused because the head recorded the off-by-default
+`RETAIN_ALL_LEAD_PAIRS=false` configuration entry while the base omitted it.
+Removing exactly that false declaration after the fact made all three semantic
+records byte-identical and yielded `52.2992s -> 36.4217s` (30.359% lower wall;
+paired one-sided lower bound 26.062%). This is useful diagnostic evidence, not
+a confirmation: the normalization rule was not preregistered, so the batch
+cannot authorize a current-main performance claim or another retry.
 
 ## Gaps (ranked by ROI)
 
@@ -204,27 +246,30 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | measure exact PR #89 base `093ec33` versus composed arm `a91eb271` once under a fresh v3 design after `52e13f2` review | prior isolated candidates ranged from 4.0% to 10.2%, but only the combined fresh batch can establish retained ROI | v2r1 spent on pre-arm systemd refusal; v3 source review pending, no timing evidence |
+| 2 | Python policy hot loop after compiled phases 0-2 | terminal arm `a91eb271`; production extraction merged through `fe04fa2` | measured 29.3203% lower aggregate wall; paired one-sided 95% lower bound 27.8619%; exact normalized semantics | optimization landed on main; current main also contains off-by-default Pair ballot bytes, so confirm that exact composition before quoting a production-main percentage |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle after preserving PR #89's pre-arm refusal; PR #93/#94 strict x86 tests completed without gameplay. Pair V3's score-free capacity result grants no scored execution or strength authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | PR #89 V5 is terminal. PR #96 has one frozen, verified score-free capacity packet awaiting packet review. S6 V2 refused pre-admission on an ignored `.pyc`; optimized V3 PR #104 exact `a93c2f5` is staged and awaits source re-review before any packet. No gameplay worker is live. |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
 
-1. Keep PR #77 retired after missing its 3% gate. Run exactly one reviewed PR
-   #89 six-pair batch for base `093ec33` versus optimized arm `a91eb271` under
-   corrected design `8721aec4…ec9d`; no retry, tuning or cross-baseline pooling.
-2. Retain the composed stack only if every normalized semantic/work/RNG record
-   is exact, aggregate wall reduction is at least 3% and the paired one-sided
-   lower bound is positive. Otherwise drop it as a unit and profile before
-   choosing a smaller successor.
-3. After exact-stack measurement and review, profile the accepted stack
-   again. Do not infer the
+1. Keep PR #77 retired after missing its 3% gate. The exact V5 bundle measuring
+   base `093ec33` versus optimized arm `a91eb271` is terminally reviewed;
+   never rerun, tune or pool historical baselines.
+2. PR #71 and production extraction PR #98 are merged as `c279a31` and
+   `fe04fa2`. No deployment followed. The later three-pair diagnostic failed
+   its strict normalization gate on the explicit false Pair-retention flag;
+   its post-hoc 30.359% result does not close the requirement. Run one fresh
+   preregistered same-N/R confirmation before claiming an exact current-main
+   percentage. The 29.3203% result remains valid evidence for exact measured
+   arm `a91eb271`, not strength or deployment authorization.
+3. After that current-main confirmation, profile the accepted stack again. Do
+   not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.
 4. Consider moving int-card conversion to the rollout boundary and compiling

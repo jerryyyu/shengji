@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue reconciled: 2026-08-14 12:42 EDT from canonical main `fb246a2`.
+Review queue reconciled: 2026-08-14 12:44 EDT from canonical main `9f0647e`.
 Fleet rows retain the 11:47 EDT score-free snapshot below.
 
 ## Live fleet
@@ -23,20 +23,7 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
 
 ## Review queue — precise asks
 
-1. **PR #111 BELIEF-V1 B0/B1 boundary review — no run authority.**
-   Review exact head `7ebfcf7959f5254fee3b3dda1fc2fd83600540e9`,
-   exactly four files: actor/target contract, in-memory corpus rows, and their
-   two test files. Verify hidden-world and absolute-seat invariance, banker-
-   private burial, strict physical-deck targets, and zero privileged runtime
-   bytes. Falsify incomplete/reordered/mutable transcripts, loss of attempted
-   failed-throw cards, round split leakage, schema/authority drift, actor-target
-   mismatches and coordinated self-rehashes. Reproduce 41 focused tests in
-   pure and strict compiled modes; the two mutation smokes must go red when
-   transcript length or target-to-actor hash binding is neutralized. There is
-   no file writer, corpus generation, model, sampler, training or run path.
-   PASS means typed boundary and in-memory row merge-readiness only.
-
-2. **PR #112 BELIEF-V1 B2 design/ownership-contract review — no run authority.**
+1. **PR #112 BELIEF-V1 B2 design/ownership-contract review — no run authority.**
    Review exact stacked head `290af7ee952ac646299a208101dc56eeae86624c`
    over PR #111. The exact three-file delta is the offline calibration design,
    actor-relative ownership probability schema/validator, and synthetic tests.
@@ -55,14 +42,14 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
    PASS means source/design merge-readiness only; it does not authorize corpus
    capture, training, cloud use, online screening, strength or deployment.
 
-3. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
    identity cache in favor of explicit per-world prepared hands and restores
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
-4. **PR #105 PointContext/point-flow test-only delta acknowledgment —
+3. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
    added two independent mutation witnesses in exact child `c454aaaf` (+17
    test lines; production unchanged): valid-banker/bool-tally refusal and exact
@@ -115,7 +102,9 @@ PR comments alone are not queue state.
   campaign closeout and post-null roadmap PR #109 exact `8fa96de` PASSed at
   canonical `499de77` and merged at `09b80bb`. BELIEF-V1 spec/roadmap PR #110
   exact `b8c2a4c` PASSed at `de26d60` and merged at `fb246a2`; it grants no
-  corpus, training, run, strength or deployment authority.
+  corpus, training, run, strength or deployment authority. Typed actor/target
+  boundary PR #111 exact `7ebfcf7` PASSed at `e8ba1a0` and merged at
+  `9f0647e`; its in-memory rows likewise grant no capture or training run.
 - **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
   exact normalized semantics; PR #98 merged the byte-identical production
   runtime as `fe04fa2`. A later current-main diagnostic failed its strict

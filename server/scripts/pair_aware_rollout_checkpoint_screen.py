@@ -13,6 +13,16 @@ command in this module.
 """
 from __future__ import annotations
 
+import sys
+
+if (__name__ == "__main__"
+        and (not sys.dont_write_bytecode
+             or not sys.flags.isolated
+             or not sys.flags.safe_path)):
+    raise SystemExit(
+        "REFUSED: checkpoint screen commands require isolated safe-path "
+        "no-bytecode Python (-I -P -B)")
+
 import argparse
 import hashlib
 import json
@@ -22,8 +32,8 @@ import secrets
 import signal
 import stat
 import subprocess
-import sys
 import time
+import types
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -33,10 +43,38 @@ SCRIPT = Path(__file__).resolve()
 REPO = SCRIPT.parents[2]
 SERVER = REPO / "server"
 SCRIPTS = SERVER / "scripts"
-sys.path.insert(0, str(SERVER))
-sys.path.insert(0, str(SCRIPTS))
+CAPACITY_MODULE = "pair_aware_rollout_checkpoint_capacity"
+CAPACITY_PATH = SCRIPTS / f"{CAPACITY_MODULE}.py"
+CAPACITY_SOURCE_SHA256 = (
+    "9eec1a8780667f269baabe68e4ed072eecde452abff56945755bf7635f7afa58"
+)
 
-import pair_aware_rollout_checkpoint_capacity as CAPACITY  # noqa: E402
+
+def _authenticated_capacity_module():
+    raw = CAPACITY_PATH.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != CAPACITY_SOURCE_SHA256:
+        raise RuntimeError("reviewed Pair capacity source drift")
+    preloaded = sys.modules.get(CAPACITY_MODULE)
+    if preloaded is not None:
+        origin = getattr(preloaded, "__file__", None)
+        if (not isinstance(origin, str)
+                or Path(origin).resolve() != CAPACITY_PATH.resolve()):
+            raise RuntimeError("preloaded Pair capacity origin drift")
+        return preloaded, True
+    module = types.ModuleType(CAPACITY_MODULE)
+    module.__file__ = str(CAPACITY_PATH)
+    module.__package__ = ""
+    sys.modules[CAPACITY_MODULE] = module
+    try:
+        exec(compile(raw, str(CAPACITY_PATH), "exec"), module.__dict__)
+    except BaseException:
+        sys.modules.pop(CAPACITY_MODULE, None)
+        raise
+    return module, False
+
+
+CAPACITY, CAPACITY_WAS_PRELOADED = _authenticated_capacity_module()
+sys.path.insert(0, str(SERVER))
 
 
 DESIGN = CAPACITY.DESIGN
@@ -156,6 +194,19 @@ FORBIDDEN_RECEIPT_KEYS = frozenset({
 
 class ScreenRefused(RuntimeError):
     """The reviewed source, packet, runtime, or sealed-output contract drifted."""
+
+
+def require_fresh_process() -> None:
+    if CAPACITY_WAS_PRELOADED:
+        raise ScreenRefused(
+            "screen command requires a fresh authenticated capacity module")
+    if (not sys.dont_write_bytecode
+            or not sys.flags.isolated
+            or not sys.flags.safe_path):
+        raise ScreenRefused(
+            "screen command requires isolated safe-path no-bytecode Python "
+            "(-I -P -B)")
+    CAPACITY.require_fresh_process()
 
 
 def canonical(value: object) -> bytes:
@@ -572,7 +623,7 @@ def systemd_unit_bytes() -> bytes:
         f"--format=%%H -G \"^{PACKET_REVIEW_PREFIX}\" "
         f"{CANONICAL_REVIEW_REF} -- {REVIEW_LEDGER}); "
         "test -n \"$$review_commit\"; "
-        f"exec /usr/bin/python3.14 -B {controller} run-screen "
+        f"exec /usr/bin/python3.14 -I -P -B {controller} run-screen "
         "--expected-git \"$$expected_git\" "
         "--packet \"$$packet\" "
         "--expected-packet-sha256 \"$$packet_sha\" "
@@ -1566,7 +1617,7 @@ def require_systemd(expected_unit_sha256: str) -> str:
 
 def _child_argv(*, packet_sha256: str, index: int) -> list[str]:
     return [
-        sys.executable, "-B", str(SCRIPT), "run-microshard",
+        sys.executable, "-I", "-P", "-B", str(SCRIPT), "run-microshard",
         "--expected-git", git("rev-parse", "HEAD"),
         "--packet", str(PACKET_PATH),
         "--expected-packet-sha256", packet_sha256,
@@ -1577,6 +1628,7 @@ def _child_argv(*, packet_sha256: str, index: int) -> list[str]:
 
 
 def run_microshard_command(args: argparse.Namespace) -> None:
+    require_fresh_process()
     require_clean_exact_git(args.expected_git)
     if (args.microshard_index < 0 or args.microshard_index >= MICROSHARDS
             or Path(args.out).resolve()
@@ -1711,7 +1763,7 @@ def supervise(*, packet: dict, packet_sha256: str) -> dict:
 
 
 def freeze_command(args: argparse.Namespace) -> None:
-    CAPACITY.require_fresh_process()
+    require_fresh_process()
     require_clean_exact_git(args.expected_git)
     if Path(args.out).resolve() != PACKET_PATH.resolve():
         raise ScreenRefused("screen packet output path is not canonical")
@@ -1745,6 +1797,7 @@ def freeze_command(args: argparse.Namespace) -> None:
 
 
 def implementation_review_claim_command(args: argparse.Namespace) -> None:
+    require_fresh_process()
     require_clean_exact_git(args.expected_git)
     claim = implementation_review_claim(expected_git=args.expected_git)
     sys.stdout.buffer.write(_canonical_marker(
@@ -1752,7 +1805,7 @@ def implementation_review_claim_command(args: argparse.Namespace) -> None:
 
 
 def verify_command(args: argparse.Namespace) -> None:
-    CAPACITY.require_fresh_process()
+    require_fresh_process()
     packet = load_packet(Path(args.packet), args.expected_packet_sha256,
                          expected_git=args.expected_git)
     print(json.dumps({
@@ -1763,7 +1816,7 @@ def verify_command(args: argparse.Namespace) -> None:
 
 
 def run_screen_command(args: argparse.Namespace) -> None:
-    CAPACITY.require_fresh_process()
+    require_fresh_process()
     require_clean_exact_git(args.expected_git)
     if (Path(args.packet).resolve() != PACKET_PATH.resolve()
             or Path(args.admission).resolve() != ADMISSION_PATH.resolve()):
@@ -1844,6 +1897,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     try:
+        require_fresh_process()
         args = parser().parse_args()
         args.func(args)
     except (ScreenRefused, CAPACITY.CapacityRefused,

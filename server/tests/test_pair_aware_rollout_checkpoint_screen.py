@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -237,6 +238,7 @@ def test_implementation_review_can_freeze_only():
 
 def test_implementation_claim_command_emits_one_canonical_raw_line(
         monkeypatch, capsysbinary):
+    monkeypatch.setattr(SCREEN, "require_fresh_process", lambda: None)
     monkeypatch.setattr(SCREEN, "require_clean_exact_git", lambda _git: None)
     args = SimpleArgs(expected_git=GIT)
     SCREEN.implementation_review_claim_command(args)
@@ -352,6 +354,7 @@ def test_systemd_unit_is_one_shot_and_campaign_bounded():
     assert "Restart=no" in unit
     assert "KillMode=control-group" in unit
     assert "RuntimeMaxSec=52h" in unit
+    assert "/usr/bin/python3.14 -I -P -B" in unit
     assert "run-screen" in unit
     assert "resume" not in unit
     assert "aggregate" not in unit
@@ -390,6 +393,20 @@ def test_receipt_is_score_free_and_closed(monkeypatch):
         microshard_index=3) == []
     assert SCREEN._forbidden_keys(receipt) == set()
     receipt["nested"] = {"winner": 1}
+    _resign(receipt)
+    assert SCREEN.receipt_problems(
+        receipt, packet=packet, packet_sha256=SHA,
+        microshard_index=3)
+    receipt = SCREEN.receipt_payload(
+        packet=packet, packet_sha256=SHA, microshard_index=3,
+        outcome_raw=b'{"sealed":true}\n', elapsed_seconds=3.5)
+    assert receipt["outcomes_opened_by_supervisor"] is False
+    receipt.pop("outcomes_opened_by_supervisor")
+    _resign(receipt)
+    assert SCREEN.receipt_problems(
+        receipt, packet=packet, packet_sha256=SHA,
+        microshard_index=3)
+    receipt["outcomes_opened_by_supervisor"] = True
     _resign(receipt)
     assert SCREEN.receipt_problems(
         receipt, packet=packet, packet_sha256=SHA,
@@ -546,6 +563,158 @@ def test_supervisor_never_exceeds_worker_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(SCREEN, "write_exclusive", lambda *_args, **_kwargs: None)
     SCREEN.supervise(packet=packet, packet_sha256=SHA)
     assert alive["max"] == 2
+
+
+def test_microshard_reauthenticates_live_runtime(monkeypatch):
+    packet = _packet(monkeypatch)
+    drifted = copy.deepcopy(packet["runtime"])
+    drifted["boot_id"] = "different-boot"
+    monkeypatch.setattr(SCREEN, "require_fresh_process", lambda: None)
+    monkeypatch.setattr(SCREEN, "require_clean_exact_git", lambda _git: None)
+    monkeypatch.setattr(SCREEN, "load_packet", lambda *_a, **_k: packet)
+    monkeypatch.setattr(SCREEN, "require_systemd", lambda _sha: "0" * 32)
+    monkeypatch.setattr(SCREEN, "runtime_snapshot", lambda _git: drifted)
+    monkeypatch.setattr(
+        SCREEN, "strict_object",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("worker reached admission before runtime refusal")))
+    args = SimpleArgs(
+        expected_git=GIT,
+        packet=SCREEN.PACKET_PATH,
+        expected_packet_sha256=SHA,
+        admission=SCREEN.ADMISSION_PATH,
+        microshard_index=0,
+        out=SCREEN.BUNDLE_PATHS[0],
+    )
+    with pytest.raises(
+            SCREEN.ScreenRefused,
+            match="microshard runtime differs from packet"):
+        SCREEN.run_microshard_command(args)
+
+
+def test_run_admission_binds_the_live_runtime(monkeypatch):
+    packet = _packet(monkeypatch)
+    drifted = copy.deepcopy(packet["runtime"])
+    drifted["native"]["sha256"] = "f" * 64
+    monkeypatch.setattr(SCREEN, "require_fresh_process", lambda: None)
+    monkeypatch.setattr(SCREEN, "require_clean_exact_git", lambda _git: None)
+    monkeypatch.setattr(SCREEN, "load_packet", lambda *_a, **_k: packet)
+    monkeypatch.setattr(SCREEN, "require_systemd", lambda _sha: "0" * 32)
+    monkeypatch.setattr(SCREEN, "runtime_snapshot", lambda _git: drifted)
+    monkeypatch.setattr(
+        SCREEN, "require_frozen_runtime_inputs",
+        lambda _runtime: (_ for _ in ()).throw(
+            AssertionError("run reached frozen inputs before runtime refusal")))
+    args = SimpleArgs(
+        expected_git=GIT,
+        packet=SCREEN.PACKET_PATH,
+        expected_packet_sha256=SHA,
+        packet_review_commit="c" * 40,
+        admission=SCREEN.ADMISSION_PATH,
+    )
+    with pytest.raises(
+            SCREEN.ScreenRefused,
+            match="live screen runtime differs from packet"):
+        SCREEN.run_screen_command(args)
+
+
+def test_supervisor_manifest_never_opens_outcome_bytes(tmp_path, monkeypatch):
+    packet = _packet(monkeypatch)
+    outcome_raw = b'{"sealed":true}\n'
+    receipt = SCREEN.receipt_payload(
+        packet=packet, packet_sha256=SHA, microshard_index=0,
+        outcome_raw=outcome_raw, elapsed_seconds=1.0)
+    bundle = tmp_path / "microshard-000"
+    bundle.mkdir()
+    (bundle / "receipt.json").write_bytes(SCREEN.canonical(receipt))
+    (bundle / "outcome.json").write_bytes(outcome_raw)
+    for child in bundle.iterdir():
+        child.chmod(0o444)
+    bundle.chmod(0o555)
+
+    real_lstat = Path.lstat
+    real_read_bytes = Path.read_bytes
+
+    def root_lstat(path):
+        observed = list(real_lstat(path))
+        observed[4] = 0
+        return os.stat_result(observed)
+
+    opened = []
+
+    def receipt_only_bytes(path, **_kwargs):
+        if path.name == "outcome.json":
+            raise AssertionError("supervisor opened sealed outcome bytes")
+        opened.append(path.name)
+        return real_read_bytes(path)
+
+    def guarded_read_bytes(path):
+        if path.name == "outcome.json":
+            raise AssertionError("supervisor opened sealed outcome bytes")
+        return real_read_bytes(path)
+
+    monkeypatch.setattr(Path, "lstat", root_lstat)
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+    monkeypatch.setattr(SCREEN, "stable_bytes", receipt_only_bytes)
+    monkeypatch.setattr(SCREEN, "BUNDLE_PATHS", (bundle,))
+    monkeypatch.setattr(SCREEN, "MICROSHARDS", 1)
+    monkeypatch.setattr(SCREEN, "SCREEN_CLUSTERS", SCREEN.MICROSHARD_CLUSTERS)
+    monkeypatch.setattr(SCREEN.DESIGN, "manifest_problems", lambda *_a, **_k: [])
+    manifest = SCREEN.manifest_payload(packet=packet, packet_sha256=SHA)
+    assert opened == ["receipt.json"]
+    assert manifest["outcomes_opened"] is False
+
+
+def test_cli_refuses_unsafe_imports_and_unauthenticated_capacity_source(
+        tmp_path):
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    unsafe = subprocess.run(
+        [sys.executable, "-B", str(SCREEN.SCRIPT),
+         "implementation-review-claim", "--expected-git", GIT],
+        cwd=SCREEN.REPO, env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert unsafe.returncode != 0
+    assert "isolated safe-path no-bytecode Python" in unsafe.stderr
+
+    scripts = tmp_path / "server/scripts"
+    scripts.mkdir(parents=True)
+    copied = scripts / SCREEN.SCRIPT.name
+    copied.write_bytes(SCREEN.SCRIPT.read_bytes())
+    capacity = scripts / SCREEN.CAPACITY_PATH.name
+    capacity.write_bytes(SCREEN.CAPACITY_PATH.read_bytes())
+    sentinel = tmp_path / "PREIMPORT_SHADOW_EXECUTED"
+    (scripts / "json.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(sentinel)!r}).write_text('stdlib shadow executed')\n"
+        "raise RuntimeError('PREIMPORT_SHADOW_EXECUTED')\n",
+        encoding="utf-8",
+    )
+    isolated = subprocess.run(
+        [sys.executable, "-I", "-P", "-B", str(copied),
+         "implementation-review-claim", "--expected-git", GIT],
+        cwd=tmp_path, env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert isolated.returncode != 0
+    assert not sentinel.exists()
+    assert "PREIMPORT_SHADOW_EXECUTED" not in isolated.stderr
+
+    capacity.write_text(
+        "from pathlib import Path\n"
+        f"Path({str(sentinel)!r}).write_text('capacity source executed')\n",
+        encoding="utf-8",
+    )
+    unauthenticated = subprocess.run(
+        [sys.executable, "-I", "-P", "-B", str(copied),
+         "implementation-review-claim", "--expected-git", GIT],
+        cwd=tmp_path, env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert unauthenticated.returncode != 0
+    assert not sentinel.exists()
+    assert "reviewed Pair capacity source drift" in unauthenticated.stderr
 
 
 def test_parser_exposes_no_resume_or_aggregate_command():

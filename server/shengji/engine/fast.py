@@ -214,7 +214,8 @@ _METHOD_ROUTED = (
     ("HeuristicBot._lowest", "_lowest", _lowest_fast, True),
     ("HeuristicBot._forced_follow", "_forced_follow", _forced_follow_fast,
      True),
-    ("HeuristicBot._lead", "_lead", _lead_fast, False),
+    ("HeuristicBot._follow", "_follow", None, False),
+    ("HeuristicBot._lead", "_lead", None, False),
     ("HeuristicBot._cheapest_winning", "_cheapest_winning",
      _cheapest_winning_fast, True),
 )
@@ -247,7 +248,18 @@ def activate() -> bool:
                        for k in _subclasses(HeuristicBot)), \
                 f"a HeuristicBot subclass overrides {attr}; fast path unsafe"
         _saved[key] = getattr(HeuristicBot, attr)
+        if wrapper is None:
+            # Entry-bound natives carry their own guards and pure fallback;
+            # bind the kernel directly so hot calls pay no wrapper frame.
+            wrapper = getattr(_fast, "heuristic" + attr)
         setattr(HeuristicBot, attr, wrapper)
+    _fast.set_follow_fallback(Ordering, _saved["HeuristicBot._follow"])
+    _fast.set_lead_fallback(_saved["HeuristicBot._lead"])
+    from .round import KITTY_MULTIPLIER, Round, Trick, TrickPlay
+    _saved["Round.play"] = Round.play
+    _fast.set_play_deps(Round, Trick, TrickPlay, _saved["Round.play"],
+                        KITTY_MULTIPLIER)
+    Round.play = _fast.round_play
     return True
 
 
@@ -267,4 +279,7 @@ def deactivate() -> None:
     from ..ai.heuristic import HeuristicBot
     for key, attr, _, _ in _METHOD_ROUTED:
         setattr(HeuristicBot, attr, _saved.pop(key))
+    if "Round.play" in _saved:
+        from .round import Round
+        Round.play = _saved.pop("Round.play")
     _rebind({globals()[key]: _saved.pop(key) for key, _, _ in _ROUTED})

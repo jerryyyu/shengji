@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 09:58 EDT from canonical main `95242b4`.
+Last reconciled: 2026-08-14 10:08 EDT from canonical main `ac2721d`.
 
 ## Live fleet
 
@@ -22,14 +22,23 @@ Last reconciled: 2026-08-14 09:58 EDT from canonical main `95242b4`.
 
 ## Review queue — precise asks
 
-1. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+1. **PR #109 strength-campaign closeout docs — merge gate.** Exact docs-only
+   head `d0b605308ac0583eb040a2663579bedfcf053e6f` against base `ac2721d`
+   changes exactly AI_POLICIES, BACKLOG, JOBS, PERF, RL_PLAN and two new
+   2026-08-14 archive files. Falsify the T4/S4/S6 terminal facts, both sealed
+   Pair states, perf-vs-strength wording, cross-baseline arithmetic, and the
+   post-null entry criteria. Require both CI checks green. PASS may authorize
+   merging documentation only; it grants no run, outcome, retry, strength or
+   deployment authority.
+
+2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
    identity cache in favor of explicit per-world prepared hands and restores
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
-2. **PR #105 PointContext/point-flow test-only delta acknowledgment —
+3. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
    added two independent mutation witnesses in exact child `c454aaaf` (+17
    test lines; production unchanged): valid-banker/bool-tally refusal and exact

@@ -53,7 +53,7 @@ def test_fast_activation_routes_and_restores_native_lead():
     pure = HeuristicBot._lead
     try:
         assert fast.activate()
-        assert HeuristicBot._lead is fast._lead_fast
+        assert HeuristicBot._lead is fast._fast.heuristic_lead
         fast.deactivate()
         assert HeuristicBot._lead is pure
     finally:
@@ -155,15 +155,17 @@ def test_normal_engine_state_still_routes_to_native(monkeypatch):
         fast.deactivate()
     try:
         fast.activate()
-        marker = ["native-route"]
-        monkeypatch.setattr(
-            fast._fast, "heuristic_lead",
-            lambda _bot, _rnd, _seat: marker)
+        # Entry-bound: the class attribute IS the native entry, so routing is
+        # proven by identity plus a live engine-shaped call returning through
+        # the native path (the pure fallback would produce the same cards, so
+        # non-vacuity is asserted via the binding identity above and the
+        # malformed-state fallback tests below).
         rnd = SimpleNamespace(
             ordering=Ordering("H", "7"),
             hands=[["S2"], [], [], []],
         )
-        assert HeuristicBot()._lead(rnd, 0) is marker
+        assert HeuristicBot._lead is fast._fast.heuristic_lead
+        assert HeuristicBot()._lead(rnd, 0) == ["S2"]
     finally:
         fast.deactivate()
         if was_active:

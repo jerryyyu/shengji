@@ -10,6 +10,7 @@ result field, or execution authority.
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 from collections import Counter
 from dataclasses import dataclass
@@ -19,13 +20,16 @@ from ..ai.registry import make_bot
 from ..engine.cards import Ordering, make_deck
 from ..engine.game import Game
 from ..engine.round import actual_play_after
-from .belief_contract import (CapturedDeclarationEvent, CapturedPlayEvent,
-                              PublicTranscriptV1, canonical_json_bytes)
-from .belief_corpus import (SPLITS, CorpusPairV1, capture_corpus_pair,
-                            split_for_round_seed, validate_corpus_pair)
+from .belief_contract import (BeliefContractError, CapturedDeclarationEvent,
+                              CapturedPlayEvent, PublicTranscriptV1,
+                              canonical_json_bytes)
+from .belief_corpus import (SPLITS, BeliefCorpusError, CorpusPairV1,
+                            capture_corpus_pair, split_for_round_seed,
+                            validate_corpus_pair)
 
 
 CAPTURE_SCHEMA = "belief-v1-score-free-round-capture-v1"
+TRANSCRIPT_SCHEMA = "belief-v1-complete-public-transcript-v1"
 CHAMPION_POLICY = "mc-s0-report-lcb"
 MAX_POLICY_SEED = 2**63 - 1
 _CARD_CODES = frozenset(make_deck())
@@ -79,6 +83,16 @@ class CapturedBeliefRoundV1:
         return hashlib.sha256(self.manifest_bytes()).hexdigest()
 
 
+@dataclass(frozen=True)
+class CapturedRoundArtifactsV1:
+    """Physically separated canonical bytes for one captured round."""
+
+    manifest_bytes: bytes
+    transcript_bytes: bytes
+    actor_rows: tuple[bytes, ...]
+    target_rows: tuple[bytes, ...]
+
+
 def _validate_seeds(round_seed: int,
                     policy_seeds: tuple[int, int, int, int]) -> None:
     # split_for_round_seed supplies the exact non-bool round-seed boundary.
@@ -93,7 +107,7 @@ def _validate_seeds(round_seed: int,
 
 def _transcript_dict(transcript: PublicTranscriptV1) -> dict[str, Any]:
     return {
-        "schema": "belief-v1-complete-public-transcript-v1",
+        "schema": TRANSCRIPT_SCHEMA,
         "declarations": [
             {"seat": event.seat, "cards": list(event.cards),
              "strength": event.strength}
@@ -110,6 +124,45 @@ def _transcript_dict(transcript: PublicTranscriptV1) -> dict[str, Any]:
 
 def _transcript_bytes(transcript: PublicTranscriptV1) -> bytes:
     return canonical_json_bytes(_transcript_dict(transcript))
+
+
+def _reject_number(value: str) -> None:
+    raise BeliefCaptureError(
+        f"capture artifact contains a non-integer number: {value}")
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise BeliefCaptureError("capture artifact has a duplicate key")
+        result[key] = value
+    return result
+
+
+def _strict_json(raw: bytes, *, label: str) -> dict[str, Any]:
+    if type(raw) is not bytes or not raw:
+        raise BeliefCaptureError(f"{label} must be nonempty bytes")
+    try:
+        value = json.loads(
+            raw.decode("ascii"),
+            object_pairs_hook=_strict_object,
+            parse_float=_reject_number,
+            parse_constant=_reject_number,
+        )
+    except BeliefCaptureError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefCaptureError(f"{label} is not strict JSON") from exc
+    if type(value) is not dict:
+        raise BeliefCaptureError(f"{label} must be a JSON object")
+    try:
+        canonical = canonical_json_bytes(value)
+    except BeliefContractError as exc:
+        raise BeliefCaptureError(f"{label} is not canonical JSON") from exc
+    if canonical != raw:
+        raise BeliefCaptureError(f"{label} is not canonical JSON")
+    return value
 
 
 def _validate_transcript(transcript: PublicTranscriptV1) -> None:
@@ -208,6 +261,98 @@ def capture_champion_round(
                 for seed in policy_seeds]
     return _capture_with_policies(
         round_seed, CHAMPION_POLICY, policy_seeds, policies)
+
+
+def captured_round_artifacts(
+        captured: CapturedBeliefRoundV1) -> CapturedRoundArtifactsV1:
+    """Split one validated capture into public and privileged byte streams."""
+    validate_captured_round(captured)
+    return CapturedRoundArtifactsV1(
+        manifest_bytes=captured.manifest_bytes(),
+        transcript_bytes=_transcript_bytes(captured.public_transcript),
+        actor_rows=tuple(pair.actor_bytes for pair in captured.pairs),
+        target_rows=tuple(pair.target_bytes for pair in captured.pairs),
+    )
+
+
+def _transcript_from_dict(payload: dict[str, Any]) -> PublicTranscriptV1:
+    if set(payload) != {"schema", "declarations", "plays"} \
+            or payload["schema"] != TRANSCRIPT_SCHEMA \
+            or type(payload["declarations"]) is not list \
+            or type(payload["plays"]) is not list:
+        raise BeliefCaptureError("capture transcript field population drift")
+    declarations = []
+    for event in payload["declarations"]:
+        if type(event) is not dict \
+                or set(event) != {"seat", "cards", "strength"} \
+                or type(event["cards"]) is not list:
+            raise BeliefCaptureError("capture declaration event is malformed")
+        declarations.append(CapturedDeclarationEvent(
+            seat=event["seat"], cards=tuple(event["cards"]),
+            strength=event["strength"]))
+    plays = []
+    for event in payload["plays"]:
+        if type(event) is not dict \
+                or set(event) != {"seat", "attempted_cards", "actual_cards"} \
+                or type(event["attempted_cards"]) is not list \
+                or type(event["actual_cards"]) is not list:
+            raise BeliefCaptureError("capture play event is malformed")
+        plays.append(CapturedPlayEvent(
+            seat=event["seat"],
+            attempted_cards=tuple(event["attempted_cards"]),
+            actual_cards=tuple(event["actual_cards"])))
+    transcript = PublicTranscriptV1(
+        declarations=tuple(declarations), plays=tuple(plays))
+    _validate_transcript(transcript)
+    return transcript
+
+
+def reopen_captured_round_artifacts(
+        artifacts: CapturedRoundArtifactsV1) -> CapturedBeliefRoundV1:
+    """Strictly reopen the exact bytes of one separated capture bundle."""
+    if type(artifacts) is not CapturedRoundArtifactsV1 \
+            or type(artifacts.actor_rows) is not tuple \
+            or type(artifacts.target_rows) is not tuple \
+            or len(artifacts.actor_rows) != len(artifacts.target_rows) \
+            or not artifacts.actor_rows \
+            or any(type(raw) is not bytes
+                   for raw in (*artifacts.actor_rows,
+                               *artifacts.target_rows)):
+        raise BeliefCaptureError("capture artifact population drift")
+    manifest = _strict_json(artifacts.manifest_bytes, label="capture manifest")
+    transcript_payload = _strict_json(
+        artifacts.transcript_bytes, label="capture transcript")
+    manifest_keys = {
+        "schema", "round_seed", "split", "policy_name", "policy_seeds",
+        "decision_count", "declaration_count", "public_play_count",
+        "engine_adjusted_play_count", "public_transcript_sha256",
+        "actor_row_sha256s", "target_row_sha256s",
+        "contains_round_outcome", "privileged_rows_are_runtime_inputs",
+    }
+    if set(manifest) != manifest_keys \
+            or type(manifest["policy_seeds"]) is not list:
+        raise BeliefCaptureError("capture manifest field population drift")
+    transcript = _transcript_from_dict(transcript_payload)
+    pairs = tuple(CorpusPairV1(actor_bytes=actor, target_bytes=target)
+                  for actor, target in zip(
+                      artifacts.actor_rows, artifacts.target_rows, strict=True))
+    captured = CapturedBeliefRoundV1(
+        schema=manifest["schema"],
+        round_seed=manifest["round_seed"],
+        policy_name=manifest["policy_name"],
+        policy_seeds=tuple(manifest["policy_seeds"]),
+        pairs=pairs,
+        public_transcript=transcript,
+    )
+    try:
+        validate_captured_round(captured)
+    except BeliefCorpusError as exc:
+        raise BeliefCaptureError("capture corpus row refused") from exc
+    if captured.manifest_bytes() != artifacts.manifest_bytes:
+        raise BeliefCaptureError("capture manifest bytes drift")
+    if _transcript_bytes(transcript) != artifacts.transcript_bytes:
+        raise BeliefCaptureError("capture transcript bytes drift")
+    return captured
 
 
 def validate_captured_round(captured: CapturedBeliefRoundV1) -> None:

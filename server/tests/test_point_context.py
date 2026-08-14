@@ -549,3 +549,20 @@ def test_empty_round_cannot_bypass_round_identity_and_tally_guards():
     bad_kitty.kitty_bonus = False
     with pytest.raises(ValueError, match="kitty bonus"):
         round_flow(bad_kitty)
+
+    # The tally guard must bite on its own: with a VALID banker, a bool
+    # attacker tally would otherwise reconcile False == 0 on an empty round.
+    bad_tally = _constructed_round([])
+    bad_tally.attacker_points = False
+    with pytest.raises(ValueError, match="attacker points"):
+        round_flow(bad_tally)
+
+    # A duck round with valid-shaped fields passes every field guard, so the
+    # exact-Round check is what refuses it.
+    from types import SimpleNamespace
+    template = _constructed_round([])
+    duck_round = SimpleNamespace(
+        ordering=template.ordering, banker=0, history=[],
+        attacker_points=0, phase="play")
+    with pytest.raises(ValueError, match="exact Round"):
+        round_flow(duck_round)

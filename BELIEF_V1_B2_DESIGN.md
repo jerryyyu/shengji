@@ -1,0 +1,324 @@
+# BELIEF-V1 B1/B2: opened-development corpus and calibration design
+
+Status: local draft stacked on PR #111 exact head
+`7ebfcf7959f5254fee3b3dda1fc2fd83600540e9`. The governing specification is
+PR #110 exact head `b8c2a4c25e918278c72facc472c6736428e65af3`.
+
+This document authorizes nothing. In particular it does not authorize corpus
+generation, training, cloud use, sampler changes, gameplay evidence, strength
+claims, promotion, or deployment.
+
+## Decision this design must unlock
+
+The offline program answers one question:
+
+> Can a public-history ownership model predict the hidden allocation of cards
+> more accurately and more honestly calibrated than the current constraint-
+> consistent sampler, without leaking hidden state or violating hard engine
+> constraints?
+
+It does **not** ask whether the bot is stronger. A pass permits implementation
+and review of `BeliefSamplerV1`; a failure closes this exact encoder/model/data
+recipe before an online screen.
+
+## Fixed scope
+
+- Surface: natural ordinary-play decisions only, including both leads and
+  follows. Bury, declaration choice, feed-gate policy, rollout continuation,
+  search allocation, and action-value heads are out of scope.
+- Acting policy: exact production `mc-s0-report-lcb` in all four seats.
+- Input: exact `ActorObservationV1` with a complete `PublicTranscriptV1`.
+- Label: separately sealed `BeliefTargetsV1`; privileged bytes never enter an
+  input batch, model package, sampler API, or inference log.
+- Learned output: hidden card-code ownership over the other three relative
+  seats and the hidden-kitty receiver where applicable.
+- First use: none. This design ends at offline calibration and usefulness
+  evidence.
+
+## Fresh population
+
+The proposed opened-development population contains 4,096 complete rounds.
+Its seed namespace is derived, rather than hand-picked:
+
+```text
+seed_material =
+  belief-v1-b2-open-dev-corpus|
+  b8c2a4c25e918278c72facc472c6736428e65af3|
+  7ebfcf7959f5254fee3b3dda1fc2fd83600540e9
+sha256(seed_material) =
+  d4b635bd6bc44b5e25b23881944fba68caef04c0c74b4cbae076ded191932ac6
+seed_start = first_64_bits_big_endian & (2**63 - 1), rounded down to 4096
+           = 6104125432620400640
+seed_end   = 6104125432620404735
+```
+
+The exact B1 split function gives:
+
+| split | complete rounds |
+|---|---:|
+| train | 3,279 |
+| calibration | 407 |
+| test | 410 |
+
+Each of 16 deterministic capture lanes receives exactly 256 round seeds. No
+decision, replay prefix, or target from one round may cross splits. No
+state-level resampling changes the primary natural-frequency metrics.
+
+Before freeze, a source-independent seed registry scan must confirm that this
+interval does not overlap any training, calibration, test, or strength
+population known to the repository and canonical run manifests. A collision
+changes the whole interval; individual seeds are never substituted.
+
+## Capture contract and preliminary economics
+
+Every round is driven by a source-pinned capture wrapper that owns
+`PublicTranscriptV1` from the first deal event through round end. It records
+every accepted deal-window and final-window declaration, then every attempted
+and engine-actual play. It emits paired actor and target rows before each play.
+
+A local compiled ARM preflight on one deterministic champion round at exact PR
+#111 head measured:
+
+- 76 decisions;
+- 7,096.36 ms total round wall time;
+- 72.864 ms total row capture, sealing, strict reopen, and validation;
+- 0.959 ms capture work per decision, or 1.027% of measured wall;
+- mean actor row 5,775.7 bytes and target row 1,306.6 bytes.
+
+These figures are planning inputs, not a host qualification. The concrete
+capture packet must bind its host and pass a 16-lane concurrent score-free
+capacity preflight. Initial hard caps are:
+
+- 16 capture core-hours;
+- 2 capture wall-hours on a 16-lane host;
+- 4 GiB combined canonical rows, manifests, and logs;
+- zero retries, dropped rounds, incomplete transcripts, split substitutions,
+  or short rows.
+
+If the preflight projects over any cap, the design returns for resizing before
+generation. No partial corpus is used.
+
+## Reference distributions
+
+Two controls are frozen.
+
+### `REF-C`: current constraint-consistent proposal
+
+For each held-out actor row, draw a fixed number of complete worlds with the
+current sampler and its exact `Memory` constraints. Convert those worlds into
+empirical card-receiver count probabilities and derived suit/shape/point
+marginals. The draw count, RNG stream, accepted/rejected work, and Monte Carlo
+uncertainty are recorded. No learned features are present. The randomized
+backtracking/split implementation is the exact baseline; this design does not
+claim it is mathematically uniform over accepted worlds.
+
+### `REF-H`: current hand-coded context
+
+Use the same REF-C world weights while exposing the exact `Memory` and
+`PointContext` facts available to current decision code when evaluating
+derived action-context quantities. REF-H does not invent a second hidden-
+ownership prior. Therefore REF-C and REF-H are expected to tie on ownership
+proper scores and may differ only on downstream derived-context comparisons.
+
+Draw exactly 256 accepted reference worlds per held-out decision. Receiver-
+count Brier score is the primary metric. Secondary log loss uses a frozen
+Jeffreys pseudocount of `0.5` in each `0/1/2` count cell so a finite reference
+sample cannot create an accidental infinite loss. Two independent 256-world
+REF-C replicates on the calibration split must disagree by less than one
+quarter of the 0.5%-relative Brier improvement floor below; otherwise the
+reference draw count returns for redesign before the test split opens.
+
+## Model `HistoryOwnershipV1`
+
+The first model is deliberately small and single-purpose.
+
+### Inputs
+
+- one token per public declaration and public play event, preserving relative
+  seat, trick position, attempted cards, and engine-actual cards;
+- per-card-code fact features from the actor hand, actor-known burial, played
+  counts, played-by-seat counts, unseen counts, declaration pins, and effective
+  suit/rank under the current ordering;
+- global banker/role/trump/points/hand-size/trick context; and
+- exact information-class masks distinguishing observed, actor-private, and
+  logically deduced fields.
+
+No target-derived statistic, target file name, true hidden card count, or
+privileged corpus manifest is an input. The receiver set and remaining public
+hand/kitty sizes come from the actor contract and are not privileged.
+
+### Encoder and output
+
+- a two-layer GRU event encoder with hidden width 128;
+- a shared card-code embedding joined with the event summary and exact fact
+  features;
+- receiver logits for each unknown card code; and
+- a deterministic constrained projection enforcing zero/one hard masks, card
+  multiplicity, receiver hand size, and hidden-kitty size.
+
+Published probabilities are integer parts per billion with scale
+`1_000_000_000`. Projection resolves rounding residuals by canonical card-code
+then receiver order, so expected card and receiver totals remain exact at that
+scale and the same actor bytes produce bit-identical probability bytes.
+
+The learned layer represents soft receiver preferences, not every joint card
+correlation. Complete-world sampling and derived marginals remain separate B3
+work. If projected card marginals fail pair/tractor/top-rank calibration, this
+factorization closes; an autoregressive successor requires a new design.
+
+### Training cohort
+
+Eight fixed initialization seeds are trained as one cohort:
+
+```text
+495023836, 847673502, 1041799603, 588875658,
+442958256, 517235703, 1114290105, 823748771
+```
+
+No seed is selected or discarded by calibration or test performance. The
+candidate prediction is the equal-weight probability average of all eight
+models; all eight hashes remain in the runtime-research package. The
+initial training recipe is AdamW, learning rate `3e-4`, weight decay `0.01`,
+batch size 256 complete-round-grouped decisions, gradient-norm cap `1.0`, and
+at most 30 epochs. Early stopping uses cohort-mean calibration ownership loss,
+patience three epochs, and minimum improvement `1e-4`; all eight seeds stop at
+the same selected epoch. The test split is opened exactly once after candidate
+and negative-control cohorts are frozen.
+
+Training hard caps are 32 CPU/GPU device-hours total for the eight candidate
+and eight permuted-label control models, 8 wall-hours, and 16 GiB of
+checkpoints/logs. Any out-of-memory, nonfinite loss, missing seed, or source
+drift invalidates the cohort; it is not retried under the same recipe. The
+concrete implementation review pins framework, numerical mode, device class,
+and deterministic-algorithm settings before any training.
+
+## Exact mechanics gates
+
+Every checkpoint and every test row must satisfy:
+
+- **E1 conservation:** unknown card expectation and receiver expected sizes
+  close to the exact integer totals within the frozen integer quantization;
+  projected complete fixtures conserve exactly;
+- **E2 hard facts:** zero probability for played, actor-known, and proven-void
+  receiver/card combinations; probability one for forced ownership;
+- **E3 public twins:** hidden-world counterfactual twins produce bit-identical
+  actor bytes and model probability bytes;
+- **E4 rotation:** absolute seat relabeling preserves the actor-relative output;
+- **E5 isolation:** no target bytes or target-derived metadata enter inference;
+  and
+- zero duplicate decisions, cross-split rounds, incomplete transcripts,
+  noncanonical rows, unknown cards, or unbound source/model identities.
+
+Any mechanics failure terminates the recipe regardless of average loss.
+
+## Primary calibration gates
+
+The round is the bootstrap and uncertainty unit. All eight training seeds are
+reported; no best-seed metric exists.
+
+1. **C1 proper-score lift:** primary improvement is paired per-round hidden-
+   ownership count-Brier `REF-C - candidate`. The one-sided 95% lower bound
+   over untouched test rounds must be strictly positive and the mean reduction
+   must be at least 0.5% of REF-C mean Brier. At least six of eight individual
+   seeds must have positive mean improvement. Smoothed log-loss improvement is
+   confirmatory and must not materially reverse.
+2. **C2 behavioral strata:** report declined-feed, forced-trump/joker, and
+   unforced-point-discard strata. A behavioral claim requires at least 500 test
+   decisions in its stratum and a positive lower bound there. Sparse strata
+   are reported as underpowered, never pooled or oversampled into a claim.
+
+Behavioral-stratum membership has two separate forms. The actor-visible form
+uses public sequence patterns only. A target-side audit form may use the true
+historical hand to determine whether the observed player actually had a feed,
+higher-pair, nonpoint discard, or trump alternative. That privileged audit
+label is sealed with targets and is forbidden from actor rows and inference.
+This separation prevents “declined an available action” from leaking that the
+action really was available.
+3. **C3 reliability:** for receiver count, void, trump length, point count,
+   pair count, tractor length, and top-rank events with at least 1,000 examples,
+   report fixed-bin ECE and reliability slope. The concrete packet freezes bin
+   edges and tolerances from train/calibration only.
+4. **C4 exact synthetic posterior:** an independent small-domain instance of
+   the same capture/encoder/projection training pipeline is trained on deals
+   generated under a named known policy whose compatible worlds and action
+   likelihoods can be fully enumerated. On an untouched synthetic fold,
+   maximum event-probability error and total-variation distance must remain
+   within preregistered tolerances. This validates the learning pipeline; its
+   weights are never mixed with the full-deck candidate.
+
+No metric may be repaired after the test fold opens.
+
+## Negative controls
+
+- **N1 history ablation:** within the same hard-fact stratum, shuffle public
+  chronology between complete rounds. Behavioral-stratum lift must collapse to
+  no more than 25% of the unshuffled lift.
+- **N2 permuted labels:** round-group shuffle the privileged targets and train
+  the same cohort recipe. Its one-sided lower bound versus REF-C must not be
+  positive.
+- **N3 policy shift:** report the frozen champion-trained model separately on
+  available human and named-bot opened-development corpora. This is descriptive
+  transfer evidence only; no corpus is silently added to training.
+
+If N1 or N2 does not fail on demand, the candidate is treated as leaked or
+nonbehavioral and closes.
+
+## Offline usefulness gates
+
+- **U1 true-world likelihood:** the true held-out hidden allocation receives a
+  positive paired proper-score lower bound versus REF-C.
+- **U2 fixed-world value quality:** deferred to B3 because it requires a frozen
+  sampleable joint posterior. Before any online screen, B3 must show lower
+  fixed-world rollout value error or variance at unchanged continuation and
+  must separately rule out bias.
+
+B2 cannot use calibration success to skip U2.
+
+## Artifacts
+
+The offline run must publish immutable, separately reviewable artifacts:
+
+- actor-corpus manifest and ordered actor row hashes;
+- privileged-target manifest and ordered target row hashes;
+- split and round-seed manifest;
+- capture source/runtime/work/cost receipt;
+- exact reference-world manifest and sampler counters;
+- eight candidate and eight permuted-label checkpoints plus cohort manifests;
+- train/calibration curves with no test payload;
+- one terminal test report with E/C/N/U1 metrics and per-stratum counts; and
+- a no-authority result envelope.
+
+Runtime packages may contain actor schema, model weights, and projection code.
+They may not contain target rows, target manifests, true hidden allocations, or
+test labels.
+
+## Terminal decisions
+
+The result is exactly one of:
+
+- `PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW` — all E/C/N/U1 gates pass;
+- `SELECT_NONE_NO_CALIBRATION_LIFT` — mechanics pass but the proper-score gate
+  fails;
+- `SELECT_NONE_BEHAVIORAL_CLAIM_UNSUPPORTED` — aggregate calibration may pass,
+  but behavioral strata or negative controls fail;
+- `REFUSE_MECHANICS_OR_LEAKAGE` — any exact invariant fails; or
+- `REFUSE_INCOMPLETE_COHORT_OR_ARTIFACT` — cost, identity, or completeness
+  fails.
+
+No terminal decision authorizes a sampler run, gameplay screen, whole-game
+strength evidence, promotion, or deployment.
+
+## Consolidated review path
+
+To avoid another long review chain while preserving real boundaries:
+
+1. one source/design review covers the capture wrapper, model/projection code,
+   this exact population, metrics, controls, caps, and terminal rule;
+2. that PASS may authorize the bounded **opened-development** capture/training/
+   test pipeline under the frozen caps—no separate one-shot admission, because
+   no sealed or confirmatory evidence is consumed; and
+3. one terminal reproducibility review reopens the immutable manifests and
+   recomputes the decision.
+
+If later work uses sealed evidence or a strength population, it receives a
+separate design and admission. This offline design grants none.

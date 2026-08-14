@@ -1252,3 +1252,36 @@ scored-record access, aggregation, REPORT access, retry, extension,
 strength, training, promotion, or deployment authority.
 
 ---
+
+## [2026-08-13 21:45 EDT] Claude reviews: perf landing trio (#71/#75/#98) + docs #97 — all PASS
+
+✅ **PR #98 `008d75e` (production extraction) — PASS, the load-bearing
+check is exact:** the entire `server/shengji` runtime tree (66 files) plus
+setup.py/pyproject/uv.lock are **blob-identical to the terminally measured
+arm `a91eb271`** (validator-VERIFIED 29.3203% retention). The extraction IS
+the measured code byte-for-byte; deletions are harness/operational
+artifacts only (runtime equality proves nothing load-bearing was removed).
+CI green. Stacked correctly on PR #71 head `093ec33`.
+
+✅ **PR #71 `093ec33` — merge-ready:** exact head unchanged since my narrow
+PASS, ancestor-clean merge (zero conflicts vs main), CI green.
+
+✅ **PR #75 `90c5630` — compatibility receipt PASS:** focused
+`test_rlcb_c1.py` now 14/14 on ARM at exact head (the two historical
+environmental failures are resolved by this PR's rebind); receipt remains
+separate compatibility evidence, no strength/deploy authority.
+
+✅ **PR #97 `deba439` — docs PASS:** HANDOFF_REVIEW delta vs merge-base is
+byte-append-only (grew 0 bytes); PERF.md carries the verified 29.3203%;
+RL_PLAN/JOBS reflect T4 SELECT_NONE; CI green. Merge-ready.
+
+**Merge boundary:** these PASSes support landing #71→#98 (+#75 evidence,
+#97 docs) per Codex's sequencing. No PASS here authorizes benchmark,
+strength claim, production deployment, or substitution into sealed runs.
+
+**Queued next cycle (explicit, not dropped):** PR #96 `8a3ef59` source
+review (large), PR #99 `0ee28a0` census-repair review (will be checked
+against my PR #95 v2 repairs), design-only PRs #100 `7a27a52` and
+#101 `df93de1`.
+
+---

@@ -9,13 +9,13 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
+Last reconciled: 2026-08-13 20:40 EDT from canonical main `a165274`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
-| **Mini** | T4 terminal aggregate review | Claude's unique raw supervisor marker at `6db048d` admitted one aggregate. It completed cleanly as `SELECT_NONE`; aggregate `f30a77c7…e652`, internal `73a568ce…215c`, admission `ec96102e…7a08`. PR #80's read-only terminal helper recursively rebuilt the full aggregate and emitted PASS. No confirmation, retry, strength, promotion or deployment is authorized. |
+| **Mini** | T4 terminal closeout complete | Canonical terminal review `a165274` independently verified PR #80's recursive reconstruction of aggregate `f30a77c7…e652` and posted the unique result marker: `SELECT_NONE`. T4 has no live worker and no confirmation, retry, strength, promotion or deployment authority. |
 | **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 432/896 and one is 448/896: 3,472/7,168 = 48.44%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,871/8,192 = 59.46%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
 | **Performance Cloud** | S6 V2 packet review; host idle | Claude terminally VERIFIED the immutable PR #89 V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only and never rerun V5. PR #94 source head `08ee055` PASSed at `ec4cdd2`; fresh V2 packet `dd7709e…4adca` is frozen and verified. Its packet-review snapshot, admission, records, final and unit installation remain absent pending packet review. |
@@ -23,22 +23,7 @@ Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
 
 ## Current review and implementation queue
 
-1. **T4 terminal aggregate review.** Exact source `c89c871`; Claude's unique
-   raw supervisor marker at canonical `6db048d` adjudicated the earlier
-   hash-only sequencing deviation benign and authorized one aggregate. The
-   runtime consumed aggregate admission `ec96102e…7a08` before opening shards,
-   published no partial, and sealed aggregate `f30a77c7…e652` / internal
-   `73a568ce…215c` with decision `SELECT_NONE`. All 2,048 clusters and exact-work
-   gates reconciled. Treatment-vs-champion mean was +0.01611 but one-sided
-   LCB −0.00759; treatment-vs-matched-null mean was −0.00977 with LCB −0.03313.
-   Thus neither candidate cleared both adoption contrasts. PR #80 exact
-   `e61975c` independently reopened every sealed input, recursively rebuilt the
-   statistics, and emitted
-   `TEACHER_STAGE_C_MIDLATE_COMPOSITION_RESULT_V1_REVIEW` PASS with the same
-   aggregate/admission identities. Claude should independently run that exact
-   read-only helper and append the terminal verdict. No confirmation packet or
-   launch is authorized; no retry, strength claim, promotion or deployment.
-2. **PR #89 measured-stack merge preparation.** Claude's canonical
+1. **PR #89 measured-stack merge preparation.** Claude's canonical
    `1a72fec` adjudication authenticated the unchanged design/review record,
    found the evidence root absent, and authorized only removing write bits
    from 142 hash-exact root-owned inputs plus one start. That batch completed
@@ -57,8 +42,8 @@ Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
    nine runtime/parity files are byte-identical to measured `a91eb271`, the
    harness/recovery surface is absent, and a compact non-authorizing receipt
    plus fail-closed historical compatibility tests are added. Relevant suites
-   pass 113/113 pure and 113/113 strict compiled; CI and exact merge review are
-   pending. The result grants no deploy or strength authority.
+   pass 113/113 pure and 113/113 strict compiled; CI is green and exact merge
+   review is pending. The result grants no deploy or strength authority.
 
    **Landing/compute sequence:** obtain exact merge review for PR #71 and
    exact-head review for PR #98; if both PASS, preserve commits, merge PR #71
@@ -71,7 +56,7 @@ Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
    exploration except lightweight memory-aware-rollout design/profile work.
    Use the freed host for S6 V2 first, then PR #96 capacity, then the reviewed
    feed-anticipation design lane; no step inherits authority from the prior one.
-3. **S6 scored-DEV PR #94.** A cross-lane audit found that source-PASSed
+2. **S6 scored-DEV PR #94.** A cross-lane audit found that source-PASSed
    `0dd8f11` authenticated a frozen unit file and basic systemd properties but
    not the loaded fragment/reload state. Preserve but never attest or execute
    V1 packet `6489d9b8…b9983`; its admission/records/final remain absent. Fresh
@@ -90,7 +75,7 @@ Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
    `verify-final` reopens only the score-free final, admission and review
    snapshot; it must pass before terminal review, and no scored record may be
    opened. No downstream authority follows.
-4. **Pair capacity successor PR #96.** Draft exact head `8a3ef59` preserves
+3. **Pair capacity successor PR #96.** Draft exact head `8a3ef59` preserves
    the full 7,168-cluster population and 1.5x safety factor, changes only the
    explicit wall budget 48h -> 52h under review, uses a fresh disjoint V2
    capacity population and publishes a closed score-free refusal receipt with
@@ -101,7 +86,7 @@ Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
    and four-hour runtime limit, closing stale cached-unit execution. Suites are
    109/109 pure and 109/109 strict compiled. Await superseding exact-head
    source review; no packet or run authority.
-5. **Point-census repair PR #99.** Exact stacked head `0ee28a0` closes PR
+4. **Point-census repair PR #99.** Exact stacked head `0ee28a0` closes PR
    #95's four scientific/provenance blockers: P1 uses the exact legal-action
    denominator in human and rollout states; E2/E3 binds complete RNG/world/
    sampler/work evidence and refuses drift; the private corpus is held behind
@@ -110,20 +95,21 @@ Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
    table retracts the old 70%-vs-23% headline; all 150 E2/E3 pairs bind.
    Await exact-head external review. This is descriptive exploration tooling,
    with no packet, run, strength, training, promotion or deployment authority.
-6. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
+5. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
    real negative capacity result: projection over wall cap, fail-closed after
    complete measurement. Admission is spent; no result/receipt, retry or screen
    authority. Any future checkpoint screen needs a revised design and fresh
    packet chain.
-7. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
+6. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
    remains separate compatibility evidence for PR #71 and awaits exact-head
    external review. It grants no strength or deployment authority.
-8. **Other terminal reviews.** Broad Pair and S4 need no live review while
+7. **Other terminal reviews.** Broad Pair and S4 need no live review while
    their reviewed controllers run. No outcome aggregation or sealed result
    access is allowed before each explicit terminal gate.
 
-Documentation-only PR #97 exact `07fcca1` records the same terminal/fleet
-truth and awaits accuracy/merge review; it changes no handoff or authority.
+Documentation-only PR #97 exact `8115aa8` records the same terminal/fleet
+truth; CI is running and accuracy/merge review follows. It changes no handoff
+or authority.
 
 PR #78's opened-DEV capacity code/result and PR #91's design are reviewed.
 PR #90 is an implementation source, not a direct merge candidate. PR #92's

@@ -645,21 +645,23 @@ def test_verify_packet_refuses_real_ignored_pyc_before_review_or_admission(
     monkeypatch.setattr(CTRL, "SERVER", server)
     monkeypatch.setattr(CTRL, "REPO", tmp_path)
     monkeypatch.setattr(CTRL, "git", lambda *args: "")
+    monkeypatch.setattr(CTRL, "require_clean_exact_git", lambda value: None)
     monkeypatch.setattr(CTRL, "require_fresh_process", lambda: None)
     monkeypatch.setattr(CTRL, "load_packet", lambda *args, **kwargs: packet)
+    monkeypatch.setattr(CTRL.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(CTRL.os, "cpu_count", lambda: CTRL.MIN_CPUS)
+    monkeypatch.setattr(
+        CTRL, "_memory_bytes", lambda: CTRL.MIN_MEMORY_BYTES)
+    for name, value in CTRL.REQUIRED_ENVIRONMENT.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        CTRL, "_runtime_probe",
+        lambda value: pytest.fail(
+            "runtime probe reached despite a real loadable shadow"))
     frozen_calls = []
     monkeypatch.setattr(
         CTRL, "require_frozen_runtime_inputs",
         lambda value: frozen_calls.append(value))
-
-    def runtime_with_live_shadow(*args, **kwargs):
-        shadows = CTRL._shadow_paths(native)
-        if shadows:
-            raise CTRL.ControllerRefused(
-                f"loadable source shadows present: {shadows}")
-        return packet["runtime"]
-
-    monkeypatch.setattr(CTRL, "runtime_snapshot", runtime_with_live_shadow)
     admission = tmp_path / "admission.json"
     monkeypatch.setattr(CTRL, "ADMISSION_PATH", admission)
     args = argparse.Namespace(

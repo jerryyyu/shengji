@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 10:18 EDT from canonical main `09b80bb`.
+Last reconciled: 2026-08-14 11:47 EDT from canonical main `8cc92ac`.
 
 ## Live fleet
 
@@ -22,14 +22,39 @@ Last reconciled: 2026-08-14 10:18 EDT from canonical main `09b80bb`.
 
 ## Review queue — precise asks
 
-1. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+1. **PR #110 BELIEF-V1 research/spec review — no execution authority.**
+   Review exact head `b8156d3ef5406da473647d64812e90cb698ea0f7`, a
+   three-file documentation-only delta: new `BELIEF_V1_SPEC.md`, new
+   `RESEARCH_PRINCIPLES.md`, and one 30-line `RL_PLAN.md` milestone pointer.
+   Confirm it extends PointContext rather than duplicating it; limits V1 to
+   one ownership/shape belief head and one sampler consumer; separates public,
+   actor-private, deduced, probabilistic, and simulator-privileged data; and
+   requires calibration, same-work current/shuffled-null attribution,
+   meaningful natural dose, and MDE economics before any whole-game design.
+   PASS means roadmap/spec merge-readiness only—no corpus, training, run,
+   strength, promotion, or deployment authority.
+
+2. **PR #111 BELIEF-V1 B0 information-boundary review — no run authority.**
+   Review exact head `dba99c3d8f7532a7ea7814b5bd06c0b1a4fb727e`,
+   exactly two new files: `server/shengji/rl/belief_contract.py` and
+   `server/tests/test_belief_contract.py`. Falsify that actor bytes can depend
+   on inaccessible hand/kitty contents; banker burial is actor-private while
+   non-banker burial is privileged; public hand sizes derive from public plays;
+   hidden targets are separately hashed and never runtime input; absolute seat
+   rotation is invariant; and target construction strictly validates the
+   physical deck. Reproduce 20 focused tests. Explicit limitations—only the
+   final winning declaration and engine-accepted rather than attempted play
+   history are currently reconstructable—must remain visible, not silently
+   upgraded. PASS means B0 source merge-readiness only.
+
+3. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
    identity cache in favor of explicit per-world prepared hands and restores
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
-2. **PR #105 PointContext/point-flow test-only delta acknowledgment —
+4. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
    added two independent mutation witnesses in exact child `c454aaaf` (+17
    test lines; production unchanged): valid-banker/bool-tally refusal and exact

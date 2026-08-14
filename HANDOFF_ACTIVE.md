@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 01:45 EDT from canonical main `85391bf`.
+Last reconciled: 2026-08-14 02:17 EDT from canonical main `9393ac5`.
 
 ## Live fleet
 
@@ -17,7 +17,7 @@ Last reconciled: 2026-08-14 01:45 EDT from canonical main `85391bf`.
 | **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 1h44m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
 | **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[480,480,496,480,480,480,480,480]/896`, totaling `3,856/7,168` (53.79%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `7,646/8,192` (93.33%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
-| **Performance Cloud** | idle; PR #103 result review and PR #106 source review pending | The sole reviewed PR #103 six-pair batch under invocation `da6f9dd9…7fbe` exited success/0; Codex has not read its retain/drop claim. Pair Capacity V2 passed at `482119b` (47.88h <= 52h), and its checkpoint-screen implementation is exact PR #106 head `f1791f5`, mergeable with both checks green and awaiting the source-only review that may freeze one host packet. S6 V3 verified 64/64 sealed receipts; aggregation remains separately gated. |
+| **Performance Cloud** | idle; PR #106, PR #108 and PR #103 reviews pending | The sole reviewed PR #103 six-pair batch under invocation `da6f9dd9…7fbe` exited success/0; Codex has not read its retain/drop claim. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` is clean/green and awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; exact aggregation PR #108 `d40182d` is clean/green and awaits its consolidated review before any record may be opened. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
@@ -32,7 +32,18 @@ Last reconciled: 2026-08-14 01:45 EDT from canonical main `85391bf`.
    the controller-generated raw implementation marker. PASS may freeze one
    host packet only; it cannot execute the screen or open outcomes.
 
-2. **PR #103 x86 A/B terminal review.** On Performance Cloud independently
+2. **PR #108 S6 V3 aggregation source + exact-input review.** Independently
+   audit exact head `d40182d313f9ed3fcb853d2c82b74454398a4a9a`
+   over terminal source `a93c2f5`; exact two-file SHAs and the score-free
+   preflight are in PR comment `5290133523`. Without opening a scored record,
+   reproduce 14 focused and 120 pure/strict-compiled chain tests; falsify the
+   exact terminal chain, source/runtime closure, gate-before-open boundary,
+   all-64-record validation, exact two-primary-gate statistics, terminal
+   recomputation and closed authority. If clean, append only the generated
+   raw aggregate marker. PASS authorizes exactly one aggregate and the opening
+   of these 64 records; it authorizes no downstream screen or strength claim.
+
+3. **PR #103 x86 A/B terminal review.** On Performance Cloud independently
    reopen exact design `62e471e4…e075`, immutable evidence root
    `/var/lib/shengji-perf-ab-pr103-v1/evidence`, manifest
    `da82b983…6d72`, result `75dd2381…8b6d` and frozen validator output
@@ -43,14 +54,14 @@ Last reconciled: 2026-08-14 01:45 EDT from canonical main `85391bf`.
    establish performance retention/merge-readiness only, not strength or
    deployment.
 
-3. **PR #107 performance wave-two code audit — not launch-critical.** Exact
+4. **PR #107 performance wave-two code audit — not launch-critical.** Exact
    head `1982c48` is clean/green atop PR #103 and claims a further 7.05% ARM
    microbenchmark improvement from entry-bound policy kernels, a per-world
    sampled-hands cache and native pair counting. It is outside the frozen PR
    #103 A/B and needs an independent code/parity audit plus its own later x86
    design before retention; it must not delay or reinterpret PR #103 results.
 
-4. **PR #105 PointContext/point-flow repair — non-launch-critical.** Repaired
+5. **PR #105 PointContext/point-flow repair — non-launch-critical.** Repaired
    head `90fe978` remains HOLD after Codex follow-up. Atomic staging, factory-
    built context immutability, bool-seat checks and neutral field names are
    real; 24 focused pure tests pass. Close the remaining exact-boundary gaps:
@@ -77,8 +88,10 @@ PR comments alone are not queue state.
    screen before that PASS.
 
 3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts with
-   no record opened. Keep all scored records sealed. A separate aggregation
-   design/review is required before any efficacy result or record access.
+   no record opened. Exact aggregation PR #108 `d40182d` is published,
+   CI-green and awaiting its consolidated source + exact-input review. After
+   its raw PASS, run the aggregate exactly once; keep the result unopened and
+   return it for independent terminal recomputation before acting on efficacy.
 
 4. **S4 terminal sequence.** Let the controller finish tranche two naturally.
    Only after it exits, run the exact pinned read-only verifier at Git

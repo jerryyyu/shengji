@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import os
+from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 import torch
@@ -89,8 +92,8 @@ def test_design_refuses_missing_sources_runtime_and_authority_drift():
         validate_execution_design(replace(
             design, runtime=replace(design.runtime, torch_num_threads=2)))
     for runtime in (
-            replace(design.runtime, cpu_count=15),
-            replace(design.runtime, memory_bytes=(30 << 30) - 1)):
+            replace(design.runtime, cpu_count=9),
+            replace(design.runtime, memory_bytes=(16 << 30) - 1)):
         with pytest.raises(BeliefB2ExecutionError, match="runtime profile"):
             validate_execution_design(replace(design, runtime=runtime))
     with pytest.raises(BeliefB2ExecutionError, match="drift"):
@@ -112,6 +115,58 @@ def test_runtime_profile_refuses_declared_mode_without_live_mode(monkeypatch):
     monkeypatch.setattr(torch, "get_num_threads", lambda: 2)
     with pytest.raises(BeliefB2ExecutionError, match="numerical mode"):
         build_runtime_profile()
+
+
+def test_controller_bootstrap_refuses_unsafe_flags_and_import_shadows(
+        tmp_path):
+    source = (Path(__file__).parents[1] / "scripts" / "belief_v1_b2.py")
+    repo = tmp_path / "repo"
+    script = repo / "server/scripts/belief_v1_b2.py"
+    script.parent.mkdir(parents=True)
+    script.write_bytes(source.read_bytes())
+    package = repo / "server/shengji"
+    package.mkdir()
+    (package / "ok.py").write_text("VALUE = 1\n")
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.name", "Test")
+    _git(repo, "config", "user.email", "test@example.com")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "fixture")
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+
+    safe = subprocess.run(
+        (sys.executable, "-P", "-B", str(script),
+         "--bootstrap-check-only"), cwd=repo, env=environment,
+        capture_output=True, text=True)
+    assert safe.returncode == 0
+    assert safe.stdout.strip() == "BELIEF_V1_B2_BOOTSTRAP_PASS"
+    unsafe = subprocess.run(
+        (sys.executable, "-B", str(script), "--bootstrap-check-only"),
+        cwd=repo, env=environment, capture_output=True, text=True)
+    assert unsafe.returncode != 0
+    assert "safe interpreter flags" in unsafe.stderr
+
+    cache = package / "__pycache__"
+    cache.mkdir()
+    bytecode = cache / "evil.pyc"
+    bytecode.write_bytes(b"not trusted")
+    refused = subprocess.run(
+        (sys.executable, "-P", "-B", str(script),
+         "--bootstrap-check-only"), cwd=repo, env=environment,
+        capture_output=True, text=True)
+    assert refused.returncode != 0
+    assert "bytecode shadows" in refused.stderr
+    bytecode.unlink()
+    cache.rmdir()
+
+    (repo / "server/torch.py").write_text("raise RuntimeError('loaded')\n")
+    refused = subprocess.run(
+        (sys.executable, "-P", "-B", str(script),
+         "--bootstrap-check-only"), cwd=repo, env=environment,
+        capture_output=True, text=True)
+    assert refused.returncode != 0
+    assert "untracked import shadows" in refused.stderr
 
 
 def test_design_digest_changes_for_source_runtime_and_root():

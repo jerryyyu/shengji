@@ -9,16 +9,68 @@ consume that same one review; the run never grows a per-stage packet chain.
 
 from __future__ import annotations
 
+import sys
+
+
+if not sys.flags.safe_path or not sys.dont_write_bytecode:
+    raise RuntimeError(
+        "Belief V1 B2 requires Python -P -B safe interpreter flags")
+
 import argparse
 import hashlib
 import os
-import sys
+import subprocess
 from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve()
 SERVER = SCRIPT.parents[1]
 REPO = SERVER.parent
+
+
+def _refuse_import_shadows() -> None:
+    """Reject executable bytes outside the exact tracked/native surface."""
+    if os.environ.get("PYTHONPATH"):
+        raise RuntimeError("Belief V1 B2 refuses PYTHONPATH")
+    try:
+        tracked_raw = subprocess.run(
+            ("git", "ls-files", "-z"), cwd=REPO, check=True,
+            capture_output=True).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RuntimeError("Belief V1 B2 bootstrap Git probe failed") from exc
+    tracked = {value.decode("utf-8") for value in tracked_raw.split(b"\0")
+               if value}
+    loadable_suffixes = {".py", ".pyc", ".pyo", ".so", ".pyd", ".dylib"}
+    candidates = set()
+    candidates.update(path for path in SERVER.iterdir()
+                      if path.is_file()
+                      and path.suffix in loadable_suffixes)
+    candidates.update(path for path in SERVER.glob("*/__init__.py"))
+    for root in (SERVER / "shengji", SERVER / "scripts"):
+        candidates.update(path for path in root.rglob("*")
+                          if path.is_file()
+                          and path.suffix in loadable_suffixes)
+    native = []
+    for path in sorted(candidates):
+        relative = path.relative_to(REPO).as_posix()
+        if path.suffix in {".pyc", ".pyo"}:
+            raise RuntimeError("Belief V1 B2 refuses bytecode shadows")
+        if path.suffix in {".so", ".pyd", ".dylib"} \
+                and path.parent == SERVER / "shengji" / "engine" \
+                and path.name.startswith("_fast."):
+            native.append(path)
+            continue
+        if relative not in tracked:
+            raise RuntimeError("Belief V1 B2 refuses untracked import shadows")
+    if len(native) > 1:
+        raise RuntimeError("Belief V1 B2 native extension population drift")
+
+
+_refuse_import_shadows()
+if sys.argv[1:] == ["--bootstrap-check-only"]:
+    print("BELIEF_V1_B2_BOOTSTRAP_PASS")
+    raise SystemExit(0)
+
 if str(SERVER) not in sys.path:
     sys.path.insert(0, str(SERVER))
 

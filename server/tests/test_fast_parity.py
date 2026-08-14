@@ -838,7 +838,9 @@ def test_activate_routes_everything_and_deactivate_restores():
         assert not any(compiled(v) for v in before.values())
         pure_methods = {a: getattr(HeuristicBot, a)
                         for a in ("_lowest", "_forced_follow", "_lead",
-                                  "_cheapest_winning")}
+                                  "_follow", "_cheapest_winning")}
+        from shengji.engine.round import Round as _Round
+        pure_round_play = _Round.play
 
         fast.activate()
         unrouted = [k for (m, a), k in
@@ -847,7 +849,10 @@ def test_activate_routes_everything_and_deactivate_restores():
         assert not unrouted, f"activate() missed: {unrouted}"
         assert HeuristicBot._lowest is fast._lowest_fast
         assert HeuristicBot._forced_follow is fast._forced_follow_fast
-        assert HeuristicBot._lead is fast._lead_fast
+        assert HeuristicBot._lead is fast._fast.heuristic_lead
+        assert HeuristicBot._follow is fast._fast.heuristic_follow
+        from shengji.engine.round import Round
+        assert Round.play is fast._fast.round_play
         assert HeuristicBot._cheapest_winning is fast._cheapest_winning_fast
         # a name bound AFTER activation must see the compiled function too
         late = types.ModuleType("late_import_probe")
@@ -860,6 +865,7 @@ def test_activate_routes_everything_and_deactivate_restores():
         assert not leaked, f"deactivate() did not restore: {leaked}"
         for a, fn in pure_methods.items():
             assert getattr(HeuristicBot, a) is fn, f"method leak: {a}"
+        assert _Round.play is pure_round_play, "Round.play leak"
     finally:
         fast.deactivate()
         if was_active:

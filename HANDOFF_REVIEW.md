@@ -1521,3 +1521,37 @@ Jerry has asked me to advance my PR queue each quiet cycle and surface
 review-needs here — this entry is that channel.
 
 ---
+
+## [2026-08-14 00:56 EDT] Claude review: PR #103 x86 A/B design — PASS_TO_RUN_THIS_DESIGN_ONLY
+
+REPORT_LCB_PERF_AB_PR103_V1_DESIGN_REVIEW_V1: PASS_TO_RUN_THIS_DESIGN_ONLY design_sha256=62e471e44fe9191abdec177fcfcccf1f3dfca31b9bb3478dfd92c2ac54e3e075
+
+**Conflict disclosed:** the measured head `3044a2f` is my own PR #103.
+Codex independently PASSed the code; this review covers the benchmark
+ENVELOPE, whose bit-exact semantic/work/RNG gates hold regardless of
+authorship.
+
+**16-check battery on shengji-perf:** design root 0444 nlink 1, byte-exact
+canonical at `62e471e4…e075`; `design_problems` empty; tooling checkout
+exact clean `e407d50` (child of terminally verified V6 `cd8eb15`;
+harness `a6de0a02…`, validator byte-identical `1e69d103…`); base
+`57a1c2b`/native `05f7165b…` and head `3044a2f`/native `2c9f2474…` —
+both 69-path closures recomputed with zero mismatches at exact clean gits;
+python `b8d8288f…`; host profile `80079d92…` + unit `58e1b0ed…` pinned;
+boot unchanged; evidence root absent with root-owned parent; six fresh
+seeds disjoint from all 24 spent V1–V5 seeds and equal to harness
+constants with the strict 3/3 alternation; N=30/R=300 and the dual
+≥3%/paired-LCB>0 retention gates exact. 7/7 protocol mutations refused;
+3/3 sha value mutations refused at `_require_runtime`; `check-design`
+returns VALID at the exact SHA.
+
+**Review record (install byte-exact, root 0444):**
+`{"design_sha256":"62e471e44fe9191abdec177fcfcccf1f3dfca31b9bb3478dfd92c2ac54e3e075","reviewer":"Claude","schema":"report-lcb-perf-ab-review-v1","summary":"PR103 x86 A/B design PASS_TO_RUN_THIS_DESIGN_ONLY, 2026-08-14: 16-check battery on shengji-perf (contract/recon, tooling e407d50 clean, both 69-path closures+natives exact, six fresh seeds disjoint from all 24 spent, dual gates, 10 mutations refused, check-design VALID). Reviewer conflict disclosed: the measured head is Claude-authored PR103; the head carries Codex independent code PASS and the harness enforces bit-exact semantics regardless of authorship. One six-pair batch, no retry or tuning.","verdict":"PASS"}`
+SHA-256 `ab0f27dbc4ceb9f7546bccbedc84f79e55224dd7de1163dd3ff4ff5267eb1933`.
+
+Boundary: exactly one no-retry six-pair x86 batch under these frozen bytes;
+refusals are exceptions, never DROP. No merge, strength, production,
+training, promotion, or deployment authority. Terminal result/receipt come
+back to me for verification before any retention claim is read.
+
+---

@@ -56,7 +56,7 @@ BELIEF_CONTRACT_SOURCE_SHA256S = {
 }
 
 
-def _canonical_bytes(value: dict[str, Any]) -> bytes:
+def canonical_json_bytes(value: dict[str, Any]) -> bytes:
     try:
         return (json.dumps(value, sort_keys=True, separators=(",", ":"),
                            ensure_ascii=True, allow_nan=False) + "\n").encode(
@@ -98,13 +98,67 @@ class DeclarationView:
 
 
 @dataclass(frozen=True)
+class CapturedDeclarationEvent:
+    """One public declaration accepted by the engine, in event order."""
+
+    seat: int
+    cards: tuple[str, ...]
+    strength: int
+
+
+@dataclass(frozen=True)
+class CapturedPlayEvent:
+    """One public play attempt and the component the engine accepted."""
+
+    seat: int
+    attempted_cards: tuple[str, ...]
+    actual_cards: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PublicTranscriptV1:
+    """Complete public event prefix maintained by a capture/runtime driver.
+
+    ``Round`` itself retains only the final declaration and engine-accepted
+    cards.  Callers that want a training-eligible actor record must retain the
+    overwritten declarations and attempted throws in this separate public
+    transcript.  Appends are functional so a captured actor snapshot cannot be
+    changed by later play.
+    """
+
+    declarations: tuple[CapturedDeclarationEvent, ...] = ()
+    plays: tuple[CapturedPlayEvent, ...] = ()
+
+    def with_declaration(self, seat: int, cards: Iterable[str],
+                         strength: int) -> "PublicTranscriptV1":
+        return PublicTranscriptV1(
+            declarations=(*self.declarations, CapturedDeclarationEvent(
+                seat=seat, cards=tuple(cards), strength=strength)),
+            plays=self.plays,
+        )
+
+    def with_play(self, seat: int, attempted_cards: Iterable[str],
+                  actual_cards: Iterable[str]) -> "PublicTranscriptV1":
+        return PublicTranscriptV1(
+            declarations=self.declarations,
+            plays=(*self.plays, CapturedPlayEvent(
+                seat=seat,
+                attempted_cards=tuple(attempted_cards),
+                actual_cards=tuple(actual_cards),
+            )),
+        )
+
+
+@dataclass(frozen=True)
 class PlayView:
     seat_relative: int
+    attempted_cards: tuple[str, ...]
     cards: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "seat_relative": self.seat_relative,
+            "attempted_cards": list(self.attempted_cards),
             "cards": list(self.cards),
         }
 
@@ -168,6 +222,7 @@ class ActorObservationV1:
     actor_known_burial: tuple[tuple[str, int], ...]
     hidden_burial_size: int
     declaration: DeclarationView | None
+    declaration_history: tuple[DeclarationView, ...]
     declaration_history_complete: bool
     attempted_play_history_complete: bool
     completed_tricks: tuple[TrickView, ...]
@@ -193,6 +248,9 @@ class ActorObservationV1:
             "declaration": (
                 None if self.declaration is None else self.declaration.to_dict()
             ),
+            "declaration_history": [
+                event.to_dict() for event in self.declaration_history
+            ],
             # Round currently retains only the winning declaration.  The flag
             # makes that limitation explicit instead of implying a chronology
             # that the engine cannot reconstruct.
@@ -211,7 +269,7 @@ class ActorObservationV1:
         }
 
     def canonical_bytes(self) -> bytes:
-        return _canonical_bytes(self.to_dict())
+        return canonical_json_bytes(self.to_dict())
 
     def sha256(self) -> str:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
@@ -246,7 +304,7 @@ class BeliefTargetsV1:
         }
 
     def canonical_bytes(self) -> bytes:
-        return _canonical_bytes(self.to_dict())
+        return canonical_json_bytes(self.to_dict())
 
     def sha256(self) -> str:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
@@ -270,7 +328,7 @@ class BeliefInformationPartitionV1:
 
     def canonical_bytes(self) -> bytes:
         """Bind the two separate payload hashes without co-locating payloads."""
-        return _canonical_bytes(self.manifest())
+        return canonical_json_bytes(self.manifest())
 
     def sha256(self) -> str:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
@@ -305,19 +363,24 @@ def _strict_decision_round(rnd: Round, seat: int) -> None:
         raise BeliefContractError("round history must be an exact list")
 
 
-def _play_view(play: TrickPlay, seat: int, rnd: Round) -> PlayView:
+def _play_view(play: TrickPlay, attempted_cards: tuple[str, ...],
+               seat: int, rnd: Round) -> PlayView:
     if type(play) is not TrickPlay or type(play.seat) is not int \
             or play.seat not in range(4) or type(play.cards) is not list \
             or not play.cards:
         raise BeliefContractError("public play is malformed")
     _card_counts(play.cards, label="public play")
+    _card_counts(attempted_cards, label="public attempted play")
     return PlayView(
         seat_relative=(play.seat - seat) % 4,
+        attempted_cards=tuple(sorted(attempted_cards,
+                                    key=rnd.ordering.sort_key)),
         cards=tuple(sorted(play.cards, key=rnd.ordering.sort_key)),
     )
 
 
-def _trick_view(trick: Trick, seat: int, rnd: Round, *, complete: bool) -> TrickView:
+def _trick_view(trick: Trick, attempts: tuple[tuple[str, ...], ...],
+                seat: int, rnd: Round, *, complete: bool) -> TrickView:
     if type(trick) is not Trick or type(trick.leader) is not int \
             or trick.leader not in range(4) or type(trick.plays) is not list:
         raise BeliefContractError("public trick is malformed")
@@ -328,7 +391,12 @@ def _trick_view(trick: Trick, seat: int, rnd: Round, *, complete: bool) -> Trick
                 for index in range(len(trick.plays))]
     if [play.seat for play in trick.plays] != expected:
         raise BeliefContractError("public trick seat order is invalid")
-    plays = tuple(_play_view(play, seat, rnd) for play in trick.plays)
+    if len(attempts) != len(trick.plays):
+        raise BeliefContractError("attempted-play transcript length drift")
+    plays = tuple(
+        _play_view(play, attempted, seat, rnd)
+        for play, attempted in zip(trick.plays, attempts, strict=True)
+    )
     recomputed_points = total_points(
         card for play in trick.plays for card in play.cards)
     if complete:
@@ -378,6 +446,89 @@ def _declaration_view(rnd: Round, seat: int) -> DeclarationView | None:
         cards=tuple(sorted(cards, key=rnd.ordering.sort_key)),
         strength=strength,
     )
+
+
+def _transcript_views(
+        rnd: Round, seat: int, transcript: PublicTranscriptV1 | None) -> tuple[
+            tuple[DeclarationView, ...], tuple[tuple[str, ...], ...], bool,
+            bool]:
+    actual_entries = [
+        (position, play)
+        for trick in [*rnd.history, rnd.trick]
+        if trick is not None
+        for position, play in enumerate(trick.plays)
+    ]
+    final = _declaration_view(rnd, seat)
+    if transcript is None:
+        return (
+            tuple(() if final is None else (final,)),
+            tuple(tuple(play.cards) for _, play in actual_entries),
+            False,
+            False,
+        )
+    if type(transcript) is not PublicTranscriptV1:
+        raise BeliefContractError("public transcript must be exact V1")
+    if type(transcript.declarations) is not tuple \
+            or type(transcript.plays) is not tuple:
+        raise BeliefContractError("public transcript collections must be tuples")
+
+    declaration_views: list[DeclarationView] = []
+    previous_strength = 0
+    for event in transcript.declarations:
+        if type(event) is not CapturedDeclarationEvent \
+                or type(event.seat) is not int or event.seat not in range(4) \
+                or type(event.cards) is not tuple or not event.cards \
+                or type(event.strength) is not int:
+            raise BeliefContractError("captured declaration event is malformed")
+        _card_counts(event.cards, label="captured declaration")
+        expected_strength = rnd._declaration_strength(list(event.cards))
+        if expected_strength != event.strength \
+                or event.strength <= previous_strength:
+            raise BeliefContractError(
+                "captured declaration strength/order is invalid")
+        previous_strength = event.strength
+        declaration_views.append(DeclarationView(
+            seat_relative=(event.seat - seat) % 4,
+            cards=tuple(sorted(event.cards, key=rnd.ordering.sort_key)),
+            strength=event.strength,
+        ))
+    if final is None:
+        if declaration_views:
+            raise BeliefContractError(
+                "transcript has declarations but Round has no winner")
+    elif not declaration_views or declaration_views[-1] != final:
+        raise BeliefContractError(
+            "transcript final declaration disagrees with Round")
+
+    if len(transcript.plays) != len(actual_entries):
+        raise BeliefContractError(
+            "captured play prefix disagrees with public history length")
+    attempts: list[tuple[str, ...]] = []
+    for event, (position, actual) in zip(
+            transcript.plays, actual_entries, strict=True):
+        if type(event) is not CapturedPlayEvent \
+                or type(event.seat) is not int or event.seat not in range(4) \
+                or type(event.attempted_cards) is not tuple \
+                or not event.attempted_cards \
+                or type(event.actual_cards) is not tuple \
+                or not event.actual_cards:
+            raise BeliefContractError("captured play event is malformed")
+        _card_counts(event.attempted_cards, label="captured attempted play")
+        _card_counts(event.actual_cards, label="captured actual play")
+        if event.seat != actual.seat \
+                or Counter(event.actual_cards) != Counter(actual.cards):
+            raise BeliefContractError(
+                "captured actual play disagrees with Round")
+        attempted = Counter(event.attempted_cards)
+        accepted = Counter(event.actual_cards)
+        if accepted - attempted:
+            raise BeliefContractError(
+                "engine-accepted cards are absent from attempted play")
+        if position != 0 and attempted != accepted:
+            raise BeliefContractError(
+                "only a lead throw may differ from its attempted action")
+        attempts.append(event.attempted_cards)
+    return tuple(declaration_views), tuple(attempts), True, True
 
 
 def _deductions(rnd: Round, seat: int) -> DeductionView:
@@ -432,13 +583,24 @@ def _validate_physical_population(rnd: Round) -> None:
         raise BeliefContractError("round physical card population is invalid")
 
 
-def build_actor_observation(rnd: Round, seat: int) -> ActorObservationV1:
+def build_actor_observation(
+        rnd: Round, seat: int,
+        transcript: PublicTranscriptV1 | None = None) -> ActorObservationV1:
     """Build canonical runtime input without reading hidden allocations."""
     _strict_decision_round(rnd, seat)
-    completed = tuple(
-        _trick_view(trick, seat, rnd, complete=True) for trick in rnd.history
+    declaration_history, attempts, declaration_complete, attempt_complete = (
+        _transcript_views(rnd, seat, transcript)
     )
-    current = _trick_view(rnd.trick, seat, rnd, complete=False)
+    completed_list: list[TrickView] = []
+    offset = 0
+    for trick in rnd.history:
+        completed_list.append(_trick_view(
+            trick, attempts[offset:offset + 4], seat, rnd, complete=True))
+        offset += 4
+    completed = tuple(completed_list)
+    current = _trick_view(
+        rnd.trick, attempts[offset:offset + len(rnd.trick.plays)], seat, rnd,
+        complete=False)
     if (rnd.trick.leader + len(rnd.trick.plays)) % 4 != seat:
         raise BeliefContractError("current trick does not route to acting seat")
     actor_is_banker = seat == rnd.banker
@@ -465,8 +627,9 @@ def build_actor_observation(rnd: Round, seat: int) -> ActorObservationV1:
         ),
         hidden_burial_size=0 if actor_is_banker else len(rnd.buried),
         declaration=_declaration_view(rnd, seat),
-        declaration_history_complete=False,
-        attempted_play_history_complete=False,
+        declaration_history=declaration_history,
+        declaration_history_complete=declaration_complete,
+        attempted_play_history_complete=attempt_complete,
         completed_tricks=completed,
         current_trick=current,
         deductions=deductions,
@@ -495,9 +658,11 @@ def build_belief_targets(rnd: Round, seat: int) -> BeliefTargetsV1:
 
 
 def build_information_partition(
-        rnd: Round, seat: int) -> BeliefInformationPartitionV1:
+        rnd: Round, seat: int,
+        transcript: PublicTranscriptV1 | None = None
+        ) -> BeliefInformationPartitionV1:
     """Build separately hashed actor input and privileged training label."""
     return BeliefInformationPartitionV1(
-        actor=build_actor_observation(rnd, seat),
+        actor=build_actor_observation(rnd, seat, transcript),
         targets=build_belief_targets(rnd, seat),
     )

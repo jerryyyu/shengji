@@ -10,34 +10,57 @@ from collections import Counter
 import pytest
 
 from shengji.ai.smart import SmartBot
+from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
-from shengji.engine.round import Round
+from shengji.engine.legal import suit_cards, validate_lead
+from shengji.engine.round import Round, actual_play_after
 from shengji.rl.belief_contract import (
     ACTOR_OBSERVATION_SCHEMA,
     BELIEF_CONTRACT_SOURCE_SHA256S,
     BELIEF_TARGETS_SCHEMA,
     PARTITION_SCHEMA,
     BeliefContractError,
+    PublicTranscriptV1,
     build_actor_observation,
     build_belief_targets,
     build_information_partition,
 )
 
 
-def _play_state(seed: int = 8617) -> tuple[Round, SmartBot]:
+def _play_state_with_transcript(
+        seed: int = 8617) -> tuple[Round, SmartBot, PublicTranscriptV1]:
     game = Game(random.Random(seed))
     rnd = game.start_round()
     while rnd.phase == "deal":
         rnd.deal_next()
     bot = SmartBot()
+    transcript = PublicTranscriptV1()
     for seat in range(4):
         declaration = bot.decide_declare(rnd, seat, final=True)
         if declaration:
             rnd.declare(seat, declaration)
+            accepted = rnd.declaration
+            transcript = transcript.with_declaration(
+                accepted["seat"], accepted["cards"], accepted["strength"])
     rnd.finalize_declare()
     rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
     assert rnd.phase == "play" and rnd.turn == rnd.banker
+    return rnd, bot, transcript
+
+
+def _play_state(seed: int = 8617) -> tuple[Round, SmartBot]:
+    rnd, bot, _ = _play_state_with_transcript(seed)
     return rnd, bot
+
+
+def _play_and_record(rnd: Round, bot: SmartBot,
+                     transcript: PublicTranscriptV1) -> PublicTranscriptV1:
+    seat = rnd.turn
+    attempted = bot.decide_play(rnd, seat)
+    previous_last = rnd.last_trick
+    rnd.play(seat, attempted)
+    return transcript.with_play(
+        seat, attempted, actual_play_after(rnd, seat, previous_last))
 
 
 def _nonbanker_turn(seed: int = 8617) -> tuple[Round, int]:
@@ -100,6 +123,22 @@ def _rotate_round(rnd: Round, offset: int) -> Round:
         changed.last_trick_winner = (
             changed.last_trick_winner + offset) % 4
     return changed
+
+
+def _rotate_transcript(
+        transcript: PublicTranscriptV1, offset: int) -> PublicTranscriptV1:
+    return PublicTranscriptV1(
+        declarations=tuple(type(event)(
+            seat=(event.seat + offset) % 4,
+            cards=event.cards,
+            strength=event.strength,
+        ) for event in transcript.declarations),
+        plays=tuple(type(event)(
+            seat=(event.seat + offset) % 4,
+            attempted_cards=event.attempted_cards,
+            actual_cards=event.actual_cards,
+        ) for event in transcript.plays),
+    )
 
 
 def test_contract_has_exact_source_and_schema_boundary():
@@ -193,6 +232,106 @@ def test_actor_view_exposes_facts_deductions_and_explicit_history_limit():
     assert payload["source_sha256s"] == BELIEF_CONTRACT_SOURCE_SHA256S
 
 
+def test_complete_public_transcript_preserves_overwritten_declarations():
+    rnd, _, transcript = _play_state_with_transcript(8601)
+    assert len(transcript.declarations) == 2
+    actor = build_actor_observation(rnd, rnd.turn, transcript)
+    payload = json.loads(actor.canonical_bytes())
+    assert payload["declaration_history_complete"] is True
+    assert payload["attempted_play_history_complete"] is True
+    assert len(payload["declaration_history"]) == 2
+    assert payload["declaration_history"][-1] == payload["declaration"]
+    final_only = PublicTranscriptV1(
+        declarations=(transcript.declarations[-1],))
+    assert build_actor_observation(
+        rnd, rnd.turn, final_only).canonical_bytes() != actor.canonical_bytes()
+
+
+def test_transcript_distinguishes_failed_throw_attempt_from_engine_play():
+    game = Game(random.Random(1))
+    rnd = game.start_round()
+    bot = HeuristicBot()
+    while rnd.phase != "play":
+        if rnd.phase == "deal":
+            rnd.deal_next()
+        elif rnd.phase == "declare":
+            rnd.finalize_declare()
+        else:
+            rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+    seat = rnd.turn
+    hand = rnd.hands[seat]
+    attempt = actual = None
+    for suit in "SHDC":
+        suited = suit_cards(hand, suit, rnd.ordering)
+        counts = Counter(suited)
+        pair = next((card for card, count in counts.items()
+                     if count >= 2), None)
+        single = next((card for card in suited if card != pair), None)
+        if pair and single:
+            candidate = [pair, pair, single]
+            played, message = validate_lead(
+                candidate, hand,
+                [rnd.hands[index] for index in range(4) if index != seat],
+                rnd.ordering)
+            if message:
+                attempt, actual = candidate, played
+                break
+    assert attempt is not None and actual is not None and len(actual) < len(attempt)
+    previous_last = rnd.last_trick
+    rnd.play(seat, attempt)
+    assert Counter(actual_play_after(rnd, seat, previous_last)) == Counter(actual)
+    transcript = PublicTranscriptV1().with_play(seat, attempt, actual)
+    actor = json.loads(build_actor_observation(
+        rnd, rnd.turn, transcript).canonical_bytes())
+    play = actor["current_trick"]["plays"][0]
+    assert Counter(play["attempted_cards"]) == Counter(attempt)
+    assert Counter(play["cards"]) == Counter(actual)
+    assert play["attempted_cards"] != play["cards"]
+
+    wrong_actual = PublicTranscriptV1().with_play(seat, attempt, attempt)
+    with pytest.raises(BeliefContractError, match="disagrees with Round"):
+        build_actor_observation(rnd, rnd.turn, wrong_actual)
+
+
+def test_transcript_refuses_missing_extra_reordered_and_nonlead_drift():
+    rnd, bot, transcript = _play_state_with_transcript(8661)
+    for _ in range(5):
+        transcript = _play_and_record(rnd, bot, transcript)
+    seat = rnd.turn
+    build_actor_observation(rnd, seat, transcript)
+
+    missing = PublicTranscriptV1(
+        declarations=transcript.declarations, plays=transcript.plays[:-1])
+    with pytest.raises(BeliefContractError, match="prefix"):
+        build_actor_observation(rnd, seat, missing)
+    extra = transcript.with_play(seat, (rnd.hands[seat][0],),
+                                 (rnd.hands[seat][0],))
+    with pytest.raises(BeliefContractError, match="prefix"):
+        build_actor_observation(rnd, seat, extra)
+    reordered = PublicTranscriptV1(
+        declarations=transcript.declarations,
+        plays=(transcript.plays[1], transcript.plays[0],
+               *transcript.plays[2:]))
+    with pytest.raises(BeliefContractError, match="disagrees with Round"):
+        build_actor_observation(rnd, seat, reordered)
+    second = transcript.plays[1]
+    nonlead_drift = PublicTranscriptV1(
+        declarations=transcript.declarations,
+        plays=(transcript.plays[0], type(second)(
+            seat=second.seat,
+            attempted_cards=(*second.attempted_cards,
+                             second.attempted_cards[0]),
+            actual_cards=second.actual_cards), *transcript.plays[2:]))
+    with pytest.raises(BeliefContractError, match="only a lead throw"):
+        build_actor_observation(rnd, seat, nonlead_drift)
+    mutable_collections = PublicTranscriptV1(
+        declarations=list(transcript.declarations),  # type: ignore[arg-type]
+        plays=list(transcript.plays),  # type: ignore[arg-type]
+    )
+    with pytest.raises(BeliefContractError, match="must be tuples"):
+        build_actor_observation(rnd, seat, mutable_collections)
+
+
 def test_targets_cover_exact_other_hands_and_perspective():
     rnd, seat = _nonbanker_turn(8639)
     target = build_belief_targets(rnd, seat)
@@ -208,6 +347,28 @@ def test_absolute_seat_rotation_preserves_actor_and_target_bytes():
     first = build_information_partition(rnd, seat)
     rotated = _rotate_round(rnd, 1)
     second = build_information_partition(rotated, (seat + 1) % 4)
+    assert first.actor.canonical_bytes() == second.actor.canonical_bytes()
+    assert first.targets.canonical_bytes() == second.targets.canonical_bytes()
+
+
+def test_complete_transcript_is_hidden_allocation_and_seat_label_invariant():
+    rnd, bot, transcript = _play_state_with_transcript(8642)
+    for _ in range(5):
+        transcript = _play_and_record(rnd, bot, transcript)
+    seat = rnd.turn
+    first = build_information_partition(rnd, seat, transcript)
+
+    hidden = _swap_hidden_hands(rnd, seat)
+    hidden_partition = build_information_partition(hidden, seat, transcript)
+    assert first.actor.canonical_bytes() \
+        == hidden_partition.actor.canonical_bytes()
+    assert first.targets.canonical_bytes() \
+        != hidden_partition.targets.canonical_bytes()
+
+    rotated = _rotate_round(rnd, 1)
+    rotated_transcript = _rotate_transcript(transcript, 1)
+    second = build_information_partition(
+        rotated, (seat + 1) % 4, rotated_transcript)
     assert first.actor.canonical_bytes() == second.actor.canonical_bytes()
     assert first.targets.canonical_bytes() == second.targets.canonical_bytes()
 

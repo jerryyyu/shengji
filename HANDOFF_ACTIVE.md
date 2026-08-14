@@ -9,15 +9,15 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 20:04 EDT from canonical main `6db048d`.
+Last reconciled: 2026-08-13 20:01 EDT from canonical main `dc77095`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
 | **Mini** | T4 terminal aggregate review | Claude's unique raw supervisor marker at `6db048d` admitted one aggregate. It completed cleanly as `SELECT_NONE`; aggregate `f30a77c7…e652`, internal `73a568ce…215c`, admission `ec96102e…7a08`. PR #80's read-only terminal helper recursively rebuilt the full aggregate and emitted PASS. No confirmation, retry, strength, promotion or deployment is authorized. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 416/896 and one is 432/896: 3,344/7,168 = 46.65%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,448/8,192 = 54.30%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Four shards are 416/896 and four are 432/896: 3,392/7,168 = 47.32%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,601/8,192 = 56.16%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
 | **Performance Cloud** | S6 V2 packet review; host idle | Claude terminally VERIFIED the immutable PR #89 V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only and never rerun V5. PR #94 source head `08ee055` PASSed at `ec4cdd2`; fresh V2 packet `dd7709e…4adca` is frozen and verified. Its packet-review snapshot, admission, records, final and unit installation remain absent pending packet review. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 

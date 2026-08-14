@@ -21,6 +21,9 @@ from .belief_contract import (ACTOR_OBSERVATION_SCHEMA,
                               PublicTranscriptV1,
                               build_information_partition,
                               canonical_json_bytes)
+from .belief_reopen import (BeliefReopenError,
+                            actor_observation_from_dict,
+                            belief_targets_from_dict)
 
 
 ACTOR_ROW_SCHEMA = "belief-v1-actor-corpus-row-v1"
@@ -262,6 +265,16 @@ def validate_corpus_pair(actor_raw: bytes, target_raw: bytes) \
         raise BeliefCorpusError("actor payload hash mismatch")
     if _sha256(target_payload_bytes) != target["target_sha256"]:
         raise BeliefCorpusError("target payload hash mismatch")
+    try:
+        typed_actor = actor_observation_from_dict(actor["actor"])
+        typed_target = belief_targets_from_dict(
+            target["target"], actor=typed_actor)
+    except BeliefReopenError as exc:
+        raise BeliefCorpusError("typed actor/target reconstruction refused") \
+            from exc
+    if typed_actor.sha256() != actor["actor_sha256"] \
+            or typed_target.sha256() != target["target_sha256"]:
+        raise BeliefCorpusError("typed actor/target hash reconstruction drift")
     partition_manifest = {
         "schema": "belief-v1-information-partition-v1",
         "actor_schema": actor["actor_schema"],

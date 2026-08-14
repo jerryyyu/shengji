@@ -1788,3 +1788,29 @@ Sharpening the BeliefStateV1 questions above. Today the opponent model is entire
 4. **Comparison discipline.** Whatever representation is proposed, state the measurable claim vs the two baselines that already exist: uniform-consistent sampling (current), and Memory+PointContext hand-coded features (#105). The offline bar remains: better posterior calibration than uniform-consistent on held-out real deals, before any online screen.
 
 — Claude (relaying Jerry; review-side invariants from the prior entry apply unchanged)
+
+## 2026-08-14 — BELIEF V1 ACCEPTANCE INVARIANTS (from Jerry, relayed by Claude): no code yet — these are the validatable claims the representation must satisfy
+
+Jerry's requirement: before any implementation, the proposal must commit to invariants that separate "learned something real about hidden hands" from "memorized noise or leaked." Review-side draft below; Codex should adopt/extend these in the design doc. Every quantitative claim is against TWO baselines: (B0) uniform-consistent-with-logic sampling (today's sampler), (B1) Memory+PointContext hand-coded features.
+
+**Exact invariants (violation = bug, zero tolerance):**
+- E1 Conservation: each unseen card's ownership probabilities over the three hidden seats + kitty sum to 1; per-seat expected counts sum to true remaining hand sizes.
+- E2 Hard-fact respect: probability exactly 0 for cards in a seat's proven-void effective suit, for played cards, and for the actor's own known cards; forced knowledge is probability 1.
+- E3 **Public-twin bit-identity**: two deals with identical public transcripts but different hidden hands must produce BIT-IDENTICAL representation outputs. This is the leakage test as an exact equality, runnable in CI on constructed twins. (v13's contamination would have failed exactly this.)
+
+**Calibration invariants (the "learning something" core):**
+- C1 Strict lift over B0 in held-out log-loss/Brier on true hidden hands — if it cannot beat uniform-consistent, it learned nothing beyond logic.
+- C2 **Stratified lift**: the improvement must CONCENTRATE in the strata where behavioral inference applies (post declined-feed, post forced-joker, post unforced-point-discard states). Uniform lift with no strata structure is evidence of artifact, not understanding.
+- C3 Reliability: binned predicted-vs-empirical curves for the derived quantities Jerry named (per-suit top-rank/strength, remaining pair counts, points-in-hand, trump length) with slope ≈ 1 — calibration, not just ranking.
+- C4 Exact-posterior agreement on small synthetic deals where the true posterior is enumerable.
+
+**Negative controls (must FAIL on demand — prove-the-check-can-fail applied to learning):**
+- N1 History ablation: withhold/shuffle the public history → performance must COLLAPSE to B0. Residual lift = leakage through a side channel.
+- N2 Permuted labels: train against shuffled hidden hands → must learn nothing (chance-level loss).
+- N3 Policy-shift probe: behavioral-signal lift measured separately on human-play vs bot-play corpora — choice-conditioned inference is policy-dependent; quantify the transfer gap rather than assuming it.
+
+**Usefulness invariants (pre-online, still cheap):**
+- U1 True-world likelihood: the actual hidden hands score strictly higher under belief-drawn sampling than under B0.
+- U2 Variance reduction: rollout value-estimate variance at fixed world count shrinks vs B0 — this is the mechanism by which better beliefs buy strength, measurable offline before any whole-game screen.
+
+Online screens come only after E/C/N/U hold, per the entry criteria; separate estimands per consumer as posted above. — Claude

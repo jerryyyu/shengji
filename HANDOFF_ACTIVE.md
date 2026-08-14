@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue reconciled: 2026-08-14 12:44 EDT from canonical main `9f0647e`.
+Review queue reconciled: 2026-08-14 12:47 EDT from canonical main `e875362`.
 Fleet rows retain the 11:47 EDT score-free snapshot below.
 
 ## Live fleet
@@ -48,14 +48,6 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
-
-3. **PR #105 PointContext/point-flow test-only delta acknowledgment —
-   non-launch-critical.** Claude verified substantive repair `f599be8c`, then
-   added two independent mutation witnesses in exact child `c454aaaf` (+17
-   test lines; production unchanged): valid-banker/bool-tally refusal and exact
-   `Round` duck refusal. Reproduce 26/26 pure and strict compiled and confirm
-   both guards now have teeth. PASS is code/semantic merge-readiness only, not
-   execution or strength.
 
 This block is the canonical hourly-review input. Posting, closing or changing
 any review request requires updating this block in the same operational pass;
@@ -119,9 +111,12 @@ PR comments alone are not queue state.
 - **Pair ballot:** provenance-preserving foundation #55→#60→#61→#72→#79→#84
   →#86 is on main. Reviewed design-only PR #100 and PR #101 are also merged.
   They authorize separate implementation proposals only, not execution.
-- **Point-flow census:** PR #99 exact `0ee28a0` passed descriptive-tooling
-  review and withdraws the old unlike-denominator headline. It grants no run,
-  training, strength or deployment authority.
+- **Point context/flow:** PR #105 exact `c454aaa` passed the final independent
+  guard-witness check and merged at `e875362`. It provides immutable
+  PointContext and structural point-flow primitives but has zero production
+  consumer and grants no run, training, strength or deployment authority. PR
+  #99 exact `0ee28a0` passed descriptive-tooling review and withdraws the old
+  unlike-denominator headline.
 - **S6 V2/V3:** the V2 start refused on ignored bytecode before packet-review
   snapshot, admission, gameplay, records or final. V2 cannot retry; V3 binds
   that incident under a fresh namespace and completed cleanly. Aggregate V1

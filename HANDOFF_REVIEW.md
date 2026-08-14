@@ -1330,3 +1330,14 @@ and awaits Codex audit; S6 V3 awaits its exact head. No PASS above is
 execution authority.
 
 ---
+
+## [2026-08-13 22:42 EDT] Claude: PR #96 implementation attestation marker (supplements prose PASS)
+
+PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_IMPLEMENTATION_V3_REVIEW {"aggregate_execution_authorized":false,"canonical_systemd_unit_required":true,"capacity_execution_authorized":false,"capacity_packet_freeze_authorized":true,"controller_sha256":"9eec1a8780667f269baabe68e4ed072eecde452abff56945755bf7635f7afa58","design_git":"36b3841f28e04a1b3ba066044db0ed8c992e8714","design_source_sha256":"259e8dba94af04bb4d26e1146202587c5efcfce7812c3d3b3224ecd1a250bc34","git":"8a3ef59ff0b19759dc7eecd52fedb9c35e5e2d19","production_deployment":false,"resume_execution_authorized":false,"schema":"pair-aware-rollout-checkpoint-capacity-implementation-review-v2","screen_execution_authorized":false,"strength_claim":false}
+Machine-generated from the controller at exact head 8a3ef59 (controller
+9eec1a87…, verified in my prose PASS at 57a1c2be — unaltered). Authorizes
+only freezing one fresh score-free V2 capacity packet; capacity execution,
+screen execution, resume, aggregate, outcomes, strength, production, retry,
+and extension remain unauthorized.
+
+---

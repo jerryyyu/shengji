@@ -26,7 +26,10 @@ from shengji.rl.belief_b2_execution import (
     expected_review_claim,
     pipeline_admission_from_bytes,
     pipeline_admission_review_commit,
+    pipeline_consumption_tombstone_bytes,
+    validate_pipeline_consumption_tombstone,
     validate_execution_design,
+    verify_canonical_remote_main,
 )
 from shengji.rl.belief_contract import canonical_json_bytes
 
@@ -225,6 +228,19 @@ def test_one_canonical_claude_marker_authorizes_the_whole_offline_pipeline(
          "Claude-Session: https://claude.ai/code/session_fixture")
     commit = _git(repo, "rev-parse", "HEAD")
     _git(repo, "update-ref", "refs/remotes/origin/main", commit)
+    canonical = tmp_path / "canonical.git"
+    subprocess.run(("git", "init", "--bare", "-q", str(canonical)),
+                   check=True)
+    _git(repo, "push", str(canonical),
+         f"{commit}:refs/heads/main")
+    assert verify_canonical_remote_main(
+        repo.resolve(), remote_url=str(canonical)) == commit
+    parent = _git(repo, "rev-parse", f"{commit}^")
+    _git(repo, "update-ref", "refs/remotes/origin/main", parent)
+    with pytest.raises(BeliefB2ExecutionError, match="remote review tip"):
+        verify_canonical_remote_main(
+            repo.resolve(), remote_url=str(canonical))
+    _git(repo, "update-ref", "refs/remotes/origin/main", commit)
     assert authenticate_review_commit(
         design, repo=repo.resolve(), review_commit=commit) == marker
     admission = build_pipeline_admission(
@@ -234,6 +250,14 @@ def test_one_canonical_claude_marker_authorizes_the_whole_offline_pipeline(
         review_marker=marker) == admission
     assert pipeline_admission_review_commit(
         admission.canonical_bytes()) == commit
+    tombstone = pipeline_consumption_tombstone_bytes(admission)
+    validate_pipeline_consumption_tombstone(
+        tombstone, admission=admission)
+    with pytest.raises(BeliefB2ExecutionError, match="tombstone drift"):
+        validate_pipeline_consumption_tombstone(
+            tombstone.replace(b'"retry_authorized":false',
+                              b'"retry_authorized":true'),
+            admission=admission)
     assert admission.to_dict()["authority"] == {
         "capture_authorized": True,
         "reference_generation_authorized": True,

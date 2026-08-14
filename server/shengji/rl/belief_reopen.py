@@ -103,18 +103,21 @@ def _declaration(value: Any, *, ordering: Ordering,
 
 
 def _play(value: Any, *, ordering: Ordering, label: str) -> PlayView:
-    row = _exact_keys(value, {"seat_relative", "attempted_cards", "cards"},
+    row = _exact_keys(value, {"seat_relative", "failed_throw",
+                              "attempted_cards", "cards"},
                       label=label)
     attempted = _cards(row["attempted_cards"], label=f"{label} attempted")
     actual = _cards(row["cards"], label=f"{label} actual")
     if _integer(row["seat_relative"], label=f"{label} seat", high=3) \
             != row["seat_relative"] \
             or tuple(sorted(attempted, key=ordering.sort_key)) != attempted \
+            or type(row["failed_throw"]) is not bool \
             or tuple(sorted(actual, key=ordering.sort_key)) != actual \
             or Counter(actual) - Counter(attempted):
         raise BeliefReopenError(f"{label} is malformed")
     return PlayView(
-        seat_relative=row["seat_relative"], attempted_cards=attempted,
+        seat_relative=row["seat_relative"],
+        failed_throw=row["failed_throw"], attempted_cards=attempted,
         cards=actual)
 
 
@@ -134,9 +137,17 @@ def _trick(value: Any, *, ordering: Ordering, complete: bool,
                 (leader + index) % 4 for index in range(len(plays))):
         raise BeliefReopenError(f"{label} play population/order drift")
     for position, play in enumerate(plays):
-        if position and Counter(play.attempted_cards) != Counter(play.cards):
+        if position and play.failed_throw:
             raise BeliefReopenError(
                 f"{label} nonlead attempted/actual cards drift")
+        if play.seat_relative != 0 \
+                and Counter(play.attempted_cards) != Counter(play.cards):
+            raise BeliefReopenError(
+                f"{label} exposes another seat's private attempted cards")
+        if not play.failed_throw \
+                and Counter(play.attempted_cards) != Counter(play.cards):
+            raise BeliefReopenError(
+                f"{label} successful play attempted/actual cards drift")
     points = _integer(row["points"], label=f"{label} points")
     actual_points = total_points(
         card for play in plays for card in play.cards)

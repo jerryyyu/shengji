@@ -191,6 +191,43 @@ def test_target_from_another_decision_cannot_be_repaired_by_self_rehash():
         validate_corpus_pair(first.actor_bytes, second.target_bytes)
 
 
+def test_cross_round_target_cannot_be_resealed_onto_actor_row():
+    first_rnd, _, first_transcript = _play_state(9201)
+    second_rnd, _, second_transcript = _play_state(9203)
+    first = capture_corpus_pair(
+        first_rnd, first_rnd.turn, round_seed=9201, decision_index=0,
+        transcript=first_transcript)
+    second = capture_corpus_pair(
+        second_rnd, second_rnd.turn, round_seed=9203, decision_index=0,
+        transcript=second_transcript)
+    actor = json.loads(first.actor_bytes)
+    target = json.loads(second.target_bytes)
+    target_sha = target["target_sha256"]
+    partition = {
+        "schema": "belief-v1-information-partition-v1",
+        "actor_schema": actor["actor_schema"],
+        "actor_sha256": actor["actor_sha256"],
+        "targets_schema": target["target_schema"],
+        "targets_sha256": target_sha,
+        "runtime_consumes_targets": False,
+    }
+    forged = _rewrite(
+        target,
+        round_seed=actor["round_seed"],
+        decision_index=actor["decision_index"],
+        actor_seat=actor["actor_seat"],
+        decision_key=actor["decision_key"],
+        split_schema=actor["split_schema"],
+        split=actor["split"],
+        actor_file_sha256=hashlib.sha256(first.actor_bytes).hexdigest(),
+        actor_sha256=actor["actor_sha256"],
+        partition_sha256=hashlib.sha256(
+            canonical_json_bytes(partition)).hexdigest(),
+    )
+    with pytest.raises(BeliefCorpusError, match="typed actor/target"):
+        validate_corpus_pair(first.actor_bytes, forged)
+
+
 def test_rehashed_split_authority_and_payload_mutations_refuse():
     rnd, _, transcript = _play_state(9207)
     pair = capture_corpus_pair(

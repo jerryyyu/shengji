@@ -138,7 +138,7 @@ Fields are partitioned as follows.
 |---|---|---|
 | Public observed | ordered declaration event and shown cards; completed plays; current trick; banker and roles; public points; hand sizes | Input |
 | Actor private | acting hand; banker-known burial when the actor is banker | Input |
-| Logically deduced | exact unseen multiplicities; proven voids; declaration ownership pins; pair/run upper bounds | Input and hard constraint |
+| Logically deduced | exact unseen multiplicities; proven voids; sound non-banker declaration pins; pair/run upper bounds | Input and hard constraint at the altitude the schema can express |
 | Probabilistic belief | hidden-card ownership, hidden-kitty composition, unproven void/pair/run/boss/ruff/point distributions | Model output |
 | Simulator privileged | exact hands of the other three seats and non-banker-hidden burial | Training label and audit only |
 
@@ -156,8 +156,9 @@ Canonical, reconstructable input for one actor at one decision:
 - acting hand;
 - banker-known burial only when the actor is the banker;
 - ordered declaration/show history, not just the final declaration summary;
-- chronological public play history with attempted and engine-adjusted actions
-  distinguished where the engine can force a failed throw component;
+- chronological public play history with engine-actual cards and the public
+  failed-throw signal; returned attempted cards are retained only for the actor
+  that made that attempt, never exposed to another seat;
 - exact public points and trick-point flow;
 - `Memory` facts: played multiplicities, proven voids, declaration pins, and
   pair/run upper bounds;
@@ -349,7 +350,8 @@ labels by:
 
 - actor role and relative seat;
 - declaration type and strength;
-- lead/follow/bury surface;
+- lead/follow surface (the V1 actor contract is play-phase only; bury decisions
+  require a later contract version);
 - early/mid/late phase;
 - public void/pair/run evidence;
 - shuai-pai candidate availability;
@@ -420,8 +422,12 @@ or PointContext field from a control.
   exact remaining hand and kitty sizes. Every sampled world satisfies integer
   conservation exactly.
 - **E2 — hard-fact respect:** played and actor-known cards have zero hidden
-  mass; proven void receivers have zero mass for that effective suit;
-  declaration pins and other forced ownership have probability one.
+  mass; proven void receivers have zero mass for that effective suit; a proven
+  zero-pair cap has zero same-code-pair mass. Only sound declaration pins have
+  probability-one hand ownership. A banker-declarer's shown card is eligible
+  for either the banker hand or hidden kitty because burial is legal. Run caps
+  are joint constraints enforced by the later complete-world sampler, not by a
+  marginal-only validator.
 - **E3 — public-twin bit identity:** two states with byte-identical public and
   actor-private transcripts but different inaccessible hands/kitty produce
   byte-identical actor inputs and belief outputs.
@@ -439,26 +445,32 @@ or PointContext field from a control.
 - **C2 — behavioral-stratum lift:** improvement is reported separately after
   declined feeds, forced trump/joker evidence, and unforced point discards. A
   claimed behavioral model must improve at least one preregistered behavioral
-  stratum and may not hide a reversal behind aggregate frequency.
-- **C3 — reliability:** predicted versus empirical curves are reported for
-  suit length/void, top rank, pair/tractor counts, points in hand/kitty, and
-  trump length. Ranking without calibration does not pass.
-- **C4 — exact synthetic posterior:** on small deals generated under a known
-  public policy where all compatible worlds and action likelihoods can be
-  enumerated, the learned/projected posterior agrees within a frozen tolerance.
-- **N1 — history ablation:** withholding or within-stratum shuffling the public
-  action chronology collapses behavioral lift toward REF-C. Residual lift is
-  audited as a possible side channel.
+  stratum and may not hide a reversal behind aggregate frequency. An offline
+  rung whose natural population was not sized for those strata must label C2
+  descriptive and make no behavioral claim.
+- **C3 — marginal reliability:** predicted versus empirical curves are
+  reported for receiver count classes and linear expectations derivable from
+  those marginals (suit/trump length, point count, pair count). Void/ruff,
+  tractor, boss/top-rank and other cross-code joint events move to B3, where a
+  complete-world posterior exists. Ranking without calibration does not pass.
+- **C4 — exact synthetic posterior shim:** a frozen enumerable fixture must
+  prove the encoder/count-head/training/projection path can recover a known
+  posterior and that a uniform control fails. Its design must state which
+  full-game capture mechanics it does not certify.
+- **N1 — history ablation:** for a powered positive behavioral stratum,
+  withholding or within-stratum shuffling the public action chronology
+  collapses behavioral lift toward REF-C. Underpowered point ratios are
+  diagnostic, not mandatory-closure gates.
 - **N2 — permuted labels:** training on round-grouped shuffled hidden labels
   produces no held-out lift.
 - **N3 — policy shift:** human, champion, and named-bot strata are scored
   separately; the transfer gap is reported rather than assumed away.
 
-Before any online screen, two usefulness checks also have to pass:
+Before any online screen, usefulness also has to pass:
 
-- **U1 — true-world likelihood:** held-out true hidden worlds receive higher
-  probability or lower proper loss under belief weighting than under REF-C;
-  and
+- **U1 — true-world proper score:** in marginal-only B2 this is the same test
+  as C1 and may not be presented as independent evidence. Joint true-world
+  likelihood belongs to B3; and
 - **U2 — fixed-world value variance:** at equal world count and unchanged
   continuation, the belief sampler reduces preregistered rollout-value error or
   variance without introducing measured bias.

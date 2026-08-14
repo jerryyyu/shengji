@@ -19,6 +19,8 @@ from shengji.rl.belief_ownership import (
     ReceiverCountProbabilityV1,
     receiver_sizes,
 )
+from shengji.rl.belief_projection import (project_count_weights,
+                                          uniform_raw_count_weights)
 from shengji.rl.belief_reliability import (
     BeliefReliabilityError,
     ReliabilityExampleV1,
@@ -85,6 +87,31 @@ def test_perfect_predictions_have_zero_ece_brier_and_unit_slope():
     assert payload["joint_posterior_claimed"] is False
     assert all(payload[key] is False for key in payload
                if key.endswith("_authorized"))
+
+
+def test_uniform_predictions_make_reliability_metrics_fail_visibly():
+    examples = _examples()
+    changed = []
+    for example in examples:
+        actor, _, _ = reopen_score_pair(example.pair)
+        prediction = project_count_weights(
+            actor,
+            behavior_policy_ids=POLICIES,
+            model_schema=example.prediction.model_schema,
+            model_sha256=example.prediction.model_sha256,
+            raw_weights=uniform_raw_count_weights(
+                actor, behavior_policy_ids=POLICIES),
+        )
+        changed.append(replace(example, prediction=prediction))
+    report = build_count_reliability_report(tuple(changed))
+    overall = report.strata[0]
+    assert overall.brier_numerator > 0
+    assert overall.ece_ppb > 0
+    assert (not overall.reliability_slope_defined
+            or (overall.reliability_slope_numerator,
+                overall.reliability_slope_denominator) != (1, 1))
+    assert any(row.mean_absolute_error_count_ppb > 0
+               for row in report.linear_expectations)
 
 
 def test_reliability_refuses_target_model_and_duplicate_drift():

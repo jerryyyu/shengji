@@ -30,7 +30,7 @@ from ..engine.cards import (RANKS, SUITS, Ordering, card_suit, is_joker,
 from ..engine.round import HAND_SIZE, Round, Trick, TrickPlay
 
 
-ACTOR_OBSERVATION_SCHEMA = "belief-v1-actor-observation-v1"
+ACTOR_OBSERVATION_SCHEMA = "belief-v1-actor-observation-v2"
 BELIEF_TARGETS_SCHEMA = "belief-v1-hidden-ownership-targets-v1"
 PARTITION_SCHEMA = "belief-v1-information-partition-v1"
 DECLARATION_SCHEMA = "final-winning-declaration-v1"
@@ -52,6 +52,7 @@ BELIEF_CONTRACT_SOURCE_SHA256S = {
     "memory": _sha256_file(_SOURCE_ROOT / "ai" / "memory.py"),
     "cards": _sha256_file(_SOURCE_ROOT / "engine" / "cards.py"),
     "combos": _sha256_file(_SOURCE_ROOT / "engine" / "combos.py"),
+    "legal": _sha256_file(_SOURCE_ROOT / "engine" / "legal.py"),
     "round": _sha256_file(_SOURCE_ROOT / "engine" / "round.py"),
 }
 
@@ -152,12 +153,14 @@ class PublicTranscriptV1:
 @dataclass(frozen=True)
 class PlayView:
     seat_relative: int
+    failed_throw: bool
     attempted_cards: tuple[str, ...]
     cards: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "seat_relative": self.seat_relative,
+            "failed_throw": self.failed_throw,
             "attempted_cards": list(self.attempted_cards),
             "cards": list(self.cards),
         }
@@ -371,9 +374,17 @@ def _play_view(play: TrickPlay, attempted_cards: tuple[str, ...],
         raise BeliefContractError("public play is malformed")
     _card_counts(play.cards, label="public play")
     _card_counts(attempted_cards, label="public attempted play")
+    failed_throw = Counter(attempted_cards) != Counter(play.cards)
+    # A failed throw's forced component and failure signal are public, but the
+    # cards returned to another seat's hand are not broadcast.  The acting
+    # seat may retain its own attempted action; every other perspective sees
+    # only the engine-accepted cards plus the explicit public failure bit.
+    actor_visible_attempt = (
+        attempted_cards if play.seat == seat else tuple(play.cards))
     return PlayView(
         seat_relative=(play.seat - seat) % 4,
-        attempted_cards=tuple(sorted(attempted_cards,
+        failed_throw=failed_throw,
+        attempted_cards=tuple(sorted(actor_visible_attempt,
                                     key=rnd.ordering.sort_key)),
         cards=tuple(sorted(play.cards, key=rnd.ordering.sort_key)),
     )

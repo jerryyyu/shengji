@@ -49,11 +49,14 @@ SOURCE_SCHEMA = "belief-v1-b2-source-binding-v1"
 RUNTIME_SCHEMA = "belief-v1-b2-runtime-profile-v1"
 REVIEW_SCHEMA = "belief-v1-b2-offline-execution-review-v1"
 ADMISSION_SCHEMA = "belief-v1-b2-offline-pipeline-admission-v1"
+CONSUMPTION_SCHEMA = "belief-v1-b2-offline-consumption-tombstone-v1"
 REVIEW_PREFIX = "BELIEF_V1_B2_OFFLINE_EXECUTION_V1_REVIEW "
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
 REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
 REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
+CANONICAL_REMOTE_URL = "https://github.com/jerryyyu/shengji.git"
+CANONICAL_REMOTE_REF = "refs/heads/main"
 RUN_ID = "belief-v1-b2-open-dev-offline-v1"
 MIN_RUNTIME_CPU_COUNT = 10
 MIN_RUNTIME_MEMORY_BYTES = 16 * 1024**3
@@ -654,6 +657,39 @@ def authenticate_review_commit(
     return marker
 
 
+def verify_canonical_remote_main(
+        repo: Path, *, canonical_ref: str = "origin/main",
+        remote_url: str = CANONICAL_REMOTE_URL,
+        remote_ref: str = CANONICAL_REMOTE_REF) -> str:
+    """Require the local canonical tip to equal the real remote before init.
+
+    Later stages reauthenticate the immutable review snapshot locally.  The
+    online check belongs at initialization so a transient network outage cannot
+    interrupt an already admitted multi-stage run.
+    """
+    if not isinstance(repo, Path) or not repo.is_absolute() \
+            or type(canonical_ref) is not str or not canonical_ref \
+            or type(remote_url) is not str or not remote_url \
+            or type(remote_ref) is not str or not remote_ref:
+        raise BeliefB2ExecutionError("canonical remote review input drift")
+    try:
+        local_tip = str(_git(repo, "rev-parse", canonical_ref))
+        probe = subprocess.run(
+            ("git", "ls-remote", "--exit-code", remote_url, remote_ref),
+            cwd=repo, check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BeliefB2ExecutionError(
+            "canonical remote review probe failed") from exc
+    rows = probe.stdout.splitlines()
+    if len(rows) != 1:
+        raise BeliefB2ExecutionError("canonical remote review population drift")
+    fields = rows[0].split()
+    if len(fields) != 2 or fields[1] != remote_ref \
+            or not _is_git_sha(fields[0]) or fields[0] != local_tip:
+        raise BeliefB2ExecutionError("canonical remote review tip drift")
+    return local_tip
+
+
 def build_pipeline_admission(
         design: B2ExecutionDesignV1, *, review_commit: str,
         review_marker: bytes) -> B2PipelineAdmissionV1:
@@ -688,6 +724,30 @@ def validate_pipeline_admission(
             or review_marker != REVIEW_PREFIX.encode() \
             + canonical_json_bytes(expected_review_claim(design)):
         raise BeliefB2ExecutionError("pipeline admission identity drift")
+
+
+def pipeline_consumption_tombstone_bytes(
+        admission: B2PipelineAdmissionV1) -> bytes:
+    """Build the durable sibling record consumed before initialization."""
+    if type(admission) is not B2PipelineAdmissionV1:
+        raise BeliefB2ExecutionError("pipeline tombstone admission drift")
+    return canonical_json_bytes({
+        "schema": CONSUMPTION_SCHEMA,
+        "run_id": RUN_ID,
+        "admission_sha256": admission.sha256(),
+        "design_sha256": admission.design_sha256,
+        "review_commit": admission.review_commit,
+        "evidence_root": admission.evidence_root,
+        "initialization_consumed": True,
+        "retry_authorized": False,
+    })
+
+
+def validate_pipeline_consumption_tombstone(
+        raw: bytes, *, admission: B2PipelineAdmissionV1) -> None:
+    expected = pipeline_consumption_tombstone_bytes(admission)
+    if type(raw) is not bytes or raw != expected:
+        raise BeliefB2ExecutionError("pipeline consumption tombstone drift")
 
 
 def pipeline_admission_from_bytes(

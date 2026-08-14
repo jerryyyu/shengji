@@ -565,7 +565,11 @@ def validate_captured_round(captured: CapturedBeliefRoundV1) -> None:
             actor_plays.extend(trick["plays"])
         expected_plays = [
             {"seat_relative": (event.seat - actor_seat) % 4,
-             "attempted_cards": sorted(event.attempted_cards,
+             "failed_throw": Counter(event.attempted_cards)
+             != Counter(event.actual_cards),
+             "attempted_cards": sorted(
+                 event.attempted_cards
+                 if event.seat == actor_seat else event.actual_cards,
                                        key=ordering.sort_key),
              "cards": sorted(event.actual_cards, key=ordering.sort_key)}
             for event in captured.public_transcript.plays[:index]

@@ -148,7 +148,7 @@ def test_contract_has_exact_source_and_schema_boundary():
     assert partition.actor.schema == ACTOR_OBSERVATION_SCHEMA
     assert partition.targets.schema == BELIEF_TARGETS_SCHEMA
     assert set(BELIEF_CONTRACT_SOURCE_SHA256S) == {
-        "belief_contract", "memory", "cards", "combos", "round",
+        "belief_contract", "memory", "cards", "combos", "legal", "round",
     }
     assert all(len(digest) == 64 for digest in
                BELIEF_CONTRACT_SOURCE_SHA256S.values())
@@ -247,7 +247,7 @@ def test_complete_public_transcript_preserves_overwritten_declarations():
         rnd, rnd.turn, final_only).canonical_bytes() != actor.canonical_bytes()
 
 
-def test_transcript_distinguishes_failed_throw_attempt_from_engine_play():
+def test_transcript_redacts_another_seats_failed_throw_returned_cards():
     game = Game(random.Random(1))
     rnd = game.start_round()
     bot = HeuristicBot()
@@ -284,9 +284,10 @@ def test_transcript_distinguishes_failed_throw_attempt_from_engine_play():
     actor = json.loads(build_actor_observation(
         rnd, rnd.turn, transcript).canonical_bytes())
     play = actor["current_trick"]["plays"][0]
-    assert Counter(play["attempted_cards"]) == Counter(attempt)
+    assert play["failed_throw"] is True
+    assert Counter(play["attempted_cards"]) == Counter(actual)
     assert Counter(play["cards"]) == Counter(actual)
-    assert play["attempted_cards"] != play["cards"]
+    assert Counter(attempt) - Counter(play["attempted_cards"])
 
     wrong_actual = PublicTranscriptV1().with_play(seat, attempt, attempt)
     with pytest.raises(BeliefContractError, match="disagrees with Round"):

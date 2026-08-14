@@ -99,6 +99,7 @@ def test_trump_pair_single_joker_branch_reports_length_only_in_audit():
             leader_relative=3,
             plays=(PlayView(
                 seat_relative=3,
+                failed_throw=False,
                 attempted_cards=(lead_pair, lead_pair),
                 cards=(lead_pair, lead_pair)),),
             winner_relative=None, points=0))

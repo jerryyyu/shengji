@@ -22,8 +22,8 @@ from .belief_contract import (ACTOR_OBSERVATION_SCHEMA, ActorObservationV1,
 from .belief_ownership import receiver_sizes
 
 
-INPUT_SCHEMA = "belief-v1-history-ownership-input-v1"
-EVENT_SCHEMA = "belief-v1-history-event-v1"
+INPUT_SCHEMA = "belief-v1-history-ownership-input-v2"
+EVENT_SCHEMA = "belief-v1-history-event-v2"
 RECEIVER_FACT_SCHEMA = "belief-v1-hidden-receiver-fact-v1"
 CARD_FACT_SCHEMA = "belief-v1-card-fact-v1"
 INFORMATION_TAG = "public_actor_private_and_logically_deduced_only"
@@ -92,6 +92,7 @@ class HistoryEventV1:
     trick_winner_relative: int
     trick_points: int
     declaration_strength: int
+    failed_throw: bool
     shown_cards: tuple[tuple[str, int], ...]
     attempted_cards: tuple[tuple[str, int], ...]
     actual_cards: tuple[tuple[str, int], ...]
@@ -108,6 +109,7 @@ class HistoryEventV1:
             "trick_winner_relative": self.trick_winner_relative,
             "trick_points": self.trick_points,
             "declaration_strength": self.declaration_strength,
+            "failed_throw": self.failed_throw,
             "shown_cards": dict(self.shown_cards),
             "attempted_cards": dict(self.attempted_cards),
             "actual_cards": dict(self.actual_cards),
@@ -308,6 +310,7 @@ def _events(actor: ActorObservationV1) -> tuple[HistoryEventV1, ...]:
             trick_winner_relative=-1,
             trick_points=0,
             declaration_strength=declaration.strength,
+            failed_throw=False,
             shown_cards=_card_tuple(
                 declaration.cards, label="declaration event"),
             attempted_cards=(),
@@ -327,7 +330,8 @@ def _events(actor: ActorObservationV1) -> tuple[HistoryEventV1, ...]:
         winner = -1 if trick.winner_relative is None else trick.winner_relative
         for position, play in enumerate(trick.plays):
             if type(play.seat_relative) is not int \
-                    or play.seat_relative not in range(4):
+                    or play.seat_relative not in range(4) \
+                    or type(play.failed_throw) is not bool:
                 raise BeliefInputError("actor play event is malformed")
             events.append(HistoryEventV1(
                 event_kind="play",
@@ -338,6 +342,7 @@ def _events(actor: ActorObservationV1) -> tuple[HistoryEventV1, ...]:
                 trick_winner_relative=winner,
                 trick_points=trick.points,
                 declaration_strength=0,
+                failed_throw=play.failed_throw,
                 shown_cards=(),
                 attempted_cards=_card_tuple(
                     play.attempted_cards, label="attempted play event"),

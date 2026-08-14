@@ -28,7 +28,7 @@ POINT_SCALE = 200.0
 LEVEL_SCALE = 20.0
 CAP_SCALE = 16.0
 
-EVENT_FEATURE_DIM = 190
+EVENT_FEATURE_DIM = 191
 GLOBAL_FEATURE_DIM = 38
 CARD_FEATURE_DIM = 23
 RECEIVER_FEATURE_DIM = 30
@@ -82,6 +82,7 @@ def _events(model_input: HistoryOwnershipInputV1) -> np.ndarray:
             *_one_hot(event.trick_leader_relative, tuple(range(-1, 4))),
             *_one_hot(event.trick_winner_relative, tuple(range(-1, 4))),
             *_one_hot(event.declaration_strength, tuple(range(5))),
+            float(event.failed_throw),
             (event.trick_index + 1) / 26.0,
             event.trick_points / POINT_SCALE,
             *_counts_vector(event.shown_cards),

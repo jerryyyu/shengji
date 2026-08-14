@@ -1081,6 +1081,21 @@ def reopen_training_cohort(
                 member_losses, row["member_calibration_loss_nanonats"],
                 strict=True):
             losses.append(value)
+    for member_index, seed in enumerate(COHORT_SEEDS):
+        initial = model_state_sha256(new_from_scratch_model(seed))
+        if receipt_rows[0][member_index].model_state_sha256_before \
+                != initial:
+            raise BeliefB2ControllerError(
+                "training initialization receipt binding drift")
+        member_receipts = tuple(
+            epoch_receipts[member_index]
+            for epoch_receipts in receipt_rows)
+        if any(left.model_state_sha256_after
+               != right.model_state_sha256_before
+               for left, right in zip(
+                   member_receipts, member_receipts[1:])):
+            raise BeliefB2ControllerError(
+                "training cross-epoch receipt chain drift")
     decision = select_common_epoch(tuple(
         tuple(row) for row in member_losses))
     if payload["selected_common_epoch"] != decision.selected_epoch \

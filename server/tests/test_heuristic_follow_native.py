@@ -8,6 +8,7 @@ contract the native result must equal the pure result exactly.
 
 from __future__ import annotations
 
+import copy
 import random
 
 import pytest
@@ -106,3 +107,57 @@ def test_malformed_running_points_defers_to_pure():
     s = rnd.turn
     rnd.trick.running_points = None
     assert bot._follow(rnd, s) == PURE_FOLLOW(bot, rnd, s)
+
+
+def test_unbounded_or_out_of_domain_caches_defer_before_native_cast():
+    bot = make_bot("smart")
+    rnd, actors = _play_round(4613, trusted=True)
+    while rnd.phase == "play":
+        s = rnd.turn
+        if rnd.trick is not None and rnd.trick.plays:
+            break
+        rnd.play(s, actors[s].decide_play(rnd, s))
+    s = rnd.turn
+    incumbent = rnd.trick.incumbent
+    cases = (
+        ("incumbent", (10**100, incumbent[1], incumbent[2])),
+        ("incumbent", (-(10**100), incumbent[1], incumbent[2])),
+        ("incumbent", (incumbent[0], incumbent[1], 10**100)),
+        ("incumbent", (incumbent[0], incumbent[1], -(10**100))),
+        ("incumbent", (incumbent[0], "X", incumbent[2])),
+        ("running_points", 10**100),
+        ("running_points", -(10**100)),
+    )
+    for field, value in cases:
+        native = copy.deepcopy(rnd)
+        pure = copy.deepcopy(rnd)
+        setattr(native.trick, field, value)
+        setattr(pure.trick, field, value)
+        assert fast._fast.heuristic_follow(bot, native, s) == \
+            PURE_FOLLOW(bot, pure, s), (field, value)
+
+
+def test_malformed_cache_fallback_and_normal_native_route_are_nonvacuous():
+    class Sentinel(Exception):
+        pass
+
+    def raising_pure(bot, rnd, seat):
+        raise Sentinel
+
+    bot = make_bot("smart")
+    rnd, actors = _play_round(4614, trusted=True)
+    while rnd.phase == "play":
+        s = rnd.turn
+        if rnd.trick is not None and rnd.trick.plays:
+            break
+        rnd.play(s, actors[s].decide_play(rnd, s))
+    s = rnd.turn
+    fast._fast.set_follow_fallback(Ordering, raising_pure)
+    try:
+        # A real cached state must stay entirely on the native body.
+        assert fast._fast.heuristic_follow(bot, rnd, s)
+        rnd.trick.running_points = 10**100
+        with pytest.raises(Sentinel):
+            fast._fast.heuristic_follow(bot, rnd, s)
+    finally:
+        fast._fast.set_follow_fallback(Ordering, PURE_FOLLOW)

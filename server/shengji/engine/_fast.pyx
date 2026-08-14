@@ -787,9 +787,13 @@ def heuristic_follow(bot, rnd, seat):
             or type(hand) is not list
             or not 0 < len(hand) <= MAX_CARDS
             or type(inc) is not tuple or len(inc) != 3
-            or type(inc[0]) is not int or type(inc[2]) is not int
-            or not -1 <= <long>(<object>inc[2]) <= 15
-            or type(pts) is not int):
+            or type(inc[0]) is not int
+            or not 0 <= <object>inc[0] <= 3
+            or inc[1] not in ("S", "H", "D", "C", "T")
+            or type(inc[2]) is not int
+            or not -1 <= <object>inc[2] <= 15
+            or type(pts) is not int
+            or not 0 <= <object>pts <= 200):
         return _PURE_FOLLOW(bot, rnd, seat)
     iseat = <int>seat
     win_seat = <int>(<object>inc[0])

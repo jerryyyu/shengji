@@ -101,23 +101,25 @@ def test_decide_play_prepares_each_accepted_world_exactly_once(monkeypatch):
     assert preparations and worlds
     assert len(preparations) == len(worlds)
     assert rollout_prepared_flags and all(rollout_prepared_flags)
+    assert len(rollout_prepared_flags) >= len(preparations)
 
 
-def test_prepared_hands_stay_unmutated_and_candidates_get_fresh_copies():
+def test_prepared_cell_fills_once_stays_unmutated_and_copies_are_fresh():
     rnd, seat = _lead_state(780002)
     bot = make_bot("mc-s0-report-lcb", seed=101)
     hands, buried = _accepted_world(bot, rnd, seat)
-    prepared = bot._complete_determinized_hands(rnd, seat, hands,
-                                                buried=buried)
-    snapshot = copy.deepcopy(prepared)
+    cell = []
     candidate = [rnd.sorted_hand(seat)[0]]
 
     first = bot._rollout(rnd, seat, hands, buried, list(candidate),
-                         prepared_hands=prepared)
+                         prepared_hands=cell)
+    assert len(cell) == 1
+    snapshot = copy.deepcopy(cell[0])
     second = bot._rollout(rnd, seat, hands, buried, list(candidate),
-                          prepared_hands=prepared)
+                          prepared_hands=cell)
 
-    assert prepared == snapshot
+    assert len(cell) == 1
+    assert cell[0] == snapshot
     assert first == second
 
 

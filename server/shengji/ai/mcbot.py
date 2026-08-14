@@ -339,8 +339,7 @@ class MCBot(SmartBot):
                 n_worlds += 1
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
-                prepared = self._complete_determinized_hands(
-                    rnd, seat, hands, buried=buried)
+                prepared = []
                 world_vals = []
                 for i, cand in enumerate(candidates):
                     val = self._score(
@@ -370,8 +369,7 @@ class MCBot(SmartBot):
                     continue
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
-                prepared = self._complete_determinized_hands(
-                    rnd, seat, hands, buried=buried)
+                prepared = []
                 for cand in candidates[:residual]:
                     self._score(self._rollout(
                         rnd, seat, hands, buried, cand,
@@ -747,8 +745,7 @@ class MCBot(SmartBot):
                     continue
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
-                prepared = self._complete_determinized_hands(
-                    rnd, seat, hands, buried=buried)
+                prepared = []
                 va = self._score(self._rollout(rnd, seat, hands, buried,
                                                list(cand_a),
                                                exact_session=exact_session,
@@ -829,8 +826,7 @@ class MCBot(SmartBot):
             hands, buried = sampled
             exact_session = self._new_exact_world_session(rnd, buried)
             worlds += 1
-            prepared = self._complete_determinized_hands(
-                rnd, seat, hands, buried=buried)
+            prepared = []
             vals = {}
             for i in alive:
                 v = self._score(self._rollout(rnd, seat, hands, buried,
@@ -903,8 +899,7 @@ class MCBot(SmartBot):
                 continue
             hands, buried = sampled
             exact_session = self._new_exact_world_session(rnd, buried)
-            prepared = self._complete_determinized_hands(
-                rnd, seat, hands, buried=buried)
+            prepared = []
             for i in alive[:residual]:
                 self._score(self._rollout(rnd, seat, hands, buried,
                                           candidates[i],
@@ -1890,16 +1885,24 @@ class MCBot(SmartBot):
         #
         # Completion (sort + card-conservation validation) is a function of
         # (round state, sampled, buried) only, and every candidate scores the
-        # SAME accepted world.  The candidate loops therefore complete each
-        # accepted world exactly once and pass the result in explicitly;
-        # a direct call without `prepared_hands` always recomputes, so no
-        # state survives between calls and mutated inputs can never alias a
-        # previous world's completion.  Each rollout still gets its own
-        # mutable copies below.
+        # SAME accepted world.  `prepared_hands` is a per-world cell: the
+        # candidate loops pass a fresh empty list for each accepted world and
+        # the FIRST rollout fills it, so completion runs exactly once per
+        # world while all engine work stays inside `_rollout` (the stub seam
+        # tests replace wholesale).  A direct call without the cell always
+        # recomputes, so no state survives between calls and mutated inputs
+        # can never alias a previous world's completion.  Each rollout still
+        # gets its own mutable copies below.
         if prepared_hands is None:
-            prepared_hands = self._complete_determinized_hands(
+            completed = self._complete_determinized_hands(
                 rnd, seat, sampled, buried=buried)
-        clone.hands = [list(h) for h in prepared_hands]
+        elif prepared_hands:
+            completed = prepared_hands[0]
+        else:
+            completed = self._complete_determinized_hands(
+                rnd, seat, sampled, buried=buried)
+            prepared_hands.append(completed)
+        clone.hands = [list(h) for h in completed]
         clone.buried = sorted(buried)
         assert rnd.trick is not None
         clone.trick = Trick(

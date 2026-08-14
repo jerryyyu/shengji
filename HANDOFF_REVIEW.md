@@ -1686,3 +1686,11 @@ append the machine-generated implementation claim. No packet freeze or
 screen execution authority follows from this entry.
 
 ---
+
+## 2026-08-14T05:43:34-0400 — PR #108 S6 scored-DEV aggregation, head 4b26c1a: HOLD (H1 test-only) + staging note
+
+- Reviewed exact head `4b26c1a89dc1903478c958bc5ac309020d673e37` (repair child of held `d40182d`, grandchild `a93c2f5`). File SHAs byte-verified: aggregate script `b287c6b1203f5af5bb2fe64f3c83109ccc52dd2edd1c3c3e2fab0d1d67cbb262`, test file `fca37a5e173497cb…`. Suites: 15 focused; 121/121 pure; 121/121 strict compiled.
+- Repair verified: pre-import `-I -P -B` guard (script lines 300–303) with hostile sibling `json.py` subprocess fixture — mutation KILLED. Battery: record-directory population KILLED; record metadata drift KILLED; **record SHA/size drift (line 817) SURVIVED** → HOLD.
+- H1: `_open_records` 814–817 is the sole byte-hash defense on the bytes actually parsed (metadata scan is lstat-only by design); no record-byte tamper test exists. Score content remains defended in depth (identity drift + internal self-hash recompute in `record_problems`); undefended residue is byte-level attestation (parse-equivalent equal-length variants, e.g. key reorder). Repro + one-test regression spec in PR #108 comment 5291879672.
+- S1 staging: preflight tree `/var/tmp/shengji-s6-v3-aggregate-v1-preflight` still at `d40182d3` (old script `471515c3…`); on-host `verify-inputs --expected-git 4b26c1a` under `env -i … /usr/bin/python3.14 -I -P -B` correctly REFUSED (`exact clean Git required`) — fail-closed, retryable, no consumption. Advance the checkout with the H1 repair.
+- No marker generated or appended (HOLD). Re-review is fast on the repaired head: battery anchored, claim generated fresh at that head.

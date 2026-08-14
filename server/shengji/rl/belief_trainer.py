@@ -75,6 +75,12 @@ class EpochTrainingReceiptV1:
             "runtime_artifact": False,
         }
 
+    def canonical_bytes(self) -> bytes:
+        return canonical_json_bytes(self.to_dict())
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
 
 def model_state_sha256(model: HistoryOwnershipModelV1) -> str:
     """Hash exact ordered CPU float32 parameter names, shapes, and bytes."""

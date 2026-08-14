@@ -110,6 +110,29 @@ def test_capture_manifest_and_row_sequence_are_bound(monkeypatch):
             plays=(changed_event, *captured.public_transcript.plays[1:]))))
 
 
+def test_capture_observer_is_target_blind_and_cannot_mutate_round(monkeypatch):
+    calls = []
+
+    def factory(_name, *, seed):
+        del seed
+        return HeuristicBot()
+
+    def observer(_rnd, _seat, _transcript, pair):
+        calls.append(pair.actor_file_sha256)
+
+    monkeypatch.setattr(CAPTURE, "make_bot", factory)
+    captured = capture_champion_round(
+        9517, (101, 103, 107, 109), decision_observer=observer)
+    assert calls == [pair.actor_file_sha256 for pair in captured.pairs]
+
+    def mutate(rnd, _seat, _transcript, _pair):
+        rnd.attacker_points += 1
+
+    with pytest.raises(BeliefCaptureError, match="observer mutated"):
+        capture_champion_round(
+            9517, (101, 103, 107, 109), decision_observer=mutate)
+
+
 def test_capture_artifacts_round_trip_with_public_privileged_separation(
         monkeypatch):
     captured = _fast_champion_capture(monkeypatch, seed=9521)

@@ -9,8 +9,9 @@ outputs, but none is a substitute for a whole-game strength win.
 
 The live `mc-s0-report-lcb` champion remains the only policy with a confirmed
 promotion result. No T4, S4, or S6 candidate advances. Pair-aware continuation
-is still running on Air and remains unresolved until its sealed terminal gate
-completes or times out.
+remains unresolved: the original sealed run is still running on Air, and a
+separately reviewed fresh checkpoint successor is running once on Performance
+Cloud. Neither may be opened before its terminal gate.
 
 ## What completed
 
@@ -19,7 +20,7 @@ completes or times out.
 | **T4 learned mid/late proposal** | `SELECT_NONE`; treatment-vs-champion mean `+0.01611`, LCB `-0.00759`; treatment-vs-matched-null mean `-0.00977`, LCB `-0.03313` | The selected-state signal did not transfer to whole games. The same-work uninformed proposal beat champion on this population, so generic ballot widening—not the learned source—explained the useful signal. |
 | **S4 point banking** | `SELECT_NONE` after a clean 16,384-cluster, two-look confirmation | The mechanism was real but too sparse and/or too small to clear the final efficacy boundary. Its observed decision incidence was about `0.7%`, which sharply limited its whole-game ceiling. |
 | **S6 shuai-pai sourcing** | `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN` after reconstructing all 64 scored DEV records | The bury-source arm passed every registered diagnostic, but the lead-source arm failed three. This preserves a bury-side hypothesis; it does not justify the combined selector, a fresh screen, or a strength claim. |
-| **Pair-aware continuation** | still running, sealed | No conclusion yet. Selected-root promise is not whole-game evidence. The admitted Air run must finish or fail closed without intervention; a separately reviewed checkpoint successor remains operational contingency, not a strength result. |
+| **Pair-aware continuation** | two disjoint runs active, both sealed | No conclusion yet. The admitted Air run must finish or fail closed without intervention. Fresh checkpoint packet `f2878fff…a5c9c` is running 224 immutable microshards on Performance Cloud under one consumed admission; it has no resume or aggregate authority and remains operational evidence, not a strength result. |
 | **Performance** | production extraction measured `29.3203%` lower wall on its exact stack; PR #103 measured a further `3.4074%` on x86 | The engine is faster with exact normalized behavior. Faster evidence generation is an enabler, not evidence that the bot chooses stronger moves. |
 
 ## Strategic failure pattern
@@ -76,6 +77,9 @@ of these on fresh DESIGN/CALIB evidence:
   their spent evidence.
 - Let the existing Air Pair screen reach its frozen terminal condition. Do not
   resize or extend it.
+- Let the fresh Performance Cloud checkpoint screen reach its own frozen
+  terminal manifest. Do not resume it, open outcomes early, or infer strength
+  before independent terminal review.
 - Preserve S6 bury-source states and T4 matched-null behavior only as labelled
   hypothesis inputs.
 - Land reviewed behavior-identical performance work separately from strength

@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-13 07:46 EDT
+## Current synthesis — 2026-08-14 10:00 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -48,19 +48,26 @@ This section keeps only the research conclusions that change what we try next.
   `SELECT_NONE`: integrity and exact work passed, but the treatment LCB was
   negative versus both live and matched uninformed widening. Independent
   terminal review verified the result and closed this composition.
-- **Direct search:** S4 stayed positive twice and now has a future-only
-  8,192/16,384-cluster confirmation running on Cloud; old outcomes do not enter
-  its estimator. Look one preserved integrity but missed early efficacy;
-  tranche two is 6,192/8,192 with all 16 workers healthy. S6's narrow
-  shuai-pai selector has a fresh preflight queued. Its separate opened-DEV V2
-  start refused before admission on a loadable shadow; optimized V3 PR #104
-  exact `a93c2f5` repairs the route test and awaits source, then packet, review.
+- **Direct search:** S4's disjoint 16,384-cluster, two-look confirmation
+  completed cleanly and selected none: integrity passed, but the final efficacy
+  boundary did not. Natural S4 banking appeared on only about 0.7% of
+  decisions, so the exact recipe is closed rather than extended. S6's recovered
+  64-state shuai-pai aggregate also selected none for a fresh screen design.
+  The joint bury source passed every named criterion, while the lead source
+  failed three; that leaves a bury-side hypothesis, not execution authority or
+  a strength claim.
   S5's x86 construction PASSed, but a request-template authority defect spent
   its one-shot admission without a result. Its validation-only refusal repair
   PASSed and the spent PR #74/#76 chain was closed; PR #70 retains only the
   reusable diagnostic source. Any recovery needs a newly authorized namespace.
   None is yet a new strength claim; S3a's broader bury recipe remains closed.
-- **Pair understanding:** the broad continuation screen is running on Air.
+- **Pair understanding:** the original broad continuation screen remains
+  sealed and running on Air, but at 4,640/7,168 score-free clusters it is on a
+  likely timeout trajectory toward its fixed 2026-08-14 23:29 EDT cutoff. It
+  must not be extended, resumed or opened early. A separately reviewed fresh
+  checkpoint successor is now running 224 immutable microshards with 16 workers
+  on Performance Cloud under one consumed admission; terminal outcomes remain
+  sealed and require a separate review.
   PR #85 exact head `111314f` PASSed external design-only review with 40 tests.
   It is a checkpointed successor for terminal timeout contingency only and grants no
   capacity screen, replacement launch, retry, extension or result authority.
@@ -103,18 +110,17 @@ This section keeps only the research conclusions that change what we try next.
 - **Endgames:** S3b's four-card exact rollout exceeded its frozen node cap.
   S3c restarts at naturally reached one-, two- and three-card roots. One-card is
   mechanics-only; two-card is the first meaningful action-selection problem.
-- **Throughput:** the unrelated Cython `_current_winner` path was slower and is
-  dropped. PR #77 `0381081` measured 2.6234% lower wall time with a 1.5066%
-  one-sided lower bound, missing its preregistered 3% retain gate; do not retain
-  it as-is. On that rejected stack, PR #81 `c6c7126` measured 7.7306% lower
-  wall time (lower bound 6.2489%) for native cheapest-winner selection and a
-  separate 4.0124% incremental reduction (lower bound 3.2857%) from one-Counter
-  lead composition, with exact normalized semantics. Split those candidates,
-  rebase them onto PR #71/#75 and remeasure; do not add cross-baseline gains.
-  PR #83 `69ff44e` measured 10.2014% lower wall time over three exploratory
-  pairs, but its raw artifacts are owner-writable and lack an immutable
-  manifest. Nothing is merged, deployed or substituted into a sealed run, and
-  the performance host is idle.
+- **Throughput:** PR #98 landed the accepted native rollout stack after an exact
+  six-pair x86 test measured 29.3203% lower wall time with a 27.8619% paired
+  one-sided lower bound and exact normalized semantics. PR #103's additional
+  native entry/trusted-rollout routes retained a further 3.4074% on their exact
+  stack, with a +1.0299% lower bound and zero mismatch across 12 million
+  differential rounds; they remain a reviewed integration candidate rather
+  than a strength result. PR #107's further ARM candidate is still blocked on
+  exact-head CI/review after repairing a stale mutable-world cache and restoring
+  the 33-card native admission bound. Never add percentages from different
+  baselines. Performance gains make future evidence cheaper; they do not prove
+  a stronger policy.
 
 ### Decisions that survive
 
@@ -144,6 +150,27 @@ This section keeps only the research conclusions that change what we try next.
     learning. Preserve predeclared dose, role/phase effects, tail failures and
     disagreement states as labelled exploration inputs.
 
+### Post-null reset
+
+T4, S4 and S6 all finished without a promoted policy. The program therefore
+closes the current tactical-composition milestone honestly: it delivered
+reproducible evidence and a faster engine, but no verified strength gain. A new
+host-day-scale run should begin only when all of these are true:
+
+1. natural trigger dose times a conservative conditional effect clears the
+   intended whole-game minimum detectable effect with margin;
+2. treatment beats both the literal champion and a same-work matched null;
+3. the sign survives two named continuation models or prespecified natural
+   role/phase strata;
+4. the design explains how a local effect reaches whole-game utility without
+   cancellation; and
+5. source plus concrete design receive one consolidated review where possible,
+   followed by one admission and one terminal review.
+
+Prefer a materially different axis—belief/world modeling, learned value inside
+search, or decision-type compute allocation—over another isolated tactical
+patch inside the same champion scaffold.
+
 ### Target architecture: learned search, not model versus search
 
 The working target is not a bare neural policy that must replace MC. It is a
@@ -151,8 +178,8 @@ Shengji analogue of AlphaGo's division of labour, adapted for hidden cards:
 
 | component | job | current evidence / next use |
 |---|---|---|
-| **Proposal** | Learned, structured, human or tactical sources keep valuable actions on the ballot. | T4 mid/late and S6 are the active tests; V11 and human actions remain bounded proposal sources. |
-| **Belief-sampled continuation** | Compare proposals across hands consistent with public history under an explicitly named rollout policy. | S4, pair-aware and S5 improve different continuation mistakes. No private-world tree is treated as exact public Shengji. |
+| **Proposal** | Learned, structured, human or tactical sources keep valuable actions on the ballot. | T4 and the combined S6 recipe selected none. V11, human, and surviving bury-side states remain bounded diagnostic sources, not active promotion claims. |
+| **Belief-sampled continuation** | Compare proposals across hands consistent with public history under an explicitly named rollout policy. | S4 selected none and S5 has no recovery authority. Pair-aware continuation remains the only active scored family. No private-world tree is treated as exact public Shengji. |
 | **Leaf/value** | A calibrated outcome or advantage estimate may truncate or allocate expensive continuation work. | Stage C learned outcome structure but failed at global action argmax. Test it against full fresh search on reusable DEV before any whole-game value-leaf run. |
 | **Report guard** | A fresh independent fold protects the incumbent before an override. | Deployed report-LCB is the confirmed parent; every challenger must name whether it changes proposals, continuations, leaf value or only the guard. |
 
@@ -379,15 +406,16 @@ The hybrid successor is not strong: its admitted aggregate selected none, the
 merged read-only helper reproduced every statistic, and independent review
 formally closed the milestone.
 
-S4 replication is terminal positive-but-inconclusive `SELECT_NONE`; its fresh
-8,192/16,384-cluster sequential successor is now in tranche two on Cloud. The
-Air Pair screen is 3,648/7,168 with material timeout risk; reviewed PR #96 has
-one frozen score-free successor-capacity packet awaiting packet review. S6
-preflight, optimized V3 recovery, pair preparation, human-geometry repair and
-code/document cleanup use implementation time without competing for the two
-live scored jobs. S5
-does not have runnable recovery authority: the spent PR #74/#76 execution
-chain is closed and only PR #70's reusable diagnostic source remains.
+S4's fresh 16,384-cluster sequential successor completed both looks and selected
+none at its final efficacy boundary. S6's one recovered 64-state aggregate
+selected none for a fresh screen design because its lead source failed the
+two-source gate; the bury-side pass is hypothesis-only. The original Air Pair
+screen is 4,640/7,168 and likely to reach its fixed timeout before completion.
+It remains sealed and immutable. A fresh reviewed 224-microshard checkpoint
+successor is running on Performance Cloud under one consumed admission and must
+receive a separate terminal review. S5 does not have runnable recovery
+authority: the spent PR #74/#76 execution chain is closed and only PR #70's
+reusable diagnostic source remains.
 
 ### Lane A — improve search directly
 
@@ -401,10 +429,12 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   positive LCB; matched null was exactly champion. Its independent fixed
   replication was `+0.048828 +/- 0.055712` with LCB `-0.006884`, so it did not
   repeat at the predeclared bar. Preserve both old results without retry,
-  extension, retroactive pooling, promotion or deployment. A disjoint
-  future-only 8,192/16,384-cluster sequential test is reviewed and running on
-  Cloud; only that prospectively accumulated evidence can confirm
-  the mechanism.
+  extension, retroactive pooling, promotion or deployment. Its disjoint
+  future-only 16,384-cluster sequential test subsequently completed both looks
+  with clean integrity but missed the final efficacy boundary and selected
+  none. Natural banking appeared on only about 0.7% of decisions. The exact S4
+  recipe is closed; any future point-flow hypothesis must first establish
+  enough natural dose to transport to whole-game utility.
 - **S5 defensive point protection** has crossed from observation to a narrow
   design candidate, not yet a treatment. Exact score-free replay found 58
   strict hindsight DEV triggers among 4,363 bot follows; 42 are no longer
@@ -432,9 +462,14 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   not strength evidence. Keep individual estimands until dose and utility are
   known. If several survive, test a small named continuation-policy portfolio
   rather than silently merging rules.
-- **Pair family:** finish broad pair-aware continuation first. Let that result
+- **Pair family:** the original broad pair-aware continuation screen remains
+  sealed on Air and is expected to time out under its immutable cap. Do not
+  extend or reuse its in-memory outcomes. The fresh checkpoint successor is
+  running on Performance Cloud across 224 immutable microshards and is the only
+  active scored Pair execution; a separate terminal review must authenticate
+  its manifest before any outcome access or aggregate decision. Let that result
   decide whether the externally PASSed attacker-gated pair-cap merits an
-  incremental screen; its three-arm capacity design is now being built.
+  incremental screen.
   Pair-ballot PR #72 at exact head `373de84` combines DEV+CALIB over 1,023
   defenders / 990 deal clusters, excludes the lone attacker, and binds exact
   population/weight identity; its external design review PASSed. Claude PASSed

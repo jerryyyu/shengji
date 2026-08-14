@@ -838,7 +838,8 @@ def test_activate_routes_everything_and_deactivate_restores():
         assert not any(compiled(v) for v in before.values())
         pure_methods = {a: getattr(HeuristicBot, a)
                         for a in ("_lowest", "_forced_follow", "_lead",
-                                  "_follow", "_cheapest_winning")}
+                                  "_follow", "_cheapest_winning",
+                                  "decide_play")}
         from shengji.engine.round import Round as _Round
         pure_round_play = _Round.play
 
@@ -847,13 +848,16 @@ def test_activate_routes_everything_and_deactivate_restores():
                     ((t, (t[0].__name__, t[1])) for t in tracked)
                     if not compiled(getattr(m, a))]
         assert not unrouted, f"activate() missed: {unrouted}"
-        assert HeuristicBot._lowest is fast._lowest_fast
-        assert HeuristicBot._forced_follow is fast._forced_follow_fast
+        assert HeuristicBot._lowest is fast._fast.heuristic_lowest_m
+        assert HeuristicBot._forced_follow is \
+            fast._fast.heuristic_forced_follow
         assert HeuristicBot._lead is fast._fast.heuristic_lead
         assert HeuristicBot._follow is fast._fast.heuristic_follow
+        assert HeuristicBot.decide_play is fast._fast.heuristic_decide_play
         from shengji.engine.round import Round
         assert Round.play is fast._fast.round_play
-        assert HeuristicBot._cheapest_winning is fast._cheapest_winning_fast
+        assert HeuristicBot._cheapest_winning is \
+            fast._fast.heuristic_cheapest_winning
         # a name bound AFTER activation must see the compiled function too
         late = types.ModuleType("late_import_probe")
         exec("from shengji.engine.legal import beats", late.__dict__)

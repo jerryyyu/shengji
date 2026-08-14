@@ -265,6 +265,13 @@ class MCBot(SmartBot):
         self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
         self.zero_world_decisions = 0
+        # Last validated world: (sampled, buried, (n_history, n_trick_plays),
+        # completed hands).  One world is scored once per CANDIDATE, and
+        # completion re-sorted/re-validated the identical inputs every time;
+        # keyed on object identity plus the round's play progress so any new
+        # world or advanced round recomputes.  Holds strong references, so a
+        # recycled id() can never alias a dead key.
+        self._world_hands_cache = None
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
@@ -1871,8 +1878,29 @@ class MCBot(SmartBot):
         # continuation policy is intentionally simple and walks a list, so it
         # must receive a canonical representation or `_rollout` is a function
         # of sampler insertion order rather than of the game state.
-        clone.hands = self._complete_determinized_hands(
-            rnd, seat, sampled, buried=buried)
+        #
+        # Completion (sort + card-conservation validation) is a function of
+        # (round state, sampled, buried) only, and every candidate scores the
+        # SAME accepted world: validate once per world, hand each rollout its
+        # own mutable copies.  The identity key can only hit while the exact
+        # sampled/buried objects are alive and the round has not advanced, so
+        # a hit is by construction the same computation.
+        cache = self._world_hands_cache
+        completed = None
+        if cache is not None and cache[0] is sampled and cache[1] is buried:
+            state = (len(rnd.history),
+                     len(rnd.trick.plays) if rnd.trick is not None else -1)
+            if cache[2] == state:
+                completed = cache[3]
+        if completed is None:
+            completed = self._complete_determinized_hands(
+                rnd, seat, sampled, buried=buried)
+            self._world_hands_cache = (
+                sampled, buried,
+                (len(rnd.history),
+                 len(rnd.trick.plays) if rnd.trick is not None else -1),
+                completed)
+        clone.hands = [list(h) for h in completed]
         clone.buried = sorted(buried)
         assert rnd.trick is not None
         clone.trick = Trick(

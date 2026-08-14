@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 10:12 EDT from canonical main `e3af8c3`.
+Last reconciled: 2026-08-14 10:18 EDT from canonical main `09b80bb`.
 
 ## Live fleet
 
@@ -22,23 +22,14 @@ Last reconciled: 2026-08-14 10:12 EDT from canonical main `e3af8c3`.
 
 ## Review queue — precise asks
 
-1. **PR #109 strength-campaign closeout docs — merge gate.** Exact docs-only
-   head `8fa96de939d5d69f5876dbca2abe92f664732334` against base `e3af8c3`
-   changes exactly AI_POLICIES, BACKLOG, JOBS, PERF, RL_PLAN and two new
-   2026-08-14 archive files. Falsify the T4/S4/S6 terminal facts, both sealed
-   Pair states, perf-vs-strength wording, cross-baseline arithmetic, and the
-   post-null entry criteria. Require both CI checks green. PASS may authorize
-   merging documentation only; it grants no run, outcome, retry, strength or
-   deployment authority.
-
-2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+1. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
    identity cache in favor of explicit per-world prepared hands and restores
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
-3. **PR #105 PointContext/point-flow test-only delta acknowledgment —
+2. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
    added two independent mutation witnesses in exact child `c454aaaf` (+17
    test lines; production unchanged): valid-banker/bool-tally refusal and exact
@@ -87,7 +78,9 @@ PR comments alone are not queue state.
 - **S4:** exact two-look controller completed; canonical independent review
   `15e8dbb` reproduced terminal `SELECT_NONE` at final SHA `0aef1ca8…e90`.
   The lane is closed with no retry or candidate action.
-- **Docs:** PR #97 exact reviewed head `316d6b7` merged at `8bc2da1`.
+- **Docs:** PR #97 exact reviewed head `316d6b7` merged at `8bc2da1`. The
+  campaign closeout and post-null roadmap PR #109 exact `8fa96de` PASSed at
+  canonical `499de77` and merged at `09b80bb`.
 - **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
   exact normalized semantics; PR #98 merged the byte-identical production
   runtime as `fe04fa2`. A later current-main diagnostic failed its strict

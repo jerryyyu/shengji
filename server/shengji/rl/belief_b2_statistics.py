@@ -27,6 +27,7 @@ from .belief_b2_protocol import (
 from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
 from .belief_corpus import split_for_round_seed
+from .belief_evaluation import DecisionProperScoreV1
 
 
 ROUND_METRIC_SCHEMA = "belief-v1-b2-round-proper-score-v1"
@@ -169,13 +170,17 @@ class N2PermutedLabelResultV1:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
-def _validate_rounds(rounds: tuple[RoundProperScoreV1, ...], *, split: str) \
-        -> None:
+def _validate_rounds(
+        rounds: tuple[RoundProperScoreV1, ...], *, split: str,
+        exact_population: bool = True) -> None:
     if type(rounds) is not tuple or not rounds \
             or any(type(row) is not RoundProperScoreV1 for row in rounds):
         raise BeliefB2StatisticsError("round score population is malformed")
     seeds = tuple(row.round_seed for row in rounds)
-    if seeds != b2_split_round_seeds(split):
+    if exact_population and seeds != b2_split_round_seeds(split):
+        raise BeliefB2StatisticsError("round score split/order drift")
+    if not exact_population and any(
+            split_for_round_seed(seed) != split for seed in seeds):
         raise BeliefB2StatisticsError("round score split/order drift")
     for row in rounds:
         values = (
@@ -208,6 +213,89 @@ def reference_replicates_are_stable(
     return (2 * abs(left_sum - right_sum) * PPB
             < REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB
             * (left_sum + right_sum))
+
+
+def _score_ppb(numerator: int, denominator: int) -> int:
+    if type(numerator) is not int or type(denominator) is not int \
+            or numerator < 0 or denominator <= 0:
+        raise BeliefB2StatisticsError("decision score ratio is invalid")
+    return (numerator * PPB + denominator // 2) // denominator
+
+
+def build_round_proper_score(
+        round_seed: int,
+        candidate_scores: tuple[DecisionProperScoreV1, ...],
+        member_scores: tuple[tuple[DecisionProperScoreV1, ...], ...]) \
+        -> RoundProperScoreV1:
+    """Reduce exact per-decision scores to one equal-weight round unit."""
+    if type(round_seed) is not int \
+            or type(candidate_scores) is not tuple \
+            or not candidate_scores \
+            or any(type(score) is not DecisionProperScoreV1
+                   for score in candidate_scores) \
+            or type(member_scores) is not tuple \
+            or len(member_scores) != len(COHORT_SEEDS) \
+            or any(type(rows) is not tuple
+                   or len(rows) != len(candidate_scores)
+                   or any(type(score) is not DecisionProperScoreV1
+                          for score in rows)
+                   for rows in member_scores):
+        raise BeliefB2StatisticsError("round decision score population drift")
+    reference_ids = tuple(
+        (score.actor_observation_sha256,
+         score.privileged_target_sha256,
+         score.reference_ownership_sha256,
+         score.behavior_policy_ids,
+         score.reference_brier_numerator,
+         score.brier_denominator,
+         score.reference_log_loss_nanonats)
+        for score in candidate_scores)
+    for rows in member_scores:
+        if tuple(
+                (score.actor_observation_sha256,
+                 score.privileged_target_sha256,
+                 score.reference_ownership_sha256,
+                 score.behavior_policy_ids,
+                 score.reference_brier_numerator,
+                 score.brier_denominator,
+                 score.reference_log_loss_nanonats)
+                for score in rows) != reference_ids:
+            raise BeliefB2StatisticsError("round reference score binding drift")
+    if len({score.candidate_ownership_sha256
+            for score in candidate_scores}) != len(candidate_scores):
+        # One model predicts every decision, so identities are expected to
+        # differ by actor-bound ownership artifact, not model identity.
+        raise BeliefB2StatisticsError("round candidate score identity drift")
+    count = len(candidate_scores)
+
+    def mean(values: tuple[int, ...]) -> int:
+        return _round_divide(sum(values), len(values))
+
+    reference_brier = mean(tuple(_score_ppb(
+        score.reference_brier_numerator, score.brier_denominator)
+                                 for score in candidate_scores))
+    candidate_brier = mean(tuple(_score_ppb(
+        score.candidate_brier_numerator, score.brier_denominator)
+                                 for score in candidate_scores))
+    members = tuple(mean(tuple(_score_ppb(
+        score.candidate_brier_numerator, score.brier_denominator)
+                              for score in rows)) for rows in member_scores)
+    result = RoundProperScoreV1(
+        round_seed=round_seed, decision_count=count,
+        reference_brier_ppb=reference_brier,
+        candidate_brier_ppb=candidate_brier,
+        member_brier_ppb=members,
+        reference_log_loss_nanonats=mean(tuple(
+            score.reference_log_loss_nanonats
+            for score in candidate_scores)),
+        candidate_log_loss_nanonats=mean(tuple(
+            score.candidate_log_loss_nanonats
+            for score in candidate_scores)))
+    if split_for_round_seed(round_seed) not in ("calibration", "test"):
+        raise BeliefB2StatisticsError("round score split is not evaluable")
+    _validate_rounds((result,), split=split_for_round_seed(round_seed),
+                     exact_population=False)
+    return result
 
 
 def _n2_bootstrap_seed() -> int:

@@ -54,6 +54,14 @@ from shengji.rl.belief_training import (
 class _FakeCaptured:
     round_seed: int
 
+    @property
+    def actor_rows(self):
+        return (str(self.round_seed).encode("ascii"),)
+
+    @property
+    def public_transcript(self):
+        return f"transcript-{self.round_seed}"
+
     def manifest_sha256(self):
         return _sha(f"capture-manifest-{self.round_seed}")
 
@@ -87,6 +95,7 @@ def _design(root) -> B2ExecutionDesignV1:
     runtime = RuntimeProfileV1(
         hostname="test", operating_system="test", machine="x86_64",
         cpu_count=16, memory_bytes=32 << 30,
+        boot_identity=_sha("boot"),
         python_executable="/runtime/python",
         python_resolved_executable="/runtime/python",
         python_executable_sha256=_sha("python"), python_version="3.14",
@@ -161,6 +170,12 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
         controller, "reference_round_bundle_bytes",
         lambda result: (
             f"{result.captured.round_seed}|{result.replicate}".encode()))
+    monkeypatch.setattr(
+        controller, "_byte_stream_sha256",
+        lambda rows: _sha(f"actor-{int(rows[0])}"))
+    monkeypatch.setattr(
+        controller, "public_transcript_bytes",
+        lambda transcript: transcript.encode("ascii"))
 
     def reopen_reference(raw):
         seed, replicate = raw.decode().split("|", 1)
@@ -196,7 +211,12 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
         for kind in ("candidate", LABEL_PERMUTATION_CONTROL)}
     monkeypatch.setattr(controller, "TRAIN_MAX_EPOCHS", 1)
     monkeypatch.setattr(
-        controller, "reopen_capture_lane", lambda *args, **kwargs: {})
+        controller, "reopen_capture_lane_public_manifest",
+        lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        controller, "reopen_capture_lane",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError(
+            "training must not reopen privileged lane bundles")))
     monkeypatch.setattr(
         controller, "_iter_corpus_batches",
         lambda _root, *, split, kind, epoch=None:

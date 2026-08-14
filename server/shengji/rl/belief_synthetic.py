@@ -16,13 +16,19 @@ promotion, or deployment surface.
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import random
 from dataclasses import dataclass, replace
 from typing import Any
 
-from .belief_contract import canonical_json_bytes
+from ..ai.heuristic import HeuristicBot
+from ..engine.game import Game
+from ..engine.round import Round, actual_play_after
+from .belief_contract import (PublicTranscriptV1, build_actor_observation,
+                              canonical_json_bytes)
 from .belief_corpus import (CorpusPairV1, decision_key,
-                            split_for_round_seed)
+                            capture_corpus_pair, split_for_round_seed)
 from .belief_evaluation import reopen_score_pair, target_count_population
 from .belief_model import (MODEL_SCHEMA, new_from_scratch_model,
                            predict_ownership)
@@ -159,6 +165,94 @@ class C4SyntheticEvidenceV1:
     training_receipts: tuple[EpochTrainingReceiptV1, ...]
     candidates: tuple[BeliefOwnershipV1, ...]
     result: C4ExactPosteriorResultV1
+
+
+def _rotate_round(rnd: Round, offset: int) -> Round:
+    changed = copy.deepcopy(rnd)
+    hands = [[] for _ in range(4)]
+    for old_seat, hand in enumerate(changed.hands):
+        hands[(old_seat + offset) % 4] = hand
+    changed.hands = hands
+    changed.banker = (changed.banker + offset) % 4
+    changed.turn = (changed.turn + offset) % 4
+    changed.passed = {(seat + offset) % 4 for seat in changed.passed}
+    if changed.declaration is not None:
+        changed.declaration["seat"] = (
+            changed.declaration["seat"] + offset) % 4
+    for trick in (*changed.history, changed.trick):
+        if trick is None:
+            continue
+        trick.leader = (trick.leader + offset) % 4
+        if trick.winner is not None:
+            trick.winner = (trick.winner + offset) % 4
+        for play in trick.plays:
+            play.seat = (play.seat + offset) % 4
+    if changed.last_trick_winner is not None:
+        changed.last_trick_winner = (
+            changed.last_trick_winner + offset) % 4
+    return changed
+
+
+def _rotate_transcript(
+        transcript: PublicTranscriptV1, offset: int) -> PublicTranscriptV1:
+    return PublicTranscriptV1(
+        declarations=tuple(type(event)(
+            seat=(event.seat + offset) % 4, cards=event.cards,
+            strength=event.strength) for event in transcript.declarations),
+        plays=tuple(type(event)(
+            seat=(event.seat + offset) % 4,
+            attempted_cards=event.attempted_cards,
+            actual_cards=event.actual_cards) for event in transcript.plays))
+
+
+def build_c4_contexts() -> tuple[C4PublicTwinContextV1, ...]:
+    """Build the frozen public-twin and absolute-rotation control fixtures."""
+    contexts = []
+    for index, seed in enumerate((10405, 10407, 10409, 10415)):
+        plays = 5 + index
+        rnd = Game(random.Random(seed)).start_round()
+        bot = HeuristicBot()
+        transcript = PublicTranscriptV1()
+        while rnd.phase == "deal":
+            rnd.deal_next()
+        rnd.finalize_declare()
+        rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+        for _ in range(plays):
+            seat = rnd.turn
+            attempted = bot.decide_play(rnd, seat)
+            previous_last = rnd.last_trick
+            rnd.play(seat, attempted)
+            transcript = transcript.with_play(
+                seat, attempted, actual_play_after(
+                    rnd, seat, previous_last))
+        actor = build_actor_observation(rnd, rnd.turn, transcript)
+        rotated = _rotate_round(rnd, 1)
+        rotated_actor = build_actor_observation(
+            rotated, (rnd.turn + 1) % 4,
+            _rotate_transcript(transcript, 1))
+        if rotated_actor.canonical_bytes() != actor.canonical_bytes():
+            raise BeliefSyntheticError("C4 rotation fixture drift")
+        changed = copy.deepcopy(rnd)
+        hidden = [seat for seat in range(4) if seat != rnd.turn]
+        left, right = next(
+            (left, right) for left_index, left in enumerate(hidden)
+            for right in hidden[left_index + 1:]
+            if len(changed.hands[left]) == len(changed.hands[right]))
+        changed.hands[left], changed.hands[right] = (
+            changed.hands[right], changed.hands[left])
+        if build_actor_observation(
+                changed, rnd.turn, transcript).canonical_bytes() \
+                != actor.canonical_bytes():
+            raise BeliefSyntheticError("C4 public-twin fixture drift")
+        world_0, world_1 = tuple(capture_corpus_pair(
+            world, rnd.turn, round_seed=seed, decision_index=plays,
+            transcript=transcript) for world in (rnd, changed))
+        contexts.append(C4PublicTwinContextV1(
+            context_id=C4_CONTEXT_IDS[index],
+            world_0=world_0, world_1=world_1))
+    result = tuple(contexts)
+    _context_examples(result)
+    return result
 
 
 def _is_sha256(value: Any) -> bool:

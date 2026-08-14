@@ -22,8 +22,11 @@ from pathlib import Path
 from typing import Any
 
 from .belief_capture import (
+    CapturedActorRoundArtifactsV1,
     CapturedRoundArtifactsV1,
+    captured_actor_round_artifacts,
     captured_round_artifacts,
+    reopen_captured_actor_round_artifacts,
     reopen_captured_round_artifacts,
 )
 from .belief_checkpoint import (
@@ -49,6 +52,7 @@ from .belief_reopen import actor_observation_from_dict
 
 CAPTURE_MAGIC = b"BELIEF-V1-CAPTURE-BUNDLE-V1\0"
 REFERENCE_MAGIC = b"BELIEF-V1-REF-C-ROUND-V1\0"
+ACTOR_CAPTURE_MAGIC = b"BELIEF-V1-ACTOR-CAPTURE-BUNDLE-V1\0"
 CHECKPOINT_MAGIC = b"BELIEF-V1-MODEL-CHECKPOINT-V1\0"
 WORLD_BLOCK_MAGIC = b"BELIEF-V1-OWNERSHIP-WORLD-BLOCK-V1\0"
 MAX_PART_BYTES = 512 * 1024**2
@@ -159,6 +163,34 @@ def reopen_capture_bundle(raw: bytes) -> CapturedRoundArtifactsV1:
     if len(captured.pairs) != decision_count \
             or capture_bundle_bytes(artifacts) != raw:
         raise BeliefArtifactError("capture bundle reconstruction drift")
+    return artifacts
+
+
+def actor_capture_bundle_bytes(
+        artifacts: CapturedActorRoundArtifactsV1) -> bytes:
+    captured = reopen_captured_actor_round_artifacts(artifacts)
+    parts = (artifacts.manifest_bytes, artifacts.transcript_bytes,
+             *artifacts.actor_rows)
+    if len(parts) != 2 + len(captured.actor_rows):
+        raise BeliefArtifactError("actor-only bundle population drift")
+    return _pack(ACTOR_CAPTURE_MAGIC, tuple(parts))
+
+
+def reopen_actor_capture_bundle(raw: bytes) -> CapturedActorRoundArtifactsV1:
+    parts = _unpack(raw, ACTOR_CAPTURE_MAGIC)
+    if len(parts) < 3:
+        raise BeliefArtifactError("actor-only bundle is incomplete")
+    artifacts = CapturedActorRoundArtifactsV1(
+        manifest_bytes=parts[0], transcript_bytes=parts[1],
+        actor_rows=parts[2:])
+    try:
+        captured = reopen_captured_actor_round_artifacts(artifacts)
+    except ValueError as exc:
+        raise BeliefArtifactError("actor-only bundle typed reopen refused") \
+            from exc
+    if len(captured.actor_rows) != len(parts) - 2 \
+            or actor_capture_bundle_bytes(artifacts) != raw:
+        raise BeliefArtifactError("actor-only bundle reconstruction drift")
     return artifacts
 
 
@@ -326,9 +358,10 @@ def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
 
 
 def reference_round_bundle_bytes(result: ReferenceCapturedRoundV1) -> bytes:
-    """Pack a validated REF-C round and its exact replayed capture."""
+    """Pack REF-C worlds with target-blind actor replay bytes only."""
     validate_reference_captured_round(result)
-    capture = capture_bundle_bytes(captured_round_artifacts(result.captured))
+    capture = actor_capture_bundle_bytes(
+        captured_actor_round_artifacts(result.captured))
     parts = [result.manifest_bytes(), capture]
     for batch in result.batches:
         parts.extend(_batch_parts(batch))
@@ -345,8 +378,8 @@ def reopen_reference_round_bundle(raw: bytes) -> ReferenceCapturedRoundV1:
             or manifest["decision_count"] <= 0 \
             or type(manifest.get("accepted_world_count")) is not int:
         raise BeliefArtifactError("REF-C round manifest count drift")
-    capture_artifacts = reopen_capture_bundle(parts[1])
-    captured = reopen_captured_round_artifacts(capture_artifacts)
+    capture_artifacts = reopen_actor_capture_bundle(parts[1])
+    captured = reopen_captured_actor_round_artifacts(capture_artifacts)
     batch_count = manifest["decision_count"]
     world_count = manifest["accepted_world_count"] // batch_count
     batch_part_count = 3

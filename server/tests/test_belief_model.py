@@ -24,6 +24,7 @@ from shengji.rl.belief_model import (
     masked_count_cross_entropy,
     new_from_scratch_model,
     predict_ownership,
+    predict_ownership_from_tensors,
     quantize_raw_count_weights,
 )
 from shengji.rl.belief_ownership import validate_ownership
@@ -87,6 +88,9 @@ def test_model_logits_masks_and_exact_projected_ownership():
     belief = predict_ownership(
         model, actor, behavior_policy_ids=POLICIES, model_sha256="e" * 64)
     validate_ownership(actor, belief)
+    assert predict_ownership_from_tensors(
+        model, actor, tensors, behavior_policy_ids=POLICIES,
+        model_sha256="e" * 64) == belief
 
 
 def test_model_seed_is_deterministic_without_advancing_global_rng():

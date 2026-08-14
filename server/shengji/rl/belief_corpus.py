@@ -20,6 +20,7 @@ from .belief_contract import (ACTOR_OBSERVATION_SCHEMA,
                               ActorObservationV1,
                               BeliefContractError,
                               PublicTranscriptV1,
+                              build_actor_observation,
                               build_information_partition,
                               canonical_json_bytes)
 from .belief_reopen import (BeliefReopenError,
@@ -251,6 +252,34 @@ def capture_corpus_pair(rnd: Round, seat: int, *, round_seed: int,
     pair = CorpusPairV1(actor_bytes=actor_bytes, target_bytes=target_bytes)
     validate_corpus_pair(pair.actor_bytes, pair.target_bytes)
     return pair
+
+
+def capture_actor_row(
+        rnd: Round, seat: int, *, round_seed: int, decision_index: int,
+        transcript: PublicTranscriptV1) -> bytes:
+    """Capture only the target-blind row for reference generation."""
+    key = decision_key(round_seed, decision_index, seat)
+    split = split_for_round_seed(round_seed)
+    try:
+        actor = build_actor_observation(rnd, seat, transcript)
+    except BeliefContractError as exc:
+        raise BeliefCorpusError("actor observation refused") from exc
+    if not actor.declaration_history_complete \
+            or not actor.attempted_play_history_complete:
+        raise BeliefCorpusError(
+            "actor row requires a complete public transcript")
+    raw = _seal({
+        "schema": ACTOR_ROW_SCHEMA,
+        "round_seed": round_seed, "decision_index": decision_index,
+        "actor_seat": seat, "decision_key": key,
+        "split_schema": SPLIT_SCHEMA, "split": split,
+        "actor_schema": ACTOR_OBSERVATION_SCHEMA,
+        "actor_sha256": actor.sha256(), "actor": actor.to_dict(),
+        "contains_privileged_targets": False})
+    reopened, metadata = reopen_actor_row(raw)
+    if reopened != actor or metadata["decision_key"] != key:
+        raise BeliefCorpusError("actor-only row reconstruction drift")
+    return raw
 
 
 def validate_corpus_pair(actor_raw: bytes, target_raw: bytes) \

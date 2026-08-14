@@ -128,6 +128,7 @@ class RuntimeProfileV1:
     machine: str
     cpu_count: int
     memory_bytes: int
+    boot_identity: str
     python_executable: str
     python_resolved_executable: str
     python_executable_sha256: str
@@ -151,6 +152,7 @@ class RuntimeProfileV1:
             "machine": self.machine,
             "cpu_count": self.cpu_count,
             "memory_bytes": self.memory_bytes,
+            "boot_identity": self.boot_identity,
             "python": {
                 "executable": self.python_executable,
                 "resolved_executable": self.python_resolved_executable,
@@ -356,6 +358,22 @@ def _memory_bytes() -> int:
     return int(pages) * int(page_size)
 
 
+def _boot_identity() -> str:
+    linux = Path("/proc/sys/kernel/random/boot_id")
+    if linux.is_file():
+        value = linux.read_text(encoding="ascii").strip()
+    else:
+        try:
+            value = subprocess.run(
+                ("sysctl", "-n", "kern.boottime"), check=True,
+                capture_output=True, text=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise BeliefB2ExecutionError("runtime boot probe failed") from exc
+    if not value:
+        raise BeliefB2ExecutionError("runtime boot probe failed")
+    return _sha256(value.encode("ascii"))
+
+
 def build_runtime_profile() -> RuntimeProfileV1:
     """Capture the exact deterministic CPU runtime before a design review."""
     if torch.get_num_threads() != 1 \
@@ -375,7 +393,8 @@ def build_runtime_profile() -> RuntimeProfileV1:
     profile = RuntimeProfileV1(
         hostname=platform.node(), operating_system=platform.platform(),
         machine=platform.machine(), cpu_count=os.cpu_count() or 0,
-        memory_bytes=_memory_bytes(), python_executable=str(python_path),
+        memory_bytes=_memory_bytes(), boot_identity=_boot_identity(),
+        python_executable=str(python_path),
         python_resolved_executable=str(resolved_python),
         python_executable_sha256=_sha256(resolved_python.read_bytes()),
         python_version=platform.python_version(),
@@ -402,6 +421,7 @@ def validate_runtime_profile(profile: RuntimeProfileV1) -> None:
             or profile.schema != RUNTIME_SCHEMA \
             or any(type(value) is not str or not value for value in (
                 profile.hostname, profile.operating_system, profile.machine,
+                profile.boot_identity,
                 profile.python_executable,
                 profile.python_resolved_executable, profile.python_version,
                 profile.torch_version, profile.numpy_version,
@@ -413,6 +433,7 @@ def validate_runtime_profile(profile: RuntimeProfileV1) -> None:
             or profile.cpu_count <= 0 \
             or type(profile.memory_bytes) is not int \
             or profile.memory_bytes <= 0 \
+            or not _is_sha256(profile.boot_identity) \
             or profile.required_environment != REQUIRED_ENVIRONMENT \
             or profile.torch_num_threads != 1 \
             or profile.torch_deterministic_algorithms is not True \
@@ -485,7 +506,7 @@ def execution_design_from_bytes(raw: bytes) -> B2ExecutionDesignV1:
     runtime = payload["runtime"]
     if type(runtime) is not dict or set(runtime) != {
             "schema", "hostname", "operating_system", "machine",
-            "cpu_count", "memory_bytes", "python", "torch",
+            "cpu_count", "memory_bytes", "boot_identity", "python", "torch",
             "numpy_version", "native", "required_environment"} \
             or type(runtime["python"]) is not dict \
             or set(runtime["python"]) != {
@@ -509,6 +530,7 @@ def execution_design_from_bytes(raw: bytes) -> B2ExecutionDesignV1:
         operating_system=runtime["operating_system"],
         machine=runtime["machine"], cpu_count=runtime["cpu_count"],
         memory_bytes=runtime["memory_bytes"],
+        boot_identity=runtime["boot_identity"],
         python_executable=python["executable"],
         python_resolved_executable=python["resolved_executable"],
         python_executable_sha256=python["executable_sha256"],

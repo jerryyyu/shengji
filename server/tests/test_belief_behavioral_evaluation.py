@@ -8,7 +8,8 @@ import pytest
 
 from shengji.ai.heuristic import HeuristicBot
 from shengji.rl import belief_capture as CAPTURE
-from shengji.rl.belief_b2_protocol import b2_split_round_seeds
+from shengji.rl.belief_b2_protocol import (b2_split_round_seeds,
+                                           champion_policy_seeds)
 from shengji.rl.belief_behavioral import build_behavioral_signal_round
 from shengji.rl.belief_behavioral_evaluation import (
     POOLED_STRATUM,
@@ -58,9 +59,11 @@ def behavioral_round():
     seed = b2_split_round_seeds("test")[0]
     reference = capture_champion_round_with_ref_c(
         seed, replicate="test-primary")
-    signals = build_behavioral_signal_round(reference.captured)
+    captured = CAPTURE.capture_champion_round(
+        seed, champion_policy_seeds(seed))
+    signals = build_behavioral_signal_round(captured)
     predictions = []
-    for pair, batch in zip(reference.captured.pairs, reference.batches,
+    for pair, batch in zip(captured.pairs, reference.batches,
                            strict=True):
         actor, target, _ = reopen_score_pair(pair)
         candidate = _truth(actor, target)
@@ -70,7 +73,7 @@ def behavioral_round():
         predictions.append(BehavioralDecisionPredictionsV1(
             candidate=candidate, history_ablated=history))
     result = build_behavioral_round_score(
-        reference, signals, tuple(predictions))
+        reference, captured, signals, tuple(predictions))
     patch.undo()
     return result
 

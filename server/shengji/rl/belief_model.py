@@ -257,6 +257,23 @@ def predict_ownership(
         raw_weights=raw)
 
 
+def predict_ownership_from_tensors(
+        model: HistoryOwnershipModelV1, actor: ActorObservationV1,
+        tensors: HistoryOwnershipTensorsV1, *,
+        behavior_policy_ids: tuple[str, ...],
+        model_sha256: str) -> BeliefOwnershipV1:
+    """Target-blind inference from an authenticated transformed input."""
+    if tensors.actor_observation_sha256 != actor.sha256() \
+            or tensors.behavior_policy_ids != behavior_policy_ids:
+        raise BeliefModelError("transformed inference actor/policy drift")
+    logits = inference_logits(model, tensors)
+    raw = quantize_raw_count_weights(tensors, logits)
+    return project_count_weights(
+        actor, behavior_policy_ids=behavior_policy_ids,
+        model_schema=MODEL_SCHEMA, model_sha256=model_sha256,
+        raw_weights=raw)
+
+
 def masked_count_cross_entropy(
         logits: torch.Tensor, labels: torch.Tensor,
         active_mask: torch.Tensor,

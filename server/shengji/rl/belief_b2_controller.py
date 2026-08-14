@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import stat
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -63,6 +64,7 @@ from .belief_capture import (
     CHAMPION_POLICY,
     capture_champion_round,
     captured_round_artifacts,
+    public_transcript_bytes,
     reopen_captured_round_artifacts,
 )
 from .belief_checkpoint import (
@@ -139,6 +141,23 @@ def _strict_json(raw: bytes, *, label: str) -> dict[str, Any]:
     return payload
 
 
+def _is_sha256(value: Any) -> bool:
+    return (type(value) is str and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def _byte_stream_sha256(rows: tuple[bytes, ...]) -> str:
+    if type(rows) is not tuple or not rows:
+        raise BeliefB2ControllerError("controller byte stream is empty")
+    digest = hashlib.sha256()
+    for raw in rows:
+        if type(raw) is not bytes or not raw:
+            raise BeliefB2ControllerError("controller byte stream drift")
+        digest.update(len(raw).to_bytes(8, "big"))
+        digest.update(raw)
+    return digest.hexdigest()
+
+
 def capture_lane_seeds(lane: int) -> tuple[int, ...]:
     if type(lane) is not int or lane not in range(B2_CAPTURE_LANES):
         raise BeliefB2ControllerError("capture lane is invalid")
@@ -165,7 +184,8 @@ def _lane_manifest(
         design: B2ExecutionDesignV1,
         admission: B2PipelineAdmissionV1, *, lane: int,
         rows: list[dict[str, Any]], wall_nanoseconds: int,
-        cpu_nanoseconds: int) -> dict[str, Any]:
+        cpu_nanoseconds: int, started_monotonic_nanoseconds: int,
+        finished_monotonic_nanoseconds: int) -> dict[str, Any]:
     return {
         "schema": CAPTURE_LANE_SCHEMA,
         "protocol_sha256": protocol_sha256(),
@@ -175,6 +195,9 @@ def _lane_manifest(
         "round_count": len(rows),
         "rounds": rows,
         "resources": {
+            "boot_identity": design.runtime.boot_identity,
+            "started_monotonic_nanoseconds": started_monotonic_nanoseconds,
+            "finished_monotonic_nanoseconds": finished_monotonic_nanoseconds,
             "wall_nanoseconds": wall_nanoseconds,
             "cpu_nanoseconds": cpu_nanoseconds,
             "artifact_bytes": sum(row["byte_count"] for row in rows),
@@ -220,7 +243,7 @@ def run_capture_lane(
             or final.is_symlink() or partial.is_symlink():
         raise BeliefB2ControllerError("capture lane slot is occupied")
     partial.mkdir(mode=0o700)
-    start_wall = time.perf_counter_ns()
+    start_wall = time.monotonic_ns()
     start_cpu = time.process_time_ns()
     rows = []
     for seed in seeds:
@@ -245,11 +268,14 @@ def run_capture_lane(
                 binding.privileged_target_stream_sha256),
             "decision_count": binding.decision_count,
         })
-    wall = time.perf_counter_ns() - start_wall
+    finish_wall = time.monotonic_ns()
+    wall = finish_wall - start_wall
     cpu = time.process_time_ns() - start_cpu
     manifest = _lane_manifest(
         design, admission, lane=lane, rows=rows,
-        wall_nanoseconds=wall, cpu_nanoseconds=cpu)
+        wall_nanoseconds=wall, cpu_nanoseconds=cpu,
+        started_monotonic_nanoseconds=start_wall,
+        finished_monotonic_nanoseconds=finish_wall)
     publish_exclusive_bytes(
         partial / "manifest.json", canonical_json_bytes(manifest))
     os.rename(partial, final)
@@ -337,12 +363,19 @@ def reopen_capture_lane(
         })
     resources = payload["resources"]
     if type(resources) is not dict or set(resources) != {
-            "wall_nanoseconds", "cpu_nanoseconds", "artifact_bytes",
+            "boot_identity", "started_monotonic_nanoseconds",
+            "finished_monotonic_nanoseconds", "wall_nanoseconds",
+            "cpu_nanoseconds", "artifact_bytes",
             "retry_count", "drop_count"} \
+            or resources["boot_identity"] != design.runtime.boot_identity \
             or any(type(resources[name]) is not int or resources[name] < 0
                    for name in ("wall_nanoseconds", "cpu_nanoseconds",
                                 "artifact_bytes", "retry_count",
-                                "drop_count")) \
+                                "drop_count", "started_monotonic_nanoseconds",
+                                "finished_monotonic_nanoseconds")) \
+            or resources["finished_monotonic_nanoseconds"] \
+            - resources["started_monotonic_nanoseconds"] \
+            != resources["wall_nanoseconds"] \
             or resources["wall_nanoseconds"] <= 0 \
             or resources["cpu_nanoseconds"] <= 0 \
             or resources["artifact_bytes"] != sum(
@@ -358,9 +391,99 @@ def reopen_capture_lane(
     expected = _lane_manifest(
         design, admission, lane=lane, rows=actual_rows,
         wall_nanoseconds=resources["wall_nanoseconds"],
-        cpu_nanoseconds=resources["cpu_nanoseconds"])
+        cpu_nanoseconds=resources["cpu_nanoseconds"],
+        started_monotonic_nanoseconds=resources[
+            "started_monotonic_nanoseconds"],
+        finished_monotonic_nanoseconds=resources[
+            "finished_monotonic_nanoseconds"])
     if canonical_json_bytes(expected) != canonical_json_bytes(payload):
         raise BeliefB2ControllerError("capture lane reconstruction drift")
+    return payload
+
+
+def reopen_capture_lane_public_manifest(
+        directory: Path, *, design: B2ExecutionDesignV1,
+        admission: B2PipelineAdmissionV1, lane: int) -> dict[str, Any]:
+    """Authenticate a sealed lane without opening any round bundle bytes."""
+    validate_execution_design(design)
+    seeds = capture_lane_seeds(lane)
+    expected_names = {"manifest.json", *(_round_filename(seed)
+                                          for seed in seeds)}
+    if type(admission) is not B2PipelineAdmissionV1 \
+            or directory.is_symlink() or not directory.is_dir() \
+            or directory.name != f"lane-{lane:02d}" \
+            or {path.name for path in directory.iterdir()} != expected_names:
+        raise BeliefB2ControllerError(
+            "public capture lane population drift")
+    for seed in seeds:
+        path = directory / _round_filename(seed)
+        info = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(info.st_mode) \
+                or info.st_nlink != 1 or info.st_mode & 0o222:
+            raise BeliefB2ControllerError(
+                "public capture bundle shape drift")
+    payload = _strict_json(stable_read_bytes(
+        directory / "manifest.json"), label="public capture lane manifest")
+    if set(payload) != {
+            "schema", "protocol_sha256", "design_sha256",
+            "admission_sha256", "lane", "round_count", "rounds",
+            "resources", "contains_round_outcomes",
+            "contains_privileged_targets", "runtime_input",
+            "reference_generation_authorized", "training_authorized",
+            "test_split_open_authorized",
+            "gameplay_strength_screen_authorized",
+            "strength_claim_authorized", "deployment_authorized"} \
+            or payload["schema"] != CAPTURE_LANE_SCHEMA \
+            or payload["protocol_sha256"] != protocol_sha256() \
+            or payload["design_sha256"] != design.sha256() \
+            or payload["admission_sha256"] != admission.sha256() \
+            or payload["lane"] != lane \
+            or payload["round_count"] != len(seeds) \
+            or type(payload["rounds"]) is not list \
+            or len(payload["rounds"]) != len(seeds) \
+            or payload["contains_round_outcomes"] is not False \
+            or payload["contains_privileged_targets"] is not True \
+            or payload["runtime_input"] is not False \
+            or any(payload[key] is not False for key in (
+                "reference_generation_authorized", "training_authorized",
+                "test_split_open_authorized",
+                "gameplay_strength_screen_authorized",
+                "strength_claim_authorized", "deployment_authorized")):
+        raise BeliefB2ControllerError("public capture manifest drift")
+    for seed, row in zip(seeds, payload["rounds"], strict=True):
+        if type(row) is not dict or set(row) != {
+                "round_seed", "filename", "byte_count", "bundle_sha256",
+                "capture_manifest_sha256", "public_transcript_sha256",
+                "actor_stream_sha256", "privileged_target_stream_sha256",
+                "decision_count"} \
+                or row["round_seed"] != seed \
+                or row["filename"] != _round_filename(seed) \
+                or type(row["byte_count"]) is not int \
+                or row["byte_count"] <= 0 \
+                or type(row["decision_count"]) is not int \
+                or not 1 <= row["decision_count"] <= 128 \
+                or any(not _is_sha256(row[key]) for key in (
+                    "bundle_sha256", "capture_manifest_sha256",
+                    "public_transcript_sha256", "actor_stream_sha256",
+                    "privileged_target_stream_sha256")):
+            raise BeliefB2ControllerError("public capture round row drift")
+    resources = payload["resources"]
+    if type(resources) is not dict or set(resources) != {
+            "boot_identity", "started_monotonic_nanoseconds",
+            "finished_monotonic_nanoseconds", "wall_nanoseconds",
+            "cpu_nanoseconds", "artifact_bytes", "retry_count",
+            "drop_count"} \
+            or resources["boot_identity"] != design.runtime.boot_identity \
+            or any(type(resources[name]) is not int or resources[name] < 0
+                   for name in resources if name != "boot_identity") \
+            or resources["finished_monotonic_nanoseconds"] \
+            - resources["started_monotonic_nanoseconds"] \
+            != resources["wall_nanoseconds"] \
+            or resources["artifact_bytes"] != sum(
+                row["byte_count"] for row in payload["rounds"]) \
+            or resources["retry_count"] != 0 \
+            or resources["drop_count"] != 0:
+        raise BeliefB2ControllerError("public capture resource drift")
     return payload
 
 
@@ -388,7 +511,8 @@ def _reference_lane_manifest(
         design: B2ExecutionDesignV1,
         admission: B2PipelineAdmissionV1, *, lane: int,
         rows: list[dict[str, Any]], wall_nanoseconds: int,
-        cpu_nanoseconds: int) -> dict[str, Any]:
+        cpu_nanoseconds: int, started_monotonic_nanoseconds: int,
+        finished_monotonic_nanoseconds: int) -> dict[str, Any]:
     return {
         "schema": REFERENCE_LANE_SCHEMA,
         "protocol_sha256": protocol_sha256(),
@@ -398,6 +522,9 @@ def _reference_lane_manifest(
         "job_count": len(rows),
         "jobs": rows,
         "resources": {
+            "boot_identity": design.runtime.boot_identity,
+            "started_monotonic_nanoseconds": started_monotonic_nanoseconds,
+            "finished_monotonic_nanoseconds": finished_monotonic_nanoseconds,
             "wall_nanoseconds": wall_nanoseconds,
             "cpu_nanoseconds": cpu_nanoseconds,
             "artifact_bytes": sum(row["byte_count"] for row in rows),
@@ -429,8 +556,10 @@ def run_reference_lane(
             or root.is_symlink() or not root.is_dir():
         raise BeliefB2ControllerError("reference evidence root drift")
     capture_directory = root / "capture" / f"lane-{lane:02d}"
-    reopen_capture_lane(
+    capture_manifest = reopen_capture_lane_public_manifest(
         capture_directory, design=design, admission=admission, lane=lane)
+    capture_rows = {row["round_seed"]: row
+                    for row in capture_manifest["rounds"]}
     jobs = reference_lane_jobs(lane)
     parent = root / "reference"
     if parent.is_symlink():
@@ -442,18 +571,22 @@ def run_reference_lane(
             or final.is_symlink() or partial.is_symlink():
         raise BeliefB2ControllerError("reference lane slot is occupied")
     partial.mkdir(mode=0o700)
-    start_wall = time.perf_counter_ns()
+    start_wall = time.monotonic_ns()
     start_cpu = time.process_time_ns()
     rows = []
     for seed, replicate in jobs:
-        capture_artifacts = reopen_capture_bundle(stable_read_bytes(
-            capture_directory / _round_filename(seed)))
-        captured = reopen_captured_round_artifacts(capture_artifacts)
         result = capture_champion_round_with_ref_c(
             seed, replicate=replicate)
-        if result.captured != captured:
+        capture_row = capture_rows[seed]
+        if _byte_stream_sha256(result.captured.actor_rows) \
+                != capture_row["actor_stream_sha256"] \
+                or hashlib.sha256(public_transcript_bytes(
+                result.captured.public_transcript)).hexdigest() \
+                != capture_row["public_transcript_sha256"] \
+                or len(result.captured.actor_rows) \
+                != capture_row["decision_count"]:
             raise BeliefB2ControllerError(
-                "reference replay differs from captured population")
+                "reference replay differs from captured public population")
         raw = reference_round_bundle_bytes(result)
         filename = _reference_filename(seed, replicate)
         digest = publish_exclusive_bytes(partial / filename, raw)
@@ -463,17 +596,24 @@ def run_reference_lane(
             "filename": filename, "byte_count": len(raw),
             "bundle_sha256": digest,
             "reference_manifest_sha256": result.manifest_sha256(),
-            "capture_manifest_sha256": (
+            "reference_actor_capture_manifest_sha256": (
                 result.captured.manifest_sha256()),
+            "capture_actor_stream_sha256":
+                capture_row["actor_stream_sha256"],
+            "capture_public_transcript_sha256":
+                capture_row["public_transcript_sha256"],
             "decision_count": manifest["decision_count"],
             "accepted_world_count": manifest["accepted_world_count"],
             "attempt_count": manifest["attempt_count"],
         })
-    wall = time.perf_counter_ns() - start_wall
+    finish_wall = time.monotonic_ns()
+    wall = finish_wall - start_wall
     cpu = time.process_time_ns() - start_cpu
     manifest = _reference_lane_manifest(
         design, admission, lane=lane, rows=rows,
-        wall_nanoseconds=wall, cpu_nanoseconds=cpu)
+        wall_nanoseconds=wall, cpu_nanoseconds=cpu,
+        started_monotonic_nanoseconds=start_wall,
+        finished_monotonic_nanoseconds=finish_wall)
     publish_exclusive_bytes(
         partial / "manifest.json", canonical_json_bytes(manifest))
     os.rename(partial, final)
@@ -496,8 +636,10 @@ def reopen_reference_lane(
             or not directory.is_dir() \
             or directory.name != f"lane-{lane:02d}":
         raise BeliefB2ControllerError("reference lane directory drift")
-    reopen_capture_lane(
+    capture_manifest = reopen_capture_lane_public_manifest(
         capture_directory, design=design, admission=admission, lane=lane)
+    capture_rows = {row["round_seed"]: row
+                    for row in capture_manifest["rounds"]}
     jobs = reference_lane_jobs(lane)
     expected_names = {"manifest.json", *(
         _reference_filename(seed, replicate) for seed, replicate in jobs)}
@@ -537,7 +679,9 @@ def reopen_reference_lane(
         if type(row) is not dict or set(row) != {
                 "round_seed", "replicate", "filename", "byte_count",
                 "bundle_sha256", "reference_manifest_sha256",
-                "capture_manifest_sha256", "decision_count",
+                "reference_actor_capture_manifest_sha256",
+                "capture_actor_stream_sha256",
+                "capture_public_transcript_sha256", "decision_count",
                 "accepted_world_count", "attempt_count"} \
                 or row["round_seed"] != seed \
                 or row["replicate"] != replicate \
@@ -548,13 +692,15 @@ def reopen_reference_lane(
                 or row["bundle_sha256"] != hashlib.sha256(raw).hexdigest():
             raise BeliefB2ControllerError("reference job byte binding drift")
         result = reopen_reference_round_bundle(raw)
-        capture_artifacts = reopen_capture_bundle(stable_read_bytes(
-            capture_directory / _round_filename(seed)))
-        captured = reopen_captured_round_artifacts(capture_artifacts)
         manifest = result.manifest_dict()
-        if result.captured != captured \
-                or result.captured.round_seed != seed \
-                or result.replicate != replicate:
+        capture_row = capture_rows[seed]
+        if result.captured.round_seed != seed \
+                or result.replicate != replicate \
+                or _byte_stream_sha256(result.captured.actor_rows) \
+                != capture_row["actor_stream_sha256"] \
+                or hashlib.sha256(public_transcript_bytes(
+                    result.captured.public_transcript)).hexdigest() \
+                != capture_row["public_transcript_sha256"]:
             raise BeliefB2ControllerError(
                 "reference job capture/replicate drift")
         actual_rows.append({
@@ -562,18 +708,28 @@ def reopen_reference_lane(
             "filename": filename, "byte_count": len(raw),
             "bundle_sha256": hashlib.sha256(raw).hexdigest(),
             "reference_manifest_sha256": result.manifest_sha256(),
-            "capture_manifest_sha256": (
+            "reference_actor_capture_manifest_sha256": (
                 result.captured.manifest_sha256()),
+            "capture_actor_stream_sha256":
+                capture_row["actor_stream_sha256"],
+            "capture_public_transcript_sha256":
+                capture_row["public_transcript_sha256"],
             "decision_count": manifest["decision_count"],
             "accepted_world_count": manifest["accepted_world_count"],
             "attempt_count": manifest["attempt_count"],
         })
     resources = payload["resources"]
     if type(resources) is not dict or set(resources) != {
-            "wall_nanoseconds", "cpu_nanoseconds", "artifact_bytes",
+            "boot_identity", "started_monotonic_nanoseconds",
+            "finished_monotonic_nanoseconds", "wall_nanoseconds",
+            "cpu_nanoseconds", "artifact_bytes",
             "retry_count", "drop_count"} \
+            or resources["boot_identity"] != design.runtime.boot_identity \
             or any(type(resources[name]) is not int or resources[name] < 0
-                   for name in resources) \
+                   for name in resources if name != "boot_identity") \
+            or resources["finished_monotonic_nanoseconds"] \
+            - resources["started_monotonic_nanoseconds"] \
+            != resources["wall_nanoseconds"] \
             or min(resources["wall_nanoseconds"],
                    resources["cpu_nanoseconds"]) <= 0 \
             or resources["artifact_bytes"] != sum(
@@ -589,7 +745,11 @@ def reopen_reference_lane(
     expected = _reference_lane_manifest(
         design, admission, lane=lane, rows=actual_rows,
         wall_nanoseconds=resources["wall_nanoseconds"],
-        cpu_nanoseconds=resources["cpu_nanoseconds"])
+        cpu_nanoseconds=resources["cpu_nanoseconds"],
+        started_monotonic_nanoseconds=resources[
+            "started_monotonic_nanoseconds"],
+        finished_monotonic_nanoseconds=resources[
+            "finished_monotonic_nanoseconds"])
     if canonical_json_bytes(expected) != canonical_json_bytes(payload):
         raise BeliefB2ControllerError("reference lane reconstruction drift")
     return payload
@@ -600,7 +760,12 @@ def _capture_path(root: Path, seed: int) -> Path:
     return root / "capture" / f"lane-{lane:02d}" / _round_filename(seed)
 
 
-def _round_examples(root: Path, seed: int, *, kind: str):
+def _round_examples(
+        root: Path, seed: int, *, split: str, kind: str):
+    if split not in {"train", "calibration"} \
+            or split_for_round_seed(seed) != split:
+        raise BeliefB2ControllerError(
+            "training capture split boundary drift")
     raw = stable_read_bytes(_capture_path(root, seed))
     artifacts = reopen_capture_bundle(raw)
     captured = reopen_captured_round_artifacts(artifacts)
@@ -632,7 +797,7 @@ def _iter_corpus_batches(
         raise BeliefB2ControllerError("training cohort kind drift")
     pending = []
     for seed in seeds:
-        rows = _round_examples(root, seed, kind=kind)
+        rows = _round_examples(root, seed, split=split, kind=kind)
         if not rows or len(rows) > TRAIN_BATCH_DECISION_CAP:
             raise BeliefB2ControllerError(
                 "training round decision population drift")
@@ -653,7 +818,9 @@ def _training_manifest(
         admission: B2PipelineAdmissionV1, *, kind: str,
         epochs: list[dict[str, Any]], selected_epoch: int, stop_epoch: int,
         stopped_for_patience: bool, checkpoints: list[dict[str, Any]],
-        wall_nanoseconds: int, device_nanoseconds: int) -> dict[str, Any]:
+        wall_nanoseconds: int, device_nanoseconds: int,
+        started_monotonic_nanoseconds: int,
+        finished_monotonic_nanoseconds: int) -> dict[str, Any]:
     return {
         "schema": TRAINING_COHORT_SCHEMA,
         "protocol_sha256": protocol_sha256(),
@@ -668,6 +835,9 @@ def _training_manifest(
         "stopped_for_patience": stopped_for_patience,
         "checkpoints": checkpoints,
         "resources": {
+            "boot_identity": design.runtime.boot_identity,
+            "started_monotonic_nanoseconds": started_monotonic_nanoseconds,
+            "finished_monotonic_nanoseconds": finished_monotonic_nanoseconds,
             "wall_nanoseconds": wall_nanoseconds,
             "device_nanoseconds": device_nanoseconds,
             "artifact_bytes": sum(row["byte_count"] for row in checkpoints),
@@ -699,7 +869,7 @@ def run_training_cohort(
             or root.is_symlink() or not root.is_dir():
         raise BeliefB2ControllerError("training cohort input drift")
     for lane in range(B2_CAPTURE_LANES):
-        reopen_capture_lane(
+        reopen_capture_lane_public_manifest(
             root / "capture" / f"lane-{lane:02d}", design=design,
             admission=admission, lane=lane)
     parent = root / "training"
@@ -723,7 +893,7 @@ def run_training_cohort(
     epochs = []
     selected_states = None
     selected_receipts = None
-    start_wall = time.perf_counter_ns()
+    start_wall = time.monotonic_ns()
     start_device = time.process_time_ns()
     decision = None
     for epoch in range(1, TRAIN_MAX_EPOCHS + 1):
@@ -781,7 +951,8 @@ def run_training_cohort(
             "model_state_sha256": model_state_sha256(model),
             "final_epoch_receipt_sha256": receipt.sha256(),
         })
-    wall = time.perf_counter_ns() - start_wall
+    finish_wall = time.monotonic_ns()
+    wall = finish_wall - start_wall
     device = time.process_time_ns() - start_device
     manifest = _training_manifest(
         design, admission, kind=kind, epochs=epochs,
@@ -789,7 +960,9 @@ def run_training_cohort(
         stop_epoch=decision.stop_epoch,
         stopped_for_patience=decision.stopped_for_patience,
         checkpoints=checkpoint_rows, wall_nanoseconds=wall,
-        device_nanoseconds=device)
+        device_nanoseconds=device,
+        started_monotonic_nanoseconds=start_wall,
+        finished_monotonic_nanoseconds=finish_wall)
     publish_exclusive_bytes(
         partial / "manifest.json", canonical_json_bytes(manifest))
     os.rename(partial, final)
@@ -918,10 +1091,16 @@ def reopen_training_cohort(
         checkpoint_rows.append(actual)
     resources = payload["resources"]
     if type(resources) is not dict or set(resources) != {
-            "wall_nanoseconds", "device_nanoseconds", "artifact_bytes",
+            "boot_identity", "started_monotonic_nanoseconds",
+            "finished_monotonic_nanoseconds", "wall_nanoseconds",
+            "device_nanoseconds", "artifact_bytes",
             "retry_count"} \
+            or resources["boot_identity"] != design.runtime.boot_identity \
             or any(type(resources[name]) is not int or resources[name] < 0
-                   for name in resources) \
+                   for name in resources if name != "boot_identity") \
+            or resources["finished_monotonic_nanoseconds"] \
+            - resources["started_monotonic_nanoseconds"] \
+            != resources["wall_nanoseconds"] \
             or min(resources["wall_nanoseconds"],
                    resources["device_nanoseconds"]) <= 0 \
             or resources["artifact_bytes"] != sum(
@@ -940,7 +1119,11 @@ def reopen_training_cohort(
         stopped_for_patience=decision.stopped_for_patience,
         checkpoints=checkpoint_rows,
         wall_nanoseconds=resources["wall_nanoseconds"],
-        device_nanoseconds=resources["device_nanoseconds"])
+        device_nanoseconds=resources["device_nanoseconds"],
+        started_monotonic_nanoseconds=resources[
+            "started_monotonic_nanoseconds"],
+        finished_monotonic_nanoseconds=resources[
+            "finished_monotonic_nanoseconds"])
     if canonical_json_bytes(expected) != canonical_json_bytes(payload):
         raise BeliefB2ControllerError("training cohort reconstruction drift")
     return payload

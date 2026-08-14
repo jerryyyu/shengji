@@ -15,7 +15,9 @@ from shengji.rl.belief_b2_statistics import (
     evaluate_c1,
     evaluate_n2,
     reference_replicates_are_stable,
+    build_round_proper_score,
 )
+from shengji.rl.belief_evaluation import DecisionProperScoreV1
 def _round(seed, *, reference=100_000_000, candidate=98_000_000,
            members=None, ref_log=800_000_000, candidate_log=790_000_000):
     if members is None:
@@ -98,6 +100,34 @@ def test_permuted_label_control_must_not_have_positive_lower_bound():
     assert result.bootstrap_lower_brier_improvement_ppb > 0
     assert result.unexpectedly_positive_lower_bound is True
     assert result.passed is False
+
+
+def test_decision_scores_reduce_to_equal_weight_round_unit():
+    seed = b2_split_round_seeds("test")[0]
+
+    def score(index: int, candidate: int) -> DecisionProperScoreV1:
+        return DecisionProperScoreV1(
+            actor_observation_sha256=f"{index + 1:064x}",
+            privileged_target_sha256=f"{index + 11:064x}",
+            reference_ownership_sha256=f"{index + 21:064x}",
+            candidate_ownership_sha256=f"{candidate:064x}",
+            behavior_policy_ids=("mc-s0-report-lcb",), count_rows=3,
+            brier_denominator=100, reference_brier_numerator=50,
+            candidate_brier_numerator=(25 if index == 0 else 75),
+            brier_improvement_numerator=(25 if index == 0 else -25),
+            reference_log_loss_nanonats=100,
+            candidate_log_loss_nanonats=(50 if index == 0 else 150),
+            log_loss_improvement_nanonats=(50 if index == 0 else -50))
+
+    candidate = (score(0, 1), score(1, 2))
+    members = tuple(tuple(score(index, 100 + member * 2 + index)
+                          for index in range(2)) for member in range(8))
+    result = build_round_proper_score(seed, candidate, members)
+    assert result.decision_count == 2
+    assert result.reference_brier_ppb == 500_000_000
+    assert result.candidate_brier_ppb == 500_000_000
+    assert result.reference_log_loss_nanonats == 100
+    assert result.candidate_log_loss_nanonats == 100
 
 
 def test_statistics_refuse_bool_negative_duplicate_order_and_wrong_split():

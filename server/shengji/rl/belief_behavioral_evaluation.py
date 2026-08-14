@@ -29,6 +29,7 @@ from .belief_behavioral import (
     behavioral_signal_exposures,
     validate_behavioral_signal_round,
 )
+from .belief_capture import CapturedBeliefRoundV1, validate_captured_round
 from .belief_contract import canonical_json_bytes
 from .belief_evaluation import reopen_score_pair, target_count_population
 from .belief_ownership import (
@@ -241,11 +242,20 @@ def _prediction_identity(
 
 def build_behavioral_round_score(
         reference_round: ReferenceCapturedRoundV1,
+        captured: CapturedBeliefRoundV1,
         signals: BehavioralSignalRoundV1,
         predictions: tuple[BehavioralDecisionPredictionsV1, ...]) \
         -> BehavioralRoundScoreV1:
     validate_reference_captured_round(reference_round)
-    captured = reference_round.captured
+    validate_captured_round(captured)
+    if reference_round.captured.round_seed != captured.round_seed \
+            or reference_round.captured.policy_seeds != captured.policy_seeds \
+            or reference_round.captured.public_transcript \
+            != captured.public_transcript \
+            or reference_round.captured.actor_rows \
+            != tuple(pair.actor_bytes for pair in captured.pairs):
+        raise BeliefBehavioralEvaluationError(
+            "behavioral reference/capture binding drift")
     validate_behavioral_signal_round(captured, signals)
     if type(predictions) is not tuple \
             or len(predictions) != len(captured.pairs):

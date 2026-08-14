@@ -40,6 +40,7 @@ from shengji.rl.belief_b2_execution import (  # noqa: E402
     validate_execution_design,
 )
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
+from shengji.rl.belief_b2_controller import run_capture_lane  # noqa: E402
 
 
 def freeze_design(args: argparse.Namespace) -> None:
@@ -132,11 +133,11 @@ def _load_authorized_root(root: Path):
         raise ValueError("pipeline review snapshot drift")
     admission = pipeline_admission_from_bytes(
         admission_raw, design=design, review_marker=marker)
-    return design, admission
+    return design, admission, marker
 
 
 def verify_root(args: argparse.Namespace) -> None:
-    design, admission = _load_authorized_root(Path(args.root))
+    design, admission, _ = _load_authorized_root(Path(args.root))
     print(canonical_json_bytes({
         "verified": True,
         "design_sha256": design.sha256(),
@@ -146,6 +147,21 @@ def verify_root(args: argparse.Namespace) -> None:
         "offline_pipeline_authorized": True,
         "gameplay_strength_screen_authorized": False,
         "deployment_authorized": False,
+    }).decode("ascii"), end="")
+
+
+def capture_lane(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    design, admission, marker = _load_authorized_root(root)
+    result = run_capture_lane(
+        root, design, admission, lane=args.lane, review_marker=marker)
+    print(canonical_json_bytes({
+        "capture_lane": args.lane,
+        "round_count": result["round_count"],
+        "manifest_sha256": hashlib.sha256(
+            canonical_json_bytes(result)).hexdigest(),
+        "retry_count": 0,
+        "complete": True,
     }).decode("ascii"), end="")
 
 
@@ -165,6 +181,10 @@ def parser() -> argparse.ArgumentParser:
     verify = commands.add_parser("verify-root")
     verify.add_argument("--root", required=True)
     verify.set_defaults(function=verify_root)
+    capture = commands.add_parser("capture-lane")
+    capture.add_argument("--root", required=True)
+    capture.add_argument("--lane", required=True, type=int)
+    capture.set_defaults(function=capture_lane)
     return result
 
 

@@ -23,6 +23,21 @@ assert runtime_spec and runtime_spec.loader
 runtime = importlib.util.module_from_spec(runtime_spec)
 runtime_spec.loader.exec_module(runtime)
 
+HISTORICAL_EXECUTION_IDENTITIES = (
+    (
+        "server/shengji/ai/heuristic.py",
+        "a99dfb089fd17e7c17ddcc4d76542552d317598fbe233269c3e7c0501b9b15ef",
+    ),
+    (
+        "server/shengji/rl/actions.py",
+        "a109031cac72c683716f46133769a0cba2762857b60779ff0e5be0af5fd28edc",
+    ),
+    (
+        "server/shengji/ai/bury.py",
+        "2fd2ca71ed7594b99e907d5dbcb65bb95302a7b8c16660769115ed4ddfafe610",
+    ),
+)
+
 
 def test_level_utility_includes_deal_half_level_and_role_sign() -> None:
     assert ctrl.attacker_level_utility(0) == -3.5
@@ -462,8 +477,68 @@ def test_controller_authority_and_score_free_preflight_cannot_widen() -> None:
         reusable, expected)
 
 
+def test_historical_execution_gate_requires_every_frozen_identity(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    def validate_source(logical_path: str, expected_sha256: str) -> dict:
+        calls.append((logical_path, expected_sha256))
+        return {
+            "logical_path": logical_path,
+            "sha256": expected_sha256,
+            "bytes": 1,
+        }
+
+    monkeypatch.setattr(ctrl.DESIGN, "validate_source", validate_source)
+    assert ctrl.HISTORICAL_EXECUTION_SOURCES == \
+        HISTORICAL_EXECUTION_IDENTITIES
+    reopened = ctrl.require_historical_execution_sources()
+    assert tuple(calls) == HISTORICAL_EXECUTION_IDENTITIES
+    assert tuple((item["logical_path"], item["sha256"])
+                 for item in reopened) == HISTORICAL_EXECUTION_IDENTITIES
+
+
+@pytest.mark.parametrize("drifted", HISTORICAL_EXECUTION_IDENTITIES)
+def test_each_historical_execution_source_drift_refuses(
+        monkeypatch: pytest.MonkeyPatch,
+        drifted: tuple[str, str]) -> None:
+    calls = []
+
+    def validate_source(logical_path: str, expected_sha256: str) -> dict:
+        identity = (logical_path, expected_sha256)
+        calls.append(identity)
+        if identity == drifted:
+            raise ctrl.DESIGN.H0PacketError(
+                f"source SHA-256 drift: {logical_path}: {'0' * 64}")
+        return {
+            "logical_path": logical_path,
+            "sha256": expected_sha256,
+            "bytes": 1,
+        }
+
+    monkeypatch.setattr(ctrl.DESIGN, "validate_source", validate_source)
+    with pytest.raises(
+            ctrl.ControllerRefused,
+            match="historical execution source refused: source SHA-256 drift"):
+        ctrl.require_historical_execution_sources()
+    index = HISTORICAL_EXECUTION_IDENTITIES.index(drifted)
+    assert tuple(calls) == HISTORICAL_EXECUTION_IDENTITIES[:index + 1]
+
+
+def _set_strict_runtime_environment(
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    for name in ctrl.SAMPLER_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_execution_runtime_requires_fast_strict_voids_and_no_experiments(
         monkeypatch: pytest.MonkeyPatch) -> None:
+    historical_checks = []
+    monkeypatch.setattr(
+        ctrl, "require_historical_execution_sources",
+        lambda: historical_checks.append("checked"))
     monkeypatch.delenv("SHENGJI_FAST", raising=False)
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     with pytest.raises(ctrl.ControllerRefused, match="SHENGJI_FAST"):
@@ -484,6 +559,29 @@ def test_execution_runtime_requires_fast_strict_voids_and_no_experiments(
     assert contract["fast_engine"] is True
     assert contract["environment"] == {
         "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"}
+    assert historical_checks == ["checked"]
+
+
+def test_controller_freeze_refuses_current_historical_source_drift(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_strict_runtime_environment(monkeypatch)
+    missing = tmp_path / "missing"
+    with pytest.raises(
+            ctrl.ControllerRefused,
+            match=("historical execution source refused: source SHA-256 "
+                   "drift: server/shengji/ai/heuristic.py")):
+        ctrl.build_controller_packet(
+            missing, missing, missing, missing, missing, missing, smoke=True)
+
+
+def test_runtime_packet_open_refuses_current_historical_source_drift(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_strict_runtime_environment(monkeypatch)
+    with pytest.raises(
+            runtime.RuntimeRefused,
+            match=("historical execution source refused: source SHA-256 "
+                   "drift: server/shengji/ai/heuristic.py")):
+        runtime._controller_packet(tmp_path / "missing.json")
 
 
 def test_runtime_packet_open_is_wired_to_strict_runtime_gate(

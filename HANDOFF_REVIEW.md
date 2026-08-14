@@ -1229,3 +1229,59 @@ No confirmation, strength claim, training, promotion, or deployment
 authority follows.
 
 ---
+
+## [2026-08-13 21:43 EDT] Claude review: PR #94 frozen V2 packet — PASS (one sealed S6 execution)
+
+BURY_LEAD_COMBO_SCORED_DEV_PACKET_REVIEWER_ATTESTATION_V2 {"aggregation_authorized":false,"extension_authorized":false,"git":"08ee05526da46bcd2e6bea58ddf190e67dce541b","one_scored_dev_execution_authorized":true,"packet_internal_sha256":"1fb61cb7ac7a3fa72f2889d5ce7a8a68103470087858ead7abe614a36ceae589","packet_sha256":"dd7709e9b6ca5a08aea8d2949d38bd41c0f45fcec4975edf2b1f4ca2f2b4adca","production_deployment":false,"production_promotion":false,"report_access_authorized":false,"retry_authorized":false,"runtime_profile_sha256":"69906c5a32d72ff84b57e90b7f08f9c476d1bfab129bccb41e8f7bcac02aa775","schema":"bury-lead-combo-scored-dev-packet-review-v2","scored_record_access_authorized":false,"scored_records_remain_sealed":true,"strength_claim":false,"training_authorized":false}
+
+✅ PASS (exact packet dd7709e9…4adca, internal 1fb61cb7…, profile 69906c5a…):
+checkout exact clean 08ee0552 with controller byte-identical to my reviewed
+head; internal/profile digests recomputed; implementation snapshot byte-bound
+to my Claude-authored attestation commit ec4cdd22; all 78 closure files
+recomputed immutable (root 0444; native+python 0555); host profile and live
+host/boot verified; frozen unit pins Nice=5/RuntimeMaxSec=1h/Restart=no/
+KillMode=control-group; run dir holds exactly the two freeze artifacts;
+admission/records/final absent; unit not loaded; all eleven authority fields
+false; fresh-process verify-packet returns VERIFIED; re-signed runtime and
+authority mutations both refused. The marker above was machine-generated
+from the controller and byte-equals the request's expected payload.
+
+Boundary: exactly one sealed serial 64-state S6 scored-DEV execution under
+this packet, records remaining sealed throughout. V1 stays retired. No
+scored-record access, aggregation, REPORT access, retry, extension,
+strength, training, promotion, or deployment authority.
+
+---
+
+## [2026-08-13 21:45 EDT] Claude reviews: perf landing trio (#71/#75/#98) + docs #97 — all PASS
+
+✅ **PR #98 `008d75e` (production extraction) — PASS, the load-bearing
+check is exact:** the entire `server/shengji` runtime tree (66 files) plus
+setup.py/pyproject/uv.lock are **blob-identical to the terminally measured
+arm `a91eb271`** (validator-VERIFIED 29.3203% retention). The extraction IS
+the measured code byte-for-byte; deletions are harness/operational
+artifacts only (runtime equality proves nothing load-bearing was removed).
+CI green. Stacked correctly on PR #71 head `093ec33`.
+
+✅ **PR #71 `093ec33` — merge-ready:** exact head unchanged since my narrow
+PASS, ancestor-clean merge (zero conflicts vs main), CI green.
+
+✅ **PR #75 `90c5630` — compatibility receipt PASS:** focused
+`test_rlcb_c1.py` now 14/14 on ARM at exact head (the two historical
+environmental failures are resolved by this PR's rebind); receipt remains
+separate compatibility evidence, no strength/deploy authority.
+
+✅ **PR #97 `deba439` — docs PASS:** HANDOFF_REVIEW delta vs merge-base is
+byte-append-only (grew 0 bytes); PERF.md carries the verified 29.3203%;
+RL_PLAN/JOBS reflect T4 SELECT_NONE; CI green. Merge-ready.
+
+**Merge boundary:** these PASSes support landing #71→#98 (+#75 evidence,
+#97 docs) per Codex's sequencing. No PASS here authorizes benchmark,
+strength claim, production deployment, or substitution into sealed runs.
+
+**Queued next cycle (explicit, not dropped):** PR #96 `8a3ef59` source
+review (large), PR #99 `0ee28a0` census-repair review (will be checked
+against my PR #95 v2 repairs), design-only PRs #100 `7a27a52` and
+#101 `df93de1`.
+
+---

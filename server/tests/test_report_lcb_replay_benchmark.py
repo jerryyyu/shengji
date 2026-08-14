@@ -26,6 +26,9 @@ EXPECTED_SOURCE_SHA256 = (
 EXPECTED_AIR_RESULT_SHA256 = (
     "2623def50a91d96a9dc97bd63139ef28532c2ee389c1a0cc9b4631842c6dcd57"
 )
+CURRENT_MCBOT_SOURCE_SHA256 = (
+    "2e5fff35903bb9a9c36ac4b7e2af953fca982590126ded0bb012a0b1e70d6888"
+)
 
 
 def _asset() -> dict:
@@ -166,14 +169,26 @@ def test_asset_validator_rejects_identity_and_play_mutations():
     assert "stored decision/play mismatch" in bench.asset_problems(asset)
 
 
-def test_first_frozen_decision_replays_cards_record_and_rng_exactly():
+def test_first_frozen_decision_refuses_only_current_source_identity_drift():
     result = bench.replay_asset(_asset(), limit=1, emit_progress=False)
     assert result["decisions"] == 1
-    assert result["semantic_mismatches"] == []
-    assert result["exact_semantic_replay"] is True
+    # This historical asset deliberately pins the old MCBot source. The
+    # optimized implementation must not weaken that gate or relabel itself as
+    # the historical source. Exact equality to this sole mismatch also proves
+    # the played cards did not drift; a play mismatch would add another row.
+    assert result["semantic_mismatches"] == [{
+        "round": 1,
+        "ply": 2,
+        "error": (
+            "record: ReplayRefused: live decision MCBot source identity "
+            "drifted"
+        ),
+    }]
+    assert result["exact_semantic_replay"] is False
     assert result["runtime"]["fast_active"] is bench.fast_active()
     assert result["runtime"]["mcbot_source_sha256"] \
-        == bench.EXPECTED_MCBOT_SHA256
+        == CURRENT_MCBOT_SOURCE_SHA256
+    assert CURRENT_MCBOT_SOURCE_SHA256 != bench.EXPECTED_MCBOT_SHA256
     assert all(len(result["runtime"][key]) == 64 for key in (
         "benchmark_source_sha256", "scheduler_source_sha256",
         "mcbot_source_sha256",

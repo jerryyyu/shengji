@@ -1,0 +1,109 @@
+{
+  "authority": {
+    "benchmark_retry_authorized": false,
+    "deployment_authorized": false,
+    "merge_authorized": false,
+    "performance_only": true,
+    "production_mutation_authorized": false,
+    "strength_claim": false
+  },
+  "evidence": {
+    "design_sha256": "3800aecbee5f05653bbe0251e4f778b48d753a85477e559162342c88a954aa38",
+    "execution_sha256": "c638f998f59730e70b1b74405ab7436a50987b662b86e46f43eda8edc2550367",
+    "harness_sha256": "cb35cf5a3f9a991d3399a1591ded8c2be2a478837c93389cbc226a9505160752",
+    "manifest_sha256": "fd4208febafdb4c8f752ab80a6aca4991d6f1f4f09202cca580815e38dbe9aae",
+    "result_sha256": "151801ca8fe5488de13042a8cbc7a2aa005be7d13256e52a44a2c5fa3662b78f",
+    "review_record_sha256": "fe7d96143f7dd61c5b98292ba80220f5b29cc0e0acfd65c191a5f09c8aa40420",
+    "systemd_invocation_id": "7bae1e195c2247de8beb37efc8c343e0",
+    "terminal_review_commit": "e5818eec0bc8b96053424384f39d4cf2b40715af",
+    "validator_sha256": "1e69d1039efef2081b7bbc435c7fb0b560d0f680080480f45dc4e49c5672a408"
+  },
+  "measurement": {
+    "aggregate": {
+      "base_wall_ns": 111464028121,
+      "head_wall_ns": 78782401934,
+      "throughput_increase_percent": 41.48340921920488,
+      "wall_reduction_percent": 29.32033476443395
+    },
+    "base_git": "093ec33d8d9e137d276b84ffd907ca4417ba44af",
+    "decision": "retain",
+    "head_git": "a91eb2716917bcc3c431d9f6841efd02f4fc8b00",
+    "normalized_fields": [
+      "ballot.digest",
+      "ballot.display",
+      "ballot.source_digest"
+    ],
+    "paired": {
+      "one_sided_95_lcb_percent": 27.861901160038506,
+      "relative_reduction_mean_percent": 29.062626915201246,
+      "relative_reduction_sample_sd_percent": 1.459600404680046,
+      "t_critical": 2.015048373333,
+      "t_df": 5
+    },
+    "protocol": {
+      "n": 30,
+      "policy": "mc-s0-report-lcb",
+      "r": 300
+    },
+    "records": [
+      {
+        "base_elapsed_ns": 23161815472,
+        "head_elapsed_ns": 16429060339,
+        "normalized_semantic_sha256": "42943be277dc92bdacdb84dcb6548e7c5ccae1ab892c88a1b7041319811c220d",
+        "order": "base_head",
+        "seed": 3241160913
+      },
+      {
+        "base_elapsed_ns": 22475592811,
+        "head_elapsed_ns": 15818965737,
+        "normalized_semantic_sha256": "db23335588688ce074e8846aa00f42f37d20d2b80b74d0337ddc0c81669620a5",
+        "order": "head_base",
+        "seed": 309165843
+      },
+      {
+        "base_elapsed_ns": 20135375013,
+        "head_elapsed_ns": 14229984608,
+        "normalized_semantic_sha256": "2a6a9c463ee25a8183fe7dfd4f85d291dbd77538404478d4d30cfcd572910346",
+        "order": "base_head",
+        "seed": 623399655
+      },
+      {
+        "base_elapsed_ns": 11301687575,
+        "head_elapsed_ns": 8197183550,
+        "normalized_semantic_sha256": "8c8d0f604cf974e083e37315fdfcf8de482a5c122ff52793c03dfb7100a3d241",
+        "order": "head_base",
+        "seed": 1506812366
+      },
+      {
+        "base_elapsed_ns": 21236483533,
+        "head_elapsed_ns": 14573509721,
+        "normalized_semantic_sha256": "23b4e83d16b6bba0d4488235d1ef8a70711d63186b7a9d9e411bcfd1efd122c8",
+        "order": "base_head",
+        "seed": 1286062863
+      },
+      {
+        "base_elapsed_ns": 13153073717,
+        "head_elapsed_ns": 9533697979,
+        "normalized_semantic_sha256": "d6bf9d324ef8d181338dc464dbd25bde4390aa98846fe80f5ff8ce97e03a4da3",
+        "order": "head_base",
+        "seed": 2808674107
+      }
+    ],
+    "retention": {
+      "aggregate_minimum_percent_inclusive": 3.0,
+      "paired_lcb_minimum_percent_exclusive": 0.0
+    }
+  },
+  "schema": "report-lcb-perf-accepted-stack-v5-receipt-v1",
+  "source_sha256s": {
+    "server/shengji/ai/heuristic.py": "1d30e636be908e73c42aafb4b0674e4ca4aa093d1c0919409079ac7a04a0157a",
+    "server/shengji/ai/mcbot.py": "2e5fff35903bb9a9c36ac4b7e2af953fca982590126ded0bb012a0b1e70d6888",
+    "server/shengji/engine/_fast.pyx": "df9d544c4503cf74461d6431f84952538d4f3c5da63e196fdf123c545b927cff",
+    "server/shengji/engine/fast.py": "730182cc4bffdd638ed1024c831ee5f33f7a246e57051964e6fb4721fddb52e6",
+    "server/shengji/engine/round.py": "02e7831ec58c224dc1eee83cab465c9e4b3002e1f52eff03125cd84809c2432c",
+    "server/tests/test_fast_parity.py": "81901274530b662d07579051bcb8eda8ef5c3029d3924086f4f8ca993c1304fd",
+    "server/tests/test_heuristic_lead_native.py": "41dc5ae75ffe57e1d003c36ef56b9a58fe3b8cd44ddfadc0fcc1d37be152751a",
+    "server/tests/test_heuristic_lead_prefilter.py": "49d53fbb8affaf6720ba474a495908dac6372778df01a4f21fb1973e04a12df4",
+    "server/tests/test_trick_incumbent.py": "715b8030862431b8c5f4b9f3984dab216fb986fcf73eb0d3f380b665f43d3301"
+  }
+}

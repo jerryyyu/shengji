@@ -838,13 +838,35 @@ def runtime_sources() -> dict:
     return dict(sorted(sources.items()))
 
 
+HISTORICAL_EXECUTION_SOURCES = (
+    (DESIGN.ROLLOUT_POLICY_LOGICAL_PATH, DESIGN.ROLLOUT_POLICY_SHA256),
+    (DESIGN.ANALYSIS_ACTIONS_LOGICAL_PATH, DESIGN.ANALYSIS_ACTIONS_SHA256),
+    (DESIGN.STRUCTURED_BURY_LOGICAL_PATH, DESIGN.STRUCTURED_BURY_SHA256),
+)
+
+
+def require_historical_execution_sources() -> tuple[dict, ...]:
+    """Reopen every executable source identity frozen by the H0 design."""
+    sources = []
+    try:
+        for logical_path, expected_sha256 in HISTORICAL_EXECUTION_SOURCES:
+            sources.append(DESIGN.validate_source(
+                logical_path, expected_sha256))
+    except DESIGN.H0PacketError as exc:
+        raise ControllerRefused(
+            f"historical execution source refused: {exc}") from exc
+    return tuple(sources)
+
+
 def require_execution_runtime() -> dict:
     """Reopen the exact sampler/native mode required by the H0 design.
 
     The v1 controller merely hashed whichever compiled binary happened to be
     importable.  It did not make the future runtime refuse pure Python or
-    void-relaxed sampling.  This function is called both while freezing the
-    score-free packet and every time the execution runtime opens that packet.
+    void-relaxed sampling.  The historical design's executable sources must
+    also still be present by exact bytes.  This function is called both while
+    freezing the score-free packet and every time the execution runtime opens
+    that packet.
     """
     if os.environ.get("SHENGJI_FAST") != "1":
         raise ControllerRefused("set SHENGJI_FAST=1")
@@ -854,6 +876,7 @@ def require_execution_runtime() -> dict:
     if enabled:
         raise ControllerRefused(
             f"experimental sampler/ballot flags must be unset: {enabled}")
+    require_historical_execution_sources()
     from shengji.engine import combos, fast
     if not fast.HAVE_FAST or combos.decompose is not fast.decompose:
         raise ControllerRefused("compiled engine requested but not active")

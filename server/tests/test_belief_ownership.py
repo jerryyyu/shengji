@@ -55,6 +55,29 @@ def _state(seed: int = 9323):
     return rnd, actor, target, transcript
 
 
+def _late_state_with_capacity_one(seed: int = 9301):
+    """Return a fixed public state with one one-card hidden receiver."""
+    game = Game(random.Random(seed))
+    rnd = game.start_round()
+    bot = HeuristicBot()
+    while rnd.phase == "deal":
+        rnd.deal_next()
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+    transcript = PublicTranscriptV1()
+    while rnd.phase == "play" and min(map(len, rnd.hands)) > 1:
+        seat = rnd.turn
+        attempted = bot.decide_play(rnd, seat)
+        previous_last = rnd.last_trick
+        rnd.play(seat, attempted)
+        transcript = transcript.with_play(
+            seat, attempted, actual_play_after(rnd, seat, previous_last))
+    actor = build_actor_observation(rnd, rnd.turn, transcript)
+    target = build_belief_targets(rnd, rnd.turn)
+    assert ("seat-relative-3", 1) in receiver_sizes(actor)
+    return actor, target
+
+
 def _target_counts(actor, target: BeliefTargetsV1):
     result = {
         (card, receiver): 0
@@ -227,6 +250,101 @@ def test_probability_types_scale_population_and_conservation_refuse():
     with pytest.raises(BeliefOwnershipError, match="population/order"):
         validate_ownership(actor, type(belief)(
             **{**belief.__dict__, "probabilities": belief.probabilities[:-1]}))
+
+
+def test_one_copy_card_pair_mass_guard_has_an_expectation_conserving_witness():
+    _, actor, target, _ = _state(9340)
+    counts = _target_counts(actor, target)
+    belief = _belief(actor, [counts])
+    one_copy = next(card for card, copies in actor.deductions.unseen
+                    if copies == 1)
+    owner = next(receiver for receiver, _ in receiver_sizes(actor)
+                 if counts[(one_copy, receiver)] == 1)
+    other = next(receiver for receiver, _ in receiver_sizes(actor)
+                 if receiver != owner)
+    rows = list(belief.probabilities)
+    replacements = {
+        # The two rows still contribute exactly one expected copy in total,
+        # but the second row now has impossible two-copy mass.
+        (one_copy, owner): (2, PROBABILITY_SCALE - 2, 0),
+        (one_copy, other): (PROBABILITY_SCALE - 1, 0, 1),
+    }
+    for index, row in enumerate(rows):
+        values = replacements.get((row.card, row.receiver))
+        if values is not None:
+            rows[index] = replace(
+                row, count_0_ppb=values[0], count_1_ppb=values[1],
+                count_2_ppb=values[2])
+    assert sum(row.expected_count_ppb for row in rows
+               if row.card == one_copy) == PROBABILITY_SCALE
+    with pytest.raises(BeliefOwnershipError,
+                       match="one-copy card has two-copy mass"):
+        validate_ownership(actor, replace(belief, probabilities=tuple(rows)))
+
+
+def test_capacity_one_receiver_pair_mass_guard_has_a_direct_witness():
+    actor, target = _late_state_with_capacity_one()
+    counts = _target_counts(actor, target)
+    belief = _belief(actor, [counts])
+    receiver = "seat-relative-3"
+    pair_card = next(card for card, copies in actor.deductions.unseen
+                     if copies == 2 and counts[(card, receiver)] == 0)
+    rows = list(belief.probabilities)
+    index = next(index for index, row in enumerate(rows)
+                 if row.card == pair_card and row.receiver == receiver)
+    rows[index] = replace(
+        rows[index], count_0_ppb=PROBABILITY_SCALE - 1,
+        count_1_ppb=0, count_2_ppb=1)
+    with pytest.raises(BeliefOwnershipError,
+                       match="receiver capacity forbids two copies"):
+        validate_ownership(actor, replace(belief, probabilities=tuple(rows)))
+
+
+def test_card_expectation_conservation_guard_has_a_probability_valid_witness():
+    _, actor, target, _ = _state(9344)
+    counts = _target_counts(actor, target)
+    belief = _belief(actor, [counts])
+    card = next(card for card, copies in actor.deductions.unseen
+                if copies == 1)
+    empty = next(receiver for receiver, _ in receiver_sizes(actor)
+                 if counts[(card, receiver)] == 0)
+    rows = list(belief.probabilities)
+    index = next(index for index, row in enumerate(rows)
+                 if row.card == card and row.receiver == empty)
+    rows[index] = replace(
+        rows[index], count_0_ppb=PROBABILITY_SCALE - 1,
+        count_1_ppb=1)
+    with pytest.raises(BeliefOwnershipError,
+                       match="card expectation violates conservation"):
+        validate_ownership(actor, replace(belief, probabilities=tuple(rows)))
+
+
+def test_receiver_expectation_conservation_guard_has_a_card_balanced_witness():
+    _, actor, target, _ = _state(9346)
+    counts = _target_counts(actor, target)
+    belief = _belief(actor, [counts])
+    card = next(card for card, copies in actor.deductions.unseen
+                if copies == 1)
+    owner = next(receiver for receiver, _ in receiver_sizes(actor)
+                 if counts[(card, receiver)] == 1)
+    other = next(receiver for receiver, _ in receiver_sizes(actor)
+                 if receiver != owner)
+    rows = list(belief.probabilities)
+    replacements = {
+        (card, owner): (1, PROBABILITY_SCALE - 1, 0),
+        (card, other): (PROBABILITY_SCALE - 1, 1, 0),
+    }
+    for index, row in enumerate(rows):
+        values = replacements.get((row.card, row.receiver))
+        if values is not None:
+            rows[index] = replace(
+                row, count_0_ppb=values[0], count_1_ppb=values[1],
+                count_2_ppb=values[2])
+    assert sum(row.expected_count_ppb for row in rows if row.card == card) \
+        == PROBABILITY_SCALE
+    with pytest.raises(BeliefOwnershipError,
+                       match="receiver expectation violates conservation"):
+        validate_ownership(actor, replace(belief, probabilities=tuple(rows)))
 
 
 def test_proven_void_is_a_probability_one_zero_count():

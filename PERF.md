@@ -236,6 +236,24 @@ paired one-sided lower bound 26.062%). This is useful diagnostic evidence, not
 a confirmation: the normalization rule was not preregistered, so the batch
 cannot authorize a current-main performance claim or another retry.
 
+PR #103 then measured a distinct reviewed native stack against clean main
+`57a1c2be` on the exact x86 performance host. Its sole six-pair batch retained
+at **3.4074% lower aggregate wall**, with paired one-sided 95% lower bound
+**+1.0299%**. One of six seeds regressed, so the honest headline is a modest,
+variable gain—not the earlier exploratory ARM `+7.59%`. Every normalized
+action/history/work/RNG/sampler trace was exact. Two independent exact-head
+differential soaks then completed with no mismatch: 10,000,000 rounds / about
+744.6M plays on Mini and 2,000,000 rounds on x86. Exact reviewed head
+`3044a2f` merged through `e3af8c3`; it is not deployed and proves no strength
+improvement.
+
+PR #107 is the next performance wave, not yet retention evidence. Codex held
+its first head for a stale mutable-world cache and an unsafe 34–128-card native
+lead admission. Repaired head `34ea5a6` removes the cache in favor of explicit
+prepared-world plumbing and restores the 33-card engine boundary, but its
+current CI failure and independent re-review must close before a fresh x86
+A/B. The prior `+7.05%` ARM timing does not apply to repaired bytes.
+
 ## Gaps (ranked by ROI)
 
 The ordering below came from the pre-activation profile. Before choosing the
@@ -247,13 +265,13 @@ one-off experiment controllers.
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
 | 2 | Python policy hot loop after compiled phases 0-2 | terminal arm `a91eb271`; production extraction merged through `fe04fa2` | measured 29.3203% lower aggregate wall; paired one-sided 95% lower bound 27.8619%; exact normalized semantics | optimization landed on main; current main also contains off-by-default Pair ballot bytes, so confirm that exact composition before quoting a production-main percentage |
-| 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
+| 3 | string cards and list hands still cross every compiled call | entry-bound lead/follow and trusted-rollout play loop, then convert only proven hot boundaries | measured PR #103 increment 3.4074% on x86 | PR #103 retained, passed two-platform differential soaks and merged at `e3af8c3`; PR #107 repair remains unmeasured |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
-| 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | PR #89 V5 is terminal. PR #96 has one frozen, verified score-free capacity packet awaiting packet review. S6 V2 refused pre-admission on an ignored `.pyc`; optimized V3 PR #104 exact `a93c2f5` is staged and awaits source re-review before any packet. No gameplay worker is live. |
+| 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | idle after terminal S4 `SELECT_NONE`; do not fill it with an unqualified strength hypothesis |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles, parity and reviewed fresh execution without disturbing Air | currently saturated by the one reviewed Pair checkpoint screen (`f2878fff…a5c9c`, 16 workers, 52h cap); no performance benchmark may contend with it |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -264,12 +282,12 @@ one-off experiment controllers.
 2. PR #71 and production extraction PR #98 are merged as `c279a31` and
    `fe04fa2`. No deployment followed. The later three-pair diagnostic failed
    its strict normalization gate on the explicit false Pair-retention flag;
-   its post-hoc 30.359% result does not close the requirement. Run one fresh
-   preregistered same-N/R confirmation before claiming an exact current-main
-   percentage. The 29.3203% result remains valid evidence for exact measured
-   arm `a91eb271`, not strength or deployment authorization.
-3. After that current-main confirmation, profile the accepted stack again. Do
-   not infer the
+   its post-hoc 30.359% result does not close the requirement. The later exact
+   PR #103 batch separately retained its own stack at 3.4074% with positive
+   LCB and exact semantics; exact reviewed head `3044a2f` merged at `e3af8c3`.
+   Preserve both baselines rather than adding percentages.
+3. Profile the accepted stack again after Performance Cloud finishes its sealed
+   Pair job. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.
 4. Consider moving int-card conversion to the rollout boundary and compiling

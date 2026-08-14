@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue reconciled: 2026-08-14 12:36 EDT from canonical main `410f592`.
+Review queue reconciled: 2026-08-14 12:42 EDT from canonical main `fb246a2`.
 Fleet rows retain the 11:47 EDT score-free snapshot below.
 
 ## Live fleet
@@ -23,23 +23,7 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
 
 ## Review queue — precise asks
 
-1. **PR #110 BELIEF-V1 research/spec review — no execution authority.**
-   Review exact head `b8c2a4c25e918278c72facc472c6736428e65af3`, a
-   three-file documentation-only delta: new `BELIEF_V1_SPEC.md`, new
-   `RESEARCH_PRINCIPLES.md`, and one 30-line `RL_PLAN.md` milestone pointer.
-   Confirm it extends PointContext rather than duplicating it; explicitly
-   represents actor-relative ownership and sample-derived shape/point/boss
-   distributions; treats declined-feed, forced-joker and unforced-discard
-   signals as policy-bound probabilities; limits V1 to one ownership head and
-   one constrained-sampler consumer; and adopts exact E1-E5, calibration
-   C1-C4, negative-control N1-N3 and usefulness U1-U2 gates against the exact
-   current constraint-consistent proposal and Memory/PointContext references
-   before online scale. Confirm it does not claim that the randomized current
-   sampler is mathematically uniform.
-   PASS means roadmap/spec merge-readiness only—no corpus, training, run,
-   strength, promotion, or deployment authority.
-
-2. **PR #111 BELIEF-V1 B0/B1 boundary review — no run authority.**
+1. **PR #111 BELIEF-V1 B0/B1 boundary review — no run authority.**
    Review exact head `7ebfcf7959f5254fee3b3dda1fc2fd83600540e9`,
    exactly four files: actor/target contract, in-memory corpus rows, and their
    two test files. Verify hidden-world and absolute-seat invariance, banker-
@@ -52,7 +36,7 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
    no file writer, corpus generation, model, sampler, training or run path.
    PASS means typed boundary and in-memory row merge-readiness only.
 
-3. **PR #112 BELIEF-V1 B2 design/ownership-contract review — no run authority.**
+2. **PR #112 BELIEF-V1 B2 design/ownership-contract review — no run authority.**
    Review exact stacked head `290af7ee952ac646299a208101dc56eeae86624c`
    over PR #111. The exact three-file delta is the offline calibration design,
    actor-relative ownership probability schema/validator, and synthetic tests.
@@ -71,14 +55,14 @@ Fleet rows retain the 11:47 EDT score-free snapshot below.
    PASS means source/design merge-readiness only; it does not authorize corpus
    capture, training, cloud use, online screening, strength or deployment.
 
-4. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
+3. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
    identity cache in favor of explicit per-world prepared hands and restores
    the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
    call/route witnesses and resolve its current failing CI before any x86 A/B.
    The prior 7.05% ARM timing is exploratory and cannot retain this head.
 
-5. **PR #105 PointContext/point-flow test-only delta acknowledgment —
+4. **PR #105 PointContext/point-flow test-only delta acknowledgment —
    non-launch-critical.** Claude verified substantive repair `f599be8c`, then
    added two independent mutation witnesses in exact child `c454aaaf` (+17
    test lines; production unchanged): valid-banker/bool-tally refusal and exact
@@ -129,7 +113,9 @@ PR comments alone are not queue state.
   The lane is closed with no retry or candidate action.
 - **Docs:** PR #97 exact reviewed head `316d6b7` merged at `8bc2da1`. The
   campaign closeout and post-null roadmap PR #109 exact `8fa96de` PASSed at
-  canonical `499de77` and merged at `09b80bb`.
+  canonical `499de77` and merged at `09b80bb`. BELIEF-V1 spec/roadmap PR #110
+  exact `b8c2a4c` PASSed at `de26d60` and merged at `fb246a2`; it grants no
+  corpus, training, run, strength or deployment authority.
 - **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
   exact normalized semantics; PR #98 merged the byte-identical production
   runtime as `fe04fa2`. A later current-main diagnostic failed its strict

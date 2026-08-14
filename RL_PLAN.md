@@ -76,8 +76,11 @@ This section keeps only the research conclusions that change what we try next.
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical
   `16af447`. Declarative build-and-verify-only design PR #86 exact head
   `289fdf0` PASSed superseding external design-only review and merged, opening
-  only a future controller-design review. Prevalence remains SmartBot-trajectory
-  rather than champion-natural dose; implementation, freeze, execution,
+  only a future controller-design review. Draft PR #100 now specifies that
+  controller boundary, while draft PR #101 freezes a fresh 8,192-deal,
+  16-lane exact-champion natural role/band dose census design. Both await
+  independent design review; prevalence remains SmartBot-trajectory until a
+  separately reviewed implementation actually runs. Implementation, freeze, execution,
   evidence access, scoring, REPORT, aggregation and every strength or deployment
   claim remain closed.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
@@ -436,9 +439,11 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   passed the exact result-review CLI and four falsifications; raw marker
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` is canonical at
   `16af447`. Design-only PR #86 exact `289fdf0` then PASSed superseding review
-  and merged, opening a future controller-design review only. SmartBot-trajectory
-  prevalence still must be replaced by champion-natural dose before
-  whole-round inference. PR #55 `24b421d` PASSed merge-readiness, so the exact
+  and merged, opening a future controller-design review only. Draft PR #100
+  specifies that controller boundary; draft PR #101 freezes a fresh 8,192-deal
+  exact-champion natural role/band dose census design. Neither is executable,
+  and SmartBot-trajectory prevalence still must be replaced before whole-round
+  inference. PR #55 `24b421d` PASSed merge-readiness, so the exact
   #55→#60→#61→#72 stack may merge only in order; packet implementation/freeze,
   scored execution and every downstream claim remain unauthorized.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b

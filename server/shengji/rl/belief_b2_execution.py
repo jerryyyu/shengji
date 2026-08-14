@@ -306,9 +306,9 @@ def build_runtime_profile() -> RuntimeProfileV1:
         python_resolved_executable=str(resolved_python),
         python_executable_sha256=_sha256(resolved_python.read_bytes()),
         python_version=platform.python_version(),
-        torch_version=torch.__version__,
+        torch_version=str(torch.__version__),
         torch_config_sha256=_sha256(torch.__config__.show().encode()),
-        numpy_version=np.__version__, native_path=str(native_path),
+        numpy_version=str(np.__version__), native_path=str(native_path),
         native_sha256=_sha256(native_path.read_bytes()),
         required_environment=environment)
     validate_runtime_profile(profile)

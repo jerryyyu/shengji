@@ -25,14 +25,37 @@ from shengji.engine.legal import beats  # noqa: E402
 TABLE_KEYS = ("literal", "inferred_strict", "inferred_loose", "open", "complex")
 
 
+class CountingHeuristic(HeuristicBot):
+    """Observe only opportunities with an engine-legal point action."""
+
+    def __init__(self, tallies):
+        super().__init__()
+        self._point_census_tallies = tallies
+
+    def _follow(self, rnd, seat):
+        action = super()._follow(rnd, seat)
+        t = rnd.trick
+        if t is not None and 0 < len(t.plays) < 3:
+            _, winning, partner, _, to_act = trick_context(rnd, seat)
+            if partner and legal_point_actions(rnd, seat):
+                cls, _ = classify_boss(
+                    rnd, seat, winning[0], winning[1], winning[2], to_act)
+                self._point_census_tallies[cls]["n"] += 1
+                self._point_census_tallies[cls]["fed"] += \
+                    sum(points(c) for c in action) > 0
+        return action
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--logs-dir", default="logs")
     ap.add_argument("--manifest",
                     default="server/scripts/point_census/manifest.json")
+    ap.add_argument("--expected-manifest-sha256", required=True)
     ap.add_argument("--rollout-states", type=int, default=12)
     args = ap.parse_args()
-    manifest, ordered = load_validated_manifest(args.manifest, args.logs_dir)
+    manifest, ordered, manifest_sha = load_validated_manifest(
+        args.manifest, args.logs_dir, args.expected_manifest_sha256)
     msha = sha256_bytes(canonical(manifest))
     smart = make_bot("smart")
 
@@ -69,23 +92,10 @@ def main() -> None:
     # P1b: rollout-policy feed behavior by boss class inside MC worlds.
     tallies = {k: Counter() for k in TABLE_KEYS}
 
-    class CountingHeuristic(HeuristicBot):
-        def _follow(self, rnd, seat):
-            action = super()._follow(rnd, seat)
-            t = rnd.trick
-            if t is not None and 0 < len(t.plays) < 3:
-                is_lead, winning, partner, _, to_act = trick_context(rnd, seat)
-                if partner and any(points(c) for c in rnd.hands[seat]):
-                    cls, _ = classify_boss(rnd, seat, winning[0], winning[1],
-                                           winning[2], to_act)
-                    tallies[cls]["n"] += 1
-                    tallies[cls]["fed"] += sum(points(c) for c in action) > 0
-            return action
-
     Base = type(make_bot("mc-s0-report-lcb", seed=0))
     for rnd, seat, key in rollout_sample:
         bot = Base(seed=key)
-        bot.rollout_policy = CountingHeuristic()
+        bot.rollout_policy = CountingHeuristic(tallies)
         try:
             bot.decide_play(copy.deepcopy(rnd), seat)
         except Exception:
@@ -94,7 +104,7 @@ def main() -> None:
     decline_points_left.sort()
     emit({
         "schema": "point-census-p1p2-v2",
-        "receipt": identity_receipt(manifest),
+        "receipt": identity_receipt(manifest, manifest_sha, Path(__file__)),
         "p1_human_by_class": {k: dict(v) for k, v in human.items()},
         "p1_rollout_by_class": {k: dict(v) for k, v in tallies.items()},
         "p1_rollout_states": len(rollout_sample),

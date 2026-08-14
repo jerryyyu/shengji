@@ -46,8 +46,10 @@ def main() -> None:
     ap.add_argument("--logs-dir", default="logs")
     ap.add_argument("--manifest",
                     default="server/scripts/point_census/manifest.json")
+    ap.add_argument("--expected-manifest-sha256", required=True)
     args = ap.parse_args()
-    manifest, ordered = load_validated_manifest(args.manifest, args.logs_dir)
+    manifest, ordered, manifest_sha = load_validated_manifest(
+        args.manifest, args.logs_dir, args.expected_manifest_sha256)
     smart = make_bot("smart")
     n = agree = refused = 0
     classes: Counter = Counter()
@@ -72,7 +74,7 @@ def main() -> None:
             classes[f"{key} | {phase}"] += 1
     emit({
         "schema": "point-census-e1-v2",
-        "receipt": identity_receipt(manifest),
+        "receipt": identity_receipt(manifest, manifest_sha, Path(__file__)),
         "decisions": n, "exact_agreement": agree,
         "replay_refusals": refused,
         "contexts": dict(contexts),

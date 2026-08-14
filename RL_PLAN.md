@@ -115,8 +115,9 @@ This section keeps only the research conclusions that change what we try next.
   one-sided lower bound and exact normalized semantics. PR #103's additional
   native entry/trusted-rollout routes retained a further 3.4074% on their exact
   stack, with a +1.0299% lower bound and zero mismatch across 12 million
-  differential rounds; they remain a reviewed integration candidate rather
-  than a strength result. PR #107's further ARM candidate is still blocked on
+  differential rounds; exact reviewed head `3044a2f` merged through `e3af8c3`
+  but remains a performance result rather than a strength result. PR #107's
+  further ARM candidate is still blocked on
   exact-head CI/review after repairing a stale mutable-world cache and restoring
   the 33-card native admission bound. Never add percentages from different
   baselines. Performance gains make future evidence cheaper; they do not prove

@@ -243,8 +243,9 @@ at **3.4074% lower aggregate wall**, with paired one-sided 95% lower bound
 variable gain—not the earlier exploratory ARM `+7.59%`. Every normalized
 action/history/work/RNG/sampler trace was exact. Two independent exact-head
 differential soaks then completed with no mismatch: 10,000,000 rounds / about
-744.6M plays on Mini and 2,000,000 rounds on x86. PR #103 remains a reviewed
-merge candidate; it is not deployed and proves no strength improvement.
+744.6M plays on Mini and 2,000,000 rounds on x86. Exact reviewed head
+`3044a2f` merged through `e3af8c3`; it is not deployed and proves no strength
+improvement.
 
 PR #107 is the next performance wave, not yet retention evidence. Codex held
 its first head for a stale mutable-world cache and an unsafe 34–128-card native
@@ -264,7 +265,7 @@ one-off experiment controllers.
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
 | 2 | Python policy hot loop after compiled phases 0-2 | terminal arm `a91eb271`; production extraction merged through `fe04fa2` | measured 29.3203% lower aggregate wall; paired one-sided 95% lower bound 27.8619%; exact normalized semantics | optimization landed on main; current main also contains off-by-default Pair ballot bytes, so confirm that exact composition before quoting a production-main percentage |
-| 3 | string cards and list hands still cross every compiled call | entry-bound lead/follow and trusted-rollout play loop, then convert only proven hot boundaries | measured PR #103 increment 3.4074% on x86 | PR #103 retained with two-platform differential soaks and awaits merge sequencing; PR #107 repair remains unmeasured |
+| 3 | string cards and list hands still cross every compiled call | entry-bound lead/follow and trusted-rollout play loop, then convert only proven hot boundaries | measured PR #103 increment 3.4074% on x86 | PR #103 retained, passed two-platform differential soaks and merged at `e3af8c3`; PR #107 repair remains unmeasured |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
@@ -283,10 +284,10 @@ one-off experiment controllers.
    its strict normalization gate on the explicit false Pair-retention flag;
    its post-hoc 30.359% result does not close the requirement. The later exact
    PR #103 batch separately retained its own stack at 3.4074% with positive
-   LCB and exact semantics. Land PR #103 only through its reviewed head and
-   preserve both baselines rather than adding percentages.
-3. After PR #103 lands, profile the accepted stack again. Do
-   not infer the
+   LCB and exact semantics; exact reviewed head `3044a2f` merged at `e3af8c3`.
+   Preserve both baselines rather than adding percentages.
+3. Profile the accepted stack again after Performance Cloud finishes its sealed
+   Pair job. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.
 4. Consider moving int-card conversion to the rollout boundary and compiling

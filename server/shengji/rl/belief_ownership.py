@@ -8,6 +8,7 @@ sample a world, choose an action, or register a runtime policy.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,6 +32,37 @@ class BeliefOwnershipError(ValueError):
 def _is_sha256(value: Any) -> bool:
     return (type(value) is str and len(value) == 64
             and all(char in "0123456789abcdef" for char in value))
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise BeliefOwnershipError("ownership JSON has a duplicate key")
+        result[key] = value
+    return result
+
+
+def _reject_noninteger_number(value: str) -> None:
+    raise BeliefOwnershipError(
+        f"ownership JSON contains a non-integer number: {value}")
+
+
+def _strict_json(raw: bytes) -> Any:
+    if type(raw) is not bytes or not raw:
+        raise BeliefOwnershipError("ownership artifact must be nonempty bytes")
+    try:
+        text = raw.decode("ascii")
+        return json.loads(
+            text,
+            object_pairs_hook=_strict_object,
+            parse_float=_reject_noninteger_number,
+            parse_constant=_reject_noninteger_number,
+        )
+    except BeliefOwnershipError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefOwnershipError("ownership artifact is not strict JSON") from exc
 
 
 def receiver_sizes(actor: ActorObservationV1) -> tuple[tuple[str, int], ...]:
@@ -215,6 +247,82 @@ def validate_ownership(actor: ActorObservationV1,
             elif receiver != owner and row.count_2_ppb != 0:
                 raise BeliefOwnershipError(
                     "single declaration leaves two-copy mass elsewhere")
+
+
+def ownership_from_bytes(actor: ActorObservationV1,
+                         raw: bytes) -> BeliefOwnershipV1:
+    """Strictly reopen, reconstruct, and validate exact artifact bytes."""
+    payload = _strict_json(raw)
+    root_keys = {
+        "schema", "information_tag", "actor_observation_sha256",
+        "model_schema", "model_sha256", "behavior_policy_ids",
+        "probability_scale", "receiver_sizes", "count_probabilities",
+        "privileged_targets_consumed",
+    }
+    if type(payload) is not dict or set(payload) != root_keys:
+        raise BeliefOwnershipError("ownership artifact root schema is open")
+    if payload["privileged_targets_consumed"] is not False:
+        raise BeliefOwnershipError("ownership artifact consumed privileged targets")
+    if type(payload["probability_scale"]) is not int \
+            or payload["probability_scale"] != PROBABILITY_SCALE:
+        raise BeliefOwnershipError("ownership probability scale drift")
+    if type(payload["behavior_policy_ids"]) is not list \
+            or type(payload["receiver_sizes"]) is not list \
+            or type(payload["count_probabilities"]) is not list:
+        raise BeliefOwnershipError("ownership artifact population is malformed")
+
+    receiver_rows: list[tuple[str, int]] = []
+    for row in payload["receiver_sizes"]:
+        if type(row) is not dict or set(row) != {"receiver", "card_count"} \
+                or type(row["receiver"]) is not str \
+                or type(row["card_count"]) is not int:
+            raise BeliefOwnershipError("ownership receiver row is malformed")
+        receiver_rows.append((row["receiver"], row["card_count"]))
+
+    probability_rows: list[ReceiverCountProbabilityV1] = []
+    probability_keys = {
+        "schema", "card", "receiver", "count_probability_ppb",
+        "expected_count_ppb",
+    }
+    for row in payload["count_probabilities"]:
+        if type(row) is not dict or set(row) != probability_keys \
+                or type(row["schema"]) is not str \
+                or type(row["card"]) is not str \
+                or type(row["receiver"]) is not str \
+                or type(row["count_probability_ppb"]) is not list \
+                or len(row["count_probability_ppb"]) != 3 \
+                or type(row["expected_count_ppb"]) is not int:
+            raise BeliefOwnershipError(
+                "ownership count-probability row is malformed")
+        probabilities = row["count_probability_ppb"]
+        if any(type(value) is not int for value in probabilities):
+            raise BeliefOwnershipError("ownership count probability is invalid")
+        if row["expected_count_ppb"] != probabilities[1] \
+                + 2 * probabilities[2]:
+            raise BeliefOwnershipError("ownership expected-count field drift")
+        probability_rows.append(ReceiverCountProbabilityV1(
+            schema=row["schema"],
+            card=row["card"],
+            receiver=row["receiver"],
+            count_0_ppb=probabilities[0],
+            count_1_ppb=probabilities[1],
+            count_2_ppb=probabilities[2],
+        ))
+
+    belief = BeliefOwnershipV1(
+        schema=payload["schema"],
+        information_tag=payload["information_tag"],
+        actor_observation_sha256=payload["actor_observation_sha256"],
+        model_schema=payload["model_schema"],
+        model_sha256=payload["model_sha256"],
+        behavior_policy_ids=tuple(payload["behavior_policy_ids"]),
+        receiver_sizes=tuple(receiver_rows),
+        probabilities=tuple(probability_rows),
+    )
+    validate_ownership(actor, belief)
+    if belief.canonical_bytes() != raw:
+        raise BeliefOwnershipError("ownership artifact is not canonical bytes")
+    return belief
 
 
 def count_brier_fraction(

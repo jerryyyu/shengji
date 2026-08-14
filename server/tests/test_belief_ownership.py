@@ -28,6 +28,7 @@ from shengji.rl.belief_ownership import (
     BeliefOwnershipV1,
     ReceiverCountProbabilityV1,
     count_brier_fraction,
+    ownership_from_bytes,
     receiver_sizes,
     validate_ownership,
 )
@@ -554,3 +555,42 @@ def test_brier_refuses_wrong_privileged_evaluation_population():
     bool_count[next(iter(bool_count))] = False
     with pytest.raises(BeliefOwnershipError, match="evaluation population"):
         count_brier_fraction(belief, bool_count)
+
+
+def test_artifact_reopen_is_closed_canonical_and_same_byte_bound():
+    _, actor, target, _ = _state(9353)
+    belief = _belief(actor, [_target_counts(actor, target)])
+    raw = belief.canonical_bytes()
+    reopened = ownership_from_bytes(actor, raw)
+    assert reopened == belief
+    assert reopened.canonical_bytes() == raw
+
+    duplicate = b'{"schema":"forged",' + raw[1:]
+    with pytest.raises(BeliefOwnershipError, match="duplicate key"):
+        ownership_from_bytes(actor, duplicate)
+    with pytest.raises(BeliefOwnershipError, match="not canonical bytes"):
+        ownership_from_bytes(actor, raw[:-1] + b" \n")
+
+    payload = json.loads(raw)
+    payload["utility"] = 1
+    with pytest.raises(BeliefOwnershipError, match="root schema is open"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+
+    payload.pop("utility")
+    payload["privileged_targets_consumed"] = True
+    with pytest.raises(BeliefOwnershipError, match="privileged targets"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+
+    payload["privileged_targets_consumed"] = False
+    payload["count_probabilities"][0]["expected_count_ppb"] += 1
+    with pytest.raises(BeliefOwnershipError, match="expected-count field"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+
+    payload["count_probabilities"][0]["expected_count_ppb"] -= 1
+    payload["count_probabilities"][0]["count_probability_ppb"][0] = True
+    with pytest.raises(BeliefOwnershipError, match="count probability"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")

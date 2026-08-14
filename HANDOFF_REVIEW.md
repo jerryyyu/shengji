@@ -1341,3 +1341,28 @@ screen execution, resume, aggregate, outcomes, strength, production, retry,
 and extension remain unauthorized.
 
 ---
+
+## [2026-08-13 22:44 EDT] Claude adjudication: S6 V2 start refused pre-consumption — retryable; staging-hygiene pattern noted
+
+The 01:45:04 UTC start of the authorized S6 V2 one-shot refused in under a
+second: `loadable source shadows present:
+server/scripts/__pycache__/bury_lead_combo_scored_dev_controller.cpython-314.pyc`
+— stale bytecode in the checkout, almost certainly from a manual
+`verify-packet` run without `-B`. **Pre-consumption by construction**: the
+run directory still holds exactly the two freeze artifacts; no
+packet-review snapshot, admission, records directory, or final exists;
+NRestarts=0. Packet `dd7709e9…`, my V2 packet marker (`fdfdf336`), and the
+one-execution authority all remain valid.
+
+**Remaining steps (Codex):** delete the `__pycache__` directory from the
+checkout, confirm zero shadows, and `systemctl start` once. No re-review
+required — no packet/controller/unit byte changed.
+
+**Runbook item (third staging-hygiene refusal: v2 write-bits, V5
+write-bits, now S6 pyc):** add a single pre-start hygiene sweep to the
+one-shot runbook — `chmod a-w` over pinned inputs, purge `__pycache__`/
+\*.pyc from the checkout, and `-B` on every manual controller invocation.
+Each of these refusals was fail-closed and cost only calendar time, but the
+class is now systematic and one checklist line removes it.
+
+---

@@ -8,13 +8,13 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 00:03 EDT from canonical main `4679ea9`.
+Last reconciled: 2026-08-14 00:07 EDT from canonical main `0365126`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses local repaired candidate `ed1d731` and compares native/pure state after every play across 10,000,000 deterministic rounds. It reads no sealed data and grants no benchmark, strength or merge authority. |
+| **Mini** | PR #103 native-round differential soak, eight nice-10 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses the repair bytes now pushed at PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. It reads no sealed data and grants no benchmark, strength or merge authority. |
 | **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[464,464,480,464,464,464,464,464]/896`, totaling `3,728/7,168` (52.01%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue is asleep behind the supervisor. |
 | **Strength Cloud** | S4 360B point-banking confirmation, tranche two | Exact source `e7551e4`; all 16 workers are alive and CPU-bound. Reviewed score-free progress is `6,667/8,192` (81.38%); 0/16 terminal. Look one passed integrity but not early efficacy, so the reviewed controller continued automatically. No outcome has been opened and there is no hard runtime timeout. |
 | **Performance Cloud** | Pair successor score-free capacity, 16 workers | PR #96 recovery PASS `9a8843b` bound the pre-admission ignored-pyc incident. The exact pyc is quarantined intact and invocation `b98b4e15…` started at 00:01 EDT after exact re-verification. Packet snapshot and admission exist; result is absent; the systemd deadline is 04:01 EDT. S6 V3 packet `0e9ee589…bbee` passed at `4679ea9` and waits only for zero Pair workers. |
@@ -22,14 +22,14 @@ Last reconciled: 2026-08-14 00:03 EDT from canonical main `4679ea9`.
 
 ## Review queue — precise asks
 
-1. **PR #103 native rollout final-head repair.** Exact remote head `cbba3e5`
-   is HOLD because entry-bound `_follow` narrows huge cached Python integers
-   before fallback. Codex prepared local direct child `ed1d731` at
-   `/private/tmp/shengji-pr103-review-v1`: two files, +62/-3; fresh build,
-   41 native-route tests and 33 engine/action tests pass. Cherry-pick or
-   reproduce it onto PR #103, push, then request one exact-final-head review
-   covering both code and the fixed six-pair x86 benchmark envelope. Do not
-   benchmark `cbba3e5`.
+1. **PR #103 native rollout exact-final-head delta review.** Claude reproduced
+   Codex's native-entry guard and pushed exact head `3044a2f`; CI is green.
+   The delta checks every cached winner/incumbent/point value as an exact
+   in-domain Python integer before any C cast and fixes one pure-mode test
+   collection seam. Independently reproduce the malformed-value fallback,
+   normal native-route sentinel and pure/compiled batteries on this exact
+   head. If code PASSes, review/freeze the fixed six-pair x86 benchmark
+   envelope in the same round. No x86 A/B has run on this head yet.
 
 2. **PR #105 PointContext/point-flow repair — non-launch-critical.** Exact
    `e22bfff` is HOLD. Repair rejected-round accumulator mutation, mutable

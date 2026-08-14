@@ -302,26 +302,26 @@ def test_point_flow_feed_and_discard_with_kitty_transfer():
     flow = classify_trick_point_flow(rnd.history[0], rnd.ordering, 0)
     assert flow.winner == 1 and flow.winner_is_attacker is True
     assert flow.trick_points == 15
-    assert flow.fed_points == 5
-    assert flow.discarded_points == 10
-    assert flow.contested_points == 0
+    assert flow.winner_teammate_points == 5
+    assert flow.losing_team_points == 10
+    assert flow.winner_own_points == 0
     tele = round_flow(rnd)
     assert rnd.kitty_bonus == 20 and rnd.attacker_points == 35
     assert tele["kitty_points"] == 20
     assert tele["attacker_captured"] == 15 and tele["defender_captured"] == 0
-    assert tele["attacker_fed"] == 5 and tele["defender_fed"] == 0
+    assert tele["attacker_teammate_points"] == 5 and tele["defender_teammate_points"] == 0
 
 
-def test_point_flow_contested_points_ride_the_winning_play():
+def test_point_flow_winner_own_points_ride_the_winning_play():
     # Winner seat 3 takes the trick WITH its own SK: 10 contested points.
     rnd = _flow_round(hands=[["S10"], ["S5"], ["S4"], ["SK"]],
                       leader=2, buried=["C3"])
     flow = classify_trick_point_flow(rnd.history[0], rnd.ordering, 0)
     assert flow.winner == 3 and flow.winner_is_attacker is True
     assert flow.trick_points == 25
-    assert flow.contested_points == 10  # the SK itself
-    assert flow.fed_points == 5         # partner seat 1's S5
-    assert flow.discarded_points == 10  # defender seat 0's S10
+    assert flow.winner_own_points == 10  # the SK itself
+    assert flow.winner_teammate_points == 5         # partner seat 1's S5
+    assert flow.losing_team_points == 10  # defender seat 0's S10
 
 
 def test_point_flow_defended_kitty_never_transfers():
@@ -332,8 +332,8 @@ def test_point_flow_defended_kitty_never_transfers():
     assert rnd.kitty_bonus == 0 and rnd.attacker_points == 0
     tele = round_flow(rnd)
     assert tele["kitty_points"] == 0
-    assert tele["defender_captured"] == 15 and tele["defender_fed"] == 10
-    assert tele["discarded_points"] == 5  # attacker seat 1's S5
+    assert tele["defender_captured"] == 15 and tele["defender_teammate_points"] == 10
+    assert tele["losing_team_points"] == 5  # attacker seat 1's S5
 
 
 def test_point_flow_full_rounds_reconcile_with_engine():
@@ -345,8 +345,8 @@ def test_point_flow_full_rounds_reconcile_with_engine():
         assert tele["tricks"] == len(rnd.history)
         # every non-buried point lands in exactly one trick
         assert tele["trick_points"] == 200 - total_points(rnd.buried)
-        assert (tele["fed_points"] + tele["contested_points"]
-                + tele["discarded_points"] == tele["trick_points"])
+        assert (tele["winner_teammate_points"] + tele["winner_own_points"]
+                + tele["losing_team_points"] == tele["trick_points"])
         assert (tele["attacker_captured"] + tele["kitty_points"]
                 == rnd.attacker_points)
     # partial rounds reconcile too (open trick excluded, no kitty yet)
@@ -393,7 +393,7 @@ def test_point_flow_determinism_byte_equal():
 def test_point_flow_validation_can_fail():
     acc = PointFlowAccumulator()
     acc.accumulate_round(_finished_round(61))
-    acc._totals["fed_points"] += 1  # break the partition on purpose
+    acc._totals["winner_teammate_points"] += 1  # break the partition on purpose
     with pytest.raises(AssertionError):
         acc.telemetry()
 
@@ -428,3 +428,69 @@ def test_wrong_banker_flips_attribution():
     f1 = classify_trick_point_flow(rnd.history[0], rnd.ordering, 1)
     assert f0.winner_is_attacker != f1.winner_is_attacker
     assert f0.trick_points == f1.trick_points == 15  # partition unchanged
+
+
+# ------------------------------------------------- HOLD-repair regressions
+
+def test_refused_round_leaves_accumulator_untouched():
+    from shengji.ai.point_flow import PointFlowAccumulator
+    rnd = _finished_round(31)
+    acc = PointFlowAccumulator()
+    acc.accumulate_round(rnd)
+    before = dict(acc.telemetry())
+    rnd.attacker_points += 5  # force the documented reconciliation refusal
+    with pytest.raises(AssertionError):
+        acc.accumulate_round(rnd)
+    assert dict(acc.telemetry()) == before, "refusal mutated the accumulator"
+
+
+def test_context_is_immune_to_source_mutation():
+    from shengji.ai.memory import Memory
+    rnd = _finished_round(32)
+    probe_rnd = _finished_round(32)
+    seat = 0
+    ctx = build_point_context(rnd, seat)
+    cards = sorted(set(probe_rnd.deck))
+    answers_before = [ctx.effective_boss([c], [1, 3]) for c in cards[:20]]
+    # mutate everything a shared consumer could reach on the SOURCE objects
+    rnd.hands = [[], [], [], []]
+    rnd.history.clear()
+    rnd.attacker_points = 0
+    answers_after = [ctx.effective_boss([c], [1, 3]) for c in cards[:20]]
+    assert answers_before == answers_after
+    with pytest.raises((AttributeError, TypeError)):
+        ctx.boss_table["SA"] = True  # mappingproxy: no mutation surface
+
+
+def test_malformed_tricks_are_rejected():
+    from shengji.ai.point_flow import classify_trick_point_flow
+    rnd = _finished_round(33)
+    o, banker = rnd.ordering, rnd.banker
+    good = rnd.history[0]
+    # duplicate seats
+    bad = Trick(leader=0, plays=[TrickPlay(0, ["S5"]), TrickPlay(0, ["S6"]),
+                                 TrickPlay(2, ["S7"]), TrickPlay(3, ["S8"])])
+    bad.winner, bad.points = 0, 5
+    with pytest.raises(ValueError):
+        classify_trick_point_flow(bad, o, banker)
+    # out-of-range winner
+    bad2 = Trick(leader=0, plays=[TrickPlay(s, [c]) for s, c in
+                                  ((0, "S5"), (1, "S6"), (2, "S7"), (3, "S8"))])
+    bad2.winner, bad2.points = 7, 5
+    with pytest.raises(ValueError):
+        classify_trick_point_flow(bad2, o, banker)
+    # bool banker / bool winner
+    with pytest.raises(ValueError):
+        classify_trick_point_flow(good, o, True)
+    bad3 = Trick(leader=good.leader,
+                 plays=[TrickPlay(tp.seat, list(tp.cards))
+                        for tp in good.plays])
+    bad3.winner, bad3.points = True, good.points
+    with pytest.raises(ValueError):
+        classify_trick_point_flow(bad3, o, banker)
+
+
+def test_bool_seat_is_rejected_by_build():
+    rnd = _finished_round(34)
+    with pytest.raises(ValueError):
+        build_point_context(rnd, False)

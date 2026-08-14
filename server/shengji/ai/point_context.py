@@ -55,10 +55,11 @@ BRACKETS = (40, 80, 120)
 class PointContext:
     """Immutable point snapshot for one (round, seat) decision.
 
-    ``memory`` is the underlying public-info ``Memory`` the context was built
-    from. It is excluded from equality/repr and must be treated as read-only;
-    it exists so ``effective_boss`` answers through the exact engine
-    primitives instead of a reimplementation.
+    All fields are plain immutable data. ``effective_boss`` answers from
+    boss/ruff tables PRECOMPUTED at build time through the exact engine
+    ``Memory`` primitives; the Memory itself is discarded, so no caller can
+    reach shared mutable state through a context (deep-immutability review
+    requirement).
     """
 
     seat: int
@@ -67,7 +68,11 @@ class PointContext:
     points_left_total: int
     points_left_by_suit: Mapping[str, int]
     bracket_distance: tuple[int, int, int]
-    memory: Memory = field(compare=False, repr=False)
+    boss_table: Mapping[str, bool] = field(compare=False, repr=False)
+    pair_boss_table: Mapping[str, bool] = field(compare=False, repr=False)
+    ruff_table: Mapping[tuple[str, frozenset], bool] = field(
+        compare=False, repr=False)
+    eff_suit_table: Mapping[str, str] = field(compare=False, repr=False)
     schema: str = POINT_CONTEXT_SCHEMA
 
     # ------------------------------------------------------------------ boss
@@ -98,18 +103,21 @@ class PointContext:
         seats = list(seats_to_act)
         if not cards:
             raise ValueError("effective_boss needs at least one card")
-        if any(not isinstance(s, int) or not 0 <= s < 4 for s in seats):
+        if any(type(s) is not int or not 0 <= s < 4 for s in seats):
             raise ValueError(f"seats_to_act must be seats 0..3, got {seats!r}")
-        mem = self.memory
+        for code in cards:
+            if code not in self.eff_suit_table:
+                raise ValueError(f"unknown card code {code!r}")
         if len(cards) == 1:
-            counted = mem.is_boss(cards[0])
+            counted = self.boss_table[cards[0]]
         elif len(cards) == 2 and cards[0] == cards[1]:
-            counted = mem.pair_is_boss(cards[0])
+            counted = self.pair_boss_table[cards[0]]
         else:
             return False  # complex shapes: conservative False, documented
         if not counted:
             return False
-        return not mem.ruff_risk(mem.o.eff_suit(cards[0]), seats)
+        return not self.ruff_table[
+            (self.eff_suit_table[cards[0]], frozenset(seats))]
 
     # ------------------------------------------------------------- serialize
     def to_dict(self) -> dict[str, object]:
@@ -143,8 +151,8 @@ def build_point_context(rnd: Round, seat: int) -> PointContext:
     """
     if rnd.ordering is None:
         raise ValueError("point context needs a finalized trump ordering")
-    if not 0 <= seat < 4:
-        raise ValueError(f"seat must be 0..3, got {seat!r}")
+    if type(seat) is not int or not 0 <= seat < 4:
+        raise ValueError(f"seat must be an int 0..3, got {seat!r}")
     mem = Memory(rnd, seat)
     trick_points = 0
     if rnd.trick is not None and rnd.trick.plays:
@@ -156,6 +164,18 @@ def build_point_context(rnd: Round, seat: int) -> PointContext:
     # reconcile exactly; a mismatch means the Ordering contract drifted.
     if sum(by_suit.values()) != total:
         raise AssertionError("points_left per-suit split does not reconcile")
+    # Precompute every answer effective_boss can be asked, then drop the
+    # Memory: the context carries only immutable derived tables.
+    codes = sorted(set(rnd.deck))
+    eff = {code: rnd.ordering.eff_suit(code) for code in codes}
+    boss = {code: bool(mem.is_boss(code)) for code in codes}
+    pair_boss = {code: bool(mem.pair_is_boss(code)) for code in codes}
+    ruff = {}
+    for suit_key in EFF_SUITS:
+        for bits in range(16):
+            seats_set = frozenset(i for i in range(4) if bits & (1 << i))
+            ruff[(suit_key, seats_set)] = bool(
+                mem.ruff_risk(suit_key, sorted(seats_set)))
     return PointContext(
         seat=seat,
         attacker_points=rnd.attacker_points,
@@ -164,5 +184,8 @@ def build_point_context(rnd: Round, seat: int) -> PointContext:
         points_left_by_suit=MappingProxyType(by_suit),
         bracket_distance=tuple(
             max(0, b - rnd.attacker_points) for b in BRACKETS),
-        memory=mem,
+        boss_table=MappingProxyType(boss),
+        pair_boss_table=MappingProxyType(pair_boss),
+        ruff_table=MappingProxyType(ruff),
+        eff_suit_table=MappingProxyType(eff),
     )

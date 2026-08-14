@@ -16,21 +16,21 @@ Exact attribution semantics — every point card that lands in a completed
 trick is attributed by the seat that PLAYED it, relative to the trick's
 recorded winner, so the three trick counters partition the trick's points:
 
-- ``fed_points``:       played by the winner's TEAMMATE (same team, other
+- ``winner_teammate_points``:       played by the winner's TEAMMATE (same team, other
                         seat) — the canonical partner feed;
-- ``contested_points``: carried by the WINNER's own play — points won under
+- ``winner_own_points``: carried by the WINNER's own play — points won under
                         one's own power (the S4 bank-at-last move lands
                         here, as does winning with the 10 itself);
-- ``discarded_points``: played by the LOSING team — points surrendered
+- ``losing_team_points``: played by the LOSING team — points surrendered
                         across teams, whether by follow obligation or
                         slough.
 
 ``kitty_points`` is the round-end transfer: the MULTIPLIED kitty bonus when
 the attackers take the last trick (``Round._resolve_trick``), 0 otherwise —
 a defended kitty never transfers. Reconciliation invariants (validated on
-every telemetry read): fed + contested + discarded == trick_points ==
-attacker_captured + defender_captured, attacker_fed + defender_fed ==
-fed_points, and per round attacker_captured + kitty == rnd.attacker_points.
+every telemetry read): teammate + own + losing == trick_points ==
+attacker_captured + defender_captured, attacker + defender teammate ==
+winner_teammate_points, and per round attacker_captured + kitty == rnd.attacker_points.
 """
 
 from __future__ import annotations
@@ -41,19 +41,19 @@ from dataclasses import dataclass
 from ..engine.cards import Ordering, total_points
 from ..engine.round import Round, Trick
 
-POINT_FLOW_SCHEMA = "point-flow-telemetry-v1"
+POINT_FLOW_SCHEMA = "point-flow-telemetry-v2"
 
 POINT_FLOW_COUNTER_FIELDS = (
     "tricks",
     "trick_points",
-    "fed_points",
-    "contested_points",
-    "discarded_points",
+    "winner_teammate_points",
+    "winner_own_points",
+    "losing_team_points",
     "kitty_points",
     "attacker_captured",
     "defender_captured",
-    "attacker_fed",
-    "defender_fed",
+    "attacker_teammate_points",
+    "defender_teammate_points",
 )
 
 
@@ -73,9 +73,9 @@ class TrickPointFlow:
     winner: int
     winner_is_attacker: bool
     trick_points: int
-    fed_points: int
-    contested_points: int
-    discarded_points: int
+    winner_teammate_points: int
+    winner_own_points: int
+    losing_team_points: int
 
 
 def classify_trick_point_flow(trick: Trick, ordering: Ordering,
@@ -87,12 +87,23 @@ def classify_trick_point_flow(trick: Trick, ordering: Ordering,
     rather than being silently trusted (constructed tricks must therefore
     carry engine-true ``points``).
     """
-    if not isinstance(banker, int) or not 0 <= banker < 4:
+    if type(banker) is not int or not 0 <= banker < 4:
         raise ValueError(f"banker must be a seat 0..3, got {banker!r}")
-    if trick.winner is None or len(trick.plays) != 4:
+    if type(getattr(trick, "winner", None)) is not int or len(trick.plays) != 4:
         raise ValueError("classify_trick_point_flow needs a resolved "
-                         "4-play trick with a recorded winner")
-    fed = contested = discarded = 0
+                         "4-play trick with a recorded int winner")
+    leader = getattr(trick, "leader", None)
+    if type(leader) is not int or not 0 <= leader < 4:
+        raise ValueError(f"trick leader must be a seat 0..3, got {leader!r}")
+    expected_order = [(leader + k) % 4 for k in range(4)]
+    seats = [getattr(tp, "seat", None) for tp in trick.plays]
+    if any(type(x) is not int for x in seats) or seats != expected_order:
+        raise ValueError(
+            f"trick plays must cover seats {expected_order} in engine "
+            f"rotation order exactly once each, got {seats!r}")
+    if trick.winner not in seats:
+        raise ValueError(f"trick winner {trick.winner!r} is not a playing seat")
+    teammate = own = losing = 0
     total = 0
     for tp in trick.plays:
         for code in tp.cards:
@@ -103,11 +114,11 @@ def classify_trick_point_flow(trick: Trick, ordering: Ordering,
         pts = total_points(tp.cards)
         total += pts
         if tp.seat == trick.winner:
-            contested += pts
+            own += pts
         elif tp.seat % 2 == trick.winner % 2:
-            fed += pts
+            teammate += pts
         else:
-            discarded += pts
+            losing += pts
     if total != trick.points:
         raise AssertionError(
             f"trick.points={trick.points} disagrees with recomputed "
@@ -116,9 +127,9 @@ def classify_trick_point_flow(trick: Trick, ordering: Ordering,
         winner=trick.winner,
         winner_is_attacker=trick.winner % 2 != banker % 2,
         trick_points=total,
-        fed_points=fed,
-        contested_points=contested,
-        discarded_points=discarded,
+        winner_teammate_points=teammate,
+        winner_own_points=own,
+        losing_team_points=losing,
     )
 
 
@@ -142,12 +153,12 @@ class PointFlowAccumulator:
         t = self._totals
         t["tricks"] += 1
         t["trick_points"] += flow.trick_points
-        t["fed_points"] += flow.fed_points
-        t["contested_points"] += flow.contested_points
-        t["discarded_points"] += flow.discarded_points
+        t["winner_teammate_points"] += flow.winner_teammate_points
+        t["winner_own_points"] += flow.winner_own_points
+        t["losing_team_points"] += flow.losing_team_points
         side = "attacker" if flow.winner_is_attacker else "defender"
         t[f"{side}_captured"] += flow.trick_points
-        t[f"{side}_fed"] += flow.fed_points
+        t[f"{side}_teammate_points"] += flow.winner_teammate_points
         return flow
 
     def add_kitty_transfer(self, bonus_points: int) -> None:
@@ -167,19 +178,23 @@ class PointFlowAccumulator:
         """
         if rnd.ordering is None or rnd.banker is None:
             raise ValueError("accumulate_round needs a finalized round")
+        # Stage into a ROUND-LOCAL accumulator first: a refused round must
+        # leave this reusable accumulator byte-identical (review finding 1).
+        staged = PointFlowAccumulator()
         attacker_captured = 0
         for trick in rnd.history:
-            flow = self.add_trick(trick, rnd.ordering, rnd.banker)
+            flow = staged.add_trick(trick, rnd.ordering, rnd.banker)
             if flow.winner_is_attacker:
                 attacker_captured += flow.trick_points
         kitty = 0
         if rnd.phase == "round_end":
             kitty = rnd.kitty_bonus
-            self.add_kitty_transfer(kitty)
+            staged.add_kitty_transfer(kitty)
         if attacker_captured + kitty != rnd.attacker_points:
             raise AssertionError(
                 f"round attribution {attacker_captured}+{kitty} disagrees "
                 f"with engine attacker_points {rnd.attacker_points}")
+        self._totals.update(staged._totals)
 
     # ----------------------------------------------------------------- report
     def snapshot(self) -> dict[str, int]:
@@ -202,15 +217,15 @@ class PointFlowAccumulator:
         if any(isinstance(v, bool) or not isinstance(v, int) or v < 0
                for v in counters.values()):
             raise AssertionError("point-flow counters must be non-negative ints")
-        if counters["fed_points"] + counters["contested_points"] \
-                + counters["discarded_points"] != counters["trick_points"]:
+        if counters["winner_teammate_points"] + counters["winner_own_points"] \
+                + counters["losing_team_points"] != counters["trick_points"]:
             raise AssertionError("point-flow trick partition does not reconcile")
         if counters["attacker_captured"] + counters["defender_captured"] \
                 != counters["trick_points"]:
             raise AssertionError("point-flow capture split does not reconcile")
-        if counters["attacker_fed"] + counters["defender_fed"] \
-                != counters["fed_points"]:
-            raise AssertionError("point-flow fed split does not reconcile")
+        if counters["attacker_teammate_points"] + counters["defender_teammate_points"] \
+                != counters["winner_teammate_points"]:
+            raise AssertionError("point-flow teammate split does not reconcile")
 
 
 def round_flow(rnd: Round) -> dict[str, object]:

@@ -40,7 +40,10 @@ from shengji.rl.belief_b2_execution import (  # noqa: E402
     validate_execution_design,
 )
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
-from shengji.rl.belief_b2_controller import run_capture_lane  # noqa: E402
+from shengji.rl.belief_b2_controller import (  # noqa: E402
+    run_capture_lane,
+    run_reference_lane,
+)
 
 
 def freeze_design(args: argparse.Namespace) -> None:
@@ -165,6 +168,21 @@ def capture_lane(args: argparse.Namespace) -> None:
     }).decode("ascii"), end="")
 
 
+def reference_lane(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    design, admission, marker = _load_authorized_root(root)
+    result = run_reference_lane(
+        root, design, admission, lane=args.lane, review_marker=marker)
+    print(canonical_json_bytes({
+        "reference_lane": args.lane,
+        "job_count": result["job_count"],
+        "manifest_sha256": hashlib.sha256(
+            canonical_json_bytes(result)).hexdigest(),
+        "retry_count": 0,
+        "complete": True,
+    }).decode("ascii"), end="")
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     commands = result.add_subparsers(dest="command", required=True)
@@ -185,6 +203,10 @@ def parser() -> argparse.ArgumentParser:
     capture.add_argument("--root", required=True)
     capture.add_argument("--lane", required=True, type=int)
     capture.set_defaults(function=capture_lane)
+    reference = commands.add_parser("reference-lane")
+    reference.add_argument("--root", required=True)
+    reference.add_argument("--lane", required=True, type=int)
+    reference.set_defaults(function=reference_lane)
     return result
 
 

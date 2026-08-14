@@ -8,14 +8,14 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 03:03 EDT from canonical main `690fcbc`.
+Last reconciled: 2026-08-14 03:05 EDT from canonical main `210ed72`.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
 | **Mini** | PR #103 native-round differential soak, eight nice-15 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses PR head `3044a2f` and compares native/pure state after every play across 10,000,000 deterministic rounds. All eight workers remain CPU-bound after 3h03m; all eight logs remain empty, so no mismatch or terminal output has appeared. It reads no sealed data and grants no benchmark, strength or merge authority. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[496,496,496,496,496,496,480,480]/896`, totaling `3,936/7,168` (54.91%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
+| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[496,496,512,496,512,496,496,496]/896`, totaling `4,000/7,168` (55.80%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
 | **Strength Cloud** | idle; S4 terminal review pending | Exact source `e7551e4` finished both reviewed tranches cleanly and all workers exited. The exact pinned read-only verifier returned `verified=true`, final SHA `0aef1ca8…e90` and terminal status `SELECT_NONE`, with `strength_claim=false` and `production_promotion=false`. Independent terminal review is requested in PR #66 comment `5290507470`; do not retry or act on a candidate. |
 | **Performance Cloud** | idle; PR #106 and PR #108 reviews pending | Claude terminal-review commit `95e0faf` independently reopened the sole PR #103 batch and returned VERIFIED/retain: 3.4074% lower x86 whole-round wall with paired one-sided 95% LCB 1.0299%; all six normalized semantic traces are exact. The consumed design can never rerun. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; exact aggregation PR #108 `d40182d` awaits review before any record may be opened. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |

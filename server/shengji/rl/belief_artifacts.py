@@ -419,6 +419,11 @@ def _epoch_receipt_from_bytes(raw: bytes) -> EpochTrainingReceiptV1:
     return receipt
 
 
+def reopen_epoch_receipt(raw: bytes) -> EpochTrainingReceiptV1:
+    """Public strict reopener for a persisted score-free epoch receipt."""
+    return _epoch_receipt_from_bytes(raw)
+
+
 def checkpoint_bundle_bytes(
         checkpoint: FrozenModelCheckpointV1,
         receipt: EpochTrainingReceiptV1) -> bytes:

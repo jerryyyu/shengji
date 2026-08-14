@@ -6,6 +6,7 @@ from dataclasses import replace
 import subprocess
 
 import pytest
+import torch
 
 from shengji.rl.belief_b2_execution import (
     REQUIRED_ENVIRONMENT,
@@ -16,6 +17,7 @@ from shengji.rl.belief_b2_execution import (
     SourceBindingV1,
     REVIEW_PREFIX,
     authenticate_review_commit,
+    build_runtime_profile,
     build_pipeline_admission,
     execution_design_from_bytes,
     expected_review_claim,
@@ -98,6 +100,12 @@ def test_design_refuses_missing_sources_runtime_and_authority_drift():
     with pytest.raises(BeliefB2ExecutionError, match="source binding"):
         validate_execution_design(replace(
             design, source_bindings=(*design.source_bindings[:-1], changed)))
+
+
+def test_runtime_profile_refuses_declared_mode_without_live_mode(monkeypatch):
+    monkeypatch.setattr(torch, "get_num_threads", lambda: 2)
+    with pytest.raises(BeliefB2ExecutionError, match="numerical mode"):
+        build_runtime_profile()
 
 
 def test_design_digest_changes_for_source_runtime_and_root():

@@ -58,6 +58,7 @@ class CommonEpochDecisionV1:
     selected_epoch: int
     stop_epoch: int
     cohort_mean_loss_nanonats: tuple[int, ...]
+    stopped_for_patience: bool
     schema: str = EARLY_STOP_SCHEMA
 
 
@@ -167,6 +168,7 @@ def select_common_epoch(
     best_sum = sum(row[0] for row in loss_nanonats_by_member)
     stale = 0
     stop = epoch_count
+    stopped_for_patience = False
     for epoch_index in range(1, epoch_count):
         current_sum = sum(row[epoch_index]
                           for row in loss_nanonats_by_member)
@@ -179,7 +181,9 @@ def select_common_epoch(
             stale += 1
             if stale == TRAIN_EARLY_STOP_PATIENCE:
                 stop = epoch_index + 1
+                stopped_for_patience = True
                 break
     return CommonEpochDecisionV1(
         selected_epoch=selected, stop_epoch=stop,
-        cohort_mean_loss_nanonats=mean_losses[:stop])
+        cohort_mean_loss_nanonats=mean_losses[:stop],
+        stopped_for_patience=stopped_for_patience)

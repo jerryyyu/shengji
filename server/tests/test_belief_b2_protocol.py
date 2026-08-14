@@ -26,7 +26,7 @@ from shengji.rl.belief_corpus import decision_key, split_for_round_seed
 
 
 EXPECTED_PROTOCOL_SHA256 = (
-    "7e6fda285e84f75681adca258b3c3a8b7b80eb3c3297a3cd67a0b356f909b120")
+    "c0b0bd4739df8a536f333a009345d2066ea0a9e5b6994a6d265ec86cf4998b4f")
 
 
 def test_population_splits_lanes_and_policy_seeds_are_exact():
@@ -75,8 +75,11 @@ def test_canonical_protocol_is_pinned_and_authorizes_nothing():
         "metric": "paired-per-round-hidden-ownership-count-brier",
         "reference_minus_candidate_mean_relative_floor_ppb": 5_000_000,
         "one_sided_95_percent_lower_bound_strictly_positive": True,
+        "round_bootstrap_replicates": 20_000,
+        "round_bootstrap_seed": 4_654_505_738_542_866_658,
         "positive_member_mean_minimum": 6,
         "member_count": 8,
+        "mean_smoothed_log_loss_improvement_nonnegative": True,
     }
 
 

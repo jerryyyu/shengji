@@ -40,6 +40,10 @@ TRAIN_BYTE_CAP = 16 * 1024**3
 PRIMARY_RELATIVE_BRIER_FLOOR_PPB = 5_000_000  # 0.5%
 PRIMARY_MEMBER_POSITIVE_MINIMUM = 6
 REFERENCE_REPLICATE_DISAGREEMENT_FRACTION_PPB = 250_000_000  # 1/4
+REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB = (
+    PRIMARY_RELATIVE_BRIER_FLOOR_PPB
+    * REFERENCE_REPLICATE_DISAGREEMENT_FRACTION_PPB // 1_000_000_000)
+PRIMARY_BOOTSTRAP_REPLICATES = 20_000
 
 
 class BeliefB2ProtocolError(ValueError):
@@ -56,6 +60,13 @@ def _derive_seed(label: str) -> int:
 
 def b2_round_seeds() -> tuple[int, ...]:
     return tuple(range(B2_SEED_START, B2_SEED_START + B2_ROUND_COUNT))
+
+
+def b2_split_round_seeds(split: str) -> tuple[int, ...]:
+    if split not in dict(B2_SPLIT_COUNTS):
+        raise BeliefB2ProtocolError("B2 split is invalid")
+    return tuple(seed for seed in b2_round_seeds()
+                 if split_for_round_seed(seed) == split)
 
 
 def capture_lane(round_seed: int) -> int:
@@ -81,6 +92,10 @@ def reference_sampler_seed(decision_key: str, replicate: str) -> int:
             or replicate not in B2_REFERENCE_REPLICATES:
         raise BeliefB2ProtocolError("REF-C seed input is invalid")
     return _derive_seed(f"ref-c|{replicate}|{decision_key}")
+
+
+def primary_bootstrap_seed() -> int:
+    return _derive_seed("primary-paired-round-bootstrap")
 
 
 def protocol_dict() -> dict[str, Any]:
@@ -119,6 +134,8 @@ def protocol_dict() -> dict[str, Any]:
             "sampler_seed_rule": "sha256(protocol|ref-c|replicate|decision_key)",
             "calibration_replicate_disagreement_fraction_ppb": (
                 REFERENCE_REPLICATE_DISAGREEMENT_FRACTION_PPB),
+            "calibration_relative_disagreement_cap_ppb": (
+                REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB),
         },
         "training": {
             "ordered_initialization_seeds": list(COHORT_SEEDS),
@@ -134,8 +151,11 @@ def protocol_dict() -> dict[str, Any]:
             "reference_minus_candidate_mean_relative_floor_ppb": (
                 PRIMARY_RELATIVE_BRIER_FLOOR_PPB),
             "one_sided_95_percent_lower_bound_strictly_positive": True,
+            "round_bootstrap_replicates": PRIMARY_BOOTSTRAP_REPLICATES,
+            "round_bootstrap_seed": primary_bootstrap_seed(),
             "positive_member_mean_minimum": PRIMARY_MEMBER_POSITIVE_MINIMUM,
             "member_count": len(COHORT_SEEDS),
+            "mean_smoothed_log_loss_improvement_nonnegative": True,
         },
         "authority": {
             "capture_execution_authorized": False,

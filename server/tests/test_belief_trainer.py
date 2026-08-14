@@ -17,9 +17,11 @@ from shengji.rl.belief_model import new_from_scratch_model
 from shengji.rl.belief_trainer import (
     BeliefTrainerError,
     evaluate_calibration_loss_nanonats,
+    evaluate_calibration_stream_nanonats,
     model_state_sha256,
     new_b2_optimizer,
     train_epoch,
+    train_epoch_stream,
 )
 from shengji.rl.belief_training import (
     build_training_example,
@@ -30,8 +32,8 @@ from shengji.rl.belief_training import (
 POLICIES = ("mc-s0-report-lcb",)
 
 
-def _batch(split="train", decisions=3):
-    seed = b2_split_round_seeds(split)[0]
+def _batch(split="train", decisions=3, seed_index=0):
+    seed = b2_split_round_seeds(split)[seed_index]
     captured = _capture_with_policies(
         seed, POLICIES[0], champion_policy_seeds(seed),
         [HeuristicBot() for _ in range(4)])
@@ -86,3 +88,35 @@ def test_trainer_refuses_optimizer_split_duplicate_and_nonfinite_drift():
     with pytest.raises(BeliefTrainerError, match="batch loss refused"):
         train_epoch(model, new_b2_optimizer(model),
                     (replace(train, count_labels=bad_labels),), epoch=1)
+
+
+def test_streaming_epoch_and_calibration_match_materialized_mechanics():
+    train_batches = (_batch(decisions=2, seed_index=0),
+                     _batch(decisions=2, seed_index=1))
+    materialized = new_from_scratch_model(495023836)
+    streamed = new_from_scratch_model(495023836)
+    expected = train_epoch(
+        materialized, new_b2_optimizer(materialized), train_batches, epoch=1)
+    actual = train_epoch_stream(
+        streamed, new_b2_optimizer(streamed), iter(train_batches), epoch=1)
+    assert actual == expected
+    assert model_state_sha256(streamed) == model_state_sha256(materialized)
+
+    calibration = (_batch(split="calibration", decisions=2, seed_index=0),
+                   _batch(split="calibration", decisions=2, seed_index=1))
+    assert evaluate_calibration_stream_nanonats(
+        streamed, iter(calibration)) == evaluate_calibration_loss_nanonats(
+            streamed, calibration)
+
+
+def test_streaming_trainer_refuses_empty_and_cross_batch_duplicates():
+    model = new_from_scratch_model(1041799603)
+    with pytest.raises(BeliefTrainerError, match="population drift"):
+        train_epoch_stream(
+            model, new_b2_optimizer(model), iter(()), epoch=1)
+    train = _batch(decisions=2)
+    with pytest.raises(BeliefTrainerError, match="duplicate"):
+        train_epoch_stream(
+            model, new_b2_optimizer(model), iter((train, train)), epoch=1)
+    with pytest.raises(BeliefTrainerError, match="mutated model"):
+        evaluate_calibration_stream_nanonats(model, iter(()))

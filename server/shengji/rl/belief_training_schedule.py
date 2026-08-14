@@ -67,6 +67,20 @@ def _round_order_key(epoch: int, round_seed: int) -> bytes:
     ).digest()
 
 
+def ordered_round_seeds_for_epoch(
+        round_seeds: tuple[int, ...], *, epoch: int) -> tuple[int, ...]:
+    """Return the frozen epoch order without loading decision tensors."""
+    if type(epoch) is not int or not 1 <= epoch <= TRAIN_MAX_EPOCHS:
+        raise BeliefTrainingScheduleError("training epoch is invalid")
+    if type(round_seeds) is not tuple or not round_seeds \
+            or any(type(seed) is not int or seed < 0 for seed in round_seeds) \
+            or len(round_seeds) != len(set(round_seeds)):
+        raise BeliefTrainingScheduleError(
+            "training schedule round population is malformed")
+    return tuple(sorted(
+        round_seeds, key=lambda seed: (_round_order_key(epoch, seed), seed)))
+
+
 def training_epoch_batches(
         bound_examples: tuple[BoundTrainingExampleV1, ...], *,
         epoch: int) -> tuple[EpochScheduleV1,
@@ -105,8 +119,8 @@ def training_epoch_batches(
         if len(rows) > TRAIN_BATCH_DECISION_CAP:
             raise BeliefTrainingScheduleError(
                 "training round exceeds batch decision cap")
-    round_order = tuple(sorted(
-        groups, key=lambda seed: (_round_order_key(epoch, seed), seed)))
+    round_order = ordered_round_seeds_for_epoch(
+        tuple(groups), epoch=epoch)
     grouped_batches: list[tuple[BeliefTrainingExampleV1, ...]] = []
     pending: list[BeliefTrainingExampleV1] = []
     for seed in round_order:

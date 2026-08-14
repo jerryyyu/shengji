@@ -167,7 +167,8 @@ def _evidence():
         privileged_target_manifest_sha256=_sha("targets"),
         split_seed_manifest_sha256=_sha("splits"),
         reference_world_manifest_sha256=_sha("reference"),
-        training_curve_sha256=_sha("curves"),
+        candidate_training_curve_sha256=_sha("candidate-curves"),
+        control_training_curve_sha256=_sha("control-curves"),
         population_round_count=4096, population_decision_count=300_000,
         test_round_count=410,
         candidate_member_model_sha256s=candidate_models,
@@ -176,7 +177,7 @@ def _evidence():
         control_member_model_sha256s=control_models,
         control_checkpoint_sha256s=tuple(
             _sha(f"control-checkpoint-{i}") for i in range(8)),
-        selected_epoch=12,
+        candidate_selected_epoch=12, control_selected_epoch=9,
         mechanics_result_sha256=mechanics.sha256(),
         resource_receipt_sha256=resources.sha256(),
         c1_result_sha256=c1.sha256(), c2_result_sha256=c2.sha256(),

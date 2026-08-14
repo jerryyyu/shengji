@@ -16,6 +16,7 @@ from shengji.rl.belief_training import build_training_example
 from shengji.rl.belief_training_schedule import (
     BeliefTrainingScheduleError,
     BoundTrainingExampleV1,
+    ordered_round_seeds_for_epoch,
     select_common_epoch,
     training_epoch_batches,
 )
@@ -48,6 +49,9 @@ def test_rounds_are_shuffled_deterministically_but_never_split():
         == tuple(batch.decision_keys for batch in repeated_batches)
     assert set(first_schedule.ordered_round_seeds) \
         == set(second_schedule.ordered_round_seeds)
+    assert first_schedule.ordered_round_seeds \
+        == ordered_round_seeds_for_epoch(
+            tuple(item.example.round_seed for item in bound[::4]), epoch=1)
     for schedule in (first_schedule, second_schedule):
         position = {key: index for index, batch in enumerate(
             schedule.batch_decision_keys) for key in batch}
@@ -77,6 +81,8 @@ def test_schedule_refuses_target_drift_duplicate_gap_and_nontrain():
         round_count=1, decisions=1, split="calibration")
     with pytest.raises(BeliefTrainingScheduleError, match="non-train"):
         training_epoch_batches(calibration, epoch=1)
+    with pytest.raises(BeliefTrainingScheduleError, match="population"):
+        ordered_round_seeds_for_epoch((1, 1), epoch=1)
 
 
 def test_common_epoch_uses_cohort_mean_minimum_improvement_and_patience():

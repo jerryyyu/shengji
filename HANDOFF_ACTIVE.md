@@ -9,15 +9,15 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 20:01 EDT from canonical main `dc77095`.
+Last reconciled: 2026-08-13 20:32 EDT from canonical main `2673237`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
 | **Mini** | T4 terminal aggregate review | Claude's unique raw supervisor marker at `6db048d` admitted one aggregate. It completed cleanly as `SELECT_NONE`; aggregate `f30a77c7…e652`, internal `73a568ce…215c`, admission `ec96102e…7a08`. PR #80's read-only terminal helper recursively rebuilt the full aggregate and emitted PASS. No confirmation, retry, strength, promotion or deployment is authorized. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Four shards are 416/896 and four are 432/896: 3,392/7,168 = 47.32%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,601/8,192 = 56.16%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 432/896 and one is 448/896: 3,472/7,168 = 48.44%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free lower bound: 4,871/8,192 = 59.46%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
 | **Performance Cloud** | S6 V2 packet review; host idle | Claude terminally VERIFIED the immutable PR #89 V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only and never rerun V5. PR #94 source head `08ee055` PASSed at `ec4cdd2`; fresh V2 packet `dd7709e…4adca` is frozen and verified. Its packet-review snapshot, admission, records, final and unit installation remain absent pending packet review. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
@@ -101,15 +101,24 @@ Last reconciled: 2026-08-13 20:01 EDT from canonical main `dc77095`.
    and four-hour runtime limit, closing stale cached-unit execution. Suites are
    109/109 pure and 109/109 strict compiled. Await superseding exact-head
    source review; no packet or run authority.
-5. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
+5. **Point-census repair PR #99.** Exact stacked head `0ee28a0` closes PR
+   #95's four scientific/provenance blockers: P1 uses the exact legal-action
+   denominator in human and rollout states; E2/E3 binds complete RNG/world/
+   sampler/work evidence and refuses drift; the private corpus is held behind
+   exact manifest SHA `8d6cc27f…aeeb`; and all five stdout-only routes are
+   tested. Pure and strict-compiled batteries pass 23/23. The corrected P1
+   table retracts the old 70%-vs-23% headline; all 150 E2/E3 pairs bind.
+   Await exact-head external review. This is descriptive exploration tooling,
+   with no packet, run, strength, training, promotion or deployment authority.
+6. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
    real negative capacity result: projection over wall cap, fail-closed after
    complete measurement. Admission is spent; no result/receipt, retry or screen
    authority. Any future checkpoint screen needs a revised design and fresh
    packet chain.
-6. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
+7. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
    remains separate compatibility evidence for PR #71 and awaits exact-head
    external review. It grants no strength or deployment authority.
-7. **Other terminal reviews.** Broad Pair and S4 need no live review while
+8. **Other terminal reviews.** Broad Pair and S4 need no live review while
    their reviewed controllers run. No outcome aggregation or sealed result
    access is allowed before each explicit terminal gate.
 

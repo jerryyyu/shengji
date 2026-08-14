@@ -717,6 +717,51 @@ def test_cli_refuses_unsafe_imports_and_unauthenticated_capacity_source(
     assert "reviewed Pair capacity source drift" in unauthenticated.stderr
 
 
+def test_cli_refuses_preloaded_capacity_origin_and_command_reuse():
+    environment = dict(os.environ)
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    hostile_probe = (
+        "import runpy,sys,types\n"
+        f"name={SCREEN.CAPACITY_MODULE!r}\n"
+        "module=types.ModuleType(name)\n"
+        "module.__file__='/tmp/hostile-pair-capacity.py'\n"
+        "sys.modules[name]=module\n"
+        f"runpy.run_path({str(SCREEN.SCRIPT)!r},run_name='__main__')\n"
+    )
+    hostile = subprocess.run(
+        [sys.executable, "-I", "-P", "-B", "-c", hostile_probe],
+        cwd=SCREEN.REPO, env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert hostile.returncode != 0
+    assert "preloaded Pair capacity origin drift" in hostile.stderr
+
+    authentic_probe = (
+        "import runpy,sys,types\n"
+        f"name={SCREEN.CAPACITY_MODULE!r}\n"
+        f"capacity_path={str(SCREEN.CAPACITY_PATH)!r}\n"
+        "values=runpy.run_path(capacity_path,run_name=name)\n"
+        "module=types.ModuleType(name)\n"
+        "module.__dict__.update(values)\n"
+        "module.__name__=name\n"
+        "module.__file__=capacity_path\n"
+        "sys.modules[name]=module\n"
+        f"sys.argv=[{str(SCREEN.SCRIPT)!r},'implementation-review-claim',"
+        f"'--expected-git',{GIT!r}]\n"
+        f"runpy.run_path({str(SCREEN.SCRIPT)!r},run_name='__main__')\n"
+    )
+    authentic = subprocess.run(
+        [sys.executable, "-I", "-P", "-B", "-c", authentic_probe],
+        cwd=SCREEN.REPO, env=environment,
+        capture_output=True, text=True, check=False,
+    )
+    assert authentic.returncode != 0
+    assert (
+        "screen command requires a fresh authenticated capacity module"
+        in authentic.stderr
+    )
+
+
 def test_parser_exposes_no_resume_or_aggregate_command():
     parser = SCREEN.parser()
     commands = next(action for action in parser._actions

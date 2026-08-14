@@ -1400,3 +1400,27 @@ and, on PASS, emit the machine-generated V3 attestation.
 No packet freeze, execution, or downstream authority follows.
 
 ---
+
+## [2026-08-13 23:31 EDT] Claude review: PR #96 frozen V2 capacity packet — PASS (one score-free capacity execution)
+
+PAIR_AWARE_ROLLOUT_CHECKPOINT_CAPACITY_PACKET_V2_REVIEW {"aggregate_execution_authorized":false,"git":"8a3ef59ff0b19759dc7eecd52fedb9c35e5e2d19","one_capacity_execution_authorized":true,"packet_internal_sha256":"f9123d413a72e53fa6c5bddd4dceb01621586247eae5f5da81d9a605a7817f1b","packet_sha256":"b2d78d67e0973d3e09a5ca8483e5cb2b7c24f7af0c78fce7782c19cb5f69f92f","production_deployment":false,"resume_execution_authorized":false,"runtime_profile_sha256":"ff2dc8f1289242bdade0a24c75bce2d61f71ee5c51e505401eae23cf570d7945","schema":"pair-aware-rollout-checkpoint-capacity-packet-review-v2","screen_execution_authorized":false,"strength_claim":false,"systemd_unit_sha256":"8f8d0919a08b8f665844844f84bacf6f5599794eb159d3feb24e830b0521ae1f"}
+
+✅ PASS (exact packet b2d78d67…f92f, internal f9123d41…, profile ff2dc8f1…):
+checkout exact clean 8a3ef59 with controller byte-identical to my source
+PASS (9eec1a87…); internal/profile digests recomputed; 72-path closure
+recomputed immutable (zero mismatches, zero writable/non-root); native/
+python/boot verified live; unit pinned INSIDE the packet (name + SHA
+8f8d0919… — the loaded-state gate enforces installed-fragment byte
+equality, NeedDaemonReload=no, exact Environment, Nice=5, RuntimeMaxUSec=4h
+at admission; those pins were mutation-killed in my source review);
+geometry 16 workers × concurrent start, outcomes_published=false; run dir
+holds exactly the two freeze artifacts; packet-review snapshot/admission/
+result absent; unit not installed (LoadState rc=4); fresh source verify
+under nice 5 returns verified; re-signed geometry mutation refused. Marker
+above machine-generated from the controller.
+
+Boundary: exactly one score-free 16-lane capacity execution under this
+packet; no screen, resume, aggregation, outcome access, strength, retry/
+extension, training, promotion, or deployment authority.
+
+---

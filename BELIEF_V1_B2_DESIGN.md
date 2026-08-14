@@ -276,12 +276,20 @@ No metric may be repaired after the test fold opens.
 
 ## Negative controls
 
-- **N1 history ablation:** within the same hard-fact stratum, shuffle public
-  chronology between complete rounds. Behavioral-stratum lift must collapse to
-  no more than 25% of the unshuffled lift.
-- **N2 permuted labels:** round-group shuffle the privileged targets and train
-  the same cohort recipe. Its one-sided lower bound versus REF-C must not be
-  positive.
+- **N1 history ablation:** at inference only, deterministically permute the
+  complete public event rows within each decision while leaving every event
+  row, non-event actor fact, model weight, and true label unchanged.
+  Behavioral-stratum lift must collapse to no more than 25% of the unshuffled
+  lift. No second history-ablation cohort is trained.
+- **N2 hard-geometry label permutation:** train the same eight-seed cohort on
+  privileged count-label rows cyclically permuted between card codes only
+  inside an identical actor-derived min/max receiver geometry and unseen-copy
+  class. This preserves every card total, receiver size, void/declaration
+  bound, split, and decision while breaking the card-to-hidden-owner label
+  association. Its one-sided lower bound versus REF-C on the original test
+  targets must not be positive. Literal cross-round target-row permutation is
+  forbidden because another row generally cannot satisfy the current actor's
+  cards, hand sizes, voids, or declaration pins.
 - **N3 policy shift:** report the frozen champion-trained model separately on
   available human and named-bot opened-development corpora. This is descriptive
   transfer evidence only; no corpus is silently added to training.

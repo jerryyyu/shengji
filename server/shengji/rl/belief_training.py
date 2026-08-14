@@ -29,6 +29,14 @@ from .belief_tensor import (MAX_RECEIVERS, HistoryOwnershipTensorsV1,
 
 TRAINING_EXAMPLE_SCHEMA = "belief-v1-privileged-training-example-v1"
 TRAINING_BATCH_SCHEMA = "belief-v1-privileged-training-batch-v1"
+CONTROL_TRAINING_BATCH_SCHEMA = "belief-v1-negative-control-training-batch-v1"
+NATURAL_HISTORY = "natural-public-chronology-v1"
+EXACT_TARGET_LABELS = "exact-privileged-target-counts-v1"
+PERMUTED_HISTORY = "deterministic-within-decision-event-permutation-v1"
+GEOMETRY_PERMUTED_LABELS = (
+    "hard-geometry-compatible-card-label-permutation-v1")
+HISTORY_ABLATION_CONTROL = "history-chronology-ablation"
+LABEL_PERMUTATION_CONTROL = "hard-geometry-label-permutation"
 
 
 class BeliefTrainingError(ValueError):
@@ -67,6 +75,9 @@ class BeliefTrainingBatchV1:
     count_maximums: torch.Tensor
     count_labels: torch.Tensor
     active_mask: torch.Tensor
+    history_transform: str = NATURAL_HISTORY
+    label_transform: str = EXACT_TARGET_LABELS
+    control_kind: str = "candidate"
     privileged_targets_consumed: bool = True
     runtime_artifact: bool = False
     schema: str = TRAINING_BATCH_SCHEMA
@@ -243,8 +254,21 @@ def training_batch_loss(
         batch: BeliefTrainingBatchV1) -> torch.Tensor:
     """Compute the sole supervised ownership loss for one frozen batch."""
     if type(model) is not HistoryOwnershipModelV1 \
-            or type(batch) is not BeliefTrainingBatchV1 \
-            or batch.schema != TRAINING_BATCH_SCHEMA \
+            or type(batch) is not BeliefTrainingBatchV1:
+        raise BeliefTrainingError("training batch model/schema drift")
+    candidate_identity = (
+        batch.schema == TRAINING_BATCH_SCHEMA
+        and batch.history_transform == NATURAL_HISTORY
+        and batch.label_transform == EXACT_TARGET_LABELS
+        and batch.control_kind == "candidate")
+    control_identity = batch.schema == CONTROL_TRAINING_BATCH_SCHEMA and (
+        (batch.history_transform == PERMUTED_HISTORY
+         and batch.label_transform == EXACT_TARGET_LABELS
+         and batch.control_kind == HISTORY_ABLATION_CONTROL)
+        or (batch.history_transform == NATURAL_HISTORY
+            and batch.label_transform == GEOMETRY_PERMUTED_LABELS
+            and batch.control_kind == LABEL_PERMUTATION_CONTROL))
+    if not (candidate_identity or control_identity) \
             or batch.privileged_targets_consumed is not True \
             or batch.runtime_artifact is not False:
         raise BeliefTrainingError("training batch model/schema drift")

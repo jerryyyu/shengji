@@ -24,6 +24,7 @@ from .belief_b2_protocol import (
 from .belief_contract import canonical_json_bytes
 from .belief_model import HistoryOwnershipModelV1
 from .belief_training import (
+    HISTORY_ABLATION_CONTROL,
     BeliefTrainingBatchV1,
     BeliefTrainingError,
     training_batch_loss,
@@ -47,6 +48,10 @@ class EpochTrainingReceiptV1:
     decision_count: int
     active_label_count: int
     mean_loss_nanonats: int
+    batch_schema: str
+    history_transform: str
+    label_transform: str
+    control_kind: str
     model_state_sha256_before: str
     model_state_sha256_after: str
     schema: str = EPOCH_RECEIPT_SCHEMA
@@ -59,6 +64,10 @@ class EpochTrainingReceiptV1:
             "decision_count": self.decision_count,
             "active_label_count": self.active_label_count,
             "mean_loss_nanonats": self.mean_loss_nanonats,
+            "batch_schema": self.batch_schema,
+            "history_transform": self.history_transform,
+            "label_transform": self.label_transform,
+            "control_kind": self.control_kind,
             "model_state_sha256_before": self.model_state_sha256_before,
             "model_state_sha256_after": self.model_state_sha256_after,
             "privileged_targets_consumed": True,
@@ -124,7 +133,9 @@ def _validate_optimizer(
         raise BeliefTrainerError("optimizer parameter/configuration drift")
 
 
-def _validate_batches(batches: tuple[BeliefTrainingBatchV1, ...]) -> None:
+def _validate_batches(
+        batches: tuple[BeliefTrainingBatchV1, ...], *,
+        for_training: bool) -> None:
     if type(batches) is not tuple or not batches \
             or any(type(batch) is not BeliefTrainingBatchV1
                    for batch in batches):
@@ -132,6 +143,14 @@ def _validate_batches(batches: tuple[BeliefTrainingBatchV1, ...]) -> None:
     keys = tuple(key for batch in batches for key in batch.decision_keys)
     if len(keys) != len(set(keys)):
         raise BeliefTrainerError("training epoch duplicate decision")
+    identities = {(batch.schema, batch.history_transform,
+                   batch.label_transform, batch.control_kind)
+                  for batch in batches}
+    if len(identities) != 1:
+        raise BeliefTrainerError("training epoch mixed candidate/control batch")
+    if for_training and batches[0].control_kind == HISTORY_ABLATION_CONTROL:
+        raise BeliefTrainerError(
+            "history chronology ablation is inference-only")
     if any(batch.split != "train" \
            or batch.privileged_targets_consumed is not True \
            or batch.runtime_artifact is not False for batch in batches):
@@ -147,7 +166,7 @@ def train_epoch(
     if type(epoch) is not int or epoch <= 0:
         raise BeliefTrainerError("training epoch is invalid")
     _validate_optimizer(model, optimizer)
-    _validate_batches(batches)
+    _validate_batches(batches, for_training=True)
     before = model_state_sha256(model)
     model.train(True)
     weighted_loss = 0.0
@@ -181,6 +200,10 @@ def train_epoch(
         decision_count=sum(len(batch.decision_keys) for batch in batches),
         active_label_count=active_total,
         mean_loss_nanonats=mean_nanonats,
+        batch_schema=batches[0].schema,
+        history_transform=batches[0].history_transform,
+        label_transform=batches[0].label_transform,
+        control_kind=batches[0].control_kind,
         model_state_sha256_before=before,
         model_state_sha256_after=model_state_sha256(model),
     )

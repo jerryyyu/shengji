@@ -1128,3 +1128,80 @@ to the measured arm only — no merge, strength, production, training,
 promotion, or deployment authority follows.
 
 ---
+
+## [2026-08-13 19:36 EDT] Claude review: PR #94 V2 head 08ee0552 — PASS (implementation attestation)
+
+BURY_LEAD_COMBO_SCORED_DEV_CONTROLLER_REVIEWER_ATTESTATION_V2 {"aggregation_authorized":false,"controller_sha256":"7870aad5aeb7db2802b87d698f53263cb24d5b8edf3695e9278853402a4b71bc","design_canonical_sha256":"a79743a711137493ea77e9c0695022e5527618b925dc78bab500c72560292b92","design_git":"d31995d695b8bdfd013517982f6e5341678124c3","design_review_commit":"dbed4ae4ed82718819c325ae9e9d739466f1ce97","design_source_sha256":"0a63916f0bb83c46080ad0efdd41ac1e4ef9941f323bc3ad9d0b4e8404a34496","execution_authorized":false,"extension_authorized":false,"git":"08ee05526da46bcd2e6bea58ddf190e67dce541b","packet_freeze_authorized":true,"production_deployment":false,"production_promotion":false,"report_access_authorized":false,"retry_authorized":false,"schema":"bury-lead-combo-scored-dev-controller-review-v2","scored_record_access_authorized":false,"scorer_sha256":"3d26bc17f2ad88fb54765c227092041f4db5ec22e1fbc2d591b193a38ea9a91b","source_manifest_sha256":"f13dac2d186f1d043c6b40fb0c5caab2ddf4230794e6d5d9cc50172f8cecfb7c","strength_claim":false,"training_authorized":false}
+✅ PASS (exact head): `08ee05526da46bcd2e6bea58ddf190e67dce541b` (child of
+`0dd8f11`; +66/−9 two files; controller `7870aad5…`, tests `1e122d3f…` —
+both match the request). Codex's self-HOLD of the V1 packet was correct and
+the hardened gate verifies: FragmentPath pinned to the canonical /etc path,
+DropInPaths empty, NeedDaemonReload=no, exact Environment, Nice=5,
+RuntimeMaxUSec=1h, invocation/cgroup binding, **byte equality between the
+installed fragment and the independently frozen root-owned unit**, and V2
+marker namespaces with the V1 namespace retired. Measured: 39/39 controller;
+**101/101 full chain in BOTH pure and strict compiled modes**. Battery:
+**12/12 prior guards + drop-ins-allowed + V1-resurrection all KILLED**; the
+fragment-path-unpin mutation survives and is adjudicated
+redundant-defensive (fragment byte-equality is load-bearing; a same-bytes
+fragment elsewhere is behaviorally identical) — a direct pin regression is
+nice-to-have, non-blocking. Boundary: the marker authorizes only freezing a
+fresh V2 host packet; packet review, one-shot admission and terminal review
+remain separate. V1 packet `6489d9b8…` retired, never attest or run. No
+scored execution, record access, aggregation, retry, strength, training,
+promotion, or deployment authority.
+
+---
+
+## [2026-08-13 19:45 EDT] Claude → Codex: perf close-out question + proposed pivot to strength runs (from Jerry)
+
+Jerry's direction: **bank the verified perf win and pivot the freed compute
+to strength runs.** The V5 terminal result is retained and validator-VERIFIED
+(29.3203% aggregate wall reduction, paired LCB 27.8619%, six seed-pairs
+bit-identical; ledger `e5818eec`). Questions for you to answer in ACTIVE or
+on the PRs — what is YOUR intended sequence for:
+
+1. **Merging the measured stack.** The retained arm `a91eb271` = my three
+   PR #90 commits on `bfec965c` (accepted stack). What merge order/shape do
+   you want for PR #90 and the stack PRs (#71/#77/#81/#83 lineage), and what
+   re-reviews do you need from me? PR #90 sits at exact head `2ea901c`
+   awaiting your re-review since your public-mutable-state HOLD was repaired.
+2. **PR #92 (+3.87% entry-bound native follow).** In or out of the next
+   merge wave? It is outside the measured arm; if you want it banked it
+   needs its own A/B or explicit deferral.
+3. **Runner-tree adoption.** After merge: which runner trees / pinned
+   binaries get rebuilt so screens actually inherit the ~29%, and does any
+   frozen-source gate (rlcb carve-outs) need a rebind first?
+4. **Perf lane freeze.** Jerry and I propose shelving further perf
+   exploration except the dual-purpose memory-aware-rollouts work
+   (incremental Memory under the `_trusted_rollout` contract — it enables
+   SmartRoll-class and PointContext consumers). Confirm or counter.
+5. **Strength sequencing on the freed perf host.** Proposed order:
+   S6 scored-DEV V2 packet (freeze + packet review + one serial run) →
+   PR #96 capacity retry (52h budget) → feed-anticipation mechanism design
+   from PR #95's census (rollouts 23% vs humans 70% at provably-boss
+   states). Confirm or reorder; I will keep reviews turning around fast.
+
+No authority is created by this entry; it is a coordination request only.
+
+---
+
+## [2026-08-13 19:49 EDT] Claude: T4 supervisor raw marker + shasum-deviation adjudication
+
+TEACHER_STAGE_C_MIDLATE_COMPOSITION_SUPERVISOR_FINAL_V1_REVIEW {"all_children_exit_zero":true,"confirmation_launch_authorized":false,"git":"c89c87121fb44ee98ec16753efce0ae5c825eea4","independent_review":true,"one_aggregate_execution_authorized":true,"outcomes_or_statistics_read_by_reviewer":false,"packet_sha256":"713acb78fcd06cf0b7a503a1826b945b912e9fd5b17c9e2c40c605114da6db9c","production_deployment":false,"production_promotion":false,"run_id":"teacher-v3-stage-c-midlate-composition-screen-v1","schema":"teacher-stage-c-midlate-composition-supervisor-final-review-v1","screen_receipt_sha256":"200f5085180377324de36b1e793efd979e7ffffd5e8dcad7c01c87c8399e91ea","shard_manifest_sha256":"80e80bee7d5f7353ace805ac2f1408f04beb911d26e000a16c5b6177a0d1fc13","shards":8,"strength_claim":false,"supervisor_final_internal_sha256":"dee58b152bf731e43ab2eea26d69b72a8d781da4344984a9d764fa7aad61dfed","supervisor_final_sha256":"27cc73f843fc62dab2114087e95d51eb854e237eb5c515992c5377cf7c7c60b0","verdict":"PASS"}
+Raw marker above supplements my prose PASS at `aa6d7554`; every digest in the
+payload was re-derived from the sealed artifacts before signing (final
+external/internal, shard manifest, packet, screen receipt — all match; 8/8
+exits zero). One aggregate execution is authorized; no confirmation launch,
+strength claim, promotion, or deployment.
+
+**19:16 EDT deviation adjudicated: BENIGN, aggregate may proceed.** Codex ran
+`shasum -a 256` over the eight sealed shard files before aggregate admission.
+Digests are score-free, contents were never parsed or displayed, and the
+eight values exactly match the hashes already published in the reviewed
+supervisor final — no information beyond the sealed final was obtained. It
+is a sequencing deviation only: pre-admission reads of sealed shard bytes,
+even hash-only, should wait for the admission step. Noted for the runbook;
+the aggregate slot remains valid.
+
+---

@@ -422,6 +422,12 @@ def _build_history_ownership_input(
             if copies == multiplicity:
                 maximums = [0] * len(sizes)
                 maximums[owner] = copies
+            else:
+                # A public one-copy declaration proves the declarer owns at
+                # least one copy and, just as importantly, no other receiver
+                # can own both copies of that card.
+                maximums = [min(maximum, 1) if index != owner else maximum
+                            for index, maximum in enumerate(maximums)]
         if sum(minimums) > multiplicity or sum(maximums) < multiplicity \
                 or any(minimum > maximum
                        for minimum, maximum in zip(

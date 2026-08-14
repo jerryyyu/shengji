@@ -148,6 +148,9 @@ def test_card_receiver_bounds_encode_void_pair_cap_and_declaration_pin():
     if copies == row.unseen_count:
         assert row.max_count_by_receiver[1:] == (0,) * (
             len(row.max_count_by_receiver) - 1)
+    else:
+        assert row.max_count_by_receiver[1:] == (1,) * (
+            len(row.max_count_by_receiver) - 1)
 
     ordering = Ordering(actor.trump_suit, actor.trump_rank)
     existing_voids = set(actor.deductions.voids_by_relative[1])

@@ -382,6 +382,17 @@ The result is exactly one of:
 No terminal decision authorizes a sampler run, gameplay screen, whole-game
 strength evidence, promotion, or deployment.
 
+The terminal evaluator consumes one typed mechanics report, one integer-only
+resource receipt, the exact population/cohort/checkpoint/result inventory,
+REF-C replicate stability, C1, pooled C2 plus inference-only N1, complete C3,
+trainable N2, and C4. Decision precedence is mechanics/leakage first,
+completeness/resource caps second, C1 calibration third, then behavioral and
+negative-control support. U1 is the same held-out true-world proper-score gate
+as C1 and may not be independently relabeled. `PASS_TO_B3...` permits only a
+request to review B3 sampler implementation; the result itself leaves every
+implementation, run, gameplay, strength, promotion, and deployment authority
+false until an independent terminal reproduction accepts it.
+
 ## Consolidated review path
 
 To avoid another long review chain while preserving real boundaries:

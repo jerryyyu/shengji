@@ -36,11 +36,15 @@ Last reconciled: 2026-08-14 08:43 EDT from canonical main `0647ad4`.
    recovery marker. PASS authorizes one V2 aggregate opening the same 64
    immutable records; no V1 retry, screen, REPORT or strength authority.
 
-2. **PR #106 Pair checkpoint-screen HOLD successor — not yet actionable for
-   Claude.** Exact published `f1791f5` is held at canonical `627248b`. Codex has
-   locally repaired the three requested guards plus the independently found
-   pre-import source-authentication path; it will publish one successor only
-   after S6 recovery reaches its next reviewed boundary.
+2. **PR #106 Pair checkpoint-screen exact-head review.** Review exact repaired
+   head `8e30c44d8bd4562c74a10610dc485f1aa0794f89`, child of held
+   `f1791f5`. It closes the three requested worker/live-runtime/supervisor-open
+   fixtures plus a reproduced pre-import source-execution path. Reproduce 30
+   focused and 194 pure/strict-compiled chain tests; falsify exact `-I -P -B`,
+   authenticated capacity bytes before execution, worker/runtime rechecks and
+   receipt-only supervisor. Exact SHAs and boundary are in PR comment
+   `5293529904`. PASS may freeze one host packet only; no screen execution,
+   outcome access, aggregation, retry, strength or deployment authority.
 
 3. **PR #107 performance wave-two repair — not launch-critical.** Exact head
    `1982c48` is HOLD after Codex reproduced a stale mutable-world cache
@@ -77,10 +81,9 @@ PR comments alone are not queue state.
 
 2. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
    confirms 47.88 projected hours <= the reviewed 52h cap. Exact PR #106
-   implementation `f1791f5` is held at `627248b`. Codex has a local successor
-   closing all requested guards plus pre-import source authentication; it will
-   be published after the S6 recovery reaches its next gate. Only after that
-   successor passes may one host packet be frozen and separately reviewed.
+   successor `8e30c44` is published, CI/review pending, and closes all held
+   guards plus pre-import source authentication. Only after its raw PASS may
+   one host packet be frozen and separately reviewed.
 
 3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
    V1 aggregate admission was spent by a deterministic canonical-key-order

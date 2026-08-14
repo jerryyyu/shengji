@@ -229,10 +229,10 @@ one-off experiment controllers.
 1. Keep PR #77 retired after missing its 3% gate. The exact V5 bundle measuring
    base `093ec33` versus optimized arm `a91eb271` is terminally reviewed;
    never rerun, tune or pool historical baselines.
-2. Extract only the measured implementation/tests from the experimental
-   harness lineage, rebase that production delta and obtain exact-head merge
-   review. The 29.3203% result is performance evidence, not a strength or
-   deployment authorization.
+2. Draft PR #98 exact `008d75e` extracts only the measured implementation and
+   parity tests from the experimental harness lineage. Its checks are green;
+   obtain exact-head merge review before landing it after PR #71. The 29.3203%
+   result is performance evidence, not strength or deployment authorization.
 3. After terminal review and merge-shape cleanup, profile the accepted stack
    again. Do not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass

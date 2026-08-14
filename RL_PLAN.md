@@ -44,8 +44,10 @@ This section keeps only the research conclusions that change what we try next.
   action ranking; exact exam numbers remain in `AI_POLICIES.md`.
 - **Fresh mid/late successor:** restricting the model to one trick-5+ proposal
   inside fresh N=300 search passed a 256-state screen against both live and
-  same-work uninformed widening. The resulting whole-game treatment/null/
-  champion screen is running on Mini; no strength verdict exists yet.
+  same-work uninformed widening. Its complete-round aggregate is now
+  `SELECT_NONE`: integrity and exact work passed, but the treatment LCB was
+  negative versus both live and matched uninformed widening. Independent
+  terminal review verified the result and closed this composition.
 - **Direct search:** S4 stayed positive twice and now has a future-only
   8,192/16,384-cluster confirmation running on Cloud; old outcomes do not enter
   its estimator. S6's narrow shuai-pai selector has a fresh preflight queued.
@@ -73,7 +75,7 @@ This section keeps only the research conclusions that change what we try next.
   reproduction and four falsifications under raw marker
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical
   `16af447`. Declarative build-and-verify-only design PR #86 exact head
-  `a43a17c` PASSed external design-only review at canonical `fe6eb3b`, opening
+  `289fdf0` PASSed superseding external design-only review and merged, opening
   only a future controller-design review. Prevalence remains SmartBot-trajectory
   rather than champion-natural dose; implementation, freeze, execution,
   evidence access, scoring, REPORT, aggregation and every strength or deployment
@@ -84,13 +86,12 @@ This section keeps only the research conclusions that change what we try next.
   use—not merely train longer on the same target.
 - **Human evidence:** `human_v8` contains 2,830 plays and 45 buries. H0's one
   counterfactual run completed 555/557 rows and correctly published no
-  aggregate. Score-free PR #82 exact head `a498bf5` PASSed external review; it
+  aggregate. Score-free PR #82 exact head `bf72dff` PASSed and merged; it
   reproduces the underlying geometry—12 legal live
   choices versus three generic analyzer choices on each refused throw—and
-  replaces cardinality with direct legality without reopening scores. Before
-  downstream reuse, add the requested test pinning the whole declarative
-  authority map. Human
-  actions remain candidate and diagnosis sources; ultimate people strength
+  replaces cardinality with direct legality without reopening scores while
+  pinning the whole false authority map. Human actions remain candidate and
+  diagnosis sources; ultimate people strength
   requires the separate blinded HUMAN-C1 ladder.
 - **Endgames:** S3b's four-card exact rollout exceeded its frozen node cap.
   S3c restarts at naturally reached one-, two- and three-card roots. One-card is
@@ -351,22 +352,25 @@ The fresh mid/late successor makes the required substantive change: it limits
 the model to trick 5+, asks it for one proposal, and gives fresh belief-sampled
 N=300 search final authority. Its independently reviewed 256-state result is
 positive against both literal live and a same-work uninformed proposal. The
-whole-game compute is now at the terminal gate of this decision tree:
+whole-game successor has completed its terminal gate:
 
-1. independent terminal review passes → **done**;
-2. freeze and externally review one fresh mirrored
-   treatment/null/champion whole-game screen → **done; all eight workers exited
-   zero and the score-free supervisor final awaits review**;
-3. whole-game screen selects none → close this composition and retain only
-   the surface diagnostic;
-4. whole-game screen passes → design a separately powered confirmation; and
-5. confirmation passes → only then consider production and HUMAN-C1 gates.
+1. freeze and externally review one fresh mirrored treatment/null/champion
+   screen → **done**;
+2. finish eight shards, authenticate the score-free supervisor final and admit
+   one aggregate → **done**;
+3. recursively reproduce the aggregate → **done; `SELECT_NONE`**, with
+   treatment-vs-live LCB `-0.00759` and treatment-vs-matched-null LCB
+   `-0.03313`;
+4. obtain the independent terminal-result marker → **done at `a165274`**;
+   close this exact composition and retain only its state-level diagnostic; and
+5. do not design confirmation, production or HUMAN-C1 follow-up from this
+   negative whole-game decision.
 
 Thus “first closed stronger-Teacher generation” was outdated and overstated:
 the closed branch was a valid Teacher generation, but not a stronger policy.
-The hybrid successor has completed its sealed whole-game compute but is not yet
-closed or strong; only the admitted aggregate and independent terminal verdict
-can establish that.
+The hybrid successor is not strong: its admitted aggregate selected none, the
+merged read-only helper reproduced every statistic, and independent review
+formally closed the milestone.
 
 S4 replication is terminal positive-but-inconclusive `SELECT_NONE`; its fresh
 8,192/16,384-cluster sequential successor is now running on Cloud. S6
@@ -410,9 +414,13 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   states, and lets whole-game search price card-retention cost.
 - **Point-flow family:** S4 asks winners to bank points, S5 asks late losers to
   protect them, and future `ANTICIPATE_FEED` asks rollouts to price a partner or
-  opponent feeding the winner. Keep individual estimands until dose and utility
-  are known. If several survive, test a small named continuation-policy
-  portfolio rather than silently merging rules.
+  opponent feeding the winner. PR #99 first repairs the descriptive boundary:
+  literal and inferred surfaces must each divide by their own legal point-card
+  opportunities, so the old 70%-versus-23% headline is invalid. Its private
+  opened-corpus and 150-row counterfactual results remain proposal diagnostics,
+  not strength evidence. Keep individual estimands until dose and utility are
+  known. If several survive, test a small named continuation-policy portfolio
+  rather than silently merging rules.
 - **Pair family:** finish broad pair-aware continuation first. Let that result
   decide whether the externally PASSed attacker-gated pair-cap merits an
   incremental screen; its three-arm capacity design is now being built.
@@ -427,8 +435,8 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   Final read-only PR #84 exact head `f571146f631914eb6899ce435ef466d70d9f9330`
   passed the exact result-review CLI and four falsifications; raw marker
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` is canonical at
-  `16af447`. Design-only PR #86 `a43a17c` then PASSed at canonical `fe6eb3b`,
-  opening a future controller-design review only. SmartBot-trajectory
+  `16af447`. Design-only PR #86 exact `289fdf0` then PASSed superseding review
+  and merged, opening a future controller-design review only. SmartBot-trajectory
   prevalence still must be replaced by champion-natural dose before
   whole-round inference. PR #55 `24b421d` PASSed merge-readiness, so the exact
   #55→#60→#61→#72 stack may merge only in order; packet implementation/freeze,
@@ -571,12 +579,12 @@ outcomes were opened. Because the two failures were exactly complex throw
 states, dropping them and averaging the other 555 could bias the answer toward
 easier decisions. The runtime therefore withheld every aggregate utility. The
 exact stream is closed; it neither supports a human/V11 Teacher rule nor proves
-those proposals are weak. Score-free PR #82 exact head `a498bf5` is the bounded
+those proposals are weak. Score-free PR #82 exact head `bf72dff` is the bounded
 repair: it reproduces both 12-live/3-analysis geometries, validates the full
 live menu directly through the engine, closes source/refusal schemas, and
-cannot score, read old utilities, train, launch or promote. Exact head
-`a498bf5` PASSed external review; add the requested whole-authority-map fixture
-before any separately authorized opened-DEV prevalidation. A future scored H0
+cannot score, read old utilities, train, launch or promote. The exact head
+PASSed, pins the whole false authority map and merged. Any opened-DEV
+prevalidation still needs separate authorization. A future scored H0
 successor must validate all candidate geometry first and use a new
 population/world stream; this scientific direction is not closed.
 

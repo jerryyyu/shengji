@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-13 17:53 EDT. This file owns current compute and
+Last reconciled: 2026-08-13 20:40 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,9 +9,9 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | T4 terminal-result review | **AGGREGATE COMPLETE: `SELECT_NONE`.** Claude's raw supervisor marker admitted the sole aggregate. External SHA `f30a77c7…e652`, admission `ec96102e…7a08`; the merged PR #80 helper recursively reproduced all statistics and emitted PASS. No confirmation, retry or deployment is authorized. |
-| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** Five reviewed score-free counters are 416/896 and three are 400/896, totaling `3,280/7,168` clusters (45.76%), with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` remains asleep until the Pair supervisor seals and releases every worker. Current run has no retry or extension authority. |
-| **Cloud** | `s4-point-banking-future-c2-360b-v1`, tranche two | **HEALTHY / SATURATED; 0 TERMINAL.** Look one completed with integrity intact but below the early-efficacy boundary, so the reviewed controller automatically continued. All 16 tranche-two workers are healthy; reviewed score-free progress is `3,967/8,192` (48.43%). No outcome or efficacy statistic has been opened. There is no hard runtime timeout. |
+| **Mini** | T4 terminal closeout complete | **TERMINAL REVIEWED `SELECT_NONE`.** External aggregate `f30a77c7…e652`, admission `ec96102e…7a08`; the merged PR #80 helper recursively reproduced all statistics and canonical review `a165274` verified the result. No confirmation, retry or deployment is authorized. Mini has no live T4 worker. |
+| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; SUBSTANTIVE TIMEOUT RISK.** Reviewed score-free counters are `[432,432,448,432,432,432,432,432]/896`, totaling `3,472/7,168` clusters (48.44%), with sealed outcomes. Detached S6 queue `s6-preflight-queue-v2` remains asleep until the Pair supervisor seals and releases every worker. Current run has no retry or extension authority. |
+| **Cloud** | `s4-point-banking-future-c2-360b-v1`, tranche two | **HEALTHY / SATURATED; 0 TERMINAL.** Look one completed with integrity intact but below the early-efficacy boundary, so the reviewed controller automatically continued. All 16 tranche-two workers are healthy; reviewed score-free progress is `4,871/8,192` (59.46%). No outcome or efficacy statistic has been opened. There is no hard runtime timeout. |
 | **Performance Cloud** | PR #98 merge review and PR #94 V2 packet review | **IDLE / NO STRENGTH AUTHORITY.** The six-pair V5 batch completed once under invocation `7bae1e19…43e0`; frozen validator and Claude's terminal review at `e5818ee` give 29.3203% lower wall and 27.8619% paired lower bound with exact normalized semantics. V5 is consumed forever and V6 is superseded. Draft PR #98 `008d75e` is the production-only measured delta pending review. PR #94 source head `08ee055` PASSed; fresh packet `dd7709e9…4adca` is frozen and verified, but its packet review, admission, records, final and installed unit remain absent. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
@@ -19,9 +19,10 @@ compact terminal stubs. Historical detail is archived in
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | Selective S6 shuai-pai preflight | **AIR AUTHORIZED / DURABLY QUEUED; MINI FALLBACK CLOSED.** Claude's 12:10 PASS permits one four-cluster score-free Air preflight from packet `19f3b2a3…79dd0`. Exact runtime/packet verification passed at 17:19; detached queue `s6-preflight-queue-v2` is fail-closed on pair supervisor final, worker absence and unused S6 targets. Draft PR #65 and its remote branch were closed without a packet or run. |
-| 2 | Pair affected-state controller design | **SCORED DESIGN EXTERNALLY PASSed / CONTROLLER DESIGN ONLY OPEN.** Claude PASSed PR #86 exact head `a43a17c` at canonical `fe6eb3b`; 73 focused and 177 chain tests pass, with a canonical-ref ancestry negative fixture requested. It grants no packet implementation/freeze/run, evidence access, scoring, REPORT, aggregation, retry, strength, training, promotion or deployment authority. |
-| 3 | Attacker-gated pair-cap incremental control | **EXTERNAL ACTION-SEMANTICS PASS / CAPACITY DESIGN UNDERWAY.** Claude PASSed PR #69 `ca1913f` at 22:36. A three-arm incremental/matched-v1/literal-champion capacity design is being built; no packet or gameplay authority exists. |
+| 1 | S6 opened-DEV V2 diagnostic | **PACKET REVIEW PENDING / PERF IDLE.** PR #94 exact `08ee055` PASSed source review. Fresh packet `dd7709e9…4adca` is frozen and verified, but the distinct reviewer attestation, packet-review snapshot, admission, records, final and installed unit are absent. No run is authorized. |
+| 2 | Selective S6 shuai-pai preflight | **AIR AUTHORIZED / DURABLY QUEUED; MINI FALLBACK CLOSED.** Claude's 12:10 PASS permits one four-cluster score-free Air preflight from packet `19f3b2a3…79dd0`. Exact runtime/packet verification passed at 17:19; detached queue `s6-preflight-queue-v2` is fail-closed on pair supervisor final, worker absence and unused S6 targets. Draft PR #65 and its remote branch were closed without a packet or run. |
+| 3 | Pair affected-state controller design | **SCORED DESIGN MERGED / CONTROLLER DESIGN ONLY OPEN.** Merged PR #86 exact head `289fdf0` pins its negative ancestry/authority fixtures and grants no packet implementation/freeze/run, evidence access, scoring, REPORT, aggregation, retry, strength, training, promotion or deployment authority. |
+| 4 | Attacker-gated pair-cap incremental control | **EXTERNAL ACTION-SEMANTICS PASS / CAPACITY DESIGN UNDERWAY.** Claude PASSed PR #69 `ca1913f` at 22:36. A three-arm incremental/matched-v1/literal-champion capacity design is being built; no packet or gameplay authority exists. |
 
 Pair-aware v3 owns Air and has no retry or extension authority. Every old S4 C2
 namespace and the complete 300-billion interval are quarantined and grant no
@@ -35,17 +36,18 @@ Read-only closeout helper PR #80 exact head `e61975c` PASSed external review
 and is merged on main. Its 22/22 tests pass both plain and under
 `SHENGJI_FAST=1`, including aggregate-binding, supervisor-final TOCTOU and
 sealed-shard drift refusals. It has no launch, aggregation, scoring or live-run
-authority and does not block natural T4 computation.
+authority. It recursively reproduced the sole completed aggregate, and
+independent terminal review closed it at `SELECT_NONE`.
 
-1. Supervisor and eight shards finish naturally; no retry or resize.
-2. External reviewer authenticates the score-free supervisor final.
-3. One aggregation is admitted only after that PASS.
+1. Supervisor and eight shards finish naturally; no retry or resize — **done**.
+2. External reviewer authenticates the score-free supervisor final — **done**.
+3. One aggregation is admitted only after that PASS — **done**.
 4. External reviewer independently reproduces the aggregate and posts the
-   terminal verdict.
+   terminal verdict — **done at canonical `a165274`: `SELECT_NONE`**.
 
-Safe monitoring: tmux/process state, CPU, supervisor console and durable
-heartbeats. Forbidden before review: opening or parsing `shard-*.json` or any
-outcome-bearing aggregate input.
+During execution and review, monitoring was limited to process state and
+reviewed score-free heartbeats. The terminal artifacts now remain sealed under
+their reviewed verifier; no ad hoc reopening or post-hoc analysis is authorized.
 
 ## Recent terminal stubs
 

@@ -55,8 +55,9 @@ REQUIRED_ENVIRONMENT = (
 REQUIRED_EXACT_PATHS = (
     "BELIEF_V1_B2_DESIGN.md",
     "BELIEF_V1_SPEC.md",
-    "pyproject.toml",
-    "uv.lock",
+    "server/pyproject.toml",
+    "server/setup.py",
+    "server/uv.lock",
     "server/scripts/belief_v1_b2.py",
 )
 REQUIRED_PREFIXES = ("server/shengji/",)

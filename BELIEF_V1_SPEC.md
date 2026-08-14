@@ -198,6 +198,28 @@ The public model output includes:
 - uncertainty/calibration summaries needed by the sampler and evaluator; and
 - the observation/model/source identity that produced the belief.
 
+The receiver set is explicit and actor-relative. It contains the other three
+seats and, for a non-banker actor, the hidden kitty. A banker's known burial is
+actor-private input and is therefore excluded from the hidden receiver set.
+
+V1 exposes two views of the same posterior:
+
+1. **ownership weights:** a distribution over each unknown physical card's
+   eligible receiver, plus the probability of zero/one/two copies of a card
+   code at each receiver; and
+2. **sample-derived marginals:** per receiver and effective suit, distributions
+   over length, top rank, point count, pair count, longest tractor, trump
+   length, and boss-holding events.
+
+The first model deliberately does not claim to represent every card-to-card
+correlation. Its ownership logits are converted into complete worlds by a
+constrained joint assignment, and the derived marginals are measured from
+those complete samples. Exact hand-size, copy, void, declaration, and kitty
+constraints therefore remain joint even where the learned soft model is
+factorized. If this factorization cannot calibrate pair/tractor or top-rank
+events, V1 closes or advances to a separately specified autoregressive model;
+it does not relabel inconsistent marginals as a posterior.
+
 Hard facts override probabilities. A proven void has probability one; a pinned
 declaration copy has probability one at its owner; a banker-known buried card
 is actor-private fact and is not predicted as hidden.
@@ -210,6 +232,37 @@ Conservation must hold exactly after projection:
 - hidden-kitty size is exact;
 - impossible receivers receive zero probability; and
 - pair/run summaries agree with sampled card multiplicities.
+
+### Behavioral inference is probabilistic and policy-bound
+
+BELIEF-V1 does cover information in *which public action was chosen*, including
+negative evidence from an action that was available but not taken. This is the
+main delta over `Memory`: `Memory` derives policy-independent logical bounds;
+the belief model may learn policy-dependent likelihoods from the complete
+public sequence. Examples include:
+
+- declining to feed a partner-winning trick, which may downweight remaining
+  point cards or useful pairs at that seat;
+- following a trump-pair lead with a forced singleton joker, which can sharply
+  reduce the posterior probability of another trump pair and of long trump;
+- discarding an unforced point card off-suit, which may increase the posterior
+  probability of shortness, void, or deliberate point unloading; and
+- declining a higher pair, tractor, ruff, overruff, or boss play when that
+  action was publicly plausible under the actor's legal surface.
+
+None of those is promoted to a fact. The output remains a calibrated
+distribution and carries:
+
+- `behavior_model_schema` and model/source hashes;
+- the training corpus' policy mixture (human, champion, or named bot);
+- the observation domain and policy-shift stratum; and
+- an explicit `probabilistic_policy_conditioned` information tag.
+
+V1 uses a learned history encoder for these soft likelihoods rather than a
+growing table of hand-authored feed/joker/discard multipliers. The existing
+`Memory` deductions remain hard guards. This division makes forced legality
+and conservation exact while letting the learned layer capture behavioral
+signals whose direction and magnitude vary by policy.
 
 ### `ActionContextV1`
 
@@ -256,6 +309,33 @@ all engine and `Memory` constraints. It must:
 The current constraint sampler remains the primary baseline. A same-work null
 shuffles or masks belief weights while retaining candidate count, world count,
 validation work, and RNG shape.
+
+### First tactical implementation and consumer
+
+The first implementation is intentionally narrower than the full architecture:
+
+1. reconstruct `ActorObservationV1` from the complete public transcript at
+   each captured decision rather than adding a mutable belief cache to
+   `Round`;
+2. train one public-history ownership head with privileged hands/kitty used as
+   labels only;
+3. apply `Memory` constraints as zero/one masks, then project the learned soft
+   ownership weights onto exact card, hand-size, and kitty conservation;
+4. use those weights only inside `BeliefSamplerV1` to choose among complete
+   constraint-consistent assignments; and
+5. keep the existing ballot, continuation policy, value, N/R, and final search
+   decision rule unchanged for the first causal screen.
+
+This recompute-from-history design is slower than an incremental cache but is
+easy to replay, hash, rotate, and audit. B0/B1 measure its real capture cost
+before scale. An incremental implementation is considered only if profiling
+shows the recompute cost matters after correctness.
+
+The feed gate, memory-aware rollout continuation, uncertainty-based search
+allocation, and learned-policy encoder are four **later consumers**, not bundled
+into V1's first estimand. Each requires its own matched null. In particular,
+the first sampler result cannot be cited as evidence for a feed threshold or a
+belief-aware rollout policy.
 
 ## Training and data design
 
@@ -311,6 +391,75 @@ targets during training, but its hidden features are masked or distilled away
 and the public endpoint is tested independently.
 
 ## Evaluation ladder
+
+Every quantitative belief claim names two references. They are called `REF-U`
+and `REF-H` here to avoid collision with the B0-B5 work-package names below:
+
+- **REF-U — uniform-consistent** (the review-side B0): the current constraint
+  sampler, including all `Memory` hard facts, with equal weight among accepted
+  worlds; and
+- **REF-H — current hand-coded context** (the review-side B1): REF-U worlds
+  plus the exact `Memory`/`PointContext` fact and action-context fields
+  available to today's decision code, but no learned behavioral likelihood.
+
+For hidden-ownership calibration REF-U and REF-H may have the same world
+weights; that is an honest result, not a reason to invent a second prior. For
+derived action context and fixed-work search, REF-H is the stronger current-
+feature baseline. BELIEF-V1 must not win by withholding an existing hard fact
+or PointContext field from a control.
+
+### Exact acceptance invariants — zero tolerance
+
+- **E1 — conservation:** for each unknown card, expected copies across eligible
+  hidden receivers equal its unknown multiplicity; receiver expectations equal
+  exact remaining hand and kitty sizes. Every sampled world satisfies integer
+  conservation exactly.
+- **E2 — hard-fact respect:** played and actor-known cards have zero hidden
+  mass; proven void receivers have zero mass for that effective suit;
+  declaration pins and other forced ownership have probability one.
+- **E3 — public-twin bit identity:** two states with byte-identical public and
+  actor-private transcripts but different inaccessible hands/kitty produce
+  byte-identical actor inputs and belief outputs.
+- **E4 — perspective symmetry:** absolute seat relabeling preserves the full
+  actor-relative posterior and sampled-world distribution.
+- **E5 — target isolation:** privileged labels live in separately sealed
+  artifacts and are absent from runtime inputs, caches, sampler APIs, and
+  inference logs.
+
+### Calibration and negative-control invariants
+
+- **C1 — proper-score lift:** on untouched complete-round folds, BELIEF-V1 has
+  a positive preregistered lower bound in ownership log-loss or Brier score
+  over REF-U and no material regression versus REF-H on load-bearing strata.
+- **C2 — behavioral-stratum lift:** improvement is reported separately after
+  declined feeds, forced trump/joker evidence, and unforced point discards. A
+  claimed behavioral model must improve at least one preregistered behavioral
+  stratum and may not hide a reversal behind aggregate frequency.
+- **C3 — reliability:** predicted versus empirical curves are reported for
+  suit length/void, top rank, pair/tractor counts, points in hand/kitty, and
+  trump length. Ranking without calibration does not pass.
+- **C4 — exact synthetic posterior:** on small deals generated under a known
+  public policy where all compatible worlds and action likelihoods can be
+  enumerated, the learned/projected posterior agrees within a frozen tolerance.
+- **N1 — history ablation:** withholding or within-stratum shuffling the public
+  action chronology collapses behavioral lift toward REF-U. Residual lift is
+  audited as a possible side channel.
+- **N2 — permuted labels:** training on round-grouped shuffled hidden labels
+  produces no held-out lift.
+- **N3 — policy shift:** human, champion, and named-bot strata are scored
+  separately; the transfer gap is reported rather than assumed away.
+
+Before any online screen, two usefulness checks also have to pass:
+
+- **U1 — true-world likelihood:** held-out true hidden worlds receive higher
+  probability or lower proper loss under belief weighting than under REF-U;
+  and
+- **U2 — fixed-world value variance:** at equal world count and unchanged
+  continuation, the belief sampler reduces preregistered rollout-value error or
+  variance without introducing measured bias.
+
+U2 is a mechanism result, not a strength result. Failure of U1 or U2 stops the
+sampler route before a whole-game run.
 
 ### Gate A — mechanics and leakage
 

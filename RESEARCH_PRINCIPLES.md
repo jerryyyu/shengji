@@ -77,6 +77,12 @@ Belief outputs retain probabilities or distributions until the consumer makes
 a decision. A single determinized world, a single oracle argmax, or one scalar
 state value must not be presented as public-information truth.
 
+Inference from a public action not taken—such as a declined point feed or
+higher pair—is actor-legal but policy-dependent. It must name the policy mix
+that supplied the evidence, remain probabilistic, and report transfer gaps
+between human, champion, and named-bot play. It may never silently harden into
+a `Memory` fact or a universal tactical rule.
+
 Teacher data should preserve per-action common-world outcomes, uncertainty,
 and disagreement—not only the winning action.
 

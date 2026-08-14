@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 10:08 EDT from canonical main `ac2721d`.
+Last reconciled: 2026-08-14 10:12 EDT from canonical main `e3af8c3`.
 
 ## Live fleet
 
@@ -23,7 +23,7 @@ Last reconciled: 2026-08-14 10:08 EDT from canonical main `ac2721d`.
 ## Review queue — precise asks
 
 1. **PR #109 strength-campaign closeout docs — merge gate.** Exact docs-only
-   head `d0b605308ac0583eb040a2663579bedfcf053e6f` against base `ac2721d`
+   head `8fa96de939d5d69f5876dbca2abe92f664732334` against base `e3af8c3`
    changes exactly AI_POLICIES, BACKLOG, JOBS, PERF, RL_PLAN and two new
    2026-08-14 archive files. Falsify the T4/S4/S6 terminal facts, both sealed
    Pair states, perf-vs-strength wording, cross-baseline arithmetic, and the
@@ -52,15 +52,7 @@ PR comments alone are not queue state.
 
 ## Execution and terminal queue
 
-1. **PR #103 x86 A/B.** Terminal review `95e0faf` returned VERIFIED/retain at
-   3.4074% lower x86 wall and positive 1.0299% paired one-sided LCB, with all
-   six normalized semantic traces exact. The design is consumed forever; never
-   restart or tune it. Any merge/rebase remains a separate code operation and
-   grants no strength or deployment authority. Both independent differential
-   soaks are complete (10,000,000 Mini rounds and 2,000,000 x86 rounds), with
-   no mismatch; they do not reinterpret the frozen timing result.
-
-2. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
+1. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
    confirms 47.88 projected hours <= the reviewed 52h cap. PR #106 source
    `71356b2` PASSed at `83c6909`; exact packet `f2878fff…a5c9c` PASSed at
    `95242b4` and started once at 09:56 EDT. Systemd owns all 16 workers under
@@ -69,7 +61,7 @@ PR comments alone are not queue state.
    a score-free manifest for separate review; no resume or aggregate command
    exists and any interruption spends the admission.
 
-3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
+2. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
    V1 aggregate admission was spent by a deterministic canonical-key-order
    refusal on record 0 and can never retry. Exact V2 recovery `2b9d8e5` passed
    at `addd03e`; its single aggregate and canonical result review `e31e9a2`
@@ -77,17 +69,17 @@ PR comments alone are not queue state.
    `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`. The bury-source-only signal is
    hypothesis-generating; no retry, fresh design, screen or strength action.
 
-4. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
+3. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
    complete. Canonical independent review `15e8dbb` reproduced `SELECT_NONE`,
    final SHA `0aef1ca8…e90`, `strength_claim=false` and
    `production_promotion=false`. Never retry or reinterpret the terminal
    decision. Strength Cloud is idle.
 
-5. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
+4. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
    If the supervisor publishes a valid score-free final, review it before any
    aggregation. If the immutable timeout fires, preserve the terminal HOLD;
-   the sleeping S6 queue must not interpret that as a clean release. PR #96 is
-   the separately reviewed path to capacity-size a fresh checkpoint successor.
+   the sleeping S6 queue must not interpret that as a clean release. The fresh
+   checkpoint successor is already running separately on Performance Cloud.
 
 ## Landed and closed anchors
 
@@ -101,9 +93,9 @@ PR comments alone are not queue state.
   runtime as `fe04fa2`. A later current-main diagnostic failed its strict
   normalizer on an explicit false flag; its post-hoc 30.359% is not a
   confirmation. PR #103 exact `3044a2f` independently retained at 3.4074%
-  lower x86 wall / 1.0299% one-sided LCB under terminal review `95e0faf`;
-  do not add ARM microbenchmarks or PR #107 claims. Existing jobs never
-  hot-swap code.
+  lower x86 wall / 1.0299% one-sided LCB under terminal review `95e0faf` and
+  merged through `e3af8c3`; do not add ARM microbenchmarks or PR #107 claims.
+  Existing jobs never hot-swap code.
 - **PR #103 benchmark envelope:** exact design `62e471e4…e075` passed at
   canonical `f46cad5`; its sole six-pair x86 batch is terminal success and
   independent result/manifest review `95e0faf` retained it.
@@ -115,10 +107,11 @@ PR comments alone are not queue state.
   training, strength or deployment authority.
 - **S6 V2/V3:** the V2 start refused on ignored bytecode before packet-review
   snapshot, admission, gameplay, records or final. V2 cannot retry; V3 binds
-  that incident under a fresh namespace, completed cleanly and terminally
-  verified at `482119b`. Aggregate V1 later opened record 0 under valid
-  authority but refused before exposing any score; the 64 source files remain
-  immutable, records 1–63 were not opened, and distinct V2 review is pending.
+  that incident under a fresh namespace and completed cleanly. Aggregate V1
+  later refused on record-zero canonical ordering under valid authority and is
+  spent. Exact V2 recovery then reconstructed all 64 records and terminal
+  review `e31e9a2` selected none for a fresh screen design. No retry or new
+  S6 screen is authorized.
 - **Pair capacity V2 recovery:** the first start refused before admission/work
   on a Claude-created ignored pyc. Canonical recovery PASS `9a8843b` authorized
   exact quarantine plus one start; the preserved second invocation passed

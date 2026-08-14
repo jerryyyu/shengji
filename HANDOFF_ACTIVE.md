@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 03:15 EDT from canonical main `314a177`.
+Last reconciled: 2026-08-14 03:26 EDT from canonical main `ba1269a`.
 
 ## Live fleet
 
@@ -17,7 +17,7 @@ Last reconciled: 2026-08-14 03:15 EDT from canonical main `314a177`.
 | **Mini** | PR #103 native-round differential soak, eight nice-15 workers | T4 is terminally reviewed `SELECT_NONE`. The open-state soak uses independent repair commit `ed1d731` and compares native/pure state after every play across 10,000,000 deterministic rounds. Its production `_fast.pyx` SHA `ff3b4ed1…271` is byte-identical to pushed PR head `3044a2f`; the only Git delta is one test-line collection fix. All eight workers remain CPU-bound after 3h03m; all eight logs remain empty. It reads no sealed data and grants no benchmark, strength or merge authority. |
 | **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers are alive and CPU-bound. Reviewed score-free counters are `[496,496,512,496,512,496,496,496]/896`, totaling `4,000/7,168` (55.80%); 0/8 terminal. Outcomes stay sealed. The 64-hour timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
 | **Strength Cloud** | PR #103 exact-head x86 native/pure differential soak, eight nice-15 workers | S4 exact source `e7551e4` finished both reviewed tranches; the pinned verifier returned `SELECT_NONE`, final SHA `0aef1ca8…e90`, and independent terminal review remains requested in PR #66 comment `5290507470`. The open-state soak uses exact PR head `3044a2f`, fresh synthetic seeds and 2,000,000 finite rounds under systemd invocation `0922da2f…b3f1`, `CPUQuota=800%` and `RuntimeMaxSec=12h`; script SHA `d14fd343…698e`, runner SHA `8412075d…3ad`. Eight cores remain free for review. It reads no run artifact and grants no benchmark, strength, merge or deployment authority. |
-| **Performance Cloud** | idle; PR #106 and PR #108 reviews pending | Claude terminal-review commit `95e0faf` independently reopened the sole PR #103 batch and returned VERIFIED/retain: 3.4074% lower x86 whole-round wall with paired one-sided 95% LCB 1.0299%; all six normalized semantic traces are exact. The consumed design can never rerun. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; exact aggregation PR #108 `d40182d` awaits review before any record may be opened. |
+| **Performance Cloud** | idle; PR #106 and repaired PR #108 reviews pending | Claude terminal-review commit `95e0faf` independently reopened the sole PR #103 batch and returned VERIFIED/retain: 3.4074% lower x86 whole-round wall with paired one-sided 95% LCB 1.0299%; all six normalized semantic traces are exact. The consumed design can never rerun. Pair Capacity V2 passed at `482119b` (47.88h <= 52h); exact PR #106 `f1791f5` awaits source review before one packet may be frozen. S6 V3 verified 64/64 sealed receipts; repaired aggregation PR #108 `4b26c1a` awaits exact-head review before any record may be opened. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
@@ -42,16 +42,18 @@ Last reconciled: 2026-08-14 03:15 EDT from canonical main `314a177`.
    the controller-generated raw implementation marker. PASS may freeze one
    host packet only; it cannot execute the screen or open outcomes.
 
-3. **PR #108 S6 V3 aggregation source + exact-input review.** Independently
-   audit exact head `d40182d313f9ed3fcb853d2c82b74454398a4a9a`
-   over terminal source `a93c2f5`; exact two-file SHAs and the score-free
-   preflight are in PR comment `5290133523`. Without opening a scored record,
-   reproduce 14 focused and 120 pure/strict-compiled chain tests; falsify the
-   exact terminal chain, source/runtime closure, gate-before-open boundary,
-   all-64-record validation, exact two-primary-gate statistics, terminal
-   recomputation and closed authority. If clean, append only the generated
-   raw aggregate marker. PASS authorizes exactly one aggregate and the opening
-   of these 64 records; it authorizes no downstream screen or strength claim.
+3. **PR #108 S6 V3 aggregation exact-head repair review.** Codex held
+   `d40182d` after proving a sibling `server/scripts/json.py` could execute
+   before provenance checks. Exact repaired head `4b26c1a89dc1903478c958bc5ac309020d673e37`
+   requires `/usr/bin/python3.14 -I -P -B`; the hostile-shadow fixture cannot
+   execute, and real on-host score-free `verify-inputs` still passes with no
+   record opened. Reproduce 15 focused and 121 pure/strict-compiled chain
+   tests; then re-falsify the exact terminal chain, gate-before-open boundary,
+   all-64-record validation, exact statistics, result review and closed
+   authority. Exact SHAs and command are in PR comment `5290701147`. If clean,
+   append only the regenerated raw aggregate marker for `4b26c1a`. PASS
+   authorizes exactly one aggregate opening these 64 records; it authorizes no
+   downstream screen, retry, REPORT or strength claim.
 
 4. **PR #107 performance wave-two repair — not launch-critical.** Exact head
    `1982c48` is HOLD after Codex reproduced a stale mutable-world cache
@@ -93,9 +95,9 @@ PR comments alone are not queue state.
    screen before that PASS.
 
 3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts with
-   no record opened. Exact aggregation PR #108 `d40182d` is published,
-   CI-green and awaiting its consolidated source + exact-input review. After
-   its raw PASS, run the aggregate exactly once; keep the result unopened and
+   no record opened. Exact repaired aggregation PR #108 `4b26c1a` is published
+   and awaiting its consolidated exact-head source + input review. After its
+   raw PASS, run the aggregate exactly once; keep the result unopened and
    return it for independent terminal recomputation before acting on efficacy.
 
 4. **S4 terminal sequence.** Both tranches and the exact pinned verifier are

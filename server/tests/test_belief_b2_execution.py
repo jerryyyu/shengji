@@ -88,6 +88,11 @@ def test_design_refuses_missing_sources_runtime_and_authority_drift():
     with pytest.raises(BeliefB2ExecutionError, match="runtime profile"):
         validate_execution_design(replace(
             design, runtime=replace(design.runtime, torch_num_threads=2)))
+    for runtime in (
+            replace(design.runtime, cpu_count=15),
+            replace(design.runtime, memory_bytes=(30 << 30) - 1)):
+        with pytest.raises(BeliefB2ExecutionError, match="runtime profile"):
+            validate_execution_design(replace(design, runtime=runtime))
     with pytest.raises(BeliefB2ExecutionError, match="drift"):
         validate_execution_design(replace(
             design, evidence_root="relative/evidence"))

@@ -20,7 +20,12 @@ from typing import Any
 from ..ai.mcbot import MCBot
 from ..ai.memory import Memory
 from ..engine.round import Round
-from .belief_capture import CHAMPION_POLICY
+from .belief_b2_protocol import (B2_REFERENCE_REPLICATES,
+                                 champion_policy_seeds,
+                                 reference_sampler_seed)
+from .belief_capture import (CHAMPION_POLICY, CapturedBeliefRoundV1,
+                             capture_champion_round, validate_captured_round)
+from .belief_corpus import CorpusPairV1, reopen_actor_row, split_for_round_seed
 from .belief_contract import (ActorObservationV1, PublicTranscriptV1,
                               build_actor_observation, canonical_json_bytes)
 from .belief_ownership import BeliefOwnershipV1, KITTY_RECEIVER
@@ -53,6 +58,42 @@ _COUNTERS = ("sample_attempts", "accepted_worlds", "failed_worlds",
 
 class BeliefRefCCaptureError(ValueError):
     """A current-sampler reference batch failed its exact-work contract."""
+
+
+@dataclass(frozen=True)
+class ReferenceCapturedRoundV1:
+    captured: CapturedBeliefRoundV1
+    replicate: str
+    batches: tuple[ReferenceWorldBatchV1, ...]
+
+    def manifest_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "belief-v1-ref-c-captured-round-v1",
+            "round_seed": self.captured.round_seed,
+            "split": split_for_round_seed(self.captured.round_seed),
+            "replicate": self.replicate,
+            "capture_manifest_sha256": self.captured.manifest_sha256(),
+            "decision_count": len(self.batches),
+            "accepted_world_count": sum(
+                len(batch.worlds) for batch in self.batches),
+            "attempt_count": sum(batch.attempts for batch in self.batches),
+            "batch_manifest_sha256s": [
+                batch.manifest_sha256() for batch in self.batches],
+            "contains_sampled_hidden_worlds": True,
+            "contains_round_outcome": False,
+            "runtime_input": False,
+            "reference_generation_authorized": False,
+            "training_authorized": False,
+            "gameplay_authorized": False,
+            "strength_claim_authorized": False,
+            "deployment_authorized": False,
+        }
+
+    def manifest_bytes(self) -> bytes:
+        return canonical_json_bytes(self.manifest_dict())
+
+    def manifest_sha256(self) -> str:
+        return hashlib.sha256(self.manifest_bytes()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -247,3 +288,94 @@ def validate_reference_world_batch(batch: ReferenceWorldBatchV1) -> None:
             or manifest["contains_round_outcome"] is not False \
             or manifest["runtime_input"] is not False:
         raise BeliefRefCCaptureError("REF-C manifest authority drift")
+
+
+def capture_champion_round_with_ref_c(
+        round_seed: int, *, replicate: str) -> ReferenceCapturedRoundV1:
+    """Replay one frozen champion round and observe every REF-C decision."""
+    split = split_for_round_seed(round_seed)
+    if replicate not in B2_REFERENCE_REPLICATES \
+            or (split == "calibration"
+                and not replicate.startswith("calibration-replicate-")) \
+            or (split == "test" and replicate != "test-primary") \
+            or split == "train":
+        raise BeliefRefCCaptureError("REF-C round replicate/split drift")
+    batches = []
+
+    def observe(rnd: Round, seat: int, transcript: PublicTranscriptV1,
+                pair: CorpusPairV1) -> None:
+        try:
+            actor, metadata = reopen_actor_row(pair.actor_bytes)
+        except ValueError as exc:
+            raise BeliefRefCCaptureError(
+                "REF-C observed actor row refused") from exc
+        batch = capture_ref_c_worlds(
+            rnd, seat, transcript, sampler_seed=reference_sampler_seed(
+                metadata["decision_key"], replicate))
+        if batch.actor.canonical_bytes() != actor.canonical_bytes():
+            raise BeliefRefCCaptureError(
+                "REF-C observed actor reconstruction drift")
+        batches.append(batch)
+
+    captured = capture_champion_round(
+        round_seed, champion_policy_seeds(round_seed),
+        decision_observer=observe)
+    result = ReferenceCapturedRoundV1(
+        captured=captured, replicate=replicate, batches=tuple(batches))
+    validate_reference_captured_round(result)
+    return result
+
+
+def validate_reference_captured_round(
+        result: ReferenceCapturedRoundV1) -> None:
+    if type(result) is not ReferenceCapturedRoundV1 \
+            or type(result.captured) is not CapturedBeliefRoundV1 \
+            or type(result.batches) is not tuple \
+            or result.replicate not in B2_REFERENCE_REPLICATES:
+        raise BeliefRefCCaptureError("REF-C captured round schema drift")
+    try:
+        validate_captured_round(result.captured)
+    except ValueError as exc:
+        raise BeliefRefCCaptureError("REF-C captured round refused") from exc
+    split = split_for_round_seed(result.captured.round_seed)
+    if (split == "calibration"
+            and not result.replicate.startswith("calibration-replicate-")) \
+            or (split == "test" and result.replicate != "test-primary") \
+            or split == "train" \
+            or len(result.batches) != len(result.captured.pairs):
+        raise BeliefRefCCaptureError(
+            "REF-C captured round replicate/population drift")
+    for pair, batch in zip(result.captured.pairs, result.batches,
+                           strict=True):
+        try:
+            actor, metadata = reopen_actor_row(pair.actor_bytes)
+            validate_reference_world_batch(batch)
+        except ValueError as exc:
+            raise BeliefRefCCaptureError(
+                "REF-C captured round batch refused") from exc
+        if batch.actor.canonical_bytes() != actor.canonical_bytes() \
+                or batch.sampler_seed != reference_sampler_seed(
+                    metadata["decision_key"], result.replicate):
+            raise BeliefRefCCaptureError(
+                "REF-C captured round actor/seed binding drift")
+    manifest = result.manifest_dict()
+    expected_keys = {
+        "schema", "round_seed", "split", "replicate",
+        "capture_manifest_sha256", "decision_count",
+        "accepted_world_count", "attempt_count",
+        "batch_manifest_sha256s", "contains_sampled_hidden_worlds",
+        "contains_round_outcome", "runtime_input",
+        "reference_generation_authorized", "training_authorized",
+        "gameplay_authorized", "strength_claim_authorized",
+        "deployment_authorized",
+    }
+    if set(manifest) != expected_keys \
+            or manifest["accepted_world_count"] != (
+                len(result.batches) * REF_C_WORLD_COUNT) \
+            or manifest["contains_sampled_hidden_worlds"] is not True \
+            or manifest["contains_round_outcome"] is not False \
+            or manifest["runtime_input"] is not False \
+            or any(manifest[key] is not False for key in expected_keys
+                   if key.endswith("_authorized")):
+        raise BeliefRefCCaptureError(
+            "REF-C captured round manifest/authority drift")

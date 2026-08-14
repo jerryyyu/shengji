@@ -196,11 +196,14 @@ def _validate_transcript(transcript: PublicTranscriptV1) -> None:
 
 def _capture_with_policies(
         round_seed: int, policy_name: str,
-        policy_seeds: tuple[int, int, int, int], policies: list[Any]
+        policy_seeds: tuple[int, int, int, int], policies: list[Any],
+        *, decision_observer: Any = None,
         ) -> CapturedBeliefRoundV1:
     _validate_seeds(round_seed, policy_seeds)
     if type(policy_name) is not str or not policy_name \
-            or type(policies) is not list or len(policies) != 4:
+            or type(policies) is not list or len(policies) != 4 \
+            or (decision_observer is not None
+                and not callable(decision_observer)):
         raise BeliefCaptureError("capture policy population is malformed")
     required = ("decide_declare", "decide_bury", "decide_play")
     if any(any(not callable(getattr(policy, method, None))
@@ -234,6 +237,14 @@ def _capture_with_policies(
         pair = capture_corpus_pair(
             rnd, seat, round_seed=round_seed,
             decision_index=len(pairs), transcript=transcript)
+        if decision_observer is not None:
+            decision_observer(rnd, seat, transcript, pair)
+            repeated = capture_corpus_pair(
+                rnd, seat, round_seed=round_seed,
+                decision_index=len(pairs), transcript=transcript)
+            if repeated != pair:
+                raise BeliefCaptureError(
+                    "capture decision observer mutated round state")
         attempted = policies[seat].decide_play(rnd, seat)
         previous_last = rnd.last_trick
         rnd.play(seat, attempted)
@@ -254,13 +265,15 @@ def _capture_with_policies(
 
 def capture_champion_round(
         round_seed: int,
-        policy_seeds: tuple[int, int, int, int]) -> CapturedBeliefRoundV1:
+        policy_seeds: tuple[int, int, int, int],
+        *, decision_observer: Any = None) -> CapturedBeliefRoundV1:
     """Capture one full champion round in memory without exposing outcomes."""
     _validate_seeds(round_seed, policy_seeds)
     policies = [make_bot(CHAMPION_POLICY, seed=seed)
                 for seed in policy_seeds]
     return _capture_with_policies(
-        round_seed, CHAMPION_POLICY, policy_seeds, policies)
+        round_seed, CHAMPION_POLICY, policy_seeds, policies,
+        decision_observer=decision_observer)
 
 
 def captured_round_artifacts(

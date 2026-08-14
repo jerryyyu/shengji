@@ -251,9 +251,14 @@ reported; no best-seed metric exists.
    failure or missing round refuses the result; it is never dropped from the
    bootstrap population.
 2. **C2 behavioral strata:** report declined-feed, forced-trump/joker, and
-   unforced-point-discard strata. A behavioral claim requires at least 500 test
-   decisions in its stratum and a positive lower bound there. Sparse strata
-   are reported as underpowered, never pooled or oversampled into a claim.
+   unforced-point-play strata. A behavioral claim requires at least 500 test
+   receiver-decision exposures in its stratum and a positive lower bound there.
+   Sparse named strata are reported as underpowered and are never individually
+   oversampled into a claim. The primary C2 claim uses the preregistered pooled
+   set of all privately confirmed choice signals, deduplicated by current
+   decision and signaled receiver; its paired lower bound must be positive and
+   its inference-only chronology-ablation lift must retain no more than 25% of
+   the natural-history lift.
 
 Behavioral-stratum membership has two separate forms. The actor-visible form
 uses public sequence patterns only. A target-side audit form may use the true
@@ -262,6 +267,12 @@ higher-pair, nonpoint discard, or trump alternative. That privileged audit
 label is sealed with targets and is forbidden from actor rows and inference.
 This separation prevents “declined an available action” from leaking that the
 action really was available.
+
+Each public signal is active only for the natural downstream decision window
+before that source seat acts again. Public pattern rows never contain the
+source actor's hand or the private alternative audit. The audit stream alone
+records whether a point/nonpoint alternative existed and, for the trump-pair
+signal, the source's pre-play trump length and pair count.
 3. **C3 reliability:** for each emitted receiver count class `0/1/2`, report
    fixed 10-bin ECE and reliability slope overall and by frozen public role,
    phase, declaration, and hidden-kitty strata when at least 1,000 probability

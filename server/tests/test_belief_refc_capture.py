@@ -17,9 +17,13 @@ from shengji.rl.belief_refc_capture import (
     REF_C_SAMPLER_SHA256,
     REF_C_SOURCE_SHA256S,
     BeliefRefCCaptureError,
+    capture_champion_round_with_ref_c,
     capture_ref_c_worlds,
     validate_reference_world_batch,
+    validate_reference_captured_round,
 )
+from shengji.rl.belief_b2_protocol import b2_split_round_seeds
+from shengji.rl import belief_capture as CAPTURE
 from shengji.rl.belief_reference import REF_C_WORLD_COUNT
 
 
@@ -153,3 +157,28 @@ def test_ref_c_refuses_wrong_mode_seed_underfill_and_counter_drift(
     with pytest.raises(BeliefRefCCaptureError, match="work"):
         validate_reference_world_batch(replace(
             batch, sampler_delta=tuple(changed_delta.items())))
+
+
+def test_full_replay_observes_every_calibration_decision_exactly(monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(
+        CAPTURE, "make_bot", lambda _name, *, seed: HeuristicBot())
+    seed = b2_split_round_seeds("calibration")[0]
+    result = capture_champion_round_with_ref_c(
+        seed, replicate="calibration-replicate-0")
+    validate_reference_captured_round(result)
+    assert len(result.batches) == len(result.captured.pairs)
+    assert result.manifest_dict()["accepted_world_count"] \
+        == len(result.batches) * REF_C_WORLD_COUNT
+    assert result.manifest_dict()["contains_round_outcome"] is False
+    assert all(result.manifest_dict()[key] is False
+               for key in result.manifest_dict()
+               if key.endswith("_authorized"))
+    with pytest.raises(BeliefRefCCaptureError, match="actor/seed"):
+        validate_reference_captured_round(replace(
+            result, batches=(replace(
+                result.batches[0], sampler_seed=
+                result.batches[0].sampler_seed + 1),
+                             *result.batches[1:])))
+    with pytest.raises(BeliefRefCCaptureError, match="replicate/split"):
+        capture_champion_round_with_ref_c(seed, replicate="test-primary")

@@ -86,9 +86,9 @@ A local compiled ARM preflight on one deterministic champion round at exact PR
 - 0.959 ms capture work per decision, or 1.027% of measured wall;
 - mean actor row 5,775.7 bytes and target row 1,306.6 bytes.
 
-These figures are planning inputs, not a host qualification. The concrete
-capture packet must bind its host and pass a 16-lane concurrent score-free
-capacity preflight. Initial hard caps are:
+These figures are planning inputs, not a host qualification. The consolidated
+execution design must bind the concrete host and its 16-lane runtime before
+the one reviewed pipeline starts. Initial hard caps are:
 
 - 16 capture core-hours;
 - 2 capture wall-hours on a 16-lane host;
@@ -96,8 +96,13 @@ capacity preflight. Initial hard caps are:
 - zero retries, dropped rounds, incomplete transcripts, split substitutions,
   or short rows.
 
-If the preflight projects over any cap, the design returns for resizing before
-generation. No partial corpus is used.
+The consolidated execution design binds the concrete host, boot, Python,
+native extension and numerical mode before any stage starts.  This opened-
+development pipeline deliberately has no separate capacity packet or
+preflight-review hop: capture is the bounded workload, its immutable lane
+receipts account exact wall/CPU/bytes, and the terminal reopener enforces the
+aggregate caps below.  A lane or aggregate cap failure terminates this exact
+recipe with no retry, resizing, or partial-corpus use.
 
 ## Reference distributions
 

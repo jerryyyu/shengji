@@ -26,6 +26,10 @@ from .belief_capture import (
     captured_round_artifacts,
     reopen_captured_round_artifacts,
 )
+from .belief_checkpoint import (
+    FrozenModelCheckpointV1,
+    validate_model_checkpoint,
+)
 from .belief_contract import canonical_json_bytes
 from .belief_refc_capture import (
     ReferenceCapturedRoundV1,
@@ -37,11 +41,13 @@ from .belief_reference import (
     ReceiverCardsV1,
     SampledOwnershipWorldV1,
 )
+from .belief_trainer import EpochTrainingReceiptV1
 from .belief_reopen import actor_observation_from_dict
 
 
 CAPTURE_MAGIC = b"BELIEF-V1-CAPTURE-BUNDLE-V1\0"
 REFERENCE_MAGIC = b"BELIEF-V1-REF-C-ROUND-V1\0"
+CHECKPOINT_MAGIC = b"BELIEF-V1-MODEL-CHECKPOINT-V1\0"
 MAX_PART_BYTES = 512 * 1024**2
 MAX_PART_COUNT = 128 * (2 + 256) + 2
 SAMPLER_COUNTERS = (
@@ -292,6 +298,89 @@ def reopen_reference_round_bundle(raw: bytes) -> ReferenceCapturedRoundV1:
             or reference_round_bundle_bytes(result) != raw:
         raise BeliefArtifactError("REF-C round reconstruction drift")
     return result
+
+
+def _epoch_receipt_from_bytes(raw: bytes) -> EpochTrainingReceiptV1:
+    payload = _strict_json(raw, label="training epoch receipt")
+    expected = {
+        "schema", "epoch", "batch_count", "decision_count",
+        "active_label_count", "mean_loss_nanonats", "batch_schema",
+        "history_transform", "label_transform", "control_kind",
+        "model_state_sha256_before", "model_state_sha256_after",
+        "privileged_targets_consumed", "checkpoint_written",
+        "runtime_artifact",
+    }
+    integer_fields = (
+        "epoch", "batch_count", "decision_count", "active_label_count",
+        "mean_loss_nanonats")
+    digest_fields = (
+        "model_state_sha256_before", "model_state_sha256_after")
+    if set(payload) != expected \
+            or any(type(payload[name]) is not int or payload[name] < 0
+                   for name in integer_fields) \
+            or min(payload[name] for name in integer_fields[:4]) <= 0 \
+            or any(type(payload[name]) is not str or not payload[name]
+                   for name in ("schema", "batch_schema",
+                                "history_transform", "label_transform",
+                                "control_kind")) \
+            or any(type(payload[name]) is not str
+                   or len(payload[name]) != 64
+                   or any(char not in "0123456789abcdef"
+                          for char in payload[name])
+                   for name in digest_fields) \
+            or payload["privileged_targets_consumed"] is not True \
+            or payload["checkpoint_written"] is not False \
+            or payload["runtime_artifact"] is not False:
+        raise BeliefArtifactError("training epoch receipt field drift")
+    receipt = EpochTrainingReceiptV1(
+        epoch=payload["epoch"], batch_count=payload["batch_count"],
+        decision_count=payload["decision_count"],
+        active_label_count=payload["active_label_count"],
+        mean_loss_nanonats=payload["mean_loss_nanonats"],
+        batch_schema=payload["batch_schema"],
+        history_transform=payload["history_transform"],
+        label_transform=payload["label_transform"],
+        control_kind=payload["control_kind"],
+        model_state_sha256_before=payload["model_state_sha256_before"],
+        model_state_sha256_after=payload["model_state_sha256_after"],
+        schema=payload["schema"])
+    if receipt.canonical_bytes() != raw:
+        raise BeliefArtifactError("training epoch receipt rebuild drift")
+    return receipt
+
+
+def checkpoint_bundle_bytes(
+        checkpoint: FrozenModelCheckpointV1,
+        receipt: EpochTrainingReceiptV1) -> bytes:
+    """Pack one non-executable model checkpoint and its exact receipt."""
+    try:
+        validate_model_checkpoint(checkpoint, final_epoch_receipt=receipt)
+    except ValueError as exc:
+        raise BeliefArtifactError("model checkpoint validation refused") \
+            from exc
+    return _pack(CHECKPOINT_MAGIC, (
+        receipt.canonical_bytes(), checkpoint.manifest_bytes,
+        *checkpoint.parameter_blocks))
+
+
+def reopen_checkpoint_bundle(
+        raw: bytes) -> tuple[FrozenModelCheckpointV1,
+                             EpochTrainingReceiptV1]:
+    """Rebuild one checkpoint without a pickle or code-loading surface."""
+    parts = _unpack(raw, CHECKPOINT_MAGIC)
+    if len(parts) < 3:
+        raise BeliefArtifactError("model checkpoint bundle is incomplete")
+    receipt = _epoch_receipt_from_bytes(parts[0])
+    checkpoint = FrozenModelCheckpointV1(
+        manifest_bytes=parts[1], parameter_blocks=parts[2:])
+    try:
+        validate_model_checkpoint(checkpoint, final_epoch_receipt=receipt)
+    except ValueError as exc:
+        raise BeliefArtifactError("model checkpoint typed reopen refused") \
+            from exc
+    if checkpoint_bundle_bytes(checkpoint, receipt) != raw:
+        raise BeliefArtifactError("model checkpoint reconstruction drift")
+    return checkpoint, receipt
 
 
 def _stat_identity(info: os.stat_result) -> tuple[int, ...]:

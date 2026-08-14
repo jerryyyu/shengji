@@ -80,6 +80,14 @@ def _inputs() -> dict:
         "record_manifest_sha256": SHA,
         "record_manifest": [],
         "packet": {},
+        "spent_v1": {
+            "git": AGG.SPENT_V1_GIT,
+            "review_commit": AGG.SPENT_V1_REVIEW_COMMIT,
+            "review_snapshot_sha256": AGG.SPENT_V1_REVIEW_SNAPSHOT_SHA256,
+            "admission_sha256": AGG.SPENT_V1_ADMISSION_SHA256,
+            "result_absent": True,
+            "recovery_reason": AGG.RECOVERY_REASON,
+        },
     }
 
 
@@ -174,6 +182,11 @@ def test_admission_is_closed_and_bool_counts_cannot_pass(monkeypatch):
     _resign(value)
     assert AGG.admission_problems(
         value, expected_git=GIT, review=_review(), inputs=_inputs())
+    value["created_time_ns"] = 123
+    value["spent_v1_result_absent"] = False
+    _resign(value)
+    assert AGG.admission_problems(
+        value, expected_git=GIT, review=_review(), inputs=_inputs())
 
 
 def test_result_mutation_refuses_even_with_forged_internal_hash():
@@ -207,6 +220,7 @@ def test_review_claim_never_opens_scored_records(monkeypatch, capsys):
     AGG.review_claim_command(Namespace(expected_git=GIT))
     output = capsys.readouterr().out
     assert output.startswith(AGG.IMPLEMENTATION_REVIEW_PREFIX)
+    assert '"one_recovery_aggregate_execution_authorized":true' in output
     assert '"scored_record_access_authorized":true' in output
     assert '"fresh_screen_execution_authorized":false' in output
 
@@ -263,6 +277,87 @@ def test_review_record_requires_one_new_raw_prefix_and_no_later_variant(
         AGG._review_record(
             commit=commit, prefix=AGG.IMPLEMENTATION_REVIEW_PREFIX,
             expected=expected, label="fixture review")
+
+
+def test_recovery_authenticates_spent_v1_gate_and_absent_result(
+        tmp_path, monkeypatch):
+    root = tmp_path / AGG.SPENT_V1_RUN_ID
+    gate = root / "execution.consumed"
+    gate.mkdir(parents=True)
+    marker = b"review marker\n"
+    review_path = gate / "implementation-review-snapshot.md"
+    review_path.write_bytes(marker)
+    review_path.chmod(0o444)
+    admission = {
+        "schema": "bury-lead-combo-scored-dev-aggregate-admission-v1",
+        "run_id": AGG.SPENT_V1_RUN_ID,
+        "git": AGG.SPENT_V1_GIT,
+        "source_git": AGG.SOURCE_GIT,
+        "implementation_review_commit": AGG.SPENT_V1_REVIEW_COMMIT,
+        "implementation_review_marker_sha256": AGG.sha256_bytes(marker),
+        "packet_sha256": AGG.PACKET_SHA256,
+        "scored_execution_admission_sha256": AGG.ADMISSION_SHA256,
+        "supervisor_final_sha256": AGG.FINAL_SHA256,
+        "record_manifest_sha256": SHA,
+        "nonce": "9" * 64,
+        "created_time_ns": 1,
+        "one_aggregate_execution_authorized": True,
+        "scored_record_access_authorized": True,
+        **AGG.FALSE_AUTHORITY,
+    }
+    admission["internal_sha256"] = AGG.digest(admission)
+    admission_path = gate / "admission.json"
+    admission_raw = AGG.canonical(admission)
+    admission_path.write_bytes(admission_raw)
+    admission_path.chmod(0o444)
+    gate.chmod(0o555)
+    root.chmod(0o555)
+
+    monkeypatch.setattr(AGG, "SPENT_V1_ROOT", root)
+    monkeypatch.setattr(AGG, "SPENT_V1_GATE", gate)
+    monkeypatch.setattr(AGG, "SPENT_V1_OUTPUT", root / "aggregate.json")
+    monkeypatch.setattr(
+        AGG, "SPENT_V1_OUTPUT_PARTIAL", root / "aggregate.json.partial")
+    monkeypatch.setattr(
+        AGG, "SPENT_V1_REVIEW_SNAPSHOT_SHA256", AGG.sha256_bytes(marker))
+    monkeypatch.setattr(
+        AGG, "SPENT_V1_ADMISSION_SHA256", AGG.sha256_bytes(admission_raw))
+    monkeypatch.setattr(
+        AGG, "_review_record", lambda **_kwargs: (
+            {"commit": AGG.SPENT_V1_REVIEW_COMMIT}, marker))
+
+    incident = AGG._spent_v1_incident(
+        record_manifest_sha256=SHA, require_root=False)
+    assert incident["result_absent"] is True
+    assert incident["recovery_reason"] == AGG.RECOVERY_REASON
+
+    output = root / "aggregate.json"
+    root.chmod(0o755)
+    output.write_bytes(b"unexpected\n")
+    root.chmod(0o555)
+    with pytest.raises(AGG.AggregateRefused, match="unexpectedly published"):
+        AGG._spent_v1_incident(
+            record_manifest_sha256=SHA, require_root=False)
+    root.chmod(0o755)
+    output.unlink()
+    root.chmod(0o555)
+
+    gate.chmod(0o755)
+    admission_path.chmod(0o644)
+    admission["retry_authorized"] = True
+    admission["internal_sha256"] = AGG.digest({
+        key: value for key, value in admission.items()
+        if key != "internal_sha256"
+    })
+    admission_raw = AGG.canonical(admission)
+    admission_path.write_bytes(admission_raw)
+    admission_path.chmod(0o444)
+    gate.chmod(0o555)
+    monkeypatch.setattr(
+        AGG, "SPENT_V1_ADMISSION_SHA256", AGG.sha256_bytes(admission_raw))
+    with pytest.raises(AGG.AggregateRefused, match="identity or authority"):
+        AGG._spent_v1_incident(
+            record_manifest_sha256=SHA, require_root=False)
 
 
 def test_run_consumes_gate_before_any_record_open(monkeypatch, capsys):
@@ -341,6 +436,9 @@ def test_open_records_hashes_the_exact_bytes_it_parses(tmp_path, monkeypatch):
             "deal_seed": index,
             "internal_sha256": f"{index + 1:064x}",
             "state_id": str(index),
+            "report": {"modes": {
+                mode: {} for mode in AGG.MODES
+            }},
         }
         raw = AGG.canonical(record)
         name = f"state-{index:02d}-of-{AGG.STATE_COUNT}.json"
@@ -369,7 +467,12 @@ def test_open_records_hashes_the_exact_bytes_it_parses(tmp_path, monkeypatch):
     )
     design = SimpleNamespace(
         _selection_rows=lambda: [{} for _ in range(AGG.STATE_COUNT)])
-    scorer = SimpleNamespace(record_problems=lambda *_a, **_k: [])
+    scorer = SimpleNamespace(
+        canonical=lambda value: AGG.canonical(value)[:-1],
+        record_problems=lambda value, **_kwargs: (
+            [] if list(value["report"]["modes"]) == list(AGG.MODES)
+            else ["report fold contract drift"]),
+    )
     controller = SimpleNamespace(
         _load_scorer=lambda _packet: (design, scorer))
     inputs = {"packet": {}, "record_manifest": manifest}
@@ -381,6 +484,7 @@ def test_open_records_hashes_the_exact_bytes_it_parses(tmp_path, monkeypatch):
     original = target.read_bytes()
     reordered = (json.dumps({
         "state_id": "0",
+        "report": record["report"],
         "internal_sha256": f"{1:064x}",
         "deal_seed": 0,
     }, separators=(",", ":")) + "\n").encode()
@@ -397,6 +501,48 @@ def test_open_records_hashes_the_exact_bytes_it_parses(tmp_path, monkeypatch):
         AGG._open_records(
             inputs=inputs, controller=controller,
             expected_root_members=set())
+
+
+def test_recovery_closes_only_canonical_report_mode_order_drift():
+    scorer = SimpleNamespace()
+    scorer.canonical = lambda value: AGG.canonical(value)[:-1]
+
+    def problems(value, *, expected_seed):
+        result = []
+        if list(value["report"]["modes"]) != list(AGG.MODES):
+            result.append("report fold contract drift")
+        if value.get("other_drift") is True:
+            result.append("other semantic drift")
+        return result
+
+    scorer.record_problems = problems
+    producer_record = {
+        "deal_seed": 7,
+        "report": {"modes": {mode: {} for mode in AGG.MODES}},
+    }
+    raw = AGG.canonical(producer_record)
+    parsed = json.loads(raw)
+    assert list(producer_record["report"]["modes"]) == list(AGG.MODES)
+    assert list(parsed["report"]["modes"]) == sorted(AGG.MODES)
+    assert problems(parsed, expected_seed=7) == ["report fold contract drift"]
+    assert AGG._canonical_record_problems(
+        raw=raw, record=parsed, scorer=scorer, expected_seed=7) == []
+
+    drifted = copy.deepcopy(producer_record)
+    drifted["other_drift"] = True
+    drifted_raw = AGG.canonical(drifted)
+    drifted_parsed = json.loads(drifted_raw)
+    assert AGG._canonical_record_problems(
+        raw=drifted_raw, record=drifted_parsed, scorer=scorer,
+        expected_seed=7) == [
+            "report fold contract drift", "other semantic drift"]
+
+    missing = copy.deepcopy(producer_record)
+    del missing["report"]["modes"]["boss_near"]
+    missing_raw = AGG.canonical(missing)
+    assert AGG._canonical_record_problems(
+        raw=missing_raw, record=json.loads(missing_raw), scorer=scorer,
+        expected_seed=7) == ["report fold contract drift"]
 
 
 def test_stable_bytes_and_strict_json_refuse_links_duplicates_nonfinite(

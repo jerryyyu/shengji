@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Review-gated aggregation of the sealed 64-state bury/S6 scored-DEV run.
+"""Review-gated recovery aggregation of the sealed 64-state S6 scored-DEV run.
 
 The source review and exact input review are deliberately consolidated into
 one canonical marker.  Before that marker is authenticated this module may
 inspect only the already-reviewed score-free packet, admission, supervisor
 final, review snapshots, and record metadata.  Record bytes are opened only
 after a new one-shot aggregate admission is consumed.
+
+The original V1 aggregate admission is permanently spent after a fail-closed
+canonical-JSON mapping-order incident.  This module authenticates that spent
+gate and uses a distinct V2 namespace.  It accepts only the exact canonical
+mode-key set and changes key order only in a temporary validation copy; it does
+not suppress any other scorer finding.
 
 The aggregate remains opened-DEV exploration.  It can recommend a fresh
 screen design, but it cannot launch that screen, claim strength, train, promote
@@ -87,24 +93,45 @@ REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
 REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
 
-AGGREGATE_RUN_ID = "bury-lead-combo-scored-dev-64-v3-aggregate-v1"
+SPENT_V1_GIT = "32eec4253f4a3c7bed7bd38ebf3a8febfbe9784a"
+SPENT_V1_REVIEW_COMMIT = "378a824785eacb92332e741994b73e6f9e8e4cec"
+SPENT_V1_RUN_ID = "bury-lead-combo-scored-dev-64-v3-aggregate-v1"
+SPENT_V1_ROOT = Path("/var/tmp") / SPENT_V1_RUN_ID
+SPENT_V1_GATE = SPENT_V1_ROOT / "execution.consumed"
+SPENT_V1_OUTPUT = SPENT_V1_ROOT / "aggregate.json"
+SPENT_V1_OUTPUT_PARTIAL = SPENT_V1_ROOT / "aggregate.json.partial"
+SPENT_V1_REVIEW_PREFIX = "BURY_LEAD_COMBO_SCORED_DEV_AGGREGATE_V1_REVIEW "
+SPENT_V1_REVIEW_SNAPSHOT_SHA256 = (
+    "cf7e6a8ce9c478c7e818e8b6bae5baa33d1e505a7b00122f3b3ebc3783b41261"
+)
+SPENT_V1_ADMISSION_SHA256 = (
+    "8ade41d4d9bc5abea7ee4bbaa3fcc6ef046606e40d1a01eef9ba8f30cc5a4678"
+)
+SPENT_V1_SCRIPT_SHA256 = (
+    "b287c6b1203f5af5bb2fe64f3c83109ccc52dd2edd1c3c3e2fab0d1d67cbb262"
+)
+RECOVERY_REASON = "canonical-json-report-mode-key-order"
+
+AGGREGATE_RUN_ID = "bury-lead-combo-scored-dev-64-v3-aggregate-recovery-v2"
 AGGREGATE_ROOT = Path("/var/tmp") / AGGREGATE_RUN_ID
 GATE_PATH = AGGREGATE_ROOT / "execution.consumed"
 OUTPUT_PATH = AGGREGATE_ROOT / "aggregate.json"
 OUTPUT_PARTIAL_PATH = AGGREGATE_ROOT / "aggregate.json.partial"
 
 IMPLEMENTATION_REVIEW_PREFIX = (
-    "BURY_LEAD_COMBO_SCORED_DEV_AGGREGATE_V1_REVIEW "
+    "BURY_LEAD_COMBO_SCORED_DEV_AGGREGATE_RECOVERY_V2_REVIEW "
 )
 RESULT_REVIEW_PREFIX = (
-    "BURY_LEAD_COMBO_SCORED_DEV_AGGREGATE_RESULT_V1_REVIEW "
+    "BURY_LEAD_COMBO_SCORED_DEV_AGGREGATE_RECOVERY_RESULT_V2_REVIEW "
 )
 IMPLEMENTATION_REVIEW_SCHEMA = (
-    "bury-lead-combo-scored-dev-aggregate-review-v1"
+    "bury-lead-combo-scored-dev-aggregate-recovery-review-v2"
 )
-ADMISSION_SCHEMA = "bury-lead-combo-scored-dev-aggregate-admission-v1"
-RESULT_SCHEMA = "bury-lead-combo-scored-dev-aggregate-v1"
-RESULT_REVIEW_SCHEMA = "bury-lead-combo-scored-dev-aggregate-result-review-v1"
+ADMISSION_SCHEMA = "bury-lead-combo-scored-dev-aggregate-recovery-admission-v2"
+RESULT_SCHEMA = "bury-lead-combo-scored-dev-aggregate-recovery-v2"
+RESULT_REVIEW_SCHEMA = (
+    "bury-lead-combo-scored-dev-aggregate-recovery-result-review-v2"
+)
 
 STATE_COUNT = 64
 REPORT_WORLDS = 30
@@ -419,6 +446,36 @@ def _review_record(*, commit: str, prefix: str, expected: dict,
     }, marker)
 
 
+def _spent_v1_review_claim(*, record_manifest_sha256: str) -> dict:
+    """Reconstruct the exact claim whose one-shot admission is now spent."""
+    return {
+        "schema": "bury-lead-combo-scored-dev-aggregate-review-v1",
+        "git": SPENT_V1_GIT,
+        "source_git": SOURCE_GIT,
+        "aggregate_script_sha256": SPENT_V1_SCRIPT_SHA256,
+        "controller_sha256": CONTROLLER_SHA256,
+        "scorer_sha256": SCORER_SHA256,
+        "design_sha256": DESIGN_SHA256,
+        "packet_sha256": PACKET_SHA256,
+        "admission_sha256": ADMISSION_SHA256,
+        "supervisor_final_sha256": FINAL_SHA256,
+        "terminal_review_commit": TERMINAL_REVIEW_COMMIT,
+        "record_manifest_sha256": record_manifest_sha256,
+        "states": STATE_COUNT,
+        "one_aggregate_execution_authorized": True,
+        "scored_record_access_authorized": True,
+        "fresh_screen_execution_authorized": False,
+        "retry_authorized": False,
+        "resume_authorized": False,
+        "extension_authorized": False,
+        "report_access_authorized": False,
+        "strength_claim": False,
+        "training_authorized": False,
+        "production_promotion": False,
+        "production_deployment": False,
+    }
+
+
 def _source_tree_problems(packet: Mapping[str, object]) -> list[str]:
     problems = []
     try:
@@ -614,17 +671,23 @@ def verify_inputs(*, require_root: bool = True) -> tuple[dict, ModuleType]:
     _verify_record_metadata(manifest, require_root=require_root)
     if problems:
         raise AggregateRefused("; ".join(sorted(set(problems))))
+    manifest_sha256 = digest(manifest)
+    spent_v1 = _spent_v1_incident(
+        record_manifest_sha256=manifest_sha256,
+        require_root=require_root)
     return ({
         "packet": packet,
         "final": final,
         "terminal_review": terminal,
         "record_manifest": manifest,
-        "record_manifest_sha256": digest(manifest),
+        "record_manifest_sha256": manifest_sha256,
+        "spent_v1": spent_v1,
     }, controller)
 
 
 def implementation_review_claim(*, expected_git: str,
                                 inputs: Mapping[str, object]) -> dict:
+    spent = inputs["spent_v1"]
     return {
         "schema": IMPLEMENTATION_REVIEW_SCHEMA,
         "git": expected_git,
@@ -638,8 +701,15 @@ def implementation_review_claim(*, expected_git: str,
         "supervisor_final_sha256": FINAL_SHA256,
         "terminal_review_commit": TERMINAL_REVIEW_COMMIT,
         "record_manifest_sha256": inputs["record_manifest_sha256"],
+        "spent_v1_git": spent["git"],
+        "spent_v1_review_commit": spent["review_commit"],
+        "spent_v1_review_snapshot_sha256": spent["review_snapshot_sha256"],
+        "spent_v1_admission_sha256": spent["admission_sha256"],
+        "spent_v1_result_absent": spent["result_absent"],
+        "recovery_reason": spent["recovery_reason"],
+        "canonical_record_mode_order_compatibility": True,
         "states": STATE_COUNT,
-        "one_aggregate_execution_authorized": True,
+        "one_recovery_aggregate_execution_authorized": True,
         "scored_record_access_authorized": True,
         "fresh_screen_execution_authorized": False,
         "retry_authorized": False,
@@ -655,6 +725,7 @@ def implementation_review_claim(*, expected_git: str,
 
 def admission_payload(*, expected_git: str, review: Mapping[str, object],
                       inputs: Mapping[str, object]) -> dict:
+    spent = inputs["spent_v1"]
     value = {
         "schema": ADMISSION_SCHEMA,
         "run_id": AGGREGATE_RUN_ID,
@@ -666,9 +737,16 @@ def admission_payload(*, expected_git: str, review: Mapping[str, object],
         "scored_execution_admission_sha256": ADMISSION_SHA256,
         "supervisor_final_sha256": FINAL_SHA256,
         "record_manifest_sha256": inputs["record_manifest_sha256"],
+        "spent_v1_git": spent["git"],
+        "spent_v1_review_commit": spent["review_commit"],
+        "spent_v1_review_snapshot_sha256": spent["review_snapshot_sha256"],
+        "spent_v1_admission_sha256": spent["admission_sha256"],
+        "spent_v1_result_absent": spent["result_absent"],
+        "recovery_reason": spent["recovery_reason"],
+        "canonical_record_mode_order_compatibility": True,
         "nonce": secrets.token_hex(32),
         "created_time_ns": time.time_ns(),
-        "one_aggregate_execution_authorized": True,
+        "one_recovery_aggregate_execution_authorized": True,
         "scored_record_access_authorized": True,
         **FALSE_AUTHORITY,
     }
@@ -686,10 +764,15 @@ def admission_problems(value: object, *, expected_git: str,
         "implementation_review_commit",
         "implementation_review_marker_sha256", "packet_sha256",
         "scored_execution_admission_sha256", "supervisor_final_sha256",
-        "record_manifest_sha256", "nonce", "created_time_ns",
-        "one_aggregate_execution_authorized", "scored_record_access_authorized",
+        "record_manifest_sha256", "spent_v1_git",
+        "spent_v1_review_commit", "spent_v1_review_snapshot_sha256",
+        "spent_v1_admission_sha256", "spent_v1_result_absent",
+        "recovery_reason", "canonical_record_mode_order_compatibility",
+        "nonce", "created_time_ns", "one_recovery_aggregate_execution_authorized",
+        "scored_record_access_authorized",
         *FALSE_AUTHORITY, "internal_sha256",
     }
+    spent = inputs.get("spent_v1", {})
     material = dict(value)
     recorded = material.pop("internal_sha256", None)
     problems = []
@@ -709,9 +792,19 @@ def admission_problems(value: object, *, expected_git: str,
             or value.get("supervisor_final_sha256") != FINAL_SHA256
             or value.get("record_manifest_sha256")
             != inputs.get("record_manifest_sha256")
+            or value.get("spent_v1_git") != spent.get("git")
+            or value.get("spent_v1_review_commit")
+            != spent.get("review_commit")
+            or value.get("spent_v1_review_snapshot_sha256")
+            != spent.get("review_snapshot_sha256")
+            or value.get("spent_v1_admission_sha256")
+            != spent.get("admission_sha256")
+            or value.get("spent_v1_result_absent") is not True
+            or value.get("recovery_reason") != RECOVERY_REASON
+            or value.get("canonical_record_mode_order_compatibility") is not True
             or not is_sha256(value.get("nonce"))
             or not _integer(value.get("created_time_ns"), minimum=1)
-            or value.get("one_aggregate_execution_authorized") is not True
+            or value.get("one_recovery_aggregate_execution_authorized") is not True
             or value.get("scored_record_access_authorized") is not True
             or any(value.get(field) is not False for field in FALSE_AUTHORITY)):
         problems.append("aggregate admission identity/authority drift")
@@ -727,20 +820,22 @@ def _write_all(descriptor: int, raw: bytes) -> None:
         offset += written
 
 
-def _require_root_directory(path: Path) -> None:
+def _require_root_directory(path: Path, *, require_root: bool = True) -> None:
     try:
         info = path.lstat()
     except OSError as exc:
         raise AggregateRefused(f"aggregate directory {path} is unavailable") \
             from exc
-    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != 0
+    if (not stat.S_ISDIR(info.st_mode)
+            or (require_root and info.st_uid != 0)
             or info.st_mode & 0o022):
         raise AggregateRefused(
             f"aggregate directory {path} is linked, unowned, or writable")
 
 
-def _require_members(path: Path, expected: set[str]) -> None:
-    _require_root_directory(path)
+def _require_members(path: Path, expected: set[str], *,
+                     require_root: bool = True) -> None:
+    _require_root_directory(path, require_root=require_root)
     try:
         members = {child.name for child in path.iterdir()}
     except OSError as exc:
@@ -748,6 +843,82 @@ def _require_members(path: Path, expected: set[str]) -> None:
             from exc
     if members != expected:
         raise AggregateRefused(f"aggregate directory {path} population drift")
+
+
+def _spent_v1_incident(*, record_manifest_sha256: str,
+                       require_root: bool = True) -> dict:
+    """Authenticate the immutable spent V1 gate without opening a record."""
+    if (os.path.lexists(SPENT_V1_OUTPUT)
+            or os.path.lexists(SPENT_V1_OUTPUT_PARTIAL)):
+        raise AggregateRefused("spent V1 unexpectedly published an aggregate")
+    _require_members(
+        SPENT_V1_ROOT, {SPENT_V1_GATE.name}, require_root=require_root)
+    _require_members(
+        SPENT_V1_GATE,
+        {"implementation-review-snapshot.md", "admission.json"},
+        require_root=require_root)
+    review_raw = stable_bytes(
+        SPENT_V1_GATE / "implementation-review-snapshot.md",
+        label="spent V1 implementation review snapshot",
+        root_owned=require_root)
+    admission_raw = stable_bytes(
+        SPENT_V1_GATE / "admission.json", label="spent V1 admission",
+        root_owned=require_root)
+    admission = strict_json(admission_raw)
+    if not isinstance(admission, dict):
+        raise AggregateRefused("spent V1 admission is not an object")
+    claim = _spent_v1_review_claim(
+        record_manifest_sha256=record_manifest_sha256)
+    review, marker = _review_record(
+        commit=SPENT_V1_REVIEW_COMMIT, prefix=SPENT_V1_REVIEW_PREFIX,
+        expected=claim, label="spent S6 aggregate V1 review")
+
+    expected_fields = {
+        "schema", "run_id", "git", "source_git",
+        "implementation_review_commit",
+        "implementation_review_marker_sha256", "packet_sha256",
+        "scored_execution_admission_sha256", "supervisor_final_sha256",
+        "record_manifest_sha256", "nonce", "created_time_ns",
+        "one_aggregate_execution_authorized", "scored_record_access_authorized",
+        *FALSE_AUTHORITY, "internal_sha256",
+    }
+    material = dict(admission)
+    internal_sha256 = material.pop("internal_sha256", None)
+    if (sha256_bytes(review_raw) != SPENT_V1_REVIEW_SNAPSHOT_SHA256
+            or review_raw != marker
+            or sha256_bytes(admission_raw) != SPENT_V1_ADMISSION_SHA256
+            or set(admission) != expected_fields
+            or internal_sha256 != digest(material)
+            or admission.get("schema")
+            != "bury-lead-combo-scored-dev-aggregate-admission-v1"
+            or admission.get("run_id") != SPENT_V1_RUN_ID
+            or admission.get("git") != SPENT_V1_GIT
+            or admission.get("source_git") != SOURCE_GIT
+            or admission.get("implementation_review_commit")
+            != SPENT_V1_REVIEW_COMMIT
+            or admission.get("implementation_review_marker_sha256")
+            != SPENT_V1_REVIEW_SNAPSHOT_SHA256
+            or admission.get("packet_sha256") != PACKET_SHA256
+            or admission.get("scored_execution_admission_sha256")
+            != ADMISSION_SHA256
+            or admission.get("supervisor_final_sha256") != FINAL_SHA256
+            or admission.get("record_manifest_sha256")
+            != record_manifest_sha256
+            or not is_sha256(admission.get("nonce"))
+            or not _integer(admission.get("created_time_ns"), minimum=1)
+            or admission.get("one_aggregate_execution_authorized") is not True
+            or admission.get("scored_record_access_authorized") is not True
+            or any(admission.get(field) is not False
+                   for field in FALSE_AUTHORITY)):
+        raise AggregateRefused("spent V1 gate identity or authority drift")
+    return {
+        "git": SPENT_V1_GIT,
+        "review_commit": review["commit"],
+        "review_snapshot_sha256": SPENT_V1_REVIEW_SNAPSHOT_SHA256,
+        "admission_sha256": SPENT_V1_ADMISSION_SHA256,
+        "result_absent": True,
+        "recovery_reason": RECOVERY_REASON,
+    }
 
 
 def _validate_gate() -> None:
@@ -796,6 +967,41 @@ def _write_gate(*, marker: bytes, admission: Mapping[str, object]) -> bytes:
     return canonical(admission)
 
 
+def _canonical_record_problems(*, raw: bytes, record: dict,
+                               scorer: ModuleType,
+                               expected_seed: int) -> list[str]:
+    """Validate one canonical record while closing only the known V1 bug."""
+    try:
+        if raw != scorer.canonical(record) + b"\n":
+            return ["scored record canonical byte drift"]
+        original = scorer.record_problems(
+            record, expected_seed=expected_seed)
+    except Exception as exc:
+        return [f"scored record validator raised {type(exc).__name__}"]
+    if original != ["report fold contract drift"]:
+        return (original if original else
+                ["canonical mode-order incident was not reproduced"])
+
+    report = record.get("report")
+    modes = report.get("modes") if isinstance(report, Mapping) else None
+    if (not isinstance(modes, Mapping)
+            or set(modes) != set(MODES)
+            or list(modes) != sorted(MODES)):
+        return original
+    validation_record = dict(record)
+    validation_report = dict(report)
+    validation_report["modes"] = {mode: modes[mode] for mode in MODES}
+    validation_record["report"] = validation_report
+    try:
+        if scorer.canonical(validation_record) + b"\n" != raw:
+            return ["mode-order compatibility changed canonical bytes"]
+        repaired = scorer.record_problems(
+            validation_record, expected_seed=expected_seed)
+    except Exception as exc:
+        return [f"mode-order compatibility raised {type(exc).__name__}"]
+    return list(repaired)
+
+
 def _open_records(*, inputs: Mapping[str, object], controller: ModuleType,
                   expected_root_members: set[str] | None = None) \
         -> tuple[list[dict], list[dict]]:
@@ -822,8 +1028,9 @@ def _open_records(*, inputs: Mapping[str, object], controller: ModuleType,
                 or record.get("deal_seed") != entry["deal_seed"]
                 or record.get("state_id") != entry["state_id"]):
             raise AggregateRefused(f"sealed scored record {index} identity drift")
-        problems = scorer.record_problems(
-            record, expected_seed=entry["deal_seed"])
+        problems = _canonical_record_problems(
+            raw=raw, record=record, scorer=scorer,
+            expected_seed=entry["deal_seed"])
         if problems:
             raise AggregateRefused(
                 f"sealed scored record {index}: {'; '.join(problems)}")
@@ -974,6 +1181,7 @@ def result_payload(*, expected_git: str, review: Mapping[str, object],
                    inputs: Mapping[str, object], admission_raw: bytes,
                    records: list[dict], selection_rows: list[dict]) -> dict:
     aggregate = aggregate_records(records, selection_rows=selection_rows)
+    spent = inputs["spent_v1"]
     value = {
         "schema": RESULT_SCHEMA,
         "run_id": AGGREGATE_RUN_ID,
@@ -986,6 +1194,13 @@ def result_payload(*, expected_git: str, review: Mapping[str, object],
         "supervisor_final_sha256": FINAL_SHA256,
         "terminal_review_commit": TERMINAL_REVIEW_COMMIT,
         "record_manifest_sha256": inputs["record_manifest_sha256"],
+        "spent_v1_git": spent["git"],
+        "spent_v1_review_commit": spent["review_commit"],
+        "spent_v1_review_snapshot_sha256": spent["review_snapshot_sha256"],
+        "spent_v1_admission_sha256": spent["admission_sha256"],
+        "spent_v1_result_absent": spent["result_absent"],
+        "recovery_reason": spent["recovery_reason"],
+        "canonical_record_mode_order_compatibility": True,
         "aggregate_admission_sha256": sha256_bytes(admission_raw),
         "records_opened": STATE_COUNT,
         "records_remain_immutable": True,
@@ -1011,6 +1226,9 @@ def result_problems(value: object, *, expected: Mapping[str, object]) -> list[st
     if (value.get("schema") != RESULT_SCHEMA
             or value.get("records_opened") != STATE_COUNT
             or value.get("records_remain_immutable") is not True
+            or value.get("spent_v1_result_absent") is not True
+            or value.get("recovery_reason") != RECOVERY_REASON
+            or value.get("canonical_record_mode_order_compatibility") is not True
             or value.get("exploration_only") is not True
             or value.get("confirmatory_inference") is not False
             or value.get("authority") != FALSE_AUTHORITY):
@@ -1060,8 +1278,12 @@ def verify_inputs_command(args: argparse.Namespace) -> None:
         "supervisor_final_sha256": FINAL_SHA256,
         "states": STATE_COUNT,
         "record_manifest_sha256": inputs["record_manifest_sha256"],
+        "spent_v1_admission_sha256":
+            inputs["spent_v1"]["admission_sha256"],
+        "spent_v1_result_absent": inputs["spent_v1"]["result_absent"],
+        "recovery_reason": inputs["spent_v1"]["recovery_reason"],
         "scored_records_opened": False,
-        "aggregate_execution_authorized": False,
+        "recovery_aggregate_execution_authorized": False,
     }, sort_keys=True))
 
 
@@ -1092,7 +1314,7 @@ def run_command(args: argparse.Namespace) -> None:
         selection_rows=selection_rows)
     raw = _write_output(result)
     print(json.dumps({
-        "status": "COMPLETE_AWAITING_AGGREGATE_RESULT_REVIEW",
+        "status": "RECOVERY_COMPLETE_AWAITING_AGGREGATE_RESULT_REVIEW",
         "aggregate_sha256": sha256_bytes(raw),
         "records_opened": STATE_COUNT,
         "decision_sealed_until_review": True,

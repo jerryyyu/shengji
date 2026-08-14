@@ -50,7 +50,11 @@ This section keeps only the research conclusions that change what we try next.
   terminal review verified the result and closed this composition.
 - **Direct search:** S4 stayed positive twice and now has a future-only
   8,192/16,384-cluster confirmation running on Cloud; old outcomes do not enter
-  its estimator. S6's narrow shuai-pai selector has a fresh preflight queued.
+  its estimator. Look one preserved integrity but missed early efficacy;
+  tranche two is 6,192/8,192 with all 16 workers healthy. S6's narrow
+  shuai-pai selector has a fresh preflight queued. Its separate opened-DEV V2
+  start refused before admission on a loadable shadow; optimized V3 PR #104
+  exact `a93c2f5` repairs the route test and awaits source, then packet, review.
   S5's x86 construction PASSed, but a request-template authority defect spent
   its one-shot admission without a result. Its validation-only refusal repair
   PASSed and the spent PR #74/#76 chain was closed; PR #70 retains only the
@@ -76,11 +80,11 @@ This section keeps only the research conclusions that change what we try next.
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical
   `16af447`. Declarative build-and-verify-only design PR #86 exact head
   `289fdf0` PASSed superseding external design-only review and merged, opening
-  only a future controller-design review. Draft PR #100 now specifies that
-  controller boundary, while draft PR #101 freezes a fresh 8,192-deal,
-  16-lane exact-champion natural role/band dose census design. Both await
-  independent design review; prevalence remains SmartBot-trajectory until a
-  separately reviewed implementation actually runs. Implementation, freeze, execution,
+  only a future controller-design review. Externally reviewed PR #100 now
+  specifies that controller boundary, while externally reviewed PR #101
+  freezes a fresh 8,192-deal, 16-lane exact-champion natural role/band dose
+  census design; both are merged. Prevalence remains SmartBot-trajectory until
+  a separately reviewed implementation actually runs. Implementation, freeze, execution,
   evidence access, scoring, REPORT, aggregation and every strength or deployment
   claim remain closed.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
@@ -329,7 +333,7 @@ T3 therefore delivered one promising search mechanism and a trustworthy
 Teacher pipeline. It did not deliver a stronger learned policy. Reviews are
 routing boundaries; only terminal model/report/game results change strength.
 
-### T4 — closed global rankers; active model-guided search successor
+### T4 — terminally closed global rankers and model-guided search
 
 The original T4 generation had to end in a challenger decision, not another
 design-only audit. Its two data/model generations completed with valid
@@ -376,9 +380,12 @@ merged read-only helper reproduced every statistic, and independent review
 formally closed the milestone.
 
 S4 replication is terminal positive-but-inconclusive `SELECT_NONE`; its fresh
-8,192/16,384-cluster sequential successor is now running on Cloud. S6
-preflight, pair preparation, human-geometry repair and code/document cleanup
-use implementation time without competing for the three live scored jobs. S5
+8,192/16,384-cluster sequential successor is now in tranche two on Cloud. The
+Air Pair screen is 3,648/7,168 with material timeout risk; reviewed PR #96 has
+one frozen score-free successor-capacity packet awaiting packet review. S6
+preflight, optimized V3 recovery, pair preparation, human-geometry repair and
+code/document cleanup use implementation time without competing for the two
+live scored jobs. S5
 does not have runnable recovery authority: the spent PR #74/#76 execution
 chain is closed and only PR #70's reusable diagnostic source remains.
 
@@ -417,7 +424,8 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   states, and lets whole-game search price card-retention cost.
 - **Point-flow family:** S4 asks winners to bank points, S5 asks late losers to
   protect them, and future `ANTICIPATE_FEED` asks rollouts to price a partner or
-  opponent feeding the winner. PR #99 first repairs the descriptive boundary:
+  opponent feeding the winner. Externally reviewed PR #99 repairs the
+  descriptive boundary:
   literal and inferred surfaces must each divide by their own legal point-card
   opportunities, so the old 70%-versus-23% headline is invalid. Its private
   opened-corpus and 150-row counterfactual results remain proposal diagnostics,
@@ -439,9 +447,10 @@ chain is closed and only PR #70's reusable diagnostic source remains.
   passed the exact result-review CLI and four falsifications; raw marker
   `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` is canonical at
   `16af447`. Design-only PR #86 exact `289fdf0` then PASSed superseding review
-  and merged, opening a future controller-design review only. Draft PR #100
-  specifies that controller boundary; draft PR #101 freezes a fresh 8,192-deal
-  exact-champion natural role/band dose census design. Neither is executable,
+  and merged, opening a future controller-design review only. Reviewed and
+  merged design-only PR #100 specifies that controller boundary; reviewed and
+  merged design-only PR #101 freezes a fresh 8,192-deal exact-champion natural
+  role/band dose census design. Neither is executable,
   and SmartBot-trajectory prevalence still must be replaced before whole-round
   inference. PR #55 `24b421d` PASSed merge-readiness, so the exact
   #55→#60→#61→#72 stack may merge only in order; packet implementation/freeze,

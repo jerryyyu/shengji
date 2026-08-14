@@ -226,6 +226,16 @@ arm. Do not market **29.3203%** as an exact current-production measurement;
 first run a fresh bounded same-N/R current-main confirmation. Existing sealed
 runs stay on their originally pinned trees.
 
+A later one-batch, three-pair diagnostic compared exact base `093ec33` with
+exact merged head `fe04fa2` at the same N=30/R=300 work. The strict gate
+correctly refused because the head recorded the off-by-default
+`RETAIN_ALL_LEAD_PAIRS=false` configuration entry while the base omitted it.
+Removing exactly that false declaration after the fact made all three semantic
+records byte-identical and yielded `52.2992s -> 36.4217s` (30.359% lower wall;
+paired one-sided lower bound 26.062%). This is useful diagnostic evidence, not
+a confirmation: the normalization rule was not preregistered, so the batch
+cannot authorize a current-main performance claim or another retry.
+
 ## Gaps (ranked by ROI)
 
 The ordering below came from the pre-activation profile. Before choosing the
@@ -243,7 +253,7 @@ one-off experiment controllers.
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | PR #89 V5 is terminal. PR #94's reviewed S6 V2 start refused pre-admission on a reviewer-created ignored `.pyc`; no admission, gameplay or records exist and V2 cannot retry. The host is idle pending a fresh reviewed recovery. |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | PR #89 V5 is terminal. PR #96 has one frozen, verified score-free capacity packet awaiting packet review. S6 V2 refused pre-admission on an ignored `.pyc`; optimized V3 PR #104 exact `a93c2f5` is staged and awaits source re-review before any packet. No gameplay worker is live. |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -252,11 +262,12 @@ one-off experiment controllers.
    base `093ec33` versus optimized arm `a91eb271` is terminally reviewed;
    never rerun, tune or pool historical baselines.
 2. PR #71 and production extraction PR #98 are merged as `c279a31` and
-   `fe04fa2`. No deployment followed. Because current main also contains the
-   off-by-default Pair-retention additions in `mcbot.py` and `ballot.py`, run
-   one fresh bounded same-N/R confirmation before claiming the exact V5
-   percentage for current main. The 29.3203% result remains valid evidence for
-   exact measured arm `a91eb271`, not strength or deployment authorization.
+   `fe04fa2`. No deployment followed. The later three-pair diagnostic failed
+   its strict normalization gate on the explicit false Pair-retention flag;
+   its post-hoc 30.359% result does not close the requirement. Run one fresh
+   preregistered same-N/R confirmation before claiming an exact current-main
+   percentage. The 29.3203% result remains valid evidence for exact measured
+   arm `a91eb271`, not strength or deployment authorization.
 3. After that current-main confirmation, profile the accepted stack again. Do
    not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass

@@ -194,3 +194,43 @@ def test_native_base_route_preserves_subclass_lead_dispatch():
         fast.deactivate()
         if was_active:
             fast.activate()
+
+
+def test_lead_entry_admits_engine_domain_only_and_proves_fallback_route():
+    """Malformed 34..128-card hands must take the SAVED PURE fallback (route
+    non-vacuity: a sentinel proves the fallback was called), while the
+    33-card engine-domain boundary stays on the native kernel."""
+    rng = random.Random(2026081402)
+    deck = make_deck()
+    was_active = bool(fast._saved)
+    if not was_active:
+        assert fast.activate()
+    pure = fast._saved["HeuristicBot._lead"]
+    calls = []
+
+    def sentinel(bot, rnd, seat):
+        calls.append(len(rnd.hands[seat]))
+        return pure(bot, rnd, seat)
+
+    try:
+        fast._fast.set_lead_fallback(sentinel)
+        bot = HeuristicBot()
+        config = ("S", "2")
+
+        hand33 = rng.sample(deck, 33)
+        assert (fast._fast.heuristic_lead(bot, _state(hand33, config), 0)
+                == pure(bot, _state(hand33, config), 0))
+        assert calls == []  # engine-domain boundary runs the kernel
+
+        for n in (34, 64, 128, 129):
+            malformed = [deck[i % len(deck)] for i in range(n)]
+            expected = pure(bot, _state(malformed, config), 0)
+            calls.clear()
+            actual = fast._fast.heuristic_lead(
+                bot, _state(malformed, config), 0)
+            assert actual == expected
+            assert calls == [n]  # the saved pure fallback was CALLED
+    finally:
+        fast._fast.set_lead_fallback(pure)
+        if not was_active:
+            fast.deactivate()

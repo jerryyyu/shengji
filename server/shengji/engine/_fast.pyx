@@ -35,7 +35,8 @@ cdef enum:
     MAX_LEVEL = 16
     MAX_PER_LEVEL = 6
     N_CODES = 54
-    MAX_CARDS = 128   # plays/hands never exceed 33
+    MAX_CARDS = 128   # kernel buffer capacity only, NOT the engine domain
+    ENGINE_HAND_MAX = 33  # authoritative HAND_SIZE + KITTY_SIZE admission cap
     MAX_RUNS = 64     # bounded by MAX_CARDS/2 pair-runs in a shape
     MAX_PAIRS = 64
 
@@ -1020,7 +1021,11 @@ def heuristic_lead(bot, rnd, seat):
             and type(seat) is int and type(hands) is list
             and len(hands) == 4 and 0 <= seat < 4):
         hand = hands[seat]
-        if type(hand) is list and 0 < len(hand) <= MAX_CARDS:
+        # Engine domain is HAND_SIZE + KITTY_SIZE == 33 cards, not the
+        # kernel buffer capacity: anything larger is malformed input that
+        # must take the saved pure fallback, never the bounds-check-disabled
+        # kernel.
+        if type(hand) is list and 0 < len(hand) <= ENGINE_HAND_MAX:
             return _heuristic_lead_kernel(bot, rnd, seat)
     return _PURE_LEAD(bot, rnd, seat)
 

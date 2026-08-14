@@ -265,13 +265,6 @@ class MCBot(SmartBot):
         self.reject_cause = Counter()
         # Decisions that fell back to candidate 0 with NO world sampled.
         self.zero_world_decisions = 0
-        # Last validated world: (sampled, buried, (n_history, n_trick_plays),
-        # completed hands).  One world is scored once per CANDIDATE, and
-        # completion re-sorted/re-validated the identical inputs every time;
-        # keyed on object identity plus the round's play progress so any new
-        # world or advanced round recomputes.  Holds strong references, so a
-        # recycled id() can never alias a dead key.
-        self._world_hands_cache = None
 
     # ------------------------------------------------------------------- play
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
@@ -346,12 +339,15 @@ class MCBot(SmartBot):
                 n_worlds += 1
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
+                prepared = self._complete_determinized_hands(
+                    rnd, seat, hands, buried=buried)
                 world_vals = []
                 for i, cand in enumerate(candidates):
                     val = self._score(
                         self._rollout(
                             rnd, seat, hands, buried, cand,
-                            exact_session=exact_session))
+                            exact_session=exact_session,
+                            prepared_hands=prepared))
                     val = val if i_attack else -val
                     totals[i] += val
                     world_vals.append(val)
@@ -374,10 +370,13 @@ class MCBot(SmartBot):
                     continue
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
+                prepared = self._complete_determinized_hands(
+                    rnd, seat, hands, buried=buried)
                 for cand in candidates[:residual]:
                     self._score(self._rollout(
                         rnd, seat, hands, buried, cand,
-                        exact_session=exact_session))
+                        exact_session=exact_session,
+                        prepared_hands=prepared))
                     dummy_rollouts += 1
 
             selection_rollouts = n_worlds * K + dummy_rollouts
@@ -748,12 +747,16 @@ class MCBot(SmartBot):
                     continue
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
+                prepared = self._complete_determinized_hands(
+                    rnd, seat, hands, buried=buried)
                 va = self._score(self._rollout(rnd, seat, hands, buried,
                                                list(cand_a),
-                                               exact_session=exact_session))
+                                               exact_session=exact_session,
+                                               prepared_hands=prepared))
                 vb = self._score(self._rollout(rnd, seat, hands, buried,
                                                list(cand_b),
-                                               exact_session=exact_session))
+                                               exact_session=exact_session,
+                                               prepared_hands=prepared))
                 if not i_attack:
                     va, vb = -va, -vb
                 delta = va - vb
@@ -826,11 +829,14 @@ class MCBot(SmartBot):
             hands, buried = sampled
             exact_session = self._new_exact_world_session(rnd, buried)
             worlds += 1
+            prepared = self._complete_determinized_hands(
+                rnd, seat, hands, buried=buried)
             vals = {}
             for i in alive:
                 v = self._score(self._rollout(rnd, seat, hands, buried,
                                               candidates[i],
-                                              exact_session=exact_session))
+                                              exact_session=exact_session,
+                                              prepared_hands=prepared))
                 v = v if i_attack else -v
                 vals[i] = v
                 totals[i] += v
@@ -897,10 +903,13 @@ class MCBot(SmartBot):
                 continue
             hands, buried = sampled
             exact_session = self._new_exact_world_session(rnd, buried)
+            prepared = self._complete_determinized_hands(
+                rnd, seat, hands, buried=buried)
             for i in alive[:residual]:
                 self._score(self._rollout(rnd, seat, hands, buried,
                                           candidates[i],
-                                          exact_session=exact_session))
+                                          exact_session=exact_session,
+                                          prepared_hands=prepared))
                 dummy_rollouts += 1
             rollouts += dummy_rollouts
             residual = 0
@@ -1872,7 +1881,7 @@ class MCBot(SmartBot):
     # -------------------------------------------------------------- rollout
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
                  buried: list[str], candidate: list[str], *,
-                 exact_session=None) -> float:
+                 exact_session=None, prepared_hands=None) -> float:
         clone: Round = copy.copy(rnd)
         # Sampled hands represent multisets, not sequences.  HeuristicBot's
         # continuation policy is intentionally simple and walks a list, so it
@@ -1881,26 +1890,16 @@ class MCBot(SmartBot):
         #
         # Completion (sort + card-conservation validation) is a function of
         # (round state, sampled, buried) only, and every candidate scores the
-        # SAME accepted world: validate once per world, hand each rollout its
-        # own mutable copies.  The identity key can only hit while the exact
-        # sampled/buried objects are alive and the round has not advanced, so
-        # a hit is by construction the same computation.
-        cache = self._world_hands_cache
-        completed = None
-        if cache is not None and cache[0] is sampled and cache[1] is buried:
-            state = (len(rnd.history),
-                     len(rnd.trick.plays) if rnd.trick is not None else -1)
-            if cache[2] == state:
-                completed = cache[3]
-        if completed is None:
-            completed = self._complete_determinized_hands(
+        # SAME accepted world.  The candidate loops therefore complete each
+        # accepted world exactly once and pass the result in explicitly;
+        # a direct call without `prepared_hands` always recomputes, so no
+        # state survives between calls and mutated inputs can never alias a
+        # previous world's completion.  Each rollout still gets its own
+        # mutable copies below.
+        if prepared_hands is None:
+            prepared_hands = self._complete_determinized_hands(
                 rnd, seat, sampled, buried=buried)
-            self._world_hands_cache = (
-                sampled, buried,
-                (len(rnd.history),
-                 len(rnd.trick.plays) if rnd.trick is not None else -1),
-                completed)
-        clone.hands = [list(h) for h in completed]
+        clone.hands = [list(h) for h in prepared_hands]
         clone.buried = sorted(buried)
         assert rnd.trick is not None
         clone.trick = Trick(

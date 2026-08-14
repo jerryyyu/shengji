@@ -8,7 +8,8 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 11:47 EDT from canonical main `8cc92ac`.
+Review queue reconciled: 2026-08-14 12:10 EDT from canonical main `ae7dd46`.
+Fleet rows retain the 11:47 EDT score-free snapshot below.
 
 ## Live fleet
 
@@ -23,29 +24,31 @@ Last reconciled: 2026-08-14 11:47 EDT from canonical main `8cc92ac`.
 ## Review queue — precise asks
 
 1. **PR #110 BELIEF-V1 research/spec review — no execution authority.**
-   Review exact head `b8156d3ef5406da473647d64812e90cb698ea0f7`, a
+   Review exact head `8cd28224ee888cedc773f4eccd255ed02d1fa63b`, a
    three-file documentation-only delta: new `BELIEF_V1_SPEC.md`, new
    `RESEARCH_PRINCIPLES.md`, and one 30-line `RL_PLAN.md` milestone pointer.
-   Confirm it extends PointContext rather than duplicating it; limits V1 to
-   one ownership/shape belief head and one sampler consumer; separates public,
-   actor-private, deduced, probabilistic, and simulator-privileged data; and
-   requires calibration, same-work current/shuffled-null attribution,
-   meaningful natural dose, and MDE economics before any whole-game design.
+   Confirm it extends PointContext rather than duplicating it; explicitly
+   represents actor-relative ownership and sample-derived shape/point/boss
+   distributions; treats declined-feed, forced-joker and unforced-discard
+   signals as policy-bound probabilities; limits V1 to one ownership head and
+   one constrained-sampler consumer; and adopts exact E1-E5, calibration
+   C1-C4, negative-control N1-N3 and usefulness U1-U2 gates against the current
+   uniform-consistent and Memory/PointContext references before online scale.
    PASS means roadmap/spec merge-readiness only—no corpus, training, run,
    strength, promotion, or deployment authority.
 
-2. **PR #111 BELIEF-V1 B0 information-boundary review — no run authority.**
-   Review exact head `dba99c3d8f7532a7ea7814b5bd06c0b1a4fb727e`,
-   exactly two new files: `server/shengji/rl/belief_contract.py` and
-   `server/tests/test_belief_contract.py`. Falsify that actor bytes can depend
-   on inaccessible hand/kitty contents; banker burial is actor-private while
-   non-banker burial is privileged; public hand sizes derive from public plays;
-   hidden targets are separately hashed and never runtime input; absolute seat
-   rotation is invariant; and target construction strictly validates the
-   physical deck. Reproduce 20 focused tests. Explicit limitations—only the
-   final winning declaration and engine-accepted rather than attempted play
-   history are currently reconstructable—must remain visible, not silently
-   upgraded. PASS means B0 source merge-readiness only.
+2. **PR #111 BELIEF-V1 B0/B1 boundary review — no run authority.**
+   Review exact head `7ebfcf7959f5254fee3b3dda1fc2fd83600540e9`,
+   exactly four files: actor/target contract, in-memory corpus rows, and their
+   two test files. Verify hidden-world and absolute-seat invariance, banker-
+   private burial, strict physical-deck targets, and zero privileged runtime
+   bytes. Falsify incomplete/reordered/mutable transcripts, loss of attempted
+   failed-throw cards, round split leakage, schema/authority drift, actor-target
+   mismatches and coordinated self-rehashes. Reproduce 41 focused tests in
+   pure and strict compiled modes; the two mutation smokes must go red when
+   transcript length or target-to-actor hash binding is neutralized. There is
+   no file writer, corpus generation, model, sampler, training or run path.
+   PASS means typed boundary and in-memory row merge-readiness only.
 
 3. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale

@@ -1,11 +1,11 @@
 """PointContext + point-flow attribution: exactness, purity, determinism.
 
-Covers the item-1+2 contract of docs/proposals/point-management-census.md:
+Covers the reviewed PointContext and structural point-flow contract:
 (a) context fields match independently hand-computed values, (b)
 ``effective_boss`` agrees with Memory ground truth, (c) building a context
 never mutates the round, (d) bracket distances at the 39/40/79/80
 boundaries, (e) point-flow classification on constructed tricks with known
-nonzero feed/contest/discard content, (f) byte-level determinism via
+nonzero structural point locations, (f) byte-level determinism via
 canonical JSON, (g) negative controls proving each guard can actually fail.
 """
 
@@ -293,9 +293,9 @@ def test_bracket_distance_boundaries():
 # ----------------------------------------------------------- (e) point flow
 
 
-def test_point_flow_feed_and_discard_with_kitty_transfer():
+def test_point_flow_structural_partition_with_kitty_transfer():
     # banker 0 -> attackers 1,3. Seat 1 wins its own SA lead; partner 3
-    # feeds 5, defender 2 discards 10, defender 0 adds nothing. Attackers
+    # plays 5, defender 2 plays 10, defender 0 adds nothing. Attackers
     # take the last (only) trick -> buried SK transfers x2.
     rnd = _flow_round(hands=[["S3"], ["SA"], ["S10"], ["S5"]],
                       leader=1, buried=["SK"])
@@ -494,3 +494,58 @@ def test_bool_seat_is_rejected_by_build():
     rnd = _finished_round(34)
     with pytest.raises(ValueError):
         build_point_context(rnd, False)
+
+
+def test_classifier_refuses_non_engine_play_and_point_shapes():
+    from types import SimpleNamespace
+
+    rnd = _flow_round(hands=[["S3"], ["SA"], ["S10"], ["S5"]],
+                      leader=1, buried=["SK"])
+    good = rnd.history[0]
+
+    empty = copy.deepcopy(good)
+    empty.plays[0].cards = []
+    with pytest.raises(ValueError, match="nonempty list cards"):
+        classify_trick_point_flow(empty, rnd.ordering, rnd.banker)
+
+    tuple_cards = copy.deepcopy(good)
+    tuple_cards.plays[0].cards = tuple(tuple_cards.plays[0].cards)
+    with pytest.raises(ValueError, match="nonempty list cards"):
+        classify_trick_point_flow(tuple_cards, rnd.ordering, rnd.banker)
+
+    duck_play = copy.deepcopy(good)
+    first = duck_play.plays[0]
+    duck_play.plays[0] = SimpleNamespace(
+        seat=first.seat, cards=list(first.cards))
+    with pytest.raises(ValueError, match="exact TrickPlay"):
+        classify_trick_point_flow(duck_play, rnd.ordering, rnd.banker)
+
+    duck_trick = SimpleNamespace(
+        leader=good.leader, plays=list(good.plays), winner=good.winner,
+        points=good.points)
+    with pytest.raises(ValueError, match="exact Trick"):
+        classify_trick_point_flow(duck_trick, rnd.ordering, rnd.banker)
+
+    bool_points = copy.deepcopy(good)
+    bool_points.points = False
+    with pytest.raises(ValueError, match="engine-range int"):
+        classify_trick_point_flow(bool_points, rnd.ordering, rnd.banker)
+
+
+def test_empty_round_cannot_bypass_round_identity_and_tally_guards():
+    bad_identity = _constructed_round([])
+    bad_identity.banker = True
+    bad_identity.attacker_points = False
+    with pytest.raises(ValueError, match="banker"):
+        round_flow(bad_identity)
+
+    bad_history = _constructed_round([])
+    bad_history.history = ()
+    with pytest.raises(ValueError, match="history"):
+        round_flow(bad_history)
+
+    bad_kitty = _constructed_round([])
+    bad_kitty.phase = "round_end"
+    bad_kitty.kitty_bonus = False
+    with pytest.raises(ValueError, match="kitty bonus"):
+        round_flow(bad_kitty)

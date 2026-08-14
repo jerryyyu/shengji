@@ -1,9 +1,8 @@
 """PointContext: one public-information point struct per decision.
 
-Item 1 of docs/proposals/point-management-census.md (as repaired per the
-Codex review of PR #95): a single immutable-at-boundary snapshot of every
-point-relevant quantity a decision consumer (feed gate, endgame reserve
-pricing, lead policy, encoder, telemetry) would otherwise recompute ad hoc:
+This is a single immutable-at-boundary snapshot of every point-relevant
+quantity a future reviewed decision consumer (endgame reserve pricing, lead
+policy, encoder, or telemetry) would otherwise recompute ad hoc:
 
 - ``trick_points``: points already on the table in the OPEN trick;
 - ``points_left_total`` / ``points_left_by_suit``: point cards still in

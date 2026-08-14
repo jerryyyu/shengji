@@ -1,9 +1,10 @@
 """Zero-effect point-flow attribution for completed tricks.
 
-Item 2 of docs/proposals/point-management-census.md: per-rollout counters of
-where points went — S4 point-banking telemetry style (schema string, closed
-counter-field population, deterministic flag, loud reconciliation) — so every
-point mechanism becomes screenable with matched-null discipline.
+This module provides per-rollout structural counters for where point cards
+landed.  It follows the S4 point-banking telemetry shape (schema string,
+closed counter-field population, deterministic flag, loud reconciliation) so
+future reviewed consumers can screen point mechanisms with matched-null
+discipline.
 
 OBSERVATION ONLY. Nothing here changes any decision, and nothing in
 production imports this module: MCBot's default path is untouched. The
@@ -16,14 +17,15 @@ Exact attribution semantics — every point card that lands in a completed
 trick is attributed by the seat that PLAYED it, relative to the trick's
 recorded winner, so the three trick counters partition the trick's points:
 
-- ``winner_teammate_points``:       played by the winner's TEAMMATE (same team, other
-                        seat) — the canonical partner feed;
-- ``winner_own_points``: carried by the WINNER's own play — points won under
-                        one's own power (the S4 bank-at-last move lands
-                        here, as does winning with the 10 itself);
-- ``losing_team_points``: played by the LOSING team — points surrendered
-                        across teams, whether by follow obligation or
-                        slough.
+- ``winner_teammate_points``: played by the winner's teammate (same team,
+  other seat);
+- ``winner_own_points``: played by the recorded winner;
+- ``losing_team_points``: played by seats on the team opposite the winner.
+
+These are structural location counters only.  They do not identify intent,
+choice, avoidability, assistance, sacrifice, or efficacy: follow obligation
+and alternative legal actions are not represented here.  Any causal use needs
+a separately designed and reviewed decision-context boundary.
 
 ``kitty_points`` is the round-end transfer: the MULTIPLIED kitty bonus when
 the attackers take the last trick (``Round._resolve_trick``), 0 otherwise —
@@ -39,7 +41,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from ..engine.cards import Ordering, total_points
-from ..engine.round import Round, Trick
+from ..engine.round import Round, Trick, TrickPlay
 
 POINT_FLOW_SCHEMA = "point-flow-telemetry-v2"
 
@@ -87,11 +89,21 @@ def classify_trick_point_flow(trick: Trick, ordering: Ordering,
     rather than being silently trusted (constructed tricks must therefore
     carry engine-true ``points``).
     """
+    if type(trick) is not Trick:
+        raise ValueError("classify_trick_point_flow needs an exact Trick")
+    if type(ordering) is not Ordering:
+        raise ValueError("classify_trick_point_flow needs an exact Ordering")
     if type(banker) is not int or not 0 <= banker < 4:
         raise ValueError(f"banker must be a seat 0..3, got {banker!r}")
-    if type(getattr(trick, "winner", None)) is not int or len(trick.plays) != 4:
+    if type(trick.plays) is not list or len(trick.plays) != 4:
+        raise ValueError("classify_trick_point_flow needs exactly four "
+                         "engine TrickPlay values")
+    if type(getattr(trick, "winner", None)) is not int:
         raise ValueError("classify_trick_point_flow needs a resolved "
                          "4-play trick with a recorded int winner")
+    if type(getattr(trick, "points", None)) is not int \
+            or not 0 <= trick.points <= 200:
+        raise ValueError("trick points must be an exact engine-range int")
     leader = getattr(trick, "leader", None)
     if type(leader) is not int or not 0 <= leader < 4:
         raise ValueError(f"trick leader must be a seat 0..3, got {leader!r}")
@@ -106,6 +118,10 @@ def classify_trick_point_flow(trick: Trick, ordering: Ordering,
     teammate = own = losing = 0
     total = 0
     for tp in trick.plays:
+        if type(tp) is not TrickPlay or type(tp.cards) is not list \
+                or not tp.cards:
+            raise ValueError("trick plays must be exact TrickPlay values "
+                             "with nonempty list cards")
         for code in tp.cards:
             try:
                 ordering.eff_suit(code)  # validates the code population
@@ -176,8 +192,19 @@ class PointFlowAccumulator:
         round's attribution against the engine's own tally and raises on any
         mismatch instead of accumulating a wrong number.
         """
-        if rnd.ordering is None or rnd.banker is None:
+        if type(rnd) is not Round:
+            raise ValueError("accumulate_round needs an exact Round")
+        if type(rnd.ordering) is not Ordering:
             raise ValueError("accumulate_round needs a finalized round")
+        if type(rnd.banker) is not int or not 0 <= rnd.banker < 4:
+            raise ValueError("round banker must be an exact seat 0..3")
+        if type(rnd.history) is not list:
+            raise ValueError("round history must be an exact list")
+        if type(rnd.attacker_points) is not int or rnd.attacker_points < 0:
+            raise ValueError("round attacker points must be a non-negative int")
+        if rnd.phase == "round_end" and (
+                type(rnd.kitty_bonus) is not int or rnd.kitty_bonus < 0):
+            raise ValueError("round-end kitty bonus must be a non-negative int")
         # Stage into a ROUND-LOCAL accumulator first: a refused round must
         # leave this reusable accumulator byte-identical (review finding 1).
         staged = PointFlowAccumulator()

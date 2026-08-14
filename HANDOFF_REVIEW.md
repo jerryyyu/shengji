@@ -1650,3 +1650,39 @@ Queued next: PR #106 `f1791f5` (Pair screen source) and PR #108 `4b26c1a`
 (S6 aggregation repair) per the mailbox.
 
 ---
+
+## [2026-08-14 04:38 EDT] Claude review: PR #106 checkpoint-screen source f1791f5 — HOLD (three unpinned guards)
+
+⛔ HOLD (exact head): PR #106 `f1791f51b913fa91171a2337badb4a84cedd1319`
+(two commits on Capacity V2 `8a3ef59`; both file SHAs exact:
+`8d9c46f8…`/`ac73f70b…`). The implementation verifies broadly; the HOLD is
+three test-only gaps — two of them the exact classes repaired after my
+PR #93 and PR #94 HOLDs.
+
+**Verified:** capacity chain re-authenticated with the projection
+reproduced to full precision (47.88008500608679 h ≤ 52 h; microshard
+timeout 12612.02185870803 s); 26/26 focused; pair chain **190/190 in BOTH
+pure and strict compiled modes** (superset of the claimed 186/188); CLI has
+no resume/aggregate command; gate-collision and bundle-slot-collision
+refusals are mutation-KILLED; population/geometry constants
+(7,168 clusters, seed0 500000000000, stride 3000017, 224×32 bundles) match
+the request; `git diff --check` clean.
+
+**Blockers (all test-only; the suite cannot see removal of):**
+1. **Worker (microshard) runtime reauthentication** — nulling
+   "microshard runtime differs from packet" survives the entire chain.
+   Same class as PR #93's worker-reauth blocker.
+2. **Live screen runtime binding at run admission** — nulling
+   "live screen runtime differs from packet" survives. Same class as
+   PR #94's live-runtime blocker.
+3. **Supervisor outcome-flag schema pin** — dropping
+   `outcomes_opened_by_supervisor` from the expected manifest field set
+   survives; nothing else pins it. Recommend additionally a route-level
+   witness that the supervisor refuses when an outcome file's BYTES are
+   opened (the flag is declarative; the boundary deserves direct teeth).
+
+Re-request at the repaired head; I will re-run the battery and, on PASS,
+append the machine-generated implementation claim. No packet freeze or
+screen execution authority follows from this entry.
+
+---

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import copy
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -166,6 +167,24 @@ def test_score_state_freezes_nested_slots_and_common_report_worlds(record):
     assert record["work"]["selection_candidate_rollouts"] == count * 30
     assert record["work"]["report_candidate_rollouts_per_mode"] == 90
     assert record["work"]["total_candidate_rollouts"] == count * 30 + 270
+
+
+def test_producer_record_round_trip_exposes_only_canonical_mode_order(record):
+    raw = SCORE.canonical(record)
+    reparsed = json.loads(raw)
+    seed = record["deal_seed"]
+    assert list(record["report"]["modes"]) == list(SCORE.MODES)
+    assert list(reparsed["report"]["modes"]) == sorted(SCORE.MODES)
+    assert SCORE.record_problems(reparsed, expected_seed=seed) == [
+        "report fold contract drift"]
+
+    validation = dict(reparsed)
+    report = dict(reparsed["report"])
+    modes = reparsed["report"]["modes"]
+    report["modes"] = {mode: modes[mode] for mode in SCORE.MODES}
+    validation["report"] = report
+    assert SCORE.canonical(validation) == raw
+    assert SCORE.record_problems(validation, expected_seed=seed) == []
 
 
 def test_lowest_index_wins_an_exact_tie():

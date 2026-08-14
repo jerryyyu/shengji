@@ -9,15 +9,15 @@
 > Earlier history is archived in `docs_archive/`. This file is current
 > executable truth only; the review ledger remains the evidence authority.
 
-Last reconciled: 2026-08-13 20:47 EDT from canonical main `96509b7`.
+Last reconciled: 2026-08-13 21:31 EDT from canonical main `eee36c2`.
 
 ## Live fleet
 
 | host | current work | safe progress and next boundary |
 |---|---|---|
 | **Mini** | T4 terminal closeout complete | Canonical terminal review `a165274` independently verified PR #80's recursive reconstruction of aggregate `f30a77c7…e652` and posted the unique result marker: `SELECT_NONE`. T4 has no live worker and no confirmation, retry, strength, promotion or deployment authority. |
-| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Seven shards are 432/896 and one is 448/896: 3,472/7,168 = 48.44%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
-| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free progress is 5,010/8,192 = 61.16%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
+| **Air** | Broad Pair-aware whole-game screen, eight workers | All eight workers are alive and CPU-bound. Four shards are 432/896 and four are 448/896: 3,520/7,168 = 49.11%; 0/8 terminal. The timeout trajectory remains substantive. Do not intervene or inspect shard outcomes; the reviewed S6 queue remains asleep behind it. |
+| **Strength Cloud** | S4 360B point-banking confirmation, tranche two | All 16 workers are live and CPU-bound. Reviewed score-free progress is 5,318/8,192 = 64.92%; 0/16 terminal. Look-one integrity passed but its early-efficacy boundary did not, so tranche two continues automatically; this is not a terminal efficacy verdict. No hard runtime timeout. The exact read-only terminal verifier is pinned at Git `e7551e4`, runner `a6586be…dda`, and controller `cd69a712…bb0a`; run it only after the controller exits. |
 | **Performance Cloud** | S6 V2 packet review; host idle | Claude terminally VERIFIED the immutable PR #89 V5 bundle at canonical `e5818ee`: exact semantics, 29.3203% lower wall and 27.8619% one-sided paired lower bound; retain the exact measured arm only and never rerun V5. PR #94 source head `08ee055` PASSed at `ec4cdd2`; fresh V2 packet `dd7709e…4adca` is frozen and verified. Its packet-review snapshot, admission, records, final and unit installation remain absent pending packet review. |
 | **Production** | Release 18, `kitty-xray-b5a35ae`, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. |
 
@@ -95,21 +95,42 @@ Last reconciled: 2026-08-13 20:47 EDT from canonical main `96509b7`.
    table retracts the old 70%-vs-23% headline; all 150 E2/E3 pairs bind.
    Await exact-head external review. This is descriptive exploration tooling,
    with no packet, run, strength, training, promotion or deployment authority.
-5. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
+5. **Pair scored-controller design PR #100.** Draft exact head `7a27a52`
+   reconstructs the reviewed PR #86 design as a declarative controller
+   boundary: exact 1,024-state/16-lane/32-output schedule, work, distinct
+   request/attestation namespaces, one-shot admission, score-free progress,
+   sealed shards and terminal-review sequence. It has no controller,
+   evaluator/gameplay import, writer, launcher, scored-artifact reader or
+   aggregate path; every implementation, freeze, run, output, retry, strength
+   and deploy authority is false. Focused tests pass 21/21 and the Pair
+   capacity chain passes 161/161. Await exact-head design review; a PASS may
+   open only a separate controller implementation.
+6. **Champion natural-dose design PR #101.** Draft exact head `df93de1`
+   closes PR #86's remaining design prerequisite for whole-game/value-for-
+   compute interpretation: an exact `mc-s0-report-lcb` self-play census of
+   every natural search-reachable pair omission by DEV/CALIB split, attacker/
+   defender role and early/mid/late band. It freezes 8,192 fresh deals in 16
+   exact 512-deal lanes, proves the complete game/actor seed domain disjoint
+   from known Pair populations and requires an RNG-neutral instrumented run to
+   remain byte-identical to a reference champion run. Outputs are closed,
+   score-free counts/work/sampler/commitments only. Focused tests pass 30/30
+   on Python 3.11/3.12/3.14 with byte-identical design SHA `4629ccde…a93c`;
+   the full Pair chain passes 205/205. Await exact design review. There is no
+   census implementation, packet, writer, launcher or execution authority.
+7. **PR #93 capacity HOLD.** Canonical terminal review `27c6860` records the
    real negative capacity result: projection over wall cap, fail-closed after
    complete measurement. Admission is spent; no result/receipt, retry or screen
    authority. Any future checkpoint screen needs a revised design and fresh
    packet chain.
-6. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
+8. **Compatibility PR #75 `90c5630`.** The corrected 64-character ELF receipt
    remains separate compatibility evidence for PR #71 and awaits exact-head
    external review. It grants no strength or deployment authority.
-7. **Other terminal reviews.** Broad Pair and S4 need no live review while
+9. **Other terminal reviews.** Broad Pair and S4 need no live review while
    their reviewed controllers run. No outcome aggregation or sealed result
    access is allowed before each explicit terminal gate.
 
-Documentation-only PR #97 exact `8115aa8` records the same terminal/fleet
-truth; CI is running and accuracy/merge review follows. It changes no handoff
-or authority.
+Documentation-only PR #97 exact `f93abbf` records the same terminal/fleet
+truth; accuracy/merge review follows. It changes no handoff or authority.
 
 PR #78's opened-DEV capacity code/result and PR #91's design are reviewed.
 PR #90 is an implementation source, not a direct merge candidate. PR #92's

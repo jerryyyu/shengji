@@ -37,6 +37,13 @@ CAPTURE_BYTE_CAP = 4 * 1024**3
 TRAIN_DEVICE_HOUR_CAP = 32
 TRAIN_WALL_SECOND_CAP = 8 * 60 * 60
 TRAIN_BYTE_CAP = 16 * 1024**3
+TRAIN_LEARNING_RATE = "0.0003"
+TRAIN_WEIGHT_DECAY = "0.01"
+TRAIN_BATCH_DECISION_CAP = 256
+TRAIN_GRADIENT_NORM_CAP = "1.0"
+TRAIN_MAX_EPOCHS = 30
+TRAIN_EARLY_STOP_PATIENCE = 3
+TRAIN_MIN_IMPROVEMENT_NANONATS = 100_000
 PRIMARY_RELATIVE_BRIER_FLOOR_PPB = 5_000_000  # 0.5%
 PRIMARY_MEMBER_POSITIVE_MINIMUM = 6
 REFERENCE_REPLICATE_DISAGREEMENT_FRACTION_PPB = 250_000_000  # 1/4
@@ -144,6 +151,16 @@ def protocol_dict() -> dict[str, Any]:
             "device_hour_cap": TRAIN_DEVICE_HOUR_CAP,
             "wall_second_cap": TRAIN_WALL_SECOND_CAP,
             "byte_cap": TRAIN_BYTE_CAP,
+            "optimizer": "AdamW",
+            "learning_rate": TRAIN_LEARNING_RATE,
+            "weight_decay": TRAIN_WEIGHT_DECAY,
+            "round_grouped_batch_decision_cap": TRAIN_BATCH_DECISION_CAP,
+            "gradient_norm_cap": TRAIN_GRADIENT_NORM_CAP,
+            "maximum_epochs": TRAIN_MAX_EPOCHS,
+            "common_epoch_early_stop_patience": TRAIN_EARLY_STOP_PATIENCE,
+            "cohort_mean_minimum_improvement_nanonats": (
+                TRAIN_MIN_IMPROVEMENT_NANONATS),
+            "epoch_round_order": "sha256(protocol|epoch|round_seed)",
             "retry_count": 0,
         },
         "primary_gate": {

@@ -1814,3 +1814,10 @@ Jerry's requirement: before any implementation, the proposal must commit to inva
 - U2 Variance reduction: rollout value-estimate variance at fixed world count shrinks vs B0 — this is the mechanism by which better beliefs buy strength, measurable offline before any whole-game screen.
 
 Online screens come only after E/C/N/U hold, per the entry criteria; separate estimands per consumer as posted above. — Claude
+
+## 2026-08-14 — PR #110 BELIEF-V1 spec, head b8c2a4c2: PASS (spec/roadmap merge-readiness only)
+
+- Docs-only three-file delta verified (BELIEF_V1_SPEC.md +596, RESEARCH_PRINCIPLES.md +143, RL_PLAN.md +30 milestone pointer); single parent; CI green. Header states it authorizes no corpus opening, training, strength run, promotion, or deployment; closing text repeats it. No authority widening anywhere.
+- Every queue confirmation satisfied: ActionContextV1 explicitly extends the reviewed PointContext rather than rewriting it; BeliefStateV1 carries actor-relative ownership plus sample-derived shape/point/boss distributions with uncertainty summaries; declined-feed/forced-joker/unforced-discard signals are policy-bound probabilities with the continuation-policy assumption named; V1 scope is one ownership head + one constrained-sampler consumer with an explicit anti-scope-creep clause (the first sampler result cannot be cited for feed thresholds).
+- The acceptance-invariant set adopts and extends the review-side bar: E1-E3 as posted, E4 seat-relabel symmetry and E5 target isolation added; C1-C4, N1-N3, U1-U2 with U2 correctly labeled a mechanism result; the decision ladder adds a shuffled-belief same-work null (kills any-structured-noise artifacts) and a Gate-D dose/MDE transport requirement. The "uniform-consistent" shorthand is honestly corrected: the current sampler is randomized constraint-consistent, not proven uniform — my earlier framing, fixed.
+- PASS = spec/roadmap merge-readiness only. Design-anchor SHA for future belief packets: BELIEF_V1_SPEC.md at this head.

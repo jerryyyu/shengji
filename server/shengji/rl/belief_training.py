@@ -16,8 +16,9 @@ import numpy as np
 import torch
 
 from .belief_contract import ActorObservationV1, BeliefTargetsV1
-from .belief_corpus import SPLITS, decision_key, split_for_round_seed
-from .belief_evaluation import target_count_population
+from .belief_corpus import (SPLITS, CorpusPairV1, decision_key,
+                            split_for_round_seed)
+from .belief_evaluation import reopen_score_pair, target_count_population
 from .belief_input import CARD_CODES
 from .belief_model import (HistoryOwnershipModelV1,
                            masked_count_cross_entropy)
@@ -92,11 +93,14 @@ def _labels(
 
 
 def _build_training_example(
-        actor: ActorObservationV1, target: BeliefTargetsV1, *,
-        round_seed: int, decision_index: int, actor_seat: int,
+        pair: CorpusPairV1, *,
         behavior_policy_ids: tuple[str, ...]) -> BeliefTrainingExampleV1:
-    split = split_for_round_seed(round_seed)
-    key = decision_key(round_seed, decision_index, actor_seat)
+    actor, target, metadata = reopen_score_pair(pair)
+    round_seed = metadata["round_seed"]
+    decision_index = metadata["decision_index"]
+    actor_seat = metadata["actor_seat"]
+    split = metadata["split"]
+    key = metadata["decision_key"]
     tensors = build_history_ownership_tensors(
         actor, behavior_policy_ids=behavior_policy_ids)
     labels, active = _labels(actor, target, tensors)
@@ -109,20 +113,17 @@ def _build_training_example(
 
 
 def build_training_example(
-        actor: ActorObservationV1, target: BeliefTargetsV1, *,
-        round_seed: int, decision_index: int, actor_seat: int,
+        pair: CorpusPairV1, *,
         behavior_policy_ids: tuple[str, ...]) -> BeliefTrainingExampleV1:
-    """Build and independently rederive one privileged training example."""
+    """Build and rederive one example from an exact hash-bound corpus pair."""
     result = _build_training_example(
-        actor, target, round_seed=round_seed,
-        decision_index=decision_index, actor_seat=actor_seat,
-        behavior_policy_ids=behavior_policy_ids)
-    validate_training_example(actor, target, result)
+        pair, behavior_policy_ids=behavior_policy_ids)
+    validate_training_example(pair, result)
     return result
 
 
 def validate_training_example(
-        actor: ActorObservationV1, target: BeliefTargetsV1,
+        pair: CorpusPairV1,
         example: BeliefTrainingExampleV1) -> None:
     if type(example) is not BeliefTrainingExampleV1 \
             or example.schema != TRAINING_EXAMPLE_SCHEMA \
@@ -134,11 +135,10 @@ def validate_training_example(
             or type(example.active_mask) is not np.ndarray \
             or example.active_mask.dtype != np.bool_:
         raise BeliefTrainingError("training example schema/authority drift")
+    actor, _, _ = reopen_score_pair(pair)
     validate_history_ownership_tensors(actor, example.tensors)
     expected = _build_training_example(
-        actor, target, round_seed=example.round_seed,
-        decision_index=example.decision_index,
-        actor_seat=example.actor_seat,
+        pair,
         behavior_policy_ids=example.tensors.behavior_policy_ids)
     scalar_fields = (
         "round_seed", "decision_index", "actor_seat", "decision_key",

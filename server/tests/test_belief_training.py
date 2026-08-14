@@ -19,6 +19,7 @@ from shengji.rl.belief_contract import (
     build_belief_targets,
 )
 from shengji.rl.belief_model import new_from_scratch_model
+from shengji.rl.belief_corpus import capture_corpus_pair
 from shengji.rl.belief_training import (
     BeliefTrainingError,
     build_training_example,
@@ -46,20 +47,23 @@ def _state(seed=10401, plays=5):
         rnd.play(seat, attempted)
         transcript = transcript.with_play(
             seat, attempted, actual_play_after(rnd, seat, previous_last))
-    return (rnd, build_actor_observation(rnd, rnd.turn, transcript),
-            build_belief_targets(rnd, rnd.turn), transcript)
+    actor = build_actor_observation(rnd, rnd.turn, transcript)
+    target = build_belief_targets(rnd, rnd.turn)
+    pair = capture_corpus_pair(
+        rnd, rnd.turn, round_seed=seed, decision_index=plays,
+        transcript=transcript)
+    return rnd, actor, target, transcript, pair
 
 
 def _example(seed, decision_index=5):
-    rnd, actor, target, _ = _state(seed, plays=decision_index)
-    return actor, target, build_training_example(
-        actor, target, round_seed=seed, decision_index=decision_index,
-        actor_seat=rnd.turn, behavior_policy_ids=POLICIES)
+    _, actor, target, _, pair = _state(seed, plays=decision_index)
+    return pair, actor, target, build_training_example(
+        pair, behavior_policy_ids=POLICIES)
 
 
 def test_labels_are_privileged_bounded_and_separate_from_tensors():
-    actor, target, example = _example(10403)
-    validate_training_example(actor, target, example)
+    pair, actor, target, example = _example(10403)
+    validate_training_example(pair, example)
     assert example.privileged_targets_consumed is True
     assert example.runtime_artifact is False
     assert example.count_labels.shape == (54, 4)
@@ -72,7 +76,7 @@ def test_labels_are_privileged_bounded_and_separate_from_tensors():
 
 
 def test_public_twins_share_tensors_but_not_privileged_labels():
-    rnd, actor, target, transcript = _state(10405)
+    rnd, actor, target, transcript, pair = _state(10405)
     hidden = [seat for seat in range(4) if seat != rnd.turn]
     changed = copy.deepcopy(rnd)
     left, right = next(
@@ -83,12 +87,13 @@ def test_public_twins_share_tensors_but_not_privileged_labels():
         changed.hands[right], changed.hands[left])
     twin_actor = build_actor_observation(changed, rnd.turn, transcript)
     twin_target = build_belief_targets(changed, rnd.turn)
+    twin_pair = capture_corpus_pair(
+        changed, rnd.turn, round_seed=10405, decision_index=5,
+        transcript=transcript)
     first = build_training_example(
-        actor, target, round_seed=10405, decision_index=5,
-        actor_seat=rnd.turn, behavior_policy_ids=POLICIES)
+        pair, behavior_policy_ids=POLICIES)
     second = build_training_example(
-        twin_actor, twin_target, round_seed=10405, decision_index=5,
-        actor_seat=rnd.turn, behavior_policy_ids=POLICIES)
+        twin_pair, behavior_policy_ids=POLICIES)
     assert first.tensors.history_input_sha256 \
         == second.tensors.history_input_sha256
     assert first.tensors.card_features.tobytes() \
@@ -98,8 +103,8 @@ def test_public_twins_share_tensors_but_not_privileged_labels():
 
 
 def test_collation_pads_history_and_loss_backpropagates():
-    _, _, first = _example(10407, decision_index=2)
-    _, _, second = _example(10415, decision_index=9)
+    _, _, _, first = _example(10407, decision_index=2)
+    _, _, _, second = _example(10415, decision_index=9)
     # Fixed seeds are in the same split; this assertion makes the fixture
     # non-vacuous if the split hash ever changes.
     assert first.split == second.split
@@ -117,18 +122,18 @@ def test_collation_pads_history_and_loss_backpropagates():
 
 
 def test_training_example_and_batch_refuse_drift_duplicates_and_cross_split():
-    actor, target, example = _example(10409)
+    pair, actor, target, example = _example(10409)
     labels = example.count_labels.copy()
     index = tuple(np.argwhere(example.active_mask)[0])
     labels[index] = 3
     with pytest.raises(BeliefTrainingError, match="derivation drift"):
         validate_training_example(
-            actor, target, replace(example, count_labels=labels))
+            pair, replace(example, count_labels=labels))
     with pytest.raises(BeliefTrainingError, match="duplicate"):
         collate_training_examples((example, example))
     other = None
     for seed in range(10411, 10500):
-        candidate = _example(seed)[2]
+        candidate = _example(seed)[3]
         if candidate.split != example.split:
             other = candidate
             break

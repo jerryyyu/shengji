@@ -18,10 +18,11 @@ from shengji.rl.belief_contract import (
 )
 from shengji.rl.belief_evaluation import (
     BeliefEvaluationError,
-    score_decision,
+    score_corpus_decision,
     target_count_population,
     validate_decision_score,
 )
+from shengji.rl.belief_corpus import capture_corpus_pair
 from shengji.rl.belief_ownership import (
     KITTY_RECEIVER,
     PROBABILITY_SCALE,
@@ -51,7 +52,10 @@ def _state(seed=10101):
         seat, attempted, actual_play_after(rnd, seat, previous_last))
     actor = build_actor_observation(rnd, rnd.turn, transcript)
     target = build_belief_targets(rnd, rnd.turn)
-    return actor, target
+    pair = capture_corpus_pair(
+        rnd, rnd.turn, round_seed=seed, decision_index=1,
+        transcript=transcript)
+    return pair, actor, target
 
 
 def _truth_belief(actor, target, *, schema, source):
@@ -109,11 +113,11 @@ def _two_world_mixture(actor, target):
 
 
 def test_truth_candidate_has_positive_exact_brier_and_log_loss_lift():
-    actor, target = _state()
+    pair, actor, target = _state()
     reference = _two_world_mixture(actor, target)
     candidate = _truth_belief(
         actor, target, schema="history-ownership-v1-test", source="b" * 64)
-    score = score_decision(actor, target, reference, candidate)
+    score = score_corpus_decision(pair, reference, candidate)
     assert score.brier_improvement_numerator > 0
     assert score.log_loss_improvement_nanonats > 0
     assert score.candidate_brier_numerator == 0
@@ -124,18 +128,18 @@ def test_truth_candidate_has_positive_exact_brier_and_log_loss_lift():
 
 
 def test_equal_predictions_score_exactly_equal():
-    actor, target = _state(10103)
+    pair, actor, target = _state(10103)
     reference = _two_world_mixture(actor, target)
     candidate = replace(
         reference, model_schema="history-ownership-v1-test",
         model_sha256="c" * 64)
-    score = score_decision(actor, target, reference, candidate)
+    score = score_corpus_decision(pair, reference, candidate)
     assert score.brier_improvement_numerator == 0
     assert score.log_loss_improvement_nanonats == 0
 
 
 def test_target_population_includes_hidden_kitty_only_for_nonbanker_actor():
-    actor, target = _state(10105)
+    _, actor, target = _state(10105)
     counts = target_count_population(actor, target)
     assert (KITTY_RECEIVER in dict(receiver_sizes(actor))) \
         == any(receiver == KITTY_RECEIVER for _, receiver in counts)
@@ -143,24 +147,25 @@ def test_target_population_includes_hidden_kitty_only_for_nonbanker_actor():
 
 
 def test_evaluator_refuses_target_policy_reference_and_score_drift():
-    actor, target = _state(10107)
+    pair, actor, target = _state(10107)
     reference = _two_world_mixture(actor, target)
     candidate = _truth_belief(
         actor, target, schema="history-ownership-v1-test", source="d" * 64)
-    wrong_target = replace(target, hidden_burial=target.hidden_burial[:-1])
     with pytest.raises(BeliefEvaluationError,
-                       match="target reconstruction refused"):
-        score_decision(actor, wrong_target, reference, candidate)
+                       match="corpus pair reconstruction refused"):
+        score_corpus_decision(
+            replace(pair, target_bytes=pair.target_bytes + b" "),
+            reference, candidate)
     with pytest.raises(BeliefEvaluationError, match="exact REF-C"):
-        score_decision(actor, target, replace(
+        score_corpus_decision(pair, replace(
             reference, model_schema="forged-reference"), candidate)
     with pytest.raises(BeliefEvaluationError, match="behavior-policy"):
-        score_decision(actor, target, reference, replace(
+        score_corpus_decision(pair, reference, replace(
             candidate, behavior_policy_ids=("wrong",)))
 
-    score = score_decision(actor, target, reference, candidate)
+    score = score_corpus_decision(pair, reference, candidate)
     with pytest.raises(BeliefEvaluationError, match="derivation drift"):
         validate_decision_score(
-            actor, target, reference, candidate,
+            pair, reference, candidate,
             replace(score, candidate_brier_numerator=
                     score.candidate_brier_numerator + 1))

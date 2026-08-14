@@ -8,12 +8,15 @@ from dataclasses import replace
 import pytest
 
 from shengji.ai.heuristic import HeuristicBot
-from shengji.rl.belief_contract import CapturedPlayEvent
+from shengji.rl.belief_contract import CapturedPlayEvent, canonical_json_bytes
 from shengji.rl import belief_capture as CAPTURE
 from shengji.rl.belief_capture import (
     CHAMPION_POLICY,
     BeliefCaptureError,
+    CapturedRoundArtifactsV1,
     capture_champion_round,
+    captured_round_artifacts,
+    reopen_captured_round_artifacts,
     validate_captured_round,
 )
 from shengji.rl.belief_corpus import validate_corpus_pair
@@ -105,3 +108,67 @@ def test_capture_manifest_and_row_sequence_are_bound(monkeypatch):
         validate_captured_round(replace(captured, public_transcript=replace(
             captured.public_transcript,
             plays=(changed_event, *captured.public_transcript.plays[1:]))))
+
+
+def test_capture_artifacts_round_trip_with_public_privileged_separation(
+        monkeypatch):
+    captured = _fast_champion_capture(monkeypatch, seed=9521)
+    artifacts = captured_round_artifacts(captured)
+    reopened = reopen_captured_round_artifacts(artifacts)
+    assert reopened.manifest_bytes() == captured.manifest_bytes()
+    assert reopened.public_transcript == captured.public_transcript
+    assert tuple(pair.actor_bytes for pair in reopened.pairs) \
+        == artifacts.actor_rows
+    assert tuple(pair.target_bytes for pair in reopened.pairs) \
+        == artifacts.target_rows
+    assert all(b'"target"' not in raw for raw in artifacts.actor_rows)
+    assert all(b'"runtime_input":false' in raw
+               for raw in artifacts.target_rows)
+
+
+def test_capture_artifacts_refuse_noncanonical_and_manifest_drift(monkeypatch):
+    artifacts = captured_round_artifacts(
+        _fast_champion_capture(monkeypatch, seed=9523))
+    duplicate = artifacts.manifest_bytes.replace(
+        b"{", b'{"schema":"duplicate",', 1)
+    with pytest.raises(BeliefCaptureError, match="duplicate key"):
+        reopen_captured_round_artifacts(replace(
+            artifacts, manifest_bytes=duplicate))
+    with pytest.raises(BeliefCaptureError, match="canonical JSON"):
+        reopen_captured_round_artifacts(replace(
+            artifacts,
+            transcript_bytes=artifacts.transcript_bytes[:-1] + b" \n"))
+
+    manifest = json.loads(artifacts.manifest_bytes)
+    manifest["winner"] = 0
+    with pytest.raises(BeliefCaptureError, match="field population"):
+        reopen_captured_round_artifacts(replace(
+            artifacts, manifest_bytes=canonical_json_bytes(manifest)))
+    manifest.pop("winner")
+    manifest["actor_row_sha256s"][0] = "0" * 64
+    with pytest.raises(BeliefCaptureError, match="manifest bytes drift"):
+        reopen_captured_round_artifacts(replace(
+            artifacts, manifest_bytes=canonical_json_bytes(manifest)))
+
+
+def test_capture_artifacts_refuse_row_rebinding_and_type_drift(monkeypatch):
+    artifacts = captured_round_artifacts(
+        _fast_champion_capture(monkeypatch, seed=9533))
+    with pytest.raises(BeliefCaptureError, match="corpus row refused"):
+        reopen_captured_round_artifacts(replace(
+            artifacts,
+            target_rows=(artifacts.target_rows[1], artifacts.target_rows[0],
+                         *artifacts.target_rows[2:]),
+        ))
+    changed = artifacts.target_rows[0].replace(
+        b'"runtime_input":false', b'"runtime_input":true')
+    with pytest.raises(BeliefCaptureError, match="corpus row refused"):
+        reopen_captured_round_artifacts(replace(
+            artifacts, target_rows=(changed, *artifacts.target_rows[1:])))
+    with pytest.raises(BeliefCaptureError, match="population drift"):
+        reopen_captured_round_artifacts(CapturedRoundArtifactsV1(
+            manifest_bytes=artifacts.manifest_bytes,
+            transcript_bytes=artifacts.transcript_bytes,
+            actor_rows=list(artifacts.actor_rows),
+            target_rows=artifacts.target_rows,
+        ))

@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 08:43 EDT from canonical main `0647ad4`.
+Last reconciled: 2026-08-14 09:15 EDT from canonical main `55e8af2`.
 
 ## Live fleet
 
@@ -17,22 +17,25 @@ Last reconciled: 2026-08-14 08:43 EDT from canonical main `0647ad4`.
 | **Mini** | idle | T4 is terminally reviewed `SELECT_NONE`. The PR #103 differential soak completed all 10,000,000 deterministic rounds / 744,566,732 plays, 8/8 PASS with no native/pure mismatch. It opened no sealed evidence and grants no strength authority. |
 | **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers remain alive and CPU-bound. Latest reviewed score-free floor is `4,496/7,168` (62.72%); 0/8 terminal. Outcomes stay sealed and the timeout trajectory remains unfavorable. The selective-S6 queue remains asleep behind the supervisor. |
 | **Strength Cloud** | idle | S4 finished both tranches and independent canonical terminal review `15e8dbb` reproduced final SHA `0aef1ca8…e90` and `SELECT_NONE`. The PR #103 x86 differential soak also completed 2,000,000 rounds, PASS with no mismatch. No retry/candidate action follows. |
-| **Performance Cloud** | idle; S6 V2 recovery review is top priority | PR #103 terminal performance review retained 3.4074% lower wall / +1.0299% paired LCB. S6 aggregate V1 consumed its sole admission and refused on record 0 because canonical JSON reordered mode keys; no result or partial exists and V1 cannot retry. Incident/diagnosis is canonical at `0647ad4`. Distinct recovery head `1ddaefc` passed 125 pure + 125 compiled tests, the real producer round-trip witness, and a score-free host preflight (`scored_records_opened=false`); exact-head review is pending before one V2 opening. |
+| **Performance Cloud** | idle; S6 V2 recovery review is top priority | PR #103 terminal performance review retained 3.4074% lower wall / +1.0299% paired LCB. S6 aggregate V1 consumed its sole admission and refused on record 0 because canonical JSON reordered mode keys; no result or partial exists and V1 cannot retry. Incident/diagnosis is canonical at `0647ad4`. Test-only repair head `2b9d8e5` closes both `1ddaefc` HOLD findings, passes 127 pure + 127 compiled tests, and is score-free-preflight-clean (`scored_records_opened=false`); exact-head review is pending before one V2 opening. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
 
 1. **PR #108 S6 aggregate recovery V2 — launch-critical top priority.** Review
-   exact head `1ddaefc53733b507920b1d24b931f1f4f3b73657`, descendant of spent
+   exact head `2b9d8e574da7d6f010c2000263eaaca7f7919f1d`, test-only child of held
+   `1ddaefc53733b507920b1d24b931f1f4f3b73657` and descendant of spent
    V1 `32eec425`. Independently falsify the canonical mode-order diagnosis,
    exact V1 gate/snapshot/admission hashes and absent V1 result, distinct V2
    one-shot namespace, exact canonical bytes, exact three-mode set, temporary
    validation-copy reorder, real producer serialize/reparse witness, and the
-   rule that any other scorer finding still refuses. Reproduce 31 focused and
-   125 pure/strict-compiled chain tests plus
-   the real score-free host preflight. Exact SHAs, command and review boundary
-   are in PR comments `5293412990` and `5293477106`. If clean, append only the
-   generated raw V2
+   rule that any other scorer finding still refuses. The two new witnesses
+   require exact refusal of same-parse noncanonical raw bytes and an
+   order-sensitive validation-copy canonical drift; neutralizing either guard
+   turns its witness red. Reproduce 33 focused and 127 pure/strict-compiled
+   chain tests plus the real score-free host preflight. Exact SHAs, mutation
+   proof and review boundary are in PR comment `5293717396`. If clean, append
+   only the generated raw V2
    recovery marker. PASS authorizes one V2 aggregate opening the same 64
    immutable records; no V1 retry, screen, REPORT or strength authority.
 
@@ -88,7 +91,7 @@ PR comments alone are not queue state.
 3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
    V1 aggregate admission was spent by a deterministic canonical-key-order
    refusal on record 0; no aggregate exists and V1 can never retry. Exact V2
-   recovery `1ddaefc` is published and score-free-preflight-clean. After its
+   recovery `2b9d8e5` is published and score-free-preflight-clean. After its
    raw recovery PASS, run the distinct V2 aggregate exactly once, keep the
    result unopened, and return it for independent terminal recomputation.
 

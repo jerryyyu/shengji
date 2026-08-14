@@ -8,7 +8,7 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Last reconciled: 2026-08-14 00:27 EDT from canonical main `2ca5122`.
+Last reconciled: 2026-08-14 00:38 EDT from canonical main `6079de0`.
 
 ## Live fleet
 
@@ -25,21 +25,24 @@ Last reconciled: 2026-08-14 00:27 EDT from canonical main `2ca5122`.
 1. **PR #103 x86 benchmark-envelope freeze.** Exact final head `3044a2f`
    passed Codex's independent delta review: fresh ARM build, 41 native-route,
    33 engine/action and 74 combined focused tests; malformed cached values
-   fall back before C casts and normal trusted states remain native. Freeze
-   one host-specific six-pair N=30/R=300 envelope for base `57a1c2b` versus
-   exact head `3044a2f`, using the reviewed V5 source/runtime/manifest and
-   exact-semantic gate. Codex prepared the two-file tooling rebind locally at
-   `e407d50` in `/private/tmp/shengji-perf-pr103-tooling.5a4IDg`; 52 contract
-   tests pass. Populate host identities after the strength queue frees, then
-   request one concrete-envelope review before running. No x86 A/B, merge,
-   deploy or strength authority exists yet.
+   fall back before C casts and normal trusted states remain native. No repeat
+   source review is needed. After Pair capacity and S6 V3 release Performance
+   Cloud, freeze one host-specific six-pair N=30/R=300 envelope for base
+   `57a1c2b` versus exact head `3044a2f`, using the reviewed semantic/manifest
+   gate. Codex prepared the two-file tooling rebind locally at `e407d50` in
+   `/private/tmp/shengji-perf-pr103-tooling.5a4IDg`; 52 contract tests pass.
+   Populate host identities and request one combined tooling+concrete-design
+   review, then run exactly one no-retry batch only after PASS. No x86 A/B,
+   merge, deploy or strength authority exists yet.
 
-2. **PR #105 PointContext/point-flow repair — non-launch-critical.** Exact
-   `e22bfff` is HOLD. Repair rejected-round accumulator mutation, mutable
-   `Memory` exposure, malformed trick/bool-seat admission, causal `fed` /
-   `discarded` naming, and the nonexistent proposal link. Preserve the
-   zero-production-import boundary, push one bounded child, then request one
-   exact-head delta review.
+2. **PR #105 PointContext/point-flow repair — non-launch-critical.** Repaired
+   head `90fe978` remains HOLD after Codex follow-up. Atomic staging, factory-
+   built context immutability, bool-seat checks and neutral field names are
+   real; 24 focused pure tests pass. Close the remaining exact-boundary gaps:
+   empty/tuple/duck plays and bool trick points; bool banker/attacker tally on
+   history-empty rounds; the nonexistent proposal link; and causal prose that
+   still says feed/own-power/surrender. Add the decisive witnesses, run pure
+   and compiled focused suites, and request one exact-head delta review.
 
 This block is the canonical hourly-review input. Posting, closing or changing
 any review request requires updating this block in the same operational pass;
@@ -56,13 +59,19 @@ PR comments alone are not queue state.
    exits and zero Pair workers remain. Keep all scored records sealed; after
    terminal, review only the score-free final before any record access.
 
-3. **S4 terminal sequence.** Let the controller finish tranche two naturally.
+3. **PR #103 x86 A/B.** After S6 exits and zero S6/Pair workers remain, stage
+   exact base `57a1c2b`, head `3044a2f` and tooling `e407d50`; populate the
+   immutable host-specific six-pair envelope. Obtain one combined PASS, then
+   run its single no-retry batch. Do not overlap either strength job or reuse
+   older timing evidence.
+
+4. **S4 terminal sequence.** Let the controller finish tranche two naturally.
    Only after it exits, run the exact pinned read-only verifier at Git
    `e7551e4`; then request independent terminal review. Do not inspect shard
    outputs directly. The result may select a candidate, select none or HOLD;
    it never deploys automatically.
 
-4. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
+5. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
    If the supervisor publishes a valid score-free final, review it before any
    aggregation. If the immutable timeout fires, preserve the terminal HOLD;
    the sleeping S6 queue must not interpret that as a clean release. PR #96 is

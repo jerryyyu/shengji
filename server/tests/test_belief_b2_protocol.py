@@ -26,7 +26,7 @@ from shengji.rl.belief_corpus import decision_key, split_for_round_seed
 
 
 EXPECTED_PROTOCOL_SHA256 = (
-    "c0b0bd4739df8a536f333a009345d2066ea0a9e5b6994a6d265ec86cf4998b4f")
+    "5659f55c744ddba75c4b0d26504165d54aba879b23c55e996505728e7decd1b7")
 
 
 def test_population_splits_lanes_and_policy_seeds_are_exact():

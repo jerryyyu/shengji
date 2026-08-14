@@ -191,6 +191,14 @@ def validate_ownership(actor: ActorObservationV1,
             actor.deductions.voids_by_relative[relative])
         for relative in range(1, 4)
     }
+    zero_pair_suits = {
+        SEAT_RECEIVERS[relative - 1]: {
+            suit for suit, cap
+            in actor.deductions.pair_caps_by_relative[relative]
+            if cap == 0
+        }
+        for relative in range(1, 4)
+    }
     rows: dict[tuple[str, str], ReceiverCountProbabilityV1] = {}
     expected_by_receiver = {receiver: 0 for receiver in receivers}
     expected_by_card = {card: 0 for card in unseen}
@@ -213,6 +221,11 @@ def validate_ownership(actor: ActorObservationV1,
                 and ordering.eff_suit(row.card) in voids[row.receiver] \
                 and row.count_0_ppb != PROBABILITY_SCALE:
             raise BeliefOwnershipError("proven void carries positive mass")
+        if row.receiver in zero_pair_suits \
+                and ordering.eff_suit(row.card) \
+                in zero_pair_suits[row.receiver] \
+                and row.count_2_ppb != 0:
+            raise BeliefOwnershipError("proven zero-pair cap carries pair mass")
         rows[(row.card, row.receiver)] = row
         expected_by_receiver[row.receiver] += row.expected_count_ppb
         expected_by_card[row.card] += row.expected_count_ppb

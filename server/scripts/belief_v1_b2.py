@@ -89,8 +89,11 @@ from shengji.rl.belief_b2_execution import (  # noqa: E402
     expected_review_claim,
     pipeline_admission_from_bytes,
     pipeline_admission_review_commit,
+    pipeline_consumption_tombstone_bytes,
+    validate_pipeline_consumption_tombstone,
     validate_live_execution,
     validate_execution_design,
+    verify_canonical_remote_main,
 )
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
 from shengji.rl.belief_b2_controller import (  # noqa: E402
@@ -144,15 +147,21 @@ def initialize(args: argparse.Namespace) -> None:
         raise ValueError("design file SHA drift")
     design = execution_design_from_bytes(raw)
     validate_live_execution(design, repo=REPO)
+    verify_canonical_remote_main(REPO)
     marker = authenticate_review_commit(
         design, repo=REPO, review_commit=args.review_commit)
     admission = build_pipeline_admission(
         design, review_commit=args.review_commit, review_marker=marker)
     root = Path(design.evidence_root)
     partial = root.with_name(root.name + ".partial")
+    tombstone = root.with_name(root.name + ".consumed.json")
     if root.exists() or partial.exists() or root.is_symlink() \
-            or partial.is_symlink():
+            or partial.is_symlink() or tombstone.exists() \
+            or tombstone.is_symlink():
         raise ValueError("pipeline evidence namespace is already occupied")
+    publish_exclusive_bytes(
+        tombstone, pipeline_consumption_tombstone_bytes(admission))
+    _fsync_parent(tombstone)
     partial.mkdir(mode=0o700, parents=False)
     try:
         publish_exclusive_bytes(partial / "design.json", raw)
@@ -194,6 +203,9 @@ def _load_authorized_root(root: Path):
         raise ValueError("pipeline review snapshot drift")
     admission = pipeline_admission_from_bytes(
         admission_raw, design=design, review_marker=marker)
+    tombstone = root.with_name(root.name + ".consumed.json")
+    validate_pipeline_consumption_tombstone(
+        stable_read_bytes(tombstone), admission=admission)
     return design, admission, marker
 
 

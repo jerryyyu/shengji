@@ -13,7 +13,7 @@ import pytest
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.engine.cards import Ordering
-from shengji.engine.round import actual_play_after
+from shengji.engine.round import Round, actual_play_after
 from shengji.rl.belief_contract import (
     BeliefTargetsV1,
     PublicTranscriptV1,
@@ -116,6 +116,39 @@ def _belief(actor, worlds: list[dict[tuple[str, str], int]]):
         receiver_sizes=receiver_sizes(actor),
         probabilities=tuple(rows),
     )
+
+
+def _fixed_banker_nonbanker_declaration(copies: int):
+    """Build a sound hand pin: declarer cannot put cards in banker's kitty."""
+    for seed in range(9451, 9651):
+        rnd = Round("2", banker=0, rng=random.Random(seed))
+        while rnd.phase == "deal":
+            rnd.deal_next()
+        option = next((cards
+                       for seat in range(1, 4)
+                       for cards in rnd.declare_options(seat)
+                       if len(cards) == copies), None)
+        if option is None:
+            continue
+        declarer = next(seat for seat in range(1, 4)
+                        if option in rnd.declare_options(seat))
+        rnd.declare(declarer, option)
+        accepted = rnd.declaration
+        transcript = PublicTranscriptV1().with_declaration(
+            accepted["seat"], accepted["cards"], accepted["strength"])
+        rnd.finalize_declare()
+        bot = HeuristicBot()
+        rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+        actor = build_actor_observation(rnd, rnd.turn, transcript)
+        target = build_belief_targets(rnd, rnd.turn)
+        if not actor.deductions.declaration_pins:
+            continue
+        pinned_card, _, _ = actor.deductions.declaration_pins[0]
+        if copies == 1 \
+                and dict(actor.deductions.unseen).get(pinned_card) != 2:
+            continue
+        return actor, target
+    raise AssertionError("no fixed-banker declaration fixture found")
 
 
 def _swap_two_hidden_hands(rnd, actor_seat):
@@ -412,53 +445,7 @@ def test_proven_void_is_a_probability_one_zero_count():
 
 
 def test_single_declaration_is_lower_bound_not_exact_count():
-    fixture = None
-    for seed in range(9451, 9551):
-        game = Game(random.Random(seed))
-        rnd = game.start_round()
-        bot = HeuristicBot()
-        transcript = PublicTranscriptV1()
-        while rnd.phase == "deal":
-            seat, _, _ = rnd.deal_next()
-            cards = bot.decide_declare(rnd, seat)
-            if cards:
-                rnd.declare(seat, cards)
-                accepted = rnd.declaration
-                transcript = transcript.with_declaration(
-                    accepted["seat"], accepted["cards"],
-                    accepted["strength"])
-        for seat in range(4):
-            cards = bot.decide_declare(rnd, seat, final=True)
-            if cards:
-                rnd.declare(seat, cards)
-                accepted = rnd.declaration
-                transcript = transcript.with_declaration(
-                    accepted["seat"], accepted["cards"],
-                    accepted["strength"])
-        rnd.finalize_declare()
-        if rnd.declaration is None or rnd.declaration["strength"] != 1:
-            continue
-        rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
-        first = rnd.turn
-        attempted = bot.decide_play(rnd, first)
-        previous_last = rnd.last_trick
-        rnd.play(first, attempted)
-        transcript = transcript.with_play(
-            first, attempted, actual_play_after(rnd, first, previous_last))
-        actor = build_actor_observation(rnd, rnd.turn, transcript)
-        if not actor.deductions.declaration_pins:
-            continue
-        target = build_belief_targets(rnd, rnd.turn)
-        counts = _target_counts(actor, target)
-        card, relative, copies = actor.deductions.declaration_pins[0]
-        owner = f"seat-relative-{relative}"
-        if copies != 1 or counts[(card, owner)] != 1 \
-                or dict(actor.deductions.unseen).get(card) != 2:
-            continue
-        fixture = actor, target
-        break
-    assert fixture is not None
-    actor, target = fixture
+    actor, target = _fixed_banker_nonbanker_declaration(1)
     counts = _target_counts(actor, target)
     belief = _belief(actor, [counts])
     validate_ownership(actor, belief)
@@ -482,38 +469,69 @@ def test_single_declaration_is_lower_bound_not_exact_count():
                            replace(belief, probabilities=tuple(rows)))
 
 
+def test_banker_buried_declaration_is_not_pinned_to_banker_hand():
+    fixture = None
+    for seed in range(9651, 9851):
+        rnd = Round("2", banker=0, rng=random.Random(seed))
+        while rnd.phase == "deal":
+            rnd.deal_next()
+        option = next((cards for cards in rnd.declare_options(0)
+                       if len(cards) == 1), None)
+        if option is None:
+            continue
+        rnd.declare(0, option)
+        accepted = rnd.declaration
+        transcript = PublicTranscriptV1().with_declaration(
+            accepted["seat"], accepted["cards"], accepted["strength"])
+        rnd.finalize_declare()
+        declared = option[0]
+        remainder = list(rnd.hands[0])
+        remainder.remove(declared)
+        rnd.bury(0, [declared, *remainder[:7]])
+        bot = HeuristicBot()
+        attempted = bot.decide_play(rnd, 0)
+        previous_last = rnd.last_trick
+        rnd.play(0, attempted)
+        transcript = transcript.with_play(
+            0, attempted, actual_play_after(rnd, 0, previous_last))
+        actor = build_actor_observation(rnd, rnd.turn, transcript)
+        target = build_belief_targets(rnd, rnd.turn)
+        if dict(target.hidden_burial).get(declared, 0) == 1:
+            fixture = actor, target, declared
+            break
+    assert fixture is not None
+    actor, target, declared = fixture
+    assert not any(card == declared
+                   for card, _, _ in actor.deductions.declaration_pins)
+    truth = _target_counts(actor, target)
+    belief = _belief(actor, [truth])
+    validate_ownership(actor, belief)
+    assert truth[(declared, KITTY_RECEIVER)] == 1
+
+
+def test_proven_zero_pair_cap_refuses_two_copy_mass():
+    _, actor, target, _ = _state(9871)
+    pair = next(
+        (hand.seat_relative, card)
+        for hand in target.other_hands
+        for card, count in hand.cards
+        if count == 2
+    )
+    relative, card = pair
+    ordering = Ordering(actor.trump_suit, actor.trump_rank)
+    suit = ordering.eff_suit(card)
+    caps = list(actor.deductions.pair_caps_by_relative)
+    caps[relative] = tuple(sorted({*caps[relative], (suit, 0)}))
+    actor = replace(actor, deductions=replace(
+        actor.deductions, pair_caps_by_relative=tuple(caps)))
+    truth = _target_counts(actor, target)
+    belief = _belief(actor, [truth])
+    with pytest.raises(BeliefOwnershipError, match="zero-pair cap"):
+        validate_ownership(actor, belief)
+
+
 def test_pair_declaration_is_exact_probability_one_ownership():
-    seed = 9502
-    game = Game(random.Random(seed))
-    rnd = game.start_round()
-    bot = HeuristicBot()
-    transcript = PublicTranscriptV1()
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        cards = bot.decide_declare(rnd, seat)
-        if cards:
-            rnd.declare(seat, cards)
-            accepted = rnd.declaration
-            transcript = transcript.with_declaration(
-                accepted["seat"], accepted["cards"], accepted["strength"])
-    for seat in range(4):
-        cards = bot.decide_declare(rnd, seat, final=True)
-        if cards:
-            rnd.declare(seat, cards)
-            accepted = rnd.declaration
-            transcript = transcript.with_declaration(
-                accepted["seat"], accepted["cards"], accepted["strength"])
-    rnd.finalize_declare()
-    assert rnd.declaration["strength"] == 2
-    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
-    first = rnd.turn
-    attempted = bot.decide_play(rnd, first)
-    previous_last = rnd.last_trick
-    rnd.play(first, attempted)
-    transcript = transcript.with_play(
-        first, attempted, actual_play_after(rnd, first, previous_last))
-    actor = build_actor_observation(rnd, rnd.turn, transcript)
-    target = build_belief_targets(rnd, rnd.turn)
+    actor, target = _fixed_banker_nonbanker_declaration(2)
     counts = _target_counts(actor, target)
     belief = _belief(actor, [counts])
     validate_ownership(actor, belief)

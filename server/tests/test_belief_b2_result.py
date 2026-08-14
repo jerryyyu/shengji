@@ -240,8 +240,10 @@ def test_terminal_precedence_and_named_nulls():
         base, resources=resources)).decision == REFUSE_INCOMPLETE
     assert evaluate_b2_terminal(_rebind(
         base, c1=_c1(False))).decision == NO_LIFT
-    assert evaluate_b2_terminal(_rebind(
-        base, c2=_c2(False))).decision == NO_BEHAVIOR
+    c2_descriptive = evaluate_b2_terminal(_rebind(
+        base, c2=_c2(False)))
+    assert c2_descriptive.decision == PASS
+    assert c2_descriptive.c2_behavioral_claim_supported is False
     assert evaluate_b2_terminal(_rebind(
         base, n2=_n2(False))).decision == NO_BEHAVIOR
 

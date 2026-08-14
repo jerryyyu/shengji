@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -235,7 +236,7 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
         (split, kind): batch(split, kind)
         for split in ("train", "calibration")
         for kind in ("candidate", LABEL_PERMUTATION_CONTROL)}
-    monkeypatch.setattr(controller, "TRAIN_MAX_EPOCHS", 1)
+    monkeypatch.setattr(controller, "TRAIN_MAX_EPOCHS", 2)
     monkeypatch.setattr(
         controller, "reopen_capture_lane_public_manifest",
         lambda *args, **kwargs: {"rounds": [
@@ -253,11 +254,39 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
         trained = run_training_cohort(
             root, design, admission, kind=kind, review_marker=marker)
         training_directory = root / "training" / kind
-        assert trained["selected_common_epoch"] == 1
+        assert trained["selected_common_epoch"] in (1, 2)
+        assert trained["epoch_count"] == 2
         assert trained["test_split_opened"] is False
         assert reopen_training_cohort(
             training_directory, design=design, admission=admission,
             kind=kind) == trained
+        manifest_path = training_directory / "manifest.json"
+        manifest_raw = manifest_path.read_bytes()
+        mutated = json.loads(manifest_raw)
+        mutated["epochs"][0]["member_training_receipts"][0][
+            "model_state_sha256_before"] = "0" * 64
+        manifest_path.chmod(0o600)
+        manifest_path.write_bytes(canonical_json_bytes(mutated))
+        manifest_path.chmod(0o400)
+        with pytest.raises(
+                BeliefB2ControllerError, match="initialization receipt"):
+            reopen_training_cohort(
+                training_directory, design=design, admission=admission,
+                kind=kind)
+        mutated = json.loads(manifest_raw)
+        mutated["epochs"][1]["member_training_receipts"][0][
+            "model_state_sha256_before"] = "1" * 64
+        manifest_path.chmod(0o600)
+        manifest_path.write_bytes(canonical_json_bytes(mutated))
+        manifest_path.chmod(0o400)
+        with pytest.raises(
+                BeliefB2ControllerError, match="cross-epoch receipt"):
+            reopen_training_cohort(
+                training_directory, design=design, admission=admission,
+                kind=kind)
+        manifest_path.chmod(0o600)
+        manifest_path.write_bytes(manifest_raw)
+        manifest_path.chmod(0o400)
         foreign = training_directory / "foreign.json"
         foreign.write_bytes(b"{}")
         with pytest.raises(

@@ -26,7 +26,7 @@ from shengji.rl.belief_corpus import decision_key, split_for_round_seed
 
 
 EXPECTED_PROTOCOL_SHA256 = (
-    "a3d5357ddf9ef38efb0bb79fc298f9cb95591f86f0dfd18ced7028d02dae4400")
+    "fa485d517dfbaf85b4454e438e0a43f4174c75528d82eb8e1ef4b5bc53b02dc4")
 
 
 def test_population_splits_lanes_and_policy_seeds_are_exact():
@@ -80,6 +80,11 @@ def test_canonical_protocol_is_pinned_and_authorizes_nothing():
         "history_chronology_ablation_is_inference_only"] is True
     assert payload["primary_gate"] == {
         "metric": "paired-per-round-hidden-ownership-count-brier",
+        "reference_finite_sample_bias_correction": (
+            "unbiased-multinomial-empirical-brier-v1"),
+        "reference_world_count": 256,
+        "bias_estimator": (
+            "sum(p_hat*(1-p_hat))/(reference_world_count-1)"),
         "reference_minus_candidate_mean_relative_floor_ppb": 5_000_000,
         "one_sided_95_percent_lower_bound_strictly_positive": True,
         "round_bootstrap_replicates": 20_000,

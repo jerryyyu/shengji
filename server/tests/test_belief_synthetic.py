@@ -16,6 +16,7 @@ from shengji.rl.belief_synthetic import (
     C4_MAX_ROW_TOTAL_VARIATION_PPB,
     BeliefSyntheticError,
     C4SyntheticEvidenceV1,
+    _evaluate,
     build_c4_contexts,
     run_c4_synthetic_pipeline,
     validate_c4_synthetic_evidence,
@@ -66,6 +67,14 @@ def test_uniform_no_learning_control_fails_exact_posterior(evidence):
             raw_weights=uniform_raw_count_weights(
                 actor, behavior_policy_ids=C4_BEHAVIOR_POLICY_IDS)))
     forged = replace(evidence, candidates=tuple(candidates))
+    uniform_result = _evaluate(
+        evidence.contexts, tuple(candidates),
+        model_sha256=evidence.result.model_state_sha256,
+        training_receipts_sha256=(
+            evidence.result.training_receipts_sha256))
+    assert uniform_result.passed is False
+    assert uniform_result.max_event_probability_error_ppb \
+        > C4_MAX_EVENT_ERROR_PPB
     with pytest.raises(BeliefSyntheticError, match="derivation drift"):
         validate_c4_synthetic_evidence(forged)
 

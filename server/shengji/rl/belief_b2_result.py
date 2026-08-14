@@ -45,7 +45,7 @@ from .belief_synthetic import C4ExactPosteriorResultV1
 MECHANICS_SCHEMA = "belief-v1-b2-mechanics-result-v1"
 RESOURCE_SCHEMA = "belief-v1-b2-resource-receipt-v1"
 INVENTORY_SCHEMA = "belief-v1-b2-artifact-inventory-v1"
-TERMINAL_SCHEMA = "belief-v1-b2-terminal-result-v1"
+TERMINAL_SCHEMA = "belief-v1-b2-terminal-result-v2"
 
 PASS = "PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW"
 NO_LIFT = "SELECT_NONE_NO_CALIBRATION_LIFT"
@@ -331,7 +331,7 @@ class B2TerminalResultV1:
     resources_within_caps: bool
     reference_replicates_stable: bool
     c1_calibration_passed: bool
-    c2_behavioral_and_n1_passed: bool
+    c2_behavioral_claim_supported: bool
     c3_reliability_report_complete: bool
     n2_permuted_label_passed: bool
     c4_exact_posterior_passed: bool
@@ -351,8 +351,8 @@ class B2TerminalResultV1:
                 "reference_replicates_stable": (
                     self.reference_replicates_stable),
                 "c1_calibration": self.c1_calibration_passed,
-                "c2_behavioral_and_n1": (
-                    self.c2_behavioral_and_n1_passed),
+                "c2_behavioral_claim_supported": (
+                    self.c2_behavioral_claim_supported),
                 "c3_reliability_report_complete": (
                     self.c3_reliability_report_complete),
                 "n2_permuted_label": self.n2_permuted_label_passed,
@@ -529,7 +529,7 @@ def evaluate_b2_terminal(
         decision = REFUSE_INCOMPLETE
     elif not evidence.c1.passed:
         decision = NO_LIFT
-    elif not c2_pooled or not evidence.n2.passed:
+    elif not evidence.n2.passed:
         decision = NO_BEHAVIOR
     else:
         decision = PASS
@@ -550,7 +550,7 @@ def evaluate_b2_terminal(
         resources_within_caps=evidence.resources.within_caps,
         reference_replicates_stable=evidence.reference_replicates_stable,
         c1_calibration_passed=evidence.c1.passed,
-        c2_behavioral_and_n1_passed=c2_pooled,
+        c2_behavioral_claim_supported=c2_pooled,
         c3_reliability_report_complete=c3_complete,
         n2_permuted_label_passed=evidence.n2.passed,
         c4_exact_posterior_passed=evidence.c4.passed,
@@ -590,7 +590,7 @@ def validate_b2_terminal(
         result.mechanics_passed, result.artifacts_complete,
         result.resources_within_caps, result.reference_replicates_stable,
         result.c1_calibration_passed,
-        result.c2_behavioral_and_n1_passed,
+        result.c2_behavioral_claim_supported,
         result.c3_reliability_report_complete,
         result.n2_permuted_label_passed,
         result.c4_exact_posterior_passed,
@@ -603,7 +603,7 @@ def validate_b2_terminal(
     decision = (REFUSE_MECHANICS if mechanics_failure else
                 REFUSE_INCOMPLETE if incomplete else
                 NO_LIFT if not evidence.c1.passed else
-                NO_BEHAVIOR if (not c2_pooled or not evidence.n2.passed) else
+                NO_BEHAVIOR if not evidence.n2.passed else
                 PASS)
     evidence_hashes = (
         ("inventory", evidence.inventory.sha256()),

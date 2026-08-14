@@ -18,9 +18,11 @@ The offline program answers one question:
 > consistent sampler, without leaking hidden state or violating hard engine
 > constraints?
 
-It does **not** ask whether the bot is stronger. A pass permits implementation
-and review of `BeliefSamplerV1`; a failure closes this exact encoder/model/data
-recipe before an online screen.
+It does **not** ask whether the bot is stronger, and this population is not
+sized to prove any named rare behavioral inference. A pass establishes only
+aggregate ownership calibration and permits a request to review
+`BeliefSamplerV1`; a failure closes this exact encoder/model/data recipe before
+an online screen.
 
 ## Fixed scope
 
@@ -73,9 +75,12 @@ changes the whole interval; individual seeds are never substituted.
 ## Capture contract and preliminary economics
 
 Every round is driven by a source-pinned capture wrapper that owns
-`PublicTranscriptV1` from the first deal event through round end. It records
-every accepted deal-window and final-window declaration, then every attempted
-and engine-actual play. It emits paired actor and target rows before each play.
+`PublicTranscriptV1` from the first deal event through round end. The sealed
+capture record retains every attempted and engine-actual play for offline
+integrity. An actor row exposes a failed-throw bit and the forced component to
+every seat, but exposes returned attempted cards only to the seat that made the
+attempt, matching the engine's broadcast surface. It emits paired actor and
+target rows before each play.
 
 A local compiled ARM preflight on one deterministic champion round at exact PR
 #111 head measured:
@@ -113,7 +118,10 @@ Two controls are frozen.
 ### `REF-C`: current constraint-consistent proposal
 
 For each held-out actor row, draw a fixed number of complete worlds with the
-current sampler and its exact `Memory` constraints. Convert those worlds into
+current sampler and its exact sound `Memory` constraints. A declaration by a
+non-banker remains a hand pin. A banker-declarer's shown card is not a hand
+pin because the engine legally permits it to be in the hidden burial. Convert
+those worlds into
 empirical card-receiver count probabilities and derived suit/shape/point
 marginals. The draw count, RNG stream, accepted/rejected work, and Monte Carlo
 uncertainty are recorded. No learned features are present. The randomized
@@ -161,7 +169,8 @@ The first model is deliberately small and single-purpose.
 ### Inputs
 
 - one token per public declaration and public play event, preserving relative
-  seat, trick position, attempted cards, and engine-actual cards;
+  seat, trick position, the public failed-throw signal, actor-visible attempted
+  cards, and engine-actual cards;
 - per-card-code fact features from the actor hand, actor-known burial, played
   counts, played-by-seat counts, unseen counts, declaration pins, and effective
   suit/rank under the current ordering;
@@ -283,15 +292,16 @@ reported; no best-seed metric exists.
    resamples, using deterministic seed `4654505738542866658`. An integrity
    failure or missing round refuses the result; it is never dropped from the
    bootstrap population.
-2. **C2 behavioral strata:** report declined-feed, forced-trump/joker, and
-   unforced-point-play strata. A behavioral claim requires at least 500 test
-   receiver-decision exposures in its stratum and a positive lower bound there.
-   Sparse named strata are reported as underpowered and are never individually
-   oversampled into a claim. The primary C2 claim uses the preregistered pooled
-   set of all privately confirmed choice signals, deduplicated by current
-   decision and signaled receiver; its paired lower bound must be positive and
-   its inference-only chronology-ablation lift must retain no more than 25% of
-   the natural-history lift.
+2. **C2 behavioral strata (descriptive in this B2):** report declined-feed,
+   forced-trump/joker, and unforced-point-play strata. A future behavioral
+   claim requires at least 500 test receiver-decision exposures in a named
+   stratum and a positive lower bound there. The existing champion census makes
+   declined-feed essentially absent, and this 4,096-round population was not
+   sized from all three stratum prevalences. Sparse named strata and the pooled
+   set are therefore reported without controlling the B2 terminal decision.
+   No underpowered or pooled result may be cited as evidence that the model
+   learned the named tactical inference. A separately sized natural or mixed-
+   policy corpus is required before such a claim becomes binding.
 
 Behavioral-stratum membership has two separate forms. The actor-visible form
 uses public sequence patterns only. A target-side audit form may use the true
@@ -315,10 +325,11 @@ signal, the source's pre-play trump length and pair count.
    distributions are joint-posterior outputs and are therefore deferred to B3
    complete-world sampling; B2 must not fabricate them with an unreviewed
    independence assumption.
-4. **C4 exact synthetic posterior:** an independent small-domain instance of
-   the same capture/encoder/projection training pipeline is trained on deals
-   generated under a named known policy whose compatible worlds and action
-   likelihoods can be fully enumerated. On an untouched synthetic fold,
+4. **C4 exact synthetic posterior shim:** a synthetic posterior fixture using
+   real full-domain actor rows exercises the same encoder, count head, optimizer
+   step, and exact projection against two fully enumerated compatible targets.
+   It does not certify the full capture contract or a reduced-deck game. On an
+   untouched synthetic fold,
    maximum event-probability error and total-variation distance must remain
    within preregistered tolerances. This validates the learning pipeline; its
    weights are never mixed with the full-deck candidate.
@@ -339,11 +350,13 @@ No metric may be repaired after the test fold opens.
 
 ## Negative controls
 
-- **N1 history ablation:** at inference only, deterministically permute the
+- **N1 history ablation (descriptive in this B2):** at inference only,
+  deterministically permute the
   complete public event rows within each decision while leaving every event
   row, non-event actor fact, model weight, and true label unchanged.
-  Behavioral-stratum lift must collapse to no more than 25% of the unshuffled
-  lift. No second history-ablation cohort is trained.
+  For any powered positive behavioral stratum, report the retained fraction;
+  do not interpret a point ratio from an underpowered stratum as a mandatory
+  closure. No second history-ablation cohort is trained.
 - **N2 hard-geometry label permutation:** train the same eight-seed cohort on
   privileged count-label rows cyclically permuted between card codes only
   inside an identical actor-derived min/max receiver geometry and unseen-copy
@@ -357,13 +370,14 @@ No metric may be repaired after the test fold opens.
   available human and named-bot opened-development corpora. This is descriptive
   transfer evidence only; no corpus is silently added to training.
 
-If N1 or N2 does not fail on demand, the candidate is treated as leaked or
-nonbehavioral and closes.
+An unexpectedly positive N2 lower bound closes the recipe as leaked or
+nonbehavioral. N1 cannot close this aggregate-calibration B2 because the
+natural population was not sized to make its behavioral strata evaluable.
 
 ## Offline usefulness gates
 
-- **U1 true-world likelihood:** the true held-out hidden allocation receives a
-  positive paired proper-score lower bound versus REF-C.
+- **U1 true-world likelihood:** this is exactly the C1 per-cell held-out proper
+  score, not an independent joint-world test or second line of evidence.
 - **U2 fixed-world value quality:** deferred to B3 because it requires a frozen
   sampleable joint posterior. Before any online screen, B3 must show lower
   fixed-world rollout value error or variance at unchanged continuation and
@@ -383,7 +397,8 @@ The offline run must publish immutable, separately reviewable artifacts:
 - eight candidate and eight permuted-label checkpoints plus cohort manifests;
 - separate candidate and permuted-label train/calibration curves and their
   separately selected common cohort epochs, with no test payload;
-- one terminal test report with E/C/N/U1 metrics and per-stratum counts; and
+- one terminal test report with E/C/N metrics, the explicit U1=C1 alias, and
+  descriptive per-stratum counts; and
 - a no-authority result envelope.
 
 The corpus population envelope is canonical and binds all 4,096 rounds in
@@ -404,11 +419,12 @@ test labels.
 
 The result is exactly one of:
 
-- `PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW` — all E/C/N/U1 gates pass;
+- `PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW` — mechanics, completeness, C1,
+  C3 reporting, N2, and C4 pass; C2 support is reported separately;
 - `SELECT_NONE_NO_CALIBRATION_LIFT` — mechanics pass but the proper-score gate
   fails;
-- `SELECT_NONE_BEHAVIORAL_CLAIM_UNSUPPORTED` — aggregate calibration may pass,
-  but behavioral strata or negative controls fail;
+- `SELECT_NONE_BEHAVIORAL_CLAIM_UNSUPPORTED` — N2 is unexpectedly positive;
+  underpowered or null C2 strata alone do not select this outcome;
 - `REFUSE_MECHANICS_OR_LEAKAGE` — any exact invariant fails; or
 - `REFUSE_INCOMPLETE_COHORT_OR_ARTIFACT` — cost, identity, or completeness
   fails.
@@ -420,9 +436,10 @@ The terminal evaluator consumes one typed mechanics report, one integer-only
 resource receipt, the exact population/cohort/checkpoint/result inventory,
 REF-C replicate stability, C1, pooled C2 plus inference-only N1, complete C3,
 trainable N2, and C4. Decision precedence is mechanics/leakage first,
-completeness/resource caps second, C1 calibration third, then behavioral and
-negative-control support. U1 is the same held-out true-world proper-score gate
-as C1 and may not be independently relabeled. `PASS_TO_B3...` permits only a
+completeness/resource caps second, C1 calibration third, then N2 support.
+C2/N1 support is published as a non-gating field. U1 is the same held-out
+true-world proper-score gate as C1 and may not be independently relabeled.
+`PASS_TO_B3...` permits only a
 request to review B3 sampler implementation; the result itself leaves every
 implementation, run, gameplay, strength, promotion, and deployment authority
 false until an independent terminal reproduction accepts it.
@@ -438,6 +455,14 @@ To avoid another long review chain while preserving real boundaries:
    no sealed or confirmatory evidence is consumed; and
 3. one terminal reproducibility review reopens the immutable manifests and
    recomputes the decision.
+
+The only operational runner is `server/scripts/belief_v1_b2.py` under its
+required safe interpreter flags. Internal library stage functions are testable
+mechanics, not alternate admissions. Initialization verifies that local
+`origin/main` exactly equals the canonical GitHub `main` tip before accepting
+the Claude ledger commit, then writes a durable sibling consumption tombstone
+before creating the evidence root. Deleting only the evidence root cannot
+create a second initialization or test-opening slot.
 
 If later work uses sealed evidence or a strength population, it receives a
 separate design and admission. This offline design grants none.

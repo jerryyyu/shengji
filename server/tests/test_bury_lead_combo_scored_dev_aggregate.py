@@ -545,6 +545,55 @@ def test_recovery_closes_only_canonical_report_mode_order_drift():
         expected_seed=7) == ["report fold contract drift"]
 
 
+def test_recovery_refuses_same_parse_noncanonical_record_bytes():
+    scorer = SimpleNamespace(
+        canonical=lambda value: AGG.canonical(value)[:-1],
+        record_problems=lambda _value, **_kwargs: [
+            "report fold contract drift"],
+    )
+    record = {
+        "deal_seed": 7,
+        "report": {"modes": {mode: {} for mode in AGG.MODES}},
+    }
+    canonical_raw = AGG.canonical(record)
+    noncanonical_raw = canonical_raw[:-1] + b" \n"
+    parsed = json.loads(noncanonical_raw)
+    assert parsed == json.loads(canonical_raw)
+    assert AGG._canonical_record_problems(
+        raw=noncanonical_raw, record=parsed, scorer=scorer,
+        expected_seed=7) == ["scored record canonical byte drift"]
+
+
+def test_recovery_refuses_order_sensitive_validation_copy_bytes():
+    def order_sensitive_canonical(value):
+        return json.dumps(
+            value, separators=(",", ":"), ensure_ascii=False,
+            allow_nan=False).encode()
+
+    def problems(value, *, expected_seed):
+        assert expected_seed == 7
+        if list(value["report"]["modes"]) != list(AGG.MODES):
+            return ["report fold contract drift"]
+        return []
+
+    scorer = SimpleNamespace(
+        canonical=order_sensitive_canonical,
+        record_problems=problems,
+    )
+    producer_record = {
+        "deal_seed": 7,
+        "report": {"modes": {mode: {} for mode in AGG.MODES}},
+    }
+    parsed = json.loads(AGG.canonical(producer_record))
+    raw = scorer.canonical(parsed) + b"\n"
+    assert problems(parsed, expected_seed=7) == [
+        "report fold contract drift"]
+    assert AGG._canonical_record_problems(
+        raw=raw, record=parsed, scorer=scorer,
+        expected_seed=7) == [
+            "mode-order compatibility changed canonical bytes"]
+
+
 def test_stable_bytes_and_strict_json_refuse_links_duplicates_nonfinite(
         tmp_path):
     target = tmp_path / "target.json"

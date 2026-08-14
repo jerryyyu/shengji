@@ -16,11 +16,13 @@ from typing import Any
 
 from .belief_contract import (ActorObservationV1, BeliefTargetsV1,
                               canonical_json_bytes)
+from .belief_corpus import CorpusPairV1, validate_corpus_pair
 from .belief_ownership import (KITTY_RECEIVER, PROBABILITY_SCALE,
                                BeliefOwnershipV1, count_brier_fraction,
                                receiver_sizes, validate_ownership)
 from .belief_reference import REF_C_MODEL_SCHEMA, REF_C_WORLD_COUNT
-from .belief_reopen import belief_targets_from_dict
+from .belief_reopen import (actor_observation_from_dict,
+                            belief_targets_from_dict)
 
 
 DECISION_SCORE_SCHEMA = "belief-v1-offline-decision-proper-score-v1"
@@ -31,6 +33,30 @@ JEFFREYS_PSEUDOCOUNT_DENOMINATOR = 2
 
 class BeliefEvaluationError(ValueError):
     """Offline scoring inputs or their recomputed artifact are invalid."""
+
+
+def reopen_score_pair(
+        pair: CorpusPairV1) -> tuple[ActorObservationV1, BeliefTargetsV1,
+                                     dict[str, Any]]:
+    """Authenticate one paired corpus row before any privileged scoring."""
+    if type(pair) is not CorpusPairV1:
+        raise BeliefEvaluationError("offline score requires an exact corpus pair")
+    try:
+        actor_row, target_row = validate_corpus_pair(
+            pair.actor_bytes, pair.target_bytes)
+        actor = actor_observation_from_dict(actor_row["actor"])
+        target = belief_targets_from_dict(target_row["target"], actor=actor)
+    except (TypeError, ValueError) as exc:
+        raise BeliefEvaluationError("offline corpus pair reconstruction refused") \
+            from exc
+    metadata = {
+        key: actor_row[key]
+        for key in ("round_seed", "decision_index", "actor_seat",
+                    "decision_key", "split")
+    }
+    if any(target_row[key] != value for key, value in metadata.items()):
+        raise BeliefEvaluationError("offline corpus pair metadata drift")
+    return actor, target, metadata
 
 
 def _is_sha256(value: Any) -> bool:
@@ -197,20 +223,22 @@ def _score_decision(
     )
 
 
-def score_decision(
-        actor: ActorObservationV1, target: BeliefTargetsV1,
+def score_corpus_decision(
+        pair: CorpusPairV1,
         reference: BeliefOwnershipV1,
         candidate: BeliefOwnershipV1) -> DecisionProperScoreV1:
-    """Build and independently recompute one privileged offline score."""
+    """Build and recompute one score from an exact hash-bound corpus pair."""
+    actor, target, _ = reopen_score_pair(pair)
     score = _score_decision(actor, target, reference, candidate)
-    validate_decision_score(actor, target, reference, candidate, score)
+    validate_decision_score(pair, reference, candidate, score)
     return score
 
 
 def validate_decision_score(
-        actor: ActorObservationV1, target: BeliefTargetsV1,
+        pair: CorpusPairV1,
         reference: BeliefOwnershipV1, candidate: BeliefOwnershipV1,
         score: DecisionProperScoreV1) -> None:
+    actor, target, _ = reopen_score_pair(pair)
     if type(score) is not DecisionProperScoreV1 \
             or score.schema != DECISION_SCORE_SCHEMA \
             or score.privileged_targets_consumed is not True \

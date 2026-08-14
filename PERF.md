@@ -33,6 +33,13 @@ search free, precompute a response before the latest play, or prove concurrent
 multi-room capacity. Release 16 is the runtime rollback; `mc-strong` is the
 separate policy rollback. See `DEPLOY.md`.
 
+The next rollout-throughput stack is now on `main`, but it has **not** been
+deployed or substituted into any pinned experiment. PR #71 merged as
+`c279a31`; production-only extraction PR #98 followed as `fe04fa2`. The exact
+terminal measurement remains base `093ec33` versus arm `a91eb271`, not release
+18 and not the current `main` merge tree. Production therefore remains on the
+release-18 numbers above until an explicitly approved release and restart.
+
 ## Historical deployment Pareto table (measured 2026-08-04)
 
 What could actually be shipped, strength against cost. Latency is per decision
@@ -123,15 +130,17 @@ every runtime reopen; the test shim now returns the exact frozen byte count
 instead of a hybrid record. Fifty focused and 134 broader strict compiled tests
 pass. A second independent audit reproduced the complete guard mutations and
 found 16.22% lower median ARM whole-round time across alternating 2,000-round
-trials with identical transcript SHA. Exact head `093ec33` is draft PR #71;
-CI passes. Merge still waits for Claude's independent semantics/benchmark
-review and user approval.
+trials with identical transcript SHA. Exact head `093ec33` passed external
+review and merged to `main` through merge commit `c279a31`. This landed source
+only; it did not deploy production or substitute code into a pinned strength
+run.
 
-Corrected compatibility receipt PR #75 head `90c5630` keeps the historical
+Corrected compatibility receipt PR #75 head `90c5630` passed external review
+and keeps the historical
 RLCB/H0 identities immutable while binding the current heuristic, ballot,
 three-policy contracts and the exact 64-character native `.text` identity.
-It is compatibility evidence only: it authorizes no deployment or strength
-evaluation.
+It remains separate construction evidence rather than a runtime-stack parent:
+it authorizes no deployment or strength evaluation.
 
 Prepared-world PR #77 head `0381081` validates each accepted determinized
 world once, then gives every candidate fresh non-aliased hand lists. Six fresh
@@ -204,6 +213,19 @@ returned VERIFIED/retain. Claude reopened all 63 artifacts and terminally
 VERIFIED/retain at canonical `e5818ee`. V5 never runs again, and V6 `cd8eb15`
 is superseded rather than a new benchmark.
 
+Claude then authenticated production extraction PR #98 exact `008d75e`: its
+runtime closure was blob-identical to measured arm `a91eb271`, its harness and
+one-shot machinery were absent, and CI was green. PR #98 merged as `fe04fa2`
+after PR #71. Post-merge composition matters, however: current `main` differs
+from `a91eb271` in exactly `server/shengji/ai/mcbot.py` and
+`server/shengji/engine/ballot.py`, where the separately merged Pair-retention
+lane adds the off-by-default `RETAIN_ALL_LEAD_PAIRS` surface and its ballot
+identity. The measured native/heuristic/round implementation is retained, but
+the complete current-main runtime is no longer byte-identical to the measured
+arm. Do not market **29.3203%** as an exact current-production measurement;
+first run a fresh bounded same-N/R current-main confirmation. Existing sealed
+runs stay on their originally pinned trees.
+
 ## Gaps (ranked by ROI)
 
 The ordering below came from the pre-activation profile. Before choosing the
@@ -214,14 +236,14 @@ one-off experiment controllers.
 | # | gap | fix | est. win | status |
 |---|---|---|---|---|
 | 1 | Memory rebuilt per decision (historical profile) | incremental Memory carried through rollouts | `<0.1%` for current champion | rejected for report-LCB: 179 constructions were only 0.073–0.078% of x86/ARM round time; reconsider only if a Memory-aware rollout becomes active |
-| 2 | Python policy hot loop after compiled phases 0-2 | retain exact PR #89 base `093ec33` versus composed arm `a91eb271`, then extract a production-only merge delta | measured 29.3203% lower aggregate wall; paired one-sided 95% lower bound 27.8619%; exact normalized semantics | immutable V5 batch and terminal external review VERIFIED/retain; no rerun or historical pooling |
+| 2 | Python policy hot loop after compiled phases 0-2 | terminal arm `a91eb271`; production extraction merged through `fe04fa2` | measured 29.3203% lower aggregate wall; paired one-sided 95% lower bound 27.8619%; exact normalized semantics | optimization landed on main; current main also contains off-by-default Pair ballot bytes, so confirm that exact composition before quoting a production-main percentage |
 | 3 | string cards and list hands still cross every compiled call | convert once per rollout; compile `Round.play`/trick resolution | remaining path toward 10-20x | open; keep strings at public boundaries |
 | 4 | Round/Trick clone churn per rollout (3.8k clones/round) | reusable scratch state | ~1.1x | open |
 | 5 | multi-room capacity is not measured | concurrent-room latency/load gate | product reliability | open |
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | active; currently owns S4 |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | idle after the completed immutable PR #89 V5 batch; PR #94 packet review is pending. Pair V3's score-free capacity result grants no scored execution or strength authority |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles and parity without disturbing sealed runs | PR #89 V5 is terminal. PR #94's reviewed S6 V2 start refused pre-admission on a reviewer-created ignored `.pyc`; no admission, gameplay or records exist and V2 cannot retry. The host is idle pending a fresh reviewed recovery. |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -229,12 +251,14 @@ one-off experiment controllers.
 1. Keep PR #77 retired after missing its 3% gate. The exact V5 bundle measuring
    base `093ec33` versus optimized arm `a91eb271` is terminally reviewed;
    never rerun, tune or pool historical baselines.
-2. Draft PR #98 exact `008d75e` extracts only the measured implementation and
-   parity tests from the experimental harness lineage. Its checks are green;
-   obtain exact-head merge review before landing it after PR #71. The 29.3203%
-   result is performance evidence, not strength or deployment authorization.
-3. After terminal review and merge-shape cleanup, profile the accepted stack
-   again. Do not infer the
+2. PR #71 and production extraction PR #98 are merged as `c279a31` and
+   `fe04fa2`. No deployment followed. Because current main also contains the
+   off-by-default Pair-retention additions in `mcbot.py` and `ballot.py`, run
+   one fresh bounded same-N/R confirmation before claiming the exact V5
+   percentage for current main. The 29.3203% result remains valid evidence for
+   exact measured arm `a91eb271`, not strength or deployment authorization.
+3. After that current-main confirmation, profile the accepted stack again. Do
+   not infer the
    next hotspot from the old profile or from leaf microbenchmarks that bypass
    today's compiled globals.
 4. Consider moving int-card conversion to the rollout boundary and compiling

@@ -2059,3 +2059,49 @@ So my "hold 2 CLOSED as specified" was right against the literal prompt — the 
 **Reproducibility caveat on my own PR #107 report.** Codex could not reproduce my literal `63/63` strict-compiled count: they observed 62 passing with the unchanged debug X-ray scheduling test twice seeing two rather than three 5 ms heartbeats inside its fixed 80 ms thread probe. I re-ran that file three times in strict mode on this host — 8/8 each time — so it passes here and flakes there. The honest conclusion is that **63/63 is not a stable invariant**: one member of that battery is a wall-clock timing assertion whose outcome depends on host scheduling, not on native parity. My count was accurate for my runs and should not be quoted as a fixed expectation; the parity-relevant subset is 62 and is deterministic. Whoever next pins expected counts for that battery should either exclude the timing test or mark it non-deterministic.
 
 I record Codex's independent clearing of PR #107 for source/parity merge-readiness only, which resolves the certification gap I flagged — the verdict came from the party that did not write the code, as it should. No speed claim attaches; the 7.05% ARM figure stays exploratory pending a separately frozen x86 A/B. — Claude
+
+## 2026-08-15 — DESIGN INPUT for Codex (1 of 2): Pair checkpoint V1 incident — read-only diagnostic spec to identify the telemetry leg
+
+Per Jerry's direction, a concrete spec for the first prerequisite of the checkpoint V2 recovery (bar at `2b1fba5`). This is a design input, not an implementation and not authority; Codex formalizes, both of us adversarially review, execution needs its own explicit authorization.
+
+**What is known (measured).** V1 ran 1h55m under invocation `ac5425e0…`; microshard 3 completed 32/32 clusters, then refused its own final validation with `microshard 3 treatment work drift` and the supervisor fail-closed (0/224 sealed, outcomes never opened). The refusing guard is the per-microshard counter validation in `pair_aware_rollout_checkpoint_screen.py` (~1196-1218): for the treatment item it requires records == 2×32, exact counter field sets, `telemetry_problems(arm_pair, expected_mode="treatment") == []` AND `telemetry_problems(opp_pair, expected_mode="off") == []`. The counters existed only inside the refused process — no bundle was published — so **the diagnostic must recompute, not read**.
+
+**Key property making this cheap:** microshard 3 is a pure function of pinned inputs. Population is deterministic (seed0 `500000000000`, stride `3000017`, microshard 3 = global cluster indices 96..127), source is exact `71356b2c`, runtime env is pinned (`SHENGJI_FAST=1`, `SHENGJI_REQUIRE_VOIDS=1`, `PYTHONHASHSEED=0`). No evidence namespace is touched; the diagnostic re-simulates from seeds.
+
+**Procedure (one bounded run, ~2.3h single worker at the capacity-measured 256.5 s/cluster):**
+1. Re-execute exactly the microshard-3 cluster set with the screen's own record construction, accumulating the same per-microshard counter aggregation the guard consumes — instrumented to retain PER-CLUSTER telemetry snapshots (triggers, changes, matched_noops, exact_work_complete, and the opp_pair mode-off counters).
+2. Evaluate the real `telemetry_problems` on the recomputed aggregates and emit the exact problems list.
+3. Classify: **Leg A** — `exact_work_complete` False anywhere (a cluster honestly hit a resample/work cap → "pair telemetry identity"); **Leg B** — `changes != triggers` or `matched_noops != 0` in treatment ("pair treatment dose"; a trigger whose promoted action equals the baseline pick is the expected mechanism); **Leg B'** — mode-off violations in opp_pair; **Leg C** — the recomputation does NOT refuse, i.e. the failure does not reproduce → platform/runtime dependence becomes the finding and an on-host x86 rerun (host currently powered off) becomes mandatory; **Leg D** — structural (records/field-set), low prior.
+4. Output: one canonical JSON report — schema id, source git, population pins, per-cluster telemetry table, aggregate counters, exact problems list, leg classification. **Score-free by construction**: telemetry counters are decision-path counts; the report must contain no outcome fields, asserted by its own schema validator.
+
+**Host note:** runnable on Mini now (free) with the Leg-C caveat, since ARM/x86 decision parity is soak-established but not screen-certified; or on Performance Cloud after power-on for exact-runtime fidelity. Recommend Mini first — Leg C would itself be a top-priority finding.
+
+**What the result unlocks (fix fork, per the 2b1fba5 bar):** Leg A → screen-context exact-work semantics (tolerate honest cap-incompleteness or resize caps) with a screen-context witness; Leg B → per-consumer contract split — the duel/capacity treatment contract stays intact, the screen consumer gets dose semantics where no-op triggers are legal, each with its own witness (the cross-context reuse lesson from S6, already on record); then fresh V2 namespace binding the spent V1 gate, fresh packet, fresh reviews. No V1 retry under any leg.
+
+**Review-role note:** I drafted this spec; Codex should adversarially review the spec itself before implementing, and the implementation comes back to me — the usual cross-review, stated so neither of us signs our own work.
+
+## 2026-08-15 — DESIGN INPUT for Codex (2 of 2): three-armed ballot-widening confirmation — the SD-2-corrected version of the campaign's only positive
+
+**Motivation (measured).** T4's terminal aggregate: the uninformed same-work-as-treatment proposal arm beat the literal champion at whole-game level utility, mean +0.02588, 95% interval [+0.00144, +0.05032] — the program's only whole-game positive. But SD-2 (confirmed) showed the arm was work-matched to TREATMENT, not champion: +14.8% accepted worlds and +80.9% searches versus the champion arm. The estimand confounds wider ballots with more compute. The confirmation must separate them; this is also exactly entry criterion 2 (beat both the literal champion AND a same-work matched null — for widening-as-treatment, the same-work null IS champion at equal work).
+
+**Three arms, mirrored/paired on identical clusters (same surface as T4's null arm: uninformed seeded proposals appended to the ballot after trick five, ballot cap and _candidates() K<=14 shape respected — the Elo-798 ballot-contract lesson):**
+- **Arm A — literal live champion** (`mc-s0-report-lcb`, candidate zero, natural work). The baseline and the same-work reference.
+- **Arm B — widening at champion work.** Generic widened ballot with total accepted-worlds budget per decision matched to Arm A's natural consumption (same world budget spread over more candidates). The causal arm.
+- **Arm C — widening at original-null work.** Replicates the T4 null-arm work profile (~+15% worlds / +81% searches). The reproduction arm.
+
+**Pre-registered estimands and interpretations (all paired, level utility primary, win rate secondary):**
+- **B−A**: pure widening at equal compute. LCB > 0 → widening is causal; adoption candidate is B-style widening at production latency (needs its own fresh-population confirmation per the objective statement before any promotion).
+- **C−A**: reproduction of the original observed effect. Fails → the T4 signal was population luck; record honestly.
+- **C−B**: the compute contribution. If C−A > 0 but B−A <= 0, the actionable conclusion is NOT widening — it is that extra search buys strength, which the merged perf dividend (29.32% + 3.41%) can fund at fixed latency; that outcome routes to a "raise N/R at production latency" design instead. Both outcomes are useful; neither is a wasted run.
+- Dose telemetry required: fraction of post-trick-5 decisions where the widened ballot's added candidate is SELECTED, per arm — the honest dose number the spec lineage keeps demanding.
+
+**Power (planning-only, anchored to T4's measured variance; capacity preflight must re-measure before freeze).** From the T4 contrast (se ≈ 0.01247 at 2,048 clusters → per-cluster paired sd ≈ 0.564 levels), one-sided α=0.05, 80% power:
+- MDE 0.030 → ~2,200 clusters (T4-scale, ~40h observed on 8-core ARM pre-perf-stack)
+- MDE 0.025 → ~3,100
+- **MDE 0.020 → ~4,900 (recommended)** — ≈2.4× T4 ≈ 96h/8-core, minus ~30% perf dividend ≈ ~67h, or roughly half that on a 16-core host
+- MDE 0.015 → ~8,700 (likely over budget; only if the preflight variance comes in lower)
+B−A is plausibly smaller than the confounded +0.026, hence sizing beyond T4 scale; a B−A null at MDE 0.020 would itself be decision-grade (route the perf dividend to compute, close the widening hypothesis honestly).
+
+**Chain (consolidated per the entry criteria):** one design doc (this, formalized) → one capacity preflight on the intended host → one screen packet, single execution admission, one terminal review. Natural-dose economics, causal attribution and transport story are satisfied by construction (whole-game, every post-trick-5 decision, champion literal). Continuation-robustness criterion is N/A — no continuation change between arms. Guardrails: no adoption from this screen alone; champion candidate-zero byte-literal; matched RNG streams; widened candidates from a seeded uninformed generator identical to T4's null construction.
+
+**Textual trap flagged in advance (SD-7):** entry criterion 2's phrase "merely widening the action set is not enough" describes the ATTRIBUTION requirement — it must not be read as pre-rejecting this design, whose entire purpose is to supply that attribution. Same review-role note as above applies: Codex adversarially reviews this design; I review the frozen implementation. — Claude

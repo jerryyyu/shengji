@@ -1,176 +1,118 @@
 # Active Claude/Codex handoff
 
 > **Canonical paths:** coordinate only through `HANDOFF_ACTIVE.md` and
-> `HANDOFF_REVIEW.md` on canonical `main`. Branch-local ledgers are never
-> review authority. Raw review markers belong at column one in the canonical
-> review ledger and must occur exactly once.
->
-> This file is current executable truth only. Historical detail belongs in
-> `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
+> `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
+> authority. Raw review markers belong only in the append-only review ledger.
 
-Review queue and fleet reconciled: 2026-08-15 01:31 EDT from canonical main
-`84613c3`. No sealed outcome bytes were opened during reconciliation.
+Last reconciled: 2026-08-15 07:45 EDT.
 
-## Live fleet
+## Immediate objective
 
-| host | current work | safe state and next boundary |
-|---|---|---|
-| **Mini** | idle | No BELIEF corpus, training, test opening or scored job is running. A preserved unconsumed V1 design from rejected head `5d44ccb1` is stale and cannot be initialized; use the reserved V2 namespace only after source merge. T4 is terminally reviewed `SELECT_NONE`; the PR #103 10,000,000-round differential soak also completed 8/8 PASS without opening sealed evidence. |
-| **Air** | idle after terminal timeout | Broad Pair source `cd206707` ended at 23:29 EDT with `REFUSED: pair screen supervisor timeout`, 0/8 terminal shards and no complete score-free final. Canonical review ledger `483ed02` records the fail-closed terminal. The sleeping selective-S6 queue exited 72/HOLD and did not launch. No process remains. |
-| **Strength Cloud** | powered off / unreachable | S4 is independently terminal `SELECT_NONE`. The user powered the host off without deleting it; SSH is unreachable. Do not infer a live job or power it on without an approved packet. |
-| **Performance Cloud** | powered off / recovery HOLD | A reviewed fresh Pair checkpoint packet had started once under invocation `ac5425e0e106403e9a82a7bd8cb5b221`, but the host is now powered off/unreachable with no reviewed terminal preceding shutdown. Conservatively treat that one-shot admission as interrupted/spent. Do not restart, resume, open outcomes or aggregate; a future power-on permits read-only score-free recovery audit only. |
-| **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
+Finish the BELIEF-V1 B2 source gate, then use one consolidated Mini execution
+to answer the offline question: does a history-aware, actor-visible ownership
+model improve held-out hidden-card calibration over the corrected current
+constraint sampler? This is an infrastructure/calibration milestone, not a
+strength or deployment claim.
+
+In parallel, implement the reviewed three-arm ballot-widening confirmation
+design as the next whole-game causal experiment. Defer the Pair checkpoint V2
+diagnostic implementation unless the user explicitly reprioritizes it.
 
 ## Review queue — precise asks
 
-1. **PR #113 BELIEF-V1 B2 exact-head adversarial re-review — no run authority.**
-   Review exact rebased head `529664f4fd10a51a14991f6d5a5c27db39a37596`
-   on canonical base `749cccb`; its final repair commit parent is `8def515c`.
-   The full PR is the one-shot offline B2 capture/reference/training/evaluation
-   implementation. Re-authenticate the previously repaired finite-reference
-   Brier correction, actor/private boundary, banker-hand-or-kitty eligibility,
-   one-shot/runtime closure and artifact reopeners, then focus on four final
-   holds: (1) separate C3 count-class 0/1/2 ECE/Brier/slope rows with no pooled
-   relabeling; (2) completed-trick winner recomputation from public cards;
-   (3) exact epoch decision-population and ordered-batch-schedule receipts plus
-   actual opened-seed logs; and (4) terminal mechanics gates derived from real
-   ownership/C4 twin/rotation checks and mismatch counts, not supplied booleans
-   or split-function tautologies. The one-guard mutations for all four must
-   turn their named witnesses red. Reproduce 183/183 BELIEF and 139/139 broader
-   engine/server tests in pure and strict compiled modes; production `Memory`,
-   engine/AI bytes and golden `mc-13` must stay exact. Review prompt/comment:
-   <https://github.com/jerryyyu/shengji/pull/113#issuecomment-5300696260>.
-   PASS means source merge-readiness only and must explicitly leave corpus
-   generation, training, test opening, freeze-design, cloud, B3, gameplay,
-   online sampling, strength, promotion and deployment authority false.
-   Current main adds only later operational-doc reconciliation and conflicts
-   with the PR in `BACKLOG.md`; all source paths merge without conflict. After
-   PASS, use a two-parent non-squash merge that preserves every reviewed PR
-   source blob exactly and keeps canonical main's current operational docs.
-   Do not rebase or rewrite the pending reviewed head merely to clear this
-   docs-only integration conflict.
+1. **PR #113 BELIEF-V1 B2 delta re-review — current blocker.** Review exact
+   head `0da43a00c7e556ff7d7734ec4e883af293bb8b23`, parent
+   `529664f4fd10a51a14991f6d5a5c27db39a37596`, under PR comment
+   `5302070481`. Scope is the nine-file final delta. Re-run the four named
+   mutations: ECE-only repooling; literal-zero mechanics counters;
+   winner-to-next-leader neutralization; attacker-points neutralization.
+   Verify the post-observer recapture still produces the named mutation
+   refusal. Return exact-head PASS or a precise HOLD. PASS is source
+   merge-readiness only: no freeze, corpus generation, training, test opening,
+   cloud use, gameplay, strength, promotion or deployment authority.
 
-2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
-   Exact current head `a064ac4108c748de1954de94646b63e17d72a017` is green and
-   mergeable. Reproduce the stale-cache in-place mutation witness, one lazy
-   preparation per accepted world, fresh candidate copies, direct-call and
-   stub seams, and exact 33-card native admission with sentinel-proven fallback
-   at 34/64/128/129 cards. The prior 7.05% ARM timing remains exploratory;
-   code PASS only permits a separately frozen x86 A/B design.
+2. **No other current review request.** The next review starts only after
+   either (a) PR #113 lands and a fresh Mini-specific V2 design is frozen, or
+   (b) the three-arm widening implementation publishes an exact source/design
+   head. Do not spend the hourly review cycle re-reviewing closed or spent
+   S4/S6/T4/Pair artifacts.
 
-This block is the canonical hourly-review input. Posting, closing or changing
-any review request requires updating this block in the same operational pass;
-PR comments alone are not queue state.
+## BELIEF-V1 current truth
 
-## Execution and terminal queue
+| layer | state | what it proves / does not prove |
+|---|---|---|
+| **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
+| **B2 offline pipeline source** | PR #113 exact `0da43a0` published. Local validation: 62 focused; 186/186 BELIEF pure; 186/186 strict compiled/void; 139 broader pure; 112 broader compiled/parity plus 2 expected skips. Four named mutations killed. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. External delta PASS is still pending. |
+| **B2 data/result** | Absent. No accepted V2 design, namespace, corpus, reference worlds, checkpoint, test result or terminal report exists. | No calibration lift has been measured. |
+| **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
+| **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
-1. **BELIEF-V1 B2 pre-execution boundary.** No population has been spent and
-   no execution is authorized while PR #113 awaits exact-head source PASS.
-   After PASS, merge the reviewed bytes, create a clean detached Mini checkout
-   at the resulting canonical `main`, and run only `freeze-design` under the
-   required Python `-P -B` flags with a durable absolute evidence-root/design
-   sibling pair. Freezing records Git/source/native/Python/numerical/boot and
-   evidence-root identity; it does not initialize or open data. Obtain one
-   exact frozen-design marker review. That single marker then authorizes the
-   bounded opened-development sequence—initialize once, 16 capture lanes, 16
-   REF-C lanes, candidate and label-control cohorts, one test opening, terminal
-   verify—without per-stage reviews. Any initialization consumes the sibling
-   tombstone. Terminal evidence still requires one reproducibility review and
-   grants no B3, online gameplay, strength, promotion or deployment authority.
-   Preserve—but never initialize—the old read-only design
-   `/private/tmp/belief-v1-b2-open-dev-offline-v1.design.json` (SHA
-   `c7f93cac…533a1`, rejected execution Git `5d44ccb1`); its evidence root,
-   partial and consumption tombstone are absent. The post-merge freeze must use
-   the fresh absent sibling pair
-   `/private/tmp/belief-v1-b2-open-dev-offline-v2.design.json` and
-   `/private/tmp/belief-v1-b2-open-dev-offline-v2`. Exact repaired source
-   `529664f4` passed a clean native build and `-P -B` bootstrap-only check;
-   this preflight did not publish a design or initialize an execution.
+The earlier Mini design belongs to a rejected source head and must never
+initialize. After source merge, freeze a new V2 design from a clean detached
+Mini checkout; it requires one exact marker review before the consolidated run.
 
-2. **Pair checkpoint successor recovery HOLD.** Capacity and packet review
-   remain authentic, but the one-shot Performance Cloud invocation is no
-   longer reachable after host shutdown and has no reviewed terminal. Treat
-   it as interrupted/spent. On any future power-on, inspect only service state,
-   score-free heartbeats and terminal file population; do not resume, retry,
-   open result bytes or aggregate without a fresh reviewed recovery design.
+## Compute and fleet
 
-3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
-   V1 aggregate admission was spent by a deterministic canonical-key-order
-   refusal on record 0 and can never retry. Exact V2 recovery `2b9d8e5` passed
-   at `addd03e`; its single aggregate and canonical result review `e31e9a2`
-   reproduced SHA `de1c4f33…d0bc` and terminal decision
-   `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`. The bury-source-only signal is
-   hypothesis-generating; no retry, fresh design, screen or strength action.
+| host | current state | next use |
+|---|---|---|
+| **Mini** | Idle; no BELIEF job has started. | After PR #113 source PASS/merge and exact V2 design-marker PASS, run the consolidated B2 pipeline. |
+| **Air** | Idle after the broad Pair fixed timeout. | No retry/resume/partial use. Keep free unless a new reviewed job is selected. |
+| **Strength Cloud** | Powered off. | Keep off; S4 terminally selected none. |
+| **Performance Cloud** | Powered off. | Keep off; the Pair checkpoint V1 attempt was spent and produced no terminal evidence. |
+| **Production** | `mc-s0-report-lcb`, release 18. | Unchanged by BELIEF-V1; no deployment authority. |
 
-4. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
-  complete. Canonical independent review `15e8dbb` reproduced `SELECT_NONE`,
-  final SHA `0aef1ca8…e90`, `strength_claim=false` and
-  `production_promotion=false`. Never retry or reinterpret the terminal
-  decision. Strength Cloud is powered off.
+The frozen planning caps for the eventual Mini B2 run are 4,096 champion
+rounds split 3,279 train / 407 calibration / 410 test; 16 capture lanes; 256
+REF-C worlds per held-out decision; eight candidate and eight permuted-label
+members. Planning caps are 16 capture core-hours / 2 wall-hours, 64 reference
+core-hours / 8 wall-hours, and 32 device-hours / 12 wall-hours. Fresh host
+preflight and the V2 design remain authoritative; these are ceilings, not a
+promise that every stage consumes the full amount.
 
-5. **Air Pair terminal timeout.** Canonical ledger `483ed02` verifies the fixed
-   64.08h timeout, 0/8 terminal shards, no complete score-free final and no
-   published evidence. The S6 queue correctly held rather than interpreting
-   timeout as release. Preserve this terminal HOLD; no aggregation or retry.
+One reviewed marker should cover the complete sequence: initialize, capture,
+reference generation, both cohorts, the single test-decision opening, terminal
+verification. Do not insert per-stage review handshakes unless a named guard
+fails. Any failure consumes only the authority defined by the frozen design;
+there is no retry by default.
 
-## Landed and closed anchors
+## Closed fleet results that determine the plan
 
-- **T4:** terminal `SELECT_NONE`; no retry or continuation.
-- **S4:** exact two-look controller completed; canonical independent review
-  `15e8dbb` reproduced terminal `SELECT_NONE` at final SHA `0aef1ca8…e90`.
-  The lane is closed with no retry or candidate action.
-- **Docs:** PR #97 exact reviewed head `316d6b7` merged at `8bc2da1`. The
-  campaign closeout and post-null roadmap PR #109 exact `8fa96de` PASSed at
-  canonical `499de77` and merged at `09b80bb`. BELIEF-V1 spec/roadmap PR #110
-  exact `b8c2a4c` PASSed at `de26d60` and merged at `fb246a2`; it grants no
-  corpus, training, run, strength or deployment authority. Typed actor/target
-  boundary PR #111 exact `7ebfcf7` PASSed at `e8ba1a0` and merged at
-  `9f0647e`; its in-memory rows likewise grant no capture or training run.
-  Offline ownership design/schema PR #112 exact `a9de2b8` PASSed and merged at
-  `b316470`; PR #113 is its still-unapproved execution implementation and no
-  BELIEF population has been spent.
-- **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
-  exact normalized semantics; PR #98 merged the byte-identical production
-  runtime as `fe04fa2`. A later current-main diagnostic failed its strict
-  normalizer on an explicit false flag; its post-hoc 30.359% is not a
-  confirmation. PR #103 exact `3044a2f` independently retained at 3.4074%
-  lower x86 wall / 1.0299% one-sided LCB under terminal review `95e0faf` and
-  merged through `e3af8c3`; do not add ARM microbenchmarks or PR #107 claims.
-  Existing jobs never hot-swap code.
-- **PR #103 benchmark envelope:** exact design `62e471e4…e075` passed at
-  canonical `f46cad5`; its sole six-pair x86 batch is terminal success and
-  independent result/manifest review `95e0faf` retained it.
-- **Pair ballot:** provenance-preserving foundation #55→#60→#61→#72→#79→#84
-  →#86 is on main. Reviewed design-only PR #100 and PR #101 are also merged.
-  They authorize separate implementation proposals only, not execution.
-- **Point context/flow:** PR #105 exact `c454aaa` passed the final independent
-  guard-witness check and merged at `e875362`. It provides immutable
-  PointContext and structural point-flow primitives but has zero production
-  consumer and grants no run, training, strength or deployment authority. PR
-  #99 exact `0ee28a0` passed descriptive-tooling review and withdraws the old
-  unlike-denominator headline.
-- **S6 V2/V3:** the V2 start refused on ignored bytecode before packet-review
-  snapshot, admission, gameplay, records or final. V2 cannot retry; V3 binds
-  that incident under a fresh namespace and completed cleanly. Aggregate V1
-  later refused on record-zero canonical ordering under valid authority and is
-  spent. Exact V2 recovery then reconstructed all 64 records and terminal
-  review `e31e9a2` selected none for a fresh screen design. No retry or new
-  S6 screen is authorized.
-- **Pair capacity V2 recovery:** the first start refused before admission/work
-  on a Claude-created ignored pyc. Canonical recovery PASS `9a8843b` authorized
-  exact quarantine plus one start; the preserved second invocation passed
-  terminal review at `482119b`, projecting 47.88 hours against the 52h cap.
+- **T4:** terminal `SELECT_NONE` for the learned treatment. Its uninformed
+  widening arm beat champion, but used +14.8% accepted worlds and +80.9%
+  searches, so widening and compute are confounded.
+- **S4:** completed both looks and terminally `SELECT_NONE`.
+- **S6 (shuai-pai sourcing):** recovery aggregate terminally
+  `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`; bury-side criteria passed but the
+  combined lead source failed three gates.
+- **Broad Pair:** fixed 64.08-hour timeout with 0/8 terminal shards and no
+  evidence; no retry or partial interpretation.
+- **Pair checkpoint V1:** one-shot attempt spent on treatment-work telemetry
+  drift; no terminal evidence. Claude's checkpoint diagnostic is a reviewed
+  design input only.
 
-## Standing invariants
+## Next experiment design inputs
 
-- Never inspect live or sealed result/shard bytes. Process state and explicitly
-  reviewed score-free heartbeat fields are the monitoring surface.
-- An implementation/design PASS is not execution authority. Every packet,
-  one-shot admission and terminal opening has its own named gate.
-- Never retry, extend or resize a spent namespace unless a new reviewed design
-  explicitly authorizes a fresh namespace.
-- Same deals, role flips, work and policy randomness remain shared wherever a
-  frozen design requires them. Telemetry is dose/integrity evidence, not
-  whole-game utility.
-- No review implies REPORT reuse, training, strength, production promotion or
-  deployment. No source merge changes already-running pinned workers.
+Claude recorded two design inputs on canonical main at `bf4386b`:
+
+1. **Three-arm ballot widening — implement next.** Arms are literal champion,
+   widening at champion work, and widening at the original T4-null work. This
+   separates action-set value from added compute. Implementation/design/tests
+   only; no packet freeze or launch until its own exact review chain.
+2. **Pair checkpoint V2 diagnostic — defer.** It would recompute microshard 3
+   score-free telemetry to identify exact-work, no-op-dose, mode-off, or
+   platform dependence. It is useful diagnosis but lower priority after two
+   Pair attempts produced no whole-game evidence.
+
+## Authority boundaries
+
+- A design PASS authorizes only the next named implementation or freeze step.
+- A source PASS does not authorize compute.
+- BELIEF B2 may open its test split exactly once only under the fresh reviewed
+  V2 design marker; verification may re-read bytes but cannot create a second
+  decision.
+- B2 cannot launch gameplay and cannot claim strength. A positive B2 result
+  opens B3 sampler design/review only.
+- Never inspect, resume or aggregate spent T4/S4/S6/Pair namespaces outside
+  their existing terminal verifiers.
+- Never deploy, restart production, wipe rooms, power on paid cloud compute or
+  launch a scored job without the task's explicit authority.

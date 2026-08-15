@@ -43,6 +43,7 @@ EXPECTED_PROTOCOL_SHA256 = (
 
 def test_population_is_exactly_balanced_before_any_deal_is_opened():
     rows = v2_round_coordinates()
+    assert v2_round_coordinates() is rows
     assert len(rows) == V2_ROUND_COUNT == 13_312
     assert V2_RANKS == tuple(RANKS)
     assert len({row.round_seed for row in rows}) == len(rows)

@@ -27,13 +27,16 @@ from typing import Any, Iterable
 from ..ai.memory import Memory
 from ..engine.cards import (RANKS, SUITS, Ordering, card_suit, is_joker,
                             make_deck, total_points)
+from ..engine.combos import decompose
+from ..engine.legal import beats, uniform_suit
 from ..engine.round import HAND_SIZE, Round, Trick, TrickPlay
 
 
-ACTOR_OBSERVATION_SCHEMA = "belief-v1-actor-observation-v1"
+ACTOR_OBSERVATION_SCHEMA = "belief-v1-actor-observation-v3"
 BELIEF_TARGETS_SCHEMA = "belief-v1-hidden-ownership-targets-v1"
 PARTITION_SCHEMA = "belief-v1-information-partition-v1"
 DECLARATION_SCHEMA = "final-winning-declaration-v1"
+HIDDEN_KITTY_RECEIVER = "hidden-kitty"
 
 _CARD_CODES = frozenset(make_deck())
 _SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +55,7 @@ BELIEF_CONTRACT_SOURCE_SHA256S = {
     "memory": _sha256_file(_SOURCE_ROOT / "ai" / "memory.py"),
     "cards": _sha256_file(_SOURCE_ROOT / "engine" / "cards.py"),
     "combos": _sha256_file(_SOURCE_ROOT / "engine" / "combos.py"),
+    "legal": _sha256_file(_SOURCE_ROOT / "engine" / "legal.py"),
     "round": _sha256_file(_SOURCE_ROOT / "engine" / "round.py"),
 }
 
@@ -152,12 +156,14 @@ class PublicTranscriptV1:
 @dataclass(frozen=True)
 class PlayView:
     seat_relative: int
+    failed_throw: bool
     attempted_cards: tuple[str, ...]
     cards: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "seat_relative": self.seat_relative,
+            "failed_throw": self.failed_throw,
             "attempted_cards": list(self.attempted_cards),
             "cards": list(self.cards),
         }
@@ -180,6 +186,27 @@ class TrickView:
 
 
 @dataclass(frozen=True)
+class DeclarationEligibilityV1:
+    """A shown copy constrained to a public set of hidden receivers.
+
+    This is distinct from a hand pin.  In particular, a banker-declarer's
+    still-unplayed shown copy may be in the banker hand or the hidden kitty,
+    but cannot be in either unrelated opponent hand.
+    """
+
+    card: str
+    eligible_receivers: tuple[str, ...]
+    minimum_copies: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "card": self.card,
+            "eligible_receivers": list(self.eligible_receivers),
+            "minimum_copies": self.minimum_copies,
+        }
+
+
+@dataclass(frozen=True)
 class DeductionView:
     played: tuple[tuple[str, int], ...]
     played_by_relative: tuple[tuple[tuple[str, int], ...], ...]
@@ -188,6 +215,7 @@ class DeductionView:
     pair_caps_by_relative: tuple[tuple[tuple[str, int], ...], ...]
     run_caps_by_relative: tuple[tuple[tuple[str, int], ...], ...]
     declaration_pins: tuple[tuple[str, int, int], ...]
+    declaration_eligibility: tuple[DeclarationEligibilityV1, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -205,6 +233,10 @@ class DeductionView:
             "declaration_pins": [
                 {"card": card, "seat_relative": seat, "copies": copies}
                 for card, seat, copies in self.declaration_pins
+            ],
+            "declaration_eligibility": [
+                constraint.to_dict()
+                for constraint in self.declaration_eligibility
             ],
         }
 
@@ -371,9 +403,17 @@ def _play_view(play: TrickPlay, attempted_cards: tuple[str, ...],
         raise BeliefContractError("public play is malformed")
     _card_counts(play.cards, label="public play")
     _card_counts(attempted_cards, label="public attempted play")
+    failed_throw = Counter(attempted_cards) != Counter(play.cards)
+    # A failed throw's forced component and failure signal are public, but the
+    # cards returned to another seat's hand are not broadcast.  The acting
+    # seat may retain its own attempted action; every other perspective sees
+    # only the engine-accepted cards plus the explicit public failure bit.
+    actor_visible_attempt = (
+        attempted_cards if play.seat == seat else tuple(play.cards))
     return PlayView(
         seat_relative=(play.seat - seat) % 4,
-        attempted_cards=tuple(sorted(attempted_cards,
+        failed_throw=failed_throw,
+        attempted_cards=tuple(sorted(actor_visible_attempt,
                                     key=rnd.ordering.sort_key)),
         cards=tuple(sorted(play.cards, key=rnd.ordering.sort_key)),
     )
@@ -400,9 +440,24 @@ def _trick_view(trick: Trick, attempts: tuple[tuple[str, ...], ...],
     recomputed_points = total_points(
         card for play in trick.plays for card in play.cards)
     if complete:
+        lead = trick.plays[0].cards
+        incumbent_suit = uniform_suit(lead, rnd.ordering)
+        if incumbent_suit is None:
+            raise BeliefContractError("completed trick lead is not one suit")
+        incumbent_top = decompose(lead, rnd.ordering).top_level()
+        recomputed_winner = trick.plays[0].seat
+        for play in trick.plays[1:]:
+            won, top = beats(
+                play.cards, lead, incumbent_suit, incumbent_top,
+                rnd.ordering)
+            if won:
+                recomputed_winner = play.seat
+                incumbent_top = top
+                incumbent_suit = rnd.ordering.eff_suit(play.cards[0])
         if type(trick.winner) is not int or trick.winner not in range(4) \
                 or type(trick.points) is not int \
-                or trick.points != recomputed_points:
+                or trick.points != recomputed_points \
+                or trick.winner != recomputed_winner:
             raise BeliefContractError("completed trick resolution is invalid")
         winner = (trick.winner - seat) % 4
         points = trick.points
@@ -550,10 +605,33 @@ def _deductions(rnd: Round, seat: int) -> DeductionView:
         tuple(sorted(memory.run_cap[(seat + relative) % 4].items()))
         for relative in range(4)
     )
+    declaration = rnd.declaration
+    banker_declaration = bool(
+        declaration is not None
+        and declaration.get("seat") == rnd.banker
+        and rnd.banker != seat
+    )
     pins = tuple(sorted(
         (card, (owner - seat) % 4, copies)
         for card, (owner, copies) in memory.known.items()
+        if not banker_declaration or owner != rnd.banker
     ))
+    eligibility: tuple[DeclarationEligibilityV1, ...] = ()
+    if banker_declaration:
+        assert declaration is not None
+        constraints = []
+        for card, shown_copies in sorted(Counter(declaration["cards"]).items()):
+            remaining = shown_copies - memory.played_by[rnd.banker][card]
+            if remaining > 0:
+                constraints.append(DeclarationEligibilityV1(
+                    card=card,
+                    eligible_receivers=(
+                        f"seat-relative-{(rnd.banker - seat) % 4}",
+                        HIDDEN_KITTY_RECEIVER,
+                    ),
+                    minimum_copies=remaining,
+                ))
+        eligibility = tuple(constraints)
     return DeductionView(
         played=_card_counts(memory.played.elements(), label="public played"),
         played_by_relative=played_by,
@@ -562,6 +640,7 @@ def _deductions(rnd: Round, seat: int) -> DeductionView:
         pair_caps_by_relative=pair_caps,
         run_caps_by_relative=run_caps,
         declaration_pins=pins,
+        declaration_eligibility=eligibility,
     )
 
 
@@ -593,11 +672,26 @@ def build_actor_observation(
     )
     completed_list: list[TrickView] = []
     offset = 0
+    expected_leader = rnd.banker
+    recomputed_attacker_points = 0
     for trick in rnd.history:
-        completed_list.append(_trick_view(
-            trick, attempts[offset:offset + 4], seat, rnd, complete=True))
+        if trick.leader != expected_leader:
+            raise BeliefContractError(
+                "completed trick winner-to-leader chain is invalid")
+        view = _trick_view(
+            trick, attempts[offset:offset + 4], seat, rnd, complete=True)
+        completed_list.append(view)
+        expected_leader = trick.winner
+        if rnd.is_attacker(trick.winner):
+            recomputed_attacker_points += view.points
         offset += 4
     completed = tuple(completed_list)
+    if rnd.trick.leader != expected_leader:
+        raise BeliefContractError(
+            "current trick winner-to-leader chain is invalid")
+    if rnd.attacker_points != recomputed_attacker_points:
+        raise BeliefContractError(
+            "attacker points reconstruction is invalid")
     current = _trick_view(
         rnd.trick, attempts[offset:offset + len(rnd.trick.plays)], seat, rnd,
         complete=False)

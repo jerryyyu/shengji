@@ -148,7 +148,7 @@ def test_contract_has_exact_source_and_schema_boundary():
     assert partition.actor.schema == ACTOR_OBSERVATION_SCHEMA
     assert partition.targets.schema == BELIEF_TARGETS_SCHEMA
     assert set(BELIEF_CONTRACT_SOURCE_SHA256S) == {
-        "belief_contract", "memory", "cards", "combos", "round",
+        "belief_contract", "memory", "cards", "combos", "legal", "round",
     }
     assert all(len(digest) == 64 for digest in
                BELIEF_CONTRACT_SOURCE_SHA256S.values())
@@ -247,7 +247,7 @@ def test_complete_public_transcript_preserves_overwritten_declarations():
         rnd, rnd.turn, final_only).canonical_bytes() != actor.canonical_bytes()
 
 
-def test_transcript_distinguishes_failed_throw_attempt_from_engine_play():
+def test_transcript_redacts_another_seats_failed_throw_returned_cards():
     game = Game(random.Random(1))
     rnd = game.start_round()
     bot = HeuristicBot()
@@ -284,9 +284,10 @@ def test_transcript_distinguishes_failed_throw_attempt_from_engine_play():
     actor = json.loads(build_actor_observation(
         rnd, rnd.turn, transcript).canonical_bytes())
     play = actor["current_trick"]["plays"][0]
-    assert Counter(play["attempted_cards"]) == Counter(attempt)
+    assert play["failed_throw"] is True
+    assert Counter(play["attempted_cards"]) == Counter(actual)
     assert Counter(play["cards"]) == Counter(actual)
-    assert play["attempted_cards"] != play["cards"]
+    assert Counter(attempt) - Counter(play["attempted_cards"])
 
     wrong_actual = PublicTranscriptV1().with_play(seat, attempt, attempt)
     with pytest.raises(BeliefContractError, match="disagrees with Round"):
@@ -418,6 +419,88 @@ def test_boundary_refuses_nondecision_subclass_and_visible_or_target_drift():
     visible.hands[seat][:3] = [visible.hands[seat][0]] * 3
     with pytest.raises(BeliefContractError, match="more than two"):
         build_actor_observation(visible, seat)
+
+
+def test_completed_trick_winner_is_recomputed_from_public_cards():
+    rnd, bot, transcript = _play_state_with_transcript(8652)
+    for _ in range(4):
+        transcript = _play_and_record(rnd, bot, transcript)
+    assert len(rnd.history) == 1 and rnd.history[0].winner is not None
+    build_actor_observation(rnd, rnd.turn, transcript)
+
+    forged = copy.deepcopy(rnd)
+    forged.history[0].winner = (forged.history[0].winner + 1) % 4
+    with pytest.raises(BeliefContractError, match="trick resolution"):
+        build_actor_observation(forged, forged.turn, transcript)
+
+
+def test_completed_trick_chain_and_attacker_points_are_recomputed():
+    rnd, bot, transcript = _play_state_with_transcript(8654)
+    for _ in range(4):
+        transcript = _play_and_record(rnd, bot, transcript)
+    assert len(rnd.history) == 1
+    assert rnd.trick is not None and not rnd.trick.plays
+    assert rnd.trick.leader == rnd.history[0].winner == rnd.turn
+    build_actor_observation(rnd, rnd.turn, transcript)
+
+    broken_chain = copy.deepcopy(rnd)
+    broken_chain.trick.leader = (broken_chain.trick.leader + 1) % 4
+    broken_chain.turn = broken_chain.trick.leader
+    with pytest.raises(BeliefContractError, match="winner-to-leader chain"):
+        build_actor_observation(
+            broken_chain, broken_chain.turn, transcript)
+
+    broken_points = copy.deepcopy(rnd)
+    broken_points.attacker_points += 5
+    with pytest.raises(BeliefContractError,
+                       match="attacker points reconstruction"):
+        build_actor_observation(broken_points, broken_points.turn, transcript)
+
+    multi, bot, multi_transcript = _play_state_with_transcript(8656)
+    for _ in range(8):
+        multi_transcript = _play_and_record(
+            multi, bot, multi_transcript)
+    assert len(multi.history) == 2
+    assert multi.trick is not None and not multi.trick.plays
+    build_actor_observation(multi, multi.turn, multi_transcript)
+
+    # Keep the forged second trick internally self-consistent and preserve its
+    # link to the current trick.  Without the history-loop chain guard, every
+    # later trick-resolution, hand-size, point-tally, and current-link check
+    # accepts this public-history forgery.
+    forged_middle = copy.deepcopy(multi)
+    second = forged_middle.history[1]
+    second.leader = (second.leader + 1) % 4
+    second.winner = (second.winner + 1) % 4
+    for play in second.plays:
+        play.seat = (play.seat + 1) % 4
+    forged_middle.trick.leader = second.winner
+    forged_middle.turn = second.winner
+    forged_middle.attacker_points = sum(
+        trick.points for trick in forged_middle.history
+        if forged_middle.is_attacker(trick.winner))
+    with pytest.raises(BeliefContractError) as middle_refusal:
+        build_actor_observation(forged_middle, forged_middle.turn)
+    assert middle_refusal.value.args == (
+        "completed trick winner-to-leader chain is invalid",)
+
+    # The first completed trick is chained to the banker independently of all
+    # subsequent winner links.
+    forged_first = copy.deepcopy(rnd)
+    first = forged_first.history[0]
+    first.leader = (first.leader + 1) % 4
+    first.winner = (first.winner + 1) % 4
+    for play in first.plays:
+        play.seat = (play.seat + 1) % 4
+    forged_first.trick.leader = first.winner
+    forged_first.turn = first.winner
+    forged_first.attacker_points = sum(
+        trick.points for trick in forged_first.history
+        if forged_first.is_attacker(trick.winner))
+    with pytest.raises(BeliefContractError) as first_refusal:
+        build_actor_observation(forged_first, forged_first.turn)
+    assert first_refusal.value.args == (
+        "completed trick winner-to-leader chain is invalid",)
 
 
 def test_target_mutation_cannot_change_already_built_actor_snapshot():

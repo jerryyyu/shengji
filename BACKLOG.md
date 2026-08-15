@@ -46,9 +46,11 @@ Plain English: T4 tests whether a learned model can make the existing search
 stronger, not whether a bare neural network can replace Monte Carlo.
 
 All five conditions are now satisfied. Canonical terminal review `a165274`
-verified the recursively reconstructed `SELECT_NONE`. The matched uninformed
-proposal beat champion on this population, but the learned proposal did not
-beat that control; no T4 confirmation or continuation is authorized.
+verified the recursively reconstructed `SELECT_NONE`. The treatment-work-
+matched uninformed proposal beat champion on this population, but used 14.8%
+more accepted worlds and 80.9% more searches than champion. The learned
+proposal did not beat that control; no T4 continuation is authorized, and
+widening requires a separate three-arm work-controlled confirmation.
 
 ## Parallel-lane exit criteria
 

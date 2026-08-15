@@ -70,8 +70,10 @@ Today the project has three useful but separate mechanisms:
 - `Memory` reconstructs exact public facts and conservative deductions from
   public play plus the acting hand. It knows seen cards, proven voids,
   declaration pins, pair/run upper bounds, and whether a card is *provably*
-  boss. Its risk helpers answer questions such as “could somebody beat this?”;
-  they are not calibrated probabilities.
+  boss. Its production declaration pin is intentionally preserved for policy
+  identity even though BELIEF-V1 must weaken a banker-declarer's pin to the
+  sound banker-hand/hidden-kitty disjunction. Its risk helpers answer questions
+  such as “could somebody beat this?”; they are not calibrated probabilities.
 - `rl-observation-v1-public-no-private-kitty` is a fixed 531-value tensor. It
   contains the acting hand, aggregate cards played by relative seat, the
   current trick, aggregate unseen cards, trump/banker/role/points/card-count
@@ -79,10 +81,12 @@ Today the project has three useful but separate mechanisms:
   burial to preserve historical checkpoint identity. Much of the chronology,
   declaration structure, pair/run deductions, and uncertainty over ownership
   is absent or collapsed.
-- `MCBot` samples assignments that satisfy hand sizes, declaration pins,
-  voids, and pair/run caps. Subject to those constraints, it does not score a
-  world by how likely the declarations and play history make it. The result is
-  constraint-consistent determinization, not a calibrated posterior.
+- `MCBot` samples assignments that satisfy hand sizes, its production
+  declaration pins, voids, and pair/run caps. BELIEF-V1 reuses its assignment
+  kernel but corrects the banker-declaration eligibility at the reference
+  boundary. Subject to those constraints, it does not score a world by how
+  likely the declarations and play history make it. The result is constrained
+  determinization, not a calibrated posterior.
 
 Chronological public-history and privileged-feature encoders also exist for
 the DouZero and Suphx microbaselines. They establish useful mechanics, but they
@@ -103,9 +107,12 @@ It does **not** reveal the hidden deal. It represents uncertainty about it.
 
 The evidence orders the three pillars:
 
-1. **Search capacity:** preserve and confirm generic widening because it is the
-   measured positive. Spend the merged performance dividend on more worlds,
-   more candidates, or narrower confidence intervals.
+1. **Search capacity:** preserve generic widening as a measured hypothesis,
+   not a same-work win. Its positive T4 null arm used 14.8% more accepted
+   worlds and 80.9% more searches than champion. Confirm it with champion,
+   widening-at-champion-work, and widening-at-null-work arms before assigning
+   causality. Spend the merged performance dividend on more worlds, more
+   candidates, or narrower confidence intervals.
 2. **World representation:** use BELIEF-V1 first to improve which hidden worlds
    search evaluates. Test memory-aware continuations separately afterward.
 3. **Learning:** use the wider, belief-aware search as a teacher only after its
@@ -116,8 +123,8 @@ the wrong sampler, ballot, continuation, or target.
 
 It also preserves existing work rather than rebuilding it:
 
-- the already-positive same-work ballot-widening treatment should receive its
-  own confirmation independently of BELIEF-V1;
+- the positive but compute-confounded ballot-widening arm should receive its
+  own three-arm work-controlled confirmation independently of BELIEF-V1;
 - the running pair-aware terminal evidence should be read before choosing a
   memory-aware continuation experiment;
 - `MCSmartRoll` and `LEVEL_OBJECTIVE` are existing continuation/value assets,
@@ -135,7 +142,7 @@ Fields are partitioned as follows.
 |---|---|---|
 | Public observed | ordered declaration event and shown cards; completed plays; current trick; banker and roles; public points; hand sizes | Input |
 | Actor private | acting hand; banker-known burial when the actor is banker | Input |
-| Logically deduced | exact unseen multiplicities; proven voids; declaration ownership pins; pair/run upper bounds | Input and hard constraint |
+| Logically deduced | exact unseen multiplicities; proven voids; sound non-banker declaration pins; banker-hand/hidden-kitty declaration eligibility; pair/run upper bounds | Input and hard constraint at the altitude the schema can express |
 | Probabilistic belief | hidden-card ownership, hidden-kitty composition, unproven void/pair/run/boss/ruff/point distributions | Model output |
 | Simulator privileged | exact hands of the other three seats and non-banker-hidden burial | Training label and audit only |
 
@@ -153,11 +160,13 @@ Canonical, reconstructable input for one actor at one decision:
 - acting hand;
 - banker-known burial only when the actor is the banker;
 - ordered declaration/show history, not just the final declaration summary;
-- chronological public play history with attempted and engine-adjusted actions
-  distinguished where the engine can force a failed throw component;
+- chronological public play history with engine-actual cards and the public
+  failed-throw signal; returned attempted cards are retained only for the actor
+  that made that attempt, never exposed to another seat;
 - exact public points and trick-point flow;
-- `Memory` facts: played multiplicities, proven voids, declaration pins, and
-  pair/run upper bounds;
+- `Memory` facts plus corrected contract deductions: played multiplicities,
+  proven voids, sound hand pins, banker-hand/hidden-kitty declaration
+  eligibility, and pair/run upper bounds;
 - candidate action identity and decision surface only in the action-context
   consumer, not baked ambiguously into the state; and
 - source, schema, ballot, and perspective identity.
@@ -346,7 +355,8 @@ labels by:
 
 - actor role and relative seat;
 - declaration type and strength;
-- lead/follow/bury surface;
+- lead/follow surface (the V1 actor contract is play-phase only; bury decisions
+  require a later contract version);
 - early/mid/late phase;
 - public void/pair/run evidence;
 - shuai-pai candidate availability;
@@ -395,11 +405,15 @@ and the public endpoint is tested independently.
 Every quantitative belief claim names two references. They are called `REF-C`
 and `REF-H` here to avoid collision with the B0-B5 work-package names below:
 
-- **REF-C — current constraint-consistent proposal** (the review-side B0,
-  sometimes described informally as “uniform-consistent”): the current sampler
-  with all `Memory` hard facts and its exact randomized backtracking/split
-  behavior. The project has not proved this proposal mathematically uniform
-  over accepted worlds, so V1 must not use that stronger label; and
+- **REF-C — sound constraint proposal using the current assignment kernel**
+  (the review-side B0, sometimes described informally as
+  “uniform-consistent”): the current sampler's exact randomized
+  backtracking/split kernel with a reviewed actor-visible constraint adapter.
+  The adapter preserves non-banker declaration hand pins and represents a
+  banker-declarer's shown copy as eligible only for banker hand or hidden
+  kitty; it does not alter the production acting policy. The project has not
+  proved this proposal mathematically uniform over accepted worlds, so V1 must
+  not use that stronger label; and
 - **REF-H — current hand-coded context** (the review-side B1): REF-C worlds
   plus the exact `Memory`/`PointContext` fact and action-context fields
   available to today's decision code, but no learned behavioral likelihood.
@@ -417,8 +431,12 @@ or PointContext field from a control.
   exact remaining hand and kitty sizes. Every sampled world satisfies integer
   conservation exactly.
 - **E2 — hard-fact respect:** played and actor-known cards have zero hidden
-  mass; proven void receivers have zero mass for that effective suit;
-  declaration pins and other forced ownership have probability one.
+  mass; proven void receivers have zero mass for that effective suit; a proven
+  zero-pair cap has zero same-code-pair mass. Only sound declaration pins have
+  probability-one hand ownership. A banker-declarer's shown card is eligible
+  for either the banker hand or hidden kitty because burial is legal. Run caps
+  are joint constraints enforced by the later complete-world sampler, not by a
+  marginal-only validator.
 - **E3 — public-twin bit identity:** two states with byte-identical public and
   actor-private transcripts but different inaccessible hands/kitty produce
   byte-identical actor inputs and belief outputs.
@@ -436,26 +454,32 @@ or PointContext field from a control.
 - **C2 — behavioral-stratum lift:** improvement is reported separately after
   declined feeds, forced trump/joker evidence, and unforced point discards. A
   claimed behavioral model must improve at least one preregistered behavioral
-  stratum and may not hide a reversal behind aggregate frequency.
-- **C3 — reliability:** predicted versus empirical curves are reported for
-  suit length/void, top rank, pair/tractor counts, points in hand/kitty, and
-  trump length. Ranking without calibration does not pass.
-- **C4 — exact synthetic posterior:** on small deals generated under a known
-  public policy where all compatible worlds and action likelihoods can be
-  enumerated, the learned/projected posterior agrees within a frozen tolerance.
-- **N1 — history ablation:** withholding or within-stratum shuffling the public
-  action chronology collapses behavioral lift toward REF-C. Residual lift is
-  audited as a possible side channel.
+  stratum and may not hide a reversal behind aggregate frequency. An offline
+  rung whose natural population was not sized for those strata must label C2
+  descriptive and make no behavioral claim.
+- **C3 — marginal reliability:** predicted versus empirical curves are
+  reported for receiver count classes and linear expectations derivable from
+  those marginals (suit/trump length, point count, pair count). Void/ruff,
+  tractor, boss/top-rank and other cross-code joint events move to B3, where a
+  complete-world posterior exists. Ranking without calibration does not pass.
+- **C4 — exact synthetic posterior shim:** a frozen enumerable fixture must
+  prove the encoder/count-head/training/projection path can recover a known
+  posterior and that a uniform control fails. Its design must state which
+  full-game capture mechanics it does not certify.
+- **N1 — history ablation:** for a powered positive behavioral stratum,
+  withholding or within-stratum shuffling the public action chronology
+  collapses behavioral lift toward REF-C. Underpowered point ratios are
+  diagnostic, not mandatory-closure gates.
 - **N2 — permuted labels:** training on round-grouped shuffled hidden labels
   produces no held-out lift.
 - **N3 — policy shift:** human, champion, and named-bot strata are scored
   separately; the transfer gap is reported rather than assumed away.
 
-Before any online screen, two usefulness checks also have to pass:
+Before any online screen, usefulness also has to pass:
 
-- **U1 — true-world likelihood:** held-out true hidden worlds receive higher
-  probability or lower proper loss under belief weighting than under REF-C;
-  and
+- **U1 — true-world proper score:** in marginal-only B2 this is the same test
+  as C1 and may not be presented as independent evidence. Joint true-world
+  likelihood belongs to B3; and
 - **U2 — fixed-world value variance:** at equal world count and unchanged
   continuation, the belief sampler reduces preregistered rollout-value error or
   variance without introducing measured bias.
@@ -466,6 +490,8 @@ sampler route before a whole-game run.
 ### Gate A — mechanics and leakage
 
 - exact reconstruction of public facts and legal private facts;
+- completed-trick winner/points reconstruction, winner-to-next-leader
+  continuity, and exact attacker-point tally reconstruction;
 - counterfactual hidden-world invariance of `ActorObservationV1`;
 - seat/team rotation and physical-copy symmetry;
 - zero privileged bytes in the runtime API or serialized public artifact;
@@ -586,7 +612,7 @@ execution permission, and an offline calibration PASS never means strength.
 > **BELIEF-V1 — Build and validate an actor-visible world model that improves
 > same-work search.** Specify and implement public/actor/deduction/belief/
 > privileged information boundaries; build a split-safe hidden-ownership
-> corpus; beat the current constraint-consistent prior on held-out proper
+> corpus; beat the sound constraint proposal on held-out proper
 > scoring and calibration; sample complete legal worlds without losing that
 > signal; and test fixed-work search against both the current sampler and a
 > shuffled-belief null on fresh natural states. Finish with either a positive,

@@ -13,7 +13,7 @@ import pytest
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.engine.cards import Ordering
-from shengji.engine.round import actual_play_after
+from shengji.engine.round import Round, actual_play_after
 from shengji.rl.belief_contract import (
     BeliefTargetsV1,
     PublicTranscriptV1,
@@ -28,6 +28,7 @@ from shengji.rl.belief_ownership import (
     BeliefOwnershipV1,
     ReceiverCountProbabilityV1,
     count_brier_fraction,
+    ownership_from_bytes,
     receiver_sizes,
     validate_ownership,
 )
@@ -115,6 +116,39 @@ def _belief(actor, worlds: list[dict[tuple[str, str], int]]):
         receiver_sizes=receiver_sizes(actor),
         probabilities=tuple(rows),
     )
+
+
+def _fixed_banker_nonbanker_declaration(copies: int):
+    """Build a sound hand pin: declarer cannot put cards in banker's kitty."""
+    for seed in range(9451, 9651):
+        rnd = Round("2", banker=0, rng=random.Random(seed))
+        while rnd.phase == "deal":
+            rnd.deal_next()
+        option = next((cards
+                       for seat in range(1, 4)
+                       for cards in rnd.declare_options(seat)
+                       if len(cards) == copies), None)
+        if option is None:
+            continue
+        declarer = next(seat for seat in range(1, 4)
+                        if option in rnd.declare_options(seat))
+        rnd.declare(declarer, option)
+        accepted = rnd.declaration
+        transcript = PublicTranscriptV1().with_declaration(
+            accepted["seat"], accepted["cards"], accepted["strength"])
+        rnd.finalize_declare()
+        bot = HeuristicBot()
+        rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+        actor = build_actor_observation(rnd, rnd.turn, transcript)
+        target = build_belief_targets(rnd, rnd.turn)
+        if not actor.deductions.declaration_pins:
+            continue
+        pinned_card, _, _ = actor.deductions.declaration_pins[0]
+        if copies == 1 \
+                and dict(actor.deductions.unseen).get(pinned_card) != 2:
+            continue
+        return actor, target
+    raise AssertionError("no fixed-banker declaration fixture found")
 
 
 def _swap_two_hidden_hands(rnd, actor_seat):
@@ -411,53 +445,7 @@ def test_proven_void_is_a_probability_one_zero_count():
 
 
 def test_single_declaration_is_lower_bound_not_exact_count():
-    fixture = None
-    for seed in range(9451, 9551):
-        game = Game(random.Random(seed))
-        rnd = game.start_round()
-        bot = HeuristicBot()
-        transcript = PublicTranscriptV1()
-        while rnd.phase == "deal":
-            seat, _, _ = rnd.deal_next()
-            cards = bot.decide_declare(rnd, seat)
-            if cards:
-                rnd.declare(seat, cards)
-                accepted = rnd.declaration
-                transcript = transcript.with_declaration(
-                    accepted["seat"], accepted["cards"],
-                    accepted["strength"])
-        for seat in range(4):
-            cards = bot.decide_declare(rnd, seat, final=True)
-            if cards:
-                rnd.declare(seat, cards)
-                accepted = rnd.declaration
-                transcript = transcript.with_declaration(
-                    accepted["seat"], accepted["cards"],
-                    accepted["strength"])
-        rnd.finalize_declare()
-        if rnd.declaration is None or rnd.declaration["strength"] != 1:
-            continue
-        rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
-        first = rnd.turn
-        attempted = bot.decide_play(rnd, first)
-        previous_last = rnd.last_trick
-        rnd.play(first, attempted)
-        transcript = transcript.with_play(
-            first, attempted, actual_play_after(rnd, first, previous_last))
-        actor = build_actor_observation(rnd, rnd.turn, transcript)
-        if not actor.deductions.declaration_pins:
-            continue
-        target = build_belief_targets(rnd, rnd.turn)
-        counts = _target_counts(actor, target)
-        card, relative, copies = actor.deductions.declaration_pins[0]
-        owner = f"seat-relative-{relative}"
-        if copies != 1 or counts[(card, owner)] != 1 \
-                or dict(actor.deductions.unseen).get(card) != 2:
-            continue
-        fixture = actor, target
-        break
-    assert fixture is not None
-    actor, target = fixture
+    actor, target = _fixed_banker_nonbanker_declaration(1)
     counts = _target_counts(actor, target)
     belief = _belief(actor, [counts])
     validate_ownership(actor, belief)
@@ -481,38 +469,103 @@ def test_single_declaration_is_lower_bound_not_exact_count():
                            replace(belief, probabilities=tuple(rows)))
 
 
+def test_banker_buried_declaration_is_not_pinned_to_banker_hand():
+    fixture = None
+    for seed in range(9651, 9851):
+        rnd = Round("2", banker=0, rng=random.Random(seed))
+        while rnd.phase == "deal":
+            rnd.deal_next()
+        option = next((cards for cards in rnd.declare_options(0)
+                       if len(cards) == 1), None)
+        if option is None:
+            continue
+        rnd.declare(0, option)
+        accepted = rnd.declaration
+        transcript = PublicTranscriptV1().with_declaration(
+            accepted["seat"], accepted["cards"], accepted["strength"])
+        rnd.finalize_declare()
+        declared = option[0]
+        remainder = list(rnd.hands[0])
+        remainder.remove(declared)
+        rnd.bury(0, [declared, *remainder[:7]])
+        bot = HeuristicBot()
+        attempted = bot.decide_play(rnd, 0)
+        previous_last = rnd.last_trick
+        rnd.play(0, attempted)
+        transcript = transcript.with_play(
+            0, attempted, actual_play_after(rnd, 0, previous_last))
+        actor = build_actor_observation(rnd, rnd.turn, transcript)
+        target = build_belief_targets(rnd, rnd.turn)
+        banker_hand = dict(
+            target.other_hands[actor.banker_relative - 1].cards)
+        if dict(target.hidden_burial).get(declared, 0) == 1 \
+                and banker_hand.get(declared, 0) == 0:
+            fixture = actor, target, declared
+            break
+    assert fixture is not None
+    actor, target, declared = fixture
+    assert not any(card == declared
+                   for card, _, _ in actor.deductions.declaration_pins)
+    assert len(actor.deductions.declaration_eligibility) == 1
+    constraint = actor.deductions.declaration_eligibility[0]
+    assert constraint.card == declared
+    assert constraint.eligible_receivers == (
+        f"seat-relative-{actor.banker_relative}", KITTY_RECEIVER)
+    assert constraint.minimum_copies == 1
+    truth = _target_counts(actor, target)
+    belief = _belief(actor, [truth])
+    validate_ownership(actor, belief)
+    assert truth[(declared, KITTY_RECEIVER)] == 1
+
+    # Move the shown copy from kitty to an unrelated hand and swap a second
+    # card back so every per-card and per-receiver conservation equation stays
+    # exact.  Only the disjunctive eligibility guard can refuse this belief.
+    outside = next(
+        receiver for receiver in SEAT_RECEIVERS
+        if receiver not in constraint.eligible_receivers
+        and truth[(declared, receiver)] == 0
+    )
+    exchange = next(
+        card for card, _ in actor.deductions.unseen
+        if card != declared
+        and truth[(card, outside)] == 1
+        and truth[(card, KITTY_RECEIVER)] == 0
+    )
+    changed = dict(truth)
+    changed[(declared, KITTY_RECEIVER)] = 0
+    changed[(declared, outside)] = 1
+    changed[(exchange, outside)] = 0
+    changed[(exchange, KITTY_RECEIVER)] = 1
+    forged = _belief(actor, [changed])
+    with pytest.raises(
+            BeliefOwnershipError,
+            match="declared copies leave their eligible receiver set"):
+        validate_ownership(actor, forged)
+
+
+def test_proven_zero_pair_cap_refuses_two_copy_mass():
+    _, actor, target, _ = _state(9871)
+    pair = next(
+        (hand.seat_relative, card)
+        for hand in target.other_hands
+        for card, count in hand.cards
+        if count == 2
+    )
+    relative, card = pair
+    ordering = Ordering(actor.trump_suit, actor.trump_rank)
+    suit = ordering.eff_suit(card)
+    caps = list(actor.deductions.pair_caps_by_relative)
+    caps[relative] = tuple(sorted({*caps[relative], (suit, 0)}))
+    actor = replace(actor, deductions=replace(
+        actor.deductions, pair_caps_by_relative=tuple(caps)))
+    truth = _target_counts(actor, target)
+    belief = _belief(actor, [truth])
+    with pytest.raises(BeliefOwnershipError, match="zero-pair cap"):
+        validate_ownership(actor, belief)
+
+
 def test_pair_declaration_is_exact_probability_one_ownership():
-    seed = 9502
-    game = Game(random.Random(seed))
-    rnd = game.start_round()
-    bot = HeuristicBot()
-    transcript = PublicTranscriptV1()
-    while rnd.phase == "deal":
-        seat, _, _ = rnd.deal_next()
-        cards = bot.decide_declare(rnd, seat)
-        if cards:
-            rnd.declare(seat, cards)
-            accepted = rnd.declaration
-            transcript = transcript.with_declaration(
-                accepted["seat"], accepted["cards"], accepted["strength"])
-    for seat in range(4):
-        cards = bot.decide_declare(rnd, seat, final=True)
-        if cards:
-            rnd.declare(seat, cards)
-            accepted = rnd.declaration
-            transcript = transcript.with_declaration(
-                accepted["seat"], accepted["cards"], accepted["strength"])
-    rnd.finalize_declare()
-    assert rnd.declaration["strength"] == 2
-    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
-    first = rnd.turn
-    attempted = bot.decide_play(rnd, first)
-    previous_last = rnd.last_trick
-    rnd.play(first, attempted)
-    transcript = transcript.with_play(
-        first, attempted, actual_play_after(rnd, first, previous_last))
-    actor = build_actor_observation(rnd, rnd.turn, transcript)
-    target = build_belief_targets(rnd, rnd.turn)
+    actor, target = _fixed_banker_nonbanker_declaration(2)
     counts = _target_counts(actor, target)
     belief = _belief(actor, [counts])
     validate_ownership(actor, belief)
@@ -554,3 +607,42 @@ def test_brier_refuses_wrong_privileged_evaluation_population():
     bool_count[next(iter(bool_count))] = False
     with pytest.raises(BeliefOwnershipError, match="evaluation population"):
         count_brier_fraction(belief, bool_count)
+
+
+def test_artifact_reopen_is_closed_canonical_and_same_byte_bound():
+    _, actor, target, _ = _state(9353)
+    belief = _belief(actor, [_target_counts(actor, target)])
+    raw = belief.canonical_bytes()
+    reopened = ownership_from_bytes(actor, raw)
+    assert reopened == belief
+    assert reopened.canonical_bytes() == raw
+
+    duplicate = b'{"schema":"forged",' + raw[1:]
+    with pytest.raises(BeliefOwnershipError, match="duplicate key"):
+        ownership_from_bytes(actor, duplicate)
+    with pytest.raises(BeliefOwnershipError, match="not canonical bytes"):
+        ownership_from_bytes(actor, raw[:-1] + b" \n")
+
+    payload = json.loads(raw)
+    payload["utility"] = 1
+    with pytest.raises(BeliefOwnershipError, match="root schema is open"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+
+    payload.pop("utility")
+    payload["privileged_targets_consumed"] = True
+    with pytest.raises(BeliefOwnershipError, match="privileged targets"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+
+    payload["privileged_targets_consumed"] = False
+    payload["count_probabilities"][0]["expected_count_ppb"] += 1
+    with pytest.raises(BeliefOwnershipError, match="expected-count field"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")
+
+    payload["count_probabilities"][0]["expected_count_ppb"] -= 1
+    payload["count_probabilities"][0]["count_probability_ppb"][0] = True
+    with pytest.raises(BeliefOwnershipError, match="count probability"):
+        ownership_from_bytes(actor, json.dumps(
+            payload, sort_keys=True, separators=(",", ":")).encode() + b"\n")

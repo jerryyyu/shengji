@@ -22,8 +22,13 @@ from shengji.rl.belief_corpus import (
     BeliefCorpusError,
     capture_corpus_pair,
     decision_key,
+    reopen_actor_row,
     split_for_round_seed,
     validate_corpus_pair,
+)
+from shengji.rl.belief_reopen import (
+    actor_observation_from_dict,
+    belief_targets_from_dict,
 )
 
 
@@ -63,6 +68,28 @@ def _rewrite(record: dict, **changes) -> bytes:
     changed["artifact_sha256"] = hashlib.sha256(
         canonical_json_bytes(changed)).hexdigest()
     return canonical_json_bytes(changed)
+
+
+def _rebind_actor_payload(actor: dict, target: dict,
+                          actor_payload: dict) -> tuple[bytes, bytes]:
+    actor_sha = hashlib.sha256(canonical_json_bytes(actor_payload)).hexdigest()
+    actor_raw = _rewrite(actor, actor=actor_payload, actor_sha256=actor_sha)
+    partition = {
+        "schema": "belief-v1-information-partition-v1",
+        "actor_schema": actor["actor_schema"],
+        "actor_sha256": actor_sha,
+        "targets_schema": target["target_schema"],
+        "targets_sha256": target["target_sha256"],
+        "runtime_consumes_targets": False,
+    }
+    target_raw = _rewrite(
+        target,
+        actor_file_sha256=hashlib.sha256(actor_raw).hexdigest(),
+        actor_sha256=actor_sha,
+        partition_sha256=hashlib.sha256(
+            canonical_json_bytes(partition)).hexdigest(),
+    )
+    return actor_raw, target_raw
 
 
 def test_split_is_round_bound_deterministic_and_populates_all_folds():
@@ -118,6 +145,19 @@ def test_capture_separates_actor_and_privileged_payloads():
     assert target["target"]["other_hands"]
     assert target["actor_file_sha256"] == pair.actor_file_sha256
     assert len(pair.target_file_sha256) == 64
+    typed_actor = actor_observation_from_dict(actor["actor"])
+    typed_target = belief_targets_from_dict(
+        target["target"], actor=typed_actor)
+    assert typed_actor.to_dict() == actor["actor"]
+    assert typed_target.to_dict() == target["target"]
+
+    target_blind_actor, metadata = reopen_actor_row(pair.actor_bytes)
+    assert target_blind_actor == typed_actor
+    assert metadata == {key: actor[key] for key in (
+        "round_seed", "decision_index", "actor_seat", "decision_key",
+        "split_schema", "split")}
+    with pytest.raises(BeliefCorpusError, match="actor row"):
+        reopen_actor_row(pair.target_bytes)
 
 
 def test_all_decisions_from_one_round_stay_in_one_split():
@@ -149,6 +189,43 @@ def test_target_from_another_decision_cannot_be_repaired_by_self_rehash():
         transcript=transcript)
     with pytest.raises(BeliefCorpusError, match="metadata mismatch"):
         validate_corpus_pair(first.actor_bytes, second.target_bytes)
+
+
+def test_cross_round_target_cannot_be_resealed_onto_actor_row():
+    first_rnd, _, first_transcript = _play_state(9201)
+    second_rnd, _, second_transcript = _play_state(9203)
+    first = capture_corpus_pair(
+        first_rnd, first_rnd.turn, round_seed=9201, decision_index=0,
+        transcript=first_transcript)
+    second = capture_corpus_pair(
+        second_rnd, second_rnd.turn, round_seed=9203, decision_index=0,
+        transcript=second_transcript)
+    actor = json.loads(first.actor_bytes)
+    target = json.loads(second.target_bytes)
+    target_sha = target["target_sha256"]
+    partition = {
+        "schema": "belief-v1-information-partition-v1",
+        "actor_schema": actor["actor_schema"],
+        "actor_sha256": actor["actor_sha256"],
+        "targets_schema": target["target_schema"],
+        "targets_sha256": target_sha,
+        "runtime_consumes_targets": False,
+    }
+    forged = _rewrite(
+        target,
+        round_seed=actor["round_seed"],
+        decision_index=actor["decision_index"],
+        actor_seat=actor["actor_seat"],
+        decision_key=actor["decision_key"],
+        split_schema=actor["split_schema"],
+        split=actor["split"],
+        actor_file_sha256=hashlib.sha256(first.actor_bytes).hexdigest(),
+        actor_sha256=actor["actor_sha256"],
+        partition_sha256=hashlib.sha256(
+            canonical_json_bytes(partition)).hexdigest(),
+    )
+    with pytest.raises(BeliefCorpusError, match="typed actor/target"):
+        validate_corpus_pair(first.actor_bytes, forged)
 
 
 def test_rehashed_split_authority_and_payload_mutations_refuse():
@@ -233,3 +310,62 @@ def test_noncanonical_duplicate_trailing_and_nonfinite_json_refuse():
                                          b'"foreign":NaN,"actor_seat":', 1)
     with pytest.raises(BeliefCorpusError, match="non-finite"):
         validate_corpus_pair(nonfinite, pair.target_bytes)
+
+
+def test_rehashed_nested_actor_semantics_and_schema_refuse():
+    rnd, bot, transcript = _play_state(9211)
+    transcript = _play_and_record(rnd, bot, transcript)
+    pair = capture_corpus_pair(
+        rnd, rnd.turn, round_seed=9211, decision_index=1,
+        transcript=transcript)
+    actor = json.loads(pair.actor_bytes)
+    target = json.loads(pair.target_bytes)
+
+    actor_payload = json.loads(json.dumps(actor["actor"]))
+    actor_payload["foreign_nested_input"] = True
+    actor_raw, target_raw = _rebind_actor_payload(
+        actor, target, actor_payload)
+    with pytest.raises(BeliefCorpusError, match="typed actor/target"):
+        validate_corpus_pair(actor_raw, target_raw)
+
+    actor_payload = json.loads(json.dumps(actor["actor"]))
+    played_by = actor_payload["deductions"]["played_by_relative"]
+    source = next(index for index, counts in enumerate(played_by) if counts)
+    card, count = next(iter(played_by[source].items()))
+    target_relative = next(index for index, counts in enumerate(played_by)
+                           if index != source and card not in counts)
+    del played_by[source][card]
+    played_by[target_relative][card] = count
+    actor_raw, target_raw = _rebind_actor_payload(
+        actor, target, actor_payload)
+    with pytest.raises(BeliefCorpusError, match="typed actor/target"):
+        validate_corpus_pair(actor_raw, target_raw)
+
+
+def test_rehashed_target_receiver_drift_refuses_typed_reconstruction():
+    rnd, _, transcript = _play_state(9213)
+    pair = capture_corpus_pair(
+        rnd, rnd.turn, round_seed=9213, decision_index=0,
+        transcript=transcript)
+    actor = json.loads(pair.actor_bytes)
+    target = json.loads(pair.target_bytes)
+    payload = json.loads(json.dumps(target["target"]))
+    hand = payload["other_hands"][0]
+    card = next(card for card, count in hand["cards"].items() if count == 1)
+    hand["cards"][card] = 2
+    hand["card_count"] += 1
+    target_sha = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+    partition = {
+        "schema": "belief-v1-information-partition-v1",
+        "actor_schema": actor["actor_schema"],
+        "actor_sha256": actor["actor_sha256"],
+        "targets_schema": target["target_schema"],
+        "targets_sha256": target_sha,
+        "runtime_consumes_targets": False,
+    }
+    target_raw = _rewrite(
+        target, target=payload, target_sha256=target_sha,
+        partition_sha256=hashlib.sha256(
+            canonical_json_bytes(partition)).hexdigest())
+    with pytest.raises(BeliefCorpusError, match="typed actor/target"):
+        validate_corpus_pair(pair.actor_bytes, target_raw)

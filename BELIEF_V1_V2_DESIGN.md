@@ -80,9 +80,19 @@ and accepts the first seeds required for the three frozen split quotas. It
 then orders the accepted coordinates with a second domain-separated key and
 assigns lanes round-robin. Candidate selection observes only the seed and its
 hash-derived split—never a deal, decision, stratum, or outcome. A source-
-independent registry scan must reject every known population collision. Rank
-assignments are balanced before any deal is generated; no later failure may
-substitute a seed or drop a row.
+independent registry scan must reject every known population collision. The
+freeze-time registry is not an informal grep: it must hash the complete
+tracked `server/**/*.py` population plus every active (non-archive) design
+document, publish the complete `seed`/`round_seed`/`deal_seed` candidate-hit
+report, classify every hit as a finite population, a derived per-decision
+stream, or a non-population constant, and refuse any unclassified hit. At a
+minimum its explicit population table binds B1/B2, C4 synthetic, teacher-v1,
+the scored S3/S4/S6/Pair families, this V2 production schedule, and the V2
+preflight schedule by literal source path and file SHA-256. The registry
+artifact records both the scan-input population digest and the classified
+table digest, so deleting a source file or adding an unclassified seed
+namespace makes the check fail. Rank assignments are balanced before any deal
+is generated; no later failure may substitute a seed or drop a row.
 
 The split is by complete round and balanced within every trump rank:
 
@@ -149,12 +159,21 @@ Human games provide two artifacts:
 1. an untouched human out-of-distribution evaluation stratum, including its
    natural trump-rank and behavior distribution; and
 2. a bounded human-mixture training arm, compared against a synthetic-only
-   control with the same architecture, seeds, epoch rule, and synthetic rows.
+   control with the same architecture, seeds, epoch rule, and exact total
+   optimizer-decision count.
 
 The initial mixture proposal is a maximum 20% of optimizer decisions from the
-human-training fold. The exact fraction is frozen only after the H0 inventory
-reports available complete rounds and decision counts. It is never tuned on
-human test performance. A coarse actor-visible policy-family field may name
+human-training fold. Human decisions replace, rather than add to, a
+deterministically selected portion of synthetic training decisions; the
+synthetic-only control and mixed arm therefore consume the same total number
+of optimizer decisions in every epoch. The removed synthetic decisions are
+selected once from train-only identities by a frozen digest-order rule and
+are never selected using labels, loss, calibration, or test evidence. Scale
+response is evaluated by separately named synthetic-only data-volume arms;
+it cannot be credited to the human-mixture comparison. The exact mixture
+fraction is frozen only after the H0 inventory reports available complete
+rounds and decision counts. It is never tuned on human test performance. A
+coarse actor-visible policy-family field may name
 `champion`, `human`, or a reviewed named-bot family by relative seat;
 individual identity, username, session, and source-file identity are
 forbidden model inputs.
@@ -180,6 +199,14 @@ The mixed arm is retained for test evaluation only if, on calibration:
 - it does not exceed the preregistered material-regression tolerance on the
   champion-primary calibration population or any load-bearing trump-rank
   stratum.
+
+The frozen material-regression tolerance is a relative Brier increase of
+0.5%. A rank is load-bearing when it contains at least 100 complete
+calibration rounds; the balanced schedule supplies 102. The 13 simultaneous
+rank comparisons use one paired round-bootstrap max-statistic, with a
+one-sided familywise 95% upper bound. Retention requires the aggregate bound
+and every powered rank's familywise bound to remain below +0.5%. No unadjusted
+per-rank interval may be substituted after results are visible.
 
 Otherwise the synthetic-only model remains the V2 candidate and the human
 result is recorded as a transfer diagnostic. This prevents the small human
@@ -381,6 +408,13 @@ control, and exact-synthetic gates. It additionally requires:
 - exact cost per captured round, reference decision, training decision/epoch,
   and retained checkpoint.
 
+Rank attribution comes only from the balanced synthetic rank contrasts.
+Human-versus-champion transfer jointly changes policy, rank mix, and logging
+surface, so a human transfer failure or success may never be reported or
+spent as evidence for a rank mechanism. It remains a policy-domain transfer
+result unless a separately balanced synthetic rank contrast establishes the
+rank effect.
+
 If the synthetic model fails again with no rank-specific or data-scaling
 signal, this exact model/target family closes; V2 does not escalate to a larger
 model by default. If it passes, B3 must still prove complete legal world
@@ -417,7 +451,8 @@ authority, or sealed-resource boundary changes.
 - a score-free H0 human-log inventory and public-event completeness report;
 - a source-pinned multi-rank capacity/profile result;
 - the exact fresh seed namespace, split hashes, and source-log digest set;
-- frozen human-mixture fraction and material-regression tolerance; and
+- frozen human-mixture fraction (at most 20%, decision-matched by replacement)
+  and the literal 0.5% familywise material-regression rule above; and
 - exact host/runtime/native identities and final caps.
 
 Until those inputs exist, this document is a design proposal only.

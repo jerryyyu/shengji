@@ -25,6 +25,17 @@ from .belief_v2_protocol import (
     protocol_sha256,
     schedule_sha256,
 )
+from .belief_v2_execution_identity import (
+    PACKAGE_SCHEMA,
+    RUNTIME_SCHEMA,
+    SOURCE_SCHEMA,
+    V2InstalledDistributionV1,
+    V2RuntimeProfileV1,
+    V2SourceBindingV1,
+    source_manifest_sha256,
+    validate_runtime_profile,
+    validate_source_bindings,
+)
 
 
 FREEZE_SCHEMA = "belief-v1-v2-offline-execution-freeze-v1"
@@ -206,6 +217,8 @@ def _validate_caps(caps: V2ResourceCapsV1) -> None:
 class V2ExecutionFreezeV1:
     execution_git: str
     source_manifest_sha256: str
+    source_bindings: tuple[V2SourceBindingV1, ...]
+    runtime: V2RuntimeProfileV1
     source_review_commit: str
     v1_terminal_route: str
     v1_terminal_result_sha256: str
@@ -238,6 +251,9 @@ class V2ExecutionFreezeV1:
             "schedule_sha256": schedule_sha256(),
             "execution_git": self.execution_git,
             "source_manifest_sha256": self.source_manifest_sha256,
+            "source_bindings": [
+                row.to_dict() for row in self.source_bindings],
+            "runtime": self.runtime.to_dict(),
             "source_review_commit": self.source_review_commit,
             "v1_route": {
                 "terminal_route": self.v1_terminal_route,
@@ -363,6 +379,15 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
                    freeze.human_calibration_group_count,
                    freeze.human_test_group_count) <= 0:
         raise BeliefV2FreezeError("V2 execution freeze identity drift")
+    try:
+        validate_source_bindings(freeze.source_bindings)
+        validate_runtime_profile(freeze.runtime)
+    except ValueError as exc:
+        raise BeliefV2FreezeError(
+            "V2 execution source/runtime identity drift") from exc
+    if freeze.source_manifest_sha256 != source_manifest_sha256(
+            freeze.execution_git, freeze.source_bindings):
+        raise BeliefV2FreezeError("V2 source manifest digest drift")
     if freeze.v1_terminal_route == "v1-pass-to-b3":
         if freeze.v2_reentry_rationale_sha256 is not None:
             raise BeliefV2FreezeError("V2 V1-pass route has reentry drift")
@@ -430,8 +455,70 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
             or type(payload.get("v1_route")) is not dict \
             or type(payload.get("human_inventory")) is not dict \
             or type(payload.get("capacity")) is not dict \
-            or type(payload.get("seed_registry")) is not dict:
+            or type(payload.get("seed_registry")) is not dict \
+            or type(payload.get("source_bindings")) is not list \
+            or type(payload.get("runtime")) is not dict:
         raise BeliefV2FreezeError("V2 freeze field/canonical drift")
+    bindings = []
+    for row in payload["source_bindings"]:
+        if type(row) is not dict or set(row) != {
+                "schema", "path", "byte_count", "sha256"}:
+            raise BeliefV2FreezeError("V2 source binding field drift")
+        bindings.append(V2SourceBindingV1(
+            schema=row["schema"], path=row["path"],
+            byte_count=row["byte_count"], sha256=row["sha256"]))
+    runtime = payload["runtime"]
+    if type(runtime) is not dict or set(runtime) != {
+            "schema", "hostname", "operating_system", "machine",
+            "cpu_count", "memory_bytes", "boot_identity", "python",
+            "torch", "numpy", "native", "required_environment"} \
+            or type(runtime["python"]) is not dict \
+            or type(runtime["torch"]) is not dict \
+            or type(runtime["numpy"]) is not dict \
+            or type(runtime["native"]) is not dict \
+            or type(runtime["required_environment"]) is not dict:
+        raise BeliefV2FreezeError("V2 runtime profile field drift")
+    python_row = runtime["python"]
+    torch_row = runtime["torch"]
+    numpy_row = runtime["numpy"]
+    native_row = runtime["native"]
+    distribution_keys = {
+        "schema", "name", "version", "root", "file_count",
+        "payload_sha256"}
+    if set(python_row) != {"executable", "executable_sha256", "version"} \
+            or set(torch_row) != {
+                "distribution", "config_sha256", "num_threads",
+                "deterministic_algorithms", "device"} \
+            or type(torch_row["distribution"]) is not dict \
+            or set(torch_row["distribution"]) != distribution_keys \
+            or set(numpy_row) != distribution_keys \
+            or set(native_row) != {"path", "sha256"}:
+        raise BeliefV2FreezeError("V2 runtime nested field drift")
+
+    def distribution(row: dict[str, Any]) -> V2InstalledDistributionV1:
+        return V2InstalledDistributionV1(
+            schema=row["schema"], name=row["name"],
+            version=row["version"], root=row["root"],
+            file_count=row["file_count"],
+            payload_sha256=row["payload_sha256"])
+
+    profile = V2RuntimeProfileV1(
+        schema=runtime["schema"], hostname=runtime["hostname"],
+        operating_system=runtime["operating_system"],
+        machine=runtime["machine"], cpu_count=runtime["cpu_count"],
+        memory_bytes=runtime["memory_bytes"],
+        boot_identity=runtime["boot_identity"],
+        python_executable=python_row["executable"],
+        python_executable_sha256=python_row["executable_sha256"],
+        python_version=python_row["version"],
+        torch=distribution(torch_row["distribution"]),
+        torch_config_sha256=torch_row["config_sha256"],
+        numpy=distribution(numpy_row), native_path=native_row["path"],
+        native_sha256=native_row["sha256"],
+        required_environment=tuple(runtime["required_environment"].items()),
+        torch_num_threads=torch_row["num_threads"],
+        torch_deterministic_algorithms=torch_row[
+            "deterministic_algorithms"], device=torch_row["device"])
     cohorts = []
     for row in payload["cohorts"]:
         if type(row) is not dict or set(row) != {
@@ -472,6 +559,7 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
         freeze = V2ExecutionFreezeV1(
             schema=payload["schema"], execution_git=payload["execution_git"],
             source_manifest_sha256=payload["source_manifest_sha256"],
+            source_bindings=tuple(bindings), runtime=profile,
             source_review_commit=payload["source_review_commit"],
             v1_terminal_route=route["terminal_route"],
             v1_terminal_result_sha256=route["terminal_result_sha256"],
@@ -516,6 +604,8 @@ def expected_execution_review_claim(
         "protocol_sha256": protocol_sha256(),
         "schedule_sha256": schedule_sha256(),
         "source_manifest_sha256": freeze.source_manifest_sha256,
+        "runtime_profile_sha256": _sha256(canonical_json_bytes(
+            freeze.runtime.to_dict())),
         "seed_registry_sha256": freeze.seed_registry_sha256,
         "evidence_root": freeze.evidence_root,
         "bounded_capture_reference_training_and_one_test_open_authorized": True,

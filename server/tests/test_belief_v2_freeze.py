@@ -22,10 +22,52 @@ from shengji.rl.belief_v2_freeze import (
     reauthenticate_pipeline_admission,
     validate_execution_freeze,
 )
+from shengji.rl.belief_v2_execution_identity import (
+    V2InstalledDistributionV1,
+    V2RuntimeProfileV1,
+    V2SourceBindingV1,
+    source_manifest_sha256,
+)
 
 
 def _sha(char: str) -> str:
     return char * 64
+
+
+def _source_bindings():
+    paths = (
+        "BELIEF_V1_SPEC.md", "BELIEF_V1_V2_DESIGN.md",
+        "server/pyproject.toml", "server/setup.py", "server/uv.lock",
+        "server/scripts/belief_v2_worker.py",
+        "server/shengji/__init__.py",
+    )
+    return tuple(sorted((V2SourceBindingV1(
+        path=path, byte_count=index + 1,
+        sha256=f"{index + 1:x}" * 64)
+        for index, path in enumerate(paths)), key=lambda row: row.path))
+
+
+def _distribution(name: str, char: str):
+    return V2InstalledDistributionV1(
+        name=name, version="1.0", root=f"/runtime/{name}",
+        file_count=10, payload_sha256=_sha(char))
+
+
+def _runtime():
+    return V2RuntimeProfileV1(
+        hostname="host", operating_system="system", machine="machine",
+        cpu_count=16, memory_bytes=32 * 1024**3,
+        boot_identity=_sha("8"), python_executable="/runtime/python",
+        python_executable_sha256=_sha("9"), python_version="3.14.4",
+        torch=_distribution("torch", "a"),
+        torch_config_sha256=_sha("b"),
+        numpy=_distribution("numpy", "c"),
+        native_path="/runtime/_fast.so", native_sha256=_sha("d"),
+        required_environment=(
+            ("PYTHONDONTWRITEBYTECODE", "1"),
+            ("PYTHONHASHSEED", "0"),
+            ("SHENGJI_FAST", "1"),
+            ("SHENGJI_REQUIRE_VOIDS", "1")))
 
 
 def _cohorts():
@@ -64,9 +106,11 @@ def _cohorts():
 
 
 def _freeze():
+    bindings = _source_bindings()
     return V2ExecutionFreezeV1(
         execution_git="a" * 40,
-        source_manifest_sha256=_sha("a"),
+        source_manifest_sha256=source_manifest_sha256("a" * 40, bindings),
+        source_bindings=bindings, runtime=_runtime(),
         source_review_commit="b" * 40,
         v1_terminal_route="v1-pass-to-b3",
         v1_terminal_result_sha256=_sha("b"),

@@ -90,6 +90,10 @@ from shengji.rl.belief_v2_freeze import (  # noqa: E402
     reauthenticate_pipeline_admission,
     validate_pipeline_consumption_tombstone,
 )
+from shengji.rl.belief_v2_freeze_builder import (  # noqa: E402
+    build_execution_freeze_from_receipts,
+    resource_caps_from_bytes,
+)
 from shengji.rl.belief_v2_human_controller import (  # noqa: E402
     run_human_group_capture,
 )
@@ -149,6 +153,47 @@ def _private_inputs(inventory_raw: bytes, split_raw: bytes, freeze):
             or _sha256(split_raw) != freeze.human_group_split_sha256:
         raise ValueError("V2 H0 inventory/group-split freeze binding drift")
     return inventory, group_split
+
+
+def freeze_design(args: argparse.Namespace) -> None:
+    output = Path(args.out)
+    evidence_root = Path(args.evidence_root)
+    if not output.is_absolute() or not evidence_root.is_absolute() \
+            or output.parent != evidence_root.parent \
+            or output.exists() or output.is_symlink() \
+            or evidence_root.exists() or evidence_root.is_symlink():
+        raise ValueError(
+            "V2 freeze output and unused evidence root must be absolute siblings")
+    rationale_raw = (None if args.v2_reentry_rationale is None
+                     else stable_read_bytes(Path(args.v2_reentry_rationale)))
+    freeze = build_execution_freeze_from_receipts(
+        repo=REPO, expected_git=args.expected_git,
+        source_review_commit=args.source_review_commit,
+        v1_terminal_report_raw=stable_read_bytes(
+            Path(args.v1_terminal_report)),
+        v2_reentry_rationale_raw=rationale_raw,
+        inventory_raw=stable_read_bytes(Path(args.inventory)),
+        group_split_raw=stable_read_bytes(Path(args.group_split)),
+        preflight_raw=stable_read_bytes(Path(args.preflight_result)),
+        seed_scan_raw=stable_read_bytes(Path(args.seed_scan)),
+        seed_registry_raw=stable_read_bytes(Path(args.seed_registry)),
+        training_candidate_device=args.training_candidate_device,
+        resource_caps=resource_caps_from_bytes(stable_read_bytes(
+            Path(args.resource_caps))), evidence_root=evidence_root)
+    digest = publish_exclusive_bytes(output, freeze.canonical_bytes())
+    if digest != freeze.sha256():
+        raise ValueError("V2 published freeze digest drift")
+    _output({
+        "freeze_path": str(output), "freeze_sha256": digest,
+        "execution_git": freeze.execution_git,
+        "source_review_commit": freeze.source_review_commit,
+        "training_candidate_device": freeze.training_candidate_device,
+        "bounded_offline_pipeline_authorized": False,
+        "execution_started": False,
+        "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    })
 
 
 def initialize(args: argparse.Namespace) -> None:
@@ -352,6 +397,21 @@ def verify_terminal(args: argparse.Namespace) -> None:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    freeze = commands.add_parser("freeze-design")
+    freeze.add_argument("--expected-git", required=True)
+    freeze.add_argument("--source-review-commit", required=True)
+    freeze.add_argument("--v1-terminal-report", required=True)
+    freeze.add_argument("--v2-reentry-rationale")
+    freeze.add_argument("--inventory", required=True)
+    freeze.add_argument("--group-split", required=True)
+    freeze.add_argument("--preflight-result", required=True)
+    freeze.add_argument("--seed-scan", required=True)
+    freeze.add_argument("--seed-registry", required=True)
+    freeze.add_argument("--training-candidate-device", required=True)
+    freeze.add_argument("--resource-caps", required=True)
+    freeze.add_argument("--evidence-root", required=True)
+    freeze.add_argument("--out", required=True)
+    freeze.set_defaults(function=freeze_design)
     initialize_parser = commands.add_parser("initialize")
     initialize_parser.add_argument("--freeze", required=True)
     initialize_parser.add_argument("--expected-freeze-sha256", required=True)

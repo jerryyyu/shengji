@@ -1,9 +1,12 @@
 # BELIEF-V1 V2: diverse population, replayed reference, and scale design
 
-Status: conditional design draft. This document authorizes no corpus access,
-capture, training, cloud use, test opening, sampler execution, gameplay,
-strength claim, promotion, or deployment. The immutable V1 B2 pipeline at
-source `959c05de3b1ac379a6f9595b516608427486243d` remains unchanged.
+Status: conditional design plus locally complete execution-source candidate.
+The source still requires one consolidated exact-head review, and the later
+host-specific freeze requires its own exact PASS. This document authorizes no
+corpus access, capture, training, cloud use, test opening, sampler execution,
+gameplay, strength claim, promotion, or deployment. The immutable V1 B2
+pipeline at source `959c05de3b1ac379a6f9595b516608427486243d` remains
+unchanged.
 
 ## Decision and relationship to V1
 
@@ -620,22 +623,51 @@ No intermediate capacity, corpus, model, or reference milestone receives a
 separate review. A new review is required only when code, estimand, population,
 authority, or sealed-resource boundary changes.
 
-## Inputs still required before freeze
+## Implemented source boundary and remaining freeze inputs
 
-- the reviewed V1 B2 terminal result and resource receipts;
-- exact review disposition and repair head for PR #116;
-- an implementation and tensor-level witness for the historical attempted-
-  channel absence mask;
-- the post-capture CPU-versus-frozen-candidate qualification result bound to
-  the exact realized primary schedule (the candidate, protocol, and memory
-  caps are already execution-freeze fields);
-- the exact fresh seed namespace, split hashes, and source-log digest set;
-- post-capture exact work-manifest derivation implementing the reviewed
-  all-human-once replacement rule and the literal 0.5% familywise material-
-  regression rule above; and
-- exact host/runtime/native identities and final caps.
+The local execution-source candidate now implements the complete bounded
+offline path:
 
-The H0 inventory, whole-session split, seed namespace, and multi-rank capacity
-receipt now exist; none authorizes population capture or training. Until the
-remaining inputs and one exact execution-freeze PASS exist, this document is
-a design proposal only.
+- the reviewed hardened PR #116 transcript replay, balanced all-rank synthetic
+  schedule, real H0 replay, common attempted-channel mask, and tensor-level
+  absence witnesses;
+- exact synthetic and whole-session human capture/reference controllers,
+  source-neutral work realization, all-human-once replacement, the 50% data-
+  scale arm, and the 0.5% simultaneous rank-regression rule;
+- one shared CPU/MPS/CUDA training implementation, a realized-schedule device
+  qualification gate, portable CPU checkpoints, dual-domain calibration
+  selection, one-shot terminal publication, and independent reopeners; and
+- one consolidated worker plus a receipt-driven `freeze-design` command. The
+  command derives H0 counts and hashes, V1 route, preflight/runtime identities,
+  exact source manifest, seed-registry identity, candidate-device protocol,
+  cohorts, and authority bytes rather than asking an operator to hand-build
+  the packet.
+
+The following run-specific inputs still gate an exact freeze:
+
+1. the naturally completed and independently reproduced V1 B2 terminal report
+   and resource receipt. A V1 PASS routes directly; a V1 SELECT_NONE requires
+   the already named multi-rank/human-domain re-entry rationale; any V1
+   `REFUSE_*` blocks V2;
+2. one consolidated external source/design PASS on the final V2 execution
+   head, including the worker, freeze builder, GPU qualification, calibration,
+   terminal, and adversarial tests;
+3. a fresh complete seed scan/registry generated from that exact execution
+   head. The reviewed H0 inventory and whole-session split already exist;
+4. the final host-specific runtime/native/boot identity, named accelerator
+   candidate, and reviewed resource caps. `freeze-design` binds these together
+   with the existing multi-rank preflight receipt; and
+5. one external exact-freeze PASS on the canonical immutable JSON.
+
+The actual CPU-versus-candidate qualification result is deliberately not a
+freeze input: its 32 batches do not exist until capture seals the realized
+primary schedule. It is produced once after capture under the same admission,
+then either selects the accelerator on the exact performance/integrity gate or
+selects CPU on an honest performance miss. REF-C is independent and may run in
+parallel with qualification and final training. No intermediate stage needs a
+new review.
+
+The H0 inventory, whole-session split, seed namespace, multi-rank capacity
+receipt, and local execution source exist; none authorizes population capture
+or training. Until the remaining inputs and one exact execution-freeze PASS
+exist, V2 remains non-executable.

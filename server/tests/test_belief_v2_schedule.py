@@ -146,6 +146,31 @@ def test_selected_round_group_is_never_split_between_batches():
         assert all(len(indices) == 1 for indices in group_batches.values())
 
 
+def test_multiple_frozen_scale_fractions_form_one_nested_learning_curve():
+    plans = (*_plans(), V2CohortPlanV1(
+        cohort_id="synthetic-scale-25", kind="synthetic-scale",
+        synthetic_selection_rule=SCALE_SYNTHETIC_TRAIN_DECISIONS,
+        synthetic_fraction_numerator=1, synthetic_fraction_denominator=4,
+        human_selection_rule=NO_HUMAN_DECISIONS,
+        work_match_rule=SCALE_WORK_RULE,
+        comparator_cohort_id="synthetic-primary"))
+    synthetic = _rows("synthetic", 20)
+    human = _rows("human", 4)
+    values = realize_v2_cohorts(
+        plans, synthetic_rows=synthetic, human_rows=human)
+    validate_v2_cohort_realizations(
+        plans, synthetic_rows=synthetic, human_rows=human,
+        candidates=values)
+    half = next(value for value in values
+                if value.cohort_id == "synthetic-scale-50")
+    quarter = next(value for value in values
+                   if value.cohort_id == "synthetic-scale-25")
+    assert half.synthetic_decision_count == 10
+    assert quarter.synthetic_decision_count == 5
+    assert {row.decision_key for row in quarter.rows} \
+        < {row.decision_key for row in half.rows}
+
+
 def test_input_order_and_active_label_values_cannot_select_decisions():
     plans, synthetic, human, natural = _realized()
     reordered = realize_v2_cohorts(

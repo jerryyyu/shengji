@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_v2_device_qualification import (
@@ -31,6 +36,7 @@ from shengji.rl.belief_v2_freeze import (
     SCALE_WORK_RULE,
     V2CohortPlanV1,
     V2ExecutionFreezeV1,
+    V2PipelineAdmissionV1,
     V2ResourceCapsV1,
 )
 from shengji.rl.belief_v2_protocol import V2_RANKS, V2_ROUND_COUNT
@@ -53,6 +59,7 @@ from shengji.rl.belief_v2_statistics import (
     V2HumanTransferResultV1,
     V2LabelControlTestResultV1,
     V2PrimaryTestResultV1,
+    V2RoundScoreV1,
     V2ScaleCurveResultV1,
     V2ScaleCurveRowV1,
 )
@@ -395,3 +402,234 @@ def test_qualification_and_receipt_cross_binding_cannot_be_rehashed_away():
         inputs[3], device_qualification_result_sha256=_sha("forged"))
     with pytest.raises(BeliefV2ResultError, match="receipt drift"):
         derive_terminal_result(*inputs)
+
+
+def _admission(freeze):
+    return V2PipelineAdmissionV1(
+        freeze_sha256=freeze.sha256(), execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        review_commit="c" * 40, canonical_remote_tip="d" * 40,
+        review_marker_sha256=_sha("review-marker"),
+        evidence_root=freeze.evidence_root)
+
+
+def _terminal_score(source: str, cohort_ids: tuple[str, ...]):
+    return V2RoundScoreV1(
+        round_key=_sha(f"{source}-test-round"), source_kind=source,
+        split="test", trump_rank="2", decision_count=8,
+        reference_brier_ppb=100, reference_log_loss_nanonats=100,
+        cohort_brier_ppb=tuple((value, 90 + index)
+                               for index, value in enumerate(cohort_ids)),
+        cohort_log_loss_nanonats=tuple((value, 90 + index)
+                                      for index, value in enumerate(cohort_ids)),
+        cohort_member_brier_ppb=tuple(
+            (value, (90 + index,) * 8)
+            for index, value in enumerate(cohort_ids)))
+
+
+def _stub_terminal_dependencies(monkeypatch, freeze):
+    plan, qualification = _qualification(freeze)
+    receipt = _receipt(freeze, plan, qualification)
+    human_selection, scale, primary, control, human = _statistics()
+    cohort_ids = tuple(row.cohort_id for row in freeze.cohorts)
+    cohorts = tuple(SimpleNamespace(cohort_id=value) for value in cohort_ids)
+    synthetic_rows = (_terminal_score("synthetic", cohort_ids),)
+    human_rows = (_terminal_score("human", cohort_ids),)
+    calibration = {
+        "schema": "test-calibration", "cohort_ids": list(cohort_ids),
+        "calibration_passed": True,
+        "selected_cohort_id": "synthetic-primary"}
+    monkeypatch.setattr(TERMINAL_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_calibration_statistics",
+        lambda *args, **kwargs: (calibration, human_selection, scale))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_v2_training_inputs",
+        lambda *args, **kwargs: SimpleNamespace())
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_trained_scoring_cohorts",
+        lambda *args, **kwargs: (
+            cohorts, plan, qualification,
+            tuple((value, _sha(value)) for value in cohort_ids)))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_score_test_populations",
+        lambda *args, **kwargs: (synthetic_rows, human_rows))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_expected_test_synthetic_rounds",
+        lambda: ((synthetic_rows[0].round_key, "2"),))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_expected_test_human_rounds",
+        lambda *args, **kwargs: ((human_rows[0].round_key, "2"),))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "evaluate_primary_test",
+        lambda *args, **kwargs: primary)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "evaluate_label_control_test",
+        lambda *args, **kwargs: control)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "evaluate_human_transfer_test",
+        lambda *args, **kwargs: human)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_derive_integrity_receipt",
+        lambda *args, **kwargs: receipt)
+    return calibration
+
+
+def test_terminal_attempt_is_durable_before_test_scorer_failure(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _admission(freeze)
+    _stub_terminal_dependencies(monkeypatch, freeze)
+
+    def fail_after_attempt(*args, **kwargs):
+        assert (root / "terminal.partial" / "attempt.json").is_file()
+        raise ValueError("injected test scorer failure")
+
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_score_test_populations", fail_after_attempt)
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="after durable attempt"):
+        TERMINAL_STAGE.run_v2_terminal(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", inventory={}, group_split={})
+    assert {path.name for path in (root / "terminal.partial").iterdir()} \
+        == {"attempt.json"}
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="slot is occupied"):
+        TERMINAL_STAGE.run_v2_terminal(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", inventory={}, group_split={})
+
+
+def test_terminal_round_trip_and_coordinated_result_rehash_refuse(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _admission(freeze)
+    _stub_terminal_dependencies(monkeypatch, freeze)
+    result = TERMINAL_STAGE.run_v2_terminal(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+    assert result["terminal_route"] == PASS_B3
+    assert result["test_split_decision_open_count"] == 1
+    assert result["deployment_authorized"] is False
+    directory = root / "terminal"
+    assert TERMINAL_STAGE.reopen_v2_terminal(
+        directory, freeze=freeze, admission=admission,
+        inventory={}, group_split={}) == result
+
+    result_path = directory / "result.json"
+    forged = json.loads(result_path.read_bytes())
+    forged["terminal_route"] = SELECT_NONE
+    forged_raw = canonical_json_bytes(forged)
+    result_path.chmod(0o600)
+    result_path.write_bytes(forged_raw)
+    result_path.chmod(0o400)
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["files"]["terminal_result"]["byte_count"] = len(forged_raw)
+    manifest["files"]["terminal_result"]["sha256"] = hashlib.sha256(
+        forged_raw).hexdigest()
+    manifest_path.chmod(0o600)
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    manifest_path.chmod(0o400)
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="result reconstruction"):
+        TERMINAL_STAGE.reopen_v2_terminal(
+            directory, freeze=freeze, admission=admission,
+            inventory={}, group_split={})
+
+
+def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _admission(freeze)
+    plan, qualification = _qualification(freeze)
+
+    def resource(start, finish, *, artifact=10, training=False,
+                 host_peak=1_500, device_peak=2_500):
+        row = {
+            "started_monotonic_nanoseconds": start,
+            "finished_monotonic_nanoseconds": finish,
+            "wall_nanoseconds": finish - start,
+            "cpu_nanoseconds": finish - start,
+            "artifact_bytes": artifact,
+            "retry_count": 0, "drop_count": 0,
+        }
+        if training:
+            row.update({
+                "training_compute_nanoseconds": finish - start,
+                "peak_host_memory_bytes": host_peak,
+                "peak_device_memory_bytes": device_peak,
+            })
+        return row
+
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_capture_lane",
+        lambda *args, lane, **kwargs: {
+            "round_count": V2_ROUND_COUNT // 16,
+            "resources": resource(100 + lane, 200 + lane)})
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_reference_lane",
+        lambda *args, lane, **kwargs: {
+            "job_count": len(reference_lane_jobs(lane)),
+            "resources": resource(300 + lane, 400 + lane)})
+    digests = {
+        "train": _sha("human-train"),
+        "calibration": _sha("human-calibration"),
+        "test": _sha("human-test"),
+    }
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_human_group_digests",
+        lambda group_split, split: (digests[split],))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_human_group_manifest",
+        lambda *args, **kwargs: {"resources": resource(90, 250)})
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_human_reference_group",
+        lambda *args, **kwargs: {"resources": resource(290, 450)})
+
+    training_hashes = []
+    for index, cohort in enumerate(freeze.cohorts):
+        directory = root / "training" / cohort.cohort_id
+        directory.mkdir(parents=True)
+        payload = {"resources": resource(
+            500 + index, 600 + index, artifact=20, training=True,
+            host_peak=1_500 + index, device_peak=2_500 + index)}
+        raw = canonical_json_bytes(payload)
+        manifest_path = directory / "manifest.json"
+        manifest_path.write_bytes(raw)
+        manifest_path.chmod(0o400)
+        training_hashes.append((cohort.cohort_id, _sha_bytes(raw)))
+
+    receipt = TERMINAL_STAGE._derive_integrity_receipt(
+        root, freeze, admission, {}, plan=plan,
+        qualification=qualification,
+        training_hashes=tuple(training_hashes),
+        synthetic_test_count=1_339, human_test_decision_count=174)
+    qualification_work = sum(
+        row.wall_nanoseconds for row in qualification.arms)
+    assert receipt.capture_reopened_round_count == V2_ROUND_COUNT
+    assert receipt.reference_reopened_round_count \
+        == expected_reference_job_count()
+    assert receipt.capture_wall_nanoseconds == 160
+    assert receipt.reference_wall_nanoseconds == 160
+    assert receipt.training_device_nanoseconds \
+        == qualification_work + 4 * 100
+    assert receipt.training_wall_nanoseconds \
+        == qualification_work + 103
+    assert receipt.training_peak_host_memory_bytes == 1_503
+    assert receipt.training_peak_device_memory_bytes == 2_503
+    assert receipt.test_split_decision_open_count == 1
+    assert derive_terminal_result(
+        freeze, plan, qualification, receipt, *_statistics()
+    ).terminal_route == PASS_B3

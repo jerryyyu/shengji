@@ -49,6 +49,8 @@ def _arms(candidate_wall: int = 80, cpu_wall: int = 100):
                            for member in range(8))
         losses = tuple(10_000 + member + (0 if device == "cpu" else 100)
                        for member in range(8))
+        receipts = tuple(_sha(f"{device}-receipt-{member}")
+                         for member in range(8))
         rows.append(V2DeviceQualificationArmV1(
             arm_index=index, device=device, warmup=warmup,
             pair_index=pair_index, plan_sha256=plan.sha256(),
@@ -58,6 +60,7 @@ def _arms(candidate_wall: int = 80, cpu_wall: int = 100):
             active_label_count=plan.active_label_count,
             member_checkpoint_sha256s=checkpoint,
             member_loss_nanonats=losses,
+            member_epoch_receipt_sha256s=receipts,
             wall_nanoseconds=(50 if warmup else (
                 cpu_wall if device == "cpu" else candidate_wall)),
             peak_host_memory_bytes=1024,
@@ -136,6 +139,15 @@ def test_checkpoint_nondeterminism_memory_fallback_and_result_rewrite_refuse():
         mutated[candidate[-1]],
         member_checkpoint_sha256s=("f" * 64,)
         + mutated[candidate[-1]].member_checkpoint_sha256s[1:])
+    with pytest.raises(BeliefV2DeviceQualificationError,
+                       match="determinism"):
+        derive_qualification_result(plan, tuple(mutated))
+
+    mutated = list(arms)
+    mutated[candidate[-1]] = replace(
+        mutated[candidate[-1]],
+        member_epoch_receipt_sha256s=("e" * 64,)
+        + mutated[candidate[-1]].member_epoch_receipt_sha256s[1:])
     with pytest.raises(BeliefV2DeviceQualificationError,
                        match="determinism"):
         derive_qualification_result(plan, tuple(mutated))

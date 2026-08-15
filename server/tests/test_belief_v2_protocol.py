@@ -28,6 +28,7 @@ from shengji.rl.belief_v2_protocol import (
     protocol_dict,
     protocol_sha256,
     schedule_sha256,
+    v2_lane_coordinates,
     v2_policy_seeds,
     v2_research_round,
     v2_round_coordinate,
@@ -59,6 +60,11 @@ def test_population_is_exactly_balanced_before_any_deal_is_opened():
         assert Counter(row.lane for row in rank_rows) == Counter({
             lane: V2_ROUNDS_PER_LANE_RANK
             for lane in range(V2_CAPTURE_LANES)})
+    for lane in range(V2_CAPTURE_LANES):
+        lane_rows = v2_lane_coordinates(lane)
+        assert len(lane_rows) == V2_ROUND_COUNT // V2_CAPTURE_LANES
+        assert Counter(row.trump_rank for row in lane_rows) == Counter({
+            rank: V2_ROUNDS_PER_LANE_RANK for rank in V2_RANKS})
     assert all(row.split == split_for_round_seed(row.round_seed)
                for row in rows)
 

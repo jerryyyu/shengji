@@ -13,6 +13,7 @@ from shengji.rl.belief_v2_seed_registry import (
     SeedClassificationV1,
     SeedPopulationV1,
     build_seed_registry,
+    complete_seed_classifications,
     scan_seed_sources,
     seed_registry_bytes,
     seed_scan_bytes,
@@ -47,22 +48,20 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
 
 def _closed(scan):
     candidates = scan["candidates"]
-    classifications = []
+    explicit = []
     for candidate in candidates:
         if candidate["path"] == "DESIGN.md":
-            classifications.append(SeedClassificationV1(
+            explicit.append(SeedClassificationV1(
                 candidate_id=candidate["candidate_id"],
                 classification="finite-population",
                 population_id="belief-v2"))
         elif "SEED_START" in candidate["line"]:
-            classifications.append(SeedClassificationV1(
+            explicit.append(SeedClassificationV1(
                 candidate_id=candidate["candidate_id"],
                 classification="finite-population",
                 population_id="prior-v1"))
-        else:
-            classifications.append(SeedClassificationV1(
-                candidate_id=candidate["candidate_id"],
-                classification="derived-rng-stream"))
+    classifications = complete_seed_classifications(
+        scan, explicit=tuple(explicit))
     populations = (
         SeedPopulationV1(
             population_id="belief-v2",
@@ -82,6 +81,8 @@ def test_scan_binds_every_tracked_active_source_and_seed_line(tmp_path):
     assert scan["candidate_count"] == 3
     assert all("seed" in row["line"].lower()
                for row in scan["candidates"])
+    assert sum(row["explicit_classification_required"]
+               for row in scan["candidates"]) == 1
     assert b"docs_archive" not in seed_scan_bytes(scan)
     assert scan["opens_game_data"] is False
     assert scan["execution_authorized"] is False
@@ -110,6 +111,14 @@ def test_registry_requires_exact_classification_and_proves_disjoint(tmp_path):
         build_seed_registry(
             scan, classifications=(*classifications, classifications[0]),
             populations=populations, v2_population_id="belief-v2")
+
+    required = next(row for row in scan["candidates"]
+                    if row["explicit_classification_required"])
+    with pytest.raises(BeliefV2SeedRegistryError,
+                       match="explicit seed classification population"):
+        complete_seed_classifications(scan, explicit=())
+    assert required["candidate_id"] in {
+        row.candidate_id for row in classifications if row.explicit}
 
 
 def test_registry_refuses_v2_collision_and_coordinated_digest_rehash(tmp_path):

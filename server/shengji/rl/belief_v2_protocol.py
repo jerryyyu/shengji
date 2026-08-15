@@ -145,6 +145,19 @@ def v2_round_coordinate(trump_rank: str, rank_ordinal: int) \
         rank_index * V2_ROUNDS_PER_RANK + rank_ordinal]
 
 
+def v2_lane_coordinates(lane: int) -> tuple[V2RoundCoordinate, ...]:
+    """Return one exact balanced 832-round production capture lane."""
+    if type(lane) is not int or lane not in range(V2_CAPTURE_LANES):
+        raise BeliefV2ProtocolError("V2 capture lane is invalid")
+    result = tuple(row for row in v2_round_coordinates()
+                   if row.lane == lane)
+    if len(result) != V2_ROUND_COUNT // V2_CAPTURE_LANES \
+            or any(sum(row.trump_rank == rank for row in result)
+                   != V2_ROUNDS_PER_LANE_RANK for rank in V2_RANKS):
+        raise BeliefV2ProtocolError("V2 capture lane population drift")
+    return result
+
+
 def v2_research_round(coordinate: V2RoundCoordinate) -> Round:
     """Construct the exact first-round state for a reviewed V2 coordinate."""
     if type(coordinate) is not V2RoundCoordinate \

@@ -9,6 +9,7 @@ corpus, train a model, measure a clock, write an artifact, or authorize a run.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -479,3 +480,135 @@ def validate_qualification_result(
             or result.wall_reduction_ppb != reduction:
         raise BeliefV2DeviceQualificationError(
             "device qualification result derivation drift")
+
+
+def reopen_qualification_plan(raw: bytes) -> V2DeviceQualificationPlanV1:
+    """Strictly reconstruct a persisted qualification plan."""
+    if type(raw) is not bytes or not raw:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification plan artifact is empty")
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification plan artifact is not JSON") from exc
+    expected_keys = {
+        "schema", "execution_git", "candidate_device",
+        "full_schedule_sha256", "selected_batch_indices",
+        "selected_population_sha256", "selected_schedule_sha256",
+        "measured_batch_count", "warmup_uses_same_batch_population",
+        "decision_count", "active_label_count", "host_memory_cap_bytes",
+        "device_memory_cap_bytes", "model_seeds", "arm_order",
+        "minimum_wall_reduction_percent", "training_authorized",
+        "test_open_authorized", "strength_claim_authorized",
+    }
+    if type(payload) is not dict or set(payload) != expected_keys \
+            or canonical_json_bytes(payload) != raw \
+            or payload["schema"] != QUALIFICATION_PLAN_SCHEMA \
+            or payload["measured_batch_count"] != MEASURED_BATCH_COUNT \
+            or payload["warmup_uses_same_batch_population"] is not True \
+            or payload["model_seeds"] != list(COHORT_SEEDS) \
+            or payload["minimum_wall_reduction_percent"] \
+            != MIN_WALL_REDUCTION_PERCENT \
+            or any(payload[key] is not False for key in (
+                "training_authorized", "test_open_authorized",
+                "strength_claim_authorized")) \
+            or type(payload["selected_batch_indices"]) is not list \
+            or type(payload["arm_order"]) is not list \
+            or any(type(row) is not dict or set(row) != {
+                "device", "warmup", "pair_index"}
+                   for row in payload["arm_order"]):
+        raise BeliefV2DeviceQualificationError(
+            "device qualification plan artifact identity drift")
+    result = V2DeviceQualificationPlanV1(
+        execution_git=payload["execution_git"],
+        candidate_device=payload["candidate_device"],
+        full_schedule_sha256=payload["full_schedule_sha256"],
+        selected_batch_indices=tuple(payload["selected_batch_indices"]),
+        selected_population_sha256=payload["selected_population_sha256"],
+        selected_schedule_sha256=payload["selected_schedule_sha256"],
+        decision_count=payload["decision_count"],
+        active_label_count=payload["active_label_count"],
+        host_memory_cap_bytes=payload["host_memory_cap_bytes"],
+        device_memory_cap_bytes=payload["device_memory_cap_bytes"],
+        arm_order=tuple((row["device"], row["warmup"], row["pair_index"])
+                        for row in payload["arm_order"]))
+    validate_qualification_plan(result)
+    if result.canonical_bytes() != raw:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification plan artifact reconstruction drift")
+    return result
+
+
+def reopen_qualification_result(
+        plan: V2DeviceQualificationPlanV1,
+        raw: bytes) -> V2DeviceQualificationResultV1:
+    """Strictly reconstruct every arm and the selected-device verdict."""
+    if type(raw) is not bytes or not raw:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification result artifact is empty")
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification result artifact is not JSON") from exc
+    expected_keys = {
+        "schema", "plan_sha256", "arms", "selected_device",
+        "accelerator_retained", "aggregate_cpu_wall_nanoseconds",
+        "aggregate_candidate_wall_nanoseconds", "wall_reduction_ppb",
+        "training_authorized", "test_open_authorized",
+        "strength_claim_authorized", "deployment_authorized",
+    }
+    arm_keys = {
+        "schema", "arm_index", "device", "warmup", "pair_index",
+        "plan_sha256", "batch_population_sha256",
+        "batch_schedule_sha256", "decision_count", "active_label_count",
+        "member_checkpoint_sha256s", "member_loss_nanonats",
+        "member_epoch_receipt_sha256s", "wall_nanoseconds",
+        "peak_host_memory_bytes", "peak_device_memory_bytes",
+        "actual_device", "fallback_used", "completed",
+    }
+    if type(payload) is not dict or set(payload) != expected_keys \
+            or canonical_json_bytes(payload) != raw \
+            or payload["schema"] != QUALIFICATION_RESULT_SCHEMA \
+            or type(payload["arms"]) is not list \
+            or any(type(row) is not dict or set(row) != arm_keys
+                   for row in payload["arms"]) \
+            or any(payload[key] is not False for key in (
+                "training_authorized", "test_open_authorized",
+                "strength_claim_authorized", "deployment_authorized")):
+        raise BeliefV2DeviceQualificationError(
+            "device qualification result artifact identity drift")
+    arms = tuple(V2DeviceQualificationArmV1(
+        arm_index=row["arm_index"], device=row["device"],
+        warmup=row["warmup"], pair_index=row["pair_index"],
+        plan_sha256=row["plan_sha256"],
+        batch_population_sha256=row["batch_population_sha256"],
+        batch_schedule_sha256=row["batch_schedule_sha256"],
+        decision_count=row["decision_count"],
+        active_label_count=row["active_label_count"],
+        member_checkpoint_sha256s=tuple(
+            row["member_checkpoint_sha256s"]),
+        member_loss_nanonats=tuple(row["member_loss_nanonats"]),
+        member_epoch_receipt_sha256s=tuple(
+            row["member_epoch_receipt_sha256s"]),
+        wall_nanoseconds=row["wall_nanoseconds"],
+        peak_host_memory_bytes=row["peak_host_memory_bytes"],
+        peak_device_memory_bytes=row["peak_device_memory_bytes"],
+        actual_device=row["actual_device"],
+        fallback_used=row["fallback_used"], completed=row["completed"])
+                 for row in payload["arms"])
+    result = V2DeviceQualificationResultV1(
+        plan_sha256=payload["plan_sha256"], arms=arms,
+        selected_device=payload["selected_device"],
+        accelerator_retained=payload["accelerator_retained"],
+        aggregate_cpu_wall_nanoseconds=payload[
+            "aggregate_cpu_wall_nanoseconds"],
+        aggregate_candidate_wall_nanoseconds=payload[
+            "aggregate_candidate_wall_nanoseconds"],
+        wall_reduction_ppb=payload["wall_reduction_ppb"])
+    validate_qualification_result(plan, result)
+    if result.canonical_bytes(plan) != raw:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification result artifact reconstruction drift")
+    return result

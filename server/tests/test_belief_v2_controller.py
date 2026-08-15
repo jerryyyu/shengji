@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import torch
 
 import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
+import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
@@ -96,6 +99,7 @@ from shengji.rl.belief_v2_scoring_controller import (
     reopen_synthetic_scoring_round,
 )
 from shengji.rl.belief_v2_scoring import v2_scoring_actor
+from shengji.rl.belief_v2_statistics import V2RoundScoreV1
 from shengji.rl.belief_refc_capture import (
     capture_ref_c_worlds_from_bound_actor,
 )
@@ -956,3 +960,132 @@ def test_full_training_resource_receipt_enforces_its_own_memory_peaks(
             artifact_bytes=1, selected_device="mps",
             peak_host_memory_bytes=1,
             peak_device_memory_bytes=caps.training_device_memory_bytes + 1)
+
+
+def _calibration_score(*, source: str, cohort_ids: tuple[str, ...]):
+    return V2RoundScoreV1(
+        round_key=hashlib.sha256(f"{source}-round".encode()).hexdigest(),
+        source_kind=source, split="calibration", trump_rank="2",
+        decision_count=8, reference_brier_ppb=100_000_000,
+        reference_log_loss_nanonats=800_000_000,
+        cohort_brier_ppb=tuple(
+            (cohort_id, 90_000_000 + index)
+            for index, cohort_id in enumerate(cohort_ids)),
+        cohort_log_loss_nanonats=tuple(
+            (cohort_id, 790_000_000 + index)
+            for index, cohort_id in enumerate(cohort_ids)),
+        cohort_member_brier_ppb=tuple(
+            (cohort_id, (90_000_000 + index,) * 8)
+            for index, cohort_id in enumerate(cohort_ids)))
+
+
+def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
+    cohort_ids = tuple(row.cohort_id for row in freeze.cohorts)
+    cohorts = tuple(SimpleNamespace(cohort_id=value) for value in cohort_ids)
+    synthetic = (_calibration_score(
+        source="synthetic", cohort_ids=cohort_ids),)
+    human = (_calibration_score(source="human", cohort_ids=cohort_ids),)
+    training_inputs = SimpleNamespace(sha256=lambda: _sha("7"))
+    plan = SimpleNamespace(sha256=lambda: _sha("8"))
+    qualification = SimpleNamespace(
+        canonical_bytes=lambda ignored: b"qualification\n")
+    training_hashes = tuple((cohort_id, _sha(str(index % 10)))
+                            for index, cohort_id in enumerate(cohort_ids))
+    human_selection = SimpleNamespace(
+        retained=True,
+        canonical_bytes=lambda: canonical_json_bytes({
+            "schema": "test-human-selection", "retained": True}))
+    scale_curve = SimpleNamespace(
+        canonical_bytes=lambda: canonical_json_bytes({
+            "schema": "test-scale-curve", "positive": True}))
+    monkeypatch.setattr(CALIBRATION_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_v2_training_inputs",
+        lambda *args, **kwargs: training_inputs)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_trained_scoring_cohorts",
+        lambda *args, **kwargs: (
+            cohorts, plan, qualification, training_hashes))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "_score_synthetic",
+        lambda *args, **kwargs: synthetic)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "_score_human",
+        lambda *args, **kwargs: human)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "_expected_synthetic_rounds",
+        lambda: ((synthetic[0].round_key, "2"),))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "_expected_human_rounds_from_references",
+        lambda *args, **kwargs: ((human[0].round_key, "2"),))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "v2_reference_replicates_are_stable",
+        lambda *args, source_kind, **kwargs: (
+            stable if source_kind == "human" else True))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "evaluate_human_mixture_selection",
+        lambda *args, **kwargs: human_selection)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "evaluate_scale_curve",
+        lambda *args, **kwargs: scale_curve)
+    return human_selection, scale_curve
+
+
+def test_calibration_selection_wires_stability_and_selected_cohort(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    _stub_calibration_dependencies(monkeypatch, freeze)
+    result = CALIBRATION_STAGE.run_v2_calibration_selection(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+    assert result["calibration_passed"] is True
+    assert result["human_mixture_retained"] is True
+    assert result["selected_cohort_id"] == "human-mixture"
+    assert result["test_split_opened"] is False
+    assert result["strength_claim_authorized"] is False
+    assert set(result["files"]) == (
+        set(CALIBRATION_STAGE.POPULATION_FILES)
+        | set(CALIBRATION_STAGE.RESULT_FILES))
+    assert CALIBRATION_STAGE.reopen_v2_calibration_selection(
+        root / "calibration" / "selection", freeze=freeze,
+        admission=admission, inventory={}, group_split={}) == result
+
+
+def test_calibration_selection_refuses_instability_and_coordinated_rehash(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    _stub_calibration_dependencies(monkeypatch, freeze, stable=False)
+    result = CALIBRATION_STAGE.run_v2_calibration_selection(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+    assert result["human_reference_replicates_stable"] is False
+    assert result["calibration_passed"] is False
+    assert result["selected_cohort_id"] is None
+
+    directory = root / "calibration" / "selection"
+    result_path = directory / CALIBRATION_STAGE.RESULT_FILES[
+        "human_selection"]
+    forged = canonical_json_bytes({"schema": "forged-human-selection"})
+    result_path.chmod(0o600)
+    result_path.write_bytes(forged)
+    result_path.chmod(0o400)
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["files"]["human_selection"]["byte_count"] = len(forged)
+    manifest["files"]["human_selection"]["sha256"] = hashlib.sha256(
+        forged).hexdigest()
+    manifest_path.chmod(0o600)
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    manifest_path.chmod(0o400)
+    with pytest.raises(
+            CALIBRATION_STAGE.BeliefV2CalibrationControllerError,
+            match="result reconstruction"):
+        CALIBRATION_STAGE.reopen_v2_calibration_selection(
+            directory, freeze=freeze, admission=admission,
+            inventory={}, group_split={})

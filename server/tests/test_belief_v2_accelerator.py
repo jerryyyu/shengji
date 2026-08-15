@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import fields
+import hashlib
+from dataclasses import fields, replace
 
 import pytest
 import torch
@@ -37,6 +38,10 @@ from shengji.rl.belief_v2_accelerator import (
     portable_model_state_sha256,
     train_v2_cohort_epoch_stream,
 )
+from shengji.rl.belief_v2_device_qualification import (
+    build_qualification_plan,
+)
+from shengji.rl.belief_v2_device_runner import execute_qualification_arm
 
 
 POLICIES = ("mc-s0-report-lcb",)
@@ -125,3 +130,31 @@ def test_v2_cpu_path_is_receipt_and_checkpoint_identical_to_v1():
     actual_values = evaluate_v2_calibration_cohort_stream_nanonats(
         actual_models, iter((calibration,)), device="cpu")
     assert actual_values == expected_values
+
+
+def test_runnable_qualification_cpu_arm_uses_exact_selected_batches():
+    source = _batch()
+    batches = tuple(replace(
+        source, decision_keys=tuple(hashlib.sha256(
+            f"qualification-{batch}-{index}".encode()).hexdigest()
+            for index, _ in enumerate(source.decision_keys)))
+                    for batch in range(32))
+    plan = build_qualification_plan(
+        execution_git="a" * 40, candidate_device="mps",
+        batch_decision_keys=tuple(batch.decision_keys for batch in batches),
+        batch_active_label_counts=tuple(
+            int(batch.active_mask.sum()) for batch in batches),
+        host_memory_cap_bytes=64 * 1024**3,
+        device_memory_cap_bytes=16 * 1024**3)
+    arm = execute_qualification_arm(
+        plan, arm_index=0, selected_batches=batches)
+    assert arm.device == "cpu"
+    assert arm.actual_device == "cpu"
+    assert arm.fallback_used is False
+    assert arm.completed is True
+    assert arm.decision_count == sum(
+        len(batch.decision_keys) for batch in batches)
+    assert arm.active_label_count == sum(
+        int(batch.active_mask.sum()) for batch in batches)
+    assert len(arm.member_checkpoint_sha256s) == 8
+    assert len(arm.member_epoch_receipt_sha256s) == 8

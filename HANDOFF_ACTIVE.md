@@ -8,14 +8,14 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue and fleet reconciled: 2026-08-15 01:17 EDT from canonical main
-`749cccb`. No sealed outcome bytes were opened during reconciliation.
+Review queue and fleet reconciled: 2026-08-15 01:21 EDT from canonical main
+`5b18a3a`. No sealed outcome bytes were opened during reconciliation.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | idle | No BELIEF corpus, training, test opening or scored job is running. T4 is terminally reviewed `SELECT_NONE`; the PR #103 10,000,000-round differential soak also completed 8/8 PASS without opening sealed evidence. |
+| **Mini** | idle | No BELIEF corpus, training, test opening or scored job is running. A preserved unconsumed V1 design from rejected head `5d44ccb1` is stale and cannot be initialized; use the reserved V2 namespace only after source merge. T4 is terminally reviewed `SELECT_NONE`; the PR #103 10,000,000-round differential soak also completed 8/8 PASS without opening sealed evidence. |
 | **Air** | idle after terminal timeout | Broad Pair source `cd206707` ended at 23:29 EDT with `REFUSED: pair screen supervisor timeout`, 0/8 terminal shards and no complete score-free final. Canonical review ledger `483ed02` records the fail-closed terminal. The sleeping selective-S6 queue exited 72/HOLD and did not launch. No process remains. |
 | **Strength Cloud** | powered off / unreachable | S4 is independently terminal `SELECT_NONE`. The user powered the host off without deleting it; SSH is unreachable. Do not infer a live job or power it on without an approved packet. |
 | **Performance Cloud** | powered off / recovery HOLD | A reviewed fresh Pair checkpoint packet had started once under invocation `ac5425e0e106403e9a82a7bd8cb5b221`, but the host is now powered off/unreachable with no reviewed terminal preceding shutdown. Conservatively treat that one-shot admission as interrupted/spent. Do not restart, resume, open outcomes or aggregate; a future power-on permits read-only score-free recovery audit only. |
@@ -71,6 +71,15 @@ PR comments alone are not queue state.
    verify—without per-stage reviews. Any initialization consumes the sibling
    tombstone. Terminal evidence still requires one reproducibility review and
    grants no B3, online gameplay, strength, promotion or deployment authority.
+   Preserve—but never initialize—the old read-only design
+   `/private/tmp/belief-v1-b2-open-dev-offline-v1.design.json` (SHA
+   `c7f93cac…533a1`, rejected execution Git `5d44ccb1`); its evidence root,
+   partial and consumption tombstone are absent. The post-merge freeze must use
+   the fresh absent sibling pair
+   `/private/tmp/belief-v1-b2-open-dev-offline-v2.design.json` and
+   `/private/tmp/belief-v1-b2-open-dev-offline-v2`. Exact repaired source
+   `529664f4` passed a clean native build and `-P -B` bootstrap-only check;
+   this preflight did not publish a design or initialize an execution.
 
 2. **Pair checkpoint successor recovery HOLD.** Capacity and packet review
    remain authentic, but the one-shot Performance Cloud invocation is no

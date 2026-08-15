@@ -245,6 +245,10 @@ that order up to 256 decisions. Early stopping operates on integer cohort-mean
 calibration loss in nanonats: an improvement is load-bearing only at
 `100,000` nanonats or more; three subsequent non-improving epochs stop the
 cohort and every member uses the same selected checkpoint epoch.
+Every member receipt independently binds the sorted exact decision-key
+population and the ordered batch/decision-key schedule for that epoch. All
+eight members must agree; the population digest must remain constant across
+epochs and the epoch-bound schedule digest must change with the frozen order.
 
 Training hard caps are 32 CPU/GPU device-hours total for the eight candidate
 and eight permuted-label control models, 8 wall-hours, and 16 GiB of
@@ -278,6 +282,13 @@ Every checkpoint and every test row must satisfy:
   noncanonical rows, unknown cards, or unbound source/model identities.
 
 Any mechanics failure terminates the recipe regardless of average loss.
+The terminal mechanics artifact contains checked-population and
+failure/mismatch counts, not caller-supplied pass booleans. Conservation and
+hard-fact rows are counted only after the real ownership validator accepts
+them; E3/E4/E5 use candidate predictions on C4 public-twin and absolute-seat-
+rotation corpus rows. Cross-split counts are reconstructed from the actual
+train/calibration round seeds logged after bundle opening, not from the split
+function alone.
 
 ## Primary calibration gates
 
@@ -321,7 +332,8 @@ source actor's hand or the private alternative audit. The audit stream alone
 records whether a point/nonpoint alternative existed and, for the trump-pair
 signal, the source's pre-play trump length and pair count.
 3. **C3 reliability:** for each emitted receiver count class `0/1/2`, report
-   fixed 10-bin ECE and reliability slope overall and by frozen public role,
+   a separate fixed 10-bin ECE, Brier component, and reliability slope—never a
+   pooled three-class curve—overall and by frozen public role,
    phase, declaration, and hidden-kitty strata when at least 1,000 probability
    cells are present. Also report calibration/error for linear expectations
    derivable from the ownership marginals: suit/trump length, point count, and

@@ -31,7 +31,7 @@ from shengji.rl.belief_reliability import (
 POLICIES = ("mc-s0-report-lcb",)
 
 
-def _examples(decisions=5):
+def _examples(decisions=15):
     seed = b2_split_round_seeds("test")[0]
     captured = _capture_with_policies(
         seed, POLICIES[0], champion_policy_seeds(seed),
@@ -58,20 +58,29 @@ def _examples(decisions=5):
 
 
 def test_perfect_predictions_have_zero_ece_brier_and_unit_slope():
-    report = build_count_reliability_report(_examples())
-    overall = report.strata[0]
-    assert overall.name == "all"
-    assert overall.ece_ppb == 0
-    assert overall.brier_numerator == 0
-    assert overall.reliability_slope_defined is True
-    assert overall.reliability_slope_numerator == 1
-    assert overall.reliability_slope_denominator == 1
-    assert overall.probability_cell_count >= 1000
-    assert overall.underpowered is False
-    assert sum(row.probability_cell_count for row in overall.bins) \
-        == overall.probability_cell_count
-    assert {row.name.split(":")[0] for row in report.strata[1:]} \
+    examples = _examples()
+    report = build_count_reliability_report(examples)
+    overall = report.strata[:3]
+    expected_cells_per_class = sum(
+        len(example.prediction.probabilities) for example in examples)
+    assert tuple(row.name for row in overall) == ("all",) * 3
+    assert tuple(row.count_class for row in overall) == (0, 1, 2)
+    assert all(row.ece_ppb == 0 and row.brier_numerator == 0
+               and row.reliability_slope_defined is True
+               and row.reliability_slope_numerator == 1
+               and row.reliability_slope_denominator == 1
+               and row.probability_cell_count == expected_cells_per_class
+               and row.probability_cell_count >= 1000
+               and row.underpowered is False for row in overall)
+    assert all(sum(bin_row.probability_cell_count for bin_row in row.bins)
+               == row.probability_cell_count for row in overall)
+    assert {row.name.split(":")[0] for row in report.strata[3:]} \
         == {"declaration", "kitty", "phase", "role"}
+    assert {row.count_class for row in report.strata} == {0, 1, 2}
+    for name in {row.name for row in report.strata}:
+        rows = tuple(row for row in report.strata if row.name == name)
+        assert tuple(row.count_class for row in rows) == (0, 1, 2)
+        assert len({row.probability_cell_count for row in rows}) == 1
     assert {row.metric.split(":")[0] for row in report.linear_expectations} \
         == {"pair-count", "point-card-count", "suit-length", "trump-length"}
     assert all(row.mean_signed_error_count_ppb == 0
@@ -104,12 +113,13 @@ def test_uniform_predictions_make_reliability_metrics_fail_visibly():
         )
         changed.append(replace(example, prediction=prediction))
     report = build_count_reliability_report(tuple(changed))
-    overall = report.strata[0]
-    assert overall.brier_numerator > 0
-    assert overall.ece_ppb > 0
-    assert (not overall.reliability_slope_defined
-            or (overall.reliability_slope_numerator,
-                overall.reliability_slope_denominator) != (1, 1))
+    overall = report.strata[:3]
+    assert all(row.brier_numerator > 0 and row.ece_ppb > 0
+               for row in overall)
+    assert any(not row.reliability_slope_defined
+               or (row.reliability_slope_numerator,
+                   row.reliability_slope_denominator) != (1, 1)
+               for row in overall)
     assert any(row.mean_absolute_error_count_ppb > 0
                for row in report.linear_expectations)
 

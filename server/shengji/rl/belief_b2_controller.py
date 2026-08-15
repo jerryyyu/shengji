@@ -795,7 +795,8 @@ def _round_examples(
 def _iter_corpus_batches(
         root: Path, *, split: str, kind: str,
         capture_rows: dict[int, dict[str, Any]],
-        epoch: int | None = None):
+        epoch: int | None = None,
+        opened_round_seeds: set[int] | None = None):
     """Yield exact complete-round-grouped batches from immutable bundles."""
     seeds = b2_split_round_seeds(split)
     if split == "train":
@@ -816,6 +817,8 @@ def _iter_corpus_batches(
         rows = _round_examples(
             root, seed, split=split, kind=kind,
             capture_row=capture_row)
+        if opened_round_seeds is not None:
+            opened_round_seeds.add(seed)
         if not rows or len(rows) > TRAIN_BATCH_DECISION_CAP:
             raise BeliefB2ControllerError(
                 "training round decision population drift")
@@ -836,6 +839,7 @@ def _training_manifest(
         admission: B2PipelineAdmissionV1, *, kind: str,
         epochs: list[dict[str, Any]], selected_epoch: int, stop_epoch: int,
         stopped_for_patience: bool, checkpoints: list[dict[str, Any]],
+        opened_round_seeds: dict[str, set[int]],
         wall_nanoseconds: int, device_nanoseconds: int,
         started_monotonic_nanoseconds: int,
         finished_monotonic_nanoseconds: int) -> dict[str, Any]:
@@ -852,6 +856,10 @@ def _training_manifest(
         "stop_epoch": stop_epoch,
         "stopped_for_patience": stopped_for_patience,
         "checkpoints": checkpoints,
+        "opened_round_seeds": {
+            split: sorted(opened_round_seeds[split])
+            for split in ("train", "calibration")
+        },
         "resources": {
             "boot_identity": design.runtime.boot_identity,
             "started_monotonic_nanoseconds": started_monotonic_nanoseconds,
@@ -921,6 +929,7 @@ def run_training_cohort(
     epochs = []
     selected_states = None
     selected_receipts = None
+    opened_round_seeds = {"train": set(), "calibration": set()}
     start_wall = time.monotonic_ns()
     start_device = time.process_time_ns()
     decision = None
@@ -929,12 +938,14 @@ def run_training_cohort(
             models, optimizers,
             _iter_corpus_batches(
                 root, split="train", kind=kind,
-                capture_rows=capture_rows, epoch=epoch),
+                capture_rows=capture_rows, epoch=epoch,
+                opened_round_seeds=opened_round_seeds["train"]),
             epoch=epoch)
         calibration = evaluate_calibration_cohort_stream_nanonats(
             models, _iter_corpus_batches(
                 root, split="calibration", kind=kind,
-                capture_rows=capture_rows))
+                capture_rows=capture_rows,
+                opened_round_seeds=opened_round_seeds["calibration"]))
         for row, value in zip(losses, calibration, strict=True):
             row.append(value)
         decision = select_common_epoch(tuple(tuple(row) for row in losses))
@@ -989,7 +1000,8 @@ def run_training_cohort(
         selected_epoch=decision.selected_epoch,
         stop_epoch=decision.stop_epoch,
         stopped_for_patience=decision.stopped_for_patience,
-        checkpoints=checkpoint_rows, wall_nanoseconds=wall,
+        checkpoints=checkpoint_rows,
+        opened_round_seeds=opened_round_seeds, wall_nanoseconds=wall,
         device_nanoseconds=device,
         started_monotonic_nanoseconds=start_wall,
         finished_monotonic_nanoseconds=finish_wall)
@@ -1021,7 +1033,8 @@ def reopen_training_cohort(
         "schema", "protocol_sha256", "design_sha256",
         "admission_sha256", "cohort_kind", "initialization_seeds",
         "epoch_count", "epochs", "selected_common_epoch", "stop_epoch",
-        "stopped_for_patience", "checkpoints", "resources",
+        "stopped_for_patience", "checkpoints", "opened_round_seeds",
+        "resources",
         "test_split_opened", "contains_optimizer_resume_state",
         "contains_privileged_targets", "runtime_research_package",
         "test_split_open_authorized", "sampler_implementation_authorized",
@@ -1041,6 +1054,9 @@ def reopen_training_cohort(
             or len(payload["epochs"]) != payload["epoch_count"] \
             or type(payload["checkpoints"]) is not list \
             or len(payload["checkpoints"]) != len(COHORT_SEEDS) \
+            or payload["opened_round_seeds"] != {
+                split: list(b2_split_round_seeds(split))
+                for split in ("train", "calibration")} \
             or payload["test_split_opened"] is not False \
             or payload["contains_optimizer_resume_state"] is not False \
             or payload["contains_privileged_targets"] is not False \
@@ -1071,6 +1087,14 @@ def reopen_training_cohort(
         receipts = tuple(reopen_epoch_receipt(canonical_json_bytes(value))
                          for value in row["member_training_receipts"])
         if any(receipt.epoch != epoch for receipt in receipts) \
+                or len({receipt.decision_population_sha256
+                        for receipt in receipts}) != 1 \
+                or len({receipt.batch_schedule_sha256
+                        for receipt in receipts}) != 1 \
+                or len({(receipt.batch_count, receipt.decision_count,
+                         receipt.active_label_count, receipt.batch_schema,
+                         receipt.history_transform, receipt.label_transform,
+                         receipt.control_kind) for receipt in receipts}) != 1 \
                 or row["cohort_mean_calibration_loss_nanonats"] != sum(
                     row["member_calibration_loss_nanonats"]) \
                 // len(COHORT_SEEDS):
@@ -1081,6 +1105,12 @@ def reopen_training_cohort(
                 member_losses, row["member_calibration_loss_nanonats"],
                 strict=True):
             losses.append(value)
+    if len({receipts[0].decision_population_sha256
+            for receipts in receipt_rows}) != 1 \
+            or len({receipts[0].batch_schedule_sha256
+                    for receipts in receipt_rows}) != len(receipt_rows):
+        raise BeliefB2ControllerError(
+            "training population/schedule receipt binding drift")
     for member_index, seed in enumerate(COHORT_SEEDS):
         initial = model_state_sha256(new_from_scratch_model(seed))
         if receipt_rows[0][member_index].model_state_sha256_before \
@@ -1163,6 +1193,10 @@ def reopen_training_cohort(
         stop_epoch=decision.stop_epoch,
         stopped_for_patience=decision.stopped_for_patience,
         checkpoints=checkpoint_rows,
+        opened_round_seeds={
+            split: set(payload["opened_round_seeds"][split])
+            for split in ("train", "calibration")
+        },
         wall_nanoseconds=resources["wall_nanoseconds"],
         device_nanoseconds=resources["device_nanoseconds"],
         started_monotonic_nanoseconds=resources[

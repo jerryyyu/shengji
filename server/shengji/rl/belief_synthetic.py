@@ -41,7 +41,7 @@ from .belief_training import (BeliefTrainingExampleV1,
                               collate_training_examples)
 
 
-C4_CONTEXT_SCHEMA = "belief-v1-c4-two-world-context-v1"
+C4_CONTEXT_SCHEMA = "belief-v1-c4-two-world-context-v2"
 C4_RESULT_SCHEMA = "belief-v1-c4-exact-posterior-result-v1"
 C4_POLICY = "equal-prior-public-action-likelihood-3-to-1-v1"
 C4_CONTEXT_IDS = tuple(f"context-{index}" for index in range(4))
@@ -68,6 +68,7 @@ class C4PublicTwinContextV1:
     context_id: str
     world_0: CorpusPairV1
     world_1: CorpusPairV1
+    rotated_world_0: CorpusPairV1
     prior_weights: tuple[int, int] = (1, 1)
     observed_action_likelihood_weights: tuple[int, int] = (3, 1)
     schema: str = C4_CONTEXT_SCHEMA
@@ -247,9 +248,14 @@ def build_c4_contexts() -> tuple[C4PublicTwinContextV1, ...]:
         world_0, world_1 = tuple(capture_corpus_pair(
             world, rnd.turn, round_seed=seed, decision_index=plays,
             transcript=transcript) for world in (rnd, changed))
+        rotated_world_0 = capture_corpus_pair(
+            rotated, rotated.turn, round_seed=seed,
+            decision_index=plays,
+            transcript=_rotate_transcript(transcript, 1))
         contexts.append(C4PublicTwinContextV1(
             context_id=C4_CONTEXT_IDS[index],
-            world_0=world_0, world_1=world_1))
+            world_0=world_0, world_1=world_1,
+            rotated_world_0=rotated_world_0))
     result = tuple(contexts)
     _context_examples(result)
     return result
@@ -279,23 +285,37 @@ def _context_examples(
         try:
             actor_0, target_0, _ = reopen_score_pair(context.world_0)
             actor_1, target_1, _ = reopen_score_pair(context.world_1)
+            rotated_actor, rotated_target, _ = reopen_score_pair(
+                context.rotated_world_0)
         except (TypeError, ValueError) as exc:
             raise BeliefSyntheticError("C4 corpus context refused") from exc
         if actor_0.canonical_bytes() != actor_1.canonical_bytes() \
-                or target_0.canonical_bytes() == target_1.canonical_bytes():
+                or actor_0.canonical_bytes() \
+                != rotated_actor.canonical_bytes() \
+                or target_0.canonical_bytes() == target_1.canonical_bytes() \
+                or target_0.canonical_bytes() \
+                != rotated_target.canonical_bytes():
             raise BeliefSyntheticError(
-                "C4 worlds are not public twins with distinct targets")
+                "C4 worlds are not public twins with distinct targets "
+                "and rotated targets")
         actor_hashes.append(actor_0.sha256())
         try:
             examples = tuple(build_training_example(
                 pair, behavior_policy_ids=C4_BEHAVIOR_POLICY_IDS)
                 for pair in (context.world_0, context.world_1))
+            rotated_example = build_training_example(
+                context.rotated_world_0,
+                behavior_policy_ids=C4_BEHAVIOR_POLICY_IDS)
         except (TypeError, ValueError) as exc:
             raise BeliefSyntheticError("C4 training context refused") from exc
         if examples[0].tensors.history_input_sha256 \
                 != examples[1].tensors.history_input_sha256 \
+                or examples[0].tensors.history_input_sha256 \
+                != rotated_example.tensors.history_input_sha256 \
                 or examples[0].count_labels.tobytes() \
-                == examples[1].count_labels.tobytes():
+                == examples[1].count_labels.tobytes() \
+                or examples[0].count_labels.tobytes() \
+                != rotated_example.count_labels.tobytes():
             raise BeliefSyntheticError("C4 public-twin tensor/label drift")
         rows.append(examples)
     if len(set(actor_hashes)) != len(actor_hashes):

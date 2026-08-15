@@ -27,6 +27,8 @@ from typing import Any, Iterable
 from ..ai.memory import Memory
 from ..engine.cards import (RANKS, SUITS, Ordering, card_suit, is_joker,
                             make_deck, total_points)
+from ..engine.combos import decompose
+from ..engine.legal import beats, uniform_suit
 from ..engine.round import HAND_SIZE, Round, Trick, TrickPlay
 
 
@@ -438,9 +440,24 @@ def _trick_view(trick: Trick, attempts: tuple[tuple[str, ...], ...],
     recomputed_points = total_points(
         card for play in trick.plays for card in play.cards)
     if complete:
+        lead = trick.plays[0].cards
+        incumbent_suit = uniform_suit(lead, rnd.ordering)
+        if incumbent_suit is None:
+            raise BeliefContractError("completed trick lead is not one suit")
+        incumbent_top = decompose(lead, rnd.ordering).top_level()
+        recomputed_winner = trick.plays[0].seat
+        for play in trick.plays[1:]:
+            won, top = beats(
+                play.cards, lead, incumbent_suit, incumbent_top,
+                rnd.ordering)
+            if won:
+                recomputed_winner = play.seat
+                incumbent_top = top
+                incumbent_suit = rnd.ordering.eff_suit(play.cards[0])
         if type(trick.winner) is not int or trick.winner not in range(4) \
                 or type(trick.points) is not int \
-                or trick.points != recomputed_points:
+                or trick.points != recomputed_points \
+                or trick.winner != recomputed_winner:
             raise BeliefContractError("completed trick resolution is invalid")
         winner = (trick.winner - seat) % 4
         points = trick.points

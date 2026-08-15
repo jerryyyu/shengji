@@ -409,6 +409,7 @@ def _epoch_receipt_from_bytes(raw: bytes) -> EpochTrainingReceiptV1:
         "schema", "epoch", "batch_count", "decision_count",
         "active_label_count", "mean_loss_nanonats", "batch_schema",
         "history_transform", "label_transform", "control_kind",
+        "decision_population_sha256", "batch_schedule_sha256",
         "model_state_sha256_before", "model_state_sha256_after",
         "privileged_targets_consumed", "checkpoint_written",
         "runtime_artifact",
@@ -417,6 +418,7 @@ def _epoch_receipt_from_bytes(raw: bytes) -> EpochTrainingReceiptV1:
         "epoch", "batch_count", "decision_count", "active_label_count",
         "mean_loss_nanonats")
     digest_fields = (
+        "decision_population_sha256", "batch_schedule_sha256",
         "model_state_sha256_before", "model_state_sha256_after")
     if set(payload) != expected \
             or any(type(payload[name]) is not int or payload[name] < 0
@@ -444,6 +446,8 @@ def _epoch_receipt_from_bytes(raw: bytes) -> EpochTrainingReceiptV1:
         history_transform=payload["history_transform"],
         label_transform=payload["label_transform"],
         control_kind=payload["control_kind"],
+        decision_population_sha256=payload["decision_population_sha256"],
+        batch_schedule_sha256=payload["batch_schedule_sha256"],
         model_state_sha256_before=payload["model_state_sha256_before"],
         model_state_sha256_after=payload["model_state_sha256_after"],
         schema=payload["schema"])

@@ -93,13 +93,14 @@ def _c3(model_sha):
         lower_probability_ppb=0, upper_probability_ppb=100_000_000,
         probability_cell_count=1, predicted_probability_sum_ppb=1,
         observed_probability_sum_ppb=0)
-    stratum = ReliabilityStratumV1(
-        name="all", decision_count=100, probability_cell_count=1000,
-        brier_numerator=1, brier_denominator=1,
-        ece_ppb=1, reliability_slope_numerator=1,
+    strata = tuple(ReliabilityStratumV1(
+        name="all", count_class=count_class, decision_count=100,
+        probability_cell_count=1000, brier_numerator=1,
+        brier_denominator=1, ece_ppb=1,
+        reliability_slope_numerator=1,
         reliability_slope_denominator=1,
         reliability_slope_defined=True, underpowered=False,
-        bins=(bin_row,))
+        bins=(bin_row,)) for count_class in range(3))
     linear = LinearExpectationReliabilityV1(
         metric="effective-suit-length", stratum="all",
         decision_count=100, receiver_metric_count=300,
@@ -112,7 +113,7 @@ def _c3(model_sha):
     return CountReliabilityReportV1(
         split="test", model_schema=COHORT_SCHEMA, model_sha256=model_sha,
         behavior_policy_ids=("mc-s0-report-lcb",), decision_count=100,
-        strata=(stratum,), linear_expectations=(linear,))
+        strata=strata, linear_expectations=(linear,))
 
 
 def _n2(passed=True):
@@ -147,9 +148,9 @@ def _evidence():
         hard_fact_rows_checked=100, public_twin_cases_checked=4,
         rotation_cases_checked=4, target_isolation_cases_checked=100,
         duplicate_decision_count=0, cross_split_round_count=0,
-        source_manifest_sha256=source, conservation_passed=True,
-        hard_facts_passed=True, public_twins_passed=True,
-        rotation_passed=True, target_isolation_passed=True)
+        source_manifest_sha256=source, conservation_failure_count=0,
+        hard_fact_failure_count=0, public_twin_mismatch_count=0,
+        rotation_mismatch_count=0, target_isolation_mismatch_count=0)
     resources = B2ResourceReceiptV1(
         source_manifest_sha256=source,
         runtime_profile_sha256=_sha("runtime"),
@@ -225,7 +226,7 @@ def test_all_gates_pass_only_to_b3_implementation_review():
 
 def test_terminal_precedence_and_named_nulls():
     base = _evidence()
-    mechanics = replace(base.mechanics, public_twins_passed=False)
+    mechanics = replace(base.mechanics, public_twin_mismatch_count=1)
     assert evaluate_b2_terminal(_rebind(
         base, mechanics=mechanics)).decision == REFUSE_MECHANICS
     assert evaluate_b2_terminal(replace(
@@ -238,6 +239,9 @@ def test_terminal_precedence_and_named_nulls():
         capture_cpu_nanoseconds=(CAPTURE_CORE_HOUR_CAP + 1) * NS_PER_HOUR)
     assert evaluate_b2_terminal(_rebind(
         base, resources=resources)).decision == REFUSE_INCOMPLETE
+    incomplete_c3 = replace(base.c3, strata=base.c3.strata[:-1])
+    assert evaluate_b2_terminal(_rebind(
+        base, c3=incomplete_c3)).decision == REFUSE_INCOMPLETE
     assert evaluate_b2_terminal(_rebind(
         base, c1=_c1(False))).decision == NO_LIFT
     c2_descriptive = evaluate_b2_terminal(_rebind(

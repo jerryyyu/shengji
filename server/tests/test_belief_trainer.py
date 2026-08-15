@@ -111,6 +111,26 @@ def test_streaming_epoch_and_calibration_match_materialized_mechanics():
             streamed, calibration)
 
 
+def test_epoch_receipts_bind_population_separately_from_ordered_schedule():
+    batches = (_batch(decisions=2, seed_index=0),
+               _batch(decisions=2, seed_index=1))
+
+    def receipt(rows):
+        model = new_from_scratch_model(495023836)
+        return train_epoch_stream(
+            model, new_b2_optimizer(model), iter(rows), epoch=1)
+
+    natural = receipt(batches)
+    reordered = receipt(tuple(reversed(batches)))
+    dropped = receipt(batches[:1])
+    assert natural.decision_population_sha256 \
+        == reordered.decision_population_sha256
+    assert natural.batch_schedule_sha256 != reordered.batch_schedule_sha256
+    assert dropped.decision_population_sha256 \
+        != natural.decision_population_sha256
+    assert dropped.batch_schedule_sha256 != natural.batch_schedule_sha256
+
+
 def test_streaming_trainer_refuses_empty_and_cross_batch_duplicates():
     model = new_from_scratch_model(1041799603)
     with pytest.raises(BeliefTrainerError, match="population drift"):

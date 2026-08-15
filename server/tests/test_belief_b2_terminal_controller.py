@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,11 @@ from shengji.rl.belief_b2_execution import (
 from shengji.rl.belief_b2_terminal_controller import (
     BeliefB2TerminalControllerError, run_open_test, verify_terminal)
 from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.belief_cohort import COHORT_SEEDS
+from shengji.rl.belief_evaluation import reopen_score_pair
+from shengji.rl.belief_model import new_from_scratch_model
+from shengji.rl.belief_synthetic import build_c4_contexts
+from shengji.rl.belief_trainer import model_state_sha256
 
 
 def _sha(label: str) -> str:
@@ -188,3 +194,28 @@ def test_parallel_resource_windows_use_wall_span_and_enforce_cap(tmp_path):
     assert refused.capture_wall_nanoseconds \
         == CAPTURE_WALL_SECOND_CAP * NS_PER_SECOND + 1
     assert refused.within_caps is False
+
+
+def test_terminal_mechanics_are_measured_from_real_witnesses():
+    contexts = build_c4_contexts()
+    models = tuple(new_from_scratch_model(seed) for seed in COHORT_SEEDS)
+    model_sha256s = tuple(model_state_sha256(model) for model in models)
+    measured = terminal._c4_mechanics_witnesses(
+        contexts, models, model_sha256s)
+    assert measured == (4, 0, 36, 0, 36, 0)
+
+    wrong_rotation = replace(
+        contexts[0], rotated_world_0=contexts[0].world_1)
+    mutated = terminal._c4_mechanics_witnesses(
+        (wrong_rotation, *contexts[1:]), models, model_sha256s)
+    assert mutated[2:] == (36, 9, 36, 0)
+
+    actor, _, _ = reopen_score_pair(contexts[0].world_0)
+    members, ensemble = terminal._predict_members(
+        models, model_sha256s, actor)
+    count, rows = terminal._validated_prediction_population(
+        actor, (*members, ensemble))
+    assert count == 9 and rows > 0
+    with pytest.raises(ValueError):
+        terminal._validated_prediction_population(
+            actor, (replace(ensemble, probabilities=()),))

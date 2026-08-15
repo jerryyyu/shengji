@@ -246,10 +246,15 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
         controller, "reopen_capture_lane",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError(
             "training must not reopen privileged lane bundles")))
+    def iter_corpus_batches(
+            _root, *, split, kind, capture_rows, epoch=None,
+            opened_round_seeds=None):
+        if opened_round_seeds is not None:
+            opened_round_seeds.update(b2_split_round_seeds(split))
+        return iter((batches[(split, kind)],))
+
     monkeypatch.setattr(
-        controller, "_iter_corpus_batches",
-        lambda _root, *, split, kind, capture_rows, epoch=None:
-        iter((batches[(split, kind)],)))
+        controller, "_iter_corpus_batches", iter_corpus_batches)
     for kind in ("candidate", LABEL_PERMUTATION_CONTROL):
         trained = run_training_cohort(
             root, design, admission, kind=kind, review_marker=marker)
@@ -281,6 +286,28 @@ def test_exact_capture_lane_publishes_and_reopens_all_256_rounds(
         manifest_path.chmod(0o400)
         with pytest.raises(
                 BeliefB2ControllerError, match="cross-epoch receipt"):
+            reopen_training_cohort(
+                training_directory, design=design, admission=admission,
+                kind=kind)
+        mutated = json.loads(manifest_raw)
+        mutated["epochs"][0]["member_training_receipts"][0][
+            "batch_schedule_sha256"] = "2" * 64
+        manifest_path.chmod(0o600)
+        manifest_path.write_bytes(canonical_json_bytes(mutated))
+        manifest_path.chmod(0o400)
+        with pytest.raises(
+                BeliefB2ControllerError, match="receipt/loss"):
+            reopen_training_cohort(
+                training_directory, design=design, admission=admission,
+                kind=kind)
+        mutated = json.loads(manifest_raw)
+        mutated["opened_round_seeds"]["train"].append(
+            b2_split_round_seeds("test")[0])
+        manifest_path.chmod(0o600)
+        manifest_path.write_bytes(canonical_json_bytes(mutated))
+        manifest_path.chmod(0o400)
+        with pytest.raises(
+                BeliefB2ControllerError, match="manifest identity"):
             reopen_training_cohort(
                 training_directory, design=design, admission=admission,
                 kind=kind)

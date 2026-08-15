@@ -421,6 +421,19 @@ def test_boundary_refuses_nondecision_subclass_and_visible_or_target_drift():
         build_actor_observation(visible, seat)
 
 
+def test_completed_trick_winner_is_recomputed_from_public_cards():
+    rnd, bot, transcript = _play_state_with_transcript(8652)
+    for _ in range(4):
+        transcript = _play_and_record(rnd, bot, transcript)
+    assert len(rnd.history) == 1 and rnd.history[0].winner is not None
+    build_actor_observation(rnd, rnd.turn, transcript)
+
+    forged = copy.deepcopy(rnd)
+    forged.history[0].winner = (forged.history[0].winner + 1) % 4
+    with pytest.raises(BeliefContractError, match="trick resolution"):
+        build_actor_observation(forged, forged.turn, transcript)
+
+
 def test_target_mutation_cannot_change_already_built_actor_snapshot():
     rnd, seat = _nonbanker_turn(8653)
     partition = build_information_partition(rnd, seat)

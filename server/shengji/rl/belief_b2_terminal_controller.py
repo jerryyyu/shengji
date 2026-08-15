@@ -54,12 +54,13 @@ from .belief_evaluation import (DecisionProperScoreV1, reopen_score_pair,
                                 score_corpus_candidates)
 from .belief_model import (predict_ownership,
                            predict_ownership_from_tensors)
+from .belief_ownership import validate_ownership
 from .belief_population import (BeliefPopulationV1,
                                 population_round_from_artifacts,
                                 validate_population)
 from .belief_reliability import (ReliabilityExampleV1,
                                  build_count_reliability_report)
-from .belief_synthetic import (C4_CONTEXT_IDS, build_c4_contexts,
+from .belief_synthetic import (build_c4_contexts,
                                run_c4_synthetic_pipeline)
 
 
@@ -203,6 +204,72 @@ def _predict_members(models, model_sha256s, actor, *, tensors=None):
     return members, ensemble_ownership(actor, members)
 
 
+def _validated_prediction_population(actor, outputs) -> tuple[int, int]:
+    """Count only ownership rows that passed the real mechanics validator."""
+    output_count = 0
+    probability_rows = 0
+    for output in outputs:
+        validate_ownership(actor, output)
+        output_count += 1
+        probability_rows += len(output.probabilities)
+    return output_count, probability_rows
+
+
+def _c4_mechanics_witnesses(contexts, models, model_sha256s) \
+        -> tuple[int, int, int, int, int, int]:
+    """Run candidate predictions on public twins and absolute rotations."""
+    public_twin_cases = 0
+    public_twin_mismatches = 0
+    rotation_cases = 0
+    rotation_mismatches = 0
+    target_isolation_cases = 0
+    target_isolation_mismatches = 0
+    for context in contexts:
+        actor_0, target_0, _ = reopen_score_pair(context.world_0)
+        actor_1, target_1, _ = reopen_score_pair(context.world_1)
+        rotated_actor, rotated_target, _ = reopen_score_pair(
+            context.rotated_world_0)
+        actor_0_raw = actor_0.canonical_bytes()
+        target_0_raw = target_0.canonical_bytes()
+        public_twin_structure_matches = (
+            actor_0_raw == actor_1.canonical_bytes()
+            and target_0_raw != target_1.canonical_bytes())
+        rotation_structure_matches = (
+            actor_0_raw == rotated_actor.canonical_bytes()
+            and target_0_raw == rotated_target.canonical_bytes())
+        public_twin_cases += 1
+        if not public_twin_structure_matches:
+            public_twin_mismatches += 1
+        members_0, ensemble_0 = _predict_members(
+            models, model_sha256s, actor_0)
+        outputs_0 = (*members_0, ensemble_0)
+        members_1, ensemble_1 = _predict_members(
+            models, model_sha256s, actor_1)
+        members_rotated, ensemble_rotated = _predict_members(
+            models, model_sha256s, rotated_actor)
+        outputs_1 = (*members_1, ensemble_1)
+        outputs_rotated = (*members_rotated, ensemble_rotated)
+        _validated_prediction_population(actor_0, outputs_0)
+        _validated_prediction_population(actor_1, outputs_1)
+        _validated_prediction_population(rotated_actor, outputs_rotated)
+        for output_0, output_1, output_rotated in zip(
+                outputs_0, outputs_1, outputs_rotated, strict=True):
+            target_isolation_cases += 1
+            if not public_twin_structure_matches \
+                    or output_0.canonical_bytes() \
+                    != output_1.canonical_bytes():
+                target_isolation_mismatches += 1
+            rotation_cases += 1
+            if not rotation_structure_matches \
+                    or output_0.canonical_bytes() \
+                    != output_rotated.canonical_bytes():
+                rotation_mismatches += 1
+    return (
+        public_twin_cases, public_twin_mismatches,
+        rotation_cases, rotation_mismatches,
+        target_isolation_cases, target_isolation_mismatches)
+
+
 def _test_round_evidence(
         reference_round, captured, candidate_models, candidate_hashes,
         control_models, control_hashes):
@@ -233,8 +300,10 @@ def _test_round_evidence(
             tensors=ablated_tensors)
         outputs = (*candidate_members, candidate, *control_members, control,
                    *ablated_members, ablated)
-        prediction_count += len(outputs)
-        probability_rows += sum(len(value.probabilities) for value in outputs)
+        checked_predictions, checked_rows = _validated_prediction_population(
+            actor, outputs)
+        prediction_count += checked_predictions
+        probability_rows += checked_rows
         scores = score_corpus_candidates(
             pair, batch,
             (candidate, *candidate_members, control, *control_members))
@@ -358,23 +427,32 @@ def derive_terminal_evidence(
     c3 = build_count_reliability_report(tuple(reliability_examples))
     contexts = build_c4_contexts()
     c4 = run_c4_synthetic_pipeline(contexts).result
+    (public_twin_cases, public_twin_mismatches,
+     rotation_cases, rotation_mismatches,
+     target_isolation_cases, target_isolation_mismatches) = (
+         _c4_mechanics_witnesses(
+             contexts, candidate_models, candidate_hashes))
+    opened_training_seeds = set()
+    for manifest in (candidate_manifest, control_manifest):
+        for split in ("train", "calibration"):
+            opened_training_seeds.update(
+                manifest["opened_round_seeds"][split])
     mechanics = B2MechanicsResultV1(
         prediction_count=prediction_count,
         conservation_rows_checked=probability_rows,
         hard_fact_rows_checked=probability_rows,
-        public_twin_cases_checked=len(C4_CONTEXT_IDS),
-        rotation_cases_checked=len(C4_CONTEXT_IDS),
-        target_isolation_cases_checked=prediction_count,
+        public_twin_cases_checked=public_twin_cases,
+        rotation_cases_checked=rotation_cases,
+        target_isolation_cases_checked=target_isolation_cases,
         duplicate_decision_count=len(decision_keys) - len(set(decision_keys)),
-        cross_split_round_count=len(set(b2_split_round_seeds("test"))
-                                    & set(b2_split_round_seeds("train")))
-        + len(set(b2_split_round_seeds("test"))
-              & set(b2_split_round_seeds("calibration"))),
+        cross_split_round_count=len(
+            opened_training_seeds & set(b2_split_round_seeds("test"))),
         source_manifest_sha256=design.source_manifest_sha256,
-        conservation_passed=True, hard_facts_passed=True,
-        public_twins_passed=c4.compatible_worlds_per_context == 2,
-        rotation_passed=len(contexts) == len(C4_CONTEXT_IDS),
-        target_isolation_passed=True)
+        conservation_failure_count=0,
+        hard_fact_failure_count=0,
+        public_twin_mismatch_count=public_twin_mismatches,
+        rotation_mismatch_count=rotation_mismatches,
+        target_isolation_mismatch_count=target_isolation_mismatches)
     resources = _resources(
         design, capture_manifests, reference_manifests,
         (candidate_manifest, control_manifest))

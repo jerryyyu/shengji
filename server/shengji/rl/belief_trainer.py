@@ -33,7 +33,9 @@ from .belief_training import (
 
 
 OPTIMIZER_SCHEMA = "belief-v1-b2-adamw-optimizer-v1"
-EPOCH_RECEIPT_SCHEMA = "belief-v1-b2-training-epoch-receipt-v1"
+EPOCH_RECEIPT_SCHEMA = "belief-v1-b2-training-epoch-receipt-v2"
+EPOCH_POPULATION_SCHEMA = "belief-v1-b2-training-decision-population-v1"
+EPOCH_SCHEDULE_SCHEMA = "belief-v1-b2-training-batch-schedule-v1"
 CHECKPOINT_SCHEMA = "belief-v1-history-ownership-state-dict-v1"
 LOSS_SCALE = 1_000_000_000
 
@@ -53,6 +55,8 @@ class EpochTrainingReceiptV1:
     history_transform: str
     label_transform: str
     control_kind: str
+    decision_population_sha256: str
+    batch_schedule_sha256: str
     model_state_sha256_before: str
     model_state_sha256_after: str
     schema: str = EPOCH_RECEIPT_SCHEMA
@@ -69,6 +73,8 @@ class EpochTrainingReceiptV1:
             "history_transform": self.history_transform,
             "label_transform": self.label_transform,
             "control_kind": self.control_kind,
+            "decision_population_sha256": self.decision_population_sha256,
+            "batch_schedule_sha256": self.batch_schedule_sha256,
             "model_state_sha256_before": self.model_state_sha256_before,
             "model_state_sha256_after": self.model_state_sha256_after,
             "privileged_targets_consumed": True,
@@ -164,6 +170,34 @@ def _validate_batches(
         raise BeliefTrainerError("training epoch batch authority/split drift")
 
 
+def _epoch_input_digests(
+        batch_decision_keys: tuple[tuple[str, ...], ...], *, epoch: int) \
+        -> tuple[str, str]:
+    """Bind both the exact decision set and its ordered batch realization."""
+    if type(epoch) is not int or epoch <= 0 \
+            or type(batch_decision_keys) is not tuple \
+            or not batch_decision_keys \
+            or any(type(batch) is not tuple or not batch
+                   or any(type(key) is not str or not key for key in batch)
+                   for batch in batch_decision_keys):
+        raise BeliefTrainerError("training epoch input binding drift")
+    flattened = tuple(key for batch in batch_decision_keys for key in batch)
+    if len(flattened) != len(set(flattened)):
+        raise BeliefTrainerError("training epoch duplicate decision")
+    population = hashlib.sha256(canonical_json_bytes({
+        "schema": EPOCH_POPULATION_SCHEMA,
+        "decision_count": len(flattened),
+        "decision_keys": sorted(flattened),
+    })).hexdigest()
+    schedule = hashlib.sha256(canonical_json_bytes({
+        "schema": EPOCH_SCHEDULE_SCHEMA,
+        "epoch": epoch,
+        "batch_count": len(batch_decision_keys),
+        "batch_decision_keys": [list(batch) for batch in batch_decision_keys],
+    })).hexdigest()
+    return population, schedule
+
+
 def train_epoch(
         model: HistoryOwnershipModelV1,
         optimizer: torch.optim.Optimizer,
@@ -175,6 +209,8 @@ def train_epoch(
     _validate_optimizer(model, optimizer)
     _validate_batches(batches, for_training=True)
     before = model_state_sha256(model)
+    population_sha, schedule_sha = _epoch_input_digests(
+        tuple(batch.decision_keys for batch in batches), epoch=epoch)
     model.train(True)
     weighted_loss = 0.0
     active_total = 0
@@ -211,6 +247,8 @@ def train_epoch(
         history_transform=batches[0].history_transform,
         label_transform=batches[0].label_transform,
         control_kind=batches[0].control_kind,
+        decision_population_sha256=population_sha,
+        batch_schedule_sha256=schedule_sha,
         model_state_sha256_before=before,
         model_state_sha256_after=model_state_sha256(model),
     )
@@ -238,6 +276,7 @@ def train_epoch_stream(
     decision_count = 0
     identity: tuple[str, str, str, str] | None = None
     seen: set[str] = set()
+    scheduled_batches: list[tuple[str, ...]] = []
     for batch in iterator:
         if type(batch) is not BeliefTrainingBatchV1:
             raise BeliefTrainerError(
@@ -261,6 +300,7 @@ def train_epoch_stream(
                 or len(batch.decision_keys) != len(set(batch.decision_keys)):
             raise BeliefTrainerError("training epoch duplicate decision")
         seen.update(batch.decision_keys)
+        scheduled_batches.append(batch.decision_keys)
         optimizer.zero_grad(set_to_none=True)
         try:
             loss = training_batch_loss(model, batch)
@@ -288,6 +328,8 @@ def train_epoch_stream(
     if type(mean_nanonats) is not int or mean_nanonats < 0 \
             or not math.isfinite(weighted_loss):
         raise BeliefTrainerError("training epoch loss receipt is invalid")
+    population_sha, schedule_sha = _epoch_input_digests(
+        tuple(scheduled_batches), epoch=epoch)
     return EpochTrainingReceiptV1(
         epoch=epoch, batch_count=batch_count,
         decision_count=decision_count,
@@ -295,6 +337,8 @@ def train_epoch_stream(
         mean_loss_nanonats=mean_nanonats,
         batch_schema=identity[0], history_transform=identity[1],
         label_transform=identity[2], control_kind=identity[3],
+        decision_population_sha256=population_sha,
+        batch_schedule_sha256=schedule_sha,
         model_state_sha256_before=before,
         model_state_sha256_after=model_state_sha256(model),
     )
@@ -431,6 +475,7 @@ def train_cohort_epoch_stream(
     decision_count = 0
     identity: tuple[str, str, str, str] | None = None
     seen: set[str] = set()
+    scheduled_batches: list[tuple[str, ...]] = []
     for batch in iterator:
         if type(batch) is not BeliefTrainingBatchV1:
             raise BeliefTrainerError(
@@ -454,6 +499,7 @@ def train_cohort_epoch_stream(
                 or len(batch.decision_keys) != len(set(batch.decision_keys)):
             raise BeliefTrainerError("training epoch duplicate decision")
         seen.update(batch.decision_keys)
+        scheduled_batches.append(batch.decision_keys)
         active = int(batch.active_mask.sum().item())
         if active <= 0:
             raise BeliefTrainerError("training batch has no active labels")
@@ -481,6 +527,8 @@ def train_cohort_epoch_stream(
         decision_count += len(batch.decision_keys)
     if batch_count == 0 or identity is None or active_total <= 0:
         raise BeliefTrainerError("training epoch batch population drift")
+    population_sha, schedule_sha = _epoch_input_digests(
+        tuple(scheduled_batches), epoch=epoch)
     receipts = []
     for index, model in enumerate(models):
         weighted = weighted_losses[index]
@@ -496,6 +544,8 @@ def train_cohort_epoch_stream(
             mean_loss_nanonats=mean_nanonats,
             batch_schema=identity[0], history_transform=identity[1],
             label_transform=identity[2], control_kind=identity[3],
+            decision_population_sha256=population_sha,
+            batch_schedule_sha256=schedule_sha,
             model_state_sha256_before=before[index],
             model_state_sha256_after=model_state_sha256(model)))
     return tuple(receipts)

@@ -38,11 +38,14 @@ from .belief_behavioral_evaluation import (
 )
 from .belief_cohort import COHORT_SCHEMA, COHORT_SEEDS, ensemble_identity
 from .belief_contract import canonical_json_bytes
-from .belief_reliability import CountReliabilityReportV1
+from .belief_reliability import (RELIABILITY_SCHEMA,
+                                 RELIABILITY_STRATUM_SCHEMA,
+                                 CountReliabilityReportV1,
+                                 ReliabilityStratumV1)
 from .belief_synthetic import C4ExactPosteriorResultV1
 
 
-MECHANICS_SCHEMA = "belief-v1-b2-mechanics-result-v1"
+MECHANICS_SCHEMA = "belief-v1-b2-mechanics-result-v2"
 RESOURCE_SCHEMA = "belief-v1-b2-resource-receipt-v1"
 INVENTORY_SCHEMA = "belief-v1-b2-artifact-inventory-v1"
 TERMINAL_SCHEMA = "belief-v1-b2-terminal-result-v2"
@@ -78,12 +81,37 @@ class B2MechanicsResultV1:
     duplicate_decision_count: int
     cross_split_round_count: int
     source_manifest_sha256: str
-    conservation_passed: bool
-    hard_facts_passed: bool
-    public_twins_passed: bool
-    rotation_passed: bool
-    target_isolation_passed: bool
+    conservation_failure_count: int
+    hard_fact_failure_count: int
+    public_twin_mismatch_count: int
+    rotation_mismatch_count: int
+    target_isolation_mismatch_count: int
     schema: str = MECHANICS_SCHEMA
+
+    @property
+    def conservation_passed(self) -> bool:
+        return (self.conservation_rows_checked > 0
+                and self.conservation_failure_count == 0)
+
+    @property
+    def hard_facts_passed(self) -> bool:
+        return (self.hard_fact_rows_checked > 0
+                and self.hard_fact_failure_count == 0)
+
+    @property
+    def public_twins_passed(self) -> bool:
+        return (self.public_twin_cases_checked > 0
+                and self.public_twin_mismatch_count == 0)
+
+    @property
+    def rotation_passed(self) -> bool:
+        return (self.rotation_cases_checked > 0
+                and self.rotation_mismatch_count == 0)
+
+    @property
+    def target_isolation_passed(self) -> bool:
+        return (self.target_isolation_cases_checked > 0
+                and self.target_isolation_mismatch_count == 0)
 
     @property
     def passed(self) -> bool:
@@ -99,10 +127,16 @@ class B2MechanicsResultV1:
             "prediction_count": self.prediction_count,
             "checks": {
                 "conservation_rows": self.conservation_rows_checked,
+                "conservation_failures": self.conservation_failure_count,
                 "hard_fact_rows": self.hard_fact_rows_checked,
+                "hard_fact_failures": self.hard_fact_failure_count,
                 "public_twin_cases": self.public_twin_cases_checked,
+                "public_twin_mismatches": self.public_twin_mismatch_count,
                 "rotation_cases": self.rotation_cases_checked,
+                "rotation_mismatches": self.rotation_mismatch_count,
                 "target_isolation_cases": self.target_isolation_cases_checked,
+                "target_isolation_mismatches": (
+                    self.target_isolation_mismatch_count),
             },
             "duplicate_decision_count": self.duplicate_decision_count,
             "cross_split_round_count": self.cross_split_round_count,
@@ -384,7 +418,10 @@ def _validate_mechanics(result: B2MechanicsResultV1) -> None:
         result.prediction_count, result.conservation_rows_checked,
         result.hard_fact_rows_checked, result.public_twin_cases_checked,
         result.rotation_cases_checked, result.target_isolation_cases_checked,
-        result.duplicate_decision_count, result.cross_split_round_count)
+        result.duplicate_decision_count, result.cross_split_round_count,
+        result.conservation_failure_count, result.hard_fact_failure_count,
+        result.public_twin_mismatch_count, result.rotation_mismatch_count,
+        result.target_isolation_mismatch_count)
     if type(result) is not B2MechanicsResultV1 \
             or result.schema != MECHANICS_SCHEMA \
             or not _is_sha256(result.source_manifest_sha256) \
@@ -395,10 +432,16 @@ def _validate_mechanics(result: B2MechanicsResultV1) -> None:
                    result.public_twin_cases_checked,
                    result.rotation_cases_checked,
                    result.target_isolation_cases_checked) <= 0 \
-            or any(type(value) is not bool for value in (
-                result.conservation_passed, result.hard_facts_passed,
-                result.public_twins_passed, result.rotation_passed,
-                result.target_isolation_passed)):
+            or result.conservation_failure_count \
+            > result.conservation_rows_checked \
+            or result.hard_fact_failure_count \
+            > result.hard_fact_rows_checked \
+            or result.public_twin_mismatch_count \
+            > result.public_twin_cases_checked \
+            or result.rotation_mismatch_count \
+            > result.rotation_cases_checked \
+            or result.target_isolation_mismatch_count \
+            > result.target_isolation_cases_checked:
         raise BeliefB2ResultError("B2 mechanics result schema/value drift")
 
 
@@ -493,9 +536,33 @@ def _artifacts_complete(evidence: B2TerminalEvidenceV1) -> bool:
         and evidence.c3.model_schema == COHORT_SCHEMA
         and evidence.c3.model_sha256
         == inventory.candidate_ensemble_sha256
-        and evidence.c3.decision_count > 0
-        and bool(evidence.c3.strata)
-        and bool(evidence.c3.linear_expectations))
+        and _c3_complete(evidence.c3))
+
+
+def _c3_complete(report: CountReliabilityReportV1) -> bool:
+    if type(report) is not CountReliabilityReportV1 \
+            or report.schema != RELIABILITY_SCHEMA \
+            or report.split != "test" \
+            or report.decision_count <= 0 \
+            or not report.strata \
+            or not report.linear_expectations:
+        return False
+    populations: dict[str, set[int]] = {}
+    for row in report.strata:
+        if type(row) is not ReliabilityStratumV1 \
+                or row.schema != RELIABILITY_STRATUM_SCHEMA \
+                or type(row.name) is not str or not row.name \
+                or type(row.count_class) is not int \
+                or row.count_class not in (0, 1, 2) \
+                or row.decision_count <= 0 \
+                or row.probability_cell_count <= 0:
+            return False
+        classes = populations.setdefault(row.name, set())
+        if row.count_class in classes:
+            return False
+        classes.add(row.count_class)
+    return bool(populations) and all(
+        classes == {0, 1, 2} for classes in populations.values())
 
 
 def evaluate_b2_terminal(
@@ -516,10 +583,7 @@ def evaluate_b2_terminal(
     c2_pooled = (bool(evidence.c2.strata)
                  and evidence.c2.strata[0].stratum == POOLED_STRATUM
                  and evidence.c2.pooled_behavioral_claim_passed)
-    c3_complete = (evidence.c3.split == "test"
-                   and evidence.c3.decision_count > 0
-                   and bool(evidence.c3.strata)
-                   and bool(evidence.c3.linear_expectations))
+    c3_complete = _c3_complete(evidence.c3)
 
     if not evidence.mechanics.passed \
             or not evidence.reference_replicates_stable \
@@ -577,10 +641,7 @@ def validate_b2_terminal(
     c2_pooled = (bool(evidence.c2.strata)
                  and evidence.c2.strata[0].stratum == POOLED_STRATUM
                  and evidence.c2.pooled_behavioral_claim_passed)
-    c3_complete = (evidence.c3.split == "test"
-                   and evidence.c3.decision_count > 0
-                   and bool(evidence.c3.strata)
-                   and bool(evidence.c3.linear_expectations))
+    c3_complete = _c3_complete(evidence.c3)
     actual_gates = (
         evidence.mechanics.passed, complete, evidence.resources.within_caps,
         evidence.reference_replicates_stable, evidence.c1.passed, c2_pooled,

@@ -87,6 +87,12 @@ def test_context_and_result_mutations_refuse(evidence):
     with pytest.raises(BeliefSyntheticError, match="distinct targets"):
         run_c4_synthetic_pipeline(
             (same_target, *evidence.contexts[1:]))
+    wrong_rotation = replace(
+        evidence.contexts[0],
+        rotated_world_0=evidence.contexts[0].world_1)
+    with pytest.raises(BeliefSyntheticError, match="rotated targets"):
+        run_c4_synthetic_pipeline(
+            (wrong_rotation, *evidence.contexts[1:]))
     changed_result = replace(
         evidence.result,
         max_event_probability_error_ppb=(

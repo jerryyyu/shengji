@@ -25,8 +25,8 @@ from .belief_ownership import (PROBABILITY_SCALE, BeliefOwnershipV1,
                                count_brier_fraction, validate_ownership)
 
 
-RELIABILITY_SCHEMA = "belief-v1-b2-count-reliability-report-v1"
-RELIABILITY_STRATUM_SCHEMA = "belief-v1-b2-count-reliability-stratum-v1"
+RELIABILITY_SCHEMA = "belief-v1-b2-count-reliability-report-v2"
+RELIABILITY_STRATUM_SCHEMA = "belief-v1-b2-count-reliability-stratum-v2"
 BIN_COUNT = 10
 MIN_STRATUM_CELLS = 1000
 LINEAR_EXPECTATION_SCHEMA = (
@@ -66,6 +66,7 @@ class ReliabilityBinV1:
 @dataclass(frozen=True)
 class ReliabilityStratumV1:
     name: str
+    count_class: int
     decision_count: int
     probability_cell_count: int
     brier_numerator: int
@@ -82,6 +83,7 @@ class ReliabilityStratumV1:
         return {
             "schema": self.schema,
             "name": self.name,
+            "count_class": self.count_class,
             "decision_count": self.decision_count,
             "probability_cell_count": self.probability_cell_count,
             "brier": {"numerator": self.brier_numerator,
@@ -160,6 +162,7 @@ class CountReliabilityReportV1:
             "decision_count": self.decision_count,
             "bin_edges_ppb": [index * PROBABILITY_SCALE // BIN_COUNT
                               for index in range(BIN_COUNT + 1)],
+            "count_classes": [0, 1, 2],
             "strata": [row.to_dict() for row in self.strata],
             "linear_expectations": [
                 row.to_dict() for row in self.linear_expectations],
@@ -181,6 +184,7 @@ class CountReliabilityReportV1:
 
 @dataclass(frozen=True)
 class _Cell:
+    count_class: int
     probability_ppb: int
     observed: int
 
@@ -259,6 +263,7 @@ def _decision(example: ReliabilityExampleV1) -> _Decision:
         for count, probability in enumerate((
                 row.count_0_ppb, row.count_1_ppb, row.count_2_ppb)):
             cells.append(_Cell(
+                count_class=count,
                 probability_ppb=probability,
                 observed=int(count == truth)))
     ordering = Ordering(actor.trump_suit, actor.trump_rank)
@@ -305,9 +310,12 @@ def _decision(example: ReliabilityExampleV1) -> _Decision:
         brier=count_brier_fraction(example.prediction, counts))
 
 
-def _stratum(name: str, decisions: tuple[_Decision, ...]) \
+def _stratum(name: str, count_class: int, decisions: tuple[_Decision, ...]) \
         -> ReliabilityStratumV1:
-    cells = tuple(cell for decision in decisions for cell in decision.cells)
+    if type(count_class) is not int or count_class not in range(3):
+        raise BeliefReliabilityError("reliability count class is invalid")
+    cells = tuple(cell for decision in decisions for cell in decision.cells
+                  if cell.count_class == count_class)
     if not cells:
         raise BeliefReliabilityError("reliability stratum is empty")
     bins = []
@@ -337,10 +345,12 @@ def _stratum(name: str, decisions: tuple[_Decision, ...]) \
     slope_numerator, slope_denominator, slope_defined = _slope(
         covariance, variance)
     return ReliabilityStratumV1(
-        name=name, decision_count=len(decisions),
+        name=name, count_class=count_class, decision_count=len(decisions),
         probability_cell_count=n,
-        brier_numerator=sum(row.brier[0] for row in decisions),
-        brier_denominator=sum(row.brier[1] for row in decisions),
+        brier_numerator=sum(
+            (cell.probability_ppb
+             - cell.observed * PROBABILITY_SCALE) ** 2 for cell in cells),
+        brier_denominator=n * PROBABILITY_SCALE ** 2,
         ece_ppb=(ece_numerator + n // 2) // n,
         reliability_slope_numerator=slope_numerator,
         reliability_slope_denominator=slope_denominator,
@@ -401,9 +411,10 @@ def build_count_reliability_report(
         raise BeliefReliabilityError("reliability duplicate decision")
     names = tuple(sorted({name for row in decisions for name in row.strata},
                          key=lambda name: (name != "all", name)))
-    strata = tuple(_stratum(
-        name, tuple(row for row in decisions if name in row.strata))
-                   for name in names)
+    strata = tuple(
+        _stratum(name, count_class,
+                 tuple(row for row in decisions if name in row.strata))
+        for name in names for count_class in range(3))
     metrics = tuple(sorted({cell.metric for row in decisions
                             for cell in row.linear_cells}))
     linear = tuple(

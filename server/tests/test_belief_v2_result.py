@@ -34,6 +34,7 @@ from shengji.rl.belief_v2_freeze import (
     V2ResourceCapsV1,
 )
 from shengji.rl.belief_v2_protocol import V2_RANKS, V2_ROUND_COUNT
+from shengji.rl.belief_v2_controller import reference_lane_jobs
 from shengji.rl.belief_v2_result import (
     PASS_B3,
     REFUSE_CONTROL,
@@ -43,6 +44,7 @@ from shengji.rl.belief_v2_result import (
     BeliefV2ResultError,
     V2IntegrityResourceReceiptV1,
     derive_terminal_result,
+    expected_reference_job_count,
     validate_terminal_result,
 )
 from shengji.rl.belief_v2_statistics import (
@@ -216,8 +218,8 @@ def _receipt(freeze, plan, qualification):
         training_device=qualification.selected_device,
         capture_expected_round_count=V2_ROUND_COUNT,
         capture_reopened_round_count=V2_ROUND_COUNT,
-        reference_expected_round_count=2 * V2_ROUND_COUNT,
-        reference_reopened_round_count=2 * V2_ROUND_COUNT,
+        reference_expected_round_count=expected_reference_job_count(),
+        reference_reopened_round_count=expected_reference_job_count(),
         training_expected_cohort_count=len(freeze.cohorts),
         training_reopened_cohort_count=len(freeze.cohorts),
         training_expected_checkpoint_count=len(freeze.cohorts) * 8,
@@ -334,6 +336,9 @@ def test_clean_primary_pass_routes_only_to_sampler_implementation_review():
     assert set(value for key, value in payload.items()
                if key.endswith("_authorized")) == {False}
     assert canonical_json_bytes(payload) == result.canonical_bytes()
+    assert expected_reference_job_count() == 3_991
+    assert expected_reference_job_count() == sum(
+        len(reference_lane_jobs(lane)) for lane in range(16))
 
 
 def test_null_reentry_and_negative_control_routes_have_fixed_precedence():

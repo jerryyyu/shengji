@@ -54,6 +54,12 @@ NS_PER_SECOND = 1_000_000_000
 NS_PER_HOUR = 3_600 * NS_PER_SECOND
 
 
+def expected_reference_job_count() -> int:
+    """Two calibration replicates plus one sole-test replicate per round."""
+    counts = dict(V2_SPLIT_COUNTS)
+    return 2 * counts["calibration"] + counts["test"]
+
+
 class BeliefV2ResultError(ValueError):
     """A terminal input, measured receipt, or derived route drifted."""
 
@@ -229,7 +235,8 @@ def integrity_failure_reasons(
     reasons: list[str] = []
     expected_populations = (
         (receipt.capture_expected_round_count, V2_ROUND_COUNT),
-        (receipt.reference_expected_round_count, 2 * V2_ROUND_COUNT),
+        (receipt.reference_expected_round_count,
+         expected_reference_job_count()),
         (receipt.training_expected_cohort_count, len(freeze.cohorts)),
         (receipt.training_expected_checkpoint_count,
          len(freeze.cohorts) * len(COHORT_SEEDS)),

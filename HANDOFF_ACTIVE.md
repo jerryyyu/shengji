@@ -4,8 +4,9 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 13:44 EDT after all Mini REF-C lanes completed and
-the two reviewed B2 training cohorts started automatically.
+Last reconciled: 2026-08-15 19:46 EDT. Both reviewed Mini B2 training cohorts
+remain continuously active and healthy about six hours after their automatic
+start; V2 now has one exact consolidated source/design review request.
 
 ## Immediate objective
 
@@ -29,12 +30,25 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    artifacts, recompute the terminal decision, and append one terminal marker.
    No per-stage review handshake or retry is needed unless a named guard fails.
 
-2. **No repository-hygiene review remains.** PR #115's append-only/
+2. **BELIEF V2 consolidated source/design review — ready now.** Review exact
+   local head `a94a1c35871563ba9fe4d48a57cbd0f4d50324e3` in worktree
+   `/private/tmp/shengji-belief-v2-execution-freeze-v1` against merge base
+   `62e3b7769ef6da15e0bf48946b505087c0204bba`. Audit the complete all-rank and
+   human population path, hardened transcript replay, source-neutral work
+   schedules, CPU/MPS/indexed-CUDA qualification and portable checkpoints,
+   calibration/terminal routing, receipt-driven freeze builder, safe worker,
+   and exact authority closure. Run the full pure and compiled V2/replay
+   suites and adversarially witness the wiring rather than helpers. Return one
+   consolidated exact-head PASS or HOLD. A PASS permits only preparation of a
+   later host-specific immutable freeze after V1 terminal routing; it grants
+   no capture, training, test, gameplay, strength or deployment authority.
+
+3. **No repository-hygiene review remains.** PR #115's append-only/
    merge-target-prefix guard merged as `b27d0c2`; compacted docs PR #114 merged
    as `56fcbda`. `HANDOFF_REVIEW.md` remains canonical and append-only; the full
    old AI/RL ledgers are preserved in dated archives.
 
-3. **Next future asks:** review the three-arm widening implementation only
+4. **Next future asks:** review the three-arm widening implementation only
    after it publishes an exact source/design head. PR #116 transcript replay,
    non-rank-2 population coverage, and a separately identified human-log
    stratum are V2 BELIEF design inputs only; do not wire them into the frozen
@@ -47,7 +61,8 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
 | **B2 offline pipeline source** | External PASS at PR #113 exact `3ee0eb8`; merged byte-preservingly through main `959c05d`. Integration validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
-| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. All 16 capture lanes completed naturally within the frozen two-hour wall cap; all 16 REF-C lanes then completed, and the reviewed supervisor started the candidate and label-permutation training cohorts at 13:44 EDT. The durable tombstone and sealed supervisor log exist; test opening and terminal result remain pending. | Exact offline execution is active under its caps. No calibration lift has been measured or reviewed yet. |
+| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. All capture and REF-C lanes sealed naturally. At 19:46 both training cohorts had run continuously for about six hours near one full CPU core each; both remain `.partial`, with no terminal/test artifact yet. | Exact offline execution is active under its eight-hour training wall cap. No calibration lift has been measured or reviewed yet. |
+| **V2 source candidate** | Exact local head `a94a1c3` implements balanced all-rank and separately split H0 populations, replayed REF-C, source-neutral work controls, automatic CPU/MPS/CUDA qualification, portable checkpoints, dual-domain calibration, one-shot terminal handling and receipt-driven freeze construction. Full validation is 156 passed/1 intentional skip in pure mode and 157 passed compiled; the final child changes documentation only and has 24 focused passes. | Ready for one consolidated source/design review. It is not a packet, admission, run, sampler or strength result. The first V2 packet is explicitly single-host; cross-host artifact transfer remains unimplemented. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
@@ -59,7 +74,7 @@ single reviewed admission is now consumed by the active run and cannot retry.
 
 | host | current state | next use |
 |---|---|---|
-| **Mini** | **BELIEF-V1 B2 running.** Exact review `209407f`; capture and REF-C completed, and both reviewed training cohorts started automatically at 13:44 EDT. | Monitor only process/resource/path metadata. After natural completion, request terminal reproduction. |
+| **Mini** | **BELIEF-V1 B2 running.** Exact review `209407f`; capture and REF-C completed. Both training processes have remained continuously active since 13:44 EDT and are still within the frozen eight-hour wall cap. | Monitor only process/resource/path metadata. After natural completion, request terminal reproduction. Do not use Mini for V2 qualification until the V1 processes exit. |
 | **Air** | Idle after the broad Pair fixed timeout. | No retry/resume/partial use. Keep free unless a new reviewed job is selected. |
 | **Strength Cloud** | Powered off. | Keep off; S4 terminally selected none. |
 | **Performance Cloud** | Powered off. | Keep off; the Pair checkpoint V1 attempt was spent and produced no terminal evidence. |

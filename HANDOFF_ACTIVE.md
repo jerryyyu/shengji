@@ -65,7 +65,7 @@ The frozen planning caps for the eventual Mini B2 run are 4,096 champion
 rounds split 3,279 train / 407 calibration / 410 test; 16 capture lanes; 256
 REF-C worlds per held-out decision; eight candidate and eight permuted-label
 members. Planning caps are 16 capture core-hours / 2 wall-hours, 64 reference
-core-hours / 8 wall-hours, and 32 device-hours / 12 wall-hours. Fresh host
+core-hours / 8 wall-hours, and 32 device-hours / 8 wall-hours. Fresh host
 preflight and the V2 design remain authoritative; these are ceilings, not a
 promise that every stage consumes the full amount.
 

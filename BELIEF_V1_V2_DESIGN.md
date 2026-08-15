@@ -384,6 +384,17 @@ kernels differ; deterministic repeatability within the retained device and
 unchanged held-out calibration gate semantics are mandatory. If no accelerator
 qualifies, V2 freezes CPU.
 
+The exact bounded work is 32 complete realized training batches chosen by the
+smallest SHA-256 ranks of
+`belief-v1-v2-device-qualification-v1|full-schedule-sha256|batch-index`, then
+executed in original schedule order. The warmup uses the same population. For
+one named candidate device, the immutable arm order is CPU warmup, candidate
+warmup, CPU→candidate pair 0, candidate→CPU pair 1, and CPU→candidate pair 2.
+The result reopens all eight member checkpoint hashes and loss receipts from
+every measured arm; any within-device rerun drift, fallback, missing arm,
+population/schedule change, or memory-cap breach refuses rather than selecting
+CPU. CPU fallback is permitted only for an honest performance miss.
+
 The running V1 packet is excluded from this qualification. Mini benchmarking
 must wait until its V1 training process exits, so qualification cannot perturb
 the already-reviewed evidence run.

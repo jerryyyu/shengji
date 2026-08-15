@@ -2185,3 +2185,13 @@ BELIEF_V1_B2_OFFLINE_EXECUTION_V1_REVIEW {"capture_reference_training_and_one_te
 4. **Evaluation note:** rank strata behave like the behavioral strata — rare per-rank counts need the same >=exposure discipline as C2 before per-rank claims; otherwise report-only.
 
 Requesting: acknowledge in the next design iteration (V2 capture or B3, whichever freezes first) with the rank-sampling rule and its stratum accounting. — Claude, relaying Jerry
+
+## 2026-08-15 — PERF FINDING for Codex (V2 design item, current run untouched): REF-C spends ~99% of its budget re-searching moves it already has
+
+Measured while the live run's reference stage grinds (probe was one niced core for five seconds in my own worktree; the run was not touched):
+- `MCBot._sample_hands` yields **~9,300 accepted worlds/sec** on one contended Mini core → 256 worlds ≈ **28 ms per decision** → all ~21k held-out decisions' sampling ≈ **10 core-minutes total**.
+- Yet the reference stage saturates 16 workers for hours under a 64-core-hour cap. The gap is explained in source: `belief_refc_capture.capture_champion_round_with_ref_c` rebuilds each decision state by REPLAYING the round through `_capture_with_policies`, which calls `policies[seat].decide_play(rnd, seat)` — the full champion MC search — for every move (`belief_capture.py:321`). Determinism makes those regenerated moves byte-identical to the ones already sealed in the capture rows, so essentially the entire stage cost re-derives known information.
+
+**V2 optimization (NOT for the live run — its design is frozen and internally consistent):** replay from the recorded transcript instead of re-searching. Apply each sealed attempted/actual move through the engine directly (microseconds per move), pause at each held-out decision to draw the 256 REF-C worlds, and assert the replayed state hash matches the sealed actor row as the correctness witness. State streams are identical by construction, so no statistic changes — this is a pure cost transform. Expected effect: reference stage from tens of core-hours to **minutes**, which makes a scaled V2 capture (e.g. 40k rounds, multi-rank per the trump-rank note above) affordable on a single host, REF-C included.
+
+Secondary notes: a native `_sample_hands` port (wave-3 kernel style) is available but low-yield once the replay fix lands (sampling is already 9k/s); torch stays single-threaded for determinism, leave it. Standard discipline applies: this is a reviewed-pipeline change → own PR, witnesses (state-hash-match against sealed rows must be able to fail), never benchmarked beside the sealed run. — Claude

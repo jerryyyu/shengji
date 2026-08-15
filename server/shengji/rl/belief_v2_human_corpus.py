@@ -15,9 +15,11 @@ path, or execution authority.
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from ..engine.cards import RANKS
 from ..engine.round import Round, actual_play_after
 from .belief_contract import (
     ACTOR_OBSERVATION_SCHEMA,
@@ -135,6 +137,8 @@ class V2HumanGroupCaptureV1:
     complete_round_count: int
     incomplete_round_count: int
     human_decision_count: int
+    trump_rank_counts: tuple[tuple[str, int], ...]
+    attempted_channel_counts: tuple[tuple[str, int], ...]
     pairs: tuple[V2HumanCorpusPairV1, ...]
     schema: str = HUMAN_GROUP_CAPTURE_SCHEMA
 
@@ -148,6 +152,9 @@ class V2HumanGroupCaptureV1:
             "complete_round_count": self.complete_round_count,
             "incomplete_round_count": self.incomplete_round_count,
             "human_decision_count": self.human_decision_count,
+            "trump_rank_counts": dict(self.trump_rank_counts),
+            "attempted_channel_counts": dict(
+                self.attempted_channel_counts),
             "rows": [
                 {
                     "actor_file_sha256": pair.actor_file_sha256,
@@ -365,6 +372,8 @@ def capture_human_source_group(
             "human source group identity drift")
     group_digest = _group_digest(source_sha256)
     pairs: list[V2HumanCorpusPairV1] = []
+    trump_rank_counts: Counter[str] = Counter()
+    attempted_channel_counts: Counter[str] = Counter()
     complete = incomplete = 0
     rounds = _events_by_round(source_raw)
     for ordinal, (_, events) in enumerate(sorted(rounds.items())):
@@ -416,6 +425,9 @@ def capture_human_source_group(
                     round_digest=round_digest,
                     decision_index=play_index, split=split))
             attempted = event.get("attempted_cards")
+            if event.get("bot") is False and seat not in excluded:
+                attempted_channel_counts[
+                    "complete" if type(attempted) is list else "absent"] += 1
             applied = attempted if type(attempted) is list else actual
             previous_last = rnd.last_trick
             try:
@@ -432,6 +444,7 @@ def capture_human_source_group(
             raise BeliefV2HumanCorpusError(
                 "human source terminal reconstruction drift")
         complete += 1
+        trump_rank_counts[rnd.trump_rank] += 1
     result = V2HumanGroupCaptureV1(
         source_sha256=source_sha256,
         group_digest=group_digest,
@@ -439,6 +452,9 @@ def capture_human_source_group(
         complete_round_count=complete,
         incomplete_round_count=incomplete,
         human_decision_count=len(pairs),
+        trump_rank_counts=tuple(sorted(trump_rank_counts.items())),
+        attempted_channel_counts=tuple(
+            sorted(attempted_channel_counts.items())),
         pairs=tuple(pairs),
     )
     validate_human_group_capture(result)
@@ -455,6 +471,23 @@ def validate_human_group_capture(value: V2HumanGroupCaptureV1) -> None:
                 value.complete_round_count,
                 value.incomplete_round_count,
                 value.human_decision_count)) \
+            or type(value.trump_rank_counts) is not tuple \
+            or type(value.attempted_channel_counts) is not tuple \
+            or any(type(row) is not tuple or len(row) != 2
+                   or row[0] not in RANKS or type(row[1]) is not int
+                   or row[1] <= 0 for row in value.trump_rank_counts) \
+            or any(type(row) is not tuple or len(row) != 2
+                   or row[0] not in {"complete", "absent"}
+                   or type(row[1]) is not int or row[1] <= 0
+                   for row in value.attempted_channel_counts) \
+            or len({row[0] for row in value.trump_rank_counts}) \
+            != len(value.trump_rank_counts) \
+            or len({row[0] for row in value.attempted_channel_counts}) \
+            != len(value.attempted_channel_counts) \
+            or sum(row[1] for row in value.trump_rank_counts) \
+            != value.complete_round_count \
+            or sum(row[1] for row in value.attempted_channel_counts) \
+            != value.human_decision_count \
             or type(value.pairs) is not tuple \
             or value.human_decision_count != len(value.pairs):
         raise BeliefV2HumanCorpusError(
@@ -476,7 +509,9 @@ def validate_human_group_capture(value: V2HumanGroupCaptureV1) -> None:
     if set(manifest) != {
             "schema", "source_sha256", "group_digest", "split_schema",
             "split", "complete_round_count", "incomplete_round_count",
-            "human_decision_count", "rows", "actor_target_files_separate",
+            "human_decision_count", "trump_rank_counts",
+            "attempted_channel_counts", "rows",
+            "actor_target_files_separate",
             "raw_player_identity_published", "source_path_published",
             "training_authorized", "test_open_authorized",
             "strength_claim_authorized"} \

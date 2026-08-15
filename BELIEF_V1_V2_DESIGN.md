@@ -135,6 +135,15 @@ rows as ownership labels. The V2 builder must derive labels from reconstructed
 rounds while excluding `player_id`, source name, round number, full-deck
 metadata, and any world-generating key from model input.
 
+The review branch implements the score-free H0 inventory in
+`belief_v2_human_inventory.py`. It verifies an exact source snapshot, replays
+complete rounds far enough to establish hidden-label and attempted-channel
+availability, groups the entire source-log session as one future split unit,
+and emits only aggregate counts and content-derived group digests. It emits no
+names, file names, hands, kitty cards, actions, or model rows, and every
+training/test/strength authority remains false. The real inventory must not be
+run until this source receives the consolidated design PASS.
+
 Human games provide two artifacts:
 
 1. an untouched human out-of-distribution evaluation stratum, including its
@@ -219,6 +228,13 @@ other twelve rank columns and their interactions untrained. Cross-rank tests
 must prove the existing representation is sufficient before adding new rank-
 specific features or increasing model size.
 
+The review branch implements the exact synthetic schedule in
+`belief_v2_protocol.py` and the rank-bound capture/replay adapters in
+`belief_v2_capture.py`. Every one of the 13 ranks has an actor-byte-identical
+capture/replay witness, while the default V1 path remains rank 2. One compiled
+witness also runs the exact production champion at rank 9. The source/design
+proposal still authorizes nothing.
+
 ## REF-C transcript replay
 
 PR #116 exact source `478091e99f4810f20afffde7e73f093311267bf7`
@@ -226,8 +242,10 @@ provides the intended synthetic replay building block. It replays sealed
 attempted plays through the engine, recomputes every actor row, and requires
 byte identity instead of rerunning champion `decide_play` search.
 
-Local child `9aabdcd` (not yet pushed) adds the two additional load-bearing
-witnesses required before adoption:
+The review branch integrates PR #116 as `de9de899b712ef73dfb717498209dabe06c64685`
+and the local hardening child as
+`c69f9fd32df9f5c1e7e37a6c11ae97048c813429`. The hardening delta adds the two
+additional load-bearing witnesses required before adoption:
 
 1. replay a genuine failed throw where attempted and engine-actual cards
    differ and require byte-identical downstream state; and
@@ -237,9 +255,9 @@ witnesses required before adoption:
 
 The repaired test file passes 9 tests plus one production-fast-only skip in
 pure mode, all 10 in strict compiled mode, and the 16 neighboring
-capture/reference tests in strict compiled mode. Review must bind the exact
-PR #116 parent-to-child delta; the local child does not itself merge or
-authorize replay execution.
+capture/reference tests in strict compiled mode. Review must bind PR #116's
+original exact source, its integrated commit, and the hardening child. Their
+presence in this branch does not merge PR #116 or authorize replay execution.
 
 The integrated V2 reference driver must construct declaration/bury policies
 from the source-pinned policy registry rather than accept an unbound arbitrary
@@ -356,20 +374,25 @@ same-work search screen.
 
 ## Consolidated review path
 
-To avoid repeated source/design/admission round trips:
+To avoid repeated source/design/admission round trips while still binding the
+private population and host-specific cap evidence:
 
-1. one source/design review binds the rank factory, PR #116 successor, human
-   reconstruction boundary, model arms, exact population, profiling result,
-   host/runtime, caps, metrics, and automatic routing;
-2. that exact PASS may authorize the bounded score-free capture, parallel
-   training/reference DAG, and one test opening under one immutable packet;
+1. one consolidated source/design review binds the rank factory, PR #116
+   successor, H0 identity/privacy boundary, model arms, exact synthetic
+   population, profiling protocol, metrics, and automatic routing. It may
+   authorize only the real score-free H0 inventory and out-of-population
+   capacity/profile probes;
+2. one exact execution-freeze review binds the resulting private source-group
+   population, human-mixture fraction, host/runtime/native identities, caps,
+   V1 routing receipt, and complete immutable packet. Only that PASS may
+   authorize bounded capture, the parallel training/reference DAG, and one
+   test opening; and
 3. one terminal review independently reopens the result and routes B3 or
    closure.
 
 No intermediate capacity, corpus, model, or reference milestone receives a
-separate review if it is already closed and mechanically routed by the same
-immutable design. A new review is required only when code, estimand,
-population, authority, or sealed-resource boundary changes.
+separate review. A new review is required only when code, estimand, population,
+authority, or sealed-resource boundary changes.
 
 ## Inputs still required before freeze
 

@@ -32,8 +32,9 @@ import hashlib
 import random
 from typing import Any, Callable
 
+from ..engine.cards import RANKS
 from ..engine.game import Game
-from ..engine.round import actual_play_after
+from ..engine.round import Round, actual_play_after
 from .belief_capture import CapturedActorRoundV1, validate_actor_round
 from .belief_contract import PublicTranscriptV1
 from .belief_corpus import BeliefCorpusError, capture_actor_row
@@ -51,7 +52,8 @@ def replay_actor_round(
         *, round_seed: int, policy_name: str,
         policy_seeds: tuple[int, int, int, int], policies: list,
         sealed: CapturedActorRoundV1,
-        decision_observer: Callable[..., Any] | None = None) \
+        decision_observer: Callable[..., Any] | None = None,
+        trump_rank: str | None = None) \
         -> CapturedActorRoundV1:
     """Reproduce a sealed actor round from its transcript, without play search.
 
@@ -75,9 +77,14 @@ def replay_actor_round(
             for policy in policies
             for method in ("decide_declare", "decide_bury")):
         raise BeliefReplayError("replay policy population is malformed")
+    if trump_rank is not None and trump_rank not in RANKS:
+        raise BeliefReplayError("replay trump rank is invalid")
 
     recorded_plays = sealed.public_transcript.plays
-    rnd = Game(random.Random(round_seed)).start_round()
+    rnd = (Game(random.Random(round_seed)).start_round()
+           if trump_rank is None
+           else Round(trump_rank, banker=None,
+                      rng=random.Random(round_seed)))
     transcript = PublicTranscriptV1()
 
     # Deal + declarations + bury: identical policy calls to capture. These are

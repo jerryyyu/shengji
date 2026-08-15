@@ -4,8 +4,8 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 10:41 EDT after Mini B2 capture completed and the
-16-lane REF-C reference stage started automatically.
+Last reconciled: 2026-08-15 10:48 EDT after the repository-hygiene queue
+merged and the 16-lane Mini REF-C reference stage remained healthy.
 
 ## Immediate objective
 
@@ -29,14 +29,12 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    artifacts, recompute the terminal decision, and append one terminal marker.
    No per-stage review handshake or retry is needed unless a named guard fails.
 
-2. **PR #114 — repository hygiene, merge sequencing only.** PR #115's
-   three-file append-only/merge-target-prefix guard passed review and merged as
-   `b27d0c2`. Claude also cleared the compacted docs content; after tail-sync and
-   green CI, merge PR #114 without another content-review round. Its branch must
-   preserve `HANDOFF_REVIEW.md` byte-identically and archives the full old AI/RL
-   ledgers.
+2. **No repository-hygiene review remains.** PR #115's append-only/
+   merge-target-prefix guard merged as `b27d0c2`; compacted docs PR #114 merged
+   as `56fcbda`. `HANDOFF_REVIEW.md` remains canonical and append-only; the full
+   old AI/RL ledgers are preserved in dated archives.
 
-3. **Other future ask:** review the three-arm widening implementation only
+3. **Next future ask:** review the three-arm widening implementation only
    after it publishes an exact source/design head. Do not spend the hourly
    cycle re-reviewing closed or spent S4/S6/T4/Pair artifacts.
 

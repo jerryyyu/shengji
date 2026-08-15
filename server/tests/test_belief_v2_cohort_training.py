@@ -17,6 +17,7 @@ from shengji.rl.belief_contract import PublicTranscriptV1
 from shengji.rl.belief_corpus import capture_corpus_pair
 from shengji.rl.belief_v2_cohort_training import (
     BeliefV2CohortTrainingError,
+    reopen_trained_v2_cohort,
     train_v2_cohort_in_memory,
     validate_trained_v2_cohort,
 )
@@ -175,6 +176,9 @@ def test_primary_trains_one_common_epoch_and_reopens_every_checkpoint(
     assert payload["human_calibration_consumed_for_common_epoch"] is False
     assert payload["test_split_opened"] is False
     assert payload["deployment_authorized"] is False
+    assert reopen_trained_v2_cohort(
+        result.manifest_bytes(), result.checkpoint_bundles,
+        value, examples, schedule, calibration) == result
 
 
 def test_label_control_has_real_dose_and_exact_control_receipts(monkeypatch):

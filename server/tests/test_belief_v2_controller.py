@@ -8,7 +8,9 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import torch
 
+import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
@@ -29,6 +31,9 @@ from shengji.rl.belief_v2_execution_identity import (
     source_manifest_sha256,
 )
 from shengji.rl.belief_v2_device_qualification import (
+    V2DeviceQualificationArmV1,
+    build_qualification_plan,
+    derive_qualification_result,
     qualification_protocol_sha256,
 )
 from shengji.rl.belief_v2_freeze import (
@@ -64,6 +69,20 @@ from shengji.rl.belief_v2_human_inventory import (
 from shengji.rl.belief_v2_protocol import (
     v2_policy_seeds,
     v2_round_coordinates,
+)
+from shengji.rl.belief_v2_schedule import (
+    realize_v2_cohorts,
+    realize_v2_common_calibration,
+    training_row,
+)
+from shengji.rl.belief_v2_training import (
+    build_human_training_example,
+    build_synthetic_training_example,
+)
+from shengji.rl.belief_v2_training_controller import (
+    BeliefV2TrainingControllerError,
+    reopen_training_cohort,
+    run_training_cohort,
 )
 
 
@@ -572,3 +591,125 @@ def test_human_group_stage_persists_separate_rows_and_training_is_test_blind(
         reopen_human_training_group_examples(
             captures["test"], freeze=freeze, admission=admission,
             split="test")
+
+
+def _cpu_fallback_qualification(freeze):
+    batches = tuple((_sha256_text(f"qualification-{index}"),)
+                    for index in range(40))
+    plan = build_qualification_plan(
+        execution_git=freeze.execution_git,
+        candidate_device=freeze.training_candidate_device,
+        batch_decision_keys=batches,
+        batch_active_label_counts=tuple(100 for _ in batches),
+        host_memory_cap_bytes=(
+            freeze.resource_caps.training_host_memory_bytes),
+        device_memory_cap_bytes=(
+            freeze.resource_caps.training_device_memory_bytes))
+    arms = []
+    for index, (device, warmup, pair_index) in enumerate(plan.arm_order):
+        arms.append(V2DeviceQualificationArmV1(
+            arm_index=index, device=device, warmup=warmup,
+            pair_index=pair_index, plan_sha256=plan.sha256(),
+            batch_population_sha256=plan.selected_population_sha256,
+            batch_schedule_sha256=plan.selected_schedule_sha256,
+            decision_count=plan.decision_count,
+            active_label_count=plan.active_label_count,
+            member_checkpoint_sha256s=tuple(
+                _sha256_text(f"{device}-checkpoint-{member}")
+                for member in range(8)),
+            member_loss_nanonats=tuple(
+                1000 + member for member in range(8)),
+            member_epoch_receipt_sha256s=tuple(
+                _sha256_text(f"{device}-receipt-{member}")
+                for member in range(8)),
+            wall_nanoseconds=50 if warmup else (
+                100 if device == "cpu" else 120),
+            peak_host_memory_bytes=1024,
+            peak_device_memory_bytes=0 if device == "cpu" else 2048,
+            actual_device=device))
+    return plan, derive_qualification_result(plan, tuple(arms))
+
+
+def _sha256_text(value):
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
+
+
+def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    train_capture = _heuristic_capture(_coordinate("train"))
+    synthetic = tuple(build_synthetic_training_example(pair)
+                      for pair in train_capture.pairs[:5])
+    source_raw = b"training-human-source"
+    source_sha = hashlib.sha256(source_raw).hexdigest()
+    human_capture = _captured_human_group(
+        source_raw, source_sha, _human_state(), "train")
+    human = tuple(build_human_training_example(
+        pair.actor_bytes, pair.target_bytes)
+        for pair in human_capture.pairs)
+    realizations = realize_v2_cohorts(
+        freeze.cohorts,
+        synthetic_rows=tuple(training_row(row) for row in synthetic),
+        human_rows=tuple(training_row(row) for row in human))
+    primary = next(row for row in realizations
+                   if row.kind == "synthetic-primary")
+    by_key = {row.decision_key: row for row in (*synthetic, *human)}
+    training_examples = tuple(
+        by_key[row.decision_key] for row in primary.rows)
+    calibration = tuple(build_synthetic_training_example(pair)
+                        for pair in _heuristic_capture(
+                            _coordinate("calibration")).pairs[:2])
+    calibration_schedule = realize_v2_common_calibration(calibration)
+    qualification_plan, qualification_result = (
+        _cpu_fallback_qualification(freeze))
+    assert qualification_result.selected_device == "cpu"
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_training_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_training_controller._validate_device_binding",
+        lambda *args, **kwargs: "cpu")
+    monkeypatch.setattr(COHORT_STAGE, "TRAIN_MAX_EPOCHS", 1)
+    previous = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    try:
+        manifest = run_training_cohort(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", primary=primary,
+            realization=primary, training_examples=training_examples,
+            calibration=calibration_schedule,
+            calibration_examples=calibration,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result)
+        directory = root / "training" / primary.cohort_id
+        reopened, trained = reopen_training_cohort(
+            directory, freeze=freeze, admission=admission,
+            primary=primary, realization=primary,
+            training_examples=training_examples,
+            calibration=calibration_schedule,
+            calibration_examples=calibration,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result)
+    finally:
+        torch.use_deterministic_algorithms(previous)
+    assert reopened == manifest
+    assert trained.training_device == "cpu"
+    assert manifest["test_split_opened"] is False
+    assert manifest["deployment_authorized"] is False
+    checkpoint = directory / "member-00.checkpoint.bin"
+    checkpoint.chmod(0o600)
+    checkpoint.write_bytes(checkpoint.read_bytes() + b"x")
+    checkpoint.chmod(0o400)
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="persisted trained cohort"):
+        reopen_training_cohort(
+            directory, freeze=freeze, admission=admission,
+            primary=primary, realization=primary,
+            training_examples=training_examples,
+            calibration=calibration_schedule,
+            calibration_examples=calibration,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result)

@@ -1,6 +1,7 @@
 """Keep source-required review authority through ledger compaction."""
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -49,6 +50,35 @@ def _assert_archived_markers_survive_appends(
     assert later_marker_names
     for name, archived_lines in source_markers.items():
         assert active_markers.get(name) == archived_lines, name
+
+
+def _assert_byte_prefix(base: bytes, head: bytes) -> None:
+    """Require a PR head to preserve every merge-target ledger byte."""
+    assert len(head) >= len(base), "PR head review ledger is shorter than base"
+    assert head[:len(base)] == base, \
+        "PR head review ledger rewrites merge-target bytes"
+
+
+def _git_blob(repo: Path, commit: str, path: str) -> bytes:
+    assert len(commit) == 40 and all(value in "0123456789abcdef"
+                                     for value in commit)
+    return subprocess.run(
+        ["git", "show", f"{commit}:{path}"], cwd=repo, check=True,
+        capture_output=True).stdout
+
+
+def test_pr_head_review_ledger_extends_exact_merge_target() -> None:
+    """CI binds the literal PR head, not GitHub's synthetic merge checkout."""
+    base_sha = os.environ.get("HANDOFF_REVIEW_BASE_SHA", "")
+    head_sha = os.environ.get("HANDOFF_REVIEW_HEAD_SHA", "")
+    if not base_sha and not head_sha:
+        pytest.skip("exact PR base/head SHAs are provided by pull-request CI")
+    assert base_sha and head_sha
+    repo = Path(__file__).parents[2]
+    _assert_byte_prefix(
+        _git_blob(repo, base_sha, "HANDOFF_REVIEW.md"),
+        _git_blob(repo, head_sha, "HANDOFF_REVIEW.md"),
+    )
 
 
 def test_source_required_review_markers_survive_ledger_rotation() -> None:
@@ -116,3 +146,12 @@ def test_rotation_marker_relation_refuses_missing_or_changed_archive() -> None:
             **later,
             "OLD_REVIEW": {b'OLD_REVIEW {"verdict":"HOLD"}'},
         })
+
+
+def test_merge_target_prefix_refuses_deletion_or_rewrite() -> None:
+    base = b"OLD_REVIEW {}\nLIVE_REVIEW {}\n"
+    _assert_byte_prefix(base, base + b"LATER_REVIEW {}\n")
+    with pytest.raises(AssertionError, match="shorter than base"):
+        _assert_byte_prefix(base, b"OLD_REVIEW {}\n")
+    with pytest.raises(AssertionError, match="rewrites merge-target bytes"):
+        _assert_byte_prefix(base, b"OLD_REVIEW {}\nFAKE_REVIEW {}\n")

@@ -261,7 +261,7 @@ def build_h0_inventory(*, source_manifest: Path,
 
 
 def inventory_bytes(inventory: dict[str, Any]) -> bytes:
-    validate_h0_inventory(inventory)
+    verify_h0_inventory(inventory)
     return canonical_json_bytes(inventory)
 
 
@@ -276,7 +276,8 @@ def _counter(value: Any, *, allowed: set[str] | None = None) \
     return Counter(value)
 
 
-def validate_h0_inventory(inventory: dict[str, Any]) -> None:
+def verify_h0_inventory(inventory: dict[str, Any]) -> None:
+    """Reopen an aggregate H0 receipt with a closed schema and no authority."""
     expected_keys = {
         "schema", "source_manifest_sha256", "source_file_count",
         "source_digest_population_sha256", "group_count", "groups",
@@ -365,6 +366,11 @@ def validate_h0_inventory(inventory: dict[str, Any]) -> None:
             or group_ranks != rank_totals \
             or group_attempted != attempted_totals:
         raise BeliefV2HumanInventoryError("H0 inventory group closure drift")
+
+
+def validate_h0_inventory(inventory: dict[str, Any]) -> None:
+    """Backward-compatible name for the exact H0 receipt verifier."""
+    verify_h0_inventory(inventory)
 
 
 def _split_key(group_digest: str) -> bytes:

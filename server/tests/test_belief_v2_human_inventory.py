@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import random
@@ -18,6 +19,7 @@ from shengji.rl.belief_v2_human_inventory import (
     group_split_bytes,
     inventory_bytes,
     validate_h0_group_split,
+    verify_h0_inventory,
 )
 
 
@@ -117,6 +119,25 @@ def test_h0_refuses_evaluation_only_source_before_publication(tmp_path):
     manifest, source = _write_snapshot(tmp_path, events)
     with pytest.raises(BeliefV2HumanInventoryError, match="evaluation-only"):
         build_h0_inventory(source_manifest=manifest, source_paths=[source])
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda result: result.__setitem__("foreign_field", False),
+    lambda result: result.__setitem__("raw_player_identity_published", True),
+    lambda result: result.__setitem__("model_rows_published", True),
+    lambda result: result.__setitem__("training_authorized", True),
+    lambda result: result.__setitem__("test_open_authorized", True),
+    lambda result: result.__setitem__("strength_claim_authorized", True),
+])
+def test_h0_verifier_refuses_foreign_fields_and_every_authority(
+        tmp_path, mutation):
+    manifest, source = _write_snapshot(tmp_path, _completed_round())
+    result = build_h0_inventory(
+        source_manifest=manifest, source_paths=[source])
+    mutation(result)
+    with pytest.raises(BeliefV2HumanInventoryError,
+                       match="inventory identity drift"):
+        verify_h0_inventory(result)
 
 
 def _many_group_inventory(tmp_path: Path):

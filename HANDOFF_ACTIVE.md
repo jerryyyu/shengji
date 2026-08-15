@@ -8,8 +8,8 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue and fleet reconciled: 2026-08-15 00:11 EDT from canonical main
-`483ed02`. No sealed outcome bytes were opened during reconciliation.
+Review queue and fleet reconciled: 2026-08-15 01:17 EDT from canonical main
+`749cccb`. No sealed outcome bytes were opened during reconciliation.
 
 ## Live fleet
 
@@ -24,28 +24,25 @@ Review queue and fleet reconciled: 2026-08-15 00:11 EDT from canonical main
 ## Review queue — precise asks
 
 1. **PR #113 BELIEF-V1 B2 exact-head adversarial re-review — no run authority.**
-   Review exact rebased head `cf188e9a5ddab251e8890651a6d8918b8fe596a9`
-   on canonical base `483ed02`; its final repair commit parent is `ac697929`.
+   Review exact rebased head `529664f4fd10a51a14991f6d5a5c27db39a37596`
+   on canonical base `749cccb`; its final repair commit parent is `8def515c`.
    The full PR is the one-shot offline B2 capture/reference/training/evaluation
-   implementation. Re-audit the prior 23-agent HOLD repairs, especially the
-   unbiased finite-reference Brier correction in C1/N2/U1, actor-only failed-
-   throw surface, physical actor/target binding, exact training continuity,
-   authenticated remote review, durable outside-root consumption tombstone,
-   pyc/import/runtime closure, independently witnessed terminal rehash and
-   parallel wall-span guards, C2 descriptive-only routing, marginal-only C3,
-   explicit C4 shim, and U1=C1 alias.
-
-   The superseding delta must leave production `memory.py` byte-identical to
-   main SHA `905873b3…40cf51` while representing each still-unplayed banker-
-   declared copy as eligible only for banker hand or hidden kitty. Verify that
-   exact disjunction through actor schema v3, strict reopen, input bounds,
-   projection, marginal validation and every complete REF-C world; prove an
-   expectation/size-conserving move to an unrelated hand is refused. Bind the
-   sound adapter itself into REF-C source identity. Reproduce 180/180 BELIEF
-   and 139/139 broader engine/server tests in pure and strict compiled modes;
-   golden `mc-13` must stay exact. PASS means source merge-readiness only and
-   must explicitly leave corpus generation, training, test opening, cloud,
-   gameplay, online sampling, strength and deployment authority false.
+   implementation. Re-authenticate the previously repaired finite-reference
+   Brier correction, actor/private boundary, banker-hand-or-kitty eligibility,
+   one-shot/runtime closure and artifact reopeners, then focus on four final
+   holds: (1) separate C3 count-class 0/1/2 ECE/Brier/slope rows with no pooled
+   relabeling; (2) completed-trick winner recomputation from public cards;
+   (3) exact epoch decision-population and ordered-batch-schedule receipts plus
+   actual opened-seed logs; and (4) terminal mechanics gates derived from real
+   ownership/C4 twin/rotation checks and mismatch counts, not supplied booleans
+   or split-function tautologies. The one-guard mutations for all four must
+   turn their named witnesses red. Reproduce 183/183 BELIEF and 139/139 broader
+   engine/server tests in pure and strict compiled modes; production `Memory`,
+   engine/AI bytes and golden `mc-13` must stay exact. Review prompt/comment:
+   <https://github.com/jerryyyu/shengji/pull/113#issuecomment-5300696260>.
+   PASS means source merge-readiness only and must explicitly leave corpus
+   generation, training, test opening, freeze-design, cloud, B3, gameplay,
+   online sampling, strength, promotion and deployment authority false.
 
 2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact current head `a064ac4108c748de1954de94646b63e17d72a017` is green and

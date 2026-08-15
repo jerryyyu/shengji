@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-14 10:00 EDT. This file owns current compute and
+Last reconciled: 2026-08-15 01:24 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,19 +9,19 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | T4 terminal closeout complete | **TERMINAL REVIEWED `SELECT_NONE`.** External aggregate `f30a77c7…e652`, admission `ec96102e…7a08`; the merged PR #80 helper recursively reproduced all statistics and canonical review `a165274` verified the result. No confirmation, retry or deployment is authorized. Mini has no live T4 worker. |
-| **Air** | `pair-aware-whole-round-screen-v3` | **HEALTHY / SATURATED; 0 TERMINAL; TIMEOUT EXPECTED.** Reviewed score-free counters are `[576,576,592,576,592,576,576,576]/896`, totaling `4,640/7,168` (64.73%), with sealed outcomes. At 09:36 only ~13.9h remained before the fixed ~23:29 EDT cutoff; completion would require nearly twice the lifetime rate. Do not intervene, retry or extend. |
-| **Cloud** | none | **IDLE.** S4 finished both looks and terminally selected none. Independent review `15e8dbb` reproduced final SHA `0aef1ca8…be90`; no retry or candidate action follows. |
-| **Performance Cloud** | `pair-aware-whole-round-checkpoint-screen-v1` | **RUNNING / SATURATED.** Packet `f2878fff…a5c9c` PASSed at `95242b4` and started once at 09:56 EDT under invocation `ac5425e0…b221`. Sixteen workers are live; first score-free heartbeat is 0/224 microshards and `outcomes_opened=false`. Admission/review snapshot are immutable; manifest absent; RuntimeMaxSec=52h. No resume, retry, output access or aggregate authority. |
+| **Mini** | idle / BELIEF-V1 pre-execution | **NO LIVE RESEARCH JOB.** T4 is terminally reviewed `SELECT_NONE`. PR #113 exact `529664f4` is green and awaits source-only review; no BELIEF corpus, training, test opening or design freeze has occurred. A rejected-head V1 design is preserved but must never initialize; the post-merge V2 namespace is absent. |
+| **Air** | none | **IDLE AFTER TERMINAL TIMEOUT.** The broad Pair screen reached its fixed 64.08h cutoff with `0/8` terminal shards and published no shard bundle, manifest, aggregate or final. Canonical review `483ed02` preserves the fail-closed terminal. No retry, resize, resume or partial-result use. |
+| **Cloud** | powered off | **S4 CLOSED / HOST OFF.** S4 finished both looks and terminally selected none. Independent review `15e8dbb` reproduced final SHA `0aef1ca8…be90`; no retry or candidate action follows. |
+| **Performance Cloud** | powered off | **PAIR CHECKPOINT ATTEMPT SPENT.** The sole reviewed V1 execution fail-closed on microshard 3 with `treatment work drift` and no terminal evidence; canonical ledger `2b1fba5`. The later host shutdown makes the invocation unreachable. Any power-on permits score-free recovery inspection only—never resume, retry, outcome access or aggregation. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | Pair checkpoint successor | **RUNNING ON PERF / ONE SHOT.** Exact source `71356b2` and packet `f2878fff…a5c9c` passed independent review. Sixteen workers process 224 immutable microshards under a 52h service cap. Completion yields an outcome-free manifest for separate review; outcome bytes stay sealed. |
-| 2 | Original Air Pair screen | **RUNNING / EXPECTED TIMEOUT.** Preserve the frozen run to its natural terminal condition. A timeout is an honest terminal HOLD, not permission to reuse partial outcomes or start the sleeping old S6 queue. |
-| 3 | Post-null roadmap | **DESIGN PAUSE.** T4, S4 and combined S6 all selected none. Do not schedule another scored campaign until the next milestone demonstrates natural-dose economics, same-work causal attribution, robust continuation and detectable whole-game effect. |
+| 1 | BELIEF-V1 B2 offline milestone | **SOURCE REVIEW PENDING.** PR #113 exact `529664f4` is green/mergeable. PASS permits merge and one Mini-specific V2 design freeze only; a second exact marker then covers the consolidated capture/reference/training/test sequence. |
+| 2 | Pair checkpoint recovery | **HOLD / BOTH EVIDENCE PATHS SPENT.** Air timed out with no terminal shards; Performance V1 refused and the host is off. Diagnose/recover only through a fresh reviewed design and namespace; no old result may be opened or resumed. |
+| 3 | Post-null roadmap | **BELIEF-V1 IS THE CHOSEN REPRESENTATION MILESTONE.** T4, S4 and combined S6 selected none. B0 contracts and B2 implementation exist; no B2 data has run. No scored campaign follows until calibration, sampler fidelity, same-work causality and natural-dose/MDE gates are satisfied. |
 
 Pair-aware v3 owns Air and has no retry or extension authority. Every old S4 C2
 namespace and the complete 300-billion interval are quarantined and grant no
@@ -52,7 +52,8 @@ their reviewed verifier; no ad hoc reopening or post-hoc analysis is authorized.
 
 | date | job | verdict / headline | anchor |
 |---|---|---|---|
-| 08-14 | Pair checkpoint successor | **PACKET PASS / RUNNING ONCE:** source `71356b2` PASSed at `83c6909`; packet `f2878fff…a5c9c` / internal `48ccd1f6…daeee` PASSed at `95242b4` and started under invocation `ac5425e0…b221`. First heartbeat: 0/224, 16 workers, outcomes unopened. | PR #106; runtime `39a8c31e…f1f3c`; unit `657a96fc…e6f4` |
+| 08-14 | Air Pair whole-round screen | **TERMINAL TIMEOUT / NO EVIDENCE:** fixed 64.08h cutoff, `0/8` terminal shards, no manifest/final/aggregate; no retry or partial interpretation. | source `cd206707`; ledger `483ed02` |
+| 08-14 | Pair checkpoint successor | **ONE-SHOT ATTEMPT SPENT / NO TERMINAL:** source `71356b2` and packet `f2878fff…a5c9c` passed review, but microshard 3 fail-closed on `treatment work drift`; the later host shutdown leaves no resumable execution. | invocation `ac5425e0…b221`; ledger `2b1fba5`; PR #106 |
 | 08-14 | S6 scored-DEV recovery | **TERMINAL `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`:** all 64 records reconstructed; bury source passed every criterion, lead source failed three. No fresh screen or retry. | result `de1c4f33…d0bc`; review `e31e9a2` |
 | 08-14 | S4 360B confirmation | **TERMINAL `SELECT_NONE`:** both looks and all integrity checks completed; final efficacy was not met. | final `0aef1ca8…be90`; review `15e8dbb` |
 | 08-13 | S6 opened-DEV V2 start | **PRE-ADMISSION REFUSAL / V2 RETIRED:** the sole reviewed systemd start reached the live shadow gate and refused an ignored controller `.pyc` before packet-review snapshot, admission, gameplay, record-directory or final publication. V2 cannot retry. Optimized V3 PR #104 binds the incident and moves the same shadow check before packet review. | packet `dd7709e9…4adca`; invocation `fcdcb04e…583d`; shadow `3bcf3c6f…18c1`; PR #104 `a93c2f5` |
@@ -69,7 +70,7 @@ their reviewed verifier; no ad hoc reopening or post-hoc analysis is authorized.
 | 08-12 | S6 actor-visible full-hand selector | **ADVANCE TO FRESH WHOLE-GAME PACKET DESIGN (reused DEV):** 512 decisions on 128 public states; 427 overrides, 101 beneficial / 20 harmful / 306 neutral; state-cluster mean `+0.307`, LCB `+0.175`, both roles positive. This is selector feasibility, not independent strength. | result `54733434…984c` / PR #50 `f3918d2` |
 | 08-12 | S6 full-hand natural prevalence | **VIABLE SELECTIVE DOSE / SCORE-FREE:** 1,011/50,000 deals (2.02%) triggered; 1,085/1,067,189 leads, all mid/late; 126 occurred at four cards. | result `8934c2e3…ea45` / PR #50 |
 | 08-12 | S6 full-hand boss/near exact replication | **ADVANCE TO DEV SELECTOR:** 128 fresh balanced states, mean `+0.234` levels, one-sided LCB `+0.100`, 24W/8L/96T; both role means positive. Perfect-information action-set value, not whole-game strength. | result `946b029c…cebe` / PR #50 `469b064` |
-| 08-12 | Pair-aware powered screen packet | **REVIEWED / RUNNING:** 7,168 clusters, 8×896, ~84% planning power at `+0.05`; one admitted execution began on Air around 07:27. Outcomes remain sealed until score-free supervisor review. | packet `4ece02b9…ae47` / source `cd20670` |
+| 08-12 | Pair-aware powered screen packet | **TERMINAL TIMEOUT / NO EVIDENCE:** the admitted 7,168-cluster execution reached its fixed 64.08h cutoff with `0/8` terminal shards and published no manifest, final or aggregate. No retry, resume or partial-result interpretation. | packet `4ece02b9…ae47` / source `cd20670` / ledger `483ed02` |
 | 08-12 | S6 level-objective audit | **STOP THIS FILTER:** on the exact 300 report worlds, level-bracket scoring kept 5/12 selected throws, still retained the only two-level loss and retained zero wins. A full matched pilot is not justified from this evidence. | artifact `f6478bac…6329` / PR #47 |
 | 08-12 | Pair-aware powered screen implementation | **RUNNABLE SOURCE, FREEZE BLOCKED:** PR #49 implements 7,168 clusters under the reviewed caps with ~84% power at `+0.05`; capacity PASS and then packet review remain mandatory. | PR #49 `cd20670` |
 | 08-12 | Pair-aware v1 selected-root audit | **ENCOURAGING, NOT STRENGTH:** across all nine finite-search v1 changes at 4,096 fresh common worlds, primary level utility favored v1 on 5–6 roots, opposed it on 1–2 and left two unresolved under two continuation models. One points-positive root was level-negative, so points alone are insufficient. | artifact `131a64e…7eaa3` / PR #48 |

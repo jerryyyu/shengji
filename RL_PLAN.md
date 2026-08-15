@@ -61,13 +61,12 @@ This section keeps only the research conclusions that change what we try next.
   PASSed and the spent PR #74/#76 chain was closed; PR #70 retains only the
   reusable diagnostic source. Any recovery needs a newly authorized namespace.
   None is yet a new strength claim; S3a's broader bury recipe remains closed.
-- **Pair understanding:** the original broad continuation screen remains
-  sealed and running on Air, but at 4,640/7,168 score-free clusters it is on a
-  likely timeout trajectory toward its fixed 2026-08-14 23:29 EDT cutoff. It
-  must not be extended, resumed or opened early. A separately reviewed fresh
-  checkpoint successor is now running 224 immutable microshards with 16 workers
-  on Performance Cloud under one consumed admission; terminal outcomes remain
-  sealed and require a separate review.
+- **Pair understanding:** both fresh whole-game evidence paths closed without
+  a result. The broad Air screen reached its fixed cutoff with `0/8` terminal
+  shards and no manifest/final/aggregate. The Performance checkpoint successor
+  fail-closed on microshard 3 `treatment work drift`; its one-shot admission is
+  spent and the host is powered off. Neither path may be extended, resumed,
+  retried or interpreted from partial work.
   PR #85 exact head `111314f` PASSed external design-only review with 40 tests.
   It is a checkpointed successor for terminal timeout contingency only and grants no
   capacity screen, replacement launch, retry, extension or result authority.
@@ -210,7 +209,7 @@ Shengji analogue of AlphaGo's division of labour, adapted for hidden cards:
 | component | job | current evidence / next use |
 |---|---|---|
 | **Proposal** | Learned, structured, human or tactical sources keep valuable actions on the ballot. | T4 and the combined S6 recipe selected none. V11, human, and surviving bury-side states remain bounded diagnostic sources, not active promotion claims. |
-| **Belief-sampled continuation** | Compare proposals across hands consistent with public history under an explicitly named rollout policy. | S4 selected none and S5 has no recovery authority. Pair-aware continuation remains the only active scored family. No private-world tree is treated as exact public Shengji. |
+| **Belief-sampled continuation** | Compare proposals across hands consistent with public history under an explicitly named rollout policy. | S4 selected none, S5 has no recovery authority, and both Pair whole-game attempts closed without evidence. BELIEF-V1 now tests hidden-ownership calibration offline before any sampler or scored continuation is considered. No private-world tree is treated as exact public Shengji. |
 | **Leaf/value** | A calibrated outcome or advantage estimate may truncate or allocate expensive continuation work. | Stage C learned outcome structure but failed at global action argmax. Test it against full fresh search on reusable DEV before any whole-game value-leaf run. |
 | **Report guard** | A fresh independent fold protects the incumbent before an override. | Deployed report-LCB is the confirmed parent; every challenger must name whether it changes proposals, continuations, leaf value or only the guard. |
 
@@ -569,7 +568,7 @@ This table separates them by the training signal they actually produced.
 | **Fresh live-champion audit** | On an untouched 64-state complement, compare frozen cheap and N=30 choices against the deployed report-LCB root evaluator. | Cheap and N=30 all-state regret bounds passed (`0.0354` and `0.0439`), but the eight boundary states had a weaker N=30 bound (`0.1421`). | Ordinary rows can be labeled cheaply; uncertain/boundary rows need escalation. This is the direct empirical reason for Stage C's mixed-budget hard tail. |
 | **Teacher Stage C generation one** | Capture a split-safe hard-tail exam, label candidate actions with corrected iid hidden-world folds, and train eight-seed ranking/outcome cohorts on DESIGN/CALIB only. | Capture and 2,048/2,048 corrected labels passed. The 1,536-row model generation selected none; a protected play ensemble also selected none on one fresh 480-row REPORT (`-0.008228`, LCB `-0.018944`). | Close the spent REPORT and policy. The usable lesson is that model signal existed in strata but did not make reliable overrides. |
 | **Teacher Stage C generation two** | Add 5,504 fresh DESIGN/CALIB labels for 7,040 total, train matched all-pairs/direct cohorts, then test bury and play capabilities on untouched populations. | All 96 cells and 576 checkpoints replayed. More data produced stable DESIGN/CALIB capability, but fresh use did not transport: expanded bury was `+0.03381` with LCB `-0.01525`; protected play was `-0.00823` with LCB `-0.01894`; the powered 219-state uncertainty exam was `+0.01213` with LCB `-0.00506`. Its outcome-NLL improvement was large (`+0.47845`, LCB `+0.44201`). All terminal results are independently reviewed. | Close direct global ranker use. Preserve the calibrated value signal for explicit common-world advantage/leaf tests and treat the post-hoc mid/late slice only as a fresh specialization hypothesis. |
-| **Stage C mid/late search hybrid** | Gate the frozen eight-model play ensemble to trick 5+, let it add one proposal, and use fresh N=300 belief-sampled search to compare that proposal with the literal production move; include a same-work uninformed proposal to measure whether the model adds more than generic widening. | On 256 fresh balanced states, the independently reviewed model-plus-search effect was `+0.02020` versus live (LCB `+0.01275`) and `+0.01570` versus null (LCB `+0.00880`), with exact 230,400 candidate-worlds. The fresh whole-game screen is now running on Mini. | Finish the reviewed treatment/null/champion screen and route its terminal verdict. This supports model-guided search, not a bare-model or production claim. |
+| **Stage C mid/late search hybrid** | Gate the frozen eight-model play ensemble to trick 5+, let it add one proposal, and use fresh N=300 belief-sampled search to compare that proposal with the literal production move; include a same-work uninformed proposal to measure whether the model adds more than generic widening. | On 256 fresh balanced states, the independently reviewed model-plus-search effect was `+0.02020` versus live (LCB `+0.01275`) and `+0.01570` versus null (LCB `+0.00880`), with exact 230,400 candidate-worlds. The fresh whole-game T4 screen later terminally selected none: treatment LCB `-0.00759` versus champion and `-0.03313` versus its work-matched null. | Close this learned-proposal recipe. Preserve the control-arm asymmetry for a separately designed three-arm widening/compute attribution test; no T4 retry or promotion. |
 
 In plain English, Stage B asked, “Can the cheap grader reproduce the expensive
 grader on normal exam questions?” Stage C asks, “Can we write a better exam,

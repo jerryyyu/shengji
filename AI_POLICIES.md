@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-14 10:00 EDT
+## Current synthesis — 2026-08-15 01:24 EDT
 
 ### At a glance
 
@@ -23,8 +23,8 @@ and put exact run detail in `JOBS.md` or the dated archive.
   confirmed and deployed strength gain.
 - **Strength conclusion:** this campaign did not prove a stronger bot. T4, S4
   and the combined S6 source design all reached clean, independently reviewed
-  null selections. Pair-aware continuation remains unresolved in two fresh
-  whole-game executions.
+  null selections. Pair-aware continuation produced no whole-game evidence:
+  Air timed out at `0/8` terminal shards and the checkpoint attempt fail-closed.
 - **Learned-policy conclusion:** the model helped on selected trick-five+
   states, but failed both whole-game conservative contrasts. A same-work
   uninformed proposal beat champion on the same population; learned targeting
@@ -32,10 +32,10 @@ and put exact run detail in `JOBS.md` or the dated archive.
 - **Rollout-policy conclusion:** S4 completed its full 16,384-cluster,
   two-look confirmation with integrity intact but final efficacy unmet. Its
   roughly 0.7% natural decision incidence sharply limited whole-game effect.
-- **Other live strength tests:** the original Pair screen remains on Air with
-  sealed outcomes and expected timeout. A fresh checkpointed Pair successor is
-  now running 16 workers on Performance Cloud under its single reviewed
-  admission. No S6 continuation is authorized from the scored-DEV null.
+- **Current research milestone:** BELIEF-V1 is the active representation lane.
+  Its B0 contracts are merged and PR #113's B2 offline implementation awaits
+  exact-head source review. No corpus, training, test opening, sampler or
+  strength run has started. No S6 or Pair continuation is authorized.
 - **Main model lesson:** more data produced stable outcome prediction, but a
   model choosing moves globally did not transfer. Specialization plus search
   protection is the first learned use to pass fresh evidence.
@@ -63,7 +63,7 @@ does not replace the plain-English strategy.
 | **O0** | **Training with all cards visible** | Train an oracle with every hand visible and try to transfer its knowledge to a public-information policy. | **Tested recipes closed** | First aggregate `+0.073` was unstable across seeds; repaired shared-trajectory test was `+0.015`, lower bound `-0.067`; margin emphasis was worse. | These implementations did not transfer robustly. This does not rule out every privileged-information curriculum, but there is no authorized continuation now. |
 | **H0** | **Human moves as proposals** | Add the human move to the search ballot and price it counterfactually rather than treating imitation as truth. | **No scientific result; score-free geometry repair merged** | The only scored run completed 555 of 557 decisions and published no aggregate. Merged PR #82 exact head `bf72dff` reproduces why: production legally offered 12 choices on each refused seven-card throw while the generic analyzer exposed only three. | This was a false cardinality assumption, not evidence against human moves. The repair uses direct engine legality, pins the full false authority map and cannot score or reopen old utilities. Any prevalidation or scored successor still needs separate authority and a fresh design. |
 | **S6** | **Ballot sourcing** | Keep every legal throw visible, but spend extra search only on the late full-hand boss/near shape that repeatedly showed value. | **Terminal scored-DEV `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`** | The jointly scored bury source passed every registered criterion; the lead source failed its positive-state threshold, hash-uniform anchor mean and boss-near continuation mean. | All 64 records were reconstructed and result `de1c4f33…d0bc` independently verified at `e31e9a2`. Preserve the bury-side asymmetry as a hypothesis only. No fresh screen, retry, REPORT, strength or deployment follows. |
-| **PAIR-ROLL** | **Pair-aware continuation** | Track which higher pairs have already disappeared so simulations can recognize when a low pair has become boss. | **Two fresh whole-game executions active; no result yet** | Selected-root diagnostics favored the change on most finite-search disagreements, but points and level utility disagreed on one root. | The original Air run is healthy at 4,640/7,168 (64.73%) but is expected to hit its fixed timeout. Fresh checkpoint packet `f2878fff…a5c9c` PASSed and started once on Performance Cloud with 16 workers, 224 immutable microshards and a 52h cap. Both outcomes remain sealed; only terminal review can establish strength. |
+| **PAIR-ROLL** | **Pair-aware continuation** | Track which higher pairs have already disappeared so simulations can recognize when a low pair has become boss. | **Closed without whole-game evidence** | Selected-root diagnostics favored the change on most finite-search disagreements, but neither execution produced a terminal artifact: Air timed out at `0/8`; checkpoint V1 refused on `treatment work drift`. | Preserve the diagnostic mechanism only. Both admissions are spent; no retry, resume, partial-result interpretation, strength claim or deployment. Any successor requires a fresh diagnosis/design and does not block BELIEF-V1. |
 | **PAIR-BALLOT** | **Retain legal pairs on the ballot** | Keep a legal pair from being crowded out before search can price it. | **Real, rare, defender-heavy gap; designs reviewed and merged** | Census found 15,187 omissions across 18.6M SmartBot-trajectory leads (`0.0816%`), 97.6% early. The 1,024 selected rows are 1,023 defender and one attacker; the defender rows span 990 deal clusters. | Merged design-only PR #100 specifies the scored-controller boundary; merged design-only PR #101 freezes a fresh exact-champion natural split/role/band dose census. Each still needs a separate reviewed implementation and packet before any execution. |
 | **S3B / S5** | **Exact endgames and defensive point protection** | Solve genuinely small endgames and stop avoidable point donations only when actor-visible play rules out a useful partner feed. | **Endgame mechanics bounded; S5 old one-shot spent and closed after INC-18** | Four-card exact search exceeded its node limit. S5 replay found 58 strict hindsight triggers; only 16 still match today's rollout, and 57/58 already have a lower-point ballot action. A request-template defect spent the one-shot admission without a result. The validation-only refusal repair PASSed; PRs #74/#76 were then closed, while PR #70 retains the reusable diagnostic source. | Start exact search at real two-card endings. Any S5 recovery needs an explicit new retry decision plus a fresh admission/result namespace; never reuse the spent chain or generalize this to “never discard points.” |
 

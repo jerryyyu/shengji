@@ -289,11 +289,16 @@ def realize_v2_cohorts(
         human_rows: tuple[V2TrainingRowV1, ...]) \
         -> tuple[V2CohortRealizationV1, ...]:
     """Apply every frozen selection rule and cross-check exact work matching."""
-    if type(plans) is not tuple or len(plans) != 4 \
+    if type(plans) is not tuple or len(plans) < 4 \
             or any(type(plan) is not V2CohortPlanV1 for plan in plans) \
             or {plan.kind for plan in plans} != {
                 "synthetic-primary", "hard-geometry-label-permutation",
-                "human-mixture", "synthetic-scale"}:
+                "human-mixture", "synthetic-scale"} \
+            or sum(plan.kind == "synthetic-primary" for plan in plans) != 1 \
+            or sum(plan.kind == "hard-geometry-label-permutation"
+                   for plan in plans) != 1 \
+            or sum(plan.kind == "human-mixture" for plan in plans) != 1 \
+            or len({plan.cohort_id for plan in plans}) != len(plans):
         raise BeliefV2ScheduleError("V2 cohort plan population drift")
     if type(synthetic_rows) is not tuple or not synthetic_rows \
             or type(human_rows) is not tuple or not human_rows:
@@ -310,11 +315,18 @@ def realize_v2_cohorts(
             or len(human_rows) * MAX_HUMAN_FRACTION_DENOMINATOR \
             > len(synthetic_rows) * MAX_HUMAN_FRACTION_NUMERATOR:
         raise BeliefV2ScheduleError("V2 human mixture fraction exceeds cap")
-    by_kind = {plan.kind: plan for plan in plans}
-    primary_plan = by_kind["synthetic-primary"]
-    control_plan = by_kind["hard-geometry-label-permutation"]
-    human_plan = by_kind["human-mixture"]
-    scale_plan = by_kind["synthetic-scale"]
+    primary_plan = next(plan for plan in plans
+                        if plan.kind == "synthetic-primary")
+    control_plan = next(plan for plan in plans
+                        if plan.kind == "hard-geometry-label-permutation")
+    human_plan = next(plan for plan in plans
+                      if plan.kind == "human-mixture")
+    scale_plans = tuple(plan for plan in plans
+                        if plan.kind == "synthetic-scale")
+    if len({(plan.synthetic_fraction_numerator,
+             plan.synthetic_fraction_denominator)
+            for plan in scale_plans}) != len(scale_plans):
+        raise BeliefV2ScheduleError("V2 scale fraction population drift")
     if primary_plan.cohort_id != PRIMARY_COHORT_ID \
             or control_plan.cohort_id != CONTROL_COHORT_ID \
             or human_plan.cohort_id != HUMAN_COHORT_ID \
@@ -324,21 +336,22 @@ def realize_v2_cohorts(
             != ALL_SYNTHETIC_TRAIN_DECISIONS \
             or human_plan.synthetic_selection_rule \
             != MIXED_SYNTHETIC_TRAIN_DECISIONS \
-            or scale_plan.synthetic_selection_rule \
-            != SCALE_SYNTHETIC_TRAIN_DECISIONS \
             or primary_plan.human_selection_rule != NO_HUMAN_DECISIONS \
             or control_plan.human_selection_rule != NO_HUMAN_DECISIONS \
             or human_plan.human_selection_rule \
             != ALL_HUMAN_TRAIN_DECISIONS \
-            or scale_plan.human_selection_rule != NO_HUMAN_DECISIONS \
             or primary_plan.work_match_rule != PRIMARY_WORK_RULE \
             or control_plan.work_match_rule != PRIMARY_WORK_RULE \
             or human_plan.work_match_rule != MIXED_WORK_RULE \
-            or scale_plan.work_match_rule != SCALE_WORK_RULE \
             or primary_plan.comparator_cohort_id is not None \
             or control_plan.comparator_cohort_id != PRIMARY_COHORT_ID \
             or human_plan.comparator_cohort_id != PRIMARY_COHORT_ID \
-            or scale_plan.comparator_cohort_id != PRIMARY_COHORT_ID:
+            or any(scale.synthetic_selection_rule
+                   != SCALE_SYNTHETIC_TRAIN_DECISIONS
+                   or scale.human_selection_rule != NO_HUMAN_DECISIONS
+                   or scale.work_match_rule != SCALE_WORK_RULE
+                   or scale.comparator_cohort_id != PRIMARY_COHORT_ID
+                   for scale in scale_plans):
         raise BeliefV2ScheduleError("V2 cohort selection rule drift")
     ranked_synthetic = tuple(sorted(
         synthetic_rows,
@@ -349,13 +362,10 @@ def realize_v2_cohorts(
     removed_set = set(removed_keys)
     mixed_synthetic = tuple(
         row for row in synthetic_rows if row.decision_key not in removed_set)
-    scale_count = (len(synthetic_rows)
-                   * scale_plan.synthetic_fraction_numerator
-                   // scale_plan.synthetic_fraction_denominator)
-    scale_rows = tuple(sorted(
+    ranked_scale_rows = tuple(sorted(
         synthetic_rows,
         key=lambda row: (_rank("scale-prefix", row.decision_key),
-                         row.decision_key)))[:scale_count]
+                         row.decision_key)))
     primary = _realization(
         primary_plan, synthetic_rows, removed=(), family="primary")
     control = _realization(
@@ -363,8 +373,12 @@ def realize_v2_cohorts(
     mixed = _realization(
         human_plan, (*mixed_synthetic, *human_rows),
         removed=removed_keys, family="human-mixture")
-    scale = _realization(
-        scale_plan, scale_rows, removed=(), family="synthetic-scale")
+    scales = tuple(_realization(
+        scale, ranked_scale_rows[:(
+            len(synthetic_rows) * scale.synthetic_fraction_numerator
+            // scale.synthetic_fraction_denominator)],
+        removed=(), family=f"synthetic-scale|{scale.cohort_id}")
+                   for scale in scale_plans)
     if control.decision_population_sha256 \
             != primary.decision_population_sha256 \
             or control.batch_schedule_sha256 != primary.batch_schedule_sha256 \
@@ -372,12 +386,16 @@ def realize_v2_cohorts(
             or mixed.human_decision_count != len(human_rows) \
             or mixed.synthetic_decision_count \
             != len(synthetic_rows) - len(human_rows) \
-            or scale.synthetic_decision_count != scale_count \
-            or scale.human_decision_count != 0:
+            or any(value.synthetic_decision_count != (
+                len(synthetic_rows) * plan.synthetic_fraction_numerator
+                // plan.synthetic_fraction_denominator)
+                   or value.human_decision_count != 0
+                   for plan, value in zip(scale_plans, scales, strict=True)):
         raise BeliefV2ScheduleError("V2 realized comparison/work drift")
+    realized = (primary, control, mixed, *scales)
     return tuple(
         {value.cohort_id: value
-         for value in (primary, control, mixed, scale)}[plan.cohort_id]
+         for value in realized}[plan.cohort_id]
         for plan in plans)
 
 

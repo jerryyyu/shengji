@@ -19,7 +19,7 @@ compact terminal stubs. Historical detail is archived in
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | BELIEF-V1 B2 offline milestone | **SOURCE REVIEW PENDING.** PR #113 exact `529664f4` is green/mergeable. PASS permits merge and one Mini-specific V2 design freeze only; a second exact marker then covers the consolidated capture/reference/training/test sequence. |
+| 1 | BELIEF-V1 B2 offline milestone | **SOURCE REVIEW PENDING.** PR #113 exact `529664f4` is green; current main conflicts only in `BACKLOG.md` after the later fleet-doc reconciliation. PASS permits a byte-preserving two-parent merge and one Mini-specific V2 design freeze only; a second exact marker then covers the consolidated capture/reference/training/test sequence. |
 | 2 | Pair checkpoint recovery | **HOLD / BOTH EVIDENCE PATHS SPENT.** Air timed out with no terminal shards; Performance V1 refused and the host is off. Diagnose/recover only through a fresh reviewed design and namespace; no old result may be opened or resumed. |
 | 3 | Post-null roadmap | **BELIEF-V1 IS THE CHOSEN REPRESENTATION MILESTONE.** T4, S4 and combined S6 selected none. B0 contracts and B2 implementation exist; no B2 data has run. No scored campaign follows until calibration, sampler fidelity, same-work causality and natural-dose/MDE gates are satisfied. |
 

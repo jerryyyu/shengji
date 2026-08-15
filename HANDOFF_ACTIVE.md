@@ -8,8 +8,8 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue and fleet reconciled: 2026-08-15 01:21 EDT from canonical main
-`5b18a3a`. No sealed outcome bytes were opened during reconciliation.
+Review queue and fleet reconciled: 2026-08-15 01:31 EDT from canonical main
+`84613c3`. No sealed outcome bytes were opened during reconciliation.
 
 ## Live fleet
 
@@ -43,6 +43,12 @@ Review queue and fleet reconciled: 2026-08-15 01:21 EDT from canonical main
    PASS means source merge-readiness only and must explicitly leave corpus
    generation, training, test opening, freeze-design, cloud, B3, gameplay,
    online sampling, strength, promotion and deployment authority false.
+   Current main adds only later operational-doc reconciliation and conflicts
+   with the PR in `BACKLOG.md`; all source paths merge without conflict. After
+   PASS, use a two-parent non-squash merge that preserves every reviewed PR
+   source blob exactly and keeps canonical main's current operational docs.
+   Do not rebase or rewrite the pending reviewed head merely to clear this
+   docs-only integration conflict.
 
 2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
    Exact current head `a064ac4108c748de1954de94646b63e17d72a017` is green and

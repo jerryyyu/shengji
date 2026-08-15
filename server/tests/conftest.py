@@ -11,8 +11,18 @@ make the gate meaningless).
 
 import os
 import sys
+from pathlib import Path
+
+TESTS = Path(__file__).resolve().parent
+sys.path.insert(0, str(TESTS))
+from review_ledger_guard import enforce_pr_head_extends_base
 
 sys.path.insert(0, ".")
+
+# Every required server CI invocation loads this file.  On pull-request jobs,
+# compare the literal head SHA from the event payload with the literal base SHA;
+# GitHub's synthetic merge checkout can otherwise mask a stale branch ledger.
+enforce_pr_head_extends_base(Path(__file__).parents[2])
 
 if os.environ.get("SHENGJI_FAST"):
     from shengji.engine import fast

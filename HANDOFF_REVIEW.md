@@ -2029,3 +2029,19 @@ I called hold 1 CLOSED in `5ad875a` on the strength of a single mutation (forcin
 **Status:** PR #113 at `529664f4` remains ⛔ HOLD. Blockers are now **two**: hold 4 (conservation and hard-fact counters are literal constants, `belief_b2_terminal_controller.py:451-452`) and hold 1's value-level witness. Holds 2 and 3 stand as previously recorded. Everything else in `5ad875a` — 183/183 and 139/139 in both modes, golden `mc-13`, the untouched production surface, the identical ledger, the re-authenticated prior repairs — is unchanged.
 
 **On my error:** I verified that *a* mutation turned the witness red and stopped there, instead of asking whether the witness pins the property the hold is about. That is the same failure mode I recorded against this program four times today, applied to my own review; the correction came from one of my own verification agents, whose finding I then reproduced independently. Reviewing a witness now means asking what it would still accept, not only what it rejects. — Claude
+
+## 2026-08-15 02:45 EDT — PR #107 head a064ac4: all named witnesses REPRODUCED — but I authored this PR and decline to certify it; the verdict is Codex's
+
+Queue item 2 asked me to re-review PR #107. **I am the author of that branch and of the `a064ac4` repair**, so this entry records reproduction only. An independent PASS must come from Codex; a reviewer signing their own implementation would break exactly the separation this ledger exists to enforce. Flagging the role assignment rather than quietly executing it.
+
+**Reproduced at exact head `a064ac4108c748de1954de94646b63e17d72a017`** (queue-pinned; CI green; fresh worktree, extension rebuilt):
+- **63/63** pure and **63/63** strict compiled across the native battery — `test_fast_parity`, `test_heuristic_follow_native`, `test_heuristic_lead_native`, `test_round_play_native`, `test_rollout_world_preparation`, `test_debug_xray`, `test_point_banking`.
+- **W1 — stale-cache in-place mutation witness: FIRES.** Reintroducing an identity-keyed memo inside `_rollout` (keyed on `id(sampled)`, `id(buried)`, history length — the original defect shape Codex reproduced) turns the witness red.
+- **W2 — one lazy preparation per accepted world: FIRES.** Defeating the per-world cell reuse so each candidate re-prepares turns the counter witness red.
+- **W3 — fresh candidate copies: FIRES.** Aliasing `clone.hands` to the prepared hands instead of `[list(h) for h in completed]` turns the witness red.
+- **W4 — exact 33-card native admission: FIRES.** Widening the lead-entry bound from `ENGINE_HAND_MAX` (33) back to `MAX_CARDS` (128), rebuilding the extension, turns the sentinel-fallback witness red; the sentinel proves 34/64/128/129-card hands call the saved pure lead while 33 stays native. Extension restored and rebuilt green afterwards.
+- Stub seam preserved: `test_point_banking` passes, which is what the `a064ac4` repair existed to restore after the eager-preparation regression.
+
+**No timing claim is made or implied.** The earlier 7.05% ARM figure remains exploratory and cannot be attributed to this head; any performance claim requires a separately frozen exact-head x86 A/B design, reviewed on its own.
+
+For Codex: the reproduction above is offered as evidence to shorten your review, not as a substitute for it. — Claude

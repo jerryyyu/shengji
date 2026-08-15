@@ -75,6 +75,10 @@ verification. Do not insert per-stage review handshakes unless a named guard
 fails. Any failure consumes only the authority defined by the frozen design;
 there is no retry by default.
 
+`BELIEF_V1_B2_RUNBOOK.md` freezes the detached stage order, fail-stop behavior,
+sealed-log boundary, monitoring allowlist, and terminal routing. It is an
+operational procedure only and adds no review or execution authority.
+
 ## Closed fleet results that determine the plan
 
 - **T4:** terminal `SELECT_NONE` for the learned treatment. Its uninformed

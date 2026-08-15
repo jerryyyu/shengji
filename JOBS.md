@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-15 01:24 EDT. This file owns current compute and
+Last reconciled: 2026-08-15 07:50 EDT. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,7 +9,7 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | idle / BELIEF-V1 pre-execution | **NO LIVE RESEARCH JOB.** T4 is terminally reviewed `SELECT_NONE`. PR #113 exact `529664f4` is green and awaits source-only review; no BELIEF corpus, training, test opening or design freeze has occurred. A rejected-head V1 design is preserved but must never initialize; the post-merge V2 namespace is absent. |
+| **Mini** | idle / BELIEF-V1 pre-execution | **NO LIVE RESEARCH JOB.** T4 is terminally reviewed `SELECT_NONE`. PR #113 repaired exact head `0da43a0` is locally green and awaits one external delta review; no BELIEF corpus, training, test opening or design freeze has occurred. A rejected-head V1 design is preserved but must never initialize; the post-merge V2 namespace is absent. |
 | **Air** | none | **IDLE AFTER TERMINAL TIMEOUT.** The broad Pair screen reached its fixed 64.08h cutoff with `0/8` terminal shards and published no shard bundle, manifest, aggregate or final. Canonical review `483ed02` preserves the fail-closed terminal. No retry, resize, resume or partial-result use. |
 | **Cloud** | powered off | **S4 CLOSED / HOST OFF.** S4 finished both looks and terminally selected none. Independent review `15e8dbb` reproduced final SHA `0aef1ca8…be90`; no retry or candidate action follows. |
 | **Performance Cloud** | powered off | **PAIR CHECKPOINT ATTEMPT SPENT.** The sole reviewed V1 execution fail-closed on microshard 3 with `treatment work drift` and no terminal evidence; canonical ledger `2b1fba5`. The later host shutdown makes the invocation unreachable. Any power-on permits score-free recovery inspection only—never resume, retry, outcome access or aggregation. |
@@ -19,15 +19,13 @@ compact terminal stubs. Historical detail is archived in
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | BELIEF-V1 B2 offline milestone | **SOURCE REVIEW PENDING.** PR #113 exact `529664f4` is green; current main conflicts only in `BACKLOG.md` after the later fleet-doc reconciliation. PASS permits a byte-preserving two-parent merge and one Mini-specific V2 design freeze only; a second exact marker then covers the consolidated capture/reference/training/test sequence. |
+| 1 | BELIEF-V1 B2 offline milestone | **DELTA SOURCE REVIEW PENDING.** PR #113 exact `0da43a0`, parent `529664f4`, closes the three final HOLDs; 186 BELIEF tests pass in both modes and the four named mutations fail as required. Current main conflicts only in `BACKLOG.md`; integration must keep current-main operational docs and preserve reviewed BELIEF source/design bytes. PASS permits that byte-preserving two-parent merge and one Mini-specific V2 design freeze only; a second exact marker then covers the consolidated capture/reference/training/test sequence. |
 | 2 | Pair checkpoint recovery | **HOLD / BOTH EVIDENCE PATHS SPENT.** Air timed out with no terminal shards; Performance V1 refused and the host is off. Diagnose/recover only through a fresh reviewed design and namespace; no old result may be opened or resumed. |
 | 3 | Post-null roadmap | **BELIEF-V1 IS THE CHOSEN REPRESENTATION MILESTONE.** T4, S4 and combined S6 selected none. B0 contracts and B2 implementation exist; no B2 data has run. No scored campaign follows until calibration, sampler fidelity, same-work causality and natural-dose/MDE gates are satisfied. |
 
-Pair-aware v3 owns Air and has no retry or extension authority. Every old S4 C2
-namespace and the complete 300-billion interval are quarantined and grant no
-retry. The 360-billion successor starts a fresh design/controller/packet chain.
-Selective S6's old v1 packet is superseded and must never run. A design or
-implementation review never substitutes for its named later authority.
+The spent Pair, S4, S6 and T4 namespaces remain quarantined and grant no retry,
+resume or partial-result authority. A design or implementation review never
+substitutes for its named later execution authority.
 
 ## T4 closeout
 

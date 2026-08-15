@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import random
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from shengji.ai.heuristic import HeuristicBot
+from shengji.engine.game import Game
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
+from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_v2_controller import (
     BeliefV2ControllerError,
     reopen_actor_capture_lane_manifest,
@@ -40,6 +44,22 @@ from shengji.rl.belief_v2_freeze import (
     V2ExecutionFreezeV1,
     V2PipelineAdmissionV1,
     V2ResourceCapsV1,
+)
+from shengji.rl.belief_v2_human_controller import (
+    BeliefV2HumanControllerError,
+    reopen_human_training_group_examples,
+    run_human_group_capture,
+)
+from shengji.rl.belief_v2_human_corpus import (
+    V2HumanGroupCaptureV1,
+    capture_human_corpus_pair,
+)
+from shengji.rl.belief_v2_human_inventory import (
+    H0_INVENTORY_SCHEMA,
+    _group_digest,
+    build_h0_group_split,
+    group_split_bytes,
+    inventory_bytes,
 )
 from shengji.rl.belief_v2_protocol import (
     v2_policy_seeds,
@@ -388,3 +408,167 @@ def test_capture_slot_is_no_retry(tmp_path, monkeypatch):
         run_capture_lane(
             root, freeze, admission, repo=Path("/unused"),
             lane=coordinate.lane, review_marker=b"review")
+
+
+def _human_state(seed=12101):
+    rnd = Game(random.Random(seed)).start_round()
+    bot = HeuristicBot()
+    while rnd.phase == "deal":
+        seat, _, _ = rnd.deal_next()
+        cards = bot.decide_declare(rnd, seat)
+        if cards:
+            rnd.declare(seat, cards)
+    for seat in range(4):
+        cards = bot.decide_declare(rnd, seat, final=True)
+        if cards:
+            rnd.declare(seat, cards)
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+    for _ in range(9):
+        seat = rnd.turn
+        rnd.play(seat, bot.decide_play(rnd, seat))
+    return rnd
+
+
+def _human_receipts():
+    source_raws = tuple(f"source-{index:02d}".encode("ascii")
+                        for index in range(10))
+    source_shas = tuple(hashlib.sha256(raw).hexdigest()
+                        for raw in source_raws)
+    rnd = _human_state()
+    groups = [{
+        "group_digest": _group_digest(source_sha),
+        "source_bytes": len(raw),
+        "complete_rounds": 1,
+        "incomplete_rounds": 0,
+        "human_play_decisions": 1,
+        "trump_rank_counts": {rnd.trump_rank: 1},
+        "attempted_channel_counts": {"absent": 1},
+    } for raw, source_sha in zip(source_raws, source_shas, strict=True)]
+    population_sha = hashlib.sha256(canonical_json_bytes({
+        "schema": "belief-v1-v2-human-source-digest-population-v1",
+        "sha256s": sorted(source_shas),
+    })).hexdigest()
+    inventory = {
+        "schema": H0_INVENTORY_SCHEMA,
+        "source_manifest_sha256": _sha("5"),
+        "source_file_count": 10,
+        "source_digest_population_sha256": population_sha,
+        "group_count": 10,
+        "groups": sorted(groups, key=lambda row: row["group_digest"]),
+        "rounds_seen": 10,
+        "complete_rounds": 10,
+        "incomplete_rounds": 0,
+        "human_play_decisions": 10,
+        "trump_rank_counts": {rnd.trump_rank: 10},
+        "attempted_channel_counts": {"absent": 10},
+        "hidden_ownership_labels_reconstructable_for_complete_rounds": True,
+        "group_split_unit": "source-log-session-digest",
+        "raw_player_identity_published": False,
+        "model_rows_published": False,
+        "training_authorized": False,
+        "test_open_authorized": False,
+        "strength_claim_authorized": False,
+    }
+    group_split = build_h0_group_split(inventory)
+    return source_raws, source_shas, rnd, inventory, group_split
+
+
+def _captured_human_group(source_raw, source_sha, rnd, split):
+    group_digest = _group_digest(source_sha)
+    round_digest = hashlib.sha256(
+        f"test-human-round|{group_digest}".encode("ascii")).hexdigest()
+    pair = capture_human_corpus_pair(
+        rnd, rnd.turn, group_digest=group_digest,
+        round_digest=round_digest, decision_index=9, split=split)
+    return V2HumanGroupCaptureV1(
+        source_sha256=source_sha, group_digest=group_digest, split=split,
+        complete_round_count=1, incomplete_round_count=0,
+        human_decision_count=1,
+        trump_rank_counts=((rnd.trump_rank, 1),),
+        attempted_channel_counts=(("absent", 1),), pairs=(pair,))
+
+
+def test_human_group_stage_persists_separate_rows_and_training_is_test_blind(
+        tmp_path, monkeypatch):
+    source_raws, source_shas, rnd, inventory, group_split = _human_receipts()
+    split_by_digest = {
+        digest: split for split, row in group_split["splits"].items()
+        for digest in row["group_digests"]}
+    selected = {}
+    for raw, digest in zip(source_raws, source_shas, strict=True):
+        split = split_by_digest[_group_digest(digest)]
+        if split in {"train", "test"} and split not in selected:
+            selected[split] = (raw, digest)
+    assert set(selected) == {"train", "test"}
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    base = _freeze(root)
+    splits = group_split["splits"]
+    freeze = replace(
+        base,
+        h0_inventory_sha256=hashlib.sha256(
+            inventory_bytes(inventory)).hexdigest(),
+        h0_source_manifest_sha256=inventory["source_manifest_sha256"],
+        h0_source_digest_population_sha256=(
+            inventory["source_digest_population_sha256"]),
+        human_group_split_sha256=hashlib.sha256(
+            group_split_bytes(group_split, inventory=inventory)).hexdigest(),
+        human_group_count=inventory["group_count"],
+        human_train_group_count=splits["train"]["group_count"],
+        human_calibration_group_count=splits["calibration"]["group_count"],
+        human_test_group_count=splits["test"]["group_count"],
+        human_complete_round_count=inventory["complete_rounds"],
+        human_eligible_decision_count=inventory["human_play_decisions"],
+        human_train_eligible_decision_count=(
+            splits["train"]["human_play_decisions"]),
+        human_calibration_eligible_decision_count=(
+            splits["calibration"]["human_play_decisions"]),
+        human_test_eligible_decision_count=(
+            splits["test"]["human_play_decisions"]),
+    )
+    admission = _admission(freeze)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller._stage_gate",
+        lambda **kwargs: None)
+
+    captures = {}
+    for split, (raw, digest) in selected.items():
+        source = tmp_path / f"{split}.jsonl"
+        source.write_bytes(raw)
+        source.chmod(0o400)
+        captured = _captured_human_group(raw, digest, rnd, split)
+        monkeypatch.setattr(
+            "shengji.rl.belief_v2_human_controller."
+            "capture_human_source_group",
+            lambda *args, value=captured, **kwargs: value)
+        manifest = run_human_group_capture(
+            root, freeze, admission, repo=Path("/unused"),
+            source_path=source, inventory=inventory,
+            group_split=group_split, review_marker=b"review")
+        assert manifest["split"] == split
+        assert manifest["actor_target_files_separate"] is True
+        captures[split] = root / "human-capture" / (
+            f"group-{captured.group_digest}")
+
+    import shengji.rl.belief_v2_human_controller as human_controller
+    real_read = human_controller.stable_read_bytes
+    test_targets = captures["test"] / "private-targets"
+
+    def test_target_tripwire(path):
+        if path.parent == test_targets:
+            raise AssertionError("human training opened test targets")
+        return real_read(path)
+
+    monkeypatch.setattr(
+        human_controller, "stable_read_bytes", test_target_tripwire)
+    examples = reopen_human_training_group_examples(
+        captures["train"], freeze=freeze, admission=admission,
+        split="train")
+    assert len(examples) == 1
+    assert examples[0].source_kind == "human"
+    with pytest.raises(BeliefV2HumanControllerError,
+                       match="split is not train/calibration"):
+        reopen_human_training_group_examples(
+            captures["test"], freeze=freeze, admission=admission,
+            split="test")

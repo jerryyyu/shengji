@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 import subprocess
 from dataclasses import dataclass
@@ -87,6 +88,20 @@ def _candidate_id(path: str, line_number: int, line_sha256: str) -> str:
     }))
 
 
+def _explicit_classification_required(path: str, line: str) -> bool:
+    """Flag population-like constant definitions for individual review.
+
+    All other Python hits are deterministically classed as derived RNG/context
+    uses and Markdown hits as prose context.  A new upper-case seed constant
+    cannot silently enter either default class.
+    """
+    if not path.endswith(".py"):
+        return False
+    match = re.match(
+        r"^\s*([A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=", line)
+    return match is not None and "SEED" in match.group(1)
+
+
 def _source_manifest_sha256(rows: list[dict[str, Any]]) -> str:
     return _sha256(canonical_json_bytes({
         "schema": "belief-v1-v2-seed-scan-source-manifest-v1",
@@ -149,6 +164,8 @@ def scan_seed_sources(repo: Path, *, expected_git: str) -> dict[str, Any]:
                 "line_number": line_number,
                 "line_sha256": line_sha,
                 "line": text,
+                "explicit_classification_required": (
+                    _explicit_classification_required(relative, text)),
             })
     if not candidates or len({row["candidate_id"] for row in candidates}) \
             != len(candidates):
@@ -204,12 +221,16 @@ def validate_seed_scan(scan: dict[str, Any]) -> None:
     for row in scan["candidates"]:
         if type(row) is not dict or set(row) != {
                 "candidate_id", "path", "line_number", "line_sha256",
-                "line"} \
+                "line", "explicit_classification_required"} \
                 or row["path"] not in set(paths) \
                 or type(row["line_number"]) is not int \
                 or row["line_number"] <= 0 \
                 or type(row["line"]) is not str \
                 or "seed" not in row["line"].lower() \
+                or type(row["explicit_classification_required"]) is not bool \
+                or row["explicit_classification_required"] \
+                != _explicit_classification_required(
+                    row["path"], row["line"]) \
                 or not _is_sha256(row["line_sha256"]) \
                 or _sha256(row["line"].encode("utf-8")) \
                 != row["line_sha256"] \
@@ -229,6 +250,7 @@ class SeedClassificationV1:
     classification: str
     population_id: str | None = None
     note: str = ""
+    explicit: bool = True
     schema: str = CLASSIFICATION_SCHEMA
 
     def to_dict(self) -> dict[str, Any]:
@@ -238,7 +260,46 @@ class SeedClassificationV1:
             "classification": self.classification,
             "population_id": self.population_id,
             "note": self.note,
+            "explicit": self.explicit,
         }
+
+
+def complete_seed_classifications(
+        scan: dict[str, Any], *,
+        explicit: Iterable[SeedClassificationV1]) \
+        -> tuple[SeedClassificationV1, ...]:
+    """Fill safe defaults while requiring review of population-like symbols."""
+    validate_seed_scan(scan)
+    supplied = tuple(explicit)
+    by_id = {}
+    for row in supplied:
+        if type(row) is not SeedClassificationV1 \
+                or row.explicit is not True \
+                or row.candidate_id in by_id:
+            raise BeliefV2SeedRegistryError(
+                "explicit seed classification input drift")
+        by_id[row.candidate_id] = row
+    known = {row["candidate_id"] for row in scan["candidates"]}
+    required = {row["candidate_id"] for row in scan["candidates"]
+                if row["explicit_classification_required"]}
+    if not set(by_id).issubset(known) or not required.issubset(by_id):
+        raise BeliefV2SeedRegistryError(
+            "explicit seed classification population is incomplete")
+    result = []
+    for candidate in scan["candidates"]:
+        candidate_id = candidate["candidate_id"]
+        if candidate_id in by_id:
+            result.append(by_id[candidate_id])
+        else:
+            markdown = candidate["path"].endswith(".md")
+            result.append(SeedClassificationV1(
+                candidate_id=candidate_id,
+                classification=("non-population-context" if markdown
+                                else "derived-rng-stream"),
+                note=("default:active-markdown-context" if markdown
+                      else "default:python-derived-or-context"),
+                explicit=False))
+    return tuple(result)
 
 
 @dataclass(frozen=True)
@@ -301,15 +362,25 @@ def build_seed_registry(
                 or row.candidate_id in by_candidate \
                 or row.classification not in CLASSIFICATIONS \
                 or type(row.note) is not str \
+                or type(row.explicit) is not bool \
                 or ((row.classification == "finite-population")
                     != (type(row.population_id) is str
-                        and bool(row.population_id))):
+                        and bool(row.population_id))) \
+                or (row.classification == "finite-population"
+                    and row.explicit is not True):
             raise BeliefV2SeedRegistryError(
                 "seed classification identity drift")
         by_candidate[row.candidate_id] = row
     if set(by_candidate) != candidate_ids:
         raise BeliefV2SeedRegistryError(
             "seed candidate classification is incomplete")
+    explicit_required = {
+        row["candidate_id"] for row in scan["candidates"]
+        if row["explicit_classification_required"]}
+    if any(by_candidate[candidate_id].explicit is not True
+           for candidate_id in explicit_required):
+        raise BeliefV2SeedRegistryError(
+            "explicit seed classification population is incomplete")
 
     by_population: dict[str, SeedPopulationV1] = {}
     for population in population_rows:
@@ -436,6 +507,9 @@ def validate_seed_registry(
     referenced_populations = set()
     candidate_paths = {
         row["candidate_id"]: row["path"] for row in scan["candidates"]}
+    candidate_requires = {
+        row["candidate_id"]: row["explicit_classification_required"]
+        for row in scan["candidates"]}
     population_sources = {}
     for row in registry["populations"]:
         if type(row) is not dict or set(row) != {
@@ -463,14 +537,19 @@ def validate_seed_registry(
     for row in registry["classifications"]:
         if type(row) is not dict or set(row) != {
                 "schema", "candidate_id", "classification",
-                "population_id", "note"} \
+                "population_id", "note", "explicit"} \
                 or row["schema"] != CLASSIFICATION_SCHEMA \
                 or row["candidate_id"] not in candidate_paths \
                 or row["classification"] not in CLASSIFICATIONS \
                 or type(row["note"]) is not str \
+                or type(row["explicit"]) is not bool \
                 or ((row["classification"] == "finite-population")
                     != (type(row["population_id"]) is str
-                        and bool(row["population_id"]))):
+                        and bool(row["population_id"]))) \
+                or (row["classification"] == "finite-population"
+                    and row["explicit"] is not True) \
+                or (candidate_requires[row["candidate_id"]]
+                    and row["explicit"] is not True):
             raise BeliefV2SeedRegistryError(
                 "seed registry classification closure drift")
         if row["classification"] == "finite-population":

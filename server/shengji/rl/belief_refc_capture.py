@@ -295,20 +295,24 @@ def _sample_ref_c_hands(
     return None
 
 
-def capture_ref_c_worlds(
-        rnd: Round, seat: int, transcript: PublicTranscriptV1, *,
+def capture_ref_c_worlds_from_bound_actor(
+        rnd: Round, seat: int, actor: ActorObservationV1, *,
         sampler_seed: int) -> ReferenceWorldBatchV1:
-    """Draw one exact 256-world sound-constraint reference batch."""
+    """Draw REF-C for an independently bound complete scoring actor.
+
+    The V2 human adapter constructs its source-neutral scoring actor from the
+    exact replayed public state before calling this function.  No target or
+    hidden label is accepted here.
+    """
     if type(rnd) is not Round or rnd.phase != "play" or rnd.turn != seat \
             or type(seat) is not int or seat not in range(4) \
-            or type(transcript) is not PublicTranscriptV1:
+            or type(actor) is not ActorObservationV1:
         raise BeliefRefCCaptureError("REF-C requires an exact play decision")
     if type(sampler_seed) is not int \
             or not 0 <= sampler_seed <= MAX_SAMPLER_SEED:
         raise BeliefRefCCaptureError("REF-C sampler seed is invalid")
     if os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1":
         raise BeliefRefCCaptureError("REF-C requires strict void sampling")
-    actor = build_actor_observation(rnd, seat, transcript)
     if actor.declaration_history_complete is not True \
             or actor.attempted_play_history_complete is not True:
         raise BeliefRefCCaptureError("REF-C actor history is incomplete")
@@ -342,6 +346,17 @@ def capture_ref_c_worlds(
     )
     validate_reference_world_batch(batch)
     return batch
+
+
+def capture_ref_c_worlds(
+        rnd: Round, seat: int, transcript: PublicTranscriptV1, *,
+        sampler_seed: int) -> ReferenceWorldBatchV1:
+    """Draw one exact sound-constraint reference batch from full history."""
+    if type(transcript) is not PublicTranscriptV1:
+        raise BeliefRefCCaptureError("REF-C requires an exact play decision")
+    actor = build_actor_observation(rnd, seat, transcript)
+    return capture_ref_c_worlds_from_bound_actor(
+        rnd, seat, actor, sampler_seed=sampler_seed)
 
 
 def validate_reference_world_batch(batch: ReferenceWorldBatchV1) -> None:

@@ -16,7 +16,10 @@ from shengji.rl.belief_v2_statistics import (
     evaluate_label_control_test,
     evaluate_primary_test,
     evaluate_scale_curve,
+    reopen_v2_round_population,
     validate_round_population,
+    v2_reference_replicates_are_stable,
+    v2_round_population_bytes,
 )
 
 
@@ -79,6 +82,27 @@ def _human(*, primary=100_000_000, mixed=98_000_000):
 
 def _expected(rows):
     return tuple((row.round_key, row.trump_rank) for row in rows)
+
+
+def test_round_population_raw_reopen_and_reference_stability_have_teeth():
+    rows = (_row("synthetic", "calibration", V2_RANKS[0], 0),)
+    raw = v2_round_population_bytes(
+        rows, cohort_ids=COHORTS, label="synthetic-calibration-ref-0")
+    assert reopen_v2_round_population(
+        raw, cohort_ids=COHORTS,
+        label="synthetic-calibration-ref-0") == rows
+    assert v2_reference_replicates_are_stable(
+        rows, rows, cohort_ids=COHORTS, expected_rounds=_expected(rows),
+        source_kind="synthetic") is True
+    changed = (replace(rows[0], reference_brier_ppb=200_000_000),)
+    assert v2_reference_replicates_are_stable(
+        rows, changed, cohort_ids=COHORTS,
+        expected_rounds=_expected(rows),
+        source_kind="synthetic") is False
+    with pytest.raises(BeliefV2StatisticsError, match="manifest"):
+        reopen_v2_round_population(
+            raw + b" ", cohort_ids=COHORTS,
+            label="synthetic-calibration-ref-0")
 
 
 def test_clear_human_lift_with_small_rank_regression_selects_mixture():

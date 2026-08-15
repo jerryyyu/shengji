@@ -311,6 +311,34 @@ def score_corpus_candidates(
     return scores
 
 
+def score_target_candidates(
+        actor: ActorObservationV1, target: BeliefTargetsV1,
+        reference: BeliefOwnershipV1,
+        candidates: tuple[BeliefOwnershipV1, ...]) \
+        -> tuple[DecisionProperScoreV1, ...]:
+    """Score typed, already-bound V2 evaluation inputs without row I/O.
+
+    V2 evaluates a source-neutral common-history actor rather than the raw
+    source actor.  Its controller independently authenticates the separated
+    actor/target/reference bytes before constructing these typed values.
+    """
+    if type(actor) is not ActorObservationV1 \
+            or type(target) is not BeliefTargetsV1 \
+            or type(reference) is not BeliefOwnershipV1 \
+            or type(candidates) is not tuple or not candidates \
+            or any(type(candidate) is not BeliefOwnershipV1
+                   for candidate in candidates):
+        raise BeliefEvaluationError(
+            "offline typed score population is malformed")
+    scores = tuple(_score_decision(
+        actor, target, reference, candidate) for candidate in candidates)
+    if len({score.candidate_ownership_sha256 for score in scores}) \
+            != len(scores):
+        raise BeliefEvaluationError(
+            "offline typed candidate identity is duplicated")
+    return scores
+
+
 def validate_decision_score(
         pair: CorpusPairV1,
         reference_batch: ReferenceWorldBatchV1,

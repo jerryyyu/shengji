@@ -924,3 +924,114 @@ def reopen_reference_lane(
         raise BeliefV2ControllerError(
             "V2 reference manifest reconstruction drift")
     return payload
+
+
+def reopen_reference_lane_manifest(
+        directory: Path, *, capture_directory: Path,
+        freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1, lane: int) -> dict[str, Any]:
+    """Authenticate every REF-C file without reading any world bundle.
+
+    Calibration selection uses this boundary to verify the complete immutable
+    reference population while opening only calibration replicates.  The sole
+    test bundle remains physically unopened until the terminal attempt exists.
+    """
+    jobs = reference_lane_jobs(lane)
+    capture_manifest = reopen_actor_capture_lane_manifest(
+        capture_directory, freeze=freeze, admission=admission, lane=lane)
+    capture_rows = {row["round_seed"]: row
+                    for row in capture_manifest["rounds"]}
+    expected_files = {
+        "manifest.json",
+        *(_reference_filename(coordinate, replicate)
+          for coordinate, replicate in jobs),
+    }
+    if not isinstance(directory, Path) or directory.is_symlink() \
+            or not directory.is_dir() \
+            or directory.name != f"lane-{lane:02d}" \
+            or {path.name for path in directory.iterdir()} != expected_files:
+        raise BeliefV2ControllerError(
+            "V2 public reference lane file population drift")
+    import json
+    raw = stable_read_bytes(directory / "manifest.json")
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2ControllerError(
+            "V2 public reference manifest is not JSON") from exc
+    expected_keys = {
+        "schema", "protocol_sha256", "schedule_sha256", "freeze_sha256",
+        "admission_sha256", "lane", "job_count", "jobs", "resources",
+        "input_surface", "contains_sampled_hidden_worlds",
+        "contains_round_outcomes", "contains_privileged_training_targets",
+        "training_authorized_by_this_artifact",
+        "test_target_open_authorized_by_this_artifact",
+        "gameplay_strength_screen_authorized", "strength_claim_authorized",
+        "deployment_authorized",
+    }
+    if type(payload) is not dict or set(payload) != expected_keys \
+            or canonical_json_bytes(payload) != raw \
+            or payload["schema"] != REFERENCE_LANE_SCHEMA \
+            or payload["protocol_sha256"] != protocol_sha256() \
+            or payload["schedule_sha256"] != schedule_sha256() \
+            or payload["freeze_sha256"] != freeze.sha256() \
+            or payload["admission_sha256"] != admission.sha256() \
+            or payload["lane"] != lane \
+            or payload["job_count"] != len(jobs) \
+            or type(payload["jobs"]) is not list \
+            or len(payload["jobs"]) != len(jobs) \
+            or payload["input_surface"] != "actor-only-capture-bundles" \
+            or payload["contains_sampled_hidden_worlds"] is not True \
+            or payload["contains_round_outcomes"] is not False \
+            or payload["contains_privileged_training_targets"] is not False \
+            or any(payload[key] is not False for key in (
+                "training_authorized_by_this_artifact",
+                "test_target_open_authorized_by_this_artifact",
+                "gameplay_strength_screen_authorized",
+                "strength_claim_authorized", "deployment_authorized")):
+        raise BeliefV2ControllerError(
+            "V2 public reference manifest identity drift")
+    for (coordinate, replicate), row in zip(
+            jobs, payload["jobs"], strict=True):
+        capture_row = capture_rows[coordinate.round_seed]
+        if type(row) is not dict or set(row) != _REFERENCE_ROW_KEYS \
+                or any(row[key] != getattr(coordinate, key) for key in (
+                    "rank_index", "rank_ordinal", "round_seed", "split",
+                    "trump_rank")) \
+                or row["replicate"] != replicate \
+                or row["filename"] != _reference_filename(
+                    coordinate, replicate) \
+                or any(not _is_sha256(row[key]) for key in (
+                    "bundle_sha256", "reference_manifest_sha256",
+                    "actor_capture_manifest_sha256", "actor_bundle_sha256",
+                    "actor_stream_sha256", "public_transcript_sha256")) \
+                or row["actor_bundle_sha256"] \
+                != capture_row["actor_bundle_sha256"] \
+                or row["actor_capture_manifest_sha256"] \
+                != capture_row["actor_capture_manifest_sha256"] \
+                or row["actor_stream_sha256"] \
+                != capture_row["actor_stream_sha256"] \
+                or row["public_transcript_sha256"] \
+                != capture_row["public_transcript_sha256"] \
+                or row["decision_count"] != capture_row["decision_count"] \
+                or type(row["byte_count"]) is not int \
+                or row["byte_count"] <= 0 \
+                or type(row["accepted_world_count"]) is not int \
+                or row["accepted_world_count"] <= 0 \
+                or row["accepted_world_count"] % row["decision_count"] != 0 \
+                or type(row["attempt_count"]) is not int \
+                or row["attempt_count"] < row["accepted_world_count"]:
+            raise BeliefV2ControllerError(
+                "V2 public reference row drift")
+        path = directory / row["filename"]
+        info = path.lstat()
+        if path.is_symlink() or not stat.S_ISREG(info.st_mode) \
+                or info.st_nlink != 1 or info.st_mode & 0o222 \
+                or info.st_size != row["byte_count"]:
+            raise BeliefV2ControllerError(
+                "V2 public reference file shape drift")
+    _validate_resources(
+        payload["resources"], freeze=freeze,
+        expected_bytes=sum(row["byte_count"] for row in payload["jobs"]),
+        kind="reference")
+    return payload

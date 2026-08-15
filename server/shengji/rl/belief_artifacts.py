@@ -52,6 +52,9 @@ from .belief_reopen import actor_observation_from_dict
 
 CAPTURE_MAGIC = b"BELIEF-V1-CAPTURE-BUNDLE-V1\0"
 REFERENCE_MAGIC = b"BELIEF-V1-REF-C-ROUND-V1\0"
+REFERENCE_BATCH_MAGIC = b"BELIEF-V1-REF-C-BATCH-V1\0"
+REFERENCE_EXTERNAL_ACTOR_MAGIC = (
+    b"BELIEF-V1-REF-C-EXTERNAL-ACTOR-BATCH-V1\0")
 ACTOR_CAPTURE_MAGIC = b"BELIEF-V1-ACTOR-CAPTURE-BUNDLE-V1\0"
 CHECKPOINT_MAGIC = b"BELIEF-V1-MODEL-CHECKPOINT-V1\0"
 WORLD_BLOCK_MAGIC = b"BELIEF-V1-OWNERSHIP-WORLD-BLOCK-V1\0"
@@ -293,15 +296,12 @@ def _batch_parts(batch: ReferenceWorldBatchV1) -> tuple[bytes, ...]:
             _world_block_bytes(batch))
 
 
-def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
-    if len(parts) != 3:
-        raise BeliefArtifactError("REF-C batch parts are incomplete")
-    manifest = _strict_json(parts[0], label="REF-C batch manifest")
-    actor_payload = _strict_json(parts[1], label="REF-C actor")
-    try:
-        actor = actor_observation_from_dict(actor_payload)
-    except ValueError as exc:
-        raise BeliefArtifactError("REF-C actor typed reopen refused") from exc
+def _batch_from_manifest_actor_block(
+        manifest_raw: bytes, actor: ActorObservationV1,
+        world_block: bytes) -> ReferenceWorldBatchV1:
+    manifest = _strict_json(manifest_raw, label="REF-C batch manifest")
+    if type(actor) is not ActorObservationV1:
+        raise BeliefArtifactError("REF-C external actor type drift")
     expected_keys = {
         "schema", "actor_observation_sha256", "sampler_seed",
         "sampler_source_sha256", "sampler_source_sha256s",
@@ -327,7 +327,7 @@ def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
                    for char in manifest["world_stream_sha256"]):
         raise BeliefArtifactError("REF-C batch manifest field drift")
     worlds = _worlds_from_block(
-        parts[2], actor=actor,
+        world_block, actor=actor,
         expected_count=manifest["accepted_world_count"],
         expected_stream_sha256=manifest["world_stream_sha256"])
     batch = ReferenceWorldBatchV1(
@@ -350,10 +350,56 @@ def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
         validate_reference_world_batch(batch)
     except ValueError as exc:
         raise BeliefArtifactError("REF-C batch typed reopen refused") from exc
-    if batch.manifest_bytes() != parts[0] \
+    if batch.manifest_bytes() != manifest_raw \
             or batch.manifest_dict()["world_stream_sha256"] \
             != manifest["world_stream_sha256"]:
         raise BeliefArtifactError("REF-C batch reconstruction drift")
+    return batch
+
+
+def _batch_from_parts(parts: tuple[bytes, ...]) -> ReferenceWorldBatchV1:
+    if len(parts) != 3:
+        raise BeliefArtifactError("REF-C batch parts are incomplete")
+    actor_payload = _strict_json(parts[1], label="REF-C actor")
+    try:
+        actor = actor_observation_from_dict(actor_payload)
+    except ValueError as exc:
+        raise BeliefArtifactError("REF-C actor typed reopen refused") from exc
+    return _batch_from_manifest_actor_block(parts[0], actor, parts[2])
+
+
+def reference_batch_bundle_bytes(batch: ReferenceWorldBatchV1) -> bytes:
+    """Pack one independently bound REF-C decision batch."""
+    return _pack(REFERENCE_BATCH_MAGIC, _batch_parts(batch))
+
+
+def reopen_reference_batch_bundle(raw: bytes) -> ReferenceWorldBatchV1:
+    """Strictly reconstruct one independently packed REF-C decision batch."""
+    batch = _batch_from_parts(_unpack(raw, REFERENCE_BATCH_MAGIC))
+    if reference_batch_bundle_bytes(batch) != raw:
+        raise BeliefArtifactError("REF-C batch bundle reconstruction drift")
+    return batch
+
+
+def reference_external_actor_batch_bundle_bytes(
+        batch: ReferenceWorldBatchV1) -> bytes:
+    """Pack REF-C worlds while keeping the derived scoring actor external."""
+    validate_reference_world_batch(batch)
+    return _pack(REFERENCE_EXTERNAL_ACTOR_MAGIC, (
+        batch.manifest_bytes(), _world_block_bytes(batch)))
+
+
+def reopen_reference_external_actor_batch_bundle(
+        raw: bytes, *, actor: ActorObservationV1) -> ReferenceWorldBatchV1:
+    """Rebuild REF-C worlds against a separately authenticated actor."""
+    parts = _unpack(raw, REFERENCE_EXTERNAL_ACTOR_MAGIC)
+    if len(parts) != 2:
+        raise BeliefArtifactError(
+            "REF-C external-actor batch parts are incomplete")
+    batch = _batch_from_manifest_actor_block(parts[0], actor, parts[1])
+    if reference_external_actor_batch_bundle_bytes(batch) != raw:
+        raise BeliefArtifactError(
+            "REF-C external-actor batch reconstruction drift")
     return batch
 
 

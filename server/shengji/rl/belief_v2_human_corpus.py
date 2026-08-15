@@ -175,6 +175,17 @@ class V2HumanGroupCaptureV1:
         return canonical_json_bytes(self.manifest())
 
 
+@dataclass(frozen=True)
+class V2HumanReplaySummaryV1:
+    source_sha256: str
+    group_digest: str
+    complete_round_count: int
+    incomplete_round_count: int
+    human_decision_count: int
+    trump_rank_counts: tuple[tuple[str, int], ...]
+    attempted_channel_counts: tuple[tuple[str, int], ...]
+
+
 _ACTOR_KEYS = {
     "schema", "group_digest", "round_digest", "decision_index",
     "actor_seat", "decision_key", "split_schema", "split",
@@ -360,20 +371,20 @@ def _round_digest(group_digest: str, ordinal: int) -> str:
     ).hexdigest()
 
 
-def capture_human_source_group(
+def replay_human_source_decisions(
         source_raw: bytes, *, source_sha256: str,
-        split: str) -> V2HumanGroupCaptureV1:
-    """Replay one hash-bound source-log session into separated V2 rows."""
+        decision_observer) -> V2HumanReplaySummaryV1:
+    """Replay eligible human decisions without constructing any target row."""
     if type(source_raw) is not bytes or not source_raw \
             or not _is_sha256(source_sha256) \
             or _sha256(source_raw) != source_sha256 \
-            or split not in SPLITS:
+            or not callable(decision_observer):
         raise BeliefV2HumanCorpusError(
             "human source group identity drift")
     group_digest = _group_digest(source_sha256)
-    pairs: list[V2HumanCorpusPairV1] = []
     trump_rank_counts: Counter[str] = Counter()
     attempted_channel_counts: Counter[str] = Counter()
+    decision_count = 0
     complete = incomplete = 0
     rounds = _events_by_round(source_raw)
     for ordinal, (_, events) in enumerate(sorted(rounds.items())):
@@ -420,10 +431,14 @@ def capture_human_source_group(
                 raise BeliefV2HumanCorpusError(
                     "human source play identity drift")
             if event.get("bot") is False and seat not in excluded:
-                pairs.append(capture_human_corpus_pair(
-                    rnd, seat, group_digest=group_digest,
-                    round_digest=round_digest,
-                    decision_index=play_index, split=split))
+                before = build_actor_observation(rnd, seat)
+                decision_observer(
+                    rnd, seat, group_digest, round_digest, play_index)
+                after = build_actor_observation(rnd, seat)
+                if before.canonical_bytes() != after.canonical_bytes():
+                    raise BeliefV2HumanCorpusError(
+                        "human replay observer mutated public state")
+                decision_count += 1
             attempted = event.get("attempted_cards")
             if event.get("bot") is False and seat not in excluded:
                 attempted_channel_counts[
@@ -445,16 +460,45 @@ def capture_human_source_group(
                 "human source terminal reconstruction drift")
         complete += 1
         trump_rank_counts[rnd.trump_rank] += 1
-    result = V2HumanGroupCaptureV1(
-        source_sha256=source_sha256,
-        group_digest=group_digest,
-        split=split,
-        complete_round_count=complete,
-        incomplete_round_count=incomplete,
-        human_decision_count=len(pairs),
+    return V2HumanReplaySummaryV1(
+        source_sha256=source_sha256, group_digest=group_digest,
+        complete_round_count=complete, incomplete_round_count=incomplete,
+        human_decision_count=decision_count,
         trump_rank_counts=tuple(sorted(trump_rank_counts.items())),
         attempted_channel_counts=tuple(
-            sorted(attempted_channel_counts.items())),
+            sorted(attempted_channel_counts.items())))
+
+
+def capture_human_source_group(
+        source_raw: bytes, *, source_sha256: str,
+        split: str) -> V2HumanGroupCaptureV1:
+    """Replay one hash-bound source-log session into separated V2 rows."""
+    if split not in SPLITS:
+        raise BeliefV2HumanCorpusError(
+            "human source group identity drift")
+    pairs: list[V2HumanCorpusPairV1] = []
+
+    def capture(rnd, seat, group_digest, round_digest, decision_index):
+        pairs.append(capture_human_corpus_pair(
+            rnd, seat, group_digest=group_digest,
+            round_digest=round_digest, decision_index=decision_index,
+            split=split))
+
+    summary = replay_human_source_decisions(
+        source_raw, source_sha256=source_sha256,
+        decision_observer=capture)
+    if len(pairs) != summary.human_decision_count:
+        raise BeliefV2HumanCorpusError(
+            "human capture observer decision population drift")
+    result = V2HumanGroupCaptureV1(
+        source_sha256=summary.source_sha256,
+        group_digest=summary.group_digest,
+        split=split,
+        complete_round_count=summary.complete_round_count,
+        incomplete_round_count=summary.incomplete_round_count,
+        human_decision_count=len(pairs),
+        trump_rank_counts=summary.trump_rank_counts,
+        attempted_channel_counts=summary.attempted_channel_counts,
         pairs=tuple(pairs),
     )
     validate_human_group_capture(result)

@@ -12,6 +12,7 @@ filesystem, test opener, sampler, gameplay, or execution authority.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +22,7 @@ from .belief_b2_protocol import (
     PRIMARY_BOOTSTRAP_REPLICATES,
     PRIMARY_MEMBER_POSITIVE_MINIMUM,
     PRIMARY_RELATIVE_BRIER_FLOOR_PPB,
+    REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB,
 )
 from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
@@ -168,6 +170,130 @@ def _validate_round_score(
                           for value in values)
                    for _, values in row.cohort_member_brier_ppb):
         raise BeliefV2StatisticsError("V2 round score schema/value drift")
+
+
+def validate_v2_round_score(
+        row: V2RoundScoreV1, *, cohort_ids: tuple[str, ...]) -> None:
+    """Public exact validator used by the durable scoring controller."""
+    _validate_round_score(row, cohort_ids=cohort_ids)
+
+
+def v2_round_population_bytes(
+        rows: tuple[V2RoundScoreV1, ...], *,
+        cohort_ids: tuple[str, ...], label: str) -> bytes:
+    if type(rows) is not tuple or not rows \
+            or type(cohort_ids) is not tuple or not cohort_ids \
+            or type(label) is not str or not label:
+        raise BeliefV2StatisticsError(
+            "V2 round population serialization drift")
+    for row in rows:
+        _validate_round_score(row, cohort_ids=cohort_ids)
+    return canonical_json_bytes({
+        "schema": "belief-v1-v2-round-score-population-v1",
+        "label": label,
+        "cohort_ids": list(cohort_ids),
+        "round_count": len(rows),
+        "rows": [row.to_dict() for row in rows],
+        "privileged_targets_consumed": True,
+        "runtime_artifact": False,
+    })
+
+
+def reopen_v2_round_population(
+        raw: bytes, *, cohort_ids: tuple[str, ...],
+        label: str) -> tuple[V2RoundScoreV1, ...]:
+    if type(raw) is not bytes or not raw:
+        raise BeliefV2StatisticsError("V2 round population bytes are empty")
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2StatisticsError(
+            "V2 round population is not JSON") from exc
+    expected_keys = {
+        "schema", "label", "cohort_ids", "round_count", "rows",
+        "privileged_targets_consumed", "runtime_artifact"}
+    if type(payload) is not dict or set(payload) != expected_keys \
+            or canonical_json_bytes(payload) != raw \
+            or payload["schema"] \
+            != "belief-v1-v2-round-score-population-v1" \
+            or payload["label"] != label \
+            or payload["cohort_ids"] != list(cohort_ids) \
+            or type(payload["rows"]) is not list \
+            or payload["round_count"] != len(payload["rows"]) \
+            or payload["round_count"] <= 0 \
+            or payload["privileged_targets_consumed"] is not True \
+            or payload["runtime_artifact"] is not False:
+        raise BeliefV2StatisticsError(
+            "V2 round population manifest drift")
+    rows = []
+    for value in payload["rows"]:
+        if type(value) is not dict or set(value) != {
+                "schema", "round_key", "source_kind", "split",
+                "trump_rank", "decision_count", "reference_brier_ppb",
+                "reference_log_loss_nanonats", "cohorts"} \
+                or type(value["cohorts"]) is not list \
+                or len(value["cohorts"]) != len(cohort_ids):
+            raise BeliefV2StatisticsError("V2 round score row drift")
+        cohort_rows = value["cohorts"]
+        if any(type(row) is not dict or set(row) != {
+                "cohort_id", "brier_ppb", "log_loss_nanonats",
+                "member_brier_ppb"} for row in cohort_rows) \
+                or tuple(row["cohort_id"] for row in cohort_rows) \
+                != cohort_ids:
+            raise BeliefV2StatisticsError("V2 round score cohort row drift")
+        row = V2RoundScoreV1(
+            schema=value["schema"], round_key=value["round_key"],
+            source_kind=value["source_kind"], split=value["split"],
+            trump_rank=value["trump_rank"],
+            decision_count=value["decision_count"],
+            reference_brier_ppb=value["reference_brier_ppb"],
+            reference_log_loss_nanonats=(
+                value["reference_log_loss_nanonats"]),
+            cohort_brier_ppb=tuple(
+                (item["cohort_id"], item["brier_ppb"])
+                for item in cohort_rows),
+            cohort_log_loss_nanonats=tuple(
+                (item["cohort_id"], item["log_loss_nanonats"])
+                for item in cohort_rows),
+            cohort_member_brier_ppb=tuple(
+                (item["cohort_id"], tuple(item["member_brier_ppb"]))
+                for item in cohort_rows))
+        _validate_round_score(row, cohort_ids=cohort_ids)
+        rows.append(row)
+    result = tuple(rows)
+    if v2_round_population_bytes(
+            result, cohort_ids=cohort_ids, label=label) != raw:
+        raise BeliefV2StatisticsError(
+            "V2 round population reconstruction drift")
+    return result
+
+
+def v2_reference_replicates_are_stable(
+        left: tuple[V2RoundScoreV1, ...],
+        right: tuple[V2RoundScoreV1, ...], *,
+        cohort_ids: tuple[str, ...],
+        expected_rounds: tuple[tuple[str, str], ...],
+        source_kind: str) -> bool:
+    """Apply the unchanged calibration-only REF-C disagreement ceiling."""
+    validate_round_population(
+        left, source_kind=source_kind, split="calibration",
+        expected_rounds=expected_rounds, cohort_ids=cohort_ids)
+    validate_round_population(
+        right, source_kind=source_kind, split="calibration",
+        expected_rounds=expected_rounds, cohort_ids=cohort_ids)
+    if tuple((row.round_key, row.decision_count)
+             for row in left) != tuple(
+                 (row.round_key, row.decision_count) for row in right):
+        raise BeliefV2StatisticsError(
+            "V2 reference replicate round binding drift")
+    left_sum = sum(row.reference_brier_ppb for row in left)
+    right_sum = sum(row.reference_brier_ppb for row in right)
+    if left_sum + right_sum <= 0:
+        raise BeliefV2StatisticsError(
+            "V2 reference replicate Brier is empty")
+    return (2 * abs(left_sum - right_sum) * PPB
+            < REFERENCE_RELATIVE_DISAGREEMENT_CAP_PPB
+            * (left_sum + right_sum))
 
 
 def validate_round_population(

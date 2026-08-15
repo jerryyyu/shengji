@@ -7,6 +7,9 @@ from dataclasses import replace
 
 import pytest
 
+from shengji.rl.belief_v2_device_qualification import (
+    build_qualification_plan_from_primary,
+)
 from shengji.rl.belief_v2_freeze import (
     ALL_HUMAN_TRAIN_DECISIONS,
     ALL_SYNTHETIC_TRAIN_DECISIONS,
@@ -110,6 +113,23 @@ def test_all_four_populations_have_exact_work_and_comparator_bindings():
     assert len(realization_set_sha256(values)) == 64
     assert all(value.to_dict()["training_authorized"] is False
                for value in values)
+
+
+def test_primary_schedule_feeds_exact_device_qualification_plan():
+    plans = _plans()
+    values = realize_v2_cohorts(
+        plans, synthetic_rows=_rows("synthetic", 8192, per_round=256),
+        human_rows=_rows("human", 1))
+    primary = next(value for value in values
+                   if value.kind == "synthetic-primary")
+    assert len(primary.batches) == 32
+    qualification = build_qualification_plan_from_primary(
+        execution_git="a" * 40, candidate_device="mps",
+        primary=primary, host_memory_cap_bytes=1024,
+        device_memory_cap_bytes=1024)
+    assert qualification.full_schedule_sha256
+    assert qualification.selected_batch_indices == tuple(range(32))
+    assert qualification.decision_count == 8192
 
 
 def test_selected_round_group_is_never_split_between_batches():

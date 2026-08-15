@@ -15,6 +15,7 @@ from typing import Any
 from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
 from .belief_v2_accelerator import canonical_training_device
+from .belief_v2_schedule import V2CohortRealizationV1
 
 
 QUALIFICATION_PLAN_SCHEMA = "belief-v1-v2-device-qualification-plan-v1"
@@ -172,6 +173,41 @@ def build_qualification_plan(
     )
     validate_qualification_plan(plan)
     return plan
+
+
+def build_qualification_plan_from_primary(
+        *, execution_git: str, candidate_device: str,
+        primary: V2CohortRealizationV1,
+        host_memory_cap_bytes: int,
+        device_memory_cap_bytes: int) -> V2DeviceQualificationPlanV1:
+    """Bind qualification directly to the reopened primary realization."""
+    if type(primary) is not V2CohortRealizationV1 \
+            or primary.kind != "synthetic-primary" \
+            or primary.cohort_id != "synthetic-primary":
+        raise BeliefV2DeviceQualificationError(
+            "device qualification primary realization drift")
+    try:
+        primary.canonical_bytes()
+    except ValueError as exc:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification primary realization drift") from exc
+    active_by_key = {
+        row.decision_key: row.active_label_count for row in primary.rows}
+    if len(active_by_key) != len(primary.rows):
+        raise BeliefV2DeviceQualificationError(
+            "device qualification primary population drift")
+    try:
+        active_counts = tuple(sum(active_by_key[key] for key in batch)
+                              for batch in primary.batches)
+    except KeyError as exc:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification primary schedule drift") from exc
+    return build_qualification_plan(
+        execution_git=execution_git, candidate_device=candidate_device,
+        batch_decision_keys=primary.batches,
+        batch_active_label_counts=active_counts,
+        host_memory_cap_bytes=host_memory_cap_bytes,
+        device_memory_cap_bytes=device_memory_cap_bytes)
 
 
 def validate_qualification_plan(value: V2DeviceQualificationPlanV1) -> None:

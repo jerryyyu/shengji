@@ -331,6 +331,22 @@ coverage, and all rank cells outside the production seed namespace. The
 reviewed design then freezes caps with explicit margin and an automatic
 refusal before population capture if the host does not qualify.
 
+The execution-freeze child implements this in `belief_v2_preflight.py` and
+`scripts/belief_v2_preflight.py`. Its exact schedule is two rounds at every
+rank in every one of 16 lanes (416 rounds), SHA-256
+`ffbd1a5cf76886d11fc27c511e8899348342943f29866c2c349c650cf606e698`.
+It requires a clean source checkout, isolated `-P -B` Python, strict voids,
+the compiled engine, a content-bound source/Python/native runtime, and a real
+common overlap among all 16 lanes. Captured rows are discarded. The result
+independently reconstructs the population and all resource summaries and
+keeps production capture, training, test, and strength authority false.
+
+The immutable 13,312-coordinate production schedule is memoized only after
+its first complete derivation. This preserves its canonical bytes while
+reducing later coordinate validation from about 48 milliseconds to
+microseconds; a run must not repeatedly regenerate the full schedule for each
+captured round.
+
 After capture is sealed, the dependency graph permits:
 
 ```text

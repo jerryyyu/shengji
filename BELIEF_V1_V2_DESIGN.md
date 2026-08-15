@@ -166,6 +166,16 @@ absent attempted-card channel, so V2 must carry an explicit versioned absence
 mask and may never substitute engine-accepted cards for the missing attempted
 cards. Hidden ownership is reconstructable for every complete round.
 
+The V2 input adapter resolves this without a source/policy side channel. Both
+synthetic and human rows are reduced to the same common engine-replay surface:
+the final winning declaration and engine-accepted play cards. Overwritten
+declaration chronology, attempted-card vectors, and failed-throw indicators
+are masked for every row, even when synthetic capture possesses them. The
+source actor's completeness flags remain hash-bound receipt metadata with
+`model_input=false`; full synthetic and replay-only views of the same public
+state must produce byte-identical model tensors. This is deliberately more
+conservative than teaching the model that a missing channel means “human.”
+
 The deal-blind whole-session split receipt has SHA-256
 `fa704103e39cd2259d20800608a75bd4d1b64b1dacfe62cdd85eeeae916e25be`.
 It assigns 24/3/3 groups and 2,240/416/174 eligible decisions to

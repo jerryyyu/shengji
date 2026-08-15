@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import random
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from ..engine.cards import RANKS
@@ -84,6 +85,7 @@ def _order_key(label: str) -> bytes:
         f"{V2_PROTOCOL_SCHEMA}|order|{label}".encode("ascii")).digest()
 
 
+@lru_cache(maxsize=len(V2_RANKS))
 def _rank_seed_population(trump_rank: str) -> tuple[int, ...]:
     """Select exact split quotas from a deal-blind deterministic seed stream."""
     if trump_rank not in V2_RANKS:
@@ -110,6 +112,7 @@ def _rank_seed_population(trump_rank: str) -> tuple[int, ...]:
         key=lambda seed: (_order_key(f"rank-{trump_rank}|seed-{seed}"), seed)))
 
 
+@lru_cache(maxsize=1)
 def v2_round_coordinates() -> tuple[V2RoundCoordinate, ...]:
     rows: list[V2RoundCoordinate] = []
     seen: set[int] = set()

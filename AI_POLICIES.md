@@ -23,9 +23,10 @@ research conclusions that affect them. It is not a run log.
   worlds and 80.9% more searches than champion. A confirmation must separate
   candidate widening from added compute with three arms.
 - **BELIEF-V1 is the active milestone.** Its reviewed B2 source merged to main
-  in `959c05d`; fresh Mini design `a8c5e05f…1fd53` is frozen and awaiting its
-  exact marker. No corpus has been captured, no training or test split has run,
-  and no sampler or strength authority exists.
+  in `959c05d`; fresh Mini design `a8c5e05f…1fd53` received its exact offline
+  execution marker at `209407f` and initialized once on 2026-08-15. The bounded
+  capture/reference/training/test pipeline is running; no terminal result,
+  sampler, gameplay, strength, promotion or deployment authority exists.
 - **Performance is enabling evidence, not strength evidence.** The accepted
   native stack materially reduced rollout wall time, but runs use only exact
   reviewed bytes and percentages from different baselines are never added.
@@ -58,7 +59,7 @@ shared registry. A reviewed experiment arm is not a production policy.
 | **PAIR-ROLL** | Does exhausted-higher-pair memory improve continuations? | **No whole-game evidence.** Air timed out; checkpoint V1 failed closed. Both admissions are spent. |
 | **V11 / Direct-Q / O0** | Can learned ranking, return learning or privileged curricula replace current search? | **No promotable model.** Keep bounded proposal/diagnostic assets and the evaluation chassis; any successor must change target, credit, data or model use. |
 | **H0** | Are human moves useful proposals? | **No scored result.** The run exposed a candidate-geometry bug. The repair is score-free; human actions remain proposals, not truth labels. |
-| **BELIEF-V1** | Can actor-visible history predict hidden ownership well enough to improve same-work search? | **Active.** Source is merged; the next authority is only a fresh Mini-specific design freeze and review. |
+| **BELIEF-V1** | Can actor-visible history predict hidden ownership well enough to improve same-work search? | **Active offline run.** Source and exact Mini design passed review; the one-shot calibration pipeline is running. A terminal PASS could open only B3 sampler implementation review. |
 
 `SELECT_NONE` closes the exact population, policy and promotion claim tested.
 It does not erase predeclared dose, phase/role effects, disagreement states or

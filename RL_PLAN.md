@@ -91,11 +91,12 @@ separately gated consumers.
   load-bearing mutation witnesses.
 - Fresh Mini design `a8c5e05f…1fd53` now binds merged source `959c05d`, the
   105-file source manifest, current runtime/native/boot identity, fixed
-  population/caps and an unused evidence namespace. It awaits exact external
-  review.
-- No evidence root, capture population, candidate training, calibration/test
-  opening, sampler or scored run exists. A source PASS or design freeze is not
-  execution authority; only the exact design marker may admit B2 once.
+  population/caps and a fresh evidence namespace. Exact review `209407f`
+  admitted it once; the reviewed offline supervisor began capture on Mini at
+  09:16 EDT.
+- The B2 offline pipeline is active; its test opening and terminal result are
+  pending. No sampler or scored run exists. This admission authorizes no B3,
+  gameplay, strength, promotion or deployment action.
 
 ## BELIEF milestone ladder
 
@@ -110,15 +111,15 @@ separately gated consumers.
 
 ### Immediate execution sequence
 
-1. Reopen main at exact merge `959c05d` on Mini; verify clean source, native
-   extension, Python/runtime identity and no loadable shadows.
-2. Freeze one unused host-specific B2 design without initializing an evidence
-   root or opening any split.
-3. Obtain one exact-design review marker. The review must authenticate the
-   canonical append-only ledger and the frozen runtime/source hashes.
-4. Run the consolidated B2 pipeline once under its caps. No retry, seed
-   selection, partial population or early test opening.
-5. Independently reopen the terminal artifacts and route exactly one result:
+1. **Done:** reopen main at exact merge `959c05d` on Mini and verify clean
+   source, native extension, Python/runtime identity and no loadable shadows.
+2. **Done:** freeze unused host-specific design `a8c5e05f…1fd53` without
+   initializing an evidence root or opening any split.
+3. **Done:** authenticate exact-design review marker commit `209407f` against
+   the canonical append-only ledger and frozen runtime/source hashes.
+4. **Running:** execute the consolidated B2 pipeline once under its caps. No
+   retry, seed selection, partial population or early test opening.
+5. **Pending:** independently reopen terminal artifacts and route one result:
    mechanics/leakage refusal, no-learning closeout, or permission to design B3.
 
 ## B2 scientific gate

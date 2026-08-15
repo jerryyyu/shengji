@@ -4,15 +4,15 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 after fresh Mini B2 design freeze.
+Last reconciled: 2026-08-15 09:16 EDT after Mini B2 admission and start.
 
 ## Immediate objective
 
-Review the fresh Mini-specific BELIEF-V1 B2 design, then use its one
-consolidated execution to answer the offline question: does a history-aware,
-actor-visible ownership model improve held-out hidden-card calibration over
-the corrected current constraint sampler? The source gate is complete. This is
-an infrastructure/calibration milestone, not a strength or deployment claim.
+Complete the exact reviewed Mini-specific BELIEF-V1 B2 offline run, then obtain
+one independent terminal reproduction answering whether a history-aware,
+actor-visible ownership model improves held-out hidden-card calibration over
+the corrected current constraint sampler. This is an infrastructure/
+calibration milestone, not a strength or deployment claim.
 
 In parallel, implement the reviewed three-arm ballot-widening confirmation
 design as the next whole-game causal experiment. Defer the Pair checkpoint V2
@@ -20,23 +20,13 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 
 ## Review queue — precise asks
 
-1. **BELIEF Mini V2 design — current scientific blocker.** Review immutable
-   design `/Users/jerryyu/Projects/belief-v1-b2-mini-v2/design.json`, SHA-256
-   `a8c5e05f490e1bb628958a3a9a047870979513751353fc7a8e7be2f8a1c1fd53`.
-   It binds merged source `959c05d`, protocol `fa485d51…02dc4`, the 105-file
-   source manifest `818912dd…04000`, Mini boot `4da8ae43…03344`, Python 3.14.3,
-   Torch 2.13.0, NumPy 2.5.1 and native binary `4772973c…dff20`. Require mode
-   `0400`, one link, canonical/live reopen, clean checkout, one native binary,
-   no bytecode, and absent evidence/partial/tombstone/log paths. Review the
-   exact `BELIEF_V1_B2_RUNBOOK.md` stage order, caps and false authority map.
-   Also review the unexecuted mode-`0500`, one-link supervisor at
-   `/Users/jerryyu/Projects/belief-v1-b2-mini-v2/supervisor.sh`, SHA-256
-   `c26d8509037b0f84bed2947f03ce2c54e39fcd726bac1254af0bd272c667a78c`:
-   it must use exclusive mode-`0600` sealed logging, wait for every child,
-   advance only on all-zero stages, open the test once, and contain no retry.
-   Introduce exactly one `BELIEF_V1_B2_OFFLINE_EXECUTION_V1_REVIEW` marker on
-   canonical main. PASS may authorize only this exact consolidated B2 offline
-   run; it cannot authorize B3, gameplay, strength or deployment.
+1. **BELIEF Mini V2 terminal review — wait for natural completion.** Exact
+   design `a8c5e05f…1fd53` passed at canonical review commit `209407f` and the
+   reviewed supervisor is running. Do not inspect the sealed log, corpus,
+   targets, reference worlds, checkpoints or terminal bytes while it runs.
+   After `verify-terminal` completes, independently reopen the exact immutable
+   artifacts, recompute the terminal decision, and append one terminal marker.
+   No per-stage review handshake or retry is needed unless a named guard fails.
 
 2. **PR #115 then PR #114 — repository hygiene.** Review the one-test-file
    append-after-rotation guard first, then the compacted docs head. Both are
@@ -52,26 +42,26 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 | layer | state | what it proves / does not prove |
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
-| **B2 offline pipeline source** | External PASS at PR #113 exact `3ee0eb8`; merged byte-preservingly through main `959c05d`. Integration validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete; execution still requires a fresh Mini design marker. |
-| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` is frozen and independently reopens, but has no external marker yet. Evidence root, partial, tombstone, supervisor log, corpus, reference worlds, checkpoints and terminal result are all absent. | Source/runtime/population/caps are now concrete. No execution has started and no calibration lift has been measured. |
+| **B2 offline pipeline source** | External PASS at PR #113 exact `3ee0eb8`; merged byte-preservingly through main `959c05d`. Integration validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
+| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f`, initialized once, and started the 16-lane capture stage at 09:16 EDT. The durable tombstone and sealed supervisor log exist; test opening and terminal result remain pending. | Exact offline execution is active under its caps. No calibration lift has been measured or reviewed yet. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
 The earlier Mini design belongs to a rejected source head and must never
-initialize. The new V2 design is frozen from clean detached main `959c05d` and
-requires one exact marker review before the consolidated run.
+initialize. The V2 design is frozen from clean detached main `959c05d`; its
+single reviewed admission is now consumed by the active run and cannot retry.
 
 ## Compute and fleet
 
 | host | current state | next use |
 |---|---|---|
-| **Mini** | Idle; fresh design `a8c5e05f…1fd53` frozen, no BELIEF execution started. | After exact design-marker PASS, run the consolidated B2 pipeline once. |
+| **Mini** | **BELIEF-V1 B2 running.** Exact review `209407f`; supervisor and 16 capture lanes started at 09:16 EDT. | Monitor only process/resource/path metadata. After natural completion, request terminal reproduction. |
 | **Air** | Idle after the broad Pair fixed timeout. | No retry/resume/partial use. Keep free unless a new reviewed job is selected. |
 | **Strength Cloud** | Powered off. | Keep off; S4 terminally selected none. |
 | **Performance Cloud** | Powered off. | Keep off; the Pair checkpoint V1 attempt was spent and produced no terminal evidence. |
 | **Production** | `mc-s0-report-lcb`, release 18. | Unchanged by BELIEF-V1; no deployment authority. |
 
-The frozen planning caps for the eventual Mini B2 run are 4,096 champion
+The frozen caps for the active Mini B2 run are 4,096 champion
 rounds split 3,279 train / 407 calibration / 410 test; 16 capture lanes; 256
 REF-C worlds per held-out decision; eight candidate and eight permuted-label
 members. Planning caps are 16 capture core-hours / 2 wall-hours, 64 reference
@@ -79,7 +69,7 @@ core-hours / 8 wall-hours, and 32 device-hours / 8 wall-hours. Fresh host
 preflight and the V2 design remain authoritative; these are ceilings, not a
 promise that every stage consumes the full amount.
 
-One reviewed marker should cover the complete sequence: initialize, capture,
+Review commit `209407f` covers the complete sequence: initialize, capture,
 reference generation, both cohorts, the single test-decision opening, terminal
 verification. Do not insert per-stage review handshakes unless a named guard
 fails. Any failure consumes only the authority defined by the frozen design;

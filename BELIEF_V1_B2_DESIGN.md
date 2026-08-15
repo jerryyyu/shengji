@@ -6,8 +6,9 @@ implementation passed exact external review at PR #113 head
 `3ee0eb8754b47743c52db0d7387372b6863913ae` and merged byte-preservingly
 through canonical main `959c05de3b1ac379a6f9595b516608427486243d`.
 Fresh Mini design `a8c5e05f…1fd53` now binds that source and the live
-runtime/native/boot identity, but awaits its external marker. No B2 population
-or result exists.
+runtime/native/boot identity. Exact review commit `209407f` authorized this
+offline sequence, which initialized once and began capture on 2026-08-15. No
+terminal B2 result exists.
 
 This document authorizes nothing. In particular it does not authorize corpus
 generation, training, cloud use, sampler changes, gameplay evidence, strength

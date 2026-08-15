@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: 2026-08-15 08:26 EDT. This file is the active execution
+Last reconciled: 2026-08-15 09:16 EDT. This file is the active execution
 queue. Detailed policy interpretation belongs in `AI_POLICIES.md`, experiment
 design in `RL_PLAN.md`, live compute in `JOBS.md`, and historical queues in
 `docs_archive/backlog-through-2026-08-11.md`.
@@ -16,7 +16,7 @@ whole-game utility against the named live champion establishes bot strength.
 
 | priority / lane | plain-English strategy | progress so far and what is left | next concrete output | gate |
 |---|---|---|---|---|
-| **P0 / BELIEF-V1 B2 calibrated baseline** | Learn an actor-visible distribution over hidden ownership and hand shape, then prove it improves held-out calibration before changing search. | **Source is merged and the fresh Mini design is frozen.** PR #113 `3ee0eb8` merged through main `959c05d`; exact design `a8c5e05f…1fd53` independently reopens with 105 source bindings, current Mini runtime/native identity, strict caps and an unused evidence namespace. No capture, training or test opening has occurred. | Exact design marker → one consolidated B2 run → independent terminal verdict | B2 may establish aggregate hidden-ownership calibration only. No B3 sampler, gameplay, strength, promotion or deployment authority exists. A null closes this recipe; a PASS opens B3 implementation review, not a run. |
+| **P0 / BELIEF-V1 B2 calibrated baseline** | Learn an actor-visible distribution over hidden ownership and hand shape, then prove it improves held-out calibration before changing search. | **The one-shot offline run is active on Mini.** PR #113 `3ee0eb8` merged through main `959c05d`; exact design `a8c5e05f…1fd53` received the authentic marker at `209407f`, initialized once, and started all 16 capture lanes under the reviewed supervisor. The held-out test and terminal result remain unopened/pending. | Complete the reviewed capture → REF-C → 8+8 training → one test opening sequence, then obtain an independent terminal verdict | B2 may establish aggregate hidden-ownership calibration only. No B3 sampler, gameplay, strength, promotion or deployment authority exists. A null closes this recipe; a PASS opens B3 implementation review, not a run. |
 | **CLOSED / pair-aware rollout evidence paths** | Determine whether actor-visible exhausted-pair memory improves complete rounds, not just selected disagreements. | **Neither whole-game path produced evidence.** Air hit its fixed 64.08h timeout with `0/8` terminal shards and no manifest/final. The Performance checkpoint V1 one-shot fail-closed on microshard 3 `treatment work drift`; its host is now off and the admission is spent. | Preserve the diagnosis and require a fresh reviewed recovery design if this family is ever reconsidered | No retry, resume, partial-outcome access, aggregation or strength interpretation. Pair is no longer a live prerequisite for BELIEF-V1. |
 | **DONE / post-null roadmap reset** | Choose the next research milestone from evidence rather than keeping idle hardware busy. | **T4, S4 and combined S6 all selected none; BELIEF-V1 is the chosen materially different representation milestone.** The closeout identified selected-state signal, sparse natural dose, weak same-work attribution and continuation fragility. | Execute BELIEF-V1's calibration → sampler → same-work ladder in order | Before any large scored screen, require natural-dose economics, treatment-vs-champion and treatment-vs-same-work-null evidence, robustness under two continuation/role strata, and detectable whole-game effect. |
 | **CLOSED / T4 mid/late Teacher hybrid** | Use the learned model as a proposal inside Monte Carlo search after trick five. | Terminal `SELECT_NONE`; treatment LCB `-0.00759` versus champion and `-0.03313` versus its work-matched null. The uninformed arm was positive versus champion, but used 14.8% more accepted worlds and 80.9% more searches than champion, so widening and compute are confounded. | Implement the separately reviewed three-arm attribution design; do not retry T4 | No confirmation, retry, promotion or deployment for the learned recipe. Any widening claim must distinguish champion-work from original-null-work arms. |
@@ -120,14 +120,15 @@ recipe.
 
 ## Compute and evidence rules
 
-- Mini, Air, strength Cloud, and Performance Cloud have no live research job.
-  Mini and Air are idle; both paid cloud hosts are powered off. Do not start a
-  job merely for utilization.
+- Mini is running the exact reviewed BELIEF-V1 B2 offline pipeline. Air is
+  idle; strength Cloud and Performance Cloud are powered off. Do not start a
+  scored job merely for utilization.
 - T4, S4, S6, broad Pair, and Pair checkpoint namespaces are terminal or spent.
   Keep their artifacts closed; no ad hoc reopening, retry, extension, resume,
   pooling, or partial-result interpretation is authorized.
-- Mini's next possible use is the fresh BELIEF-V1 B2 V2 pipeline, but only
-  after the merged source is frozen into a separately reviewed host-specific
+- Mini's current use is the fresh BELIEF-V1 B2 V2 pipeline under exact marker
+  `209407f`. Any later use waits for its independently reviewed terminal;
+  the merged source was frozen into a separately reviewed host-specific
   design. Performance Cloud's next possible use is a reviewed performance A/B,
   not recovery of the spent Pair invocation.
 - Never put a public server address in the repository or copy authority from

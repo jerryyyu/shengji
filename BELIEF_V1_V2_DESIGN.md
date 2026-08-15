@@ -72,11 +72,17 @@ banker merely to make `Game.start_round()` respect `level_idx`, because doing
 so changes first-round declaration and banker behavior.
 
 The design freeze must derive a fresh seed namespace from the exact source,
-protocol, population schema, and literal rank schedule. A source-independent
-registry scan must reject every known population collision. Rank assignments
-are balanced before any deal is generated. Within each lane/rank cell, round
-seeds are ordered by a domain-separated SHA-256 key; no deal, decision, or
-stratum result may cause seed substitution.
+protocol, population schema, and literal rank schedule. The current actor-row
+contract recomputes its train/calibration/test split from the round seed, so
+V2 must preserve that validator rather than stamp an external split label.
+For each rank, the protocol walks a domain-separated SHA-256 candidate stream
+and accepts the first seeds required for the three frozen split quotas. It
+then orders the accepted coordinates with a second domain-separated key and
+assigns lanes round-robin. Candidate selection observes only the seed and its
+hash-derived split—never a deal, decision, stratum, or outcome. A source-
+independent registry scan must reject every known population collision. Rank
+assignments are balanced before any deal is generated; no later failure may
+substitute a seed or drop a row.
 
 The split is by complete round and balanced within every trump rank:
 
@@ -111,14 +117,23 @@ Before any bytes are opened, one H0 inventory/reconstruction review must bind:
 The existing `human_v8` asset is the starting point, not a new anonymous data
 search. Its published manifest is
 `b9699790bdfe1c217922c9f9c72b237c1856174fa64c11753329a8ff11e16553`;
-canonical documentation records 165 private opened rounds, 2,830 human play
-rows, and 45 human buries. `human_shards.py` already binds source-log hashes,
+the manifest records 129 source rounds seen, 122 replayed rounds, seven
+incomplete rounds, 2,830 accepted human plays, and 45 accepted human buries
+across 30 source files. The later PR #99 point-flow census opened 165 private
+rounds; that is a different descriptive corpus and must not be quoted as the
+`human_v8` population. `human_shards.py` already binds source-log hashes,
 excludes evaluation-only rounds, pseudonymizes players, and reconstructs the
-full deck. V2 still needs a belief-specific inventory because the current
-asset was built as a behavior/proposal corpus, not as an actor/hidden-
-ownership calibration corpus. The V2 builder must derive labels from the
-reconstructed round while excluding its existing `player_id`, source name,
-round number, and full-deck metadata from model input.
+full deck. Its manifest explicitly sets `training_authorized=false`, however,
+so neither those artifacts nor their published counts authorize V2 training.
+
+V2 needs a new belief-specific inventory, builder, and explicit review
+authority because the current asset was built as a behavior/proposal corpus,
+not as an actor/hidden-ownership calibration corpus. H0 may reuse its reviewed
+source-provenance approach and disclose only aggregate completeness metadata;
+it must not silently reuse the old training authority or treat `human_v8`
+rows as ownership labels. The V2 builder must derive labels from reconstructed
+rounds while excluding `player_id`, source name, round number, full-deck
+metadata, and any world-generating key from model input.
 
 Human games provide two artifacts:
 

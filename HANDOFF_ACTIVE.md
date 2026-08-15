@@ -61,14 +61,28 @@ PR comments alone are not queue state.
 
 ## Execution and terminal queue
 
-1. **Pair checkpoint successor recovery HOLD.** Capacity and packet review
+1. **BELIEF-V1 B2 pre-execution boundary.** No population has been spent and
+   no execution is authorized while PR #113 awaits exact-head source PASS.
+   After PASS, merge the reviewed bytes, create a clean detached Mini checkout
+   at the resulting canonical `main`, and run only `freeze-design` under the
+   required Python `-P -B` flags with a durable absolute evidence-root/design
+   sibling pair. Freezing records Git/source/native/Python/numerical/boot and
+   evidence-root identity; it does not initialize or open data. Obtain one
+   exact frozen-design marker review. That single marker then authorizes the
+   bounded opened-development sequence—initialize once, 16 capture lanes, 16
+   REF-C lanes, candidate and label-control cohorts, one test opening, terminal
+   verify—without per-stage reviews. Any initialization consumes the sibling
+   tombstone. Terminal evidence still requires one reproducibility review and
+   grants no B3, online gameplay, strength, promotion or deployment authority.
+
+2. **Pair checkpoint successor recovery HOLD.** Capacity and packet review
    remain authentic, but the one-shot Performance Cloud invocation is no
    longer reachable after host shutdown and has no reviewed terminal. Treat
    it as interrupted/spent. On any future power-on, inspect only service state,
    score-free heartbeats and terminal file population; do not resume, retry,
    open result bytes or aggregate without a fresh reviewed recovery design.
 
-2. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
+3. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
    V1 aggregate admission was spent by a deterministic canonical-key-order
    refusal on record 0 and can never retry. Exact V2 recovery `2b9d8e5` passed
    at `addd03e`; its single aggregate and canonical result review `e31e9a2`
@@ -76,13 +90,13 @@ PR comments alone are not queue state.
    `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`. The bury-source-only signal is
    hypothesis-generating; no retry, fresh design, screen or strength action.
 
-3. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
+4. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
   complete. Canonical independent review `15e8dbb` reproduced `SELECT_NONE`,
   final SHA `0aef1ca8…e90`, `strength_claim=false` and
   `production_promotion=false`. Never retry or reinterpret the terminal
   decision. Strength Cloud is powered off.
 
-4. **Air Pair terminal timeout.** Canonical ledger `483ed02` verifies the fixed
+5. **Air Pair terminal timeout.** Canonical ledger `483ed02` verifies the fixed
    64.08h timeout, 0/8 terminal shards, no complete score-free final and no
    published evidence. The S6 queue correctly held rather than interpreting
    timeout as release. Preserve this terminal HOLD; no aggregation or retry.

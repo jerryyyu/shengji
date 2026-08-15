@@ -41,7 +41,7 @@ class BeliefV2DeviceRunnerError(ValueError):
     """A qualification input, arm execution, or resource sample drifted."""
 
 
-def _host_peak_memory_bytes() -> int:
+def host_peak_memory_bytes() -> int:
     value = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     if type(value) not in {int, float} or value < 0:
         raise BeliefV2DeviceRunnerError(
@@ -54,7 +54,7 @@ def _host_peak_memory_bytes() -> int:
     return result
 
 
-def _synchronize(device: str) -> None:
+def synchronize_training_device(device: str) -> None:
     parsed = torch.device(device)
     if parsed.type == "cuda":
         torch.cuda.synchronize(parsed)
@@ -62,7 +62,7 @@ def _synchronize(device: str) -> None:
         torch.mps.synchronize()
 
 
-def _prepare_device_memory(device: str, cap: int) -> None:
+def prepare_device_memory_measurement(device: str, cap: int) -> None:
     parsed = torch.device(device)
     if parsed.type == "cuda":
         torch.cuda.empty_cache()
@@ -79,7 +79,7 @@ def _prepare_device_memory(device: str, cap: int) -> None:
         torch.mps.set_per_process_memory_fraction(min(1.0, cap / recommended))
 
 
-def _device_peak_memory_bytes(device: str) -> int:
+def device_peak_memory_bytes(device: str) -> int:
     parsed = torch.device(device)
     if parsed.type == "cpu":
         return 0
@@ -91,7 +91,7 @@ def _device_peak_memory_bytes(device: str) -> int:
         "V2 qualification device memory type drift")
 
 
-def _release_device(device: str) -> None:
+def release_training_device(device: str) -> None:
     gc.collect()
     parsed = torch.device(device)
     if parsed.type == "cuda":
@@ -116,24 +116,25 @@ def execute_qualification_arm(
     try:
         move_models_to_device(models, device=device)
         optimizers = tuple(new_v2_optimizer(model) for model in models)
-        _prepare_device_memory(device, plan.device_memory_cap_bytes)
-        _synchronize(device)
+        prepare_device_memory_measurement(
+            device, plan.device_memory_cap_bytes)
+        synchronize_training_device(device)
         started = time.perf_counter_ns()
         receipts = train_v2_cohort_epoch_stream(
             models, optimizers, iter(selected_batches),
             epoch=1, device=device)
-        _synchronize(device)
+        synchronize_training_device(device)
         finished = time.perf_counter_ns()
         checkpoints = tuple(portable_model_state_sha256(model)
                             for model in models)
-        host_peak = _host_peak_memory_bytes()
-        device_peak = _device_peak_memory_bytes(device)
+        host_peak = host_peak_memory_bytes()
+        device_peak = device_peak_memory_bytes(device)
     except (RuntimeError, ValueError) as exc:
         raise BeliefV2DeviceRunnerError(
             "V2 qualification arm execution refused") from exc
     finally:
         # No exception path is converted into CPU fallback.
-        _release_device(device)
+        release_training_device(device)
     wall = finished - started
     if wall <= 0 or host_peak > plan.host_memory_cap_bytes \
             or device_peak > plan.device_memory_cap_bytes:

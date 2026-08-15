@@ -11,6 +11,7 @@ authority.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -18,6 +19,7 @@ import torch
 
 from .belief_artifacts import (
     checkpoint_bundle_bytes,
+    reopen_epoch_receipt,
     reopen_checkpoint_bundle,
 )
 from .belief_b2_protocol import TRAIN_MAX_EPOCHS
@@ -421,3 +423,118 @@ def validate_trained_v2_cohort(
     if len(checkpoint_hashes) != len(COHORT_SEEDS):
         raise BeliefV2CohortTrainingError(
             "V2 selected checkpoint population collision")
+
+
+def reopen_trained_v2_cohort(
+        manifest_raw: bytes, checkpoint_bundles: tuple[bytes, ...],
+        realization: V2CohortRealizationV1,
+        training_examples: tuple[V2TrainingExampleV1, ...],
+        common_calibration: V2CalibrationScheduleV1,
+        calibration_examples: tuple[V2TrainingExampleV1, ...]) \
+        -> V2TrainedCohortArtifactsV1:
+    """Strictly rebuild a persisted cohort manifest and every checkpoint."""
+    if type(manifest_raw) is not bytes or not manifest_raw:
+        raise BeliefV2CohortTrainingError(
+            "V2 trained cohort manifest is empty")
+    try:
+        payload = json.loads(manifest_raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2CohortTrainingError(
+            "V2 trained cohort manifest is not JSON") from exc
+    expected_keys = {
+        "schema", "cohort_id", "cohort_kind", "realization_sha256",
+        "common_calibration_sha256", "training_device",
+        "initialization_seeds", "epochs", "epoch_count",
+        "selected_common_epoch", "stop_epoch", "stopped_for_patience",
+        "label_control_changed_cell_count_per_epoch", "checkpoints",
+        "common_epoch_calibration_source",
+        "human_calibration_consumed_for_common_epoch",
+        "contains_optimizer_resume_state", "contains_corpus_rows",
+        "test_split_opened", "test_split_open_authorized",
+        "sampler_implementation_authorized",
+        "gameplay_strength_screen_authorized", "strength_claim_authorized",
+        "deployment_authorized",
+    }
+    if type(payload) is not dict or set(payload) != expected_keys \
+            or canonical_json_bytes(payload) != manifest_raw \
+            or payload["schema"] != TRAINED_COHORT_SCHEMA \
+            or payload["initialization_seeds"] != list(COHORT_SEEDS) \
+            or payload["common_epoch_calibration_source"] \
+            != "balanced-synthetic-only" \
+            or payload[
+                "human_calibration_consumed_for_common_epoch"] is not False \
+            or any(payload[key] is not False for key in (
+                "contains_optimizer_resume_state", "contains_corpus_rows",
+                "test_split_opened", "test_split_open_authorized",
+                "sampler_implementation_authorized",
+                "gameplay_strength_screen_authorized",
+                "strength_claim_authorized", "deployment_authorized")) \
+            or type(payload["epochs"]) is not list \
+            or type(payload["epoch_count"]) is not int \
+            or payload["epoch_count"] != len(payload["epochs"]) \
+            or type(payload["checkpoints"]) is not list \
+            or len(payload["checkpoints"]) != len(COHORT_SEEDS) \
+            or type(checkpoint_bundles) is not tuple \
+            or len(checkpoint_bundles) != len(COHORT_SEEDS):
+        raise BeliefV2CohortTrainingError(
+            "V2 trained cohort manifest identity drift")
+    epoch_rows = []
+    for epoch, row in enumerate(payload["epochs"], 1):
+        if type(row) is not dict or set(row) != {
+                "schema", "epoch", "member_training_receipts",
+                "member_calibration_loss_nanonats",
+                "cohort_mean_calibration_loss_nanonats"} \
+                or row["schema"] != EPOCH_SCHEMA or row["epoch"] != epoch \
+                or type(row["member_training_receipts"]) is not list \
+                or len(row["member_training_receipts"]) \
+                != len(COHORT_SEEDS) \
+                or type(row[
+                    "member_calibration_loss_nanonats"]) is not list \
+                or len(row["member_calibration_loss_nanonats"]) \
+                != len(COHORT_SEEDS):
+            raise BeliefV2CohortTrainingError(
+                "V2 persisted epoch row drift")
+        try:
+            receipts = tuple(reopen_epoch_receipt(
+                canonical_json_bytes(receipt))
+                for receipt in row["member_training_receipts"])
+        except ValueError as exc:
+            raise BeliefV2CohortTrainingError(
+                "V2 persisted epoch receipt refused") from exc
+        epoch_rows.append(V2TrainingEpochCurveRowV1(
+            epoch=epoch, member_training_receipts=receipts,
+            member_calibration_loss_nanonats=tuple(
+                row["member_calibration_loss_nanonats"]),
+            cohort_mean_calibration_loss_nanonats=row[
+                "cohort_mean_calibration_loss_nanonats"]))
+    for index, (row, raw) in enumerate(zip(
+            payload["checkpoints"], checkpoint_bundles, strict=True)):
+        if type(row) is not dict or set(row) != {
+                "member_index", "initialization_seed", "byte_count",
+                "bundle_sha256"} \
+                or row["member_index"] != index \
+                or row["initialization_seed"] != COHORT_SEEDS[index] \
+                or type(raw) is not bytes or not raw \
+                or row["byte_count"] != len(raw) \
+                or row["bundle_sha256"] != _sha256(raw):
+            raise BeliefV2CohortTrainingError(
+                "V2 persisted checkpoint row drift")
+    result = V2TrainedCohortArtifactsV1(
+        cohort_id=payload["cohort_id"], cohort_kind=payload["cohort_kind"],
+        realization_sha256=payload["realization_sha256"],
+        common_calibration_sha256=payload["common_calibration_sha256"],
+        training_device=payload["training_device"],
+        epochs=tuple(epoch_rows),
+        selected_common_epoch=payload["selected_common_epoch"],
+        stop_epoch=payload["stop_epoch"],
+        stopped_for_patience=payload["stopped_for_patience"],
+        label_control_changed_cell_count_per_epoch=payload[
+            "label_control_changed_cell_count_per_epoch"],
+        checkpoint_bundles=checkpoint_bundles)
+    validate_trained_v2_cohort(
+        realization, training_examples, common_calibration,
+        calibration_examples, result)
+    if result.manifest_bytes() != manifest_raw:
+        raise BeliefV2CohortTrainingError(
+            "V2 trained cohort manifest reconstruction drift")
+    return result

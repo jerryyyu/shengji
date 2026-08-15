@@ -83,15 +83,10 @@ class Memory:
         # Declarer's shown cards (RTLT 2026-08-03: a declared trump-rank
         # PAIR is provably in ONE hand — sampling it split made KK-pair
         # leads look boss in most worlds). Track declared cards still
-        # unplayed and not our own when the declarer is not the banker.  A
-        # banker may legally bury a declared copy, so from another seat that
-        # card is only known to be in the banker hand OR hidden kitty and must
-        # not be pinned to the hand.
+        # unplayed and not our own: the sampler pins them to the declarer.
         self.known: dict[str, tuple[int, int]] = {}  # code -> (seat, copies)
         decl = rnd.declaration
-        if decl is not None and decl.get("seat") is not None \
-                and decl["seat"] != seat \
-                and decl["seat"] != rnd.banker:
+        if decl is not None and decl.get("seat") is not None                 and decl["seat"] != seat:
             dc = Counter(decl["cards"])
             for code, n in dc.items():
                 # subtract only the DECLARER's own plays: a copy played by

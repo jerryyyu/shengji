@@ -14,6 +14,7 @@ from shengji.engine.combos import decompose
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
 from shengji.rl.belief_contract import (
+    DeclarationEligibilityV1,
     PublicTranscriptV1,
     build_actor_observation,
     build_belief_targets,
@@ -236,6 +237,60 @@ def test_world_refuses_receiver_card_and_hard_constraint_drift():
     rebound = replace(world, actor_observation_sha256=pinned_actor.sha256())
     with pytest.raises(BeliefReferenceError, match="declaration pin"):
         validate_sampled_world(pinned_actor, rebound)
+
+    # A banker declaration is a group constraint, not a hand pin.  Move the
+    # shown copy from banker/kitty to an unrelated receiver while swapping a
+    # second card back.  Population, receiver sizes, and per-card conservation
+    # stay exact; only declaration eligibility changes.
+    _, actor, target, _ = _state(9717)
+    world = _world(actor, target)
+    counters = {
+        row.receiver: Counter(dict(row.cards)) for row in world.receivers
+    }
+    group = (f"seat-relative-{actor.banker_relative}", KITTY_RECEIVER)
+    declared = next(
+        card for card, _ in actor.deductions.unseen
+        if sum(counters[receiver][card] for receiver in group) == 1
+    )
+    constraint = DeclarationEligibilityV1(
+        card=declared, eligible_receivers=group, minimum_copies=1)
+    clean = replace(actor, deductions=replace(
+        actor.deductions,
+        voids_by_relative=((), (), (), ()),
+        pair_caps_by_relative=((), (), (), ()),
+        run_caps_by_relative=((), (), (), ()),
+        declaration_pins=(),
+        declaration_eligibility=(constraint,),
+    ))
+    world = replace(world, actor_observation_sha256=clean.sha256())
+    source = next(receiver for receiver in group
+                  if counters[receiver][declared] > 0)
+    outside = next(
+        receiver for receiver in counters
+        if receiver not in group and counters[receiver][declared] == 0
+    )
+    exchange = next(
+        card for card, count in counters[outside].items()
+        if count > 0 and counters[source][card] == 0
+    )
+    counters[source][declared] -= 1
+    counters[outside][declared] += 1
+    counters[outside][exchange] -= 1
+    counters[source][exchange] += 1
+    changed = replace(world, receivers=tuple(
+        ReceiverCardsV1(
+            receiver=row.receiver,
+            cards=tuple(sorted((card, count)
+                               for card, count
+                               in counters[row.receiver].items()
+                               if count)),
+        )
+        for row in world.receivers
+    ))
+    with pytest.raises(
+            BeliefReferenceError,
+            match="declaration eligibility"):
+        validate_sampled_world(clean, changed)
 
 
 @pytest.mark.parametrize("world_count", [0, 1, 255, 257])

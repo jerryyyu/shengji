@@ -1,4 +1,4 @@
-"""Exact current-sampler REF-C batch tests."""
+"""Exact sound-constraint REF-C batch tests."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ from dataclasses import replace
 import pytest
 
 from shengji.ai.heuristic import HeuristicBot
-from shengji.ai.mcbot import MCBot
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
 from shengji.rl.belief_contract import PublicTranscriptV1
@@ -24,6 +23,7 @@ from shengji.rl.belief_refc_capture import (
 )
 from shengji.rl.belief_b2_protocol import b2_split_round_seeds
 from shengji.rl import belief_capture as CAPTURE
+from shengji.rl import belief_refc_capture as REF_CAPTURE
 from shengji.rl.belief_reference import REF_C_WORLD_COUNT
 
 
@@ -79,11 +79,29 @@ def test_ref_c_draw_is_exact_reproducible_and_score_free(monkeypatch):
     validate_reference_world_batch(batch)
     assert len(batch.worlds) == REF_C_WORLD_COUNT
     assert batch.sampler_source_sha256 == REF_C_SAMPLER_SHA256
-    assert set(REF_C_SOURCE_SHA256S) == {"mcbot", "memory", "cards", "combos"}
+    assert set(REF_C_SOURCE_SHA256S) == {
+        "belief_contract", "belief_refc_capture", "belief_reference",
+        "mcbot", "memory", "cards", "combos",
+    }
     delta = dict(batch.sampler_delta)
     assert delta["accepted_worlds"] == REF_C_WORLD_COUNT
     assert delta["sample_attempts"] == (
         delta["accepted_worlds"] + delta["failed_worlds"])
+    assert batch.actor.deductions.declaration_eligibility
+    constraint = batch.actor.deductions.declaration_eligibility[0]
+    banker_receiver, kitty_receiver = constraint.eligible_receivers
+    assert any(
+        dict(next(row for row in world.receivers
+                  if row.receiver == banker_receiver).cards).get(
+                      constraint.card, 0) > 0
+        for world in batch.worlds
+    )
+    assert any(
+        dict(next(row for row in world.receivers
+                  if row.receiver == kitty_receiver).cards).get(
+                      constraint.card, 0) > 0
+        for world in batch.worlds
+    )
     assert delta["impossible_worlds"] == 0
     manifest = batch.manifest_dict()
     assert manifest["contains_sampled_hidden_worlds"] is True
@@ -138,18 +156,18 @@ def test_ref_c_refuses_wrong_mode_seed_underfill_and_counter_drift(
             capture_ref_c_worlds(
                 rnd, rnd.turn, transcript, sampler_seed=seed)
 
-    original = MCBot._sample_hands
+    original = REF_CAPTURE._sample_ref_c_hands
 
-    def fail(self, *_args):
-        self.sample_attempts += 1
-        self.failed_worlds += 1
+    def fail(bot, *_args):
+        bot.sample_attempts += 1
+        bot.failed_worlds += 1
         return None
 
-    monkeypatch.setattr(MCBot, "_sample_hands", fail)
+    monkeypatch.setattr(REF_CAPTURE, "_sample_ref_c_hands", fail)
     with pytest.raises(BeliefRefCCaptureError, match="underfilled"):
         capture_ref_c_worlds(
             rnd, rnd.turn, transcript, sampler_seed=1019)
-    monkeypatch.setattr(MCBot, "_sample_hands", original)
+    monkeypatch.setattr(REF_CAPTURE, "_sample_ref_c_hands", original)
     batch = capture_ref_c_worlds(
         rnd, rnd.turn, transcript, sampler_seed=1021)
     changed_delta = dict(batch.sampler_delta)

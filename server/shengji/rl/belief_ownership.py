@@ -13,14 +13,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..engine.cards import Ordering, make_deck
-from .belief_contract import ActorObservationV1, canonical_json_bytes
+from .belief_contract import (HIDDEN_KITTY_RECEIVER, ActorObservationV1,
+                              DeclarationEligibilityV1,
+                              canonical_json_bytes)
 
 
 OWNERSHIP_SCHEMA = "belief-v1-hidden-ownership-probability-v1"
 COUNT_PROBABILITY_SCHEMA = "belief-v1-receiver-count-probability-v1"
 PROBABILITY_SCALE = 1_000_000_000
 INFORMATION_TAG = "probabilistic_policy_conditioned"
-KITTY_RECEIVER = "hidden-kitty"
+KITTY_RECEIVER = HIDDEN_KITTY_RECEIVER
 SEAT_RECEIVERS = tuple(f"seat-relative-{relative}" for relative in range(1, 4))
 _CARD_CODES = frozenset(make_deck())
 
@@ -260,6 +262,50 @@ def validate_ownership(actor: ActorObservationV1,
             elif receiver != owner and row.count_2_ppb != 0:
                 raise BeliefOwnershipError(
                     "single declaration leaves two-copy mass elsewhere")
+
+    pinned_cards = {card for card, _, _
+                    in actor.deductions.declaration_pins}
+    eligibility_cards = set()
+    for constraint in actor.deductions.declaration_eligibility:
+        if type(constraint) is not DeclarationEligibilityV1 \
+                or constraint.card not in _CARD_CODES \
+                or type(constraint.eligible_receivers) is not tuple \
+                or len(constraint.eligible_receivers) != 2 \
+                or len(set(constraint.eligible_receivers)) != 2 \
+                or any(type(receiver) is not str
+                       or receiver not in receiver_capacity
+                       for receiver in constraint.eligible_receivers) \
+                or type(constraint.minimum_copies) is not int \
+                or constraint.minimum_copies not in (1, 2) \
+                or constraint.card not in unseen \
+                or constraint.minimum_copies > unseen[constraint.card] \
+                or constraint.card in pinned_cards \
+                or constraint.card in eligibility_cards:
+            raise BeliefOwnershipError(
+                "declaration eligibility is malformed")
+        eligibility_cards.add(constraint.card)
+        eligible = set(constraint.eligible_receivers)
+        eligible_expectation = sum(
+            rows[(constraint.card, receiver)].expected_count_ppb
+            for receiver in eligible
+        )
+        if eligible_expectation \
+                < constraint.minimum_copies * PROBABILITY_SCALE:
+            raise BeliefOwnershipError(
+                "declared copies leave their eligible receiver set")
+        outside_capacity = unseen[constraint.card] \
+            - constraint.minimum_copies
+        for receiver in receivers:
+            if receiver in eligible:
+                continue
+            row = rows[(constraint.card, receiver)]
+            if outside_capacity == 0 \
+                    and row.count_0_ppb != PROBABILITY_SCALE:
+                raise BeliefOwnershipError(
+                    "declared copies carry mass outside eligible receivers")
+            if outside_capacity == 1 and row.count_2_ppb != 0:
+                raise BeliefOwnershipError(
+                    "single declared copy leaves pair mass outside eligibility")
 
 
 def ownership_from_bytes(actor: ActorObservationV1,

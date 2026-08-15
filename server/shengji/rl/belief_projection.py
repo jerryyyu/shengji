@@ -137,6 +137,23 @@ def _fractional_expectations(
     receiver_target = np.array(
         [receiver.card_count for receiver in model_input.receivers],
         dtype=np.float64)
+    receiver_index_by_name = {
+        receiver.receiver: index
+        for index, receiver in enumerate(model_input.receivers)
+    }
+    group_mask = np.zeros((n_cards, n_receivers), dtype=np.bool_)
+    group_minimum = np.zeros(n_cards, dtype=np.float64)
+    for card_index, card in enumerate(cards):
+        for receiver in card.required_receiver_group:
+            if receiver not in receiver_index_by_name:
+                raise BeliefProjectionError(
+                    "required receiver group is outside the population")
+            group_mask[card_index, receiver_index_by_name[receiver]] = True
+        group_minimum[card_index] = card.required_receiver_group_min_count
+        if bool(card.required_receiver_group) \
+                != bool(card.required_receiver_group_min_count):
+            raise BeliefProjectionError(
+                "required receiver group identity drift")
     if np.any(card_target < lower.sum(axis=1)) \
             or np.any(card_target > upper.sum(axis=1)) \
             or np.any(receiver_target < lower.sum(axis=0)) \
@@ -144,10 +161,14 @@ def _fractional_expectations(
         raise BeliefProjectionError("projection margin is infeasible")
     card_bias = np.zeros(n_cards, dtype=np.float64)
     receiver_bias = np.zeros(n_receivers, dtype=np.float64)
+    group_bias = np.zeros(n_cards, dtype=np.float64)
 
     def evaluate() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         scores = log_weights + counts * (
-            card_bias[:, None, None] + receiver_bias[None, :, None])
+            card_bias[:, None, None]
+            + receiver_bias[None, :, None]
+            + group_bias[:, None, None] * group_mask[:, :, None]
+        )
         maximum = np.max(scores, axis=2, keepdims=True)
         mass = np.exp(scores - maximum)
         mass /= mass.sum(axis=2, keepdims=True)
@@ -178,12 +199,42 @@ def _fractional_expectations(
         card_bias -= gauge
         receiver_bias += gauge
 
+        probabilities, expected, variance = evaluate()
+        for card_index in range(n_cards):
+            if not group_minimum[card_index]:
+                continue
+            mask = group_mask[card_index]
+            current = float(expected[card_index, mask].sum())
+            curvature = float(variance[card_index, mask].sum())
+            residual = group_minimum[card_index] - current
+            if residual > 1e-11 or (
+                    group_bias[card_index] > 0 and residual < -1e-11):
+                if curvature <= 1e-15:
+                    raise BeliefProjectionError(
+                        "required receiver group is fixed infeasible")
+                group_bias[card_index] = max(
+                    0.0,
+                    group_bias[card_index]
+                    + float(np.clip(residual / curvature, -4.0, 4.0)),
+                )
+
         probabilities, expected, _ = evaluate()
-        error = max(
+        margin_error = max(
             float(np.max(np.abs(expected.sum(axis=1) - card_target))),
             float(np.max(np.abs(expected.sum(axis=0) - receiver_target))),
         )
-        if error < 1e-11:
+        group_error = 0.0
+        for card_index in range(n_cards):
+            if not group_minimum[card_index]:
+                continue
+            current = float(expected[card_index, group_mask[card_index]].sum())
+            if group_bias[card_index] > 1e-12:
+                group_error = max(
+                    group_error, abs(current - group_minimum[card_index]))
+            else:
+                group_error = max(
+                    group_error, group_minimum[card_index] - current)
+        if max(margin_error, group_error) < 1e-11:
             return expected.tolist(), probabilities
     raise BeliefProjectionError("projection did not converge")
 
@@ -292,6 +343,99 @@ def _round_transport(
                    * PROBABILITY_SCALE
                    for receiver in range(n_receivers)):
         raise BeliefProjectionError("integral projection margins drift")
+
+    receiver_index_by_name = {
+        receiver.receiver: index
+        for index, receiver in enumerate(model_input.receivers)
+    }
+    constrained_cards = {
+        index for index, card in enumerate(cards)
+        if card.required_receiver_group_min_count
+    }
+
+    def move_one_into_group(card_index: int, eligible: set[int]) -> bool:
+        card = cards[card_index]
+        lower = card.min_count_by_receiver
+        upper = card.max_count_by_receiver
+        for destination in sorted(eligible):
+            if rounded[card_index][destination] \
+                    >= upper[destination] * PROBABILITY_SCALE:
+                continue
+            for source_col in range(n_receivers):
+                if source_col in eligible \
+                        or rounded[card_index][source_col] \
+                        <= lower[source_col] * PROBABILITY_SCALE:
+                    continue
+                # Find a residual column path destination -> source_col.  An
+                # edge x->y backed by another card means that card can move
+                # one ppb from x to y, closing the column imbalance created
+                # by moving this declared card from source_col to destination.
+                queue = [destination]
+                parent: dict[int, tuple[int, int]] = {}
+                seen = {destination}
+                for current in queue:
+                    if current == source_col:
+                        break
+                    for other_card, other in enumerate(cards):
+                        if other_card == card_index \
+                                or other_card in constrained_cards \
+                                or rounded[other_card][current] \
+                                <= other.min_count_by_receiver[current] \
+                                * PROBABILITY_SCALE:
+                            continue
+                        for target_col in range(n_receivers):
+                            if target_col in seen \
+                                    or rounded[other_card][target_col] \
+                                    >= other.max_count_by_receiver[target_col] \
+                                    * PROBABILITY_SCALE:
+                                continue
+                            seen.add(target_col)
+                            parent[target_col] = (current, other_card)
+                            queue.append(target_col)
+                if source_col not in seen:
+                    continue
+                rounded[card_index][destination] += 1
+                rounded[card_index][source_col] -= 1
+                cursor = source_col
+                path = []
+                while cursor != destination:
+                    previous, other_card = parent[cursor]
+                    path.append((previous, cursor, other_card))
+                    cursor = previous
+                for previous, target_col, other_card in reversed(path):
+                    rounded[other_card][previous] -= 1
+                    rounded[other_card][target_col] += 1
+                return True
+        return False
+
+    for card_index in sorted(constrained_cards):
+        card = cards[card_index]
+        eligible = {
+            receiver_index_by_name[receiver]
+            for receiver in card.required_receiver_group
+        }
+        required = (card.required_receiver_group_min_count
+                    * PROBABILITY_SCALE)
+        while sum(rounded[card_index][index] for index in eligible) < required:
+            if not move_one_into_group(card_index, eligible):
+                raise BeliefProjectionError(
+                    "required receiver group cannot be rounded")
+
+    if any(sum(row) != card.unseen_count * PROBABILITY_SCALE
+           for card, row in zip(cards, rounded, strict=True)) \
+            or any(sum(rounded[card][receiver]
+                       for card in range(n_cards))
+                   != model_input.receivers[receiver].card_count
+                   * PROBABILITY_SCALE
+                   for receiver in range(n_receivers)) \
+            or any(
+                sum(rounded[card_index][receiver_index_by_name[receiver]]
+                    for receiver in card.required_receiver_group)
+                < card.required_receiver_group_min_count * PROBABILITY_SCALE
+                for card_index, card in enumerate(cards)
+                if card.required_receiver_group_min_count
+            ):
+        raise BeliefProjectionError("integral group projection drift")
     return rounded
 
 

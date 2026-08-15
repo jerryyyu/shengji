@@ -13,11 +13,13 @@ from shengji.engine.cards import Ordering
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
 from shengji.rl.belief_contract import (
+    DeclarationEligibilityV1,
     PublicTranscriptV1,
     build_actor_observation,
     build_belief_targets,
 )
-from shengji.rl.belief_ownership import PROBABILITY_SCALE, validate_ownership
+from shengji.rl.belief_ownership import (KITTY_RECEIVER, PROBABILITY_SCALE,
+                                         validate_ownership)
 from shengji.rl.belief_projection import (
     BeliefProjectionError,
     RawCountWeightV1,
@@ -141,6 +143,34 @@ def test_projection_respects_forged_hard_void_and_declaration_witnesses():
                for row in belief.probabilities
                if row.receiver == "seat-relative-1"
                and ordering.eff_suit(row.card) == void_suit)
+
+
+def test_projection_enforces_banker_hand_or_hidden_kitty_group():
+    _, actor, _, _ = _state(10013)
+    assert actor.hidden_burial_size == 8
+    card = next(card for card, count in actor.deductions.unseen if count == 2)
+    group = (
+        f"seat-relative-{actor.banker_relative}",
+        KITTY_RECEIVER,
+    )
+    constrained = replace(actor, deductions=replace(
+        actor.deductions,
+        declaration_pins=(),
+        declaration_eligibility=(DeclarationEligibilityV1(
+            card=card, eligible_receivers=group, minimum_copies=1),),
+    ))
+    belief = _project(constrained, uniform_raw_count_weights(
+        constrained, behavior_policy_ids=POLICIES))
+    validate_ownership(constrained, belief)
+    expected_in_group = sum(
+        row.expected_count_ppb for row in belief.probabilities
+        if row.card == card and row.receiver in group
+    )
+    assert expected_in_group >= PROBABILITY_SCALE
+    assert all(
+        row.count_2_ppb == 0 for row in belief.probabilities
+        if row.card == card and row.receiver not in group
+    )
 
 
 def test_public_hidden_twins_project_to_identical_bytes():

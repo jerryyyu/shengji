@@ -22,7 +22,7 @@ from .belief_ownership import (PROBABILITY_SCALE, BeliefOwnershipV1,
 
 
 WORLD_SCHEMA = "belief-v1-sampled-ownership-world-v1"
-REF_C_MODEL_SCHEMA = "belief-v1-ref-c-current-sampler-256-v1"
+REF_C_MODEL_SCHEMA = "belief-v1-ref-c-sound-constraint-sampler-256-v2"
 REF_C_WORLD_COUNT = 256
 _WORLD_UNIT_PPB = PROBABILITY_SCALE // REF_C_WORLD_COUNT
 _CARD_CODES = frozenset(make_deck())
@@ -138,6 +138,14 @@ def validate_sampled_world(actor: ActorObservationV1,
         if receiver not in by_receiver \
                 or by_receiver[receiver][card] < copies:
             raise BeliefReferenceError("REF-C world violates declaration pin")
+    for constraint in actor.deductions.declaration_eligibility:
+        if any(receiver not in by_receiver
+               for receiver in constraint.eligible_receivers) \
+                or sum(by_receiver[receiver][constraint.card]
+                       for receiver in constraint.eligible_receivers) \
+                < constraint.minimum_copies:
+            raise BeliefReferenceError(
+                "REF-C world violates declaration eligibility")
 
 
 def reference_ownership(

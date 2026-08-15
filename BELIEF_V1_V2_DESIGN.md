@@ -359,6 +359,35 @@ V2 optimizes measured stages in this order:
    kernel is lower priority if replay reduces the complete reference stage to
    a small fraction of capture/training cost.
 
+The accelerator boundary is one code path, not device-specific trainer forks.
+`belief_v2_accelerator.py` moves each immutable batch once and shares it across
+all eight independently initialized members; model parameters, optimizer state,
+labels, and active masks must reside on the same exact device. Supported device
+identities are only `cpu`, `mps`, and an explicit indexed `cuda:N`. Every epoch
+receipt hashes parameter names, shapes, dtypes, and values after a synchronous
+copy to the canonical CPU float32 checkpoint stream. The published checkpoint
+is an ordinary CPU `HistoryOwnershipModelV1`, so evaluation and any later
+runtime consumer do not inherit an accelerator dependency.
+
+Device qualification occurs after capture and before either final training
+cohort begins. It uses the same digest-selected train batches, model seeds,
+optimizer, and batch order for all arms. CPU and each available accelerator get
+one warmup arm that is excluded from evidence, followed by three paired
+measured arms in alternating order. An accelerator is retained only if all of
+the following are true: all arms complete without fallback; its three same-seed
+reruns produce one checkpoint digest and one loss receipt; every paired
+wall-time reduction is positive; aggregate measured wall is at least 15% below
+CPU; batch population, schedule, active-label count, and authority bytes are
+exact; and peak resident plus device memory stays within the frozen cap.
+Cross-device checkpoint bytes need not equal CPU bytes because floating-point
+kernels differ; deterministic repeatability within the retained device and
+unchanged held-out calibration gate semantics are mandatory. If no accelerator
+qualifies, V2 freezes CPU.
+
+The running V1 packet is excluded from this qualification. Mini benchmarking
+must wait until its V1 training process exits, so qualification cannot perturb
+the already-reviewed evidence run.
+
 The source audit already identifies two concrete V1 costs to measure. Each
 cohort pins Torch to one thread, and `train_cohort_epoch_stream` applies every
 batch to all eight models in a serial Python loop. In addition,

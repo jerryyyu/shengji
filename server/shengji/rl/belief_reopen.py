@@ -246,8 +246,12 @@ def _deductions(value: Any) -> DeductionView:
     )
 
 
-def actor_observation_from_dict(payload: dict[str, Any]) -> ActorObservationV1:
-    """Rebuild and mechanically validate one exact actor payload object."""
+def _actor_observation_from_dict(
+        payload: dict[str, Any], *,
+        require_complete_history: bool) -> ActorObservationV1:
+    """Rebuild one exact actor, optionally requiring both history channels."""
+    if type(require_complete_history) is not bool:
+        raise BeliefReopenError("actor reopen mode is invalid")
     keys = {
         "schema", "perspective", "phase", "trump_rank", "trump_suit",
         "trump_is_nt", "banker_relative", "actor_is_attacker",
@@ -294,8 +298,11 @@ def actor_observation_from_dict(payload: dict[str, Any]) -> ActorObservationV1:
     declaration = None if row["declaration"] is None else _declaration(
         row["declaration"], ordering=ordering, label="final declaration")
     if type(row["declaration_history"]) is not list \
-            or row["declaration_history_complete"] is not True \
-            or row["attempted_play_history_complete"] is not True:
+            or type(row["declaration_history_complete"]) is not bool \
+            or type(row["attempted_play_history_complete"]) is not bool \
+            or (require_complete_history and (
+                row["declaration_history_complete"] is not True
+                or row["attempted_play_history_complete"] is not True)):
         raise BeliefReopenError("actor public history is incomplete")
     declarations = tuple(_declaration(
         value, ordering=ordering, label=f"declaration {index}")
@@ -365,14 +372,28 @@ def actor_observation_from_dict(payload: dict[str, Any]) -> ActorObservationV1:
         actor_hand=actor_hand, actor_known_burial=burial,
         hidden_burial_size=hidden_burial_size,
         declaration=declaration, declaration_history=declarations,
-        declaration_history_complete=True,
-        attempted_play_history_complete=True,
+        declaration_history_complete=row["declaration_history_complete"],
+        attempted_play_history_complete=(
+            row["attempted_play_history_complete"]),
         completed_tricks=completed, current_trick=current,
         deductions=deductions,
     )
     if actor.to_dict() != payload:
         raise BeliefReopenError("actor payload is not canonical typed V1")
     return actor
+
+
+def actor_observation_from_dict(payload: dict[str, Any]) -> ActorObservationV1:
+    """Rebuild a V1 training actor with both history channels complete."""
+    return _actor_observation_from_dict(
+        payload, require_complete_history=True)
+
+
+def actor_observation_from_dict_allow_incomplete(
+        payload: dict[str, Any]) -> ActorObservationV1:
+    """Rebuild a V2 source actor while preserving truthful channel flags."""
+    return _actor_observation_from_dict(
+        payload, require_complete_history=False)
 
 
 def belief_targets_from_dict(

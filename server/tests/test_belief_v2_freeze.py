@@ -26,8 +26,10 @@ from shengji.rl.belief_v2_freeze import (
     build_pipeline_admission,
     execution_freeze_from_bytes,
     expected_execution_review_claim,
+    pipeline_admission_from_bytes,
     pipeline_consumption_tombstone_bytes,
     reauthenticate_pipeline_admission,
+    validate_pipeline_consumption_tombstone,
     validate_execution_freeze,
 )
 from shengji.rl.belief_v2_execution_identity import (
@@ -306,6 +308,18 @@ def test_review_and_admission_require_actual_remote_append_only_marker(
         freeze, admission, repo=repo, review_marker=marker)
     tombstone = pipeline_consumption_tombstone_bytes(admission)
     assert b'"retry_authorized":false' in tombstone
+    assert pipeline_admission_from_bytes(
+        admission.canonical_bytes(), freeze=freeze,
+        review_marker=marker) == admission
+    validate_pipeline_consumption_tombstone(
+        tombstone, admission=admission)
+    with pytest.raises(BeliefV2FreezeError, match="reconstruction"):
+        pipeline_admission_from_bytes(
+            admission.canonical_bytes() + b" ", freeze=freeze,
+            review_marker=marker)
+    with pytest.raises(BeliefV2FreezeError, match="tombstone"):
+        validate_pipeline_consumption_tombstone(
+            tombstone + b" ", admission=admission)
 
 
 def test_review_refuses_local_remote_tracking_forgery(tmp_path, monkeypatch):

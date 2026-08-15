@@ -905,6 +905,58 @@ def validate_pipeline_admission(
         raise BeliefV2FreezeError("V2 pipeline admission identity drift")
 
 
+def pipeline_admission_from_bytes(
+        raw: bytes, *, freeze: V2ExecutionFreezeV1,
+        review_marker: bytes) -> V2PipelineAdmissionV1:
+    """Strictly reopen the durable admission consumed by every stage."""
+    if type(raw) is not bytes or not raw:
+        raise BeliefV2FreezeError("V2 admission bytes are empty")
+    try:
+        payload = json.loads(
+            raw.decode("ascii"), object_pairs_hook=_strict_object,
+            parse_float=_reject_number, parse_constant=_reject_number)
+    except BeliefV2FreezeError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2FreezeError("V2 admission is not strict JSON") from exc
+    expected_keys = {
+        "schema", "run_id", "protocol_sha256", "schedule_sha256",
+        "freeze_sha256", "execution_git", "source_manifest_sha256",
+        "seed_registry_sha256", "review_commit", "canonical_remote_tip",
+        "review_marker_sha256", "evidence_root", "authority",
+    }
+    authority = payload.get("authority") if type(payload) is dict else None
+    if type(payload) is not dict or set(payload) != expected_keys \
+            or type(authority) is not dict \
+            or set(authority) != {
+                "capture_authorized", "reference_generation_authorized",
+                "training_authorized", "one_test_split_open_authorized",
+                "terminal_reconstruction_authorized", "retry_authorized",
+                "sampler_implementation_authorized",
+                "gameplay_strength_screen_authorized",
+                "strength_claim_authorized", "promotion_authorized",
+                "deployment_authorized"}:
+        raise BeliefV2FreezeError("V2 admission field drift")
+    try:
+        admission = V2PipelineAdmissionV1(
+            schema=payload["schema"],
+            freeze_sha256=payload["freeze_sha256"],
+            execution_git=payload["execution_git"],
+            source_manifest_sha256=payload["source_manifest_sha256"],
+            seed_registry_sha256=payload["seed_registry_sha256"],
+            review_commit=payload["review_commit"],
+            canonical_remote_tip=payload["canonical_remote_tip"],
+            review_marker_sha256=payload["review_marker_sha256"],
+            evidence_root=payload["evidence_root"])
+    except (KeyError, TypeError) as exc:
+        raise BeliefV2FreezeError("V2 admission field drift") from exc
+    validate_pipeline_admission(
+        freeze, admission, review_marker=review_marker)
+    if admission.canonical_bytes() != raw:
+        raise BeliefV2FreezeError("V2 admission reconstruction drift")
+    return admission
+
+
 def reauthenticate_pipeline_admission(
         freeze: V2ExecutionFreezeV1, admission: V2PipelineAdmissionV1, *,
         repo: Path, review_marker: bytes) -> None:
@@ -933,3 +985,22 @@ def pipeline_consumption_tombstone_bytes(
         "initialization_consumed": True,
         "retry_authorized": False,
     })
+
+
+def validate_pipeline_consumption_tombstone(
+        raw: bytes, *, admission: V2PipelineAdmissionV1) -> None:
+    """Require the undeletable sibling receipt for this exact admission."""
+    if type(admission) is not V2PipelineAdmissionV1:
+        raise BeliefV2FreezeError("V2 tombstone admission drift")
+    try:
+        payload = json.loads(
+            raw.decode("ascii"), object_pairs_hook=_strict_object,
+            parse_float=_reject_number, parse_constant=_reject_number)
+    except BeliefV2FreezeError:
+        raise
+    except (AttributeError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2FreezeError("V2 tombstone is not strict JSON") from exc
+    if type(payload) is not dict \
+            or canonical_json_bytes(payload) != raw \
+            or raw != pipeline_consumption_tombstone_bytes(admission):
+        raise BeliefV2FreezeError("V2 consumption tombstone drift")

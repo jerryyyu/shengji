@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -130,3 +133,23 @@ def test_live_gate_recomputes_both_source_and_runtime(monkeypatch):
         validate_live_execution(
             repo=__import__("pathlib").Path("/repo"),
             execution_git="f" * 40, source_bindings=rows, runtime=profile)
+
+
+def test_worker_bootstrap_requires_safe_flags_and_has_closed_command_surface():
+    repo = Path(__file__).resolve().parents[2]
+    worker = repo / "server" / "scripts" / "belief_v2_worker.py"
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    environment.update({
+        "PYTHONDONTWRITEBYTECODE": "1", "PYTHONHASHSEED": "0",
+        "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"})
+    result = subprocess.run(
+        (sys.executable, "-P", "-B", str(worker),
+         "--bootstrap-check-only"), cwd=repo, env=environment,
+        check=True, capture_output=True, text=True)
+    assert result.stdout == "BELIEF_V1_V2_BOOTSTRAP_PASS\n"
+    unsafe = subprocess.run(
+        (sys.executable, "-B", str(worker), "--bootstrap-check-only"),
+        cwd=repo, env=environment, capture_output=True, text=True)
+    assert unsafe.returncode != 0
+    assert "requires Python -P -B safe flags" in unsafe.stderr

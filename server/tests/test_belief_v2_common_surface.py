@@ -14,6 +14,11 @@ from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
 from shengji.rl.belief_contract import PublicTranscriptV1, build_actor_observation
 from shengji.rl.belief_input import CARD_CODES
+from shengji.rl.belief_reopen import (
+    BeliefReopenError,
+    actor_observation_from_dict,
+    actor_observation_from_dict_allow_incomplete,
+)
 from shengji.rl.belief_v2_common_surface import (
     ARRAY_FIELDS,
     BeliefV2CommonSurfaceError,
@@ -63,6 +68,10 @@ def test_complete_synthetic_and_incomplete_replay_have_identical_model_bytes():
     _, full, replay_only, _ = _state()
     assert full.attempted_play_history_complete is True
     assert replay_only.attempted_play_history_complete is False
+    assert actor_observation_from_dict_allow_incomplete(
+        replay_only.to_dict()) == replay_only
+    with pytest.raises(BeliefReopenError, match="history is incomplete"):
+        actor_observation_from_dict(replay_only.to_dict())
     first = build_common_surface_tensors(
         full, behavior_policy_ids=POLICIES)
     second = build_common_surface_tensors(

@@ -525,6 +525,15 @@ priority is multi-rank champion capture and whichever training layout wins the
 source-pinned epoch benchmark. No cloud should be powered merely to hold an
 idle reviewed process.
 
+The first V2 execution freeze remains single-host: every stage re-authenticates
+one exact runtime/native/boot profile. Concurrency above therefore means
+parallel processes on that host. Running REF-C on Cloud while training on
+Mini would require a separately reviewed, hash-closed stage export/import and
+role-specific runtime profiles; that distributed boundary is not implemented
+or silently authorized by this design. The device-neutral code and portable
+CPU checkpoint format preserve that future path without weakening the first
+packet.
+
 The current immutable V1 supervisor remains sequential and may not be split,
 migrated, or retrofitted with any V2 optimization.
 

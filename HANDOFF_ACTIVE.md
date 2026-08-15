@@ -8,50 +8,52 @@
 > This file is current executable truth only. Historical detail belongs in
 > `docs_archive/`; `HANDOFF_REVIEW.md` remains the evidence authority.
 
-Review queue reconciled: 2026-08-14 13:46 EDT from canonical main `38edd36`.
-Fleet rows retain the 11:47 EDT score-free snapshot below.
+Review queue and fleet reconciled: 2026-08-15 00:11 EDT from canonical main
+`483ed02`. No sealed outcome bytes were opened during reconciliation.
 
 ## Live fleet
 
 | host | current work | safe state and next boundary |
 |---|---|---|
-| **Mini** | idle | T4 is terminally reviewed `SELECT_NONE`. The PR #103 differential soak completed all 10,000,000 deterministic rounds / 744,566,732 plays, 8/8 PASS with no native/pure mismatch. It opened no sealed evidence and grants no strength authority. |
-| **Air** | broad Pair-aware screen, eight workers | Exact source `cd206707`; all eight workers remain alive and CPU-bound. Latest reviewed score-free floor is `4,640/7,168` (64.73%); 0/8 terminal. Only about 13.9 hours remain before the fixed ~23:29 EDT cutoff, so timeout is now the expected transition. Outcomes stay sealed; do not intervene. The selective-S6 queue remains asleep behind the supervisor. |
-| **Strength Cloud** | idle | S4 finished both tranches and independent canonical terminal review `15e8dbb` reproduced final SHA `0aef1ca8…e90` and `SELECT_NONE`. The PR #103 x86 differential soak also completed 2,000,000 rounds, PASS with no mismatch. No retry/candidate action follows. |
-| **Performance Cloud** | fresh Pair checkpoint screen, 16 workers | Packet `f2878fff…a5c9c` PASSed at `95242b4` and started exactly once under systemd invocation `ac5425e0e106403e9a82a7bd8cb5b221`. First score-free heartbeat is 0/224 microshards, 16 workers alive, `outcomes_opened=false`; admission and review snapshot are immutable, manifest absent. Runtime cap is 52h. Do not restart, resume, open outcome bytes or aggregate. |
+| **Mini** | idle | No BELIEF corpus, training, test opening or scored job is running. T4 is terminally reviewed `SELECT_NONE`; the PR #103 10,000,000-round differential soak also completed 8/8 PASS without opening sealed evidence. |
+| **Air** | idle after terminal timeout | Broad Pair source `cd206707` ended at 23:29 EDT with `REFUSED: pair screen supervisor timeout`, 0/8 terminal shards and no complete score-free final. Canonical review ledger `483ed02` records the fail-closed terminal. The sleeping selective-S6 queue exited 72/HOLD and did not launch. No process remains. |
+| **Strength Cloud** | powered off / unreachable | S4 is independently terminal `SELECT_NONE`. The user powered the host off without deleting it; SSH is unreachable. Do not infer a live job or power it on without an approved packet. |
+| **Performance Cloud** | powered off / recovery HOLD | A reviewed fresh Pair checkpoint packet had started once under invocation `ac5425e0e106403e9a82a7bd8cb5b221`, but the host is now powered off/unreachable with no reviewed terminal preceding shutdown. Conservatively treat that one-shot admission as interrupted/spent. Do not restart, resume, open outcomes or aggregate; a future power-on permits read-only score-free recovery audit only. |
 | **Production** | release 18, champion `mc-s0-report-lcb` | No deploy, restart, room wipe or policy change without explicit user approval. Running sealed jobs remain on their exact pinned trees; merged optimizations never alter them in place. |
 
 ## Review queue — precise asks
 
-1. **PR #112 BELIEF-V1 B2 HOLD-repair re-review — no run authority.**
-   Review exact stacked head `a9de2b866ee6fc939abdb46b40d6fb9c19331e88`
-   over held `290af7ee` and PR #111. Production/design bytes are unchanged;
-   the successor adds only 118 lines to the ownership tests, SHA
-   `a6ad68415dcb3daff6adb1715687262b383bfc113feb9527c93968dc091520a9`.
-   The complete three-file feature remains the offline calibration design,
-   actor-relative ownership probability schema/validator, and synthetic tests.
-   Recompute file SHAs `1103215e4ee509fdbf0d131061611a3dbe192fd2b8d50c8c2e8ce47b02ed1efb`,
-   `c7024e8150ed5b079891ba12f0d82c9f646cdbcb73634cf6c063c449597e31ef`,
-   and the repaired test SHA above; reproduce 12/12 ownership focused and
-   69/69 adjacent tests in both pure and strict compiled modes. Recheck the
-   four exact-message witnesses requested in the canonical HOLD: expectation-
-   conserving two-copy mass on a one-copy card, two-copy mass on a capacity-one
-   receiver, one-ppb card expectation drift, and card-balanced one-ppb receiver
-   expectation drift. Neutralizing each named guard makes its witness go red.
-   Also falsify public-twin identity, incomplete history, banker/kitty receiver
-   scope, model/policy binding, proven voids, and declaration semantics. Audit the frozen
-   4,096-round opened-development population, exact current constraint-
-   consistent REF-C baseline, eight-seed cohort, C/N/U gates, caps, and
-   two-review path. There is no model, writer, sampler, gameplay or runner.
-   PASS means source/design merge-readiness only; it does not authorize corpus
-   capture, training, cloud use, online screening, strength or deployment.
+1. **PR #113 BELIEF-V1 B2 exact-head adversarial re-review — no run authority.**
+   Review exact rebased head `cf188e9a5ddab251e8890651a6d8918b8fe596a9`
+   on canonical base `483ed02`; its final repair commit parent is `ac697929`.
+   The full PR is the one-shot offline B2 capture/reference/training/evaluation
+   implementation. Re-audit the prior 23-agent HOLD repairs, especially the
+   unbiased finite-reference Brier correction in C1/N2/U1, actor-only failed-
+   throw surface, physical actor/target binding, exact training continuity,
+   authenticated remote review, durable outside-root consumption tombstone,
+   pyc/import/runtime closure, independently witnessed terminal rehash and
+   parallel wall-span guards, C2 descriptive-only routing, marginal-only C3,
+   explicit C4 shim, and U1=C1 alias.
+
+   The superseding delta must leave production `memory.py` byte-identical to
+   main SHA `905873b3…40cf51` while representing each still-unplayed banker-
+   declared copy as eligible only for banker hand or hidden kitty. Verify that
+   exact disjunction through actor schema v3, strict reopen, input bounds,
+   projection, marginal validation and every complete REF-C world; prove an
+   expectation/size-conserving move to an unrelated hand is refused. Bind the
+   sound adapter itself into REF-C source identity. Reproduce 180/180 BELIEF
+   and 139/139 broader engine/server tests in pure and strict compiled modes;
+   golden `mc-13` must stay exact. PASS means source merge-readiness only and
+   must explicitly leave corpus generation, training, test opening, cloud,
+   gameplay, online sampling, strength and deployment authority false.
 
 2. **PR #107 performance wave-two repaired-head re-review — not launch-critical.**
-   Exact successor `34ea5a6f08da4b482f4cfc889c48dcf2b4bbd9a4` removes the stale
-   identity cache in favor of explicit per-world prepared hands and restores
-   the exact 33-card native admission. Reproduce the mutation/fresh-copy/direct
-   call/route witnesses and resolve its current failing CI before any x86 A/B.
-   The prior 7.05% ARM timing is exploratory and cannot retain this head.
+   Exact current head `a064ac4108c748de1954de94646b63e17d72a017` is green and
+   mergeable. Reproduce the stale-cache in-place mutation witness, one lazy
+   preparation per accepted world, fresh candidate copies, direct-call and
+   stub seams, and exact 33-card native admission with sentinel-proven fallback
+   at 34/64/128/129 cards. The prior 7.05% ARM timing remains exploratory;
+   code PASS only permits a separately frozen x86 A/B design.
 
 This block is the canonical hourly-review input. Posting, closing or changing
 any review request requires updating this block in the same operational pass;
@@ -59,14 +61,12 @@ PR comments alone are not queue state.
 
 ## Execution and terminal queue
 
-1. **Pair checkpoint successor.** Capacity V2 terminal PASS at `482119b`
-   confirms 47.88 projected hours <= the reviewed 52h cap. PR #106 source
-   `71356b2` PASSed at `83c6909`; exact packet `f2878fff…a5c9c` PASSed at
-   `95242b4` and started once at 09:56 EDT. Systemd owns all 16 workers under
-   invocation `ac5425e0e106403e9a82a7bd8cb5b221`; first heartbeat is 0/224,
-   outcomes unopened. Monitor score-free heartbeats only. Completion publishes
-   a score-free manifest for separate review; no resume or aggregate command
-   exists and any interruption spends the admission.
+1. **Pair checkpoint successor recovery HOLD.** Capacity and packet review
+   remain authentic, but the one-shot Performance Cloud invocation is no
+   longer reachable after host shutdown and has no reviewed terminal. Treat
+   it as interrupted/spent. On any future power-on, inspect only service state,
+   score-free heartbeats and terminal file population; do not resume, retry,
+   open result bytes or aggregate without a fresh reviewed recovery design.
 
 2. **S6 V3.** Terminal PASS at `482119b` verifies 64/64 closed receipts. The
    V1 aggregate admission was spent by a deterministic canonical-key-order
@@ -77,16 +77,15 @@ PR comments alone are not queue state.
    hypothesis-generating; no retry, fresh design, screen or strength action.
 
 3. **S4 terminal sequence.** Both tranches and the exact pinned verifier are
-   complete. Canonical independent review `15e8dbb` reproduced `SELECT_NONE`,
-   final SHA `0aef1ca8…e90`, `strength_claim=false` and
-   `production_promotion=false`. Never retry or reinterpret the terminal
-   decision. Strength Cloud is idle.
+  complete. Canonical independent review `15e8dbb` reproduced `SELECT_NONE`,
+  final SHA `0aef1ca8…e90`, `strength_claim=false` and
+  `production_promotion=false`. Never retry or reinterpret the terminal
+  decision. Strength Cloud is powered off.
 
-4. **Air Pair terminal/timeout sequence.** Do not intervene, resize or extend.
-   If the supervisor publishes a valid score-free final, review it before any
-   aggregation. If the immutable timeout fires, preserve the terminal HOLD;
-   the sleeping S6 queue must not interpret that as a clean release. The fresh
-   checkpoint successor is already running separately on Performance Cloud.
+4. **Air Pair terminal timeout.** Canonical ledger `483ed02` verifies the fixed
+   64.08h timeout, 0/8 terminal shards, no complete score-free final and no
+   published evidence. The S6 queue correctly held rather than interpreting
+   timeout as release. Preserve this terminal HOLD; no aggregation or retry.
 
 ## Landed and closed anchors
 
@@ -101,6 +100,9 @@ PR comments alone are not queue state.
   corpus, training, run, strength or deployment authority. Typed actor/target
   boundary PR #111 exact `7ebfcf7` PASSed at `e8ba1a0` and merged at
   `9f0647e`; its in-memory rows likewise grant no capture or training run.
+  Offline ownership design/schema PR #112 exact `a9de2b8` PASSed and merged at
+  `b316470`; PR #113 is its still-unapproved execution implementation and no
+  BELIEF population has been spent.
 - **Performance:** exact measured arm `a91eb271` was 29.3203% faster with
   exact normalized semantics; PR #98 merged the byte-identical production
   runtime as `fe04fa2`. A later current-main diagnostic failed its strict

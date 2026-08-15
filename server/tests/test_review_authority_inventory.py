@@ -4,6 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 REQUIRED_MARKERS = (
     "H0_HUMAN_COUNTERFACTUAL_CONTROLLER_V2_REVIEW",
@@ -37,6 +39,16 @@ def _raw_markers(raw: bytes) -> dict[str, set[bytes]]:
                         for byte in head)):
             markers.setdefault(head.decode(), set()).add(line)
     return markers
+
+
+def _assert_archived_markers_survive_appends(
+        source_markers: dict[str, set[bytes]],
+        active_markers: dict[str, set[bytes]]) -> None:
+    """Require the frozen set exactly while permitting later marker names."""
+    later_marker_names = set(active_markers) - set(source_markers)
+    assert later_marker_names
+    for name, archived_lines in source_markers.items():
+        assert active_markers.get(name) == archived_lines, name
 
 
 def test_source_required_review_markers_survive_ledger_rotation() -> None:
@@ -87,4 +99,20 @@ def test_rotation_archive_is_exact_and_preserves_every_raw_marker() -> None:
     active_markers.pop(ROTATION_PREFIX.rstrip(), None)
     assert all(len(lines) == 1 for lines in source_markers.values())
     assert all(len(lines) == 1 for lines in active_markers.values())
-    assert active_markers == source_markers
+    # Rotation must preserve every archived authority marker byte-for-byte,
+    # but the active append-only ledger must remain able to introduce new
+    # markers after the frozen archive cutoff.  Equality made the first
+    # legitimate post-rotation review marker fail this guard forever.
+    _assert_archived_markers_survive_appends(source_markers, active_markers)
+
+
+def test_rotation_marker_relation_refuses_missing_or_changed_archive() -> None:
+    source = {"OLD_REVIEW": {b'OLD_REVIEW {"verdict":"PASS"}'}}
+    later = {"NEW_REVIEW": {b'NEW_REVIEW {"verdict":"PASS"}'}}
+    with pytest.raises(AssertionError, match="OLD_REVIEW"):
+        _assert_archived_markers_survive_appends(source, later)
+    with pytest.raises(AssertionError, match="OLD_REVIEW"):
+        _assert_archived_markers_survive_appends(source, {
+            **later,
+            "OLD_REVIEW": {b'OLD_REVIEW {"verdict":"HOLD"}'},
+        })

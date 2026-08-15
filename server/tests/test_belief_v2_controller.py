@@ -85,6 +85,7 @@ from shengji.rl.belief_v2_training import (
 )
 from shengji.rl.belief_v2_training_controller import (
     BeliefV2TrainingControllerError,
+    _resource_row,
     reopen_training_cohort,
     run_training_cohort,
 )
@@ -741,6 +742,8 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
         torch.use_deterministic_algorithms(previous)
     assert reopened == manifest
     assert trained.training_device == "cpu"
+    assert manifest["resources"]["peak_host_memory_bytes"] > 0
+    assert manifest["resources"]["peak_device_memory_bytes"] == 0
     assert manifest["test_split_opened"] is False
     assert manifest["deployment_authorized"] is False
     checkpoint = directory / "member-00.checkpoint.bin"
@@ -757,3 +760,23 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
             calibration_examples=calibration,
             qualification_plan=qualification_plan,
             qualification_result=qualification_result)
+
+
+def test_full_training_resource_receipt_enforces_its_own_memory_peaks(
+        tmp_path):
+    freeze = _freeze((tmp_path / "evidence").resolve())
+    caps = freeze.resource_caps
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="resource cap"):
+        _resource_row(
+            freeze, started=10, finished=20, cpu_nanoseconds=5,
+            artifact_bytes=1, selected_device="mps",
+            peak_host_memory_bytes=caps.training_host_memory_bytes + 1,
+            peak_device_memory_bytes=0)
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="resource cap"):
+        _resource_row(
+            freeze, started=10, finished=20, cpu_nanoseconds=5,
+            artifact_bytes=1, selected_device="mps",
+            peak_host_memory_bytes=1,
+            peak_device_memory_bytes=caps.training_device_memory_bytes + 1)

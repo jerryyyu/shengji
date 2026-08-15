@@ -4,15 +4,15 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 07:45 EDT.
+Last reconciled: 2026-08-15 09:16 EDT after Mini B2 admission and start.
 
 ## Immediate objective
 
-Finish the BELIEF-V1 B2 source gate, then use one consolidated Mini execution
-to answer the offline question: does a history-aware, actor-visible ownership
-model improve held-out hidden-card calibration over the corrected current
-constraint sampler? This is an infrastructure/calibration milestone, not a
-strength or deployment claim.
+Complete the exact reviewed Mini-specific BELIEF-V1 B2 offline run, then obtain
+one independent terminal reproduction answering whether a history-aware,
+actor-visible ownership model improves held-out hidden-card calibration over
+the corrected current constraint sampler. This is an infrastructure/
+calibration milestone, not a strength or deployment claim.
 
 In parallel, implement the reviewed three-arm ballot-widening confirmation
 design as the next whole-game causal experiment. Defer the Pair checkpoint V2
@@ -20,48 +20,42 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 
 ## Review queue — precise asks
 
-1. **PR #113 BELIEF-V1 B2 delta re-review — current blocker.** Review exact
-   head `0da43a00c7e556ff7d7734ec4e883af293bb8b23`, parent
-   `529664f4fd10a51a14991f6d5a5c27db39a37596`, under PR comment
-   `5302070481`. Scope is the nine-file final delta. Re-run the four named
-   mutations: ECE-only repooling; literal-zero mechanics counters;
-   winner-to-next-leader neutralization; attacker-points neutralization.
-   Verify the post-observer recapture still produces the named mutation
-   refusal. Return exact-head PASS or a precise HOLD. PASS is source
-   merge-readiness only: no freeze, corpus generation, training, test opening,
-   cloud use, gameplay, strength, promotion or deployment authority.
+1. **BELIEF Mini V2 terminal review — wait for natural completion.** Exact
+   design `a8c5e05f…1fd53` passed at canonical review commit `209407f` and the
+   reviewed supervisor is running. Do not inspect the sealed log, corpus,
+   targets, reference worlds, checkpoints or terminal bytes while it runs.
+   After `verify-terminal` completes, independently reopen the exact immutable
+   artifacts, recompute the terminal decision, and append one terminal marker.
+   No per-stage review handshake or retry is needed unless a named guard fails.
 
-2. **No other current review request.** The next review starts only after
-   either (a) PR #113 lands and a fresh Mini-specific V2 design is frozen, or
-   (b) the three-arm widening implementation publishes an exact source/design
-   head. Do not spend the hourly review cycle re-reviewing closed or spent
-   S4/S6/T4/Pair artifacts.
+2. **Repository hygiene follows compute admission.** PR #115 and compacted
+   docs PR #114 are green/mergeable but are not the current compute blocker.
 
 ## BELIEF-V1 current truth
 
 | layer | state | what it proves / does not prove |
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
-| **B2 offline pipeline source** | PR #113 exact `0da43a0` published. Local validation: 62 focused; 186/186 BELIEF pure; 186/186 strict compiled/void; 139 broader pure; 112 broader compiled/parity plus 2 expected skips. Four named mutations killed. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. External delta PASS is still pending. |
-| **B2 data/result** | Absent. No accepted V2 design, namespace, corpus, reference worlds, checkpoint, test result or terminal report exists. | No calibration lift has been measured. |
+| **B2 offline pipeline source** | PR #113 exact `3ee0eb8` externally PASSed and merged byte-preservingly through main `959c05d`; 187 BELIEF tests passed in pure and strict compiled modes. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
+| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f`, initialized once, and started the 16-lane capture stage at 09:16 EDT. The durable tombstone and sealed supervisor log exist; test opening and terminal result remain pending. | Exact offline execution is active under its caps. No calibration lift has been measured or reviewed yet. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
 The earlier Mini design belongs to a rejected source head and must never
-initialize. After source merge, freeze a new V2 design from a clean detached
-Mini checkout; it requires one exact marker review before the consolidated run.
+initialize. The V2 design's single reviewed admission is now consumed by the
+active run and cannot retry.
 
 ## Compute and fleet
 
 | host | current state | next use |
 |---|---|---|
-| **Mini** | Idle; no BELIEF job has started. | After PR #113 source PASS/merge and exact V2 design-marker PASS, run the consolidated B2 pipeline. |
+| **Mini** | **BELIEF-V1 B2 running.** Exact review `209407f`; supervisor and 16 capture lanes started at 09:16 EDT. | Monitor only process/resource/path metadata. After natural completion, request terminal reproduction. |
 | **Air** | Idle after the broad Pair fixed timeout. | No retry/resume/partial use. Keep free unless a new reviewed job is selected. |
 | **Strength Cloud** | Powered off. | Keep off; S4 terminally selected none. |
 | **Performance Cloud** | Powered off. | Keep off; the Pair checkpoint V1 attempt was spent and produced no terminal evidence. |
 | **Production** | `mc-s0-report-lcb`, release 18. | Unchanged by BELIEF-V1; no deployment authority. |
 
-The frozen planning caps for the eventual Mini B2 run are 4,096 champion
+The frozen caps for the active Mini B2 run are 4,096 champion
 rounds split 3,279 train / 407 calibration / 410 test; 16 capture lanes; 256
 REF-C worlds per held-out decision; eight candidate and eight permuted-label
 members. Planning caps are 16 capture core-hours / 2 wall-hours, 64 reference
@@ -69,7 +63,7 @@ core-hours / 8 wall-hours, and 32 device-hours / 8 wall-hours. Fresh host
 preflight and the V2 design remain authoritative; these are ceilings, not a
 promise that every stage consumes the full amount.
 
-One reviewed marker should cover the complete sequence: initialize, capture,
+Review commit `209407f` covers the complete sequence: initialize, capture,
 reference generation, both cohorts, the single test-decision opening, terminal
 verification. Do not insert per-stage review handshakes unless a named guard
 fails. Any failure consumes only the authority defined by the frozen design;

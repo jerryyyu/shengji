@@ -36,6 +36,9 @@ from shengji.rl.belief_v2_execution_identity import (
     V2SourceBindingV1,
     source_manifest_sha256,
 )
+from shengji.rl.belief_v2_device_qualification import (
+    qualification_protocol_sha256,
+)
 
 
 def _sha(char: str) -> str:
@@ -141,6 +144,9 @@ def _freeze():
         preflight_runtime_sha256=_sha("2"),
         seed_registry_sha256=_sha("3"),
         seed_candidate_report_sha256=_sha("4"),
+        training_candidate_device="mps",
+        device_qualification_protocol_sha256=(
+            qualification_protocol_sha256("mps")),
         cohorts=_cohorts(),
         resource_caps=V2ResourceCapsV1(
             capture_core_hours=64, capture_wall_seconds=14_400,
@@ -148,7 +154,9 @@ def _freeze():
             reference_core_hours=16, reference_wall_seconds=7_200,
             reference_bytes=16 * 1024**3,
             training_device_hours=128, training_wall_seconds=86_400,
-            training_bytes=32 * 1024**3),
+            training_bytes=32 * 1024**3,
+            training_host_memory_bytes=24 * 1024**3,
+            training_device_memory_bytes=12 * 1024**3),
         evidence_root="/tmp/belief-v2-evidence")
 
 
@@ -159,6 +167,9 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
     assert reopened == freeze
     claim = expected_execution_review_claim(freeze)
     assert claim["bounded_capture_reference_training_and_one_test_open_authorized"] is True
+    assert claim["training_candidate_device"] == "mps"
+    assert claim["device_qualification_protocol_sha256"] \
+        == qualification_protocol_sha256("mps")
     assert claim["retry_authorized"] is False
     assert claim["gameplay_strength_screen_authorized"] is False
     assert claim["deployment_authorized"] is False
@@ -197,6 +208,15 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
      "lacks named reentry"),
     (lambda freeze: replace(freeze, human_test_group_count=2),
      "identity drift"),
+    (lambda freeze: replace(freeze, training_candidate_device="cpu"),
+     "device qualification protocol drift"),
+    (lambda freeze: replace(
+        freeze, device_qualification_protocol_sha256=_sha("7")),
+     "device qualification protocol drift"),
+    (lambda freeze: replace(
+        freeze, resource_caps=replace(
+            freeze.resource_caps, training_device_memory_bytes=0)),
+     "resource cap identity drift"),
 ])
 def test_freeze_refuses_named_scientific_and_population_mutations(
         mutation, message):
@@ -208,6 +228,17 @@ def test_canonical_reopen_refuses_gate_or_authority_rewrite():
     payload = _freeze().to_dict()
     payload["gates"]["rank_material_regression_tolerance_ppb"] = 6_000_000
     with pytest.raises(BeliefV2FreezeError, match="reconstruction"):
+        execution_freeze_from_bytes(canonical_json_bytes(payload))
+
+    payload = _freeze().to_dict()
+    payload["training_device_qualification"][
+        "fallback_on_integrity_failure"] = True
+    with pytest.raises(BeliefV2FreezeError, match="device qualification"):
+        execution_freeze_from_bytes(canonical_json_bytes(payload))
+
+    payload = _freeze().to_dict()
+    payload["training_device_qualification"]["candidate_device"] = "cuda:0"
+    with pytest.raises(BeliefV2FreezeError, match="device qualification"):
         execution_freeze_from_bytes(canonical_json_bytes(payload))
 
     payload = _freeze().to_dict()

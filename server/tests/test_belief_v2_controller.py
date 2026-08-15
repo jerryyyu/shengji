@@ -23,6 +23,9 @@ from shengji.rl.belief_v2_execution_identity import (
     V2SourceBindingV1,
     source_manifest_sha256,
 )
+from shengji.rl.belief_v2_device_qualification import (
+    qualification_protocol_sha256,
+)
 from shengji.rl.belief_v2_freeze import (
     ALL_HUMAN_TRAIN_DECISIONS,
     ALL_SYNTHETIC_TRAIN_DECISIONS,
@@ -145,14 +148,20 @@ def _freeze(root: Path):
         preflight_result_sha256=_sha("1"),
         preflight_runtime_sha256=_sha("2"),
         seed_registry_sha256=_sha("3"),
-        seed_candidate_report_sha256=_sha("4"), cohorts=_cohorts(),
+        seed_candidate_report_sha256=_sha("4"),
+        training_candidate_device="mps",
+        device_qualification_protocol_sha256=(
+            qualification_protocol_sha256("mps")),
+        cohorts=_cohorts(),
         resource_caps=V2ResourceCapsV1(
             capture_core_hours=64, capture_wall_seconds=14_400,
             capture_bytes=16 * 1024**3,
             reference_core_hours=16, reference_wall_seconds=7_200,
             reference_bytes=16 * 1024**3,
             training_device_hours=128, training_wall_seconds=86_400,
-            training_bytes=32 * 1024**3),
+            training_bytes=32 * 1024**3,
+            training_host_memory_bytes=24 * 1024**3,
+            training_device_memory_bytes=12 * 1024**3),
         evidence_root=str(root))
 
 

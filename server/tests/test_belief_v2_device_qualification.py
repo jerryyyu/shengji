@@ -13,6 +13,7 @@ from shengji.rl.belief_v2_device_qualification import (
     V2DeviceQualificationArmV1,
     build_qualification_plan,
     derive_qualification_result,
+    qualification_protocol_sha256,
     validate_qualification_plan,
     validate_qualification_result,
 )
@@ -92,6 +93,9 @@ def test_plan_is_digest_selected_closed_and_authorizes_nothing():
         device_memory_cap_bytes=8 * 1024**3)
     assert changed.full_schedule_sha256 != plan.full_schedule_sha256
     assert changed.sha256() != plan.sha256()
+    assert len(qualification_protocol_sha256("mps")) == 64
+    assert qualification_protocol_sha256("mps") \
+        != qualification_protocol_sha256("cuda:0")
 
 
 def test_three_paired_positive_20_percent_runs_retain_accelerator():

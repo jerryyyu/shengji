@@ -37,6 +37,10 @@ from .belief_v2_execution_identity import (
     validate_runtime_profile,
     validate_source_bindings,
 )
+from .belief_v2_accelerator import canonical_training_device
+from .belief_v2_device_qualification import (
+    qualification_protocol_sha256,
+)
 
 
 FREEZE_SCHEMA = "belief-v1-v2-offline-execution-freeze-v1"
@@ -193,6 +197,8 @@ class V2ResourceCapsV1:
     training_device_hours: int
     training_wall_seconds: int
     training_bytes: int
+    training_host_memory_bytes: int
+    training_device_memory_bytes: int
     schema: str = CAP_SCHEMA
 
     def to_dict(self) -> dict[str, Any]:
@@ -207,6 +213,8 @@ class V2ResourceCapsV1:
             "training_device_hours": self.training_device_hours,
             "training_wall_seconds": self.training_wall_seconds,
             "training_bytes": self.training_bytes,
+            "training_host_memory_bytes": self.training_host_memory_bytes,
+            "training_device_memory_bytes": self.training_device_memory_bytes,
         }
 
 
@@ -217,7 +225,8 @@ def _validate_caps(caps: V2ResourceCapsV1) -> None:
                 caps.capture_bytes, caps.reference_core_hours,
                 caps.reference_wall_seconds, caps.reference_bytes,
                 caps.training_device_hours, caps.training_wall_seconds,
-                caps.training_bytes)):
+                caps.training_bytes, caps.training_host_memory_bytes,
+                caps.training_device_memory_bytes)):
         raise BeliefV2FreezeError("V2 resource cap identity drift")
 
 
@@ -249,6 +258,8 @@ class V2ExecutionFreezeV1:
     preflight_runtime_sha256: str
     seed_registry_sha256: str
     seed_candidate_report_sha256: str
+    training_candidate_device: str
+    device_qualification_protocol_sha256: str
     cohorts: tuple[V2CohortPlanV1, ...]
     resource_caps: V2ResourceCapsV1
     evidence_root: str
@@ -307,6 +318,13 @@ class V2ExecutionFreezeV1:
                 "candidate_report_sha256": (
                     self.seed_candidate_report_sha256),
                 "v2_collision_count": 0,
+            },
+            "training_device_qualification": {
+                "candidate_device": self.training_candidate_device,
+                "protocol_sha256": (
+                    self.device_qualification_protocol_sha256),
+                "cpu_fallback_on_performance_miss": True,
+                "fallback_on_integrity_failure": False,
             },
             "population": {
                 "round_count": V2_ROUND_COUNT,
@@ -374,7 +392,8 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
                 freeze.preflight_result_sha256,
                 freeze.preflight_runtime_sha256,
                 freeze.seed_registry_sha256,
-                freeze.seed_candidate_report_sha256)) \
+                freeze.seed_candidate_report_sha256,
+                freeze.device_qualification_protocol_sha256)) \
             or freeze.v1_terminal_route not in V1_ROUTES \
             or type(freeze.cohorts) is not tuple or not freeze.cohorts \
             or type(freeze.evidence_root) is not str \
@@ -406,6 +425,17 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
                    freeze.human_calibration_eligible_decision_count,
                    freeze.human_test_eligible_decision_count) <= 0:
         raise BeliefV2FreezeError("V2 execution freeze identity drift")
+    try:
+        candidate_device = canonical_training_device(
+            freeze.training_candidate_device)
+    except ValueError as exc:
+        raise BeliefV2FreezeError(
+            "V2 training candidate device drift") from exc
+    if candidate_device == "cpu" \
+            or freeze.device_qualification_protocol_sha256 \
+            != qualification_protocol_sha256(candidate_device):
+        raise BeliefV2FreezeError(
+            "V2 device qualification protocol drift")
     # The exact synthetic decision count is deliberately not guessed before
     # capture.  Every complete play-phase round has at least one four-seat
     # trick, so this lower bound proves that consuming every H0 training
@@ -604,12 +634,22 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
             "capture_bytes", "reference_core_hours",
             "reference_wall_seconds", "reference_bytes",
             "training_device_hours", "training_wall_seconds",
-            "training_bytes"}:
+            "training_bytes", "training_host_memory_bytes",
+            "training_device_memory_bytes"}:
         raise BeliefV2FreezeError("V2 resource cap field drift")
     route = payload["v1_route"]
     human = payload["human_inventory"]
     capacity = payload["capacity"]
     registry = payload["seed_registry"]
+    device = payload.get("training_device_qualification")
+    if type(device) is not dict or set(device) != {
+            "candidate_device", "protocol_sha256",
+            "cpu_fallback_on_performance_miss",
+            "fallback_on_integrity_failure"} \
+            or device["cpu_fallback_on_performance_miss"] is not True \
+            or device["fallback_on_integrity_failure"] is not False:
+        raise BeliefV2FreezeError(
+            "V2 device qualification field drift")
     try:
         freeze = V2ExecutionFreezeV1(
             schema=payload["schema"], execution_git=payload["execution_git"],
@@ -643,6 +683,9 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
             seed_registry_sha256=registry["registry_sha256"],
             seed_candidate_report_sha256=(
                 registry["candidate_report_sha256"]),
+            training_candidate_device=device["candidate_device"],
+            device_qualification_protocol_sha256=(
+                device["protocol_sha256"]),
             cohorts=tuple(cohorts),
             resource_caps=V2ResourceCapsV1(**caps),
             evidence_root=payload["evidence_root"])
@@ -668,6 +711,9 @@ def expected_execution_review_claim(
         "runtime_profile_sha256": _sha256(canonical_json_bytes(
             freeze.runtime.to_dict())),
         "seed_registry_sha256": freeze.seed_registry_sha256,
+        "device_qualification_protocol_sha256": (
+            freeze.device_qualification_protocol_sha256),
+        "training_candidate_device": freeze.training_candidate_device,
         "evidence_root": freeze.evidence_root,
         "bounded_capture_reference_training_and_one_test_open_authorized": True,
         "retry_authorized": False,

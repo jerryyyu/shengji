@@ -361,12 +361,14 @@ V2 optimizes measured stages in this order:
    deterministic per-member workers or an ensemble-batched implementation.
    Preserve all 8+8 members, exact common-epoch selection, and receipt chains;
    no best seed may be retained.
-5. **Device choice:** benchmark one source-pinned epoch on Mini CPU, Mini MPS,
-   and the intended cloud device. The Mini has an available 10-core M4 GPU,
-   but V1 deliberately pinned CPU and cannot be changed in flight. V2 freezes
-   MPS or a cloud accelerator only if end-to-end wall time, including input
-   transfer and projection, materially improves and the reviewed probability,
-   optimizer, checkpoint, and reproducibility contracts still hold.
+5. **Device choice:** freeze one exact accelerator candidate (`mps` or an
+   indexed `cuda:N`) and qualify it against CPU on the realized primary
+   schedule. The Mini has an available 10-core M4 GPU, but V1 deliberately
+   pinned CPU and cannot be changed in flight. V2 retains the candidate only
+   if end-to-end wall time, including input transfer and projection,
+   materially improves and the reviewed probability, optimizer, checkpoint,
+   memory, and reproducibility contracts still hold. Comparing unrelated
+   machines is a separate capacity decision, not part of this device gate.
 6. **Native sampler work:** profile only after replay. A native REF-C assignment
    kernel is lower priority if replay reduces the complete reference stage to
    a small fraction of capture/training cost.
@@ -383,8 +385,8 @@ runtime consumer do not inherit an accelerator dependency.
 
 Device qualification occurs after capture and before either final training
 cohort begins. It uses the same digest-selected train batches, model seeds,
-optimizer, and batch order for all arms. CPU and each available accelerator get
-one warmup arm that is excluded from evidence, followed by three paired
+optimizer, and batch order for all arms. CPU and the one frozen candidate get
+one warmup arm each that is excluded from evidence, followed by three paired
 measured arms in alternating order. An accelerator is retained only if all of
 the following are true: all arms complete without fallback; its three same-seed
 reruns produce one checkpoint digest and one loss receipt; every paired
@@ -406,6 +408,16 @@ The result reopens all eight member checkpoint hashes and loss receipts from
 every measured arm; any within-device rerun drift, fallback, missing arm,
 population/schedule change, or memory-cap breach refuses rather than selecting
 CPU. CPU fallback is permitted only for an honest performance miss.
+
+The execution freeze now binds the exact candidate-device identity, the
+canonical digest of this qualification protocol, and separate host/device
+memory caps. This prevents a post-review choice of whichever device happened
+to look fastest. The actual qualification plan remains post-capture because
+its 32 batches are derived from the sealed realized primary schedule; its
+result must be published and reopened before final training begins. The same
+source-neutral training path is then used for every cohort on the retained
+device, which makes accelerator use a scalable V2 property rather than a
+machine-local optimization.
 
 The running V1 packet is excluded from this qualification. Mini benchmarking
 must wait until its V1 training process exits, so qualification cannot perturb
@@ -582,7 +594,9 @@ authority, or sealed-resource boundary changes.
 - exact review disposition and repair head for PR #116;
 - an implementation and tensor-level witness for the historical attempted-
   channel absence mask;
-- the CPU-versus-MPS-versus-cloud source-pinned epoch benchmark;
+- the post-capture CPU-versus-frozen-candidate qualification result bound to
+  the exact realized primary schedule (the candidate, protocol, and memory
+  caps are already execution-freeze fields);
 - the exact fresh seed namespace, split hashes, and source-log digest set;
 - post-capture exact work-manifest derivation implementing the reviewed
   all-human-once replacement rule and the literal 0.5% familywise material-

@@ -29,6 +29,11 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    `0400`, one link, canonical/live reopen, clean checkout, one native binary,
    no bytecode, and absent evidence/partial/tombstone/log paths. Review the
    exact `BELIEF_V1_B2_RUNBOOK.md` stage order, caps and false authority map.
+   Also review the unexecuted mode-`0500`, one-link supervisor at
+   `/Users/jerryyu/Projects/belief-v1-b2-mini-v2/supervisor.sh`, SHA-256
+   `c26d8509037b0f84bed2947f03ce2c54e39fcd726bac1254af0bd272c667a78c`:
+   it must use exclusive mode-`0600` sealed logging, wait for every child,
+   advance only on all-zero stages, open the test once, and contain no retry.
    Introduce exactly one `BELIEF_V1_B2_OFFLINE_EXECUTION_V1_REVIEW` marker on
    canonical main. PASS authorizes only this exact consolidated offline run;
    it cannot authorize B3, gameplay, strength or deployment.

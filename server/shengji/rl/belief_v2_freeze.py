@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,15 @@ FREEZE_SCHEMA = "belief-v1-v2-offline-execution-freeze-v1"
 COHORT_SCHEMA = "belief-v1-v2-training-cohort-plan-v1"
 CAP_SCHEMA = "belief-v1-v2-resource-caps-v1"
 REVIEW_SCHEMA = "belief-v1-v2-offline-execution-review-v1"
+ADMISSION_SCHEMA = "belief-v1-v2-offline-pipeline-admission-v1"
+CONSUMPTION_SCHEMA = "belief-v1-v2-offline-consumption-tombstone-v1"
+REVIEW_PREFIX = "BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW "
+REVIEW_LEDGER = "HANDOFF_REVIEW.md"
+REVIEWER_NAME = "Claude"
+REVIEWER_EMAIL = "noreply@anthropic.com"
+REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
+CANONICAL_REMOTE_URL = "https://github.com/jerryyyu/shengji.git"
+CANONICAL_REMOTE_REF = "refs/heads/main"
 RUN_ID = "belief-v1-v2-all-ranks-human-offline-v1"
 V1_ROUTES = (
     "v1-pass-to-b3",
@@ -517,3 +527,212 @@ def expected_execution_review_claim(
         "deployment_authorized": False,
     }
 
+
+@dataclass(frozen=True)
+class V2PipelineAdmissionV1:
+    freeze_sha256: str
+    execution_git: str
+    source_manifest_sha256: str
+    seed_registry_sha256: str
+    review_commit: str
+    canonical_remote_tip: str
+    review_marker_sha256: str
+    evidence_root: str
+    schema: str = ADMISSION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "run_id": RUN_ID,
+            "protocol_sha256": protocol_sha256(),
+            "schedule_sha256": schedule_sha256(),
+            "freeze_sha256": self.freeze_sha256,
+            "execution_git": self.execution_git,
+            "source_manifest_sha256": self.source_manifest_sha256,
+            "seed_registry_sha256": self.seed_registry_sha256,
+            "review_commit": self.review_commit,
+            "canonical_remote_tip": self.canonical_remote_tip,
+            "review_marker_sha256": self.review_marker_sha256,
+            "evidence_root": self.evidence_root,
+            "authority": {
+                "capture_authorized": True,
+                "reference_generation_authorized": True,
+                "training_authorized": True,
+                "one_test_split_open_authorized": True,
+                "terminal_reconstruction_authorized": True,
+                "retry_authorized": False,
+                "sampler_implementation_authorized": False,
+                "gameplay_strength_screen_authorized": False,
+                "strength_claim_authorized": False,
+                "promotion_authorized": False,
+                "deployment_authorized": False,
+            },
+        }
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_json_bytes(self.to_dict())
+
+    def sha256(self) -> str:
+        return _sha256(self.canonical_bytes())
+
+
+def _git(repo: Path, *arguments: str, binary: bool = False) -> str | bytes:
+    try:
+        result = subprocess.run(
+            ("git", *arguments), cwd=repo, check=True,
+            capture_output=True, text=not binary)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BeliefV2FreezeError("V2 review Git authentication failed") \
+            from exc
+    return result.stdout if binary else result.stdout.strip()
+
+
+def _canonical_remote_tip(repo: Path) -> str:
+    try:
+        probe = subprocess.run(
+            ("git", "ls-remote", "--exit-code", CANONICAL_REMOTE_URL,
+             CANONICAL_REMOTE_REF), cwd=repo, check=True,
+            capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BeliefV2FreezeError("V2 canonical remote probe failed") \
+            from exc
+    rows = probe.stdout.splitlines()
+    if len(rows) != 1:
+        raise BeliefV2FreezeError("V2 canonical remote population drift")
+    fields = rows[0].split()
+    if len(fields) != 2 or fields[1] != CANONICAL_REMOTE_REF \
+            or not _is_git_sha(fields[0]):
+        raise BeliefV2FreezeError("V2 canonical remote identity drift")
+    return fields[0]
+
+
+def authenticate_execution_review(
+        freeze: V2ExecutionFreezeV1, *, repo: Path,
+        review_commit: str) -> tuple[bytes, str]:
+    """Authenticate the exact marker against the real canonical remote tip."""
+    validate_execution_freeze(freeze)
+    if not isinstance(repo, Path) or not repo.is_absolute() \
+            or not _is_git_sha(review_commit):
+        raise BeliefV2FreezeError("V2 execution review input drift")
+    remote_tip = _canonical_remote_tip(repo)
+    local_tip = _git(repo, "rev-parse", "origin/main")
+    if local_tip != remote_tip:
+        raise BeliefV2FreezeError(
+            "V2 local canonical ref differs from real remote")
+    try:
+        if subprocess.run(
+                ("git", "merge-base", "--is-ancestor", review_commit,
+                 remote_tip), cwd=repo, capture_output=True).returncode != 0:
+            raise BeliefV2FreezeError(
+                "V2 execution review is not on canonical remote main")
+        parents = str(_git(
+            repo, "show", "-s", "--format=%P", review_commit)).split()
+        if len(parents) != 1:
+            raise BeliefV2FreezeError("V2 execution review parent drift")
+        parent = parents[0]
+        identity = tuple(_git(
+            repo, "show", "-s", f"--format={field}", review_commit)
+                         for field in ("%an", "%ae", "%cn", "%ce"))
+        if identity != (
+                REVIEWER_NAME, REVIEWER_EMAIL,
+                REVIEWER_NAME, REVIEWER_EMAIL):
+            raise BeliefV2FreezeError("V2 execution review actor drift")
+        message = str(_git(
+            repo, "show", "-s", "--format=%B", review_commit))
+        if REVIEWER_SESSION_TRAILER not in message:
+            raise BeliefV2FreezeError("V2 execution review session drift")
+        changed = str(_git(
+            repo, "diff-tree", "--no-commit-id", "--name-only", "-r",
+            review_commit)).splitlines()
+        if changed != [REVIEW_LEDGER]:
+            raise BeliefV2FreezeError("V2 execution review file scope drift")
+        current = _git(
+            repo, "show", f"{review_commit}:{REVIEW_LEDGER}", binary=True)
+        previous = _git(
+            repo, "show", f"{parent}:{REVIEW_LEDGER}", binary=True)
+    except subprocess.CalledProcessError as exc:
+        raise BeliefV2FreezeError("V2 execution review lookup failed") \
+            from exc
+    if type(current) is not bytes or type(previous) is not bytes \
+            or not current.startswith(previous):
+        raise BeliefV2FreezeError(
+            "V2 execution review ledger is not append-only")
+    marker = REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(
+        expected_execution_review_claim(freeze))
+    prefix = REVIEW_PREFIX.encode("ascii")
+    current_matches = [line for line in current.splitlines(keepends=True)
+                       if line.startswith(prefix)]
+    previous_matches = [line for line in previous.splitlines(keepends=True)
+                        if line.startswith(prefix)]
+    if current_matches != [marker] or previous_matches:
+        raise BeliefV2FreezeError(
+            "V2 execution review marker introduction drift")
+    return marker, remote_tip
+
+
+def build_pipeline_admission(
+        freeze: V2ExecutionFreezeV1, *, repo: Path,
+        review_commit: str) -> tuple[V2PipelineAdmissionV1, bytes]:
+    marker, remote_tip = authenticate_execution_review(
+        freeze, repo=repo, review_commit=review_commit)
+    admission = V2PipelineAdmissionV1(
+        freeze_sha256=freeze.sha256(), execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        review_commit=review_commit, canonical_remote_tip=remote_tip,
+        review_marker_sha256=_sha256(marker),
+        evidence_root=freeze.evidence_root)
+    validate_pipeline_admission(freeze, admission, review_marker=marker)
+    return admission, marker
+
+
+def validate_pipeline_admission(
+        freeze: V2ExecutionFreezeV1, admission: V2PipelineAdmissionV1, *,
+        review_marker: bytes) -> None:
+    validate_execution_freeze(freeze)
+    expected_marker = REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(
+        expected_execution_review_claim(freeze))
+    if type(admission) is not V2PipelineAdmissionV1 \
+            or admission.schema != ADMISSION_SCHEMA \
+            or admission.freeze_sha256 != freeze.sha256() \
+            or admission.execution_git != freeze.execution_git \
+            or admission.source_manifest_sha256 \
+            != freeze.source_manifest_sha256 \
+            or admission.seed_registry_sha256 != freeze.seed_registry_sha256 \
+            or not _is_git_sha(admission.review_commit) \
+            or not _is_git_sha(admission.canonical_remote_tip) \
+            or type(review_marker) is not bytes \
+            or review_marker != expected_marker \
+            or admission.review_marker_sha256 != _sha256(review_marker) \
+            or admission.evidence_root != freeze.evidence_root:
+        raise BeliefV2FreezeError("V2 pipeline admission identity drift")
+
+
+def reauthenticate_pipeline_admission(
+        freeze: V2ExecutionFreezeV1, admission: V2PipelineAdmissionV1, *,
+        repo: Path, review_marker: bytes) -> None:
+    """The mandatory gate called by every future stage entry point."""
+    validate_pipeline_admission(
+        freeze, admission, review_marker=review_marker)
+    authentic_marker, remote_tip = authenticate_execution_review(
+        freeze, repo=repo, review_commit=admission.review_commit)
+    if authentic_marker != review_marker \
+            or remote_tip != admission.canonical_remote_tip:
+        raise BeliefV2FreezeError("V2 pipeline admission remote drift")
+
+
+def pipeline_consumption_tombstone_bytes(
+        admission: V2PipelineAdmissionV1) -> bytes:
+    if type(admission) is not V2PipelineAdmissionV1:
+        raise BeliefV2FreezeError("V2 tombstone admission drift")
+    return canonical_json_bytes({
+        "schema": CONSUMPTION_SCHEMA,
+        "run_id": RUN_ID,
+        "admission_sha256": admission.sha256(),
+        "freeze_sha256": admission.freeze_sha256,
+        "review_commit": admission.review_commit,
+        "canonical_remote_tip": admission.canonical_remote_tip,
+        "evidence_root": admission.evidence_root,
+        "initialization_consumed": True,
+        "retry_authorized": False,
+    })

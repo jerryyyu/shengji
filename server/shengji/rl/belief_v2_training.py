@@ -12,7 +12,7 @@ optimizer, model mutation, checkpoint writer, test opener, or run authority.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import torch
@@ -22,6 +22,11 @@ from .belief_evaluation import reopen_score_pair
 from .belief_input import CARD_CODES
 from .belief_tensor import MAX_RECEIVERS
 from .belief_training import (
+    CONTROL_TRAINING_BATCH_SCHEMA,
+    EXACT_TARGET_LABELS,
+    GEOMETRY_PERMUTED_LABELS,
+    LABEL_PERMUTATION_CONTROL,
+    NATURAL_HISTORY,
     BeliefTrainingBatchV1,
     BeliefTrainingError,
     _labels,
@@ -278,3 +283,68 @@ def collate_v2_training_examples(
     if hasattr(batch, "source_kind") or hasattr(batch, "source_identity"):
         raise BeliefV2TrainingError("V2 source identity entered model batch")
     return batch
+
+
+def _geometry_permuted_labels(
+        example: V2TrainingExampleV1) -> tuple[np.ndarray, int]:
+    """Apply the V1 hard-geometry control to the V2 common surface."""
+    labels = example.count_labels
+    active = example.active_mask
+    minimums = example.common.tensors.count_minimums
+    maximums = example.common.tensors.count_maximums
+    groups: dict[tuple[int, ...], list[int]] = {}
+    for card in range(labels.shape[0]):
+        if not bool(active[card].any()):
+            continue
+        key = (*tuple(int(value) for value in minimums[card]),
+               *tuple(int(value) for value in maximums[card]),
+               int(labels[card][active[card]].sum()))
+        groups.setdefault(key, []).append(card)
+    changed = labels.copy()
+    for cards in groups.values():
+        if len(cards) < 2:
+            continue
+        ordered = sorted(cards, key=lambda card: (
+            hashlib.sha256(
+                "belief-v1-b2-negative-control-example-v1|labels|"
+                f"{example.decision_key}|{card}".encode("ascii")).digest(),
+            card))
+        sources = ordered[1:] + ordered[:1]
+        for destination, source in zip(ordered, sources, strict=True):
+            changed[destination] = labels[source]
+    if np.any(changed[~active] != -1) \
+            or np.any(changed[active] < minimums[active]) \
+            or np.any(changed[active] > maximums[active]) \
+            or not np.array_equal(changed.sum(axis=1), labels.sum(axis=1)) \
+            or not np.array_equal(changed.sum(axis=0), labels.sum(axis=0)):
+        raise BeliefV2TrainingError(
+            "V2 label control violates hard geometry")
+    return np.ascontiguousarray(changed), int(np.count_nonzero(
+        changed != labels))
+
+
+def collate_v2_label_control_examples(
+        examples: tuple[V2TrainingExampleV1, ...]) \
+        -> tuple[BeliefTrainingBatchV1, int]:
+    """Build the exact V2 label control without changing public tensors."""
+    natural = collate_v2_training_examples(examples)
+    transformed = tuple(_geometry_permuted_labels(example)
+                        for example in examples)
+    labels = torch.from_numpy(np.stack(
+        [value for value, _ in transformed]))
+    changed_cells = sum(count for _, count in transformed)
+    control = replace(
+        natural, schema=CONTROL_TRAINING_BATCH_SCHEMA,
+        count_labels=labels, history_transform=NATURAL_HISTORY,
+        label_transform=GEOMETRY_PERMUTED_LABELS,
+        control_kind=LABEL_PERMUTATION_CONTROL)
+    if control.decision_keys != natural.decision_keys \
+            or not torch.equal(control.events, natural.events) \
+            or not torch.equal(control.active_mask, natural.active_mask) \
+            or control.history_transform != NATURAL_HISTORY \
+            or control.label_transform != GEOMETRY_PERMUTED_LABELS \
+            or control.control_kind != LABEL_PERMUTATION_CONTROL \
+            or control.schema != CONTROL_TRAINING_BATCH_SCHEMA \
+            or natural.label_transform != EXACT_TARGET_LABELS:
+        raise BeliefV2TrainingError("V2 label control batch drift")
+    return control, changed_cells

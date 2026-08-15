@@ -39,6 +39,7 @@ from .belief_v2_training import V2TrainingExampleV1
 ROW_SCHEMA = "belief-v1-v2-realized-training-row-v1"
 REALIZATION_SCHEMA = "belief-v1-v2-cohort-realization-v1"
 REALIZATION_SET_SCHEMA = "belief-v1-v2-cohort-realization-set-v1"
+CALIBRATION_SCHEMA = "belief-v1-v2-common-calibration-schedule-v1"
 SCHEDULE_NAMESPACE = "belief-v1-v2-realized-training-schedule-v1"
 
 
@@ -80,10 +81,14 @@ class V2TrainingRowV1:
         }
 
 
-def training_row(example: V2TrainingExampleV1) -> V2TrainingRowV1:
+def _example_row(
+        example: V2TrainingExampleV1, *, expected_split: str,
+        expected_source: str | None = None) -> V2TrainingRowV1:
     if type(example) is not V2TrainingExampleV1 \
-            or example.split != "train" \
+            or example.split != expected_split \
             or example.source_kind not in {"synthetic", "human"} \
+            or (expected_source is not None
+                and example.source_kind != expected_source) \
             or example.privileged_targets_consumed is not True \
             or example.source_identity_model_input is not False \
             or example.runtime_artifact is not False:
@@ -106,6 +111,17 @@ def training_row(example: V2TrainingExampleV1) -> V2TrainingRowV1:
     )
     _validate_row(row)
     return row
+
+
+def training_row(example: V2TrainingExampleV1) -> V2TrainingRowV1:
+    return _example_row(example, expected_split="train")
+
+
+def calibration_row(example: V2TrainingExampleV1) -> V2TrainingRowV1:
+    """Bind one synthetic-only common-epoch calibration example."""
+    return _example_row(
+        example, expected_split="calibration",
+        expected_source="synthetic")
 
 
 V2_TRAINING_EXAMPLE_IDENTITY_SCHEMA = (
@@ -281,6 +297,101 @@ def _validate_realization(value: V2CohortRealizationV1) -> None:
 def _validate_row_return(row: V2TrainingRowV1) -> bool:
     _validate_row(row)
     return True
+
+
+@dataclass(frozen=True)
+class V2CalibrationScheduleV1:
+    rows: tuple[V2TrainingRowV1, ...]
+    batches: tuple[tuple[str, ...], ...]
+    decision_population_sha256: str
+    batch_schedule_sha256: str
+    schema: str = CALIBRATION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "selection_role": "common-epoch-only",
+            "source_kind": "synthetic",
+            "rows": [row.to_dict() for row in self.rows],
+            "batches": [list(batch) for batch in self.batches],
+            "decision_count": len(self.rows),
+            "decision_population_sha256": self.decision_population_sha256,
+            "batch_schedule_sha256": self.batch_schedule_sha256,
+            "human_calibration_consumed": False,
+            "test_open_authorized": False,
+            "strength_claim_authorized": False,
+        }
+
+    def canonical_bytes(self) -> bytes:
+        _validate_calibration_schedule(self)
+        return canonical_json_bytes(self.to_dict())
+
+    def sha256(self) -> str:
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
+
+
+def _validate_calibration_schedule(
+        value: V2CalibrationScheduleV1) -> None:
+    flattened = tuple(key for batch in value.batches for key in batch) \
+        if type(value) is V2CalibrationScheduleV1 \
+        and type(value.batches) is tuple else ()
+    if type(value) is not V2CalibrationScheduleV1 \
+            or value.schema != CALIBRATION_SCHEMA \
+            or type(value.rows) is not tuple or not value.rows \
+            or any(_validate_row_return(row) is False for row in value.rows) \
+            or any(row.source_kind != "synthetic" for row in value.rows) \
+            or len({row.decision_key for row in value.rows}) \
+            != len(value.rows) \
+            or type(value.batches) is not tuple or not value.batches \
+            or any(type(batch) is not tuple or not batch
+                   or len(batch) > TRAIN_BATCH_DECISION_CAP
+                   for batch in value.batches) \
+            or len(flattened) != len(set(flattened)) \
+            or set(flattened) != {row.decision_key for row in value.rows} \
+            or value.decision_population_sha256 \
+            != _row_population_sha256(value.rows) \
+            or value.batch_schedule_sha256 != _schedule_sha256(value.batches):
+        raise BeliefV2ScheduleError(
+            "V2 common calibration schedule drift")
+
+
+def realize_v2_common_calibration(
+        examples: tuple[V2TrainingExampleV1, ...]) \
+        -> V2CalibrationScheduleV1:
+    """Freeze one synthetic calibration schedule shared by every cohort."""
+    if type(examples) is not tuple or not examples:
+        raise BeliefV2ScheduleError(
+            "V2 common calibration population is empty")
+    rows = tuple(calibration_row(example) for example in examples)
+    if len({row.decision_key for row in rows}) != len(rows):
+        raise BeliefV2ScheduleError(
+            "V2 common calibration decision duplicate")
+    ordered = tuple(sorted(rows, key=lambda row: (
+        _rank("common-synthetic-calibration|decision", row.decision_key),
+        row.decision_key)))
+    batches = _schedule(
+        ordered, family="common-synthetic-calibration")
+    result = V2CalibrationScheduleV1(
+        rows=ordered, batches=batches,
+        decision_population_sha256=_row_population_sha256(ordered),
+        batch_schedule_sha256=_schedule_sha256(batches))
+    _validate_calibration_schedule(result)
+    return result
+
+
+def validate_v2_common_calibration(
+        examples: tuple[V2TrainingExampleV1, ...],
+        candidate: V2CalibrationScheduleV1) -> None:
+    expected = realize_v2_common_calibration(examples)
+    try:
+        candidate_raw = candidate.canonical_bytes()
+    except (AttributeError, BeliefV2ScheduleError) as exc:
+        raise BeliefV2ScheduleError(
+            "V2 common calibration schedule reconstruction drift") from exc
+    if type(candidate) is not V2CalibrationScheduleV1 \
+            or candidate_raw != expected.canonical_bytes():
+        raise BeliefV2ScheduleError(
+            "V2 common calibration schedule reconstruction drift")
 
 
 def realize_v2_cohorts(

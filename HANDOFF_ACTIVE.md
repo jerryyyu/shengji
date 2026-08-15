@@ -29,22 +29,30 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    artifacts, recompute the terminal decision, and append one terminal marker.
    No per-stage review handshake or retry is needed unless a named guard fails.
 
-2. **Repository hygiene follows compute admission.** PR #115 and compacted
-   docs PR #114 are green/mergeable but are not the current compute blocker.
+2. **PR #114 — repository hygiene, merge sequencing only.** PR #115's
+   three-file append-only/merge-target-prefix guard passed review and merged as
+   `b27d0c2`. Claude also cleared the compacted docs content; after tail-sync and
+   green CI, merge PR #114 without another content-review round. Its branch must
+   preserve `HANDOFF_REVIEW.md` byte-identically and archives the full old AI/RL
+   ledgers.
+
+3. **Other future ask:** review the three-arm widening implementation only
+   after it publishes an exact source/design head. Do not spend the hourly
+   cycle re-reviewing closed or spent S4/S6/T4/Pair artifacts.
 
 ## BELIEF-V1 current truth
 
 | layer | state | what it proves / does not prove |
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
-| **B2 offline pipeline source** | PR #113 exact `3ee0eb8` externally PASSed and merged byte-preservingly through main `959c05d`; 187 BELIEF tests passed in pure and strict compiled modes. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
+| **B2 offline pipeline source** | External PASS at PR #113 exact `3ee0eb8`; merged byte-preservingly through main `959c05d`. Integration validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
 | **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. All 16 capture lanes completed naturally within the frozen two-hour wall cap; the reviewed supervisor then started all 16 REF-C reference lanes at 10:40 EDT. The durable tombstone and sealed supervisor log exist; training, test opening and terminal result remain pending. | Exact offline execution is active under its caps. No calibration lift has been measured or reviewed yet. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
 The earlier Mini design belongs to a rejected source head and must never
-initialize. The V2 design's single reviewed admission is now consumed by the
-active run and cannot retry.
+initialize. The V2 design is frozen from clean detached main `959c05d`; its
+single reviewed admission is now consumed by the active run and cannot retry.
 
 ## Compute and fleet
 

@@ -7,7 +7,7 @@ Full-stack implementation of the classic Chinese partnership trick-taking game:
 Python rules engine + Monte Carlo AI + FastAPI multiplayer server + React web
 UI with Mandarin voice announcements.
 
-## Project state — 2026-08-09
+## Project state — 2026-08-15
 
 The production bot is **`mc-s0-report-lcb`**, the first policy in this project
 to earn a fresh, preregistered superiority result over the previous N=30 MC
@@ -15,19 +15,29 @@ bot. In plain English, it lets ordinary MC nominate a possible override, then
 rechecks that exact pair on 300 fresh shared simulations and changes its mind
 only when a conservative lower bound is positive. On 2,048 new paired deals it
 improved signed level utility by `+0.338 +/- 0.068` per round; a matched null
-was flat. Fly release 17 runs the same decision rule off the WebSocket event
-loop so search no longer freezes room interaction.
+was flat. Fly release 18 preserves release 17's off-event-loop decision
+runtime and adds the kitty X-ray only, so search no longer freezes room
+interaction and the policy itself remains unchanged.
 
-T1 is closed. Its fresh Teacher audit found that cheap/N=30 choices remain
-faithful on ordinary states under the production continuation, but the hard
-boundary was weaker; the next data step is therefore a reviewed hard-tail
-Stage C rather than indiscriminate bulk labels. T2's structured-bury mechanism
-passed its 512-state screen and a fresh 2,048-cluster full-game screen is now
-running sealed on Mini against the exact live champion. The T3 plan adds the
-orthogonal point-banking rollout hypothesis and a counterfactually relabeled
-human-action lane, with eventual blinded evaluation against people—not just
-other bots. See [BACKLOG.md](BACKLOG.md) for the executable queue and
-[AI_POLICIES.md](AI_POLICIES.md) for canonical results.
+The last strength campaign is closed without a promoted challenger. The T4
+learned-search treatment, S4 point-banking continuation, and combined S6
+shuai-pai source all reached independently reviewed `SELECT_NONE` decisions.
+Two Pair-aware whole-game attempts produced no terminal evidence: Air timed
+out at `0/8` shards and the checkpoint successor failed closed on work
+telemetry. One T4 control arm was positive, but it used 14.8% more accepted
+worlds and 80.9% more searches than champion, so candidate widening and added
+compute remain confounded rather than established as a same-work win.
+
+The current research milestone is **BELIEF-V1**: a typed actor-visible world
+model that learns calibrated hidden-card ownership before it is allowed to
+change search. Its public/actor/private information contracts and reviewed B2
+offline source are merged through main `959c05d`; a fresh Mini design is frozen
+for external review, but no corpus, training, test-split opening, sampler,
+gameplay, or strength run has started. A separate three-arm
+design will measure ballot widening at champion work and at the original T4
+control work. See [BACKLOG.md](BACKLOG.md) for the executable queue,
+[JOBS.md](JOBS.md) for live fleet state, and [AI_POLICIES.md](AI_POLICIES.md)
+for canonical results.
 
 ## Quick start
 

@@ -123,15 +123,17 @@ the wrong sampler, ballot, continuation, or target.
 
 It also preserves existing work rather than rebuilding it:
 
-- the positive but compute-confounded ballot-widening arm should receive its
-  own three-arm work-controlled confirmation independently of BELIEF-V1;
-- the running pair-aware terminal evidence should be read before choosing a
-  memory-aware continuation experiment;
+- the positive but work-confounded T4 widening arm should receive a separate
+  three-arm attribution test—champion, widening at champion work, and widening
+  at original-control work—independently of BELIEF-V1;
+- both Pair continuation executions closed without terminal evidence, so no
+  Pair result gates BELIEF-V1 and any continuation successor needs a fresh
+  causal diagnosis;
 - `MCSmartRoll` and `LEVEL_OBJECTIVE` are existing continuation/value assets,
   not BELIEF-V1 features, and require their own dose-and-edge triage; and
-- the reviewed `PointContext` work is the base point/boss fact boundary. When
-  that source lands, BELIEF-V1 extends it with probabilistic opponent/kitty and
-  action-consequence fields rather than introducing a competing point context.
+- merged `PointContext` is the base point/boss fact boundary. BELIEF-V1 extends
+  it with probabilistic opponent/kitty and action-consequence fields rather
+  than introducing a competing point context.
 
 ## Information boundary
 

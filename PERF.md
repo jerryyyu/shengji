@@ -30,8 +30,8 @@ search p50/p95/max `0.896/1.714/1.906s` and full-turn
 Release 18 keeps that runtime and adds kitty X-ray only; it does not change the
 policy or search cost. This fixes event-loop blocking and removes an additive wait. It does not make
 search free, precompute a response before the latest play, or prove concurrent
-multi-room capacity. Release 16 is the runtime rollback; `mc-strong` is the
-separate policy rollback. See `DEPLOY.md`.
+multi-room capacity. Release 17 / `latency-cd6789e` is the current release
+rollback; `mc-strong` is the separate policy rollback. See `DEPLOY.md`.
 
 The next rollout-throughput stack is now on `main`, but it has **not** been
 deployed or substituted into any pinned experiment. PR #71 merged as
@@ -249,10 +249,12 @@ improvement.
 
 PR #107 is the next performance wave, not yet retention evidence. Codex held
 its first head for a stale mutable-world cache and an unsafe 34–128-card native
-lead admission. Repaired head `34ea5a6` removes the cache in favor of explicit
-prepared-world plumbing and restores the 33-card engine boundary, but its
-current CI failure and independent re-review must close before a fresh x86
-A/B. The prior `+7.05%` ARM timing does not apply to repaired bytes.
+lead admission. Current head `a064ac4108c748de1954de94646b63e17d72a017`
+removes the cache in favor of explicit prepared-world plumbing, restores the
+33-card engine boundary, has green server/frontend CI, and has passed the
+source/parity readiness review. It still has no exact x86 retention result.
+The earlier exploratory `+7.05%` ARM timing does not apply to these repaired
+bytes; a fresh immutable A/B is required before merge or performance claims.
 
 ## Gaps (ranked by ROI)
 
@@ -271,7 +273,7 @@ one-off experiment controllers.
 | 6 | feature flags mix exact `"1"` checks with string truthiness | version and centralize boolean parsing | evidence correctness | open; until then unset flags for false—`=0` is unsafe |
 | 7 | rollouts always play to round end | early-terminate decided brackets | speculative and potentially biased | parked behind a strength/correctness gate |
 | 8 | strength-compute ceiling | rented 16-vCPU x86 strength Cloud worker | roughly doubles the local 16-slot fleet, zero policy change | idle after terminal S4 `SELECT_NONE`; do not fill it with an unqualified strength hypothesis |
-| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles, parity and reviewed fresh execution without disturbing Air | currently saturated by the one reviewed Pair checkpoint screen (`f2878fff…a5c9c`, 16 workers, 52h cap); no performance benchmark may contend with it |
+| 9 | isolated performance capacity | separate 16-vCPU / 30-GiB x86 worker via local `shengji-perf` alias | profiles, parity and reviewed fresh execution without disturbing strength work | powered off after the spent Pair checkpoint attempt; power on only for a reviewed immutable A/B or fresh profile |
 | 10 | Rust/PyO3 full engine core | 30-100x; wasm client bonus | large | parked; requires a 10k-seed two-engine parity harness |
 
 ## Plan (sequencing)
@@ -286,10 +288,11 @@ one-off experiment controllers.
    PR #103 batch separately retained its own stack at 3.4074% with positive
    LCB and exact semantics; exact reviewed head `3044a2f` merged at `e3af8c3`.
    Preserve both baselines rather than adding percentages.
-3. Profile the accepted stack again after Performance Cloud finishes its sealed
-   Pair job. Do not infer the
-   next hotspot from the old profile or from leaf microbenchmarks that bypass
-   today's compiled globals.
+3. The Performance Cloud Pair job is over and its admission is spent. When the
+   host is next powered on under a reviewed performance packet, first measure
+   PR #107's exact repaired bytes or take a fresh profile of the accepted
+   stack. Do not infer the next hotspot from the old profile or from leaf
+   microbenchmarks that bypass today's compiled globals.
 4. Consider moving int-card conversion to the rollout boundary and compiling
    `Round.play`/trick resolution only if that fresh profile still names them.
    The first trick-resolution candidate was retired before timing because its

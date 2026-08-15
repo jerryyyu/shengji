@@ -21,20 +21,23 @@ clients hold WebSockets to it. That drives every deployment rule below.
 
 ## Current production and rollback boundary
 
-Fly release 17 runs
-`registry.fly.io/shengji:latency-cd6789e`, manifest SHA-256
-`047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
-Health must report `{"bot":"mc-s0-report-lcb","fast":true}`. The release
-moves an isolated bot/round snapshot into a worker, overlaps the existing
-0.7-second pacing floor, and commits the action only if the live room, round,
-phase, turn and controller still match. Claims, reconnects and X-ray therefore
-remain responsive; a stale search is discarded with its cloned RNG/counters.
+Fly release 18 runs image `kitty-xray-b5a35ae`. Health must report
+`{"bot":"mc-s0-report-lcb","fast":true}`. Release 18 preserves release 17's
+decision runtime and adds the independently reviewed kitty X-ray only; it does
+not change the policy. That runtime moves an isolated bot/round snapshot into
+a worker, overlaps the existing 0.7-second pacing floor, and commits the action
+only if the live room, round, phase, turn and controller still match. Claims,
+reconnects and X-ray therefore remain responsive; a stale search is discarded
+with its cloned RNG/counters.
 
 There are two independent rollback decisions:
 
-1. **Runtime/scheduler rollback:** Fly release 16. Use this for availability,
-   responsiveness, stale-commit or scheduler correctness regressions while
-   keeping the report-LCB policy decision separate.
+1. **Release/runtime rollback:** Fly release 17 / image
+   `latency-cd6789e`. Use this for a release-18 availability or kitty-X-ray
+   regression while keeping the report-LCB policy and release-17 scheduler
+   decision separate. It does not undo a defect shared with release 17. The
+   release-17 manifest SHA-256 is
+   `047bcfe4d4573961734a5536ad549605fd0df5e1477d7480cdf322282955b300`.
 2. **Policy rollback:** `SHENGJI_BOT=mc-strong`. Use this for a report-LCB
    decision-semantics/correctness problem; it gives up the confirmed strength
    gain and is not the response to a generic server/runtime issue.

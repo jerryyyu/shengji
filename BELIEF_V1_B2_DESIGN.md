@@ -1,9 +1,14 @@
 # BELIEF-V1 B1/B2: opened-development corpus and calibration design
 
-Status: local implementation draft on canonical merge `b31647030ae7e7f1afbee70889b478718fb88b96`
-of externally reviewed PR #112 exact head
-`a9de2b866ee6fc939abdb46b40d6fb9c19331e88`. The governing specification is
-merged PR #110 exact head `b8c2a4c25e918278c72facc472c6736428e65af3`.
+Status: reviewed design merged on canonical main. The governing specification
+and B0 contracts from PRs #110–#112 are merged. The complete offline
+implementation passed exact external review at PR #113 head
+`3ee0eb8754b47743c52db0d7387372b6863913ae` and merged byte-preservingly
+through canonical main `959c05de3b1ac379a6f9595b516608427486243d`.
+Fresh Mini design `a8c5e05f…1fd53` now binds that source and the live
+runtime/native/boot identity. Exact review commit `209407f` authorized this
+offline sequence, which initialized once and began capture on 2026-08-15. No
+terminal B2 result exists.
 
 This document authorizes nothing. In particular it does not authorize corpus
 generation, training, cloud use, sampler changes, gameplay evidence, strength

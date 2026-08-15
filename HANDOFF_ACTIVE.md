@@ -4,15 +4,15 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 07:45 EDT.
+Last reconciled: 2026-08-15 after fresh Mini B2 design freeze.
 
 ## Immediate objective
 
-Finish the BELIEF-V1 B2 source gate, then use one consolidated Mini execution
-to answer the offline question: does a history-aware, actor-visible ownership
-model improve held-out hidden-card calibration over the corrected current
-constraint sampler? This is an infrastructure/calibration milestone, not a
-strength or deployment claim.
+Review the frozen Mini-specific BELIEF-V1 B2 design, then use one consolidated
+execution to answer the offline question: does a history-aware, actor-visible
+ownership model improve held-out hidden-card calibration over the corrected
+current constraint sampler? The source gate is complete. This is an
+infrastructure/calibration milestone, not a strength or deployment claim.
 
 In parallel, implement the reviewed three-arm ballot-widening confirmation
 design as the next whole-game causal experiment. Defer the Pair checkpoint V2
@@ -20,42 +20,41 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 
 ## Review queue — precise asks
 
-1. **PR #113 BELIEF-V1 B2 delta re-review — current blocker.** Review exact
-   head `0da43a00c7e556ff7d7734ec4e883af293bb8b23`, parent
-   `529664f4fd10a51a14991f6d5a5c27db39a37596`, under PR comment
-   `5302070481`. Scope is the nine-file final delta. Re-run the four named
-   mutations: ECE-only repooling; literal-zero mechanics counters;
-   winner-to-next-leader neutralization; attacker-points neutralization.
-   Verify the post-observer recapture still produces the named mutation
-   refusal. Return exact-head PASS or a precise HOLD. PASS is source
-   merge-readiness only: no freeze, corpus generation, training, test opening,
-   cloud use, gameplay, strength, promotion or deployment authority.
+1. **BELIEF Mini V2 design — current blocker.** Review immutable design
+   `/Users/jerryyu/Projects/belief-v1-b2-mini-v2/design.json`, SHA-256
+   `a8c5e05f490e1bb628958a3a9a047870979513751353fc7a8e7be2f8a1c1fd53`.
+   It binds merged source `959c05d`, protocol `fa485d51…02dc4`, 105-file
+   source manifest `818912dd…04000`, Mini boot `4da8ae43…03344`, Python 3.14.3,
+   Torch 2.13.0, NumPy 2.5.1 and native binary `4772973c…dff20`. Require mode
+   `0400`, one link, canonical/live reopen, clean checkout, one native binary,
+   no bytecode, and absent evidence/partial/tombstone/log paths. Review the
+   exact `BELIEF_V1_B2_RUNBOOK.md` stage order, caps and false authority map.
+   Introduce exactly one `BELIEF_V1_B2_OFFLINE_EXECUTION_V1_REVIEW` marker on
+   canonical main. PASS authorizes only this exact consolidated offline run;
+   it cannot authorize B3, gameplay, strength or deployment.
 
-2. **No other current review request.** The next review starts only after
-   either (a) PR #113 lands and a fresh Mini-specific V2 design is frozen, or
-   (b) the three-arm widening implementation publishes an exact source/design
-   head. Do not spend the hourly review cycle re-reviewing closed or spent
-   S4/S6/T4/Pair artifacts.
+2. **Repository hygiene follows compute admission.** PR #115 and compacted
+   docs PR #114 are green/mergeable but are not the current compute blocker.
 
 ## BELIEF-V1 current truth
 
 | layer | state | what it proves / does not prove |
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
-| **B2 offline pipeline source** | PR #113 exact `0da43a0` published. Local validation: 62 focused; 186/186 BELIEF pure; 186/186 strict compiled/void; 139 broader pure; 112 broader compiled/parity plus 2 expected skips. Four named mutations killed. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. External delta PASS is still pending. |
-| **B2 data/result** | Absent. No accepted V2 design, namespace, corpus, reference worlds, checkpoint, test result or terminal report exists. | No calibration lift has been measured. |
+| **B2 offline pipeline source** | PR #113 exact `3ee0eb8` externally PASSed and merged byte-preservingly through main `959c05d`; 187 BELIEF tests passed in pure and strict compiled modes. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
+| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` is frozen and independently reopens, but has no external marker yet. Evidence root, partial, tombstone, supervisor log, corpus, reference worlds, checkpoints and terminal result are all absent. | Source/runtime/population/caps are concrete. No execution has started and no calibration lift has been measured. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
 The earlier Mini design belongs to a rejected source head and must never
-initialize. After source merge, freeze a new V2 design from a clean detached
-Mini checkout; it requires one exact marker review before the consolidated run.
+initialize. The fresh V2 design requires one exact marker review before the
+consolidated run.
 
 ## Compute and fleet
 
 | host | current state | next use |
 |---|---|---|
-| **Mini** | Idle; no BELIEF job has started. | After PR #113 source PASS/merge and exact V2 design-marker PASS, run the consolidated B2 pipeline. |
+| **Mini** | Idle; fresh design `a8c5e05f…1fd53` frozen, no BELIEF execution started. | After exact design-marker PASS, run the consolidated B2 pipeline once. |
 | **Air** | Idle after the broad Pair fixed timeout. | No retry/resume/partial use. Keep free unless a new reviewed job is selected. |
 | **Strength Cloud** | Powered off. | Keep off; S4 terminally selected none. |
 | **Performance Cloud** | Powered off. | Keep off; the Pair checkpoint V1 attempt was spent and produced no terminal evidence. |

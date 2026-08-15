@@ -286,6 +286,30 @@ def validate_v2_training_inputs(value: V2TrainingInputPopulationV1) -> None:
             "V2 training input authority drift")
 
 
+def training_examples_for_realization(
+        population: V2TrainingInputPopulationV1,
+        realization: V2CohortRealizationV1) \
+        -> tuple[V2TrainingExampleV1, ...]:
+    """Return exactly the source-neutral examples named by one realization."""
+    validate_v2_training_inputs(population)
+    if type(realization) is not V2CohortRealizationV1 \
+            or realization not in population.realizations:
+        raise BeliefV2TrainingInputError(
+            "V2 training realization is absent from input population")
+    by_key = {example.decision_key: example for example in (
+        *population.synthetic_train_examples,
+        *population.human_train_examples)}
+    keys = tuple(row.decision_key for row in realization.rows)
+    if len(keys) != len(set(keys)) or any(key not in by_key for key in keys):
+        raise BeliefV2TrainingInputError(
+            "V2 realization example population drift")
+    result = tuple(by_key[key] for key in keys)
+    if tuple(example.decision_key for example in result) != keys:
+        raise BeliefV2TrainingInputError(
+            "V2 realization example order drift")
+    return result
+
+
 def reopen_v2_training_inputs(
         root: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,

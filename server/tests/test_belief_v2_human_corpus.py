@@ -11,6 +11,10 @@ from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.round import Round, actual_play_after
 from shengji.engine.game import Game
 from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.belief_artifacts import (
+    reference_external_actor_batch_bundle_bytes,
+    reopen_reference_external_actor_batch_bundle,
+)
 from shengji.rl.belief_v2_human_corpus import (
     BeliefV2HumanCorpusError,
     capture_human_corpus_pair,
@@ -18,6 +22,9 @@ from shengji.rl.belief_v2_human_corpus import (
     reopen_human_actor_row,
     validate_human_group_capture,
     validate_human_corpus_pair,
+)
+from shengji.rl.belief_v2_human_reference import (
+    capture_human_ref_c_source_group,
 )
 
 
@@ -179,3 +186,38 @@ def test_source_group_replay_matches_h0_decision_and_privacy_surface():
     assert b"Alice" not in manifest
     assert manifest.endswith(b"\n")
     assert b'"training_authorized":false' in manifest
+
+
+def test_human_reference_replay_constructs_no_privileged_target(
+        monkeypatch):
+    raw = b"".join(
+        json.dumps(event, sort_keys=True).encode() + b"\n"
+        for event in _source_round())
+    digest = __import__("hashlib").sha256(raw).hexdigest()
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(
+        "shengji.rl.belief_refc_capture.REF_C_WORLD_COUNT", 4)
+    monkeypatch.setattr(
+        "shengji.rl.belief_reference.REF_C_WORLD_COUNT", 4)
+    monkeypatch.setattr(
+        "shengji.rl.belief_reference._WORLD_UNIT_PPB", 250_000_000)
+
+    def target_tripwire(*args, **kwargs):
+        raise AssertionError("human REF-C constructed a target")
+
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_corpus.build_belief_targets",
+        target_tripwire)
+    result = capture_human_ref_c_source_group(
+        raw, source_sha256=digest, split="calibration",
+        replicate="calibration-replicate-0")
+    assert result.replay.human_decision_count == 1
+    assert len(result.decisions) == 1
+    assert result.decisions[0].batch.actor.declaration_history_complete is True
+    assert result.decisions[0].batch.actor.attempted_play_history_complete \
+        is True
+    raw_batch = reference_external_actor_batch_bundle_bytes(
+        result.decisions[0].batch)
+    assert reopen_reference_external_actor_batch_bundle(
+        raw_batch, actor=result.decisions[0].batch.actor) \
+        == result.decisions[0].batch

@@ -20,6 +20,7 @@ from shengji.rl.belief_v2_controller import (
     reopen_actor_capture_lane_manifest,
     reopen_capture_lane,
     reopen_reference_lane,
+    reopen_reference_lane_manifest,
     reopen_synthetic_training_lane_examples,
     run_capture_lane,
     run_reference_lane,
@@ -60,8 +61,18 @@ from shengji.rl.belief_v2_human_controller import (
     run_human_group_capture,
 )
 from shengji.rl.belief_v2_human_corpus import (
+    V2HumanReplaySummaryV1,
     V2HumanGroupCaptureV1,
     capture_human_corpus_pair,
+    reopen_human_actor_row,
+)
+from shengji.rl.belief_v2_human_reference import (
+    V2HumanReferenceDecisionV1,
+    V2HumanReferenceGroupV1,
+)
+from shengji.rl.belief_v2_human_reference_controller import (
+    reopen_human_reference_group,
+    run_human_reference_group,
 )
 from shengji.rl.belief_v2_human_inventory import (
     H0_INVENTORY_SCHEMA,
@@ -78,6 +89,15 @@ from shengji.rl.belief_v2_schedule import (
     realize_v2_cohorts,
     realize_v2_common_calibration,
     training_row,
+)
+from shengji.rl.belief_v2_scoring_controller import (
+    BeliefV2ScoringControllerError,
+    reopen_human_scoring_rounds,
+    reopen_synthetic_scoring_round,
+)
+from shengji.rl.belief_v2_scoring import v2_scoring_actor
+from shengji.rl.belief_refc_capture import (
+    capture_ref_c_worlds_from_bound_actor,
 )
 from shengji.rl.belief_v2_training import (
     build_human_training_example,
@@ -315,6 +335,59 @@ def test_reference_opens_no_private_capture_bundle(tmp_path, monkeypatch):
         capture_directory=(
             root / "capture" / f"lane-{coordinate.lane:02d}"),
         freeze=freeze, admission=admission, lane=coordinate.lane) == result
+
+
+def test_public_reference_manifest_never_opens_world_bundle(
+        tmp_path, monkeypatch):
+    root, freeze, admission, coordinate = _prepare(
+        monkeypatch, tmp_path)
+    run_capture_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
+        review_marker=b"review")
+    result = run_reference_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
+        review_marker=b"review")
+    import shengji.rl.belief_v2_controller as controller
+    real_read = controller.stable_read_bytes
+
+    def no_reference_world_open(path):
+        if path.name.endswith(".ref.bin"):
+            raise AssertionError("calibration manifest opened REF-C worlds")
+        return real_read(path)
+
+    monkeypatch.setattr(
+        controller, "stable_read_bytes", no_reference_world_open)
+    reopened = reopen_reference_lane_manifest(
+        root / "reference" / f"lane-{coordinate.lane:02d}",
+        capture_directory=(
+            root / "capture" / f"lane-{coordinate.lane:02d}"),
+        freeze=freeze, admission=admission, lane=coordinate.lane)
+    assert reopened == result
+
+
+def test_synthetic_scoring_reader_opens_only_named_calibration_bytes(
+        tmp_path, monkeypatch):
+    root, freeze, admission, coordinate = _prepare(
+        monkeypatch, tmp_path)
+    run_capture_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
+        review_marker=b"review")
+    run_reference_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
+        review_marker=b"review")
+    decisions = reopen_synthetic_scoring_round(
+        root, freeze=freeze, admission=admission, coordinate=coordinate,
+        replicate="calibration-replicate-0",
+        allowed_split="calibration")
+    assert decisions
+    assert all(row.source_actor.trump_rank == coordinate.trump_rank
+               for row in decisions)
+    with pytest.raises(BeliefV2ScoringControllerError,
+                       match="split/replicate"):
+        reopen_synthetic_scoring_round(
+            root, freeze=freeze, admission=admission,
+            coordinate=coordinate, replicate="test-primary",
+            allowed_split="test")
 
 
 def test_training_reader_authenticates_lane_without_opening_test_targets(
@@ -596,6 +669,109 @@ def test_human_group_stage_persists_separate_rows_and_training_is_test_blind(
         reopen_human_training_group_examples(
             captures["test"], freeze=freeze, admission=admission,
             split="test")
+
+
+def test_human_reference_stage_reopens_against_actor_only_capture(
+        tmp_path, monkeypatch):
+    source_raws, source_shas, rnd, inventory, group_split = _human_receipts()
+    split_by_digest = {
+        digest: split for split, row in group_split["splits"].items()
+        for digest in row["group_digests"]}
+    raw, digest = next(
+        (raw, digest) for raw, digest in zip(
+            source_raws, source_shas, strict=True)
+        if split_by_digest[_group_digest(digest)] == "calibration")
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    base = _freeze(root)
+    splits = group_split["splits"]
+    freeze = replace(
+        base,
+        h0_inventory_sha256=hashlib.sha256(
+            inventory_bytes(inventory)).hexdigest(),
+        h0_source_manifest_sha256=inventory["source_manifest_sha256"],
+        h0_source_digest_population_sha256=(
+            inventory["source_digest_population_sha256"]),
+        human_group_split_sha256=hashlib.sha256(
+            group_split_bytes(group_split, inventory=inventory)).hexdigest(),
+        human_group_count=inventory["group_count"],
+        human_train_group_count=splits["train"]["group_count"],
+        human_calibration_group_count=splits["calibration"]["group_count"],
+        human_test_group_count=splits["test"]["group_count"],
+        human_complete_round_count=inventory["complete_rounds"],
+        human_eligible_decision_count=inventory["human_play_decisions"],
+        human_train_eligible_decision_count=(
+            splits["train"]["human_play_decisions"]),
+        human_calibration_eligible_decision_count=(
+            splits["calibration"]["human_play_decisions"]),
+        human_test_eligible_decision_count=(
+            splits["test"]["human_play_decisions"]),
+    )
+    admission = _admission(freeze)
+    source = tmp_path / "calibration.jsonl"
+    source.write_bytes(raw)
+    source.chmod(0o400)
+    captured = _captured_human_group(
+        raw, digest, rnd, "calibration")
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller.capture_human_source_group",
+        lambda *args, **kwargs: captured)
+    run_human_group_capture(
+        root, freeze, admission, repo=Path("/unused"),
+        source_path=source, inventory=inventory,
+        group_split=group_split, review_marker=b"review")
+    actor, _, metadata = reopen_human_actor_row(
+        captured.pairs[0].actor_bytes)
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(
+        "shengji.rl.belief_refc_capture.REF_C_WORLD_COUNT", 4)
+    monkeypatch.setattr(
+        "shengji.rl.belief_reference.REF_C_WORLD_COUNT", 4)
+    monkeypatch.setattr(
+        "shengji.rl.belief_reference._WORLD_UNIT_PPB", 250_000_000)
+    batch = capture_ref_c_worlds_from_bound_actor(
+        rnd, rnd.turn, v2_scoring_actor(actor), sampler_seed=19001)
+    replay = V2HumanReplaySummaryV1(
+        source_sha256=digest, group_digest=captured.group_digest,
+        complete_round_count=1, incomplete_round_count=0,
+        human_decision_count=1,
+        trump_rank_counts=captured.trump_rank_counts,
+        attempted_channel_counts=captured.attempted_channel_counts)
+    reference = V2HumanReferenceGroupV1(
+        replay=replay, split="calibration",
+        replicate="calibration-replicate-0",
+        decisions=(V2HumanReferenceDecisionV1(
+            decision_key=metadata["decision_key"],
+            round_digest=metadata["round_digest"],
+            trump_rank=rnd.trump_rank, batch=batch),))
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_reference_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_reference_controller."
+        "capture_human_ref_c_source_group",
+        lambda *args, **kwargs: reference)
+    manifest = run_human_reference_group(
+        root, freeze, admission, repo=Path("/unused"),
+        source_path=source, inventory=inventory, group_split=group_split,
+        replicate="calibration-replicate-0", review_marker=b"review")
+    reopened = reopen_human_reference_group(
+        root / "human-reference" / f"group-{captured.group_digest}"
+        / "calibration-replicate-0",
+        freeze=freeze, admission=admission)
+    assert reopened == manifest
+    assert manifest["contains_privileged_training_targets"] is False
+    rounds = reopen_human_scoring_rounds(
+        root, freeze=freeze, admission=admission,
+        group_digest=captured.group_digest,
+        replicate="calibration-replicate-0",
+        allowed_split="calibration")
+    assert len(rounds) == 1
+    assert rounds[0][0] == metadata["round_digest"]
+    assert len(rounds[0][2]) == 1
 
 
 def _cpu_fallback_qualification(freeze):

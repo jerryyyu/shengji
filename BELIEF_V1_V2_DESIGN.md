@@ -552,6 +552,18 @@ preregistered positive scale and/or simultaneous rank signal routes to
 it routes to `SELECT_NONE_NO_CALIBRATION_LIFT`. No V2 route authorizes a sampler,
 gameplay screen, strength claim, promotion, or deployment.
 
+`belief_v2_result.py` now implements that precedence as a pure terminal
+boundary. Its resource receipt carries measured expected-versus-reopened
+capture, reference, cohort, checkpoint, synthetic-test, and human-test
+populations; stage/mechanics failures; retries, drops, and test-open count;
+parallel wall/compute/artifact totals; accelerator result identity; and peak
+host/device memory. Caps and population totals are recomputed against the
+execution freeze. The terminal binds all input artifact digests and refuses
+selection drift, coordinated result rewrites, or a calibration-selected cohort
+that differs between synthetic and human reports. Re-entry signals are emitted
+only on a failed primary and only for preregistered positive data-scale or
+simultaneous rank evidence.
+
 Rank attribution comes only from the balanced synthetic rank contrasts.
 Human-versus-champion transfer jointly changes policy, rank mix, and logging
 surface, so a human transfer failure or success may never be reported or

@@ -28,10 +28,10 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    artifacts, recompute the terminal decision, and append one terminal marker.
    No per-stage review handshake or retry is needed unless a named guard fails.
 
-2. **PR #115 then PR #114 — repository hygiene.** Review the one-test-file
-   append-after-rotation guard first, then the compacted docs head. Both are
-   green and mergeable. The docs branch preserves `HANDOFF_REVIEW.md`
-   byte-identically and archives the full old AI/RL ledgers.
+2. **PR #115 then PR #114 — repository hygiene.** Review PR #115's three-file
+   test-only append-after-rotation/merge-target-prefix guard first, then the
+   compacted docs head. Both are green and mergeable. The docs branch preserves
+   `HANDOFF_REVIEW.md` byte-identically and archives the full old AI/RL ledgers.
 
 3. **Other future ask:** review the three-arm widening implementation only
    after it publishes an exact source/design head. Do not spend the hourly

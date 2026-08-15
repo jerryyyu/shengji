@@ -42,6 +42,11 @@ from shengji.rl.belief_v2_training import (
     build_human_training_example,
     build_synthetic_training_example,
 )
+from shengji.rl.belief_v2_training_inputs import (
+    BeliefV2TrainingInputError,
+    V2TrainingInputPopulationV1,
+    validate_v2_training_inputs,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -232,3 +237,24 @@ def test_epoch_chain_checkpoint_and_selection_rewrites_refuse(monkeypatch):
         validate_trained_v2_cohort(
             value, examples, schedule, calibration,
             replace(result, training_device="cuda"))
+
+
+def test_closed_training_input_population_reconstructs_every_schedule():
+    synthetic, human, realized, calibration, schedule = _fixture()
+    value = V2TrainingInputPopulationV1(
+        synthetic_train_examples=synthetic,
+        synthetic_calibration_examples=calibration,
+        human_train_examples=human,
+        cohort_plans=_plans(), realizations=realized,
+        common_calibration=schedule,
+        human_group_manifest_sha256s=("a" * 64,))
+    validate_v2_training_inputs(value)
+    payload = value.manifest()
+    assert payload["synthetic_test_targets_opened"] is False
+    assert payload["human_test_targets_opened"] is False
+    assert payload["source_identity_model_input"] is False
+    assert value.canonical_bytes().endswith(b"\n")
+    with pytest.raises(BeliefV2TrainingInputError,
+                       match="artifact reconstruction"):
+        validate_v2_training_inputs(replace(
+            value, realizations=tuple(reversed(value.realizations))))

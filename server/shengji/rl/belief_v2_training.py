@@ -11,6 +11,7 @@ optimizer, model mutation, checkpoint writer, test opener, or run authority.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -47,6 +48,7 @@ class BeliefV2TrainingError(ValueError):
 @dataclass(frozen=True)
 class V2TrainingExampleV1:
     decision_key: str
+    round_group_key: str
     split: str
     source_kind: str
     source_actor_sha256: str
@@ -62,10 +64,15 @@ class V2TrainingExampleV1:
 
 
 def _example(
-        *, decision_key: str, split: str, source_kind: str,
+        *, decision_key: str, round_group_key: str,
+        split: str, source_kind: str,
         actor, target) -> V2TrainingExampleV1:
     if type(decision_key) is not str or len(decision_key) != 64 \
             or any(char not in "0123456789abcdef" for char in decision_key) \
+            or type(round_group_key) is not str \
+            or len(round_group_key) != 64 \
+            or any(char not in "0123456789abcdef"
+                   for char in round_group_key) \
             or split not in SPLITS or source_kind not in SOURCE_KINDS:
         raise BeliefV2TrainingError("V2 training metadata drift")
     try:
@@ -76,7 +83,8 @@ def _example(
         raise BeliefV2TrainingError(
             "V2 training common target derivation refused") from exc
     return V2TrainingExampleV1(
-        decision_key=decision_key, split=split, source_kind=source_kind,
+        decision_key=decision_key, round_group_key=round_group_key,
+        split=split, source_kind=source_kind,
         source_actor_sha256=actor.sha256(),
         common_surface_sha256=common.sha256(),
         privileged_target_sha256=target.sha256(), common=common,
@@ -93,7 +101,11 @@ def build_synthetic_training_example(
         raise BeliefV2TrainingError(
             "V2 synthetic training pair refused") from exc
     result = _example(
-        decision_key=metadata["decision_key"], split=metadata["split"],
+        decision_key=metadata["decision_key"],
+        round_group_key=hashlib.sha256(
+            f"belief-v1-v2-synthetic-round|{metadata['round_seed']}".encode(
+                "ascii")).hexdigest(),
+        split=metadata["split"],
         source_kind="synthetic", actor=actor, target=target)
     validate_synthetic_training_example(pair, result)
     return result
@@ -107,7 +119,11 @@ def validate_synthetic_training_example(
         raise BeliefV2TrainingError(
             "V2 synthetic training pair refused") from exc
     expected = _example(
-        decision_key=metadata["decision_key"], split=metadata["split"],
+        decision_key=metadata["decision_key"],
+        round_group_key=hashlib.sha256(
+            f"belief-v1-v2-synthetic-round|{metadata['round_seed']}".encode(
+                "ascii")).hexdigest(),
+        split=metadata["split"],
         source_kind="synthetic", actor=actor, target=target)
     _validate_example(actor, candidate, expected)
 
@@ -121,7 +137,8 @@ def build_human_training_example(
     except (TypeError, ValueError) as exc:
         raise BeliefV2TrainingError("V2 human training pair refused") from exc
     result = _example(
-        decision_key=metadata["decision_key"], split=metadata["split"],
+        decision_key=metadata["decision_key"],
+        round_group_key=metadata["round_digest"], split=metadata["split"],
         source_kind="human", actor=actor, target=target)
     validate_human_training_example(actor_raw, target_raw, result)
     return result
@@ -136,7 +153,8 @@ def validate_human_training_example(
     except (TypeError, ValueError) as exc:
         raise BeliefV2TrainingError("V2 human training pair refused") from exc
     expected = _example(
-        decision_key=metadata["decision_key"], split=metadata["split"],
+        decision_key=metadata["decision_key"],
+        round_group_key=metadata["round_digest"], split=metadata["split"],
         source_kind="human", actor=actor, target=target)
     _validate_example(actor, candidate, expected)
 
@@ -165,7 +183,8 @@ def _validate_example(actor, candidate, expected) -> None:
         raise BeliefV2TrainingError(
             "V2 training common tensor refused") from exc
     scalar_fields = (
-        "decision_key", "split", "source_kind", "source_actor_sha256",
+        "decision_key", "round_group_key", "split", "source_kind",
+        "source_actor_sha256",
         "common_surface_sha256", "privileged_target_sha256",
         "privileged_targets_consumed", "source_identity_model_input",
         "runtime_artifact", "schema",

@@ -212,6 +212,18 @@ policy-family field may name
 individual identity, username, session, and source-file identity are
 forbidden model inputs.
 
+The implemented realization boundary records a source-neutral SHA-256 round
+group for every example. It deterministically derives four closed manifests:
+all synthetic decisions for primary; the byte-identical population and batch
+schedule for the label-permutation control; all human train decisions replacing
+the same digest-ranked number of synthetic decisions for the mixed arm; and the
+frozen digest prefix for the synthetic-scale arm. Selected decisions from one
+round are kept in one batch, every batch stays at or below 256 decisions, and
+the independent reopener reconstructs the exact removal list, population,
+round grouping, schedule, active-label count, and work match from source rows.
+Source kind and round-group identity stop at this scheduler and are absent from
+the model batch.
+
 V1's `behavior_policy_ids` are hash-bound metadata but are not tensorized into
 the model. V2 must therefore choose explicitly between:
 

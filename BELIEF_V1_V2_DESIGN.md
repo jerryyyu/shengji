@@ -238,6 +238,14 @@ if calibration shows a preregistered, opposing human-versus-champion transfer
 residual that the universal model cannot fit. This prevents human data and a
 new policy-conditioning architecture from being credited together.
 
+All cohorts use one byte-identical balanced synthetic calibration population
+for common-epoch selection. Human calibration groups do not participate in
+early stopping; they remain unopened by training and are consumed only by the
+preregistered mixed-versus-primary calibration selection below. This keeps the
+human mixture from changing both the training distribution and the epoch rule,
+and makes the primary, control, mixture, and scale learning curves directly
+comparable.
+
 The mixed arm is retained for test evaluation only if, on calibration:
 
 - its human proper-score lower bound versus the synthetic-only model is
@@ -439,6 +447,18 @@ must keep privileged labels in a separately bound artifact and must never
 materialize test tensors before the single test opening. Parallel member
 workers must reproduce the serial reference's per-member state and loss bytes
 on a small fixture before they become the V2 training path.
+
+The source-neutral mechanics are now implemented in
+`belief_v2_cohort_training.py`. They consume only independently realized
+train schedules plus the shared synthetic calibration schedule, train all
+eight fixed initializations on the qualification-selected device, preserve the
+full epoch receipt chain, apply the common-epoch rule, and export ordinary CPU
+checkpoint bundles. The V2-native hard-geometry label control changes only
+privileged labels and publishes its exact changed-cell dose; public tensors and
+optimizer work remain identical. The independent reopener reconstructs every
+batch identity, initial and cross-epoch model-state link, selection decision,
+checkpoint receipt, and checkpoint byte stream. No human calibration or test
+row is accepted by this training boundary.
 
 Performance changes must be bit-identical at the artifact or probability
 contract they claim to preserve. A faster implementation never inherits

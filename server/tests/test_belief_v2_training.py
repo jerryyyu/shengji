@@ -16,12 +16,23 @@ from shengji.rl.belief_contract import PublicTranscriptV1
 from shengji.rl.belief_corpus import capture_corpus_pair
 from shengji.rl.belief_model import new_from_scratch_model
 from shengji.rl.belief_trainer import new_b2_optimizer, train_epoch
+from shengji.rl.belief_training import (
+    CONTROL_TRAINING_BATCH_SCHEMA,
+    GEOMETRY_PERMUTED_LABELS,
+    LABEL_PERMUTATION_CONTROL,
+)
 from shengji.rl.belief_v2_common_surface import ARRAY_FIELDS
 from shengji.rl.belief_v2_human_corpus import capture_human_corpus_pair
+from shengji.rl.belief_v2_schedule import (
+    BeliefV2ScheduleError,
+    realize_v2_common_calibration,
+    validate_v2_common_calibration,
+)
 from shengji.rl.belief_v2_training import (
     BeliefV2TrainingError,
     build_human_training_example,
     build_synthetic_training_example,
+    collate_v2_label_control_examples,
     collate_v2_training_examples,
     validate_human_training_example,
     validate_synthetic_training_example,
@@ -124,6 +135,30 @@ def test_source_provenance_rewrite_is_caught_before_collation():
             replace(human, source_kind="synthetic"))
 
 
+def test_v2_label_control_preserves_public_tensors_and_hard_geometry():
+    _, _, synthetic, human = _paired_examples()
+    natural = collate_v2_training_examples((synthetic, human))
+    control, changed_cells = collate_v2_label_control_examples(
+        (synthetic, human))
+    assert changed_cells > 0
+    assert control.schema == CONTROL_TRAINING_BATCH_SCHEMA
+    assert control.label_transform == GEOMETRY_PERMUTED_LABELS
+    assert control.control_kind == LABEL_PERMUTATION_CONTROL
+    assert np.array_equal(control.events.numpy(), natural.events.numpy())
+    assert np.array_equal(
+        control.active_mask.numpy(), natural.active_mask.numpy())
+    assert np.array_equal(
+        control.count_labels.numpy().sum(axis=2),
+        natural.count_labels.numpy().sum(axis=2))
+    assert np.array_equal(
+        control.count_labels.numpy().sum(axis=1),
+        natural.count_labels.numpy().sum(axis=1))
+    model = new_from_scratch_model(495023836)
+    receipt = train_epoch(
+        model, new_b2_optimizer(model), (control,), epoch=1)
+    assert receipt.control_kind == LABEL_PERMUTATION_CONTROL
+
+
 def test_common_tensor_and_label_mutations_refuse_at_wiring_altitude():
     synthetic_pair, human_pair, synthetic, human = _paired_examples()
     changed_events = synthetic.common.tensors.events.copy()
@@ -156,3 +191,19 @@ def test_mixed_batch_refuses_cross_split_duplicate_and_unbound_example():
             synthetic,
             replace(human, source_identity_model_input=True),
         ))
+
+
+def test_common_epoch_schedule_is_synthetic_only_and_rederived():
+    _, _, calibration_synthetic, calibration_human = _paired_examples(
+        "calibration")
+    result = realize_v2_common_calibration((calibration_synthetic,))
+    validate_v2_common_calibration((calibration_synthetic,), result)
+    assert result.to_dict()["selection_role"] == "common-epoch-only"
+    assert result.to_dict()["human_calibration_consumed"] is False
+    assert result.batches == ((calibration_synthetic.decision_key,),)
+    with pytest.raises(BeliefV2ScheduleError):
+        realize_v2_common_calibration((calibration_human,))
+    with pytest.raises(BeliefV2ScheduleError, match="reconstruction"):
+        validate_v2_common_calibration(
+            (calibration_synthetic,),
+            replace(result, batch_schedule_sha256="f" * 64))

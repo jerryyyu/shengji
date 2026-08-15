@@ -510,6 +510,36 @@ control, and exact-synthetic gates. It additionally requires:
 - exact cost per captured round, reference decision, training decision/epoch,
   and retained checkpoint.
 
+All model selection occurs before the test split opens. On calibration, the
+human-mixture model replaces the synthetic primary only when its complete-human-
+round bootstrap lower bound versus primary is positive and its mixed-minus-
+primary regression remains strictly below +0.5% at both the synthetic aggregate
+and every powered rank under the preregistered 13-rank max-statistic upper
+bound. Otherwise primary remains selected. Each data-scale arm is compared
+with primary on the same synthetic calibration rounds and reports a positive
+data-scaling signal only when the complete-round bootstrap lower bound for
+`scale Brier - primary Brier` is positive. Scale results never select the
+test candidate.
+
+The single test opening scores all frozen cohorts for reproducibility, but only
+the calibration-selected candidate can satisfy the primary gate. It must beat
+REF-C by at least 0.5% relative Brier, have a strictly positive complete-round
+bootstrap lower bound, improve in at least six of eight initialization members,
+avoid a log-loss sign reversal, and remain below the +0.5% simultaneous rank
+regression boundary. The label-permutation control's lower bound versus REF-C
+must not be positive. Human test rows publish exact round/decision n, primary
+and mixed confidence intervals, and their paired difference as descriptive
+policy-domain transfer only.
+
+Terminal routing is closed: integrity/mechanics/resource failure routes to
+`REFUSE_INCOMPLETE_OR_INTEGRITY`; an unexpectedly learned label control routes
+to `REFUSE_NEGATIVE_CONTROL`; a passing selected candidate routes only to
+`PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW`; a failed primary with a
+preregistered positive scale and/or simultaneous rank signal routes to
+`SELECT_NONE_WITH_PREREGISTERED_REENTRY` with the exact signal names; otherwise
+it routes to `SELECT_NONE_NO_CALIBRATION_LIFT`. No V2 route authorizes a sampler,
+gameplay screen, strength claim, promotion, or deployment.
+
 Rank attribution comes only from the balanced synthetic rank contrasts.
 Human-versus-champion transfer jointly changes policy, rank mix, and logging
 surface, so a human transfer failure or success may never be reported or

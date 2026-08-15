@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
 import pytest
@@ -65,6 +65,9 @@ class _Bytes:
 
     def canonical_bytes(self):
         return canonical_json_bytes({"label": self.label})
+
+    def sha256(self):
+        return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
 def _authorized(root):
@@ -292,3 +295,172 @@ def test_terminal_mechanics_counts_real_conservation_and_hard_fact_rows():
         expected_conservation_rows,
         1,
     )
+
+
+def test_terminal_record_receives_mechanics_failures_from_round_wiring(
+        tmp_path, monkeypatch):
+    context = build_c4_contexts()[0]
+    pair = context.world_0
+    actor, target, _ = reopen_score_pair(pair)
+    counts = target_count_population(actor, target)
+    valid = BeliefOwnershipV1(
+        actor_observation_sha256=actor.sha256(),
+        model_schema="terminal-mechanics-wiring-witness",
+        model_sha256="a" * 64,
+        behavior_policy_ids=("mc-s0-report-lcb",),
+        receiver_sizes=receiver_sizes(actor),
+        probabilities=tuple(ReceiverCountProbabilityV1(
+            card=card,
+            receiver=receiver,
+            count_0_ppb=PROBABILITY_SCALE if count == 0 else 0,
+            count_1_ppb=PROBABILITY_SCALE if count == 1 else 0,
+            count_2_ppb=PROBABILITY_SCALE if count == 2 else 0,
+        ) for (card, receiver), count in counts.items()),
+    )
+    conservation_rows = list(valid.probabilities)
+    conservation_index = next(
+        index for index, row in enumerate(conservation_rows)
+        if counts[(row.card, row.receiver)] == 0)
+    row = conservation_rows[conservation_index]
+    conservation_rows[conservation_index] = replace(
+        row, count_0_ppb=PROBABILITY_SCALE - 1, count_1_ppb=1)
+    conservation_bad = replace(
+        valid, probabilities=tuple(conservation_rows))
+    hard_fact_rows = list(valid.probabilities)
+    unseen = dict(actor.deductions.unseen)
+    hard_fact_index = next(
+        index for index, current in enumerate(hard_fact_rows)
+        if unseen[current.card] == 1
+        and counts[(current.card, current.receiver)] == 1)
+    row = hard_fact_rows[hard_fact_index]
+    hard_fact_rows[hard_fact_index] = replace(
+        row,
+        count_0_ppb=PROBABILITY_SCALE // 2,
+        count_1_ppb=0,
+        count_2_ppb=PROBABILITY_SCALE // 2,
+    )
+    hard_fact_bad = replace(valid, probabilities=tuple(hard_fact_rows))
+    members = (conservation_bad, hard_fact_bad, *([valid] * 6))
+    outputs = (*members, valid, *members, valid, *members, valid)
+    expected = terminal._validated_prediction_population(actor, outputs)
+    assert expected[2] > 0 and expected[3] > 0
+
+    @dataclass(frozen=True)
+    class TensorStub:
+        events: tuple = ()
+
+    captured = SimpleNamespace(round_seed=13, pairs=(pair,))
+    reference = SimpleNamespace(batches=(object(),))
+    monkeypatch.setattr(
+        terminal, "_predict_members",
+        lambda *_args, **_kwargs: (members, valid))
+    monkeypatch.setattr(
+        terminal, "build_control_example",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            source=SimpleNamespace(tensors=TensorStub()),
+            transformed_events=()))
+    monkeypatch.setattr(
+        terminal, "score_corpus_candidates",
+        lambda *_args, **_kwargs: tuple(object() for _ in range(18)))
+    monkeypatch.setattr(
+        terminal, "build_round_proper_score",
+        lambda _seed, rows, _members: rows)
+    monkeypatch.setattr(
+        terminal, "build_behavioral_signal_round",
+        lambda _captured: object())
+    monkeypatch.setattr(
+        terminal, "build_behavioral_round_score",
+        lambda *_args, **_kwargs: object())
+
+    root = (tmp_path / "evidence").resolve()
+    design = _design(root)
+    population = SimpleNamespace(
+        rounds=(SimpleNamespace(decision_count=1),),
+        sha256=lambda: _sha("population"))
+
+    def resources(start):
+        return {
+            "started_monotonic_nanoseconds": start,
+            "finished_monotonic_nanoseconds": start + 1,
+            "cpu_nanoseconds": 1,
+            "device_nanoseconds": 1,
+            "artifact_bytes": 1,
+            "retry_count": 0,
+        }
+
+    capture_manifests = ({"resources": resources(1)},)
+    reference_manifests = ({"resources": resources(2)},)
+    checkpoints = tuple({
+        "model_state_sha256": _sha(f"model-{index}"),
+        "checkpoint_sha256": _sha(f"checkpoint-{index}"),
+    } for index, _ in enumerate(COHORT_SEEDS))
+
+    def training_manifest(label):
+        return {
+            "checkpoints": checkpoints,
+            "selected_common_epoch": 1,
+            "opened_round_seeds": {"train": [7], "calibration": [11]},
+            "resources": resources(3 if label == "candidate" else 4),
+        }
+
+    candidate_manifest = training_manifest("candidate")
+    control_manifest = training_manifest("control")
+    monkeypatch.setattr(
+        terminal, "_population_and_stage_manifests",
+        lambda *_args: (
+            population, capture_manifests, reference_manifests))
+    monkeypatch.setattr(
+        terminal, "_training_models",
+        lambda *_args, kind: (
+            candidate_manifest if kind == "candidate" else control_manifest,
+            tuple(object() for _ in COHORT_SEEDS)))
+    monkeypatch.setattr(
+        terminal, "b2_split_round_seeds",
+        lambda split: (11,) if split == "calibration" else (13,))
+    monkeypatch.setattr(
+        terminal, "_reference_path", lambda *_args: root / "reference.bin")
+    monkeypatch.setattr(
+        terminal, "_capture_path", lambda *_args: root / "capture.bin")
+    monkeypatch.setattr(terminal, "stable_read_bytes", lambda _path: b"")
+    monkeypatch.setattr(
+        terminal, "reopen_reference_round_bundle", lambda _raw: reference)
+    monkeypatch.setattr(
+        terminal, "reopen_capture_bundle", lambda _raw: object())
+    monkeypatch.setattr(
+        terminal, "reopen_captured_round_artifacts", lambda _raw: captured)
+    monkeypatch.setattr(
+        terminal, "_reference_round_score", lambda *_args: object())
+    monkeypatch.setattr(
+        terminal, "reference_replicates_are_stable",
+        lambda *_args: True)
+    placeholder = _Bytes("gate")
+    monkeypatch.setattr(terminal, "evaluate_c1", lambda _rows: placeholder)
+    monkeypatch.setattr(terminal, "evaluate_n2", lambda _rows: placeholder)
+    monkeypatch.setattr(terminal, "evaluate_c2", lambda _rows: placeholder)
+    monkeypatch.setattr(
+        terminal, "build_count_reliability_report",
+        lambda _rows: placeholder)
+    monkeypatch.setattr(terminal, "build_c4_contexts", lambda: ())
+    monkeypatch.setattr(
+        terminal, "run_c4_synthetic_pipeline",
+        lambda _contexts: SimpleNamespace(result=placeholder))
+    monkeypatch.setattr(
+        terminal, "_c4_mechanics_witnesses",
+        lambda *_args: (1, 0, 1, 0, 1, 0, 0, 0, 0, 0))
+    monkeypatch.setattr(
+        terminal, "_population_digests",
+        lambda _population: (
+            _sha("actor"), _sha("target"), _sha("split")))
+    monkeypatch.setattr(
+        terminal, "_reference_manifest_digest",
+        lambda _manifests: _sha("reference"))
+    monkeypatch.setattr(
+        terminal, "evaluate_b2_terminal", lambda _evidence: object())
+    admission = SimpleNamespace()
+
+    evidence = terminal.derive_terminal_evidence(
+        root, design, admission)
+    assert evidence.mechanics.conservation_failure_count == expected[2]
+    assert evidence.mechanics.hard_fact_failure_count == expected[3]
+    assert evidence.mechanics.conservation_passed is False
+    assert evidence.mechanics.hard_facts_passed is False

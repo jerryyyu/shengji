@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import subprocess
 from dataclasses import replace
 
 import pytest
@@ -13,8 +14,12 @@ from shengji.rl.belief_v2_freeze import (
     V2CohortPlanV1,
     V2ExecutionFreezeV1,
     V2ResourceCapsV1,
+    authenticate_execution_review,
+    build_pipeline_admission,
     execution_freeze_from_bytes,
     expected_execution_review_claim,
+    pipeline_consumption_tombstone_bytes,
+    reauthenticate_pipeline_admission,
     validate_execution_freeze,
 )
 
@@ -152,3 +157,65 @@ def test_select_none_requires_and_preserves_named_reentry_evidence():
     validate_execution_freeze(freeze)
     assert execution_freeze_from_bytes(freeze.canonical_bytes()) == freeze
 
+
+def _git(repo, *args):
+    return subprocess.run(
+        ("git", *args), cwd=repo, check=True,
+        capture_output=True, text=True).stdout.strip()
+
+
+def _review_repo(tmp_path, freeze, monkeypatch):
+    repo = (tmp_path / "repo").resolve()
+    remote = (tmp_path / "remote.git").resolve()
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "HANDOFF_REVIEW.md").write_text("ledger\n")
+    _git(repo, "add", "HANDOFF_REVIEW.md")
+    _git(repo, "-c", "user.name=Base", "-c",
+         "user.email=base@example.com", "commit", "-qm", "base")
+    marker = (
+        "BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW ".encode()
+        + canonical_json_bytes(expected_execution_review_claim(freeze)))
+    with (repo / "HANDOFF_REVIEW.md").open("ab") as handle:
+        handle.write(marker)
+    _git(repo, "add", "HANDOFF_REVIEW.md")
+    _git(repo, "-c", "user.name=Claude", "-c",
+         "user.email=noreply@anthropic.com", "commit", "-qm",
+         "PASS\n\nClaude-Session: https://claude.ai/code/session_test")
+    review = _git(repo, "rev-parse", "HEAD")
+    subprocess.run(("git", "init", "--bare", "-q", str(remote)),
+                   check=True)
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", str(remote))
+    _git(repo, "push", "-qu", "origin", "main")
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_freeze.CANONICAL_REMOTE_URL", str(remote))
+    return repo, review, marker
+
+
+def test_review_and_admission_require_actual_remote_append_only_marker(
+        tmp_path, monkeypatch):
+    freeze = _freeze()
+    repo, review, marker = _review_repo(tmp_path, freeze, monkeypatch)
+    authenticated, remote_tip = authenticate_execution_review(
+        freeze, repo=repo, review_commit=review)
+    assert authenticated == marker
+    assert remote_tip == review
+    admission, built_marker = build_pipeline_admission(
+        freeze, repo=repo, review_commit=review)
+    assert built_marker == marker
+    reauthenticate_pipeline_admission(
+        freeze, admission, repo=repo, review_marker=marker)
+    tombstone = pipeline_consumption_tombstone_bytes(admission)
+    assert b'"retry_authorized":false' in tombstone
+
+
+def test_review_refuses_local_remote_tracking_forgery(tmp_path, monkeypatch):
+    freeze = _freeze()
+    repo, review, _ = _review_repo(tmp_path, freeze, monkeypatch)
+    base = _git(repo, "rev-parse", "HEAD^")
+    _git(repo, "update-ref", "refs/remotes/origin/main", base)
+    with pytest.raises(BeliefV2FreezeError,
+                       match="differs from real remote"):
+        authenticate_execution_review(
+            freeze, repo=repo, review_commit=review)

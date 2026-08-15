@@ -25,6 +25,8 @@ from .replay_log import EXCLUDE_PLAYERS, rebuild_round
 
 H0_INVENTORY_SCHEMA = "belief-v1-v2-human-h0-inventory-v1"
 H0_GROUP_SCHEMA = "belief-v1-v2-human-source-group-v1"
+H0_SPLIT_SCHEMA = "belief-v1-v2-human-group-split-v1"
+H0_SPLIT_NAMESPACE = "belief-v1-v2-human-group-split-80-10-10-v1"
 
 
 class BeliefV2HumanInventoryError(ValueError):
@@ -33,6 +35,11 @@ class BeliefV2HumanInventoryError(ValueError):
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _is_sha256(value: Any) -> bool:
+    return (type(value) is str and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
 
 
 def _strict_source_manifest(raw: bytes) -> dict[str, str]:
@@ -254,6 +261,195 @@ def build_h0_inventory(*, source_manifest: Path,
 
 
 def inventory_bytes(inventory: dict[str, Any]) -> bytes:
-    if type(inventory) is not dict or inventory.get("schema") != H0_INVENTORY_SCHEMA:
-        raise BeliefV2HumanInventoryError("H0 inventory schema is invalid")
+    validate_h0_inventory(inventory)
     return canonical_json_bytes(inventory)
+
+
+def _counter(value: Any, *, allowed: set[str] | None = None) \
+        -> Counter[str]:
+    if type(value) is not dict \
+            or any(type(key) is not str or not key
+                   or type(count) is not int or count < 0
+                   for key, count in value.items()) \
+            or (allowed is not None and not set(value).issubset(allowed)):
+        raise BeliefV2HumanInventoryError("H0 inventory counter drift")
+    return Counter(value)
+
+
+def validate_h0_inventory(inventory: dict[str, Any]) -> None:
+    expected_keys = {
+        "schema", "source_manifest_sha256", "source_file_count",
+        "source_digest_population_sha256", "group_count", "groups",
+        "rounds_seen", "complete_rounds", "incomplete_rounds",
+        "human_play_decisions", "trump_rank_counts",
+        "attempted_channel_counts",
+        "hidden_ownership_labels_reconstructable_for_complete_rounds",
+        "group_split_unit", "raw_player_identity_published",
+        "model_rows_published", "training_authorized",
+        "test_open_authorized", "strength_claim_authorized"}
+    if type(inventory) is not dict or set(inventory) != expected_keys \
+            or inventory["schema"] != H0_INVENTORY_SCHEMA \
+            or any(type(inventory[key]) is not int or inventory[key] < 0
+                   for key in (
+                       "source_file_count", "group_count", "rounds_seen",
+                       "complete_rounds", "incomplete_rounds",
+                       "human_play_decisions")) \
+            or inventory["source_file_count"] <= 0 \
+            or inventory["group_count"] != inventory["source_file_count"] \
+            or inventory["rounds_seen"] != inventory["complete_rounds"] \
+            + inventory["incomplete_rounds"] \
+            or type(inventory["groups"]) is not list \
+            or len(inventory["groups"]) != inventory["group_count"] \
+            or not _is_sha256(inventory["source_manifest_sha256"]) \
+            or not _is_sha256(
+                inventory["source_digest_population_sha256"]) \
+            or inventory[
+                "hidden_ownership_labels_reconstructable_for_complete_rounds"] \
+            is not True \
+            or inventory["group_split_unit"] \
+            != "source-log-session-digest" \
+            or any(inventory[key] is not False for key in (
+                "raw_player_identity_published", "model_rows_published",
+                "training_authorized", "test_open_authorized",
+                "strength_claim_authorized")):
+        raise BeliefV2HumanInventoryError("H0 inventory identity drift")
+    rank_totals = _counter(
+        inventory["trump_rank_counts"], allowed=set(RANKS))
+    attempted_totals = _counter(
+        inventory["attempted_channel_counts"],
+        allowed={"complete", "absent"})
+    if sum(rank_totals.values()) != inventory["complete_rounds"] \
+            or sum(attempted_totals.values()) \
+            != inventory["human_play_decisions"]:
+        raise BeliefV2HumanInventoryError("H0 inventory total drift")
+    group_digests = []
+    complete = incomplete = decisions = source_bytes = 0
+    group_ranks: Counter[str] = Counter()
+    group_attempted: Counter[str] = Counter()
+    for row in inventory["groups"]:
+        if type(row) is not dict or set(row) != {
+                "group_digest", "source_bytes", "complete_rounds",
+                "incomplete_rounds", "human_play_decisions",
+                "trump_rank_counts", "attempted_channel_counts"} \
+                or type(row["group_digest"]) is not str \
+                or len(row["group_digest"]) != 64 \
+                or any(char not in "0123456789abcdef"
+                       for char in row["group_digest"]) \
+                or any(type(row[key]) is not int or row[key] < 0
+                       for key in (
+                           "source_bytes", "complete_rounds",
+                           "incomplete_rounds", "human_play_decisions")) \
+                or row["source_bytes"] <= 0:
+            raise BeliefV2HumanInventoryError("H0 inventory group row drift")
+        ranks = _counter(row["trump_rank_counts"], allowed=set(RANKS))
+        attempted = _counter(
+            row["attempted_channel_counts"],
+            allowed={"complete", "absent"})
+        if sum(ranks.values()) != row["complete_rounds"] \
+                or sum(attempted.values()) != row["human_play_decisions"]:
+            raise BeliefV2HumanInventoryError(
+                "H0 inventory group accounting drift")
+        group_digests.append(row["group_digest"])
+        source_bytes += row["source_bytes"]
+        complete += row["complete_rounds"]
+        incomplete += row["incomplete_rounds"]
+        decisions += row["human_play_decisions"]
+        group_ranks.update(ranks)
+        group_attempted.update(attempted)
+    if group_digests != sorted(group_digests) \
+            or len(group_digests) != len(set(group_digests)) \
+            or source_bytes <= 0 \
+            or complete != inventory["complete_rounds"] \
+            or incomplete != inventory["incomplete_rounds"] \
+            or decisions != inventory["human_play_decisions"] \
+            or group_ranks != rank_totals \
+            or group_attempted != attempted_totals:
+        raise BeliefV2HumanInventoryError("H0 inventory group closure drift")
+
+
+def _split_key(group_digest: str) -> bytes:
+    return hashlib.sha256(
+        f"{H0_SPLIT_NAMESPACE}|{group_digest}".encode("ascii")).digest()
+
+
+def _split_summary(groups: list[dict[str, Any]]) -> dict[str, Any]:
+    ranks: Counter[str] = Counter()
+    attempted: Counter[str] = Counter()
+    for group in groups:
+        ranks.update(group["trump_rank_counts"])
+        attempted.update(group["attempted_channel_counts"])
+    return {
+        "group_count": len(groups),
+        "group_digests": sorted(group["group_digest"] for group in groups),
+        "complete_rounds": sum(group["complete_rounds"] for group in groups),
+        "incomplete_rounds": sum(
+            group["incomplete_rounds"] for group in groups),
+        "human_play_decisions": sum(
+            group["human_play_decisions"] for group in groups),
+        "trump_rank_counts": dict(sorted(ranks.items())),
+        "attempted_channel_counts": dict(sorted(attempted.items())),
+    }
+
+
+def _derive_h0_group_split(inventory: dict[str, Any]) -> dict[str, Any]:
+    validate_h0_inventory(inventory)
+    if inventory["group_count"] < 10:
+        raise BeliefV2HumanInventoryError(
+            "H0 group population is too small for 80/10/10 split")
+    ordered = sorted(
+        inventory["groups"],
+        key=lambda row: (_split_key(row["group_digest"]),
+                         row["group_digest"]))
+    train_count = len(ordered) * 8 // 10
+    calibration_count = len(ordered) // 10
+    test_count = len(ordered) - train_count - calibration_count
+    if min(train_count, calibration_count, test_count) <= 0:
+        raise BeliefV2HumanInventoryError("H0 group split is empty")
+    splits = {
+        "train": _split_summary(ordered[:train_count]),
+        "calibration": _split_summary(
+            ordered[train_count:train_count + calibration_count]),
+        "test": _split_summary(ordered[-test_count:]),
+    }
+    population = {
+        split: row["group_digests"] for split, row in splits.items()}
+    return {
+        "schema": H0_SPLIT_SCHEMA,
+        "namespace": H0_SPLIT_NAMESPACE,
+        "inventory_sha256": _sha256(inventory_bytes(inventory)),
+        "source_digest_population_sha256": (
+            inventory["source_digest_population_sha256"]),
+        "selection_inputs": ["group_digest"],
+        "selection_uses_round_or_decision_counts": False,
+        "selection_uses_labels_or_outcomes": False,
+        "group_population_sha256": _sha256(canonical_json_bytes({
+            "schema": "belief-v1-v2-human-group-split-population-v1",
+            "splits": population,
+        })),
+        "splits": splits,
+        "raw_player_identity_published": False,
+        "model_rows_published": False,
+        "training_authorized": False,
+        "test_open_authorized": False,
+        "strength_claim_authorized": False,
+    }
+
+
+def build_h0_group_split(inventory: dict[str, Any]) -> dict[str, Any]:
+    result = _derive_h0_group_split(inventory)
+    validate_h0_group_split(result, inventory=inventory)
+    return result
+
+
+def validate_h0_group_split(
+        result: dict[str, Any], *, inventory: dict[str, Any]) -> None:
+    expected = _derive_h0_group_split(inventory)
+    if type(result) is not dict \
+            or canonical_json_bytes(result) != canonical_json_bytes(expected):
+        raise BeliefV2HumanInventoryError("H0 group split reconstruction drift")
+
+
+def group_split_bytes(
+        result: dict[str, Any], *, inventory: dict[str, Any]) -> bytes:
+    validate_h0_group_split(result, inventory=inventory)
+    return canonical_json_bytes(result)

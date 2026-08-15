@@ -13,8 +13,11 @@ from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.round import Round, actual_play_after
 from shengji.rl.belief_v2_human_inventory import (
     BeliefV2HumanInventoryError,
+    build_h0_group_split,
     build_h0_inventory,
+    group_split_bytes,
     inventory_bytes,
+    validate_h0_group_split,
 )
 
 
@@ -114,3 +117,56 @@ def test_h0_refuses_evaluation_only_source_before_publication(tmp_path):
     manifest, source = _write_snapshot(tmp_path, events)
     with pytest.raises(BeliefV2HumanInventoryError, match="evaluation-only"):
         build_h0_inventory(source_manifest=manifest, source_paths=[source])
+
+
+def _many_group_inventory(tmp_path: Path):
+    sources = []
+    manifest_rows = []
+    for index in range(30):
+        source = tmp_path / f"ROOM_{index:02d}.jsonl"
+        events = _completed_round(attempted_complete=index % 2 == 0)
+        events[0]["source_fixture_nonce"] = index
+        source.write_text("".join(
+            json.dumps(event) + "\n" for event in events))
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        sources.append(source)
+        manifest_rows.append(f"{digest}  {source.name}\n")
+    manifest = tmp_path / "snapshot.sha256"
+    manifest.write_text("".join(manifest_rows))
+    return build_h0_inventory(
+        source_manifest=manifest, source_paths=sources)
+
+
+def test_h0_group_split_is_whole_group_deal_blind_and_exact(tmp_path):
+    inventory = _many_group_inventory(tmp_path)
+    result = build_h0_group_split(inventory)
+    validate_h0_group_split(result, inventory=inventory)
+    assert group_split_bytes(result, inventory=inventory).endswith(b"\n")
+    assert {split: row["group_count"]
+            for split, row in result["splits"].items()} == {
+                "train": 24, "calibration": 3, "test": 3}
+    populations = [set(row["group_digests"])
+                   for row in result["splits"].values()]
+    assert not populations[0] & populations[1]
+    assert not populations[0] & populations[2]
+    assert not populations[1] & populations[2]
+    assert sum(row["complete_rounds"]
+               for row in result["splits"].values()) == 30
+    assert result["selection_inputs"] == ["group_digest"]
+    assert result["selection_uses_round_or_decision_counts"] is False
+    assert result["selection_uses_labels_or_outcomes"] is False
+    assert result["training_authorized"] is False
+
+
+def test_h0_group_split_refuses_inventory_or_result_drift(tmp_path):
+    inventory = _many_group_inventory(tmp_path)
+    result = build_h0_group_split(inventory)
+    result["splits"]["train"]["group_digests"][0] = "0" * 64
+    with pytest.raises(BeliefV2HumanInventoryError,
+                       match="split reconstruction"):
+        validate_h0_group_split(result, inventory=inventory)
+
+    inventory["groups"][0]["complete_rounds"] += 1
+    with pytest.raises(BeliefV2HumanInventoryError,
+                       match="group accounting"):
+        build_h0_group_split(inventory)

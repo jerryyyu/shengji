@@ -15,7 +15,7 @@ flag definitions. The final evidence map points to archived chronology. Do not
 append run logs here: update the synthesis when evidence changes a conclusion,
 and put exact run detail in `JOBS.md` or the dated archive.
 
-## Current synthesis — 2026-08-15 01:24 EDT
+## Current synthesis — 2026-08-15 08:26 EDT
 
 ### At a glance
 
@@ -26,16 +26,19 @@ and put exact run detail in `JOBS.md` or the dated archive.
   null selections. Pair-aware continuation produced no whole-game evidence:
   Air timed out at `0/8` terminal shards and the checkpoint attempt fail-closed.
 - **Learned-policy conclusion:** the model helped on selected trick-five+
-  states, but failed both whole-game conservative contrasts. A same-work
-  uninformed proposal beat champion on the same population; learned targeting
-  did not add value beyond generic ballot widening.
+  states, but failed both whole-game conservative contrasts. Its work-matched
+  uninformed arm beat the learned treatment and was positive versus champion,
+  but the arm used 14.8% more accepted worlds and 80.9% more searches than
+  champion. Learned targeting added no value; widening versus compute remains
+  a separate three-arm attribution question.
 - **Rollout-policy conclusion:** S4 completed its full 16,384-cluster,
   two-look confirmation with integrity intact but final efficacy unmet. Its
   roughly 0.7% natural decision incidence sharply limited whole-game effect.
 - **Current research milestone:** BELIEF-V1 is the active representation lane.
-  Its B0 contracts are merged and PR #113's B2 offline implementation awaits
-  exact-head source review. No corpus, training, test opening, sampler or
-  strength run has started. No S6 or Pair continuation is authorized.
+  Its B0 contracts are merged and PR #113 test-only successor `3ee0eb8` awaits
+  exact-head source review; no production byte changed from its repaired
+  predecessor. No corpus, training, test opening, sampler or strength run has
+  started. No S6 or Pair continuation is authorized.
 - **Main model lesson:** more data produced stable outcome prediction, but a
   model choosing moves globally did not transfer. Specialization plus search
   protection is the first learned use to pass fresh evidence.
@@ -334,11 +337,11 @@ current policy conclusions above.
   remains CALIB-only until a separately reviewed packet completes one valid
   32-bury-state look.
 - **Shuai-pai / S6:** KESP showed legal early and late throws absent from the
-  search ballot. Generic widening selected none, while a narrow actor-visible
-  late full-hand boss/near selector retained strong reused-state value and
-  naturally triggered in 13/512 champion rounds. Its reviewed Air preflight is
-  queued behind the pair-aware screen. It still needs fresh capacity evidence
-  and a treatment/null/champion whole-round screen.
+  search ballot. A narrow actor-visible late full-hand boss/near selector
+  retained reused-state value and naturally triggered in 13/512 champion
+  rounds, but the recovered scored-DEV aggregate selected none for a fresh
+  screen design because the lead source failed three gates. The bury-side pass
+  is hypothesis-only; no capacity job or whole-round screen is queued.
 - **People-facing target:** offline human agreement measures style and coverage.
   A challenger must first beat the live champion on paired bot games, then pass
   a separately consented and blinded HUMAN-C1 candidate-versus-champion test.

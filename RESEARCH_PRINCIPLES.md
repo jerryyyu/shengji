@@ -19,12 +19,14 @@ strength.
 
 ## 2. Search is the current authority and the next teacher
 
-The strongest positive result in the closed campaign came from generic
-same-work ballot widening, while several targeted heuristic compositions did
-not survive whole-game evaluation. More search is therefore the highest-
-confidence near-term strength lever. The merged native work makes that lever
-cheaper and can also buy statistical power rather than only more worlds per
-decision.
+The strongest positive observation in the closed campaign came from an
+uninformed ballot-widening arm, while several targeted heuristic compositions
+did not survive whole-game evaluation. It is not yet a clean same-work result:
+the arm used 14.8% more accepted worlds and 80.9% more searches than champion.
+The next causal test therefore needs three arms—champion, widening at champion
+work, and widening at the original control work—to separate candidate breadth
+from added compute. The merged native work makes either lever cheaper and can
+also buy statistical power rather than only more worlds per decision.
 
 Search should remain the final decision-maker until a learned policy beats it
 directly. A stronger public-information search can later generate better soft
@@ -48,11 +50,11 @@ controlled order:
 Each consumer gets its own causal comparison. They are not introduced as one
 bundle.
 
-Existing assets route this work: confirm the already-positive generic ballot
-widening separately; read the pair-aware continuation result before choosing
-another continuation experiment; extend the reviewed PointContext fact
-boundary; and treat MCSmartRoll and LEVEL_OBJECTIVE as separately triaged
-continuation/value hypotheses rather than folding them into the belief model.
+Existing assets route this work: run the three-arm widening/compute attribution
+test separately; record that both Pair continuation executions closed without
+terminal evidence; extend the merged PointContext fact boundary; and treat
+MCSmartRoll and LEVEL_OBJECTIVE as separately triaged continuation/value
+hypotheses rather than folding them into the belief model.
 
 ## 4. Every field has an information class
 

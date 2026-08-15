@@ -4,7 +4,7 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 07:45 EDT.
+Last reconciled: 2026-08-15 08:26 EDT.
 
 ## Immediate objective
 
@@ -20,16 +20,17 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 
 ## Review queue — precise asks
 
-1. **PR #113 BELIEF-V1 B2 delta re-review — current blocker.** Review exact
-   head `0da43a00c7e556ff7d7734ec4e883af293bb8b23`, parent
-   `529664f4fd10a51a14991f6d5a5c27db39a37596`, under PR comment
-   `5302070481`. Scope is the nine-file final delta. Re-run the four named
-   mutations: ECE-only repooling; literal-zero mechanics counters;
-   winner-to-next-leader neutralization; attacker-points neutralization.
-   Verify the post-observer recapture still produces the named mutation
-   refusal. Return exact-head PASS or a precise HOLD. PASS is source
-   merge-readiness only: no freeze, corpus generation, training, test opening,
-   cloud use, gameplay, strength, promotion or deployment authority.
+1. **PR #113 BELIEF-V1 B2 test-only delta re-review — current blocker.** Review
+   exact head `3ee0eb8754b47743c52db0d7387372b6863913ae`, parent
+   `0da43a00c7e556ff7d7734ec4e883af293bb8b23`, responding to ledger
+   `01a95d6` / PR comment `5302164458`. Scope is exactly two test files; no
+   production byte changed. Neutralize the completed-history loop guard and
+   require the self-consistent middle-trick forgery witness to fail. Then
+   neutralize each conservation/hard-fact accumulator in `_test_round_evidence`
+   separately and require the terminal-record wiring witness to fail on the
+   exact non-zero count. Return exact-head PASS or a precise HOLD. PASS is
+   source merge-readiness only: no freeze, corpus generation, training, test
+   opening, cloud use, gameplay, strength, promotion or deployment authority.
 
 2. **No other current review request.** The next review starts only after
    either (a) PR #113 lands and a fresh Mini-specific V2 design is frozen, or
@@ -42,7 +43,7 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 | layer | state | what it proves / does not prove |
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
-| **B2 offline pipeline source** | PR #113 exact `0da43a0` published. Local validation: 62 focused; 186/186 BELIEF pure; 186/186 strict compiled/void; 139 broader pure; 112 broader compiled/parity plus 2 expected skips. Four named mutations killed. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. External delta PASS is still pending. |
+| **B2 offline pipeline source** | PR #113 exact `3ee0eb8` published. The successor is test-only: it adds the two witness-altitude checks requested at `01a95d6`; production bytes remain those at reviewed predecessor `0da43a0`. Local validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. External exact-head delta PASS is pending. |
 | **B2 data/result** | Absent. No accepted V2 design, namespace, corpus, reference worlds, checkpoint, test result or terminal report exists. | No calibration lift has been measured. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |

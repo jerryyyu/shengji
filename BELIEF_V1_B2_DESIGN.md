@@ -1,8 +1,10 @@
 # BELIEF-V1 B1/B2: opened-development corpus and calibration design
 
-Status: local draft stacked on PR #111 exact head
-`7ebfcf7959f5254fee3b3dda1fc2fd83600540e9`. The governing specification is
-PR #110 exact head `b8c2a4c25e918278c72facc472c6736428e65af3`.
+Status: reviewed design merged on canonical main. The governing specification
+and B0 contracts from PRs #110–#112 are merged. The complete offline
+implementation is PR #113; exact test-only successor
+`3ee0eb8754b47743c52db0d7387372b6863913ae` awaits delta review. No B2
+population or result exists.
 
 This document authorizes nothing. In particular it does not authorize corpus
 generation, training, cloud use, sampler changes, gameplay evidence, strength

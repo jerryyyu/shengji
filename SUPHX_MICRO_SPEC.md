@@ -1,10 +1,12 @@
 # Suphx-style privileged-feature-removal microbaseline
 
-Status (2026-08-07): **O0 EXECUTABLE PACKET IMPLEMENTED / INDEPENDENT
-RE-REVIEW REQUIRED / NO TRAINING AUTHORITY.** This document defines the next
-Lane-C mechanism after terminal Direct-Q SELECT NONE. The runtime preflight
-passed, and the exact DEV/freezer/trainer/evaluator/gate implementation now
-exists, but no launch packet has been frozen and no learning run is authorized.
+Status (2026-08-15): **HISTORICAL / O0 AND O0-V2 TERMINALLY CLOSED.** The O0
+and corrected O0-v2 runs were completed and selected none under their
+preregistered gates. O0's aggregate signal was not seed-robust; O0-v2 found no
+reliable control or margin-sharpening effect. This document preserves the
+implementation and experiment contract that produced those results. It is not
+a live queue, and it grants no training, retry, extension, strength, promotion,
+or deployment authority.
 
 Implementation step 1 now lives in `server/shengji/rl/suphx_micro.py` with
 feature-contract SHA-256

@@ -24,7 +24,7 @@ results live in `AI_POLICIES.md`; run archives in `server/runs/`.
 
 ---
 
-## Current synthesis — 2026-08-14 10:00 EDT
+## Current synthesis — 2026-08-15 08:26 EDT
 
 Exact terminal numbers and SHAs live in the canonical table in
 `AI_POLICIES.md`; `BACKLOG.md` owns live order and `JOBS.md` owns machines.
@@ -67,32 +67,11 @@ This section keeps only the research conclusions that change what we try next.
   fail-closed on microshard 3 `treatment work drift`; its one-shot admission is
   spent and the host is powered off. Neither path may be extended, resumed,
   retried or interpreted from partial work.
-  PR #85 exact head `111314f` PASSed external design-only review with 40 tests.
-  It is a checkpointed successor for terminal timeout contingency only and grants no
-  capacity screen, replacement launch, retry, extension or result authority.
-  The attacker-only incremental
-  semantics passed external review and await a capacity decision. Pair-ballot
-  PR #72's defender-only, cross-Python-stable
-  capacity design PASSed external review. Claude then PASSed PR #79's repaired
-  16-lane score-free preflight code at canonical `1cf9521`. The complete
-  reviewed population and 16 receipts were copied to the performance host,
-  exact design `be21b547…f439` was rebuilt, and outcome-free packet
-  `e054c5e5…e492` / internal `25b1888c…a14b5` was frozen. Claude's
-  packet-specific PASS landed at `88866f25`; the one score-free preflight then
-  completed in 157.535 seconds wall time with no surviving worker or partial.
-  Final read-only PR #84 exact head
-  `f571146f631914eb6899ce435ef466d70d9f9330` then passed Claude's exact CLI
-  reproduction and four falsifications under raw marker
-  `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` at canonical
-  `16af447`. Declarative build-and-verify-only design PR #86 exact head
-  `289fdf0` PASSed superseding external design-only review and merged, opening
-  only a future controller-design review. Externally reviewed PR #100 now
-  specifies that controller boundary, while externally reviewed PR #101
-  freezes a fresh 8,192-deal, 16-lane exact-champion natural role/band dose
-  census design; both are merged. Prevalence remains SmartBot-trajectory until
-  a separately reviewed implementation actually runs. Implementation, freeze, execution,
-  evidence access, scoring, REPORT, aggregation and every strength or deployment
-  claim remain closed.
+  The reviewed source, capacity, controller, and natural-dose designs remain
+  useful provenance, but none authorizes another execution. Attacker-gated
+  pair-cap and ballot-retention variants are parked until a materially new,
+  cheaper diagnosis justifies reopening the family. There is no active Pair
+  capacity decision or queued Pair job.
 - **Learned/RL routes:** V11 direct-v2, Direct-Q, Suphx O0/O0-v2 and the first
   Stage-C model all selected none under different gates. This does not close
   RL. It says the next experiment must change data, objective, credit or model
@@ -231,7 +210,7 @@ mechanism from earning a huge run merely because its code is ready. Exploration
 can reuse DEV/CALIB and keep partial learning; confirmation remains fresh and
 sealed.
 
-## Literature-derived design constraints — 2026-08-04
+## Literature-derived design constraints — 2026-08-15
 
 This is an architecture filter, not a list of famous systems to imitate. The
 transfer question is whether a result survives Shengji's four seats, two
@@ -261,6 +240,17 @@ calibrated value contract has actually passed; and establish the loop on a
 small domain before scaling it. A small fixed continuation-policy portfolio is
 a legitimate robustness experiment, but a stronger standalone rollout policy
 does not automatically imply a stronger search policy.
+
+For BELIEF-V1 specifically, simulator access to the real opponent hands and
+hidden kitty is a **training-label privilege**, not a runtime feature. The
+model consumes only public history, the acting hand, and sound deductions;
+held-out true ownership trains and scores its probability distributions.
+Later search teachers should average action value over worlds compatible with
+the same public observation and preserve disagreement across those worlds as
+an uncertainty target. This is the concrete Shengji translation of range and
+public-belief reasoning in Libratus, Pluribus, ReBeL, and related imperfect-
+information search—not a claim that their equilibrium guarantees transfer to
+four-player partnership play.
 
 Historical DMC2 is consolidated into the lineage below and the dated archive.
 Its spread alarm caught a real collapse, but its defender sign, target,
@@ -439,13 +429,12 @@ formally closed the milestone.
 S4's fresh 16,384-cluster sequential successor completed both looks and selected
 none at its final efficacy boundary. S6's one recovered 64-state aggregate
 selected none for a fresh screen design because its lead source failed the
-two-source gate; the bury-side pass is hypothesis-only. The original Air Pair
-screen is 4,640/7,168 and likely to reach its fixed timeout before completion.
-It remains sealed and immutable. A fresh reviewed 224-microshard checkpoint
-successor is running on Performance Cloud under one consumed admission and must
-receive a separate terminal review. S5 does not have runnable recovery
-authority: the spent PR #74/#76 execution chain is closed and only PR #70's
-reusable diagnostic source remains.
+two-source gate; the bury-side pass is hypothesis-only. The Air Pair screen
+later reached its fixed cutoff with `0/8` terminal shards, and the Performance
+checkpoint successor fail-closed on work telemetry before terminal evidence.
+Both admissions are spent and neither has a resumable result. S5 does not have
+runnable recovery authority: the spent PR #74/#76 execution chain is closed
+and only PR #70's reusable diagnostic source remains.
 
 ### Lane A — improve search directly
 
@@ -492,34 +481,14 @@ reusable diagnostic source remains.
   not strength evidence. Keep individual estimands until dose and utility are
   known. If several survive, test a small named continuation-policy portfolio
   rather than silently merging rules.
-- **Pair family:** the original broad pair-aware continuation screen remains
-  sealed on Air and is expected to time out under its immutable cap. Do not
-  extend or reuse its in-memory outcomes. The fresh checkpoint successor is
-  running on Performance Cloud across 224 immutable microshards and is the only
-  active scored Pair execution; a separate terminal review must authenticate
-  its manifest before any outcome access or aggregate decision. Let that result
-  decide whether the externally PASSed attacker-gated pair-cap merits an
-  incremental screen.
-  Pair-ballot PR #72 at exact head `373de84` combines DEV+CALIB over 1,023
-  defenders / 990 deal clusters, excludes the lone attacker, and binds exact
-  population/weight identity; its external design review PASSed. Claude PASSed
-  PR #79 `6461c66` at canonical `1cf9521`. The exact reviewed population plus
-  16 source receipts now reside on Performance Cloud; design
-  `be21b547…f439` and packet `e054c5e5…e492` / internal `25b1888c…a14b5` were
-  frozen there. Packet review PASSed at `88866f25`; the sole score-free
-  preflight completed and produced result `544499d1…` / internal `ca36d1af…`.
-  Final read-only PR #84 exact head `f571146f631914eb6899ce435ef466d70d9f9330`
-  passed the exact result-review CLI and four falsifications; raw marker
-  `PAIR_BALLOT_AFFECTED_CAPACITY_PREFLIGHT_RESULT_V1_REVIEW` is canonical at
-  `16af447`. Design-only PR #86 exact `289fdf0` then PASSed superseding review
-  and merged, opening a future controller-design review only. Reviewed and
-  merged design-only PR #100 specifies that controller boundary; reviewed and
-  merged design-only PR #101 freezes a fresh 8,192-deal exact-champion natural
-  role/band dose census design. Neither is executable,
-  and SmartBot-trajectory prevalence still must be replaced before whole-round
-  inference. PR #55 `24b421d` PASSed merge-readiness, so the exact
-  #55→#60→#61→#72 stack may merge only in order; packet implementation/freeze,
-  scored execution and every downstream claim remain unauthorized.
+- **Pair family:** both whole-game evidence paths are closed without evidence.
+  Air reached its fixed timeout with `0/8` terminal shards; the Performance
+  checkpoint attempt refused on `treatment work drift`. Preserve the reviewed
+  diagnostic, capacity, controller, and natural-dose designs as provenance,
+  but do not treat them as a queue. Attacker-gated pair-cap and ballot-
+  retention work can re-enter only through a materially new diagnosis and
+  fresh design; no retry, resume, partial interpretation, packet, or scored
+  Pair run is active.
 - **S3c exact-root curriculum** is the new operational hypothesis, not an S3b
   retry. S3b-v2 is terminal after its first four-card treatment cluster
   exceeded the frozen cumulative 250k-node budget. Start from naturally
@@ -538,9 +507,12 @@ reusable diagnostic source remains.
   bounded enough to justify a later gated design. It does not measure exact
   solver nodes, sampled-world acceptance or utility; those remain the purpose
   of separately reviewed controllers and runs.
-- Generic candidate widening remains closed on DEV-512. New action sources
-  must come from a named mechanism—structured tactics, human proposals or a
-  model—and beat a same-budget random diversifier on fresh states.
+- The old generic DEV-512 widening recipe remains closed. Separately, T4's
+  complete-round uninformed arm was positive against champion but consumed
+  14.8% more accepted worlds and 80.9% more searches. Its open attribution
+  question requires three arms—champion, widening at champion work, and
+  widening at original-null work—rather than being described as a clean
+  same-work win.
 - Within-decision adaptive allocation also remains closed. A different open
   hypothesis is to allocate total search by **decision type**: more work for
   buries, leads and genuinely short endgames, less for forced follows. Test it

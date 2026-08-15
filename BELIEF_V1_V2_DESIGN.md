@@ -154,6 +154,25 @@ names, file names, hands, kitty cards, actions, or model rows, and every
 training/test/strength authority remains false. The real inventory must not be
 run until this source receives the consolidated design PASS.
 
+That authorized inventory has now run exactly once against source-manifest
+SHA-256 `07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e`.
+Its canonical receipt SHA-256 is
+`201ef84e5d914b3ea956714e4d9ae9402baaad8854422b32678c6286cc7de12f`.
+It found 30 whole-session groups, 122 complete and seven incomplete rounds,
+and 2,830 eligible human play decisions. The natural trump-rank population is
+2=49, 3=21, 4=21, 5=10, 6=3, 7=6, 8=3, 9=3, A=4, Q=2; it is neither fixed at
+rank 2 nor rebalanced after observation. Every eligible historical row has an
+absent attempted-card channel, so V2 must carry an explicit versioned absence
+mask and may never substitute engine-accepted cards for the missing attempted
+cards. Hidden ownership is reconstructable for every complete round.
+
+The deal-blind whole-session split receipt has SHA-256
+`fa704103e39cd2259d20800608a75bd4d1b64b1dacfe62cdd85eeeae916e25be`.
+It assigns 24/3/3 groups and 2,240/416/174 eligible decisions to
+train/calibration/test. Selection uses only content-derived group digest; it
+does not use labels, outcomes, round count, or decision count. Raw player and
+source identities remain excluded.
+
 Human games provide two artifacts:
 
 1. an untouched human out-of-distribution evaluation stratum, including its
@@ -162,18 +181,23 @@ Human games provide two artifacts:
    control with the same architecture, seeds, epoch rule, and exact total
    optimizer-decision count.
 
-The initial mixture proposal is a maximum 20% of optimizer decisions from the
-human-training fold. Human decisions replace, rather than add to, a
-deterministically selected portion of synthetic training decisions; the
-synthetic-only control and mixed arm therefore consume the same total number
-of optimizer decisions in every epoch. The removed synthetic decisions are
+The initial mixture consumes every one of the 2,240 H0 training decisions
+exactly once per epoch and never oversamples them. Human decisions replace,
+rather than add to, the same number of synthetic training decisions; the
+synthetic-only control and mixed arm therefore consume the same exact realized
+optimizer-decision count in every epoch. The removed synthetic decisions are
 selected once from train-only identities by a frozen digest-order rule and
-are never selected using labels, loss, calibration, or test evidence. Scale
-response is evaluated by separately named synthetic-only data-volume arms;
-it cannot be credited to the human-mixture comparison. The exact mixture
-fraction is frozen only after the H0 inventory reports available complete
-rounds and decision counts. It is never tuned on human test performance. A
-coarse actor-visible policy-family field may name
+are never selected using labels, loss, calibration, or test evidence. The
+exact synthetic decision population is necessarily known only after capture;
+the controller must publish and reopen its ordered manifest, exact count, the
+removed prefix, and the resulting human fraction before training. The freeze
+binds this derivation rule rather than inventing a pre-capture count. Even the
+conservative floor of four play decisions per one of 10,647 complete synthetic
+training rounds proves the human fraction is below 20%; the realized fraction
+is expected to be much smaller and is reported, not tuned. Scale response is
+evaluated by separately named digest-prefix synthetic-only data-volume arms;
+it cannot be credited to the human-mixture comparison. A coarse actor-visible
+policy-family field may name
 `champion`, `human`, or a reviewed named-bot family by relative seat;
 individual identity, username, session, and source-file identity are
 forbidden model inputs.
@@ -315,9 +339,12 @@ V2 optimizes measured stages in this order:
    deterministic per-member workers or an ensemble-batched implementation.
    Preserve all 8+8 members, exact common-epoch selection, and receipt chains;
    no best seed may be retained.
-5. **Device choice:** benchmark one source-pinned epoch on Mini and the intended
-   cloud device. A cloud accelerator is used only if end-to-end wall time,
-   including input transfer, materially improves under identical numerics.
+5. **Device choice:** benchmark one source-pinned epoch on Mini CPU, Mini MPS,
+   and the intended cloud device. The Mini has an available 10-core M4 GPU,
+   but V1 deliberately pinned CPU and cannot be changed in flight. V2 freezes
+   MPS or a cloud accelerator only if end-to-end wall time, including input
+   transfer and projection, materially improves and the reviewed probability,
+   optimizer, checkpoint, and reproducibility contracts still hold.
 6. **Native sampler work:** profile only after replay. A native REF-C assignment
    kernel is lower priority if replay reduces the complete reference stage to
    a small fraction of capture/training cost.
@@ -367,6 +394,19 @@ the compiled engine, a content-bound source/Python/native runtime, and a real
 common overlap among all 16 lanes. Captured rows are discarded. The result
 independently reconstructs the population and all resource summaries and
 keeps production capture, training, test, and strength authority false.
+
+That authorized preflight has now completed on Strength Cloud at exact source
+`22c8568dd64d11f873e1397569b5ee1efb473b0a`; result SHA-256
+`3b40250e25acccf7ed9f9c8becf763956c434fe0bae2098336b6dd2bae16290c`.
+All 416 rounds completed under a real 16-lane overlap, exit status was zero,
+and stderr was empty. Mean/p95 round wall were 12.709/16.609 seconds;
+mean/p95 artifact size 591,916/763,734 bytes; aggregate CPU was 5,285.7
+seconds; 16-lane parallel wall was 342.8 seconds; maximum recorded lane RSS
+was 398,468 KiB; and three rounds exercised engine-adjusted actions. A direct
+mean projection for 13,312 rounds is 47.0 capture core-hours, 2.94 wall hours
+per lane, and 7.34 GiB. A conservative p95 projection is 3.84 wall hours per
+lane and 9.47 GiB. These measurements supersede the earlier V1-derived 26.2
+core-hour/6.7-GiB planning estimate and must drive the final automatic caps.
 
 The immutable 13,312-coordinate production schedule is memoized only after
 its first complete derivation. This preserves its canonical bytes while
@@ -448,11 +488,16 @@ authority, or sealed-resource boundary changes.
 
 - the reviewed V1 B2 terminal result and resource receipts;
 - exact review disposition and repair head for PR #116;
-- a score-free H0 human-log inventory and public-event completeness report;
-- a source-pinned multi-rank capacity/profile result;
+- an implementation and tensor-level witness for the historical attempted-
+  channel absence mask;
+- the CPU-versus-MPS-versus-cloud source-pinned epoch benchmark;
 - the exact fresh seed namespace, split hashes, and source-log digest set;
-- frozen human-mixture fraction (at most 20%, decision-matched by replacement)
-  and the literal 0.5% familywise material-regression rule above; and
+- post-capture exact work-manifest derivation implementing the reviewed
+  all-human-once replacement rule and the literal 0.5% familywise material-
+  regression rule above; and
 - exact host/runtime/native identities and final caps.
 
-Until those inputs exist, this document is a design proposal only.
+The H0 inventory, whole-session split, seed namespace, and multi-rank capacity
+receipt now exist; none authorizes population capture or training. Until the
+remaining inputs and one exact execution-freeze PASS exist, this document is
+a design proposal only.

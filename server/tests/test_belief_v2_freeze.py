@@ -10,7 +10,15 @@ import pytest
 
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_v2_freeze import (
+    ALL_HUMAN_TRAIN_DECISIONS,
+    ALL_SYNTHETIC_TRAIN_DECISIONS,
     BeliefV2FreezeError,
+    MIXED_SYNTHETIC_TRAIN_DECISIONS,
+    MIXED_WORK_RULE,
+    NO_HUMAN_DECISIONS,
+    PRIMARY_WORK_RULE,
+    SCALE_SYNTHETIC_TRAIN_DECISIONS,
+    SCALE_WORK_RULE,
     V2CohortPlanV1,
     V2ExecutionFreezeV1,
     V2ResourceCapsV1,
@@ -73,34 +81,36 @@ def _runtime():
 def _cohorts():
     primary = V2CohortPlanV1(
         cohort_id="synthetic-primary", kind="synthetic-primary",
-        optimizer_decisions_per_epoch=1000,
-        synthetic_decisions_per_epoch=1000, human_decisions_per_epoch=0,
-        synthetic_decision_manifest_sha256=_sha("1"),
-        human_decision_manifest_sha256=None, comparator_cohort_id=None)
+        synthetic_selection_rule=ALL_SYNTHETIC_TRAIN_DECISIONS,
+        synthetic_fraction_numerator=1, synthetic_fraction_denominator=1,
+        human_selection_rule=NO_HUMAN_DECISIONS,
+        work_match_rule=PRIMARY_WORK_RULE, comparator_cohort_id=None)
     return (
         primary,
         V2CohortPlanV1(
             cohort_id="hard-geometry-label-permutation",
             kind="hard-geometry-label-permutation",
-            optimizer_decisions_per_epoch=1000,
-            synthetic_decisions_per_epoch=1000,
-            human_decisions_per_epoch=0,
-            synthetic_decision_manifest_sha256=_sha("1"),
-            human_decision_manifest_sha256=None,
+            synthetic_selection_rule=ALL_SYNTHETIC_TRAIN_DECISIONS,
+            synthetic_fraction_numerator=1,
+            synthetic_fraction_denominator=1,
+            human_selection_rule=NO_HUMAN_DECISIONS,
+            work_match_rule=PRIMARY_WORK_RULE,
             comparator_cohort_id="synthetic-primary"),
         V2CohortPlanV1(
             cohort_id="human-mixture", kind="human-mixture",
-            optimizer_decisions_per_epoch=1000,
-            synthetic_decisions_per_epoch=800, human_decisions_per_epoch=200,
-            synthetic_decision_manifest_sha256=_sha("2"),
-            human_decision_manifest_sha256=_sha("3"),
+            synthetic_selection_rule=MIXED_SYNTHETIC_TRAIN_DECISIONS,
+            synthetic_fraction_numerator=1,
+            synthetic_fraction_denominator=1,
+            human_selection_rule=ALL_HUMAN_TRAIN_DECISIONS,
+            work_match_rule=MIXED_WORK_RULE,
             comparator_cohort_id="synthetic-primary"),
         V2CohortPlanV1(
             cohort_id="synthetic-scale-50", kind="synthetic-scale",
-            optimizer_decisions_per_epoch=500,
-            synthetic_decisions_per_epoch=500, human_decisions_per_epoch=0,
-            synthetic_decision_manifest_sha256=_sha("4"),
-            human_decision_manifest_sha256=None,
+            synthetic_selection_rule=SCALE_SYNTHETIC_TRAIN_DECISIONS,
+            synthetic_fraction_numerator=1,
+            synthetic_fraction_denominator=2,
+            human_selection_rule=NO_HUMAN_DECISIONS,
+            work_match_rule=SCALE_WORK_RULE,
             comparator_cohort_id="synthetic-primary"),
     )
 
@@ -124,6 +134,9 @@ def _freeze():
         human_calibration_group_count=3, human_test_group_count=3,
         human_complete_round_count=122,
         human_eligible_decision_count=2830,
+        human_train_eligible_decision_count=2240,
+        human_calibration_eligible_decision_count=416,
+        human_test_eligible_decision_count=174,
         preflight_result_sha256=_sha("1"),
         preflight_runtime_sha256=_sha("2"),
         seed_registry_sha256=_sha("3"),
@@ -149,6 +162,13 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
     assert claim["retry_authorized"] is False
     assert claim["gameplay_strength_screen_authorized"] is False
     assert claim["deployment_authorized"] is False
+    cohort_payload = freeze.to_dict()["cohorts"]
+    assert all("optimizer_decisions_per_epoch" not in row
+               for row in cohort_payload)
+    assert all("synthetic_decision_manifest_sha256" not in row
+               for row in cohort_payload)
+    assert cohort_payload[0]["synthetic_selection_rule"] \
+        == ALL_SYNTHETIC_TRAIN_DECISIONS
 
 
 @pytest.mark.parametrize(("mutation", "message"), [
@@ -158,16 +178,19 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
      "cohort kind population"),
     (lambda freeze: replace(
         freeze, cohorts=tuple(
-            replace(row, optimizer_decisions_per_epoch=1100,
-                    synthetic_decisions_per_epoch=900)
+            replace(row, work_match_rule=PRIMARY_WORK_RULE)
             if row.kind == "human-mixture" else row
             for row in freeze.cohorts)), "comparison/work binding"),
     (lambda freeze: replace(
+        freeze, human_eligible_decision_count=10_590,
+        human_train_eligible_decision_count=10_000),
+     "human mixture fraction"),
+    (lambda freeze: replace(
         freeze, cohorts=tuple(
-            replace(row, human_decisions_per_epoch=201,
-                    synthetic_decisions_per_epoch=799)
-            if row.kind == "human-mixture" else row
-            for row in freeze.cohorts)), "human mixture fraction"),
+            replace(row, synthetic_fraction_numerator=1,
+                    synthetic_fraction_denominator=1)
+            if row.kind == "synthetic-scale" else row
+            for row in freeze.cohorts)), "scale cohort binding"),
     (lambda freeze: replace(
         freeze, v1_terminal_route=(
             "v1-select-none-with-named-domain-shift-reentry")),

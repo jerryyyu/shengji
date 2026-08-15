@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -71,6 +72,21 @@ RANK_MULTIPLICITY_RULE = (
     "paired-round-bootstrap-max-statistic-one-sided-familywise-95-v1")
 MAX_HUMAN_FRACTION_NUMERATOR = 1
 MAX_HUMAN_FRACTION_DENOMINATOR = 5
+MIN_PLAY_DECISIONS_PER_COMPLETE_ROUND = 4
+V2_TRAIN_ROUND_COUNT = dict(V2_SPLIT_COUNTS)["train"]
+ALL_SYNTHETIC_TRAIN_DECISIONS = (
+    "all-realized-synthetic-train-decisions-v1")
+MIXED_SYNTHETIC_TRAIN_DECISIONS = (
+    "all-realized-synthetic-train-decisions-minus-human-count-by-digest-v1")
+SCALE_SYNTHETIC_TRAIN_DECISIONS = (
+    "digest-ranked-prefix-of-realized-synthetic-train-decisions-v1")
+NO_HUMAN_DECISIONS = "none"
+ALL_HUMAN_TRAIN_DECISIONS = (
+    "all-h0-train-decisions-once-in-group-and-decision-digest-order-v1")
+PRIMARY_WORK_RULE = "all-realized-synthetic-train-decisions-per-epoch-v1"
+MIXED_WORK_RULE = (
+    "replace-one-synthetic-per-human-at-primary-realized-total-v1")
+SCALE_WORK_RULE = "floor-primary-realized-work-times-frozen-fraction-v1"
 
 
 class BeliefV2FreezeError(ValueError):
@@ -109,11 +125,11 @@ def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 class V2CohortPlanV1:
     cohort_id: str
     kind: str
-    optimizer_decisions_per_epoch: int
-    synthetic_decisions_per_epoch: int
-    human_decisions_per_epoch: int
-    synthetic_decision_manifest_sha256: str
-    human_decision_manifest_sha256: str | None
+    synthetic_selection_rule: str
+    synthetic_fraction_numerator: int
+    synthetic_fraction_denominator: int
+    human_selection_rule: str
+    work_match_rule: str
     comparator_cohort_id: str | None
     member_seeds: tuple[int, ...] = COHORT_SEEDS
     schema: str = COHORT_SCHEMA
@@ -125,15 +141,13 @@ class V2CohortPlanV1:
             "kind": self.kind,
             "member_seeds": list(self.member_seeds),
             "member_count": len(self.member_seeds),
-            "optimizer_decisions_per_epoch": (
-                self.optimizer_decisions_per_epoch),
-            "synthetic_decisions_per_epoch": (
-                self.synthetic_decisions_per_epoch),
-            "human_decisions_per_epoch": self.human_decisions_per_epoch,
-            "synthetic_decision_manifest_sha256": (
-                self.synthetic_decision_manifest_sha256),
-            "human_decision_manifest_sha256": (
-                self.human_decision_manifest_sha256),
+            "synthetic_selection_rule": self.synthetic_selection_rule,
+            "synthetic_fraction": {
+                "numerator": self.synthetic_fraction_numerator,
+                "denominator": self.synthetic_fraction_denominator,
+            },
+            "human_selection_rule": self.human_selection_rule,
+            "work_match_rule": self.work_match_rule,
             "comparator_cohort_id": self.comparator_cohort_id,
         }
 
@@ -143,34 +157,28 @@ def _validate_cohort(row: V2CohortPlanV1) -> None:
             or type(row.cohort_id) is not str or not row.cohort_id \
             or row.kind not in COHORT_KINDS \
             or row.member_seeds != COHORT_SEEDS \
-            or any(type(value) is not int or value < 0 for value in (
-                row.optimizer_decisions_per_epoch,
-                row.synthetic_decisions_per_epoch,
-                row.human_decisions_per_epoch)) \
-            or row.optimizer_decisions_per_epoch <= 0 \
-            or row.optimizer_decisions_per_epoch \
-            != row.synthetic_decisions_per_epoch \
-            + row.human_decisions_per_epoch \
-            or not _is_sha256(row.synthetic_decision_manifest_sha256) \
-            or not (row.human_decision_manifest_sha256 is None
-                    or _is_sha256(row.human_decision_manifest_sha256)) \
+            or type(row.synthetic_selection_rule) is not str \
+            or not row.synthetic_selection_rule \
+            or type(row.synthetic_fraction_numerator) is not int \
+            or type(row.synthetic_fraction_denominator) is not int \
+            or not 0 < row.synthetic_fraction_numerator \
+            <= row.synthetic_fraction_denominator \
+            or math.gcd(row.synthetic_fraction_numerator,
+                        row.synthetic_fraction_denominator) != 1 \
+            or type(row.human_selection_rule) is not str \
+            or not row.human_selection_rule \
+            or type(row.work_match_rule) is not str \
+            or not row.work_match_rule \
             or not (row.comparator_cohort_id is None
                     or (type(row.comparator_cohort_id) is str
                         and bool(row.comparator_cohort_id))):
         raise BeliefV2FreezeError("V2 cohort plan identity drift")
     if row.kind in ("synthetic-primary", "synthetic-scale",
                     "hard-geometry-label-permutation"):
-        if row.human_decisions_per_epoch != 0 \
-                or row.human_decision_manifest_sha256 is not None:
+        if row.human_selection_rule != NO_HUMAN_DECISIONS:
             raise BeliefV2FreezeError("non-human V2 cohort contains human work")
     elif row.kind == "human-mixture":
-        if row.human_decisions_per_epoch <= 0 \
-                or row.synthetic_decisions_per_epoch <= 0 \
-                or row.human_decision_manifest_sha256 is None \
-                or row.human_decisions_per_epoch \
-                * MAX_HUMAN_FRACTION_DENOMINATOR \
-                > row.optimizer_decisions_per_epoch \
-                * MAX_HUMAN_FRACTION_NUMERATOR:
+        if row.human_selection_rule != ALL_HUMAN_TRAIN_DECISIONS:
             raise BeliefV2FreezeError("V2 human mixture fraction drift")
 
 
@@ -234,6 +242,9 @@ class V2ExecutionFreezeV1:
     human_test_group_count: int
     human_complete_round_count: int
     human_eligible_decision_count: int
+    human_train_eligible_decision_count: int
+    human_calibration_eligible_decision_count: int
+    human_test_eligible_decision_count: int
     preflight_result_sha256: str
     preflight_runtime_sha256: str
     seed_registry_sha256: str
@@ -276,6 +287,12 @@ class V2ExecutionFreezeV1:
                 "complete_round_count": self.human_complete_round_count,
                 "eligible_decision_count": (
                     self.human_eligible_decision_count),
+                "train_eligible_decision_count": (
+                    self.human_train_eligible_decision_count),
+                "calibration_eligible_decision_count": (
+                    self.human_calibration_eligible_decision_count),
+                "test_eligible_decision_count": (
+                    self.human_test_eligible_decision_count),
                 "group_split_unit": "source-log-session-digest",
                 "raw_identity_model_input": False,
                 "source_path_model_input": False,
@@ -367,7 +384,10 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
                 freeze.human_calibration_group_count,
                 freeze.human_test_group_count,
                 freeze.human_complete_round_count,
-                freeze.human_eligible_decision_count)) \
+                freeze.human_eligible_decision_count,
+                freeze.human_train_eligible_decision_count,
+                freeze.human_calibration_eligible_decision_count,
+                freeze.human_test_eligible_decision_count)) \
             or min(freeze.human_group_count,
                    freeze.human_complete_round_count,
                    freeze.human_eligible_decision_count) <= 0 \
@@ -375,10 +395,28 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
                 freeze.human_train_group_count
                 + freeze.human_calibration_group_count
                 + freeze.human_test_group_count) \
+            or freeze.human_eligible_decision_count != (
+                freeze.human_train_eligible_decision_count
+                + freeze.human_calibration_eligible_decision_count
+                + freeze.human_test_eligible_decision_count) \
             or min(freeze.human_train_group_count,
                    freeze.human_calibration_group_count,
-                   freeze.human_test_group_count) <= 0:
+                   freeze.human_test_group_count,
+                   freeze.human_train_eligible_decision_count,
+                   freeze.human_calibration_eligible_decision_count,
+                   freeze.human_test_eligible_decision_count) <= 0:
         raise BeliefV2FreezeError("V2 execution freeze identity drift")
+    # The exact synthetic decision count is deliberately not guessed before
+    # capture.  Every complete play-phase round has at least one four-seat
+    # trick, so this lower bound proves that consuming every H0 training
+    # decision once can never exceed the frozen 20% ceiling.  The capture
+    # controller later publishes the exact realized population and fraction.
+    if freeze.human_train_eligible_decision_count \
+            * MAX_HUMAN_FRACTION_DENOMINATOR \
+            > V2_TRAIN_ROUND_COUNT \
+            * MIN_PLAY_DECISIONS_PER_COMPLETE_ROUND \
+            * MAX_HUMAN_FRACTION_NUMERATOR:
+        raise BeliefV2FreezeError("V2 human mixture fraction drift")
     try:
         validate_source_bindings(freeze.source_bindings)
         validate_runtime_profile(freeze.runtime)
@@ -413,26 +451,43 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
     human = by_kind["human-mixture"][0]
     if primary.cohort_id != PRIMARY_COHORT_ID \
             or primary.comparator_cohort_id is not None \
+            or primary.synthetic_selection_rule \
+            != ALL_SYNTHETIC_TRAIN_DECISIONS \
+            or (primary.synthetic_fraction_numerator,
+                primary.synthetic_fraction_denominator) != (1, 1) \
+            or primary.human_selection_rule != NO_HUMAN_DECISIONS \
+            or primary.work_match_rule != PRIMARY_WORK_RULE \
             or control.cohort_id != CONTROL_COHORT_ID \
             or control.comparator_cohort_id != PRIMARY_COHORT_ID \
-            or control.optimizer_decisions_per_epoch \
-            != primary.optimizer_decisions_per_epoch \
-            or control.synthetic_decision_manifest_sha256 \
-            != primary.synthetic_decision_manifest_sha256 \
+            or control.synthetic_selection_rule \
+            != primary.synthetic_selection_rule \
+            or (control.synthetic_fraction_numerator,
+                control.synthetic_fraction_denominator) != (1, 1) \
+            or control.work_match_rule != PRIMARY_WORK_RULE \
             or human.cohort_id != HUMAN_COHORT_ID \
             or human.comparator_cohort_id != PRIMARY_COHORT_ID \
-            or human.optimizer_decisions_per_epoch \
-            != primary.optimizer_decisions_per_epoch \
-            or human.synthetic_decision_manifest_sha256 \
-            == primary.synthetic_decision_manifest_sha256:
+            or human.synthetic_selection_rule \
+            != MIXED_SYNTHETIC_TRAIN_DECISIONS \
+            or (human.synthetic_fraction_numerator,
+                human.synthetic_fraction_denominator) != (1, 1) \
+            or human.human_selection_rule \
+            != ALL_HUMAN_TRAIN_DECISIONS \
+            or human.work_match_rule != MIXED_WORK_RULE:
         raise BeliefV2FreezeError("V2 cohort comparison/work binding drift")
+    fractions = set()
     for scale in by_kind["synthetic-scale"]:
         if scale.comparator_cohort_id != PRIMARY_COHORT_ID \
-                or scale.optimizer_decisions_per_epoch \
-                >= primary.optimizer_decisions_per_epoch \
-                or scale.synthetic_decision_manifest_sha256 \
-                == primary.synthetic_decision_manifest_sha256:
+                or scale.synthetic_selection_rule \
+                != SCALE_SYNTHETIC_TRAIN_DECISIONS \
+                or scale.human_selection_rule != NO_HUMAN_DECISIONS \
+                or scale.work_match_rule != SCALE_WORK_RULE \
+                or scale.synthetic_fraction_numerator \
+                >= scale.synthetic_fraction_denominator \
+                or (scale.synthetic_fraction_numerator,
+                    scale.synthetic_fraction_denominator) in fractions:
             raise BeliefV2FreezeError("V2 scale cohort binding drift")
+        fractions.add((scale.synthetic_fraction_numerator,
+                       scale.synthetic_fraction_denominator))
     if canonical_json_bytes(freeze.to_dict()) != freeze.canonical_bytes() \
             or not _is_sha256(freeze.sha256()):
         raise BeliefV2FreezeError("V2 freeze canonical digest drift")
@@ -523,25 +578,25 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
     for row in payload["cohorts"]:
         if type(row) is not dict or set(row) != {
                 "schema", "cohort_id", "kind", "member_seeds",
-                "member_count", "optimizer_decisions_per_epoch",
-                "synthetic_decisions_per_epoch", "human_decisions_per_epoch",
-                "synthetic_decision_manifest_sha256",
-                "human_decision_manifest_sha256", "comparator_cohort_id"} \
+                "member_count", "synthetic_selection_rule",
+                "synthetic_fraction", "human_selection_rule",
+                "work_match_rule", "comparator_cohort_id"} \
                 or type(row["member_seeds"]) is not list \
-                or row["member_count"] != len(row["member_seeds"]):
+                or row["member_count"] != len(row["member_seeds"]) \
+                or type(row["synthetic_fraction"]) is not dict \
+                or set(row["synthetic_fraction"]) != {
+                    "numerator", "denominator"}:
             raise BeliefV2FreezeError("V2 cohort row field drift")
         cohorts.append(V2CohortPlanV1(
             schema=row["schema"], cohort_id=row["cohort_id"],
             kind=row["kind"], member_seeds=tuple(row["member_seeds"]),
-            optimizer_decisions_per_epoch=(
-                row["optimizer_decisions_per_epoch"]),
-            synthetic_decisions_per_epoch=(
-                row["synthetic_decisions_per_epoch"]),
-            human_decisions_per_epoch=row["human_decisions_per_epoch"],
-            synthetic_decision_manifest_sha256=(
-                row["synthetic_decision_manifest_sha256"]),
-            human_decision_manifest_sha256=(
-                row["human_decision_manifest_sha256"]),
+            synthetic_selection_rule=row["synthetic_selection_rule"],
+            synthetic_fraction_numerator=(
+                row["synthetic_fraction"]["numerator"]),
+            synthetic_fraction_denominator=(
+                row["synthetic_fraction"]["denominator"]),
+            human_selection_rule=row["human_selection_rule"],
+            work_match_rule=row["work_match_rule"],
             comparator_cohort_id=row["comparator_cohort_id"]))
     caps = payload["resource_caps"]
     if set(caps) != {
@@ -577,6 +632,12 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
             human_test_group_count=human["test_group_count"],
             human_complete_round_count=human["complete_round_count"],
             human_eligible_decision_count=human["eligible_decision_count"],
+            human_train_eligible_decision_count=(
+                human["train_eligible_decision_count"]),
+            human_calibration_eligible_decision_count=(
+                human["calibration_eligible_decision_count"]),
+            human_test_eligible_decision_count=(
+                human["test_eligible_decision_count"]),
             preflight_result_sha256=capacity["preflight_result_sha256"],
             preflight_runtime_sha256=capacity["preflight_runtime_sha256"],
             seed_registry_sha256=registry["registry_sha256"],

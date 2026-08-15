@@ -36,6 +36,10 @@ from shengji.rl.belief_v2_device_qualification import (
     derive_qualification_result,
     qualification_protocol_sha256,
 )
+from shengji.rl.belief_v2_device_controller import (
+    reopen_device_qualification,
+    run_device_qualification,
+)
 from shengji.rl.belief_v2_freeze import (
     ALL_HUMAN_TRAIN_DECISIONS,
     ALL_SYNTHETIC_TRAIN_DECISIONS,
@@ -634,12 +638,7 @@ def _sha256_text(value):
     return hashlib.sha256(value.encode("ascii")).hexdigest()
 
 
-def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
-        tmp_path, monkeypatch):
-    root = (tmp_path / "evidence").resolve()
-    root.mkdir()
-    freeze = _freeze(root)
-    admission = _admission(freeze)
+def _tiny_training_population(freeze):
     train_capture = _heuristic_capture(_coordinate("train"))
     synthetic = tuple(build_synthetic_training_example(pair)
                       for pair in train_capture.pairs[:5])
@@ -663,6 +662,51 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
                         for pair in _heuristic_capture(
                             _coordinate("calibration")).pairs[:2])
     calibration_schedule = realize_v2_common_calibration(calibration)
+    return primary, training_examples, calibration, calibration_schedule
+
+
+def test_device_qualification_stage_publishes_raw_reopenable_cpu_fallback(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, _, _ = _tiny_training_population(freeze)
+    plan, result = _cpu_fallback_qualification(freeze)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._expected_plan",
+        lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_in_memory",
+        lambda **kwargs: (plan, result))
+    manifest = run_device_qualification(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", primary=primary,
+        primary_examples=training_examples)
+    reopened, reopened_plan, reopened_result = reopen_device_qualification(
+        root / "device-qualification" / "result",
+        freeze=freeze, admission=admission, primary=primary)
+    assert reopened == manifest
+    assert reopened_plan == plan
+    assert reopened_result == result
+    assert manifest["selected_device"] == "cpu"
+    assert manifest["accelerator_retained"] is False
+    assert manifest["fallback_arm_count"] == 0
+    assert manifest["training_authorized_by_this_artifact"] is False
+
+
+def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration, calibration_schedule = (
+        _tiny_training_population(freeze))
     qualification_plan, qualification_result = (
         _cpu_fallback_qualification(freeze))
     assert qualification_result.selected_device == "cpu"

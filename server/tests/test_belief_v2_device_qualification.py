@@ -14,6 +14,8 @@ from shengji.rl.belief_v2_device_qualification import (
     build_qualification_plan,
     derive_qualification_result,
     qualification_protocol_sha256,
+    reopen_qualification_plan,
+    reopen_qualification_result,
     validate_qualification_plan,
     validate_qualification_result,
 )
@@ -209,3 +211,6 @@ def test_canonical_result_has_closed_authority_population():
         "strength_claim_authorized", "deployment_authorized",
     }
     assert canonical_json_bytes(payload) == result.canonical_bytes(plan)
+    assert reopen_qualification_plan(plan.canonical_bytes()) == plan
+    assert reopen_qualification_result(
+        plan, result.canonical_bytes(plan)) == result

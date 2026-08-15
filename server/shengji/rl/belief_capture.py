@@ -288,9 +288,14 @@ def _capture_with_policies(
                 decision_index=decision_index, transcript=transcript)
             if decision_observer is not None:
                 decision_observer(rnd, seat, transcript, actor_row)
-                repeated = capture_actor_row(
-                    rnd, seat, round_seed=round_seed,
-                    decision_index=decision_index, transcript=transcript)
+                try:
+                    repeated = capture_actor_row(
+                        rnd, seat, round_seed=round_seed,
+                        decision_index=decision_index, transcript=transcript)
+                except BeliefCorpusError as exc:
+                    raise BeliefCaptureError(
+                        "capture decision observer mutated round state") \
+                        from exc
                 if repeated != actor_row:
                     raise BeliefCaptureError(
                         "capture decision observer mutated round state")
@@ -301,9 +306,14 @@ def _capture_with_policies(
                 decision_index=decision_index, transcript=transcript)
             if decision_observer is not None:
                 decision_observer(rnd, seat, transcript, pair)
-                repeated = capture_corpus_pair(
-                    rnd, seat, round_seed=round_seed,
-                    decision_index=decision_index, transcript=transcript)
+                try:
+                    repeated = capture_corpus_pair(
+                        rnd, seat, round_seed=round_seed,
+                        decision_index=decision_index, transcript=transcript)
+                except BeliefCorpusError as exc:
+                    raise BeliefCaptureError(
+                        "capture decision observer mutated round state") \
+                        from exc
                 if repeated != pair:
                     raise BeliefCaptureError(
                         "capture decision observer mutated round state")

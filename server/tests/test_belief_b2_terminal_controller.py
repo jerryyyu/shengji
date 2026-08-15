@@ -20,8 +20,15 @@ from shengji.rl.belief_b2_terminal_controller import (
     BeliefB2TerminalControllerError, run_open_test, verify_terminal)
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_cohort import COHORT_SEEDS
-from shengji.rl.belief_evaluation import reopen_score_pair
+from shengji.rl.belief_evaluation import (reopen_score_pair,
+                                           target_count_population)
 from shengji.rl.belief_model import new_from_scratch_model
+from shengji.rl.belief_ownership import (
+    PROBABILITY_SCALE,
+    BeliefOwnershipV1,
+    ReceiverCountProbabilityV1,
+    receiver_sizes,
+)
 from shengji.rl.belief_synthetic import build_c4_contexts
 from shengji.rl.belief_trainer import model_state_sha256
 
@@ -202,20 +209,86 @@ def test_terminal_mechanics_are_measured_from_real_witnesses():
     model_sha256s = tuple(model_state_sha256(model) for model in models)
     measured = terminal._c4_mechanics_witnesses(
         contexts, models, model_sha256s)
-    assert measured == (4, 0, 36, 0, 36, 0)
+    assert measured[:6] == (4, 0, 36, 0, 36, 0)
+    assert measured[6] == 108
+    assert measured[7] > 0
+    assert measured[8:] == (0, 0)
 
     wrong_rotation = replace(
         contexts[0], rotated_world_0=contexts[0].world_1)
     mutated = terminal._c4_mechanics_witnesses(
         (wrong_rotation, *contexts[1:]), models, model_sha256s)
-    assert mutated[2:] == (36, 9, 36, 0)
+    assert mutated[2:6] == (36, 9, 36, 0)
+    assert mutated[6:] == measured[6:]
 
     actor, _, _ = reopen_score_pair(contexts[0].world_0)
     members, ensemble = terminal._predict_members(
         models, model_sha256s, actor)
-    count, rows = terminal._validated_prediction_population(
+    count, rows, conservation, hard_facts = (
+        terminal._validated_prediction_population(
         actor, (*members, ensemble))
+    )
     assert count == 9 and rows > 0
+    assert (conservation, hard_facts) == (0, 0)
     with pytest.raises(ValueError):
         terminal._validated_prediction_population(
             actor, (replace(ensemble, probabilities=()),))
+
+
+def test_terminal_mechanics_counts_real_conservation_and_hard_fact_rows():
+    context = build_c4_contexts()[0]
+    actor, target, _ = reopen_score_pair(context.world_0)
+    counts = target_count_population(actor, target)
+    valid = BeliefOwnershipV1(
+        actor_observation_sha256=actor.sha256(),
+        model_schema="terminal-mechanics-count-witness",
+        model_sha256="a" * 64,
+        behavior_policy_ids=("mc-s0-report-lcb",),
+        receiver_sizes=receiver_sizes(actor),
+        probabilities=tuple(ReceiverCountProbabilityV1(
+            card=card,
+            receiver=receiver,
+            count_0_ppb=PROBABILITY_SCALE if count == 0 else 0,
+            count_1_ppb=PROBABILITY_SCALE if count == 1 else 0,
+            count_2_ppb=PROBABILITY_SCALE if count == 2 else 0,
+        ) for (card, receiver), count in counts.items()),
+    )
+
+    conservation_rows = list(valid.probabilities)
+    conservation_index = next(
+        index for index, row in enumerate(conservation_rows)
+        if counts[(row.card, row.receiver)] == 0)
+    row = conservation_rows[conservation_index]
+    conservation_rows[conservation_index] = replace(
+        row,
+        count_0_ppb=PROBABILITY_SCALE - 1,
+        count_1_ppb=1,
+    )
+    conservation_bad = replace(
+        valid, probabilities=tuple(conservation_rows))
+
+    hard_fact_rows = list(valid.probabilities)
+    unseen = dict(actor.deductions.unseen)
+    hard_fact_index = next(
+        index for index, current in enumerate(hard_fact_rows)
+        if unseen[current.card] == 1
+        and counts[(current.card, current.receiver)] == 1)
+    row = hard_fact_rows[hard_fact_index]
+    hard_fact_rows[hard_fact_index] = replace(
+        row,
+        count_0_ppb=PROBABILITY_SCALE // 2,
+        count_1_ppb=0,
+        count_2_ppb=PROBABILITY_SCALE // 2,
+    )
+    hard_fact_bad = replace(valid, probabilities=tuple(hard_fact_rows))
+
+    measured = terminal._validated_prediction_population(
+        actor, (conservation_bad, hard_fact_bad))
+    expected_conservation_rows = (
+        len(receiver_sizes(actor)) + len(actor.deductions.unseen) - 1)
+    assert measured == (
+        2,
+        2 * len(valid.probabilities),
+        expected_conservation_rows,
+        1,
+    )

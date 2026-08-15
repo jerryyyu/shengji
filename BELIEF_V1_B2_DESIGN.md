@@ -272,7 +272,9 @@ Every checkpoint and every test row must satisfy:
   close to the exact integer totals within the frozen integer quantization;
   projected complete fixtures conserve exactly;
 - **E2 hard facts:** zero probability for played, actor-known, and proven-void
-  receiver/card combinations; probability one for forced ownership;
+  receiver/card combinations; probability one for forced ownership; completed
+  tricks independently reconstruct winner and points, each winner leads the
+  next trick, and the public attacker-point tally equals attacker-won history;
 - **E3 public twins:** hidden-world counterfactual twins produce bit-identical
   actor bytes and model probability bytes;
 - **E4 rotation:** absolute seat relabeling preserves the actor-relative output;
@@ -283,12 +285,13 @@ Every checkpoint and every test row must satisfy:
 
 Any mechanics failure terminates the recipe regardless of average loss.
 The terminal mechanics artifact contains checked-population and
-failure/mismatch counts, not caller-supplied pass booleans. Conservation and
-hard-fact rows are counted only after the real ownership validator accepts
-them; E3/E4/E5 use candidate predictions on C4 public-twin and absolute-seat-
-rotation corpus rows. Cross-split counts are reconstructed from the actual
-train/calibration round seeds logged after bundle opening, not from the split
-function alone.
+failure/mismatch counts, not caller-supplied pass booleans. Every probability
+row is passed through the real ownership validator's non-raising mechanics
+audit; conservation and hard-fact mismatches are counted from that audit, and
+the ordinary raising validator consumes the same checks. E3/E4/E5 use
+candidate predictions on C4 public-twin and absolute-seat-rotation corpus
+rows. Cross-split counts are reconstructed from the actual train/calibration
+round seeds logged after bundle opening, not from the split function alone.
 
 ## Primary calibration gates
 

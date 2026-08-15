@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+import shengji.rl.belief_reliability as reliability
 from shengji.ai.heuristic import HeuristicBot
 from shengji.rl.belief_b2_protocol import (
     b2_split_round_seeds,
@@ -65,13 +66,17 @@ def test_perfect_predictions_have_zero_ece_brier_and_unit_slope():
         len(example.prediction.probabilities) for example in examples)
     assert tuple(row.name for row in overall) == ("all",) * 3
     assert tuple(row.count_class for row in overall) == (0, 1, 2)
-    assert all(row.ece_ppb == 0 and row.brier_numerator == 0
-               and row.reliability_slope_defined is True
-               and row.reliability_slope_numerator == 1
-               and row.reliability_slope_denominator == 1
-               and row.probability_cell_count == expected_cells_per_class
-               and row.probability_cell_count >= 1000
-               and row.underpowered is False for row in overall)
+    assert tuple(row.ece_ppb for row in overall) == (0, 0, 0)
+    assert tuple(row.brier_numerator for row in overall) == (0, 0, 0)
+    assert all(row.reliability_slope_defined is True for row in overall)
+    assert tuple(row.reliability_slope_numerator
+                 for row in overall) == (1, 1, 1)
+    assert tuple(row.reliability_slope_denominator
+                 for row in overall) == (1, 1, 1)
+    assert tuple(row.probability_cell_count for row in overall) \
+        == (expected_cells_per_class,) * 3
+    assert all(row.probability_cell_count >= 1000 for row in overall)
+    assert tuple(row.underpowered for row in overall) == (False,) * 3
     assert all(sum(bin_row.probability_cell_count for bin_row in row.bins)
                == row.probability_cell_count for row in overall)
     assert {row.name.split(":")[0] for row in report.strata[3:]} \
@@ -96,6 +101,37 @@ def test_perfect_predictions_have_zero_ece_brier_and_unit_slope():
     assert payload["joint_posterior_claimed"] is False
     assert all(payload[key] is False for key in payload
                if key.endswith("_authorized"))
+
+
+def test_per_class_values_refuse_ece_only_repooling():
+    probabilities = (400_000_000, 400_000_000, 200_000_000)
+    truth_classes = (0, 0, 0, 0, 0, 1, 1, 1, 2, 2)
+    decisions = tuple(reliability._Decision(
+        decision_key=f"decision-{index}",
+        split="test",
+        model_schema="test-model",
+        model_sha256="a" * 64,
+        behavior_policy_ids=POLICIES,
+        strata=("all",),
+        cells=tuple(reliability._Cell(
+            count_class=count_class,
+            probability_ppb=probability,
+            observed=int(count_class == truth_class),
+        ) for count_class, probability in enumerate(probabilities)),
+        linear_cells=(),
+        brier=(0, 1),
+    ) for index, truth_class in enumerate(truth_classes))
+
+    rows = tuple(reliability._stratum("all", count_class, decisions)
+                 for count_class in range(3))
+    assert tuple(row.probability_cell_count for row in rows) == (10, 10, 10)
+    assert tuple(row.ece_ppb for row in rows) \
+        == (100_000_000, 100_000_000, 0)
+    assert tuple(row.brier_numerator for row in rows) == (
+        2_600_000_000_000_000_000,
+        2_200_000_000_000_000_000,
+        1_600_000_000_000_000_000,
+    )
 
 
 def test_uniform_predictions_make_reliability_metrics_fail_visibly():

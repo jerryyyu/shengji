@@ -434,6 +434,29 @@ def test_completed_trick_winner_is_recomputed_from_public_cards():
         build_actor_observation(forged, forged.turn, transcript)
 
 
+def test_completed_trick_chain_and_attacker_points_are_recomputed():
+    rnd, bot, transcript = _play_state_with_transcript(8654)
+    for _ in range(4):
+        transcript = _play_and_record(rnd, bot, transcript)
+    assert len(rnd.history) == 1
+    assert rnd.trick is not None and not rnd.trick.plays
+    assert rnd.trick.leader == rnd.history[0].winner == rnd.turn
+    build_actor_observation(rnd, rnd.turn, transcript)
+
+    broken_chain = copy.deepcopy(rnd)
+    broken_chain.trick.leader = (broken_chain.trick.leader + 1) % 4
+    broken_chain.turn = broken_chain.trick.leader
+    with pytest.raises(BeliefContractError, match="winner-to-leader chain"):
+        build_actor_observation(
+            broken_chain, broken_chain.turn, transcript)
+
+    broken_points = copy.deepcopy(rnd)
+    broken_points.attacker_points += 5
+    with pytest.raises(BeliefContractError,
+                       match="attacker points reconstruction"):
+        build_actor_observation(broken_points, broken_points.turn, transcript)
+
+
 def test_target_mutation_cannot_change_already_built_actor_snapshot():
     rnd, seat = _nonbanker_turn(8653)
     partition = build_information_partition(rnd, seat)

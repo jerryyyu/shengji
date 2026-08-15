@@ -490,6 +490,8 @@ sampler route before a whole-game run.
 ### Gate A — mechanics and leakage
 
 - exact reconstruction of public facts and legal private facts;
+- completed-trick winner/points reconstruction, winner-to-next-leader
+  continuity, and exact attacker-point tally reconstruction;
 - counterfactual hidden-world invariance of `ActorObservationV1`;
 - seat/team rotation and physical-copy symmetry;
 - zero privileged bytes in the runtime API or serialized public artifact;

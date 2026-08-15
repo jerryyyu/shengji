@@ -141,9 +141,10 @@ class BeliefOwnershipV1:
         return hashlib.sha256(self.canonical_bytes()).hexdigest()
 
 
-def validate_ownership(actor: ActorObservationV1,
-                       belief: BeliefOwnershipV1) -> None:
-    """Validate exact mechanics without consulting the hidden-world target."""
+def _ownership_mechanics_audit(
+        actor: ActorObservationV1,
+        belief: BeliefOwnershipV1) -> tuple[int, int, int, str | None]:
+    """Validate structure and measure conservation/hard-fact row failures."""
     if type(actor) is not ActorObservationV1:
         raise BeliefOwnershipError("ownership requires an exact actor observation")
     if not actor.declaration_history_complete \
@@ -187,6 +188,9 @@ def validate_ownership(actor: ActorObservationV1,
                      for row in belief.probabilities) != expected_keys:
         raise BeliefOwnershipError("count-probability population/order drift")
 
+    conservation_failure_rows: set[tuple[str, str]] = set()
+    hard_fact_failure_rows: set[tuple[str, str]] = set()
+    mechanics_messages: list[str] = []
     ordering = Ordering(actor.trump_suit, actor.trump_rank)
     voids = {
         SEAT_RECEIVERS[relative - 1]: set(
@@ -215,29 +219,41 @@ def validate_ownership(actor: ActorObservationV1,
                for value in values) \
                 or sum(values) != PROBABILITY_SCALE:
             raise BeliefOwnershipError("count probability is invalid")
+        key = (row.card, row.receiver)
         if unseen[row.card] == 1 and row.count_2_ppb != 0:
-            raise BeliefOwnershipError("one-copy card has two-copy mass")
+            hard_fact_failure_rows.add(key)
+            mechanics_messages.append("one-copy card has two-copy mass")
         if receiver_capacity[row.receiver] < 2 and row.count_2_ppb != 0:
-            raise BeliefOwnershipError("receiver capacity forbids two copies")
+            hard_fact_failure_rows.add(key)
+            mechanics_messages.append("receiver capacity forbids two copies")
         if row.receiver in voids \
                 and ordering.eff_suit(row.card) in voids[row.receiver] \
                 and row.count_0_ppb != PROBABILITY_SCALE:
-            raise BeliefOwnershipError("proven void carries positive mass")
+            hard_fact_failure_rows.add(key)
+            mechanics_messages.append("proven void carries positive mass")
         if row.receiver in zero_pair_suits \
                 and ordering.eff_suit(row.card) \
                 in zero_pair_suits[row.receiver] \
                 and row.count_2_ppb != 0:
-            raise BeliefOwnershipError("proven zero-pair cap carries pair mass")
-        rows[(row.card, row.receiver)] = row
+            hard_fact_failure_rows.add(key)
+            mechanics_messages.append(
+                "proven zero-pair cap carries pair mass")
+        rows[key] = row
         expected_by_receiver[row.receiver] += row.expected_count_ppb
         expected_by_card[row.card] += row.expected_count_ppb
 
     for card, copies in unseen.items():
         if expected_by_card[card] != copies * PROBABILITY_SCALE:
-            raise BeliefOwnershipError("card expectation violates conservation")
+            conservation_failure_rows.update(
+                (card, receiver) for receiver in receivers)
+            mechanics_messages.append(
+                "card expectation violates conservation")
     for receiver, size in receiver_capacity.items():
         if expected_by_receiver[receiver] != size * PROBABILITY_SCALE:
-            raise BeliefOwnershipError("receiver expectation violates conservation")
+            conservation_failure_rows.update(
+                (card, receiver) for card in unseen)
+            mechanics_messages.append(
+                "receiver expectation violates conservation")
 
     for card, relative, copies in actor.deductions.declaration_pins:
         if card not in _CARD_CODES or type(relative) is not int \
@@ -254,13 +270,16 @@ def validate_ownership(actor: ActorObservationV1,
                 probabilities = (
                     row.count_0_ppb, row.count_1_ppb, row.count_2_ppb)
                 if probabilities[required] != PROBABILITY_SCALE:
-                    raise BeliefOwnershipError(
+                    hard_fact_failure_rows.add((card, receiver))
+                    mechanics_messages.append(
                         "declared pair is not probability-one ownership")
             elif receiver == owner and row.count_0_ppb != 0:
-                raise BeliefOwnershipError(
+                hard_fact_failure_rows.add((card, receiver))
+                mechanics_messages.append(
                     "single declaration has probability of absent owner")
             elif receiver != owner and row.count_2_ppb != 0:
-                raise BeliefOwnershipError(
+                hard_fact_failure_rows.add((card, receiver))
+                mechanics_messages.append(
                     "single declaration leaves two-copy mass elsewhere")
 
     pinned_cards = {card for card, _, _
@@ -291,7 +310,9 @@ def validate_ownership(actor: ActorObservationV1,
         )
         if eligible_expectation \
                 < constraint.minimum_copies * PROBABILITY_SCALE:
-            raise BeliefOwnershipError(
+            hard_fact_failure_rows.update(
+                (constraint.card, receiver) for receiver in eligible)
+            mechanics_messages.append(
                 "declared copies leave their eligible receiver set")
         outside_capacity = unseen[constraint.card] \
             - constraint.minimum_copies
@@ -301,11 +322,42 @@ def validate_ownership(actor: ActorObservationV1,
             row = rows[(constraint.card, receiver)]
             if outside_capacity == 0 \
                     and row.count_0_ppb != PROBABILITY_SCALE:
-                raise BeliefOwnershipError(
+                hard_fact_failure_rows.add((constraint.card, receiver))
+                mechanics_messages.append(
                     "declared copies carry mass outside eligible receivers")
             if outside_capacity == 1 and row.count_2_ppb != 0:
-                raise BeliefOwnershipError(
+                hard_fact_failure_rows.add((constraint.card, receiver))
+                mechanics_messages.append(
                     "single declared copy leaves pair mass outside eligibility")
+
+    return (
+        len(belief.probabilities),
+        len(conservation_failure_rows),
+        len(hard_fact_failure_rows),
+        mechanics_messages[0] if mechanics_messages else None,
+    )
+
+
+def ownership_mechanics_failure_counts(
+        actor: ActorObservationV1,
+        belief: BeliefOwnershipV1) -> tuple[int, int, int]:
+    """Return checked rows plus measured conservation and hard-fact failures.
+
+    Structural/schema errors still refuse immediately.  Mechanics mismatches
+    are returned so a terminal report can route them to a named refusal rather
+    than aborting before it publishes evidence.
+    """
+    rows, conservation_failures, hard_fact_failures, _ = (
+        _ownership_mechanics_audit(actor, belief))
+    return rows, conservation_failures, hard_fact_failures
+
+
+def validate_ownership(actor: ActorObservationV1,
+                       belief: BeliefOwnershipV1) -> None:
+    """Validate exact mechanics without consulting the hidden-world target."""
+    _, _, _, first_failure = _ownership_mechanics_audit(actor, belief)
+    if first_failure is not None:
+        raise BeliefOwnershipError(first_failure)
 
 
 def ownership_from_bytes(actor: ActorObservationV1,

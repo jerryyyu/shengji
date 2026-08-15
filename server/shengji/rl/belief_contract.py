@@ -672,11 +672,26 @@ def build_actor_observation(
     )
     completed_list: list[TrickView] = []
     offset = 0
+    expected_leader = rnd.banker
+    recomputed_attacker_points = 0
     for trick in rnd.history:
-        completed_list.append(_trick_view(
-            trick, attempts[offset:offset + 4], seat, rnd, complete=True))
+        if trick.leader != expected_leader:
+            raise BeliefContractError(
+                "completed trick winner-to-leader chain is invalid")
+        view = _trick_view(
+            trick, attempts[offset:offset + 4], seat, rnd, complete=True)
+        completed_list.append(view)
+        expected_leader = trick.winner
+        if rnd.is_attacker(trick.winner):
+            recomputed_attacker_points += view.points
         offset += 4
     completed = tuple(completed_list)
+    if rnd.trick.leader != expected_leader:
+        raise BeliefContractError(
+            "current trick winner-to-leader chain is invalid")
+    if rnd.attacker_points != recomputed_attacker_points:
+        raise BeliefContractError(
+            "attacker points reconstruction is invalid")
     current = _trick_view(
         rnd.trick, attempts[offset:offset + len(rnd.trick.plays)], seat, rnd,
         complete=False)

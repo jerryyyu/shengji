@@ -258,6 +258,7 @@ class V2DeviceQualificationArmV1:
     active_label_count: int
     member_checkpoint_sha256s: tuple[str, ...]
     member_loss_nanonats: tuple[int, ...]
+    member_epoch_receipt_sha256s: tuple[str, ...]
     wall_nanoseconds: int
     peak_host_memory_bytes: int
     peak_device_memory_bytes: int
@@ -281,6 +282,8 @@ class V2DeviceQualificationArmV1:
             "member_checkpoint_sha256s": list(
                 self.member_checkpoint_sha256s),
             "member_loss_nanonats": list(self.member_loss_nanonats),
+            "member_epoch_receipt_sha256s": list(
+                self.member_epoch_receipt_sha256s),
             "wall_nanoseconds": self.wall_nanoseconds,
             "peak_host_memory_bytes": self.peak_host_memory_bytes,
             "peak_device_memory_bytes": self.peak_device_memory_bytes,
@@ -317,6 +320,10 @@ def _validate_arm(
             or len(arm.member_loss_nanonats) != len(COHORT_SEEDS) \
             or any(type(value) is not int or value < 0
                    for value in arm.member_loss_nanonats) \
+            or type(arm.member_epoch_receipt_sha256s) is not tuple \
+            or len(arm.member_epoch_receipt_sha256s) != len(COHORT_SEEDS) \
+            or any(not _is_sha256(value)
+                   for value in arm.member_epoch_receipt_sha256s) \
             or type(arm.wall_nanoseconds) is not int \
             or arm.wall_nanoseconds <= 0 \
             or type(arm.peak_host_memory_bytes) is not int \
@@ -401,7 +408,9 @@ def _qualification_metrics(
         rows = tuple(arm for arm in measured if arm.device == device)
         if len(rows) != MEASURED_PAIR_COUNT \
                 or len({arm.member_checkpoint_sha256s for arm in rows}) != 1 \
-                or len({arm.member_loss_nanonats for arm in rows}) != 1:
+                or len({arm.member_loss_nanonats for arm in rows}) != 1 \
+                or len({arm.member_epoch_receipt_sha256s
+                        for arm in rows}) != 1:
             raise BeliefV2DeviceQualificationError(
                 "device qualification determinism drift")
     cpu_by_pair = {arm.pair_index: arm for arm in measured

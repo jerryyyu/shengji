@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
 from .belief_v2_accelerator import canonical_training_device
-from .belief_v2_schedule import V2CohortRealizationV1
+
+if TYPE_CHECKING:
+    from .belief_v2_schedule import V2CohortRealizationV1
 
 
 QUALIFICATION_PLAN_SCHEMA = "belief-v1-v2-device-qualification-plan-v1"
@@ -85,6 +87,34 @@ def expected_arm_order(candidate_device: str) \
         ("cpu", False, 2),
         (candidate, False, 2),
     )
+
+
+def qualification_protocol_sha256(candidate_device: str) -> str:
+    """Bind every choice that may affect the post-capture device decision."""
+    candidate = canonical_training_device(candidate_device)
+    if candidate == "cpu":
+        raise BeliefV2DeviceQualificationError(
+            "qualification candidate must be an accelerator")
+    return _sha({
+        "schema": "belief-v1-v2-device-qualification-protocol-v1",
+        "candidate_device": candidate,
+        "selection_namespace": QUALIFICATION_NAMESPACE,
+        "measured_batch_count": MEASURED_BATCH_COUNT,
+        "warmup_uses_same_batch_population": True,
+        "measured_pair_count": MEASURED_PAIR_COUNT,
+        "arm_order": [
+            {"device": device, "warmup": warmup, "pair_index": pair}
+            for device, warmup, pair in expected_arm_order(candidate)
+        ],
+        "minimum_wall_reduction_percent": MIN_WALL_REDUCTION_PERCENT,
+        "all_paired_reductions_must_be_positive": True,
+        "within_device_checkpoint_loss_and_receipt_repeatability": True,
+        "fallback_authorized": False,
+        "cross_device_checkpoint_equality_required": False,
+        "training_authorized": False,
+        "test_open_authorized": False,
+        "strength_claim_authorized": False,
+    })
 
 
 @dataclass(frozen=True)
@@ -181,6 +211,8 @@ def build_qualification_plan_from_primary(
         host_memory_cap_bytes: int,
         device_memory_cap_bytes: int) -> V2DeviceQualificationPlanV1:
     """Bind qualification directly to the reopened primary realization."""
+    from .belief_v2_schedule import V2CohortRealizationV1
+
     if type(primary) is not V2CohortRealizationV1 \
             or primary.kind != "synthetic-primary" \
             or primary.cohort_id != "synthetic-primary":

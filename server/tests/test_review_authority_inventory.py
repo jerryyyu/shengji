@@ -1,8 +1,16 @@
 """Keep source-required review authority through ledger compaction."""
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
+
+import pytest
+
+from review_ledger_guard import (
+    assert_byte_prefix,
+    enforce_pr_head_extends_base,
+)
 
 
 REQUIRED_MARKERS = (
@@ -37,6 +45,28 @@ def _raw_markers(raw: bytes) -> dict[str, set[bytes]]:
                         for byte in head)):
             markers.setdefault(head.decode(), set()).add(line)
     return markers
+
+
+def _assert_archived_markers_survive_appends(
+        source_markers: dict[str, set[bytes]],
+        active_markers: dict[str, set[bytes]]) -> None:
+    """Require the frozen set exactly while permitting later marker names."""
+    later_marker_names = set(active_markers) - set(source_markers)
+    assert later_marker_names
+    for name, archived_lines in source_markers.items():
+        assert active_markers.get(name) == archived_lines, name
+
+
+def test_pr_head_review_ledger_extends_exact_merge_target() -> None:
+    """CI binds the literal PR head, not GitHub's synthetic merge checkout."""
+    base_sha = os.environ.get("HANDOFF_REVIEW_BASE_SHA", "")
+    head_sha = os.environ.get("HANDOFF_REVIEW_HEAD_SHA", "")
+    if not base_sha and not head_sha:
+        pytest.skip("exact PR base/head SHAs are provided by pull-request CI")
+    assert base_sha and head_sha
+    repo = Path(__file__).parents[2]
+    enforce_pr_head_extends_base(
+        repo, base_sha=base_sha, head_sha=head_sha, fetch_missing=False)
 
 
 def test_source_required_review_markers_survive_ledger_rotation() -> None:
@@ -87,4 +117,29 @@ def test_rotation_archive_is_exact_and_preserves_every_raw_marker() -> None:
     active_markers.pop(ROTATION_PREFIX.rstrip(), None)
     assert all(len(lines) == 1 for lines in source_markers.values())
     assert all(len(lines) == 1 for lines in active_markers.values())
-    assert active_markers == source_markers
+    # Rotation must preserve every archived authority marker byte-for-byte,
+    # but the active append-only ledger must remain able to introduce new
+    # markers after the frozen archive cutoff.  Equality made the first
+    # legitimate post-rotation review marker fail this guard forever.
+    _assert_archived_markers_survive_appends(source_markers, active_markers)
+
+
+def test_rotation_marker_relation_refuses_missing_or_changed_archive() -> None:
+    source = {"OLD_REVIEW": {b'OLD_REVIEW {"verdict":"PASS"}'}}
+    later = {"NEW_REVIEW": {b'NEW_REVIEW {"verdict":"PASS"}'}}
+    with pytest.raises(AssertionError, match="OLD_REVIEW"):
+        _assert_archived_markers_survive_appends(source, later)
+    with pytest.raises(AssertionError, match="OLD_REVIEW"):
+        _assert_archived_markers_survive_appends(source, {
+            **later,
+            "OLD_REVIEW": {b'OLD_REVIEW {"verdict":"HOLD"}'},
+        })
+
+
+def test_merge_target_prefix_refuses_deletion_or_rewrite() -> None:
+    base = b"OLD_REVIEW {}\nLIVE_REVIEW {}\n"
+    assert_byte_prefix(base, base + b"LATER_REVIEW {}\n")
+    with pytest.raises(AssertionError, match="shorter than base"):
+        assert_byte_prefix(base, b"OLD_REVIEW {}\n")
+    with pytest.raises(AssertionError, match="rewrites merge-target bytes"):
+        assert_byte_prefix(base, b"OLD_REVIEW {}\nFAKE_REVIEW {}\n")

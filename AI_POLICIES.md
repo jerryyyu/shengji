@@ -23,9 +23,9 @@ research conclusions that affect them. It is not a run log.
   worlds and 80.9% more searches than champion. A confirmation must separate
   candidate widening from added compute with three arms.
 - **BELIEF-V1 is the active milestone.** Its reviewed B2 source merged to main
-  in merge commit `959c05d`. No Mini-specific design has been frozen, no corpus
-  has been captured, no training or test split has run, and no sampler or
-  strength authority exists.
+  in `959c05d`; fresh Mini design `a8c5e05f…1fd53` is frozen and awaiting its
+  exact marker. No corpus has been captured, no training or test split has run,
+  and no sampler or strength authority exists.
 - **Performance is enabling evidence, not strength evidence.** The accepted
   native stack materially reduced rollout wall time, but runs use only exact
   reviewed bytes and percentages from different baselines are never added.

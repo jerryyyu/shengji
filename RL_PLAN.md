@@ -89,11 +89,13 @@ separately gated consumers.
 - The repair covers reference-score debiasing, real mechanics derivation,
   history linkage, admission/provenance closure, cross-artifact binding and
   load-bearing mutation witnesses.
-- No host-specific design exists yet. No evidence root, capture population,
-  candidate training, calibration/test opening, sampler or scored run exists.
-- The only authorized next mutation is a fresh score-free Mini design freeze,
-  followed by an exact-design external review. A source PASS is not execution
-  authority.
+- Fresh Mini design `a8c5e05f…1fd53` now binds merged source `959c05d`, the
+  105-file source manifest, current runtime/native/boot identity, fixed
+  population/caps and an unused evidence namespace. It awaits exact external
+  review.
+- No evidence root, capture population, candidate training, calibration/test
+  opening, sampler or scored run exists. A source PASS or design freeze is not
+  execution authority; only the exact design marker may admit B2 once.
 
 ## BELIEF milestone ladder
 

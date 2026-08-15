@@ -31,9 +31,9 @@ compute remain confounded rather than established as a same-work win.
 The current research milestone is **BELIEF-V1**: a typed actor-visible world
 model that learns calibrated hidden-card ownership before it is allowed to
 change search. Its public/actor/private information contracts and reviewed B2
-offline source are merged through main `959c05d`; no host-specific design,
-corpus, training, test-split opening, sampler, gameplay, or strength run has
-started. A separate three-arm
+offline source are merged through main `959c05d`; a fresh Mini design is frozen
+for external review, but no corpus, training, test-split opening, sampler,
+gameplay, or strength run has started. A separate three-arm
 design will measure ballot widening at champion work and at the original T4
 control work. See [BACKLOG.md](BACKLOG.md) for the executable queue,
 [JOBS.md](JOBS.md) for live fleet state, and [AI_POLICIES.md](AI_POLICIES.md)

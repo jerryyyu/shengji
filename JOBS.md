@@ -1,6 +1,6 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-15 after BELIEF B2 source merge `959c05d`. This file owns current compute and
+Last reconciled: 2026-08-15 after fresh Mini B2 design freeze. This file owns current compute and
 compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -9,7 +9,7 @@ compact terminal stubs. Historical detail is archived in
 
 | host | live job | health / next use |
 |---|---|---|
-| **Mini** | idle / BELIEF-V1 pre-execution | **NO LIVE RESEARCH JOB.** PR #113 exact `3ee0eb8` passed external review and merged through main `959c05d`; no BELIEF corpus, training, test opening or fresh design freeze has occurred. A rejected-head V1 design is preserved but must never initialize; the post-merge V2 namespace is absent. |
+| **Mini** | idle / BELIEF-V1 design review | **NO LIVE RESEARCH JOB.** Fresh immutable V2 design `a8c5e05f…1fd53` binds merged main `959c05d`, the current boot/runtime/native/source manifest and an unused evidence root. It reopens exactly; evidence, partial, tombstone and log paths are absent. A rejected-head V1 design remains retired. No capture, training or test opening has occurred. |
 | **Air** | none | **IDLE AFTER TERMINAL TIMEOUT.** The broad Pair screen reached its fixed 64.08h cutoff with `0/8` terminal shards and published no shard bundle, manifest, aggregate or final. Canonical review `483ed02` preserves the fail-closed terminal. No retry, resize, resume or partial-result use. |
 | **Cloud** | powered off | **S4 CLOSED / HOST OFF.** S4 finished both looks and terminally selected none. Independent review `15e8dbb` reproduced final SHA `0aef1ca8…be90`; no retry or candidate action follows. |
 | **Performance Cloud** | powered off | **PAIR CHECKPOINT ATTEMPT SPENT.** The sole reviewed V1 execution fail-closed on microshard 3 with `treatment work drift` and no terminal evidence; canonical ledger `2b1fba5`. The later host shutdown makes the invocation unreachable. Any power-on permits score-free recovery inspection only—never resume, retry, outcome access or aggregation. |
@@ -19,7 +19,7 @@ compact terminal stubs. Historical detail is archived in
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | BELIEF-V1 B2 offline milestone | **SOURCE MERGED; FRESH DESIGN FREEZE NEXT.** PR #113 exact `3ee0eb8` passed external review and merged byte-preservingly through `959c05d`; 187 BELIEF tests pass in pure and strict compiled modes. No design or evidence namespace exists. Freeze one new Mini-specific V2 design, then obtain the exact marker covering the consolidated capture/reference/training/test sequence. |
+| 1 | BELIEF-V1 B2 offline milestone | **FRESH DESIGN REVIEW PENDING.** Exact design `a8c5e05f…1fd53` is mode `0400`, one link, source/runtime-exact and outcome-free. Obtain one authentic marker covering the consolidated capture/reference/training/test sequence; only then initialize once. |
 | 2 | Pair checkpoint recovery | **HOLD / BOTH EVIDENCE PATHS SPENT.** Air timed out with no terminal shards; Performance V1 refused and the host is off. Diagnose/recover only through a fresh reviewed design and namespace; no old result may be opened or resumed. |
 | 3 | Post-null roadmap | **BELIEF-V1 IS THE CHOSEN REPRESENTATION MILESTONE.** T4, S4 and combined S6 selected none. B0 contracts and B2 implementation exist; no B2 data has run. No scored campaign follows until calibration, sampler fidelity, same-work causality and natural-dose/MDE gates are satisfied. |
 

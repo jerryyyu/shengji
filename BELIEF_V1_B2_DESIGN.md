@@ -115,13 +115,16 @@ recipe with no retry, resizing, or partial-corpus use.
 
 Two controls are frozen.
 
-### `REF-C`: current constraint-consistent proposal
+### `REF-C`: sound constraint proposal using the current assignment kernel
 
 For each held-out actor row, draw a fixed number of complete worlds with the
-current sampler and its exact sound `Memory` constraints. A declaration by a
-non-banker remains a hand pin. A banker-declarer's shown card is not a hand
-pin because the engine legally permits it to be in the hidden burial. Convert
-those worlds into
+current sampler's randomized backtracking/split assignment kernel plus the
+reviewed BELIEF-V1 hard-constraint adapter. A declaration by a non-banker
+remains a hand pin. For a non-banker observer, each still-unplayed copy shown
+by a banker-declarer is assigned without replacement only among the banker
+hand and hidden burial; unrelated hands are ineligible. This adapter does not
+change the production `Memory` or the acting `mc-s0-report-lcb` policy used to
+generate the population. Convert those worlds into
 empirical card-receiver count probabilities and derived suit/shape/point
 marginals. The draw count, RNG stream, accepted/rejected work, and Monte Carlo
 uncertainty are recorded. No learned features are present. The randomized
@@ -172,8 +175,9 @@ The first model is deliberately small and single-purpose.
   seat, trick position, the public failed-throw signal, actor-visible attempted
   cards, and engine-actual cards;
 - per-card-code fact features from the actor hand, actor-known burial, played
-  counts, played-by-seat counts, unseen counts, declaration pins, and effective
-  suit/rank under the current ordering;
+  counts, played-by-seat counts, unseen counts, declaration hand pins,
+  banker-hand/hidden-kitty eligibility groups, and effective suit/rank under
+  the current ordering;
 - global banker/role/trump/points/hand-size/trick context; and
 - exact information-class masks distinguishing observed, actor-private, and
   logically deduced fields.

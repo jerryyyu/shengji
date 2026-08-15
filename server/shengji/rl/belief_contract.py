@@ -30,10 +30,11 @@ from ..engine.cards import (RANKS, SUITS, Ordering, card_suit, is_joker,
 from ..engine.round import HAND_SIZE, Round, Trick, TrickPlay
 
 
-ACTOR_OBSERVATION_SCHEMA = "belief-v1-actor-observation-v2"
+ACTOR_OBSERVATION_SCHEMA = "belief-v1-actor-observation-v3"
 BELIEF_TARGETS_SCHEMA = "belief-v1-hidden-ownership-targets-v1"
 PARTITION_SCHEMA = "belief-v1-information-partition-v1"
 DECLARATION_SCHEMA = "final-winning-declaration-v1"
+HIDDEN_KITTY_RECEIVER = "hidden-kitty"
 
 _CARD_CODES = frozenset(make_deck())
 _SOURCE_ROOT = Path(__file__).resolve().parents[1]
@@ -183,6 +184,27 @@ class TrickView:
 
 
 @dataclass(frozen=True)
+class DeclarationEligibilityV1:
+    """A shown copy constrained to a public set of hidden receivers.
+
+    This is distinct from a hand pin.  In particular, a banker-declarer's
+    still-unplayed shown copy may be in the banker hand or the hidden kitty,
+    but cannot be in either unrelated opponent hand.
+    """
+
+    card: str
+    eligible_receivers: tuple[str, ...]
+    minimum_copies: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "card": self.card,
+            "eligible_receivers": list(self.eligible_receivers),
+            "minimum_copies": self.minimum_copies,
+        }
+
+
+@dataclass(frozen=True)
 class DeductionView:
     played: tuple[tuple[str, int], ...]
     played_by_relative: tuple[tuple[tuple[str, int], ...], ...]
@@ -191,6 +213,7 @@ class DeductionView:
     pair_caps_by_relative: tuple[tuple[tuple[str, int], ...], ...]
     run_caps_by_relative: tuple[tuple[tuple[str, int], ...], ...]
     declaration_pins: tuple[tuple[str, int, int], ...]
+    declaration_eligibility: tuple[DeclarationEligibilityV1, ...]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -208,6 +231,10 @@ class DeductionView:
             "declaration_pins": [
                 {"card": card, "seat_relative": seat, "copies": copies}
                 for card, seat, copies in self.declaration_pins
+            ],
+            "declaration_eligibility": [
+                constraint.to_dict()
+                for constraint in self.declaration_eligibility
             ],
         }
 
@@ -561,10 +588,33 @@ def _deductions(rnd: Round, seat: int) -> DeductionView:
         tuple(sorted(memory.run_cap[(seat + relative) % 4].items()))
         for relative in range(4)
     )
+    declaration = rnd.declaration
+    banker_declaration = bool(
+        declaration is not None
+        and declaration.get("seat") == rnd.banker
+        and rnd.banker != seat
+    )
     pins = tuple(sorted(
         (card, (owner - seat) % 4, copies)
         for card, (owner, copies) in memory.known.items()
+        if not banker_declaration or owner != rnd.banker
     ))
+    eligibility: tuple[DeclarationEligibilityV1, ...] = ()
+    if banker_declaration:
+        assert declaration is not None
+        constraints = []
+        for card, shown_copies in sorted(Counter(declaration["cards"]).items()):
+            remaining = shown_copies - memory.played_by[rnd.banker][card]
+            if remaining > 0:
+                constraints.append(DeclarationEligibilityV1(
+                    card=card,
+                    eligible_receivers=(
+                        f"seat-relative-{(rnd.banker - seat) % 4}",
+                        HIDDEN_KITTY_RECEIVER,
+                    ),
+                    minimum_copies=remaining,
+                ))
+        eligibility = tuple(constraints)
     return DeductionView(
         played=_card_counts(memory.played.elements(), label="public played"),
         played_by_relative=played_by,
@@ -573,6 +623,7 @@ def _deductions(rnd: Round, seat: int) -> DeductionView:
         pair_caps_by_relative=pair_caps,
         run_caps_by_relative=run_caps,
         declaration_pins=pins,
+        declaration_eligibility=eligibility,
     )
 
 

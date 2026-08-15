@@ -19,8 +19,10 @@ from .belief_contract import (
     DECLARATION_SCHEMA,
     ActorObservationV1,
     BeliefTargetsV1,
+    DeclarationEligibilityV1,
     DeclarationView,
     DeductionView,
+    HIDDEN_KITTY_RECEIVER,
     HiddenReceiverView,
     PlayView,
     TrickView,
@@ -167,6 +169,7 @@ def _deductions(value: Any) -> DeductionView:
     row = _exact_keys(value, {
         "played", "played_by_relative", "unseen", "voids_by_relative",
         "pair_caps_by_relative", "run_caps_by_relative", "declaration_pins",
+        "declaration_eligibility",
     }, label="actor deductions")
     if any(type(row[field]) is not list or len(row[field]) != 4
            for field in ("played_by_relative", "voids_by_relative",
@@ -195,6 +198,36 @@ def _deductions(value: Any) -> DeductionView:
         ))
     if tuple(sorted(set(pins))) != tuple(pins):
         raise BeliefReopenError("actor declaration pins are not canonical")
+    eligibility = []
+    if type(row["declaration_eligibility"]) is not list:
+        raise BeliefReopenError("actor declaration eligibility is malformed")
+    for entry in row["declaration_eligibility"]:
+        constraint = _exact_keys(
+            entry, {"card", "eligible_receivers", "minimum_copies"},
+            label="actor declaration eligibility")
+        receivers = constraint["eligible_receivers"]
+        if type(constraint["card"]) is not str \
+                or constraint["card"] not in _CARD_CODES \
+                or type(receivers) is not list \
+                or len(receivers) != 2 \
+                or type(receivers[0]) is not str \
+                or receivers[0] not in {
+                    "seat-relative-1", "seat-relative-2", "seat-relative-3"} \
+                or receivers[1] != HIDDEN_KITTY_RECEIVER:
+            raise BeliefReopenError(
+                "actor declaration eligibility is malformed")
+        eligibility.append(DeclarationEligibilityV1(
+            card=constraint["card"],
+            eligible_receivers=tuple(receivers),
+            minimum_copies=_integer(
+                constraint["minimum_copies"], label="eligibility copies",
+                low=1, high=2),
+        ))
+    if tuple(sorted(eligibility, key=lambda value: value.card)) \
+            != tuple(eligibility) \
+            or len({value.card for value in eligibility}) != len(eligibility):
+        raise BeliefReopenError(
+            "actor declaration eligibility is not canonical")
     return DeductionView(
         played=_counts(row["played"], label="played"),
         played_by_relative=tuple(
@@ -209,6 +242,7 @@ def _deductions(value: Any) -> DeductionView:
             _caps(value, label="run")
             for value in row["run_caps_by_relative"]),
         declaration_pins=tuple(pins),
+        declaration_eligibility=tuple(eligibility),
     )
 
 
@@ -302,6 +336,25 @@ def actor_observation_from_dict(payload: dict[str, Any]) -> ActorObservationV1:
     for card, relative, copies in deductions.declaration_pins:
         if unseen[card] < copies:
             raise BeliefReopenError("actor declaration pin exceeds unseen")
+    expected_eligibility = ()
+    if declaration is not None \
+            and declaration.seat_relative == banker \
+            and banker != 0:
+        expected_rows = []
+        declared = Counter(declaration.cards)
+        banker_played = dict(deductions.played_by_relative[banker])
+        for card, copies in sorted(declared.items()):
+            remaining = copies - banker_played.get(card, 0)
+            if remaining > 0:
+                expected_rows.append(DeclarationEligibilityV1(
+                    card=card,
+                    eligible_receivers=(
+                        f"seat-relative-{banker}", HIDDEN_KITTY_RECEIVER),
+                    minimum_copies=remaining,
+                ))
+        expected_eligibility = tuple(expected_rows)
+    if deductions.declaration_eligibility != expected_eligibility:
+        raise BeliefReopenError("actor declaration eligibility drift")
 
     actor = ActorObservationV1(
         schema=row["schema"],

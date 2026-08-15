@@ -17,15 +17,16 @@ from typing import Any
 from ..ai.point_context import BRACKETS, EFF_SUITS
 from ..engine.cards import RANKS, SUITS, Ordering, make_deck, points
 from .belief_contract import (ACTOR_OBSERVATION_SCHEMA, ActorObservationV1,
-                              DeclarationView, DeductionView, PlayView,
-                              TrickView, canonical_json_bytes)
+                              DeclarationEligibilityV1, DeclarationView,
+                              DeductionView, PlayView, TrickView,
+                              canonical_json_bytes)
 from .belief_ownership import receiver_sizes
 
 
-INPUT_SCHEMA = "belief-v1-history-ownership-input-v2"
+INPUT_SCHEMA = "belief-v1-history-ownership-input-v3"
 EVENT_SCHEMA = "belief-v1-history-event-v2"
 RECEIVER_FACT_SCHEMA = "belief-v1-hidden-receiver-fact-v1"
-CARD_FACT_SCHEMA = "belief-v1-card-fact-v1"
+CARD_FACT_SCHEMA = "belief-v1-card-fact-v2"
 INFORMATION_TAG = "public_actor_private_and_logically_deduced_only"
 CARD_CODES = tuple(sorted(set(make_deck())))
 
@@ -150,6 +151,8 @@ class CardFactV1:
     unseen_count: int
     min_count_by_receiver: tuple[int, ...]
     max_count_by_receiver: tuple[int, ...]
+    required_receiver_group: tuple[str, ...]
+    required_receiver_group_min_count: int
     schema: str = CARD_FACT_SCHEMA
 
     def to_dict(self) -> dict[str, Any]:
@@ -167,6 +170,10 @@ class CardFactV1:
             "unseen_count": self.unseen_count,
             "min_count_by_receiver": list(self.min_count_by_receiver),
             "max_count_by_receiver": list(self.max_count_by_receiver),
+            "required_receiver_group": list(self.required_receiver_group),
+            "required_receiver_group_min_count": (
+                self.required_receiver_group_min_count
+            ),
         }
 
 
@@ -401,6 +408,29 @@ def _build_history_ownership_input(
     pins = {card: (relative, copies) for card, relative, copies in raw_pins}
     if len(pins) != len(raw_pins):
         raise BeliefInputError("declaration pin is malformed")
+    raw_eligibility = actor.deductions.declaration_eligibility
+    if type(raw_eligibility) is not tuple or any(
+            type(constraint) is not DeclarationEligibilityV1
+            for constraint in raw_eligibility):
+        raise BeliefInputError("declaration eligibility is malformed")
+    eligibility = {
+        constraint.card: (
+            constraint.eligible_receivers, constraint.minimum_copies)
+        for constraint in raw_eligibility
+    }
+    if len(eligibility) != len(raw_eligibility) \
+            or set(eligibility) & set(pins):
+        raise BeliefInputError("declaration eligibility is malformed")
+    receiver_names = tuple(receiver for receiver, _ in sizes)
+    if any(
+            type(card) is not str or card not in CARD_CODES
+            or type(receivers) is not tuple or len(receivers) != 2
+            or len(set(receivers)) != 2
+            or any(type(receiver) is not str
+                   or receiver not in receiver_names for receiver in receivers)
+            or type(copies) is not int or copies not in (1, 2)
+            for card, (receivers, copies) in eligibility.items()):
+        raise BeliefInputError("declaration eligibility is malformed")
     card_rows: list[CardFactV1] = []
     for card_index, card in enumerate(CARD_CODES):
         multiplicity = unseen.get(card, 0)
@@ -433,6 +463,28 @@ def _build_history_ownership_input(
                 # can own both copies of that card.
                 maximums = [min(maximum, 1) if index != owner else maximum
                             for index, maximum in enumerate(maximums)]
+        group = eligibility.get(card)
+        required_group: tuple[str, ...] = ()
+        required_group_min = 0
+        if group is not None:
+            required_group, required_group_min = group
+            if required_group_min > multiplicity:
+                raise BeliefInputError("declaration eligibility is malformed")
+            eligible_indices = {
+                receiver_names.index(receiver)
+                for receiver in required_group
+            }
+            if required_group_min == multiplicity:
+                maximums = [
+                    maximum if index in eligible_indices else 0
+                    for index, maximum in enumerate(maximums)
+                ]
+            else:
+                maximums = [
+                    maximum if index in eligible_indices
+                    else min(maximum, multiplicity - required_group_min)
+                    for index, maximum in enumerate(maximums)
+                ]
         if sum(minimums) > multiplicity or sum(maximums) < multiplicity \
                 or any(minimum > maximum
                        for minimum, maximum in zip(
@@ -452,6 +504,8 @@ def _build_history_ownership_input(
             unseen_count=multiplicity,
             min_count_by_receiver=tuple(minimums),
             max_count_by_receiver=tuple(maximums),
+            required_receiver_group=required_group,
+            required_receiver_group_min_count=required_group_min,
         ))
 
     for receiver_index, (_, size) in enumerate(sizes):

@@ -70,8 +70,10 @@ Today the project has three useful but separate mechanisms:
 - `Memory` reconstructs exact public facts and conservative deductions from
   public play plus the acting hand. It knows seen cards, proven voids,
   declaration pins, pair/run upper bounds, and whether a card is *provably*
-  boss. Its risk helpers answer questions such as “could somebody beat this?”;
-  they are not calibrated probabilities.
+  boss. Its production declaration pin is intentionally preserved for policy
+  identity even though BELIEF-V1 must weaken a banker-declarer's pin to the
+  sound banker-hand/hidden-kitty disjunction. Its risk helpers answer questions
+  such as “could somebody beat this?”; they are not calibrated probabilities.
 - `rl-observation-v1-public-no-private-kitty` is a fixed 531-value tensor. It
   contains the acting hand, aggregate cards played by relative seat, the
   current trick, aggregate unseen cards, trump/banker/role/points/card-count
@@ -79,10 +81,12 @@ Today the project has three useful but separate mechanisms:
   burial to preserve historical checkpoint identity. Much of the chronology,
   declaration structure, pair/run deductions, and uncertainty over ownership
   is absent or collapsed.
-- `MCBot` samples assignments that satisfy hand sizes, declaration pins,
-  voids, and pair/run caps. Subject to those constraints, it does not score a
-  world by how likely the declarations and play history make it. The result is
-  constraint-consistent determinization, not a calibrated posterior.
+- `MCBot` samples assignments that satisfy hand sizes, its production
+  declaration pins, voids, and pair/run caps. BELIEF-V1 reuses its assignment
+  kernel but corrects the banker-declaration eligibility at the reference
+  boundary. Subject to those constraints, it does not score a world by how
+  likely the declarations and play history make it. The result is constrained
+  determinization, not a calibrated posterior.
 
 Chronological public-history and privileged-feature encoders also exist for
 the DouZero and Suphx microbaselines. They establish useful mechanics, but they
@@ -138,7 +142,7 @@ Fields are partitioned as follows.
 |---|---|---|
 | Public observed | ordered declaration event and shown cards; completed plays; current trick; banker and roles; public points; hand sizes | Input |
 | Actor private | acting hand; banker-known burial when the actor is banker | Input |
-| Logically deduced | exact unseen multiplicities; proven voids; sound non-banker declaration pins; pair/run upper bounds | Input and hard constraint at the altitude the schema can express |
+| Logically deduced | exact unseen multiplicities; proven voids; sound non-banker declaration pins; banker-hand/hidden-kitty declaration eligibility; pair/run upper bounds | Input and hard constraint at the altitude the schema can express |
 | Probabilistic belief | hidden-card ownership, hidden-kitty composition, unproven void/pair/run/boss/ruff/point distributions | Model output |
 | Simulator privileged | exact hands of the other three seats and non-banker-hidden burial | Training label and audit only |
 
@@ -160,8 +164,9 @@ Canonical, reconstructable input for one actor at one decision:
   failed-throw signal; returned attempted cards are retained only for the actor
   that made that attempt, never exposed to another seat;
 - exact public points and trick-point flow;
-- `Memory` facts: played multiplicities, proven voids, declaration pins, and
-  pair/run upper bounds;
+- `Memory` facts plus corrected contract deductions: played multiplicities,
+  proven voids, sound hand pins, banker-hand/hidden-kitty declaration
+  eligibility, and pair/run upper bounds;
 - candidate action identity and decision surface only in the action-context
   consumer, not baked ambiguously into the state; and
 - source, schema, ballot, and perspective identity.
@@ -400,11 +405,15 @@ and the public endpoint is tested independently.
 Every quantitative belief claim names two references. They are called `REF-C`
 and `REF-H` here to avoid collision with the B0-B5 work-package names below:
 
-- **REF-C — current constraint-consistent proposal** (the review-side B0,
-  sometimes described informally as “uniform-consistent”): the current sampler
-  with all `Memory` hard facts and its exact randomized backtracking/split
-  behavior. The project has not proved this proposal mathematically uniform
-  over accepted worlds, so V1 must not use that stronger label; and
+- **REF-C — sound constraint proposal using the current assignment kernel**
+  (the review-side B0, sometimes described informally as
+  “uniform-consistent”): the current sampler's exact randomized
+  backtracking/split kernel with a reviewed actor-visible constraint adapter.
+  The adapter preserves non-banker declaration hand pins and represents a
+  banker-declarer's shown copy as eligible only for banker hand or hidden
+  kitty; it does not alter the production acting policy. The project has not
+  proved this proposal mathematically uniform over accepted worlds, so V1 must
+  not use that stronger label; and
 - **REF-H — current hand-coded context** (the review-side B1): REF-C worlds
   plus the exact `Memory`/`PointContext` fact and action-context fields
   available to today's decision code, but no learned behavioral likelihood.
@@ -601,7 +610,7 @@ execution permission, and an offline calibration PASS never means strength.
 > **BELIEF-V1 — Build and validate an actor-visible world model that improves
 > same-work search.** Specify and implement public/actor/deduction/belief/
 > privileged information boundaries; build a split-safe hidden-ownership
-> corpus; beat the current constraint-consistent prior on held-out proper
+> corpus; beat the sound constraint proposal on held-out proper
 > scoring and calibration; sample complete legal worlds without losing that
 > signal; and test fixed-work search against both the current sampler and a
 > shuffled-belief null on fresh natural states. Finish with either a positive,

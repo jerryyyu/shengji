@@ -156,7 +156,15 @@ def _cards(model_input: HistoryOwnershipInputV1) -> tuple[
     for index, card in enumerate(model_input.card_facts):
         if card.card_index != index \
                 or len(card.min_count_by_receiver) != receiver_count \
-                or len(card.max_count_by_receiver) != receiver_count:
+                or len(card.max_count_by_receiver) != receiver_count \
+                or type(card.required_receiver_group) is not tuple \
+                or any(receiver not in {
+                    row.receiver for row in model_input.receivers}
+                       for receiver in card.required_receiver_group) \
+                or type(card.required_receiver_group_min_count) is not int \
+                or card.required_receiver_group_min_count not in (0, 1, 2) \
+                or bool(card.required_receiver_group) != bool(
+                    card.required_receiver_group_min_count):
             raise BeliefTensorError("card fact identity/bound population drift")
         row = [
             *_one_hot(card.effective_suit, tuple(EFF_SUITS)),

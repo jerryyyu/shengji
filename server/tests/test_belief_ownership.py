@@ -496,17 +496,51 @@ def test_banker_buried_declaration_is_not_pinned_to_banker_hand():
             0, attempted, actual_play_after(rnd, 0, previous_last))
         actor = build_actor_observation(rnd, rnd.turn, transcript)
         target = build_belief_targets(rnd, rnd.turn)
-        if dict(target.hidden_burial).get(declared, 0) == 1:
+        banker_hand = dict(
+            target.other_hands[actor.banker_relative - 1].cards)
+        if dict(target.hidden_burial).get(declared, 0) == 1 \
+                and banker_hand.get(declared, 0) == 0:
             fixture = actor, target, declared
             break
     assert fixture is not None
     actor, target, declared = fixture
     assert not any(card == declared
                    for card, _, _ in actor.deductions.declaration_pins)
+    assert len(actor.deductions.declaration_eligibility) == 1
+    constraint = actor.deductions.declaration_eligibility[0]
+    assert constraint.card == declared
+    assert constraint.eligible_receivers == (
+        f"seat-relative-{actor.banker_relative}", KITTY_RECEIVER)
+    assert constraint.minimum_copies == 1
     truth = _target_counts(actor, target)
     belief = _belief(actor, [truth])
     validate_ownership(actor, belief)
     assert truth[(declared, KITTY_RECEIVER)] == 1
+
+    # Move the shown copy from kitty to an unrelated hand and swap a second
+    # card back so every per-card and per-receiver conservation equation stays
+    # exact.  Only the disjunctive eligibility guard can refuse this belief.
+    outside = next(
+        receiver for receiver in SEAT_RECEIVERS
+        if receiver not in constraint.eligible_receivers
+        and truth[(declared, receiver)] == 0
+    )
+    exchange = next(
+        card for card, _ in actor.deductions.unseen
+        if card != declared
+        and truth[(card, outside)] == 1
+        and truth[(card, KITTY_RECEIVER)] == 0
+    )
+    changed = dict(truth)
+    changed[(declared, KITTY_RECEIVER)] = 0
+    changed[(declared, outside)] = 1
+    changed[(exchange, outside)] = 0
+    changed[(exchange, KITTY_RECEIVER)] = 1
+    forged = _belief(actor, [changed])
+    with pytest.raises(
+            BeliefOwnershipError,
+            match="declared copies leave their eligible receiver set"):
+        validate_ownership(actor, forged)
 
 
 def test_proven_zero_pair_cap_refuses_two_copy_mass():

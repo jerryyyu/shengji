@@ -1,4 +1,4 @@
-"""Exact in-memory REF-C draws from the current constraint sampler.
+"""Exact in-memory REF-C draws from the sound constraint sampler.
 
 This is the only B2 adapter allowed to call ``MCBot._sample_hands``.  It draws
 256 complete worlds from one actor-visible decision under a named RNG seed,
@@ -37,12 +37,15 @@ from .belief_reference import (REF_C_WORLD_COUNT, BeliefReferenceError,
                                validate_sampled_world)
 
 
-REF_C_BATCH_SCHEMA = "belief-v1-ref-c-current-sampler-batch-v1"
+REF_C_BATCH_SCHEMA = "belief-v1-ref-c-sound-constraint-sampler-batch-v2"
 MAX_SAMPLER_SEED = 2**63 - 1
 _SOURCE_ROOT = Path(__file__).resolve().parents[1]
 REF_C_SOURCE_SHA256S = {
     name: hashlib.sha256((_SOURCE_ROOT / path).read_bytes()).hexdigest()
     for name, path in {
+        "belief_contract": "rl/belief_contract.py",
+        "belief_refc_capture": "rl/belief_refc_capture.py",
+        "belief_reference": "rl/belief_reference.py",
         "mcbot": "ai/mcbot.py",
         "memory": "ai/memory.py",
         "cards": "engine/cards.py",
@@ -50,7 +53,7 @@ REF_C_SOURCE_SHA256S = {
     }.items()
 }
 REF_C_SAMPLER_SHA256 = hashlib.sha256(canonical_json_bytes({
-    "schema": "belief-v1-ref-c-current-sampler-source-v1",
+    "schema": "belief-v1-ref-c-sound-constraint-sampler-source-v2",
     "source_sha256s": REF_C_SOURCE_SHA256S,
 })).hexdigest()
 _COUNTERS = ("sample_attempts", "accepted_worlds", "failed_worlds",
@@ -187,14 +190,115 @@ def _relative_world(actor: ActorObservationV1, seat: int,
         ))
     world = SampledOwnershipWorldV1(
         actor_observation_sha256=actor.sha256(), receivers=tuple(rows))
-    validate_sampled_world(actor, world)
     return world
+
+
+def _sample_ref_c_hands(
+        bot: MCBot, rnd: Round, seat: int, memory: Memory,
+        actor: ActorObservationV1) -> tuple[dict[int, list[str]], list[str]] \
+        | None:
+    """Run the production assignment kernel with sound declaration slots.
+
+    The deployed sampler pins a banker-declarer's shown cards to the banker
+    hand.  That changes live decisions and is deliberately left untouched.
+    REF-C instead treats each still-shown physical copy as labelled public
+    evidence and places it uniformly without replacement into the only legal
+    slots: banker hand or hidden kitty.  The remaining cards then use the
+    exact production ``_assign`` kernel and its void/pair/run constraints.
+    """
+    bot.sample_attempts += 1
+    ordering = rnd.ordering
+    assert ordering is not None
+    pool = list(memory.unseen.elements())
+    if seat == rnd.banker:
+        if not getattr(memory, "own_kitty_known", False):
+            pool = list((Counter(pool) - Counter(rnd.buried)).elements())
+        buried = list(rnd.buried)
+        kitty_slots = 0
+    else:
+        buried = []
+        kitty_slots = len(rnd.buried)
+    others = [absolute for absolute in range(4) if absolute != seat]
+    sizes = {absolute: len(rnd.hands[absolute]) for absolute in others}
+    if len(pool) != sum(sizes.values()) + kitty_slots:
+        raise BeliefRefCCaptureError(
+            "REF-C unseen pool and receiver capacities disagree")
+
+    eligibility_cards = {
+        constraint.card for constraint
+        in actor.deductions.declaration_eligibility
+    }
+    fixed_pre: dict[int, list[str]] = {absolute: [] for absolute in others}
+    fixed_pins: Counter[str] = Counter()
+    if bot.DECLARER_PIN:
+        for card, (owner, copies) in memory.known.items():
+            if card in eligibility_cards or owner not in fixed_pre:
+                continue
+            take = min(copies, sizes[owner] - len(fixed_pre[owner]))
+            fixed_pre[owner].extend([card] * take)
+            fixed_pins[card] += take
+
+    pool_counts = Counter(pool)
+    for attempt in range(bot.SAMPLE_RETRIES):
+        pre = {absolute: list(cards)
+               for absolute, cards in fixed_pre.items()}
+        pinned = Counter(fixed_pins)
+        pre_kitty: list[str] = []
+        eligibility_ok = True
+        for constraint in actor.deductions.declaration_eligibility:
+            hand_receiver = constraint.eligible_receivers[0]
+            relative = int(hand_receiver.removeprefix("seat-relative-"))
+            owner = (seat + relative) % 4
+            hand_slots = sizes[owner] - len(pre[owner])
+            if ordering.eff_suit(constraint.card) in memory.voids[owner]:
+                hand_slots = 0
+            available_kitty = kitty_slots - len(pre_kitty)
+            slots = ([owner] * hand_slots
+                     + ["kitty"] * available_kitty)
+            if len(slots) < constraint.minimum_copies \
+                    or pool_counts[constraint.card] - pinned[constraint.card] \
+                    < constraint.minimum_copies:
+                eligibility_ok = False
+                break
+            bot.rng.shuffle(slots)
+            for receiver in slots[:constraint.minimum_copies]:
+                if receiver == "kitty":
+                    pre_kitty.append(constraint.card)
+                else:
+                    pre[receiver].append(constraint.card)
+                pinned[constraint.card] += 1
+        if not eligibility_ok:
+            continue
+
+        free = list((pool_counts - pinned).elements())
+        caps = {absolute: sizes[absolute] - len(pre[absolute])
+                for absolute in others}
+        remaining_kitty = kitty_slots - len(pre_kitty)
+        respect_voids = attempt < bot.SAMPLE_RETRIES - 1
+        got = bot._assign(
+            free, caps, remaining_kitty, ordering, memory, pre,
+            respect_voids=respect_voids)
+        if got is None:
+            continue
+        if not respect_voids:
+            if os.environ.get("SHENGJI_REQUIRE_VOIDS"):
+                bot.rejected_worlds += 1
+                bot.failed_worlds += 1
+                return None
+            bot.impossible_worlds += 1
+        hands, kitty = got
+        for absolute in others:
+            hands[absolute] = pre[absolute] + hands[absolute]
+        bot.accepted_worlds += 1
+        return hands, (buried or [*pre_kitty, *kitty])
+    bot.failed_worlds += 1
+    return None
 
 
 def capture_ref_c_worlds(
         rnd: Round, seat: int, transcript: PublicTranscriptV1, *,
         sampler_seed: int) -> ReferenceWorldBatchV1:
-    """Draw one exact 256-world current-sampler reference batch."""
+    """Draw one exact 256-world sound-constraint reference batch."""
     if type(rnd) is not Round or rnd.phase != "play" or rnd.turn != seat \
             or type(seat) is not int or seat not in range(4) \
             or type(transcript) is not PublicTranscriptV1:
@@ -216,11 +320,13 @@ def capture_ref_c_worlds(
     attempt_cap = REF_C_WORLD_COUNT * bot.SAMPLE_ATTEMPT_FACTOR
     while len(worlds) < REF_C_WORLD_COUNT and attempts < attempt_cap:
         attempts += 1
-        sampled = bot._sample_hands(rnd, seat, memory)
+        sampled = _sample_ref_c_hands(bot, rnd, seat, memory, actor)
         if sampled is None:
             continue
         hands, buried = sampled
-        worlds.append(_relative_world(actor, seat, hands, buried))
+        world = _relative_world(actor, seat, hands, buried)
+        validate_sampled_world(actor, world)
+        worlds.append(world)
     after = _snapshot(bot)
     before_dict = dict(before)
     after_dict = dict(after)

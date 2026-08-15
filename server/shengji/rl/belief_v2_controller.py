@@ -58,6 +58,10 @@ from .belief_v2_protocol import (
     v2_policy_seeds,
 )
 from .belief_v2_reference import capture_v2_ref_c_from_replay
+from .belief_v2_training import (
+    V2TrainingExampleV1,
+    build_synthetic_training_example,
+)
 
 
 CAPTURE_LANE_SCHEMA = "belief-v1-v2-capture-lane-result-v1"
@@ -581,6 +585,82 @@ def reopen_actor_capture_lane_manifest(
                            + row["actor_byte_count"]
                            for row in payload["rounds"]), kind="capture")
     return payload
+
+
+def reopen_synthetic_training_lane_examples(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1, lane: int,
+        split: str) -> tuple[V2TrainingExampleV1, ...]:
+    """Open only one non-test private split from an authenticated lane.
+
+    The actor-only manifest reopener authenticates the complete lane and the
+    shape of every private file without reading any private bundle.  Only rows
+    in the requested train/calibration split are then byte-bound, typed-opened,
+    and reduced to source-neutral V2 examples.  Test is deliberately not an
+    accepted argument at this training boundary.
+    """
+    if type(split) is not str or split not in {"train", "calibration"}:
+        raise BeliefV2ControllerError(
+            "V2 training reader split is not train/calibration")
+    payload = reopen_actor_capture_lane_manifest(
+        directory, freeze=freeze, admission=admission, lane=lane)
+    coordinates = v2_lane_coordinates(lane)
+    examples = []
+    for coordinate, row in zip(
+            coordinates, payload["rounds"], strict=True):
+        if coordinate.split != split:
+            continue
+        private_raw = stable_read_bytes(
+            directory / "private" / row["private_filename"])
+        if len(private_raw) != row["private_byte_count"] \
+                or _sha256(private_raw) != row["private_bundle_sha256"]:
+            raise BeliefV2ControllerError(
+                "V2 training private bundle byte binding drift")
+        try:
+            artifacts = reopen_capture_bundle(private_raw)
+            captured = reopen_captured_round_artifacts(artifacts)
+        except ValueError as exc:
+            raise BeliefV2ControllerError(
+                "V2 training private bundle typed reopen refused") from exc
+        typed_actors = tuple(
+            reopen_actor_row(pair.actor_bytes)[0]
+            for pair in captured.pairs)
+        binding = _capture_binding(captured)
+        if captured.round_seed != coordinate.round_seed \
+                or captured.policy_seeds != v2_policy_seeds(coordinate) \
+                or not typed_actors \
+                or any(actor.trump_rank != coordinate.trump_rank
+                       for actor in typed_actors) \
+                or row["private_capture_manifest_sha256"] \
+                != binding["capture_manifest_sha256"] \
+                or row["public_transcript_sha256"] \
+                != binding["public_transcript_sha256"] \
+                or row["actor_stream_sha256"] \
+                != binding["actor_stream_sha256"] \
+                or row["privileged_target_stream_sha256"] \
+                != binding["privileged_target_stream_sha256"] \
+                or row["decision_count"] != binding["decision_count"]:
+            raise BeliefV2ControllerError(
+                "V2 training private capture identity drift")
+        try:
+            round_examples = tuple(
+                build_synthetic_training_example(pair)
+                for pair in captured.pairs)
+        except ValueError as exc:
+            raise BeliefV2ControllerError(
+                "V2 synthetic training example derivation refused") from exc
+        if any(example.split != split for example in round_examples):
+            raise BeliefV2ControllerError(
+                "V2 synthetic training example split drift")
+        examples.extend(round_examples)
+    if not examples:
+        raise BeliefV2ControllerError(
+            "V2 training lane split population is empty")
+    keys = tuple(example.decision_key for example in examples)
+    if len(keys) != len(set(keys)):
+        raise BeliefV2ControllerError(
+            "V2 training lane split decision duplicate")
+    return tuple(examples)
 
 
 def reference_lane_jobs(

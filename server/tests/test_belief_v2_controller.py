@@ -14,6 +14,7 @@ from shengji.rl.belief_v2_controller import (
     reopen_actor_capture_lane_manifest,
     reopen_capture_lane,
     reopen_reference_lane,
+    reopen_synthetic_training_lane_examples,
     run_capture_lane,
     run_reference_lane,
 )
@@ -270,6 +271,56 @@ def test_reference_opens_no_private_capture_bundle(tmp_path, monkeypatch):
         capture_directory=(
             root / "capture" / f"lane-{coordinate.lane:02d}"),
         freeze=freeze, admission=admission, lane=coordinate.lane) == result
+
+
+def test_training_reader_authenticates_lane_without_opening_test_targets(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    coordinates = v2_round_coordinates()
+    train = next(row for row in coordinates if row.split == "train")
+    test = next(row for row in coordinates
+                if row.lane == train.lane and row.split == "test")
+    lane_coordinates = (train, test)
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_controller.v2_lane_coordinates",
+        lambda lane: lane_coordinates)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_controller.capture_v2_champion_round",
+        _heuristic_capture)
+    result = run_capture_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=train.lane,
+        review_marker=b"review")
+    test_filename = next(
+        row["private_filename"] for row in result["rounds"]
+        if row["split"] == "test")
+    import shengji.rl.belief_v2_controller as controller
+    real_read = controller.stable_read_bytes
+
+    def test_target_tripwire(path):
+        if path.name == test_filename:
+            raise AssertionError("training opened a test target bundle")
+        return real_read(path)
+
+    monkeypatch.setattr(controller, "stable_read_bytes", test_target_tripwire)
+    examples = reopen_synthetic_training_lane_examples(
+        root / "capture" / f"lane-{train.lane:02d}",
+        freeze=freeze, admission=admission, lane=train.lane,
+        split="train")
+    assert examples
+    assert {example.split for example in examples} == {"train"}
+    with pytest.raises(BeliefV2ControllerError,
+                       match="split is not train/calibration"):
+        reopen_synthetic_training_lane_examples(
+            root / "capture" / f"lane-{train.lane:02d}",
+            freeze=freeze, admission=admission, lane=train.lane,
+            split="test")
 
 
 def test_public_capture_reopen_requires_private_file_population(

@@ -21,6 +21,7 @@ from .belief_artifacts import (
     stable_read_bytes,
 )
 from .belief_capture import reopen_captured_round_artifacts
+from .belief_contract import canonical_json_bytes
 from .belief_evaluation import reopen_score_pair
 from .belief_v2_common_surface import build_common_surface_tensors
 from .belief_v2_controller import (
@@ -29,6 +30,7 @@ from .belief_v2_controller import (
     reopen_reference_lane_manifest,
 )
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
+from .belief_v2_freeze import PRIMARY_COHORT_ID
 from .belief_v2_human_corpus import UNIVERSAL_POLICY_IDS
 from .belief_v2_human_corpus import validate_human_corpus_pair
 from .belief_v2_human_controller import reopen_human_group_manifest
@@ -36,8 +38,23 @@ from .belief_v2_human_reference_controller import (
     reopen_human_reference_group,
 )
 from .belief_v2_protocol import V2RoundCoordinate, v2_policy_seeds
-from .belief_v2_scoring import V2ScoringDecisionV1
-from .belief_v2_scoring import v2_scoring_actor
+from .belief_v2_scoring import (
+    V2CohortModelsV1,
+    V2ScoringDecisionV1,
+    cohort_models_from_trained,
+    v2_scoring_actor,
+)
+from .belief_v2_training_controller import reopen_training_cohort
+from .belief_v2_training_inputs import (
+    V2TrainingInputPopulationV1,
+    training_examples_for_realization,
+    validate_v2_training_inputs,
+)
+from .belief_v2_device_controller import reopen_device_qualification
+from .belief_v2_device_qualification import (
+    V2DeviceQualificationPlanV1,
+    V2DeviceQualificationResultV1,
+)
 
 
 class BeliefV2ScoringControllerError(ValueError):
@@ -55,6 +72,68 @@ def synthetic_round_key(round_seed: int) -> str:
     return hashlib.sha256(
         f"belief-v1-v2-synthetic-round|{round_seed}".encode("ascii")
     ).hexdigest()
+
+
+def reopen_trained_scoring_cohorts(
+        root: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        training_inputs: V2TrainingInputPopulationV1) \
+        -> tuple[tuple[V2CohortModelsV1, ...],
+                 V2DeviceQualificationPlanV1,
+                 V2DeviceQualificationResultV1,
+                 tuple[tuple[str, str], ...]]:
+    """Reopen every selected portable checkpoint and its training receipt."""
+    try:
+        validate_v2_training_inputs(training_inputs)
+    except ValueError as exc:
+        raise BeliefV2ScoringControllerError(
+            "V2 scoring training input population refused") from exc
+    primary_rows = [row for row in training_inputs.realizations
+                    if row.cohort_id == PRIMARY_COHORT_ID]
+    if len(primary_rows) != 1:
+        raise BeliefV2ScoringControllerError(
+            "V2 scoring primary realization drift")
+    primary = primary_rows[0]
+    try:
+        _, qualification_plan, qualification_result = (
+            reopen_device_qualification(
+                root / "device-qualification" / "result",
+                freeze=freeze, admission=admission, primary=primary))
+    except ValueError as exc:
+        raise BeliefV2ScoringControllerError(
+            "V2 scoring device qualification refused") from exc
+    models = []
+    manifest_hashes = []
+    for realization in training_inputs.realizations:
+        try:
+            examples = training_examples_for_realization(
+                training_inputs, realization)
+            manifest, trained = reopen_training_cohort(
+                root / "training" / realization.cohort_id,
+                freeze=freeze, admission=admission, primary=primary,
+                realization=realization, training_examples=examples,
+                calibration=training_inputs.common_calibration,
+                calibration_examples=(
+                    training_inputs.synthetic_calibration_examples),
+                qualification_plan=qualification_plan,
+                qualification_result=qualification_result)
+            cohort = cohort_models_from_trained(trained)
+        except ValueError as exc:
+            raise BeliefV2ScoringControllerError(
+                "V2 scoring trained cohort refused") from exc
+        if cohort.cohort_id != realization.cohort_id:
+            raise BeliefV2ScoringControllerError(
+                "V2 scoring trained cohort order drift")
+        models.append(cohort)
+        manifest_hashes.append((
+            realization.cohort_id,
+            _sha256(canonical_json_bytes(manifest))))
+    expected_ids = tuple(plan.cohort_id for plan in freeze.cohorts)
+    if tuple(row.cohort_id for row in models) != expected_ids:
+        raise BeliefV2ScoringControllerError(
+            "V2 scoring cohort/freeze order drift")
+    return (tuple(models), qualification_plan, qualification_result,
+            tuple(manifest_hashes))
 
 
 def reopen_synthetic_scoring_round(

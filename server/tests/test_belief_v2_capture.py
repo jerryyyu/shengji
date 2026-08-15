@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from dataclasses import replace
 
 import pytest
@@ -18,6 +19,10 @@ from shengji.rl.belief_v2_capture import (
     BeliefV2CaptureError,
     capture_v2_champion_actor_round,
     replay_v2_champion_actor_round,
+)
+from shengji.rl.belief_v2_reference import (
+    BeliefV2ReferenceError,
+    capture_v2_ref_c_from_replay,
 )
 from shengji.rl.belief_v2_protocol import (
     V2_RANKS,
@@ -71,3 +76,51 @@ def test_one_non_two_exact_v2_champion_round_replays_without_search():
     replayed = replay_v2_champion_actor_round(coordinate, sealed)
     assert replayed == sealed
     assert replayed.policy_name == CHAMPION_POLICY
+
+
+def test_v2_ref_c_uses_sealed_replay_without_play_search(monkeypatch):
+    coordinate = next(row for row in v2_round_coordinates()
+                      if row.trump_rank == "9"
+                      and row.split == "calibration")
+    seeds = v2_policy_seeds(coordinate)
+    sealed = _capture_with_policies(
+        coordinate.round_seed, CHAMPION_POLICY, seeds,
+        [HeuristicBot() for _ in range(4)], actor_only=True,
+        trump_rank=coordinate.trump_rank)
+    assert type(sealed) is CapturedActorRoundV1
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_reference.make_bot",
+        lambda *args, **kwargs: _NoPlaySearch())
+    def target_tripwire(*args, **kwargs):
+        raise AssertionError("V2 REF-C must not construct a target row")
+    monkeypatch.setattr(
+        "shengji.rl.belief_corpus.capture_corpus_pair", target_tripwire)
+    monkeypatch.setattr(
+        "shengji.rl.belief_contract.build_belief_targets", target_tripwire)
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    result = capture_v2_ref_c_from_replay(
+        coordinate, sealed, replicate="calibration-replicate-0")
+    assert result.captured == sealed
+    assert len(result.batches) == len(sealed.actor_rows)
+    assert all(len(batch.worlds) == 256 for batch in result.batches)
+
+
+def test_v2_reference_source_has_no_target_or_full_capture_surface():
+    import shengji.rl.belief_v2_reference as reference
+    source = Path(reference.__file__).read_text(encoding="utf-8")
+    for forbidden in (
+            "capture_corpus_pair", "build_belief_targets", "target_rows",
+            "CapturedBeliefRoundV1", "reopen_capture_bundle"):
+        assert forbidden not in source
+
+
+def test_v2_ref_c_refuses_train_or_wrong_replicate_before_replay():
+    coordinate = next(row for row in v2_round_coordinates()
+                      if row.split == "train")
+    forged = CapturedActorRoundV1(
+        round_seed=coordinate.round_seed, policy_name=CHAMPION_POLICY,
+        policy_seeds=v2_policy_seeds(coordinate), actor_rows=(b"x",),
+        public_transcript=None)  # type: ignore[arg-type]
+    with pytest.raises(BeliefV2ReferenceError, match="replicate/split"):
+        capture_v2_ref_c_from_replay(
+            coordinate, forged, replicate="test-primary")

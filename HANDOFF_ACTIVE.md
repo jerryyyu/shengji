@@ -4,7 +4,7 @@
 > `HANDOFF_REVIEW.md`, and `docs_archive/`. A request not listed here is not an
 > active Claude review request.
 
-Last reconciled: 2026-08-16 08:23 EDT.
+Last reconciled: 2026-08-16 08:27 EDT.
 
 ## Immediate objective
 
@@ -99,6 +99,10 @@ The populated freeze is a separate exact object and must PASS before execution.
 - A powered host is not execution authority. After source PASS, use a qualified
   host with at least 16 logical CPUs only for the bounded score-free measurements
   needed to construct the freeze.
+- Read-only 08:27 readiness probe: `shengji-cloud` is reachable with 16 logical
+  CPUs, 32,078,280 KiB total / 31,248,492 KiB available memory, load 0.03, and
+  zero matching belief/Shengji/pytest workers. `shengji-perf` is powered off or
+  unreachable. Do not stage or run V2 on the available host before source PASS.
 - PR #116 remains Codex's independent performance-review item, not a Claude
   queue item and not a blocker for this consolidated review.
 - No other Claude review request is open. Superseded PR #117 prompts and old

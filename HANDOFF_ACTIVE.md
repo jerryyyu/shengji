@@ -4,7 +4,7 @@
 > `HANDOFF_REVIEW.md`, and `docs_archive/`. A request not listed here is not an
 > active Claude review request.
 
-Last reconciled: 2026-08-16 08:45 EDT.
+Last reconciled: 2026-08-16 08:47 EDT.
 
 ## Immediate objective
 
@@ -21,104 +21,32 @@ or progress reviews between those boundaries.
 
 ## Current review queue — exactly one Claude request
 
-### P0 — PR #118 consolidated V2 execution-source review
+### P0 — PR #118 zero-decision human-group delta
 
-**ANSWERED 2026-08-16 09:40 EDT: ✅ PASS at exact head `86aa3b7` — ledger `7832558`, zero blockers. No open Claude review request remains; next Claude gate is the exact-freeze review of the host-populated freeze bytes.**
-
-**IN PROGRESS; do not restart or duplicate this review.** The remote PR head
-remains exactly `86aa3b70cbe9672a2ee82c19e9d0583bae530756` while this review
-runs.
+The consolidated source review at parent `86aa3b70` is closed with PASS and
+zero blockers (ledger `78325580`). Do not repeat it. Review only:
 
 - PR: `https://github.com/jerryyyu/shengji/pull/118`
-- exact head: `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
-- exact merge base: `08c050209952edb1e5a2328b0545e4f643ffa4ff`;
-  base branch is canonical `main`
-- diff: 27 files, +2,951/-335; no `HANDOFF_REVIEW.md`, production, gameplay
-  policy, or frozen evidence changes
-- review mode: one consolidated PASS or one HOLD containing every blocker
-  found in this pass; do not split performance, streaming, memory, telemetry,
-  or design into separate review requests
+- exact child: `7cc193077cccf20abfdb54612f51448bcd6be223`
+- exact reviewed parent: `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
+- delta: 5 files, +131/-7
+- prompt/comment: `https://github.com/jerryyyu/shengji/pull/118#issuecomment-5307508755`
 
-Review these four surfaces together:
+The frozen H0 inventory contains 20/48 legitimate zero-decision human groups.
+Verify in one delta pass that they remain source/inventory/split-bound empty
+capture and REF-C manifests, contribute zero scoring rows, and report one
+honest `0/1` to `1/1` group-stage progress unit. Nonempty groups must retain
+exact decision/artifact/scoring bindings. No gameplay, model/training,
+test-opening, registry-policy, or authority semantics changed.
 
-1. **CPU cohort execution.** Four persistent member workers share immutable
-   batches while Torch intra-op work remains one thread. Fixed member order,
-   all 8+8 members, optimizer independence, receipts, calibration losses, and
-   portable checkpoint hashes must match the serial reference. MPS is not
-   retained: the exact Mini diagnostic was CPU 2.978871292 s versus MPS
-   17.306243501 s. Four workers were the measured resource-efficiency knee
-   (48.8% lower epoch wall, +79.1% CPU); eight were faster but cost +129.4% CPU.
-2. **Bounded streaming inputs.** The old materialized bridge projected about
-   106.6 GiB before Python overhead on a roughly 30 GiB host. The new compact
-   index must bind every source/schedule/row without opening test targets;
-   device qualification and each epoch may retain only the current bounded
-   batch. Reopeners must detect missing, extra, reordered, or mutated sources.
-3. **Qualification and memory closure.** The 32-batch plan must include maximum
-   decision count plus minimum/maximum active-label-density extremes, keep all
-   qualification batches resident, and conservatively require measured
-   per-process peak x exact concurrent cohort count to fit the host cap.
-   Training and terminal receipts must independently reconstruct that bound.
-4. **Outcome-blind progress.** Every long worker command must reach its real
-   controller loop and emit canonical stderr-only completed/total units,
-   basis-point percent, elapsed time, and ETA. It must not alter stdout or any
-   evidence bytes, expose loss/score/selection/test/terminal outcome, regress
-   or change totals, or grant retry/execution/strength/deploy authority.
+Exact child evidence: focused 52 passed; pure 380 passed + 2 skipped; strict
+compiled 382 passed; seed scan SHA `53e9c293…fc89`; registry SHA
+`175711fb…a41`, 5,415/5,415 classified, 13,312 seeds, zero collisions, all
+authority false. Return one DELTA PASS or one DELTA HOLD with every blocker.
 
-Exact-head evidence:
-
-- focused progress/controller/cohort/device: 51 passed;
-- full BELIEF pure: 379 passed, 2 skipped;
-- full BELIEF compiled/strict: 381 passed;
-- `git diff --check`, clean tree, and isolated worker bootstrap: PASS;
-- seed scan: 1,943,634 bytes, SHA-256
-  `f2ffc1fa4482ed356c4c12c6728303833115054c15fda8b04dc544b0281740f4`;
-- registry: 1,725,973 bytes, SHA-256
-  `d2f75dd2f0d089fb4312e0e125276467e1257cb69022d93c5040ec57b85e76b6`;
-  5,415/5,415 candidates classified, 140 explicit, 74 finite-population,
-  31 populations, 13,312 V2 seeds, zero collisions; all capture, training,
-  test, gameplay, strength, and deployment authority flags are false.
-
-Return exactly:
-
-1. `PASS` or `HOLD` at exact head `86aa3b7`;
-2. every finding in one severity-ordered list with file:line and a concrete
-   repair or proof request;
-3. whether PASS permits only qualified score-free host capacity/device/deadline
-   measurements and immutable-freeze construction; and
-4. any host-populated freeze fields that must be checked in the next exact-
-   freeze review.
-
-A source PASS does **not** authorize initialization, capture, REF-C, training,
-calibration, test opening, gameplay, strength claims, promotion, or deployment.
-The populated freeze is a separate exact object and must PASS before execution.
-
-### Sequenced successor — not an active request until P0 posts
-
-A read-only H0 inventory audit found that 20 of 48 frozen human source groups
-legitimately contain zero eligible decisions. The P0 head would refuse those
-groups or emit invalid zero-total progress. A narrow child is already validated
-and published separately without moving the active PR head:
-
-- child: `7cc193077cccf20abfdb54612f51448bcd6be223`
-- parent: exact P0 head `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
-- remote branch: `agent/belief-v2-zero-human-groups-v1`
-- delta: 5 files, +131/-7; production gameplay/model/learning semantics and all
-  authority maps unchanged
-- exact child validation: focused 52 passed; full pure 380 passed + 2 skipped;
-  compiled/strict 382 passed; `git diff --check` and clean tree PASS
-- exact child seed scan: 1,943,634 bytes, SHA-256
-  `53e9c293480a13e46d4adc23d8130202ae6ee6e6be5fa4a0a5ddec6a903efc89`
-- exact child registry: 1,725,973 bytes, SHA-256
-  `175711fb5683b055000f146daaa325235d93f4c2479689e0f41cb9e96101ba41`;
-  5,415/5,415 classified, 13,312 V2 seeds, zero collisions, all authority false
-
-After P0 posts, fast-forward PR #118 to this child and request **one delta
-review of these five files only**. Inherit the P0 verdict for the other 22
-files; do not repeat CPU, streaming, memory, telemetry, registry-policy, or
-design review. The delta must verify that empty groups remain bound manifests
-with zero scoring rows and one honest group-stage progress unit, while nonempty
-groups retain exact decision/artifact/scoring bindings. This is the only
-planned source follow-up.
+A PASS preserves only the parent's authority for qualified score-free host
+measurements and immutable-freeze construction. It does not authorize pipeline
+execution; the populated freeze still needs its own PASS.
 
 ## Current operational truth
 
@@ -128,10 +56,9 @@ planned source follow-up.
   eight-hour cap and were stopped before calibration/test. Its admission is
   spent; no V1 model, null, terminal, or strength result exists. Never resume
   or reuse those partial models.
-- PR #118 is source/design only. P0 review is in progress at `86aa3b7`; its
-  validated zero-group child is queued as the single delta above. No V2 evidence
-  namespace has been initialized and no V2 capture, REF-C, training,
-  calibration, or test job is running.
+- PR #118 is source/design only. Parent `86aa3b7` passed; exact child `7cc1930`
+  is the sole delta review above. No V2 evidence namespace has been initialized
+  and no V2 capture, REF-C, training, calibration, or test job is running.
 - A powered host is not execution authority. After source PASS, use a qualified
   host with at least 16 logical CPUs only for the bounded score-free measurements
   needed to construct the freeze.
@@ -141,8 +68,8 @@ planned source follow-up.
   unreachable. Do not stage or run V2 on the available host before source PASS.
 - PR #116 remains Codex's independent performance-review item, not a Claude
   queue item and not a blocker for this consolidated review.
-- No other Claude review request is open. Superseded PR #117 prompts and old
-  strength-lane queues are closed historical records.
+- No other Claude review request is open. Superseded PR #117 and PR #118 parent
+  prompts and old strength-lane queues are closed historical records.
 
 ## Next steps after final PR #118 child PASS
 

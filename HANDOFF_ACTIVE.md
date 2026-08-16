@@ -4,7 +4,7 @@
 > `HANDOFF_REVIEW.md`, and `docs_archive/`. A request not listed here is not an
 > active Claude review request.
 
-Last reconciled: 2026-08-16 08:27 EDT.
+Last reconciled: 2026-08-16 08:45 EDT.
 
 ## Immediate objective
 
@@ -22,6 +22,10 @@ or progress reviews between those boundaries.
 ## Current review queue — exactly one Claude request
 
 ### P0 — PR #118 consolidated V2 execution-source review
+
+**IN PROGRESS; do not restart or duplicate this review.** The remote PR head
+remains exactly `86aa3b70cbe9672a2ee82c19e9d0583bae530756` while this review
+runs.
 
 - PR: `https://github.com/jerryyyu/shengji/pull/118`
 - exact head: `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
@@ -86,6 +90,34 @@ A source PASS does **not** authorize initialization, capture, REF-C, training,
 calibration, test opening, gameplay, strength claims, promotion, or deployment.
 The populated freeze is a separate exact object and must PASS before execution.
 
+### Sequenced successor — not an active request until P0 posts
+
+A read-only H0 inventory audit found that 20 of 48 frozen human source groups
+legitimately contain zero eligible decisions. The P0 head would refuse those
+groups or emit invalid zero-total progress. A narrow child is already validated
+and published separately without moving the active PR head:
+
+- child: `7cc193077cccf20abfdb54612f51448bcd6be223`
+- parent: exact P0 head `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
+- remote branch: `agent/belief-v2-zero-human-groups-v1`
+- delta: 5 files, +131/-7; production gameplay/model/learning semantics and all
+  authority maps unchanged
+- exact child validation: focused 52 passed; full pure 380 passed + 2 skipped;
+  compiled/strict 382 passed; `git diff --check` and clean tree PASS
+- exact child seed scan: 1,943,634 bytes, SHA-256
+  `53e9c293480a13e46d4adc23d8130202ae6ee6e6be5fa4a0a5ddec6a903efc89`
+- exact child registry: 1,725,973 bytes, SHA-256
+  `175711fb5683b055000f146daaa325235d93f4c2479689e0f41cb9e96101ba41`;
+  5,415/5,415 classified, 13,312 V2 seeds, zero collisions, all authority false
+
+After P0 posts, fast-forward PR #118 to this child and request **one delta
+review of these five files only**. Inherit the P0 verdict for the other 22
+files; do not repeat CPU, streaming, memory, telemetry, registry-policy, or
+design review. The delta must verify that empty groups remain bound manifests
+with zero scoring rows and one honest group-stage progress unit, while nonempty
+groups retain exact decision/artifact/scoring bindings. This is the only
+planned source follow-up.
+
 ## Current operational truth
 
 - PR #117 exact head `1a0c9c8` passed and merged as main `08c0502`. Its review
@@ -94,8 +126,10 @@ The populated freeze is a separate exact object and must PASS before execution.
   eight-hour cap and were stopped before calibration/test. Its admission is
   spent; no V1 model, null, terminal, or strength result exists. Never resume
   or reuse those partial models.
-- PR #118 is source/design only. No V2 evidence namespace has been initialized
-  and no V2 capture, REF-C, training, calibration, or test job is running.
+- PR #118 is source/design only. P0 review is in progress at `86aa3b7`; its
+  validated zero-group child is queued as the single delta above. No V2 evidence
+  namespace has been initialized and no V2 capture, REF-C, training,
+  calibration, or test job is running.
 - A powered host is not execution authority. After source PASS, use a qualified
   host with at least 16 logical CPUs only for the bounded score-free measurements
   needed to construct the freeze.
@@ -108,11 +142,11 @@ The populated freeze is a separate exact object and must PASS before execution.
 - No other Claude review request is open. Superseded PR #117 prompts and old
   strength-lane queues are closed historical records.
 
-## Next steps after PR #118 PASS
+## Next steps after final PR #118 child PASS
 
 1. On one available >=16-logical-CPU host, reproduce the exact preflight,
    runtime/native/boot, candidate-device, memory, and deadline receipts at
-   reviewed head `86aa3b7`.
+   final reviewed child head `7cc1930`.
 2. Regenerate/rebind the exact scan/registry if any source byte changed; source
    drift instead requires a new consolidated source review.
 3. Build one canonical immutable freeze in a fresh unused namespace. Do not

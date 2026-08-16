@@ -24,6 +24,9 @@ from shengji.rl.belief_v2_deadline_estimate import (
     run_deadline_estimate_preflight,
     validate_deadline_estimate_receipt,
 )
+from shengji.rl.belief_v2_execution_identity import (
+    configure_numerical_runtime,
+)
 from shengji.rl.belief_v2_protocol import V2_RANKS
 
 
@@ -72,6 +75,7 @@ def test_probe_schedule_is_exact_rank_diverse_and_out_of_population():
 
 
 def test_measure_coordinate_drives_real_corpus_pair_observer(monkeypatch):
+    configure_numerical_runtime()
     coordinate = deadline_probe_coordinates()[0]
     monkeypatch.setattr(
         ESTIMATE, "deadline_probe_coordinates", lambda: (coordinate,))
@@ -94,6 +98,12 @@ def test_measure_coordinate_drives_real_corpus_pair_observer(monkeypatch):
     assert measured.training_pairs
     assert len(calls) == len(measured.training_pairs)
     assert len(measured.reference_manifest_population_sha256) == 64
+    trained = ESTIMATE._training_probe(
+        (measured.training_pairs,), device="cpu", repeat=0)
+    assert trained[0] > 0
+    assert len(trained[1]) == 64
+    assert len(trained[2]) == 8
+    assert len(trained[3]) == 8
 
 
 def test_receipt_reopens_raw_samples_projection_and_authority(monkeypatch):

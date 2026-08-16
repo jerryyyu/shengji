@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import pytest
 import shengji.rl.belief_v2_deadline_estimate as ESTIMATE
 
-from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.ai.heuristic import HeuristicBot
+from shengji.rl.belief_contract import (
+    build_actor_observation,
+    canonical_json_bytes,
+)
 from shengji.rl.belief_v2_deadline_estimate import (
     BeliefV2DeadlineEstimateError,
     DEADLINE_PROBE_ROUND_COUNT,
@@ -63,6 +67,31 @@ def test_probe_schedule_is_exact_rank_diverse_and_out_of_population():
     assert len({row.round_seed for row in rows}) == len(rows)
     assert {row.trump_rank for row in rows} == set(V2_RANKS)
     assert rows == deadline_probe_coordinates()
+
+
+def test_measure_coordinate_drives_real_corpus_pair_observer(monkeypatch):
+    coordinate = deadline_probe_coordinates()[0]
+    monkeypatch.setattr(
+        ESTIMATE, "deadline_probe_coordinates", lambda: (coordinate,))
+    monkeypatch.setattr(
+        ESTIMATE, "_validate_live_run_environment", lambda: None)
+    monkeypatch.setattr(
+        ESTIMATE, "make_bot", lambda _name, *, seed: HeuristicBot())
+    calls = []
+
+    def reference(rnd, seat, transcript, *, sampler_seed):
+        assert type(sampler_seed) is int
+        calls.append((seat, sampler_seed))
+        actor = build_actor_observation(rnd, seat, transcript)
+        return SimpleNamespace(
+            actor=actor, manifest_sha256=lambda: _sha("9"))
+
+    monkeypatch.setattr(ESTIMATE, "capture_ref_c_worlds", reference)
+    measured = ESTIMATE._measure_coordinate(coordinate)
+    assert measured.coordinate == coordinate
+    assert measured.training_pairs
+    assert len(calls) == len(measured.training_pairs)
+    assert len(measured.reference_manifest_population_sha256) == 64
 
 
 def test_receipt_reopens_raw_samples_projection_and_authority(monkeypatch):

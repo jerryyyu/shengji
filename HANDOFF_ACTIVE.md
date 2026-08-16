@@ -4,9 +4,13 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 20:35 EDT. Both reviewed Mini B2 training cohorts
-remain continuously active and healthy about 6h51m after their automatic
-start; V2 now has one exact consolidated source/design review request.
+Last reconciled: 2026-08-16 00:17 EDT. Both reviewed Mini B2 training cohorts
+remain continuously active about 10h33m after their automatic start, but the
+stage crossed its frozen eight-hour wall cap at 21:44 EDT. The reviewed code
+checks that cap only when a cohort seals, so the expected route is an honest
+fail-stop resource refusal after natural completion; no terminal exists yet.
+V2 has a useful source/design PASS at stale head `0feadd9`, while current exact
+head `0949404` still requires the queued delta review before freeze work.
 
 ## Immediate objective
 
@@ -22,15 +26,19 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 
 ## Review queue — precise asks
 
-1. **BELIEF Mini V2 terminal review — wait for natural completion.** Exact
+1. **BELIEF Mini V1 terminal/failure review — wait for natural completion.** Exact
    design `a8c5e05f…1fd53` passed at canonical review commit `209407f` and the
-   reviewed supervisor is running. Do not inspect the sealed log, corpus,
+   reviewed supervisor is running. Both cohorts are now past the frozen
+   eight-hour training wall cap; the source has no in-loop deadline and should
+   refuse the over-cap cohort only when it seals. Do not inspect the sealed log, corpus,
    targets, reference worlds, checkpoints or terminal bytes while it runs.
-   After `verify-terminal` completes, independently reopen the exact immutable
-   artifacts, recompute the terminal decision, and append one terminal marker.
-   No per-stage review handshake or retry is needed unless a named guard fails.
+   After the supervisor exits, independently reproduce the actual fail-stop or
+   terminal state and append one exact marker. There is no retry authority.
 
-2. **BELIEF V2 consolidated source/design review — ready now.** Review exact
+2. **BELIEF V2 current-head delta review — ready now.** Claude's exact
+   `0feadd9` consolidated source/design review is PASS for freeze preparation
+   only, but it explicitly does not bind the later registry-changing current
+   head. Review exact
    local head `0949404f439189fca575ea59911c6e3fbde66277` in worktree
    `/private/tmp/shengji-belief-v2-execution-freeze-v1` against merge base
    `682661b6cc288f54cf7014b1ec079bcf575c2826`. Audit the complete all-rank and
@@ -51,7 +59,10 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    routing; it grants no capture, training, test, gameplay, strength or
    deployment authority. Any review of prior heads `a94a1c3`, `f56c41d` or
    `7385def`, `0feadd9` or pre-rebase `7319c6c` is stale and must not be used
-   for execution-freeze preparation.
+   for execution-freeze preparation. The later immutable freeze must also add
+   (a) refusal for any unclassified registry hit and a mutation witness, and
+   (b) a measured epoch-wall estimate plus an in-loop epoch-boundary deadline,
+   so a cap stops work rather than being discovered only after overrun.
 
 3. **No repository-hygiene review remains.** PR #115's append-only/
    merge-target-prefix guard merged as `b27d0c2`; compacted docs PR #114 merged
@@ -71,8 +82,8 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
 | **B2 offline pipeline source** | External PASS at PR #113 exact `3ee0eb8`; merged byte-preservingly through main `959c05d`. Integration validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
-| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. All capture and REF-C lanes sealed naturally. At 20:35 both training cohorts had run continuously for about 6h51m near one full CPU core each; both remain `.partial`, with no terminal/test artifact yet. | Exact offline execution is active under its eight-hour training wall cap. No calibration lift has been measured or reviewed yet. |
-| **V2 source candidate** | Exact local head `0949404` is rebased on current canonical main and implements balanced all-rank and separately split H0 populations, replayed REF-C, source-neutral work controls, automatic CPU/MPS/CUDA qualification, exact live accelerator hardware-profile binding, portable checkpoints, an independently reopenable real seed registry, dual-domain calibration, one-shot terminal handling and receipt-driven freeze construction. Full predecessor validation is 146 passed/1 intentional skip in pure mode and 147 passed compiled; the exact-head registry tests are 6/6. The real registry rebuild is 1.71 MB, 5,351 candidates / 140 explicit classifications / 74 finite-population classifications / 31 populations / zero collisions. It preserves historical T4/S4 ledger populations and the removed-controller S6 population rather than equating source deletion with seed-namespace deletion. The mutable `HANDOFF_ACTIVE.md` queue is excluded while append-only `HANDOFF_REVIEW.md` remains bound, preventing a review-request update from circularly invalidating the reviewed registry. | Ready for one consolidated source/design review. It is not a packet, admission, run, sampler or strength result. The first V2 packet is explicitly single-host; cross-host artifact transfer remains unimplemented. |
+| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. All capture and REF-C lanes sealed naturally. At 00:17 both training cohorts had run continuously for about 10h33m near one full CPU core each; both remain `.partial`, with no terminal/test artifact. | The stage exceeded its frozen eight-hour wall cap at 21:44 EDT. Because enforcement occurs only at cohort seal, the expected exact-packet outcome is fail-stop resource refusal after natural completion, not calibration evidence. The actual state still requires independent review after supervisor exit. |
+| **V2 source candidate** | Exact local head `0949404` is rebased on canonical merge base `682661b` and implements balanced all-rank and separately split H0 populations, replayed REF-C, source-neutral work controls, automatic CPU/MPS/CUDA qualification, exact live accelerator hardware-profile binding, portable checkpoints, an independently reopenable real seed registry, dual-domain calibration, one-shot terminal handling and receipt-driven freeze construction. Full predecessor validation is 146 passed/1 intentional skip in pure mode and 147 passed compiled; the exact-head registry tests are 6/6. The real registry rebuild is 1.71 MB, 5,351 candidates / 140 explicit classifications / 74 finite-population classifications / 31 populations / zero collisions. It preserves historical T4/S4 ledger populations and the removed-controller S6 population rather than equating source deletion with seed-namespace deletion. The mutable `HANDOFF_ACTIVE.md` queue is excluded while append-only `HANDOFF_REVIEW.md` remains bound, preventing a review-request update from circularly invalidating the reviewed registry. | Claude PASSed predecessor `0feadd9` for freeze preparation only; current registry-changing head `0949404` still needs exact delta review. It is not a packet, admission, run, sampler or strength result. Freeze must add unclassified-hit refusal and an in-loop wall deadline. The first V2 packet is explicitly single-host; cross-host artifact transfer remains unimplemented. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
@@ -100,7 +111,7 @@ single reviewed admission is now consumed by the active run and cannot retry.
 
 | host | current state | next use |
 |---|---|---|
-| **Mini** | **BELIEF-V1 B2 running.** Exact review `209407f`; capture and REF-C completed. Both training processes have remained continuously active since 13:44 EDT and are still within the frozen eight-hour wall cap. | Monitor only process/resource/path metadata. After natural completion, request terminal reproduction. Do not use Mini for V2 qualification until the V1 processes exit. |
+| **Mini** | **BELIEF-V1 B2 training still running but over cap.** Exact review `209407f`; capture and REF-C completed. Both training processes have remained continuously active since 13:44 EDT and crossed the frozen eight-hour wall cap at 21:44 EDT. | Do not intervene in the reviewed supervisor. Monitor only process/resource/path metadata. After natural completion, request exact failure/terminal reproduction. Do not use Mini for V2 qualification until the V1 processes exit. |
 | **Air** | Idle after the broad Pair fixed timeout. | No retry/resume/partial use. Keep free unless a new reviewed job is selected. |
 | **Strength Cloud** | Powered off. | Keep off; S4 terminally selected none. |
 | **Performance Cloud** | Powered off. | Keep off; the Pair checkpoint V1 attempt was spent and produced no terminal evidence. |

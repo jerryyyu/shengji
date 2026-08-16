@@ -47,6 +47,7 @@ from .belief_v2_result import (
     expected_reference_job_count,
     validate_terminal_result,
 )
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_scoring import score_v2_round
 from .belief_v2_scoring_controller import (
     reopen_human_scoring_rounds,
@@ -438,10 +439,13 @@ def run_v2_terminal(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, inventory: dict[str, Any],
-        group_split: dict[str, Any]) -> dict[str, Any]:
+        group_split: dict[str, Any],
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Consume the sole test opening after durable attempt publication."""
     _stage_gate(root=root, repo=repo, freeze=freeze, admission=admission,
                 review_marker=review_marker)
+    if progress is not None:
+        progress(0, 5, "prepare-test-opening")
     calibration, human_selection, scale_curve = _calibration_statistics(
         root, freeze, admission, inventory, group_split)
     attempt = _attempt(freeze, admission, calibration)
@@ -459,6 +463,8 @@ def run_v2_terminal(
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+    if progress is not None:
+        progress(1, 5, "test-opening-recorded")
     try:
         input_index_manifest, training_inputs = reopen_training_input_index(
             root / "training-input-index" / "result", freeze=freeze,
@@ -467,8 +473,12 @@ def run_v2_terminal(
             reopen_trained_scoring_cohorts(
                 root, freeze=freeze, admission=admission,
                 training_inputs=training_inputs))
+        if progress is not None:
+            progress(2, 5, "test-inputs-reopened")
         synthetic, human = _score_test_populations(
             root, freeze, admission, group_split, cohorts)
+        if progress is not None:
+            progress(3, 5, "test-populations-scored")
         cohort_ids = tuple(row.cohort_id for row in cohorts)
         expected_synthetic = _expected_test_synthetic_rounds()
         expected_human = _expected_test_human_rounds(
@@ -493,6 +503,8 @@ def run_v2_terminal(
         result = derive_terminal_result(
             freeze, plan, qualification, receipt, human_selection,
             scale_curve, primary, control, human_transfer)
+        if progress is not None:
+            progress(4, 5, "terminal-statistics-derived")
     except ValueError as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal test derivation refused after durable attempt") from exc
@@ -529,6 +541,8 @@ def run_v2_terminal(
     if reopened != manifest:
         raise BeliefV2TerminalControllerError(
             "V2 terminal post-publish reconstruction drift")
+    if progress is not None:
+        progress(5, 5, "terminal-complete")
     return reopened
 
 

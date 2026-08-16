@@ -57,6 +57,7 @@ from .belief_v2_freeze import (
     reauthenticate_pipeline_admission,
     validate_execution_freeze,
 )
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_protocol import (
     V2_CAPTURE_LANES,
     V2RoundCoordinate,
@@ -282,7 +283,8 @@ def _capture_manifest(
 def run_capture_lane(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path, lane: int,
-        review_marker: bytes) -> dict[str, Any]:
+        review_marker: bytes,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Capture and atomically publish one exact balanced V2 lane."""
     _stage_gate(
         root=root, repo=repo, freeze=freeze, admission=admission,
@@ -308,6 +310,8 @@ def run_capture_lane(
         freeze, admission, stage="capture", slot=f"lane-{lane:02d}",
         started_monotonic_nanoseconds=started)
     rows = []
+    if progress is not None:
+        progress(0, len(coordinates), "capture-rounds")
     for unit_index, coordinate in enumerate(coordinates):
         _deadline_check(
             partial, deadline, phase="before-unit",
@@ -355,6 +359,8 @@ def run_capture_lane(
         _deadline_check(
             partial, deadline, phase="after-unit",
             next_unit_index=unit_index + 1)
+        if progress is not None:
+            progress(unit_index + 1, len(coordinates), "capture-rounds")
     _deadline_check(
         partial, deadline, phase="before-seal",
         next_unit_index=len(coordinates))
@@ -789,7 +795,8 @@ def _reference_manifest(
 def run_reference_lane(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path, lane: int,
-        review_marker: bytes) -> dict[str, Any]:
+        review_marker: bytes,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Replay actor-only capture and publish one exact REF-C lane."""
     _stage_gate(
         root=root, repo=repo, freeze=freeze, admission=admission,
@@ -816,6 +823,8 @@ def run_reference_lane(
         freeze, admission, stage="reference", slot=f"lane-{lane:02d}",
         started_monotonic_nanoseconds=started)
     rows = []
+    if progress is not None:
+        progress(0, len(jobs), "reference-jobs")
     for unit_index, (coordinate, replicate) in enumerate(jobs):
         _deadline_check(
             partial, deadline, phase="before-unit",
@@ -860,6 +869,8 @@ def run_reference_lane(
         _deadline_check(
             partial, deadline, phase="after-unit",
             next_unit_index=unit_index + 1)
+        if progress is not None:
+            progress(unit_index + 1, len(jobs), "reference-jobs")
     _deadline_check(
         partial, deadline, phase="before-seal",
         next_unit_index=len(jobs))

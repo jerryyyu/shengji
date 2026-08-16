@@ -34,6 +34,7 @@ from .belief_v2_human_inventory import (
     inventory_bytes,
     validate_h0_group_split,
 )
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_training import (
     V2TrainingExampleV1,
     build_human_training_example,
@@ -183,7 +184,8 @@ def run_human_group_capture(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path,
         source_path: Path, inventory: dict[str, Any],
-        group_split: dict[str, Any], review_marker: bytes) -> dict[str, Any]:
+        group_split: dict[str, Any], review_marker: bytes,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Replay and atomically publish one exact H0 source group."""
     _stage_gate(
         root=root, repo=repo, freeze=freeze, admission=admission,
@@ -198,12 +200,14 @@ def run_human_group_capture(
     source_raw = stable_read_bytes(source_path)
     source_sha = _sha256(source_raw)
     group_digest = _group_digest(source_sha)
+    expected_inventory = _group_inventory_row(inventory, group_digest)
+    total = expected_inventory["human_play_decisions"]
+    if progress is not None:
+        progress(0, total, "replay-human-decisions")
     candidate = capture_human_source_group(
         source_raw, source_sha256=source_sha,
         split=_group_split(group_split, group_digest))
     validate_human_group_capture(candidate)
-    expected_inventory = _group_inventory_row(
-        inventory, candidate.group_digest)
     if expected_inventory["source_bytes"] != len(source_raw) \
             or expected_inventory["complete_rounds"] \
             != candidate.complete_round_count \
@@ -238,6 +242,9 @@ def run_human_group_capture(
     actor_directory.mkdir(mode=0o700)
     target_directory.mkdir(mode=0o700)
     rows = []
+    if len(candidate.pairs) != total:
+        raise BeliefV2HumanControllerError(
+            "V2 human progress population differs from H0 inventory")
     for ordinal, pair in enumerate(candidate.pairs):
         _, _, _, metadata = validate_human_corpus_pair(
             pair.actor_bytes, pair.target_bytes)
@@ -258,6 +265,8 @@ def run_human_group_capture(
             "target_byte_count": len(pair.target_bytes),
             "target_sha256": target_sha,
         })
+        if progress is not None:
+            progress(ordinal + 1, total, "publish-human-decisions")
     finished = time.monotonic_ns()
     resources = _resource_row(
         freeze, started=started, finished=finished,

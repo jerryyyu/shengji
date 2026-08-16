@@ -56,6 +56,7 @@ from .belief_v2_schedule import (
     training_row,
     validate_v2_common_calibration,
 )
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_training import (
     V2TrainingExampleV1,
     collate_v2_label_control_examples,
@@ -240,7 +241,8 @@ def train_v2_cohort_in_memory(
         common_calibration: V2CalibrationScheduleV1,
         calibration_examples: tuple[V2TrainingExampleV1, ...], *,
         device: str,
-        deadline_check: Callable[[str, int], None] | None = None
+        deadline_check: Callable[[str, int], None] | None = None,
+        progress: ProgressCallback | None = None
         ) -> V2TrainedCohortArtifactsV1:
     """Train and independently reopen one realized cohort in memory."""
     training_batches, control_dose = _training_batches(
@@ -251,7 +253,8 @@ def train_v2_cohort_in_memory(
         realization, common_calibration, device=device,
         training_batches=lambda: iter(training_batches),
         calibration_batches=lambda: iter(calibration_batches),
-        control_dose=control_dose, deadline_check=deadline_check)
+        control_dose=control_dose, deadline_check=deadline_check,
+        progress=progress)
     validate_trained_v2_cohort(
         realization, training_examples, common_calibration,
         calibration_examples, result)
@@ -263,7 +266,8 @@ def _train_v2_cohort_from_factories(
         common_calibration: V2CalibrationScheduleV1, *, device: str,
         training_batches: Callable[[], Any],
         calibration_batches: Callable[[], Any], control_dose: int,
-        deadline_check: Callable[[str, int], None] | None = None
+        deadline_check: Callable[[str, int], None] | None = None,
+        progress: ProgressCallback | None = None
         ) -> V2TrainedCohortArtifactsV1:
     """Train from fresh bounded iterators without retaining their population."""
     if type(control_dose) is not int or control_dose < 0 \
@@ -284,6 +288,8 @@ def _train_v2_cohort_from_factories(
     selected_states = None
     selected_receipts = None
     decision = None
+    if progress is not None:
+        progress(0, TRAIN_MAX_EPOCHS, "training-epochs")
     for epoch in range(1, TRAIN_MAX_EPOCHS + 1):
         if deadline_check is not None:
             deadline_check("before-unit", epoch - 1)
@@ -307,11 +313,15 @@ def _train_v2_cohort_from_factories(
                 sum(calibration) // len(calibration))))
         if deadline_check is not None:
             deadline_check("after-unit", epoch)
+        if progress is not None:
+            progress(epoch, TRAIN_MAX_EPOCHS, "training-epochs")
         if decision.selected_epoch == epoch:
             selected_states = tuple(_cpu_state(model) for model in models)
             selected_receipts = receipts
         if decision.stopped_for_patience:
             break
+    if progress is not None and len(epoch_rows) < TRAIN_MAX_EPOCHS:
+        progress(TRAIN_MAX_EPOCHS, TRAIN_MAX_EPOCHS, "training-complete")
     if decision is None or selected_states is None \
             or selected_receipts is None \
             or decision.stop_epoch != len(epoch_rows):
@@ -351,7 +361,8 @@ def train_v2_cohort_streaming(
         realization: V2CohortRealizationV1,
         common_calibration: V2CalibrationScheduleV1, *,
         index, load_round, device: str,
-        deadline_check: Callable[[str, int], None] | None = None
+        deadline_check: Callable[[str, int], None] | None = None,
+        progress: ProgressCallback | None = None
         ) -> V2TrainedCohortArtifactsV1:
     """Train from one bounded, freshly reopened batch at a time."""
     from .belief_v2_streaming_training import (
@@ -372,7 +383,8 @@ def train_v2_cohort_streaming(
             index, realization, load_round=load_round),
         calibration_batches=lambda: iter_streaming_calibration_batches(
             index, common_calibration, load_round=load_round),
-        control_dose=control_dose, deadline_check=deadline_check)
+        control_dose=control_dose, deadline_check=deadline_check,
+        progress=progress)
     validate_trained_v2_cohort_rows(
         realization, common_calibration, control_dose=control_dose,
         candidate=result)

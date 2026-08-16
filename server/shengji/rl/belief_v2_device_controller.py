@@ -31,6 +31,7 @@ from .belief_v2_device_runner import (
     run_device_qualification_streaming,
 )
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_schedule import V2CohortRealizationV1
 from .belief_v2_training import V2TrainingExampleV1
 
@@ -147,7 +148,8 @@ def run_device_qualification(
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, primary: V2CohortRealizationV1,
         primary_examples: tuple[V2TrainingExampleV1, ...] | None,
-        streaming_index=None, load_round=None) \
+        streaming_index=None, load_round=None,
+        progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Execute and atomically publish the exact frozen qualification."""
     _stage_gate(
@@ -196,6 +198,7 @@ def run_device_qualification(
         "device_memory_cap_bytes": (
             freeze.resource_caps.training_device_memory_bytes),
         "deadline_check": deadline_check,
+        "progress": progress,
     }
     try:
         if streaming:

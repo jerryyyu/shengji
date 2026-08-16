@@ -26,6 +26,8 @@ from .belief_v2_deadline import (
 )
 from .belief_v2_device_runner import host_peak_memory_bytes
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
+from .belief_v2_progress import ProgressCallback
+from .belief_v2_protocol import V2_SPLIT_COUNTS
 from .belief_v2_streaming_inputs import (
     V2StreamingTrainingInputsV1,
     reopen_streaming_training_inputs,
@@ -107,7 +109,8 @@ def run_training_input_index(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, inventory: dict[str, Any],
-        group_split: dict[str, Any]) -> dict[str, Any]:
+        group_split: dict[str, Any],
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Build and atomically publish the sole compact non-test input index."""
     _stage_gate(
         root=root, repo=repo, freeze=freeze, admission=admission,
@@ -129,6 +132,13 @@ def run_training_input_index(
     deadline = stage_deadline(
         freeze, admission, stage="training", slot="input-index",
         started_monotonic_nanoseconds=started)
+    split_counts = dict(V2_SPLIT_COUNTS)
+    total_units = split_counts["train"] + split_counts["calibration"] \
+        + freeze.human_train_group_count \
+        + freeze.human_calibration_group_count \
+        + freeze.human_test_group_count
+    if progress is not None:
+        progress(0, total_units, "index-input-sources")
 
     def deadline_check(phase: str, next_unit_index: int) -> None:
         try:
@@ -140,6 +150,8 @@ def run_training_input_index(
             raise BeliefV2InputIndexControllerError(
                 "V2 training input index deadline exhausted and recorded"
             ) from exc
+        if progress is not None and phase == "after-unit":
+            progress(next_unit_index, total_units, "index-input-sources")
 
     try:
         inputs = reopen_streaming_training_inputs(

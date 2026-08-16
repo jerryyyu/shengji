@@ -45,6 +45,7 @@ from .belief_v2_device_runner import (
     synchronize_training_device,
 )
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_schedule import (
     V2CalibrationScheduleV1,
     V2CohortRealizationV1,
@@ -228,7 +229,8 @@ def run_training_cohort(
         calibration_examples: tuple[V2TrainingExampleV1, ...] | None,
         qualification_plan: V2DeviceQualificationPlanV1,
         qualification_result: V2DeviceQualificationResultV1,
-        streaming_index=None, load_round=None) \
+        streaming_index=None, load_round=None,
+        progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Train and atomically publish one exact frozen V2 cohort."""
     _stage_gate(
@@ -283,12 +285,12 @@ def run_training_cohort(
             trained = train_v2_cohort_streaming(
                 realization, calibration, index=streaming_index,
                 load_round=load_round, device=selected_device,
-                deadline_check=deadline_check)
+                deadline_check=deadline_check, progress=progress)
         else:
             trained = train_v2_cohort_in_memory(
                 realization, training_examples, calibration,
                 calibration_examples, device=selected_device,
-                deadline_check=deadline_check)
+                deadline_check=deadline_check, progress=progress)
         synchronize_training_device(selected_device)
         peak_host_memory = host_peak_memory_bytes()
         peak_device_memory = device_peak_memory_bytes(selected_device)

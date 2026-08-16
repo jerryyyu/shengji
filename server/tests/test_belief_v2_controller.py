@@ -369,10 +369,13 @@ def test_capture_publishes_one_search_private_and_actor_only_bytes(
     monkeypatch.setattr(
         "shengji.rl.belief_v2_controller.capture_v2_champion_round",
         capture)
+    progress = []
     result = run_capture_lane(
         root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
-        review_marker=b"review")
+        review_marker=b"review", progress=lambda *row: progress.append(row))
     assert calls == [coordinate]
+    assert progress == [
+        (0, 1, "capture-rounds"), (1, 1, "capture-rounds")]
     assert result["round_count"] == 1
     row = result["rounds"][0]
     assert row["private_bundle_sha256"] != row["actor_bundle_sha256"]
@@ -399,9 +402,14 @@ def test_reference_opens_no_private_capture_bundle(tmp_path, monkeypatch):
         return real_read(path)
 
     monkeypatch.setattr(controller, "stable_read_bytes", target_blind)
+    progress = []
     result = run_reference_lane(
         root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
-        review_marker=b"review")
+        review_marker=b"review", progress=lambda *row: progress.append(row))
+    assert progress == [
+        (0, 2, "reference-jobs"),
+        (1, 2, "reference-jobs"),
+        (2, 2, "reference-jobs")]
     assert result["job_count"] == 2
     assert result["input_surface"] == "actor-only-capture-bundles"
     assert result["contains_privileged_training_targets"] is False
@@ -1247,6 +1255,7 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
     previous = torch.are_deterministic_algorithms_enabled()
     torch.use_deterministic_algorithms(True)
     try:
+        progress = []
         manifest = run_training_cohort(
             root, freeze, admission, repo=Path("/unused"),
             review_marker=b"review", primary=primary,
@@ -1254,7 +1263,8 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
             calibration=calibration_schedule,
             calibration_examples=calibration,
             qualification_plan=qualification_plan,
-            qualification_result=qualification_result)
+            qualification_result=qualification_result,
+            progress=lambda *row: progress.append(row))
         directory = root / "training" / primary.cohort_id
         reopened, trained = reopen_training_cohort(
             directory, freeze=freeze, admission=admission,
@@ -1267,6 +1277,9 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
     finally:
         torch.use_deterministic_algorithms(previous)
     assert reopened == manifest
+    assert progress == [
+        (0, 1, "training-epochs"),
+        (1, 1, "training-epochs")]
     assert trained.training_device == "cpu"
     assert manifest["resources"]["peak_host_memory_bytes"] > 0
     assert manifest["resources"]["peak_device_memory_bytes"] == 0
@@ -1315,8 +1328,9 @@ def test_training_stage_streaming_wiring_never_calls_materialized_trainer(
         loader = lambda source: ()
 
         def streamed(realization, schedule, *, index, load_round, device,
-                     deadline_check):
+                     deadline_check, progress):
             observed.append((realization, schedule, index, load_round, device))
+            assert progress is None
             deadline_check("before-unit", 0)
             deadline_check("after-unit", 1)
             return expected

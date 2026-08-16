@@ -29,6 +29,7 @@ from .belief_v2_human_corpus import reopen_human_actor_row
 from .belief_v2_human_reference import (
     capture_human_ref_c_source_group,
 )
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_scoring import v2_scoring_actor
 
 
@@ -120,7 +121,8 @@ def run_human_reference_group(
         admission: V2PipelineAdmissionV1, *, repo: Path,
         source_path: Path, inventory: dict[str, Any],
         group_split: dict[str, Any], replicate: str,
-        review_marker: bytes) -> dict[str, Any]:
+        review_marker: bytes,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Replay and publish one calibration/test human REF-C group."""
     _stage_gate(
         root=root, repo=repo, freeze=freeze, admission=admission,
@@ -140,6 +142,9 @@ def run_human_reference_group(
     capture_directory = root / "human-capture" / f"group-{group_digest}"
     capture = reopen_human_group_manifest(
         capture_directory, freeze=freeze, admission=admission)
+    total = capture["human_decision_count"]
+    if progress is not None:
+        progress(0, total, "replay-human-reference")
     started = time.monotonic_ns()
     cpu_started = time.process_time_ns()
     try:
@@ -175,6 +180,9 @@ def run_human_reference_group(
             "V2 human reference slot is occupied")
     partial.mkdir(mode=0o700)
     rows = []
+    if len(result.decisions) != total:
+        raise BeliefV2HumanReferenceControllerError(
+            "V2 human reference progress population drift")
     for ordinal, (capture_row, decision) in enumerate(zip(
             capture["rows"], result.decisions, strict=True)):
         raw = reference_external_actor_batch_bundle_bytes(decision.batch)
@@ -197,6 +205,8 @@ def run_human_reference_group(
             "accepted_world_count": len(decision.batch.worlds),
             "attempt_count": decision.batch.attempts,
         })
+        if progress is not None:
+            progress(ordinal + 1, total, "publish-human-reference")
     finished = time.monotonic_ns()
     resources = _resource_row(
         freeze, started=started, finished=finished,

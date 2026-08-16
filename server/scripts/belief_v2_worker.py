@@ -119,6 +119,7 @@ from shengji.rl.belief_v2_input_index_controller import (  # noqa: E402
     reopen_training_input_index,
     run_training_input_index,
 )
+from shengji.rl.belief_v2_progress import V2ProgressReporter  # noqa: E402
 
 
 def _sha256(raw: bytes) -> str:
@@ -306,6 +307,10 @@ def _output(payload: dict) -> None:
     print(canonical_json_bytes(payload).decode("ascii"), end="")
 
 
+def _progress(stage: str, worker: str):
+    return V2ProgressReporter(stage=stage, worker=worker).update
+
+
 def verify_root(args: argparse.Namespace) -> None:
     freeze, admission, _, inventory, group_split = _load_root(
         Path(args.root))
@@ -329,7 +334,8 @@ def capture_lane(args: argparse.Namespace) -> None:
     freeze, admission, marker, _, _ = _load_root(root)
     _output(run_capture_lane(
         root, freeze, admission, repo=REPO, lane=args.lane,
-        review_marker=marker))
+        review_marker=marker,
+        progress=_progress("capture", f"lane-{args.lane:02d}")))
 
 
 def reference_lane(args: argparse.Namespace) -> None:
@@ -337,7 +343,8 @@ def reference_lane(args: argparse.Namespace) -> None:
     freeze, admission, marker, _, _ = _load_root(root)
     _output(run_reference_lane(
         root, freeze, admission, repo=REPO, lane=args.lane,
-        review_marker=marker))
+        review_marker=marker,
+        progress=_progress("reference", f"lane-{args.lane:02d}")))
 
 
 def human_capture(args: argparse.Namespace) -> None:
@@ -346,7 +353,8 @@ def human_capture(args: argparse.Namespace) -> None:
     _output(run_human_group_capture(
         root, freeze, admission, repo=REPO,
         source_path=Path(args.source_path), inventory=inventory,
-        group_split=group_split, review_marker=marker))
+        group_split=group_split, review_marker=marker,
+        progress=_progress("human-capture", "source-group")))
 
 
 def human_reference(args: argparse.Namespace) -> None:
@@ -356,7 +364,8 @@ def human_reference(args: argparse.Namespace) -> None:
         root, freeze, admission, repo=REPO,
         source_path=Path(args.source_path), inventory=inventory,
         group_split=group_split, replicate=args.replicate,
-        review_marker=marker))
+        review_marker=marker,
+        progress=_progress("human-reference", args.replicate)))
 
 
 def build_training_index(args: argparse.Namespace) -> None:
@@ -364,7 +373,8 @@ def build_training_index(args: argparse.Namespace) -> None:
     freeze, admission, marker, inventory, group_split = _load_root(root)
     _output(run_training_input_index(
         root, freeze, admission, repo=REPO, review_marker=marker,
-        inventory=inventory, group_split=group_split))
+        inventory=inventory, group_split=group_split,
+        progress=_progress("training-input-index", "all-sources")))
 
 
 def qualify_device(args: argparse.Namespace) -> None:
@@ -381,7 +391,8 @@ def qualify_device(args: argparse.Namespace) -> None:
         primary_examples=None, streaming_index=inputs.index,
         load_round=V2ArtifactRoundLoader(
             root, freeze=freeze, admission=admission,
-            index=inputs.index)))
+            index=inputs.index),
+        progress=_progress("device-qualification", "candidate-device")))
 
 
 def train_cohort(args: argparse.Namespace) -> None:
@@ -408,7 +419,8 @@ def train_cohort(args: argparse.Namespace) -> None:
         load_round=V2ArtifactRoundLoader(
             root, freeze=freeze, admission=admission,
             index=inputs.index),
-        qualification_plan=plan, qualification_result=result))
+        qualification_plan=plan, qualification_result=result,
+        progress=_progress("training", args.cohort_id)))
 
 
 def calibrate(args: argparse.Namespace) -> None:
@@ -416,7 +428,8 @@ def calibrate(args: argparse.Namespace) -> None:
     freeze, admission, marker, inventory, group_split = _load_root(root)
     _output(run_v2_calibration_selection(
         root, freeze, admission, repo=REPO, review_marker=marker,
-        inventory=inventory, group_split=group_split))
+        inventory=inventory, group_split=group_split,
+        progress=_progress("calibration", "all-cohorts")))
 
 
 def open_test(args: argparse.Namespace) -> None:
@@ -424,7 +437,8 @@ def open_test(args: argparse.Namespace) -> None:
     freeze, admission, marker, inventory, group_split = _load_root(root)
     _output(run_v2_terminal(
         root, freeze, admission, repo=REPO, review_marker=marker,
-        inventory=inventory, group_split=group_split))
+        inventory=inventory, group_split=group_split,
+        progress=_progress("terminal", "test-opening")))
 
 
 def verify_terminal(args: argparse.Namespace) -> None:

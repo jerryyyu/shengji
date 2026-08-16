@@ -570,6 +570,23 @@ Performance changes must be bit-identical at the artifact or probability
 contract they claim to preserve. A faster implementation never inherits
 scientific or strength authority.
 
+Every long worker command also emits canonical `BELIEF_V2_PROGRESS` JSON lines
+to stderr. Capture, REF-C, historical-human replay, compact-index construction,
+device qualification, each cohort's training epochs, calibration, and the
+one-shot terminal report exact completed and total units, integer percent in
+basis points, monotonic elapsed time, and a mechanical remaining-time estimate.
+The final successful update is exactly 100%. Parallel workers keep separate
+stage/worker identities, so fleet progress can be aggregated without opening
+their outputs.
+
+Progress is outcome-blind operational telemetry only. It is never written
+under the evidence root, never changes stdout or any manifest/result/checkpoint
+bytes, and carries no loss, score, candidate-selection, test-result, or
+terminal-route field. It cannot authorize a retry, result opening, strength
+claim, promotion, or deployment. Tests bind both the fail-closed monotonic
+reporter and callbacks from real controller paths; a helper-only witness is
+insufficient.
+
 ## Preliminary capacity projection and host allocation
 
 V1's preflight measured approximately 7.096 seconds per champion round and
@@ -747,9 +764,12 @@ same-work search screen.
 To avoid repeated source/design/admission round trips while still binding the
 private population and host-specific cap evidence:
 
-1. one consolidated source/design review binds the rank factory, PR #116
-   successor, H0 identity/privacy boundary, model arms, exact synthetic
-   population, profiling protocol, metrics, and automatic routing. It may
+1. one consolidated exact-head source/design review binds the rank factory,
+   PR #116 successor, H0 identity/privacy boundary, model arms, exact synthetic
+   population, profiling protocol, streaming/memory and CPU-member topology,
+   outcome-blind progress telemetry, metrics, and automatic routing. The
+   reviewer returns one PASS or one HOLD containing every blocker found in
+   that pass; these are not split into subsystem review requests. It may
    authorize only the real score-free H0 inventory and out-of-population
    capacity/profile probes;
 2. one exact execution-freeze review binds the resulting private source-group

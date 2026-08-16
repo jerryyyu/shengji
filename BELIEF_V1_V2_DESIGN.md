@@ -483,6 +483,24 @@ materialize test tensors before the single test opening. Parallel member
 workers must reproduce the serial reference's per-member state and loss bytes
 on a small fixture before they become the V2 training path.
 
+The V2 CPU path uses exactly four member threads across the eight fixed cohort
+members, persisting for each complete training or calibration pass while
+retaining one Torch intra-op thread. Each task owns one member's model and
+optimizer, every batch is immutable and shared read-only, and results are
+reduced in fixed member order. Four workers are the fixed resource-efficiency
+knee from the source-head diagnostic: on one four-round, 344-decision epoch,
+four workers reduced median wall by 48.8% while increasing process CPU by
+79.1%; eight workers reduced wall by 60.6% but increased process CPU by 129.4%.
+The diagnostic is not execution evidence or a retention claim. Four workers
+also permit the four frozen cohorts to occupy one 16-core host without member
+oversubscription; exact execution scheduling remains part of the host freeze.
+The MPS and CUDA paths remain serial because device kernels already share one
+accelerator and concurrent Python submission is not part of their qualification
+estimand. Multi-batch tests require the CPU path to reproduce the serial V1
+reference's exact epoch receipts, calibration losses, and portable checkpoint
+hashes. The device-qualification protocol hash binds both worker counts;
+changing either topology requires a new freeze.
+
 The source-neutral mechanics are now implemented in
 `belief_v2_cohort_training.py`. They consume only independently realized
 train schedules plus the shared synthetic calibration schedule, train all

@@ -22,6 +22,7 @@ from typing import Any, Iterable
 import torch
 
 from .belief_b2_protocol import TRAIN_LEARNING_RATE, TRAIN_WEIGHT_DECAY
+from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
 from .belief_model import HistoryOwnershipModelV1, new_from_scratch_model
 from .belief_trainer import (
@@ -37,10 +38,20 @@ TRAINING_TENSOR_FIELDS = tuple(
     field.name for field in fields(BeliefTrainingBatchV1)
     if field.type == "torch.Tensor")
 TRAINING_DEVICE_PROFILE_SCHEMA = "belief-v1-v2-training-device-profile-v2"
+CPU_MEMBER_WORKERS = len(COHORT_SEEDS) // 2
 
 
 class BeliefV2AcceleratorError(ValueError):
     """The selected device, batch transfer, or checkpoint binding drifted."""
+
+
+def _member_workers_for_device(device: torch.device) -> int:
+    """Bind CPU parallelism without submitting concurrent accelerator work."""
+    if type(device) is not torch.device \
+            or device.type not in {"cpu", "mps", "cuda"}:
+        raise BeliefV2AcceleratorError(
+            "V2 member worker device identity drift")
+    return CPU_MEMBER_WORKERS if device.type == "cpu" else 1
 
 
 @dataclass(frozen=True)
@@ -366,7 +377,8 @@ def train_v2_cohort_epoch_stream(
              for batch in batches)
     return _train_cohort_epoch_stream(
         models, optimizers, moved, epoch=epoch,
-        state_sha256=portable_model_state_sha256)
+        state_sha256=portable_model_state_sha256,
+        member_workers=_member_workers_for_device(target))
 
 
 def evaluate_v2_calibration_cohort_stream_nanonats(
@@ -383,4 +395,5 @@ def evaluate_v2_calibration_cohort_stream_nanonats(
     moved = (move_training_batch_to_device(batch, device=device)
              for batch in batches)
     return _evaluate_calibration_cohort_stream_nanonats(
-        models, moved, state_sha256=portable_model_state_sha256)
+        models, moved, state_sha256=portable_model_state_sha256,
+        member_workers=_member_workers_for_device(target))

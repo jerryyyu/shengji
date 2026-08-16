@@ -15,7 +15,10 @@ from typing import TYPE_CHECKING, Any
 
 from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
-from .belief_v2_accelerator import canonical_training_device
+from .belief_v2_accelerator import (
+    CPU_MEMBER_WORKERS,
+    canonical_training_device,
+)
 
 if TYPE_CHECKING:
     from .belief_v2_schedule import V2CohortRealizationV1
@@ -98,7 +101,7 @@ def qualification_protocol_sha256(candidate_device: str) -> str:
     """Bind every choice that may affect the post-capture device decision."""
     candidate = canonical_training_device(candidate_device)
     return _sha({
-        "schema": "belief-v1-v2-device-qualification-protocol-v2",
+        "schema": "belief-v1-v2-device-qualification-protocol-v3",
         "candidate_device": candidate,
         "selection_namespace": QUALIFICATION_NAMESPACE,
         "measured_batch_count": MEASURED_BATCH_COUNT,
@@ -115,6 +118,8 @@ def qualification_protocol_sha256(candidate_device: str) -> str:
         "within_device_checkpoint_loss_and_receipt_repeatability": True,
         "fallback_authorized": False,
         "cross_device_checkpoint_equality_required": False,
+        "cpu_member_workers": CPU_MEMBER_WORKERS,
+        "accelerator_member_workers": 1,
         "training_authorized": False,
         "test_open_authorized": False,
         "strength_claim_authorized": False,

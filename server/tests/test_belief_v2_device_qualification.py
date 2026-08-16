@@ -134,6 +134,13 @@ def test_plan_is_digest_selected_closed_and_authorizes_nothing():
         != qualification_protocol_sha256("mps")
 
 
+def test_protocol_hash_binds_cpu_member_worker_topology(monkeypatch):
+    expected = qualification_protocol_sha256("cpu")
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_qualification.CPU_MEMBER_WORKERS", 1)
+    assert qualification_protocol_sha256("cpu") != expected
+
+
 def test_three_paired_positive_20_percent_runs_retain_accelerator():
     plan, arms = _arms(candidate_wall=80, cpu_wall=100)
     result = derive_qualification_result(plan, arms)

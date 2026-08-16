@@ -22,6 +22,8 @@ gameplay, strength claim, promotion, or deployment is authorized now.
 
 ### P0 — PR #117, runnable-freeze delta
 
+**ANSWERED 2026-08-16 08:25 EDT: ✅ delta PASS at exact head `1a0c9c8` — ledger `0c42146`. No open Claude review request remains; next Claude gate is the exact-freeze review of the populated freeze bytes.**
+
 - PR: `https://github.com/jerryyyu/shengji/pull/117`
 - latest reviewed PASS head: `f915325cebb46712cc2726cc140a38513f5e63e8`
 - canonical PASS ledger: `fdbbaeb6672f8302c643fc25c312b2b13c604d5c`

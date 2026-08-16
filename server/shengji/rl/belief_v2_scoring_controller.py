@@ -45,10 +45,9 @@ from .belief_v2_scoring import (
     v2_scoring_actor,
 )
 from .belief_v2_training_controller import reopen_training_cohort
-from .belief_v2_training_inputs import (
-    V2TrainingInputPopulationV1,
-    training_examples_for_realization,
-    validate_v2_training_inputs,
+from .belief_v2_streaming_inputs import (
+    V2StreamingTrainingInputsV1,
+    validate_streaming_training_inputs,
 )
 from .belief_v2_device_controller import reopen_device_qualification
 from .belief_v2_device_qualification import (
@@ -77,14 +76,14 @@ def synthetic_round_key(round_seed: int) -> str:
 def reopen_trained_scoring_cohorts(
         root: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        training_inputs: V2TrainingInputPopulationV1) \
+        training_inputs: V2StreamingTrainingInputsV1) \
         -> tuple[tuple[V2CohortModelsV1, ...],
                  V2DeviceQualificationPlanV1,
                  V2DeviceQualificationResultV1,
                  tuple[tuple[str, str], ...]]:
     """Reopen every selected portable checkpoint and its training receipt."""
     try:
-        validate_v2_training_inputs(training_inputs)
+        validate_streaming_training_inputs(training_inputs)
     except ValueError as exc:
         raise BeliefV2ScoringControllerError(
             "V2 scoring training input population refused") from exc
@@ -106,17 +105,19 @@ def reopen_trained_scoring_cohorts(
     manifest_hashes = []
     for realization in training_inputs.realizations:
         try:
-            examples = training_examples_for_realization(
-                training_inputs, realization)
+            control_dose = (
+                training_inputs.index.control_changed_cell_count
+                if realization.kind == "hard-geometry-label-permutation"
+                else 0)
             manifest, trained = reopen_training_cohort(
                 root / "training" / realization.cohort_id,
                 freeze=freeze, admission=admission, primary=primary,
-                realization=realization, training_examples=examples,
+                realization=realization, training_examples=None,
                 calibration=training_inputs.common_calibration,
-                calibration_examples=(
-                    training_inputs.synthetic_calibration_examples),
+                calibration_examples=None,
                 qualification_plan=qualification_plan,
-                qualification_result=qualification_result)
+                qualification_result=qualification_result,
+                compact_control_dose=control_dose)
             cohort = cohort_models_from_trained(trained)
         except ValueError as exc:
             raise BeliefV2ScoringControllerError(

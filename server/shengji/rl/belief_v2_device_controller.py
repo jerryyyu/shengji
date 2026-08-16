@@ -25,7 +25,10 @@ from .belief_v2_device_qualification import (
     reopen_qualification_plan,
     reopen_qualification_result,
 )
-from .belief_v2_device_runner import run_device_qualification_in_memory
+from .belief_v2_device_runner import (
+    run_device_qualification_in_memory,
+    run_device_qualification_streaming,
+)
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
 from .belief_v2_schedule import V2CohortRealizationV1
 from .belief_v2_training import V2TrainingExampleV1
@@ -117,7 +120,8 @@ def run_device_qualification(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, primary: V2CohortRealizationV1,
-        primary_examples: tuple[V2TrainingExampleV1, ...]) \
+        primary_examples: tuple[V2TrainingExampleV1, ...] | None,
+        streaming_index=None, load_round=None) \
         -> dict[str, Any]:
     """Execute and atomically publish the exact frozen qualification."""
     _stage_gate(
@@ -151,16 +155,30 @@ def run_device_qualification(
             raise BeliefV2DeviceControllerError(
                 "V2 device deadline exhausted and recorded") from exc
 
+    streaming = streaming_index is not None or load_round is not None
+    materialized = primary_examples is not None
+    if streaming != (streaming_index is not None and callable(load_round)) \
+            or streaming == materialized:
+        raise BeliefV2DeviceControllerError(
+            "V2 device qualification input mode drift")
+    common = {
+        "execution_git": freeze.execution_git,
+        "candidate_device": freeze.training_candidate_device,
+        "primary": primary,
+        "host_memory_cap_bytes": (
+            freeze.resource_caps.training_host_memory_bytes),
+        "device_memory_cap_bytes": (
+            freeze.resource_caps.training_device_memory_bytes),
+        "deadline_check": deadline_check,
+    }
     try:
-        plan, result = run_device_qualification_in_memory(
-            execution_git=freeze.execution_git,
-            candidate_device=freeze.training_candidate_device,
-            primary=primary, primary_examples=primary_examples,
-            host_memory_cap_bytes=(
-                freeze.resource_caps.training_host_memory_bytes),
-            device_memory_cap_bytes=(
-                freeze.resource_caps.training_device_memory_bytes),
-            deadline_check=deadline_check)
+        if streaming:
+            plan, result = run_device_qualification_streaming(
+                **common, streaming_index=streaming_index,
+                load_round=load_round)
+        else:
+            plan, result = run_device_qualification_in_memory(
+                **common, primary_examples=primary_examples)
     except ValueError as exc:
         raise BeliefV2DeviceControllerError(
             "V2 device qualification execution refused") from exc

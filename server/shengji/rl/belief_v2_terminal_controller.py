@@ -62,7 +62,7 @@ from .belief_v2_statistics import (
     reopen_v2_round_population,
     v2_round_population_bytes,
 )
-from .belief_v2_training_inputs import reopen_v2_training_inputs
+from .belief_v2_input_index_controller import reopen_training_input_index
 
 
 TERMINAL_ATTEMPT_SCHEMA = "belief-v1-v2-test-opening-attempt-v1"
@@ -223,6 +223,7 @@ def _derive_integrity_receipt(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         group_split: dict[str, Any], *, plan, qualification,
+        input_index_manifest: dict[str, Any],
         training_hashes: tuple[tuple[str, str], ...],
         synthetic_test_count: int, human_test_decision_count: int):
     expected_training_ids = tuple(row.cohort_id for row in freeze.cohorts)
@@ -278,6 +279,7 @@ def _derive_integrity_receipt(
     reference_resources = tuple(row["resources"] for row in (
         *reference_manifests, *human_reference))
     training_resources = tuple(row["resources"] for row in training_manifests)
+    input_index_resources = input_index_manifest["resources"]
     qualification_compute = sum(row.wall_nanoseconds
                                 for row in qualification.arms)
     qualification_bytes = len(plan.canonical_bytes()) \
@@ -315,14 +317,20 @@ def _derive_integrity_receipt(
         reference_wall_nanoseconds=_parallel_span(reference_resources),
         reference_artifact_bytes=sum(
             row["artifact_bytes"] for row in reference_resources),
-        training_device_nanoseconds=qualification_compute + sum(
-            row["training_compute_nanoseconds"]
-            for row in training_resources),
+        training_device_nanoseconds=(
+            input_index_resources["wall_nanoseconds"]
+            + qualification_compute + sum(
+                row["training_compute_nanoseconds"]
+                for row in training_resources)),
         training_wall_nanoseconds=(
-            qualification_compute + _parallel_span(training_resources)),
-        training_artifact_bytes=qualification_bytes + sum(
-            row["artifact_bytes"] for row in training_resources),
+            input_index_resources["wall_nanoseconds"]
+            + qualification_compute + _parallel_span(training_resources)),
+        training_artifact_bytes=(
+            input_index_resources["artifact_bytes"]
+            + qualification_bytes + sum(
+                row["artifact_bytes"] for row in training_resources)),
         training_peak_host_memory_bytes=max(
+            input_index_resources["peak_host_memory_bytes"],
             max(row["peak_host_memory_bytes"] for row in training_resources),
             max(arm.peak_host_memory_bytes for arm in qualification.arms)),
         training_peak_device_memory_bytes=max(
@@ -331,10 +339,14 @@ def _derive_integrity_receipt(
         capture_failure_count=0, reference_failure_count=0,
         training_failure_count=0, mechanics_failure_count=0,
         resource_cap_violation_count=0,
-        retry_count=sum(row["retry_count"] for row in (
-            *capture_resources, *reference_resources, *training_resources)),
-        drop_count=sum(row["drop_count"] for row in (
-            *capture_resources, *reference_resources, *training_resources)),
+        retry_count=(input_index_resources["retry_count"] + sum(
+            row["retry_count"] for row in (
+                *capture_resources, *reference_resources,
+                *training_resources))),
+        drop_count=(input_index_resources["drop_count"] + sum(
+            row["drop_count"] for row in (
+                *capture_resources, *reference_resources,
+                *training_resources))),
         test_split_decision_open_count=1)
 
 
@@ -412,9 +424,9 @@ def run_v2_terminal(
     finally:
         os.close(descriptor)
     try:
-        training_inputs = reopen_v2_training_inputs(
-            root, freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        input_index_manifest, training_inputs = reopen_training_input_index(
+            root / "training-input-index" / "result", freeze=freeze,
+            admission=admission)
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 root, freeze=freeze, admission=admission,
@@ -437,7 +449,9 @@ def run_v2_terminal(
             expected_human_rounds=expected_human, cohort_ids=cohort_ids)
         receipt = _derive_integrity_receipt(
             root, freeze, admission, group_split, plan=plan,
-            qualification=qualification, training_hashes=training_hashes,
+            qualification=qualification,
+            input_index_manifest=input_index_manifest,
+            training_hashes=training_hashes,
             synthetic_test_count=len(synthetic),
             human_test_decision_count=sum(row.decision_count for row in human))
         result = derive_terminal_result(
@@ -529,9 +543,9 @@ def reopen_v2_terminal(
                 "V2 terminal file byte binding drift")
         files[key] = raw
     try:
-        training_inputs = reopen_v2_training_inputs(
-            Path(freeze.evidence_root), freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        input_index_manifest, training_inputs = reopen_training_input_index(
+            Path(freeze.evidence_root) / "training-input-index" / "result",
+            freeze=freeze, admission=admission)
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 Path(freeze.evidence_root), freeze=freeze,
@@ -559,6 +573,7 @@ def reopen_v2_terminal(
         receipt = _derive_integrity_receipt(
             Path(freeze.evidence_root), freeze, admission, group_split,
             plan=plan, qualification=qualification,
+            input_index_manifest=input_index_manifest,
             training_hashes=training_hashes,
             synthetic_test_count=len(synthetic),
             human_test_decision_count=sum(row.decision_count for row in human))

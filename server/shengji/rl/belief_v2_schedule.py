@@ -363,6 +363,20 @@ def realize_v2_common_calibration(
         raise BeliefV2ScheduleError(
             "V2 common calibration population is empty")
     rows = tuple(calibration_row(example) for example in examples)
+    return realize_v2_common_calibration_rows(rows)
+
+
+def realize_v2_common_calibration_rows(
+        rows: tuple[V2TrainingRowV1, ...]) -> V2CalibrationScheduleV1:
+    """Freeze common calibration from already authenticated compact rows."""
+    if type(rows) is not tuple or not rows:
+        raise BeliefV2ScheduleError(
+            "V2 common calibration population is empty")
+    for row in rows:
+        _validate_row(row)
+    if any(row.source_kind != "synthetic" for row in rows):
+        raise BeliefV2ScheduleError(
+            "V2 common calibration source population drift")
     if len({row.decision_key for row in rows}) != len(rows):
         raise BeliefV2ScheduleError(
             "V2 common calibration decision duplicate")
@@ -383,6 +397,22 @@ def validate_v2_common_calibration(
         examples: tuple[V2TrainingExampleV1, ...],
         candidate: V2CalibrationScheduleV1) -> None:
     expected = realize_v2_common_calibration(examples)
+    try:
+        candidate_raw = candidate.canonical_bytes()
+    except (AttributeError, BeliefV2ScheduleError) as exc:
+        raise BeliefV2ScheduleError(
+            "V2 common calibration schedule reconstruction drift") from exc
+    if type(candidate) is not V2CalibrationScheduleV1 \
+            or candidate_raw != expected.canonical_bytes():
+        raise BeliefV2ScheduleError(
+            "V2 common calibration schedule reconstruction drift")
+
+
+def validate_v2_common_calibration_rows(
+        rows: tuple[V2TrainingRowV1, ...],
+        candidate: V2CalibrationScheduleV1) -> None:
+    """Reconstruct a calibration schedule without retaining model tensors."""
+    expected = realize_v2_common_calibration_rows(rows)
     try:
         candidate_raw = candidate.canonical_bytes()
     except (AttributeError, BeliefV2ScheduleError) as exc:

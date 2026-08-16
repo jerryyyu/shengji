@@ -42,7 +42,7 @@ from .belief_v2_statistics import (
     v2_reference_replicates_are_stable,
     v2_round_population_bytes,
 )
-from .belief_v2_training_inputs import reopen_v2_training_inputs
+from .belief_v2_input_index_controller import reopen_training_input_index
 
 
 CALIBRATION_STAGE_SCHEMA = "belief-v1-v2-calibration-selection-stage-v1"
@@ -194,9 +194,9 @@ def run_v2_calibration_selection(
         root=root, repo=repo, freeze=freeze, admission=admission,
         review_marker=review_marker)
     try:
-        training_inputs = reopen_v2_training_inputs(
-            root, freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        _, training_inputs = reopen_training_input_index(
+            root / "training-input-index" / "result", freeze=freeze,
+            admission=admission)
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 root, freeze=freeze, admission=admission,
@@ -389,9 +389,9 @@ def reopen_v2_calibration_selection(
         raise BeliefV2CalibrationControllerError(
             "V2 calibration manifest file population drift")
     try:
-        training_inputs = reopen_v2_training_inputs(
-            Path(freeze.evidence_root), freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        _, training_inputs = reopen_training_input_index(
+            Path(freeze.evidence_root) / "training-input-index" / "result",
+            freeze=freeze, admission=admission)
         _, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 Path(freeze.evidence_root), freeze=freeze,

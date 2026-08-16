@@ -461,8 +461,8 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         TERMINAL_STAGE, "_calibration_statistics",
         lambda *args, **kwargs: (calibration, human_selection, scale))
     monkeypatch.setattr(
-        TERMINAL_STAGE, "reopen_v2_training_inputs",
-        lambda *args, **kwargs: SimpleNamespace())
+        TERMINAL_STAGE, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, SimpleNamespace()))
     monkeypatch.setattr(
         TERMINAL_STAGE, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (
@@ -613,6 +613,9 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     monkeypatch.setattr(
         TERMINAL_STAGE, "reopen_human_reference_group",
         lambda *args, **kwargs: {"resources": resource(290, 450)})
+    input_index_manifest = {"resources": resource(
+        450, 480, artifact=10, training=True,
+        host_peak=1_400, device_peak=0)}
 
     training_hashes = []
     for index, cohort in enumerate(freeze.cohorts):
@@ -630,6 +633,7 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     receipt = TERMINAL_STAGE._derive_integrity_receipt(
         root, freeze, admission, {}, plan=plan,
         qualification=qualification,
+        input_index_manifest=input_index_manifest,
         training_hashes=tuple(training_hashes),
         synthetic_test_count=1_339, human_test_decision_count=174)
     qualification_work = sum(
@@ -640,9 +644,9 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     assert receipt.capture_wall_nanoseconds == 160
     assert receipt.reference_wall_nanoseconds == 160
     assert receipt.training_device_nanoseconds \
-        == qualification_work + 4 * 100
+        == qualification_work + 4 * 100 + 30
     assert receipt.training_wall_nanoseconds \
-        == qualification_work + 103
+        == qualification_work + 103 + 30
     assert receipt.training_peak_host_memory_bytes == 1_503
     assert receipt.training_peak_device_memory_bytes == 2_503
     assert receipt.test_split_decision_open_count == 1

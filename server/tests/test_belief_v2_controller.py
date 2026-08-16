@@ -15,6 +15,7 @@ import torch
 import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
 import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
+import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
@@ -84,6 +85,9 @@ from shengji.rl.belief_v2_human_reference import (
 from shengji.rl.belief_v2_human_reference_controller import (
     reopen_human_reference_group,
     run_human_reference_group,
+)
+from shengji.rl.belief_v2_input_index_controller import (
+    run_training_input_index,
 )
 from shengji.rl.belief_v2_human_inventory import (
     H0_INVENTORY_SCHEMA,
@@ -1002,6 +1006,61 @@ def test_device_qualification_stage_publishes_raw_reopenable_cpu_fallback(
     assert manifest["training_authorized_by_this_artifact"] is False
 
 
+def test_training_input_index_wires_deadline_around_source_units_and_seal(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    phases = []
+    fake = SimpleNamespace(
+        index=SimpleNamespace(sources=(object(), object())),
+        sha256=lambda: "7" * 64,
+        manifest=lambda: {
+            "resident_model_array_bytes": 0,
+            "one_batch_at_a_time": True})
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+
+    class Deadline:
+        def check(self, *, phase, next_unit_index,
+                  observed_monotonic_nanoseconds):
+            phases.append((phase, next_unit_index))
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "stage_deadline",
+        lambda *args, **kwargs: Deadline())
+
+    def build(*args, deadline_check, **kwargs):
+        deadline_check("before-unit", 0)
+        deadline_check("after-unit", 1)
+        return fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs", build)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "streaming_training_inputs_bytes",
+        lambda value, bound_freeze: b"compact-index\n")
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "host_peak_memory_bytes", lambda: 1024)
+
+    def reopen(directory, **kwargs):
+        return json.loads((directory / "manifest.json").read_bytes()), fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_training_input_index", reopen)
+    manifest = run_training_input_index(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+    assert manifest["index_sha256"] == hashlib.sha256(
+        b"compact-index\n").hexdigest()
+    assert manifest["synthetic_test_targets_opened"] is False
+    assert manifest["human_test_targets_opened"] is False
+    assert phases == [
+        ("before-unit", 0), ("after-unit", 1), ("before-seal", 2)]
+    assert not (root / "training-input-index" / "result.partial").exists()
+
+
 def test_cpu_only_device_stage_publishes_three_measured_repeats(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -1035,6 +1094,45 @@ def test_cpu_only_device_stage_publishes_three_measured_repeats(
     assert manifest["arm_count"] == 4
     assert manifest["measured_arm_count"] == 3
     assert manifest["accelerator_retained"] is False
+
+
+def test_device_stage_streaming_wiring_never_calls_materialized_runner(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, _, _, _ = _tiny_training_population(freeze)
+    plan, result = _cpu_fallback_qualification(freeze)
+    index = object()
+    loader = lambda source: ()
+    observed = []
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._expected_plan",
+        lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_in_memory",
+        lambda **kwargs: pytest.fail("materialized qualification used"))
+
+    def streamed(**kwargs):
+        observed.append(kwargs)
+        return plan, result
+
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_streaming", streamed)
+    manifest = run_device_qualification(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", primary=primary,
+        primary_examples=None, streaming_index=index, load_round=loader)
+    assert manifest["selected_device"] == "cpu"
+    assert len(observed) == 1
+    assert observed[0]["streaming_index"] is index
+    assert observed[0]["load_round"] is loader
 
 
 def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
@@ -1192,7 +1290,8 @@ def test_deadline_refusal_blocks_calibration_and_test_before_any_input_open(
         raise AssertionError("deadline-blocked split was opened")
 
     monkeypatch.setattr(
-        CALIBRATION_STAGE, "reopen_v2_training_inputs", forbidden_open)
+        CALIBRATION_STAGE, "reopen_training_input_index",
+        forbidden_open)
     monkeypatch.setattr(
         TERMINAL_STAGE, "_calibration_statistics", forbidden_open)
     with pytest.raises(BeliefV2ControllerError,
@@ -1268,8 +1367,8 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
             "schema": "test-scale-curve", "positive": True}))
     monkeypatch.setattr(CALIBRATION_STAGE, "_stage_gate", lambda **kwargs: None)
     monkeypatch.setattr(
-        CALIBRATION_STAGE, "reopen_v2_training_inputs",
-        lambda *args, **kwargs: training_inputs)
+        CALIBRATION_STAGE, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, training_inputs))
     monkeypatch.setattr(
         CALIBRATION_STAGE, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (

@@ -23,6 +23,7 @@ from .belief_v2_cohort_training import (
     V2TrainedCohortArtifactsV1,
     reopen_trained_v2_cohort,
     train_v2_cohort_in_memory,
+    train_v2_cohort_streaming,
 )
 from .belief_v2_controller import _stage_gate
 from .belief_v2_deadline import (
@@ -210,11 +211,12 @@ def run_training_cohort(
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, primary: V2CohortRealizationV1,
         realization: V2CohortRealizationV1,
-        training_examples: tuple[V2TrainingExampleV1, ...],
+        training_examples: tuple[V2TrainingExampleV1, ...] | None,
         calibration: V2CalibrationScheduleV1,
-        calibration_examples: tuple[V2TrainingExampleV1, ...],
+        calibration_examples: tuple[V2TrainingExampleV1, ...] | None,
         qualification_plan: V2DeviceQualificationPlanV1,
-        qualification_result: V2DeviceQualificationResultV1) \
+        qualification_result: V2DeviceQualificationResultV1,
+        streaming_index=None, load_round=None) \
         -> dict[str, Any]:
     """Train and atomically publish one exact frozen V2 cohort."""
     _stage_gate(
@@ -223,6 +225,15 @@ def run_training_cohort(
     _validate_realization_binding(freeze, realization)
     selected_device = _validate_device_binding(
         freeze, primary, qualification_plan, qualification_result)
+    streaming = streaming_index is not None or load_round is not None
+    materialized = training_examples is not None \
+        and calibration_examples is not None
+    if streaming != (streaming_index is not None and callable(load_round)) \
+            or (training_examples is None) \
+            != (calibration_examples is None) \
+            or streaming == materialized:
+        raise BeliefV2TrainingControllerError(
+            "V2 training input mode drift")
     parent = root / "training"
     if parent.is_symlink():
         raise BeliefV2TrainingControllerError(
@@ -256,10 +267,16 @@ def run_training_cohort(
             selected_device,
             freeze.resource_caps.training_device_memory_bytes)
         synchronize_training_device(selected_device)
-        trained = train_v2_cohort_in_memory(
-            realization, training_examples, calibration,
-            calibration_examples, device=selected_device,
-            deadline_check=deadline_check)
+        if streaming:
+            trained = train_v2_cohort_streaming(
+                realization, calibration, index=streaming_index,
+                load_round=load_round, device=selected_device,
+                deadline_check=deadline_check)
+        else:
+            trained = train_v2_cohort_in_memory(
+                realization, training_examples, calibration,
+                calibration_examples, device=selected_device,
+                deadline_check=deadline_check)
         synchronize_training_device(selected_device)
         peak_host_memory = host_peak_memory_bytes()
         peak_device_memory = device_peak_memory_bytes(selected_device)
@@ -301,7 +318,12 @@ def run_training_cohort(
         calibration=calibration,
         calibration_examples=calibration_examples,
         qualification_plan=qualification_plan,
-        qualification_result=qualification_result)
+        qualification_result=qualification_result,
+        compact_control_dose=(
+            streaming_index.control_changed_cell_count
+            if streaming and realization.kind
+            == "hard-geometry-label-permutation" else 0
+            if streaming else None))
     if reopened[0] != manifest or reopened[1] != trained:
         raise BeliefV2TrainingControllerError(
             "V2 training cohort post-publish drift")
@@ -313,16 +335,24 @@ def reopen_training_cohort(
         admission: V2PipelineAdmissionV1,
         primary: V2CohortRealizationV1,
         realization: V2CohortRealizationV1,
-        training_examples: tuple[V2TrainingExampleV1, ...],
+        training_examples: tuple[V2TrainingExampleV1, ...] | None,
         calibration: V2CalibrationScheduleV1,
-        calibration_examples: tuple[V2TrainingExampleV1, ...],
+        calibration_examples: tuple[V2TrainingExampleV1, ...] | None,
         qualification_plan: V2DeviceQualificationPlanV1,
-        qualification_result: V2DeviceQualificationResultV1) \
+        qualification_result: V2DeviceQualificationResultV1,
+        compact_control_dose: int | None = None) \
         -> tuple[dict[str, Any], V2TrainedCohortArtifactsV1]:
     """Reopen every persisted byte and reconstruct the trained cohort."""
     _validate_realization_binding(freeze, realization)
     selected_device = _validate_device_binding(
         freeze, primary, qualification_plan, qualification_result)
+    compact = compact_control_dose is not None
+    materialized = training_examples is not None \
+        and calibration_examples is not None
+    if (training_examples is None) != (calibration_examples is None) \
+            or compact == materialized:
+        raise BeliefV2TrainingControllerError(
+            "V2 training reopen input mode drift")
     if not isinstance(directory, Path) or directory.is_symlink() \
             or not directory.is_dir() \
             or directory.name != realization.cohort_id:
@@ -341,7 +371,8 @@ def reopen_training_cohort(
     try:
         trained = reopen_trained_v2_cohort(
             trained_raw, checkpoint_bundles, realization,
-            training_examples, calibration, calibration_examples)
+            training_examples, calibration, calibration_examples,
+            compact_control_dose=compact_control_dose)
     except ValueError as exc:
         raise BeliefV2TrainingControllerError(
             "V2 persisted trained cohort refused") from exc

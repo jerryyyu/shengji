@@ -112,9 +112,12 @@ from shengji.rl.belief_v2_terminal_controller import (  # noqa: E402
 from shengji.rl.belief_v2_training_controller import (  # noqa: E402
     run_training_cohort,
 )
-from shengji.rl.belief_v2_training_inputs import (  # noqa: E402
-    reopen_v2_training_inputs,
-    training_examples_for_realization,
+from shengji.rl.belief_v2_streaming_inputs import (  # noqa: E402
+    V2ArtifactRoundLoader,
+)
+from shengji.rl.belief_v2_input_index_controller import (  # noqa: E402
+    reopen_training_input_index,
+    run_training_input_index,
 )
 
 
@@ -356,30 +359,37 @@ def human_reference(args: argparse.Namespace) -> None:
         review_marker=marker))
 
 
-def _training_inputs(root: Path, freeze, admission, inventory, group_split):
-    return reopen_v2_training_inputs(
-        root, freeze=freeze, admission=admission,
-        inventory=inventory, group_split=group_split)
+def build_training_index(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker, inventory, group_split = _load_root(root)
+    _output(run_training_input_index(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        inventory=inventory, group_split=group_split))
 
 
 def qualify_device(args: argparse.Namespace) -> None:
     root = Path(args.root)
-    freeze, admission, marker, inventory, group_split = _load_root(root)
-    inputs = _training_inputs(
-        root, freeze, admission, inventory, group_split)
+    freeze, admission, marker, _, _ = _load_root(root)
+    _, inputs = reopen_training_input_index(
+        root / "training-input-index" / "result", freeze=freeze,
+        admission=admission)
     primary = next(row for row in inputs.realizations
                    if row.cohort_id == "synthetic-primary")
     _output(run_device_qualification(
         root, freeze, admission, repo=REPO, review_marker=marker,
         primary=primary,
-        primary_examples=training_examples_for_realization(inputs, primary)))
+        primary_examples=None, streaming_index=inputs.index,
+        load_round=V2ArtifactRoundLoader(
+            root, freeze=freeze, admission=admission,
+            index=inputs.index)))
 
 
 def train_cohort(args: argparse.Namespace) -> None:
     root = Path(args.root)
-    freeze, admission, marker, inventory, group_split = _load_root(root)
-    inputs = _training_inputs(
-        root, freeze, admission, inventory, group_split)
+    freeze, admission, marker, _, _ = _load_root(root)
+    _, inputs = reopen_training_input_index(
+        root / "training-input-index" / "result", freeze=freeze,
+        admission=admission)
     primary = next(row for row in inputs.realizations
                    if row.cohort_id == "synthetic-primary")
     candidates = [row for row in inputs.realizations
@@ -393,9 +403,11 @@ def train_cohort(args: argparse.Namespace) -> None:
     _output(run_training_cohort(
         root, freeze, admission, repo=REPO, review_marker=marker,
         primary=primary, realization=realization,
-        training_examples=training_examples_for_realization(
-            inputs, realization), calibration=inputs.common_calibration,
-        calibration_examples=inputs.synthetic_calibration_examples,
+        training_examples=None, calibration=inputs.common_calibration,
+        calibration_examples=None, streaming_index=inputs.index,
+        load_round=V2ArtifactRoundLoader(
+            root, freeze=freeze, admission=admission,
+            index=inputs.index),
         qualification_plan=plan, qualification_result=result))
 
 
@@ -482,6 +494,9 @@ def parser() -> argparse.ArgumentParser:
         choices=("calibration-replicate-0", "calibration-replicate-1",
                  "test-primary"))
     human_reference_parser.set_defaults(function=human_reference)
+    training_index = commands.add_parser("build-training-index")
+    training_index.add_argument("--root", required=True)
+    training_index.set_defaults(function=build_training_index)
     qualify = commands.add_parser("qualify-device")
     qualify.add_argument("--root", required=True)
     qualify.set_defaults(function=qualify_device)

@@ -1,120 +1,126 @@
 # Active Claude/Codex handoff
 
-> Coordinate current work only through this file and the append-only
-> `HANDOFF_REVIEW.md`. Historical detail belongs in the archive and research
-> documents; branch-local ledgers are never review or execution authority.
+> This file is only the current queue. Historical detail belongs in Git history,
+> `HANDOFF_REVIEW.md`, and `docs_archive/`. A request not listed here is not an
+> active Claude review request.
 
-Last reconciled: 2026-08-16 07:42 EDT.
+Last reconciled: 2026-08-16 08:23 EDT.
 
 ## Immediate objective
 
-Finish BELIEF-V1 V2 with two remaining review boundaries:
+Carry BELIEF-V1 V2 to one runnable immutable freeze with the fewest sound
+review boundaries:
 
-1. one consolidated CPU/deadline/host-closure delta review of exact PR #117
-   head `1a0c9c8`; the substantive V2 source/design packet and its MPS child
-   already passed only through parent `f915325`;
-2. after PASS, one exact host-specific immutable-freeze review.
+1. one consolidated exact-head source/design review of PR #118;
+2. one exact-freeze review after the qualified host measurements populate the
+   otherwise unknowable host/runtime/deadline hashes; and
+3. one terminal review after the one-shot sealed result exists.
 
-No V2 pipeline execution, capture, REF-C, training, calibration, test opening,
-gameplay, strength claim, promotion, or deployment is authorized now.
+There are no per-stage capture, REF-C, input-index, device, cohort, calibration,
+or progress reviews between those boundaries.
 
 ## Current review queue — exactly one Claude request
 
-### P0 — PR #117, runnable-freeze delta
+### P0 — PR #118 consolidated V2 execution-source review
 
-**ANSWERED 2026-08-16 08:25 EDT: ✅ delta PASS at exact head `1a0c9c8` — ledger `0c42146`. No open Claude review request remains; next Claude gate is the exact-freeze review of the populated freeze bytes.**
+- PR: `https://github.com/jerryyyu/shengji/pull/118`
+- exact head: `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
+- exact base / merge base: `08c050209952edb1e5a2328b0545e4f643ffa4ff`
+- diff: 27 files, +2,951/-335; no `HANDOFF_REVIEW.md`, production, gameplay
+  policy, or frozen evidence changes
+- review mode: one consolidated PASS or one HOLD containing every blocker
+  found in this pass; do not split performance, streaming, memory, telemetry,
+  or design into separate review requests
 
-- PR: `https://github.com/jerryyyu/shengji/pull/117`
-- latest reviewed PASS head: `f915325cebb46712cc2726cc140a38513f5e63e8`
-- canonical PASS ledger: `fdbbaeb6672f8302c643fc25c312b2b13c604d5c`
-- exact PR head: `1a0c9c8509aa93ad1b72e7718c5b7515c5f189b7`
-- immediate parent: `f915325cebb46712cc2726cc140a38513f5e63e8`
-- superseding exact-head correction/review prompt:
-  `https://github.com/jerryyyu/shengji/pull/117#issuecomment-5307258321`
-- review mode: review only `f915325..1a0c9c8` and return one consolidated
-  delta PASS/HOLD; do not re-open the already PASSed V1 resource-reentry,
-  registry, substantive V2 source/design, or MPS seam.
+Review these four surfaces together:
 
-**Do not classify PR #117 as fully reviewed.** No Claude verdict, canonical
-ledger entry, or marker names exact head `1a0c9c8`. The hourly reports that
-called both packets PASSed conflated parent `f915325` with its unreviewed
-child. Until an exact `1a0c9c8` PASS is appended to canonical
-`HANDOFF_REVIEW.md`, cloud measurement and freeze construction are blocked on
-Claude review, not on a Jerry cloud decision.
-
-Review three tightly bounded properties together:
-
-1. an explicit CPU candidate is legal only with no supported accelerator,
-   re-probes that absence, and runs one warmup plus three deterministic
-   measured CPU arms without inventing an accelerator comparison;
-2. the new deadline producer reopens all 416 capture samples, measures 32
-   all-rank REF-C rounds under proven 16-worker overlap, runs two repeatable
-   eight-member training probes, and derives the epoch/reserve mechanically;
-3. preflight, deadline, selected device, and freeze all bind to the same
-   hostname, boot, 16 CPUs, memory, Python/native bytes, and source. Mini or a
-   different host/boot cannot inherit the receipt.
+1. **CPU cohort execution.** Four persistent member workers share immutable
+   batches while Torch intra-op work remains one thread. Fixed member order,
+   all 8+8 members, optimizer independence, receipts, calibration losses, and
+   portable checkpoint hashes must match the serial reference. MPS is not
+   retained: the exact Mini diagnostic was CPU 2.978871292 s versus MPS
+   17.306243501 s. Four workers were the measured resource-efficiency knee
+   (48.8% lower epoch wall, +79.1% CPU); eight were faster but cost +129.4% CPU.
+2. **Bounded streaming inputs.** The old materialized bridge projected about
+   106.6 GiB before Python overhead on a roughly 30 GiB host. The new compact
+   index must bind every source/schedule/row without opening test targets;
+   device qualification and each epoch may retain only the current bounded
+   batch. Reopeners must detect missing, extra, reordered, or mutated sources.
+3. **Qualification and memory closure.** The 32-batch plan must include maximum
+   decision count plus minimum/maximum active-label-density extremes, keep all
+   qualification batches resident, and conservatively require measured
+   per-process peak x exact concurrent cohort count to fit the host cap.
+   Training and terminal receipts must independently reconstruct that bound.
+4. **Outcome-blind progress.** Every long worker command must reach its real
+   controller loop and emit canonical stderr-only completed/total units,
+   basis-point percent, elapsed time, and ETA. It must not alter stdout or any
+   evidence bytes, expose loss/score/selection/test/terminal outcome, regress
+   or change totals, or grant retry/execution/strength/deploy authority.
 
 Exact-head evidence:
 
-- V2 pure: `163 passed, 1 skipped`;
-- V2 compiled/strict: `164 passed`;
-- registry focused: `7 passed`;
-- isolated worker bootstrap: `BELIEF_V1_V2_BOOTSTRAP_PASS`;
-- deadline-probe schedule SHA-256
-  `0c03e2c9497d8e26bb5b8ae3119e54f7f9fe8490e6d1b400cd8d4f8126f471bb`;
-- seed scan: 1,933,880 bytes, SHA-256
-  `dd5776b13ff82b449c1dd4bcb31aaefdff48abe3fdf5db75065d28dcc6443c9c`;
-- registry: 1,721,217 bytes, SHA-256
-  `83df2c13a4f6700139936e8e3bea72fc72810bb7e3004188048fd6ed2730e3d1`;
-  5,396/5,396 candidates classified, 135 explicit-required,
-  74 finite-population,
-  31 populations, 13,312 V2 seeds, zero collisions;
-- diff-check, clean-tree and append-only review-ledger guards: PASS.
+- focused progress/controller/cohort/device: 51 passed;
+- full BELIEF pure: 379 passed, 2 skipped;
+- full BELIEF compiled/strict: 381 passed;
+- `git diff --check`, clean tree, and isolated worker bootstrap: PASS;
+- seed scan: 1,943,634 bytes, SHA-256
+  `f2ffc1fa4482ed356c4c12c6728303833115054c15fda8b04dc544b0281740f4`;
+- registry: 1,725,973 bytes, SHA-256
+  `d2f75dd2f0d089fb4312e0e125276467e1257cb69022d93c5040ec57b85e76b6`;
+  5,415/5,415 candidates classified, 140 explicit, 74 finite-population,
+  31 populations, 13,312 V2 seeds, zero collisions; all capture, training,
+  test, gameplay, strength, and deployment authority flags are false.
 
-Return one delta PASS or one HOLD with every remaining blocker. A PASS
-authorizes only a fresh exact-head capacity preflight, score-free deadline/
-device measurement, and immutable-freeze construction. The exact frozen packet
-still requires a second external PASS before execution.
+Return exactly:
+
+1. `PASS` or `HOLD` at exact head `86aa3b7`;
+2. every finding in one severity-ordered list with file:line and a concrete
+   repair or proof request;
+3. whether PASS permits only qualified score-free host capacity/device/deadline
+   measurements and immutable-freeze construction; and
+4. any host-populated freeze fields that must be checked in the next exact-
+   freeze review.
+
+A source PASS does **not** authorize initialization, capture, REF-C, training,
+calibration, test opening, gameplay, strength claims, promotion, or deployment.
+The populated freeze is a separate exact object and must PASS before execution.
 
 ## Current operational truth
 
-- V1 design `a8c5e05f…1fd53` completed capture and REF-C. Both CPU training
-  cohorts exceeded their frozen eight-hour wall cap and were stopped through
-  the reviewed sequence before calibration or test. Both slots remain partial;
-  the admission is spent; no model, null, calibration, terminal, or strength
-  result exists. Never resume, inspect, score, or reuse the partial models.
-- PR #117 remains source/design only. Parent `f915325` is PASS; exact current
-  head `1a0c9c8` is pending review. No evidence namespace or fleet run was
-  initialized.
-- Do not start compute merely because a host is powered on. After PR #117 PASS,
-  first re-check host availability and run only the reviewed capacity/device/
-  deadline measurement needed to construct the exact freeze.
-- T4, S4, S6, broad Pair, Pair checkpoint, and V1 namespaces are terminal or
-  spent. No retry, resume, pooling, or partial-result interpretation is open.
-- PR #107 already has Codex's independent source/parity clearance. PR #116 was
-  authored by Claude and is a Codex performance-review item, not a Claude queue
-  item. Neither blocks PR #117.
+- PR #117 exact head `1a0c9c8` passed and merged as main `08c0502`. Its review
+  item is closed; do not re-review it.
+- V1 capture and REF-C completed, but both training cohorts exceeded the frozen
+  eight-hour cap and were stopped before calibration/test. Its admission is
+  spent; no V1 model, null, terminal, or strength result exists. Never resume
+  or reuse those partial models.
+- PR #118 is source/design only. No V2 evidence namespace has been initialized
+  and no V2 capture, REF-C, training, calibration, or test job is running.
+- A powered host is not execution authority. After source PASS, use a qualified
+  host with at least 16 logical CPUs only for the bounded score-free measurements
+  needed to construct the freeze.
+- PR #116 remains Codex's independent performance-review item, not a Claude
+  queue item and not a blocker for this consolidated review.
+- No other Claude review request is open. Superseded PR #117 prompts and old
+  strength-lane queues are closed historical records.
 
-## Next steps after runnable-freeze delta PASS
+## Next steps after PR #118 PASS
 
-1. Select one available host with at least 16 logical CPUs; Mini does not
-   qualify for the all-lane capacity preflight.
-2. At exact reviewed source, produce the H0/preflight, runtime/native/boot,
-   candidate-device/memory, deadline-estimate, resource-cap, seed scan/registry,
-   V1 failure, and cohort-schedule bindings.
+1. On one available >=16-logical-CPU host, reproduce the exact preflight,
+   runtime/native/boot, candidate-device, memory, and deadline receipts at
+   reviewed head `86aa3b7`.
+2. Regenerate/rebind the exact scan/registry if any source byte changed; source
+   drift instead requires a new consolidated source review.
 3. Build one canonical immutable freeze in a fresh unused namespace. Do not
    initialize it.
-4. Request one exact-freeze review. Only its authentic PASS marker can admit
-   the one-shot offline pipeline.
-5. During the delta-review wait, further profiling must stay in a separate
-   worktree and must not mutate PR #117 or historical evidence. It carries no
-   strength authority.
+4. Request one exact-freeze review. Its authentic PASS is the sole authority
+   for the bounded one-shot offline pipeline.
+5. During execution, report only the new outcome-blind percentages. After the
+   terminal seals, request one independent terminal reconstruction review.
 
 ## Durable references
 
-- Scientific plan and current milestone: `RL_PLAN.md`
-- Ordered research/output ledger: `BACKLOG.md`
-- Stable operational rules: `AI_POLICIES.md`
-- Exact BELIEF contracts: `BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`
-- Lossless verdict/authority ledger: `HANDOFF_REVIEW.md`
-- Historical handoff snapshots: `docs_archive/`
+- scientific plan: `RL_PLAN.md`
+- ordered work ledger: `BACKLOG.md`
+- stable operating rules: `AI_POLICIES.md`
+- exact contracts: `BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`
+- append-only verdict/authority ledger: `HANDOFF_REVIEW.md`

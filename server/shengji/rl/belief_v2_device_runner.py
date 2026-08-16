@@ -13,6 +13,7 @@ import gc
 import resource
 import sys
 import time
+from typing import Callable
 
 import torch
 
@@ -166,7 +167,8 @@ def run_device_qualification_in_memory(
         primary: V2CohortRealizationV1,
         primary_examples: tuple[V2TrainingExampleV1, ...],
         host_memory_cap_bytes: int,
-        device_memory_cap_bytes: int) \
+        device_memory_cap_bytes: int,
+        deadline_check: Callable[[str, int], None] | None = None) \
         -> tuple[V2DeviceQualificationPlanV1,
                  V2DeviceQualificationResultV1]:
     """Execute the full frozen order and derive the only device decision."""
@@ -184,11 +186,18 @@ def run_device_qualification_in_memory(
         raise BeliefV2DeviceRunnerError(
             "V2 qualification primary batch population drift")
     selected = tuple(batches[index] for index in plan.selected_batch_indices)
-    arms = tuple(execute_qualification_arm(
-        plan, arm_index=index, selected_batches=selected)
-                 for index in range(len(plan.arm_order)))
+    arms = []
+    for index in range(len(plan.arm_order)):
+        if deadline_check is not None:
+            deadline_check("before-unit", index)
+        arms.append(execute_qualification_arm(
+            plan, arm_index=index, selected_batches=selected))
+        if deadline_check is not None:
+            deadline_check("after-unit", index + 1)
+    if deadline_check is not None:
+        deadline_check("before-seal", len(arms))
     try:
-        result = derive_qualification_result(plan, arms)
+        result = derive_qualification_result(plan, tuple(arms))
     except ValueError as exc:
         raise BeliefV2DeviceRunnerError(
             "V2 qualification terminal derivation refused") from exc

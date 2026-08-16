@@ -25,6 +25,11 @@ from .belief_v2_cohort_training import (
     train_v2_cohort_in_memory,
 )
 from .belief_v2_controller import _stage_gate
+from .belief_v2_deadline import (
+    BeliefV2DeadlineError,
+    publish_deadline_refusal,
+    stage_deadline,
+)
 from .belief_v2_device_qualification import (
     V2DeviceQualificationPlanV1,
     V2DeviceQualificationResultV1,
@@ -232,6 +237,20 @@ def run_training_cohort(
     partial.mkdir(mode=0o700)
     started = time.monotonic_ns()
     cpu_started = time.process_time_ns()
+    deadline = stage_deadline(
+        freeze, admission, stage="training", slot=realization.cohort_id,
+        started_monotonic_nanoseconds=started)
+
+    def deadline_check(phase: str, next_unit_index: int) -> None:
+        try:
+            deadline.check(
+                phase=phase, next_unit_index=next_unit_index,
+                observed_monotonic_nanoseconds=time.monotonic_ns())
+        except BeliefV2DeadlineError as exc:
+            publish_deadline_refusal(partial, exc.refusal)
+            raise BeliefV2TrainingControllerError(
+                "V2 training deadline exhausted and recorded") from exc
+
     try:
         prepare_device_memory_measurement(
             selected_device,
@@ -239,7 +258,8 @@ def run_training_cohort(
         synchronize_training_device(selected_device)
         trained = train_v2_cohort_in_memory(
             realization, training_examples, calibration,
-            calibration_examples, device=selected_device)
+            calibration_examples, device=selected_device,
+            deadline_check=deadline_check)
         synchronize_training_device(selected_device)
         peak_host_memory = host_peak_memory_bytes()
         peak_device_memory = device_peak_memory_bytes(selected_device)
@@ -249,6 +269,7 @@ def run_training_cohort(
     if trained.training_device != selected_device:
         raise BeliefV2TrainingControllerError(
             "V2 trained cohort selected-device drift")
+    deadline_check("before-seal", len(trained.epochs))
     trained_raw = trained.manifest_bytes()
     publish_exclusive_bytes(partial / "trained-cohort.json", trained_raw)
     for index, raw in enumerate(trained.checkpoint_bundles):

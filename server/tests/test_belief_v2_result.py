@@ -158,6 +158,7 @@ def _freeze():
         v1_terminal_route="v1-pass-to-b3",
         v1_terminal_result_sha256=_sha("v1-result"),
         v1_resource_receipt_sha256=_sha("v1-resource"),
+        v1_resource_failure_receipt_sha256=None,
         v2_reentry_rationale_sha256=None,
         h0_inventory_sha256=_sha("inventory"),
         h0_source_manifest_sha256=_sha("source"),
@@ -172,6 +173,7 @@ def _freeze():
         human_test_eligible_decision_count=174,
         preflight_result_sha256=_sha("preflight"),
         preflight_runtime_sha256=_sha("preflight-runtime"),
+        deadline_estimate_receipt_sha256=_sha("deadline"),
         seed_registry_sha256=_sha("registry"),
         seed_candidate_report_sha256=_sha("candidate-report"),
         training_candidate_device="mps",
@@ -187,7 +189,11 @@ def _freeze():
             training_device_hours=128, training_wall_seconds=86_400,
             training_bytes=32 * 1024**3,
             training_host_memory_bytes=24 * 1024**3,
-            training_device_memory_bytes=12 * 1024**3),
+            training_device_memory_bytes=12 * 1024**3,
+            capture_next_unit_wall_estimate_nanoseconds=20_000_000_000,
+            reference_next_unit_wall_estimate_nanoseconds=5_000_000_000,
+            training_next_epoch_wall_estimate_nanoseconds=60_000_000_000,
+            deadline_safety_reserve_nanoseconds=1_000_000_000),
         evidence_root="/tmp/belief-v2-result-test")
 
 

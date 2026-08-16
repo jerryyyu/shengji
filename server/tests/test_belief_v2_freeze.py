@@ -139,6 +139,7 @@ def _freeze():
         v1_terminal_route="v1-pass-to-b3",
         v1_terminal_result_sha256=_sha("b"),
         v1_resource_receipt_sha256=_sha("c"),
+        v1_resource_failure_receipt_sha256=None,
         v2_reentry_rationale_sha256=None,
         h0_inventory_sha256=_sha("d"),
         h0_source_manifest_sha256=_sha("e"),
@@ -153,6 +154,7 @@ def _freeze():
         human_test_eligible_decision_count=174,
         preflight_result_sha256=_sha("1"),
         preflight_runtime_sha256=_sha("2"),
+        deadline_estimate_receipt_sha256=_sha("a"),
         seed_registry_sha256=_sha("3"),
         seed_candidate_report_sha256=_sha("4"),
         training_candidate_device="mps",
@@ -168,7 +170,11 @@ def _freeze():
             training_device_hours=128, training_wall_seconds=86_400,
             training_bytes=32 * 1024**3,
             training_host_memory_bytes=24 * 1024**3,
-            training_device_memory_bytes=12 * 1024**3),
+            training_device_memory_bytes=12 * 1024**3,
+            capture_next_unit_wall_estimate_nanoseconds=20_000_000_000,
+            reference_next_unit_wall_estimate_nanoseconds=5_000_000_000,
+            training_next_epoch_wall_estimate_nanoseconds=60_000_000_000,
+            deadline_safety_reserve_nanoseconds=1_000_000_000),
         evidence_root="/tmp/belief-v2-evidence")
 
 
@@ -275,6 +281,28 @@ def test_select_none_requires_and_preserves_named_reentry_evidence():
         v2_reentry_rationale_sha256=_sha("5"))
     validate_execution_freeze(freeze)
     assert execution_freeze_from_bytes(freeze.canonical_bytes()) == freeze
+
+
+def test_resource_failure_route_excludes_v1_result_and_partial_model_use():
+    freeze = replace(
+        _freeze(),
+        v1_terminal_route=(
+            "RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"),
+        v1_terminal_result_sha256=None,
+        v1_resource_receipt_sha256=None,
+        v1_resource_failure_receipt_sha256=_sha("6"),
+        v2_reentry_rationale_sha256=_sha("5"))
+    validate_execution_freeze(freeze)
+    payload = freeze.to_dict()
+    assert payload["v1_route"]["terminal_result_sha256"] is None
+    assert payload["v1_route"]["resource_receipt_sha256"] is None
+    assert payload["v1_route"]["resource_failure_receipt_sha256"] \
+        == _sha("6")
+    assert execution_freeze_from_bytes(freeze.canonical_bytes()) == freeze
+    with pytest.raises(BeliefV2FreezeError,
+                       match="resource-failure route identity"):
+        validate_execution_freeze(replace(
+            freeze, v1_terminal_result_sha256=_sha("7")))
 
 
 def _git(repo, *args):

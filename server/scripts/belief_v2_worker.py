@@ -91,6 +91,7 @@ from shengji.rl.belief_v2_freeze import (  # noqa: E402
     validate_pipeline_consumption_tombstone,
 )
 from shengji.rl.belief_v2_freeze_builder import (  # noqa: E402
+    build_v1_resource_failure_receipt,
     build_execution_freeze_from_receipts,
     resource_caps_from_bytes,
 )
@@ -166,11 +167,16 @@ def freeze_design(args: argparse.Namespace) -> None:
             "V2 freeze output and unused evidence root must be absolute siblings")
     rationale_raw = (None if args.v2_reentry_rationale is None
                      else stable_read_bytes(Path(args.v2_reentry_rationale)))
+    terminal_raw = (None if args.v1_terminal_report is None
+                    else stable_read_bytes(Path(args.v1_terminal_report)))
+    failure_raw = (
+        None if args.v1_resource_failure_receipt is None
+        else stable_read_bytes(Path(args.v1_resource_failure_receipt)))
     freeze = build_execution_freeze_from_receipts(
         repo=REPO, expected_git=args.expected_git,
         source_review_commit=args.source_review_commit,
-        v1_terminal_report_raw=stable_read_bytes(
-            Path(args.v1_terminal_report)),
+        v1_terminal_report_raw=terminal_raw,
+        v1_resource_failure_receipt_raw=failure_raw,
         v2_reentry_rationale_raw=rationale_raw,
         inventory_raw=stable_read_bytes(Path(args.inventory)),
         group_split_raw=stable_read_bytes(Path(args.group_split)),
@@ -178,6 +184,8 @@ def freeze_design(args: argparse.Namespace) -> None:
         seed_scan_raw=stable_read_bytes(Path(args.seed_scan)),
         seed_registry_raw=stable_read_bytes(Path(args.seed_registry)),
         training_candidate_device=args.training_candidate_device,
+        deadline_estimate_raw=stable_read_bytes(
+            Path(args.deadline_estimate_receipt)),
         resource_caps=resource_caps_from_bytes(stable_read_bytes(
             Path(args.resource_caps))), evidence_root=evidence_root)
     digest = publish_exclusive_bytes(output, freeze.canonical_bytes())
@@ -191,6 +199,27 @@ def freeze_design(args: argparse.Namespace) -> None:
         "bounded_offline_pipeline_authorized": False,
         "execution_started": False,
         "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    })
+
+
+def close_v1_resource_failure(args: argparse.Namespace) -> None:
+    output = Path(args.out)
+    if not output.is_absolute() or output.exists() or output.is_symlink():
+        raise ValueError("V2 V1 closeout output path drift")
+    raw = build_v1_resource_failure_receipt(
+        repo=REPO, design_path=Path(args.v1_design),
+        evidence_root=Path(args.v1_evidence_root),
+        supervisor_log_path=Path(args.v1_supervisor_log),
+        termination_review_commit=args.termination_review_commit,
+        closeout_ledger_commit=args.closeout_ledger_commit)
+    digest = publish_exclusive_bytes(output, raw)
+    _output({
+        "schema": "belief-v1-b2-operator-stopped-resource-failure-v1",
+        "receipt_path": str(output), "receipt_sha256": digest,
+        "v1_retry_authorized": False, "v1_result_exists": False,
+        "v2_execution_authorized": False,
         "strength_claim_authorized": False,
         "deployment_authorized": False,
     })
@@ -397,10 +426,20 @@ def verify_terminal(args: argparse.Namespace) -> None:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
+    close_v1 = commands.add_parser("close-v1-resource-failure")
+    close_v1.add_argument("--v1-design", required=True)
+    close_v1.add_argument("--v1-evidence-root", required=True)
+    close_v1.add_argument("--v1-supervisor-log", required=True)
+    close_v1.add_argument("--termination-review-commit", required=True)
+    close_v1.add_argument("--closeout-ledger-commit", required=True)
+    close_v1.add_argument("--out", required=True)
+    close_v1.set_defaults(function=close_v1_resource_failure)
     freeze = commands.add_parser("freeze-design")
     freeze.add_argument("--expected-git", required=True)
     freeze.add_argument("--source-review-commit", required=True)
-    freeze.add_argument("--v1-terminal-report", required=True)
+    v1_route = freeze.add_mutually_exclusive_group(required=True)
+    v1_route.add_argument("--v1-terminal-report")
+    v1_route.add_argument("--v1-resource-failure-receipt")
     freeze.add_argument("--v2-reentry-rationale")
     freeze.add_argument("--inventory", required=True)
     freeze.add_argument("--group-split", required=True)
@@ -408,6 +447,7 @@ def parser() -> argparse.ArgumentParser:
     freeze.add_argument("--seed-scan", required=True)
     freeze.add_argument("--seed-registry", required=True)
     freeze.add_argument("--training-candidate-device", required=True)
+    freeze.add_argument("--deadline-estimate-receipt", required=True)
     freeze.add_argument("--resource-caps", required=True)
     freeze.add_argument("--evidence-root", required=True)
     freeze.add_argument("--out", required=True)

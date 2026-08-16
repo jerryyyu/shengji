@@ -109,6 +109,10 @@ definitions, not only opaque summary hashes, so its independent reopener can
 recompute population counts/digests and the zero-collision verdict without
 materializing billion-scale ranges. Lower-case literal `"seed0"` protocol
 entries require the same explicit classification as upper-case seed constants.
+Classification is a reviewed finite table keyed by exact candidate identity;
+the builder must never infer a safe bin from a variable name. A newly added
+`NEW_SCREEN_POPULATION_SEED_START`-style candidate is a permanent mutation
+witness and must refuse until its population semantics are explicitly added.
 
 The split is by complete round and balanced within every trump rank:
 
@@ -447,9 +451,10 @@ source-neutral training path is then used for every cohort on the retained
 device, which makes accelerator use a scalable V2 property rather than a
 machine-local optimization.
 
-The running V1 packet is excluded from this qualification. Mini benchmarking
-must wait until its V1 training process exits, so qualification cannot perturb
-the already-reviewed evidence run.
+The V1 packet ended as an operator-stopped resource failure after its frozen
+eight-hour training wall cap was exceeded. It produced no final cohort,
+calibration, test, or terminal result. V2 qualification therefore cannot reuse
+V1 partial models or claim a V1 learning verdict.
 
 The source audit already identifies two concrete V1 costs to measure. Each
 cohort pins Torch to one thread, and `train_cohort_epoch_stream` applies every
@@ -480,6 +485,25 @@ batch identity, initial and cross-epoch model-state link, selection decision,
 checkpoint receipt, and checkpoint byte stream. No human calibration or test
 row is accepted by this training boundary.
 
+Every long, capped synthetic capture, synthetic reference, device-qualification,
+and cohort-training loop has an in-loop monotonic deadline rather than only a
+post-hoc timer. The immutable freeze binds a measured p95 next-unit wall
+estimate for one capture round, one reference job, and one complete training
+epoch, plus one safety reserve. Capture and reference check before and after
+each unit; device qualification checks before and after each arm; the cohort
+trainer checks before and after every epoch and before checkpoint construction.
+No new unit may start unless the measured estimate plus reserve fits before the
+hard wall cap, and no final artifact may seal unless the reserve remains.
+
+Expiry publishes one canonical `deadline-refusal.json` into the already-created
+partial slot before raising. That partial slot is never renamed or removed, so
+the same admission cannot retry it. The global stage gate independently reopens
+any deadline refusal and blocks every later stage, including calibration and
+the sole test opener. Source tests must prove all five properties at the wiring
+altitude: no next unit, no final seal, exact refusal bytes, no calibration/test
+open, and no retry under the same admission. Post-hoc resource reconstruction
+remains an independent terminal check; it is not the deadline mechanism.
+
 Performance changes must be bit-identical at the artifact or probability
 contract they claim to preserve. A faster implementation never inherits
 scientific or strength authority.
@@ -498,6 +522,13 @@ must measure mean and p95 round wall, CPU, peak RSS, storage, failed-throw
 coverage, and all rank cells outside the production seed namespace. The
 reviewed design then freezes caps with explicit margin and an automatic
 refusal before population capture if the host does not qualify.
+
+The final cap receipt also binds the exact-source/runtime p95 deadline
+measurements: at least 32 capture samples, 32 reference samples, and two full
+training epochs on the named runtime. The cap fields must equal those receipt
+values byte-for-byte. A mutable estimate, an unmeasured operator guess, or an
+estimate plus reserve that cannot fit beneath its stage wall cap refuses the
+freeze.
 
 The execution-freeze child implements this in `belief_v2_preflight.py` and
 `scripts/belief_v2_preflight.py`. Its exact schedule is two rounds at every
@@ -672,18 +703,26 @@ offline path:
 
 The following run-specific inputs still gate an exact freeze:
 
-1. the naturally completed and independently reproduced V1 B2 terminal report
-   and resource receipt. A V1 PASS routes directly; a V1 SELECT_NONE requires
-   the already named multi-rank/human-domain re-entry rationale; any V1
-   `REFUSE_*` blocks V2;
+1. one authenticated V1 routing receipt. A naturally completed V1 PASS routes
+   directly; a V1 SELECT_NONE requires the already named multi-rank/human-domain
+   re-entry rationale. The spent V1 resource failure has exactly one narrower
+   route, `RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW`: the receipt must
+   prove the frozen wall cap was exceeded, both workers were stopped under the
+   reviewed termination marker, only partial training slots exist, calibration
+   and test were never opened, no terminal/model result exists, the admission
+   is spent with no retry, and the in-loop defect is repaired in the new exact
+   V2 head. This route is not a V1 PASS or SELECT_NONE, cannot use V1 partial
+   models, and grants no execution authority by itself. Every other V1
+   `REFUSE_*` remains blocking;
 2. one consolidated external source/design PASS on the final V2 execution
    head, including the worker, freeze builder, GPU qualification, calibration,
    terminal, and adversarial tests;
 3. a fresh complete seed scan/registry generated from that exact execution
    head. The reviewed H0 inventory and whole-session split already exist;
 4. the final host-specific runtime/native/boot identity, named accelerator
-   candidate, and reviewed resource caps. `freeze-design` binds these together
-   with the existing multi-rank preflight receipt; and
+   candidate, measured next-unit/epoch deadline receipt, and reviewed resource
+   caps. `freeze-design` binds these together with the existing multi-rank
+   preflight receipt; and
 5. one external exact-freeze PASS on the canonical immutable JSON.
 
 The actual CPU-versus-candidate qualification result is deliberately not a

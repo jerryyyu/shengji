@@ -5,12 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
 from .belief_artifacts import publish_exclusive_bytes, stable_read_bytes
 from .belief_contract import canonical_json_bytes
 from .belief_v2_controller import _stage_gate
+from .belief_v2_deadline import (
+    BeliefV2DeadlineError,
+    publish_deadline_refusal,
+    stage_deadline,
+)
 from .belief_v2_device_qualification import (
     V2DeviceQualificationPlanV1,
     V2DeviceQualificationResultV1,
@@ -130,6 +136,21 @@ def run_device_qualification(
         raise BeliefV2DeviceControllerError(
             "V2 device qualification slot is occupied")
     partial.mkdir(mode=0o700)
+    started = time.monotonic_ns()
+    deadline = stage_deadline(
+        freeze, admission, stage="device-qualification", slot="result",
+        started_monotonic_nanoseconds=started)
+
+    def deadline_check(phase: str, next_unit_index: int) -> None:
+        try:
+            deadline.check(
+                phase=phase, next_unit_index=next_unit_index,
+                observed_monotonic_nanoseconds=time.monotonic_ns())
+        except BeliefV2DeadlineError as exc:
+            publish_deadline_refusal(partial, exc.refusal)
+            raise BeliefV2DeviceControllerError(
+                "V2 device deadline exhausted and recorded") from exc
+
     try:
         plan, result = run_device_qualification_in_memory(
             execution_git=freeze.execution_git,
@@ -138,13 +159,15 @@ def run_device_qualification(
             host_memory_cap_bytes=(
                 freeze.resource_caps.training_host_memory_bytes),
             device_memory_cap_bytes=(
-                freeze.resource_caps.training_device_memory_bytes))
+                freeze.resource_caps.training_device_memory_bytes),
+            deadline_check=deadline_check)
     except ValueError as exc:
         raise BeliefV2DeviceControllerError(
             "V2 device qualification execution refused") from exc
     if plan.canonical_bytes() != expected.canonical_bytes():
         raise BeliefV2DeviceControllerError(
             "V2 device qualification executed plan drift")
+    deadline_check("before-seal", len(result.arms))
     plan_raw = plan.canonical_bytes()
     result_raw = result.canonical_bytes(plan)
     publish_exclusive_bytes(partial / "plan.json", plan_raw)

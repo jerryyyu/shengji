@@ -15,6 +15,7 @@ import torch
 import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
 import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
+import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
@@ -45,6 +46,11 @@ from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_device_controller import (
     reopen_device_qualification,
     run_device_qualification,
+)
+from shengji.rl.belief_v2_deadline import (
+    V2DeadlineRefusalV1,
+    publish_deadline_refusal,
+    reopen_deadline_refusal,
 )
 from shengji.rl.belief_v2_freeze import (
     ALL_HUMAN_TRAIN_DECISIONS,
@@ -212,6 +218,7 @@ def _freeze(root: Path):
         v1_terminal_route="v1-pass-to-b3",
         v1_terminal_result_sha256=_sha("b"),
         v1_resource_receipt_sha256=_sha("c"),
+        v1_resource_failure_receipt_sha256=None,
         v2_reentry_rationale_sha256=None,
         h0_inventory_sha256=_sha("d"),
         h0_source_manifest_sha256=_sha("e"),
@@ -226,6 +233,7 @@ def _freeze(root: Path):
         human_test_eligible_decision_count=174,
         preflight_result_sha256=_sha("1"),
         preflight_runtime_sha256=_sha("2"),
+        deadline_estimate_receipt_sha256=_sha("a"),
         seed_registry_sha256=_sha("3"),
         seed_candidate_report_sha256=_sha("4"),
         training_candidate_device="mps",
@@ -241,7 +249,11 @@ def _freeze(root: Path):
             training_device_hours=128, training_wall_seconds=86_400,
             training_bytes=32 * 1024**3,
             training_host_memory_bytes=24 * 1024**3,
-            training_device_memory_bytes=12 * 1024**3),
+            training_device_memory_bytes=12 * 1024**3,
+            capture_next_unit_wall_estimate_nanoseconds=20_000_000_000,
+            reference_next_unit_wall_estimate_nanoseconds=5_000_000_000,
+            training_next_epoch_wall_estimate_nanoseconds=60_000_000_000,
+            deadline_safety_reserve_nanoseconds=1_000_000_000),
         evidence_root=str(root))
 
 
@@ -518,6 +530,63 @@ def test_capture_refuses_before_write_when_stage_gate_fails(
             root, freeze, admission, repo=Path("/unused"), lane=0,
             review_marker=b"review")
     assert not (root / "capture").exists()
+
+
+def test_capture_and_reference_deadlines_stop_before_next_unit_and_seal(
+        tmp_path, monkeypatch):
+    real_monotonic = V2_CONTROLLER.time.monotonic_ns
+    root, freeze, admission, coordinate = _prepare(
+        monkeypatch, tmp_path)
+    capture_calls = []
+    monkeypatch.setattr(
+        V2_CONTROLLER, "capture_v2_champion_round",
+        lambda value: capture_calls.append(value))
+    capture_hard = (1_000_000_000
+                    + freeze.resource_caps.capture_wall_seconds
+                    * 1_000_000_000)
+    capture_times = iter((1_000_000_000, capture_hard - 20_000_000_000))
+    monkeypatch.setattr(
+        V2_CONTROLLER.time, "monotonic_ns", lambda: next(capture_times))
+    with pytest.raises(BeliefV2ControllerError,
+                       match="deadline exhausted and recorded"):
+        run_capture_lane(
+            root, freeze, admission, repo=Path("/unused"),
+            lane=coordinate.lane, review_marker=b"review")
+    assert capture_calls == []
+    capture_partial = (
+        root / "capture" / f"lane-{coordinate.lane:02d}.partial")
+    assert (capture_partial / "deadline-refusal.json").is_file()
+    assert not (root / "capture" / f"lane-{coordinate.lane:02d}").exists()
+
+    # Use a separate exact root to witness the reference loop at the same
+    # altitude without deleting or retrying the spent capture slot above.
+    reference_case = tmp_path / "reference-case"
+    reference_case.mkdir()
+    root2, freeze2, admission2, coordinate2 = _prepare(
+        monkeypatch, reference_case)
+    monkeypatch.setattr(
+        V2_CONTROLLER.time, "monotonic_ns", real_monotonic)
+    run_capture_lane(
+        root2, freeze2, admission2, repo=Path("/unused"),
+        lane=coordinate2.lane, review_marker=b"review")
+    reference_hard = (1_000_000_000
+                      + freeze2.resource_caps.reference_wall_seconds
+                      * 1_000_000_000)
+    reference_times = iter((
+        1_000_000_000, reference_hard - 5_000_000_000))
+    monkeypatch.setattr(
+        V2_CONTROLLER.time, "monotonic_ns", lambda: next(reference_times))
+    with pytest.raises(BeliefV2ControllerError,
+                       match="deadline exhausted and recorded"):
+        run_reference_lane(
+            root2, freeze2, admission2, repo=Path("/unused"),
+            lane=coordinate2.lane, review_marker=b"review")
+    reference_partial = (
+        root2 / "reference" / f"lane-{coordinate2.lane:02d}.partial")
+    assert {path.name for path in reference_partial.iterdir()} \
+        == {"deadline-refusal.json"}
+    assert not (root2 / "reference"
+                / f"lane-{coordinate2.lane:02d}").exists()
 
 
 def test_capture_reopen_refuses_mutated_exact_bundle(tmp_path, monkeypatch):
@@ -980,6 +1049,117 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
             calibration_examples=calibration,
             qualification_plan=qualification_plan,
             qualification_result=qualification_result)
+
+
+def test_training_deadline_records_refusal_cannot_advance_seal_or_retry(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration, calibration_schedule = (
+        _tiny_training_population(freeze))
+    qualification_plan, qualification_result = (
+        _cpu_fallback_qualification(freeze))
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_training_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_training_controller._validate_device_binding",
+        lambda *args, **kwargs: "cpu")
+    # The frozen next-epoch estimate plus reserve is 61 seconds.  At the first
+    # callback only 60 seconds remain, so no epoch body may start.
+    times = iter((1_000_000_000,
+                  freeze.resource_caps.training_wall_seconds
+                  * 1_000_000_000 - 59_000_000_000))
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_training_controller.time.monotonic_ns",
+        lambda: next(times))
+    advanced = []
+
+    def refused_before_training(*args, deadline_check, **kwargs):
+        deadline_check("before-unit", 0)
+        advanced.append(True)
+        raise AssertionError("expired training advanced")
+
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_training_controller."
+        "train_v2_cohort_in_memory", refused_before_training)
+    kwargs = dict(
+        repo=Path("/unused"), review_marker=b"review", primary=primary,
+        realization=primary, training_examples=training_examples,
+        calibration=calibration_schedule, calibration_examples=calibration,
+        qualification_plan=qualification_plan,
+        qualification_result=qualification_result)
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="cohort training refused"):
+        run_training_cohort(root, freeze, admission, **kwargs)
+    assert advanced == []
+    partial = root / "training" / f"{primary.cohort_id}.partial"
+    assert {path.name for path in partial.iterdir()} \
+        == {"deadline-refusal.json"}
+    refusal = reopen_deadline_refusal(
+        partial / "deadline-refusal.json",
+        freeze_sha256=freeze.sha256(), admission_sha256=admission.sha256())
+    assert refusal.stage == "training"
+    assert refusal.phase == "before-unit"
+    assert not (root / "training" / primary.cohort_id).exists()
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="slot is occupied"):
+        run_training_cohort(root, freeze, admission, **kwargs)
+
+
+def test_deadline_refusal_blocks_calibration_and_test_before_any_input_open(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _freeze(root)
+    admission = _admission(freeze)
+    partial = root / "training" / "synthetic-primary.partial"
+    partial.mkdir(parents=True)
+    publish_deadline_refusal(partial, V2DeadlineRefusalV1(
+        freeze_sha256=freeze.sha256(), admission_sha256=admission.sha256(),
+        stage="training", slot="synthetic-primary", phase="before-unit",
+        next_unit_index=2, started_monotonic_nanoseconds=1,
+        observed_monotonic_nanoseconds=10,
+        hard_deadline_monotonic_nanoseconds=11,
+        wall_cap_nanoseconds=10,
+        next_unit_wall_estimate_nanoseconds=6,
+        safety_reserve_nanoseconds=3,
+        required_remaining_nanoseconds=9,
+        observed_remaining_nanoseconds=1))
+    monkeypatch.setattr(V2_CONTROLLER, "validate_execution_freeze",
+                        lambda value: None)
+    monkeypatch.setattr(V2_CONTROLLER, "reauthenticate_pipeline_admission",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(V2_CONTROLLER, "validate_live_execution",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        V2_CONTROLLER, "build_training_device_profile",
+        lambda value: freeze.training_device_profile)
+    opened = []
+
+    def forbidden_open(*args, **kwargs):
+        opened.append(True)
+        raise AssertionError("deadline-blocked split was opened")
+
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_v2_training_inputs", forbidden_open)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_calibration_statistics", forbidden_open)
+    with pytest.raises(BeliefV2ControllerError,
+                       match="prior deadline refusal"):
+        CALIBRATION_STAGE.run_v2_calibration_selection(
+            root, freeze, admission, repo=tmp_path.resolve(),
+            review_marker=b"review", inventory={}, group_split={})
+    with pytest.raises(BeliefV2ControllerError,
+                       match="prior deadline refusal"):
+        TERMINAL_STAGE.run_v2_terminal(
+            root, freeze, admission, repo=tmp_path.resolve(),
+            review_marker=b"review", inventory={}, group_split={})
+    assert opened == []
+    assert not (root / "calibration").exists()
+    assert not (root / "terminal.partial").exists()
 
 
 def test_full_training_resource_receipt_enforces_its_own_memory_peaks(

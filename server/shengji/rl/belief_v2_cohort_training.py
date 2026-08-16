@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import torch
 
@@ -231,7 +231,9 @@ def train_v2_cohort_in_memory(
         training_examples: tuple[V2TrainingExampleV1, ...],
         common_calibration: V2CalibrationScheduleV1,
         calibration_examples: tuple[V2TrainingExampleV1, ...], *,
-        device: str) -> V2TrainedCohortArtifactsV1:
+        device: str,
+        deadline_check: Callable[[str, int], None] | None = None
+        ) -> V2TrainedCohortArtifactsV1:
     """Train and independently reopen one realized cohort in memory."""
     training_batches, control_dose = _training_batches(
         realization, training_examples)
@@ -250,6 +252,8 @@ def train_v2_cohort_in_memory(
     selected_receipts = None
     decision = None
     for epoch in range(1, TRAIN_MAX_EPOCHS + 1):
+        if deadline_check is not None:
+            deadline_check("before-unit", epoch - 1)
         try:
             receipts = train_v2_cohort_epoch_stream(
                 models, optimizers, iter(training_batches),
@@ -268,6 +272,8 @@ def train_v2_cohort_in_memory(
             member_calibration_loss_nanonats=calibration,
             cohort_mean_calibration_loss_nanonats=(
                 sum(calibration) // len(calibration))))
+        if deadline_check is not None:
+            deadline_check("after-unit", epoch)
         if decision.selected_epoch == epoch:
             selected_states = tuple(_cpu_state(model) for model in models)
             selected_receipts = receipts
@@ -278,6 +284,8 @@ def train_v2_cohort_in_memory(
             or decision.stop_epoch != len(epoch_rows):
         raise BeliefV2CohortTrainingError(
             "V2 common epoch selection state drift")
+    if deadline_check is not None:
+        deadline_check("before-seal", len(epoch_rows))
     bundles = []
     for seed, state, receipt in zip(
             COHORT_SEEDS, selected_states, selected_receipts, strict=True):

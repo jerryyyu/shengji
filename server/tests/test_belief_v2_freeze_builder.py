@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import subprocess
 from dataclasses import replace
 
 import pytest
+import shengji.rl.belief_v2_freeze_builder as FREEZE_BUILDER
 
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_v2_execution_identity import (
@@ -136,7 +139,119 @@ def _caps():
         training_device_hours=128, training_wall_seconds=86_400,
         training_bytes=32 * 1024**3,
         training_host_memory_bytes=24 * 1024**3,
-        training_device_memory_bytes=12 * 1024**3)
+        training_device_memory_bytes=12 * 1024**3,
+        capture_next_unit_wall_estimate_nanoseconds=20_000_000_000,
+        reference_next_unit_wall_estimate_nanoseconds=5_000_000_000,
+        training_next_epoch_wall_estimate_nanoseconds=60_000_000_000,
+        deadline_safety_reserve_nanoseconds=1_000_000_000)
+
+
+def _deadline_estimate():
+    caps = _caps()
+    return {
+        "schema": "belief-v1-v2-deadline-estimate-receipt-v1",
+        "execution_git": "a" * 40,
+        "runtime_profile_sha256": __import__("hashlib").sha256(
+            canonical_json_bytes(_runtime().to_dict())).hexdigest(),
+        "capture_sample_count": 32,
+        "capture_p95_wall_nanoseconds": (
+            caps.capture_next_unit_wall_estimate_nanoseconds),
+        "reference_sample_count": 32,
+        "reference_p95_wall_nanoseconds": (
+            caps.reference_next_unit_wall_estimate_nanoseconds),
+        "training_epoch_sample_count": 2,
+        "training_epoch_p95_wall_nanoseconds": (
+            caps.training_next_epoch_wall_estimate_nanoseconds),
+        "safety_reserve_nanoseconds": (
+            caps.deadline_safety_reserve_nanoseconds),
+        "test_split_opened": False,
+        "pipeline_execution_authorized": False,
+        "retry_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
+def _v1_resource_failure():
+    return {
+        "schema": "belief-v1-b2-operator-stopped-resource-failure-v1",
+        "v1_execution_git": "1" * 40,
+        "v1_design_sha256": _sha("2"),
+        "v1_admission_sha256": _sha("3"),
+        "v1_source_review_commit": "4" * 40,
+        "termination_review_commit": "5" * 40,
+        "closeout_ledger_commit": "6" * 40,
+        "closeout_ledger_sha256": _sha("7"),
+        "termination_route": "operator-stopped-after-frozen-cap",
+        "frozen_training_wall_seconds": 28_800,
+        "observed_training_wall_nanoseconds_at_stop": 39_000_000_000_000,
+        "candidate_exit_status": 143, "control_exit_status": 143,
+        "supervisor_log_sha256": _sha("8"),
+        "training_partial_slots": [
+            "candidate.partial", "hard-geometry-label-permutation.partial"],
+        "training_final_artifacts_absent": True,
+        "calibration_artifacts_absent": True,
+        "test_split_artifacts_absent": True,
+        "terminal_artifacts_absent": True,
+        "test_split_decision_open_count": 0,
+        "admission_spent": True, "retry_authorized": False,
+        "model_result_exists": False, "calibration_result_exists": False,
+        "strength_result_exists": False,
+        "sampler_implementation_authorized": False,
+        "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
+def _git(repo, *args, env=None):
+    return subprocess.run(
+        ("git", *args), cwd=repo, env=env, check=True,
+        capture_output=True, text=True).stdout.strip()
+
+
+def test_resource_failure_receipt_authenticates_exact_canonical_ledger(
+        tmp_path, monkeypatch):
+    repo = (tmp_path / "repo").resolve()
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    ledger = repo / "HANDOFF_REVIEW.md"
+    ledger.write_text("base\n")
+    _git(repo, "add", "HANDOFF_REVIEW.md")
+    _git(repo, "-c", "user.name=Claude", "-c",
+         "user.email=noreply@anthropic.com", "commit", "-qm", "source")
+    source = _git(repo, "rev-parse", "HEAD")
+    execution_git = "1" * 40
+    with ledger.open("a") as handle:
+        handle.write(f"SAFE_TO_TERMINATE exact {execution_git}\n")
+    _git(repo, "add", "HANDOFF_REVIEW.md")
+    _git(repo, "-c", "user.name=Claude", "-c",
+         "user.email=noreply@anthropic.com", "commit", "-qm",
+         "termination\n\nClaude-Session: https://claude.ai/code/session_test")
+    termination = _git(repo, "rev-parse", "HEAD")
+    with ledger.open("a") as handle:
+        handle.write("operator-stopped-after-frozen-cap\n")
+    _git(repo, "add", "HANDOFF_REVIEW.md")
+    _git(repo, "-c", "user.name=Codex", "-c",
+         "user.email=codex@example.com", "commit", "-qm", "closeout")
+    closeout = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "update-ref", "refs/remotes/origin/main", closeout)
+    monkeypatch.setattr(
+        FREEZE_BUILDER, "_canonical_remote_tip", lambda value: closeout)
+    receipt = {
+        **_v1_resource_failure(),
+        "v1_execution_git": execution_git,
+        "v1_source_review_commit": source,
+        "termination_review_commit": termination,
+        "closeout_ledger_commit": closeout,
+        "closeout_ledger_sha256": hashlib.sha256(
+            ledger.read_bytes()).hexdigest(),
+    }
+    FREEZE_BUILDER._authenticate_v1_resource_failure_receipt(repo, receipt)
+    with pytest.raises(BeliefV2FreezeBuilderError,
+                       match="canonical ledger binding"):
+        FREEZE_BUILDER._authenticate_v1_resource_failure_receipt(
+            repo, {**receipt, "closeout_ledger_sha256": _sha("0")})
 
 
 def _patch_receipt_boundaries(monkeypatch):
@@ -161,18 +276,27 @@ def _patch_receipt_boundaries(monkeypatch):
     monkeypatch.setattr(
         "shengji.rl.belief_v2_freeze_builder.seed_registry_bytes",
         lambda registry, scan: canonical_json_bytes(registry))
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_freeze_builder."
+        "_authenticate_v1_resource_failure_receipt",
+        lambda repo, receipt: None)
 
 
 def _build(tmp_path, monkeypatch, *, decision=None, rationale=None,
-           scan_git="a" * 40):
+           resource_failure=None, scan_git="a" * 40):
     _patch_receipt_boundaries(monkeypatch)
     inventory = _inventory()
     split = build_h0_group_split(inventory)
-    report = _v1_report() if decision is None else _v1_report(decision)
+    report = (_v1_report() if decision is None else _v1_report(decision)) \
+        if resource_failure is None else None
     return build_execution_freeze_from_receipts(
         repo=tmp_path.resolve(), expected_git="a" * 40,
         source_review_commit="b" * 40,
-        v1_terminal_report_raw=canonical_json_bytes(report),
+        v1_terminal_report_raw=(
+            None if report is None else canonical_json_bytes(report)),
+        v1_resource_failure_receipt_raw=(
+            None if resource_failure is None
+            else canonical_json_bytes(resource_failure)),
         v2_reentry_rationale_raw=rationale,
         inventory_raw=inventory_bytes(inventory),
         group_split_raw=group_split_bytes(split, inventory=inventory),
@@ -181,6 +305,7 @@ def _build(tmp_path, monkeypatch, *, decision=None, rationale=None,
         seed_registry_raw=canonical_json_bytes({
             "candidate_report_sha256": _sha("6")}),
         training_candidate_device="mps", resource_caps=_caps(),
+        deadline_estimate_raw=canonical_json_bytes(_deadline_estimate()),
         evidence_root=(tmp_path / "evidence").resolve())
 
 
@@ -201,7 +326,7 @@ def test_builder_derives_one_closed_gpu_capable_freeze(monkeypatch, tmp_path):
     assert freeze.resource_caps == _caps()
 
 
-def test_builder_derives_named_select_none_reentry_and_refuses_v1_failure(
+def test_builder_derives_named_select_none_and_exact_resource_failure_reentry(
         monkeypatch, tmp_path):
     freeze = _build(
         tmp_path, monkeypatch,
@@ -210,11 +335,21 @@ def test_builder_derives_named_select_none_reentry_and_refuses_v1_failure(
     assert freeze.v1_terminal_route \
         == "v1-select-none-with-named-domain-shift-reentry"
     assert freeze.v2_reentry_rationale_sha256 is not None
+    failure = _build(
+        tmp_path, monkeypatch, resource_failure=_v1_resource_failure(),
+        rationale=b"resource defect repaired only in new V2 freeze\n")
+    assert failure.v1_terminal_route \
+        == "RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"
+    assert failure.v1_terminal_result_sha256 is None
+    assert failure.v1_resource_receipt_sha256 is None
+    assert failure.v1_resource_failure_receipt_sha256 is not None
+    assert failure.v2_reentry_rationale_sha256 is not None
+    forged = {**_v1_resource_failure(), "test_split_decision_open_count": 1}
     with pytest.raises(BeliefV2FreezeBuilderError,
-                       match="cannot freeze after a V1 refusal"):
+                       match="resource failure receipt drift"):
         _build(
-            tmp_path, monkeypatch,
-            decision="REFUSE_INCOMPLETE_COHORT_OR_ARTIFACT")
+            tmp_path, monkeypatch, resource_failure=forged,
+            rationale=b"resource defect repaired only in new V2 freeze\n")
 
 
 def test_builder_refuses_stale_seed_registry_or_cpu_candidate(
@@ -229,6 +364,7 @@ def test_builder_refuses_stale_seed_registry_or_cpu_candidate(
             repo=tmp_path.resolve(), expected_git="a" * 40,
             source_review_commit="b" * 40,
             v1_terminal_report_raw=canonical_json_bytes(_v1_report()),
+            v1_resource_failure_receipt_raw=None,
             v2_reentry_rationale_raw=None,
             inventory_raw=inventory_bytes(_inventory()),
             group_split_raw=group_split_bytes(
@@ -238,9 +374,45 @@ def test_builder_refuses_stale_seed_registry_or_cpu_candidate(
             seed_registry_raw=canonical_json_bytes({
                 "candidate_report_sha256": _sha("6")}),
             training_candidate_device="cpu",
+            deadline_estimate_raw=canonical_json_bytes(
+                _deadline_estimate()),
             resource_caps=replace(
                 freeze.resource_caps, training_device_hours=64),
             evidence_root=(tmp_path / "other").resolve())
+
+
+def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
+        monkeypatch, tmp_path):
+    _patch_receipt_boundaries(monkeypatch)
+    inventory = _inventory()
+    split = build_h0_group_split(inventory)
+
+    def build_with(receipt):
+        return build_execution_freeze_from_receipts(
+            repo=tmp_path.resolve(), expected_git="a" * 40,
+            source_review_commit="b" * 40,
+            v1_terminal_report_raw=canonical_json_bytes(_v1_report()),
+            v1_resource_failure_receipt_raw=None,
+            v2_reentry_rationale_raw=None,
+            inventory_raw=inventory_bytes(inventory),
+            group_split_raw=group_split_bytes(split, inventory=inventory),
+            preflight_raw=canonical_json_bytes({"runtime": {"host": "x"}}),
+            seed_scan_raw=canonical_json_bytes({"git_commit": "a" * 40}),
+            seed_registry_raw=canonical_json_bytes({
+                "candidate_report_sha256": _sha("6")}),
+            training_candidate_device="mps",
+            deadline_estimate_raw=canonical_json_bytes(receipt),
+            resource_caps=_caps(),
+            evidence_root=(tmp_path / "deadline-evidence").resolve())
+
+    for receipt in (
+            {**_deadline_estimate(), "runtime_profile_sha256": _sha("0")},
+            {**_deadline_estimate(), "capture_sample_count": 31},
+            {**_deadline_estimate(),
+             "training_epoch_p95_wall_nanoseconds": 59_000_000_000}):
+        with pytest.raises(BeliefV2FreezeBuilderError,
+                           match="deadline estimate"):
+            build_with(receipt)
 
 
 def test_resource_caps_require_canonical_positive_integer_schema():

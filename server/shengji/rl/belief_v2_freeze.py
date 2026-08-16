@@ -47,9 +47,9 @@ from .belief_v2_device_qualification import (
 )
 
 
-FREEZE_SCHEMA = "belief-v1-v2-offline-execution-freeze-v1"
+FREEZE_SCHEMA = "belief-v1-v2-offline-execution-freeze-v2"
 COHORT_SCHEMA = "belief-v1-v2-training-cohort-plan-v1"
-CAP_SCHEMA = "belief-v1-v2-resource-caps-v1"
+CAP_SCHEMA = "belief-v1-v2-resource-caps-v2"
 REVIEW_SCHEMA = "belief-v1-v2-offline-execution-review-v1"
 ADMISSION_SCHEMA = "belief-v1-v2-offline-pipeline-admission-v1"
 CONSUMPTION_SCHEMA = "belief-v1-v2-offline-consumption-tombstone-v1"
@@ -64,6 +64,7 @@ RUN_ID = "belief-v1-v2-all-ranks-human-offline-v1"
 V1_ROUTES = (
     "v1-pass-to-b3",
     "v1-select-none-with-named-domain-shift-reentry",
+    "RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW",
 )
 COHORT_KINDS = (
     "synthetic-primary",
@@ -203,6 +204,10 @@ class V2ResourceCapsV1:
     training_bytes: int
     training_host_memory_bytes: int
     training_device_memory_bytes: int
+    capture_next_unit_wall_estimate_nanoseconds: int
+    reference_next_unit_wall_estimate_nanoseconds: int
+    training_next_epoch_wall_estimate_nanoseconds: int
+    deadline_safety_reserve_nanoseconds: int
     schema: str = CAP_SCHEMA
 
     def to_dict(self) -> dict[str, Any]:
@@ -219,6 +224,14 @@ class V2ResourceCapsV1:
             "training_bytes": self.training_bytes,
             "training_host_memory_bytes": self.training_host_memory_bytes,
             "training_device_memory_bytes": self.training_device_memory_bytes,
+            "capture_next_unit_wall_estimate_nanoseconds": (
+                self.capture_next_unit_wall_estimate_nanoseconds),
+            "reference_next_unit_wall_estimate_nanoseconds": (
+                self.reference_next_unit_wall_estimate_nanoseconds),
+            "training_next_epoch_wall_estimate_nanoseconds": (
+                self.training_next_epoch_wall_estimate_nanoseconds),
+            "deadline_safety_reserve_nanoseconds": (
+                self.deadline_safety_reserve_nanoseconds),
         }
 
 
@@ -230,7 +243,20 @@ def _validate_caps(caps: V2ResourceCapsV1) -> None:
                 caps.reference_wall_seconds, caps.reference_bytes,
                 caps.training_device_hours, caps.training_wall_seconds,
                 caps.training_bytes, caps.training_host_memory_bytes,
-                caps.training_device_memory_bytes)):
+                caps.training_device_memory_bytes,
+                caps.capture_next_unit_wall_estimate_nanoseconds,
+                caps.reference_next_unit_wall_estimate_nanoseconds,
+                caps.training_next_epoch_wall_estimate_nanoseconds,
+                caps.deadline_safety_reserve_nanoseconds)) \
+            or caps.capture_next_unit_wall_estimate_nanoseconds \
+            + caps.deadline_safety_reserve_nanoseconds \
+            >= caps.capture_wall_seconds * 1_000_000_000 \
+            or caps.reference_next_unit_wall_estimate_nanoseconds \
+            + caps.deadline_safety_reserve_nanoseconds \
+            >= caps.reference_wall_seconds * 1_000_000_000 \
+            or caps.training_next_epoch_wall_estimate_nanoseconds \
+            + caps.deadline_safety_reserve_nanoseconds \
+            >= caps.training_wall_seconds * 1_000_000_000:
         raise BeliefV2FreezeError("V2 resource cap identity drift")
 
 
@@ -242,8 +268,9 @@ class V2ExecutionFreezeV1:
     runtime: V2RuntimeProfileV1
     source_review_commit: str
     v1_terminal_route: str
-    v1_terminal_result_sha256: str
-    v1_resource_receipt_sha256: str
+    v1_terminal_result_sha256: str | None
+    v1_resource_receipt_sha256: str | None
+    v1_resource_failure_receipt_sha256: str | None
     v2_reentry_rationale_sha256: str | None
     h0_inventory_sha256: str
     h0_source_manifest_sha256: str
@@ -260,6 +287,7 @@ class V2ExecutionFreezeV1:
     human_test_eligible_decision_count: int
     preflight_result_sha256: str
     preflight_runtime_sha256: str
+    deadline_estimate_receipt_sha256: str
     seed_registry_sha256: str
     seed_candidate_report_sha256: str
     training_candidate_device: str
@@ -286,6 +314,8 @@ class V2ExecutionFreezeV1:
                 "terminal_route": self.v1_terminal_route,
                 "terminal_result_sha256": self.v1_terminal_result_sha256,
                 "resource_receipt_sha256": self.v1_resource_receipt_sha256,
+                "resource_failure_receipt_sha256": (
+                    self.v1_resource_failure_receipt_sha256),
                 "v2_reentry_rationale_sha256": (
                     self.v2_reentry_rationale_sha256),
             },
@@ -317,6 +347,8 @@ class V2ExecutionFreezeV1:
             "capacity": {
                 "preflight_result_sha256": self.preflight_result_sha256,
                 "preflight_runtime_sha256": self.preflight_runtime_sha256,
+                "deadline_estimate_receipt_sha256": (
+                    self.deadline_estimate_receipt_sha256),
             },
             "seed_registry": {
                 "registry_sha256": self.seed_registry_sha256,
@@ -389,14 +421,13 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
             or not _is_git_sha(freeze.source_review_commit) \
             or any(not _is_sha256(value) for value in (
                 freeze.source_manifest_sha256,
-                freeze.v1_terminal_result_sha256,
-                freeze.v1_resource_receipt_sha256,
                 freeze.h0_inventory_sha256,
                 freeze.h0_source_manifest_sha256,
                 freeze.h0_source_digest_population_sha256,
                 freeze.human_group_split_sha256,
                 freeze.preflight_result_sha256,
                 freeze.preflight_runtime_sha256,
+                freeze.deadline_estimate_receipt_sha256,
                 freeze.seed_registry_sha256,
                 freeze.seed_candidate_report_sha256,
                 freeze.device_qualification_protocol_sha256)) \
@@ -470,11 +501,25 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
             freeze.execution_git, freeze.source_bindings):
         raise BeliefV2FreezeError("V2 source manifest digest drift")
     if freeze.v1_terminal_route == "v1-pass-to-b3":
-        if freeze.v2_reentry_rationale_sha256 is not None:
+        if freeze.v2_reentry_rationale_sha256 is not None \
+                or not _is_sha256(freeze.v1_terminal_result_sha256) \
+                or not _is_sha256(freeze.v1_resource_receipt_sha256) \
+                or freeze.v1_resource_failure_receipt_sha256 is not None:
             raise BeliefV2FreezeError("V2 V1-pass route has reentry drift")
-    elif not _is_sha256(freeze.v2_reentry_rationale_sha256):
+    elif freeze.v1_terminal_route \
+            == "v1-select-none-with-named-domain-shift-reentry":
+        if not _is_sha256(freeze.v2_reentry_rationale_sha256) \
+                or not _is_sha256(freeze.v1_terminal_result_sha256) \
+                or not _is_sha256(freeze.v1_resource_receipt_sha256) \
+                or freeze.v1_resource_failure_receipt_sha256 is not None:
+            raise BeliefV2FreezeError(
+                "V2 SELECT_NONE route lacks named reentry evidence")
+    elif freeze.v1_terminal_result_sha256 is not None \
+            or freeze.v1_resource_receipt_sha256 is not None \
+            or not _is_sha256(freeze.v1_resource_failure_receipt_sha256) \
+            or not _is_sha256(freeze.v2_reentry_rationale_sha256):
         raise BeliefV2FreezeError(
-            "V2 SELECT_NONE route lacks named reentry evidence")
+            "V2 resource-failure route identity drift")
     _validate_caps(freeze.resource_caps)
 
     ids = [row.cohort_id for row in freeze.cohorts]
@@ -648,7 +693,11 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
             "reference_wall_seconds", "reference_bytes",
             "training_device_hours", "training_wall_seconds",
             "training_bytes", "training_host_memory_bytes",
-            "training_device_memory_bytes"}:
+            "training_device_memory_bytes",
+            "capture_next_unit_wall_estimate_nanoseconds",
+            "reference_next_unit_wall_estimate_nanoseconds",
+            "training_next_epoch_wall_estimate_nanoseconds",
+            "deadline_safety_reserve_nanoseconds"}:
         raise BeliefV2FreezeError("V2 resource cap field drift")
     route = payload["v1_route"]
     human = payload["human_inventory"]
@@ -679,6 +728,8 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
             v1_terminal_route=route["terminal_route"],
             v1_terminal_result_sha256=route["terminal_result_sha256"],
             v1_resource_receipt_sha256=route["resource_receipt_sha256"],
+            v1_resource_failure_receipt_sha256=(
+                route["resource_failure_receipt_sha256"]),
             v2_reentry_rationale_sha256=(
                 route["v2_reentry_rationale_sha256"]),
             h0_inventory_sha256=human["inventory_sha256"],
@@ -700,6 +751,8 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
                 human["test_eligible_decision_count"]),
             preflight_result_sha256=capacity["preflight_result_sha256"],
             preflight_runtime_sha256=capacity["preflight_runtime_sha256"],
+            deadline_estimate_receipt_sha256=(
+                capacity["deadline_estimate_receipt_sha256"]),
             seed_registry_sha256=registry["registry_sha256"],
             seed_candidate_report_sha256=(
                 registry["candidate_report_sha256"]),
@@ -748,6 +801,13 @@ def expected_execution_review_claim(
         "source_manifest_sha256": freeze.source_manifest_sha256,
         "runtime_profile_sha256": _sha256(canonical_json_bytes(
             freeze.runtime.to_dict())),
+        "v1_terminal_route": freeze.v1_terminal_route,
+        "v1_resource_failure_receipt_sha256": (
+            freeze.v1_resource_failure_receipt_sha256),
+        "deadline_estimate_receipt_sha256": (
+            freeze.deadline_estimate_receipt_sha256),
+        "resource_caps_sha256": _sha256(canonical_json_bytes(
+            freeze.resource_caps.to_dict())),
         "seed_registry_sha256": freeze.seed_registry_sha256,
         "device_qualification_protocol_sha256": (
             freeze.device_qualification_protocol_sha256),

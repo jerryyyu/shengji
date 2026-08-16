@@ -43,6 +43,13 @@ from .belief_v2_execution_identity import (
     BeliefV2ExecutionIdentityError,
     validate_live_execution,
 )
+from .belief_v2_deadline import (
+    BeliefV2DeadlineError,
+    deadline_refusal_paths,
+    publish_deadline_refusal,
+    reopen_deadline_refusal,
+    stage_deadline,
+)
 from .belief_v2_freeze import (
     V2ExecutionFreezeV1,
     V2PipelineAdmissionV1,
@@ -117,6 +124,30 @@ def _stage_gate(
             or not root.is_absolute() or root.is_symlink() \
             or not root.is_dir():
         raise BeliefV2ControllerError("V2 evidence root drift")
+    try:
+        refusals = deadline_refusal_paths(root)
+        for path in refusals:
+            reopen_deadline_refusal(
+                path, freeze_sha256=freeze.sha256(),
+                admission_sha256=admission.sha256())
+    except ValueError as exc:
+        raise BeliefV2ControllerError(
+            "V2 deadline refusal evidence drift") from exc
+    if refusals:
+        raise BeliefV2ControllerError(
+            "V2 stage blocked by a prior deadline refusal")
+
+
+def _deadline_check(
+        partial: Path, guard, *, phase: str, next_unit_index: int) -> None:
+    try:
+        guard.check(
+            phase=phase, next_unit_index=next_unit_index,
+            observed_monotonic_nanoseconds=time.monotonic_ns())
+    except BeliefV2DeadlineError as exc:
+        publish_deadline_refusal(partial, exc.refusal)
+        raise BeliefV2ControllerError(
+            "V2 stage deadline exhausted and recorded") from exc
 
 
 def _coordinate_stem(coordinate: V2RoundCoordinate) -> str:
@@ -273,8 +304,14 @@ def run_capture_lane(
     public.mkdir(mode=0o700)
     started = time.monotonic_ns()
     cpu_started = time.process_time_ns()
+    deadline = stage_deadline(
+        freeze, admission, stage="capture", slot=f"lane-{lane:02d}",
+        started_monotonic_nanoseconds=started)
     rows = []
-    for coordinate in coordinates:
+    for unit_index, coordinate in enumerate(coordinates):
+        _deadline_check(
+            partial, deadline, phase="before-unit",
+            next_unit_index=unit_index)
         captured = capture_v2_champion_round(coordinate)
         private_artifacts = captured_round_artifacts(captured)
         private_raw = capture_bundle_bytes(private_artifacts)
@@ -315,6 +352,12 @@ def run_capture_lane(
                 binding["privileged_target_stream_sha256"]),
             "decision_count": binding["decision_count"],
         })
+        _deadline_check(
+            partial, deadline, phase="after-unit",
+            next_unit_index=unit_index + 1)
+    _deadline_check(
+        partial, deadline, phase="before-seal",
+        next_unit_index=len(coordinates))
     finished = time.monotonic_ns()
     resources = _resource_row(
         freeze, started=started, finished=finished,
@@ -736,8 +779,14 @@ def run_reference_lane(
     partial.mkdir(mode=0o700)
     started = time.monotonic_ns()
     cpu_started = time.process_time_ns()
+    deadline = stage_deadline(
+        freeze, admission, stage="reference", slot=f"lane-{lane:02d}",
+        started_monotonic_nanoseconds=started)
     rows = []
-    for coordinate, replicate in jobs:
+    for unit_index, (coordinate, replicate) in enumerate(jobs):
+        _deadline_check(
+            partial, deadline, phase="before-unit",
+            next_unit_index=unit_index)
         capture_row = capture_rows[coordinate.round_seed]
         actor_raw = stable_read_bytes(
             capture_directory / "actor-only"
@@ -775,6 +824,12 @@ def run_reference_lane(
             "accepted_world_count": manifest["accepted_world_count"],
             "attempt_count": manifest["attempt_count"],
         })
+        _deadline_check(
+            partial, deadline, phase="after-unit",
+            next_unit_index=unit_index + 1)
+    _deadline_check(
+        partial, deadline, phase="before-seal",
+        next_unit_index=len(jobs))
     finished = time.monotonic_ns()
     resources = _resource_row(
         freeze, started=started, finished=finished,

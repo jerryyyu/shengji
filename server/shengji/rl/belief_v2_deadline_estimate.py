@@ -4,7 +4,8 @@ The execution freeze needs next-unit estimates before it may create a corpus.
 This module derives them from the reviewed 416-round capture preflight and a
 rank-diverse, out-of-population 32-round probe.  The probe measures one full
 REF-C round per coordinate and two complete passes over 32 one-round training
-batches.  It projects each training pass to the exact V2 train-round count;
+batches, including fresh example reconstruction and collation for each pass.
+It projects each training pass to the exact V2 train-round count;
 one-round batches deliberately upper-bound the production packer, which may
 combine round groups up to its decision cap.
 
@@ -170,6 +171,7 @@ def deadline_probe_schedule_bytes() -> bytes:
         "training_repeat_count": DEADLINE_TRAINING_REPEAT_COUNT,
         "training_member_seeds": list(COHORT_SEEDS),
         "one_round_per_probe_batch": True,
+        "fresh_example_reconstruction_per_pass": True,
         "training_projection": {
             "train_round_count": dict(V2_SPLIT_COUNTS)["train"],
             "margin_numerator": TRAINING_PROJECTION_MARGIN_NUMERATOR,
@@ -248,7 +250,8 @@ def _measure_coordinate(
 
 
 def _training_probe(
-        batches: tuple[Any, ...], *, device: str, repeat: int) \
+        training_pairs: tuple[tuple[Any, ...], ...], *,
+        device: str, repeat: int) \
         -> tuple[int, str, tuple[str, ...], tuple[int, ...]]:
     if type(repeat) is not int or not 0 <= repeat < DEADLINE_TRAINING_REPEAT_COUNT:
         raise BeliefV2DeadlineEstimateError(
@@ -256,12 +259,19 @@ def _training_probe(
     models = tuple(new_from_scratch_model(seed) for seed in COHORT_SEEDS)
     move_models_to_device(models, device=device)
     optimizers = tuple(new_v2_optimizer(model) for model in models)
+
+    def batches():
+        for pairs in training_pairs:
+            examples = tuple(build_synthetic_training_example(pair)
+                             for pair in pairs)
+            yield collate_v2_training_examples(examples)
+
     synchronize_training_device(device)
     started = time.perf_counter_ns()
     receipts = train_v2_cohort_epoch_stream(
-        models, optimizers, iter(batches), epoch=1, device=device)
+        models, optimizers, batches(), epoch=1, device=device)
     calibration = evaluate_v2_calibration_cohort_stream_nanonats(
-        models, iter(batches), device=device)
+        models, batches(), device=device)
     synchronize_training_device(device)
     finished = time.perf_counter_ns()
     state_sha256s = tuple(portable_model_state_sha256(model)
@@ -552,16 +562,11 @@ def run_deadline_estimate_preflight(
     if tuple(row.coordinate for row in measurements) != coordinates:
         raise BeliefV2DeadlineEstimateError(
             "V2 deadline probe worker order drift")
-    batches = []
-    for row in measurements:
-        examples = tuple(build_synthetic_training_example(pair)
-                         for pair in row.training_pairs)
-        batches.append(collate_v2_training_examples(examples))
-    batch_tuple = tuple(batches)
+    training_pairs = tuple(row.training_pairs for row in measurements)
     # Warm the exact kernel and allocator before the two retained probes.
-    _training_probe(batch_tuple, device=training_device, repeat=0)
+    _training_probe(training_pairs, device=training_device, repeat=0)
     retained = tuple(_training_probe(
-        batch_tuple, device=training_device, repeat=repeat)
+        training_pairs, device=training_device, repeat=repeat)
         for repeat in range(DEADLINE_TRAINING_REPEAT_COUNT))
     if retained[0][1:] != retained[1][1:]:
         raise BeliefV2DeadlineEstimateError(
@@ -585,5 +590,5 @@ def run_deadline_estimate_preflight(
         training_probe_wall_nanoseconds=tuple(row[0] for row in retained),
         training_probe_receipt_sha256s=tuple(row[1] for row in retained))
     # Drop the only in-memory privileged and model artifacts before return.
-    del measurements, batches, batch_tuple, retained
+    del measurements, training_pairs, retained
     return result

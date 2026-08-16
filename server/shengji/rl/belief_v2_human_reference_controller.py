@@ -29,6 +29,7 @@ from .belief_v2_human_corpus import reopen_human_actor_row
 from .belief_v2_human_reference import (
     capture_human_ref_c_source_group,
 )
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_scoring import v2_scoring_actor
 
 
@@ -64,7 +65,7 @@ def _resource_row(
     if type(started) is not int or type(finished) is not int \
             or not 0 <= started < finished \
             or type(cpu_nanoseconds) is not int or cpu_nanoseconds < 0 \
-            or type(artifact_bytes) is not int or artifact_bytes <= 0 \
+            or type(artifact_bytes) is not int or artifact_bytes < 0 \
             or cpu_nanoseconds > caps.reference_core_hours * NS_PER_HOUR \
             or finished - started \
             > caps.reference_wall_seconds * NS_PER_SECOND \
@@ -120,7 +121,8 @@ def run_human_reference_group(
         admission: V2PipelineAdmissionV1, *, repo: Path,
         source_path: Path, inventory: dict[str, Any],
         group_split: dict[str, Any], replicate: str,
-        review_marker: bytes) -> dict[str, Any]:
+        review_marker: bytes,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Replay and publish one calibration/test human REF-C group."""
     _stage_gate(
         root=root, repo=repo, freeze=freeze, admission=admission,
@@ -140,6 +142,12 @@ def run_human_reference_group(
     capture_directory = root / "human-capture" / f"group-{group_digest}"
     capture = reopen_human_group_manifest(
         capture_directory, freeze=freeze, admission=admission)
+    total = capture["human_decision_count"]
+    progress_total = max(1, total)
+    if progress is not None:
+        progress(0, progress_total, (
+            "replay-human-reference" if total
+            else "replay-human-reference-group"))
     started = time.monotonic_ns()
     cpu_started = time.process_time_ns()
     try:
@@ -175,6 +183,9 @@ def run_human_reference_group(
             "V2 human reference slot is occupied")
     partial.mkdir(mode=0o700)
     rows = []
+    if len(result.decisions) != total:
+        raise BeliefV2HumanReferenceControllerError(
+            "V2 human reference progress population drift")
     for ordinal, (capture_row, decision) in enumerate(zip(
             capture["rows"], result.decisions, strict=True)):
         raw = reference_external_actor_batch_bundle_bytes(decision.batch)
@@ -197,6 +208,8 @@ def run_human_reference_group(
             "accepted_world_count": len(decision.batch.worlds),
             "attempt_count": decision.batch.attempts,
         })
+        if progress is not None:
+            progress(ordinal + 1, total, "publish-human-reference")
     finished = time.monotonic_ns()
     resources = _resource_row(
         freeze, started=started, finished=finished,
@@ -218,6 +231,8 @@ def run_human_reference_group(
     if reopened != manifest:
         raise BeliefV2HumanReferenceControllerError(
             "V2 human reference post-publish drift")
+    if progress is not None and total == 0:
+        progress(1, 1, "human-reference-group-complete")
     return reopened
 
 
@@ -270,7 +285,7 @@ def reopen_human_reference_group(
             or payload["split"] not in {"calibration", "test"} \
             or type(payload["rows"]) is not list \
             or payload["decision_count"] != len(payload["rows"]) \
-            or payload["decision_count"] <= 0 \
+            or payload["decision_count"] < 0 \
             or payload["contains_sampled_hidden_worlds"] is not True \
             or payload["contains_privileged_training_targets"] is not False \
             or any(payload[key] is not False for key in (

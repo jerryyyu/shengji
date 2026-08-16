@@ -9,6 +9,7 @@ writer, epoch selection, test opening, policy, sampler, or execution surface.
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import math
 from dataclasses import dataclass
@@ -449,7 +450,8 @@ def _train_cohort_epoch_stream(
         models: tuple[HistoryOwnershipModelV1, ...],
         optimizers: tuple[torch.optim.Optimizer, ...],
         batches: Iterable[BeliefTrainingBatchV1], *, epoch: int,
-        state_sha256: Callable[[HistoryOwnershipModelV1], str]) \
+        state_sha256: Callable[[HistoryOwnershipModelV1], str],
+        member_workers: int = 1) \
         -> tuple[EpochTrainingReceiptV1, ...]:
     """Shared cohort mechanics with an exact device-aware state binding."""
     if type(models) is not tuple or len(models) != len(COHORT_SEEDS) \
@@ -458,7 +460,9 @@ def _train_cohort_epoch_stream(
             or type(optimizers) is not tuple \
             or len(optimizers) != len(models) \
             or len({id(model) for model in models}) != len(models) \
-            or type(epoch) is not int or epoch <= 0:
+            or type(epoch) is not int or epoch <= 0 \
+            or type(member_workers) is not int \
+            or member_workers not in {1, len(models) // 2}:
         raise BeliefTrainerError("training cohort population drift")
     for model, optimizer in zip(models, optimizers, strict=True):
         _validate_optimizer(model, optimizer)
@@ -477,55 +481,71 @@ def _train_cohort_epoch_stream(
     identity: tuple[str, str, str, str] | None = None
     seen: set[str] = set()
     scheduled_batches: list[tuple[str, ...]] = []
-    for batch in iterator:
-        if type(batch) is not BeliefTrainingBatchV1:
-            raise BeliefTrainerError(
-                "training epoch batch population drift")
-        current = (batch.schema, batch.history_transform,
-                   batch.label_transform, batch.control_kind)
-        if identity is None:
-            identity = current
-        elif current != identity:
-            raise BeliefTrainerError(
-                "training epoch mixed candidate/control batch")
-        if batch.control_kind == HISTORY_ABLATION_CONTROL:
-            raise BeliefTrainerError(
-                "history chronology ablation is inference-only")
-        if batch.split != "train" \
-                or batch.privileged_targets_consumed is not True \
-                or batch.runtime_artifact is not False:
-            raise BeliefTrainerError(
-                "training epoch batch authority/split drift")
-        if any(key in seen for key in batch.decision_keys) \
-                or len(batch.decision_keys) != len(set(batch.decision_keys)):
-            raise BeliefTrainerError("training epoch duplicate decision")
-        seen.update(batch.decision_keys)
-        scheduled_batches.append(batch.decision_keys)
-        active = int(batch.active_mask.sum().item())
-        if active <= 0:
-            raise BeliefTrainerError("training batch has no active labels")
-        for index, (model, optimizer) in enumerate(zip(
-                models, optimizers, strict=True)):
-            optimizer.zero_grad(set_to_none=True)
-            try:
-                loss = training_batch_loss(model, batch)
-            except (BeliefTrainingError, ValueError) as exc:
+    executor = (concurrent.futures.ThreadPoolExecutor(
+        max_workers=member_workers, thread_name_prefix="belief-v2-member")
+        if member_workers > 1 else None)
+
+    def step(item, batch, active):
+        index, (model, optimizer) = item
+        optimizer.zero_grad(set_to_none=True)
+        try:
+            loss = training_batch_loss(model, batch)
+        except (BeliefTrainingError, ValueError) as exc:
+            raise BeliefTrainerError("training batch loss refused") from exc
+        if loss.ndim != 0 or not bool(torch.isfinite(loss)):
+            raise BeliefTrainerError("training loss is nonfinite")
+        loss.backward()
+        norm = torch.nn.utils.clip_grad_norm_(
+            model.parameters(), float(TRAIN_GRADIENT_NORM_CAP),
+            error_if_nonfinite=True)
+        if not bool(torch.isfinite(norm)):
+            raise BeliefTrainerError("training gradient norm is nonfinite")
+        optimizer.step()
+        return index, float(loss.detach()) * active
+
+    try:
+        for batch in iterator:
+            if type(batch) is not BeliefTrainingBatchV1:
                 raise BeliefTrainerError(
-                    "training batch loss refused") from exc
-            if loss.ndim != 0 or not bool(torch.isfinite(loss)):
-                raise BeliefTrainerError("training loss is nonfinite")
-            loss.backward()
-            norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), float(TRAIN_GRADIENT_NORM_CAP),
-                error_if_nonfinite=True)
-            if not bool(torch.isfinite(norm)):
+                    "training epoch batch population drift")
+            current = (batch.schema, batch.history_transform,
+                       batch.label_transform, batch.control_kind)
+            if identity is None:
+                identity = current
+            elif current != identity:
                 raise BeliefTrainerError(
-                    "training gradient norm is nonfinite")
-            optimizer.step()
-            weighted_losses[index] += float(loss.detach()) * active
-        active_total += active
-        batch_count += 1
-        decision_count += len(batch.decision_keys)
+                    "training epoch mixed candidate/control batch")
+            if batch.control_kind == HISTORY_ABLATION_CONTROL:
+                raise BeliefTrainerError(
+                    "history chronology ablation is inference-only")
+            if batch.split != "train" \
+                    or batch.privileged_targets_consumed is not True \
+                    or batch.runtime_artifact is not False:
+                raise BeliefTrainerError(
+                    "training epoch batch authority/split drift")
+            if any(key in seen for key in batch.decision_keys) \
+                    or len(batch.decision_keys) \
+                    != len(set(batch.decision_keys)):
+                raise BeliefTrainerError("training epoch duplicate decision")
+            seen.update(batch.decision_keys)
+            scheduled_batches.append(batch.decision_keys)
+            active = int(batch.active_mask.sum().item())
+            if active <= 0:
+                raise BeliefTrainerError("training batch has no active labels")
+            members = tuple(enumerate(zip(
+                models, optimizers, strict=True)))
+            contributions = (tuple(executor.map(
+                lambda item: step(item, batch, active), members))
+                if executor is not None
+                else tuple(step(item, batch, active) for item in members))
+            for index, weighted in contributions:
+                weighted_losses[index] += weighted
+            active_total += active
+            batch_count += 1
+            decision_count += len(batch.decision_keys)
+    finally:
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
     if batch_count == 0 or identity is None or active_total <= 0:
         raise BeliefTrainerError("training epoch batch population drift")
     population_sha, schedule_sha = _epoch_input_digests(
@@ -566,13 +586,16 @@ def train_cohort_epoch_stream(
 def _evaluate_calibration_cohort_stream_nanonats(
         models: tuple[HistoryOwnershipModelV1, ...],
         batches: Iterable[BeliefTrainingBatchV1], *,
-        state_sha256: Callable[[HistoryOwnershipModelV1], str]) \
+        state_sha256: Callable[[HistoryOwnershipModelV1], str],
+        member_workers: int = 1) \
         -> tuple[int, ...]:
     """Shared cohort evaluation with an exact device-aware state binding."""
     if type(models) is not tuple or len(models) != len(COHORT_SEEDS) \
             or any(type(model) is not HistoryOwnershipModelV1
                    for model in models) \
-            or len({id(model) for model in models}) != len(models):
+            or len({id(model) for model in models}) != len(models) \
+            or type(member_workers) is not int \
+            or member_workers not in {1, len(models) // 2}:
         raise BeliefTrainerError("calibration cohort population drift")
     try:
         iterator = iter(batches)
@@ -588,45 +611,60 @@ def _evaluate_calibration_cohort_stream_nanonats(
     seen: set[str] = set()
     for model in models:
         model.eval()
+    executor = (concurrent.futures.ThreadPoolExecutor(
+        max_workers=member_workers, thread_name_prefix="belief-v2-calibration")
+        if member_workers > 1 else None)
+
+    def evaluate(item, batch, active):
+        index, model = item
+        try:
+            with torch.no_grad():
+                loss = training_batch_loss(model, batch)
+        except (BeliefTrainingError, ValueError) as exc:
+            raise BeliefTrainerError(
+                "calibration batch loss refused") from exc
+        if loss.ndim != 0 or not bool(torch.isfinite(loss)):
+            raise BeliefTrainerError("calibration loss is nonfinite")
+        return index, float(loss) * active
+
     try:
-        with torch.no_grad():
-            for batch in iterator:
-                if type(batch) is not BeliefTrainingBatchV1 \
-                        or batch.split != "calibration" \
-                        or batch.privileged_targets_consumed is not True \
-                        or batch.runtime_artifact is not False:
-                    raise BeliefTrainerError(
-                        "calibration batch population/split drift")
-                current = (batch.schema, batch.history_transform,
-                           batch.label_transform, batch.control_kind)
-                if identity is None:
-                    identity = current
-                elif current != identity:
-                    raise BeliefTrainerError(
-                        "calibration mixed candidate/control batch")
-                if any(key in seen for key in batch.decision_keys) \
-                        or len(batch.decision_keys) \
-                        != len(set(batch.decision_keys)):
-                    raise BeliefTrainerError(
-                        "calibration duplicate decision")
-                seen.update(batch.decision_keys)
-                active = int(batch.active_mask.sum().item())
-                if active <= 0:
-                    raise BeliefTrainerError(
-                        "calibration batch has no active labels")
-                for index, model in enumerate(models):
-                    try:
-                        loss = training_batch_loss(model, batch)
-                    except (BeliefTrainingError, ValueError) as exc:
-                        raise BeliefTrainerError(
-                            "calibration batch loss refused") from exc
-                    if loss.ndim != 0 or not bool(torch.isfinite(loss)):
-                        raise BeliefTrainerError(
-                            "calibration loss is nonfinite")
-                    weighted_losses[index] += float(loss) * active
-                active_total += active
-                batch_count += 1
+        for batch in iterator:
+            if type(batch) is not BeliefTrainingBatchV1 \
+                    or batch.split != "calibration" \
+                    or batch.privileged_targets_consumed is not True \
+                    or batch.runtime_artifact is not False:
+                raise BeliefTrainerError(
+                    "calibration batch population/split drift")
+            current = (batch.schema, batch.history_transform,
+                       batch.label_transform, batch.control_kind)
+            if identity is None:
+                identity = current
+            elif current != identity:
+                raise BeliefTrainerError(
+                    "calibration mixed candidate/control batch")
+            if any(key in seen for key in batch.decision_keys) \
+                    or len(batch.decision_keys) \
+                    != len(set(batch.decision_keys)):
+                raise BeliefTrainerError(
+                    "calibration duplicate decision")
+            seen.update(batch.decision_keys)
+            active = int(batch.active_mask.sum().item())
+            if active <= 0:
+                raise BeliefTrainerError(
+                    "calibration batch has no active labels")
+            members = tuple(enumerate(models))
+            contributions = (tuple(executor.map(
+                lambda item: evaluate(item, batch, active), members))
+                if executor is not None
+                else tuple(evaluate(item, batch, active)
+                           for item in members))
+            for index, weighted in contributions:
+                weighted_losses[index] += weighted
+            active_total += active
+            batch_count += 1
     finally:
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
         for model, state in zip(models, states, strict=True):
             model.train(state)
     if batch_count == 0 or identity is None or active_total <= 0 \

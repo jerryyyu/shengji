@@ -24,14 +24,19 @@ from .belief_v2_device_qualification import (
     qualification_protocol_sha256,
     reopen_qualification_plan,
     reopen_qualification_result,
+    training_host_memory_upper_bound,
 )
-from .belief_v2_device_runner import run_device_qualification_in_memory
+from .belief_v2_device_runner import (
+    run_device_qualification_in_memory,
+    run_device_qualification_streaming,
+)
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_schedule import V2CohortRealizationV1
 from .belief_v2_training import V2TrainingExampleV1
 
 
-DEVICE_STAGE_SCHEMA = "belief-v1-v2-device-qualification-stage-result-v1"
+DEVICE_STAGE_SCHEMA = "belief-v1-v2-device-qualification-stage-result-v2"
 
 
 class BeliefV2DeviceControllerError(ValueError):
@@ -82,6 +87,25 @@ def _manifest(
         result: V2DeviceQualificationResultV1) -> dict[str, Any]:
     plan_raw = plan.canonical_bytes()
     result_raw = result.canonical_bytes(plan)
+    selected_arms = tuple(
+        arm for arm in result.arms
+        if not arm.warmup and arm.device == result.selected_device)
+    if not selected_arms:
+        raise BeliefV2DeviceControllerError(
+            "V2 device qualification selected arm population drift")
+    selected_process_peak = max(
+        arm.peak_host_memory_bytes for arm in selected_arms)
+    try:
+        process_count, aggregate_host_peak = training_host_memory_upper_bound(
+            selected_process_peak, selected_device=result.selected_device,
+            cpu_cohort_process_count=len(freeze.cohorts))
+    except ValueError as exc:
+        raise BeliefV2DeviceControllerError(
+            "V2 device qualification host memory derivation drift") from exc
+    if aggregate_host_peak \
+            > freeze.resource_caps.training_host_memory_bytes:
+        raise BeliefV2DeviceControllerError(
+            "V2 device qualification aggregate host memory cap exceeded")
     return {
         "schema": DEVICE_STAGE_SCHEMA,
         "freeze_sha256": freeze.sha256(),
@@ -101,6 +125,12 @@ def _manifest(
         "measured_arm_count": sum(not arm.warmup for arm in result.arms),
         "max_peak_host_memory_bytes": max(
             arm.peak_host_memory_bytes for arm in result.arms),
+        "selected_training_process_count": process_count,
+        "selected_process_peak_host_memory_bytes": selected_process_peak,
+        "aggregate_training_peak_host_memory_upper_bound_bytes": (
+            aggregate_host_peak),
+        "training_host_memory_cap_bytes": (
+            freeze.resource_caps.training_host_memory_bytes),
         "max_peak_device_memory_bytes": max(
             arm.peak_device_memory_bytes for arm in result.arms),
         "retry_count": 0,
@@ -117,7 +147,9 @@ def run_device_qualification(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, primary: V2CohortRealizationV1,
-        primary_examples: tuple[V2TrainingExampleV1, ...]) \
+        primary_examples: tuple[V2TrainingExampleV1, ...] | None,
+        streaming_index=None, load_round=None,
+        progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Execute and atomically publish the exact frozen qualification."""
     _stage_gate(
@@ -151,16 +183,31 @@ def run_device_qualification(
             raise BeliefV2DeviceControllerError(
                 "V2 device deadline exhausted and recorded") from exc
 
+    streaming = streaming_index is not None or load_round is not None
+    materialized = primary_examples is not None
+    if streaming != (streaming_index is not None and callable(load_round)) \
+            or streaming == materialized:
+        raise BeliefV2DeviceControllerError(
+            "V2 device qualification input mode drift")
+    common = {
+        "execution_git": freeze.execution_git,
+        "candidate_device": freeze.training_candidate_device,
+        "primary": primary,
+        "host_memory_cap_bytes": (
+            freeze.resource_caps.training_host_memory_bytes),
+        "device_memory_cap_bytes": (
+            freeze.resource_caps.training_device_memory_bytes),
+        "deadline_check": deadline_check,
+        "progress": progress,
+    }
     try:
-        plan, result = run_device_qualification_in_memory(
-            execution_git=freeze.execution_git,
-            candidate_device=freeze.training_candidate_device,
-            primary=primary, primary_examples=primary_examples,
-            host_memory_cap_bytes=(
-                freeze.resource_caps.training_host_memory_bytes),
-            device_memory_cap_bytes=(
-                freeze.resource_caps.training_device_memory_bytes),
-            deadline_check=deadline_check)
+        if streaming:
+            plan, result = run_device_qualification_streaming(
+                **common, streaming_index=streaming_index,
+                load_round=load_round)
+        else:
+            plan, result = run_device_qualification_in_memory(
+                **common, primary_examples=primary_examples)
     except ValueError as exc:
         raise BeliefV2DeviceControllerError(
             "V2 device qualification execution refused") from exc
@@ -170,9 +217,9 @@ def run_device_qualification(
     deadline_check("before-seal", len(result.arms))
     plan_raw = plan.canonical_bytes()
     result_raw = result.canonical_bytes(plan)
+    manifest = _manifest(freeze, admission, primary, plan, result)
     publish_exclusive_bytes(partial / "plan.json", plan_raw)
     publish_exclusive_bytes(partial / "result.json", result_raw)
-    manifest = _manifest(freeze, admission, primary, plan, result)
     publish_exclusive_bytes(
         partial / "manifest.json", canonical_json_bytes(manifest))
     os.rename(partial, final)

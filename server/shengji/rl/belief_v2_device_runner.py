@@ -35,6 +35,11 @@ from .belief_v2_device_qualification import (
     validate_qualification_plan,
 )
 from .belief_v2_schedule import V2CohortRealizationV1
+from .belief_v2_streaming_training import (
+    RoundLoader,
+    V2StreamingTrainingIndexV1,
+    iter_streaming_training_batches,
+)
 from .belief_v2_training import V2TrainingExampleV1
 
 
@@ -162,17 +167,59 @@ def execute_qualification_arm(
     return arm
 
 
+def _run_qualification_plan(
+        plan: V2DeviceQualificationPlanV1, *,
+        selected_batches: tuple[object, ...],
+        deadline_check: Callable[[str, int], None] | None,
+        progress: Callable[[int, int, str], None] | None = None) \
+        -> V2DeviceQualificationResultV1:
+    if type(selected_batches) is not tuple \
+            or len(selected_batches) != len(plan.selected_batch_indices):
+        raise BeliefV2DeviceRunnerError(
+            "V2 qualification selected batch population drift")
+    arms = []
+    if progress is not None:
+        progress(0, len(plan.arm_order), "qualification-arms")
+    for index in range(len(plan.arm_order)):
+        if deadline_check is not None:
+            deadline_check("before-unit", index)
+        arms.append(execute_qualification_arm(
+            plan, arm_index=index, selected_batches=selected_batches))
+        if deadline_check is not None:
+            deadline_check("after-unit", index + 1)
+        if progress is not None:
+            progress(index + 1, len(plan.arm_order), "qualification-arms")
+    if deadline_check is not None:
+        deadline_check("before-seal", len(arms))
+    try:
+        return derive_qualification_result(plan, tuple(arms))
+    except ValueError as exc:
+        raise BeliefV2DeviceRunnerError(
+            "V2 qualification terminal derivation refused") from exc
+
+
+def _qualification_plan(
+        *, execution_git: str, candidate_device: str,
+        primary: V2CohortRealizationV1, host_memory_cap_bytes: int,
+        device_memory_cap_bytes: int) -> V2DeviceQualificationPlanV1:
+    return build_qualification_plan_from_primary(
+        execution_git=execution_git, candidate_device=candidate_device,
+        primary=primary, host_memory_cap_bytes=host_memory_cap_bytes,
+        device_memory_cap_bytes=device_memory_cap_bytes)
+
+
 def run_device_qualification_in_memory(
         *, execution_git: str, candidate_device: str,
         primary: V2CohortRealizationV1,
         primary_examples: tuple[V2TrainingExampleV1, ...],
         host_memory_cap_bytes: int,
         device_memory_cap_bytes: int,
-        deadline_check: Callable[[str, int], None] | None = None) \
+        deadline_check: Callable[[str, int], None] | None = None,
+        progress: Callable[[int, int, str], None] | None = None) \
         -> tuple[V2DeviceQualificationPlanV1,
                  V2DeviceQualificationResultV1]:
-    """Execute the full frozen order and derive the only device decision."""
-    plan = build_qualification_plan_from_primary(
+    """Execute the frozen order from a small materialized population."""
+    plan = _qualification_plan(
         execution_git=execution_git, candidate_device=candidate_device,
         primary=primary, host_memory_cap_bytes=host_memory_cap_bytes,
         device_memory_cap_bytes=device_memory_cap_bytes)
@@ -186,19 +233,43 @@ def run_device_qualification_in_memory(
         raise BeliefV2DeviceRunnerError(
             "V2 qualification primary batch population drift")
     selected = tuple(batches[index] for index in plan.selected_batch_indices)
-    arms = []
-    for index in range(len(plan.arm_order)):
-        if deadline_check is not None:
-            deadline_check("before-unit", index)
-        arms.append(execute_qualification_arm(
-            plan, arm_index=index, selected_batches=selected))
-        if deadline_check is not None:
-            deadline_check("after-unit", index + 1)
-    if deadline_check is not None:
-        deadline_check("before-seal", len(arms))
+    return plan, _run_qualification_plan(
+        plan, selected_batches=selected, deadline_check=deadline_check,
+        progress=progress)
+
+
+def run_device_qualification_streaming(
+        *, execution_git: str, candidate_device: str,
+        primary: V2CohortRealizationV1,
+        streaming_index: V2StreamingTrainingIndexV1,
+        load_round: RoundLoader, host_memory_cap_bytes: int,
+        device_memory_cap_bytes: int,
+        deadline_check: Callable[[str, int], None] | None = None,
+        progress: Callable[[int, int, str], None] | None = None) \
+        -> tuple[V2DeviceQualificationPlanV1,
+                 V2DeviceQualificationResultV1]:
+    """Reopen only batches needed by qualification, then execute its arms."""
+    plan = _qualification_plan(
+        execution_git=execution_git, candidate_device=candidate_device,
+        primary=primary, host_memory_cap_bytes=host_memory_cap_bytes,
+        device_memory_cap_bytes=device_memory_cap_bytes)
+    wanted = set(plan.selected_batch_indices)
+    selected_by_index = {}
     try:
-        result = derive_qualification_result(plan, tuple(arms))
+        for index, batch in enumerate(iter_streaming_training_batches(
+                streaming_index, primary, load_round=load_round)):
+            if index in wanted:
+                selected_by_index[index] = batch
+            if index >= max(wanted):
+                break
     except ValueError as exc:
         raise BeliefV2DeviceRunnerError(
-            "V2 qualification terminal derivation refused") from exc
-    return plan, result
+            "V2 qualification streaming batches refused") from exc
+    if set(selected_by_index) != wanted:
+        raise BeliefV2DeviceRunnerError(
+            "V2 qualification streaming batch population drift")
+    selected = tuple(selected_by_index[index]
+                     for index in plan.selected_batch_indices)
+    return plan, _run_qualification_plan(
+        plan, selected_batches=selected, deadline_check=deadline_check,
+        progress=progress)

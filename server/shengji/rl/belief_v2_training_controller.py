@@ -23,6 +23,7 @@ from .belief_v2_cohort_training import (
     V2TrainedCohortArtifactsV1,
     reopen_trained_v2_cohort,
     train_v2_cohort_in_memory,
+    train_v2_cohort_streaming,
 )
 from .belief_v2_controller import _stage_gate
 from .belief_v2_deadline import (
@@ -34,6 +35,7 @@ from .belief_v2_device_qualification import (
     V2DeviceQualificationPlanV1,
     V2DeviceQualificationResultV1,
     build_qualification_plan_from_primary,
+    training_host_memory_upper_bound,
     validate_qualification_result,
 )
 from .belief_v2_device_runner import (
@@ -43,6 +45,7 @@ from .belief_v2_device_runner import (
     synchronize_training_device,
 )
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_schedule import (
     V2CalibrationScheduleV1,
     V2CohortRealizationV1,
@@ -51,7 +54,7 @@ from .belief_v2_training import V2TrainingExampleV1
 
 
 TRAINING_STAGE_SCHEMA = "belief-v1-v2-training-stage-result-v1"
-TRAINING_RESOURCE_SCHEMA = "belief-v1-v2-training-stage-resource-v1"
+TRAINING_RESOURCE_SCHEMA = "belief-v1-v2-training-stage-resource-v2"
 
 
 class BeliefV2TrainingControllerError(ValueError):
@@ -127,6 +130,14 @@ def _resource_row(
         peak_device_memory_bytes: int) -> dict[str, Any]:
     wall = finished - started
     caps = freeze.resource_caps
+    try:
+        host_memory_process_count, aggregate_host_memory = (
+            training_host_memory_upper_bound(
+                peak_host_memory_bytes, selected_device=selected_device,
+                cpu_cohort_process_count=len(freeze.cohorts)))
+    except ValueError as exc:
+        raise BeliefV2TrainingControllerError(
+            "V2 training resource cap or measurement drift") from exc
     if type(started) is not int or type(finished) is not int \
             or not 0 <= started < finished \
             or type(cpu_nanoseconds) is not int or cpu_nanoseconds < 0 \
@@ -138,7 +149,7 @@ def _resource_row(
             or wall > caps.training_wall_seconds * 1_000_000_000 \
             or wall > caps.training_device_hours * 3_600_000_000_000 \
             or artifact_bytes > caps.training_bytes \
-            or peak_host_memory_bytes \
+            or aggregate_host_memory \
             > caps.training_host_memory_bytes \
             or peak_device_memory_bytes \
             > caps.training_device_memory_bytes:
@@ -155,6 +166,9 @@ def _resource_row(
         "training_compute_nanoseconds": wall,
         "artifact_bytes": artifact_bytes,
         "peak_host_memory_bytes": peak_host_memory_bytes,
+        "host_memory_process_count": host_memory_process_count,
+        "aggregate_peak_host_memory_upper_bound_bytes": (
+            aggregate_host_memory),
         "peak_device_memory_bytes": peak_device_memory_bytes,
         "retry_count": 0,
         "drop_count": 0,
@@ -210,11 +224,13 @@ def run_training_cohort(
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, primary: V2CohortRealizationV1,
         realization: V2CohortRealizationV1,
-        training_examples: tuple[V2TrainingExampleV1, ...],
+        training_examples: tuple[V2TrainingExampleV1, ...] | None,
         calibration: V2CalibrationScheduleV1,
-        calibration_examples: tuple[V2TrainingExampleV1, ...],
+        calibration_examples: tuple[V2TrainingExampleV1, ...] | None,
         qualification_plan: V2DeviceQualificationPlanV1,
-        qualification_result: V2DeviceQualificationResultV1) \
+        qualification_result: V2DeviceQualificationResultV1,
+        streaming_index=None, load_round=None,
+        progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Train and atomically publish one exact frozen V2 cohort."""
     _stage_gate(
@@ -223,6 +239,15 @@ def run_training_cohort(
     _validate_realization_binding(freeze, realization)
     selected_device = _validate_device_binding(
         freeze, primary, qualification_plan, qualification_result)
+    streaming = streaming_index is not None or load_round is not None
+    materialized = training_examples is not None \
+        and calibration_examples is not None
+    if streaming != (streaming_index is not None and callable(load_round)) \
+            or (training_examples is None) \
+            != (calibration_examples is None) \
+            or streaming == materialized:
+        raise BeliefV2TrainingControllerError(
+            "V2 training input mode drift")
     parent = root / "training"
     if parent.is_symlink():
         raise BeliefV2TrainingControllerError(
@@ -256,10 +281,16 @@ def run_training_cohort(
             selected_device,
             freeze.resource_caps.training_device_memory_bytes)
         synchronize_training_device(selected_device)
-        trained = train_v2_cohort_in_memory(
-            realization, training_examples, calibration,
-            calibration_examples, device=selected_device,
-            deadline_check=deadline_check)
+        if streaming:
+            trained = train_v2_cohort_streaming(
+                realization, calibration, index=streaming_index,
+                load_round=load_round, device=selected_device,
+                deadline_check=deadline_check, progress=progress)
+        else:
+            trained = train_v2_cohort_in_memory(
+                realization, training_examples, calibration,
+                calibration_examples, device=selected_device,
+                deadline_check=deadline_check, progress=progress)
         synchronize_training_device(selected_device)
         peak_host_memory = host_peak_memory_bytes()
         peak_device_memory = device_peak_memory_bytes(selected_device)
@@ -301,7 +332,12 @@ def run_training_cohort(
         calibration=calibration,
         calibration_examples=calibration_examples,
         qualification_plan=qualification_plan,
-        qualification_result=qualification_result)
+        qualification_result=qualification_result,
+        compact_control_dose=(
+            streaming_index.control_changed_cell_count
+            if streaming and realization.kind
+            == "hard-geometry-label-permutation" else 0
+            if streaming else None))
     if reopened[0] != manifest or reopened[1] != trained:
         raise BeliefV2TrainingControllerError(
             "V2 training cohort post-publish drift")
@@ -313,16 +349,24 @@ def reopen_training_cohort(
         admission: V2PipelineAdmissionV1,
         primary: V2CohortRealizationV1,
         realization: V2CohortRealizationV1,
-        training_examples: tuple[V2TrainingExampleV1, ...],
+        training_examples: tuple[V2TrainingExampleV1, ...] | None,
         calibration: V2CalibrationScheduleV1,
-        calibration_examples: tuple[V2TrainingExampleV1, ...],
+        calibration_examples: tuple[V2TrainingExampleV1, ...] | None,
         qualification_plan: V2DeviceQualificationPlanV1,
-        qualification_result: V2DeviceQualificationResultV1) \
+        qualification_result: V2DeviceQualificationResultV1,
+        compact_control_dose: int | None = None) \
         -> tuple[dict[str, Any], V2TrainedCohortArtifactsV1]:
     """Reopen every persisted byte and reconstruct the trained cohort."""
     _validate_realization_binding(freeze, realization)
     selected_device = _validate_device_binding(
         freeze, primary, qualification_plan, qualification_result)
+    compact = compact_control_dose is not None
+    materialized = training_examples is not None \
+        and calibration_examples is not None
+    if (training_examples is None) != (calibration_examples is None) \
+            or compact == materialized:
+        raise BeliefV2TrainingControllerError(
+            "V2 training reopen input mode drift")
     if not isinstance(directory, Path) or directory.is_symlink() \
             or not directory.is_dir() \
             or directory.name != realization.cohort_id:
@@ -341,7 +385,8 @@ def reopen_training_cohort(
     try:
         trained = reopen_trained_v2_cohort(
             trained_raw, checkpoint_bundles, realization,
-            training_examples, calibration, calibration_examples)
+            training_examples, calibration, calibration_examples,
+            compact_control_dose=compact_control_dose)
     except ValueError as exc:
         raise BeliefV2TrainingControllerError(
             "V2 persisted trained cohort refused") from exc
@@ -367,9 +412,20 @@ def reopen_training_cohort(
         "started_monotonic_nanoseconds", "finished_monotonic_nanoseconds",
         "wall_nanoseconds", "cpu_nanoseconds",
         "training_compute_nanoseconds", "artifact_bytes",
-        "peak_host_memory_bytes", "peak_device_memory_bytes",
+        "peak_host_memory_bytes", "host_memory_process_count",
+        "aggregate_peak_host_memory_upper_bound_bytes",
+        "peak_device_memory_bytes",
         "retry_count", "drop_count"}
     caps = freeze.resource_caps
+    try:
+        expected_host_process_count, expected_aggregate_host_memory = (
+            training_host_memory_upper_bound(
+                resources.get("peak_host_memory_bytes"),
+                selected_device=selected_device,
+                cpu_cohort_process_count=len(freeze.cohorts)))
+    except (AttributeError, ValueError) as exc:
+        raise BeliefV2TrainingControllerError(
+            "V2 training stage resource drift") from exc
     if type(resources) is not dict or set(resources) != resource_keys \
             or resources["schema"] != TRAINING_RESOURCE_SCHEMA \
             or resources["boot_identity"] != freeze.runtime.boot_identity \
@@ -390,6 +446,10 @@ def reopen_training_cohort(
                                        for raw in checkpoint_bundles)) \
             or type(resources["peak_host_memory_bytes"]) is not int \
             or resources["peak_host_memory_bytes"] <= 0 \
+            or resources["host_memory_process_count"] \
+            != expected_host_process_count \
+            or resources["aggregate_peak_host_memory_upper_bound_bytes"] \
+            != expected_aggregate_host_memory \
             or type(resources["peak_device_memory_bytes"]) is not int \
             or resources["peak_device_memory_bytes"] < 0 \
             or resources["wall_nanoseconds"] \
@@ -397,7 +457,7 @@ def reopen_training_cohort(
             or resources["training_compute_nanoseconds"] \
             > caps.training_device_hours * 3_600_000_000_000 \
             or resources["artifact_bytes"] > caps.training_bytes \
-            or resources["peak_host_memory_bytes"] \
+            or resources["aggregate_peak_host_memory_upper_bound_bytes"] \
             > caps.training_host_memory_bytes \
             or resources["peak_device_memory_bytes"] \
             > caps.training_device_memory_bytes \

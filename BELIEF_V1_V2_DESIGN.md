@@ -470,18 +470,67 @@ The source audit already identifies two concrete V1 costs to measure. Each
 cohort pins Torch to one thread, and `train_cohort_epoch_stream` applies every
 batch to all eight models in a serial Python loop. In addition,
 `_iter_corpus_batches` reopens corpus bundles and reconstructs actor tensors on
-every train and calibration epoch. V2 should therefore benchmark, in order:
+every train and calibration epoch. The first V2 diagnostic ruled out a
+whole-population tensor cache on the target host. Four natural rounds averaged
+44,381 bytes of per-decision NumPy surfaces and 80,572 bytes of padded Torch
+batch payload. Projected to approximately 915,642 training decisions, the old
+bridge would retain about 37.9 GiB of examples plus 68.7 GiB of batches—about
+106.6 GiB before Python object overhead, on a roughly 30 GiB host. That path is
+a pre-run resource blocker, not merely an optimization opportunity.
 
-- one immutable actor-tensor cache shared by candidate and control labels;
-- one independent worker per model member reading that cache; and
-- an ensemble-batched/vmapped implementation only if it preserves the exact
-  independent AdamW/member semantics and is faster than the simpler workers.
+V2 therefore uses a compact, immutable training-input index rather than a
+whole-population tensor cache. After capture, one deadline-bound stage opens
+train/calibration targets one complete round or human group at a time and
+publishes only schedule rows, content hashes, source locators, common
+calibration identity, and realized cohort schedules. It publishes no model
+arrays and never opens synthetic or human test targets. Device qualification
+and every epoch then reopen only the complete round groups named by the next
+batch, verify each reconstructed example against its compact row, collate one
+batch, consume it, and release it. Human groups are authenticated once and
+only the selected round's row files are reopened. Every downstream stage
+independently reconstructs the compact artifact, so concurrent cohort workers
+share one immutable source identity without repeating full-corpus
+tensorization outside their deadlines.
 
-The cache may contain actor-derived tensors and split/decision identities. It
-must keep privileged labels in a separately bound artifact and must never
-materialize test tensors before the single test opening. Parallel member
-workers must reproduce the serial reference's per-member state and loss bytes
-on a small fixture before they become the V2 training path.
+The remaining performance order is one independent worker per model member,
+followed by an ensemble-batched/vmapped implementation only if it preserves
+the exact independent AdamW/member semantics and is faster than the simpler
+workers. Parallel member workers must reproduce the serial reference's
+per-member state and loss bytes before they become the V2 training path.
+
+The V2 CPU path uses exactly four member threads across the eight fixed cohort
+members, persisting for each complete training or calibration pass while
+retaining one Torch intra-op thread. Each task owns one member's model and
+optimizer, every batch is immutable and shared read-only, and results are
+reduced in fixed member order. Four workers are the fixed resource-efficiency
+knee from the source-head diagnostic: on one four-round, 344-decision epoch,
+four workers reduced median wall by 48.8% while increasing process CPU by
+79.1%; eight workers reduced wall by 60.6% but increased process CPU by 129.4%.
+The diagnostic is not execution evidence or a retention claim. Four workers
+also permit the four frozen cohorts to occupy one 16-core host without member
+oversubscription; exact execution scheduling remains part of the host freeze.
+That scheduling is permitted only when the largest measured per-process CPU
+qualification peak multiplied by the exact frozen cohort count fits under the
+host-memory cap. The qualification manifest publishes the per-process peak,
+process count, and conservative aggregate upper bound before any cohort may
+start. Every cohort resource row repeats that calculation from its observed
+process peak, and the terminal independently reconstructs it. Accelerator
+cohorts have process count one and remain serial; they may not borrow the CPU
+cohort concurrency rule.
+The qualification keeps all 32 selected Torch batches resident through every
+arm, whereas production training retains only the current streamed batch. Its
+selection is not hash-only: it must include the maximum decision-count batch
+and the minimum and maximum active-labels-per-decision batches, covering the
+late/long-history and early/high-unknown tensor-shape extremes available from
+the compact schedule. The remaining slots retain the source-neutral hash
+selection. Any change to these anchors changes the qualification protocol hash
+and requires a fresh freeze.
+The MPS and CUDA paths remain serial because device kernels already share one
+accelerator and concurrent Python submission is not part of their qualification
+estimand. Multi-batch tests require the CPU path to reproduce the serial V1
+reference's exact epoch receipts, calibration losses, and portable checkpoint
+hashes. The device-qualification protocol hash binds both worker counts;
+changing either topology requires a new freeze.
 
 The source-neutral mechanics are now implemented in
 `belief_v2_cohort_training.py`. They consume only independently realized
@@ -495,13 +544,16 @@ batch identity, initial and cross-epoch model-state link, selection decision,
 checkpoint receipt, and checkpoint byte stream. No human calibration or test
 row is accepted by this training boundary.
 
-Every long, capped synthetic capture, synthetic reference, device-qualification,
-and cohort-training loop has an in-loop monotonic deadline rather than only a
-post-hoc timer. The immutable freeze binds a measured p95 next-unit wall
+Every long, capped synthetic capture, synthetic reference, training-input
+index, device-qualification, and cohort-training loop has an in-loop monotonic
+deadline rather than only a post-hoc timer. The immutable freeze binds a
+measured p95 next-unit wall
 estimate for one capture round, one reference job, and one complete training
 epoch, plus one safety reserve. Capture and reference check before and after
-each unit; device qualification checks before and after each arm; the cohort
-trainer checks before and after every epoch and before checkpoint construction.
+each unit; the input index checks around every source round/group and before
+serialization; device qualification checks before and after each arm; the
+cohort trainer checks before and after every epoch and before checkpoint
+construction.
 No new unit may start unless the measured estimate plus reserve fits before the
 hard wall cap, and no final artifact may seal unless the reserve remains.
 
@@ -517,6 +569,29 @@ remains an independent terminal check; it is not the deadline mechanism.
 Performance changes must be bit-identical at the artifact or probability
 contract they claim to preserve. A faster implementation never inherits
 scientific or strength authority.
+
+Every long worker command also emits canonical `BELIEF_V2_PROGRESS` JSON lines
+to stderr. Capture, REF-C, historical-human replay, compact-index construction,
+device qualification, each cohort's training epochs, calibration, and the
+one-shot terminal report exact completed and total units, integer percent in
+basis points, monotonic elapsed time, and a mechanical remaining-time estimate.
+The final successful update is exactly 100%. Parallel workers keep separate
+stage/worker identities, so fleet progress can be aggregated without opening
+their outputs.
+
+An H0 source group with zero eligible human decisions is still a legitimate
+frozen group, not a dropped input. It reports one group-stage progress unit,
+publishes/reopens empty actor/reference populations with zero artifact bytes,
+and contributes no scoring rows. The reviewed frozen 30-group H0 population
+has seven such groups; their manifests remain part of split and source closure.
+
+Progress is outcome-blind operational telemetry only. It is never written
+under the evidence root, never changes stdout or any manifest/result/checkpoint
+bytes, and carries no loss, score, candidate-selection, test-result, or
+terminal-route field. It cannot authorize a retry, result opening, strength
+claim, promotion, or deployment. Tests bind both the fail-closed monotonic
+reporter and callbacks from real controller paths; a helper-only witness is
+insufficient.
 
 ## Preliminary capacity projection and host allocation
 
@@ -538,7 +613,8 @@ Capture uses all 416 raw round-wall samples from the reviewed capacity
 preflight. Reference uses 32 rank-diverse, out-of-population complete REF-C
 rounds under the same 16-worker topology. Training uses two complete passes
 over the same 32 one-round batches after one discarded warmup. Each pass
-includes the unchanged eight-member optimizer work and calibration evaluation;
+freshly reconstructs examples and collates its batches, then includes the
+unchanged eight-member optimizer work and calibration evaluation;
 its wall is projected to the exact 10,647 train-round population with one
 round per batch and a frozen 1.25 margin. That is deliberately conservative:
 the production scheduler may pack multiple whole round groups into each
@@ -694,9 +770,12 @@ same-work search screen.
 To avoid repeated source/design/admission round trips while still binding the
 private population and host-specific cap evidence:
 
-1. one consolidated source/design review binds the rank factory, PR #116
-   successor, H0 identity/privacy boundary, model arms, exact synthetic
-   population, profiling protocol, metrics, and automatic routing. It may
+1. one consolidated exact-head source/design review binds the rank factory,
+   PR #116 successor, H0 identity/privacy boundary, model arms, exact synthetic
+   population, profiling protocol, streaming/memory and CPU-member topology,
+   outcome-blind progress telemetry, metrics, and automatic routing. The
+   reviewer returns one PASS or one HOLD containing every blocker found in
+   that pass; these are not split into subsystem review requests. It may
    authorize only the real score-free H0 inventory and out-of-population
    capacity/profile probes;
 2. one exact execution-freeze review binds the resulting private source-group

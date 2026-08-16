@@ -18,6 +18,7 @@ from shengji.rl.belief_v2_device_qualification import (
     build_qualification_plan,
     derive_qualification_result,
     qualification_protocol_sha256,
+    training_host_memory_upper_bound,
 )
 from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_execution_identity import (
@@ -461,8 +462,8 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         TERMINAL_STAGE, "_calibration_statistics",
         lambda *args, **kwargs: (calibration, human_selection, scale))
     monkeypatch.setattr(
-        TERMINAL_STAGE, "reopen_v2_training_inputs",
-        lambda *args, **kwargs: SimpleNamespace())
+        TERMINAL_STAGE, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, SimpleNamespace()))
     monkeypatch.setattr(
         TERMINAL_STAGE, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (
@@ -572,7 +573,7 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     plan, qualification = _qualification(freeze)
 
     def resource(start, finish, *, artifact=10, training=False,
-                 host_peak=1_500, device_peak=2_500):
+                 cohort=False, host_peak=1_500, device_peak=2_500):
         row = {
             "started_monotonic_nanoseconds": start,
             "finished_monotonic_nanoseconds": finish,
@@ -586,6 +587,15 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
                 "training_compute_nanoseconds": finish - start,
                 "peak_host_memory_bytes": host_peak,
                 "peak_device_memory_bytes": device_peak,
+            })
+        if cohort:
+            process_count, aggregate = training_host_memory_upper_bound(
+                host_peak, selected_device=qualification.selected_device,
+                cpu_cohort_process_count=len(freeze.cohorts))
+            row.update({
+                "selected_device": qualification.selected_device,
+                "host_memory_process_count": process_count,
+                "aggregate_peak_host_memory_upper_bound_bytes": aggregate,
             })
         return row
 
@@ -613,6 +623,9 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     monkeypatch.setattr(
         TERMINAL_STAGE, "reopen_human_reference_group",
         lambda *args, **kwargs: {"resources": resource(290, 450)})
+    input_index_manifest = {"resources": resource(
+        450, 480, artifact=10, training=True,
+        host_peak=1_400, device_peak=0)}
 
     training_hashes = []
     for index, cohort in enumerate(freeze.cohorts):
@@ -620,6 +633,7 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
         directory.mkdir(parents=True)
         payload = {"resources": resource(
             500 + index, 600 + index, artifact=20, training=True,
+            cohort=True,
             host_peak=1_500 + index, device_peak=2_500 + index)}
         raw = canonical_json_bytes(payload)
         manifest_path = directory / "manifest.json"
@@ -630,6 +644,7 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     receipt = TERMINAL_STAGE._derive_integrity_receipt(
         root, freeze, admission, {}, plan=plan,
         qualification=qualification,
+        input_index_manifest=input_index_manifest,
         training_hashes=tuple(training_hashes),
         synthetic_test_count=1_339, human_test_decision_count=174)
     qualification_work = sum(
@@ -640,12 +655,33 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     assert receipt.capture_wall_nanoseconds == 160
     assert receipt.reference_wall_nanoseconds == 160
     assert receipt.training_device_nanoseconds \
-        == qualification_work + 4 * 100
+        == qualification_work + 4 * 100 + 30
     assert receipt.training_wall_nanoseconds \
-        == qualification_work + 103
+        == qualification_work + 103 + 30
     assert receipt.training_peak_host_memory_bytes == 1_503
     assert receipt.training_peak_device_memory_bytes == 2_503
     assert receipt.test_split_decision_open_count == 1
     assert derive_terminal_result(
         freeze, plan, qualification, receipt, *_statistics()
     ).terminal_route == PASS_B3
+
+    first_id, _ = training_hashes[0]
+    first_path = root / "training" / first_id / "manifest.json"
+    first = json.loads(first_path.read_bytes())
+    first["resources"][
+        "aggregate_peak_host_memory_upper_bound_bytes"] += 1
+    first_raw = canonical_json_bytes(first)
+    first_path.chmod(0o600)
+    first_path.write_bytes(first_raw)
+    first_path.chmod(0o400)
+    corrupted_hashes = (
+        (first_id, _sha_bytes(first_raw)), *training_hashes[1:])
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="host memory reconstruction"):
+        TERMINAL_STAGE._derive_integrity_receipt(
+            root, freeze, admission, {}, plan=plan,
+            qualification=qualification,
+            input_index_manifest=input_index_manifest,
+            training_hashes=corrupted_hashes,
+            synthetic_test_count=1_339, human_test_decision_count=174)

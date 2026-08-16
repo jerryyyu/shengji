@@ -16,9 +16,23 @@ from shengji.rl.belief_v2_device_qualification import (
     qualification_protocol_sha256,
     reopen_qualification_plan,
     reopen_qualification_result,
+    training_host_memory_upper_bound,
     validate_qualification_plan,
     validate_qualification_result,
 )
+
+
+def test_training_host_memory_upper_bound_binds_cpu_concurrency():
+    assert training_host_memory_upper_bound(
+        1_000, selected_device="cpu", cpu_cohort_process_count=4) \
+        == (4, 4_000)
+    assert training_host_memory_upper_bound(
+        1_000, selected_device="mps", cpu_cohort_process_count=4) \
+        == (1, 1_000)
+    with pytest.raises(BeliefV2DeviceQualificationError,
+                       match="host memory population"):
+        training_host_memory_upper_bound(
+            0, selected_device="cpu", cpu_cohort_process_count=4)
 
 
 def _sha(value: str) -> str:
@@ -111,13 +125,24 @@ def test_plan_is_digest_selected_closed_and_authorizes_nothing():
     assert len(plan.selected_batch_indices) == 32
     assert plan.selected_batch_indices == tuple(
         sorted(plan.selected_batch_indices))
+    rows = _schedule()
+    active = tuple(100 + index for index in range(len(rows)))
+    maximum_batch = max(
+        range(len(rows)), key=lambda index: (len(rows[index]), -index))
+    minimum_density = min(
+        range(len(rows)),
+        key=lambda index: (active[index] / len(rows[index]), index))
+    maximum_density = max(
+        range(len(rows)),
+        key=lambda index: (active[index] / len(rows[index]), -index))
+    assert {maximum_batch, minimum_density, maximum_density} \
+        <= set(plan.selected_batch_indices)
     payload = plan.to_dict()
     assert payload["warmup_uses_same_batch_population"] is True
     assert payload["training_authorized"] is False
     assert payload["test_open_authorized"] is False
     assert payload["strength_claim_authorized"] is False
 
-    rows = _schedule()
     changed = build_qualification_plan(
         execution_git="a" * 40, candidate_device="mps",
         batch_decision_keys=tuple(reversed(rows)),
@@ -132,6 +157,13 @@ def test_plan_is_digest_selected_closed_and_authorizes_nothing():
         != qualification_protocol_sha256("cuda:0")
     assert qualification_protocol_sha256("cpu") \
         != qualification_protocol_sha256("mps")
+
+
+def test_protocol_hash_binds_cpu_member_worker_topology(monkeypatch):
+    expected = qualification_protocol_sha256("cpu")
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_qualification.CPU_MEMBER_WORKERS", 1)
+    assert qualification_protocol_sha256("cpu") != expected
 
 
 def test_three_paired_positive_20_percent_runs_retain_accelerator():

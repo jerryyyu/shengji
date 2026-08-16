@@ -42,7 +42,8 @@ from .belief_v2_statistics import (
     v2_reference_replicates_are_stable,
     v2_round_population_bytes,
 )
-from .belief_v2_training_inputs import reopen_v2_training_inputs
+from .belief_v2_input_index_controller import reopen_training_input_index
+from .belief_v2_progress import ProgressCallback
 
 
 CALIBRATION_STAGE_SCHEMA = "belief-v1-v2-calibration-selection-stage-v1"
@@ -188,15 +189,16 @@ def run_v2_calibration_selection(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, inventory: dict[str, Any],
-        group_split: dict[str, Any]) -> dict[str, Any]:
+        group_split: dict[str, Any],
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Score both calibration replicates and atomically seal selection."""
     _stage_gate(
         root=root, repo=repo, freeze=freeze, admission=admission,
         review_marker=review_marker)
     try:
-        training_inputs = reopen_v2_training_inputs(
-            root, freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        _, training_inputs = reopen_training_input_index(
+            root / "training-input-index" / "result", freeze=freeze,
+            admission=admission)
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 root, freeze=freeze, admission=admission,
@@ -207,19 +209,29 @@ def run_v2_calibration_selection(
     cohort_ids = tuple(row.cohort_id for row in cohorts)
     started = time.monotonic_ns()
     cpu_started = time.process_time_ns()
+    if progress is not None:
+        progress(0, 6, "score-calibration-populations")
     try:
         synthetic_0 = _score_synthetic(
             root, freeze, admission, cohorts,
             replicate="calibration-replicate-0")
+        if progress is not None:
+            progress(1, 6, "score-calibration-populations")
         synthetic_1 = _score_synthetic(
             root, freeze, admission, cohorts,
             replicate="calibration-replicate-1")
+        if progress is not None:
+            progress(2, 6, "score-calibration-populations")
         human_0 = _score_human(
             root, freeze, admission, group_split, cohorts,
             replicate="calibration-replicate-0")
+        if progress is not None:
+            progress(3, 6, "score-calibration-populations")
         human_1 = _score_human(
             root, freeze, admission, group_split, cohorts,
             replicate="calibration-replicate-1")
+        if progress is not None:
+            progress(4, 6, "score-calibration-populations")
     except ValueError as exc:
         raise BeliefV2CalibrationControllerError(
             "V2 calibration scoring population refused") from exc
@@ -242,6 +254,8 @@ def run_v2_calibration_selection(
             synthetic_0, expected_synthetic_rounds=expected_synthetic,
             cohort_ids=cohort_ids,
             scale_fractions=_scale_fractions(freeze))
+        if progress is not None:
+            progress(5, 6, "derive-calibration-statistics")
     except ValueError as exc:
         raise BeliefV2CalibrationControllerError(
             "V2 calibration statistic refused") from exc
@@ -308,6 +322,8 @@ def run_v2_calibration_selection(
     if reopened != manifest:
         raise BeliefV2CalibrationControllerError(
             "V2 calibration post-publish drift")
+    if progress is not None:
+        progress(6, 6, "calibration-complete")
     return reopened
 
 
@@ -389,9 +405,9 @@ def reopen_v2_calibration_selection(
         raise BeliefV2CalibrationControllerError(
             "V2 calibration manifest file population drift")
     try:
-        training_inputs = reopen_v2_training_inputs(
-            Path(freeze.evidence_root), freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        _, training_inputs = reopen_training_input_index(
+            Path(freeze.evidence_root) / "training-input-index" / "result",
+            freeze=freeze, admission=admission)
         _, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 Path(freeze.evidence_root), freeze=freeze,

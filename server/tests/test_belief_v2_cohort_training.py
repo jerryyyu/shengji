@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import random
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 import torch
 
 import shengji.rl.belief_v2_cohort_training as STAGE
+import shengji.rl.belief_v2_streaming_inputs as STREAM_INPUTS
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
@@ -19,7 +21,9 @@ from shengji.rl.belief_v2_cohort_training import (
     BeliefV2CohortTrainingError,
     reopen_trained_v2_cohort,
     train_v2_cohort_in_memory,
+    train_v2_cohort_streaming,
     validate_trained_v2_cohort,
+    validate_trained_v2_cohort_rows,
 )
 from shengji.rl.belief_v2_freeze import (
     ALL_HUMAN_TRAIN_DECISIONS,
@@ -41,11 +45,26 @@ from shengji.rl.belief_v2_schedule import (
 from shengji.rl.belief_v2_training import (
     build_human_training_example,
     build_synthetic_training_example,
+    collate_v2_label_control_examples,
 )
 from shengji.rl.belief_v2_training_inputs import (
     BeliefV2TrainingInputError,
     V2TrainingInputPopulationV1,
     validate_v2_training_inputs,
+)
+from shengji.rl.belief_v2_streaming_training import (
+    BeliefV2StreamingTrainingError,
+    V2StreamingSourceV1,
+    V2StreamingTrainingIndexV1,
+    iter_streaming_calibration_batches,
+    iter_streaming_training_batches,
+    resident_array_bytes,
+)
+from shengji.rl.belief_v2_streaming_inputs import (
+    BeliefV2StreamingInputError,
+    build_streaming_training_inputs,
+    reopen_streaming_training_inputs_bytes,
+    streaming_training_inputs_bytes,
 )
 
 
@@ -165,6 +184,30 @@ def _one_epoch(monkeypatch, kind: str):
     return value, examples, schedule, calibration, result
 
 
+def _streaming_fixture():
+    synthetic, human, realized, calibration, schedule = _fixture()
+    all_examples = (*synthetic, *human, *calibration)
+    by_group = {}
+    for example in all_examples:
+        by_group.setdefault(example.round_group_key, []).append(example)
+    control_dose = sum(collate_v2_label_control_examples(
+        tuple(rows))[1] for rows in by_group.values()
+                       if rows[0].split == "train"
+                       and rows[0].source_kind == "synthetic")
+    index = V2StreamingTrainingIndexV1(
+        train_rows=tuple(training_row(row) for row in (*synthetic, *human)),
+        calibration_rows=tuple(STAGE.calibration_row(row)
+                               for row in calibration),
+        sources=tuple(V2StreamingSourceV1(
+            round_group_key=group, split=rows[0].split,
+            source_kind=rows[0].source_kind, source_token=f"source-{index}")
+                      for index, (group, rows) in enumerate(
+                          sorted(by_group.items()))),
+        control_changed_cell_count=control_dose)
+    return index, realized, schedule, {
+        group: tuple(rows) for group, rows in by_group.items()}
+
+
 def test_primary_trains_one_common_epoch_and_reopens_every_checkpoint(
         monkeypatch):
     value, examples, schedule, calibration, result = _one_epoch(
@@ -258,3 +301,119 @@ def test_closed_training_input_population_reconstructs_every_schedule():
                        match="artifact reconstruction"):
         validate_v2_training_inputs(replace(
             value, realizations=tuple(reversed(value.realizations))))
+
+
+def test_streaming_batches_equal_materialized_batches_without_resident_arrays():
+    index, realized, schedule, by_group = _streaming_fixture()
+    assert resident_array_bytes(index) == 0
+    for value in realized:
+        source_examples = {
+            row.decision_key for row in value.rows}
+        materialized = tuple(row for rows in by_group.values() for row in rows
+                             if row.decision_key in source_examples)
+        expected, _ = STAGE._training_batches(value, materialized)
+        actual = tuple(iter_streaming_training_batches(
+            index, value,
+            load_round=lambda source: by_group[source.round_group_key]))
+        assert len(actual) == len(expected)
+        for left, right in zip(actual, expected, strict=True):
+            assert left.decision_keys == right.decision_keys
+            assert left.schema == right.schema
+            assert left.control_kind == right.control_kind
+            assert torch.equal(left.events, right.events)
+            assert torch.equal(left.count_labels, right.count_labels)
+            assert torch.equal(left.active_mask, right.active_mask)
+    expected_calibration = STAGE._calibration_batches(
+        schedule, tuple(row for rows in by_group.values() for row in rows
+                        if row.split == "calibration"))
+    actual_calibration = tuple(iter_streaming_calibration_batches(
+        index, schedule,
+        load_round=lambda source: by_group[source.round_group_key]))
+    assert len(actual_calibration) == len(expected_calibration)
+    assert all(torch.equal(left.events, right.events)
+               and torch.equal(left.count_labels, right.count_labels)
+               for left, right in zip(
+                   actual_calibration, expected_calibration, strict=True))
+
+
+def test_compact_input_artifact_round_trip_binds_every_row_without_arrays(
+        monkeypatch):
+    index, _, _, _ = _streaming_fixture()
+    freeze = SimpleNamespace(cohorts=_plans(), sha256=lambda: "f" * 64)
+    monkeypatch.setattr(
+        STREAM_INPUTS, "validate_execution_freeze", lambda value: None)
+    value = build_streaming_training_inputs(
+        freeze, train_rows=index.train_rows,
+        calibration_rows=index.calibration_rows, sources=index.sources,
+        control_changed_cell_count=index.control_changed_cell_count,
+        human_group_manifest_sha256s=("a" * 64,))
+    raw = streaming_training_inputs_bytes(value, freeze)
+    reopened = reopen_streaming_training_inputs_bytes(raw, freeze=freeze)
+    assert reopened == value
+    assert reopened.manifest()["resident_model_array_bytes"] == 0
+    assert resident_array_bytes(reopened) == 0
+    corrupted = raw.replace(
+        index.train_rows[0].decision_key.encode("ascii"), b"0" * 64, 1)
+    with pytest.raises(BeliefV2StreamingInputError):
+        reopen_streaming_training_inputs_bytes(corrupted, freeze=freeze)
+
+
+def test_streaming_batch_reopens_only_named_groups_and_binds_compact_rows():
+    index, realized, _, by_group = _streaming_fixture()
+    primary = next(row for row in realized
+                   if row.kind == "synthetic-primary")
+    calls = []
+
+    def load(source):
+        calls.append(source.round_group_key)
+        return by_group[source.round_group_key]
+
+    batches = tuple(iter_streaming_training_batches(
+        index, primary, load_round=load))
+    expected_groups = {
+        row.round_group_key for row in primary.rows}
+    assert set(calls) == expected_groups
+    assert len(calls) == len(set(calls))
+    assert sum(len(batch.decision_keys) for batch in batches) \
+        == len(primary.rows)
+
+    victim = index.train_rows[0].decision_key
+
+    def changed_load(source):
+        return tuple(replace(
+            example, privileged_target_sha256="f" * 64)
+                     if example.decision_key == victim else example
+                     for example in by_group[source.round_group_key])
+
+    with pytest.raises(BeliefV2StreamingTrainingError,
+                       match="example/row binding"):
+        tuple(iter_streaming_training_batches(
+            index, primary, load_round=changed_load))
+
+
+@pytest.mark.parametrize("kind", (
+    "synthetic-primary", "hard-geometry-label-permutation",
+    "human-mixture", "synthetic-scale"))
+def test_streaming_training_is_checkpoint_identical_to_materialized(
+        monkeypatch, kind):
+    index, realized, schedule, by_group = _streaming_fixture()
+    value = next(row for row in realized if row.kind == kind)
+    source_examples = {
+        row.decision_key for row in value.rows}
+    examples = tuple(row for rows in by_group.values() for row in rows
+                     if row.decision_key in source_examples)
+    calibration = tuple(row for rows in by_group.values() for row in rows
+                        if row.split == "calibration")
+    monkeypatch.setattr(STAGE, "TRAIN_MAX_EPOCHS", 1)
+    expected = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu")
+    actual = train_v2_cohort_streaming(
+        value, schedule, index=index,
+        load_round=lambda source: by_group[source.round_group_key],
+        device="cpu")
+    assert actual == expected
+    validate_trained_v2_cohort_rows(
+        value, schedule,
+        control_dose=(index.control_changed_cell_count
+                      if kind == "hard-geometry-label-permutation" else 0),
+        candidate=actual)

@@ -23,6 +23,7 @@ from .belief_v2_controller import (
     reopen_capture_lane,
     reopen_reference_lane,
 )
+from .belief_v2_device_qualification import training_host_memory_upper_bound
 from .belief_v2_freeze import (
     CONTROL_COHORT_ID,
     HUMAN_COHORT_ID,
@@ -46,6 +47,7 @@ from .belief_v2_result import (
     expected_reference_job_count,
     validate_terminal_result,
 )
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_scoring import score_v2_round
 from .belief_v2_scoring_controller import (
     reopen_human_scoring_rounds,
@@ -62,7 +64,7 @@ from .belief_v2_statistics import (
     reopen_v2_round_population,
     v2_round_population_bytes,
 )
-from .belief_v2_training_inputs import reopen_v2_training_inputs
+from .belief_v2_input_index_controller import reopen_training_input_index
 
 
 TERMINAL_ATTEMPT_SCHEMA = "belief-v1-v2-test-opening-attempt-v1"
@@ -223,6 +225,7 @@ def _derive_integrity_receipt(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         group_split: dict[str, Any], *, plan, qualification,
+        input_index_manifest: dict[str, Any],
         training_hashes: tuple[tuple[str, str], ...],
         synthetic_test_count: int, human_test_decision_count: int):
     expected_training_ids = tuple(row.cohort_id for row in freeze.cohorts)
@@ -278,6 +281,42 @@ def _derive_integrity_receipt(
     reference_resources = tuple(row["resources"] for row in (
         *reference_manifests, *human_reference))
     training_resources = tuple(row["resources"] for row in training_manifests)
+    input_index_resources = input_index_manifest["resources"]
+    try:
+        qualification_process_count, qualification_host_memory = (
+            training_host_memory_upper_bound(
+                max(arm.peak_host_memory_bytes for arm in qualification.arms
+                    if not arm.warmup
+                    and arm.device == qualification.selected_device),
+                selected_device=qualification.selected_device,
+                cpu_cohort_process_count=len(freeze.cohorts)))
+        training_host_memory = []
+        for resources in training_resources:
+            process_count, aggregate = training_host_memory_upper_bound(
+                resources["peak_host_memory_bytes"],
+                selected_device=qualification.selected_device,
+                cpu_cohort_process_count=len(freeze.cohorts))
+            if resources.get("selected_device") \
+                    != qualification.selected_device \
+                    or resources.get("host_memory_process_count") \
+                    != process_count \
+                    or resources.get(
+                        "aggregate_peak_host_memory_upper_bound_bytes") \
+                    != aggregate:
+                raise BeliefV2TerminalControllerError(
+                    "V2 terminal training host memory reconstruction drift")
+            training_host_memory.append(aggregate)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal training host memory reconstruction drift") from exc
+    expected_process_count = (
+        len(freeze.cohorts)
+        if qualification.selected_device == "cpu" else 1)
+    if qualification_process_count != expected_process_count \
+            or max(qualification_host_memory, *training_host_memory) \
+            > freeze.resource_caps.training_host_memory_bytes:
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal aggregate host memory cap exceeded")
     qualification_compute = sum(row.wall_nanoseconds
                                 for row in qualification.arms)
     qualification_bytes = len(plan.canonical_bytes()) \
@@ -315,26 +354,36 @@ def _derive_integrity_receipt(
         reference_wall_nanoseconds=_parallel_span(reference_resources),
         reference_artifact_bytes=sum(
             row["artifact_bytes"] for row in reference_resources),
-        training_device_nanoseconds=qualification_compute + sum(
-            row["training_compute_nanoseconds"]
-            for row in training_resources),
+        training_device_nanoseconds=(
+            input_index_resources["wall_nanoseconds"]
+            + qualification_compute + sum(
+                row["training_compute_nanoseconds"]
+                for row in training_resources)),
         training_wall_nanoseconds=(
-            qualification_compute + _parallel_span(training_resources)),
-        training_artifact_bytes=qualification_bytes + sum(
-            row["artifact_bytes"] for row in training_resources),
+            input_index_resources["wall_nanoseconds"]
+            + qualification_compute + _parallel_span(training_resources)),
+        training_artifact_bytes=(
+            input_index_resources["artifact_bytes"]
+            + qualification_bytes + sum(
+                row["artifact_bytes"] for row in training_resources)),
         training_peak_host_memory_bytes=max(
-            max(row["peak_host_memory_bytes"] for row in training_resources),
-            max(arm.peak_host_memory_bytes for arm in qualification.arms)),
+            input_index_resources["peak_host_memory_bytes"],
+            qualification_host_memory,
+            max(training_host_memory)),
         training_peak_device_memory_bytes=max(
             max(row["peak_device_memory_bytes"] for row in training_resources),
             max(arm.peak_device_memory_bytes for arm in qualification.arms)),
         capture_failure_count=0, reference_failure_count=0,
         training_failure_count=0, mechanics_failure_count=0,
         resource_cap_violation_count=0,
-        retry_count=sum(row["retry_count"] for row in (
-            *capture_resources, *reference_resources, *training_resources)),
-        drop_count=sum(row["drop_count"] for row in (
-            *capture_resources, *reference_resources, *training_resources)),
+        retry_count=(input_index_resources["retry_count"] + sum(
+            row["retry_count"] for row in (
+                *capture_resources, *reference_resources,
+                *training_resources))),
+        drop_count=(input_index_resources["drop_count"] + sum(
+            row["drop_count"] for row in (
+                *capture_resources, *reference_resources,
+                *training_resources))),
         test_split_decision_open_count=1)
 
 
@@ -390,10 +439,13 @@ def run_v2_terminal(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, inventory: dict[str, Any],
-        group_split: dict[str, Any]) -> dict[str, Any]:
+        group_split: dict[str, Any],
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Consume the sole test opening after durable attempt publication."""
     _stage_gate(root=root, repo=repo, freeze=freeze, admission=admission,
                 review_marker=review_marker)
+    if progress is not None:
+        progress(0, 5, "prepare-test-opening")
     calibration, human_selection, scale_curve = _calibration_statistics(
         root, freeze, admission, inventory, group_split)
     attempt = _attempt(freeze, admission, calibration)
@@ -411,16 +463,22 @@ def run_v2_terminal(
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+    if progress is not None:
+        progress(1, 5, "test-opening-recorded")
     try:
-        training_inputs = reopen_v2_training_inputs(
-            root, freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        input_index_manifest, training_inputs = reopen_training_input_index(
+            root / "training-input-index" / "result", freeze=freeze,
+            admission=admission)
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 root, freeze=freeze, admission=admission,
                 training_inputs=training_inputs))
+        if progress is not None:
+            progress(2, 5, "test-inputs-reopened")
         synthetic, human = _score_test_populations(
             root, freeze, admission, group_split, cohorts)
+        if progress is not None:
+            progress(3, 5, "test-populations-scored")
         cohort_ids = tuple(row.cohort_id for row in cohorts)
         expected_synthetic = _expected_test_synthetic_rounds()
         expected_human = _expected_test_human_rounds(
@@ -437,12 +495,16 @@ def run_v2_terminal(
             expected_human_rounds=expected_human, cohort_ids=cohort_ids)
         receipt = _derive_integrity_receipt(
             root, freeze, admission, group_split, plan=plan,
-            qualification=qualification, training_hashes=training_hashes,
+            qualification=qualification,
+            input_index_manifest=input_index_manifest,
+            training_hashes=training_hashes,
             synthetic_test_count=len(synthetic),
             human_test_decision_count=sum(row.decision_count for row in human))
         result = derive_terminal_result(
             freeze, plan, qualification, receipt, human_selection,
             scale_curve, primary, control, human_transfer)
+        if progress is not None:
+            progress(4, 5, "terminal-statistics-derived")
     except ValueError as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal test derivation refused after durable attempt") from exc
@@ -479,6 +541,8 @@ def run_v2_terminal(
     if reopened != manifest:
         raise BeliefV2TerminalControllerError(
             "V2 terminal post-publish reconstruction drift")
+    if progress is not None:
+        progress(5, 5, "terminal-complete")
     return reopened
 
 
@@ -529,9 +593,9 @@ def reopen_v2_terminal(
                 "V2 terminal file byte binding drift")
         files[key] = raw
     try:
-        training_inputs = reopen_v2_training_inputs(
-            Path(freeze.evidence_root), freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split)
+        input_index_manifest, training_inputs = reopen_training_input_index(
+            Path(freeze.evidence_root) / "training-input-index" / "result",
+            freeze=freeze, admission=admission)
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 Path(freeze.evidence_root), freeze=freeze,
@@ -559,6 +623,7 @@ def reopen_v2_terminal(
         receipt = _derive_integrity_receipt(
             Path(freeze.evidence_root), freeze, admission, group_split,
             plan=plan, qualification=qualification,
+            input_index_manifest=input_index_manifest,
             training_hashes=training_hashes,
             synthetic_test_count=len(synthetic),
             human_test_decision_count=sum(row.decision_count for row in human))

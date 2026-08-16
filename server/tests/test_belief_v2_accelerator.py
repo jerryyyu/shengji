@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import threading
+import time
 from dataclasses import fields, replace
 
 import pytest
@@ -27,8 +29,10 @@ from shengji.rl.belief_training import (
     collate_training_examples,
 )
 from shengji.rl.belief_v2_accelerator import (
+    _member_workers_for_device,
     _same_training_device,
     BeliefV2AcceleratorError,
+    CPU_MEMBER_WORKERS,
     TRAINING_TENSOR_FIELDS,
     V2TrainingDeviceProfileV1,
     build_training_device_profile,
@@ -55,21 +59,25 @@ POLICIES = ("mc-s0-report-lcb",)
 @pytest.fixture(autouse=True)
 def _deterministic_algorithms():
     previous = torch.are_deterministic_algorithms_enabled()
+    previous_threads = torch.get_num_threads()
+    torch.set_num_threads(1)
     torch.use_deterministic_algorithms(True)
     try:
         yield
     finally:
         torch.use_deterministic_algorithms(previous)
+        torch.set_num_threads(previous_threads)
 
 
-def _batch(split: str = "train"):
-    seed = b2_split_round_seeds(split)[0]
+def _batch(split: str = "train", *, decisions: int = 2,
+           seed_index: int = 0):
+    seed = b2_split_round_seeds(split)[seed_index]
     captured = _capture_with_policies(
         seed, POLICIES[0], champion_policy_seeds(seed),
         [HeuristicBot() for _ in range(4)])
     examples = tuple(build_training_example(
         pair, behavior_policy_ids=POLICIES)
-                     for pair in captured.pairs[:2])
+                     for pair in captured.pairs[:decisions])
     return collate_training_examples(examples)
 
 
@@ -97,6 +105,14 @@ def test_resolved_mps_zero_matches_the_unindexed_canonical_request():
         torch.device("cuda:1"), torch.device("cuda:0"))
     assert not _same_training_device(
         torch.device("cpu"), torch.device("mps"))
+    assert _member_workers_for_device(torch.device("cpu")) \
+        == CPU_MEMBER_WORKERS
+    assert CPU_MEMBER_WORKERS == 4
+    assert _member_workers_for_device(torch.device("mps")) == 1
+    assert _member_workers_for_device(torch.device("cuda:0")) == 1
+    with pytest.raises(BeliefV2AcceleratorError,
+                       match="member worker device identity"):
+        _member_workers_for_device("cpu")
 
 
 @pytest.mark.skipif(
@@ -216,6 +232,141 @@ def test_v2_cpu_path_is_receipt_and_checkpoint_identical_to_v1():
     actual_values = evaluate_v2_calibration_cohort_stream_nanonats(
         actual_models, iter((calibration,)), device="cpu")
     assert actual_values == expected_values
+
+
+def test_v2_cpu_parallel_members_match_serial_across_multiple_batches():
+    train = (
+        _batch(decisions=2, seed_index=0),
+        _batch(decisions=2, seed_index=1),
+    )
+    expected_models = _models()
+    actual_models = _models()
+    expected = train_cohort_epoch_stream(
+        expected_models,
+        tuple(new_b2_optimizer(model) for model in expected_models),
+        iter(train), epoch=1)
+    actual = train_v2_cohort_epoch_stream(
+        actual_models,
+        tuple(new_v2_optimizer(model) for model in actual_models),
+        iter(train), epoch=1, device="cpu")
+    assert actual == expected
+    assert tuple(portable_model_state_sha256(model)
+                 for model in actual_models) \
+        == tuple(model_state_sha256(model) for model in expected_models)
+
+    calibration = (
+        _batch("calibration", decisions=2, seed_index=0),
+        _batch("calibration", decisions=2, seed_index=1),
+    )
+    expected_values = evaluate_calibration_cohort_stream_nanonats(
+        expected_models, iter(calibration))
+    actual_values = evaluate_v2_calibration_cohort_stream_nanonats(
+        actual_models, iter(calibration), device="cpu")
+    assert actual_values == expected_values
+
+
+def test_v2_cpu_wrapper_routes_the_exact_member_worker_count(monkeypatch):
+    models = _models()
+    observed = []
+
+    def train_probe(*args, **kwargs):
+        observed.append(("train", kwargs["member_workers"]))
+        return ()
+
+    def calibration_probe(*args, **kwargs):
+        observed.append(("calibration", kwargs["member_workers"]))
+        return ()
+
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_accelerator._train_cohort_epoch_stream",
+        train_probe)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_accelerator."
+        "_evaluate_calibration_cohort_stream_nanonats",
+        calibration_probe)
+    assert train_v2_cohort_epoch_stream(
+        models, tuple(new_v2_optimizer(model) for model in models),
+        iter((_batch(),)), epoch=1, device="cpu") == ()
+    assert evaluate_v2_calibration_cohort_stream_nanonats(
+        models, iter((_batch("calibration"),)), device="cpu") == ()
+    assert observed == [
+        ("train", CPU_MEMBER_WORKERS),
+        ("calibration", CPU_MEMBER_WORKERS),
+    ]
+
+
+def test_v2_cpu_member_work_executes_in_threads_and_refuses_worker_error(
+        monkeypatch):
+    from shengji.rl import belief_trainer
+
+    original = belief_trainer.training_batch_loss
+    worker_names = set()
+    lock = threading.Lock()
+
+    def observed_loss(model, batch):
+        with lock:
+            worker_names.add(threading.current_thread().name)
+        time.sleep(0.01)
+        return original(model, batch)
+
+    monkeypatch.setattr(belief_trainer, "training_batch_loss", observed_loss)
+    models = _models()
+    train_v2_cohort_epoch_stream(
+        models, tuple(new_v2_optimizer(model) for model in models),
+        iter((_batch(),)), epoch=1, device="cpu")
+    assert len(worker_names) > 1
+    assert all(name.startswith("belief-v2-member")
+               for name in worker_names)
+
+    gradients = tuple(
+        None if parameter.grad is None else parameter.grad.detach().clone()
+        for model in models for parameter in model.parameters())
+    worker_names.clear()
+    evaluate_v2_calibration_cohort_stream_nanonats(
+        models, iter((_batch("calibration"),)), device="cpu")
+    assert len(worker_names) > 1
+    assert all(name.startswith("belief-v2-calibration")
+               for name in worker_names)
+    assert all(
+        before is None and parameter.grad is None
+        or before is not None and parameter.grad is not None
+        and torch.equal(before, parameter.grad)
+        for before, parameter in zip(
+            gradients,
+            (parameter for model in models for parameter in model.parameters()),
+            strict=True))
+
+    failed_model = models[3]
+
+    def refused_loss(model, batch):
+        if model is failed_model:
+            raise ValueError("deliberate member failure")
+        return original(model, batch)
+
+    monkeypatch.setattr(belief_trainer, "training_batch_loss", refused_loss)
+    with pytest.raises(ValueError, match="training batch loss refused"):
+        train_v2_cohort_epoch_stream(
+            models, tuple(new_v2_optimizer(model) for model in models),
+            iter((_batch(seed_index=1),)), epoch=2, device="cpu")
+    assert not any(
+        thread.name.startswith("belief-v2-")
+        for thread in threading.enumerate())
+
+
+def test_v1_cpu_cohort_path_never_constructs_a_member_pool(monkeypatch):
+    from shengji.rl import belief_trainer
+
+    def refuse_pool(*args, **kwargs):
+        raise AssertionError("V1 must remain serial")
+
+    monkeypatch.setattr(
+        belief_trainer.concurrent.futures, "ThreadPoolExecutor", refuse_pool)
+    models = _models()
+    train_cohort_epoch_stream(
+        models, tuple(new_b2_optimizer(model) for model in models),
+        iter((_batch(),)), epoch=1)
+    evaluate_calibration_cohort_stream_nanonats(
+        models, iter((_batch("calibration"),)))
 
 
 def test_runnable_qualification_cpu_arm_uses_exact_selected_batches():

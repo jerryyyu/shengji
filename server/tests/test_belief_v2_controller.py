@@ -15,7 +15,9 @@ import torch
 import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
 import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
+import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
+import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
@@ -44,6 +46,7 @@ from shengji.rl.belief_v2_device_qualification import (
 )
 from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_device_controller import (
+    BeliefV2DeviceControllerError,
     reopen_device_qualification,
     run_device_qualification,
 )
@@ -84,6 +87,9 @@ from shengji.rl.belief_v2_human_reference import (
 from shengji.rl.belief_v2_human_reference_controller import (
     reopen_human_reference_group,
     run_human_reference_group,
+)
+from shengji.rl.belief_v2_input_index_controller import (
+    run_training_input_index,
 )
 from shengji.rl.belief_v2_human_inventory import (
     H0_INVENTORY_SCHEMA,
@@ -363,10 +369,13 @@ def test_capture_publishes_one_search_private_and_actor_only_bytes(
     monkeypatch.setattr(
         "shengji.rl.belief_v2_controller.capture_v2_champion_round",
         capture)
+    progress = []
     result = run_capture_lane(
         root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
-        review_marker=b"review")
+        review_marker=b"review", progress=lambda *row: progress.append(row))
     assert calls == [coordinate]
+    assert progress == [
+        (0, 1, "capture-rounds"), (1, 1, "capture-rounds")]
     assert result["round_count"] == 1
     row = result["rounds"][0]
     assert row["private_bundle_sha256"] != row["actor_bundle_sha256"]
@@ -393,9 +402,14 @@ def test_reference_opens_no_private_capture_bundle(tmp_path, monkeypatch):
         return real_read(path)
 
     monkeypatch.setattr(controller, "stable_read_bytes", target_blind)
+    progress = []
     result = run_reference_lane(
         root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
-        review_marker=b"review")
+        review_marker=b"review", progress=lambda *row: progress.append(row))
+    assert progress == [
+        (0, 2, "reference-jobs"),
+        (1, 2, "reference-jobs"),
+        (2, 2, "reference-jobs")]
     assert result["job_count"] == 2
     assert result["input_surface"] == "actor-only-capture-bundles"
     assert result["contains_privileged_training_targets"] is False
@@ -765,10 +779,15 @@ def test_human_group_stage_persists_separate_rows_and_training_is_test_blind(
             "shengji.rl.belief_v2_human_controller."
             "capture_human_source_group",
             lambda *args, value=captured, **kwargs: value)
+        progress = []
         manifest = run_human_group_capture(
             root, freeze, admission, repo=Path("/unused"),
             source_path=source, inventory=inventory,
-            group_split=group_split, review_marker=b"review")
+            group_split=group_split, review_marker=b"review",
+            progress=lambda *row: progress.append(row))
+        assert progress == [
+            (0, 1, "replay-human-decisions"),
+            (1, 1, "publish-human-decisions")]
         assert manifest["split"] == split
         assert manifest["actor_target_files_separate"] is True
         captures[split] = root / "human-capture" / (
@@ -880,10 +899,15 @@ def test_human_reference_stage_reopens_against_actor_only_capture(
         "shengji.rl.belief_v2_human_reference_controller."
         "capture_human_ref_c_source_group",
         lambda *args, **kwargs: reference)
+    progress = []
     manifest = run_human_reference_group(
         root, freeze, admission, repo=Path("/unused"),
         source_path=source, inventory=inventory, group_split=group_split,
-        replicate="calibration-replicate-0", review_marker=b"review")
+        replicate="calibration-replicate-0", review_marker=b"review",
+        progress=lambda *row: progress.append(row))
+    assert progress == [
+        (0, 1, "replay-human-reference"),
+        (1, 1, "publish-human-reference")]
     reopened = reopen_human_reference_group(
         root / "human-reference" / f"group-{captured.group_digest}"
         / "calibration-replicate-0",
@@ -898,6 +922,104 @@ def test_human_reference_stage_reopens_against_actor_only_capture(
     assert len(rounds) == 1
     assert rounds[0][0] == metadata["round_digest"]
     assert len(rounds[0][2]) == 1
+
+
+def test_zero_decision_human_group_progress_completes_at_stage_boundary(
+        tmp_path, monkeypatch):
+    source_raws, source_shas, _, inventory, group_split = _human_receipts()
+    split_by_digest = {
+        digest: split for split, row in group_split["splits"].items()
+        for digest in row["group_digests"]}
+    raw, source_sha = next(
+        (raw, digest) for raw, digest in zip(
+            source_raws, source_shas, strict=True)
+        if split_by_digest[_group_digest(digest)] == "calibration")
+    group_digest = _group_digest(source_sha)
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    base = _freeze(root)
+    splits = group_split["splits"]
+    freeze = replace(
+        base,
+        h0_inventory_sha256=hashlib.sha256(
+            inventory_bytes(inventory)).hexdigest(),
+        h0_source_manifest_sha256=inventory["source_manifest_sha256"],
+        h0_source_digest_population_sha256=(
+            inventory["source_digest_population_sha256"]),
+        human_group_split_sha256=hashlib.sha256(
+            group_split_bytes(group_split, inventory=inventory)).hexdigest(),
+        human_group_count=inventory["group_count"],
+        human_train_group_count=splits["train"]["group_count"],
+        human_calibration_group_count=splits["calibration"]["group_count"],
+        human_test_group_count=splits["test"]["group_count"],
+        human_complete_round_count=inventory["complete_rounds"],
+        human_eligible_decision_count=inventory["human_play_decisions"],
+        human_train_eligible_decision_count=(
+            splits["train"]["human_play_decisions"]),
+        human_calibration_eligible_decision_count=(
+            splits["calibration"]["human_play_decisions"]),
+        human_test_eligible_decision_count=(
+            splits["test"]["human_play_decisions"]),
+    )
+    admission = _admission(freeze)
+    source = tmp_path / "empty-calibration.jsonl"
+    source.write_bytes(raw)
+    source.chmod(0o400)
+    captured = V2HumanGroupCaptureV1(
+        source_sha256=source_sha, group_digest=group_digest,
+        split="calibration", complete_round_count=0,
+        incomplete_round_count=1, human_decision_count=0,
+        trump_rank_counts=(), attempted_channel_counts=(), pairs=())
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller.capture_human_source_group",
+        lambda *args, **kwargs: captured)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller._group_inventory_row",
+        lambda *args: {
+            "source_bytes": len(raw), "complete_rounds": 0,
+            "incomplete_rounds": 1, "human_play_decisions": 0,
+            "trump_rank_counts": {}, "attempted_channel_counts": {}})
+    progress = []
+    run_human_group_capture(
+        root, freeze, admission, repo=Path("/unused"),
+        source_path=source, inventory=inventory, group_split=group_split,
+        review_marker=b"review", progress=lambda *row: progress.append(row))
+    assert progress == [
+        (0, 1, "replay-human-group"),
+        (1, 1, "human-group-complete")]
+
+    replay = V2HumanReplaySummaryV1(
+        source_sha256=source_sha, group_digest=group_digest,
+        complete_round_count=0, incomplete_round_count=1,
+        human_decision_count=0, trump_rank_counts=(),
+        attempted_channel_counts=())
+    reference = V2HumanReferenceGroupV1(
+        replay=replay, split="calibration",
+        replicate="calibration-replicate-0", decisions=())
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_reference_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_reference_controller."
+        "capture_human_ref_c_source_group",
+        lambda *args, **kwargs: reference)
+    reference_progress = []
+    run_human_reference_group(
+        root, freeze, admission, repo=Path("/unused"),
+        source_path=source, inventory=inventory, group_split=group_split,
+        replicate="calibration-replicate-0", review_marker=b"review",
+        progress=lambda *row: reference_progress.append(row))
+    assert reference_progress == [
+        (0, 1, "replay-human-reference-group"),
+        (1, 1, "human-reference-group-complete")]
+    assert reopen_human_scoring_rounds(
+        root, freeze=freeze, admission=admission,
+        group_digest=group_digest,
+        replicate="calibration-replicate-0",
+        allowed_split="calibration") == ()
 
 
 def _cpu_fallback_qualification(freeze):
@@ -1002,6 +1124,106 @@ def test_device_qualification_stage_publishes_raw_reopenable_cpu_fallback(
     assert manifest["training_authorized_by_this_artifact"] is False
 
 
+def test_training_input_index_wires_deadline_around_source_units_and_seal(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    phases = []
+    fake = SimpleNamespace(
+        index=SimpleNamespace(sources=(object(), object())),
+        sha256=lambda: "7" * 64,
+        manifest=lambda: {
+            "resident_model_array_bytes": 0,
+            "one_batch_at_a_time": True})
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+
+    class Deadline:
+        def check(self, *, phase, next_unit_index,
+                  observed_monotonic_nanoseconds):
+            phases.append((phase, next_unit_index))
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "stage_deadline",
+        lambda *args, **kwargs: Deadline())
+
+    def build(*args, deadline_check, **kwargs):
+        deadline_check("before-unit", 0)
+        deadline_check("after-unit", 1)
+        return fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs", build)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "streaming_training_inputs_bytes",
+        lambda value, bound_freeze: b"compact-index\n")
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "host_peak_memory_bytes", lambda: 1024)
+
+    def reopen(directory, **kwargs):
+        return json.loads((directory / "manifest.json").read_bytes()), fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_training_input_index", reopen)
+    manifest = run_training_input_index(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+    assert manifest["index_sha256"] == hashlib.sha256(
+        b"compact-index\n").hexdigest()
+    assert manifest["synthetic_test_targets_opened"] is False
+    assert manifest["human_test_targets_opened"] is False
+    assert phases == [
+        ("before-unit", 0), ("after-unit", 1), ("before-seal", 2)]
+    assert not (root / "training-input-index" / "result.partial").exists()
+
+
+def test_training_input_index_deadline_records_refusal_cannot_seal_or_retry(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+    wall = freeze.resource_caps.training_wall_seconds * 1_000_000_000
+    started = 1_000_000_000
+    times = iter((started, started + wall - 60_000_000_000))
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE.time, "monotonic_ns", lambda: next(times))
+    advanced = []
+
+    def refuse_before_source(*args, deadline_check, **kwargs):
+        deadline_check("before-unit", 0)
+        advanced.append(True)
+        raise AssertionError("expired input-index construction advanced")
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs",
+        refuse_before_source)
+    kwargs = dict(
+        repo=Path("/unused"), review_marker=b"review",
+        inventory={}, group_split={})
+    with pytest.raises(INPUT_INDEX_STAGE.BeliefV2InputIndexControllerError,
+                       match="construction refused"):
+        run_training_input_index(root, freeze, admission, **kwargs)
+    assert advanced == []
+    partial = root / "training-input-index" / "result.partial"
+    assert {path.name for path in partial.iterdir()} \
+        == {"deadline-refusal.json"}
+    refusal = reopen_deadline_refusal(
+        partial / "deadline-refusal.json",
+        freeze_sha256=freeze.sha256(), admission_sha256=admission.sha256())
+    assert refusal.stage == "training"
+    assert refusal.slot == "input-index"
+    assert refusal.phase == "before-unit"
+    assert not (root / "training-input-index" / "result").exists()
+    with pytest.raises(INPUT_INDEX_STAGE.BeliefV2InputIndexControllerError,
+                       match="slot is occupied"):
+        run_training_input_index(root, freeze, admission, **kwargs)
+
+
 def test_cpu_only_device_stage_publishes_three_measured_repeats(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -1035,6 +1257,89 @@ def test_cpu_only_device_stage_publishes_three_measured_repeats(
     assert manifest["arm_count"] == 4
     assert manifest["measured_arm_count"] == 3
     assert manifest["accelerator_retained"] is False
+    assert manifest["selected_training_process_count"] \
+        == len(freeze.cohorts)
+    assert manifest["selected_process_peak_host_memory_bytes"] == 1024
+    assert manifest[
+        "aggregate_training_peak_host_memory_upper_bound_bytes"] \
+        == 1024 * len(freeze.cohorts)
+
+
+def test_cpu_device_stage_refuses_concurrent_aggregate_host_memory(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, _, _ = _tiny_training_population(freeze)
+    plan, original = _cpu_fallback_qualification(freeze)
+    per_process_peak = (
+        freeze.resource_caps.training_host_memory_bytes
+        // len(freeze.cohorts) + 1)
+    result = derive_qualification_result(plan, tuple(
+        replace(arm, peak_host_memory_bytes=per_process_peak)
+        for arm in original.arms))
+    assert per_process_peak \
+        < freeze.resource_caps.training_host_memory_bytes
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._expected_plan",
+        lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_in_memory",
+        lambda **kwargs: (plan, result))
+    with pytest.raises(BeliefV2DeviceControllerError,
+                       match="aggregate host memory cap"):
+        run_device_qualification(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", primary=primary,
+            primary_examples=training_examples)
+    partial = root / "device-qualification" / "result.partial"
+    assert partial.is_dir()
+    assert tuple(partial.iterdir()) == ()
+    assert not (root / "device-qualification" / "result").exists()
+
+
+def test_device_stage_streaming_wiring_never_calls_materialized_runner(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, _, _, _ = _tiny_training_population(freeze)
+    plan, result = _cpu_fallback_qualification(freeze)
+    index = object()
+    loader = lambda source: ()
+    observed = []
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._expected_plan",
+        lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_in_memory",
+        lambda **kwargs: pytest.fail("materialized qualification used"))
+
+    def streamed(**kwargs):
+        observed.append(kwargs)
+        return plan, result
+
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_streaming", streamed)
+    manifest = run_device_qualification(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", primary=primary,
+        primary_examples=None, streaming_index=index, load_round=loader)
+    assert manifest["selected_device"] == "cpu"
+    assert len(observed) == 1
+    assert observed[0]["streaming_index"] is index
+    assert observed[0]["load_round"] is loader
 
 
 def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
@@ -1058,6 +1363,7 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
     previous = torch.are_deterministic_algorithms_enabled()
     torch.use_deterministic_algorithms(True)
     try:
+        progress = []
         manifest = run_training_cohort(
             root, freeze, admission, repo=Path("/unused"),
             review_marker=b"review", primary=primary,
@@ -1065,7 +1371,8 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
             calibration=calibration_schedule,
             calibration_examples=calibration,
             qualification_plan=qualification_plan,
-            qualification_result=qualification_result)
+            qualification_result=qualification_result,
+            progress=lambda *row: progress.append(row))
         directory = root / "training" / primary.cohort_id
         reopened, trained = reopen_training_cohort(
             directory, freeze=freeze, admission=admission,
@@ -1078,6 +1385,9 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
     finally:
         torch.use_deterministic_algorithms(previous)
     assert reopened == manifest
+    assert progress == [
+        (0, 1, "training-epochs"),
+        (1, 1, "training-epochs")]
     assert trained.training_device == "cpu"
     assert manifest["resources"]["peak_host_memory_bytes"] > 0
     assert manifest["resources"]["peak_device_memory_bytes"] == 0
@@ -1097,6 +1407,62 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
             calibration_examples=calibration,
             qualification_plan=qualification_plan,
             qualification_result=qualification_result)
+
+
+def test_training_stage_streaming_wiring_never_calls_materialized_trainer(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration, calibration_schedule = (
+        _tiny_training_population(freeze))
+    qualification_plan, qualification_result = (
+        _cpu_fallback_qualification(freeze))
+    monkeypatch.setattr(
+        TRAINING_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        TRAINING_STAGE, "_validate_device_binding",
+        lambda *args, **kwargs: "cpu")
+    monkeypatch.setattr(COHORT_STAGE, "TRAIN_MAX_EPOCHS", 1)
+    previous = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    try:
+        expected = COHORT_STAGE.train_v2_cohort_in_memory(
+            primary, training_examples, calibration_schedule, calibration,
+            device="cpu")
+        observed = []
+        streaming_index = SimpleNamespace(control_changed_cell_count=0)
+        loader = lambda source: ()
+
+        def streamed(realization, schedule, *, index, load_round, device,
+                     deadline_check, progress):
+            observed.append((realization, schedule, index, load_round, device))
+            assert progress is None
+            deadline_check("before-unit", 0)
+            deadline_check("after-unit", 1)
+            return expected
+
+        monkeypatch.setattr(
+            TRAINING_STAGE, "train_v2_cohort_streaming", streamed)
+        monkeypatch.setattr(
+            TRAINING_STAGE, "train_v2_cohort_in_memory",
+            lambda *args, **kwargs: pytest.fail(
+                "materialized training path used"))
+        manifest = run_training_cohort(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", primary=primary,
+            realization=primary, training_examples=None,
+            calibration=calibration_schedule, calibration_examples=None,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result,
+            streaming_index=streaming_index, load_round=loader)
+    finally:
+        torch.use_deterministic_algorithms(previous)
+    assert observed == [(
+        primary, calibration_schedule, streaming_index, loader, "cpu")]
+    assert manifest["realization_sha256"] == primary.sha256()
+    assert manifest["test_split_opened"] is False
 
 
 def test_training_deadline_records_refusal_cannot_advance_seal_or_retry(
@@ -1192,7 +1558,8 @@ def test_deadline_refusal_blocks_calibration_and_test_before_any_input_open(
         raise AssertionError("deadline-blocked split was opened")
 
     monkeypatch.setattr(
-        CALIBRATION_STAGE, "reopen_v2_training_inputs", forbidden_open)
+        CALIBRATION_STAGE, "reopen_training_input_index",
+        forbidden_open)
     monkeypatch.setattr(
         TERMINAL_STAGE, "_calibration_statistics", forbidden_open)
     with pytest.raises(BeliefV2ControllerError,
@@ -1214,6 +1581,21 @@ def test_full_training_resource_receipt_enforces_its_own_memory_peaks(
         tmp_path):
     freeze = _freeze((tmp_path / "evidence").resolve())
     caps = freeze.resource_caps
+    cpu_peak = caps.training_host_memory_bytes // len(freeze.cohorts) + 1
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="resource cap"):
+        _resource_row(
+            freeze, started=10, finished=20, cpu_nanoseconds=5,
+            artifact_bytes=1, selected_device="cpu",
+            peak_host_memory_bytes=cpu_peak,
+            peak_device_memory_bytes=0)
+    row = _resource_row(
+        freeze, started=10, finished=20, cpu_nanoseconds=5,
+        artifact_bytes=1, selected_device="cpu",
+        peak_host_memory_bytes=1_024, peak_device_memory_bytes=0)
+    assert row["host_memory_process_count"] == len(freeze.cohorts)
+    assert row["aggregate_peak_host_memory_upper_bound_bytes"] \
+        == 1_024 * len(freeze.cohorts)
     with pytest.raises(BeliefV2TrainingControllerError,
                        match="resource cap"):
         _resource_row(
@@ -1268,8 +1650,8 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
             "schema": "test-scale-curve", "positive": True}))
     monkeypatch.setattr(CALIBRATION_STAGE, "_stage_gate", lambda **kwargs: None)
     monkeypatch.setattr(
-        CALIBRATION_STAGE, "reopen_v2_training_inputs",
-        lambda *args, **kwargs: training_inputs)
+        CALIBRATION_STAGE, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, training_inputs))
     monkeypatch.setattr(
         CALIBRATION_STAGE, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (

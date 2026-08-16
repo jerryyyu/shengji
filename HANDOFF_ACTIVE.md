@@ -4,7 +4,7 @@
 > `HANDOFF_REVIEW.md`, and `docs_archive/`. A request not listed here is not an
 > active Claude review request.
 
-Last reconciled: 2026-08-16 08:56 EDT.
+Last reconciled: 2026-08-16 09:05 EDT.
 
 ## Immediate objective
 
@@ -19,38 +19,15 @@ review boundaries:
 There are no per-stage capture, REF-C, input-index, device, cohort, calibration,
 or progress reviews between those boundaries.
 
-## Current review queue — exactly one Claude request
+## Current review queue — none while freeze inputs are built
 
-### P0 — PR #118 zero-decision human-group delta
+PR #118 exact head `bc448695ce50e85871c32760c06bdceba085915d`
+has consolidated source PASS `78325580` plus exact corrected delta PASS
+`1f4d351b`; zero blockers remain. Do not re-review either source packet.
 
-The consolidated source review at parent `86aa3b70` is closed with PASS and
-zero blockers (ledger `78325580`). Do not repeat it. Review only:
-
-- PR: `https://github.com/jerryyyu/shengji/pull/118`
-- exact child: `bc448695ce50e85871c32760c06bdceba085915d`
-- exact reviewed parent: `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
-- delta: 5 files, +131/-7
-- superseding prompt/comment:
-  `https://github.com/jerryyyu/shengji/pull/118#issuecomment-5307542357`
-
-The authoritative frozen H0 inventory contains 7/30 legitimate zero-decision
-whole-session groups. The earlier 20/48 wording described an exploratory local
-file scan, not the frozen population, and is superseded.
-Verify in one delta pass that they remain source/inventory/split-bound empty
-capture and REF-C manifests, contribute zero scoring rows, and report one
-honest `0/1` to `1/1` group-stage progress unit. Nonempty groups must retain
-exact decision/artifact/scoring bindings. No gameplay, model/training,
-test-opening, registry-policy, or authority semantics changed.
-
-Exact child evidence: focused 52 passed; pure 380 passed + 2 skipped; strict
-compiled 382 passed; correction-head targeted suite 13 passed; seed scan SHA
-`c4eaac34…16d6`; registry SHA `61c26e21…4f66`, 5,415/5,415 classified,
-13,312 seeds, zero collisions, all authority false. Return one DELTA PASS or
-one DELTA HOLD with every blocker.
-
-A PASS preserves only the parent's authority for qualified score-free host
-measurements and immutable-freeze construction. It does not authorize pipeline
-execution; the populated freeze still needs its own PASS.
+The next and only Claude request is one exact-freeze review after all
+host/runtime/deadline/cap bytes exist. No intermediate preflight, deadline,
+registry, V1 receipt, or freeze-construction review is requested.
 
 ## Current operational truth
 
@@ -60,26 +37,25 @@ execution; the populated freeze still needs its own PASS.
   eight-hour cap and were stopped before calibration/test. Its admission is
   spent; no V1 model, null, terminal, or strength result exists. Never resume
   or reuse those partial models.
-- PR #118 is source/design only. Parent `86aa3b7` passed; exact child `bc44869`
-  is the sole delta review above. No V2 evidence namespace has been initialized
-  and no V2 capture, REF-C, training, calibration, or test job is running.
+- PR #118 source at exact `bc44869` is fully reviewed. The 416-round score-free
+  preflight started at 09:04 EDT on idle `shengji-cloud` using 16 overlapping
+  workers. No V2 evidence namespace has been initialized and no V2 capture,
+  REF-C, training, calibration, or test job is running.
 - A powered host is not execution authority. After source PASS, use a qualified
   host with at least 16 logical CPUs only for the bounded score-free measurements
   needed to construct the freeze.
-- Read-only 08:27 readiness probe: `shengji-cloud` is reachable with 16 logical
-  CPUs, 32,078,280 KiB total / 31,248,492 KiB available memory, load 0.03, and
-  zero matching belief/Shengji/pytest workers. `shengji-perf` is powered off or
-  unreachable. Do not stage or run V2 on the available host before source PASS.
+- `shengji-cloud` is detached at exact reviewed `bc44869`, clean/root-owned,
+  with the frozen Python/Torch environment and rebuilt compiled x86 engine.
+  `shengji-perf` is powered off or unreachable.
 - PR #116 remains Codex's independent performance-review item, not a Claude
   queue item and not a blocker for this consolidated review.
-- No other Claude review request is open. Superseded PR #117 and PR #118 parent
-  prompts and old strength-lane queues are closed historical records.
+- No Claude review request is open until the immutable freeze exists.
+  Superseded PR #117/118 prompts and old strength-lane queues are historical.
 
-## Next steps after final PR #118 child PASS
+## Current freeze-construction steps
 
-1. On one available >=16-logical-CPU host, reproduce the exact preflight,
-   runtime/native/boot, candidate-device, memory, and deadline receipts at
-   final reviewed child head `bc44869`.
+1. Finish and verify the fresh 416-round preflight at reviewed `bc44869`, then
+   run the same-host reference/training deadline probe using candidate `cpu`.
 2. Regenerate/rebind the exact scan/registry if any source byte changed; source
    drift instead requires a new consolidated source review.
 3. Build one canonical immutable freeze in a fresh unused namespace. Do not

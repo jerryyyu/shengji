@@ -4,8 +4,8 @@
 > `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
 > authority. Raw review markers belong only in the append-only review ledger.
 
-Last reconciled: 2026-08-15 20:28 EDT. Both reviewed Mini B2 training cohorts
-remain continuously active and healthy about 6h44m after their automatic
+Last reconciled: 2026-08-15 20:35 EDT. Both reviewed Mini B2 training cohorts
+remain continuously active and healthy about 6h51m after their automatic
 start; V2 now has one exact consolidated source/design review request.
 
 ## Immediate objective
@@ -31,9 +31,9 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    No per-stage review handshake or retry is needed unless a named guard fails.
 
 2. **BELIEF V2 consolidated source/design review — ready now.** Review exact
-   local head `0feadd915426b9c3bfd2642e4cb8ac0d2ca5ecfe` in worktree
+   local head `0949404f439189fca575ea59911c6e3fbde66277` in worktree
    `/private/tmp/shengji-belief-v2-execution-freeze-v1` against merge base
-   `62e3b7769ef6da15e0bf48946b505087c0204bba`. Audit the complete all-rank and
+   `682661b6cc288f54cf7014b1ec079bcf575c2826`. Audit the complete all-rank and
    human population path, hardened transcript replay, source-neutral work
    schedules, CPU/MPS/indexed-CUDA qualification, exact live accelerator
    hardware-profile binding and portable checkpoints, compact independently
@@ -42,15 +42,16 @@ diagnostic implementation unless the user explicitly reprioritizes it.
    receipt-driven freeze builder, safe worker, and exact authority closure.
    Run the full pure and compiled V2/replay suites and adversarially witness
    the wiring rather than helpers. Independently rebuild the registry and
-   require 5,348 candidates, 140 explicit classifications, 74 finite-population
+   require 5,351 candidates, 140 explicit classifications, 74 finite-population
    classifications, 31 populations,
    13,312 V2 seeds, zero collisions, and canonical SHA-256
-   `e3d9eb1afb633541bb4941c353f71547a4764d9b5bbae039d92214e427bd12f0`.
+   `216cead2cd76b1e85201e65ac560bac060e9c7b2b0b8468f463aff3c48e90068`.
    Return one consolidated exact-head PASS or HOLD. A PASS permits only
    preparation of a later host-specific immutable freeze after V1 terminal
    routing; it grants no capture, training, test, gameplay, strength or
    deployment authority. Any review of prior heads `a94a1c3`, `f56c41d` or
-   `7385def` is stale and must not be used for execution-freeze preparation.
+   `7385def`, `0feadd9` or pre-rebase `7319c6c` is stale and must not be used
+   for execution-freeze preparation.
 
 3. **No repository-hygiene review remains.** PR #115's append-only/
    merge-target-prefix guard merged as `b27d0c2`; compacted docs PR #114 merged
@@ -70,8 +71,8 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 |---|---|---|
 | **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
 | **B2 offline pipeline source** | External PASS at PR #113 exact `3ee0eb8`; merged byte-preservingly through main `959c05d`. Integration validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
-| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. All capture and REF-C lanes sealed naturally. At 20:28 both training cohorts had run continuously for about 6h44m near one full CPU core each; both remain `.partial`, with no terminal/test artifact yet. | Exact offline execution is active under its eight-hour training wall cap. No calibration lift has been measured or reviewed yet. |
-| **V2 source candidate** | Exact local head `0feadd9` implements balanced all-rank and separately split H0 populations, replayed REF-C, source-neutral work controls, automatic CPU/MPS/CUDA qualification, exact live accelerator hardware-profile binding, portable checkpoints, an independently reopenable real seed registry, dual-domain calibration, one-shot terminal handling and receipt-driven freeze construction. Exact-head V2 validation is 146 passed/1 intentional skip in pure mode and 147 passed compiled; the real registry rebuild is 1.71 MB, 5,348 candidates / 140 explicit classifications / 74 finite-population classifications / 31 populations / zero collisions. It now preserves historical T4/S4 ledger populations and the removed-controller S6 population rather than equating source deletion with seed-namespace deletion. | Ready for one consolidated source/design review. It is not a packet, admission, run, sampler or strength result. The first V2 packet is explicitly single-host; cross-host artifact transfer remains unimplemented. |
+| **B2 design/data/result** | Fresh Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. All capture and REF-C lanes sealed naturally. At 20:35 both training cohorts had run continuously for about 6h51m near one full CPU core each; both remain `.partial`, with no terminal/test artifact yet. | Exact offline execution is active under its eight-hour training wall cap. No calibration lift has been measured or reviewed yet. |
+| **V2 source candidate** | Exact local head `0949404` is rebased on current canonical main and implements balanced all-rank and separately split H0 populations, replayed REF-C, source-neutral work controls, automatic CPU/MPS/CUDA qualification, exact live accelerator hardware-profile binding, portable checkpoints, an independently reopenable real seed registry, dual-domain calibration, one-shot terminal handling and receipt-driven freeze construction. Full predecessor validation is 146 passed/1 intentional skip in pure mode and 147 passed compiled; the exact-head registry tests are 6/6. The real registry rebuild is 1.71 MB, 5,351 candidates / 140 explicit classifications / 74 finite-population classifications / 31 populations / zero collisions. It preserves historical T4/S4 ledger populations and the removed-controller S6 population rather than equating source deletion with seed-namespace deletion. The mutable `HANDOFF_ACTIVE.md` queue is excluded while append-only `HANDOFF_REVIEW.md` remains bound, preventing a review-request update from circularly invalidating the reviewed registry. | Ready for one consolidated source/design review. It is not a packet, admission, run, sampler or strength result. The first V2 packet is explicitly single-host; cross-host artifact transfer remains unimplemented. |
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 

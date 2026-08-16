@@ -3,7 +3,7 @@
 > Current queue only. Historical reviews belong in `HANDOFF_REVIEW.md` and Git
 > history. A request not listed here is not active.
 
-Last reconciled: 2026-08-16 21:18 EDT.
+Last reconciled: 2026-08-16 17:05 EDT.
 
 ## Immediate objective
 

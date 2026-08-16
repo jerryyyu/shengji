@@ -76,6 +76,22 @@ diagnostic implementation unless the user explicitly reprioritizes it.
 | **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
 | **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
 
+### Mechanical V1 terminal routing
+
+- `PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW`: after independent terminal
+  reproduction, permits one B3 sampler implementation review request only.
+  It does not authorize a sampler run, V2 execution, gameplay or strength.
+- Either `SELECT_NONE_*`: closes the exact V1 rank-2/champion-only recipe. V2
+  may proceed to an immutable-freeze review only because its all-rank and
+  separately split human-domain population is a named domain-shift re-entry;
+  the freeze builder requires the terminal bytes plus that rationale.
+- Either `REFUSE_*`: blocks V2 mechanically. Diagnose and repair the failed
+  mechanics, identity, cap or completeness boundary before any new freeze.
+
+No reviewer or operator chooses a friendlier route after seeing the result.
+The terminal evaluator's precedence and the V2 freeze builder enforce these
+transitions from the immutable bytes.
+
 The earlier Mini design belongs to a rejected source head and must never
 initialize. The V2 design is frozen from clean detached main `959c05d`; its
 single reviewed admission is now consumed by the active run and cannot retry.

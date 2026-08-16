@@ -24,7 +24,10 @@ gameplay, strength claim, promotion, or deployment is authorized now.
 - PR: `https://github.com/jerryyyu/shengji/pull/117`
 - previously reviewed HOLD head: `0949404f439189fca575ea59911c6e3fbde66277`
 - fail-closed registry child: `cc3b491ec2fc8b5da29299d82c6e24bf193cfdf4`
-- superseding exact head: `08c852d77bb360a193c49adfba483b1feb3a09b6`
+- repaired source commit: `08c852d77bb360a193c49adfba483b1feb3a09b6`
+- superseding exact PR head: `db0ec3e2f70bc4ea94229ceb872b0512f7837636`
+  (two-parent merge with current canonical main `06ca3e42b64476d75a7217716c148f915becc049`;
+  reviewed V2 ancestry is preserved without squash)
 - review mode: delta review from `0949404` plus exact-head reconstruction;
   do not re-open findings already closed at the reviewed parent unless the
   repair changed their bytes or dependency surface.
@@ -53,12 +56,13 @@ Exact-head evidence:
 - V2 compiled/strict: `154 passed`;
 - registry suite: `7 passed`;
 - isolated worker bootstrap: `BELIEF_V1_V2_BOOTSTRAP_PASS`;
-- seed scan: 1,916,907 bytes, SHA-256
-  `48e353ec363957f0503952de8d6ec6142b54ac33519701ad744b5fd7c49cfbeb`;
-- registry: 1,712,949 bytes, SHA-256
-  `4794b9d9397c20057c2301587deaeca2815a8cca390680ea0b63be9f2f66c34c`;
-  5,363/5,363 candidates classified, 140 explicit, 74 finite-population,
+- seed scan: 1,923,736 bytes, SHA-256
+  `d8f9e386751dce5c76e04c9b7b6693d471dc30cbaf1dfbb4a4a322c70bc476a3`;
+- registry: 1,714,713 bytes, SHA-256
+  `13bd632c13e7f4723c9211a62986077f8b7c893f7609012622effd5298d8669d`;
+  5,370/5,370 candidates classified, 140 explicit, 74 finite-population,
   31 populations, 13,312 V2 seeds, zero collisions;
+- append-only review-ledger guard against current main: PASS;
 - authenticated V1 resource-failure receipt SHA-256
   `257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3`.
 

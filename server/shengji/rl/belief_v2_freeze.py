@@ -960,7 +960,8 @@ def authenticate_execution_review(
                        if line.startswith(prefix)]
     previous_matches = [line for line in previous.splitlines(keepends=True)
                         if line.startswith(prefix)]
-    if current_matches != [marker] or previous_matches:
+    if current_matches != [*previous_matches, marker] \
+            or marker in previous_matches:
         raise BeliefV2FreezeError(
             "V2 execution review marker introduction drift")
     return marker, remote_tip

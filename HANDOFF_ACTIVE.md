@@ -79,7 +79,9 @@ BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW {"bounded_capture_reference_training_an
   has not started.
 - The exact private H0 source population is already staged on `shengji-cloud`
   under root-only `/opt/belief-v1-v2-human-source-13d`: manifest
-  `source-manifest.sha256` has SHA-256 `07ff18fb…aa5e`; all 30/30 `.jsonl`
+  `source-manifest.sha256` has SHA-256
+  `07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e`;
+  all 30/30 `.jsonl`
   members independently pass `sha256sum -c`, there are no extra members,
   files are root:root mode 0400 and both parent directories are mode 0700.
   The source path is not model input and no source bytes are published.

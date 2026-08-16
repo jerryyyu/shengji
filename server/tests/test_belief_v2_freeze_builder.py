@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import subprocess
 from dataclasses import replace
 
@@ -14,6 +15,15 @@ from shengji.rl.belief_v2_execution_identity import (
     V2InstalledDistributionV1,
     V2RuntimeProfileV1,
     V2SourceBindingV1,
+)
+from shengji.rl.belief_v2_deadline_estimate import (
+    DEADLINE_ESTIMATE_SCHEMA,
+    DEADLINE_PROBE_ROUND_COUNT,
+    DEADLINE_TRAINING_REPEAT_COUNT,
+    MINIMUM_SAFETY_RESERVE_NANOSECONDS,
+    TRAINING_PROJECTION_MARGIN_DENOMINATOR,
+    TRAINING_PROJECTION_MARGIN_NUMERATOR,
+    deadline_probe_schedule_sha256,
 )
 from shengji.rl.belief_v2_freeze import (
     CAP_SCHEMA,
@@ -80,6 +90,14 @@ def _device_profile():
         compute_capability_minor=None)
 
 
+def _cpu_profile():
+    return V2TrainingDeviceProfileV1(
+        requested_device="cpu", device_type="cpu", device_index=None,
+        hardware_name="CPU-x86_64-test", total_memory_bytes=32 * 1024**3,
+        runtime_version="Linux-test", compute_capability_major=None,
+        compute_capability_minor=None)
+
+
 def _inventory():
     groups = []
     for index in range(10):
@@ -130,7 +148,29 @@ def _v1_report(decision="PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW"):
     }
 
 
+def _preflight():
+    runtime = _runtime()
+    return {
+        "runtime": {
+            "hostname": runtime.hostname,
+            "platform": runtime.operating_system,
+            "machine": runtime.machine,
+            "logical_cpu_count": runtime.cpu_count,
+            "memory_bytes": runtime.memory_bytes,
+            "boot_identity": runtime.boot_identity,
+            "python_version": runtime.python_version,
+            "python_executable_sha256": runtime.python_executable_sha256,
+            "native_extension_sha256": runtime.native_sha256,
+        },
+        "lanes": [{"rounds": [
+            {"wall_nanoseconds": 20_000_000_000},
+            {"wall_nanoseconds": 20_000_000_000},
+        ]} for _ in range(16)],
+    }
+
+
 def _caps():
+    training_estimate = _training_epoch_estimate()
     return V2ResourceCapsV1(
         capture_core_hours=64, capture_wall_seconds=14_400,
         capture_bytes=16 * 1024**3,
@@ -142,28 +182,71 @@ def _caps():
         training_device_memory_bytes=12 * 1024**3,
         capture_next_unit_wall_estimate_nanoseconds=20_000_000_000,
         reference_next_unit_wall_estimate_nanoseconds=5_000_000_000,
-        training_next_epoch_wall_estimate_nanoseconds=60_000_000_000,
-        deadline_safety_reserve_nanoseconds=1_000_000_000)
+        training_next_epoch_wall_estimate_nanoseconds=training_estimate,
+        deadline_safety_reserve_nanoseconds=max(
+            MINIMUM_SAFETY_RESERVE_NANOSECONDS,
+            math.ceil(training_estimate / 20)))
 
 
-def _deadline_estimate():
+def _training_epoch_estimate():
+    numerator = (144_000_000 * 10_647
+                 * TRAINING_PROJECTION_MARGIN_NUMERATOR)
+    denominator = (DEADLINE_PROBE_ROUND_COUNT
+                   * TRAINING_PROJECTION_MARGIN_DENOMINATOR)
+    return (numerator + denominator - 1) // denominator
+
+
+def _deadline_estimate(training_device="mps"):
     caps = _caps()
     return {
-        "schema": "belief-v1-v2-deadline-estimate-receipt-v1",
+        "schema": DEADLINE_ESTIMATE_SCHEMA,
         "execution_git": "a" * 40,
         "runtime_profile_sha256": __import__("hashlib").sha256(
             canonical_json_bytes(_runtime().to_dict())).hexdigest(),
+        "training_device": training_device,
+        "capture_preflight_result_sha256": hashlib.sha256(
+            canonical_json_bytes(_preflight())).hexdigest(),
         "capture_sample_count": 32,
+        "capture_wall_nanoseconds": [20_000_000_000] * 32,
         "capture_p95_wall_nanoseconds": (
             caps.capture_next_unit_wall_estimate_nanoseconds),
+        "probe_schedule_sha256": deadline_probe_schedule_sha256(),
         "reference_sample_count": 32,
+        "reference_wall_nanoseconds": [5_000_000_000] * 32,
+        "reference_worker_process_ids": [
+            10_000 + index % 16 for index in range(32)],
+        "reference_started_monotonic_nanoseconds": [
+            100 + index // 16 * 10_000_000_000 for index in range(32)],
+        "reference_finished_monotonic_nanoseconds": [
+            5_000_000_100 + index // 16 * 10_000_000_000
+            for index in range(32)],
+        "reference_worker_count": 16,
+        "reference_common_overlap_nanoseconds": 5_000_000_000,
+        "reference_manifest_population_sha256s": [_sha("f")] * 32,
         "reference_p95_wall_nanoseconds": (
             caps.reference_next_unit_wall_estimate_nanoseconds),
-        "training_epoch_sample_count": 2,
+        "training_probe_round_count": DEADLINE_PROBE_ROUND_COUNT,
+        "training_probe_repeat_count": DEADLINE_TRAINING_REPEAT_COUNT,
+        "training_probe_wall_nanoseconds": [144_000_000] * 2,
+        "training_probe_receipt_sha256s": [_sha("1")] * 2,
+        "training_epoch_sample_count": DEADLINE_TRAINING_REPEAT_COUNT,
+        "training_epoch_wall_estimate_nanoseconds": [
+            _training_epoch_estimate()] * 2,
         "training_epoch_p95_wall_nanoseconds": (
             caps.training_next_epoch_wall_estimate_nanoseconds),
+        "training_epoch_projection": {
+            "train_round_count": 10_647,
+            "one_probe_round_per_batch": True,
+            "production_may_pack_rounds": True,
+            "margin_numerator": TRAINING_PROJECTION_MARGIN_NUMERATOR,
+            "margin_denominator": TRAINING_PROJECTION_MARGIN_DENOMINATOR,
+        },
         "safety_reserve_nanoseconds": (
             caps.deadline_safety_reserve_nanoseconds),
+        "captured_rows_retained": False,
+        "sampled_worlds_retained": False,
+        "model_or_loss_artifacts_retained": False,
+        "production_seed_opened": False,
         "test_split_opened": False,
         "pipeline_execution_authorized": False,
         "retry_authorized": False,
@@ -266,7 +349,8 @@ def _patch_receipt_boundaries(monkeypatch):
         lambda value: value)
     monkeypatch.setattr(
         "shengji.rl.belief_v2_freeze_builder.build_training_device_profile",
-        lambda value: _device_profile())
+        lambda value: _cpu_profile() if value == "cpu"
+        else _device_profile())
     monkeypatch.setattr(
         "shengji.rl.belief_v2_freeze_builder.preflight_result_bytes",
         canonical_json_bytes)
@@ -283,7 +367,8 @@ def _patch_receipt_boundaries(monkeypatch):
 
 
 def _build(tmp_path, monkeypatch, *, decision=None, rationale=None,
-           resource_failure=None, scan_git="a" * 40):
+           resource_failure=None, scan_git="a" * 40,
+           training_candidate_device="mps"):
     _patch_receipt_boundaries(monkeypatch)
     inventory = _inventory()
     split = build_h0_group_split(inventory)
@@ -300,12 +385,14 @@ def _build(tmp_path, monkeypatch, *, decision=None, rationale=None,
         v2_reentry_rationale_raw=rationale,
         inventory_raw=inventory_bytes(inventory),
         group_split_raw=group_split_bytes(split, inventory=inventory),
-        preflight_raw=canonical_json_bytes({"runtime": {"host": "x"}}),
+        preflight_raw=canonical_json_bytes(_preflight()),
         seed_scan_raw=canonical_json_bytes({"git_commit": scan_git}),
         seed_registry_raw=canonical_json_bytes({
             "candidate_report_sha256": _sha("6")}),
-        training_candidate_device="mps", resource_caps=_caps(),
-        deadline_estimate_raw=canonical_json_bytes(_deadline_estimate()),
+        training_candidate_device=training_candidate_device,
+        resource_caps=_caps(),
+        deadline_estimate_raw=canonical_json_bytes(_deadline_estimate(
+            training_candidate_device)),
         evidence_root=(tmp_path / "evidence").resolve())
 
 
@@ -352,33 +439,15 @@ def test_builder_derives_named_select_none_and_exact_resource_failure_reentry(
             rationale=b"resource defect repaired only in new V2 freeze\n")
 
 
-def test_builder_refuses_stale_seed_registry_or_cpu_candidate(
+def test_builder_refuses_stale_seed_registry_and_accepts_cpu_only_host(
         monkeypatch, tmp_path):
     with pytest.raises(BeliefV2FreezeBuilderError,
                        match="source-head reconstruction"):
         _build(tmp_path, monkeypatch, scan_git="c" * 40)
-    freeze = _build(tmp_path, monkeypatch)
-    with pytest.raises(BeliefV2FreezeBuilderError,
-                       match="qualification candidate"):
-        build_execution_freeze_from_receipts(
-            repo=tmp_path.resolve(), expected_git="a" * 40,
-            source_review_commit="b" * 40,
-            v1_terminal_report_raw=canonical_json_bytes(_v1_report()),
-            v1_resource_failure_receipt_raw=None,
-            v2_reentry_rationale_raw=None,
-            inventory_raw=inventory_bytes(_inventory()),
-            group_split_raw=group_split_bytes(
-                build_h0_group_split(_inventory()), inventory=_inventory()),
-            preflight_raw=canonical_json_bytes({"runtime": {"host": "x"}}),
-            seed_scan_raw=canonical_json_bytes({"git_commit": "a" * 40}),
-            seed_registry_raw=canonical_json_bytes({
-                "candidate_report_sha256": _sha("6")}),
-            training_candidate_device="cpu",
-            deadline_estimate_raw=canonical_json_bytes(
-                _deadline_estimate()),
-            resource_caps=replace(
-                freeze.resource_caps, training_device_hours=64),
-            evidence_root=(tmp_path / "other").resolve())
+    freeze = _build(
+        tmp_path, monkeypatch, training_candidate_device="cpu")
+    assert freeze.training_candidate_device == "cpu"
+    assert freeze.training_device_profile == _cpu_profile()
 
 
 def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
@@ -396,7 +465,7 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
             v2_reentry_rationale_raw=None,
             inventory_raw=inventory_bytes(inventory),
             group_split_raw=group_split_bytes(split, inventory=inventory),
-            preflight_raw=canonical_json_bytes({"runtime": {"host": "x"}}),
+            preflight_raw=canonical_json_bytes(_preflight()),
             seed_scan_raw=canonical_json_bytes({"git_commit": "a" * 40}),
             seed_registry_raw=canonical_json_bytes({
                 "candidate_report_sha256": _sha("6")}),
@@ -407,9 +476,13 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
 
     for receipt in (
             {**_deadline_estimate(), "runtime_profile_sha256": _sha("0")},
-            {**_deadline_estimate(), "capture_sample_count": 31},
+            {**_deadline_estimate(), "capture_wall_nanoseconds":
+             [20_000_000_000] * 31},
+            {**_deadline_estimate(), "capture_wall_nanoseconds":
+             [19_000_000_000] + [20_000_000_000] * 31},
             {**_deadline_estimate(),
-             "training_epoch_p95_wall_nanoseconds": 59_000_000_000}):
+             "training_epoch_p95_wall_nanoseconds":
+             _training_epoch_estimate() - 1}):
         with pytest.raises(BeliefV2FreezeBuilderError,
                            match="deadline estimate"):
             build_with(receipt)

@@ -44,8 +44,12 @@ def _result():
         "python_version": "3.14.3",
         "python_executable_sha256": "c" * 64,
         "native_extension_sha256": "d" * 64,
+        "hostname": "host",
         "platform": "test",
+        "machine": "x86_64",
         "logical_cpu_count": 16,
+        "memory_bytes": 32 * 1024**3,
+        "boot_identity": "e" * 64,
         "compiled_engine": True,
         "strict_voids": True,
     }
@@ -81,7 +85,7 @@ def _result():
             "rounds": rounds,
         })
     return {
-        "schema": "belief-v1-v2-capture-capacity-result-v1",
+        "schema": "belief-v1-v2-capture-capacity-result-v2",
         "schedule_sha256": preflight_schedule_sha256(),
         "runtime": runtime,
         "lanes": lane_rows,

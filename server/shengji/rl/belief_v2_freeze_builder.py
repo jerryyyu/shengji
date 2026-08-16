@@ -41,6 +41,10 @@ from .belief_v2_accelerator import (
     require_training_device,
 )
 from .belief_v2_device_qualification import qualification_protocol_sha256
+from .belief_v2_deadline_estimate import (
+    deadline_estimate_receipt_bytes,
+    validate_deadline_estimate_receipt,
+)
 from .belief_v2_execution_identity import (
     build_runtime_profile,
     build_source_bindings,
@@ -188,36 +192,17 @@ def resource_caps_from_bytes(raw: bytes) -> V2ResourceCapsV1:
     return result
 
 
-DEADLINE_ESTIMATE_SCHEMA = "belief-v1-v2-deadline-estimate-receipt-v1"
-
-
 def _deadline_estimate_receipt(
         raw: bytes, *, expected_git: str,
         resource_caps: V2ResourceCapsV1) -> dict[str, Any]:
     payload = _canonical_object(raw, label="deadline estimate receipt")
-    keys = {
-        "schema", "execution_git", "runtime_profile_sha256",
-        "capture_sample_count", "capture_p95_wall_nanoseconds",
-        "reference_sample_count", "reference_p95_wall_nanoseconds",
-        "training_epoch_sample_count", "training_epoch_p95_wall_nanoseconds",
-        "safety_reserve_nanoseconds", "test_split_opened",
-        "pipeline_execution_authorized", "retry_authorized",
-        "strength_claim_authorized", "deployment_authorized"}
-    if set(payload) != keys \
-            or payload.get("schema") != DEADLINE_ESTIMATE_SCHEMA \
-            or payload.get("execution_git") != expected_git \
-            or any(type(payload.get(key)) is not int
-                   or payload[key] <= 0 for key in (
-                       "capture_sample_count",
-                       "capture_p95_wall_nanoseconds",
-                       "reference_sample_count",
-                       "reference_p95_wall_nanoseconds",
-                       "training_epoch_sample_count",
-                       "training_epoch_p95_wall_nanoseconds",
-                       "safety_reserve_nanoseconds")) \
-            or payload["capture_sample_count"] < 32 \
-            or payload["reference_sample_count"] < 32 \
-            or payload["training_epoch_sample_count"] < 2 \
+    try:
+        validate_deadline_estimate_receipt(payload)
+    except ValueError as exc:
+        raise BeliefV2FreezeBuilderError(
+            "V2 deadline estimate receipt drift") from exc
+    if deadline_estimate_receipt_bytes(payload) != raw \
+            or payload["execution_git"] != expected_git \
             or payload["capture_p95_wall_nanoseconds"] \
             != resource_caps.capture_next_unit_wall_estimate_nanoseconds \
             or payload["reference_p95_wall_nanoseconds"] \
@@ -225,17 +210,9 @@ def _deadline_estimate_receipt(
             or payload["training_epoch_p95_wall_nanoseconds"] \
             != resource_caps.training_next_epoch_wall_estimate_nanoseconds \
             or payload["safety_reserve_nanoseconds"] \
-            != resource_caps.deadline_safety_reserve_nanoseconds \
-            or type(payload.get("runtime_profile_sha256")) is not str \
-            or len(payload["runtime_profile_sha256"]) != 64 \
-            or any(char not in "0123456789abcdef"
-                   for char in payload["runtime_profile_sha256"]) \
-            or any(payload.get(key) is not False for key in (
-                "test_split_opened", "pipeline_execution_authorized",
-                "retry_authorized", "strength_claim_authorized",
-                "deployment_authorized")):
+            != resource_caps.deadline_safety_reserve_nanoseconds:
         raise BeliefV2FreezeBuilderError(
-            "V2 deadline estimate receipt drift")
+            "V2 deadline estimate receipt/cap binding drift")
     return payload
 
 
@@ -612,6 +589,14 @@ def build_execution_freeze_from_receipts(
     deadline_estimate = _deadline_estimate_receipt(
         deadline_estimate_raw, expected_git=expected_git,
         resource_caps=resource_caps)
+    preflight_capture_walls = [
+        row["wall_nanoseconds"]
+        for lane in preflight["lanes"] for row in lane["rounds"]
+    ]
+    if deadline_estimate["capture_wall_nanoseconds"] \
+            != preflight_capture_walls:
+        raise BeliefV2FreezeBuilderError(
+            "V2 deadline estimate capture sample binding drift")
 
     scan = _canonical_object(seed_scan_raw, label="seed scan")
     registry = _canonical_object(seed_registry_raw, label="seed registry")
@@ -635,9 +620,6 @@ def build_execution_freeze_from_receipts(
     except ValueError as exc:
         raise BeliefV2FreezeBuilderError(
             "V2 training candidate device drift") from exc
-    if candidate == "cpu":
-        raise BeliefV2FreezeBuilderError(
-            "V2 qualification candidate cannot be CPU")
     try:
         require_training_device(candidate)
         device_profile = build_training_device_profile(candidate)
@@ -645,6 +627,11 @@ def build_execution_freeze_from_receipts(
         raise BeliefV2FreezeBuilderError(
             "V2 qualification candidate is unavailable at freeze time") \
             from exc
+    if deadline_estimate["capture_preflight_result_sha256"] \
+            != _sha256(preflight_raw) \
+            or deadline_estimate["training_device"] != candidate:
+        raise BeliefV2FreezeBuilderError(
+            "V2 deadline estimate preflight/device binding drift")
 
     splits = group_split["splits"]
     if set(splits) != {"train", "calibration", "test"}:
@@ -652,6 +639,21 @@ def build_execution_freeze_from_receipts(
     source_bindings = build_source_bindings(
         repo, expected_git=expected_git)
     runtime = build_runtime_profile()
+    preflight_runtime = preflight["runtime"]
+    if preflight_runtime["hostname"] != runtime.hostname \
+            or preflight_runtime["platform"] != runtime.operating_system \
+            or preflight_runtime["machine"] != runtime.machine \
+            or preflight_runtime["logical_cpu_count"] != runtime.cpu_count \
+            or preflight_runtime["memory_bytes"] != runtime.memory_bytes \
+            or preflight_runtime["boot_identity"] != runtime.boot_identity \
+            or preflight_runtime["python_version"] \
+            != runtime.python_version \
+            or preflight_runtime["python_executable_sha256"] \
+            != runtime.python_executable_sha256 \
+            or preflight_runtime["native_extension_sha256"] \
+            != runtime.native_sha256:
+        raise BeliefV2FreezeBuilderError(
+            "V2 preflight/live runtime binding drift")
     if deadline_estimate["runtime_profile_sha256"] \
             != _sha256(canonical_json_bytes(runtime.to_dict())):
         raise BeliefV2FreezeBuilderError(

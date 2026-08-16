@@ -12,7 +12,10 @@ no checkpoint, and grants no training or execution authority.
 from __future__ import annotations
 
 import hashlib
+import os
 import platform
+import subprocess
+import sys
 from dataclasses import dataclass, fields, replace
 from typing import Any, Iterable
 
@@ -33,7 +36,7 @@ from .belief_training import BeliefTrainingBatchV1
 TRAINING_TENSOR_FIELDS = tuple(
     field.name for field in fields(BeliefTrainingBatchV1)
     if field.type == "torch.Tensor")
-TRAINING_DEVICE_PROFILE_SCHEMA = "belief-v1-v2-training-device-profile-v1"
+TRAINING_DEVICE_PROFILE_SCHEMA = "belief-v1-v2-training-device-profile-v2"
 
 
 class BeliefV2AcceleratorError(ValueError):
@@ -42,12 +45,12 @@ class BeliefV2AcceleratorError(ValueError):
 
 @dataclass(frozen=True)
 class V2TrainingDeviceProfileV1:
-    """Exact accelerator identity bound into the host-specific freeze.
+    """Exact training-device identity bound into the host-specific freeze.
 
     The normal runtime profile already binds the host, OS, Torch bytes, and
     Torch build configuration.  This companion profile closes the remaining
-    device-specific gap for MPS/CUDA execution.  It deliberately records no
-    benchmark result and grants no training authority.
+    device-specific gap for CPU-only, MPS, or CUDA execution.  It deliberately
+    records no benchmark result and grants no training authority.
     """
 
     requested_device: str
@@ -120,9 +123,21 @@ def require_training_device(value: str) -> torch.device:
     return device
 
 
+def available_training_accelerators() -> tuple[str, ...]:
+    """Return every supported accelerator currently visible to this runtime."""
+    result = []
+    if bool(torch.backends.mps.is_built()) \
+            and bool(torch.backends.mps.is_available()):
+        result.append("mps")
+    if bool(torch.cuda.is_available()):
+        result.extend(f"cuda:{index}"
+                      for index in range(torch.cuda.device_count()))
+    return tuple(result)
+
+
 def validate_training_device_profile(
         profile: V2TrainingDeviceProfileV1) -> None:
-    """Validate one exact, available, non-CPU accelerator identity."""
+    """Validate one exact and currently available training-device identity."""
     if type(profile) is not V2TrainingDeviceProfileV1 \
             or profile.schema != TRAINING_DEVICE_PROFILE_SCHEMA:
         raise BeliefV2AcceleratorError(
@@ -135,8 +150,7 @@ def validate_training_device_profile(
     expected_capability_shape = (
         all(type(value) is int and value >= 0 for value in capability)
         if parsed.type == "cuda" else capability == (None, None))
-    if requested == "cpu" \
-            or profile.device_type != parsed.type \
+    if profile.device_type != parsed.type \
             or profile.device_index != parsed.index \
             or type(profile.hardware_name) is not str \
             or not profile.hardware_name \
@@ -153,12 +167,38 @@ def validate_training_device_profile(
 
 def build_training_device_profile(
         requested_device: str) -> V2TrainingDeviceProfileV1:
-    """Probe the exact accelerator selected for the future qualification."""
+    """Probe the exact device selected for the future qualification."""
     device = require_training_device(requested_device)
     if device.type == "cpu":
-        raise BeliefV2AcceleratorError(
-            "V2 training device profile requires an accelerator")
-    if device.type == "mps":
+        if available_training_accelerators():
+            raise BeliefV2AcceleratorError(
+                "V2 CPU-only profile requires no available accelerator")
+        if sys.platform == "darwin":
+            try:
+                memory = int(subprocess.run(
+                    ("sysctl", "-n", "hw.memsize"), check=True,
+                    capture_output=True, text=True).stdout.strip())
+            except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+                raise BeliefV2AcceleratorError(
+                    "V2 CPU memory identity probe failed") from exc
+        else:
+            try:
+                memory = int(os.sysconf("SC_PHYS_PAGES")) \
+                    * int(os.sysconf("SC_PAGE_SIZE"))
+            except (OSError, ValueError) as exc:
+                raise BeliefV2AcceleratorError(
+                    "V2 CPU memory identity probe failed") from exc
+        profile = V2TrainingDeviceProfileV1(
+            requested_device="cpu", device_type="cpu", device_index=None,
+            hardware_name=(
+                f"CPU-{platform.machine()}-"
+                f"{platform.processor() or 'unknown'}"),
+            total_memory_bytes=memory,
+            runtime_version=platform.platform(),
+            compute_capability_major=None,
+            compute_capability_minor=None,
+            backend_built=True, backend_available=True)
+    elif device.type == "mps":
         memory = int(torch.mps.recommended_max_memory())
         profile = V2TrainingDeviceProfileV1(
             requested_device=str(device), device_type="mps",

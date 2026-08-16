@@ -468,8 +468,7 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
     except ValueError as exc:
         raise BeliefV2FreezeError(
             "V2 training candidate device drift") from exc
-    if candidate_device == "cpu" \
-            or freeze.training_device_profile.requested_device \
+    if freeze.training_device_profile.requested_device \
             != candidate_device \
             or freeze.device_qualification_protocol_sha256 \
             != qualification_protocol_sha256(candidate_device):

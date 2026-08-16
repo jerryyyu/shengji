@@ -73,6 +73,38 @@ def _arms(candidate_wall: int = 80, cpu_wall: int = 100):
     return plan, tuple(rows)
 
 
+def _cpu_only_arms(cpu_wall: int = 100):
+    rows = _schedule()
+    plan = build_qualification_plan(
+        execution_git="a" * 40, candidate_device="cpu",
+        batch_decision_keys=rows,
+        batch_active_label_counts=tuple(
+            100 + index for index in range(len(rows))),
+        host_memory_cap_bytes=16 * 1024**3,
+        device_memory_cap_bytes=0)
+    checkpoint = tuple(_sha(f"cpu-checkpoint-{member}")
+                       for member in range(8))
+    losses = tuple(10_000 + member for member in range(8))
+    receipts = tuple(_sha(f"cpu-receipt-{member}")
+                     for member in range(8))
+    arms = tuple(V2DeviceQualificationArmV1(
+        arm_index=index, device=device, warmup=warmup,
+        pair_index=pair_index, plan_sha256=plan.sha256(),
+        batch_population_sha256=plan.selected_population_sha256,
+        batch_schedule_sha256=plan.selected_schedule_sha256,
+        decision_count=plan.decision_count,
+        active_label_count=plan.active_label_count,
+        member_checkpoint_sha256s=checkpoint,
+        member_loss_nanonats=losses,
+        member_epoch_receipt_sha256s=receipts,
+        wall_nanoseconds=50 if warmup else cpu_wall,
+        peak_host_memory_bytes=1024, peak_device_memory_bytes=0,
+        actual_device="cpu")
+                 for index, (device, warmup, pair_index)
+                 in enumerate(plan.arm_order))
+    return plan, arms
+
+
 def test_plan_is_digest_selected_closed_and_authorizes_nothing():
     plan = _plan()
     validate_qualification_plan(plan)
@@ -98,6 +130,8 @@ def test_plan_is_digest_selected_closed_and_authorizes_nothing():
     assert len(qualification_protocol_sha256("mps")) == 64
     assert qualification_protocol_sha256("mps") \
         != qualification_protocol_sha256("cuda:0")
+    assert qualification_protocol_sha256("cpu") \
+        != qualification_protocol_sha256("mps")
 
 
 def test_three_paired_positive_20_percent_runs_retain_accelerator():
@@ -178,7 +212,7 @@ def test_checkpoint_nondeterminism_memory_fallback_and_result_rewrite_refuse():
             plan, replace(result, selected_device="cpu"))
 
 
-def test_plan_refuses_duplicate_decisions_and_cpu_as_candidate():
+def test_plan_refuses_duplicate_decisions_and_accepts_cpu_candidate():
     rows = list(_schedule())
     rows[1] = rows[0]
     with pytest.raises(BeliefV2DeviceQualificationError,
@@ -189,14 +223,37 @@ def test_plan_refuses_duplicate_decisions_and_cpu_as_candidate():
             batch_active_label_counts=tuple(100 for _ in rows),
             host_memory_cap_bytes=1024,
             device_memory_cap_bytes=1024)
+    cpu = build_qualification_plan(
+        execution_git="a" * 40, candidate_device="cpu",
+        batch_decision_keys=_schedule(),
+        batch_active_label_counts=tuple(100 for _ in _schedule()),
+        host_memory_cap_bytes=1024,
+        device_memory_cap_bytes=1)
+    assert cpu.candidate_device == "cpu"
+
+
+def test_cpu_only_plan_runs_three_deterministic_arms_and_selects_cpu():
+    plan, arms = _cpu_only_arms()
+    assert plan.to_dict()["cpu_only_no_accelerator_candidate"] is True
+    assert plan.to_dict()["minimum_wall_reduction_percent"] == 0
+    assert len(plan.arm_order) == 4
+    result = derive_qualification_result(plan, arms)
+    assert result.selected_device == "cpu"
+    assert result.accelerator_retained is False
+    assert result.aggregate_cpu_wall_nanoseconds == 300
+    assert result.aggregate_candidate_wall_nanoseconds == 0
+    assert result.wall_reduction_ppb == 0
+    assert reopen_qualification_plan(plan.canonical_bytes()) == plan
+    assert reopen_qualification_result(
+        plan, result.canonical_bytes(plan)) == result
+
+    mutated = list(arms)
+    mutated[-1] = replace(
+        mutated[-1], member_checkpoint_sha256s=("f" * 64,)
+        + mutated[-1].member_checkpoint_sha256s[1:])
     with pytest.raises(BeliefV2DeviceQualificationError,
-                       match="accelerator"):
-        build_qualification_plan(
-            execution_git="a" * 40, candidate_device="cpu",
-            batch_decision_keys=_schedule(),
-            batch_active_label_counts=tuple(100 for _ in _schedule()),
-            host_memory_cap_bytes=1024,
-            device_memory_cap_bytes=0)
+                       match="CPU determinism"):
+        derive_qualification_result(plan, tuple(mutated))
 
 
 def test_canonical_result_has_closed_authority_population():

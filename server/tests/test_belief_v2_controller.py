@@ -257,6 +257,19 @@ def _freeze(root: Path):
         evidence_root=str(root))
 
 
+def _cpu_only_freeze(root: Path):
+    profile = V2TrainingDeviceProfileV1(
+        requested_device="cpu", device_type="cpu", device_index=None,
+        hardware_name="CPU-x86_64-test", total_memory_bytes=32 * 1024**3,
+        runtime_version="Linux-test", compute_capability_major=None,
+        compute_capability_minor=None)
+    return replace(
+        _freeze(root), training_candidate_device="cpu",
+        training_device_profile=profile,
+        device_qualification_protocol_sha256=(
+            qualification_protocol_sha256("cpu")))
+
+
 def test_stage_gate_refuses_live_accelerator_identity_drift(
         monkeypatch, tmp_path):
     root = tmp_path / "evidence"
@@ -987,6 +1000,41 @@ def test_device_qualification_stage_publishes_raw_reopenable_cpu_fallback(
     assert manifest["accelerator_retained"] is False
     assert manifest["fallback_arm_count"] == 0
     assert manifest["training_authorized_by_this_artifact"] is False
+
+
+def test_cpu_only_device_stage_publishes_three_measured_repeats(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, _, _ = _tiny_training_population(freeze)
+    plan, result = _cpu_fallback_qualification(freeze)
+    assert len(plan.arm_order) == 4
+    assert result.selected_device == "cpu"
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._expected_plan",
+        lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_in_memory",
+        lambda **kwargs: (plan, result))
+    manifest = run_device_qualification(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", primary=primary,
+        primary_examples=training_examples)
+    reopened, reopened_plan, reopened_result = reopen_device_qualification(
+        root / "device-qualification" / "result",
+        freeze=freeze, admission=admission, primary=primary)
+    assert reopened == manifest
+    assert reopened_plan == plan
+    assert reopened_result == result
+    assert manifest["arm_count"] == 4
+    assert manifest["measured_arm_count"] == 3
+    assert manifest["accelerator_retained"] is False
 
 
 def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(

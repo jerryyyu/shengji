@@ -42,7 +42,7 @@ from .belief_v2_protocol import (
 
 
 PREFLIGHT_SCHEMA = "belief-v1-v2-capture-capacity-preflight-v1"
-PREFLIGHT_RESULT_SCHEMA = "belief-v1-v2-capture-capacity-result-v1"
+PREFLIGHT_RESULT_SCHEMA = "belief-v1-v2-capture-capacity-result-v2"
 PREFLIGHT_SEED_NAMESPACE = "belief-v1-v2-capacity-out-of-population-v1"
 PREFLIGHT_REPLICATES_PER_LANE_RANK = 2
 PREFLIGHT_ROUND_COUNT = (
@@ -120,6 +120,41 @@ def preflight_schedule_sha256() -> str:
 
 def _rss_unit() -> str:
     return "bytes" if sys.platform == "darwin" else "kibibytes"
+
+
+def _memory_bytes() -> int:
+    if sys.platform == "darwin":
+        try:
+            return int(subprocess.run(
+                ("sysctl", "-n", "hw.memsize"), check=True,
+                capture_output=True, text=True).stdout.strip())
+        except (OSError, subprocess.CalledProcessError, ValueError) as exc:
+            raise BeliefV2PreflightError(
+                "preflight memory identity probe failed") from exc
+    try:
+        return int(os.sysconf("SC_PHYS_PAGES")) \
+            * int(os.sysconf("SC_PAGE_SIZE"))
+    except (OSError, ValueError) as exc:
+        raise BeliefV2PreflightError(
+            "preflight memory identity probe failed") from exc
+
+
+def _boot_identity() -> str:
+    linux = Path("/proc/sys/kernel/random/boot_id")
+    if linux.is_file():
+        value = linux.read_text(encoding="ascii").strip()
+    else:
+        try:
+            value = subprocess.run(
+                ("sysctl", "-n", "kern.boottime"), check=True,
+                capture_output=True, text=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise BeliefV2PreflightError(
+                "preflight boot identity probe failed") from exc
+    if not value:
+        raise BeliefV2PreflightError(
+            "preflight boot identity probe failed")
+    return hashlib.sha256(value.encode("ascii")).hexdigest()
 
 
 def _validate_live_run_environment() -> None:
@@ -288,8 +323,12 @@ def _runtime_identity() -> dict[str, Any]:
         "python_version": platform.python_version(),
         "python_executable_sha256": _file_sha256(python_path),
         "native_extension_sha256": _file_sha256(native_path),
+        "hostname": platform.node(),
         "platform": platform.platform(),
+        "machine": platform.machine(),
         "logical_cpu_count": os.cpu_count(),
+        "memory_bytes": _memory_bytes(),
+        "boot_identity": _boot_identity(),
         "compiled_engine": True,
         "strict_voids": True,
     }
@@ -346,7 +385,8 @@ def verify_preflight_result(result: dict[str, Any]) -> None:
             "git_head", "source_tree_dirty", "source_file_count",
             "source_population_sha256", "python_implementation",
             "python_version", "python_executable_sha256",
-            "native_extension_sha256", "platform", "logical_cpu_count",
+            "native_extension_sha256", "hostname", "platform", "machine",
+            "logical_cpu_count", "memory_bytes", "boot_identity",
             "compiled_engine", "strict_voids"} \
             or type(runtime["git_head"]) is not str \
             or len(runtime["git_head"]) != 40 \
@@ -363,9 +403,15 @@ def verify_preflight_result(result: dict[str, Any]) -> None:
                                "native_extension_sha256")) \
             or any(type(runtime[key]) is not str or not runtime[key]
                    for key in ("python_implementation", "python_version",
-                               "platform")) \
+                               "hostname", "platform", "machine")) \
             or type(runtime["logical_cpu_count"]) is not int \
             or runtime["logical_cpu_count"] < V2_CAPTURE_LANES \
+            or type(runtime["memory_bytes"]) is not int \
+            or runtime["memory_bytes"] <= 0 \
+            or type(runtime["boot_identity"]) is not str \
+            or len(runtime["boot_identity"]) != 64 \
+            or any(char not in "0123456789abcdef"
+                   for char in runtime["boot_identity"]) \
             or runtime["compiled_engine"] is not True \
             or runtime["strict_voids"] is not True:
         raise BeliefV2PreflightError("preflight runtime drift")

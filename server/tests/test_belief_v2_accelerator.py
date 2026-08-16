@@ -31,6 +31,7 @@ from shengji.rl.belief_v2_accelerator import (
     BeliefV2AcceleratorError,
     TRAINING_TENSOR_FIELDS,
     V2TrainingDeviceProfileV1,
+    build_training_device_profile,
     canonical_training_device,
     cpu_checkpoint_clone,
     evaluate_v2_calibration_cohort_stream_nanonats,
@@ -43,6 +44,7 @@ from shengji.rl.belief_v2_accelerator import (
 )
 from shengji.rl.belief_v2_device_qualification import (
     build_qualification_plan,
+    derive_qualification_result,
 )
 from shengji.rl.belief_v2_device_runner import execute_qualification_arm
 
@@ -115,7 +117,27 @@ def test_mps_deterministic_training_path_completes_without_fallback():
                for model in models)
 
 
-def test_accelerator_profile_binds_physical_identity_and_capability_shape():
+def test_accelerator_profile_binds_physical_identity_and_capability_shape(
+        monkeypatch):
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_accelerator.available_training_accelerators",
+        lambda: ("mps",))
+    with pytest.raises(BeliefV2AcceleratorError,
+                       match="no available accelerator"):
+        build_training_device_profile("cpu")
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_accelerator.available_training_accelerators",
+        lambda: ())
+    cpu = build_training_device_profile("cpu")
+    assert cpu.requested_device == "cpu"
+    assert cpu.device_type == "cpu"
+    assert cpu.device_index is None
+    assert cpu.total_memory_bytes > 0
+    validate_training_device_profile(cpu)
+    with pytest.raises(BeliefV2AcceleratorError,
+                       match="device profile identity"):
+        validate_training_device_profile(replace(cpu, device_index=0))
+
     mps = V2TrainingDeviceProfileV1(
         requested_device="mps", device_type="mps", device_index=None,
         hardware_name="Apple-arm64-test", total_memory_bytes=16 * 1024**3,
@@ -222,3 +244,28 @@ def test_runnable_qualification_cpu_arm_uses_exact_selected_batches():
         int(batch.active_mask.sum()) for batch in batches)
     assert len(arm.member_checkpoint_sha256s) == 8
     assert len(arm.member_epoch_receipt_sha256s) == 8
+
+
+def test_runnable_cpu_only_qualification_repeats_and_selects_cpu():
+    source = _batch()
+    batches = tuple(replace(
+        source, decision_keys=tuple(hashlib.sha256(
+            f"cpu-only-{batch}-{index}".encode()).hexdigest()
+            for index, _ in enumerate(source.decision_keys)))
+                    for batch in range(32))
+    plan = build_qualification_plan(
+        execution_git="a" * 40, candidate_device="cpu",
+        batch_decision_keys=tuple(batch.decision_keys for batch in batches),
+        batch_active_label_counts=tuple(
+            int(batch.active_mask.sum()) for batch in batches),
+        host_memory_cap_bytes=64 * 1024**3,
+        device_memory_cap_bytes=0)
+    arms = tuple(execute_qualification_arm(
+        plan, arm_index=index, selected_batches=batches)
+                 for index in range(len(plan.arm_order)))
+    result = derive_qualification_result(plan, arms)
+    assert result.selected_device == "cpu"
+    assert result.accelerator_retained is False
+    assert result.aggregate_cpu_wall_nanoseconds > 0
+    assert result.aggregate_candidate_wall_nanoseconds == 0
+    assert result.wall_reduction_ppb == 0

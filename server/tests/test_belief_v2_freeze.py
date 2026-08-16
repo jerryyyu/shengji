@@ -92,6 +92,14 @@ def _device_profile():
         compute_capability_minor=None)
 
 
+def _cpu_profile():
+    return V2TrainingDeviceProfileV1(
+        requested_device="cpu", device_type="cpu", device_index=None,
+        hardware_name="CPU-x86_64-test", total_memory_bytes=32 * 1024**3,
+        runtime_version="Linux-test", compute_capability_major=None,
+        compute_capability_minor=None)
+
+
 def _cohorts():
     primary = V2CohortPlanV1(
         cohort_id="synthetic-primary", kind="synthetic-primary",
@@ -200,6 +208,20 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
                for row in cohort_payload)
     assert cohort_payload[0]["synthetic_selection_rule"] \
         == ALL_SYNTHETIC_TRAIN_DECISIONS
+
+
+def test_cpu_only_freeze_round_trips_with_no_accelerator_claim():
+    freeze = replace(
+        _freeze(), training_candidate_device="cpu",
+        training_device_profile=_cpu_profile(),
+        device_qualification_protocol_sha256=(
+            qualification_protocol_sha256("cpu")))
+    validate_execution_freeze(freeze)
+    assert execution_freeze_from_bytes(freeze.canonical_bytes()) == freeze
+    claim = expected_execution_review_claim(freeze)
+    assert claim["training_candidate_device"] == "cpu"
+    assert claim["device_qualification_protocol_sha256"] \
+        == qualification_protocol_sha256("cpu")
 
 
 @pytest.mark.parametrize(("mutation", "message"), [

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from .belief_v2_schedule import V2CohortRealizationV1
 
 
-QUALIFICATION_PLAN_SCHEMA = "belief-v1-v2-device-qualification-plan-v1"
+QUALIFICATION_PLAN_SCHEMA = "belief-v1-v2-device-qualification-plan-v2"
 QUALIFICATION_ARM_SCHEMA = "belief-v1-v2-device-qualification-arm-v1"
 QUALIFICATION_RESULT_SCHEMA = "belief-v1-v2-device-qualification-result-v1"
 QUALIFICATION_NAMESPACE = "belief-v1-v2-device-qualification-v1"
@@ -76,8 +76,12 @@ def expected_arm_order(candidate_device: str) \
         -> tuple[tuple[str, bool, int], ...]:
     candidate = canonical_training_device(candidate_device)
     if candidate == "cpu":
-        raise BeliefV2DeviceQualificationError(
-            "qualification candidate must be an accelerator")
+        return (
+            ("cpu", True, -1),
+            ("cpu", False, 0),
+            ("cpu", False, 1),
+            ("cpu", False, 2),
+        )
     return (
         ("cpu", True, -1),
         (candidate, True, -1),
@@ -93,11 +97,8 @@ def expected_arm_order(candidate_device: str) \
 def qualification_protocol_sha256(candidate_device: str) -> str:
     """Bind every choice that may affect the post-capture device decision."""
     candidate = canonical_training_device(candidate_device)
-    if candidate == "cpu":
-        raise BeliefV2DeviceQualificationError(
-            "qualification candidate must be an accelerator")
     return _sha({
-        "schema": "belief-v1-v2-device-qualification-protocol-v1",
+        "schema": "belief-v1-v2-device-qualification-protocol-v2",
         "candidate_device": candidate,
         "selection_namespace": QUALIFICATION_NAMESPACE,
         "measured_batch_count": MEASURED_BATCH_COUNT,
@@ -107,7 +108,9 @@ def qualification_protocol_sha256(candidate_device: str) -> str:
             {"device": device, "warmup": warmup, "pair_index": pair}
             for device, warmup, pair in expected_arm_order(candidate)
         ],
-        "minimum_wall_reduction_percent": MIN_WALL_REDUCTION_PERCENT,
+        "cpu_only_no_accelerator_candidate": candidate == "cpu",
+        "minimum_wall_reduction_percent": (
+            0 if candidate == "cpu" else MIN_WALL_REDUCTION_PERCENT),
         "all_paired_reductions_must_be_positive": True,
         "within_device_checkpoint_loss_and_receipt_repeatability": True,
         "fallback_authorized": False,
@@ -155,7 +158,10 @@ class V2DeviceQualificationPlanV1:
                 for device, warmup, pair in self.arm_order
             ],
             "minimum_wall_reduction_percent": (
-                MIN_WALL_REDUCTION_PERCENT),
+                0 if self.candidate_device == "cpu"
+                else MIN_WALL_REDUCTION_PERCENT),
+            "cpu_only_no_accelerator_candidate": (
+                self.candidate_device == "cpu"),
             "training_authorized": False,
             "test_open_authorized": False,
             "strength_claim_authorized": False,
@@ -250,7 +256,6 @@ def validate_qualification_plan(value: V2DeviceQualificationPlanV1) -> None:
             or len(value.execution_git) != 40 \
             or any(char not in "0123456789abcdef"
                    for char in value.execution_git) \
-            or value.candidate_device == "cpu" \
             or canonical_training_device(value.candidate_device) \
             != value.candidate_device \
             or not _is_sha256(value.full_schedule_sha256) \
@@ -437,6 +442,18 @@ def _qualification_metrics(
         raise BeliefV2DeviceQualificationError(
             "device qualification arm order drift")
     measured = tuple(arm for arm in arms if not arm.warmup)
+    if plan.candidate_device == "cpu":
+        if len(measured) != MEASURED_PAIR_COUNT \
+                or tuple(arm.pair_index for arm in measured) \
+                != tuple(range(MEASURED_PAIR_COUNT)) \
+                or len({arm.member_checkpoint_sha256s
+                        for arm in measured}) != 1 \
+                or len({arm.member_loss_nanonats for arm in measured}) != 1 \
+                or len({arm.member_epoch_receipt_sha256s
+                        for arm in measured}) != 1:
+            raise BeliefV2DeviceQualificationError(
+                "device qualification CPU determinism drift")
+        return (sum(arm.wall_nanoseconds for arm in measured), 0, 0, False)
     for device in ("cpu", plan.candidate_device):
         rows = tuple(arm for arm in measured if arm.device == device)
         if len(rows) != MEASURED_PAIR_COUNT \
@@ -499,7 +516,8 @@ def reopen_qualification_plan(raw: bytes) -> V2DeviceQualificationPlanV1:
         "measured_batch_count", "warmup_uses_same_batch_population",
         "decision_count", "active_label_count", "host_memory_cap_bytes",
         "device_memory_cap_bytes", "model_seeds", "arm_order",
-        "minimum_wall_reduction_percent", "training_authorized",
+        "minimum_wall_reduction_percent",
+        "cpu_only_no_accelerator_candidate", "training_authorized",
         "test_open_authorized", "strength_claim_authorized",
     }
     if type(payload) is not dict or set(payload) != expected_keys \
@@ -509,7 +527,10 @@ def reopen_qualification_plan(raw: bytes) -> V2DeviceQualificationPlanV1:
             or payload["warmup_uses_same_batch_population"] is not True \
             or payload["model_seeds"] != list(COHORT_SEEDS) \
             or payload["minimum_wall_reduction_percent"] \
-            != MIN_WALL_REDUCTION_PERCENT \
+            != (0 if payload["candidate_device"] == "cpu"
+                else MIN_WALL_REDUCTION_PERCENT) \
+            or payload["cpu_only_no_accelerator_candidate"] \
+            is not (payload["candidate_device"] == "cpu") \
             or any(payload[key] is not False for key in (
                 "training_authorized", "test_open_authorized",
                 "strength_claim_authorized")) \

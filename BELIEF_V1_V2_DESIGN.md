@@ -413,18 +413,23 @@ runtime consumer do not inherit an accelerator dependency.
 
 Device qualification occurs after capture and before either final training
 cohort begins. It uses the same digest-selected train batches, model seeds,
-optimizer, and batch order for all arms. CPU and the one frozen candidate get
-one warmup arm each that is excluded from evidence, followed by three paired
-measured arms in alternating order. An accelerator is retained only if all of
-the following are true: all arms complete without fallback; its three same-seed
-reruns produce one checkpoint digest and one loss receipt; every paired
-wall-time reduction is positive; aggregate measured wall is at least 15% below
-CPU; batch population, schedule, active-label count, and authority bytes are
-exact; and peak resident plus device memory stays within the frozen cap.
-Cross-device checkpoint bytes need not equal CPU bytes because floating-point
-kernels differ; deterministic repeatability within the retained device and
-unchanged held-out calibration gate semantics are mandatory. If no accelerator
-qualifies, V2 freezes CPU.
+optimizer, and batch order for all arms. On a host with a supported accelerator,
+CPU and the one frozen candidate get one warmup arm each that is excluded from
+evidence, followed by three paired measured arms in alternating order. An
+accelerator is retained only if all of the following are true: all arms complete
+without fallback; its three same-seed reruns produce one checkpoint digest and
+one loss receipt; every paired wall-time reduction is positive; aggregate
+measured wall is at least 15% below CPU; batch population, schedule,
+active-label count, and authority bytes are exact; and peak resident plus device
+memory stays within the frozen cap. Cross-device checkpoint bytes need not equal
+CPU bytes because floating-point kernels differ; deterministic repeatability
+within the retained device and unchanged held-out calibration gate semantics
+are mandatory. If the frozen host exposes no supported MPS or indexed CUDA
+device, the only legal candidate is explicit `cpu`; qualification then runs one
+CPU warmup plus three measured CPU repeats, requires identical checkpoint/loss/
+receipt identities and bounded memory, and freezes CPU without making or
+simulating an accelerator comparison. A CPU-only freeze refuses if a supported
+accelerator is visible.
 
 The exact bounded work is 32 complete realized training batches chosen by the
 smallest SHA-256 ranks of
@@ -432,18 +437,23 @@ smallest SHA-256 ranks of
 executed in original schedule order. The warmup uses the same population. For
 one named candidate device, the immutable arm order is CPU warmup, candidate
 warmup, CPU→candidate pair 0, candidate→CPU pair 1, and CPU→candidate pair 2.
+For an explicit CPU-only host, the immutable arm order is CPU warmup followed
+by measured CPU repeats 0, 1, and 2; the wall-reduction statistic is exactly
+zero and `accelerator_retained` is false.
 The result reopens all eight member checkpoint hashes and loss receipts from
 every measured arm; any within-device rerun drift, fallback, missing arm,
 population/schedule change, or memory-cap breach refuses rather than selecting
 CPU. CPU fallback is permitted only for an honest performance miss.
 
-The execution freeze now binds the exact candidate-device identity, a live
-physical-device profile (hardware name, usable memory, backend/runtime, and
-CUDA index/capability when applicable), the canonical digest of this
-qualification protocol, and separate host/device memory caps. Every stage
-re-probes that profile before work, so a same-name device or cloud-host swap
-cannot inherit the reviewed packet. This prevents a post-review choice of
-whichever device happened to look fastest. The actual qualification plan
+The execution freeze now binds the exact training-candidate identity, a live
+physical-device profile (CPU hardware/host memory or accelerator hardware,
+usable memory, backend/runtime, and CUDA index/capability when applicable), the
+canonical digest of this qualification protocol, and separate host/device
+memory caps. Every stage re-probes that profile before work, so a same-name
+device or cloud-host swap cannot inherit the reviewed packet. CPU-only identity
+also re-probes the absence of every supported accelerator. This prevents a
+post-review choice of whichever device happened to look fastest. The actual
+qualification plan
 remains post-capture because
 its 32 batches are derived from the sealed realized primary schedule; its
 result must be published and reopened before final training begins. The same
@@ -523,12 +533,28 @@ coverage, and all rank cells outside the production seed namespace. The
 reviewed design then freezes caps with explicit margin and an automatic
 refusal before population capture if the host does not qualify.
 
-The final cap receipt also binds the exact-source/runtime p95 deadline
-measurements: at least 32 capture samples, 32 reference samples, and two full
-training epochs on the named runtime. The cap fields must equal those receipt
-values byte-for-byte. A mutable estimate, an unmeasured operator guess, or an
-estimate plus reserve that cannot fit beneath its stage wall cap refuses the
-freeze.
+The final cap receipt also binds exact-source/runtime deadline measurements.
+Capture uses all 416 raw round-wall samples from the reviewed capacity
+preflight. Reference uses 32 rank-diverse, out-of-population complete REF-C
+rounds under the same 16-worker topology. Training uses two complete passes
+over the same 32 one-round batches after one discarded warmup. Each pass
+includes the unchanged eight-member optimizer work and calibration evaluation;
+its wall is projected to the exact 10,647 train-round population with one
+round per batch and a frozen 1.25 margin. That is deliberately conservative:
+the production scheduler may pack multiple whole round groups into each
+256-decision batch, while the pre-freeze probe never does. The larger of the
+two projected epoch estimates is the p95 next-epoch value, and the single
+safety reserve is `max(60 seconds, 5% of that value)`.
+
+`belief_v2_deadline_estimate.py` and
+`scripts/belief_v2_deadline_preflight.py` are the only producer/reopener for
+this receipt. They publish every raw wall sample, the exact all-rank schedule,
+REF-C manifest-population hashes, deterministic training receipt hashes, and
+the mechanical projection. Captured rows, sampled worlds, model states, and
+losses are discarded before return. The cap fields must equal the reopened
+receipt values byte-for-byte. A mutable estimate, an operator guess, a
+semantically non-repeatable training probe, or an estimate plus reserve that
+cannot fit beneath its stage wall cap refuses the freeze.
 
 The execution-freeze child implements this in `belief_v2_preflight.py` and
 `scripts/belief_v2_preflight.py`. Its exact schedule is two rounds at every
@@ -540,7 +566,7 @@ common overlap among all 16 lanes. Captured rows are discarded. The result
 independently reconstructs the population and all resource summaries and
 keeps production capture, training, test, and strength authority false.
 
-That authorized preflight has now completed on Strength Cloud at exact source
+The first authorized planning preflight completed on Strength Cloud at source
 `22c8568dd64d11f873e1397569b5ee1efb473b0a`; result SHA-256
 `3b40250e25acccf7ed9f9c8becf763956c434fe0bae2098336b6dd2bae16290c`.
 All 416 rounds completed under a real 16-lane overlap, exit status was zero,
@@ -552,6 +578,11 @@ mean projection for 13,312 rounds is 47.0 capture core-hours, 2.94 wall hours
 per lane, and 7.34 GiB. A conservative p95 projection is 3.84 wall hours per
 lane and 9.47 GiB. These measurements supersede the earlier V1-derived 26.2
 core-hour/6.7-GiB planning estimate and must drive the final automatic caps.
+That V1 receipt remains planning evidence only. The final source now requires a
+fresh V2 preflight receipt whose runtime row also binds hostname, machine,
+physical memory, boot identity, Python/native bytes, and all 16 CPUs to the
+same live runtime used by the deadline probe and freeze builder. A receipt from
+another host or boot cannot be reused even when its source commit matches.
 
 The immutable 13,312-coordinate production schedule is memoized only after
 its first complete derivation. This preserves its canonical bytes while
@@ -719,8 +750,9 @@ The following run-specific inputs still gate an exact freeze:
    terminal, and adversarial tests;
 3. a fresh complete seed scan/registry generated from that exact execution
    head. The reviewed H0 inventory and whole-session split already exist;
-4. the final host-specific runtime/native/boot identity, named accelerator
-   candidate, measured next-unit/epoch deadline receipt, and reviewed resource
+4. the final host-specific runtime/native/boot identity, named training
+   candidate (explicit CPU only when no supported accelerator exists), measured
+   next-unit/epoch deadline receipt, and reviewed resource
    caps. `freeze-design` binds these together with the existing multi-rank
    preflight receipt; and
 5. one external exact-freeze PASS on the canonical immutable JSON.

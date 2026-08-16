@@ -1,120 +1,137 @@
 # Active Claude/Codex handoff
 
-> Coordinate current work only through this file and the append-only
-> `HANDOFF_REVIEW.md`. Historical detail belongs in the archive and research
-> documents; branch-local ledgers are never review or execution authority.
+> Current queue only. Historical reviews belong in `HANDOFF_REVIEW.md` and Git
+> history. A request not listed here is not active.
 
-Last reconciled: 2026-08-16 07:42 EDT.
+Last reconciled: 2026-08-16 11:18 EDT.
 
 ## Immediate objective
 
-Finish BELIEF-V1 V2 with two remaining review boundaries:
+Carry BELIEF-V1 V2 through exactly two remaining review boundaries:
 
-1. one consolidated CPU/deadline/host-closure delta review of exact PR #117
-   head `1a0c9c8`; the substantive V2 source/design packet and its MPS child
-   already passed only through parent `f915325`;
-2. after PASS, one exact host-specific immutable-freeze review.
+1. this one immutable-freeze execution review; and
+2. one terminal reconstruction review after the one-shot pipeline seals.
 
-No V2 pipeline execution, capture, REF-C, training, calibration, test opening,
-gameplay, strength claim, promotion, or deployment is authorized now.
+There are no per-stage capture, REF-C, index, qualification, cohort,
+calibration, progress, or receipt reviews between them.
 
-## Current review queue — exactly one Claude request
+## Top/only Claude ask — exact immutable-freeze review
 
-### P0 — PR #117, runnable-freeze delta
+Read-only review on SSH host `shengji-cloud`. Do not initialize, execute,
+rewrite, chmod, merge, deploy, open calibration/test, or create gameplay or
+strength authority.
 
-**ANSWERED 2026-08-16 08:25 EDT: ✅ delta PASS at exact head `1a0c9c8` — ledger `0c42146`. No open Claude review request remains; next Claude gate is the exact-freeze review of the populated freeze bytes.**
+Review exact root-owned freeze `/opt/belief-v1-v2-design-13d-v1.json`, SHA-256
+`9b75ac20413e3205bcfd8b5b06a55018f5bf4c635b0772e1f9afa740350daed6`.
+Execution source is exact PR #119 head
+`13d15c777cabcb7dd56316988e6b3c83f6a57d1c`; source PASS is canonical ledger
+commit `f7c34b7600e2204f90c642b903a887a0c2ce9278`.
 
-- PR: `https://github.com/jerryyyu/shengji/pull/117`
-- latest reviewed PASS head: `f915325cebb46712cc2726cc140a38513f5e63e8`
-- canonical PASS ledger: `fdbbaeb6672f8302c643fc25c312b2b13c604d5c`
-- exact PR head: `1a0c9c8509aa93ad1b72e7718c5b7515c5f189b7`
-- immediate parent: `f915325cebb46712cc2726cc140a38513f5e63e8`
-- superseding exact-head correction/review prompt:
-  `https://github.com/jerryyyu/shengji/pull/117#issuecomment-5307258321`
-- review mode: review only `f915325..1a0c9c8` and return one consolidated
-  delta PASS/HOLD; do not re-open the already PASSed V1 resource-reentry,
-  registry, substantive V2 source/design, or MPS seam.
+Reopen independently and verify:
 
-**Do not classify PR #117 as fully reviewed.** No Claude verdict, canonical
-ledger entry, or marker names exact head `1a0c9c8`. The hourly reports that
-called both packets PASSed conflated parent `f915325` with its unreviewed
-child. Until an exact `1a0c9c8` PASS is appended to canonical
-`HANDOFF_REVIEW.md`, cloud measurement and freeze construction are blocked on
-Claude review, not on a Jerry cloud decision.
+- exact clean source/native/Python/Torch/Numpy/host/boot/runtime binding;
+- 416-round all-rank preflight
+  `/opt/belief-v1-v2-freeze-13d/preflight.json`, SHA
+  `6e0bee49658f0156f93491c07acbdb3995e81e00f95a2739c6a8be532e826661`;
+- deadline receipt
+  `/opt/belief-v1-v2-freeze-13d/deadline-attempt2/deadline-estimate.json`, SHA
+  `96e8f0e1a64e6242cb863e0bd33b08e10d9f5e914d4add158f56dd515dc03c69`:
+  416 capture samples, 32 REF-C samples, two repeatable training estimates,
+  retained rows/worlds/models/losses false, all authorities false;
+- exact H0 inventory `201ef84e…e12f`, split `fa704103…25be`, V1 resource
+  failure `257fce06…b4a3`, rationale `abfb7121…70e0`, scan
+  `277f5a48…d961`, and registry `2a8da1e0…b3ae`;
+- resource caps `/opt/belief-v1-v2-freeze-13d/inputs/resource-caps.json`, SHA
+  `b6fa0b291ff6a9dae58f12d1a42916577f5a7af8704b1540bd50e36ba3202a20`,
+  against derivation receipt SHA `09782017…82f`: capture 64 core-hours/5
+  wall-hours/16 GiB; reference 40 core-hours/4 wall-hours/16 GiB; training
+  256 aggregate device-hours/48 wall-hours/32 GiB; 24/12 GiB host/device
+  memory. Confirm four p95 epochs plus reserve fit in 48 hours, making the
+  patience-3 stopping rule evaluable;
+- four exact cohort plans, CPU candidate/profile, qualification protocol,
+  schedule/protocol/source hashes, unused sibling evidence root
+  `/opt/belief-v1-v2-evidence-13d-v1`, retry false, and every downstream
+  gameplay/strength/promotion/deployment authority false.
 
-Review three tightly bounded properties together:
+Operational audit note: three pre-design refusals are preserved outside the
+freeze/evidence root: one deadline invocation lacked two required environment
+literals and produced no receipt; freeze attempt 1 used a nonsibling output;
+freeze attempt 2 found stale local `origin/main`. Each refused before its
+target artifact. The successful deadline used a fresh directory, and the
+successful freeze is the only design file. Confirm no evidence root exists.
 
-1. an explicit CPU candidate is legal only with no supported accelerator,
-   re-probes that absence, and runs one warmup plus three deterministic
-   measured CPU arms without inventing an accelerator comparison;
-2. the new deadline producer reopens all 416 capture samples, measures 32
-   all-rank REF-C rounds under proven 16-worker overlap, runs two repeatable
-   eight-member training probes, and derives the epoch/reserve mechanically;
-3. preflight, deadline, selected device, and freeze all bind to the same
-   hostname, boot, 16 CPUs, memory, Python/native bytes, and source. Mini or a
-   different host/boot cannot inherit the receipt.
+Return PASS or HOLD with exact file/field findings. On PASS, append the exact
+marker below byte-for-byte to `HANDOFF_REVIEW.md` in an authenticated
+Claude-authored canonical-main commit. That marker grants only the bounded
+offline pipeline and sole test opening described by the freeze; it grants no
+retry, sampler, gameplay, strength, promotion, or deployment authority.
 
-Exact-head evidence:
+```text
+BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW {"bounded_capture_reference_training_and_one_test_open_authorized":true,"deadline_estimate_receipt_sha256":"96e8f0e1a64e6242cb863e0bd33b08e10d9f5e914d4add158f56dd515dc03c69","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-v1-v2-evidence-13d-v1","execution_git":"13d15c777cabcb7dd56316988e6b3c83f6a57d1c","freeze_sha256":"9b75ac20413e3205bcfd8b5b06a55018f5bf4c635b0772e1f9afa740350daed6","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"b6fa0b291ff6a9dae58f12d1a42916577f5a7af8704b1540bd50e36ba3202a20","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"616f732f3e8e713de8ff52f7819c4e6bb82926b94bdcfbbce180b48a00fce7fc","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-offline-execution-review-v1","seed_registry_sha256":"2a8da1e0d4575a5a9d252254b9c41d8896ee05fd93242993e46964df0b59b3ae","source_manifest_sha256":"1be7d826ff960277697a559edd832a5dd9df089a4cb8b4ebe1005fe1145a1c03","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"2f7edb58c08d831ccc390f8ff77bb4b73a19f57e2f940977d9563c952ab673e0","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}
+```
 
-- V2 pure: `163 passed, 1 skipped`;
-- V2 compiled/strict: `164 passed`;
-- registry focused: `7 passed`;
-- isolated worker bootstrap: `BELIEF_V1_V2_BOOTSTRAP_PASS`;
-- deadline-probe schedule SHA-256
-  `0c03e2c9497d8e26bb5b8ae3119e54f7f9fe8490e6d1b400cd8d4f8126f471bb`;
-- seed scan: 1,933,880 bytes, SHA-256
-  `dd5776b13ff82b449c1dd4bcb31aaefdff48abe3fdf5db75065d28dcc6443c9c`;
-- registry: 1,721,217 bytes, SHA-256
-  `83df2c13a4f6700139936e8e3bea72fc72810bb7e3004188048fd6ed2730e3d1`;
-  5,396/5,396 candidates classified, 135 explicit-required,
-  74 finite-population,
-  31 populations, 13,312 V2 seeds, zero collisions;
-- diff-check, clean-tree and append-only review-ledger guards: PASS.
+## Operational truth and automatic next step
 
-Return one delta PASS or one HOLD with every remaining blocker. A PASS
-authorizes only a fresh exact-head capacity preflight, score-free deadline/
-device measurement, and immutable-freeze construction. The exact frozen packet
-still requires a second external PASS before execution.
+- PR #119 source review is closed PASS; do not re-review it.
+- Both final-head measurements are complete and verified; no measurement job
+  remains active.
+- Freeze exists root-owned mode 0400; evidence root does not exist; pipeline
+  has not started.
+- The exact private H0 source population is already staged on `shengji-cloud`
+  under root-only `/opt/belief-v1-v2-human-source-13d`: manifest
+  `source-manifest.sha256` has SHA-256
+  `07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e`;
+  all 30/30 `.jsonl`
+  members independently pass `sha256sum -c`, there are no extra members,
+  files are root:root mode 0400 and both parent directories are mode 0700.
+  The source path is not model input and no source bytes are published.
+- PR #116 is Codex's separate performance item and does not block this review.
+- After exact-freeze PASS, Codex authenticates the marker, initializes once,
+  and runs the frozen single-host DAG with outcome-blind percentage telemetry.
+  No further Claude review is requested until terminal bytes seal.
 
-## Current operational truth
+### Post-PASS execution DAG — automatic, no intermediate review
 
-- V1 design `a8c5e05f…1fd53` completed capture and REF-C. Both CPU training
-  cohorts exceeded their frozen eight-hour wall cap and were stopped through
-  the reviewed sequence before calibration or test. Both slots remain partial;
-  the admission is spent; no model, null, calibration, terminal, or strength
-  result exists. Never resume, inspect, score, or reuse the partial models.
-- PR #117 remains source/design only. Parent `f915325` is PASS; exact current
-  head `1a0c9c8` is pending review. No evidence namespace or fleet run was
-  initialized.
-- Do not start compute merely because a host is powered on. After PR #117 PASS,
-  first re-check host availability and run only the reviewed capacity/device/
-  deadline measurement needed to construct the exact freeze.
-- T4, S4, S6, broad Pair, Pair checkpoint, and V1 namespaces are terminal or
-  spent. No retry, resume, pooling, or partial-result interpretation is open.
-- PR #107 already has Codex's independent source/parity clearance. PR #116 was
-  authored by Claude and is a Codex performance-review item, not a Claude queue
-  item. Neither blocks PR #117.
+1. Fetch canonical main, authenticate the exact marker/commit, initialize the
+   evidence root once, then `verify-root`. Any mismatch stops before work.
+2. Run 16 synthetic capture lanes and 30 exact H0 group captures. Progress is
+   fixed-unit and outcome-blind: rounds/4096 and human decisions/2830.
+3. Build and reopen the immutable training-input index, then run the frozen CPU
+   device qualification. A refusal stops; there is no alternate device or
+   retry path.
+4. Run 16 synthetic REF-C lanes plus the exact human calibration/test
+   references (two replicates for the three calibration groups; one primary
+   replicate for the three test groups). Progress reports completed reference
+   units only, never scores.
+5. Train the four frozen cohorts on CPU with the reviewed live deadline. Report
+   epoch/unit percentage, elapsed time and remaining deadline only; do not
+   inspect or publish losses, calibration, selection or model outcomes.
+6. Seal calibration selection, then perform the sole test opening and terminal
+   reconstruction. Any failure consumes the slot exactly as frozen; no retry.
+7. Update this file to one terminal-review ask. Claude independently reopens
+   the sealed bytes and appends the terminal verdict to `HANDOFF_REVIEW.md`.
 
-## Next steps after runnable-freeze delta PASS
+Every stage uses exact source `13d15c7`, the external frozen Python/native
+runtime, clean literal environment, root-owned inputs and the reviewed CLI.
+The supervisor must stop on the first non-zero exit or missing expected
+artifact. It may schedule independent stages concurrently only where the
+reviewed DAG permits it and must not exceed the frozen CPU/memory/wall caps.
+There is no ad hoc continuation, partial-result reading, retry, tuning or
+additional review request.
 
-1. Select one available host with at least 16 logical CPUs; Mini does not
-   qualify for the all-lane capacity preflight.
-2. At exact reviewed source, produce the H0/preflight, runtime/native/boot,
-   candidate-device/memory, deadline-estimate, resource-cap, seed scan/registry,
-   V1 failure, and cohort-schedule bindings.
-3. Build one canonical immutable freeze in a fresh unused namespace. Do not
-   initialize it.
-4. Request one exact-freeze review. Only its authentic PASS marker can admit
-   the one-shot offline pipeline.
-5. During the delta-review wait, further profiling must stay in a separate
-   worktree and must not mutate PR #117 or historical evidence. It carries no
-   strength authority.
+### Canonical-main quiet period after admission
+
+The admission pins the real canonical `main` tip, and every stage
+reauthenticates that exact remote tip. Once Codex initializes, do not merge a
+PR or commit either handoff file until the terminal directory has sealed.
+Claude's hourly task must remain read-only/quiet after the PASS marker; it must
+not “close” this queue in a follow-up commit. Any canonical-main movement is a
+fail-closed execution-identity change, not a harmless docs update. Codex will
+perform the one queue transition only after terminal sealing (or record the
+exact pre-terminal refusal if the pipeline stops).
 
 ## Durable references
 
-- Scientific plan and current milestone: `RL_PLAN.md`
-- Ordered research/output ledger: `BACKLOG.md`
-- Stable operational rules: `AI_POLICIES.md`
-- Exact BELIEF contracts: `BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`
-- Lossless verdict/authority ledger: `HANDOFF_REVIEW.md`
-- Historical handoff snapshots: `docs_archive/`
+- `BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`
+- `RL_PLAN.md`, `BACKLOG.md`, `AI_POLICIES.md`
+- append-only authority ledger: `HANDOFF_REVIEW.md`

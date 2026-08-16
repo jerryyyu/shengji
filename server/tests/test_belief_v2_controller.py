@@ -17,6 +17,7 @@ import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
 import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
+import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
@@ -1061,6 +1062,51 @@ def test_training_input_index_wires_deadline_around_source_units_and_seal(
     assert not (root / "training-input-index" / "result.partial").exists()
 
 
+def test_training_input_index_deadline_records_refusal_cannot_seal_or_retry(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+    wall = freeze.resource_caps.training_wall_seconds * 1_000_000_000
+    started = 1_000_000_000
+    times = iter((started, started + wall - 60_000_000_000))
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE.time, "monotonic_ns", lambda: next(times))
+    advanced = []
+
+    def refuse_before_source(*args, deadline_check, **kwargs):
+        deadline_check("before-unit", 0)
+        advanced.append(True)
+        raise AssertionError("expired input-index construction advanced")
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs",
+        refuse_before_source)
+    kwargs = dict(
+        repo=Path("/unused"), review_marker=b"review",
+        inventory={}, group_split={})
+    with pytest.raises(INPUT_INDEX_STAGE.BeliefV2InputIndexControllerError,
+                       match="construction refused"):
+        run_training_input_index(root, freeze, admission, **kwargs)
+    assert advanced == []
+    partial = root / "training-input-index" / "result.partial"
+    assert {path.name for path in partial.iterdir()} \
+        == {"deadline-refusal.json"}
+    refusal = reopen_deadline_refusal(
+        partial / "deadline-refusal.json",
+        freeze_sha256=freeze.sha256(), admission_sha256=admission.sha256())
+    assert refusal.stage == "training"
+    assert refusal.slot == "input-index"
+    assert refusal.phase == "before-unit"
+    assert not (root / "training-input-index" / "result").exists()
+    with pytest.raises(INPUT_INDEX_STAGE.BeliefV2InputIndexControllerError,
+                       match="slot is occupied"):
+        run_training_input_index(root, freeze, admission, **kwargs)
+
+
 def test_cpu_only_device_stage_publishes_three_measured_repeats(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -1195,6 +1241,61 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
             calibration_examples=calibration,
             qualification_plan=qualification_plan,
             qualification_result=qualification_result)
+
+
+def test_training_stage_streaming_wiring_never_calls_materialized_trainer(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration, calibration_schedule = (
+        _tiny_training_population(freeze))
+    qualification_plan, qualification_result = (
+        _cpu_fallback_qualification(freeze))
+    monkeypatch.setattr(
+        TRAINING_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        TRAINING_STAGE, "_validate_device_binding",
+        lambda *args, **kwargs: "cpu")
+    monkeypatch.setattr(COHORT_STAGE, "TRAIN_MAX_EPOCHS", 1)
+    previous = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    try:
+        expected = COHORT_STAGE.train_v2_cohort_in_memory(
+            primary, training_examples, calibration_schedule, calibration,
+            device="cpu")
+        observed = []
+        streaming_index = SimpleNamespace(control_changed_cell_count=0)
+        loader = lambda source: ()
+
+        def streamed(realization, schedule, *, index, load_round, device,
+                     deadline_check):
+            observed.append((realization, schedule, index, load_round, device))
+            deadline_check("before-unit", 0)
+            deadline_check("after-unit", 1)
+            return expected
+
+        monkeypatch.setattr(
+            TRAINING_STAGE, "train_v2_cohort_streaming", streamed)
+        monkeypatch.setattr(
+            TRAINING_STAGE, "train_v2_cohort_in_memory",
+            lambda *args, **kwargs: pytest.fail(
+                "materialized training path used"))
+        manifest = run_training_cohort(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", primary=primary,
+            realization=primary, training_examples=None,
+            calibration=calibration_schedule, calibration_examples=None,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result,
+            streaming_index=streaming_index, load_round=loader)
+    finally:
+        torch.use_deterministic_algorithms(previous)
+    assert observed == [(
+        primary, calibration_schedule, streaming_index, loader, "cpu")]
+    assert manifest["realization_sha256"] == primary.sha256()
+    assert manifest["test_split_opened"] is False
 
 
 def test_training_deadline_records_refusal_cannot_advance_seal_or_retry(

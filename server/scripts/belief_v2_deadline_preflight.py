@@ -71,12 +71,15 @@ def main() -> None:
     configure_numerical_runtime()
     build_source_bindings(REPO, expected_git=args.expected_git)
     runtime = build_runtime_profile()
-    device = require_training_device(args.training_device)
+    # Availability validation returns a torch.device, while the reviewed V2
+    # training boundary deliberately accepts only the canonical string name.
+    # Keep that representation boundary explicit at the CLI wiring seam.
+    require_training_device(args.training_device)
     preflight = _load(args.preflight_result)
     verify_preflight_result(preflight)
     receipt = run_deadline_estimate_preflight(
         execution_git=args.expected_git, runtime=runtime,
-        preflight_result=preflight, training_device=device)
+        preflight_result=preflight, training_device=args.training_device)
     digest = publish_exclusive_bytes(
         output, deadline_estimate_receipt_bytes(receipt))
     print(json.dumps({

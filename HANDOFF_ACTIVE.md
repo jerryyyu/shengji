@@ -119,6 +119,17 @@ reviewed DAG permits it and must not exceed the frozen CPU/memory/wall caps.
 There is no ad hoc continuation, partial-result reading, retry, tuning or
 additional review request.
 
+### Canonical-main quiet period after admission
+
+The admission pins the real canonical `main` tip, and every stage
+reauthenticates that exact remote tip. Once Codex initializes, do not merge a
+PR or commit either handoff file until the terminal directory has sealed.
+Claude's hourly task must remain read-only/quiet after the PASS marker; it must
+not “close” this queue in a follow-up commit. Any canonical-main movement is a
+fail-closed execution-identity change, not a harmless docs update. Codex will
+perform the one queue transition only after terminal sealing (or record the
+exact pre-terminal refusal if the pipeline stops).
+
 ## Durable references
 
 - `BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`

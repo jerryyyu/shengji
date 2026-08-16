@@ -4,30 +4,48 @@
 > `HANDOFF_REVIEW.md`, and `docs_archive/`. A request not listed here is not an
 > active Claude review request.
 
-Last reconciled: 2026-08-16 09:49 EDT.
+Last reconciled: 2026-08-16 10:03 EDT.
 
 ## Immediate objective
 
-Carry BELIEF-V1 V2 to one runnable immutable freeze with the two remaining
+Carry BELIEF-V1 V2 to one runnable immutable freeze with the fewest remaining
 sound review boundaries:
 
-1. one exact-freeze review after the qualified-host measurements populate the
+1. one narrow exact-child review of the second real-probe wiring repair;
+2. one exact-freeze review after the qualified-host measurements populate the
    otherwise unknowable host/runtime/deadline hashes; and
-2. one terminal review after the one-shot sealed result exists.
+3. one terminal review after the one-shot sealed result exists.
 
 There are no per-stage capture, REF-C, input-index, device, cohort, calibration,
 or progress reviews between those boundaries.
 
-## Current review queue — empty while the freeze is built
+## Current review queue — one exact-child CLI delta
 
-No Claude review is currently requested. PR #119 exact head
-`c011773e15ef362e149f8360eece6f9fc8901eaa` passed at canonical ledger
-`17ecdf3`; do not re-review PR #117, #118, or #119.
+Top/only ask: review PR #119 exact head
+`3344604b387c0cecae86be2489a6a6cdf049275a` against exact PASSed parent
+`c011773e15ef362e149f8360eece6f9fc8901eaa` (parent PASS ledger `17ecdf3`).
 
-Codex is running the final exact-source, score-free capacity/deadline
-measurements on the qualified 16-CPU host. The next and only review request is
-the canonical immutable-freeze JSON after those host-specific hashes and caps
-exist. There is no receipt-by-receipt or stage-by-stage review in between.
+The exact-`c011773` 416-round preflight completed and verified. The subsequent
+deadline probe completed its 32 REF-C measurements, then fail-stopped before
+the training warmup: the CLI stored `require_training_device("cpu")`'s
+`torch.device` return and passed that object into the deliberately string-only
+training boundary, which refused with `V2 training device is invalid`. No
+deadline receipt or retained row/world/model/loss/evidence/calibration/test
+artifact exists.
+
+The child keeps availability validation but passes the original canonical
+`"cpu"` string. Delta is exactly two files, +54/-2. The new CLI-level witness
+fails under the parent wiring because it receives the device object and passes
+on the child; focused deadline suite is 6/6, full pure BELIEF is 382 passed/2
+skipped, strict compiled is 384 passed, and `git diff --check` passes. Return
+PASS or HOLD with exact file:line findings and append the exact-head verdict to
+`HANDOFF_REVIEW.md`.
+
+This is source/tooling delta review only: do not run, freeze, initialize,
+merge, deploy, or grant capture/REF-C/training/calibration/test/strength
+authority. After PASS, Codex will rerun the source-bound preflight and deadline
+probe at the exact child, build the immutable freeze, and request the one
+freeze review. No per-receipt or per-stage review is requested.
 
 ## Current operational truth
 
@@ -38,13 +56,15 @@ exist. There is no receipt-by-receipt or stage-by-stage review in between.
   spent; no V1 model, null, terminal, or strength result exists. Never resume
   or reuse those partial models.
 - PR #118 source at exact `bc44869` is fully reviewed and merged as main
-  `6b3611a8`. PR #119 exact child `c011773` has source PASS `17ecdf3`; its only
-  delta repairs the real deadline-observer callback shape and adds the
-  full-round witness that fails on the parent with the production error.
-- `shengji-cloud` is clean/root-owned and detached at exact reviewed
-  `c011773`. Its fresh 416-round score-free preflight is running on all 16
-  CPUs. The earlier `bc44869` preflight remains planning evidence only because
-  the freeze requires the final execution Git identity.
+  `6b3611a8`. PR #119 parent `c011773` has source PASS `17ecdf3`; exact child
+  `3344604` is the sole open delta review.
+- `shengji-cloud` is clean/root-owned and detached at reviewed `c011773`. Its
+  fresh 416-round score-free preflight completed at SHA-256
+  `38db9043f311840a14f96f38ea881c1d4cd9bf383e6ff992d73b20c47204977c`.
+  The deadline probe then exposed the CLI device-shape bug and stopped before
+  publishing a receipt. Because the preflight binds Git identity, it becomes
+  planning evidence after the reviewed execution head advances to `3344604`;
+  both bounded measurements must rerun at the final exact source.
 - No V2 evidence namespace has been initialized and no production V2 capture,
   REF-C, training, calibration, or test job is running.
 - A powered host is not execution authority. After source PASS, use a qualified
@@ -54,16 +74,16 @@ exist. There is no receipt-by-receipt or stage-by-stage review in between.
   compiled x86 engine. `shengji-perf` is powered off or unreachable.
 - PR #116 remains Codex's independent performance-review item, not a Claude
   queue item and not a blocker for this consolidated review.
-- The Claude queue is empty until the immutable freeze is published.
-  Superseded PR #117/118/119 prompts and old strength-lane queues are
-  historical.
+- PR #119 exact child `3344604` is the only Claude request. Superseded
+  PR #117/118 and pre-`3344604` prompts are historical.
 
 ## Current freeze-construction steps
 
-1. Finish the exact-`c011773` 416-round capacity preflight and the
-   reference/training deadline probe using candidate `cpu`.
-2. Bind the already-regenerated exact-`c011773` scan/registry and derive the
-   resource caps mechanically from the reopened receipts.
+1. Obtain exact-child PASS at `3344604`, advance the qualified host to that
+   exact source, and rerun the 416-round preflight plus reference/training
+   deadline probe using candidate `cpu`.
+2. Regenerate/bind the exact-child scan/registry and derive resource caps
+   mechanically from the reopened receipts.
 3. Build one canonical immutable freeze in a fresh unused namespace. Do not
    initialize it.
 4. Request one exact-freeze review. Its authentic PASS is the sole authority

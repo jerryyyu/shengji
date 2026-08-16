@@ -313,7 +313,8 @@ def reopen_human_scoring_rounds(
         grouped.setdefault(round_digest, []).append(V2ScoringDecisionV1(
             decision_key=metadata["decision_key"], source_actor=actor,
             target=target, common=common, reference=batch))
-    if not grouped or sum(map(len, grouped.values())) \
+    if (not grouped and capture["human_decision_count"] != 0) \
+            or sum(map(len, grouped.values())) \
             != capture["human_decision_count"]:
         raise BeliefV2ScoringControllerError(
             "V2 human scoring round population drift")

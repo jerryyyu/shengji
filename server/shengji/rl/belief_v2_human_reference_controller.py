@@ -65,7 +65,7 @@ def _resource_row(
     if type(started) is not int or type(finished) is not int \
             or not 0 <= started < finished \
             or type(cpu_nanoseconds) is not int or cpu_nanoseconds < 0 \
-            or type(artifact_bytes) is not int or artifact_bytes <= 0 \
+            or type(artifact_bytes) is not int or artifact_bytes < 0 \
             or cpu_nanoseconds > caps.reference_core_hours * NS_PER_HOUR \
             or finished - started \
             > caps.reference_wall_seconds * NS_PER_SECOND \
@@ -143,8 +143,11 @@ def run_human_reference_group(
     capture = reopen_human_group_manifest(
         capture_directory, freeze=freeze, admission=admission)
     total = capture["human_decision_count"]
+    progress_total = max(1, total)
     if progress is not None:
-        progress(0, total, "replay-human-reference")
+        progress(0, progress_total, (
+            "replay-human-reference" if total
+            else "replay-human-reference-group"))
     started = time.monotonic_ns()
     cpu_started = time.process_time_ns()
     try:
@@ -228,6 +231,8 @@ def run_human_reference_group(
     if reopened != manifest:
         raise BeliefV2HumanReferenceControllerError(
             "V2 human reference post-publish drift")
+    if progress is not None and total == 0:
+        progress(1, 1, "human-reference-group-complete")
     return reopened
 
 
@@ -280,7 +285,7 @@ def reopen_human_reference_group(
             or payload["split"] not in {"calibration", "test"} \
             or type(payload["rows"]) is not list \
             or payload["decision_count"] != len(payload["rows"]) \
-            or payload["decision_count"] <= 0 \
+            or payload["decision_count"] < 0 \
             or payload["contains_sampled_hidden_worlds"] is not True \
             or payload["contains_privileged_training_targets"] is not False \
             or any(payload[key] is not False for key in (

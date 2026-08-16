@@ -579,6 +579,12 @@ The final successful update is exactly 100%. Parallel workers keep separate
 stage/worker identities, so fleet progress can be aggregated without opening
 their outputs.
 
+An H0 source group with zero eligible human decisions is still a legitimate
+frozen group, not a dropped input. It reports one group-stage progress unit,
+publishes/reopens empty actor/reference populations with zero artifact bytes,
+and contributes no scoring rows. The frozen 48-group source population has 20
+such groups; their manifests remain part of split and source closure.
+
 Progress is outcome-blind operational telemetry only. It is never written
 under the evidence root, never changes stdout or any manifest/result/checkpoint
 bytes, and carries no loss, score, candidate-selection, test-result, or

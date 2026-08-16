@@ -202,8 +202,10 @@ def run_human_group_capture(
     group_digest = _group_digest(source_sha)
     expected_inventory = _group_inventory_row(inventory, group_digest)
     total = expected_inventory["human_play_decisions"]
+    progress_total = max(1, total)
     if progress is not None:
-        progress(0, total, "replay-human-decisions")
+        progress(0, progress_total, (
+            "replay-human-decisions" if total else "replay-human-group"))
     candidate = capture_human_source_group(
         source_raw, source_sha256=source_sha,
         split=_group_split(group_split, group_digest))
@@ -287,6 +289,8 @@ def run_human_group_capture(
     if reopened != manifest:
         raise BeliefV2HumanControllerError(
             "V2 human group post-publish drift")
+    if progress is not None and total == 0:
+        progress(1, 1, "human-group-complete")
     return reopened
 
 

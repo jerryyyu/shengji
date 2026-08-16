@@ -779,10 +779,15 @@ def test_human_group_stage_persists_separate_rows_and_training_is_test_blind(
             "shengji.rl.belief_v2_human_controller."
             "capture_human_source_group",
             lambda *args, value=captured, **kwargs: value)
+        progress = []
         manifest = run_human_group_capture(
             root, freeze, admission, repo=Path("/unused"),
             source_path=source, inventory=inventory,
-            group_split=group_split, review_marker=b"review")
+            group_split=group_split, review_marker=b"review",
+            progress=lambda *row: progress.append(row))
+        assert progress == [
+            (0, 1, "replay-human-decisions"),
+            (1, 1, "publish-human-decisions")]
         assert manifest["split"] == split
         assert manifest["actor_target_files_separate"] is True
         captures[split] = root / "human-capture" / (
@@ -894,10 +899,15 @@ def test_human_reference_stage_reopens_against_actor_only_capture(
         "shengji.rl.belief_v2_human_reference_controller."
         "capture_human_ref_c_source_group",
         lambda *args, **kwargs: reference)
+    progress = []
     manifest = run_human_reference_group(
         root, freeze, admission, repo=Path("/unused"),
         source_path=source, inventory=inventory, group_split=group_split,
-        replicate="calibration-replicate-0", review_marker=b"review")
+        replicate="calibration-replicate-0", review_marker=b"review",
+        progress=lambda *row: progress.append(row))
+    assert progress == [
+        (0, 1, "replay-human-reference"),
+        (1, 1, "publish-human-reference")]
     reopened = reopen_human_reference_group(
         root / "human-reference" / f"group-{captured.group_digest}"
         / "calibration-replicate-0",
@@ -912,6 +922,104 @@ def test_human_reference_stage_reopens_against_actor_only_capture(
     assert len(rounds) == 1
     assert rounds[0][0] == metadata["round_digest"]
     assert len(rounds[0][2]) == 1
+
+
+def test_zero_decision_human_group_progress_completes_at_stage_boundary(
+        tmp_path, monkeypatch):
+    source_raws, source_shas, _, inventory, group_split = _human_receipts()
+    split_by_digest = {
+        digest: split for split, row in group_split["splits"].items()
+        for digest in row["group_digests"]}
+    raw, source_sha = next(
+        (raw, digest) for raw, digest in zip(
+            source_raws, source_shas, strict=True)
+        if split_by_digest[_group_digest(digest)] == "calibration")
+    group_digest = _group_digest(source_sha)
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    base = _freeze(root)
+    splits = group_split["splits"]
+    freeze = replace(
+        base,
+        h0_inventory_sha256=hashlib.sha256(
+            inventory_bytes(inventory)).hexdigest(),
+        h0_source_manifest_sha256=inventory["source_manifest_sha256"],
+        h0_source_digest_population_sha256=(
+            inventory["source_digest_population_sha256"]),
+        human_group_split_sha256=hashlib.sha256(
+            group_split_bytes(group_split, inventory=inventory)).hexdigest(),
+        human_group_count=inventory["group_count"],
+        human_train_group_count=splits["train"]["group_count"],
+        human_calibration_group_count=splits["calibration"]["group_count"],
+        human_test_group_count=splits["test"]["group_count"],
+        human_complete_round_count=inventory["complete_rounds"],
+        human_eligible_decision_count=inventory["human_play_decisions"],
+        human_train_eligible_decision_count=(
+            splits["train"]["human_play_decisions"]),
+        human_calibration_eligible_decision_count=(
+            splits["calibration"]["human_play_decisions"]),
+        human_test_eligible_decision_count=(
+            splits["test"]["human_play_decisions"]),
+    )
+    admission = _admission(freeze)
+    source = tmp_path / "empty-calibration.jsonl"
+    source.write_bytes(raw)
+    source.chmod(0o400)
+    captured = V2HumanGroupCaptureV1(
+        source_sha256=source_sha, group_digest=group_digest,
+        split="calibration", complete_round_count=0,
+        incomplete_round_count=1, human_decision_count=0,
+        trump_rank_counts=(), attempted_channel_counts=(), pairs=())
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller.capture_human_source_group",
+        lambda *args, **kwargs: captured)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_controller._group_inventory_row",
+        lambda *args: {
+            "source_bytes": len(raw), "complete_rounds": 0,
+            "incomplete_rounds": 1, "human_play_decisions": 0,
+            "trump_rank_counts": {}, "attempted_channel_counts": {}})
+    progress = []
+    run_human_group_capture(
+        root, freeze, admission, repo=Path("/unused"),
+        source_path=source, inventory=inventory, group_split=group_split,
+        review_marker=b"review", progress=lambda *row: progress.append(row))
+    assert progress == [
+        (0, 1, "replay-human-group"),
+        (1, 1, "human-group-complete")]
+
+    replay = V2HumanReplaySummaryV1(
+        source_sha256=source_sha, group_digest=group_digest,
+        complete_round_count=0, incomplete_round_count=1,
+        human_decision_count=0, trump_rank_counts=(),
+        attempted_channel_counts=())
+    reference = V2HumanReferenceGroupV1(
+        replay=replay, split="calibration",
+        replicate="calibration-replicate-0", decisions=())
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_reference_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_human_reference_controller."
+        "capture_human_ref_c_source_group",
+        lambda *args, **kwargs: reference)
+    reference_progress = []
+    run_human_reference_group(
+        root, freeze, admission, repo=Path("/unused"),
+        source_path=source, inventory=inventory, group_split=group_split,
+        replicate="calibration-replicate-0", review_marker=b"review",
+        progress=lambda *row: reference_progress.append(row))
+    assert reference_progress == [
+        (0, 1, "replay-human-reference-group"),
+        (1, 1, "human-reference-group-complete")]
+    assert reopen_human_scoring_rounds(
+        root, freeze=freeze, admission=admission,
+        group_digest=group_digest,
+        replicate="calibration-replicate-0",
+        allowed_split="calibration") == ()
 
 
 def _cpu_fallback_qualification(freeze):

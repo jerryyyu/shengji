@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
 from .belief_cohort import COHORT_SEEDS
@@ -56,7 +57,8 @@ def _batch_schedule_sha256(
 
 
 def _selected_indices(
-        batch_decision_keys: tuple[tuple[str, ...], ...]) -> tuple[int, ...]:
+        batch_decision_keys: tuple[tuple[str, ...], ...],
+        batch_active_label_counts: tuple[int, ...]) -> tuple[int, ...]:
     if type(batch_decision_keys) is not tuple \
             or len(batch_decision_keys) < MEASURED_BATCH_COUNT \
             or any(type(batch) is not tuple or not batch
@@ -64,7 +66,11 @@ def _selected_indices(
                           for key in batch)
                    for batch in batch_decision_keys) \
             or len({key for batch in batch_decision_keys for key in batch}) \
-            != sum(len(batch) for batch in batch_decision_keys):
+            != sum(len(batch) for batch in batch_decision_keys) \
+            or type(batch_active_label_counts) is not tuple \
+            or len(batch_active_label_counts) != len(batch_decision_keys) \
+            or any(type(value) is not int or value <= 0
+                   for value in batch_active_label_counts):
         raise BeliefV2DeviceQualificationError(
             "device qualification training schedule drift")
     schedule_sha = _batch_schedule_sha256(batch_decision_keys)
@@ -72,7 +78,28 @@ def _selected_indices(
         hashlib.sha256(
             f"{QUALIFICATION_NAMESPACE}|{schedule_sha}|{index}".encode(
                 "ascii")).digest(), index))
-    return tuple(sorted(ranked[:MEASURED_BATCH_COUNT]))
+    maximum_batch = max(
+        range(len(batch_decision_keys)),
+        key=lambda index: (len(batch_decision_keys[index]), -index))
+    minimum_density = min(
+        range(len(batch_decision_keys)),
+        key=lambda index: (
+            Fraction(batch_active_label_counts[index],
+                     len(batch_decision_keys[index])), index))
+    maximum_density = max(
+        range(len(batch_decision_keys)),
+        key=lambda index: (
+            Fraction(batch_active_label_counts[index],
+                     len(batch_decision_keys[index])), -index))
+    selected = {maximum_batch, minimum_density, maximum_density}
+    for index in ranked:
+        selected.add(index)
+        if len(selected) == MEASURED_BATCH_COUNT:
+            break
+    if len(selected) != MEASURED_BATCH_COUNT:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification selected batch population drift")
+    return tuple(sorted(selected))
 
 
 def expected_arm_order(candidate_device: str) \
@@ -101,10 +128,12 @@ def qualification_protocol_sha256(candidate_device: str) -> str:
     """Bind every choice that may affect the post-capture device decision."""
     candidate = canonical_training_device(candidate_device)
     return _sha({
-        "schema": "belief-v1-v2-device-qualification-protocol-v3",
+        "schema": "belief-v1-v2-device-qualification-protocol-v4",
         "candidate_device": candidate,
         "selection_namespace": QUALIFICATION_NAMESPACE,
         "measured_batch_count": MEASURED_BATCH_COUNT,
+        "selection_includes_maximum_batch_size": True,
+        "selection_includes_active_label_density_extremes": True,
         "warmup_uses_same_batch_population": True,
         "measured_pair_count": MEASURED_PAIR_COUNT,
         "arm_order": [
@@ -120,10 +149,28 @@ def qualification_protocol_sha256(candidate_device: str) -> str:
         "cross_device_checkpoint_equality_required": False,
         "cpu_member_workers": CPU_MEMBER_WORKERS,
         "accelerator_member_workers": 1,
+        "cpu_training_process_count_bound_to_frozen_cohort_count": True,
+        "accelerator_training_process_count": 1,
+        "aggregate_training_host_memory_upper_bound_required": True,
         "training_authorized": False,
         "test_open_authorized": False,
         "strength_claim_authorized": False,
     })
+
+
+def training_host_memory_upper_bound(
+        peak_host_memory_bytes: int, *, selected_device: str,
+        cpu_cohort_process_count: int) -> tuple[int, int]:
+    """Return the conservative concurrent-process host-memory bound."""
+    device = canonical_training_device(selected_device)
+    if type(peak_host_memory_bytes) is not int \
+            or peak_host_memory_bytes <= 0 \
+            or type(cpu_cohort_process_count) is not int \
+            or cpu_cohort_process_count <= 0:
+        raise BeliefV2DeviceQualificationError(
+            "device qualification host memory population drift")
+    process_count = cpu_cohort_process_count if device == "cpu" else 1
+    return process_count, peak_host_memory_bytes * process_count
 
 
 @dataclass(frozen=True)
@@ -187,13 +234,8 @@ def build_qualification_plan(
         host_memory_cap_bytes: int,
         device_memory_cap_bytes: int) -> V2DeviceQualificationPlanV1:
     """Derive the only plan allowed for one realized training schedule."""
-    indices = _selected_indices(batch_decision_keys)
-    if type(batch_active_label_counts) is not tuple \
-            or len(batch_active_label_counts) != len(batch_decision_keys) \
-            or any(type(value) is not int or value <= 0
-                   for value in batch_active_label_counts):
-        raise BeliefV2DeviceQualificationError(
-            "device qualification active-label schedule drift")
+    indices = _selected_indices(
+        batch_decision_keys, batch_active_label_counts)
     selected = tuple(batch_decision_keys[index] for index in indices)
     flattened = tuple(key for batch in selected for key in batch)
     plan = V2DeviceQualificationPlanV1(

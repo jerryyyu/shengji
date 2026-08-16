@@ -23,6 +23,7 @@ from .belief_v2_controller import (
     reopen_capture_lane,
     reopen_reference_lane,
 )
+from .belief_v2_device_qualification import training_host_memory_upper_bound
 from .belief_v2_freeze import (
     CONTROL_COHORT_ID,
     HUMAN_COHORT_ID,
@@ -280,6 +281,41 @@ def _derive_integrity_receipt(
         *reference_manifests, *human_reference))
     training_resources = tuple(row["resources"] for row in training_manifests)
     input_index_resources = input_index_manifest["resources"]
+    try:
+        qualification_process_count, qualification_host_memory = (
+            training_host_memory_upper_bound(
+                max(arm.peak_host_memory_bytes for arm in qualification.arms
+                    if not arm.warmup
+                    and arm.device == qualification.selected_device),
+                selected_device=qualification.selected_device,
+                cpu_cohort_process_count=len(freeze.cohorts)))
+        training_host_memory = []
+        for resources in training_resources:
+            process_count, aggregate = training_host_memory_upper_bound(
+                resources["peak_host_memory_bytes"],
+                selected_device=qualification.selected_device,
+                cpu_cohort_process_count=len(freeze.cohorts))
+            if resources.get("selected_device") \
+                    != qualification.selected_device \
+                    or resources.get("host_memory_process_count") \
+                    != process_count \
+                    or resources.get(
+                        "aggregate_peak_host_memory_upper_bound_bytes") \
+                    != aggregate:
+                raise BeliefV2TerminalControllerError(
+                    "V2 terminal training host memory reconstruction drift")
+            training_host_memory.append(aggregate)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal training host memory reconstruction drift") from exc
+    expected_process_count = (
+        len(freeze.cohorts)
+        if qualification.selected_device == "cpu" else 1)
+    if qualification_process_count != expected_process_count \
+            or max(qualification_host_memory, *training_host_memory) \
+            > freeze.resource_caps.training_host_memory_bytes:
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal aggregate host memory cap exceeded")
     qualification_compute = sum(row.wall_nanoseconds
                                 for row in qualification.arms)
     qualification_bytes = len(plan.canonical_bytes()) \
@@ -331,8 +367,8 @@ def _derive_integrity_receipt(
                 row["artifact_bytes"] for row in training_resources)),
         training_peak_host_memory_bytes=max(
             input_index_resources["peak_host_memory_bytes"],
-            max(row["peak_host_memory_bytes"] for row in training_resources),
-            max(arm.peak_host_memory_bytes for arm in qualification.arms)),
+            qualification_host_memory,
+            max(training_host_memory)),
         training_peak_device_memory_bytes=max(
             max(row["peak_device_memory_bytes"] for row in training_resources),
             max(arm.peak_device_memory_bytes for arm in qualification.arms)),

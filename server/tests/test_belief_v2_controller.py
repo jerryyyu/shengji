@@ -46,6 +46,7 @@ from shengji.rl.belief_v2_device_qualification import (
 )
 from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_device_controller import (
+    BeliefV2DeviceControllerError,
     reopen_device_qualification,
     run_device_qualification,
 )
@@ -1140,6 +1141,50 @@ def test_cpu_only_device_stage_publishes_three_measured_repeats(
     assert manifest["arm_count"] == 4
     assert manifest["measured_arm_count"] == 3
     assert manifest["accelerator_retained"] is False
+    assert manifest["selected_training_process_count"] \
+        == len(freeze.cohorts)
+    assert manifest["selected_process_peak_host_memory_bytes"] == 1024
+    assert manifest[
+        "aggregate_training_peak_host_memory_upper_bound_bytes"] \
+        == 1024 * len(freeze.cohorts)
+
+
+def test_cpu_device_stage_refuses_concurrent_aggregate_host_memory(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, _, _ = _tiny_training_population(freeze)
+    plan, original = _cpu_fallback_qualification(freeze)
+    per_process_peak = (
+        freeze.resource_caps.training_host_memory_bytes
+        // len(freeze.cohorts) + 1)
+    result = derive_qualification_result(plan, tuple(
+        replace(arm, peak_host_memory_bytes=per_process_peak)
+        for arm in original.arms))
+    assert per_process_peak \
+        < freeze.resource_caps.training_host_memory_bytes
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._expected_plan",
+        lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_in_memory",
+        lambda **kwargs: (plan, result))
+    with pytest.raises(BeliefV2DeviceControllerError,
+                       match="aggregate host memory cap"):
+        run_device_qualification(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", primary=primary,
+            primary_examples=training_examples)
+    partial = root / "device-qualification" / "result.partial"
+    assert partial.is_dir()
+    assert tuple(partial.iterdir()) == ()
+    assert not (root / "device-qualification" / "result").exists()
 
 
 def test_device_stage_streaming_wiring_never_calls_materialized_runner(
@@ -1414,6 +1459,21 @@ def test_full_training_resource_receipt_enforces_its_own_memory_peaks(
         tmp_path):
     freeze = _freeze((tmp_path / "evidence").resolve())
     caps = freeze.resource_caps
+    cpu_peak = caps.training_host_memory_bytes // len(freeze.cohorts) + 1
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="resource cap"):
+        _resource_row(
+            freeze, started=10, finished=20, cpu_nanoseconds=5,
+            artifact_bytes=1, selected_device="cpu",
+            peak_host_memory_bytes=cpu_peak,
+            peak_device_memory_bytes=0)
+    row = _resource_row(
+        freeze, started=10, finished=20, cpu_nanoseconds=5,
+        artifact_bytes=1, selected_device="cpu",
+        peak_host_memory_bytes=1_024, peak_device_memory_bytes=0)
+    assert row["host_memory_process_count"] == len(freeze.cohorts)
+    assert row["aggregate_peak_host_memory_upper_bound_bytes"] \
+        == 1_024 * len(freeze.cohorts)
     with pytest.raises(BeliefV2TrainingControllerError,
                        match="resource cap"):
         _resource_row(

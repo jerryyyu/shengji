@@ -509,6 +509,22 @@ four workers reduced median wall by 48.8% while increasing process CPU by
 The diagnostic is not execution evidence or a retention claim. Four workers
 also permit the four frozen cohorts to occupy one 16-core host without member
 oversubscription; exact execution scheduling remains part of the host freeze.
+That scheduling is permitted only when the largest measured per-process CPU
+qualification peak multiplied by the exact frozen cohort count fits under the
+host-memory cap. The qualification manifest publishes the per-process peak,
+process count, and conservative aggregate upper bound before any cohort may
+start. Every cohort resource row repeats that calculation from its observed
+process peak, and the terminal independently reconstructs it. Accelerator
+cohorts have process count one and remain serial; they may not borrow the CPU
+cohort concurrency rule.
+The qualification keeps all 32 selected Torch batches resident through every
+arm, whereas production training retains only the current streamed batch. Its
+selection is not hash-only: it must include the maximum decision-count batch
+and the minimum and maximum active-labels-per-decision batches, covering the
+late/long-history and early/high-unknown tensor-shape extremes available from
+the compact schedule. The remaining slots retain the source-neutral hash
+selection. Any change to these anchors changes the qualification protocol hash
+and requires a fresh freeze.
 The MPS and CUDA paths remain serial because device kernels already share one
 accelerator and concurrent Python submission is not part of their qualification
 estimand. Multi-batch tests require the CPU path to reproduce the serial V1

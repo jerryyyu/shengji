@@ -76,6 +76,11 @@ freeze review. No per-receipt or per-stage review is requested.
   queue item and not a blocker for this consolidated review.
 - PR #119 exact child `3344604` is the only Claude request. Superseded
   PR #117/118 and pre-`3344604` prompts are historical.
+- PR #119's GitHub server check is red only because its exact reviewed-source
+  history predates the newer append-only canonical review/handoff ledger. The
+  exact child passed both full local server modes above. Landing must preserve
+  `c011773` and `3344604` as commits while keeping current main as first-parent;
+  do not squash or replace canonical ledger bytes.
 
 ## Current freeze-construction steps
 

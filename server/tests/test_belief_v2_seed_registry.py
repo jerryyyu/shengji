@@ -154,6 +154,41 @@ def test_registry_refuses_v2_collision_and_coordinated_digest_rehash(tmp_path):
         validate_seed_registry(forged, scan=scan)
 
 
+def test_compact_range_collision_and_population_reopen_have_teeth(tmp_path):
+    repo, head = _repo(tmp_path)
+    scan = scan_seed_sources(repo.resolve(), expected_git=head)
+    classifications, populations = _closed(scan)
+    colliding = (
+        populations[0],
+        SeedPopulationV1(
+            population_id="prior-v1",
+            source_paths=("server/pkg/protocol.py",),
+            ranges=((100, 20_000_000),)),
+    )
+    with pytest.raises(BeliefV2SeedRegistryError, match="collides"):
+        build_seed_registry(
+            scan, classifications=classifications, populations=colliding,
+            v2_population_id="belief-v2")
+
+    registry = build_seed_registry(
+        scan, classifications=classifications, populations=populations,
+        v2_population_id="belief-v2")
+    forged = copy.deepcopy(registry)
+    prior = next(row for row in forged["populations"]
+                 if row["population_id"] == "prior-v1")
+    prior["explicit_seeds"][0] = 1000
+    from shengji.rl.belief_contract import canonical_json_bytes
+    import hashlib
+    forged["population_table_sha256"] = hashlib.sha256(
+        canonical_json_bytes({
+            "schema": "belief-v1-v2-seed-population-table-v1",
+            "populations": forged["populations"],
+        })).hexdigest()
+    with pytest.raises(BeliefV2SeedRegistryError,
+                       match="population reconstruction"):
+        validate_seed_registry(forged, scan=scan)
+
+
 def test_scan_refuses_dirty_or_wrong_checkout(tmp_path):
     repo, head = _repo(tmp_path)
     (repo / "server" / "pkg" / "protocol.py").write_text(

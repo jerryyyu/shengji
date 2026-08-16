@@ -37,7 +37,11 @@ from .belief_v2_execution_identity import (
     validate_runtime_profile,
     validate_source_bindings,
 )
-from .belief_v2_accelerator import canonical_training_device
+from .belief_v2_accelerator import (
+    V2TrainingDeviceProfileV1,
+    canonical_training_device,
+    validate_training_device_profile,
+)
 from .belief_v2_device_qualification import (
     qualification_protocol_sha256,
 )
@@ -259,6 +263,7 @@ class V2ExecutionFreezeV1:
     seed_registry_sha256: str
     seed_candidate_report_sha256: str
     training_candidate_device: str
+    training_device_profile: V2TrainingDeviceProfileV1
     device_qualification_protocol_sha256: str
     cohorts: tuple[V2CohortPlanV1, ...]
     resource_caps: V2ResourceCapsV1
@@ -321,6 +326,7 @@ class V2ExecutionFreezeV1:
             },
             "training_device_qualification": {
                 "candidate_device": self.training_candidate_device,
+                "device_profile": self.training_device_profile.to_dict(),
                 "protocol_sha256": (
                     self.device_qualification_protocol_sha256),
                 "cpu_fallback_on_performance_miss": True,
@@ -432,10 +438,17 @@ def validate_execution_freeze(freeze: V2ExecutionFreezeV1) -> None:
         raise BeliefV2FreezeError(
             "V2 training candidate device drift") from exc
     if candidate_device == "cpu" \
+            or freeze.training_device_profile.requested_device \
+            != candidate_device \
             or freeze.device_qualification_protocol_sha256 \
             != qualification_protocol_sha256(candidate_device):
         raise BeliefV2FreezeError(
             "V2 device qualification protocol drift")
+    try:
+        validate_training_device_profile(freeze.training_device_profile)
+    except ValueError as exc:
+        raise BeliefV2FreezeError(
+            "V2 training device profile drift") from exc
     # The exact synthetic decision count is deliberately not guessed before
     # capture.  Every complete play-phase round has at least one four-seat
     # trick, so this lower bound proves that consuming every H0 training
@@ -643,9 +656,16 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
     registry = payload["seed_registry"]
     device = payload.get("training_device_qualification")
     if type(device) is not dict or set(device) != {
-            "candidate_device", "protocol_sha256",
+            "candidate_device", "device_profile", "protocol_sha256",
             "cpu_fallback_on_performance_miss",
             "fallback_on_integrity_failure"} \
+            or type(device["device_profile"]) is not dict \
+            or set(device["device_profile"]) != {
+                "schema", "requested_device", "device_type",
+                "device_index", "hardware_name", "total_memory_bytes",
+                "runtime_version", "compute_capability_major",
+                "compute_capability_minor", "backend_built",
+                "backend_available"} \
             or device["cpu_fallback_on_performance_miss"] is not True \
             or device["fallback_on_integrity_failure"] is not False:
         raise BeliefV2FreezeError(
@@ -684,6 +704,24 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
             seed_candidate_report_sha256=(
                 registry["candidate_report_sha256"]),
             training_candidate_device=device["candidate_device"],
+            training_device_profile=V2TrainingDeviceProfileV1(
+                schema=device["device_profile"]["schema"],
+                requested_device=device["device_profile"][
+                    "requested_device"],
+                device_type=device["device_profile"]["device_type"],
+                device_index=device["device_profile"]["device_index"],
+                hardware_name=device["device_profile"]["hardware_name"],
+                total_memory_bytes=device["device_profile"][
+                    "total_memory_bytes"],
+                runtime_version=device["device_profile"][
+                    "runtime_version"],
+                compute_capability_major=device["device_profile"][
+                    "compute_capability_major"],
+                compute_capability_minor=device["device_profile"][
+                    "compute_capability_minor"],
+                backend_built=device["device_profile"]["backend_built"],
+                backend_available=device["device_profile"][
+                    "backend_available"]),
             device_qualification_protocol_sha256=(
                 device["protocol_sha256"]),
             cohorts=tuple(cohorts),
@@ -713,6 +751,8 @@ def expected_execution_review_claim(
         "seed_registry_sha256": freeze.seed_registry_sha256,
         "device_qualification_protocol_sha256": (
             freeze.device_qualification_protocol_sha256),
+        "training_device_profile_sha256": (
+            freeze.training_device_profile.sha256()),
         "training_candidate_device": freeze.training_candidate_device,
         "evidence_root": freeze.evidence_root,
         "bounded_capture_reference_training_and_one_test_open_authorized": True,

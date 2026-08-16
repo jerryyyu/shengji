@@ -26,6 +26,7 @@ from .belief_b2_result import (
 from .belief_b2_terminal_controller import TERMINAL_REPORT_SCHEMA
 from .belief_contract import canonical_json_bytes
 from .belief_v2_accelerator import (
+    build_training_device_profile,
     canonical_training_device,
     require_training_device,
 )
@@ -271,6 +272,7 @@ def build_execution_freeze_from_receipts(
             "V2 qualification candidate cannot be CPU")
     try:
         require_training_device(candidate)
+        device_profile = build_training_device_profile(candidate)
     except ValueError as exc:
         raise BeliefV2FreezeBuilderError(
             "V2 qualification candidate is unavailable at freeze time") \
@@ -316,6 +318,7 @@ def build_execution_freeze_from_receipts(
         seed_registry_sha256=_sha256(seed_registry_raw),
         seed_candidate_report_sha256=registry["candidate_report_sha256"],
         training_candidate_device=candidate,
+        training_device_profile=device_profile,
         device_qualification_protocol_sha256=(
             qualification_protocol_sha256(candidate)),
         cohorts=standard_cohort_plans(), resource_caps=resource_caps,

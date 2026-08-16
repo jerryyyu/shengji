@@ -38,6 +38,7 @@ from .belief_capture import (
 from .belief_contract import canonical_json_bytes
 from .belief_corpus import reopen_actor_row
 from .belief_v2_capture import capture_v2_champion_round
+from .belief_v2_accelerator import build_training_device_profile
 from .belief_v2_execution_identity import (
     BeliefV2ExecutionIdentityError,
     validate_live_execution,
@@ -105,6 +106,11 @@ def _stage_gate(
         validate_live_execution(
             repo=repo, execution_git=freeze.execution_git,
             source_bindings=freeze.source_bindings, runtime=freeze.runtime)
+        if build_training_device_profile(
+                freeze.training_candidate_device) \
+                != freeze.training_device_profile:
+            raise BeliefV2ExecutionIdentityError(
+                "V2 live training device identity drift")
     except (BeliefV2FreezeError, BeliefV2ExecutionIdentityError) as exc:
         raise BeliefV2ControllerError("V2 stage admission refused") from exc
     if not isinstance(root, Path) or root != Path(freeze.evidence_root) \

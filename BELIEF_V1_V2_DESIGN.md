@@ -420,10 +420,14 @@ every measured arm; any within-device rerun drift, fallback, missing arm,
 population/schedule change, or memory-cap breach refuses rather than selecting
 CPU. CPU fallback is permitted only for an honest performance miss.
 
-The execution freeze now binds the exact candidate-device identity, the
-canonical digest of this qualification protocol, and separate host/device
-memory caps. This prevents a post-review choice of whichever device happened
-to look fastest. The actual qualification plan remains post-capture because
+The execution freeze now binds the exact candidate-device identity, a live
+physical-device profile (hardware name, usable memory, backend/runtime, and
+CUDA index/capability when applicable), the canonical digest of this
+qualification protocol, and separate host/device memory caps. Every stage
+re-probes that profile before work, so a same-name device or cloud-host swap
+cannot inherit the reviewed packet. This prevents a post-review choice of
+whichever device happened to look fastest. The actual qualification plan
+remains post-capture because
 its 32 batches are derived from the sealed realized primary schedule; its
 result must be published and reopened before final training begins. The same
 source-neutral training path is then used for every cohort on the retained
@@ -643,9 +647,10 @@ offline path:
 - exact synthetic and whole-session human capture/reference controllers,
   source-neutral work realization, all-human-once replacement, the 50% data-
   scale arm, and the 0.5% simultaneous rank-regression rule;
-- one shared CPU/MPS/CUDA training implementation, a realized-schedule device
-  qualification gate, portable CPU checkpoints, dual-domain calibration
-  selection, one-shot terminal publication, and independent reopeners; and
+- one shared CPU/MPS/CUDA training implementation, an exact live accelerator
+  hardware profile, a realized-schedule device qualification gate, portable
+  CPU checkpoints, dual-domain calibration selection, one-shot terminal
+  publication, and independent reopeners; and
 - one consolidated worker plus a receipt-driven `freeze-design` command. The
   command derives H0 counts and hashes, V1 route, preflight/runtime identities,
   exact source manifest, seed-registry identity, candidate-device protocol,

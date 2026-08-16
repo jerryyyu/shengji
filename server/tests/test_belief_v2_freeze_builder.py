@@ -16,6 +16,7 @@ from shengji.rl.belief_v2_freeze import (
     CAP_SCHEMA,
     V2ResourceCapsV1,
 )
+from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_freeze_builder import (
     BeliefV2FreezeBuilderError,
     build_execution_freeze_from_receipts,
@@ -66,6 +67,14 @@ def _runtime():
             ("PYTHONHASHSEED", "0"),
             ("SHENGJI_FAST", "1"),
             ("SHENGJI_REQUIRE_VOIDS", "1")))
+
+
+def _device_profile():
+    return V2TrainingDeviceProfileV1(
+        requested_device="mps", device_type="mps", device_index=None,
+        hardware_name="Apple-arm64-test", total_memory_bytes=12 * 1024**3,
+        runtime_version="macOS-test", compute_capability_major=None,
+        compute_capability_minor=None)
 
 
 def _inventory():
@@ -141,6 +150,9 @@ def _patch_receipt_boundaries(monkeypatch):
         "shengji.rl.belief_v2_freeze_builder.require_training_device",
         lambda value: value)
     monkeypatch.setattr(
+        "shengji.rl.belief_v2_freeze_builder.build_training_device_profile",
+        lambda value: _device_profile())
+    monkeypatch.setattr(
         "shengji.rl.belief_v2_freeze_builder.preflight_result_bytes",
         canonical_json_bytes)
     monkeypatch.setattr(
@@ -177,6 +189,7 @@ def test_builder_derives_one_closed_gpu_capable_freeze(monkeypatch, tmp_path):
     assert freeze.v1_terminal_route == "v1-pass-to-b3"
     assert freeze.v2_reentry_rationale_sha256 is None
     assert freeze.training_candidate_device == "mps"
+    assert freeze.training_device_profile == _device_profile()
     assert [row.cohort_id for row in freeze.cohorts] == [
         "synthetic-primary", "hard-geometry-label-permutation",
         "human-mixture", "synthetic-scale-50"]

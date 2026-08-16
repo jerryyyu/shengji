@@ -29,6 +29,7 @@ from shengji.rl.belief_training import (
 from shengji.rl.belief_v2_accelerator import (
     BeliefV2AcceleratorError,
     TRAINING_TENSOR_FIELDS,
+    V2TrainingDeviceProfileV1,
     canonical_training_device,
     cpu_checkpoint_clone,
     evaluate_v2_calibration_cohort_stream_nanonats,
@@ -37,6 +38,7 @@ from shengji.rl.belief_v2_accelerator import (
     new_v2_optimizer,
     portable_model_state_sha256,
     train_v2_cohort_epoch_stream,
+    validate_training_device_profile,
 )
 from shengji.rl.belief_v2_device_qualification import (
     build_qualification_plan,
@@ -79,6 +81,36 @@ def test_device_names_require_explicit_portable_identity():
     for value in ("", "cuda", "cpu:0", "mps:0", "metal", True):
         with pytest.raises(BeliefV2AcceleratorError):
             canonical_training_device(value)
+
+
+def test_accelerator_profile_binds_physical_identity_and_capability_shape():
+    mps = V2TrainingDeviceProfileV1(
+        requested_device="mps", device_type="mps", device_index=None,
+        hardware_name="Apple-arm64-test", total_memory_bytes=16 * 1024**3,
+        runtime_version="macOS-test", compute_capability_major=None,
+        compute_capability_minor=None)
+    validate_training_device_profile(mps)
+    assert len(mps.sha256()) == 64
+    with pytest.raises(BeliefV2AcceleratorError,
+                       match="device profile identity"):
+        validate_training_device_profile(replace(
+            mps, hardware_name=""))
+    with pytest.raises(BeliefV2AcceleratorError,
+                       match="device profile identity"):
+        validate_training_device_profile(replace(
+            mps, compute_capability_major=8,
+            compute_capability_minor=0))
+
+    cuda = replace(
+        mps, requested_device="cuda:0", device_type="cuda",
+        device_index=0, hardware_name="NVIDIA-test",
+        runtime_version="CUDA-test", compute_capability_major=8,
+        compute_capability_minor=9)
+    validate_training_device_profile(cuda)
+    with pytest.raises(BeliefV2AcceleratorError,
+                       match="device profile identity"):
+        validate_training_device_profile(replace(
+            cuda, device_index=1))
 
 
 def test_portable_hash_and_cpu_export_equal_unchanged_v1_checkpoint():

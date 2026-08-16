@@ -14,6 +14,7 @@ import torch
 
 import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
 import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
+import shengji.rl.belief_v2_controller as V2_CONTROLLER
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
@@ -40,6 +41,7 @@ from shengji.rl.belief_v2_device_qualification import (
     derive_qualification_result,
     qualification_protocol_sha256,
 )
+from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_device_controller import (
     reopen_device_qualification,
     run_device_qualification,
@@ -154,6 +156,14 @@ def _runtime():
             ("SHENGJI_REQUIRE_VOIDS", "1")))
 
 
+def _device_profile():
+    return V2TrainingDeviceProfileV1(
+        requested_device="mps", device_type="mps", device_index=None,
+        hardware_name="Apple-arm64-test", total_memory_bytes=12 * 1024**3,
+        runtime_version="macOS-test", compute_capability_major=None,
+        compute_capability_minor=None)
+
+
 def _cohorts():
     return (
         V2CohortPlanV1(
@@ -219,6 +229,7 @@ def _freeze(root: Path):
         seed_registry_sha256=_sha("3"),
         seed_candidate_report_sha256=_sha("4"),
         training_candidate_device="mps",
+        training_device_profile=_device_profile(),
         device_qualification_protocol_sha256=(
             qualification_protocol_sha256("mps")),
         cohorts=_cohorts(),
@@ -232,6 +243,35 @@ def _freeze(root: Path):
             training_host_memory_bytes=24 * 1024**3,
             training_device_memory_bytes=12 * 1024**3),
         evidence_root=str(root))
+
+
+def test_stage_gate_refuses_live_accelerator_identity_drift(
+        monkeypatch, tmp_path):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    freeze = _freeze(root.resolve())
+    admission = V2PipelineAdmissionV1(
+        freeze_sha256=freeze.sha256(), execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        review_commit="c" * 40, canonical_remote_tip="d" * 40,
+        review_marker_sha256=_sha("5"), evidence_root=str(root.resolve()))
+    monkeypatch.setattr(V2_CONTROLLER, "validate_execution_freeze",
+                        lambda value: None)
+    monkeypatch.setattr(V2_CONTROLLER, "reauthenticate_pipeline_admission",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(V2_CONTROLLER, "validate_live_execution",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        V2_CONTROLLER, "build_training_device_profile",
+        lambda value: replace(
+            freeze.training_device_profile,
+            hardware_name="different-accelerator"))
+    with pytest.raises(BeliefV2ControllerError,
+                       match="stage admission refused"):
+        V2_CONTROLLER._stage_gate(
+            root=root.resolve(), repo=tmp_path.resolve(), freeze=freeze,
+            admission=admission, review_marker=b"review\n")
 
 
 def _admission(freeze):

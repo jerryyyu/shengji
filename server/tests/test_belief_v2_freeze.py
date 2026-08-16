@@ -41,6 +41,7 @@ from shengji.rl.belief_v2_execution_identity import (
 from shengji.rl.belief_v2_device_qualification import (
     qualification_protocol_sha256,
 )
+from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 
 
 def _sha(char: str) -> str:
@@ -81,6 +82,14 @@ def _runtime():
             ("PYTHONHASHSEED", "0"),
             ("SHENGJI_FAST", "1"),
             ("SHENGJI_REQUIRE_VOIDS", "1")))
+
+
+def _device_profile():
+    return V2TrainingDeviceProfileV1(
+        requested_device="mps", device_type="mps", device_index=None,
+        hardware_name="Apple-arm64-test", total_memory_bytes=12 * 1024**3,
+        runtime_version="macOS-test", compute_capability_major=None,
+        compute_capability_minor=None)
 
 
 def _cohorts():
@@ -147,6 +156,7 @@ def _freeze():
         seed_registry_sha256=_sha("3"),
         seed_candidate_report_sha256=_sha("4"),
         training_candidate_device="mps",
+        training_device_profile=_device_profile(),
         device_qualification_protocol_sha256=(
             qualification_protocol_sha256("mps")),
         cohorts=_cohorts(),
@@ -172,6 +182,8 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
     assert claim["training_candidate_device"] == "mps"
     assert claim["device_qualification_protocol_sha256"] \
         == qualification_protocol_sha256("mps")
+    assert claim["training_device_profile_sha256"] \
+        == freeze.training_device_profile.sha256()
     assert claim["retry_authorized"] is False
     assert claim["gameplay_strength_screen_authorized"] is False
     assert claim["deployment_authorized"] is False
@@ -211,6 +223,13 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
     (lambda freeze: replace(freeze, human_test_group_count=2),
      "identity drift"),
     (lambda freeze: replace(freeze, training_candidate_device="cpu"),
+     "device qualification protocol drift"),
+    (lambda freeze: replace(
+        freeze, training_device_profile=replace(
+            freeze.training_device_profile,
+            requested_device="cuda:0", device_type="cuda",
+            device_index=0, compute_capability_major=8,
+            compute_capability_minor=0)),
      "device qualification protocol drift"),
     (lambda freeze: replace(
         freeze, device_qualification_protocol_sha256=_sha("7")),

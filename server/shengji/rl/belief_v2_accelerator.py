@@ -12,8 +12,9 @@ no checkpoint, and grants no training or execution authority.
 from __future__ import annotations
 
 import hashlib
-from dataclasses import fields, replace
-from typing import Iterable
+import platform
+from dataclasses import dataclass, fields, replace
+from typing import Any, Iterable
 
 import torch
 
@@ -32,10 +33,53 @@ from .belief_training import BeliefTrainingBatchV1
 TRAINING_TENSOR_FIELDS = tuple(
     field.name for field in fields(BeliefTrainingBatchV1)
     if field.type == "torch.Tensor")
+TRAINING_DEVICE_PROFILE_SCHEMA = "belief-v1-v2-training-device-profile-v1"
 
 
 class BeliefV2AcceleratorError(ValueError):
     """The selected device, batch transfer, or checkpoint binding drifted."""
+
+
+@dataclass(frozen=True)
+class V2TrainingDeviceProfileV1:
+    """Exact accelerator identity bound into the host-specific freeze.
+
+    The normal runtime profile already binds the host, OS, Torch bytes, and
+    Torch build configuration.  This companion profile closes the remaining
+    device-specific gap for MPS/CUDA execution.  It deliberately records no
+    benchmark result and grants no training authority.
+    """
+
+    requested_device: str
+    device_type: str
+    device_index: int | None
+    hardware_name: str
+    total_memory_bytes: int
+    runtime_version: str
+    compute_capability_major: int | None
+    compute_capability_minor: int | None
+    backend_built: bool = True
+    backend_available: bool = True
+    schema: str = TRAINING_DEVICE_PROFILE_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "requested_device": self.requested_device,
+            "device_type": self.device_type,
+            "device_index": self.device_index,
+            "hardware_name": self.hardware_name,
+            "total_memory_bytes": self.total_memory_bytes,
+            "runtime_version": self.runtime_version,
+            "compute_capability_major": self.compute_capability_major,
+            "compute_capability_minor": self.compute_capability_minor,
+            "backend_built": self.backend_built,
+            "backend_available": self.backend_available,
+        }
+
+    def sha256(self) -> str:
+        validate_training_device_profile(self)
+        return hashlib.sha256(canonical_json_bytes(self.to_dict())).hexdigest()
 
 
 def canonical_training_device(value: str) -> str:
@@ -74,6 +118,77 @@ def require_training_device(value: str) -> torch.device:
         raise BeliefV2AcceleratorError(
             "V2 deterministic algorithms are not enabled")
     return device
+
+
+def validate_training_device_profile(
+        profile: V2TrainingDeviceProfileV1) -> None:
+    """Validate one exact, available, non-CPU accelerator identity."""
+    if type(profile) is not V2TrainingDeviceProfileV1 \
+            or profile.schema != TRAINING_DEVICE_PROFILE_SCHEMA:
+        raise BeliefV2AcceleratorError(
+            "V2 training device profile identity drift")
+    requested = canonical_training_device(profile.requested_device)
+    parsed = torch.device(requested)
+    capability = (
+        profile.compute_capability_major,
+        profile.compute_capability_minor)
+    expected_capability_shape = (
+        all(type(value) is int and value >= 0 for value in capability)
+        if parsed.type == "cuda" else capability == (None, None))
+    if requested == "cpu" \
+            or profile.device_type != parsed.type \
+            or profile.device_index != parsed.index \
+            or type(profile.hardware_name) is not str \
+            or not profile.hardware_name \
+            or type(profile.total_memory_bytes) is not int \
+            or profile.total_memory_bytes <= 0 \
+            or type(profile.runtime_version) is not str \
+            or not profile.runtime_version \
+            or profile.backend_built is not True \
+            or profile.backend_available is not True \
+            or not expected_capability_shape:
+        raise BeliefV2AcceleratorError(
+            "V2 training device profile identity drift")
+
+
+def build_training_device_profile(
+        requested_device: str) -> V2TrainingDeviceProfileV1:
+    """Probe the exact accelerator selected for the future qualification."""
+    device = require_training_device(requested_device)
+    if device.type == "cpu":
+        raise BeliefV2AcceleratorError(
+            "V2 training device profile requires an accelerator")
+    if device.type == "mps":
+        memory = int(torch.mps.recommended_max_memory())
+        profile = V2TrainingDeviceProfileV1(
+            requested_device=str(device), device_type="mps",
+            device_index=None,
+            hardware_name=(
+                f"Apple-{platform.machine()}-{platform.processor() or 'unknown'}"),
+            total_memory_bytes=memory,
+            runtime_version=f"macOS-{platform.mac_ver()[0]}",
+            compute_capability_major=None,
+            compute_capability_minor=None,
+            backend_built=bool(torch.backends.mps.is_built()),
+            backend_available=bool(torch.backends.mps.is_available()))
+    elif device.type == "cuda":
+        assert device.index is not None
+        properties = torch.cuda.get_device_properties(device.index)
+        profile = V2TrainingDeviceProfileV1(
+            requested_device=str(device), device_type="cuda",
+            device_index=device.index,
+            hardware_name=str(properties.name),
+            total_memory_bytes=int(properties.total_memory),
+            runtime_version=f"CUDA-{torch.version.cuda or 'unknown'}",
+            compute_capability_major=int(properties.major),
+            compute_capability_minor=int(properties.minor),
+            backend_built=True,
+            backend_available=bool(torch.cuda.is_available()))
+    else:  # pragma: no cover - canonical_training_device closes this branch.
+        raise BeliefV2AcceleratorError(
+            "V2 training device profile type drift")
+    validate_training_device_profile(profile)
+    return profile
 
 
 def _model_device(model: HistoryOwnershipModelV1) -> torch.device:

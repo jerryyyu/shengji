@@ -3,7 +3,7 @@
 > Current queue only. Historical reviews belong in `HANDOFF_REVIEW.md` and Git
 > history. A request not listed here is not active.
 
-Last reconciled: 2026-08-16 11:10 EDT.
+Last reconciled: 2026-08-16 11:18 EDT.
 
 ## Immediate objective
 
@@ -77,10 +77,45 @@ BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW {"bounded_capture_reference_training_an
   remains active.
 - Freeze exists root-owned mode 0400; evidence root does not exist; pipeline
   has not started.
+- The exact private H0 source population is already staged on `shengji-cloud`
+  under root-only `/opt/belief-v1-v2-human-source-13d`: manifest
+  `source-manifest.sha256` has SHA-256 `07ff18fb…aa5e`; all 30/30 `.jsonl`
+  members independently pass `sha256sum -c`, there are no extra members,
+  files are root:root mode 0400 and both parent directories are mode 0700.
+  The source path is not model input and no source bytes are published.
 - PR #116 is Codex's separate performance item and does not block this review.
 - After exact-freeze PASS, Codex authenticates the marker, initializes once,
   and runs the frozen single-host DAG with outcome-blind percentage telemetry.
   No further Claude review is requested until terminal bytes seal.
+
+### Post-PASS execution DAG — automatic, no intermediate review
+
+1. Fetch canonical main, authenticate the exact marker/commit, initialize the
+   evidence root once, then `verify-root`. Any mismatch stops before work.
+2. Run 16 synthetic capture lanes and 30 exact H0 group captures. Progress is
+   fixed-unit and outcome-blind: rounds/4096 and human decisions/2830.
+3. Build and reopen the immutable training-input index, then run the frozen CPU
+   device qualification. A refusal stops; there is no alternate device or
+   retry path.
+4. Run 16 synthetic REF-C lanes plus the exact human calibration/test
+   references (two replicates for the three calibration groups; one primary
+   replicate for the three test groups). Progress reports completed reference
+   units only, never scores.
+5. Train the four frozen cohorts on CPU with the reviewed live deadline. Report
+   epoch/unit percentage, elapsed time and remaining deadline only; do not
+   inspect or publish losses, calibration, selection or model outcomes.
+6. Seal calibration selection, then perform the sole test opening and terminal
+   reconstruction. Any failure consumes the slot exactly as frozen; no retry.
+7. Update this file to one terminal-review ask. Claude independently reopens
+   the sealed bytes and appends the terminal verdict to `HANDOFF_REVIEW.md`.
+
+Every stage uses exact source `13d15c7`, the external frozen Python/native
+runtime, clean literal environment, root-owned inputs and the reviewed CLI.
+The supervisor must stop on the first non-zero exit or missing expected
+artifact. It may schedule independent stages concurrently only where the
+reviewed DAG permits it and must not exceed the frozen CPU/memory/wall caps.
+There is no ad hoc continuation, partial-result reading, retry, tuning or
+additional review request.
 
 ## Durable references
 

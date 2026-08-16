@@ -33,7 +33,7 @@ from .belief_capture import (
     _capture_with_policies,
 )
 from .belief_contract import PublicTranscriptV1, canonical_json_bytes
-from .belief_corpus import reopen_actor_row
+from .belief_corpus import CorpusPairV1, reopen_actor_row
 from .belief_cohort import COHORT_SEEDS
 from .belief_model import new_from_scratch_model
 from .belief_refc_capture import capture_ref_c_worlds
@@ -212,8 +212,8 @@ def _measure_coordinate(
     manifests = []
 
     def observe(rnd: Round, seat: int, transcript: PublicTranscriptV1,
-                actor_row: bytes) -> None:
-        actor, metadata = reopen_actor_row(actor_row)
+                pair: CorpusPairV1) -> None:
+        actor, metadata = reopen_actor_row(pair.actor_bytes)
         batch = capture_ref_c_worlds(
             rnd, seat, transcript,
             sampler_seed=_deadline_sampler_seed(metadata["decision_key"]))

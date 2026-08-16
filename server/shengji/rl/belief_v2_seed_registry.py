@@ -4,8 +4,10 @@ The V2 schedule is derived from a large hash namespace, so an accidental
 collision is unlikely.  Probability is not provenance, however.  This module
 builds the exact review artifact required by the V2 design:
 
-* every tracked Python source and active (non-archive) Markdown document is
-  content-bound from one exact clean Git commit;
+* every tracked Python source and durable active (non-archive) Markdown
+  document is content-bound from one exact clean Git commit; the mutable
+  ``HANDOFF_ACTIVE.md`` queue is deliberately excluded while the append-only
+  ``HANDOFF_REVIEW.md`` evidence ledger remains included;
 * every line containing ``seed`` is emitted as a candidate and must receive
   exactly one reviewed classification; and
 * the complete V2 population is compared with every registered historical
@@ -77,6 +79,7 @@ def _selected_path(relative: str) -> bool:
         raise BeliefV2SeedRegistryError("seed scan tracked path drift")
     return ((relative.startswith("server/") and relative.endswith(".py"))
             or (relative.endswith(".md")
+                and relative != "HANDOFF_ACTIVE.md"
                 and not relative.startswith("docs_archive/")))
 
 

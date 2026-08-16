@@ -85,8 +85,11 @@ assigns lanes round-robin. Candidate selection observes only the seed and its
 hash-derived split—never a deal, decision, stratum, or outcome. A source-
 independent registry scan must reject every known population collision. The
 freeze-time registry is not an informal grep: it must hash the complete
-tracked `server/**/*.py` population plus every active (non-archive) design
-document, publish the complete `seed`/`round_seed`/`deal_seed` candidate-hit
+tracked `server/**/*.py` population plus every durable active (non-archive)
+design document and the append-only `HANDOFF_REVIEW.md` evidence ledger. The
+mutable `HANDOFF_ACTIVE.md` operational queue is excluded so queue refreshes
+cannot circularly invalidate the artifact under review. The scan publishes
+the complete `seed`/`round_seed`/`deal_seed` candidate-hit
 report, classify every hit as a finite population, a derived per-decision
 stream, or a non-population constant, and refuse any unclassified hit. At a
 minimum its explicit population table binds B1/B2, C4 synthetic, teacher-v1,

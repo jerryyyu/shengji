@@ -37,6 +37,12 @@ def _repo(tmp_path: Path) -> tuple[Path, str]:
     (repo / "DESIGN.md").write_text(
         "The production round_seed population is frozen.\n",
         encoding="utf-8")
+    (repo / "HANDOFF_ACTIVE.md").write_text(
+        "Mutable queue seed0 999 must not bind a durable registry.\n",
+        encoding="utf-8")
+    (repo / "HANDOFF_REVIEW.md").write_text(
+        "Append-only reviewed_seed population receipt.\n",
+        encoding="utf-8")
     (repo / "docs_archive" / "old.md").write_text(
         "OLD_SEED = 1\n", encoding="utf-8")
     _git(repo, "init", "-q")
@@ -77,13 +83,14 @@ def test_scan_binds_every_tracked_active_source_and_seed_line(tmp_path):
     repo, head = _repo(tmp_path)
     scan = scan_seed_sources(repo.resolve(), expected_git=head)
     assert [row["path"] for row in scan["source_files"]] == [
-        "DESIGN.md", "server/pkg/protocol.py"]
-    assert scan["candidate_count"] == 3
+        "DESIGN.md", "HANDOFF_REVIEW.md", "server/pkg/protocol.py"]
+    assert scan["candidate_count"] == 4
     assert all("seed" in row["line"].lower()
                for row in scan["candidates"])
     assert sum(row["explicit_classification_required"]
                for row in scan["candidates"]) == 1
     assert b"docs_archive" not in seed_scan_bytes(scan)
+    assert b"HANDOFF_ACTIVE" not in seed_scan_bytes(scan)
     assert scan["opens_game_data"] is False
     assert scan["execution_authorized"] is False
 
@@ -97,7 +104,7 @@ def test_registry_requires_exact_classification_and_proves_disjoint(tmp_path):
         v2_population_id="belief-v2")
     validate_seed_registry(registry, scan=scan)
     assert seed_registry_bytes(registry, scan=scan).endswith(b"\n")
-    assert registry["candidate_count"] == 3
+    assert registry["candidate_count"] == 4
     assert registry["v2_collision_count"] == 0
     assert registry["capture_authorized"] is False
 

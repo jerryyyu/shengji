@@ -19,6 +19,7 @@ from shengji.rl.belief_v2_device_qualification import (
     derive_qualification_result,
     qualification_protocol_sha256,
 )
+from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_execution_identity import (
     V2InstalledDistributionV1,
     V2RuntimeProfileV1,
@@ -101,6 +102,14 @@ def _runtime():
             ("SHENGJI_REQUIRE_VOIDS", "1")))
 
 
+def _device_profile():
+    return V2TrainingDeviceProfileV1(
+        requested_device="mps", device_type="mps", device_index=None,
+        hardware_name="Apple-arm64-test", total_memory_bytes=12 * 1024**3,
+        runtime_version="macOS-test", compute_capability_major=None,
+        compute_capability_minor=None)
+
+
 def _cohorts():
     return (
         V2CohortPlanV1(
@@ -166,6 +175,7 @@ def _freeze():
         seed_registry_sha256=_sha("registry"),
         seed_candidate_report_sha256=_sha("candidate-report"),
         training_candidate_device="mps",
+        training_device_profile=_device_profile(),
         device_qualification_protocol_sha256=(
             qualification_protocol_sha256("mps")),
         cohorts=_cohorts(),

@@ -97,6 +97,16 @@ table digest, so deleting a source file or adding an unclassified seed
 namespace makes the check fail. Rank assignments are balanced before any deal
 is generated; no later failure may substitute a seed or drop a row.
 
+`belief_v2_seed_registry_builder.py` now supplies the real source-pinned table
+rather than leaving it to an operator. Large contiguous historical domains
+(including the 12-million-deal Pair capture and larger reserved Pair blocks)
+are represented as inclusive ranges, while C4, V2 preflight, and V2 production
+retain their exact non-contiguous seed lists. The registry publishes those
+definitions, not only opaque summary hashes, so its independent reopener can
+recompute population counts/digests and the zero-collision verdict without
+materializing billion-scale ranges. Lower-case literal `"seed0"` protocol
+entries require the same explicit classification as upper-case seed constants.
+
 The split is by complete round and balanced within every trump rank:
 
 | split | rounds per rank | total rounds |
@@ -653,9 +663,9 @@ offline path:
   publication, and independent reopeners; and
 - one consolidated worker plus a receipt-driven `freeze-design` command. The
   command derives H0 counts and hashes, V1 route, preflight/runtime identities,
-  exact source manifest, seed-registry identity, candidate-device protocol,
-  cohorts, and authority bytes rather than asking an operator to hand-build
-  the packet.
+  exact source manifest, a compact independently reopenable historical/V2 seed
+  registry, candidate-device protocol, cohorts, and authority bytes rather
+  than asking an operator to hand-build the packet.
 
 The following run-specific inputs still gate an exact freeze:
 

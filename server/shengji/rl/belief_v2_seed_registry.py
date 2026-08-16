@@ -31,9 +31,9 @@ from .belief_contract import canonical_json_bytes
 
 
 SCAN_SCHEMA = "belief-v1-v2-seed-source-scan-v1"
-REGISTRY_SCHEMA = "belief-v1-v2-seed-registry-v1"
+REGISTRY_SCHEMA = "belief-v1-v2-seed-registry-v2"
 CLASSIFICATION_SCHEMA = "belief-v1-v2-seed-classification-v1"
-POPULATION_SCHEMA = "belief-v1-v2-seed-population-v1"
+POPULATION_SCHEMA = "belief-v1-v2-seed-population-v2"
 CLASSIFICATIONS = (
     "finite-population",
     "derived-rng-stream",
@@ -99,7 +99,14 @@ def _explicit_classification_required(path: str, line: str) -> bool:
         return False
     match = re.match(
         r"^\s*([A-Z][A-Z0-9_]*)\s*(?::[^=]+)?=", line)
-    return match is not None and "SEED" in match.group(1)
+    if match is not None and "SEED" in match.group(1):
+        return True
+    # Population dictionaries historically used lower-case ``seed0`` keys.
+    # These are just as load-bearing as upper-case constants and may not fall
+    # through to the derived-RNG default.
+    return re.search(
+        r"['\"](?:[a-z0-9_]*_)?seed0['\"]\s*:\s*[0-9]", line,
+        flags=re.IGNORECASE) is not None
 
 
 def _source_manifest_sha256(rows: list[dict[str, Any]]) -> str:
@@ -306,22 +313,38 @@ def complete_seed_classifications(
 class SeedPopulationV1:
     population_id: str
     source_paths: tuple[str, ...]
-    seeds: tuple[int, ...]
+    ranges: tuple[tuple[int, int], ...] = ()
+    seeds: tuple[int, ...] = ()
     schema: str = POPULATION_SCHEMA
 
     def summary(self) -> dict[str, Any]:
         _validate_population(self)
-        digest = hashlib.sha256()
-        for seed in self.seeds:
-            digest.update(seed.to_bytes(8, "big"))
+        definition = {
+            "schema": "belief-v1-v2-seed-population-definition-v2",
+            "ranges": [{"start": start, "end": end}
+                       for start, end in self.ranges],
+            "explicit_seeds": list(self.seeds),
+        }
+        count = sum(end - start + 1 for start, end in self.ranges) \
+            + len(self.seeds)
+        minimum_values = [start for start, _ in self.ranges] \
+            + list(self.seeds)
+        maximum_values = [end for _, end in self.ranges] \
+            + list(self.seeds)
+        minimum = min(minimum_values)
+        maximum = max(maximum_values)
         return {
             "schema": self.schema,
             "population_id": self.population_id,
             "source_paths": list(self.source_paths),
-            "seed_count": len(self.seeds),
-            "minimum_seed": min(self.seeds),
-            "maximum_seed": max(self.seeds),
-            "ordered_seed_stream_sha256": digest.hexdigest(),
+            "ranges": definition["ranges"],
+            "explicit_seeds": definition["explicit_seeds"],
+            "explicit_seed_count": len(self.seeds),
+            "seed_count": count,
+            "minimum_seed": minimum,
+            "maximum_seed": maximum,
+            "population_definition_sha256": _sha256(
+                canonical_json_bytes(definition)),
         }
 
 
@@ -336,12 +359,55 @@ def _validate_population(population: SeedPopulationV1) -> None:
             != population.source_paths \
             or len(set(population.source_paths)) \
             != len(population.source_paths) \
+            or type(population.ranges) is not tuple \
+            or any(type(row) is not tuple or len(row) != 2
+                   or any(type(value) is not int for value in row)
+                   or not 0 <= row[0] <= row[1] <= MAX_SEED
+                   for row in population.ranges) \
+            or tuple(sorted(population.ranges)) != population.ranges \
+            or any(left[1] >= right[0]
+                   for left, right in zip(
+                       population.ranges, population.ranges[1:])) \
             or type(population.seeds) is not tuple \
-            or not population.seeds \
+            or (not population.ranges and not population.seeds) \
             or len(set(population.seeds)) != len(population.seeds) \
+            or tuple(sorted(population.seeds)) != population.seeds \
             or any(type(seed) is not int or not 0 <= seed <= MAX_SEED
-                   for seed in population.seeds):
+                   for seed in population.seeds) \
+            or any(start <= seed <= end
+                   for seed in population.seeds
+                   for start, end in population.ranges):
         raise BeliefV2SeedRegistryError("seed population identity drift")
+
+
+def _first_population_collision(
+        left: SeedPopulationV1,
+        right: SeedPopulationV1) -> int | None:
+    """Return the first shared seed without materializing large ranges."""
+    _validate_population(left)
+    _validate_population(right)
+    candidates = []
+    left_index = right_index = 0
+    while left_index < len(left.ranges) \
+            and right_index < len(right.ranges):
+        left_start, left_end = left.ranges[left_index]
+        right_start, right_end = right.ranges[right_index]
+        if max(left_start, right_start) <= min(left_end, right_end):
+            candidates.append(max(left_start, right_start))
+        if left_end < right_end:
+            left_index += 1
+        else:
+            right_index += 1
+    left_explicit = set(left.seeds)
+    right_explicit = set(right.seeds)
+    candidates.extend(left_explicit.intersection(right_explicit))
+    candidates.extend(seed for seed in left.seeds
+                      if any(start <= seed <= end
+                             for start, end in right.ranges))
+    candidates.extend(seed for seed in right.seeds
+                      if any(start <= seed <= end
+                             for start, end in left.ranges))
+    return min(candidates) if candidates else None
 
 
 def build_seed_registry(
@@ -409,17 +475,16 @@ def build_seed_registry(
         raise BeliefV2SeedRegistryError(
             "seed population classification source drift")
 
-    v2_seeds = set(by_population[v2_population_id].seeds)
+    v2_population = by_population[v2_population_id]
     collision_rows = []
     for population_id, population in sorted(by_population.items()):
         if population_id == v2_population_id:
             continue
-        shared = sorted(v2_seeds.intersection(population.seeds))
-        if shared:
+        first_shared = _first_population_collision(v2_population, population)
+        if first_shared is not None:
             collision_rows.append({
                 "population_id": population_id,
-                "shared_seed_count": len(shared),
-                "first_shared_seed": shared[0],
+                "first_shared_seed": first_shared,
             })
     if collision_rows:
         raise BeliefV2SeedRegistryError(
@@ -511,11 +576,13 @@ def validate_seed_registry(
         row["candidate_id"]: row["explicit_classification_required"]
         for row in scan["candidates"]}
     population_sources = {}
+    reopened_populations = {}
     for row in registry["populations"]:
         if type(row) is not dict or set(row) != {
-                "schema", "population_id", "source_paths", "seed_count",
+                "schema", "population_id", "source_paths", "ranges",
+                "explicit_seeds", "explicit_seed_count", "seed_count",
                 "minimum_seed", "maximum_seed",
-                "ordered_seed_stream_sha256"} \
+                "population_definition_sha256"} \
                 or row["schema"] != POPULATION_SCHEMA \
                 or type(row["population_id"]) is not str \
                 or not row["population_id"] \
@@ -524,16 +591,42 @@ def validate_seed_registry(
                 or not row["source_paths"] \
                 or row["source_paths"] != sorted(row["source_paths"]) \
                 or len(set(row["source_paths"])) != len(row["source_paths"]) \
+                or type(row["ranges"]) is not list \
+                or any(type(value) is not dict
+                       or set(value) != {"start", "end"}
+                       or any(type(number) is not int
+                              for number in value.values())
+                       or not 0 <= value["start"] <= value["end"] <= MAX_SEED
+                       for value in row["ranges"]) \
+                or type(row["explicit_seeds"]) is not list \
+                or any(type(value) is not int or not 0 <= value <= MAX_SEED
+                       for value in row["explicit_seeds"]) \
+                or type(row["explicit_seed_count"]) is not int \
+                or row["explicit_seed_count"] != len(row["explicit_seeds"]) \
                 or type(row["seed_count"]) is not int \
                 or row["seed_count"] <= 0 \
                 or type(row["minimum_seed"]) is not int \
                 or type(row["maximum_seed"]) is not int \
                 or not 0 <= row["minimum_seed"] <= row["maximum_seed"] \
                 <= MAX_SEED \
-                or not _is_sha256(row["ordered_seed_stream_sha256"]):
+                or not _is_sha256(row["population_definition_sha256"]):
             raise BeliefV2SeedRegistryError(
                 "seed registry population row drift")
         population_sources[row["population_id"]] = set(row["source_paths"])
+        try:
+            reopened = SeedPopulationV1(
+                schema=row["schema"], population_id=row["population_id"],
+                source_paths=tuple(row["source_paths"]),
+                ranges=tuple((value["start"], value["end"])
+                             for value in row["ranges"]),
+                seeds=tuple(row["explicit_seeds"]))
+            if reopened.summary() != row:
+                raise BeliefV2SeedRegistryError(
+                    "seed registry population reconstruction drift")
+        except (TypeError, ValueError) as exc:
+            raise BeliefV2SeedRegistryError(
+                "seed registry population reconstruction drift") from exc
+        reopened_populations[row["population_id"]] = reopened
     for row in registry["classifications"]:
         if type(row) is not dict or set(row) != {
                 "schema", "candidate_id", "classification",
@@ -567,6 +660,13 @@ def validate_seed_registry(
             or registry["v2_population_id"] not in population_sources:
         raise BeliefV2SeedRegistryError(
             "seed registry classification closure drift")
+    v2_population = reopened_populations[registry["v2_population_id"]]
+    if any(_first_population_collision(v2_population, population)
+           is not None
+           for population_id, population in reopened_populations.items()
+           if population_id != registry["v2_population_id"]):
+        raise BeliefV2SeedRegistryError(
+            "seed registry independently reopened a V2 collision")
 
 
 def seed_scan_bytes(scan: dict[str, Any]) -> bytes:

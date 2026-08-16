@@ -557,7 +557,7 @@ offline or state-level pass.
 | package | output | cheapest decisive failure |
 |---|---|---|
 | B0 — contract | canonical observation/target/belief/action-context schemas and adversarial fixtures | hidden-world invariance or information-class violation |
-| B1 — corpus | fresh split-safe natural public prefixes with separately sealed hidden labels | duplicate deal leakage, missing strata, or unreconstructable actor view |
+| B1 — corpus | fresh split-safe natural public prefixes with separately sealed hidden labels, measured stage costs and enforced live deadlines | duplicate deal leakage, missing strata, unreconstructable actor view, or inability to finish inside the cap |
 | B2 — calibrated baseline | current constraint prior and first ownership/shape model | no held-out proper-score gain or subgroup regression |
 | B3 — belief sampler | complete weighted constrained worlds and posterior checks | illegal worlds, lost calibration, or unreconciled work/RNG |
 | B4 — same-work search | three-arm candidate/current/shuffled-null decision screen | no positive causal lower bound or continuation fragility |
@@ -580,6 +580,22 @@ label, and training cost; its concrete design must then state a wall-hour cap.
 B3 uses tractable synthetic late states with enumerated compatible worlds plus
 held-out natural posterior-predictive checks. B4 is one fixed-state three-arm
 screen, not four independent whole-game screens.
+
+A stated cap is not an operational cap unless the live runner enforces it.
+Before starting each stage, epoch, or other bounded work unit, the runner must
+compare remaining wall budget with a frozen conservative completion estimate
+and refuse when the unit cannot finish inside the safety margin. Deadline
+expiry leaves a non-sealable partial artifact, records a durable spent
+admission, and cannot proceed to calibration or test. Post-hoc verification of
+an already exceeded wall receipt is necessary tamper evidence, but it is not a
+substitute for the live deadline.
+
+A resource-only failure is not a calibration null. A successor may re-enter
+only after authenticating the spent failure receipt, proving the held-out test
+was not opened, repairing the failed resource boundary, and receiving fresh
+source/design and immutable-freeze reviews. Partial models or completed
+upstream stages from the failed admission cannot be selected or reused merely
+because they were expensive.
 
 Before B4, the packet must state:
 

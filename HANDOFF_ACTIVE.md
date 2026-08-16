@@ -1,161 +1,110 @@
 # Active Claude/Codex handoff
 
-> **Canonical paths:** coordinate only through `HANDOFF_ACTIVE.md` and
-> `HANDOFF_REVIEW.md` on canonical `main`. Branch-local copies are not review
-> authority. Raw review markers belong only in the append-only review ledger.
+> Coordinate current work only through this file and the append-only
+> `HANDOFF_REVIEW.md`. Historical detail belongs in the archive and research
+> documents; branch-local ledgers are never review or execution authority.
 
-Last reconciled: 2026-08-16 00:35 EDT. The over-cap Mini B2 training children
-were stopped through Claude's reviewed sequence and the supervisor recorded
-`exit-143` for both before exiting. Both cohort directories remain `.partial`;
-no test or terminal path exists. The admission is spent with no learning or
-calibration verdict. V2 is now blocked on one consolidated successor that
-repairs resource-failure re-entry, fail-closed seed classification, and live
-training deadlines before an exact source/design review.
+Last reconciled: 2026-08-16 01:22 EDT.
 
 ## Immediate objective
 
-Build and review a V2 offline packet that can answer the still-open BELIEF-V1
-calibration question without repeating V1's resource-control failure. Preserve
-the spent V1 namespace as a no-result incident, repair the routing and live
-deadline boundaries, then use a fresh all-rank/human-aware population and a
-host-specific immutable freeze. This remains an infrastructure/calibration
-milestone, not a strength or deployment claim.
+Finish BELIEF-V1 V2 with two remaining review boundaries, not a sequence of
+piecemeal reviews:
 
-In parallel, implement the reviewed three-arm ballot-widening confirmation
-design as the next whole-game causal experiment. Defer the Pair checkpoint V2
-diagnostic implementation unless the user explicitly reprioritizes it.
+1. one consolidated exact-head source/design review of PR #117;
+2. after PASS, one exact host-specific immutable-freeze review.
 
-## Review queue — precise asks
+No V2 pipeline execution, capture, REF-C, training, calibration, test opening,
+gameplay, strength claim, promotion, or deployment is authorized now.
 
-1. **BELIEF V2 repaired successor — implementation in progress; do not review
-   `0949404` again.** Use `0949404f439189fca575ea59911c6e3fbde66277`
-   only as the source base. Publish one successor that: (a) authenticates the
-   spent V1 no-result receipt and permits only a named resource-failure repair
-   route into a new freeze review; (b) refuses every unclassified seed-registry
-   hit with a mutation witness; and (c) binds measured epoch wall, safety
-   margin, in-loop epoch/stage deadlines, non-sealing timeout behavior, and
-   no-retry tombstones. Then request one consolidated exact-head source/design
-   review over the complete V2 surface. A PASS may authorize only host-specific
-   preflight and immutable-freeze preparation, never execution.
+## Current review queue — exactly one Claude request
 
-2. **V1 closeout is complete; no terminal review remains.** Exact design
-   `a8c5e05f…1fd53` is classified `operator-stopped-after-frozen-cap` at the
-   canonical ledger entry immediately following Claude's `SAFE_TO_TERMINATE`
-   review. The supervisor recorded both `exit-143` lines and exited without
-   opening test or terminal. Do not retry, resume, inspect partial models, or
-   reinterpret this as a calibration null.
+### P0 — PR #117, consolidated V2 resource-reentry repair
 
-3. **No repository-hygiene review remains.** PR #115's append-only/
-   merge-target-prefix guard merged as `b27d0c2`; compacted docs PR #114 merged
-   as `56fcbda`. `HANDOFF_REVIEW.md` remains canonical and append-only; the full
-   old AI/RL ledgers are preserved in dated archives.
+- PR: `https://github.com/jerryyyu/shengji/pull/117`
+- previously reviewed HOLD head: `0949404f439189fca575ea59911c6e3fbde66277`
+- fail-closed registry child: `cc3b491ec2fc8b5da29299d82c6e24bf193cfdf4`
+- superseding exact head: `08c852d77bb360a193c49adfba483b1feb3a09b6`
+- review mode: delta review from `0949404` plus exact-head reconstruction;
+  do not re-open findings already closed at the reviewed parent unless the
+  repair changed their bytes or dependency surface.
 
-4. **Next future asks:** review the three-arm widening implementation only
-   after it publishes an exact source/design head. PR #116 transcript replay,
-   non-rank-2 population coverage, and a separately identified human-log
-   stratum are V2 BELIEF design inputs only; do not wire them into the frozen
-   V1 run. Do not spend the hourly cycle re-reviewing closed or spent
-   S4/S6/T4/Pair artifacts.
+Review the three prior HOLD findings as one packet:
 
-## BELIEF-V1 current truth
+1. **Live deadline:** measured next-unit/epoch estimates and reserve are frozen;
+   synthetic capture/reference, device qualification and training check the
+   monotonic deadline inside their loops. Expiry durably records exact refusal
+   bytes, cannot advance or seal, blocks calibration and the sole test opener,
+   and cannot retry the occupied slot under the same admission.
+2. **Narrow V1 resource-failure route:** exact route
+   `RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW` authenticates the spent
+   V1 admission, Claude-reviewed stop, canonical ledger ancestry, exact two
+   partial training slots, frozen-cap overrun, and absence of calibration/test/
+   terminal/model results. It is not V1 PASS or SELECT_NONE and grants no
+   execution authority.
+3. **Fail-closed seed registry:** every explicit-required source candidate must
+   have an exact reviewed identity. The permanent
+   `NEW_SCREEN_POPULATION_SEED_START` mutation must refuse rather than receive
+   an inferred classification.
 
-| layer | state | what it proves / does not prove |
-|---|---|---|
-| **B0 contracts** | Merged. Actor-visible observation bytes and privileged hidden targets are typed, separated, hash-bound and adversarially tested. Ownership marginals enforce conservation, void/pair-cap facts, and sound banker-hand-or-kitty declaration eligibility. | Proves the information boundary and mechanics substrate. It does not prove learning or strength. |
-| **B2 offline pipeline source** | External PASS at PR #113 exact `3ee0eb8`; merged byte-preservingly through main `959c05d`. Integration validation is 187/187 BELIEF pure and 187/187 strict compiled/void. The history-loop mutation and both terminal accumulator mutations fail at their exact assertions. | Implements deterministic capture, corrected REF-C scoring, 8+8 cohorts, controls, calibration/mechanics evidence, sealed one-shot test opening and independent reopen. Source readiness is complete. |
-| **B2 design/data/result** | Mini design `a8c5e05f…1fd53` passed exact review at `209407f` and initialized once. Capture and REF-C sealed naturally, but both CPU training cohorts exceeded the frozen eight-hour wall cap. Under Claude's reviewed sequence, both children were SIGTERMed at 00:35 EDT; the supervisor recorded `exit-143`/`exit-143` and exited before test or terminal. Both cohort directories remain `.partial`. | Admission spent with no retry. This is a resource-control failure, not evidence for or against learned calibration. No model, test, calibration, or strength result exists. |
-| **V2 source candidate** | Local base `0949404` implements balanced all-rank and separately split H0 populations, replayed REF-C, source-neutral work controls, automatic CPU/MPS/CUDA qualification, portable checkpoints, an independently reopenable seed registry, dual-domain calibration, one-shot terminal handling, and receipt-driven freeze construction. Its last measured validation was 146 passed/1 intentional skip pure and 147 compiled; registry tests were 6/6 with 5,351 candidates, 31 populations, 13,312 V2 seeds, and zero collisions. | Not runnable and no longer worth reviewing unchanged. A successor must bind the V1 resource-failure route, make registry classification fail closed, and enforce live wall deadlines before one consolidated exact-head review. The first V2 packet remains single-host; cross-host transfer is not implemented. |
-| **B3 sampler** | Not implemented or authorized. | No learned posterior is feeding Monte Carlo worlds. |
-| **B4/B5 decision and strength gates** | Not started. | No policy, gameplay, strength, promotion or deployment claim exists. |
+Exact-head evidence:
 
-### Mechanical V1 terminal routing
+- V2 pure: `153 passed, 1 skipped`;
+- V2 compiled/strict: `154 passed`;
+- registry suite: `7 passed`;
+- isolated worker bootstrap: `BELIEF_V1_V2_BOOTSTRAP_PASS`;
+- seed scan: 1,916,907 bytes, SHA-256
+  `48e353ec363957f0503952de8d6ec6142b54ac33519701ad744b5fd7c49cfbeb`;
+- registry: 1,712,949 bytes, SHA-256
+  `4794b9d9397c20057c2301587deaeca2815a8cca390680ea0b63be9f2f66c34c`;
+  5,363/5,363 candidates classified, 140 explicit, 74 finite-population,
+  31 populations, 13,312 V2 seeds, zero collisions;
+- authenticated V1 resource-failure receipt SHA-256
+  `257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3`.
 
-- `PASS_TO_B3_SAMPLER_IMPLEMENTATION_REVIEW`: after independent terminal
-  reproduction, permits one B3 sampler implementation review request only.
-  It does not authorize a sampler run, V2 execution, gameplay or strength.
-- Either `SELECT_NONE_*`: closes the exact V1 rank-2/champion-only recipe. V2
-  may proceed to an immutable-freeze review only because its all-rank and
-  separately split human-domain population is a named domain-shift re-entry;
-  the freeze builder requires the terminal bytes plus that rationale.
-- A V1 resource/cap failure blocks the current V2 builder. A new V2 successor
-  may re-enter only if it authenticates the spent no-result receipt, proves
-  the test split stayed unopened, repairs the deadline defect, and receives a
-  new exact source/design PASS. That repair route is not a V1 scientific
-  verdict and grants no execution authority.
+Return one verdict: PASS or HOLD with all remaining source/design blockers in a
+single response. A PASS authorizes only host-specific capacity, device and
+deadline measurement plus immutable-freeze construction. The exact frozen
+packet still requires a second external PASS before execution.
 
-No reviewer or operator chooses a friendlier route after seeing the result.
-The terminal evaluator's precedence and the V2 freeze builder enforce these
-transitions from the immutable bytes.
+## Current operational truth
 
-The earlier Mini design belongs to a rejected source head and must never
-initialize. The executed V1 design was frozen from clean detached main
-`959c05d`; its single reviewed admission is consumed and cannot retry.
+- V1 design `a8c5e05f…1fd53` completed capture and REF-C. Both CPU training
+  cohorts exceeded their frozen eight-hour wall cap and were stopped through
+  the reviewed sequence before calibration or test. Both slots remain partial;
+  the admission is spent; no model, null, calibration, terminal, or strength
+  result exists. Never resume, inspect, score, or reuse the partial models.
+- PR #117 is source/design only. It has not initialized an evidence namespace
+  or used a fleet host.
+- Do not start compute merely because a host is powered on. After PR #117 PASS,
+  first re-check host availability and run only the reviewed capacity/device/
+  deadline measurement needed to construct the exact freeze.
+- T4, S4, S6, broad Pair, Pair checkpoint, and V1 namespaces are terminal or
+  spent. No retry, resume, pooling, or partial-result interpretation is open.
+- PR #107 already has Codex's independent source/parity clearance. PR #116 was
+  authored by Claude and is a Codex performance-review item, not a Claude queue
+  item. Neither blocks PR #117.
 
-## Compute and fleet
+## Next steps after source PASS
 
-| host | current state | next use |
-|---|---|---|
-| **Mini** | **Idle after reviewed BELIEF-V1 stop.** Both over-cap training children and the supervisor exited at 00:35 EDT; no BELIEF process remains. | Available for source tests or later device qualification only after the repaired V2 source review defines the work. Never resume the V1 partial namespace. |
-| **Air** | Idle after the broad Pair fixed timeout. | No retry/resume/partial use. Keep free unless a new reviewed job is selected. |
-| **Strength Cloud** | Powered off. | Keep off; S4 terminally selected none. |
-| **Performance Cloud** | Powered off. | Keep off; the Pair checkpoint V1 attempt was spent and produced no terminal evidence. |
-| **Production** | `mc-s0-report-lcb`, release 18. | Unchanged by BELIEF-V1; no deployment authority. |
+1. Select one available host with at least 16 logical CPUs; Mini does not
+   qualify for the all-lane capacity preflight.
+2. At exact reviewed source, produce the H0/preflight, runtime/native/boot,
+   candidate-device/memory, deadline-estimate, resource-cap, seed scan/registry,
+   V1 failure, and cohort-schedule bindings.
+3. Build one canonical immutable freeze in a fresh unused namespace. Do not
+   initialize it.
+4. Request one exact-freeze review. Only its authentic PASS marker can admit
+   the one-shot offline pipeline.
+5. During the source-review wait, performance profiling may proceed in a
+   separate worktree/host only; it must not mutate PR #117 or historical
+   evidence and carries no strength authority.
 
-The frozen caps for the spent Mini B2 run were 4,096 champion
-rounds split 3,279 train / 407 calibration / 410 test; 16 capture lanes; 256
-REF-C worlds per held-out decision; eight candidate and eight permuted-label
-members. Planning caps are 16 capture core-hours / 2 wall-hours, 64 reference
-core-hours / 8 wall-hours, and 32 device-hours / 8 wall-hours. Fresh host
-preflight and the future V2 design remain authoritative. V1 demonstrated that
-a cap without a live deadline is not an operational bound; V2 must enforce the
-deadline during execution and size it from measured epoch wall.
+## Durable references
 
-Review commit `209407f` covered the complete sequence, but training exhausted
-the packet's wall authority before test opening. The admission is spent; no
-per-stage continuation, retry, test opening, or terminal derivation remains.
-
-`BELIEF_V1_B2_RUNBOOK.md` freezes the detached stage order, fail-stop behavior,
-sealed-log boundary, monitoring allowlist, and terminal routing. It is an
-operational procedure only and adds no review or execution authority.
-
-## Closed fleet results that determine the plan
-
-- **T4:** terminal `SELECT_NONE` for the learned treatment. Its uninformed
-  widening arm beat champion, but used +14.8% accepted worlds and +80.9%
-  searches, so widening and compute are confounded.
-- **S4:** completed both looks and terminally `SELECT_NONE`.
-- **S6 (shuai-pai sourcing):** recovery aggregate terminally
-  `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`; bury-side criteria passed but the
-  combined lead source failed three gates.
-- **Broad Pair:** fixed 64.08-hour timeout with 0/8 terminal shards and no
-  evidence; no retry or partial interpretation.
-- **Pair checkpoint V1:** one-shot attempt spent on treatment-work telemetry
-  drift; no terminal evidence. Claude's checkpoint diagnostic is a reviewed
-  design input only.
-
-## Next experiment design inputs
-
-Claude recorded two design inputs on canonical main at `bf4386b`:
-
-1. **Three-arm ballot widening — implement next.** Arms are literal champion,
-   widening at champion work, and widening at the original T4-null work. This
-   separates action-set value from added compute. Implementation/design/tests
-   only; no packet freeze or launch until its own exact review chain.
-2. **Pair checkpoint V2 diagnostic — defer.** It would recompute microshard 3
-   score-free telemetry to identify exact-work, no-op-dose, mode-off, or
-   platform dependence. It is useful diagnosis but lower priority after two
-   Pair attempts produced no whole-game evidence.
-
-## Authority boundaries
-
-- A design PASS authorizes only the next named implementation or freeze step.
-- A source PASS does not authorize compute.
-- BELIEF B2 may open its test split exactly once only under the fresh reviewed
-  V2 design marker; verification may re-read bytes but cannot create a second
-  decision.
-- B2 cannot launch gameplay and cannot claim strength. A positive B2 result
-  opens B3 sampler design/review only.
-- Never inspect, resume or aggregate spent T4/S4/S6/Pair namespaces outside
-  their existing terminal verifiers.
-- Never deploy, restart production, wipe rooms, power on paid cloud compute or
-  launch a scored job without the task's explicit authority.
+- Scientific plan and current milestone: `RL_PLAN.md`
+- Ordered research/output ledger: `BACKLOG.md`
+- Stable operational rules: `AI_POLICIES.md`
+- Exact BELIEF contracts: `BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`
+- Lossless verdict/authority ledger: `HANDOFF_REVIEW.md`
+- Historical handoff snapshots: `docs_archive/`

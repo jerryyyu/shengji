@@ -32,6 +32,19 @@ from .belief_v2_seed_registry import (
 
 v2_population_id = "belief-v1-v2-production-rounds"
 
+# S6's reviewed controller was intentionally removed after the lane closed, so
+# its numeric population no longer appears in the active source tree.  Preserve
+# the exact reviewed historical source identity here instead of silently
+# treating file deletion as seed-namespace deletion.  The constants reproduce
+# a93c2f58d2e152adfd854c4416e9a92c5a005e68:
+# server/scripts/s6_throw_full_hand_preflight_controller.py, whose SHA-256 was
+# 130b108b5fbe2de28c16ed1d812350abddb10199debe210142d6574e7ad9bf28.
+S6_PREFLIGHT_SEED0 = 436_000_000_000
+S6_PREFLIGHT_CLUSTERS = 4
+S6_SCREEN_SEED0 = 437_000_000_000
+S6_SCREEN_CLUSTERS = 7_168
+S6_STREAM_STRIDE = 3_000_017
+
 
 @dataclass(frozen=True)
 class _PopulationSpec:
@@ -72,6 +85,53 @@ def reviewed_population_specs() -> tuple[_PopulationSpec, ...]:
         coordinate.round_seed for coordinate in preflight_coordinates()))
     c4_seeds = tuple(sorted(c4_training_seeds()))
     return (
+        _spec(
+            "teacher-stage-c-state-scan",
+            ("HANDOFF_REVIEW.md",),
+            ranges=(_range(188_000_000, 16_384),),
+            selectors=((
+                "HANDOFF_REVIEW.md",
+                "TEACHER_STAGE_C_MIDLATE_STATE_SCREEN_CONTROLLER_V1_REVIEW"),)),
+        _spec(
+            "t4-midlate-composition-screen",
+            ("HANDOFF_REVIEW.md",),
+            ranges=(
+                _range(192_000_000, 4),
+                _range(193_000_000, 2_048)),
+            selectors=((
+                "HANDOFF_REVIEW.md",
+                "TEACHER_STAGE_C_MIDLATE_COMPOSITION_SCREEN_CONTROLLER_V1_REVIEW"),)),
+        _spec(
+            "s6-full-hand-preflight-and-screen",
+            ("server/shengji/rl/belief_v2_seed_registry_builder.py",),
+            # The actual deal population is strided.  Reserving the enclosing
+            # intervals is deliberately conservative and compact: it may
+            # refuse a future namespace unnecessarily, but cannot hide a
+            # collision with an S6 deal.
+            ranges=(
+                (S6_PREFLIGHT_SEED0,
+                 S6_PREFLIGHT_SEED0
+                 + S6_STREAM_STRIDE * (S6_PREFLIGHT_CLUSTERS - 1)),
+                (S6_SCREEN_SEED0,
+                 S6_SCREEN_SEED0
+                 + S6_STREAM_STRIDE * (S6_SCREEN_CLUSTERS - 1))),
+            selectors=(
+                ("server/shengji/rl/belief_v2_seed_registry_builder.py",
+                 "S6_PREFLIGHT_SEED0 = 436_000_000_000"),
+                ("server/shengji/rl/belief_v2_seed_registry_builder.py",
+                 "S6_SCREEN_SEED0 = 437_000_000_000"))),
+        _spec(
+            "s4-future-c2-retired-and-reseeded",
+            ("HANDOFF_REVIEW.md",),
+            # The retired interval is literal canonical-ledger evidence.  The
+            # reseeded interval applies the same reviewed cluster count,
+            # stride, and maximum role offset at the new 360b seed0.
+            ranges=(
+                (300_000_000_000, 349_150_778_511),
+                (360_000_000_000, 409_150_778_511)),
+            selectors=((
+                "HANDOFF_REVIEW.md",
+                "S4_POINT_BANKING_FUTURE_C2_RESEED_CONTROLLER_V1_REVIEW"),)),
         _spec(
             "pair-retention-census-10m",
             ("server/scripts/pair_ballot_retention_census_review.py",),

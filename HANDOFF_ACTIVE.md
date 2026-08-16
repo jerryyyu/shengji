@@ -4,14 +4,15 @@
 > `HANDOFF_REVIEW.md`. Historical detail belongs in the archive and research
 > documents; branch-local ledgers are never review or execution authority.
 
-Last reconciled: 2026-08-16 02:45 EDT.
+Last reconciled: 2026-08-16 07:42 EDT.
 
 ## Immediate objective
 
 Finish BELIEF-V1 V2 with two remaining review boundaries:
 
-1. one consolidated accelerator/CPU/deadline-freeze delta review of PR #117;
-   the substantive V2 source/design packet already passed at `db0ec3e`;
+1. one consolidated CPU/deadline/host-closure delta review of exact PR #117
+   head `1a0c9c8`; the substantive V2 source/design packet and its MPS child
+   already passed only through parent `f915325`;
 2. after PASS, one exact host-specific immutable-freeze review.
 
 No V2 pipeline execution, capture, REF-C, training, calibration, test opening,
@@ -22,26 +23,32 @@ gameplay, strength claim, promotion, or deployment is authorized now.
 ### P0 — PR #117, runnable-freeze delta
 
 - PR: `https://github.com/jerryyyu/shengji/pull/117`
-- reviewed PASS source head: `db0ec3e2f70bc4ea94229ceb872b0512f7837636`
-- canonical PASS ledger: `b02ece9e549f1dbc167ce79cadeb81dbd2a500f8`
+- latest reviewed PASS head: `f915325cebb46712cc2726cc140a38513f5e63e8`
+- canonical PASS ledger: `fdbbaeb6672f8302c643fc25c312b2b13c604d5c`
 - exact PR head: `1a0c9c8509aa93ad1b72e7718c5b7515c5f189b7`
 - immediate parent: `f915325cebb46712cc2726cc140a38513f5e63e8`
-- exact review prompt:
-  `https://github.com/jerryyyu/shengji/pull/117#issuecomment-5306143775`
-- review mode: one consolidated delta PASS/HOLD; do not re-open the already
-  PASSed V1 resource-reentry, in-loop stage deadlines, or fail-closed registry.
+- superseding exact-head correction/review prompt:
+  `https://github.com/jerryyyu/shengji/pull/117#issuecomment-5307258321`
+- review mode: review only `f915325..1a0c9c8` and return one consolidated
+  delta PASS/HOLD; do not re-open the already PASSed V1 resource-reentry,
+  registry, substantive V2 source/design, or MPS seam.
 
-Review four tightly bounded properties together:
+**Do not classify PR #117 as fully reviewed.** No Claude verdict, canonical
+ledger entry, or marker names exact head `1a0c9c8`. The hourly reports that
+called both packets PASSed conflated parent `f915325` with its unreviewed
+child. Until an exact `1a0c9c8` PASS is appended to canonical
+`HANDOFF_REVIEW.md`, cloud measurement and freeze construction are blocked on
+Claude review, not on a Jerry cloud decision.
 
-1. canonical `mps` matches PyTorch-resolved `mps:0`; CUDA indices remain exact;
-   both MPS-only math repairs preserve semantics/gradients and CPU/CUDA paths;
-2. an explicit CPU candidate is legal only with no supported accelerator,
+Review three tightly bounded properties together:
+
+1. an explicit CPU candidate is legal only with no supported accelerator,
    re-probes that absence, and runs one warmup plus three deterministic
    measured CPU arms without inventing an accelerator comparison;
-3. the new deadline producer reopens all 416 capture samples, measures 32
+2. the new deadline producer reopens all 416 capture samples, measures 32
    all-rank REF-C rounds under proven 16-worker overlap, runs two repeatable
    eight-member training probes, and derives the epoch/reserve mechanically;
-4. preflight, deadline, selected device, and freeze all bind to the same
+3. preflight, deadline, selected device, and freeze all bind to the same
    hostname, boot, 16 CPUs, memory, Python/native bytes, and source. Mini or a
    different host/boot cannot inherit the receipt.
 
@@ -60,8 +67,6 @@ Exact-head evidence:
   5,396/5,396 candidates classified, 135 explicit-required,
   74 finite-population,
   31 populations, 13,312 V2 seeds, zero collisions;
-- frozen-order Mini diagnostic: CPU 2.978871292s, MPS 17.306243501s;
-  gate correctly selects CPU; this is not a host-specific receipt;
 - diff-check, clean-tree and append-only review-ledger guards: PASS.
 
 Return one delta PASS or one HOLD with every remaining blocker. A PASS
@@ -76,8 +81,8 @@ still requires a second external PASS before execution.
   the reviewed sequence before calibration or test. Both slots remain partial;
   the admission is spent; no model, null, calibration, terminal, or strength
   result exists. Never resume, inspect, score, or reuse the partial models.
-- PR #117 remains source/design only. Parent `db0ec3e` is PASS; the consolidated
-  runnable-freeze child is pending. No evidence namespace or fleet run was
+- PR #117 remains source/design only. Parent `f915325` is PASS; exact current
+  head `1a0c9c8` is pending review. No evidence namespace or fleet run was
   initialized.
 - Do not start compute merely because a host is powered on. After PR #117 PASS,
   first re-check host availability and run only the reviewed capacity/device/

@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: 2026-08-15 09:16 EDT. This file is the active execution
+Last reconciled: 2026-08-16 00:35 EDT. This file is the active execution
 queue. Detailed policy interpretation belongs in `AI_POLICIES.md`, experiment
 design in `RL_PLAN.md`, live compute in `JOBS.md`, and historical queues in
 `docs_archive/backlog-through-2026-08-11.md`.
@@ -16,7 +16,7 @@ whole-game utility against the named live champion establishes bot strength.
 
 | priority / lane | plain-English strategy | progress so far and what is left | next concrete output | gate |
 |---|---|---|---|---|
-| **P0 / BELIEF-V1 B2 calibrated baseline** | Learn an actor-visible distribution over hidden ownership and hand shape, then prove it improves held-out calibration before changing search. | **The one-shot offline run is active on Mini.** PR #113 `3ee0eb8` merged through main `959c05d`; exact design `a8c5e05f…1fd53` received the authentic marker at `209407f`, initialized once, and started all 16 capture lanes under the reviewed supervisor. The held-out test and terminal result remain unopened/pending. | Complete the reviewed capture → REF-C → 8+8 training → one test opening sequence, then obtain an independent terminal verdict | B2 may establish aggregate hidden-ownership calibration only. No B3 sampler, gameplay, strength, promotion or deployment authority exists. A null closes this recipe; a PASS opens B3 implementation review, not a run. |
+| **P0 / BELIEF-V1 V2 calibrated baseline** | Learn an actor-visible distribution over hidden ownership and hand shape, then prove it improves held-out calibration before changing search. | **V1 produced no learning result.** Exact design `a8c5e05f…1fd53` completed capture and REF-C, but both CPU training cohorts exceeded the frozen eight-hour wall cap. They were stopped through Claude's reviewed sequence at 00:35 EDT; the supervisor recorded `exit-143`/`exit-143` and exited before test or terminal. The spent partial namespace cannot retry. V2 base `0949404` adds all-rank, human-domain, replayed-reference and accelerator infrastructure, but still needs resource-failure re-entry, fail-closed registry classification and live deadlines. | Publish one repaired V2 successor, obtain a consolidated source/design PASS, run a ≥16-CPU host preflight, then build and review one immutable host-specific freeze | V1 is an infrastructure failure, not a calibration null. No partial model/test result may be used. V2 execution requires a separately reviewed repaired route and exact freeze; B3/gameplay/strength remain unauthorized. |
 | **CLOSED / pair-aware rollout evidence paths** | Determine whether actor-visible exhausted-pair memory improves complete rounds, not just selected disagreements. | **Neither whole-game path produced evidence.** Air hit its fixed 64.08h timeout with `0/8` terminal shards and no manifest/final. The Performance checkpoint V1 one-shot fail-closed on microshard 3 `treatment work drift`; its host is now off and the admission is spent. | Preserve the diagnosis and require a fresh reviewed recovery design if this family is ever reconsidered | No retry, resume, partial-outcome access, aggregation or strength interpretation. Pair is no longer a live prerequisite for BELIEF-V1. |
 | **DONE / post-null roadmap reset** | Choose the next research milestone from evidence rather than keeping idle hardware busy. | **T4, S4 and combined S6 all selected none; BELIEF-V1 is the chosen materially different representation milestone.** The closeout identified selected-state signal, sparse natural dose, weak same-work attribution and continuation fragility. | Execute BELIEF-V1's calibration → sampler → same-work ladder in order | Before any large scored screen, require natural-dose economics, treatment-vs-champion and treatment-vs-same-work-null evidence, robustness under two continuation/role strata, and detectable whole-game effect. |
 | **CLOSED / T4 mid/late Teacher hybrid** | Use the learned model as a proposal inside Monte Carlo search after trick five. | Terminal `SELECT_NONE`; treatment LCB `-0.00759` versus champion and `-0.03313` versus its work-matched null. The uninformed arm was positive versus champion, but used 14.8% more accepted worlds and 80.9% more searches than champion, so widening and compute are confounded. | Implement the separately reviewed three-arm attribution design; do not retry T4 | No confirmation, retry, promotion or deployment for the learned recipe. Any widening claim must distinguish champion-work from original-null-work arms. |
@@ -26,7 +26,7 @@ whole-game utility against the named live champion establishes bot strength.
 | **PARKED / pair ballot retention** | Keep a legal pair from being crowded out before search can price it. | The foundation and PR #100/#101 design-only successors are merged, but both Pair whole-game attempts later closed without evidence. Neither design contains executable census/controller code, and BELIEF-V1 now owns the active representation milestone. | Preserve the designs; require a materially new causal case before implementation | REPORT remains sealed. No implementation, census, packet, run, evidence access, scoring, retry, strength, training, promotion or deployment is queued or authorized. |
 | **P1 / engine and MC performance — independent enabler** | Make every rollout and round cheaper without changing its move, RNG stream or game result. This lowers production latency and lets fixed fleet-hours test more strength ideas; speed alone is not evidence that a policy is stronger. | **Two exact stacks cleared preregistered x86 gates and merged.** PR #98's immutable six-pair N=30/R=300 batch measured **29.3203% lower wall** with 27.8619% one-sided paired lower bound and exact normalized gameplay/work/RNG/sampler bytes. PR #103 then retained a separate **3.4074%** increment with +1.0299% lower bound, exact semantics, and zero mismatch across 12 million differential rounds; reviewed head `3044a2f` merged at `e3af8c3`. Do not add the percentages across baselines. | Profile the merged stack only when a powered-on host has a separately reviewed next candidate; no benchmark is queued now | Performance-only work, not bot strength or deployment. Never benchmark beside sealed strength runs; do not change frozen historical constants or substitute optimized code into running experiments. |
 | **P1 / point-flow census and feed anticipation** | Compare human and rollout choices only where each side actually had a legal point-card opportunity, then test narrowly named continuation rules instead of inferring policy from aggregate card counts. | **PR #99 exact `0ee28a0` passed external descriptive-tooling review and repairs the PR #95 denominator/provenance boundary.** On 165 private opened rounds, literal legal-opportunity rates are human 164/204 and rollout 14,664/14,666; inferred-strict rates are 32/46 and 302/989. Exact 150-row binding found 20 policy flips, only three toward the human action. The former 70%-versus-23% headline is withdrawn. **Left:** choose a separately designed consumer, if any. | Reviewed descriptive census and a separately designed cheapest honest follow-up | Private opened logs are not sealed strength evidence. The census grants no scored run, training, strength, promotion or deployment authority. |
-| **P1 / documentation and repository hygiene** | Keep one clear source of current truth so compute and review time go to hypotheses rather than reconstructing history. | **Current-state refresh and compaction are in PR #114.** The active handoff and fleet ledger name the terminal T4/S4/S6/Pair outcomes and the completed PR #113 source merge. `AI_POLICIES.md` and `RL_PLAN.md` now keep only current contracts; their full prior contents are preserved in dated archives. | Exact-head docs review → merge; then routine updates only at terminal/review transitions | `HANDOFF_REVIEW.md` remains byte-exact and append-only. Rotate it only after an acknowledged cutoff and hash-bound archive manifest. |
+| **P1 / documentation and repository hygiene** | Keep one clear source of current truth so compute and review time go to hypotheses rather than reconstructing history. | PR #114's compact current-state documents and PR #115's append-only merge guard are merged. This refresh records the V1 wall-cap failure, spent/no-verdict classification, and repaired V2 path in every live ledger. | Routine exact updates at terminal, incident, review and launch transitions | `HANDOFF_REVIEW.md` remains append-only. Rotate it only after an acknowledged cutoff and hash-bound archive manifest. |
 
 ## T4 milestone — stronger learned-search composition
 
@@ -120,17 +120,17 @@ recipe.
 
 ## Compute and evidence rules
 
-- Mini is running the exact reviewed BELIEF-V1 B2 offline pipeline. Air is
-  idle; strength Cloud and Performance Cloud are powered off. Do not start a
-  scored job merely for utilization.
+- Mini is idle after the reviewed stop of the over-cap BELIEF-V1 B2 training
+  children. Air is idle; strength Cloud and Performance Cloud are last recorded
+  powered off. Do not start a scored job merely for utilization.
 - T4, S4, S6, broad Pair, and Pair checkpoint namespaces are terminal or spent.
   Keep their artifacts closed; no ad hoc reopening, retry, extension, resume,
   pooling, or partial-result interpretation is authorized.
-- Mini's current use is the fresh BELIEF-V1 B2 V2 pipeline under exact marker
-  `209407f`. Any later use waits for its independently reviewed terminal;
-  the merged source was frozen into a separately reviewed host-specific
-  design. Performance Cloud's next possible use is a reviewed performance A/B,
-  not recovery of the spent Pair invocation.
+- V1 marker `209407f` is spent with no terminal or calibration result. Never
+  resume or inspect its partial models. Mini's next BELIEF use is source testing
+  or device qualification only after a repaired V2 source PASS. A ≥16-CPU cloud
+  host may run the later capacity preflight only after that PASS; it may not
+  recover the spent V1 or Pair invocations.
 - Never put a public server address in the repository or copy authority from
   one host, design, namespace, or evidence chain to another.
 - Exploration sets may be reused with explicit correction and diagnostic

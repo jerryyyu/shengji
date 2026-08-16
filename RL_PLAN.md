@@ -80,7 +80,7 @@ boundary rather than duplicating it. Learned value, Direct-Q, V11 pairwise
 ranking, action allocation and memory-aware rollout policy remain later,
 separately gated consumers.
 
-## Current BELIEF state — 2026-08-15
+## Current BELIEF state — 2026-08-16
 
 - B0 typed actor/target boundaries, ownership schema and source contracts are
   merged.
@@ -89,21 +89,28 @@ separately gated consumers.
 - The repair covers reference-score debiasing, real mechanics derivation,
   history linkage, admission/provenance closure, cross-artifact binding and
   load-bearing mutation witnesses.
-- Fresh Mini design `a8c5e05f…1fd53` now binds merged source `959c05d`, the
-  105-file source manifest, current runtime/native/boot identity, fixed
-  population/caps and a fresh evidence namespace. Exact review `209407f`
-  admitted it once; the reviewed offline supervisor began capture on Mini at
-  09:16 EDT.
-- The B2 offline pipeline is active; its test opening and terminal result are
-  pending. No sampler or scored run exists. This admission authorizes no B3,
-  gameplay, strength, promotion or deployment action.
+- Mini design `a8c5e05f…1fd53` bound merged source `959c05d`, the 105-file
+  source manifest, runtime/native/boot identity, fixed population/caps and a
+  fresh evidence namespace. Review `209407f` admitted it once. Capture and
+  REF-C completed, but both CPU training cohorts exceeded the frozen eight-hour
+  wall cap because enforcement existed only after natural cohort publication.
+- Claude reviewed a controlled stop; at 00:35 EDT both training children
+  recorded `exit-143` and the supervisor exited before test or terminal. Both
+  cohort directories remain `.partial`. The admission is spent and no model,
+  calibration result, null, or strength verdict exists.
+- V2 base `0949404` implements all-rank synthetic coverage, a separately split
+  human domain, transcript-replayed REF-C, scalable device qualification,
+  portable checkpoints and single-host freeze machinery. It is not runnable:
+  a successor must authenticate resource-failure re-entry, refuse unclassified
+  seed hits, and enforce live epoch/stage deadlines before exact source and
+  host-specific freeze review.
 
 ## BELIEF milestone ladder
 
 | milestone | output | pass question | authority after pass |
 |---|---|---|---|
 | **B0 — boundary** | `ActorObservationV1`, separately sealed privileged targets, exact fact/private/belief types | Can hidden twins produce byte-identical actor rows, with no target path reachable by runtime inputs? | Source development only. |
-| **B1 — population/design** | Frozen Mini runtime/source/design identities, deterministic actor-only and paired capture plan | Is the population reproducible, sized, leakage-safe and within caps? | One exact B2 pipeline admission after external design PASS. |
+| **B1 — population/design** | Frozen runtime/source/design identities, deterministic actor-only and paired capture plan, measured stage timing and enforced live deadlines | Is the population reproducible, sized, leakage-safe and operationally guaranteed to stop within caps? | One exact B2 pipeline admission after external design PASS. |
 | **B2 — offline learning** | Candidate and negative-control cohorts, REF-C reference, mechanics/calibration/behavior reports, one terminal result | Does the learned belief improve held-out proper score beyond a debiased current-sampler reference without leakage or mechanics drift? | If and only if terminal PASS: propose B3 sampler implementation review. |
 | **B3 — sampler** | Complete-world sampler that projects learned beliefs while preserving legal constraints | Do sampled-world marginals reproduce the certified belief and improve held-out true-world/value error at fixed worlds? What natural final-decision flip dose results? | One bounded same-work DEV mechanism screen design. |
 | **B4 — search screen** | Current sampler vs belief sampler, identical root/continuation/work, shuffled-belief null | Does better belief causally improve decisions, not merely change compute or hide a stronger rollout policy? | One fresh whole-game confirmation design only if dose × conditional edge clears MDE. |
@@ -111,16 +118,26 @@ separately gated consumers.
 
 ### Immediate execution sequence
 
-1. **Done:** reopen main at exact merge `959c05d` on Mini and verify clean
-   source, native extension, Python/runtime identity and no loadable shadows.
-2. **Done:** freeze unused host-specific design `a8c5e05f…1fd53` without
-   initializing an evidence root or opening any split.
-3. **Done:** authenticate exact-design review marker commit `209407f` against
-   the canonical append-only ledger and frozen runtime/source hashes.
-4. **Running:** execute the consolidated B2 pipeline once under its caps. No
-   retry, seed selection, partial population or early test opening.
-5. **Pending:** independently reopen terminal artifacts and route one result:
-   mechanics/leakage refusal, no-learning closeout, or permission to design B3.
+1. **Done / spent:** V1 exact source/design review, capture and REF-C. Training
+   exceeded its wall cap and was stopped through the reviewed supervisor path
+   before test. No retry or partial-model use.
+2. **Now:** publish one V2 successor that binds the V1 no-result receipt and a
+   narrow resource-failure repair route, makes seed classification fail closed,
+   and adds measured epoch wall plus enforceable in-loop deadlines.
+3. **Next review:** one consolidated exact-head source/design review. Do not
+   spend a separate review on unchanged `0949404`; review the repaired successor.
+4. **Then:** on a single ≥16-CPU host, perform the reviewed all-lane capacity
+   preflight and device qualification, populate every runtime/resource hash,
+   and build one immutable execution freeze.
+5. **Before compute:** obtain one external exact-freeze PASS. Execute once with
+   no retry, seed selection, partial population, or early test opening.
+6. **Terminal:** independently reopen the V2 result and route exactly one
+   mechanics/resource refusal, no-learning closeout, or B3 design permission.
+
+The V1 incident changes the operational contract: a planning cap is not a cap
+unless running code checks it before starting work that cannot finish inside
+the remaining budget. V2 therefore binds epoch-time measurement, safety margin,
+deadline checks, non-sealing timeout behavior, and a durable spent admission.
 
 ## B2 scientific gate
 

@@ -3,7 +3,7 @@
 > Current queue only. Historical reviews belong in `HANDOFF_REVIEW.md` and Git
 > history. A request not listed here is not active.
 
-Last reconciled: 2026-08-16 17:05 EDT.
+Last reconciled: 2026-08-16 17:12 EDT.
 
 ## Immediate objective
 
@@ -61,11 +61,19 @@ one new immutable freeze. It is not execution authority.
 
 ## Codex work in parallel
 
-Codex is rebuilding a clean source checkout/runtime and fresh score-free
-all-rank preflight/deadline receipts for `15cc8f8`. After the source PASS,
-Codex will freeze one new evidence root and replace this queue with the exact
-single freeze-review request. There are no per-stage review requests after
-that PASS; the next review will be the terminal independent reopen.
+Codex completed the clean checkout/runtime and both fresh score-free receipts:
+
+- all-rank preflight SHA `725983a2c012d20635e4dfba61e62c7ffd0d85294c626eff30e81ad5c84ea1de`:
+  416/416 rounds, 16 lanes, all 13 ranks, zero stderr;
+- deadline receipt SHA `2144d83765c17d42ded2c3fad44df7a5072d47da152e9b118cbad1cac7ccc0cc`:
+  416 capture, 32 REF-C, two training samples, CPU, zero stderr, no test or
+  result bytes.
+
+The source PASS is the only remaining freeze-construction input. Immediately
+after it lands, Codex will freeze one new evidence root and replace this queue
+with the exact single freeze-review request. There are no per-stage review
+requests after that PASS; the next review will be the terminal independent
+reopen.
 
 ## Operational truth
 

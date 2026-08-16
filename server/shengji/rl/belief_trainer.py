@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import math
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import torch
 
@@ -445,12 +445,13 @@ def evaluate_calibration_stream_nanonats(
     return value
 
 
-def train_cohort_epoch_stream(
+def _train_cohort_epoch_stream(
         models: tuple[HistoryOwnershipModelV1, ...],
         optimizers: tuple[torch.optim.Optimizer, ...],
-        batches: Iterable[BeliefTrainingBatchV1], *, epoch: int) \
+        batches: Iterable[BeliefTrainingBatchV1], *, epoch: int,
+        state_sha256: Callable[[HistoryOwnershipModelV1], str]) \
         -> tuple[EpochTrainingReceiptV1, ...]:
-    """Stream each batch once and apply it to every fixed cohort member."""
+    """Shared cohort mechanics with an exact device-aware state binding."""
     if type(models) is not tuple or len(models) != len(COHORT_SEEDS) \
             or any(type(model) is not HistoryOwnershipModelV1
                    for model in models) \
@@ -466,7 +467,7 @@ def train_cohort_epoch_stream(
     except TypeError as exc:
         raise BeliefTrainerError(
             "training epoch batch population drift") from exc
-    before = tuple(model_state_sha256(model) for model in models)
+    before = tuple(state_sha256(model) for model in models)
     for model in models:
         model.train(True)
     weighted_losses = [0.0] * len(models)
@@ -547,14 +548,27 @@ def train_cohort_epoch_stream(
             decision_population_sha256=population_sha,
             batch_schedule_sha256=schedule_sha,
             model_state_sha256_before=before[index],
-            model_state_sha256_after=model_state_sha256(model)))
+            model_state_sha256_after=state_sha256(model)))
     return tuple(receipts)
 
 
-def evaluate_calibration_cohort_stream_nanonats(
+def train_cohort_epoch_stream(
         models: tuple[HistoryOwnershipModelV1, ...],
-        batches: Iterable[BeliefTrainingBatchV1]) -> tuple[int, ...]:
-    """Evaluate all fixed members while retaining only one batch."""
+        optimizers: tuple[torch.optim.Optimizer, ...],
+        batches: Iterable[BeliefTrainingBatchV1], *, epoch: int) \
+        -> tuple[EpochTrainingReceiptV1, ...]:
+    """Stream one CPU batch once and apply it to every fixed V1 member."""
+    return _train_cohort_epoch_stream(
+        models, optimizers, batches, epoch=epoch,
+        state_sha256=model_state_sha256)
+
+
+def _evaluate_calibration_cohort_stream_nanonats(
+        models: tuple[HistoryOwnershipModelV1, ...],
+        batches: Iterable[BeliefTrainingBatchV1], *,
+        state_sha256: Callable[[HistoryOwnershipModelV1], str]) \
+        -> tuple[int, ...]:
+    """Shared cohort evaluation with an exact device-aware state binding."""
     if type(models) is not tuple or len(models) != len(COHORT_SEEDS) \
             or any(type(model) is not HistoryOwnershipModelV1
                    for model in models) \
@@ -565,7 +579,7 @@ def evaluate_calibration_cohort_stream_nanonats(
     except TypeError as exc:
         raise BeliefTrainerError(
             "calibration batch population/split drift") from exc
-    before = tuple(model_state_sha256(model) for model in models)
+    before = tuple(state_sha256(model) for model in models)
     states = tuple(model.training for model in models)
     weighted_losses = [0.0] * len(models)
     active_total = 0
@@ -616,7 +630,7 @@ def evaluate_calibration_cohort_stream_nanonats(
         for model, state in zip(models, states, strict=True):
             model.train(state)
     if batch_count == 0 or identity is None or active_total <= 0 \
-            or tuple(model_state_sha256(model) for model in models) != before:
+            or tuple(state_sha256(model) for model in models) != before:
         raise BeliefTrainerError("calibration cohort evaluation drift")
     values = tuple(round(
         weighted / active_total * LOSS_SCALE) for weighted in weighted_losses)
@@ -624,3 +638,11 @@ def evaluate_calibration_cohort_stream_nanonats(
             or any(not math.isfinite(value) for value in weighted_losses):
         raise BeliefTrainerError("calibration loss receipt is invalid")
     return values
+
+
+def evaluate_calibration_cohort_stream_nanonats(
+        models: tuple[HistoryOwnershipModelV1, ...],
+        batches: Iterable[BeliefTrainingBatchV1]) -> tuple[int, ...]:
+    """Evaluate all fixed CPU V1 members while retaining one batch."""
+    return _evaluate_calibration_cohort_stream_nanonats(
+        models, batches, state_sha256=model_state_sha256)

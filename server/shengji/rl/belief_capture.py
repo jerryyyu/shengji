@@ -17,9 +17,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..ai.registry import make_bot
-from ..engine.cards import Ordering, make_deck
+from ..engine.cards import RANKS, Ordering, make_deck
 from ..engine.game import Game
-from ..engine.round import actual_play_after
+from ..engine.round import Round, actual_play_after
 from .belief_contract import (BeliefContractError, CapturedDeclarationEvent,
                               CapturedPlayEvent, PublicTranscriptV1,
                               canonical_json_bytes)
@@ -244,6 +244,7 @@ def _capture_with_policies(
         round_seed: int, policy_name: str,
         policy_seeds: tuple[int, int, int, int], policies: list[Any],
         *, decision_observer: Any = None, actor_only: bool = False,
+        trump_rank: str | None = None,
         ) -> CapturedBeliefRoundV1 | CapturedActorRoundV1:
     _validate_seeds(round_seed, policy_seeds)
     if type(policy_name) is not str or not policy_name \
@@ -255,8 +256,13 @@ def _capture_with_policies(
     if any(any(not callable(getattr(policy, method, None))
                for method in required) for policy in policies):
         raise BeliefCaptureError("capture policy interface is incomplete")
+    if trump_rank is not None and trump_rank not in RANKS:
+        raise BeliefCaptureError("capture trump rank is invalid")
 
-    rnd = Game(random.Random(round_seed)).start_round()
+    rnd = (Game(random.Random(round_seed)).start_round()
+           if trump_rank is None
+           else Round(trump_rank, banker=None,
+                      rng=random.Random(round_seed)))
     transcript = PublicTranscriptV1()
     while rnd.phase == "deal":
         seat, _, _ = rnd.deal_next()

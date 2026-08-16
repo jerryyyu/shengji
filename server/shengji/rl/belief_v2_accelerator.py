@@ -204,6 +204,19 @@ def _model_device(model: HistoryOwnershipModelV1) -> torch.device:
     return next(iter(devices))
 
 
+def _same_training_device(
+        actual: torch.device, expected: torch.device) -> bool:
+    """Compare canonical requests with PyTorch's resolved device identity."""
+    if type(actual) is not torch.device or type(expected) is not torch.device:
+        return False
+    if actual.type != expected.type:
+        return False
+    # CPU and MPS requests are deliberately unindexed at the public boundary,
+    # while PyTorch may resolve MPS tensors to ``mps:0``.  CUDA is explicitly
+    # indexed and therefore keeps its exact device-index requirement.
+    return expected.type in {"cpu", "mps"} or actual.index == expected.index
+
+
 def move_models_to_device(
         models: tuple[HistoryOwnershipModelV1, ...], *,
         device: str) -> tuple[HistoryOwnershipModelV1, ...]:
@@ -216,7 +229,7 @@ def move_models_to_device(
         _model_device(model)
     for model in models:
         model.to(device=target, dtype=torch.float32)
-        if _model_device(model) != target:
+        if not _same_training_device(_model_device(model), target):
             raise BeliefV2AcceleratorError("V2 model transfer drift")
     return models
 
@@ -279,7 +292,8 @@ def move_training_batch_to_device(
             device=target, non_blocking=False, copy=False)
         for name in tensor_fields
     })
-    if any(getattr(moved, name).device != target
+    if any(not _same_training_device(
+               getattr(moved, name).device, target)
            for name in tensor_fields) \
             or any(getattr(moved, field.name) != getattr(batch, field.name)
                    for field in fields(batch)
@@ -304,7 +318,9 @@ def train_v2_cohort_epoch_stream(
     """Transfer each batch once and train the complete cohort on one device."""
     target = require_training_device(device)
     if type(models) is not tuple or not models \
-            or any(_model_device(model) != target for model in models):
+            or any(not _same_training_device(
+                       _model_device(model), target)
+                   for model in models):
         raise BeliefV2AcceleratorError("V2 cohort device drift")
     moved = (move_training_batch_to_device(batch, device=device)
              for batch in batches)
@@ -320,7 +336,9 @@ def evaluate_v2_calibration_cohort_stream_nanonats(
     """Evaluate the complete cohort on the same exact selected device."""
     target = require_training_device(device)
     if type(models) is not tuple or not models \
-            or any(_model_device(model) != target for model in models):
+            or any(not _same_training_device(
+                       _model_device(model), target)
+                   for model in models):
         raise BeliefV2AcceleratorError("V2 cohort device drift")
     moved = (move_training_batch_to_device(batch, device=device)
              for batch in batches)

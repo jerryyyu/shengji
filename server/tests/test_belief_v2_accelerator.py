@@ -27,6 +27,7 @@ from shengji.rl.belief_training import (
     collate_training_examples,
 )
 from shengji.rl.belief_v2_accelerator import (
+    _same_training_device,
     BeliefV2AcceleratorError,
     TRAINING_TENSOR_FIELDS,
     V2TrainingDeviceProfileV1,
@@ -81,6 +82,37 @@ def test_device_names_require_explicit_portable_identity():
     for value in ("", "cuda", "cpu:0", "mps:0", "metal", True):
         with pytest.raises(BeliefV2AcceleratorError):
             canonical_training_device(value)
+
+
+def test_resolved_mps_zero_matches_the_unindexed_canonical_request():
+    assert _same_training_device(
+        torch.device("mps:0"), torch.device("mps"))
+    assert _same_training_device(
+        torch.device("cpu"), torch.device("cpu"))
+    assert _same_training_device(
+        torch.device("cuda:0"), torch.device("cuda:0"))
+    assert not _same_training_device(
+        torch.device("cuda:1"), torch.device("cuda:0"))
+    assert not _same_training_device(
+        torch.device("cpu"), torch.device("mps"))
+
+
+@pytest.mark.skipif(
+    not torch.backends.mps.is_built()
+    or not torch.backends.mps.is_available(),
+    reason="requires an available MPS device",
+)
+def test_mps_deterministic_training_path_completes_without_fallback():
+    models = _models()
+    move_models_to_device(models, device="mps")
+    optimizers = tuple(new_v2_optimizer(model) for model in models)
+    receipts = train_v2_cohort_epoch_stream(
+        models, optimizers, iter((_batch(),)), epoch=1, device="mps")
+    assert len(receipts) == len(models)
+    assert all(receipt.decision_count == 2 for receipt in receipts)
+    assert all(model_state_sha256(cpu_checkpoint_clone(model))
+               == portable_model_state_sha256(model)
+               for model in models)
 
 
 def test_accelerator_profile_binds_physical_identity_and_capability_shape():

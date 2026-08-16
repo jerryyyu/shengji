@@ -116,8 +116,18 @@ class HistoryOwnershipModelV1(nn.Module):
         else:
             sequence, _ = self.event_encoder(events)
             indices = (event_lengths - 1).clamp(min=0)
-            event_summary = sequence[
-                torch.arange(batch, device=events.device), indices]
+            if sequence.device.type == "mps":
+                # The indexed backward path uses an MPS accumulation kernel
+                # with no deterministic implementation.  A one-hot batch
+                # product selects the same final valid event without indexed
+                # gradient accumulation.
+                selector = nn.functional.one_hot(
+                    indices, num_classes=event_count).to(sequence.dtype)
+                event_summary = torch.bmm(
+                    selector.unsqueeze(1), sequence).squeeze(1)
+            else:
+                event_summary = sequence[
+                    torch.arange(batch, device=events.device), indices]
             event_summary = torch.where(
                 (event_lengths > 0).unsqueeze(1), event_summary,
                 torch.zeros_like(event_summary))
@@ -301,5 +311,14 @@ def masked_count_cross_entropy(
             or bool(torch.any(labels[active_mask]
                               > count_maximums[active_mask])):
         raise BeliefModelError("training label population/bounds drift")
+    if logits.device.type == "mps":
+        # Boolean indexing backpropagates through
+        # index_put_with_accumulate_mps, for which PyTorch exposes no
+        # deterministic kernel.  The ignored-label form has the same active
+        # examples and gradients, while leaving the established CPU/CUDA
+        # numerical path byte-for-byte unchanged.
+        return nn.functional.cross_entropy(
+            logits.reshape(-1, 3), labels.reshape(-1),
+            ignore_index=-1, reduction="mean")
     return nn.functional.cross_entropy(
         logits[active_mask], labels[active_mask], reduction="mean")

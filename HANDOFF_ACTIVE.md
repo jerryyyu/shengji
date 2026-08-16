@@ -25,7 +25,8 @@ or progress reviews between those boundaries.
 
 - PR: `https://github.com/jerryyyu/shengji/pull/118`
 - exact head: `86aa3b70cbe9672a2ee82c19e9d0583bae530756`
-- exact base / merge base: `08c050209952edb1e5a2328b0545e4f643ffa4ff`
+- exact merge base: `08c050209952edb1e5a2328b0545e4f643ffa4ff`;
+  base branch is canonical `main`
 - diff: 27 files, +2,951/-335; no `HANDOFF_REVIEW.md`, production, gameplay
   policy, or frozen evidence changes
 - review mode: one consolidated PASS or one HOLD containing every blocker

@@ -5,6 +5,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
+from shengji.rl.belief_v2_seed_registry import BeliefV2SeedRegistryError
 from shengji.rl.belief_v2_seed_registry import (
     scan_seed_sources,
     seed_registry_bytes,
@@ -80,3 +83,23 @@ def test_real_population_table_is_compact_complete_and_disjoint(tmp_path):
                for row in registry["classifications"]
                if row["classification"] == "finite-population")
     assert seed_registry_bytes(registry, scan=scan).endswith(b"\n")
+
+
+def test_new_explicit_required_candidate_refuses_without_reviewed_identity(
+        tmp_path):
+    repo, _ = _selector_repo(tmp_path)
+    added = repo / "server" / "pkg" / "new_population.py"
+    added.parent.mkdir(parents=True, exist_ok=True)
+    added.write_text("NEW_POPULATION_SEED_START = 8675309\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "-c", "user.name=Test", "-c",
+         "user.email=test@example.com", "commit", "-qm", "new population")
+    head = _git(repo, "rev-parse", "HEAD")
+    scan = scan_seed_sources(repo.resolve(), expected_git=head)
+    assert any(
+        row["path"] == "server/pkg/new_population.py"
+        and row["explicit_classification_required"]
+        for row in scan["candidates"])
+    with pytest.raises(BeliefV2SeedRegistryError,
+                       match="unclassified explicit seed candidate"):
+        build_reviewed_seed_registry(scan)

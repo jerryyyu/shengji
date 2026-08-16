@@ -13,7 +13,7 @@ capture, training, test, gameplay, strength, or deployment authority.
 
 from __future__ import annotations
 
-import re
+# Keep reviewed source-line identities stable while replacing the old heuristic.
 from dataclasses import dataclass
 from typing import Any
 
@@ -430,20 +430,33 @@ def reviewed_seed_classifications(
                     classification="finite-population",
                     population_id=spec.population.population_id,
                     note=f"reviewed:{spec.population.population_id}")
+    reviewed_nonpopulation = dict(_REVIEWED_NONPOPULATION_CLASSIFICATIONS)
+    if len(reviewed_nonpopulation) \
+            != len(_REVIEWED_NONPOPULATION_CLASSIFICATIONS) \
+            or any(classification not in {
+                "non-population-context", "derived-rng-stream"}
+                for classification in reviewed_nonpopulation.values()):
+        raise BeliefV2SeedRegistryError(
+            "reviewed nonpopulation classification table drift")
     for candidate in scan["candidates"]:
-        if not candidate["explicit_classification_required"] \
-                or candidate["candidate_id"] in by_id:
+        candidate_id = candidate["candidate_id"]
+        classification = reviewed_nonpopulation.get(candidate_id)
+        if classification is None:
             continue
-        line = candidate["line"]
-        non_population = re.search(
-            r"(?:MAX_|MIN_|OFFSET|DOMAIN|MATERIAL|IDENTIT|COUNT|CEILING)",
-            line) is not None
-        by_id[candidate["candidate_id"]] = SeedClassificationV1(
-            candidate_id=candidate["candidate_id"],
-            classification=("non-population-context" if non_population
-                            else "derived-rng-stream"),
-            note=("reviewed:bound-or-context" if non_population
-                  else "reviewed:derived-model-policy-test-or-output-seed"))
+        if not candidate["explicit_classification_required"] \
+                or candidate_id in by_id:
+            raise BeliefV2SeedRegistryError(
+                "reviewed nonpopulation classification binding drift")
+        by_id[candidate_id] = SeedClassificationV1(
+            candidate_id=candidate_id,
+            classification=classification,
+            note=f"reviewed:explicit:{classification}")
+    required = {
+        candidate["candidate_id"] for candidate in scan["candidates"]
+        if candidate["explicit_classification_required"]}
+    if not required.issubset(by_id):
+        raise BeliefV2SeedRegistryError(
+            "unclassified explicit seed candidate")
     return complete_seed_classifications(scan, explicit=tuple(by_id.values()))
 
 
@@ -458,3 +471,77 @@ def build_reviewed_seed_registry(scan: dict[str, Any]) -> dict[str, Any]:
     return build_seed_registry(
         scan, classifications=classifications, populations=populations,
         v2_population_id=v2_population_id)
+
+
+# Exact candidate identities reviewed as non-population constants or derived
+# RNG/model/test streams at source head 0949404.  A changed or newly introduced
+# explicit-required candidate receives a new identity and refuses above instead
+# of being inferred from its spelling.
+_REVIEWED_NONPOPULATION_CLASSIFICATIONS = (
+    ("0fe8997e2f4e1828334eaae6a5cf65d12a738e2594746d3e05af29795afa73a7", "non-population-context"),
+    ("974f4a252423738d3ae0a5e49973e3ff30c1c9a34718558a0b4584c1508b3b81", "non-population-context"),
+    ("e1fb5dc2913689d01b2c51b8f8b6ca02e4a81b5452ba152c06e280b977b7bb16", "non-population-context"),
+    ("89bb9b967e07bf0e4fa8ed8fc93caab710b811aea477c1428fd97bc7ac517586", "derived-rng-stream"),
+    ("3cdf27a07ec9c536b55d3f019612383b4030a6eab567dfd9051431e674406981", "non-population-context"),
+    ("30babb8263f2d317b2c3e8b4ae270e7c69489d764365bcaef487aa44081800d2", "derived-rng-stream"),
+    ("1cf24c6f568f22457f4e0c31aabd2155f183fbb9d5e5f213206aaaf6f1297e22", "derived-rng-stream"),
+    ("567fc32495dbdddcd3e62fe7b6b1f1f2e8621d055ffa4d3b44c4fcfff706b3dc", "derived-rng-stream"),
+    ("862bed85346793ac2c60c314ad8c9e175895064ab428e9ae9988d3bd621ce421", "derived-rng-stream"),
+    ("3edcf99c17683587894123c1b685e1c3b56a4b7924b2d772c748dbfc2fff56d2", "non-population-context"),
+    ("92aa97d6629ad52b20c724d9e7db57145f42a796d0a263cd70e7b79a1e69891b", "non-population-context"),
+    ("c183669b03e0cd391b758a9b36d97e486cf41c60f29d67d2964a6f3e67ba9ecb", "non-population-context"),
+    ("d69108221044dc755f041f35e7e5f33c720975f535ad4969ae1f486e7da9fc15", "non-population-context"),
+    ("319e4aa51a00a1347310d09dcf8625dc36ccf0d3cc44168f954392ea6a03e105", "non-population-context"),
+    ("8acdb4170862e2ff8c536ff6e7ca4757ca96941e5976ae186fce0b9850e208a4", "derived-rng-stream"),
+    ("6b1e3dbaaf5d1d0e61c23cf705072dc7bc403666fcdee2a421eb00aba6e97a5d", "non-population-context"),
+    ("2c7e170e6a0dd472bf3dfd346f660a5469cfadc8ec243bd1499beca16a41f23c", "non-population-context"),
+    ("a77353882f3807ed364209d28746e368d424e268475d9240cb25cf4ebbc751ef", "derived-rng-stream"),
+    ("123c8415652bec7652c0d59ce584404ec21386ce861588645e6b6c34ec7ee421", "non-population-context"),
+    ("339cb623bb184f0f2e665e7ae461067dc8dd6db6e4fb8f7b82ea019f5f03aa04", "non-population-context"),
+    ("5010284aa90ff2fe406de885399f2922a866217b417ebde70448a7f7a1043841", "derived-rng-stream"),
+    ("736ebbb9cdb57d0ac0f586eb006c139c0bbbaae203f4441d8b997c18c5edf28e", "derived-rng-stream"),
+    ("10a67d2bc918e1afb1a6d8b7345f8b68faa937e7bfcaee649e0767d848c30b28", "derived-rng-stream"),
+    ("732e44a805b2ccc63d524ac29f050c55f228101e6bbd13b5097ae267c3e6f628", "derived-rng-stream"),
+    ("9613caf08e9ab7a6d85d7ad61e4b6f2bc5bacabfbd22639d3ce62ae536fdc8bb", "derived-rng-stream"),
+    ("db59c26dea4d74a90d3c2101bca79b72a599f9116fccdd56eff99fac3ab62a12", "derived-rng-stream"),
+    ("b392b666861e98c0ad572ddd6dda11afa3a16080a22bbd59d5eda2f5825bf3b4", "derived-rng-stream"),
+    ("ce21bf469e64e3827b8f810a2aae7c59aeaa623970a76603ff8a0683946b29b6", "derived-rng-stream"),
+    ("b2723dd5d01943f6c58213e725d96651f325523bdb76342951ccab7c83c55ff4", "derived-rng-stream"),
+    ("59d148d2f8c120e0a877cbb670fb6028f5859afbfb6435d9b66cce15a61df866", "derived-rng-stream"),
+    ("fbcfd29db995d7cd8c61ade0b5074687646c6153c0cc8d9ac40cb68f8bfad634", "derived-rng-stream"),
+    ("dcef7a9341436b5d4d9ac2dbd843389e7ec3aac0d1321c83b60c0d588174c34f", "derived-rng-stream"),
+    ("7169faa65f4144d092eadc8d7f7687a2c5acc8415aa0554171f8fc25371c7e4e", "derived-rng-stream"),
+    ("dd5c266f87c499569589d1013f29b8905c866cb2e86fc8a92b7d6956baa663d5", "non-population-context"),
+    ("a1e5ce4c3f786b60d1e6e3141405f558b2b737a3d08e10d3895f52110905b8ef", "derived-rng-stream"),
+    ("d123627913a035840003fcfcb4c2084e424f07f11c02e20f4fd6094dea5bba13", "derived-rng-stream"),
+    ("7e4a0c24466fbd6bbdca15090680f87732c5065bc735ffdabee5e25f1b07c537", "derived-rng-stream"),
+    ("f5dc5cc7b96667f37e836738baf2c0c105f55ecdc4346e14f731f15e84aba61b", "derived-rng-stream"),
+    ("d97afaf9454e914d14b5cd853d3bb79af04a4a39f45258310dc7b6f392ea69a5", "non-population-context"),
+    ("f20147dda53d9f351fe31ec4e923105c577a5ab181f2dbaf97b2430d9f62199a", "non-population-context"),
+    ("c795fdfedd4763aba7964e8a21597966611c3da0fe0e5d98e4fb42451a737879", "derived-rng-stream"),
+    ("8ee579b490d2bba99ad32a9f92cc0d7fd4795bc37ce76184028777b184c4d975", "derived-rng-stream"),
+    ("a2ec540e9f3d24d63e1b7ce7ed64405e411ef4574a8e9068c4057501d2dcef37", "derived-rng-stream"),
+    ("42267880ae577772e7ee63643a21a8200564464d82f990a6c5a1a73f9a6346c8", "derived-rng-stream"),
+    ("43c27463163659550f57090486397510742f273bb4df1cfa0cd218c5c4b501a8", "derived-rng-stream"),
+    ("49afbe10228ecdf8c747c3da1fbb9fb1ebe67b1d90932f03cebb160061b4a709", "derived-rng-stream"),
+    ("e613f55b5ff32c46f5530c35e74c5d49286ca8f02076f2050e705ae9abd1ebaf", "derived-rng-stream"),
+    ("1c635c70847581fa7ee912e9ef6c125fe8017ca0bf7b01cb876f4c74ea7856b8", "derived-rng-stream"),
+    ("2cfd2a62631a8c68f70efb0080e88cac3319adc6481dbafc4d48395f85e56065", "derived-rng-stream"),
+    ("2ac008ae8ad58092aa1544247744ee177c59606b94731e3e5dc080d6571f0f00", "derived-rng-stream"),
+    ("0f0508005a228bf0fcc2979b4e642239e425d2fd599d28a4de12a9de39b0cf4e", "derived-rng-stream"),
+    ("3528096e433372addbd53e9110d87c7b86834d1b2cc95d518b0bd90495158ea1", "derived-rng-stream"),
+    ("9a80b20098af7efacad1193f0ae86f0207571b329e534c05c933191c2ed8688b", "derived-rng-stream"),
+    ("8c36375728eced2d41bf6bd7dcb480bd8b52547c7d476167c96032ea4f13f8bb", "derived-rng-stream"),
+    ("dfa8efd43c9acdaa51ebc9d2346bbb7d6ff22f85aa94a2f8fed14483da440c96", "derived-rng-stream"),
+    ("8769e2f14ec077f03cbe5a6dba27967b019f881634f1109a99701a97a396425c", "derived-rng-stream"),
+    ("c3e8464a0d02ed495232bc995083e01e115843da0b692cf1d92eb2b26b556dcb", "derived-rng-stream"),
+    ("835043e440f2f2e0e261913655f2d784baef832427edd02b7aa500a7efb17239", "derived-rng-stream"),
+    ("ba9bd4da3c1539ce60f4a1477bd90f030a9bb4ecf01e5438b0c317102d6dfb64", "derived-rng-stream"),
+    ("68d34afeb44a125088575255fc524457cfb292939d3e3ebfa2ee76d65674a3c1", "derived-rng-stream"),
+    ("c9dfad7772f885b53087ec523493428492f73b8c046603805b1b2b628a215e19", "derived-rng-stream"),
+    ("ed096e9fecfeb3086927052ec86f45c55e4bc4117530b47db5e993b43a1ad95e", "derived-rng-stream"),
+    ("930926076c8017abbb70a7abd681ad8d0ea1a40d1210db7ae020861e4b88d17b", "derived-rng-stream"),
+    ("3441ec7eb9f2d1890056c544ae994cc6eccad9ac6a059ce73988c9fa9f4e83bb", "derived-rng-stream"),
+    ("9158389fbcee5e3a65c46cc1b87c1fc2b33d5e9d03ed886bfc95e4dc5dc4db2a", "derived-rng-stream"),
+    ("6ce0d090746e869a380f1c4ca73db83b7aac5c506696a4198febca7f49bac3c5", "derived-rng-stream"),
+)

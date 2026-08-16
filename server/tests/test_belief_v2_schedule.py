@@ -7,6 +7,8 @@ from dataclasses import replace
 
 import pytest
 
+from shengji.ai.heuristic import HeuristicBot
+from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
 from shengji.rl.belief_v2_device_qualification import (
     build_qualification_plan_from_primary,
 )
@@ -26,7 +28,12 @@ from shengji.rl.belief_v2_schedule import (
     V2TrainingRowV1,
     realization_set_sha256,
     realize_v2_cohorts,
+    training_row,
     validate_v2_cohort_realizations,
+)
+from shengji.rl.belief_v2_training import (
+    build_synthetic_training_example,
+    collate_v2_training_examples,
 )
 
 
@@ -144,6 +151,53 @@ def test_selected_round_group_is_never_split_between_batches():
             group_batches.setdefault(row.round_group_key, set()).add(
                 batch_by_key[row.decision_key])
         assert all(len(indices) == 1 for indices in group_batches.values())
+
+
+def test_fully_known_final_decision_remains_in_positive_supervision_batch():
+    captured = _capture_with_policies(
+        2, CHAMPION_POLICY, (101, 102, 103, 104),
+        [HeuristicBot() for _ in range(4)])
+    examples = tuple(
+        build_synthetic_training_example(pair) for pair in captured.pairs)
+    assert len(examples) == 84
+    assert int(examples[-1].active_mask.sum()) == 0
+    assert all(int(example.active_mask.sum()) > 0
+               for example in examples[:-1])
+
+    rows = tuple(training_row(example) for example in examples)
+    values = realize_v2_cohorts(
+        _plans(), synthetic_rows=rows, human_rows=_rows("human", 4))
+    primary = next(value for value in values
+                   if value.kind == "synthetic-primary")
+    assert len(primary.rows) == len(examples)
+    assert any(row.active_label_count == 0 for row in primary.rows)
+    active_by_key = {
+        row.decision_key: row.active_label_count for row in primary.rows}
+    assert all(sum(active_by_key[key] for key in batch) > 0
+               for batch in primary.batches)
+
+    batch = collate_v2_training_examples(examples)
+    assert int(batch.active_mask[-1].sum()) == 0
+    assert int(batch.active_mask.sum()) == primary.active_label_count > 0
+
+
+def test_realized_schedule_refuses_a_wholly_unsupervised_batch():
+    negative = replace(
+        _rows("synthetic", 5)[0], active_label_count=-1)
+    with pytest.raises(BeliefV2ScheduleError,
+                       match="realized training row drift"):
+        realize_v2_cohorts(
+            _plans(), synthetic_rows=(
+                negative, *_rows("synthetic", 5)[1:]),
+            human_rows=_rows("human", 1))
+
+    synthetic = tuple(replace(row, active_label_count=0)
+                      for row in _rows("synthetic", 5))
+    with pytest.raises(BeliefV2ScheduleError,
+                       match="batch has no active supervision"):
+        realize_v2_cohorts(
+            _plans(), synthetic_rows=synthetic,
+            human_rows=_rows("human", 1))
 
 
 def test_multiple_frozen_scale_fractions_form_one_nested_learning_curve():

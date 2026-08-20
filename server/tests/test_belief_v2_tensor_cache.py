@@ -25,7 +25,9 @@ from shengji.rl.belief_v2_accelerator import (
 )
 from shengji.rl.belief_v2_pipelined_batches import pipelined_batches
 from shengji.rl.belief_v2_tensor_cache import (
+    ACTOR_TENSOR_FIELDS,
     MANIFEST_FILENAME,
+    PRIVILEGED_TENSOR_FIELDS,
     BeliefV2TensorCacheError,
     build_tensor_cache,
     cached_batch_factory,
@@ -188,3 +190,32 @@ def test_existing_directory_and_bad_inputs_refuse(tmp_path):
     with pytest.raises(BeliefV2TensorCacheError, match="load inputs"):
         cached_batch_factory(tmp_path / "cache",
                              expected_manifest_sha256="short")
+
+
+def test_every_cached_tensor_round_trips_bit_exactly(tmp_path):
+    """Any future encoding (sparse, packed, compressed) must satisfy this.
+
+    Training parity alone can hide a lossy encoder: small perturbations may
+    not change an epoch's receipts on a tiny fixture.  This asserts the
+    stronger property directly — every tensor field reloads bit-identical,
+    dtype and shape included — so a "lossless" claim has a witness that can
+    fail.
+    """
+    batches, receipt = _built(tmp_path)
+    factory = cached_batch_factory(
+        tmp_path / "cache",
+        expected_manifest_sha256=receipt["manifest_sha256"])
+    reloaded = list(factory())
+    assert len(reloaded) == len(batches)
+    tensor_fields = tuple(
+        name for name, value in vars(batches[0]).items()
+        if isinstance(value, torch.Tensor))
+    assert set(tensor_fields) == set(ACTOR_TENSOR_FIELDS) \
+        | set(PRIVILEGED_TENSOR_FIELDS)
+    for got, expected in zip(reloaded, batches, strict=True):
+        assert got.decision_keys == expected.decision_keys
+        for name in tensor_fields:
+            mine, theirs = getattr(got, name), getattr(expected, name)
+            assert mine.dtype == theirs.dtype, name
+            assert mine.shape == theirs.shape, name
+            assert torch.equal(mine, theirs), name

@@ -22,7 +22,7 @@ import hashlib
 import math
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ..ai.registry import make_bot
@@ -33,7 +33,7 @@ from .belief_capture import (
     _capture_with_policies,
 )
 from .belief_contract import PublicTranscriptV1, canonical_json_bytes
-from .belief_corpus import reopen_actor_row
+from .belief_corpus import CorpusPairV1, reopen_actor_row
 from .belief_cohort import COHORT_SEEDS
 from .belief_model import new_from_scratch_model
 from .belief_refc_capture import capture_ref_c_worlds
@@ -212,8 +212,8 @@ def _measure_coordinate(
     manifests = []
 
     def observe(rnd: Round, seat: int, transcript: PublicTranscriptV1,
-                actor_row: bytes) -> None:
-        actor, metadata = reopen_actor_row(actor_row)
+                pair: CorpusPairV1) -> None:
+        actor, metadata = reopen_actor_row(pair.actor_bytes)
         batch = capture_ref_c_worlds(
             rnd, seat, transcript,
             sampler_seed=_deadline_sampler_seed(metadata["decision_key"]))
@@ -260,18 +260,27 @@ def _training_probe(
     move_models_to_device(models, device=device)
     optimizers = tuple(new_v2_optimizer(model) for model in models)
 
-    def batches():
+    def batches(*, split: str):
+        if split not in {"train", "calibration"}:
+            raise BeliefV2DeadlineEstimateError(
+                "V2 deadline training probe split drift")
         for pairs in training_pairs:
             examples = tuple(build_synthetic_training_example(pair)
                              for pair in pairs)
-            yield collate_v2_training_examples(examples)
+            # The out-of-population probe rows retain their deterministic
+            # corpus splits, but this timing-only pass must exercise both
+            # production role checks over the same exact public/target rows.
+            # Change only the batch role label; all tensors and identities are
+            # freshly rederived from the sealed pairs for each role.
+            yield replace(
+                collate_v2_training_examples(examples), split=split)
 
     synchronize_training_device(device)
     started = time.perf_counter_ns()
     receipts = train_v2_cohort_epoch_stream(
-        models, optimizers, batches(), epoch=1, device=device)
+        models, optimizers, batches(split="train"), epoch=1, device=device)
     calibration = evaluate_v2_calibration_cohort_stream_nanonats(
-        models, batches(), device=device)
+        models, batches(split="calibration"), device=device)
     synchronize_training_device(device)
     finished = time.perf_counter_ns()
     state_sha256s = tuple(portable_model_state_sha256(model)

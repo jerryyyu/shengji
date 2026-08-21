@@ -2743,3 +2743,45 @@ Not a defect and not a HOLD — the mechanism is sound and I verified it. Record
 **Ask (housekeeping, not a gate).** Leave one caps file in the freeze-inputs directory, or rename the superseded one to something the builder cannot be pointed at by accident — `resource-caps-final.json` is the more authoritative-sounding of the two names while being the one the guard rejects, which is the wrong way round. Do **not** delete it; supersede by naming, per the never-delete rule. Also worth stating in the freeze receipt which input path was consumed, so the binding is auditable without inspecting the directory.
 
 No verdict is implied here and no authority is granted or withdrawn: the limits of `db88123` stand unchanged. — Claude
+## 2026-08-21 12:37 EDT — BELIEF-V1 V2 **R4 exact-freeze review** at `b78f802b` / freeze `9986d591…5748deb7`: ✅ **PASS** — both blockers repaired and mutation-verified; execution marker written
+
+**Verdict: PASS.** My BLOCK at `9676228` is **cleared — by repair, verified myself, not by supersession or by anyone's say-so.** Both blockers are closed in source at this exact head, each proven by a mutation that turns its witness red. The marker below is machine-generated from the freeze by the repo's own `expected_execution_review_claim()` at this head. Nothing is initialized: `/opt/belief-r4-evidence-b78f802-r3` is absent and there is no ops directory.
+
+**On provenance.** The freeze's `source_review_commit` is `db88123`, a sibling session's PASS. Consistent with the identity finding at `711d5a2`, **I did not inherit it** — I re-ran the load-bearing verification myself and report only what I measured. Where my results differ from that entry, mine are below.
+
+### Blocker 1 — live boot identity: CLOSED, mutation-proven
+
+`belief_v2_execution_identity.py:458` now reads `_boot_identity()` **live** and refuses `V2 live boot identity drift` against the frozen value, inside `validate_live_execution` and **before** the profile rebuild — so a regression inside `build_runtime_profile` can no longer silently disarm reboot detection. That ordering is what makes it correct, not merely present.
+
+Mutation, the sharp form — keep the live call, neutralize only the comparison (`if _boot_identity() is None:`):
+
+- clean: `5 passed`
+- mutated: **`FAILED … DID NOT RAISE BeliefV2ExecutionIdentityError`** (`test_live_gate_recomputes_both_source_and_runtime`)
+
+So the witness constrains the comparison against the frozen value, not the presence of a call. Restored byte-exact, `sha256 c83c204b102f70c627749350c109fad04ac151cb861cb9701edece9220251844`, worktree clean. The tautology I filed — receipt written from `freeze.runtime.boot_identity` and validated against `freeze.runtime.boot_identity` — is gone.
+
+### Blocker 2 — capture cap: CLOSED, and the operator can no longer choose it
+
+`derived_capture_core_hour_cap()` is pure integer ceiling arithmetic, no float, with `sample_count` recomputed from the lane rows rather than read from a claimed field. Its one scalar input is not forgeable either: `belief_v2_preflight.py:469` refuses unless `result["summary"] == _derive_summary(lanes)`, so the summary is itself derived from the rows. `belief_v2_freeze_builder.py:620` refuses on **exact inequality**, i.e. in either direction.
+
+Mutation — neutralize that refusal (`if False:`): **`FAILED … DID NOT RAISE BeliefV2FreezeBuilderError`**. Clean restore.
+
+**Computed independently at this head against the bound preflight:** `aggregate_cpu_nanoseconds = 5,839,263,222,632`, `sample_count = 416` → **derived 65**; the freeze binds **65**. Match. The hand-set 72 that I blocked is gone.
+
+### Correction to `db88123`, and an artifact hazard worth fixing
+
+That entry states the derivation "yields exactly **66**." **For this freeze it yields 65**, and 65 is what is bound. 66 was correct only for the *superseded* preflight (`aggregate_cpu = 5,854,478,808,907`); r3 re-measured at 16:26 and the number moved.
+
+The hazard: the input tree carries **both** `resource-caps-final.json` (66) and `resource-caps-mechanical.json` (65), and **the file named `-final` is not the one bound.** This is the second consecutive cycle where a `-final` file misled a reviewer — at r2 it concealed the 64→72 change, here it states a superseded value. The freeze is correct because the builder enforces the derivation, so this is not blocking. But **please stop shipping a `-final` artifact that is not final**: emit one caps file, or name the bound one unambiguously. A reviewer who trusts the filename instead of recomputing gets the wrong number, twice running.
+
+### What else verified
+
+Freeze `9986d591…5748deb7` — host, my copy, and `execution_freeze_from_bytes()` all agree, canonical reconstruction accepted with no drift. `execution_git = b78f802b…558665`, the head whose repairs I mutation-tested. `h0-group-split.json` is still `f29dea82…`, matching the split I reproduced byte-exact in an earlier cycle. All six digest-bound inputs match on-disk SHAs; `resource_caps` is bound by embedded value and equals the derivation. Authority is correctly scoped and narrow — `deployment`, `promotion`, `strength_claim`, `gameplay_strength_screen`, `sampler_implementation` and `retry` all false; the freeze itself carries `offline_pipeline_execution_authorized: false`, so execution authority comes only from the marker below. `-r1` remains terminally spent.
+
+### Stated plainly before 48 hours are committed
+
+`training_next_epoch_wall_estimate_nanoseconds = 19,820,828,487,148` is **5.51 h/epoch** against a 48 h cap — a ceiling near **8.7 epochs**, with patience-3 inside it. Not a defect and not blocking. But this freeze buys a truncated curve, not a converged one, and the terminal report should say so rather than let a stopping event read as convergence.
+
+BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW {"bounded_capture_reference_training_and_one_test_open_authorized":true,"deadline_estimate_receipt_sha256":"91d26076caa81a0f3238c2164f56e70b7f211f1db8c47d285dad31c2c4def5a3","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-r4-evidence-b78f802-r3","execution_git":"b78f802b81f86b7c88d529ad62f180eeef558665","freeze_sha256":"9986d591af844f6e40516c97968fa37a1f08962f57b78992b05ce0775748deb7","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"dada676acbdccd242bebf2d27b26ba24c709af2f3be677325fa86408ac25cabf","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"f5cd6177e6b74c94f31575e1ebc1e45dd342c9d2c96f15cf5fc02be9c4e650e5","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-offline-execution-review-v1","seed_registry_sha256":"93915b53d07fb7e739a8ba665dd046525a01ba3694818c4b607caa7890ee50da","source_manifest_sha256":"fe00334dd1b8891b4ef661fe79320705fc737b3d2e9a974a3dd81fe33c61655a","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"2f7edb58c08d831ccc390f8ff77bb4b73a19f57e2f940977d9563c952ab673e0","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}
+
+— Claude (session `68f9c8bd`)

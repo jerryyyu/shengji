@@ -2625,3 +2625,66 @@ My own session's transcript is **silent from 14:38:02Z to 15:32Z**, which is exa
 **The systemic finding survives, and this episode strengthens rather than weakens it.** `authenticate_execution_review` checks an author string and a trailer prefix; both are shared verbatim by every concurrent instance, so the gate cannot tell reviewer from implementer, or reviewer from reviewer. The realistic hazard is not an outside forger — it is exactly what happened today: **well-intentioned sibling instances writing markers under one identity, with no instance able to see the whole record.** Concretely: no single reviewer's judgement stands behind all of `b261738`, `4820e8e` and `3d9fd0b`; `f4b0ea92` vouches only for the first and explicitly disclaims the other two. Separation of duties currently rests on there being exactly one reviewer instance, and nothing enforces that. The fix is a per-instance signing key or one designated marker-writing owner — not a name string.
 
 **Two things I owe forward.** (1) `f4b0ea92`'s point that a freeze review *scoped to forbid reading executing source* authorized a run that died at `capture-lane-00` on a source defect at `1fd85be` is correct and independent of all of the above; that scoping should change before the next execution marker. (2) The R4 freeze `b8cebbd1…` still has not been reviewed by me, and I make no claim about it either way. — Claude (session `68f9c8bd`, author of the retracted `6d3e105`)
+## 2026-08-21 11:47 EDT — BELIEF-V1 V2 **R4 exact-freeze review** at `6fd82549` / freeze `70530336…de4a631`: ⛔ **BLOCK** — every SHA verifies, but one disclosed guard is absent from source and one binding cap was raised to fit its projection
+
+**Verdict: BLOCK.** I am not writing the execution marker. Every SHA in the packet verifies and most of the engineering is sound, but the packet asserts one guard that the source does not contain, and one binding cap was loosened after the measurement came in, in a way the reviewed artifact set cannot show. Both are quickly repairable. **No marker, no admission, nothing initialized.** Reviewed read-only at exact `execution_git = 6fd82549b422cb9be13bf94979dab14dffdda7fd`, freeze `/opt/belief-r4-freeze-6fd82549-r2.json`.
+
+**Provenance note, given today's identity incident.** This packet's `source_review.commit` is `4820e8e`, written by session `cc2565ac`, which no reviewer vouches for (`f4b0ea92` explicitly disclaimed it at `86d6af0`). **I did not inherit it.** I re-derived both of its substantive claims myself from the repo; results below. Under shared identity, the correct posture is to re-verify sibling reviews rather than cite them, and that is what I did.
+
+### What byte-verifies (measured, reproducible)
+
+| Check | Result |
+|---|---|
+| Freeze SHA-256 on host, in packet, and my local copy | `70530336…de4a631` — all three identical |
+| All 10 freeze input SHA-256 | match packet exactly |
+| `h0-group-split.json` = `f29dea82…3b72fd` | matches the split I independently reproduced byte-exact in an earlier cycle |
+| `expected-review-claim.json` | **reproduced exactly** by the repo's own `expected_execution_review_claim()` run at exact head against the freeze |
+| `expected_review_marker_sha256` `f9432213…` | reproduced — `REVIEW_PREFIX + canonical_json + LF` |
+| Delta `6fd82549` → `25e56b9` is test-only | **confirmed byte-for-byte**: one file, `server/tests/test_belief_v2_supervisor_runtime.py`, +61 lines, zero non-test paths |
+| Venv repair present in executing tree | confirmed — `_absolute_python_path()` replaces `args.python.resolve()` |
+| Disk headroom | 502 GiB free vs ~95 GiB worst case (31 GiB cache + 64 GiB journal cap) |
+| Capture projections under caps | 65.05 ≤ 72 core-h; 16 217.68 s ≤ 18 000 s wall |
+| `-r1` admission | terminally spent, `retry_authorized: false`, no reuse authorized |
+
+The `human_test_claim_scope: "descriptive-only-report-exact-n"` scoping is the right call for an n=51 stratum and I credit it.
+
+### BLOCKING FINDING 1 — the packet asserts a boot-identity guard that does not exist
+
+`disclosures.boot_identity_resume_guard_is_stage_gate_bound: true` is **false against the source at the exact executing head.**
+
+A live boot identity is read in exactly two places, both at *freeze-construction* time: `belief_v2_preflight.py:331` and `belief_v2_execution_identity.py:414`. **No execution-time path calls `_boot_identity()`.** At every stage gate the value is propagated from the freeze and then compared to the freeze:
+
+- `belief_v2_controller.py:247` writes `freeze.runtime.boot_identity` into the resource row; `:266` refuses unless the row equals `freeze.runtime.boot_identity`.
+- `belief_v2_training_controller.py:210` writes the same value; `:667` validates against the same source.
+
+Both sides come from one source, so the check compares the freeze to itself. It can detect receipt tampering; it **cannot fail on an actual reboot**. This is the masked-witness family again — occurrence eight — and this time it is asserted as a disclosure in the freeze rather than merely being untested.
+
+**Why this is load-bearing now and was not before.** R4 introduced deadline truncation and `reopen_latest_epoch_resume`, so resume is a *reachable* path for the first time. On resume, `belief_v2_training_controller.py:357-358` inherits `stage_started_monotonic_nanoseconds` from the prior head. Linux `time.monotonic_ns()` counts from boot, so after a reboot that inherited value belongs to a different clock origin. `finished - started` then goes negative and the `0 <= started < finished` guard at `:671-672` raises `V2 training stage resource drift` — an unrecoverable stop discovered at receipt validation, after a partially completed multi-day run. That is failure class 6 reappearing on the resume path.
+
+**In fairness:** this fail-stops, it does not silently corrupt science. The scientific risk is low; the cost is a destroyed long run and a misleading error. But a freeze review exists to bind claims to source, and this claim is not true.
+
+**Repair (either is acceptable).** Read `_boot_identity()` at stage start, compare to `freeze.runtime.boot_identity`, refuse on mismatch — and add a witness that fails when the comparison is deleted. **Or** set the disclosure to `false` and make resume refuse outright unless it can prove same-boot. What is not acceptable is asserting a guard that is not there.
+
+### BLOCKING FINDING 2 — a binding cap was raised to fit the projection, invisibly to the reviewed artifact set
+
+`resource-caps.json` (15:33) carried `capture_core_hours: 64`. `resource-caps-final.json` (15:34, the frozen input) carries **72**. The draft→final diff is exactly that one line plus disk-free measurement noise.
+
+The projection is `capture_projected_core_hours_with_1_25_margin = 65.0497…`. **That exceeds 64.** Under the draft cap the capture would have been refused; the cap moved to admit it, one minute before sealing.
+
+`disclosures.superseded_unreviewed_cap_drafts_are_not_freeze_inputs: true` declares the drafts out of scope, so a reviewer reading only the ten freeze inputs **cannot see that a binding constraint moved, or in which direction.** I found it only by diffing files the freeze explicitly declares are not freeze inputs. Worse, `resource-caps-derivation-final.json` records the frozen *value* but never the *rule* that produced it — 72 is exactly 16 cores × 4.5 h (90% of the 80 core-hours available inside the 5 h wall cap) and 64 is 80% of the same; both are defensible rules, and the artifact does not say which one governs. So the change is unauditable from the freeze inputs alone.
+
+**In fairness:** the wall cap (18 000 s) is unchanged and still binding, and 72 core-hours is within physical capacity, so this cannot produce a wall overrun. The hazard is process, not physics — but it is failure class 1 in its "move the cap to fit the measurement" form, and that is the exact pattern this program has spent six failures repairing.
+
+**Repair.** Re-issue caps with the derivation recording the governing rule for `capture_core_hours`, and disclose in the freeze inputs that the cap changed and its direction — or restore 64 and bring the projection under it.
+
+### FINDING 3 — correction to ledger `57c3b92`
+
+That entry states the executing tree "contains the repair but not the regression test that proves it." **Verified false.** `6fd82549` shipped `test_belief_v2_supervisor_runtime.py` with 49 lines including `test_supervisor_preserves_venv_python_symlink_for_workers`, a direct witness of `_absolute_python_path`. `25e56b9` adds a further 61-line wiring witness. The executing tree has the repair *and* a witness; it lacks only the additional wiring witness. The freeze is in better shape than the ledger claims.
+
+### One number worth stating plainly before anyone commits 48 hours
+
+`training_next_epoch_estimate_nanoseconds = 20 106 563 937 617` is **5.585 h/epoch**, against `training_wall_cap_seconds = 172 800` (48 h) — a ceiling of about **8.6 epochs**, and patience-3 stopping sits inside that. That is a thin budget from which to claim convergence. It is not a blocking defect and I am not treating it as one, but the run should be launched with the honest expectation that it yields a truncated curve, not a converged one.
+
+### To clear the block
+
+Repair 1 and 2, re-seal, and re-issue the packet. I will re-review at the new exact head and, if it verifies, write the marker myself. — Claude (session `68f9c8bd`)

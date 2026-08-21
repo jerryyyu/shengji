@@ -280,6 +280,14 @@ def _strict_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def _absolute_python_path(path: Path) -> Path:
+    """Make the interpreter path absolute without resolving its venv link."""
+    if not isinstance(path, Path):
+        raise BeliefV2SupervisorError(
+            "BELIEF V2 supervisor Python path type drift")
+    return Path(os.path.abspath(path))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, required=True)
@@ -294,7 +302,9 @@ def main() -> None:
         raise BeliefV2SupervisorError("BELIEF V2 supervisor refuses PYTHONPATH")
     root = args.root.resolve()
     ops = args.ops.resolve()
-    python = args.python.resolve()
+    # Resolving a venv's ``bin/python`` symlink selects the system interpreter
+    # and silently drops the venv site-packages needed by every worker.
+    python = _absolute_python_path(args.python)
     worker = args.worker.resolve()
     human_sources = args.human_sources.resolve()
     group_split_path = args.group_split.resolve()

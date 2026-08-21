@@ -33,6 +33,7 @@ from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_freeze_builder import (
     BeliefV2FreezeBuilderError,
     build_execution_freeze_from_receipts,
+    derived_capture_core_hour_cap,
     resource_caps_from_bytes,
     standard_cohort_plans,
 )
@@ -180,13 +181,16 @@ def _preflight():
             {"wall_nanoseconds": 20_000_000_000},
             {"wall_nanoseconds": 20_000_000_000},
         ]} for _ in range(16)],
+        "summary": {
+            "aggregate_cpu_nanoseconds": 450_344_523_762,
+        },
     }
 
 
 def _caps():
     training_estimate = _training_epoch_estimate()
     return V2ResourceCapsV1(
-        capture_core_hours=64, capture_wall_seconds=14_400,
+        capture_core_hours=66, capture_wall_seconds=14_400,
         capture_bytes=16 * 1024**3,
         reference_core_hours=16, reference_wall_seconds=7_200,
         reference_bytes=16 * 1024**3,
@@ -470,7 +474,7 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
     inventory = _inventory()
     split = build_h0_group_split(inventory)
 
-    def build_with(receipt):
+    def build_with(receipt, *, caps=None):
         return build_execution_freeze_from_receipts(
             repo=tmp_path.resolve(), expected_git="a" * 40,
             source_review_commit="b" * 40,
@@ -485,7 +489,7 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
                 "candidate_report_sha256": _sha("6")}),
             training_candidate_device="mps",
             deadline_estimate_raw=canonical_json_bytes(receipt),
-            resource_caps=_caps(),
+            resource_caps=_caps() if caps is None else caps,
             evidence_root=(tmp_path / "deadline-evidence").resolve())
 
     for receipt in (
@@ -501,6 +505,11 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
                            match="deadline estimate"):
             build_with(receipt)
 
+    moved_cap = replace(_caps(), capture_core_hours=72)
+    with pytest.raises(BeliefV2FreezeBuilderError,
+                       match="capture core cap derivation drift"):
+        build_with(_deadline_estimate(), caps=moved_cap)
+
 
 def test_resource_caps_require_canonical_positive_integer_schema():
     caps = _caps()
@@ -514,6 +523,16 @@ def test_resource_caps_require_canonical_positive_integer_schema():
         resource_caps_from_bytes(
             canonical_json_bytes({**caps.to_dict(), "schema": CAP_SCHEMA})
             + b" ")
+
+
+def test_capture_core_cap_is_mechanical_and_cannot_move_to_fit():
+    preflight = _preflight()
+    assert derived_capture_core_hour_cap(preflight) == 66
+    changed = {
+        **preflight,
+        "summary": {"aggregate_cpu_nanoseconds": 1},
+    }
+    assert derived_capture_core_hour_cap(changed) == 1
 
 
 def test_standard_cohort_factory_is_stable():

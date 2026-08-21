@@ -733,6 +733,15 @@ physical memory, boot identity, Python/native bytes, and all 16 CPUs to the
 same live runtime used by the deadline probe and freeze builder. A receipt from
 another host or boot cannot be reused even when its source commit matches.
 
+The capture CPU cap is not operator-selected after measurement. It is exactly
+the ceiling, in whole core-hours, of the capacity preflight's measured
+aggregate CPU extrapolated from its complete round population to all 13,312
+production rounds, multiplied by the fixed 5/4 margin. The freeze builder
+recomputes that value and refuses any lower or higher supplied cap. Every
+worker stage enters through `_load_root`, whose live-execution gate rebuilds
+the runtime profile and re-reads the current host boot identity before any
+resume journal is trusted; it does not compare two copies of the freeze.
+
 The immutable 13,312-coordinate production schedule is memoized only after
 its first complete derivation. This preserves its canonical bytes while
 reducing later coordinate validation from about 48 milliseconds to

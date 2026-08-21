@@ -71,15 +71,45 @@ from .belief_v2_freeze import (
 )
 from .belief_v2_human_inventory import group_split_bytes, inventory_bytes
 from .belief_v2_preflight import preflight_result_bytes
+from .belief_v2_protocol import V2_ROUND_COUNT
 from .belief_v2_seed_registry import seed_registry_bytes, seed_scan_bytes
 
 
 FREEZE_INPUT_SCHEMA = "belief-v1-v2-execution-freeze-inputs-v1"
 SCALE_COHORT_ID = "synthetic-scale-50"
+CAPTURE_CPU_MARGIN_NUMERATOR = 5
+CAPTURE_CPU_MARGIN_DENOMINATOR = 4
+NANOSECONDS_PER_CORE_HOUR = 3_600_000_000_000
 
 
 class BeliefV2FreezeBuilderError(ValueError):
     """A reviewed receipt or freeze-construction input drifted."""
+
+
+def derived_capture_core_hour_cap(preflight: dict[str, Any]) -> int:
+    """Derive the capture cap from measured CPU with a fixed 1.25 margin."""
+    if type(preflight) is not dict \
+            or type(preflight.get("lanes")) is not list \
+            or type(preflight.get("summary")) is not dict:
+        raise BeliefV2FreezeBuilderError(
+            "V2 capture core cap derivation input drift")
+    lanes = preflight["lanes"]
+    if not lanes or any(type(lane) is not dict
+                        or type(lane.get("rounds")) is not list
+                        or not lane["rounds"] for lane in lanes):
+        raise BeliefV2FreezeBuilderError(
+            "V2 capture core cap derivation population drift")
+    sample_count = sum(len(lane["rounds"]) for lane in lanes)
+    aggregate_cpu = preflight["summary"].get(
+        "aggregate_cpu_nanoseconds")
+    if type(aggregate_cpu) is not int or aggregate_cpu <= 0:
+        raise BeliefV2FreezeBuilderError(
+            "V2 capture core cap derivation measurement drift")
+    numerator = (aggregate_cpu * V2_ROUND_COUNT
+                 * CAPTURE_CPU_MARGIN_NUMERATOR)
+    denominator = (sample_count * CAPTURE_CPU_MARGIN_DENOMINATOR
+                   * NANOSECONDS_PER_CORE_HOUR)
+    return (numerator + denominator - 1) // denominator
 
 
 def _sha256(raw: bytes) -> str:
@@ -586,6 +616,10 @@ def build_execution_freeze_from_receipts(
     if preflight_result_bytes(preflight) != preflight_raw:
         raise BeliefV2FreezeBuilderError(
             "V2 preflight result reconstruction drift")
+    expected_capture_core_hours = derived_capture_core_hour_cap(preflight)
+    if resource_caps.capture_core_hours != expected_capture_core_hours:
+        raise BeliefV2FreezeBuilderError(
+            "V2 capture core cap derivation drift")
     deadline_estimate = _deadline_estimate_receipt(
         deadline_estimate_raw, expected_git=expected_git,
         resource_caps=resource_caps)

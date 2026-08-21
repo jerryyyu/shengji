@@ -2827,3 +2827,41 @@ It compares the **frozen execution checkout's cached `origin/main`** against the
 4. Operationally, freezing main for a run's duration would also prevent this — but it directly conflicts with the ledger protocol, so I would not adopt it in place of the code fix.
 
 **Attempt count.** This is the **seventh** consecutive belief-lane failure and the seventh distinct failure class: wall-cap sizing, fully-known decisions, marker sequencing, stage dependency ordering, reference replicate matrix, deadline-expiry-cannot-seal, and now **canonical-tip equality under a mandated-append ledger**. Six of the seven were infrastructure, not science. — Claude (job `68f9c8bd` scratch tree)
+## 2026-08-21 16:36 EDT — ⛔ **R4 FAILED — seventh failure class: any push to `origin/main` during a live run kills it at the next stage gate**
+
+The run died at stage 2/10 (`human-capture`), all 16 lanes, identical error: **`V2 local canonical ref differs from real remote`** (`belief_v2_freeze.py:916`). Synthetic-capture had completed cleanly first — 16/16 tasks, 832/832 units per lane, 13.56 GiB against the 16 GiB cap. Nothing scientific was opened; `outcome_blind: True` throughout.
+
+**Measured timeline, every timestamp from the artifacts or the GitHub events API — none remembered.**
+
+- `16:39:51Z` — `0bcb2f82` pushed (my exact-freeze PASS carrying the execution marker).
+- `16:42:41Z` — the freeze checkout fetched `origin/main` and landed on **`0bcb2f82`**. Sole reflog entry: `fetch origin main: fast-forward`; `FETCH_HEAD` and `refs/remotes/origin/main` both stamped `16:42:41.543Z`.
+- `16:42:52Z` — admission consumed, run starts.
+- **`16:46:24Z` — `e14bc091` ("HANDOFF_ACTIVE: track live BELIEF R4 run") pushed to main — 3 min 32 s into the run.**
+- `16:42→~20:00Z` — synthetic-capture runs to completion on all 16 cores.
+- `20:15:29Z` — human-capture opens the next stage gate, re-authenticates, and every lane dies.
+
+**Mechanism, read from source rather than inferred.** Every stage function calls `_load_root`, which calls `reauthenticate_pipeline_admission` → `authenticate_execution_review`. That function does:
+
+```
+remote_tip = _canonical_remote_tip(repo)      # live git ls-remote
+local_tip  = _git(repo, "rev-parse", "origin/main")   # the checkout's cached ref
+if local_tip != remote_tip: raise "V2 local canonical ref differs from real remote"
+```
+
+`REPO = SERVER.parent` resolves to the freeze checkout itself (`git rev-parse --show-toplevel` → `/opt/belief-r4-freeze-b78f802`). The checkout fetched **once**, at startup. So `local_tip` is frozen at `0bcb2f82` for the run's lifetime while `remote_tip` tracks the live branch. **The moment anything lands on main, every subsequent stage gate fails.** Synthetic-capture survived only because all 16 of its lanes had already loaded before `16:46:24Z`.
+
+**This is a seventh distinct failure class**, and it is worse than its six predecessors in one specific way: the run was already doomed **3.5 hours before it noticed**, having burned the full 16-core box on capture work that then could not be carried forward. The failure is also self-inflicted in the most literal sense available — *the commit that killed the run was the commit announcing that the run was live.*
+
+**It directly implicates the review protocol, including my own.** I am authorized to push `HANDOFF_REVIEW.md` review records to main. Had I appended any finding during those 3.5 hours, I would have killed this run myself. I appended nothing only because I happened to have nothing to report — luck, not design. **No one can safely write to main while a run is live under the current check**, which makes the ledger and the pipeline mutually exclusive. That is not a workable steady state.
+
+**Ranked repairs.**
+
+1. **Replace live equality with live ancestry (recommended).** Keep fetching the real remote — that is the property worth having — but require that `admission.canonical_remote_tip` is still an **ancestor** of the live remote tip, and that the marker bytes still hash to the pinned `review_marker_sha256`. This preserves everything the check actually defends (the authorizing marker is genuinely on canonical main, and history was not rewritten or force-pushed out from under the run) while tolerating ordinary append-only growth. It is strictly stronger than today against a stale local ref, because it re-derives from the live remote instead of trusting a startup fetch.
+2. **Re-fetch before comparing.** If equality is kept, fetch immediately before the comparison so `local_tip` is current. This fixes the symptom but leaves the run hostage to any push landing inside the fetch→compare window, and to a force-push it would silently accept.
+3. **Declare a MAIN-FREEZE for the run's duration.** Operationally brittle, blocks the review ledger for days at a time, and repairs no design defect. Not recommended, but if 1 and 2 are deferred it must be declared explicitly in `HANDOFF_ACTIVE.md` and honored by every session — including mine.
+
+**Do not restart under the current check.** A restart would inherit the same coupling and the same guaranteed death at whichever stage gate follows the next push to main.
+
+**Status of the spent namespace.** `/opt/belief-r4-evidence-b78f802-r3` holds `admission.json`, `capture/`, `freeze.json`, `group-split.json`, `inventory.json`, `review.md` — the completed synthetic capture is 13.56 GiB across 16 sealed lanes. Retained permanently per the never-delete rule; not reusable without a fresh admission. — Claude
+
+BELIEF_V1_V2_RUN_FAILURE_ANALYSIS {"canonical_remote_tip_at_start":"0bcb2f821a909bf375caf88ae52a33582b176ebd","evidence_root":"/opt/belief-r4-evidence-b78f802-r3","failure_class":"canonical-ref-live-equality-vs-mutable-remote","failure_class_ordinal":7,"failure_stage":"human-capture","failure_task":"human-capture-00","killing_commit":"e14bc09156892a2fcc846222a71c582adf9aa20f","killing_push_utc":"2026-08-21T16:46:24Z","lanes_failed":16,"restart_authorized":false,"run_start_utc":"2026-08-21T16:42:52Z","schema":"belief-v1-v2-run-failure-analysis-v1","scientific_result_opened":false,"stage_index":2,"stages_total":10,"synthetic_capture_completed":true,"synthetic_capture_bytes":14559675821}

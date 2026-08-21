@@ -2785,3 +2785,45 @@ Freeze `9986d591…5748deb7` — host, my copy, and `execution_freeze_from_bytes
 BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW {"bounded_capture_reference_training_and_one_test_open_authorized":true,"deadline_estimate_receipt_sha256":"91d26076caa81a0f3238c2164f56e70b7f211f1db8c47d285dad31c2c4def5a3","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-r4-evidence-b78f802-r3","execution_git":"b78f802b81f86b7c88d529ad62f180eeef558665","freeze_sha256":"9986d591af844f6e40516c97968fa37a1f08962f57b78992b05ce0775748deb7","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"dada676acbdccd242bebf2d27b26ba24c709af2f3be677325fa86408ac25cabf","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"f5cd6177e6b74c94f31575e1ebc1e45dd342c9d2c96f15cf5fc02be9c4e650e5","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-offline-execution-review-v1","seed_registry_sha256":"93915b53d07fb7e739a8ba665dd046525a01ba3694818c4b607caa7890ee50da","source_manifest_sha256":"fe00334dd1b8891b4ef661fe79320705fc737b3d2e9a974a3dd81fe33c61655a","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"2f7edb58c08d831ccc390f8ff77bb4b73a19f57e2f940977d9563c952ab673e0","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}
 
 — Claude (session `68f9c8bd`)
+## 2026-08-21 16:35 EDT — R4 seventh failure diagnosed: the run was killed by a commit to canonical main, and the guard that killed it protects nothing the next line does not already check
+
+**This is a MODE 2 failure diagnosis, not a review.** No admission is live — `state: failed`, the service is `failed`, cloud is at 2% CPU — so appending this entry cannot harm a run. That caveat is load-bearing, for reasons the finding itself explains.
+
+**Exact failure, measured.** `/opt/belief-r4-ops-b78f802-r3/logs/human-capture-00.stderr.log`:
+
+```
+File ".../server/shengji/rl/belief_v2_freeze.py", line 916, in authenticate_execution_review
+    raise BeliefV2FreezeError("V2 local canonical ref differs from real remote")
+```
+
+`status.json`: `state: failed`, `failure_task: human-capture-00`, `failure_returncode: 1`, `stage_index: 2` of 10 (`human-capture`), `completed_tasks: 16` of 85, `stage_completed_tasks: 0` of 30. Every human-capture lane I sampled — 00, 01, 02, 05, 11 — died with the identical error, so this is systematic, not one bad task.
+
+**The mechanism, quoted from the source that ran.** `authenticate_execution_review` does:
+
+```python
+remote_tip = _canonical_remote_tip(repo)            # live `git ls-remote` of canonical main
+local_tip  = _git(repo, "rev-parse", "origin/main") # the FROZEN checkout's cached ref
+if local_tip != remote_tip:
+    raise BeliefV2FreezeError("V2 local canonical ref differs from real remote")
+```
+
+It compares the **frozen execution checkout's cached `origin/main`** against the **live remote**. Measured on host: `/opt/belief-r4-freeze-b78f802` has `origin/main = 0bcb2f8`, with `.git/refs/remotes/origin/main` mtime **16:42:41 UTC** — 79 seconds before the service started at 16:44:00. The checkout is read-only and never re-fetches by design, so **that ref is guaranteed to go stale the moment anyone commits to main.**
+
+**The guard has no security value here, and I verified that rather than asserting it.** The very next lines already run `git merge-base --is-ancestor review_commit remote_tip`, which is the real property — the marker must still be reachable on genuine canonical main. And it held perfectly: `0bcb2f821a909bf375caf88ae52a33582b176ebd` **is the direct parent of** `e14bc09156892a2fcc846222a71c582adf9aa20f`, confirmed by `git merge-base --is-ancestor` returning 0 and by `git log -1 --format=%P e14bc09`. A rewritten, removed or forged marker would still fail the ancestry check. The equality check adds nothing except a dependency on nobody committing.
+
+**What actually committed.** `e14bc09` — "HANDOFF_ACTIVE: track live BELIEF R4 run", authored by Jerry at 16:46 UTC, **two minutes after the run started**, whose entire content is the operational table tracking this run. The note recording the run killed the run.
+
+**The generalization is the part that matters, and it is worse than one unlucky commit.** This protocol *requires* appending review records to canonical main. Every hourly Claude ledger entry, every packet verdict, every operator note does exactly what `e14bc09` did. **Any future run is killed by the first commit to main after its checkout fetches** — including entries this very ledger discipline mandates. Filing this finding during a live run would have destroyed it.
+
+**Doomed-but-still-burning, a second defect in its own right.** Re-authentication happens at each task's *start*. From 16:46 UTC the run could not complete, but stage 1 had already loaded and ran to completion — all 16 lanes reached 832/832 units — and the failure surfaced only at 20:15:29 when the first human-capture task began. systemd records **`Consumed 2d 7h 42min 41.557s CPU time over 3h 31min 29.872s wall clock time, 22.1G memory peak`**. Roughly three and a half hours of full 16-core compute ran after the outcome was already determined. A ten-stage DAG that authenticates only at task start can burn an arbitrary amount of the budget past its own death.
+
+**What survived.** 16 of 85 tasks sealed, `capture/` present under `/opt/belief-r4-evidence-b78f802-r3/`, all worker records `outcome_blind: true` with `evidence_artifact: false`. `retry_authorized: false`, so this admission is spent. Nothing scientific was produced or opened. Under the never-delete rule I have touched none of it.
+
+**Repairs, in the order I would rank them.**
+
+1. **Delete the `local_tip != remote_tip` equality check.** The ancestry check on the next line already enforces the property it appears to be guarding, and equality is unsatisfiable-in-the-limit for a frozen checkout. This is a one-line change that removes the entire failure class.
+2. If a staleness guard is genuinely wanted, bind the *admission's* `canonical_remote_tip` by **ancestry in the live remote**, never by equality to a cached ref — reachability is the invariant, tip identity is not.
+3. **Authenticate once at admission and fail fast at stage boundaries**, so a doomed run dies in seconds rather than hours. Even with repair 1, a run that loses authentication mid-flight should not spend 3.5 hours discovering it.
+4. Operationally, freezing main for a run's duration would also prevent this — but it directly conflicts with the ledger protocol, so I would not adopt it in place of the code fix.
+
+**Attempt count.** This is the **seventh** consecutive belief-lane failure and the seventh distinct failure class: wall-cap sizing, fully-known decisions, marker sequencing, stage dependency ordering, reference replicate matrix, deadline-expiry-cannot-seal, and now **canonical-tip equality under a mandated-append ledger**. Six of the seven were infrastructure, not science. — Claude (job `68f9c8bd` scratch tree)

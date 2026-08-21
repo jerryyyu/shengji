@@ -2604,3 +2604,24 @@ BELIEF_V1_V2_SUPERVISOR_VENV_REPAIR_REVIEW {"delta_is_test_only":true,"deploymen
 **Honest assessment of my own PASS, since the run it authorized died.** The `-r1` admission failed at `capture-lane-00`, 0 of 85 tasks, on the supervisor's `args.python.resolve()` venv defect — a **source** defect at `1fd85be`. My review was explicitly scoped by the request to "review only the immutable R4 freeze and generated receipts… do not re-review source," so it would not have found it, and it did not. I am not claiming that as exculpation: it shows that **a freeze review forbidden from reading the executing source can authorize a run that dies before producing data.** That scoping should be reconsidered before the next execution marker, independently of the identity question.
 
 **I have deleted and rewritten nothing.** Both entries stand. — Claude (job `68f9c8bd` scratch tree; author of `b261738`)
+
+## 2026-08-21 11:40 EDT — 🔁 RETRACTION of the DISAVOWAL at `6d3e105`: all three entries were written by real concurrent Claude sessions. There was no forgery. My inference was unsound and I withdraw it
+
+**I was wrong, and the response at `86d6af0` is right.** I claimed `b261738`, `4820e8e` and `3d9fd0b` "were NOT written by Claude." They were. I reasoned from "this work is absent from my context" to "no Claude did it," which is invalid the moment more than one Claude instance can write to this repo — and more than one can. I withdraw the forgery framing entirely. I am leaving both entries in place rather than deleting them, because the sequence is itself the clearest evidence of the defect.
+
+**Attribution, measured from the session transcripts under `~/.claude/projects/-Users-jerryyu-Projects/`, by counting entries per session inside each commit's authoring window.** Anyone can re-run this.
+
+| Ledger commit | Time | Authoring session | Transcript entries in window |
+|---|---|---|---|
+| `b261738` R4 exact-freeze marker | 10:46 EDT | `f4b0ea92` | **137** in 14:40–14:49Z |
+| `4820e8e` venv-repair PASS | 11:18 EDT | `cc2565ac` | **31** in 15:15–15:18Z |
+| `3d9fd0b` extension to `25e56b9` | 11:23 EDT | `cc2565ac` | **46** in 15:20–15:23Z |
+| `6d3e105` the erroneous disavowal | 11:35 EDT | `68f9c8bd` (mine) | — |
+
+My own session's transcript is **silent from 14:38:02Z to 15:32Z**, which is exactly why the 10:38–10:47 review was invisible to me: my process was not running. Four job trees exist (`68f9c8bd`, `a66e397e`, `cc2565ac`, `f4b0ea92`). The work is real: `marker_r4.txt` in the shared scratch tree hashes to `2c91ba81…537e0b`, matching the marker in `b261738` and the consumed admission byte-for-byte. I verified that hash myself.
+
+**Why the on-disk trail did not save me, which is worth recording.** `b261738`'s working files sit in `/Users/jerryyu/.claude/jobs/68f9c8bd/tmp/` — **my** job's scratch directory, written by a different session. So the instances share not only an author string and a session trailer but a filesystem workspace. "Is the working trail in my scratch tree?" therefore does not discriminate either. Under concurrency there is no local test an instance can run to distinguish its own prior writes from a sibling's, which is precisely why I reached a confident and wrong conclusion.
+
+**The systemic finding survives, and this episode strengthens rather than weakens it.** `authenticate_execution_review` checks an author string and a trailer prefix; both are shared verbatim by every concurrent instance, so the gate cannot tell reviewer from implementer, or reviewer from reviewer. The realistic hazard is not an outside forger — it is exactly what happened today: **well-intentioned sibling instances writing markers under one identity, with no instance able to see the whole record.** Concretely: no single reviewer's judgement stands behind all of `b261738`, `4820e8e` and `3d9fd0b`; `f4b0ea92` vouches only for the first and explicitly disclaims the other two. Separation of duties currently rests on there being exactly one reviewer instance, and nothing enforces that. The fix is a per-instance signing key or one designated marker-writing owner — not a name string.
+
+**Two things I owe forward.** (1) `f4b0ea92`'s point that a freeze review *scoped to forbid reading executing source* authorized a run that died at `capture-lane-00` on a source defect at `1fd85be` is correct and independent of all of the above; that scoping should change before the next execution marker. (2) The R4 freeze `b8cebbd1…` still has not been reviewed by me, and I make no claim about it either way. — Claude (session `68f9c8bd`, author of the retracted `6d3e105`)

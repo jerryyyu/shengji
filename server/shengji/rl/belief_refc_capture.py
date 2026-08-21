@@ -34,7 +34,7 @@ from .belief_input import build_history_ownership_input
 from .belief_reference import (REF_C_WORLD_COUNT, BeliefReferenceError,
                                ReceiverCardsV1,
                                SampledOwnershipWorldV1, reference_ownership,
-                               validate_sampled_world)
+                               validate_sampled_worlds)
 
 
 REF_C_BATCH_SCHEMA = "belief-v1-ref-c-sound-constraint-sampler-batch-v2"
@@ -329,7 +329,6 @@ def capture_ref_c_worlds_from_bound_actor(
             continue
         hands, buried = sampled
         world = _relative_world(actor, seat, hands, buried)
-        validate_sampled_world(actor, world)
         worlds.append(world)
     after = _snapshot(bot)
     before_dict = dict(before)
@@ -374,8 +373,7 @@ def validate_reference_world_batch(batch: ReferenceWorldBatchV1) -> None:
     try:
         build_history_ownership_input(
             batch.actor, behavior_policy_ids=batch.behavior_policy_ids)
-        for world in batch.worlds:
-            validate_sampled_world(batch.actor, world)
+        validate_sampled_worlds(batch.actor, batch.worlds)
     except (BeliefReferenceError, ValueError) as exc:
         raise BeliefRefCCaptureError("REF-C sampled world refused") from exc
     counters = {}

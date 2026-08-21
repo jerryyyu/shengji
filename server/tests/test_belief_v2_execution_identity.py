@@ -122,6 +122,9 @@ def test_live_gate_recomputes_both_source_and_runtime(monkeypatch):
     monkeypatch.setattr(
         "shengji.rl.belief_v2_execution_identity.build_runtime_profile",
         lambda: profile)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_execution_identity._boot_identity",
+        lambda: profile.boot_identity)
     validate_live_execution(
         repo=__import__("pathlib").Path("/repo"), execution_git="f" * 40,
         source_bindings=rows, runtime=profile)
@@ -130,6 +133,20 @@ def test_live_gate_recomputes_both_source_and_runtime(monkeypatch):
         lambda: replace(profile, native_sha256="0" * 64))
     with pytest.raises(BeliefV2ExecutionIdentityError,
                        match="live execution"):
+        validate_live_execution(
+            repo=__import__("pathlib").Path("/repo"),
+            execution_git="f" * 40, source_bindings=rows, runtime=profile)
+    # A worker entering after a reboot must re-probe the live boot rather than
+    # compare the freeze to itself.  Every worker stage enters through this
+    # gate before it can trust an exact-resume journal.
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_execution_identity.build_runtime_profile",
+        lambda: profile)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_execution_identity._boot_identity",
+        lambda: "0" * 64)
+    with pytest.raises(BeliefV2ExecutionIdentityError,
+                       match="live boot identity drift"):
         validate_live_execution(
             repo=__import__("pathlib").Path("/repo"),
             execution_git="f" * 40, source_bindings=rows, runtime=profile)

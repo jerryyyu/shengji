@@ -1,0 +1,695 @@
+"""Durable lossless train/calibration tensor caches for BELIEF-V1 V2.
+
+This stage runs only after the compact input index exists.  It reopens the
+same manifest-bound non-test sources as the streaming trainer, writes one
+lossless sparse actor cache per distinct cohort schedule, shares the primary
+actor cache with the hard-geometry label control through a label-only overlay,
+and writes one common calibration cache shared by every cohort.
+
+Every cache is bound to the exact decision population, batch schedule, source
+index, runtime, and storage cap.  No test target is opened and no cache grants
+training, evaluation, gameplay, strength, or deployment authority.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import time
+from pathlib import Path
+from typing import Any, Callable
+
+from .belief_artifacts import publish_exclusive_bytes, stable_read_bytes
+from .belief_contract import canonical_json_bytes
+from .belief_v2_controller import _stage_gate
+from .belief_v2_deadline import (
+    BeliefV2DeadlineError,
+    publish_deadline_refusal,
+    stage_deadline,
+)
+from .belief_v2_freeze import (
+    CONTROL_COHORT_ID,
+    PRIMARY_COHORT_ID,
+    V2ExecutionFreezeV1,
+    V2PipelineAdmissionV1,
+)
+from .belief_v2_input_index_controller import reopen_training_input_index
+from .belief_v2_device_runner import host_peak_memory_bytes
+from .belief_v2_progress import ProgressCallback
+from .belief_v2_streaming_inputs import V2ArtifactRoundLoader
+from .belief_v2_streaming_training import (
+    iter_streaming_calibration_batches,
+    iter_streaming_training_batches,
+)
+from .belief_v2_tensor_cache import (
+    V2TensorCacheBindingV1,
+    build_label_overlay,
+    build_tensor_cache,
+    cached_batch_factory,
+    reopen_label_overlay,
+    reopen_tensor_cache,
+)
+
+
+TENSOR_CACHE_STAGE_SCHEMA = "belief-v1-v2-training-tensor-cache-stage-v2"
+TENSOR_CACHE_RESOURCE_SCHEMA = (
+    "belief-v1-v2-training-tensor-cache-resource-v2")
+TENSOR_CACHE_START_SCHEMA = "belief-v1-v2-training-tensor-cache-start-v1"
+STAGE_DIRECTORY = "training-tensor-cache"
+RESULT_DIRECTORY = "result"
+MANIFEST_FILENAME = "manifest.json"
+START_FILENAME = "stage-start.json"
+CALIBRATION_CACHE_ID = "common-calibration"
+CONTROL_OVERLAY_DIRECTORY = f"overlay-{CONTROL_COHORT_ID}"
+
+
+class BeliefV2TensorCacheControllerError(ValueError):
+    """A cache source, byte population, cap, or authority binding drifted."""
+
+
+def _sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _runtime_sha256(freeze: V2ExecutionFreezeV1) -> str:
+    return _sha256(canonical_json_bytes(freeze.runtime.to_dict()))
+
+
+def _cache_directory_name(cohort_id: str) -> str:
+    if type(cohort_id) is not str or not cohort_id \
+            or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789-"
+                   for char in cohort_id):
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache cohort identifier drift")
+    return f"cache-{cohort_id}"
+
+
+def _realization_binding(
+        freeze: V2ExecutionFreezeV1, input_index_sha256: str,
+        realization) -> V2TensorCacheBindingV1:
+    return V2TensorCacheBindingV1(
+        cache_id=realization.cohort_id,
+        split="train",
+        decision_population_sha256=realization.decision_population_sha256,
+        batch_schedule_sha256=realization.batch_schedule_sha256,
+        source_index_sha256=input_index_sha256,
+        runtime_profile_sha256=_runtime_sha256(freeze),
+        expected_decision_count=len(realization.rows),
+        expected_batch_count=len(realization.batches),
+        storage_cap_bytes=freeze.resource_caps.training_bytes,
+    )
+
+
+def _calibration_binding(
+        freeze: V2ExecutionFreezeV1, input_index_sha256: str,
+        calibration) -> V2TensorCacheBindingV1:
+    return V2TensorCacheBindingV1(
+        cache_id=CALIBRATION_CACHE_ID,
+        split="calibration",
+        decision_population_sha256=calibration.decision_population_sha256,
+        batch_schedule_sha256=calibration.batch_schedule_sha256,
+        source_index_sha256=input_index_sha256,
+        runtime_profile_sha256=_runtime_sha256(freeze),
+        expected_decision_count=len(calibration.rows),
+        expected_batch_count=len(calibration.batches),
+        storage_cap_bytes=freeze.resource_caps.training_bytes,
+    )
+
+
+def _resource_row(
+        freeze: V2ExecutionFreezeV1, *, started: int, finished: int,
+        cpu_nanoseconds: int, artifact_bytes: int,
+        peak_host_memory_bytes: int, resumed_from_partial: bool) \
+        -> dict[str, Any]:
+    caps = freeze.resource_caps
+    if any(type(value) is not int or value <= 0 for value in (
+            started, finished, artifact_bytes, peak_host_memory_bytes)) \
+            or finished <= started \
+            or type(cpu_nanoseconds) is not int or cpu_nanoseconds < 0 \
+            or type(resumed_from_partial) is not bool \
+            or finished - started > caps.training_wall_seconds * 1_000_000_000 \
+            or artifact_bytes > caps.training_bytes \
+            or peak_host_memory_bytes > caps.training_host_memory_bytes:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache resource cap drift")
+    return {
+        "schema": TENSOR_CACHE_RESOURCE_SCHEMA,
+        "boot_identity": freeze.runtime.boot_identity,
+        "started_monotonic_nanoseconds": started,
+        "finished_monotonic_nanoseconds": finished,
+        "wall_nanoseconds": finished - started,
+        "cpu_nanoseconds": cpu_nanoseconds,
+        "artifact_bytes": artifact_bytes,
+        "peak_host_memory_bytes": peak_host_memory_bytes,
+        "retry_count": 0,
+        "drop_count": 0,
+        "resumed_from_exact_partial": resumed_from_partial,
+    }
+
+
+def _manifest(
+        freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1, *,
+        input_index_sha256: str, entries: list[dict[str, Any]],
+        calibration: dict[str, Any], control_dose: int,
+        stage_start_sha256: str, resources: dict[str, Any]) \
+        -> dict[str, Any]:
+    return {
+        "schema": TENSOR_CACHE_STAGE_SCHEMA,
+        "freeze_sha256": freeze.sha256(),
+        "admission_sha256": admission.sha256(),
+        "training_input_index_sha256": input_index_sha256,
+        "stage_start_sha256": stage_start_sha256,
+        "runtime_profile_sha256": _runtime_sha256(freeze),
+        "cohort_caches": entries,
+        "common_calibration_cache": calibration,
+        "control_changed_cell_count_per_epoch": control_dose,
+        "resources": resources,
+        "lossless_sparse_event_encoding": True,
+        "actor_and_privileged_labels_separate": True,
+        "test_split_cached": False,
+        "training_authorized_by_this_artifact": False,
+        "test_split_open_authorized": False,
+        "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
+def _start_payload(
+        freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1, *,
+        input_index_sha256: str,
+        started_monotonic_nanoseconds: int) -> dict[str, Any]:
+    if type(started_monotonic_nanoseconds) is not int \
+            or started_monotonic_nanoseconds <= 0:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache start clock drift")
+    return {
+        "schema": TENSOR_CACHE_START_SCHEMA,
+        "freeze_sha256": freeze.sha256(),
+        "admission_sha256": admission.sha256(),
+        "training_input_index_sha256": input_index_sha256,
+        "boot_identity": freeze.runtime.boot_identity,
+        "started_monotonic_nanoseconds": started_monotonic_nanoseconds,
+        "retry_authorized": False,
+        "test_split_open_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
+def _reopen_stage_start(
+        path: Path, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1, *,
+        input_index_sha256: str) -> tuple[dict[str, Any], bytes]:
+    raw = stable_read_bytes(path)
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache start receipt is not JSON") from exc
+    if type(payload) is not dict \
+            or payload != _start_payload(
+                freeze, admission,
+                input_index_sha256=input_index_sha256,
+                started_monotonic_nanoseconds=payload.get(
+                    "started_monotonic_nanoseconds")) \
+            or canonical_json_bytes(payload) != raw:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache start receipt drift")
+    return payload, raw
+
+
+def _completed_cache_receipt(
+        directory: Path, *, binding: V2TensorCacheBindingV1) \
+        -> dict[str, Any] | None:
+    partial = directory.with_name(directory.name + ".partial")
+    if partial.exists() and directory.exists():
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache completed/partial ambiguity")
+    if not directory.exists():
+        return None
+    try:
+        manifest_raw = stable_read_bytes(directory / "manifest.json")
+    except ValueError as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache completed manifest refused") from exc
+    return _reopen_cache_receipt(
+        directory, expected_manifest_sha256=_sha256(manifest_raw),
+        binding=binding)
+
+
+def _completed_overlay_receipt(
+        directory: Path, *, actor_manifest_sha256: str,
+        binding: V2TensorCacheBindingV1) -> dict[str, Any] | None:
+    partial = directory.with_name(directory.name + ".partial")
+    if partial.exists() and directory.exists():
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache completed/overlay ambiguity")
+    if not directory.exists():
+        return None
+    try:
+        manifest_raw = stable_read_bytes(directory / "labels-manifest.json")
+    except ValueError as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache completed overlay manifest refused") from exc
+    return _reopen_overlay_receipt(
+        directory, expected_manifest_sha256=_sha256(manifest_raw),
+        actor_manifest_sha256=actor_manifest_sha256,
+        binding=binding)
+
+
+def _entry(
+        *, cohort_id: str, realization_sha256: str, kind: str,
+        directory: str, binding: V2TensorCacheBindingV1,
+        receipt: dict[str, Any], actor_cache_cohort_id: str | None = None,
+        actor_manifest_sha256: str | None = None) -> dict[str, Any]:
+    return {
+        "cohort_id": cohort_id,
+        "realization_sha256": realization_sha256,
+        "kind": kind,
+        "directory": directory,
+        "binding": binding.to_dict(),
+        "manifest_sha256": receipt["manifest_sha256"],
+        "batch_count": receipt["batch_count"],
+        "decision_count": receipt["decision_count"],
+        "artifact_bytes": receipt["artifact_bytes"],
+        "actor_cache_cohort_id": actor_cache_cohort_id,
+        "actor_manifest_sha256": actor_manifest_sha256,
+    }
+
+
+def _reopen_cache_receipt(
+        directory: Path, *, expected_manifest_sha256: str,
+        binding: V2TensorCacheBindingV1) -> dict[str, Any]:
+    try:
+        return reopen_tensor_cache(
+            directory,
+            expected_manifest_sha256=expected_manifest_sha256,
+            binding=binding)
+    except ValueError as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache byte reopen refused") from exc
+
+
+def _reopen_overlay_receipt(
+        directory: Path, *, expected_manifest_sha256: str,
+        actor_manifest_sha256: str,
+        binding: V2TensorCacheBindingV1) -> dict[str, Any]:
+    try:
+        return reopen_label_overlay(
+            directory,
+            expected_manifest_sha256=expected_manifest_sha256,
+            actor_manifest_sha256=actor_manifest_sha256,
+            binding=binding)
+    except ValueError as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache overlay reopen refused") from exc
+
+
+def run_training_tensor_cache(
+        root: Path, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1, *, repo: Path,
+        review_marker: bytes,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
+    """Build and atomically publish every exact non-test training cache."""
+    _stage_gate(
+        root=root, repo=repo, freeze=freeze, admission=admission,
+        review_marker=review_marker)
+    try:
+        index_manifest, inputs = reopen_training_input_index(
+            root / "training-input-index" / "result", freeze=freeze,
+            admission=admission)
+    except ValueError as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache input index refused") from exc
+    input_index_sha256 = index_manifest["index_sha256"]
+    primary_rows = [row for row in inputs.realizations
+                    if row.cohort_id == PRIMARY_COHORT_ID]
+    control_rows = [row for row in inputs.realizations
+                    if row.cohort_id == CONTROL_COHORT_ID]
+    if len(primary_rows) != 1 or len(control_rows) != 1 \
+            or primary_rows[0].rows != control_rows[0].rows \
+            or primary_rows[0].batches != control_rows[0].batches:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache primary/control actor schedule drift")
+    parent = root / STAGE_DIRECTORY
+    if parent.is_symlink():
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache parent is a symlink")
+    parent.mkdir(mode=0o700, exist_ok=True)
+    final = parent / RESULT_DIRECTORY
+    partial = parent / f"{RESULT_DIRECTORY}.partial"
+    if final.exists() or final.is_symlink():
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache stage slot is occupied")
+    if partial.is_symlink() \
+            or partial.exists() and not partial.is_dir():
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache partial stage drift")
+    resumed_from_partial = partial.exists()
+    if not resumed_from_partial:
+        partial.mkdir(mode=0o700)
+        started = time.monotonic_ns()
+        start_raw = canonical_json_bytes(_start_payload(
+            freeze, admission, input_index_sha256=input_index_sha256,
+            started_monotonic_nanoseconds=started))
+        publish_exclusive_bytes(partial / START_FILENAME, start_raw)
+    else:
+        if (partial / "deadline-refusal.json").exists():
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache expired partial cannot resume")
+        start, start_raw = _reopen_stage_start(
+            partial / START_FILENAME, freeze, admission,
+            input_index_sha256=input_index_sha256)
+        started = start["started_monotonic_nanoseconds"]
+        if started >= time.monotonic_ns():
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache resumed clock drift")
+    cpu_started = time.process_time_ns()
+    deadline = stage_deadline(
+        freeze, admission, stage="training", slot="tensor-cache",
+        started_monotonic_nanoseconds=started)
+
+    def deadline_check(phase: str, next_unit_index: int) -> None:
+        try:
+            deadline.check(
+                phase=phase, next_unit_index=next_unit_index,
+                observed_monotonic_nanoseconds=time.monotonic_ns())
+        except BeliefV2DeadlineError as exc:
+            if not (partial / "deadline-refusal.json").exists():
+                publish_deadline_refusal(partial, exc.refusal)
+            raise
+
+    total_batches = (sum(len(row.batches) for row in inputs.realizations)
+                     + len(inputs.common_calibration.batches))
+    completed = 0
+    if progress is not None:
+        progress(0, total_batches, "cache-non-test-batches")
+
+    def cache_progress(done: int, total: int, _label: str) -> None:
+        if progress is not None:
+            progress(completed + done, total_batches,
+                     "cache-non-test-batches")
+
+    loader = V2ArtifactRoundLoader(
+        root, freeze=freeze, admission=admission, index=inputs.index)
+    entries: list[dict[str, Any]] = []
+    primary_binding = _realization_binding(
+        freeze, input_index_sha256, primary_rows[0])
+    primary_receipt = None
+    try:
+        for realization in inputs.realizations:
+            if realization.cohort_id == CONTROL_COHORT_ID:
+                if primary_receipt is None:
+                    raise BeliefV2TensorCacheControllerError(
+                        "V2 tensor cache control precedes primary")
+                overlay_directory = partial / CONTROL_OVERLAY_DIRECTORY
+                receipt = _completed_overlay_receipt(
+                    overlay_directory,
+                    actor_manifest_sha256=(
+                        primary_receipt["manifest_sha256"]),
+                    binding=primary_binding)
+                if receipt is None:
+                    receipt = build_label_overlay(
+                        overlay_directory,
+                        batches=lambda row=realization: (
+                            iter_streaming_training_batches(
+                                inputs.index, row, load_round=loader)),
+                        actor_directory=(partial / _cache_directory_name(
+                            PRIMARY_COHORT_ID)),
+                        actor_manifest_sha256=(
+                            primary_receipt["manifest_sha256"]),
+                        binding=primary_binding,
+                        overlay_id=realization.sha256(),
+                        deadline_check=deadline_check,
+                        progress=cache_progress)
+                entries.append(_entry(
+                    cohort_id=realization.cohort_id,
+                    realization_sha256=realization.sha256(),
+                    kind="label-overlay",
+                    directory=CONTROL_OVERLAY_DIRECTORY,
+                    binding=primary_binding, receipt=receipt,
+                    actor_cache_cohort_id=PRIMARY_COHORT_ID,
+                    actor_manifest_sha256=(
+                        primary_receipt["manifest_sha256"])))
+            else:
+                binding = _realization_binding(
+                    freeze, input_index_sha256, realization)
+                directory = _cache_directory_name(realization.cohort_id)
+                cache_directory = partial / directory
+                receipt = _completed_cache_receipt(
+                    cache_directory, binding=binding)
+                if receipt is None:
+                    receipt = build_tensor_cache(
+                        cache_directory,
+                        batches=lambda row=realization: (
+                            iter_streaming_training_batches(
+                                inputs.index, row, load_round=loader)),
+                        binding=binding, deadline_check=deadline_check,
+                        progress=cache_progress)
+                entries.append(_entry(
+                    cohort_id=realization.cohort_id,
+                    realization_sha256=realization.sha256(),
+                    kind="actor-and-label-cache", directory=directory,
+                    binding=binding, receipt=receipt))
+                if realization.cohort_id == PRIMARY_COHORT_ID:
+                    primary_receipt = receipt
+            completed += len(realization.batches)
+
+        calibration_binding = _calibration_binding(
+            freeze, input_index_sha256, inputs.common_calibration)
+        calibration_directory = partial / _cache_directory_name(
+            CALIBRATION_CACHE_ID)
+        calibration_receipt = _completed_cache_receipt(
+            calibration_directory, binding=calibration_binding)
+        if calibration_receipt is None:
+            calibration_receipt = build_tensor_cache(
+                calibration_directory,
+                batches=lambda: iter_streaming_calibration_batches(
+                    inputs.index, inputs.common_calibration,
+                    load_round=loader),
+                binding=calibration_binding, deadline_check=deadline_check,
+                progress=cache_progress)
+        completed += len(inputs.common_calibration.batches)
+        deadline_check("before-seal", completed)
+    except (RuntimeError, ValueError) as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache construction refused") from exc
+
+    calibration_entry = {
+        "schedule_sha256": inputs.common_calibration.sha256(),
+        "directory": _cache_directory_name(CALIBRATION_CACHE_ID),
+        "binding": calibration_binding.to_dict(),
+        **calibration_receipt,
+    }
+    finished = time.monotonic_ns()
+    artifact_bytes = (len(start_raw)
+                      + sum(row["artifact_bytes"] for row in entries)
+                      + calibration_receipt["artifact_bytes"])
+    resources = _resource_row(
+        freeze, started=started, finished=finished,
+        cpu_nanoseconds=(finished - started if resumed_from_partial else
+                         time.process_time_ns() - cpu_started),
+        artifact_bytes=artifact_bytes,
+        peak_host_memory_bytes=host_peak_memory_bytes(),
+        resumed_from_partial=resumed_from_partial)
+    manifest = _manifest(
+        freeze, admission, input_index_sha256=input_index_sha256,
+        entries=entries, calibration=calibration_entry,
+        control_dose=inputs.index.control_changed_cell_count,
+        stage_start_sha256=_sha256(start_raw),
+        resources=resources)
+    publish_exclusive_bytes(
+        partial / MANIFEST_FILENAME, canonical_json_bytes(manifest))
+    os.rename(partial, final)
+    descriptor = os.open(parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    reopened = reopen_training_tensor_cache(
+        final, freeze=freeze, admission=admission)
+    if reopened[0] != manifest:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache post-publish drift")
+    return manifest
+
+
+def reopen_training_tensor_cache(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1) \
+        -> tuple[dict[str, Any], dict[str, Callable[[], Any]],
+                 Callable[[], Any], int, str]:
+    """Reopen all cache bytes and return trainer-compatible factories."""
+    if not isinstance(directory, Path) or directory.is_symlink() \
+            or not directory.is_dir() or directory.name != RESULT_DIRECTORY:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache result directory drift")
+    manifest_raw = stable_read_bytes(directory / MANIFEST_FILENAME)
+    try:
+        payload = json.loads(manifest_raw)
+        index_manifest, inputs = reopen_training_input_index(
+            Path(freeze.evidence_root) / "training-input-index" / "result",
+            freeze=freeze, admission=admission)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache manifest/input reopen refused") from exc
+    input_index_sha256 = index_manifest["index_sha256"]
+    _, start_raw = _reopen_stage_start(
+        directory / START_FILENAME, freeze, admission,
+        input_index_sha256=input_index_sha256)
+    by_id = {row.cohort_id: row for row in inputs.realizations}
+    if type(payload) is not dict \
+            or type(payload.get("cohort_caches")) is not list \
+            or len(payload["cohort_caches"]) != len(inputs.realizations):
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache manifest population drift")
+    factories: dict[str, Callable[[], Any]] = {}
+    receipts = []
+    entries = []
+    primary_row = by_id[PRIMARY_COHORT_ID]
+    primary_binding = _realization_binding(
+        freeze, input_index_sha256, primary_row)
+    primary_entry = next((row for row in payload["cohort_caches"]
+                          if type(row) is dict
+                          and row.get("cohort_id") == PRIMARY_COHORT_ID), None)
+    if primary_entry is None:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache primary entry absent")
+    primary_directory = directory / _cache_directory_name(PRIMARY_COHORT_ID)
+    for recorded in payload["cohort_caches"]:
+        cohort_id = recorded.get("cohort_id") \
+            if type(recorded) is dict else None
+        realization = by_id.get(cohort_id)
+        if realization is None:
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache cohort entry drift")
+        if cohort_id == CONTROL_COHORT_ID:
+            binding = primary_binding
+            receipt = _reopen_overlay_receipt(
+                directory / CONTROL_OVERLAY_DIRECTORY,
+                expected_manifest_sha256=recorded.get("manifest_sha256"),
+                actor_manifest_sha256=(
+                    primary_entry.get("manifest_sha256")),
+                binding=binding)
+            expected_entry = _entry(
+                cohort_id=cohort_id,
+                realization_sha256=realization.sha256(),
+                kind="label-overlay", directory=CONTROL_OVERLAY_DIRECTORY,
+                binding=binding, receipt=receipt,
+                actor_cache_cohort_id=PRIMARY_COHORT_ID,
+                actor_manifest_sha256=(
+                    primary_entry.get("manifest_sha256")))
+            factories[cohort_id] = cached_batch_factory(
+                primary_directory,
+                expected_manifest_sha256=(
+                    primary_entry.get("manifest_sha256")),
+                binding=primary_binding,
+                label_overlay_directory=(
+                    directory / CONTROL_OVERLAY_DIRECTORY),
+                expected_label_overlay_sha256=(
+                    recorded.get("manifest_sha256")))
+        else:
+            binding = _realization_binding(
+                freeze, input_index_sha256, realization)
+            cache_directory = directory / _cache_directory_name(cohort_id)
+            receipt = _reopen_cache_receipt(
+                cache_directory,
+                expected_manifest_sha256=recorded.get("manifest_sha256"),
+                binding=binding)
+            expected_entry = _entry(
+                cohort_id=cohort_id,
+                realization_sha256=realization.sha256(),
+                kind="actor-and-label-cache",
+                directory=_cache_directory_name(cohort_id),
+                binding=binding, receipt=receipt)
+            factories[cohort_id] = cached_batch_factory(
+                cache_directory,
+                expected_manifest_sha256=recorded.get("manifest_sha256"),
+                binding=binding)
+        if recorded != expected_entry:
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache cohort entry reconstruction drift")
+        entries.append(expected_entry)
+        receipts.append(receipt)
+    if tuple(factories) != tuple(row.cohort_id
+                                 for row in inputs.realizations):
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache cohort order drift")
+
+    calibration_binding = _calibration_binding(
+        freeze, input_index_sha256, inputs.common_calibration)
+    calibration_recorded = payload.get("common_calibration_cache")
+    if type(calibration_recorded) is not dict:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache calibration entry drift")
+    calibration_directory = directory / _cache_directory_name(
+        CALIBRATION_CACHE_ID)
+    calibration_receipt = _reopen_cache_receipt(
+        calibration_directory,
+        expected_manifest_sha256=calibration_recorded.get(
+            "manifest_sha256"), binding=calibration_binding)
+    calibration_expected = {
+        "schedule_sha256": inputs.common_calibration.sha256(),
+        "directory": _cache_directory_name(CALIBRATION_CACHE_ID),
+        "binding": calibration_binding.to_dict(),
+        **calibration_receipt,
+    }
+    if calibration_recorded != calibration_expected:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache calibration reconstruction drift")
+    resources = payload.get("resources")
+    resource_keys = {
+        "schema", "boot_identity", "started_monotonic_nanoseconds",
+        "finished_monotonic_nanoseconds", "wall_nanoseconds",
+        "cpu_nanoseconds", "artifact_bytes", "peak_host_memory_bytes",
+        "retry_count", "drop_count", "resumed_from_exact_partial"}
+    artifact_bytes = (len(start_raw)
+                      + sum(row["artifact_bytes"] for row in receipts)
+                      + calibration_receipt["artifact_bytes"])
+    caps = freeze.resource_caps
+    if type(resources) is not dict or set(resources) != resource_keys \
+            or resources["schema"] != TENSOR_CACHE_RESOURCE_SCHEMA \
+            or resources["boot_identity"] != freeze.runtime.boot_identity \
+            or resources["wall_nanoseconds"] != (
+                resources["finished_monotonic_nanoseconds"]
+                - resources["started_monotonic_nanoseconds"]) \
+            or resources["wall_nanoseconds"] <= 0 \
+            or resources["cpu_nanoseconds"] < 0 \
+            or resources["artifact_bytes"] != artifact_bytes \
+            or artifact_bytes > caps.training_bytes \
+            or resources["peak_host_memory_bytes"] <= 0 \
+            or resources["peak_host_memory_bytes"] \
+            > caps.training_host_memory_bytes \
+            or resources["retry_count"] != 0 \
+            or resources["drop_count"] != 0 \
+            or type(resources["resumed_from_exact_partial"]) is not bool:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache resource reconstruction drift")
+    expected = _manifest(
+        freeze, admission, input_index_sha256=input_index_sha256,
+        entries=entries, calibration=calibration_expected,
+        control_dose=inputs.index.control_changed_cell_count,
+        stage_start_sha256=_sha256(start_raw),
+        resources=resources)
+    expected_files = {
+        MANIFEST_FILENAME, START_FILENAME, CONTROL_OVERLAY_DIRECTORY,
+        _cache_directory_name(CALIBRATION_CACHE_ID),
+        *(_cache_directory_name(row.cohort_id)
+          for row in inputs.realizations
+          if row.cohort_id != CONTROL_COHORT_ID),
+    }
+    if canonical_json_bytes(payload) != manifest_raw or payload != expected \
+            or {path.name for path in directory.iterdir()} != expected_files:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache stage reconstruction drift")
+    calibration_factory = cached_batch_factory(
+        calibration_directory,
+        expected_manifest_sha256=calibration_receipt["manifest_sha256"],
+        binding=calibration_binding)
+    return (payload, factories, calibration_factory,
+            inputs.index.control_changed_cell_count,
+            _sha256(manifest_raw))

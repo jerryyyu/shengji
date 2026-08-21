@@ -134,7 +134,7 @@ def _validate_row(row: V2TrainingRowV1) -> None:
             or not _is_sha256(row.round_group_key) \
             or row.source_kind not in {"synthetic", "human"} \
             or type(row.active_label_count) is not int \
-            or row.active_label_count <= 0 \
+            or row.active_label_count < 0 \
             or not _is_sha256(row.example_sha256):
         raise BeliefV2ScheduleError("V2 realized training row drift")
 
@@ -178,6 +178,12 @@ def _schedule(
     if not batches or any(not batch or len(batch) > TRAIN_BATCH_DECISION_CAP
                           for batch in batches):
         raise BeliefV2ScheduleError("V2 realized batch schedule drift")
+    active_by_key = {
+        row.decision_key: row.active_label_count for row in rows}
+    if any(sum(active_by_key[key] for key in batch) <= 0
+           for batch in batches):
+        raise BeliefV2ScheduleError(
+            "V2 realized batch has no active supervision")
     return tuple(batches)
 
 

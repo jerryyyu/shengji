@@ -29,6 +29,7 @@ from .belief_checkpoint import (
 )
 from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
+from .belief_v2_deadline import BeliefV2DeadlineError
 from .belief_model import new_from_scratch_model
 from .belief_trainer import EpochTrainingReceiptV1, _epoch_input_digests
 from .belief_training import (
@@ -73,6 +74,24 @@ class BeliefV2CohortTrainingError(ValueError):
     """A V2 training input, epoch chain, selection, or checkpoint drifted."""
 
 
+@dataclass(frozen=True)
+class V2CohortResumeStateV1:
+    """Exact live state at one completed epoch.
+
+    The durable controller owns serialization.  Keeping this source-neutral
+    object here lets the trainer prove that a resumed trajectory is the same
+    trajectory: current models bind the last receipts, selected models bind
+    the reconstructed common epoch, and optimizer state stays paired with the
+    current models.  It carries no execution or test-opening authority.
+    """
+
+    models: tuple[Any, ...]
+    optimizers: tuple[Any, ...]
+    epochs: tuple["V2TrainingEpochCurveRowV1", ...]
+    selected_states: tuple[dict[str, torch.Tensor], ...]
+    selected_receipts: tuple[EpochTrainingReceiptV1, ...]
+
+
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
@@ -110,6 +129,7 @@ class V2TrainedCohortArtifactsV1:
     selected_common_epoch: int
     stop_epoch: int
     stopped_for_patience: bool
+    truncated_by_deadline: bool
     label_control_changed_cell_count_per_epoch: int
     checkpoint_bundles: tuple[bytes, ...]
     schema: str = TRAINED_COHORT_SCHEMA
@@ -128,6 +148,7 @@ class V2TrainedCohortArtifactsV1:
             "selected_common_epoch": self.selected_common_epoch,
             "stop_epoch": self.stop_epoch,
             "stopped_for_patience": self.stopped_for_patience,
+            "truncated_by_deadline": self.truncated_by_deadline,
             "label_control_changed_cell_count_per_epoch": (
                 self.label_control_changed_cell_count_per_epoch),
             "checkpoints": [{
@@ -235,6 +256,74 @@ def _cpu_state(model) -> dict[str, torch.Tensor]:
             for name, value in model.state_dict().items()}
 
 
+def _model_from_state(seed: int, state: dict[str, torch.Tensor]):
+    if type(state) is not dict or not state:
+        raise BeliefV2CohortTrainingError(
+            "V2 resume model state population drift")
+    model = new_from_scratch_model(seed)
+    try:
+        model.load_state_dict(state, strict=True)
+    except (RuntimeError, ValueError) as exc:
+        raise BeliefV2CohortTrainingError(
+            "V2 resume model state refused") from exc
+    return model
+
+
+def _validate_resume_state(
+        state: V2CohortResumeStateV1, *, device: str) -> None:
+    if type(state) is not V2CohortResumeStateV1 \
+            or device != "cpu" \
+            or type(state.models) is not tuple \
+            or len(state.models) != len(COHORT_SEEDS) \
+            or type(state.optimizers) is not tuple \
+            or len(state.optimizers) != len(COHORT_SEEDS) \
+            or type(state.epochs) is not tuple or not state.epochs \
+            or len(state.epochs) > TRAIN_MAX_EPOCHS \
+            or type(state.selected_states) is not tuple \
+            or len(state.selected_states) != len(COHORT_SEEDS) \
+            or type(state.selected_receipts) is not tuple \
+            or len(state.selected_receipts) != len(COHORT_SEEDS):
+        raise BeliefV2CohortTrainingError(
+            "V2 cohort resume state identity drift")
+    losses: list[list[int]] = [[] for _ in COHORT_SEEDS]
+    for epoch, row in enumerate(state.epochs, 1):
+        if type(row) is not V2TrainingEpochCurveRowV1 \
+                or row.epoch != epoch \
+                or len(row.member_training_receipts) != len(COHORT_SEEDS) \
+                or len(row.member_calibration_loss_nanonats) \
+                != len(COHORT_SEEDS):
+            raise BeliefV2CohortTrainingError(
+                "V2 cohort resume curve drift")
+        for values, value in zip(
+                losses, row.member_calibration_loss_nanonats, strict=True):
+            values.append(value)
+    decision = select_common_epoch(tuple(tuple(row) for row in losses))
+    if decision.stop_epoch != len(state.epochs) \
+            or state.selected_receipts != state.epochs[
+                decision.selected_epoch - 1].member_training_receipts:
+        raise BeliefV2CohortTrainingError(
+            "V2 cohort resume selection drift")
+    latest = state.epochs[-1].member_training_receipts
+    for index, (model, optimizer, receipt, selected_state,
+                selected_receipt) in enumerate(zip(
+                    state.models, state.optimizers, latest,
+                    state.selected_states, state.selected_receipts,
+                    strict=True)):
+        try:
+            current_hash = portable_model_state_sha256(model)
+            selected_model = _model_from_state(
+                COHORT_SEEDS[index], selected_state)
+            selected_hash = portable_model_state_sha256(selected_model)
+        except ValueError as exc:
+            raise BeliefV2CohortTrainingError(
+                "V2 cohort resume model identity refused") from exc
+        if current_hash != receipt.model_state_sha256_after \
+                or selected_hash != selected_receipt.model_state_sha256_after \
+                or not isinstance(optimizer, torch.optim.Optimizer):
+            raise BeliefV2CohortTrainingError(
+                "V2 cohort resume model/receipt drift")
+
+
 def train_v2_cohort_in_memory(
         realization: V2CohortRealizationV1,
         training_examples: tuple[V2TrainingExampleV1, ...],
@@ -242,6 +331,9 @@ def train_v2_cohort_in_memory(
         calibration_examples: tuple[V2TrainingExampleV1, ...], *,
         device: str,
         deadline_check: Callable[[str, int], None] | None = None,
+        resume_state: V2CohortResumeStateV1 | None = None,
+        epoch_checkpoint: Callable[[V2CohortResumeStateV1], None]
+        | None = None,
         progress: ProgressCallback | None = None
         ) -> V2TrainedCohortArtifactsV1:
     """Train and independently reopen one realized cohort in memory."""
@@ -254,6 +346,7 @@ def train_v2_cohort_in_memory(
         training_batches=lambda: iter(training_batches),
         calibration_batches=lambda: iter(calibration_batches),
         control_dose=control_dose, deadline_check=deadline_check,
+        resume_state=resume_state, epoch_checkpoint=epoch_checkpoint,
         progress=progress)
     validate_trained_v2_cohort(
         realization, training_examples, common_calibration,
@@ -267,6 +360,9 @@ def _train_v2_cohort_from_factories(
         training_batches: Callable[[], Any],
         calibration_batches: Callable[[], Any], control_dose: int,
         deadline_check: Callable[[str, int], None] | None = None,
+        resume_state: V2CohortResumeStateV1 | None = None,
+        epoch_checkpoint: Callable[[V2CohortResumeStateV1], None]
+        | None = None,
         progress: ProgressCallback | None = None
         ) -> V2TrainedCohortArtifactsV1:
     """Train from fresh bounded iterators without retaining their population."""
@@ -276,29 +372,83 @@ def _train_v2_cohort_from_factories(
             or not callable(calibration_batches):
         raise BeliefV2CohortTrainingError(
             "V2 training batch factory identity drift")
-    models = tuple(new_from_scratch_model(seed) for seed in COHORT_SEEDS)
-    try:
-        move_models_to_device(models, device=device)
-        optimizers = tuple(new_v2_optimizer(model) for model in models)
-    except ValueError as exc:
+    if epoch_checkpoint is not None and not callable(epoch_checkpoint):
         raise BeliefV2CohortTrainingError(
-            "V2 training device initialization refused") from exc
-    losses: list[list[int]] = [[] for _ in COHORT_SEEDS]
-    epoch_rows = []
-    selected_states = None
-    selected_receipts = None
-    decision = None
-    if progress is not None:
-        progress(0, TRAIN_MAX_EPOCHS, "training-epochs")
-    for epoch in range(1, TRAIN_MAX_EPOCHS + 1):
-        if deadline_check is not None:
-            deadline_check("before-unit", epoch - 1)
+            "V2 epoch checkpoint callback drift")
+    if resume_state is None:
+        models = tuple(new_from_scratch_model(seed) for seed in COHORT_SEEDS)
         try:
+            move_models_to_device(models, device=device)
+            optimizers = tuple(new_v2_optimizer(model) for model in models)
+        except ValueError as exc:
+            raise BeliefV2CohortTrainingError(
+                "V2 training device initialization refused") from exc
+        losses: list[list[int]] = [[] for _ in COHORT_SEEDS]
+        epoch_rows: list[V2TrainingEpochCurveRowV1] = []
+        selected_states = None
+        selected_receipts = None
+    else:
+        _validate_resume_state(resume_state, device=device)
+        models = resume_state.models
+        optimizers = resume_state.optimizers
+        epoch_rows = list(resume_state.epochs)
+        losses = [[row.member_calibration_loss_nanonats[index]
+                   for row in epoch_rows]
+                  for index in range(len(COHORT_SEEDS))]
+        selected_states = resume_state.selected_states
+        selected_receipts = resume_state.selected_receipts
+    decision = None if not epoch_rows else select_common_epoch(tuple(
+        tuple(row) for row in losses))
+    truncated_by_deadline = False
+    train_batch_count = len(realization.batches)
+    calibration_batch_count = len(common_calibration.batches)
+    batches_per_epoch = train_batch_count + calibration_batch_count
+    total_batch_units = TRAIN_MAX_EPOCHS * batches_per_epoch
+    if progress is not None:
+        progress(len(epoch_rows), TRAIN_MAX_EPOCHS, "training-epochs")
+        progress(len(epoch_rows) * batches_per_epoch, total_batch_units,
+                 "training-batches")
+
+    def progress_batches(
+            batches, *, expected_count: int, offset: int):
+        observed = 0
+        for batch in batches:
+            yield batch
+            observed += 1
+            if progress is not None:
+                progress(offset + observed, total_batch_units,
+                         "training-batches")
+        if observed != expected_count:
+            raise BeliefV2CohortTrainingError(
+                "V2 training progress batch population drift")
+
+    final_epoch = (len(epoch_rows) if decision is not None
+                   and decision.stopped_for_patience
+                   else TRAIN_MAX_EPOCHS)
+    for epoch in range(len(epoch_rows) + 1, final_epoch + 1):
+        if deadline_check is not None:
+            try:
+                deadline_check("before-unit", epoch - 1)
+            except BeliefV2DeadlineError:
+                if not epoch_rows:
+                    raise
+                truncated_by_deadline = True
+                decision = select_common_epoch(tuple(
+                    tuple(row) for row in losses))
+                break
+        try:
+            epoch_offset = (epoch - 1) * batches_per_epoch
             receipts = train_v2_cohort_epoch_stream(
-                models, optimizers, training_batches(),
+                models, optimizers, progress_batches(
+                    training_batches(), expected_count=train_batch_count,
+                    offset=epoch_offset),
                 epoch=epoch, device=device)
             calibration = evaluate_v2_calibration_cohort_stream_nanonats(
-                models, calibration_batches(), device=device)
+                models, progress_batches(
+                    calibration_batches(),
+                    expected_count=calibration_batch_count,
+                    offset=epoch_offset + train_batch_count),
+                device=device)
             for row, value in zip(losses, calibration, strict=True):
                 row.append(value)
             decision = select_common_epoch(tuple(
@@ -311,24 +461,37 @@ def _train_v2_cohort_from_factories(
             member_calibration_loss_nanonats=calibration,
             cohort_mean_calibration_loss_nanonats=(
                 sum(calibration) // len(calibration))))
-        if deadline_check is not None:
-            deadline_check("after-unit", epoch)
-        if progress is not None:
-            progress(epoch, TRAIN_MAX_EPOCHS, "training-epochs")
         if decision.selected_epoch == epoch:
             selected_states = tuple(_cpu_state(model) for model in models)
             selected_receipts = receipts
+        if selected_states is None or selected_receipts is None:
+            raise BeliefV2CohortTrainingError(
+                "V2 epoch checkpoint selection state drift")
+        if epoch_checkpoint is not None:
+            epoch_checkpoint(V2CohortResumeStateV1(
+                models=models, optimizers=optimizers,
+                epochs=tuple(epoch_rows),
+                selected_states=selected_states,
+                selected_receipts=selected_receipts))
+        if deadline_check is not None:
+            try:
+                deadline_check("after-unit", epoch)
+            except BeliefV2DeadlineError:
+                truncated_by_deadline = True
+        if progress is not None:
+            progress(epoch, TRAIN_MAX_EPOCHS, "training-epochs")
+        if truncated_by_deadline:
+            break
         if decision.stopped_for_patience:
             break
     if progress is not None and len(epoch_rows) < TRAIN_MAX_EPOCHS:
+        progress(total_batch_units, total_batch_units, "training-complete")
         progress(TRAIN_MAX_EPOCHS, TRAIN_MAX_EPOCHS, "training-complete")
     if decision is None or selected_states is None \
             or selected_receipts is None \
             or decision.stop_epoch != len(epoch_rows):
         raise BeliefV2CohortTrainingError(
             "V2 common epoch selection state drift")
-    if deadline_check is not None:
-        deadline_check("before-seal", len(epoch_rows))
     bundles = []
     for seed, state, receipt in zip(
             COHORT_SEEDS, selected_states, selected_receipts, strict=True):
@@ -343,6 +506,16 @@ def _train_v2_cohort_from_factories(
             selected_epoch=decision.selected_epoch,
             final_epoch_receipt=receipt)
         bundles.append(checkpoint_bundle_bytes(checkpoint, receipt))
+    # This is the sole normal-path seal boundary.  Check only after the final
+    # portable checkpoint bytes exist so a deadline cannot pass in the trainer
+    # and then fail a second time in the controller.  Expiry after at least one
+    # complete epoch is valid, explicitly truncated evidence; it never opens
+    # calibration or test data downstream.
+    if deadline_check is not None and not truncated_by_deadline:
+        try:
+            deadline_check("before-seal", len(epoch_rows))
+        except BeliefV2DeadlineError:
+            truncated_by_deadline = True
     result = V2TrainedCohortArtifactsV1(
         cohort_id=realization.cohort_id,
         cohort_kind=realization.kind,
@@ -351,7 +524,13 @@ def _train_v2_cohort_from_factories(
         training_device=device, epochs=tuple(epoch_rows),
         selected_common_epoch=decision.selected_epoch,
         stop_epoch=decision.stop_epoch,
-        stopped_for_patience=decision.stopped_for_patience,
+        # If the exact deadline and patience boundary coincide, deadline
+        # truncation is the conservative terminal reason.  The common-epoch
+        # arithmetic remains reproducible, but the artifact must not also
+        # present itself as a patience-converged cohort.
+        stopped_for_patience=(
+            decision.stopped_for_patience and not truncated_by_deadline),
+        truncated_by_deadline=truncated_by_deadline,
         label_control_changed_cell_count_per_epoch=control_dose,
         checkpoint_bundles=tuple(bundles))
     return result
@@ -362,6 +541,9 @@ def train_v2_cohort_streaming(
         common_calibration: V2CalibrationScheduleV1, *,
         index, load_round, device: str,
         deadline_check: Callable[[str, int], None] | None = None,
+        resume_state: V2CohortResumeStateV1 | None = None,
+        epoch_checkpoint: Callable[[V2CohortResumeStateV1], None]
+        | None = None,
         progress: ProgressCallback | None = None
         ) -> V2TrainedCohortArtifactsV1:
     """Train from one bounded, freshly reopened batch at a time."""
@@ -384,6 +566,37 @@ def train_v2_cohort_streaming(
         calibration_batches=lambda: iter_streaming_calibration_batches(
             index, common_calibration, load_round=load_round),
         control_dose=control_dose, deadline_check=deadline_check,
+        resume_state=resume_state, epoch_checkpoint=epoch_checkpoint,
+        progress=progress)
+    validate_trained_v2_cohort_rows(
+        realization, common_calibration, control_dose=control_dose,
+        candidate=result)
+    return result
+
+
+def train_v2_cohort_from_batch_factories(
+        realization: V2CohortRealizationV1,
+        common_calibration: V2CalibrationScheduleV1, *, device: str,
+        training_batches: Callable[[], Any],
+        calibration_batches: Callable[[], Any], control_dose: int,
+        deadline_check: Callable[[str, int], None] | None = None,
+        resume_state: V2CohortResumeStateV1 | None = None,
+        epoch_checkpoint: Callable[[V2CohortResumeStateV1], None]
+        | None = None,
+        progress: ProgressCallback | None = None
+        ) -> V2TrainedCohortArtifactsV1:
+    """Train from independently bound reusable batch factories.
+
+    The filesystem/cache controller owns artifact authentication.  This seam
+    retains all schedule, control-dose, checkpoint, and selection validation
+    while avoiding a second corpus parser inside the trainer.
+    """
+    result = _train_v2_cohort_from_factories(
+        realization, common_calibration, device=device,
+        training_batches=training_batches,
+        calibration_batches=calibration_batches,
+        control_dose=control_dose, deadline_check=deadline_check,
+        resume_state=resume_state, epoch_checkpoint=epoch_checkpoint,
         progress=progress)
     validate_trained_v2_cohort_rows(
         realization, common_calibration, control_dose=control_dose,
@@ -412,6 +625,9 @@ def validate_trained_v2_cohort(
             or type(candidate.epochs) is not tuple \
             or not 1 <= len(candidate.epochs) <= TRAIN_MAX_EPOCHS \
             or candidate.stop_epoch != len(candidate.epochs) \
+            or type(candidate.truncated_by_deadline) is not bool \
+            or (candidate.truncated_by_deadline
+                and candidate.stopped_for_patience) \
             or candidate.label_control_changed_cell_count_per_epoch \
             != control_dose \
             or type(candidate.checkpoint_bundles) is not tuple \
@@ -479,10 +695,11 @@ def validate_trained_v2_cohort(
             raise BeliefV2CohortTrainingError(
                 "V2 training cross-epoch receipt chain drift")
     decision = select_common_epoch(tuple(tuple(row) for row in member_losses))
+    expected_patience = (decision.stopped_for_patience
+                         and not candidate.truncated_by_deadline)
     if candidate.selected_common_epoch != decision.selected_epoch \
             or candidate.stop_epoch != decision.stop_epoch \
-            or candidate.stopped_for_patience \
-            is not decision.stopped_for_patience:
+            or candidate.stopped_for_patience is not expected_patience:
         raise BeliefV2CohortTrainingError(
             "V2 common epoch reconstruction drift")
     selected = receipts_by_epoch[decision.selected_epoch - 1]
@@ -541,6 +758,9 @@ def validate_trained_v2_cohort_rows(
             or type(candidate.epochs) is not tuple \
             or not 1 <= len(candidate.epochs) <= TRAIN_MAX_EPOCHS \
             or candidate.stop_epoch != len(candidate.epochs) \
+            or type(candidate.truncated_by_deadline) is not bool \
+            or (candidate.truncated_by_deadline
+                and candidate.stopped_for_patience) \
             or candidate.label_control_changed_cell_count_per_epoch \
             != control_dose \
             or type(candidate.checkpoint_bundles) is not tuple \
@@ -604,10 +824,11 @@ def validate_trained_v2_cohort_rows(
             raise BeliefV2CohortTrainingError(
                 "V2 training cross-epoch receipt chain drift")
     decision = select_common_epoch(tuple(tuple(row) for row in member_losses))
+    expected_patience = (decision.stopped_for_patience
+                         and not candidate.truncated_by_deadline)
     if candidate.selected_common_epoch != decision.selected_epoch \
             or candidate.stop_epoch != decision.stop_epoch \
-            or candidate.stopped_for_patience \
-            is not decision.stopped_for_patience:
+            or candidate.stopped_for_patience is not expected_patience:
         raise BeliefV2CohortTrainingError(
             "V2 common epoch reconstruction drift")
     selected = receipts_by_epoch[decision.selected_epoch - 1]
@@ -654,6 +875,7 @@ def reopen_trained_v2_cohort(
         "common_calibration_sha256", "training_device",
         "initialization_seeds", "epochs", "epoch_count",
         "selected_common_epoch", "stop_epoch", "stopped_for_patience",
+        "truncated_by_deadline",
         "label_control_changed_cell_count_per_epoch", "checkpoints",
         "common_epoch_calibration_source",
         "human_calibration_consumed_for_common_epoch",
@@ -736,6 +958,7 @@ def reopen_trained_v2_cohort(
         selected_common_epoch=payload["selected_common_epoch"],
         stop_epoch=payload["stop_epoch"],
         stopped_for_patience=payload["stopped_for_patience"],
+        truncated_by_deadline=payload["truncated_by_deadline"],
         label_control_changed_cell_count_per_epoch=payload[
             "label_control_changed_cell_count_per_epoch"],
         checkpoint_bundles=checkpoint_bundles)

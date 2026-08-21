@@ -14,22 +14,34 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+import torch
 
 from .belief_artifacts import publish_exclusive_bytes, stable_read_bytes
 from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
 from .belief_v2_cohort_training import (
     V2TrainedCohortArtifactsV1,
+    _calibration_batches,
     reopen_trained_v2_cohort,
+    train_v2_cohort_from_batch_factories,
     train_v2_cohort_in_memory,
     train_v2_cohort_streaming,
 )
 from .belief_v2_controller import _stage_gate
 from .belief_v2_deadline import (
+    DEADLINE_REFUSAL_FILENAME,
     BeliefV2DeadlineError,
     publish_deadline_refusal,
     stage_deadline,
+)
+from .belief_v2_epoch_journal import (
+    MANIFEST_FILENAME as EPOCH_JOURNAL_MANIFEST_FILENAME,
+    V2EpochJournalBindingV1,
+    publish_epoch_resume_state,
+    reopen_epoch_snapshots,
+    reopen_latest_epoch_resume,
 )
 from .belief_v2_device_qualification import (
     V2DeviceQualificationPlanV1,
@@ -51,6 +63,13 @@ from .belief_v2_schedule import (
     V2CohortRealizationV1,
 )
 from .belief_v2_training import V2TrainingExampleV1
+from .belief_v2_streaming_training import (
+    iter_streaming_calibration_batches,
+)
+from .belief_model import new_from_scratch_model
+from .belief_v2_accelerator import (
+    evaluate_v2_calibration_cohort_stream_nanonats,
+)
 
 
 TRAINING_STAGE_SCHEMA = "belief-v1-v2-training-stage-result-v1"
@@ -67,6 +86,37 @@ def _sha256(raw: bytes) -> str:
 
 def _checkpoint_filename(index: int) -> str:
     return f"member-{index:02d}.checkpoint.bin"
+
+
+def _tree_bytes(directory: Path) -> int:
+    if directory.is_symlink() or not directory.is_dir():
+        raise BeliefV2TrainingControllerError(
+            "V2 training artifact tree drift")
+    total = 0
+    for path in directory.rglob("*"):
+        if path.is_symlink():
+            raise BeliefV2TrainingControllerError(
+                "V2 training artifact tree contains a symlink")
+        if path.is_file():
+            total += path.stat().st_size
+    return total
+
+
+def _journal_binding(
+        freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        realization: V2CohortRealizationV1,
+        calibration: V2CalibrationScheduleV1,
+        selected_device: str) -> V2EpochJournalBindingV1:
+    return V2EpochJournalBindingV1(
+        freeze_sha256=freeze.sha256(),
+        admission_sha256=admission.sha256(),
+        cohort_id=realization.cohort_id,
+        realization_sha256=realization.sha256(),
+        common_calibration_sha256=calibration.sha256(),
+        selected_device=selected_device,
+        torch_num_threads=torch.get_num_threads(),
+        journal_byte_cap=freeze.resource_caps.training_bytes)
 
 
 def _validate_device_binding(
@@ -183,7 +233,10 @@ def _stage_manifest(
         qualification_plan: V2DeviceQualificationPlanV1,
         qualification_result: V2DeviceQualificationResultV1,
         trained: V2TrainedCohortArtifactsV1,
-        resources: dict[str, Any]) -> dict[str, Any]:
+        resources: dict[str, Any], *, journal_head: dict[str, Any],
+        journal_head_sha256: str, deadline_refusal: dict[str, Any] | None,
+        cache_manifest_sha256: str | None) \
+        -> dict[str, Any]:
     result_raw = qualification_result.canonical_bytes(qualification_plan)
     trained_raw = trained.manifest_bytes()
     return {
@@ -207,9 +260,19 @@ def _stage_manifest(
             "byte_count": len(raw),
             "sha256": _sha256(raw),
         } for index, raw in enumerate(trained.checkpoint_bundles)],
+        "epoch_journal": {
+            "directory": "epoch-journal",
+            "epoch_count": len(trained.epochs),
+            "head_manifest_sha256": journal_head_sha256,
+            "exact_resume_count": journal_head["exact_resume_count"],
+            "mandatory_latest_epoch_resume": True,
+        },
+        "truncated_by_deadline": trained.truncated_by_deadline,
+        "deadline_refusal": deadline_refusal,
+        "tensor_cache_stage_manifest_sha256": cache_manifest_sha256,
         "resources": resources,
         "contains_corpus_rows": False,
-        "contains_optimizer_resume_state": False,
+        "contains_optimizer_resume_state": True,
         "test_split_opened": False,
         "test_split_open_authorized": False,
         "sampler_implementation_authorized": False,
@@ -230,6 +293,10 @@ def run_training_cohort(
         qualification_plan: V2DeviceQualificationPlanV1,
         qualification_result: V2DeviceQualificationResultV1,
         streaming_index=None, load_round=None,
+        training_batch_factory: Callable[[], Any] | None = None,
+        calibration_batch_factory: Callable[[], Any] | None = None,
+        cache_manifest_sha256: str | None = None,
+        cache_control_dose: int | None = None,
         progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Train and atomically publish one exact frozen V2 cohort."""
@@ -242,10 +309,19 @@ def run_training_cohort(
     streaming = streaming_index is not None or load_round is not None
     materialized = training_examples is not None \
         and calibration_examples is not None
+    cached = any(value is not None for value in (
+        training_batch_factory, calibration_batch_factory,
+        cache_manifest_sha256, cache_control_dose))
     if streaming != (streaming_index is not None and callable(load_round)) \
             or (training_examples is None) \
             != (calibration_examples is None) \
-            or streaming == materialized:
+            or cached != (callable(training_batch_factory)
+                          and callable(calibration_batch_factory)
+                          and type(cache_manifest_sha256) is str
+                          and len(cache_manifest_sha256) == 64
+                          and type(cache_control_dose) is int
+                          and cache_control_dose >= 0) \
+            or sum((streaming, materialized, cached)) != 1:
         raise BeliefV2TrainingControllerError(
             "V2 training input mode drift")
     parent = root / "training"
@@ -255,52 +331,133 @@ def run_training_cohort(
     parent.mkdir(mode=0o700, exist_ok=True)
     final = parent / realization.cohort_id
     partial = parent / f"{realization.cohort_id}.partial"
-    if final.exists() or partial.exists() \
-            or final.is_symlink() or partial.is_symlink():
+    if final.exists() or final.is_symlink():
         raise BeliefV2TrainingControllerError(
             "V2 training cohort slot is occupied")
-    partial.mkdir(mode=0o700)
-    started = time.monotonic_ns()
+    resuming = partial.exists()
+    if resuming:
+        if partial.is_symlink() or not partial.is_dir() \
+                or {path.name for path in partial.iterdir()} \
+                != {"epoch-journal"}:
+            raise BeliefV2TrainingControllerError(
+                "V2 training partial is not exactly resumable")
+    else:
+        partial.mkdir(mode=0o700)
+    journal = partial / "epoch-journal"
+    journal_binding = _journal_binding(
+        freeze, admission, realization, calibration, selected_device)
+    reopened_resume = (
+        reopen_latest_epoch_resume(journal, journal_binding)
+        if resuming else None)
+    if resuming and reopened_resume is None:
+        raise BeliefV2TrainingControllerError(
+            "V2 training partial lacks a completed resume epoch")
+    resume_state = None if reopened_resume is None else reopened_resume[0]
+    prior_head = None if reopened_resume is None else reopened_resume[1]
+    started = (time.monotonic_ns() if prior_head is None else
+               prior_head["stage_started_monotonic_nanoseconds"])
+    prior_cpu = (0 if prior_head is None else
+                 prior_head["cumulative_cpu_nanoseconds"])
+    exact_resume_count = (0 if prior_head is None else
+                          prior_head["exact_resume_count"] + 1)
     cpu_started = time.process_time_ns()
     deadline = stage_deadline(
         freeze, admission, stage="training", slot=realization.cohort_id,
         started_monotonic_nanoseconds=started)
 
+    deadline_refusal_value = None
+
     def deadline_check(phase: str, next_unit_index: int) -> None:
+        nonlocal deadline_refusal_value
         try:
             deadline.check(
                 phase=phase, next_unit_index=next_unit_index,
                 observed_monotonic_nanoseconds=time.monotonic_ns())
         except BeliefV2DeadlineError as exc:
-            publish_deadline_refusal(partial, exc.refusal)
-            raise BeliefV2TrainingControllerError(
-                "V2 training deadline exhausted and recorded") from exc
+            # A completed-epoch expiry is recorded only when the final
+            # truncated artifact is ready to publish.  Until then the durable
+            # epoch journal is the only partial state, so a crash cannot leave
+            # an unresumable journal+refusal mixture.  A pre-epoch expiry has
+            # no resumable state and is persisted by the exception path below.
+            deadline_refusal_value = exc.refusal
+            raise
+
+    def epoch_checkpoint(state) -> None:
+        publish_epoch_resume_state(
+            journal, journal_binding, state,
+            stage_started_monotonic_nanoseconds=started,
+            observed_monotonic_nanoseconds=time.monotonic_ns(),
+            cumulative_cpu_nanoseconds=(
+                prior_cpu + time.process_time_ns() - cpu_started),
+            exact_resume_count=exact_resume_count)
 
     try:
         prepare_device_memory_measurement(
             selected_device,
             freeze.resource_caps.training_device_memory_bytes)
         synchronize_training_device(selected_device)
-        if streaming:
+        if cached:
+            trained = train_v2_cohort_from_batch_factories(
+                realization, calibration, device=selected_device,
+                training_batches=training_batch_factory,
+                calibration_batches=calibration_batch_factory,
+                control_dose=cache_control_dose,
+                deadline_check=deadline_check,
+                resume_state=resume_state,
+                epoch_checkpoint=epoch_checkpoint, progress=progress)
+        elif streaming:
             trained = train_v2_cohort_streaming(
                 realization, calibration, index=streaming_index,
                 load_round=load_round, device=selected_device,
-                deadline_check=deadline_check, progress=progress)
+                deadline_check=deadline_check,
+                resume_state=resume_state,
+                epoch_checkpoint=epoch_checkpoint, progress=progress)
         else:
             trained = train_v2_cohort_in_memory(
                 realization, training_examples, calibration,
                 calibration_examples, device=selected_device,
-                deadline_check=deadline_check, progress=progress)
+                deadline_check=deadline_check,
+                resume_state=resume_state,
+                epoch_checkpoint=epoch_checkpoint, progress=progress)
         synchronize_training_device(selected_device)
         peak_host_memory = host_peak_memory_bytes()
         peak_device_memory = device_peak_memory_bytes(selected_device)
     except (RuntimeError, ValueError) as exc:
+        if deadline_refusal_value is not None \
+                and reopen_latest_epoch_resume(
+                    journal, journal_binding) is None \
+                and not (partial / DEADLINE_REFUSAL_FILENAME).exists():
+            publish_deadline_refusal(partial, deadline_refusal_value)
         raise BeliefV2TrainingControllerError(
             "V2 cohort training refused") from exc
     if trained.training_device != selected_device:
         raise BeliefV2TrainingControllerError(
             "V2 trained cohort selected-device drift")
-    deadline_check("before-seal", len(trained.epochs))
+    reopened_head = reopen_latest_epoch_resume(journal, journal_binding)
+    if reopened_head is None or len(reopened_head[0].epochs) \
+            != len(trained.epochs):
+        raise BeliefV2TrainingControllerError(
+            "V2 training epoch journal head drift")
+    journal_head = reopened_head[1]
+    journal_head_raw = stable_read_bytes(
+        journal / f"epoch-{len(trained.epochs):04d}"
+        / EPOCH_JOURNAL_MANIFEST_FILENAME)
+    deadline_refusal = None
+    if trained.truncated_by_deadline:
+        if deadline_refusal_value is None:
+            raise BeliefV2TrainingControllerError(
+                "V2 truncated cohort lacks its exact deadline refusal")
+        publish_deadline_refusal(partial, deadline_refusal_value)
+        refusal_raw = stable_read_bytes(
+            partial / DEADLINE_REFUSAL_FILENAME)
+        deadline_refusal = {
+            "filename": DEADLINE_REFUSAL_FILENAME,
+            "byte_count": len(refusal_raw),
+            "sha256": _sha256(refusal_raw),
+            "final_artifact_sealed": True,
+            "calibration_open_authorized": False,
+            "test_split_open_authorized": False,
+        }
     trained_raw = trained.manifest_bytes()
     publish_exclusive_bytes(partial / "trained-cohort.json", trained_raw)
     for index, raw in enumerate(trained.checkpoint_bundles):
@@ -309,15 +466,22 @@ def run_training_cohort(
     finished = time.monotonic_ns()
     resources = _resource_row(
         freeze, started=started, finished=finished,
-        cpu_nanoseconds=time.process_time_ns() - cpu_started,
+        cpu_nanoseconds=(prior_cpu + time.process_time_ns() - cpu_started),
         artifact_bytes=len(trained_raw)
-        + sum(len(raw) for raw in trained.checkpoint_bundles),
+        + sum(len(raw) for raw in trained.checkpoint_bundles)
+        + _tree_bytes(journal)
+        + (0 if deadline_refusal is None else
+           deadline_refusal["byte_count"]),
         selected_device=selected_device,
         peak_host_memory_bytes=peak_host_memory,
         peak_device_memory_bytes=peak_device_memory)
     manifest = _stage_manifest(
         freeze, admission, primary, realization, calibration,
-        qualification_plan, qualification_result, trained, resources)
+        qualification_plan, qualification_result, trained, resources,
+        journal_head=journal_head,
+        journal_head_sha256=_sha256(journal_head_raw),
+        deadline_refusal=deadline_refusal,
+        cache_manifest_sha256=cache_manifest_sha256)
     publish_exclusive_bytes(
         partial / "manifest.json", canonical_json_bytes(manifest))
     os.rename(partial, final)
@@ -334,10 +498,17 @@ def run_training_cohort(
         qualification_plan=qualification_plan,
         qualification_result=qualification_result,
         compact_control_dose=(
+            cache_control_dose if cached else
             streaming_index.control_changed_cell_count
             if streaming and realization.kind
             == "hard-geometry-label-permutation" else 0
-            if streaming else None))
+            if streaming else None),
+        calibration_batch_factory=(
+            calibration_batch_factory if cached else
+            (lambda: iter_streaming_calibration_batches(
+                streaming_index, calibration, load_round=load_round))
+            if streaming else None),
+        cache_manifest_sha256=cache_manifest_sha256)
     if reopened[0] != manifest or reopened[1] != trained:
         raise BeliefV2TrainingControllerError(
             "V2 training cohort post-publish drift")
@@ -354,7 +525,9 @@ def reopen_training_cohort(
         calibration_examples: tuple[V2TrainingExampleV1, ...] | None,
         qualification_plan: V2DeviceQualificationPlanV1,
         qualification_result: V2DeviceQualificationResultV1,
-        compact_control_dose: int | None = None) \
+        compact_control_dose: int | None = None,
+        calibration_batch_factory: Callable[[], Any] | None = None,
+        cache_manifest_sha256: str | None = None) \
         -> tuple[dict[str, Any], V2TrainedCohortArtifactsV1]:
     """Reopen every persisted byte and reconstruct the trained cohort."""
     _validate_realization_binding(freeze, realization)
@@ -363,8 +536,12 @@ def reopen_training_cohort(
     compact = compact_control_dose is not None
     materialized = training_examples is not None \
         and calibration_examples is not None
+    cached = cache_manifest_sha256 is not None
     if (training_examples is None) != (calibration_examples is None) \
-            or compact == materialized:
+            or compact == materialized \
+            or compact != callable(calibration_batch_factory) \
+            or cached and (type(cache_manifest_sha256) is not str
+                           or len(cache_manifest_sha256) != 64):
         raise BeliefV2TrainingControllerError(
             "V2 training reopen input mode drift")
     if not isinstance(directory, Path) or directory.is_symlink() \
@@ -393,13 +570,72 @@ def reopen_training_cohort(
     if trained.training_device != selected_device:
         raise BeliefV2TrainingControllerError(
             "V2 persisted trained cohort selected-device drift")
+    journal = directory / "epoch-journal"
+    journal_binding = _journal_binding(
+        freeze, admission, realization, calibration, selected_device)
+    snapshots = reopen_epoch_snapshots(journal, journal_binding)
+    if len(snapshots) != len(trained.epochs):
+        raise BeliefV2TrainingControllerError(
+            "V2 persisted epoch journal head drift")
+    if snapshots[-1].curves != trained.epochs:
+        raise BeliefV2TrainingControllerError(
+            "V2 persisted epoch curve cross-binding drift")
+    if materialized:
+        calibration_batches = _calibration_batches(
+            calibration, calibration_examples)
+        calibration_factory = lambda: iter(calibration_batches)
+    else:
+        calibration_factory = calibration_batch_factory
+    for snapshot, curve in zip(
+            snapshots, trained.epochs, strict=True):
+        models = []
+        for seed, state in zip(
+                COHORT_SEEDS, snapshot.current_model_states, strict=True):
+            model = new_from_scratch_model(seed)
+            try:
+                model.load_state_dict(state, strict=True)
+            except (RuntimeError, ValueError) as exc:
+                raise BeliefV2TrainingControllerError(
+                    "V2 epoch calibration model state refused") from exc
+            models.append(model)
+        try:
+            rescored = evaluate_v2_calibration_cohort_stream_nanonats(
+                tuple(models), calibration_factory(), device="cpu")
+        except ValueError as exc:
+            raise BeliefV2TrainingControllerError(
+                "V2 epoch calibration source re-score refused") from exc
+        if rescored != curve.member_calibration_loss_nanonats:
+            raise BeliefV2TrainingControllerError(
+                "V2 epoch calibration loss re-score drift")
+    journal_head = snapshots[-1].manifest
+    journal_head_raw = stable_read_bytes(
+        journal / f"epoch-{len(trained.epochs):04d}"
+        / EPOCH_JOURNAL_MANIFEST_FILENAME)
+    deadline_refusal = None
+    if trained.truncated_by_deadline:
+        refusal_raw = stable_read_bytes(
+            directory / DEADLINE_REFUSAL_FILENAME)
+        deadline_refusal = {
+            "filename": DEADLINE_REFUSAL_FILENAME,
+            "byte_count": len(refusal_raw),
+            "sha256": _sha256(refusal_raw),
+            "final_artifact_sealed": True,
+            "calibration_open_authorized": False,
+            "test_split_open_authorized": False,
+        }
     resources = payload.get("resources") if type(payload) is dict else None
     expected = _stage_manifest(
         freeze, admission, primary, realization, calibration,
-        qualification_plan, qualification_result, trained, resources)
+        qualification_plan, qualification_result, trained, resources,
+        journal_head=journal_head,
+        journal_head_sha256=_sha256(journal_head_raw),
+        deadline_refusal=deadline_refusal,
+        cache_manifest_sha256=cache_manifest_sha256)
     expected_files = {
-        "manifest.json", "trained-cohort.json",
+        "manifest.json", "trained-cohort.json", "epoch-journal",
         *(_checkpoint_filename(index) for index in range(len(COHORT_SEEDS)))}
+    if trained.truncated_by_deadline:
+        expected_files.add(DEADLINE_REFUSAL_FILENAME)
     if type(payload) is not dict \
             or canonical_json_bytes(payload) != manifest_raw \
             or payload != expected \
@@ -443,7 +679,10 @@ def reopen_training_cohort(
             or resources["cpu_nanoseconds"] < 0 \
             or resources["artifact_bytes"] != (
                 len(trained_raw) + sum(len(raw)
-                                       for raw in checkpoint_bundles)) \
+                                       for raw in checkpoint_bundles)
+                + _tree_bytes(journal)
+                + (0 if deadline_refusal is None else
+                   deadline_refusal["byte_count"])) \
             or type(resources["peak_host_memory_bytes"]) is not int \
             or resources["peak_host_memory_bytes"] <= 0 \
             or resources["host_memory_process_count"] \

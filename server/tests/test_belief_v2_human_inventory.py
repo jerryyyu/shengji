@@ -140,12 +140,15 @@ def test_h0_verifier_refuses_foreign_fields_and_every_authority(
         verify_h0_inventory(result)
 
 
-def _many_group_inventory(tmp_path: Path):
+def _many_group_inventory(tmp_path: Path, *, shared_first_two=False):
     sources = []
     manifest_rows = []
     for index in range(30):
         source = tmp_path / f"ROOM_{index:02d}.jsonl"
         events = _completed_round(attempted_complete=index % 2 == 0)
+        events[0]["players"][0]["name"] = (
+            "Shared Human" if shared_first_two and index < 2
+            else f"Human {index:02d}")
         events[0]["source_fixture_nonce"] = index
         source.write_text("".join(
             json.dumps(event) + "\n" for event in events))
@@ -173,11 +176,92 @@ def test_h0_group_split_is_whole_group_deal_blind_and_exact(tmp_path):
     assert not populations[1] & populations[2]
     assert sum(row["complete_rounds"]
                for row in result["splits"].values()) == 30
-    assert result["selection_inputs"] == ["group_digest"]
-    assert result["selection_uses_round_or_decision_counts"] is False
+    assert result["selection_inputs"] == [
+        "component_digest", "eligible_decision_count"]
+    assert result["selection_target_decision_fractions"] == {
+        "train": {"numerator": 8, "denominator": 10},
+        "calibration": {"numerator": 1, "denominator": 10},
+        "test": {"numerator": 1, "denominator": 10},
+    }
+    assert result["selection_uses_round_counts"] is False
+    assert result["selection_uses_decision_count_magnitudes"] is True
+    assert result[
+        "selection_requires_nonempty_eligible_decisions_per_split"] is True
     assert result["selection_uses_labels_or_outcomes"] is False
     assert result["training_authorized"] is False
 
+
+def test_h0_cross_file_player_component_never_crosses_splits(tmp_path):
+    inventory = _many_group_inventory(tmp_path, shared_first_two=True)
+    shared = [row for row in inventory["components"]
+              if len(row["group_digests"]) == 2]
+    assert len(shared) == 1
+    merged_groups = shared[0]["group_digests"]
+    result = build_h0_group_split(inventory)
+    memberships = [split for split, row in result["splits"].items()
+                   if set(merged_groups) & set(row["group_digests"])]
+    assert len(memberships) == 1
+    assert set(merged_groups).issubset(
+        result["splits"][memberships[0]]["group_digests"])
+
+    forged = copy.deepcopy(result)
+    source_split = memberships[0]
+    target_split = next(split for split in forged["splits"]
+                        if split != source_split)
+    forged["splits"][source_split]["group_digests"].remove(
+        merged_groups[0])
+    forged["splits"][target_split]["group_digests"].append(
+        merged_groups[0])
+    forged["splits"][target_split]["group_digests"].sort()
+    with pytest.raises(BeliefV2HumanInventoryError,
+                       match="split reconstruction"):
+        validate_h0_group_split(forged, inventory=inventory)
+
+
+def test_h0_component_split_balances_decisions_and_keeps_nonempty_rows(
+        tmp_path):
+    sources = []
+    manifest_rows = []
+    component_sizes = (15, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1)
+    index = 0
+    for component, size in enumerate(component_sizes):
+        for _ in range(size):
+            source = tmp_path / f"ROOM_{index:02d}.jsonl"
+            events = _completed_round()
+            events[0]["players"][0]["name"] = f"Human {component:02d}"
+            events[0]["source_fixture_nonce"] = index
+            if size == 1 and component != 4:
+                for event in events:
+                    if event.get("e") == "play":
+                        event["bot"] = True
+            source.write_text("".join(
+                json.dumps(event) + "\n" for event in events))
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            sources.append(source)
+            manifest_rows.append(f"{digest}  {source.name}\n")
+            index += 1
+    manifest = tmp_path / "snapshot.sha256"
+    manifest.write_text("".join(manifest_rows))
+    inventory = build_h0_inventory(
+        source_manifest=manifest, source_paths=sources)
+    result = build_h0_group_split(inventory)
+
+    assert sorted(len(row["group_digests"])
+                  for row in inventory["components"]) \
+        == [1, 1, 1, 1, 1, 1, 1, 2, 2, 4, 15]
+    assert sum(row["group_count"]
+               for row in result["splits"].values()) == 30
+    assert all(row["human_play_decisions"] > 0
+               for row in result["splits"].values())
+    component_membership = {}
+    for split, split_row in result["splits"].items():
+        for group in split_row["group_digests"]:
+            component = next(row["component_digest"]
+                             for row in inventory["groups"]
+                             if row["group_digest"] == group)
+            component_membership.setdefault(component, set()).add(split)
+    assert all(len(values) == 1 for values in component_membership.values())
+    assert result["zero_decision_component_destination"] == "train"
 
 def test_h0_group_split_refuses_inventory_or_result_drift(tmp_path):
     inventory = _many_group_inventory(tmp_path)

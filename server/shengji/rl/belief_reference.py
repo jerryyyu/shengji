@@ -72,80 +72,112 @@ class SampledOwnershipWorldV1:
 
 def validate_sampled_world(actor: ActorObservationV1,
                            world: SampledOwnershipWorldV1) -> None:
+    """Validate one world through the batch validator's shared context."""
+    validate_sampled_worlds(actor, (world,))
+
+
+def validate_sampled_worlds(
+        actor: ActorObservationV1,
+        worlds: tuple[SampledOwnershipWorldV1, ...]) -> None:
+    """Validate worlds while deriving actor-constant mechanics exactly once."""
     if type(actor) is not ActorObservationV1:
         raise BeliefReferenceError("REF-C requires an exact actor observation")
-    if type(world) is not SampledOwnershipWorldV1 \
-            or world.schema != WORLD_SCHEMA \
-            or world.actor_observation_sha256 != actor.sha256():
-        raise BeliefReferenceError("REF-C world actor/schema binding drift")
+    if type(worlds) is not tuple or not worlds:
+        raise BeliefReferenceError("REF-C world population is malformed")
+    actor_sha256 = actor.sha256()
     expected_receivers = receiver_sizes(actor)
-    if type(world.receivers) is not tuple \
-            or tuple(row.receiver for row in world.receivers) != tuple(
-                receiver for receiver, _ in expected_receivers):
-        raise BeliefReferenceError("REF-C receiver population/order drift")
-
     unseen = dict(actor.deductions.unseen)
     ordering = Ordering(actor.trump_suit, actor.trump_rank)
-    totals: Counter[str] = Counter()
-    by_receiver: dict[str, Counter[str]] = {}
-    for relative, (row, (_, size)) in enumerate(
-            zip(world.receivers, expected_receivers, strict=True), start=1):
-        if type(row) is not ReceiverCardsV1 or type(row.receiver) is not str \
-                or type(row.cards) is not tuple:
-            raise BeliefReferenceError("REF-C receiver row is malformed")
-        counts: Counter[str] = Counter()
-        for item in row.cards:
-            if type(item) is not tuple or len(item) != 2:
-                raise BeliefReferenceError("REF-C receiver cards are malformed")
-            card, count = item
-            if type(card) is not str or card not in _CARD_CODES \
-                    or card not in unseen or type(count) is not int \
-                    or count not in (1, 2) or card in counts:
-                raise BeliefReferenceError("REF-C receiver cards are malformed")
-            counts[card] = count
-        if tuple(sorted(row.cards)) != row.cards:
-            raise BeliefReferenceError("REF-C receiver cards are malformed")
-        if sum(counts.values()) != size:
-            raise BeliefReferenceError("REF-C receiver size drift")
-        by_receiver[row.receiver] = counts
-        totals.update(counts)
+    receiver_names = tuple(receiver for receiver, _ in expected_receivers)
+    voids_by_relative = tuple(
+        frozenset(actor.deductions.voids_by_relative[relative])
+        for relative in range(1, 4))
+    pair_caps_by_relative = tuple(
+        actor.deductions.pair_caps_by_relative[relative]
+        for relative in range(1, 4))
+    run_caps_by_relative = tuple(
+        actor.deductions.run_caps_by_relative[relative]
+        for relative in range(1, 4))
 
-        if relative <= 3:
-            voids = set(actor.deductions.voids_by_relative[relative])
-            if any(ordering.eff_suit(card) in voids for card in counts):
-                raise BeliefReferenceError("REF-C world violates a proven void")
-            by_suit: dict[str, list[str]] = {}
-            for card in counts.elements():
-                by_suit.setdefault(ordering.eff_suit(card), []).append(card)
-            for suit, cap in actor.deductions.pair_caps_by_relative[relative]:
-                pair_count = sum(value // 2 for value in Counter(
-                    by_suit.get(suit, ())).values())
-                if pair_count > cap:
-                    raise BeliefReferenceError(
-                        "REF-C world violates a proven pair cap")
-            for suit, cap in actor.deductions.run_caps_by_relative[relative]:
-                cards = by_suit.get(suit, [])
-                run = 0 if not cards else decompose(
-                    cards, ordering).max_pair_run()
-                if run > cap:
-                    raise BeliefReferenceError(
-                        "REF-C world violates a proven run cap")
-
-    if dict(totals) != unseen:
-        raise BeliefReferenceError("REF-C world violates unseen conservation")
-    for card, relative, copies in actor.deductions.declaration_pins:
-        receiver = f"seat-relative-{relative}"
-        if receiver not in by_receiver \
-                or by_receiver[receiver][card] < copies:
-            raise BeliefReferenceError("REF-C world violates declaration pin")
-    for constraint in actor.deductions.declaration_eligibility:
-        if any(receiver not in by_receiver
-               for receiver in constraint.eligible_receivers) \
-                or sum(by_receiver[receiver][constraint.card]
-                       for receiver in constraint.eligible_receivers) \
-                < constraint.minimum_copies:
+    for world in worlds:
+        if type(world) is not SampledOwnershipWorldV1 \
+                or world.schema != WORLD_SCHEMA \
+                or world.actor_observation_sha256 != actor_sha256:
             raise BeliefReferenceError(
-                "REF-C world violates declaration eligibility")
+                "REF-C world actor/schema binding drift")
+        if type(world.receivers) is not tuple \
+                or tuple(row.receiver for row in world.receivers) \
+                != receiver_names:
+            raise BeliefReferenceError(
+                "REF-C receiver population/order drift")
+
+        totals: Counter[str] = Counter()
+        by_receiver: dict[str, Counter[str]] = {}
+        for relative, (row, (_, size)) in enumerate(
+                zip(world.receivers, expected_receivers, strict=True), start=1):
+            if type(row) is not ReceiverCardsV1 \
+                    or type(row.receiver) is not str \
+                    or type(row.cards) is not tuple:
+                raise BeliefReferenceError("REF-C receiver row is malformed")
+            counts: Counter[str] = Counter()
+            for item in row.cards:
+                if type(item) is not tuple or len(item) != 2:
+                    raise BeliefReferenceError(
+                        "REF-C receiver cards are malformed")
+                card, count = item
+                if type(card) is not str or card not in _CARD_CODES \
+                        or card not in unseen or type(count) is not int \
+                        or count not in (1, 2) or card in counts:
+                    raise BeliefReferenceError(
+                        "REF-C receiver cards are malformed")
+                counts[card] = count
+            if tuple(sorted(row.cards)) != row.cards:
+                raise BeliefReferenceError("REF-C receiver cards are malformed")
+            if sum(counts.values()) != size:
+                raise BeliefReferenceError("REF-C receiver size drift")
+            by_receiver[row.receiver] = counts
+            totals.update(counts)
+
+            if relative <= 3:
+                voids = voids_by_relative[relative - 1]
+                if any(ordering.eff_suit(card) in voids for card in counts):
+                    raise BeliefReferenceError(
+                        "REF-C world violates a proven void")
+                by_suit: dict[str, list[str]] = {}
+                for card in counts.elements():
+                    by_suit.setdefault(
+                        ordering.eff_suit(card), []).append(card)
+                for suit, cap in pair_caps_by_relative[relative - 1]:
+                    pair_count = sum(value // 2 for value in Counter(
+                        by_suit.get(suit, ())).values())
+                    if pair_count > cap:
+                        raise BeliefReferenceError(
+                            "REF-C world violates a proven pair cap")
+                for suit, cap in run_caps_by_relative[relative - 1]:
+                    cards = by_suit.get(suit, [])
+                    run = 0 if not cards else decompose(
+                        cards, ordering).max_pair_run()
+                    if run > cap:
+                        raise BeliefReferenceError(
+                            "REF-C world violates a proven run cap")
+
+        if dict(totals) != unseen:
+            raise BeliefReferenceError(
+                "REF-C world violates unseen conservation")
+        for card, relative, copies in actor.deductions.declaration_pins:
+            receiver = f"seat-relative-{relative}"
+            if receiver not in by_receiver \
+                    or by_receiver[receiver][card] < copies:
+                raise BeliefReferenceError(
+                    "REF-C world violates declaration pin")
+        for constraint in actor.deductions.declaration_eligibility:
+            if any(receiver not in by_receiver
+                   for receiver in constraint.eligible_receivers) \
+                    or sum(by_receiver[receiver][constraint.card]
+                           for receiver in constraint.eligible_receivers) \
+                    < constraint.minimum_copies:
+                raise BeliefReferenceError(
+                    "REF-C world violates declaration eligibility")
 
 
 def reference_ownership(
@@ -158,8 +190,7 @@ def reference_ownership(
         raise BeliefReferenceError("REF-C requires exactly 256 worlds")
     if not _is_sha256(sampler_source_sha256):
         raise BeliefReferenceError("REF-C sampler source identity is invalid")
-    for world in worlds:
-        validate_sampled_world(actor, world)
+    validate_sampled_worlds(actor, worlds)
 
     rows: list[ReceiverCountProbabilityV1] = []
     for card, _ in actor.deductions.unseen:

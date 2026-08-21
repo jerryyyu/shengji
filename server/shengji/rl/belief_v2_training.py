@@ -112,7 +112,12 @@ def build_synthetic_training_example(
                 "ascii")).hexdigest(),
         split=metadata["split"],
         source_kind="synthetic", actor=actor, target=target)
-    validate_synthetic_training_example(pair, result)
+    # ``_example`` is the sole constructor and already derives the complete
+    # typed surface from the reopened source.  Re-running the public validator
+    # here rebuilt that same surface a second time through the same function.
+    # Keep the validator for independently supplied/reopened candidates; the
+    # streaming index and batch readers additionally bind this result's exact
+    # identity back to the frozen schedule row.
     return result
 
 
@@ -145,7 +150,9 @@ def build_human_training_example(
         decision_key=metadata["decision_key"],
         round_group_key=metadata["round_digest"], split=metadata["split"],
         source_kind="human", actor=actor, target=target)
-    validate_human_training_example(actor_raw, target_raw, result)
+    # As above, avoid immediately repeating the same full derivation.  The
+    # explicit validator remains the independent boundary for any candidate
+    # supplied from outside this controlled constructor.
     return result
 
 

@@ -33,10 +33,13 @@ from shengji.rl.belief_v2_accelerator import V2TrainingDeviceProfileV1
 from shengji.rl.belief_v2_freeze_builder import (
     BeliefV2FreezeBuilderError,
     build_execution_freeze_from_receipts,
+    derived_capture_core_hour_cap,
     resource_caps_from_bytes,
     standard_cohort_plans,
 )
 from shengji.rl.belief_v2_human_inventory import (
+    H0_INVENTORY_SCHEMA,
+    _component_digest,
     build_h0_group_split,
     group_split_bytes,
     inventory_bytes,
@@ -100,28 +103,40 @@ def _cpu_profile():
 
 def _inventory():
     groups = []
-    for index in range(10):
-        groups.append({
-            "group_digest": f"{index + 1:x}" * 64,
+    components = []
+    for index in range(30):
+        group = {
+            "group_digest": hashlib.sha256(
+                f"group-{index}".encode("ascii")).hexdigest(),
             "source_bytes": 100 + index,
             "complete_rounds": 1, "incomplete_rounds": 0,
             "human_play_decisions": 10,
             "trump_rank_counts": {"2": 1},
             "attempted_channel_counts": {"absent": 10},
+        }
+        component_digest = _component_digest((group["group_digest"],))
+        group["component_digest"] = component_digest
+        groups.append(group)
+        components.append({
+            "component_digest": component_digest,
+            "group_digests": [group["group_digest"]],
         })
     groups.sort(key=lambda row: row["group_digest"])
     return {
-        "schema": "belief-v1-v2-human-h0-inventory-v1",
+        "schema": H0_INVENTORY_SCHEMA,
         "source_manifest_sha256": _sha("1"),
-        "source_file_count": 10,
+        "source_file_count": 30,
         "source_digest_population_sha256": _sha("2"),
-        "group_count": 10, "groups": groups,
-        "rounds_seen": 10, "complete_rounds": 10,
-        "incomplete_rounds": 0, "human_play_decisions": 100,
-        "trump_rank_counts": {"2": 10},
-        "attempted_channel_counts": {"absent": 100},
+        "group_count": 30, "groups": groups,
+        "component_count": 30,
+        "components": sorted(
+            components, key=lambda row: row["component_digest"]),
+        "rounds_seen": 30, "complete_rounds": 30,
+        "incomplete_rounds": 0, "human_play_decisions": 300,
+        "trump_rank_counts": {"2": 30},
+        "attempted_channel_counts": {"absent": 300},
         "hidden_ownership_labels_reconstructable_for_complete_rounds": True,
-        "group_split_unit": "source-log-session-digest",
+        "group_split_unit": "cross-file-human-player-component",
         "raw_player_identity_published": False,
         "model_rows_published": False,
         "training_authorized": False, "test_open_authorized": False,
@@ -166,13 +181,16 @@ def _preflight():
             {"wall_nanoseconds": 20_000_000_000},
             {"wall_nanoseconds": 20_000_000_000},
         ]} for _ in range(16)],
+        "summary": {
+            "aggregate_cpu_nanoseconds": 450_344_523_762,
+        },
     }
 
 
 def _caps():
     training_estimate = _training_epoch_estimate()
     return V2ResourceCapsV1(
-        capture_core_hours=64, capture_wall_seconds=14_400,
+        capture_core_hours=66, capture_wall_seconds=14_400,
         capture_bytes=16 * 1024**3,
         reference_core_hours=16, reference_wall_seconds=7_200,
         reference_bytes=16 * 1024**3,
@@ -405,11 +423,11 @@ def test_builder_derives_one_closed_gpu_capable_freeze(monkeypatch, tmp_path):
     assert [row.cohort_id for row in freeze.cohorts] == [
         "synthetic-primary", "hard-geometry-label-permutation",
         "human-mixture", "synthetic-scale-50"]
-    assert freeze.human_group_count == 10
+    assert freeze.human_group_count == 30
     assert (freeze.human_train_group_count,
             freeze.human_calibration_group_count,
-            freeze.human_test_group_count) == (8, 1, 1)
-    assert freeze.human_eligible_decision_count == 100
+            freeze.human_test_group_count) == (24, 3, 3)
+    assert freeze.human_eligible_decision_count == 300
     assert freeze.resource_caps == _caps()
 
 
@@ -456,7 +474,7 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
     inventory = _inventory()
     split = build_h0_group_split(inventory)
 
-    def build_with(receipt):
+    def build_with(receipt, *, caps=None):
         return build_execution_freeze_from_receipts(
             repo=tmp_path.resolve(), expected_git="a" * 40,
             source_review_commit="b" * 40,
@@ -471,7 +489,7 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
                 "candidate_report_sha256": _sha("6")}),
             training_candidate_device="mps",
             deadline_estimate_raw=canonical_json_bytes(receipt),
-            resource_caps=_caps(),
+            resource_caps=_caps() if caps is None else caps,
             evidence_root=(tmp_path / "deadline-evidence").resolve())
 
     for receipt in (
@@ -487,6 +505,11 @@ def test_deadline_estimate_receipt_binds_runtime_counts_and_caps(
                            match="deadline estimate"):
             build_with(receipt)
 
+    moved_cap = replace(_caps(), capture_core_hours=72)
+    with pytest.raises(BeliefV2FreezeBuilderError,
+                       match="capture core cap derivation drift"):
+        build_with(_deadline_estimate(), caps=moved_cap)
+
 
 def test_resource_caps_require_canonical_positive_integer_schema():
     caps = _caps()
@@ -500,6 +523,16 @@ def test_resource_caps_require_canonical_positive_integer_schema():
         resource_caps_from_bytes(
             canonical_json_bytes({**caps.to_dict(), "schema": CAP_SCHEMA})
             + b" ")
+
+
+def test_capture_core_cap_is_mechanical_and_cannot_move_to_fit():
+    preflight = _preflight()
+    assert derived_capture_core_hour_cap(preflight) == 66
+    changed = {
+        **preflight,
+        "summary": {"aggregate_cpu_nanoseconds": 1},
+    }
+    assert derived_capture_core_hour_cap(changed) == 1
 
 
 def test_standard_cohort_factory_is_stable():

@@ -112,12 +112,13 @@ from shengji.rl.belief_v2_terminal_controller import (  # noqa: E402
 from shengji.rl.belief_v2_training_controller import (  # noqa: E402
     run_training_cohort,
 )
-from shengji.rl.belief_v2_streaming_inputs import (  # noqa: E402
-    V2ArtifactRoundLoader,
-)
 from shengji.rl.belief_v2_input_index_controller import (  # noqa: E402
     reopen_training_input_index,
     run_training_input_index,
+)
+from shengji.rl.belief_v2_tensor_cache_controller import (  # noqa: E402
+    reopen_training_tensor_cache,
+    run_training_tensor_cache,
 )
 from shengji.rl.belief_v2_progress import V2ProgressReporter  # noqa: E402
 
@@ -377,6 +378,14 @@ def build_training_index(args: argparse.Namespace) -> None:
         progress=_progress("training-input-index", "all-sources")))
 
 
+def build_training_cache(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker, _, _ = _load_root(root)
+    _output(run_training_tensor_cache(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        progress=_progress("training-tensor-cache", "all-cohorts")))
+
+
 def qualify_device(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, _, _ = _load_root(root)
@@ -385,13 +394,13 @@ def qualify_device(args: argparse.Namespace) -> None:
         admission=admission)
     primary = next(row for row in inputs.realizations
                    if row.cohort_id == "synthetic-primary")
+    _, factories, _, _, _ = reopen_training_tensor_cache(
+        root / "training-tensor-cache" / "result", freeze=freeze,
+        admission=admission)
     _output(run_device_qualification(
         root, freeze, admission, repo=REPO, review_marker=marker,
-        primary=primary,
-        primary_examples=None, streaming_index=inputs.index,
-        load_round=V2ArtifactRoundLoader(
-            root, freeze=freeze, admission=admission,
-            index=inputs.index),
+        primary=primary, primary_examples=None,
+        batch_factory=factories[primary.cohort_id],
         progress=_progress("device-qualification", "candidate-device")))
 
 
@@ -411,14 +420,21 @@ def train_cohort(args: argparse.Namespace) -> None:
     _, plan, result = reopen_device_qualification(
         root / "device-qualification" / "result", freeze=freeze,
         admission=admission, primary=primary)
+    _, factories, calibration_factory, control_dose, cache_sha256 = (
+        reopen_training_tensor_cache(
+            root / "training-tensor-cache" / "result", freeze=freeze,
+            admission=admission))
     _output(run_training_cohort(
         root, freeze, admission, repo=REPO, review_marker=marker,
         primary=primary, realization=realization,
         training_examples=None, calibration=inputs.common_calibration,
-        calibration_examples=None, streaming_index=inputs.index,
-        load_round=V2ArtifactRoundLoader(
-            root, freeze=freeze, admission=admission,
-            index=inputs.index),
+        calibration_examples=None,
+        training_batch_factory=factories[realization.cohort_id],
+        calibration_batch_factory=calibration_factory,
+        cache_manifest_sha256=cache_sha256,
+        cache_control_dose=(
+            control_dose if realization.kind
+            == "hard-geometry-label-permutation" else 0),
         qualification_plan=plan, qualification_result=result,
         progress=_progress("training", args.cohort_id)))
 
@@ -511,6 +527,9 @@ def parser() -> argparse.ArgumentParser:
     training_index = commands.add_parser("build-training-index")
     training_index.add_argument("--root", required=True)
     training_index.set_defaults(function=build_training_index)
+    training_cache = commands.add_parser("build-training-cache")
+    training_cache.add_argument("--root", required=True)
+    training_cache.set_defaults(function=build_training_cache)
     qualify = commands.add_parser("qualify-device")
     qualify.add_argument("--root", required=True)
     qualify.set_defaults(function=qualify_device)

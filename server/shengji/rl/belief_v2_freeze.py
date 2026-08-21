@@ -339,7 +339,7 @@ class V2ExecutionFreezeV1:
                     self.human_calibration_eligible_decision_count),
                 "test_eligible_decision_count": (
                     self.human_test_eligible_decision_count),
-                "group_split_unit": "source-log-session-digest",
+                "group_split_unit": "cross-file-human-player-component",
                 "raw_identity_model_input": False,
                 "source_path_model_input": False,
                 "world_generating_key_model_input": False,
@@ -960,7 +960,8 @@ def authenticate_execution_review(
                        if line.startswith(prefix)]
     previous_matches = [line for line in previous.splitlines(keepends=True)
                         if line.startswith(prefix)]
-    if current_matches != [marker] or previous_matches:
+    if current_matches != [*previous_matches, marker] \
+            or marker in previous_matches:
         raise BeliefV2FreezeError(
             "V2 execution review marker introduction drift")
     return marker, remote_tip

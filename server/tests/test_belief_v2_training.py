@@ -8,6 +8,7 @@ from dataclasses import fields, replace
 import numpy as np
 import pytest
 
+import shengji.rl.belief_v2_training as TRAINING_STAGE
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
@@ -106,6 +107,28 @@ def test_same_public_state_has_identical_human_and_synthetic_model_tensors():
         assert np.array_equal(
             getattr(synthetic.common.tensors, name),
             getattr(human.common.tensors, name))
+
+
+def test_controlled_builders_do_not_repeat_full_candidate_derivation(
+        monkeypatch):
+    synthetic_pair, human_pair, synthetic, human = _paired_examples()
+    monkeypatch.setattr(
+        TRAINING_STAGE, "validate_synthetic_training_example",
+        lambda *args, **kwargs: pytest.fail(
+            "synthetic builder repeated full derivation"))
+    monkeypatch.setattr(
+        TRAINING_STAGE, "validate_human_training_example",
+        lambda *args, **kwargs: pytest.fail(
+            "human builder repeated full derivation"))
+    rebuilt_synthetic = build_synthetic_training_example(synthetic_pair)
+    rebuilt_human = build_human_training_example(
+        human_pair.actor_bytes, human_pair.target_bytes)
+    assert rebuilt_synthetic.common.canonical_bytes() \
+        == synthetic.common.canonical_bytes()
+    assert rebuilt_human.common.canonical_bytes() == human.common.canonical_bytes()
+    assert np.array_equal(rebuilt_synthetic.count_labels,
+                          synthetic.count_labels)
+    assert np.array_equal(rebuilt_human.count_labels, human.count_labels)
 
 
 def test_mixed_batch_contains_no_source_identity_and_trains_unchanged_model():

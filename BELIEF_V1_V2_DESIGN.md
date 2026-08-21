@@ -738,9 +738,10 @@ the ceiling, in whole core-hours, of the capacity preflight's measured
 aggregate CPU extrapolated from its complete round population to all 13,312
 production rounds, multiplied by the fixed 5/4 margin. The freeze builder
 recomputes that value and refuses any lower or higher supplied cap. Every
-worker stage enters through `_load_root`, whose live-execution gate rebuilds
-the runtime profile and re-reads the current host boot identity before any
-resume journal is trusted; it does not compare two copies of the freeze.
+worker stage enters through `_load_root`, whose live-execution gate directly
+re-probes the current host boot identity and then rebuilds the runtime profile
+before any resume journal is trusted; it does not compare two copies of the
+freeze.
 
 The immutable 13,312-coordinate production schedule is memoized only after
 its first complete derivation. This preserves its canonical bytes while

@@ -455,6 +455,9 @@ def validate_live_execution(
     """Require exact source and runtime identity at every stage entry."""
     validate_source_bindings(source_bindings)
     validate_runtime_profile(runtime)
+    if _boot_identity() != runtime.boot_identity:
+        raise BeliefV2ExecutionIdentityError(
+            "V2 live boot identity drift")
     native_path = Path(runtime.native_path)
     if build_source_bindings(
             repo, expected_git=execution_git,

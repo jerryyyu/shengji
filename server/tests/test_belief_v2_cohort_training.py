@@ -10,6 +10,7 @@ import pytest
 import torch
 
 import shengji.rl.belief_v2_cohort_training as STAGE
+import shengji.rl.belief_v2_epoch_journal as JOURNAL
 import shengji.rl.belief_v2_streaming_inputs as STREAM_INPUTS
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
@@ -24,6 +25,16 @@ from shengji.rl.belief_v2_cohort_training import (
     train_v2_cohort_streaming,
     validate_trained_v2_cohort,
     validate_trained_v2_cohort_rows,
+)
+from shengji.rl.belief_v2_deadline import (
+    BeliefV2DeadlineError,
+    V2DeadlineRefusalV1,
+)
+from shengji.rl.belief_v2_epoch_journal import (
+    BeliefV2EpochJournalError,
+    V2EpochJournalBindingV1,
+    publish_epoch_resume_state,
+    reopen_latest_epoch_resume,
 )
 from shengji.rl.belief_v2_freeze import (
     ALL_HUMAN_TRAIN_DECISIONS,
@@ -227,6 +238,281 @@ def test_primary_trains_one_common_epoch_and_reopens_every_checkpoint(
     assert reopen_trained_v2_cohort(
         result.manifest_bytes(), result.checkpoint_bundles,
         value, examples, schedule, calibration) == result
+
+
+def test_completed_epoch_journal_resumes_to_byte_identical_trajectory(
+        tmp_path, monkeypatch):
+    synthetic, human, realized, calibration, schedule = _fixture()
+    value = next(row for row in realized
+                 if row.kind == "synthetic-primary")
+    by_key = {row.decision_key: row for row in (*synthetic, *human)}
+    examples = tuple(by_key[row.decision_key] for row in value.rows)
+    monkeypatch.setattr(STAGE, "TRAIN_MAX_EPOCHS", 2)
+    binding = V2EpochJournalBindingV1(
+        freeze_sha256="a" * 64, admission_sha256="b" * 64,
+        cohort_id=value.cohort_id, realization_sha256=value.sha256(),
+        common_calibration_sha256=schedule.sha256(),
+        selected_device="cpu", torch_num_threads=torch.get_num_threads(),
+        journal_byte_cap=1_000_000_000)
+    journal = tmp_path / "journal"
+
+    class SimulatedProcessLoss(RuntimeError):
+        pass
+
+    def first_checkpoint(state):
+        publish_epoch_resume_state(
+            journal, binding, state,
+            stage_started_monotonic_nanoseconds=100,
+            observed_monotonic_nanoseconds=200,
+            cumulative_cpu_nanoseconds=80, exact_resume_count=0)
+        raise SimulatedProcessLoss
+
+    with pytest.raises(SimulatedProcessLoss):
+        train_v2_cohort_in_memory(
+            value, examples, schedule, calibration, device="cpu",
+            epoch_checkpoint=first_checkpoint)
+    reopened = reopen_latest_epoch_resume(journal, binding)
+    assert reopened is not None
+    resume_state, head = reopened
+    assert len(resume_state.epochs) == 1
+    assert head["exact_resume_count"] == 0
+
+    def resumed_checkpoint(state):
+        publish_epoch_resume_state(
+            journal, binding, state,
+            stage_started_monotonic_nanoseconds=100,
+            observed_monotonic_nanoseconds=300,
+            cumulative_cpu_nanoseconds=160, exact_resume_count=1)
+
+    resumed = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu",
+        resume_state=resume_state, epoch_checkpoint=resumed_checkpoint)
+    uninterrupted = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu")
+    assert resumed == uninterrupted
+    reopened = reopen_latest_epoch_resume(journal, binding)
+    assert reopened is not None
+    assert len(reopened[0].epochs) == 2
+    assert reopened[1]["exact_resume_count"] == 1
+
+    abandoned = journal / "epoch-0003.partial"
+    abandoned.mkdir()
+    (abandoned / "never-read").write_bytes(b"partial")
+    with pytest.raises(BeliefV2EpochJournalError,
+                       match="partial publication"):
+        reopen_latest_epoch_resume(journal, binding)
+    assert (abandoned / "never-read").read_bytes() == b"partial"
+
+
+def test_interrupted_epoch_publication_replays_only_exact_next_epoch(
+        tmp_path, monkeypatch):
+    synthetic, human, realized, calibration, schedule = _fixture()
+    value = next(row for row in realized
+                 if row.kind == "synthetic-primary")
+    by_key = {row.decision_key: row for row in (*synthetic, *human)}
+    examples = tuple(by_key[row.decision_key] for row in value.rows)
+    monkeypatch.setattr(STAGE, "TRAIN_MAX_EPOCHS", 2)
+    binding = V2EpochJournalBindingV1(
+        freeze_sha256="a" * 64, admission_sha256="b" * 64,
+        cohort_id=value.cohort_id, realization_sha256=value.sha256(),
+        common_calibration_sha256=schedule.sha256(),
+        selected_device="cpu", torch_num_threads=torch.get_num_threads(),
+        journal_byte_cap=1_000_000_000)
+    journal = tmp_path / "journal"
+
+    class SimulatedPublicationLoss(RuntimeError):
+        pass
+
+    real_publish = JOURNAL.publish_exclusive_bytes
+    tripped = False
+
+    def flaky_publish(path, raw):
+        nonlocal tripped
+        if path.name == JOURNAL.CURVES_FILENAME \
+                and path.parent.name == "epoch-0002.partial" \
+                and not tripped:
+            tripped = True
+            fragment = path.with_name(path.name + ".partial")
+            fragment.write_bytes(raw[:len(raw) // 2])
+            raise SimulatedPublicationLoss
+        return real_publish(path, raw)
+
+    monkeypatch.setattr(JOURNAL, "publish_exclusive_bytes", flaky_publish)
+
+    def checkpoint(state):
+        publish_epoch_resume_state(
+            journal, binding, state,
+            stage_started_monotonic_nanoseconds=100,
+            observed_monotonic_nanoseconds=200 + len(state.epochs),
+            cumulative_cpu_nanoseconds=80 * len(state.epochs),
+            exact_resume_count=0)
+
+    with pytest.raises(SimulatedPublicationLoss):
+        train_v2_cohort_in_memory(
+            value, examples, schedule, calibration, device="cpu",
+            epoch_checkpoint=checkpoint)
+    assert tripped is True
+    assert (journal / "epoch-0002.partial" / "curves.json.partial").is_file()
+    reopened = reopen_latest_epoch_resume(journal, binding)
+    assert reopened is not None
+    resume_state, _ = reopened
+    assert len(resume_state.epochs) == 1
+
+    monkeypatch.setattr(JOURNAL, "publish_exclusive_bytes", real_publish)
+
+    def resumed_checkpoint(state):
+        publish_epoch_resume_state(
+            journal, binding, state,
+            stage_started_monotonic_nanoseconds=100,
+            observed_monotonic_nanoseconds=300,
+            cumulative_cpu_nanoseconds=160, exact_resume_count=1)
+
+    resumed = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu",
+        resume_state=resume_state, epoch_checkpoint=resumed_checkpoint)
+    uninterrupted = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu")
+    assert resumed == uninterrupted
+    assert not (journal / "epoch-0002.partial").exists()
+    assert len(reopen_latest_epoch_resume(journal, binding)[0].epochs) == 2
+
+
+def test_patience_epoch_crash_reopens_and_seals_without_more_training(
+        tmp_path, monkeypatch):
+    synthetic, human, realized, calibration, schedule = _fixture()
+    value = next(row for row in realized
+                 if row.kind == "synthetic-primary")
+    by_key = {row.decision_key: row for row in (*synthetic, *human)}
+    examples = tuple(by_key[row.decision_key] for row in value.rows)
+    monkeypatch.setattr(STAGE, "TRAIN_MAX_EPOCHS", 6)
+    monkeypatch.setattr(
+        STAGE, "evaluate_v2_calibration_cohort_stream_nanonats",
+        lambda models, batches, device: (1_000_000,) * len(models))
+    binding = V2EpochJournalBindingV1(
+        freeze_sha256="a" * 64, admission_sha256="b" * 64,
+        cohort_id=value.cohort_id, realization_sha256=value.sha256(),
+        common_calibration_sha256=schedule.sha256(),
+        selected_device="cpu", torch_num_threads=torch.get_num_threads(),
+        journal_byte_cap=1_000_000_000)
+    journal = tmp_path / "journal"
+
+    class SimulatedProcessLoss(RuntimeError):
+        pass
+
+    def checkpoint_then_crash(state):
+        epoch = len(state.epochs)
+        publish_epoch_resume_state(
+            journal, binding, state,
+            stage_started_monotonic_nanoseconds=100,
+            observed_monotonic_nanoseconds=200 + epoch,
+            cumulative_cpu_nanoseconds=80 * epoch, exact_resume_count=0)
+        if epoch == 4:
+            raise SimulatedProcessLoss
+
+    with pytest.raises(SimulatedProcessLoss):
+        train_v2_cohort_in_memory(
+            value, examples, schedule, calibration, device="cpu",
+            epoch_checkpoint=checkpoint_then_crash)
+    reopened = reopen_latest_epoch_resume(journal, binding)
+    assert reopened is not None
+    resume_state, manifest = reopened
+    assert len(resume_state.epochs) == 4
+    assert manifest["selected_common_epoch"] == 1
+
+    def no_more_training_batches():
+        raise AssertionError("a patience-complete journal must not train again")
+
+    resumed = STAGE.train_v2_cohort_from_batch_factories(
+        value, schedule, device="cpu",
+        training_batches=no_more_training_batches,
+        calibration_batches=no_more_training_batches,
+        control_dose=0, resume_state=resume_state)
+    uninterrupted = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu")
+    assert resumed == uninterrupted
+    assert resumed.stopped_for_patience is True
+    assert resumed.truncated_by_deadline is False
+
+
+def test_deadline_after_completed_epoch_seals_explicit_truncation(
+        monkeypatch):
+    synthetic, human, realized, calibration, schedule = _fixture()
+    value = next(row for row in realized
+                 if row.kind == "synthetic-primary")
+    by_key = {row.decision_key: row for row in (*synthetic, *human)}
+    examples = tuple(by_key[row.decision_key] for row in value.rows)
+    monkeypatch.setattr(STAGE, "TRAIN_MAX_EPOCHS", 3)
+    checkpoints = []
+
+    def deadline(phase, next_unit_index):
+        if phase == "after-unit":
+            raise BeliefV2DeadlineError(V2DeadlineRefusalV1(
+                freeze_sha256="a" * 64, admission_sha256="b" * 64,
+                stage="training", slot=value.cohort_id,
+                phase=phase, next_unit_index=next_unit_index,
+                started_monotonic_nanoseconds=1,
+                observed_monotonic_nanoseconds=10,
+                hard_deadline_monotonic_nanoseconds=11,
+                wall_cap_nanoseconds=10,
+                next_unit_wall_estimate_nanoseconds=6,
+                safety_reserve_nanoseconds=3,
+                required_remaining_nanoseconds=3,
+                observed_remaining_nanoseconds=1))
+
+    result = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu",
+        deadline_check=deadline,
+        epoch_checkpoint=lambda state: checkpoints.append(state))
+    assert len(checkpoints) == 1
+    assert len(result.epochs) == 1
+    assert result.truncated_by_deadline is True
+    assert result.stopped_for_patience is False
+    assert result.to_dict()["truncated_by_deadline"] is True
+    validate_trained_v2_cohort(
+        value, examples, schedule, calibration, result)
+
+    with pytest.raises(BeliefV2DeadlineError):
+        train_v2_cohort_in_memory(
+            value, examples, schedule, calibration, device="cpu",
+            deadline_check=lambda phase, index: deadline(
+                "after-unit", index))
+
+
+def test_deadline_wins_if_patience_and_expiry_share_the_same_epoch(
+        monkeypatch):
+    synthetic, human, realized, calibration, schedule = _fixture()
+    value = next(row for row in realized
+                 if row.kind == "synthetic-primary")
+    by_key = {row.decision_key: row for row in (*synthetic, *human)}
+    examples = tuple(by_key[row.decision_key] for row in value.rows)
+    monkeypatch.setattr(STAGE, "TRAIN_MAX_EPOCHS", 6)
+    monkeypatch.setattr(
+        STAGE, "evaluate_v2_calibration_cohort_stream_nanonats",
+        lambda models, batches, device: (1_000_000,) * len(models))
+
+    def deadline(phase, next_unit_index):
+        if phase == "after-unit" and next_unit_index == 4:
+            raise BeliefV2DeadlineError(V2DeadlineRefusalV1(
+                freeze_sha256="a" * 64, admission_sha256="b" * 64,
+                stage="training", slot=value.cohort_id,
+                phase=phase, next_unit_index=next_unit_index,
+                started_monotonic_nanoseconds=1,
+                observed_monotonic_nanoseconds=10,
+                hard_deadline_monotonic_nanoseconds=11,
+                wall_cap_nanoseconds=10,
+                next_unit_wall_estimate_nanoseconds=6,
+                safety_reserve_nanoseconds=3,
+                required_remaining_nanoseconds=3,
+                observed_remaining_nanoseconds=1))
+
+    result = train_v2_cohort_in_memory(
+        value, examples, schedule, calibration, device="cpu",
+        deadline_check=deadline)
+    assert len(result.epochs) == 4
+    assert result.truncated_by_deadline is True
+    assert result.stopped_for_patience is False
+    validate_trained_v2_cohort(
+        value, examples, schedule, calibration, result)
 
 
 def test_label_control_has_real_dose_and_exact_control_receipts(monkeypatch):

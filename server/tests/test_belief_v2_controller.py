@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,6 +17,7 @@ import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
 import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
 import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
+import shengji.rl.belief_v2_tensor_cache_controller as CACHE_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 from shengji.ai.heuristic import HeuristicBot
@@ -51,6 +53,7 @@ from shengji.rl.belief_v2_device_controller import (
     run_device_qualification,
 )
 from shengji.rl.belief_v2_deadline import (
+    BeliefV2DeadlineError,
     V2DeadlineRefusalV1,
     publish_deadline_refusal,
     reopen_deadline_refusal,
@@ -91,8 +94,13 @@ from shengji.rl.belief_v2_human_reference_controller import (
 from shengji.rl.belief_v2_input_index_controller import (
     run_training_input_index,
 )
+from shengji.rl.belief_v2_tensor_cache_controller import (
+    reopen_training_tensor_cache,
+    run_training_tensor_cache,
+)
 from shengji.rl.belief_v2_human_inventory import (
     H0_INVENTORY_SCHEMA,
+    _component_digest,
     _group_digest,
     build_h0_group_split,
     group_split_bytes,
@@ -120,6 +128,8 @@ from shengji.rl.belief_refc_capture import (
 from shengji.rl.belief_v2_training import (
     build_human_training_example,
     build_synthetic_training_example,
+    collate_v2_label_control_examples,
+    collate_v2_training_examples,
 )
 from shengji.rl.belief_v2_training_controller import (
     BeliefV2TrainingControllerError,
@@ -682,6 +692,14 @@ def _human_receipts():
         "trump_rank_counts": {rnd.trump_rank: 1},
         "attempted_channel_counts": {"absent": 1},
     } for raw, source_sha in zip(source_raws, source_shas, strict=True)]
+    components = []
+    for group in groups:
+        component_digest = _component_digest((group["group_digest"],))
+        group["component_digest"] = component_digest
+        components.append({
+            "component_digest": component_digest,
+            "group_digests": [group["group_digest"]],
+        })
     population_sha = hashlib.sha256(canonical_json_bytes({
         "schema": "belief-v1-v2-human-source-digest-population-v1",
         "sha256s": sorted(source_shas),
@@ -693,6 +711,9 @@ def _human_receipts():
         "source_digest_population_sha256": population_sha,
         "group_count": 10,
         "groups": sorted(groups, key=lambda row: row["group_digest"]),
+        "component_count": 10,
+        "components": sorted(
+            components, key=lambda row: row["component_digest"]),
         "rounds_seen": 10,
         "complete_rounds": 10,
         "incomplete_rounds": 0,
@@ -700,7 +721,7 @@ def _human_receipts():
         "trump_rank_counts": {rnd.trump_rank: 10},
         "attempted_channel_counts": {"absent": 10},
         "hidden_ownership_labels_reconstructable_for_complete_rounds": True,
-        "group_split_unit": "source-log-session-digest",
+        "group_split_unit": "cross-file-human-player-component",
         "raw_player_identity_published": False,
         "model_rows_published": False,
         "training_authorized": False,
@@ -1022,6 +1043,30 @@ def test_zero_decision_human_group_progress_completes_at_stage_boundary(
         allowed_split="calibration") == ()
 
 
+def test_expected_human_rounds_use_scoring_canonical_digest_order(
+        tmp_path, monkeypatch):
+    group = _sha("a")
+    encounter_order = [
+        {"round_digest": _sha("f"), "trump_rank": "A"},
+        {"round_digest": _sha("0"), "trump_rank": "2"},
+    ]
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_human_reference_group",
+        lambda *args, **kwargs: {"rows": encounter_order})
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_human_reference_group",
+        lambda *args, **kwargs: {"rows": encounter_order})
+    group_split = {"splits": {
+        "calibration": {"group_digests": [group]},
+        "test": {"group_digests": [group]},
+    }}
+    expected = ((_sha("0"), "2"), (_sha("f"), "A"))
+    assert CALIBRATION_STAGE._expected_human_rounds_from_references(
+        tmp_path, object(), object(), group_split) == expected
+    assert TERMINAL_STAGE._expected_test_human_rounds(
+        tmp_path, object(), object(), group_split) == expected
+
+
 def _cpu_fallback_qualification(freeze):
     batches = tuple((_sha256_text(f"qualification-{index}"),)
                     for index in range(40))
@@ -1177,6 +1222,129 @@ def test_training_input_index_wires_deadline_around_source_units_and_seal(
     assert phases == [
         ("before-unit", 0), ("after-unit", 1), ("before-seal", 2)]
     assert not (root / "training-input-index" / "result.partial").exists()
+
+
+def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration_examples, calibration = (
+        _tiny_training_population(freeze))
+    plans = {row.kind: row for row in freeze.cohorts}
+    plan_sha = lambda row: hashlib.sha256(  # noqa: E731
+        canonical_json_bytes(row.to_dict())).hexdigest()
+    realizations = (
+        primary,
+        replace(
+            primary,
+            cohort_id="hard-geometry-label-permutation",
+            kind="hard-geometry-label-permutation",
+            cohort_plan_sha256=plan_sha(plans[
+                "hard-geometry-label-permutation"]),
+            comparator_cohort_id="synthetic-primary"),
+        replace(
+            primary, cohort_id="human-mixture", kind="human-mixture",
+            cohort_plan_sha256=plan_sha(plans["human-mixture"]),
+            comparator_cohort_id="synthetic-primary"),
+        replace(
+            primary, cohort_id="synthetic-scale-50",
+            kind="synthetic-scale",
+            cohort_plan_sha256=plan_sha(plans["synthetic-scale"]),
+            comparator_cohort_id="synthetic-primary"),
+    )
+    natural_batch = collate_v2_training_examples(training_examples)
+    control_batch, changed = collate_v2_label_control_examples(
+        training_examples)
+    calibration_batch = collate_v2_training_examples(calibration_examples)
+    inputs = SimpleNamespace(
+        index=SimpleNamespace(control_changed_cell_count=changed),
+        realizations=realizations, common_calibration=calibration)
+    index_manifest = {"index_sha256": _sha("7")}
+    monkeypatch.setattr(CACHE_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        CACHE_STAGE, "reopen_training_input_index",
+        lambda *args, **kwargs: (index_manifest, inputs))
+    monkeypatch.setattr(
+        CACHE_STAGE, "V2ArtifactRoundLoader",
+        lambda *args, **kwargs: object())
+
+    def training_batches(index, realization, *, load_round):
+        batch = (control_batch if realization.kind
+                 == "hard-geometry-label-permutation" else natural_batch)
+        return iter((batch,))
+
+    monkeypatch.setattr(
+        CACHE_STAGE, "iter_streaming_training_batches", training_batches)
+    monkeypatch.setattr(
+        CACHE_STAGE, "iter_streaming_calibration_batches",
+        lambda *args, **kwargs: iter((calibration_batch,)))
+    monkeypatch.setattr(CACHE_STAGE, "host_peak_memory_bytes", lambda: 1024)
+
+    manifest = run_training_tensor_cache(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review")
+    reopened, factories, calibration_factory, dose, stage_sha = (
+        reopen_training_tensor_cache(
+            root / "training-tensor-cache" / "result",
+            freeze=freeze, admission=admission))
+    assert reopened == manifest
+    assert tuple(factories) == tuple(row.cohort_id for row in realizations)
+    assert stage_sha == hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
+    assert dose == changed
+    primary_batch = next(factories["synthetic-primary"]())
+    control_reopened = next(
+        factories["hard-geometry-label-permutation"]())
+    assert primary_batch.decision_keys == control_reopened.decision_keys
+    assert torch.equal(primary_batch.events, control_reopened.events)
+    assert torch.equal(primary_batch.active_mask, control_reopened.active_mask)
+    assert torch.equal(control_reopened.count_labels,
+                       control_batch.count_labels)
+    assert next(calibration_factory()).decision_keys \
+        == calibration_batch.decision_keys
+    assert manifest["test_split_cached"] is False
+    assert manifest["training_authorized_by_this_artifact"] is False
+
+    cache_parent = root / "training-tensor-cache"
+    cache_root = cache_parent / "result"
+    original_primary_sha = next(
+        row["manifest_sha256"] for row in manifest["cohort_caches"]
+        if row["cohort_id"] == "synthetic-primary")
+    partial = cache_parent / "result.partial"
+    cache_root.rename(partial)
+    (partial / "manifest.json").unlink()
+    for name in (
+            "overlay-hard-geometry-label-permutation",
+            "cache-human-mixture", "cache-synthetic-scale-50",
+            "cache-common-calibration"):
+        shutil.rmtree(partial / name)
+    manifest = run_training_tensor_cache(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review")
+    assert manifest["resources"]["resumed_from_exact_partial"] is True
+    assert next(
+        row["manifest_sha256"] for row in manifest["cohort_caches"]
+        if row["cohort_id"] == "synthetic-primary") \
+        == original_primary_sha
+    reopened, _, _, _, _ = reopen_training_tensor_cache(
+        cache_root, freeze=freeze, admission=admission)
+    assert reopened == manifest
+
+    primary_manifest = json.loads(
+        (cache_root / "cache-synthetic-primary" / "manifest.json")
+        .read_bytes())
+    actor_path = (cache_root / "cache-synthetic-primary"
+                  / primary_manifest["batches"][0]["actor_file"])
+    raw = actor_path.read_bytes()
+    actor_path.chmod(0o600)
+    actor_path.write_bytes(raw[:-1] + bytes((raw[-1] ^ 1,)))
+    actor_path.chmod(0o400)
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="reopen refused|byte drift"):
+        reopen_training_tensor_cache(
+            cache_root, freeze=freeze, admission=admission)
 
 
 def test_training_input_index_deadline_records_refusal_cannot_seal_or_retry(
@@ -1342,6 +1510,47 @@ def test_device_stage_streaming_wiring_never_calls_materialized_runner(
     assert observed[0]["load_round"] is loader
 
 
+def test_device_stage_cache_wiring_never_calls_streaming_or_materialized(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, _, _, _ = _tiny_training_population(freeze)
+    plan, result = _cpu_fallback_qualification(freeze)
+    factory = lambda: iter(())
+    observed = []
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._stage_gate",
+        lambda **kwargs: None)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller._expected_plan",
+        lambda *args, **kwargs: plan)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_in_memory",
+        lambda **kwargs: pytest.fail("materialized qualification used"))
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_streaming",
+        lambda **kwargs: pytest.fail("streaming qualification used"))
+
+    def cached(**kwargs):
+        observed.append(kwargs)
+        return plan, result
+
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_device_controller."
+        "run_device_qualification_from_batch_factory", cached)
+    manifest = run_device_qualification(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", primary=primary,
+        primary_examples=None, batch_factory=factory)
+    assert manifest["selected_device"] == "cpu"
+    assert len(observed) == 1
+    assert observed[0]["batch_factory"] is factory
+
+
 def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -1385,14 +1594,79 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
     finally:
         torch.use_deterministic_algorithms(previous)
     assert reopened == manifest
-    assert progress == [
-        (0, 1, "training-epochs"),
+    assert progress[0] == (0, 1, "training-epochs")
+    assert progress[1] == (0, 2, "training-batches")
+    assert progress[-3:] == [
+        (1, 2, "training-batches"),
+        (2, 2, "training-batches"),
         (1, 1, "training-epochs")]
     assert trained.training_device == "cpu"
     assert manifest["resources"]["peak_host_memory_bytes"] > 0
     assert manifest["resources"]["peak_device_memory_bytes"] == 0
     assert manifest["test_split_opened"] is False
     assert manifest["deployment_authorized"] is False
+
+    # Rehash every persisted layer that states the calibration loss.  The
+    # journal, trained artifact, and stage manifest are then self-consistent;
+    # only independent source re-scoring of the exact epoch model can refuse.
+    journal = directory / "epoch-journal" / "epoch-0001"
+    curves_path = journal / "curves.json"
+    journal_manifest_path = journal / "manifest.json"
+    trained_path = directory / "trained-cohort.json"
+    stage_manifest_path = directory / "manifest.json"
+    originals = {path: path.read_bytes() for path in (
+        curves_path, journal_manifest_path, trained_path,
+        stage_manifest_path)}
+    curves_payload = json.loads(originals[curves_path])
+    curve_row = curves_payload["epochs"][0]
+    curve_row["member_calibration_loss_nanonats"] = [
+        value + 1
+        for value in curve_row["member_calibration_loss_nanonats"]]
+    curve_row["cohort_mean_calibration_loss_nanonats"] += 1
+    curves_raw = canonical_json_bytes(curves_payload)
+    journal_payload = json.loads(originals[journal_manifest_path])
+    journal_payload["files"]["curves.json"] = {
+        "byte_count": len(curves_raw),
+        "sha256": hashlib.sha256(curves_raw).hexdigest(),
+    }
+    journal_raw = canonical_json_bytes(journal_payload)
+    trained_payload = json.loads(originals[trained_path])
+    trained_payload["epochs"][0] = curve_row
+    trained_raw = canonical_json_bytes(trained_payload)
+    stage_payload = json.loads(originals[stage_manifest_path])
+    stage_payload["trained_manifest_byte_count"] = len(trained_raw)
+    stage_payload["trained_manifest_sha256"] = hashlib.sha256(
+        trained_raw).hexdigest()
+    stage_payload["epoch_journal"]["head_manifest_sha256"] = (
+        hashlib.sha256(journal_raw).hexdigest())
+    stage_raw = canonical_json_bytes(stage_payload)
+    for path, raw in ((curves_path, curves_raw),
+                      (journal_manifest_path, journal_raw),
+                      (trained_path, trained_raw),
+                      (stage_manifest_path, stage_raw)):
+        path.chmod(0o600)
+        path.write_bytes(raw)
+        path.chmod(0o400)
+    deterministic = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    try:
+        with pytest.raises(BeliefV2TrainingControllerError,
+                           match="epoch calibration loss re-score drift"):
+            reopen_training_cohort(
+                directory, freeze=freeze, admission=admission,
+                primary=primary, realization=primary,
+                training_examples=training_examples,
+                calibration=calibration_schedule,
+                calibration_examples=calibration,
+                qualification_plan=qualification_plan,
+                qualification_result=qualification_result)
+    finally:
+        torch.use_deterministic_algorithms(deterministic)
+        for path, raw in originals.items():
+            path.chmod(0o600)
+            path.write_bytes(raw)
+            path.chmod(0o400)
+
     checkpoint = directory / "member-00.checkpoint.bin"
     checkpoint.chmod(0o600)
     checkpoint.write_bytes(checkpoint.read_bytes() + b"x")
@@ -1436,12 +1710,16 @@ def test_training_stage_streaming_wiring_never_calls_materialized_trainer(
         loader = lambda source: ()
 
         def streamed(realization, schedule, *, index, load_round, device,
-                     deadline_check, progress):
+                     deadline_check, resume_state, epoch_checkpoint,
+                     progress):
             observed.append((realization, schedule, index, load_round, device))
             assert progress is None
-            deadline_check("before-unit", 0)
-            deadline_check("after-unit", 1)
-            return expected
+            assert resume_state is None
+            return COHORT_STAGE.train_v2_cohort_in_memory(
+                primary, training_examples, calibration_schedule,
+                calibration, device=device,
+                deadline_check=deadline_check,
+                epoch_checkpoint=epoch_checkpoint)
 
         monkeypatch.setattr(
             TRAINING_STAGE, "train_v2_cohort_streaming", streamed)
@@ -1449,6 +1727,11 @@ def test_training_stage_streaming_wiring_never_calls_materialized_trainer(
             TRAINING_STAGE, "train_v2_cohort_in_memory",
             lambda *args, **kwargs: pytest.fail(
                 "materialized training path used"))
+        calibration_batches = COHORT_STAGE._calibration_batches(
+            calibration_schedule, calibration)
+        monkeypatch.setattr(
+            TRAINING_STAGE, "iter_streaming_calibration_batches",
+            lambda *args, **kwargs: iter(calibration_batches))
         manifest = run_training_cohort(
             root, freeze, admission, repo=Path("/unused"),
             review_marker=b"review", primary=primary,
@@ -1463,6 +1746,240 @@ def test_training_stage_streaming_wiring_never_calls_materialized_trainer(
         primary, calibration_schedule, streaming_index, loader, "cpu")]
     assert manifest["realization_sha256"] == primary.sha256()
     assert manifest["test_split_opened"] is False
+
+
+def test_training_stage_cache_factory_wiring_seals_and_reopens_exactly(
+        tmp_path, monkeypatch):
+    """Witness the production cache wiring at the controller boundary."""
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration_examples, calibration = (
+        _tiny_training_population(freeze))
+    qualification_plan, qualification_result = (
+        _cpu_fallback_qualification(freeze))
+    training_batches, control_dose = COHORT_STAGE._training_batches(
+        primary, training_examples)
+    calibration_batches = COHORT_STAGE._calibration_batches(
+        calibration, calibration_examples)
+    assert control_dose == 0
+    cache_manifest_sha256 = _sha("7")
+    observed = []
+    real_cached = COHORT_STAGE.train_v2_cohort_from_batch_factories
+
+    monkeypatch.setattr(TRAINING_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        TRAINING_STAGE, "_validate_device_binding",
+        lambda *args, **kwargs: "cpu")
+    monkeypatch.setattr(COHORT_STAGE, "TRAIN_MAX_EPOCHS", 1)
+    monkeypatch.setattr(
+        TRAINING_STAGE, "train_v2_cohort_streaming",
+        lambda *args, **kwargs: pytest.fail("streaming training path used"))
+    monkeypatch.setattr(
+        TRAINING_STAGE, "train_v2_cohort_in_memory",
+        lambda *args, **kwargs: pytest.fail("materialized training path used"))
+
+    def cached(*args, training_batches, calibration_batches, **kwargs):
+        train_rows = tuple(training_batches())
+        calibration_rows = tuple(calibration_batches())
+        observed.append((train_rows, calibration_rows))
+        return real_cached(
+            *args,
+            training_batches=lambda: iter(train_rows),
+            calibration_batches=lambda: iter(calibration_rows),
+            **kwargs)
+
+    monkeypatch.setattr(
+        TRAINING_STAGE, "train_v2_cohort_from_batch_factories", cached)
+    previous = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    try:
+        manifest = run_training_cohort(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", primary=primary,
+            realization=primary, training_examples=None,
+            calibration=calibration, calibration_examples=None,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result,
+            training_batch_factory=lambda: iter(training_batches),
+            calibration_batch_factory=lambda: iter(calibration_batches),
+            cache_manifest_sha256=cache_manifest_sha256,
+            cache_control_dose=0)
+    finally:
+        torch.use_deterministic_algorithms(previous)
+    assert len(observed) == 1
+    assert tuple(row.decision_keys for row in observed[0][0]) \
+        == tuple(row.decision_keys for row in training_batches)
+    assert tuple(row.decision_keys for row in observed[0][1]) \
+        == tuple(row.decision_keys for row in calibration_batches)
+    assert manifest["tensor_cache_stage_manifest_sha256"] \
+        == cache_manifest_sha256
+    assert manifest["test_split_opened"] is False
+    assert (root / "training" / primary.cohort_id).is_dir()
+
+
+def test_training_controller_resumes_only_latest_epoch_and_matches_clean_run(
+        tmp_path, monkeypatch, request):
+    previous_determinism = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    request.addfinalizer(lambda: torch.use_deterministic_algorithms(
+        previous_determinism))
+    root = (tmp_path / "resumed").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration, calibration_schedule = (
+        _tiny_training_population(freeze))
+    qualification_plan, qualification_result = (
+        _cpu_fallback_qualification(freeze))
+    monkeypatch.setattr(TRAINING_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        TRAINING_STAGE, "_validate_device_binding",
+        lambda *args, **kwargs: "cpu")
+    monkeypatch.setattr(COHORT_STAGE, "TRAIN_MAX_EPOCHS", 2)
+    real_publish = TRAINING_STAGE.publish_epoch_resume_state
+    interrupted = []
+
+    def publish_then_stop(*args, **kwargs):
+        result = real_publish(*args, **kwargs)
+        interrupted.append(result["epoch"])
+        raise RuntimeError("simulated process loss after durable epoch")
+
+    monkeypatch.setattr(
+        TRAINING_STAGE, "publish_epoch_resume_state", publish_then_stop)
+    kwargs = dict(
+        repo=Path("/unused"), review_marker=b"review", primary=primary,
+        realization=primary, training_examples=training_examples,
+        calibration=calibration_schedule, calibration_examples=calibration,
+        qualification_plan=qualification_plan,
+        qualification_result=qualification_result)
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="cohort training refused"):
+        run_training_cohort(root, freeze, admission, **kwargs)
+    assert interrupted == [1]
+    partial = root / "training" / f"{primary.cohort_id}.partial"
+    assert {path.name for path in partial.iterdir()} == {"epoch-journal"}
+
+    monkeypatch.setattr(
+        TRAINING_STAGE, "publish_epoch_resume_state", real_publish)
+    resumed_manifest = run_training_cohort(
+        root, freeze, admission, **kwargs)
+    assert resumed_manifest["epoch_journal"]["exact_resume_count"] == 1
+
+    clean_root = (tmp_path / "clean").resolve()
+    clean_root.mkdir()
+    clean_freeze = replace(freeze, evidence_root=str(clean_root))
+    clean_admission = replace(
+        admission, freeze_sha256=clean_freeze.sha256(),
+        evidence_root=str(clean_root))
+    clean_manifest = run_training_cohort(
+        clean_root, clean_freeze, clean_admission, **{
+            **kwargs,
+            "primary": primary,
+            "realization": primary,
+        })
+    resumed_dir = root / "training" / primary.cohort_id
+    clean_dir = clean_root / "training" / primary.cohort_id
+    assert [
+        (resumed_dir / f"member-{index:02d}.checkpoint.bin").read_bytes()
+        for index in range(8)] == [
+        (clean_dir / f"member-{index:02d}.checkpoint.bin").read_bytes()
+        for index in range(8)]
+    assert resumed_manifest["cohort_id"] == clean_manifest["cohort_id"]
+
+
+def test_training_controller_seals_deadline_truncation_and_cannot_mask_it(
+        tmp_path, monkeypatch, request):
+    previous_determinism = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(True)
+    request.addfinalizer(lambda: torch.use_deterministic_algorithms(
+        previous_determinism))
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    primary, training_examples, calibration, calibration_schedule = (
+        _tiny_training_population(freeze))
+    qualification_plan, qualification_result = (
+        _cpu_fallback_qualification(freeze))
+    monkeypatch.setattr(TRAINING_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        TRAINING_STAGE, "_validate_device_binding",
+        lambda *args, **kwargs: "cpu")
+    monkeypatch.setattr(COHORT_STAGE, "TRAIN_MAX_EPOCHS", 3)
+
+    class TruncateAfterOne:
+        def check(self, *, phase, next_unit_index,
+                  observed_monotonic_nanoseconds):
+            if phase == "after-unit":
+                raise BeliefV2DeadlineError(V2DeadlineRefusalV1(
+                    freeze_sha256=freeze.sha256(),
+                    admission_sha256=admission.sha256(), stage="training",
+                    slot=primary.cohort_id, phase=phase,
+                    next_unit_index=next_unit_index,
+                    started_monotonic_nanoseconds=1,
+                    observed_monotonic_nanoseconds=10,
+                    hard_deadline_monotonic_nanoseconds=11,
+                    wall_cap_nanoseconds=10,
+                    next_unit_wall_estimate_nanoseconds=6,
+                    safety_reserve_nanoseconds=3,
+                    required_remaining_nanoseconds=3,
+                    observed_remaining_nanoseconds=1))
+
+    monkeypatch.setattr(
+        TRAINING_STAGE, "stage_deadline",
+        lambda *args, **kwargs: TruncateAfterOne())
+    kwargs = dict(
+        repo=Path("/unused"), review_marker=b"review", primary=primary,
+        realization=primary, training_examples=training_examples,
+        calibration=calibration_schedule, calibration_examples=calibration,
+        qualification_plan=qualification_plan,
+        qualification_result=qualification_result)
+    manifest = run_training_cohort(root, freeze, admission, **kwargs)
+    assert manifest["truncated_by_deadline"] is True
+    assert manifest["deadline_refusal"]["final_artifact_sealed"] is True
+    assert manifest["deadline_refusal"]["test_split_open_authorized"] \
+        is False
+    final = root / "training" / primary.cohort_id
+    reopened_manifest, trained = reopen_training_cohort(
+        final, freeze=freeze, admission=admission, primary=primary,
+        realization=primary, training_examples=training_examples,
+        calibration=calibration_schedule,
+        calibration_examples=calibration,
+        qualification_plan=qualification_plan,
+        qualification_result=qualification_result)
+    assert reopened_manifest == manifest
+    assert trained.truncated_by_deadline is True
+
+    monkeypatch.setattr(V2_CONTROLLER, "validate_execution_freeze",
+                        lambda value: None)
+    monkeypatch.setattr(V2_CONTROLLER, "reauthenticate_pipeline_admission",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(V2_CONTROLLER, "validate_live_execution",
+                        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        V2_CONTROLLER, "build_training_device_profile",
+        lambda value: freeze.training_device_profile)
+    V2_CONTROLLER._stage_gate(
+        root=root, repo=tmp_path.resolve(), freeze=freeze,
+        admission=admission, review_marker=b"review")
+
+    trained_path = final / "trained-cohort.json"
+    payload = json.loads(trained_path.read_bytes())
+    payload["truncated_by_deadline"] = False
+    trained_path.chmod(0o600)
+    trained_path.write_bytes(canonical_json_bytes(payload))
+    trained_path.chmod(0o400)
+    with pytest.raises(BeliefV2TrainingControllerError,
+                       match="manifest reconstruction"):
+        reopen_training_cohort(
+            final, freeze=freeze, admission=admission, primary=primary,
+            realization=primary, training_examples=training_examples,
+            calibration=calibration_schedule,
+            calibration_examples=calibration,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result)
 
 
 def test_training_deadline_records_refusal_cannot_advance_seal_or_retry(
@@ -1519,7 +2036,7 @@ def test_training_deadline_records_refusal_cannot_advance_seal_or_retry(
     assert refusal.phase == "before-unit"
     assert not (root / "training" / primary.cohort_id).exists()
     with pytest.raises(BeliefV2TrainingControllerError,
-                       match="slot is occupied"):
+                       match="not exactly resumable"):
         run_training_cohort(root, freeze, admission, **kwargs)
 
 

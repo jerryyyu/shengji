@@ -626,6 +626,14 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     input_index_manifest = {"resources": resource(
         450, 480, artifact=10, training=True,
         host_peak=1_400, device_peak=0)}
+    cache_resources = resource(
+        480, 490, artifact=30, training=True,
+        host_peak=1_401, device_peak=0)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_training_tensor_cache",
+        lambda *args, **kwargs: (
+            {"resources": cache_resources}, {}, lambda: iter(()), 1,
+            _sha("tensor-cache")))
 
     training_hashes = []
     for index, cohort in enumerate(freeze.cohorts):
@@ -655,9 +663,9 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     assert receipt.capture_wall_nanoseconds == 160
     assert receipt.reference_wall_nanoseconds == 160
     assert receipt.training_device_nanoseconds \
-        == qualification_work + 4 * 100 + 30
+        == qualification_work + 4 * 100 + 30 + 10
     assert receipt.training_wall_nanoseconds \
-        == qualification_work + 103 + 30
+        == qualification_work + 103 + 30 + 10
     assert receipt.training_peak_host_memory_bytes == 1_503
     assert receipt.training_peak_device_memory_bytes == 2_503
     assert receipt.test_split_decision_open_count == 1

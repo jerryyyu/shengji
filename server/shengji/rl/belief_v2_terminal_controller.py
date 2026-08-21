@@ -65,6 +65,7 @@ from .belief_v2_statistics import (
     v2_round_population_bytes,
 )
 from .belief_v2_input_index_controller import reopen_training_input_index
+from .belief_v2_tensor_cache_controller import reopen_training_tensor_cache
 
 
 TERMINAL_ATTEMPT_SCHEMA = "belief-v1-v2-test-opening-attempt-v1"
@@ -131,7 +132,7 @@ def _expected_test_human_rounds(
     if not rows:
         raise BeliefV2TerminalControllerError(
             "V2 terminal human test rounds are empty")
-    return tuple(rows)
+    return tuple(sorted(rows))
 
 
 def _score_test_populations(
@@ -165,7 +166,8 @@ def _score_test_populations(
     if not synthetic or not human:
         raise BeliefV2TerminalControllerError(
             "V2 terminal test score population is empty")
-    return tuple(synthetic), tuple(human)
+    return (tuple(synthetic),
+            tuple(sorted(human, key=lambda row: row.round_key)))
 
 
 def _calibration_statistics(
@@ -283,6 +285,14 @@ def _derive_integrity_receipt(
     training_resources = tuple(row["resources"] for row in training_manifests)
     input_index_resources = input_index_manifest["resources"]
     try:
+        cache_manifest, _, _, _, _ = reopen_training_tensor_cache(
+            root / "training-tensor-cache" / "result",
+            freeze=freeze, admission=admission)
+    except ValueError as exc:
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal tensor cache refused") from exc
+    cache_resources = cache_manifest["resources"]
+    try:
         qualification_process_count, qualification_host_memory = (
             training_host_memory_upper_bound(
                 max(arm.peak_host_memory_bytes for arm in qualification.arms
@@ -356,18 +366,22 @@ def _derive_integrity_receipt(
             row["artifact_bytes"] for row in reference_resources),
         training_device_nanoseconds=(
             input_index_resources["wall_nanoseconds"]
+            + cache_resources["wall_nanoseconds"]
             + qualification_compute + sum(
                 row["training_compute_nanoseconds"]
                 for row in training_resources)),
         training_wall_nanoseconds=(
             input_index_resources["wall_nanoseconds"]
+            + cache_resources["wall_nanoseconds"]
             + qualification_compute + _parallel_span(training_resources)),
         training_artifact_bytes=(
             input_index_resources["artifact_bytes"]
+            + cache_resources["artifact_bytes"]
             + qualification_bytes + sum(
                 row["artifact_bytes"] for row in training_resources)),
         training_peak_host_memory_bytes=max(
             input_index_resources["peak_host_memory_bytes"],
+            cache_resources["peak_host_memory_bytes"],
             qualification_host_memory,
             max(training_host_memory)),
         training_peak_device_memory_bytes=max(
@@ -376,11 +390,13 @@ def _derive_integrity_receipt(
         capture_failure_count=0, reference_failure_count=0,
         training_failure_count=0, mechanics_failure_count=0,
         resource_cap_violation_count=0,
-        retry_count=(input_index_resources["retry_count"] + sum(
+        retry_count=(input_index_resources["retry_count"]
+                     + cache_resources["retry_count"] + sum(
             row["retry_count"] for row in (
                 *capture_resources, *reference_resources,
                 *training_resources))),
-        drop_count=(input_index_resources["drop_count"] + sum(
+        drop_count=(input_index_resources["drop_count"]
+                    + cache_resources["drop_count"] + sum(
             row["drop_count"] for row in (
                 *capture_resources, *reference_resources,
                 *training_resources))),

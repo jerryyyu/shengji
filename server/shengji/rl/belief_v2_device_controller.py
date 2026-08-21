@@ -7,7 +7,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .belief_artifacts import publish_exclusive_bytes, stable_read_bytes
 from .belief_contract import canonical_json_bytes
@@ -27,6 +27,7 @@ from .belief_v2_device_qualification import (
     training_host_memory_upper_bound,
 )
 from .belief_v2_device_runner import (
+    run_device_qualification_from_batch_factory,
     run_device_qualification_in_memory,
     run_device_qualification_streaming,
 )
@@ -149,6 +150,7 @@ def run_device_qualification(
         review_marker: bytes, primary: V2CohortRealizationV1,
         primary_examples: tuple[V2TrainingExampleV1, ...] | None,
         streaming_index=None, load_round=None,
+        batch_factory: Callable[[], Any] | None = None,
         progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Execute and atomically publish the exact frozen qualification."""
@@ -185,8 +187,10 @@ def run_device_qualification(
 
     streaming = streaming_index is not None or load_round is not None
     materialized = primary_examples is not None
+    cached = batch_factory is not None
     if streaming != (streaming_index is not None and callable(load_round)) \
-            or streaming == materialized:
+            or cached != callable(batch_factory) \
+            or sum((streaming, materialized, cached)) != 1:
         raise BeliefV2DeviceControllerError(
             "V2 device qualification input mode drift")
     common = {
@@ -201,7 +205,10 @@ def run_device_qualification(
         "progress": progress,
     }
     try:
-        if streaming:
+        if cached:
+            plan, result = run_device_qualification_from_batch_factory(
+                **common, batch_factory=batch_factory)
+        elif streaming:
             plan, result = run_device_qualification_streaming(
                 **common, streaming_index=streaming_index,
                 load_round=load_round)

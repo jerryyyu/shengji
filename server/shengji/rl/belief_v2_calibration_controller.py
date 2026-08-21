@@ -117,7 +117,7 @@ def _score_human(
                 round_key=round_digest, source_kind="human",
                 split="calibration", trump_rank=trump_rank,
                 decisions=decisions, cohorts=cohorts))
-    return tuple(rows)
+    return tuple(sorted(rows, key=lambda row: row.round_key))
 
 
 def _resource_row(*, started: int, finished: int,
@@ -347,7 +347,10 @@ def _expected_human_rounds_from_references(
     if not rows or len({key for key, _ in rows}) != len(rows):
         raise BeliefV2CalibrationControllerError(
             "V2 calibration human round identity drift")
-    return tuple(rows)
+    # Scoring emits canonical round-digest order.  Expected populations must
+    # use the same order rather than source-manifest encounter order; ordinal
+    # round digests are intentionally not monotone within a source group.
+    return tuple(sorted(rows))
 
 
 def reopen_v2_calibration_selection(

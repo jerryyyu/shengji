@@ -383,8 +383,10 @@ V2 optimizes measured stages in this order:
    actor rows, targets, transcript, and later reference states from it once.
 3. **Input pipeline:** profile canonical-row parsing, tensor construction, and
    optimizer compute independently. If parsing dominates, publish a hash-bound
-   train/calibration tensor cache that contains actor features only and proves
-   split/target isolation.
+   train/calibration tensor cache whose actor tensors and privileged labels are
+   physically separate, whose control arm is a label-only overlay over the
+   exact primary actor tensors, and whose reopener proves split, population,
+   order, source-index, runtime, and byte identity before any consumer runs.
 4. **Cohort execution:** compare the current two-process layout with
    deterministic per-member workers or an ensemble-batched implementation.
    Preserve all 8+8 members, exact common-epoch selection, and receipt chains;
@@ -478,19 +480,49 @@ bridge would retain about 37.9 GiB of examples plus 68.7 GiB of batches—about
 106.6 GiB before Python object overhead, on a roughly 30 GiB host. That path is
 a pre-run resource blocker, not merely an optimization opportunity.
 
-V2 therefore uses a compact, immutable training-input index rather than a
-whole-population tensor cache. After capture, one deadline-bound stage opens
-train/calibration targets one complete round or human group at a time and
-publishes only schedule rows, content hashes, source locators, common
-calibration identity, and realized cohort schedules. It publishes no model
-arrays and never opens synthetic or human test targets. Device qualification
-and every epoch then reopen only the complete round groups named by the next
-batch, verify each reconstructed example against its compact row, collate one
-batch, consume it, and release it. Human groups are authenticated once and
-only the selected round's row files are reopened. Every downstream stage
-independently reconstructs the compact artifact, so concurrent cohort workers
-share one immutable source identity without repeating full-corpus
-tensorization outside their deadlines.
+V2 retains the compact immutable training-input index as the source-of-truth
+bridge, but the measured lossless sparse cache makes repeated tensorization no
+longer necessary. After capture, the index stage opens train/calibration
+targets one complete round or human group at a time and publishes only schedule
+rows, content hashes, source locators, common-calibration identity, and realized
+cohort schedules. A second deadline-bound stage reopens that index and writes:
+
+- one lossless sparse actor-plus-label cache for each distinct natural
+  schedule;
+- one label-only hard-geometry control overlay over the exact primary actor
+  cache; and
+- one shared synthetic-calibration cache used by qualification, every epoch,
+  epoch-journal rescoring, calibration selection, and terminal reconstruction.
+
+No test tensor is cached or opened. Every batch file is independently hashed;
+the stage manifest binds exact decision population, batch order, input-index
+SHA, runtime SHA, storage cap, and all-false authority bytes. A restart reuses
+only a completed cache or a batch prefix whose decoded tensors equal the exact
+reconstructed source batch; an incomplete atomic write is regenerated, while
+any different completed tensor refuses. The outer cache stage preserves its
+original monotonic start and may reuse sealed child caches, so a process
+interruption does not discard hours of exact preprocessing or reset the wall
+cap.
+
+The retained benchmarks are outcome-blind and generated-data-only. On 5,512
+decisions, sparse bytes were 72,275,646 versus 447,743,533 for the dense PR
+#121 form (6.19x smaller); one cached epoch was 32.36 seconds versus 169.78
+seconds streaming (5.246x faster), with identical epoch receipts and final
+model hashes. Removing an immediate duplicate source-to-example rederivation
+reduced 1,332-decision construction from 21.38 to 9.45 seconds (2.261x) with
+the same complete payload SHA. Batched REF-C validation reduced the profiled
+generated round from 28.160 to 14.664 seconds (1.920x) while preserving all 68
+actor rows, 17,408 worlds, sampler counters, ordered world bytes, and complete
+seed/counter/attempt-stream SHA. These are implementation-retention results,
+not learning or strength evidence.
+
+The full cache population is projected at roughly 31 GiB, including primary,
+label overlay, mixed-human, scale, and shared calibration caches. The fresh
+freeze must use an exact host-specific capacity receipt and a conservative
+aggregate training-artifact cap; the current review target is 64 GiB, not the
+R3 32 GiB cap. Qualification and production training both consume the reviewed
+cache path. Streaming remains a test oracle and recovery comparison, not an
+automatic runtime fallback that could change the measured path after review.
 
 The remaining performance order is one independent worker per model member,
 followed by an ensemble-batched/vmapped implementation only if it preserves
@@ -545,26 +577,37 @@ checkpoint receipt, and checkpoint byte stream. No human calibration or test
 row is accepted by this training boundary.
 
 Every long, capped synthetic capture, synthetic reference, training-input
-index, device-qualification, and cohort-training loop has an in-loop monotonic
-deadline rather than only a post-hoc timer. The immutable freeze binds a
+index, tensor-cache, device-qualification, and cohort-training loop has an
+in-loop monotonic deadline rather than only a post-hoc timer. The immutable
+freeze binds a
 measured p95 next-unit wall
 estimate for one capture round, one reference job, and one complete training
 epoch, plus one safety reserve. Capture and reference check before and after
 each unit; the input index checks around every source round/group and before
 serialization; device qualification checks before and after each arm; the
 cohort trainer checks before and after every epoch and before checkpoint
-construction.
-No new unit may start unless the measured estimate plus reserve fits before the
-hard wall cap, and no final artifact may seal unless the reserve remains.
+construction. No new unit may start unless the measured estimate plus reserve
+fits before the hard wall cap.
 
-Expiry publishes one canonical `deadline-refusal.json` into the already-created
-partial slot before raising. That partial slot is never renamed or removed, so
-the same admission cannot retry it. The global stage gate independently reopens
-any deadline refusal and blocks every later stage, including calibration and
-the sole test opener. Source tests must prove all five properties at the wiring
-altitude: no next unit, no final seal, exact refusal bytes, no calibration/test
-open, and no retry under the same admission. Post-hoc resource reconstruction
-remains an independent terminal check; it is not the deadline mechanism.
+Deadline semantics now distinguish absence of evidence from useful bounded
+training. Expiry before the first complete epoch publishes one canonical
+`deadline-refusal.json`, cannot seal, and blocks every later stage. After one or
+more complete epochs, every epoch's models, optimizer states, receipts,
+calibration losses, and selected-common-epoch state have already been appended
+to a mandatory-latest journal. Expiry then seals the best common epoch with
+`truncated_by_deadline: true`; it cannot also claim patience convergence, cannot
+select an earlier operator-chosen checkpoint, and remains eligible for the
+ordinary calibration/test gates. The final training manifest binds the exact
+deadline refusal, so the global stage gate allows only that fully sealed narrow
+case. Every reopener re-scores every journal epoch from the common calibration
+cache before trusting it. A process restart must resume the highest contiguous
+epoch and original monotonic wall; it cannot restart from scratch, reset the
+deadline, or choose a model. If publication of the next journal entry itself
+was interrupted, the regenerated state/curve bytes must equal every preserved
+complete byte or exact prefix before that same next epoch can finish publishing;
+unknown, reordered, or mismatched partial content refuses. Post-hoc resource
+reconstruction remains an independent terminal check rather than the deadline
+mechanism.
 
 Performance changes must be bit-identical at the artifact or probability
 contract they claim to preserve. A faster implementation never inherits
@@ -572,9 +615,10 @@ scientific or strength authority.
 
 Every long worker command also emits canonical `BELIEF_V2_PROGRESS` JSON lines
 to stderr. Capture, REF-C, historical-human replay, compact-index construction,
-device qualification, each cohort's training epochs, calibration, and the
-one-shot terminal report exact completed and total units, integer percent in
-basis points, monotonic elapsed time, and a mechanical remaining-time estimate.
+tensor-cache construction, device qualification, each cohort's training
+batches and epochs, calibration, and the one-shot terminal report exact
+completed and total units, integer percent in basis points, monotonic elapsed
+time, and a mechanical remaining-time estimate.
 The final successful update is exactly 100%. Parallel workers keep separate
 stage/worker identities, so fleet progress can be aggregated without opening
 their outputs.
@@ -592,6 +636,18 @@ terminal-route field. It cannot authorize a retry, result opening, strength
 claim, promotion, or deployment. Tests bind both the fail-closed monotonic
 reporter and callbacks from real controller paths; a helper-only witness is
 insufficient.
+
+The supervisor task plan is source-bound in
+`belief_v2_supervisor_plan.py`, and the one-shot executor is
+`scripts/belief_v2_supervisor.py`. The exact R4 population is ten ordered
+stages and 81 tasks: 16 synthetic capture, 30 human capture, one input index,
+one tensor cache, one device qualification, 16 synthetic plus nine human
+references, four cohort trainings, one calibration, one test opening, and one
+terminal verification. Human references are exactly two calibration
+replicates for each of three calibration groups plus one test-primary
+replicate for each of three test groups; train groups receive none. The old
+30-by-three Cartesian matrix, a missing cache stage, any dropped/extra task,
+or a stage/concurrency reorder refuses before the ops start token is written.
 
 ## Preliminary capacity projection and host allocation
 
@@ -666,19 +722,27 @@ reducing later coordinate validation from about 48 milliseconds to
 microseconds; a run must not repeatedly regenerate the full schedule for each
 captured round.
 
-After capture is sealed, the dependency graph permits:
+After synthetic and human capture seal, the dependency graph is:
 
 ```text
-                    +--> synthetic-only training --------+
-rank/human capture -+--> bounded human-mixture training --+--> calibration
-                    +--> REF-C transcript replay ---------+
+rank/human capture --> training index --> tensor cache --> device qualification
+       |                                                        |
+       +--> synthetic + human REF-C replay -----------+         |
+                                                       v         v
+                                                four cohort trainings
+                                                       |
+                                                       v
+                                                  calibration
 ```
 
-REF-C is not a training dependency. It may run concurrently with training,
-but replay should make it inexpensive enough for Mini. The intended cloud
-priority is multi-rank champion capture and whichever training layout wins the
-source-pinned epoch benchmark. No cloud should be powered merely to hold an
-idle reviewed process.
+REF-C is not a training dependency. It may overlap training only when the
+frozen host topology proves that the combined worker population fits without
+CPU or memory oversubscription. R4's reviewed CPU topology is four concurrent
+cohorts times four member workers, which already occupies all 16 logical CPUs,
+so its supervisor runs the reference population before cohort training rather
+than silently changing the measured trainer. Replay makes that sequential
+stage materially cheaper. No cloud should be powered merely to hold an idle
+reviewed process.
 
 The first V2 execution freeze remains single-host: every stage re-authenticates
 one exact runtime/native/boot profile. Concurrency above therefore means
@@ -772,7 +836,9 @@ private population and host-specific cap evidence:
 
 1. one consolidated exact-head source/design review binds the rank factory,
    PR #116 successor, H0 identity/privacy boundary, model arms, exact synthetic
-   population, profiling protocol, streaming/memory and CPU-member topology,
+   population, profiling protocol, sparse-cache/source-index separation,
+   exact cache and epoch recovery, graceful deadline truncation,
+   streaming-oracle parity, CPU-member topology, the exact ten-stage supervisor,
    outcome-blind progress telemetry, metrics, and automatic routing. The
    reviewer returns one PASS or one HOLD containing every blocker found in
    that pass; these are not split into subsystem review requests. It may
@@ -805,7 +871,8 @@ offline path:
   hardware profile, a realized-schedule device qualification gate, portable
   CPU checkpoints, dual-domain calibration selection, one-shot terminal
   publication, and independent reopeners; and
-- one consolidated worker plus a receipt-driven `freeze-design` command. The
+- one consolidated worker, the closed 81-task supervisor, plus a receipt-driven
+  `freeze-design` command. The
   command derives H0 counts and hashes, V1 route, preflight/runtime identities,
   exact source manifest, a compact independently reopenable historical/V2 seed
   registry, candidate-device protocol, cohorts, and authority bytes rather
@@ -832,8 +899,11 @@ The following run-specific inputs still gate an exact freeze:
 4. the final host-specific runtime/native/boot identity, named training
    candidate (explicit CPU only when no supported accelerator exists), measured
    next-unit/epoch deadline receipt, and reviewed resource
-   caps. `freeze-design` binds these together with the existing multi-rank
-   preflight receipt; and
+   caps. The receipt must include the sparse-cache bytes-per-decision projection,
+   exact free disk, the complete primary/control-overlay/human/scale/calibration
+   population estimate, and a training-artifact cap with conservative margin
+   (64 GiB for the current measured projection). `freeze-design` binds these
+   together with the existing multi-rank preflight receipt; and
 5. one external exact-freeze PASS on the canonical immutable JSON.
 
 The actual CPU-versus-candidate qualification result is deliberately not a

@@ -241,15 +241,17 @@ def test_v2_cpu_parallel_members_match_serial_across_multiple_batches():
     )
     expected_models = _models()
     actual_models = _models()
-    expected = train_cohort_epoch_stream(
-        expected_models,
-        tuple(new_b2_optimizer(model) for model in expected_models),
-        iter(train), epoch=1)
-    actual = train_v2_cohort_epoch_stream(
-        actual_models,
-        tuple(new_v2_optimizer(model) for model in actual_models),
-        iter(train), epoch=1, device="cpu")
-    assert actual == expected
+    expected_optimizers = tuple(new_b2_optimizer(model)
+                                for model in expected_models)
+    actual_optimizers = tuple(new_v2_optimizer(model)
+                              for model in actual_models)
+    for epoch in (1, 2):
+        expected = train_cohort_epoch_stream(
+            expected_models, expected_optimizers, iter(train), epoch=epoch)
+        actual = train_v2_cohort_epoch_stream(
+            actual_models, actual_optimizers, iter(train),
+            epoch=epoch, device="cpu")
+        assert actual == expected
     assert tuple(portable_model_state_sha256(model)
                  for model in actual_models) \
         == tuple(model_state_sha256(model) for model in expected_models)

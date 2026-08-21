@@ -37,6 +37,8 @@ from shengji.rl.belief_v2_freeze_builder import (
     standard_cohort_plans,
 )
 from shengji.rl.belief_v2_human_inventory import (
+    H0_INVENTORY_SCHEMA,
+    _component_digest,
     build_h0_group_split,
     group_split_bytes,
     inventory_bytes,
@@ -100,28 +102,39 @@ def _cpu_profile():
 
 def _inventory():
     groups = []
+    components = []
     for index in range(10):
-        groups.append({
+        group = {
             "group_digest": f"{index + 1:x}" * 64,
             "source_bytes": 100 + index,
             "complete_rounds": 1, "incomplete_rounds": 0,
             "human_play_decisions": 10,
             "trump_rank_counts": {"2": 1},
             "attempted_channel_counts": {"absent": 10},
+        }
+        component_digest = _component_digest((group["group_digest"],))
+        group["component_digest"] = component_digest
+        groups.append(group)
+        components.append({
+            "component_digest": component_digest,
+            "group_digests": [group["group_digest"]],
         })
     groups.sort(key=lambda row: row["group_digest"])
     return {
-        "schema": "belief-v1-v2-human-h0-inventory-v1",
+        "schema": H0_INVENTORY_SCHEMA,
         "source_manifest_sha256": _sha("1"),
         "source_file_count": 10,
         "source_digest_population_sha256": _sha("2"),
         "group_count": 10, "groups": groups,
+        "component_count": 10,
+        "components": sorted(
+            components, key=lambda row: row["component_digest"]),
         "rounds_seen": 10, "complete_rounds": 10,
         "incomplete_rounds": 0, "human_play_decisions": 100,
         "trump_rank_counts": {"2": 10},
         "attempted_channel_counts": {"absent": 100},
         "hidden_ownership_labels_reconstructable_for_complete_rounds": True,
-        "group_split_unit": "source-log-session-digest",
+        "group_split_unit": "cross-file-human-player-component",
         "raw_player_identity_published": False,
         "model_rows_published": False,
         "training_authorized": False, "test_open_authorized": False,

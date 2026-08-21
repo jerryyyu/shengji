@@ -32,6 +32,7 @@ from shengji.rl.belief_reference import (
     SampledOwnershipWorldV1,
     reference_ownership,
     validate_sampled_world,
+    validate_sampled_worlds,
 )
 
 
@@ -147,6 +148,10 @@ def test_world_refuses_receiver_card_and_hard_constraint_drift():
     with pytest.raises(BeliefReferenceError, match="actor/schema"):
         validate_sampled_world(actor, replace(
             world, actor_observation_sha256="0" * 64))
+    with pytest.raises(BeliefReferenceError, match="actor/schema"):
+        validate_sampled_worlds(actor, (
+            world, world, replace(
+                world, actor_observation_sha256="0" * 64)))
     with pytest.raises(BeliefReferenceError, match="population/order"):
         validate_sampled_world(actor, replace(
             world, receivers=tuple(reversed(world.receivers))))

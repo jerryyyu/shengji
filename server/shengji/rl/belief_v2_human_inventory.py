@@ -23,10 +23,11 @@ from .belief_contract import canonical_json_bytes
 from .replay_log import EXCLUDE_PLAYERS, rebuild_round
 
 
-H0_INVENTORY_SCHEMA = "belief-v1-v2-human-h0-inventory-v1"
+H0_INVENTORY_SCHEMA = "belief-v1-v2-human-h0-inventory-v2"
 H0_GROUP_SCHEMA = "belief-v1-v2-human-source-group-v1"
-H0_SPLIT_SCHEMA = "belief-v1-v2-human-group-split-v1"
-H0_SPLIT_NAMESPACE = "belief-v1-v2-human-group-split-80-10-10-v1"
+H0_COMPONENT_SCHEMA = "belief-v1-v2-human-player-component-v1"
+H0_SPLIT_SCHEMA = "belief-v1-v2-human-group-split-v2"
+H0_SPLIT_NAMESPACE = "belief-v1-v2-human-component-split-80-10-10-v1"
 
 
 class BeliefV2HumanInventoryError(ValueError):
@@ -96,6 +97,95 @@ def _refuse_evaluation(events: Iterable[dict[str, Any]]) -> None:
 def _group_digest(source_sha256: str) -> str:
     return _sha256(
         f"{H0_GROUP_SCHEMA}|{source_sha256}".encode("ascii"))
+
+
+def _component_digest(group_digests: Iterable[str]) -> str:
+    members = tuple(sorted(group_digests))
+    if not members or len(members) != len(set(members)) \
+            or any(not _is_sha256(value) for value in members):
+        raise BeliefV2HumanInventoryError(
+            "H0 player component population is invalid")
+    return _sha256(canonical_json_bytes({
+        "schema": H0_COMPONENT_SCHEMA,
+        "group_digests": list(members),
+    }))
+
+
+def _source_human_identities(
+        rounds: dict[int, list[dict[str, Any]]]) -> frozenset[str]:
+    """Return private in-memory identities that connect source sessions.
+
+    Only seats that actually produced a ``bot:false`` play contribute.  The
+    raw names never enter an artifact or digest; published component identity
+    is derived solely from the already-published member source-group digests.
+    """
+    result: set[str] = set()
+    for events in rounds.values():
+        start = next((event for event in events
+                      if event.get("e") == "round_start"), None)
+        if start is None:
+            continue
+        players = start.get("players")
+        if type(players) is not list or len(players) != 4:
+            raise BeliefV2HumanInventoryError(
+                "H0 player population is malformed")
+        by_seat = {}
+        for player in players:
+            if type(player) is not dict \
+                    or type(player.get("seat")) is not int \
+                    or player["seat"] not in range(4) \
+                    or type(player.get("name")) is not str \
+                    or not player["name"]:
+                raise BeliefV2HumanInventoryError(
+                    "H0 player row is malformed")
+            by_seat[player["seat"]] = player["name"]
+        if set(by_seat) != set(range(4)):
+            raise BeliefV2HumanInventoryError(
+                "H0 player seat population is malformed")
+        human_seats = {event.get("seat") for event in events
+                       if event.get("e") == "play"
+                       and event.get("bot") is False}
+        if any(type(seat) is not int or seat not in range(4)
+               for seat in human_seats):
+            raise BeliefV2HumanInventoryError(
+                "H0 human player seat is malformed")
+        result.update(by_seat[seat] for seat in human_seats
+                      if by_seat[seat] not in EXCLUDE_PLAYERS)
+    return frozenset(result)
+
+
+def _player_components(
+        source_identities: dict[str, frozenset[str]]) \
+        -> tuple[tuple[str, ...], ...]:
+    """Build exact connected components without publishing player names."""
+    parents = {source: source for source in source_identities}
+
+    def find(source: str) -> str:
+        while parents[source] != source:
+            parents[source] = parents[parents[source]]
+            source = parents[source]
+        return source
+
+    def union(left: str, right: str) -> None:
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[max(left_root, right_root)] = min(left_root, right_root)
+
+    by_identity: dict[str, list[str]] = defaultdict(list)
+    for source, identities in source_identities.items():
+        for identity in identities:
+            by_identity[identity].append(source)
+    for sources in by_identity.values():
+        first, *rest = sorted(sources)
+        for source in rest:
+            union(first, source)
+    components: dict[str, list[str]] = defaultdict(list)
+    for source in sorted(source_identities):
+        components[find(source)].append(_group_digest(source))
+    return tuple(sorted((tuple(sorted(members))
+                         for members in components.values()),
+                        key=lambda members: members[0]))
 
 
 def _inventory_round(events: list[dict[str, Any]],
@@ -181,6 +271,7 @@ def build_h0_inventory(*, source_manifest: Path,
     attempted_counts: Counter[str] = Counter()
     group_rows: list[dict[str, Any]] = []
     source_digests: list[str] = []
+    source_identities: dict[str, frozenset[str]] = {}
     for name in sorted(members):
         raw = source_by_name[name].read_bytes()
         source_sha = _sha256(raw)
@@ -192,6 +283,7 @@ def build_h0_inventory(*, source_manifest: Path,
         group_ranks: Counter[str] = Counter()
         group_attempted: Counter[str] = Counter()
         rounds = _events_by_round(raw)
+        source_identities[source_sha] = _source_human_identities(rounds)
         totals["rounds_seen"] += len(rounds)
         for events in rounds.values():
             start = next((event for event in events
@@ -233,6 +325,16 @@ def build_h0_inventory(*, source_manifest: Path,
             "trump_rank_counts": dict(sorted(group_ranks.items())),
             "attempted_channel_counts": dict(sorted(group_attempted.items())),
         })
+    components = _player_components(source_identities)
+    component_rows = [{
+        "component_digest": _component_digest(members),
+        "group_digests": list(members),
+    } for members in components]
+    component_by_group = {
+        group: row["component_digest"]
+        for row in component_rows for group in row["group_digests"]}
+    for row in group_rows:
+        row["component_digest"] = component_by_group[row["group_digest"]]
     population_sha = _sha256(canonical_json_bytes({
         "schema": "belief-v1-v2-human-source-digest-population-v1",
         "sha256s": sorted(source_digests),
@@ -244,6 +346,9 @@ def build_h0_inventory(*, source_manifest: Path,
         "source_digest_population_sha256": population_sha,
         "group_count": len(group_rows),
         "groups": sorted(group_rows, key=lambda row: row["group_digest"]),
+        "component_count": len(component_rows),
+        "components": sorted(
+            component_rows, key=lambda row: row["component_digest"]),
         "rounds_seen": totals["rounds_seen"],
         "complete_rounds": totals["complete_rounds"],
         "incomplete_rounds": totals["incomplete_rounds"],
@@ -251,7 +356,7 @@ def build_h0_inventory(*, source_manifest: Path,
         "trump_rank_counts": dict(sorted(rank_counts.items())),
         "attempted_channel_counts": dict(sorted(attempted_counts.items())),
         "hidden_ownership_labels_reconstructable_for_complete_rounds": True,
-        "group_split_unit": "source-log-session-digest",
+        "group_split_unit": "cross-file-human-player-component",
         "raw_player_identity_published": False,
         "model_rows_published": False,
         "training_authorized": False,
@@ -281,6 +386,7 @@ def verify_h0_inventory(inventory: dict[str, Any]) -> None:
     expected_keys = {
         "schema", "source_manifest_sha256", "source_file_count",
         "source_digest_population_sha256", "group_count", "groups",
+        "component_count", "components",
         "rounds_seen", "complete_rounds", "incomplete_rounds",
         "human_play_decisions", "trump_rank_counts",
         "attempted_channel_counts",
@@ -292,11 +398,14 @@ def verify_h0_inventory(inventory: dict[str, Any]) -> None:
             or inventory["schema"] != H0_INVENTORY_SCHEMA \
             or any(type(inventory[key]) is not int or inventory[key] < 0
                    for key in (
-                       "source_file_count", "group_count", "rounds_seen",
+                       "source_file_count", "group_count", "component_count",
+                       "rounds_seen",
                        "complete_rounds", "incomplete_rounds",
                        "human_play_decisions")) \
             or inventory["source_file_count"] <= 0 \
             or inventory["group_count"] != inventory["source_file_count"] \
+            or not 0 < inventory["component_count"] \
+            <= inventory["group_count"] \
             or inventory["rounds_seen"] != inventory["complete_rounds"] \
             + inventory["incomplete_rounds"] \
             or type(inventory["groups"]) is not list \
@@ -308,7 +417,7 @@ def verify_h0_inventory(inventory: dict[str, Any]) -> None:
                 "hidden_ownership_labels_reconstructable_for_complete_rounds"] \
             is not True \
             or inventory["group_split_unit"] \
-            != "source-log-session-digest" \
+            != "cross-file-human-player-component" \
             or any(inventory[key] is not False for key in (
                 "raw_player_identity_published", "model_rows_published",
                 "training_authorized", "test_open_authorized",
@@ -329,13 +438,15 @@ def verify_h0_inventory(inventory: dict[str, Any]) -> None:
     group_attempted: Counter[str] = Counter()
     for row in inventory["groups"]:
         if type(row) is not dict or set(row) != {
-                "group_digest", "source_bytes", "complete_rounds",
+                "group_digest", "component_digest", "source_bytes",
+                "complete_rounds",
                 "incomplete_rounds", "human_play_decisions",
                 "trump_rank_counts", "attempted_channel_counts"} \
                 or type(row["group_digest"]) is not str \
                 or len(row["group_digest"]) != 64 \
                 or any(char not in "0123456789abcdef"
                        for char in row["group_digest"]) \
+                or not _is_sha256(row["component_digest"]) \
                 or any(type(row[key]) is not int or row[key] < 0
                        for key in (
                            "source_bytes", "complete_rounds",
@@ -366,6 +477,45 @@ def verify_h0_inventory(inventory: dict[str, Any]) -> None:
             or group_ranks != rank_totals \
             or group_attempted != attempted_totals:
         raise BeliefV2HumanInventoryError("H0 inventory group closure drift")
+    components = inventory["components"]
+    if type(components) is not list \
+            or len(components) != inventory["component_count"]:
+        raise BeliefV2HumanInventoryError(
+            "H0 inventory component population drift")
+    seen_groups: set[str] = set()
+    component_digests = []
+    group_to_component = {}
+    for row in components:
+        if type(row) is not dict or set(row) != {
+                "component_digest", "group_digests"} \
+                or not _is_sha256(row["component_digest"]) \
+                or type(row["group_digests"]) is not list \
+                or not row["group_digests"] \
+                or row["group_digests"] != sorted(row["group_digests"]) \
+                or len(row["group_digests"]) \
+                != len(set(row["group_digests"])) \
+                or any(not _is_sha256(value)
+                       for value in row["group_digests"]) \
+                or row["component_digest"] \
+                != _component_digest(row["group_digests"]):
+            raise BeliefV2HumanInventoryError(
+                "H0 inventory component row drift")
+        if seen_groups & set(row["group_digests"]):
+            raise BeliefV2HumanInventoryError(
+                "H0 inventory component overlap drift")
+        seen_groups.update(row["group_digests"])
+        component_digests.append(row["component_digest"])
+        group_to_component.update({
+            group: row["component_digest"]
+            for group in row["group_digests"]})
+    if component_digests != sorted(component_digests) \
+            or len(component_digests) != len(set(component_digests)) \
+            or seen_groups != set(group_digests) \
+            or any(group_to_component[row["group_digest"]]
+                   != row["component_digest"]
+                   for row in inventory["groups"]):
+        raise BeliefV2HumanInventoryError(
+            "H0 inventory component closure drift")
 
 
 def validate_h0_inventory(inventory: dict[str, Any]) -> None:
@@ -373,9 +523,9 @@ def validate_h0_inventory(inventory: dict[str, Any]) -> None:
     verify_h0_inventory(inventory)
 
 
-def _split_key(group_digest: str) -> bytes:
+def _split_key(component_digest: str) -> bytes:
     return hashlib.sha256(
-        f"{H0_SPLIT_NAMESPACE}|{group_digest}".encode("ascii")).digest()
+        f"{H0_SPLIT_NAMESPACE}|{component_digest}".encode("ascii")).digest()
 
 
 def _split_summary(groups: list[dict[str, Any]]) -> dict[str, Any]:
@@ -387,6 +537,10 @@ def _split_summary(groups: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "group_count": len(groups),
         "group_digests": sorted(group["group_digest"] for group in groups),
+        "component_count": len({
+            group["component_digest"] for group in groups}),
+        "component_digests": sorted({
+            group["component_digest"] for group in groups}),
         "complete_rounds": sum(group["complete_rounds"] for group in groups),
         "incomplete_rounds": sum(
             group["incomplete_rounds"] for group in groups),
@@ -399,24 +553,31 @@ def _split_summary(groups: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _derive_h0_group_split(inventory: dict[str, Any]) -> dict[str, Any]:
     validate_h0_inventory(inventory)
-    if inventory["group_count"] < 10:
+    if inventory["component_count"] < 10:
         raise BeliefV2HumanInventoryError(
-            "H0 group population is too small for 80/10/10 split")
+            "H0 player component population is too small for 80/10/10 split")
+    groups_by_component: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for group in inventory["groups"]:
+        groups_by_component[group["component_digest"]].append(group)
     ordered = sorted(
-        inventory["groups"],
-        key=lambda row: (_split_key(row["group_digest"]),
-                         row["group_digest"]))
+        inventory["components"],
+        key=lambda row: (_split_key(row["component_digest"]),
+                         row["component_digest"]))
     train_count = len(ordered) * 8 // 10
     calibration_count = len(ordered) // 10
     test_count = len(ordered) - train_count - calibration_count
     if min(train_count, calibration_count, test_count) <= 0:
         raise BeliefV2HumanInventoryError("H0 group split is empty")
-    splits = {
-        "train": _split_summary(ordered[:train_count]),
-        "calibration": _split_summary(
-            ordered[train_count:train_count + calibration_count]),
-        "test": _split_summary(ordered[-test_count:]),
+    component_splits = {
+        "train": ordered[:train_count],
+        "calibration": ordered[
+            train_count:train_count + calibration_count],
+        "test": ordered[-test_count:],
     }
+    splits = {split: _split_summary([
+        group for component in components
+        for group in groups_by_component[component["component_digest"]]
+    ]) for split, components in component_splits.items()}
     population = {
         split: row["group_digests"] for split, row in splits.items()}
     return {
@@ -425,7 +586,7 @@ def _derive_h0_group_split(inventory: dict[str, Any]) -> dict[str, Any]:
         "inventory_sha256": _sha256(inventory_bytes(inventory)),
         "source_digest_population_sha256": (
             inventory["source_digest_population_sha256"]),
-        "selection_inputs": ["group_digest"],
+        "selection_inputs": ["component_digest"],
         "selection_uses_round_or_decision_counts": False,
         "selection_uses_labels_or_outcomes": False,
         "group_population_sha256": _sha256(canonical_json_bytes({

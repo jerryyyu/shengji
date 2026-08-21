@@ -49,6 +49,9 @@ from .belief_v2_streaming_inputs import (
     V2StreamingTrainingInputsV1,
     validate_streaming_training_inputs,
 )
+from .belief_v2_tensor_cache_controller import (
+    reopen_training_tensor_cache,
+)
 from .belief_v2_device_controller import reopen_device_qualification
 from .belief_v2_device_qualification import (
     V2DeviceQualificationPlanV1,
@@ -103,12 +106,16 @@ def reopen_trained_scoring_cohorts(
             "V2 scoring device qualification refused") from exc
     models = []
     manifest_hashes = []
+    try:
+        _, _, calibration_factory, control_dose, cache_sha256 = (
+            reopen_training_tensor_cache(
+                root / "training-tensor-cache" / "result",
+                freeze=freeze, admission=admission))
+    except ValueError as exc:
+        raise BeliefV2ScoringControllerError(
+            "V2 scoring tensor cache refused") from exc
     for realization in training_inputs.realizations:
         try:
-            control_dose = (
-                training_inputs.index.control_changed_cell_count
-                if realization.kind == "hard-geometry-label-permutation"
-                else 0)
             manifest, trained = reopen_training_cohort(
                 root / "training" / realization.cohort_id,
                 freeze=freeze, admission=admission, primary=primary,
@@ -117,7 +124,11 @@ def reopen_trained_scoring_cohorts(
                 calibration_examples=None,
                 qualification_plan=qualification_plan,
                 qualification_result=qualification_result,
-                compact_control_dose=control_dose)
+                compact_control_dose=(
+                    control_dose if realization.kind
+                    == "hard-geometry-label-permutation" else 0),
+                calibration_batch_factory=calibration_factory,
+                cache_manifest_sha256=cache_sha256)
             cohort = cohort_models_from_trained(trained)
         except ValueError as exc:
             raise BeliefV2ScoringControllerError(

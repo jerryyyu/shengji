@@ -13,7 +13,7 @@ import gc
 import resource
 import sys
 import time
-from typing import Callable
+from typing import Any, Callable
 
 import torch
 
@@ -268,6 +268,44 @@ def run_device_qualification_streaming(
     if set(selected_by_index) != wanted:
         raise BeliefV2DeviceRunnerError(
             "V2 qualification streaming batch population drift")
+    selected = tuple(selected_by_index[index]
+                     for index in plan.selected_batch_indices)
+    return plan, _run_qualification_plan(
+        plan, selected_batches=selected, deadline_check=deadline_check,
+        progress=progress)
+
+
+def run_device_qualification_from_batch_factory(
+        *, execution_git: str, candidate_device: str,
+        primary: V2CohortRealizationV1,
+        batch_factory: Callable[[], Any], host_memory_cap_bytes: int,
+        device_memory_cap_bytes: int,
+        deadline_check: Callable[[str, int], None] | None = None,
+        progress: Callable[[int, int, str], None] | None = None) \
+        -> tuple[V2DeviceQualificationPlanV1,
+                 V2DeviceQualificationResultV1]:
+    """Select the frozen qualification batches from a bound reusable cache."""
+    if not callable(batch_factory):
+        raise BeliefV2DeviceRunnerError(
+            "V2 qualification batch factory drift")
+    plan = _qualification_plan(
+        execution_git=execution_git, candidate_device=candidate_device,
+        primary=primary, host_memory_cap_bytes=host_memory_cap_bytes,
+        device_memory_cap_bytes=device_memory_cap_bytes)
+    wanted = set(plan.selected_batch_indices)
+    selected_by_index = {}
+    try:
+        for index, batch in enumerate(batch_factory()):
+            if index in wanted:
+                selected_by_index[index] = batch
+            if index >= max(wanted):
+                break
+    except ValueError as exc:
+        raise BeliefV2DeviceRunnerError(
+            "V2 qualification cached batches refused") from exc
+    if set(selected_by_index) != wanted:
+        raise BeliefV2DeviceRunnerError(
+            "V2 qualification cached batch population drift")
     selected = tuple(selected_by_index[index]
                      for index in plan.selected_batch_indices)
     return plan, _run_qualification_plan(

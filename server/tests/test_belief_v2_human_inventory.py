@@ -140,12 +140,15 @@ def test_h0_verifier_refuses_foreign_fields_and_every_authority(
         verify_h0_inventory(result)
 
 
-def _many_group_inventory(tmp_path: Path):
+def _many_group_inventory(tmp_path: Path, *, shared_first_two=False):
     sources = []
     manifest_rows = []
     for index in range(30):
         source = tmp_path / f"ROOM_{index:02d}.jsonl"
         events = _completed_round(attempted_complete=index % 2 == 0)
+        events[0]["players"][0]["name"] = (
+            "Shared Human" if shared_first_two and index < 2
+            else f"Human {index:02d}")
         events[0]["source_fixture_nonce"] = index
         source.write_text("".join(
             json.dumps(event) + "\n" for event in events))
@@ -173,10 +176,37 @@ def test_h0_group_split_is_whole_group_deal_blind_and_exact(tmp_path):
     assert not populations[1] & populations[2]
     assert sum(row["complete_rounds"]
                for row in result["splits"].values()) == 30
-    assert result["selection_inputs"] == ["group_digest"]
+    assert result["selection_inputs"] == ["component_digest"]
     assert result["selection_uses_round_or_decision_counts"] is False
     assert result["selection_uses_labels_or_outcomes"] is False
     assert result["training_authorized"] is False
+
+
+def test_h0_cross_file_player_component_never_crosses_splits(tmp_path):
+    inventory = _many_group_inventory(tmp_path, shared_first_two=True)
+    shared = [row for row in inventory["components"]
+              if len(row["group_digests"]) == 2]
+    assert len(shared) == 1
+    merged_groups = shared[0]["group_digests"]
+    result = build_h0_group_split(inventory)
+    memberships = [split for split, row in result["splits"].items()
+                   if set(merged_groups) & set(row["group_digests"])]
+    assert len(memberships) == 1
+    assert set(merged_groups).issubset(
+        result["splits"][memberships[0]]["group_digests"])
+
+    forged = copy.deepcopy(result)
+    source_split = memberships[0]
+    target_split = next(split for split in forged["splits"]
+                        if split != source_split)
+    forged["splits"][source_split]["group_digests"].remove(
+        merged_groups[0])
+    forged["splits"][target_split]["group_digests"].append(
+        merged_groups[0])
+    forged["splits"][target_split]["group_digests"].sort()
+    with pytest.raises(BeliefV2HumanInventoryError,
+                       match="split reconstruction"):
+        validate_h0_group_split(forged, inventory=inventory)
 
 
 def test_h0_group_split_refuses_inventory_or_result_drift(tmp_path):

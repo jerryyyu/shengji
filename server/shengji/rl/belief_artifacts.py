@@ -44,7 +44,7 @@ from .belief_refc_capture import (
 from .belief_reference import (
     ReceiverCardsV1,
     SampledOwnershipWorldV1,
-    validate_sampled_world,
+    validate_sampled_worlds,
 )
 from .belief_trainer import EpochTrainingReceiptV1
 from .belief_reopen import actor_observation_from_dict
@@ -252,6 +252,7 @@ def _worlds_from_block(
             or len(payload) != world_count * bytes_per_world:
         raise BeliefArtifactError("world block population/size drift")
     worlds = []
+    actor_sha256 = actor.sha256()
     for world_index in range(world_count):
         encoded = payload[
             world_index * bytes_per_world:
@@ -269,17 +270,16 @@ def _worlds_from_block(
             if count:
                 counts[receiver][card] = count
         world = SampledOwnershipWorldV1(
-            actor_observation_sha256=actor.sha256(),
+            actor_observation_sha256=actor_sha256,
             receivers=tuple(ReceiverCardsV1(
                 receiver=receiver,
                 cards=tuple(sorted(counts[receiver].items())))
                             for receiver in receivers))
-        try:
-            validate_sampled_world(actor, world)
-        except ValueError as exc:
-            raise BeliefArtifactError("world block typed reopen refused") \
-                from exc
         worlds.append(world)
+    try:
+        validate_sampled_worlds(actor, tuple(worlds))
+    except ValueError as exc:
+        raise BeliefArtifactError("world block typed reopen refused") from exc
     digest = hashlib.sha256()
     for world in worlds:
         canonical = world.canonical_bytes()

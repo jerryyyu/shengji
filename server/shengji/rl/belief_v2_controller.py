@@ -9,6 +9,7 @@ external review and exact live source/runtime before its first write.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 import time
@@ -44,6 +45,7 @@ from .belief_v2_execution_identity import (
     validate_live_execution,
 )
 from .belief_v2_deadline import (
+    DEADLINE_REFUSAL_FILENAME,
     BeliefV2DeadlineError,
     deadline_refusal_paths,
     publish_deadline_refusal,
@@ -127,16 +129,56 @@ def _stage_gate(
         raise BeliefV2ControllerError("V2 evidence root drift")
     try:
         refusals = deadline_refusal_paths(root)
+        blocking_refusals = []
         for path in refusals:
             reopen_deadline_refusal(
                 path, freeze_sha256=freeze.sha256(),
                 admission_sha256=admission.sha256())
+            if not _is_sealed_training_truncation(path):
+                blocking_refusals.append(path)
     except ValueError as exc:
         raise BeliefV2ControllerError(
             "V2 deadline refusal evidence drift") from exc
-    if refusals:
+    if blocking_refusals:
         raise BeliefV2ControllerError(
             "V2 stage blocked by a prior deadline refusal")
+
+
+def _is_sealed_training_truncation(refusal_path: Path) -> bool:
+    """Distinguish usable deadline-truncated cohorts from failed partials.
+
+    This is intentionally a narrow admission check.  Calibration and terminal
+    stages later call the full training-stage reopener before consuming model
+    bytes; here we only prove that the refusal lives in a final-named training
+    artifact whose closed manifest explicitly binds it as a sealed truncation.
+    """
+    directory = refusal_path.parent
+    if directory.parent.name != "training" \
+            or directory.name.endswith(".partial") \
+            or directory.is_symlink() or not directory.is_dir():
+        return False
+    try:
+        manifest_raw = stable_read_bytes(directory / "manifest.json")
+        refusal_raw = stable_read_bytes(refusal_path)
+        manifest = json.loads(manifest_raw)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        return False
+    deadline = manifest.get("deadline_refusal") \
+        if type(manifest) is dict else None
+    return canonical_json_bytes(manifest) == manifest_raw \
+        and manifest.get("schema") \
+        == "belief-v1-v2-training-stage-result-v1" \
+        and manifest.get("cohort_id") == directory.name \
+        and manifest.get("truncated_by_deadline") is True \
+        and type(deadline) is dict \
+        and deadline == {
+            "filename": DEADLINE_REFUSAL_FILENAME,
+            "byte_count": len(refusal_raw),
+            "sha256": _sha256(refusal_raw),
+            "final_artifact_sealed": True,
+            "calibration_open_authorized": False,
+            "test_split_open_authorized": False,
+        }
 
 
 def _deadline_check(

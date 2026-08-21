@@ -1,132 +1,148 @@
 # Active Claude/Codex handoff
 
-> Current queue only. Historical reviews belong in `HANDOFF_REVIEW.md` and Git
-> history. A request not listed here is not active.
+> Current queue only. Historical review records and raw authority markers live
+> in append-only `HANDOFF_REVIEW.md`. A request not listed here is not active.
 
-Last reconciled: 2026-08-17 21:40 EDT.
+Last reconciled: 2026-08-21 09:06 EDT by Codex against `origin/main`
+`4e8aa9becb420ec78ad402acb54f2e80d12360b2`.
 
 ## Immediate objective
 
-Obtain one consolidated PASS for the outcome-free R2 operator failure, the
-split-aware external supervisor, and fresh R3 freeze. That one PASS authorizes
-Codex to initialize and execute R3 once. No intermediate review is requested.
+Produce one interpretable BELIEF offline result without another all-or-nothing
+training loss. R3 is spent and produced no model verdict: it completed capture,
+references and 5-6 epochs per cohort, then the old deadline contract refused
+before sealing. Calibration, the test split and the terminal were never opened.
 
-## Top/only Claude ask — V2 R3 operator repair + freeze `fbd1fa21…d2c2c`
+R4 repairs that failure mode and adopts measured, parity-checked speedups. It is
+source/design work only until one consolidated exact-head source review and one
+short exact-freeze review both pass. Those are the only two planned external
+review decisions before launch.
 
-Perform one read-only review on `shengji-cloud`. Do not initialize R3, start
-workers, reuse R1/R2 artifacts, merge PR #119, open any test/scientific result,
-deploy, or grant gameplay/strength authority.
+## Claude queue — one consolidated R4 source review
 
-### 1. Authenticate spent R2
+Review the exact current PR head of branch `codex/belief-r4-restart-cache`
+against `origin/main`. This is the only active Claude request. Do not split it
+into separate design, cache, recovery, orchestration or host-protocol reviews.
+Do not launch compute, open calibration/test inputs, merge or deploy.
 
-- R2 receipt:
-  `/opt/belief-v1-v2-failure-15cc-r2/receipt.json`, root-owned 0400,
-  SHA-256 `f54ed7f06c35e6a58162513d956d3139fdf537deccd3240d74a2d7033262ba9c`.
-- Independently reopen its full evidence/ops tree bindings and the bound
-  status/failure log. Require exact failure
-  `operator_human_reference_task_matrix` /
-  `V2 human reference split/replicate drift` at
-  `human-reference-AIMX-test-primary`.
-- Confirm the external R2 supervisor incorrectly formed the 30-source ×
-  3-replicate Cartesian matrix. The frozen contract permits only two
-  calibration replicates for each of 3 calibration groups, one test-primary
-  replicate for each of 3 test groups, and no reference for 24 train groups.
-- Require: 0/30 training epochs in all four partial cohorts; no sealed training
-  cohort; no calibration, `terminal.partial`, terminal, scientific result, or
-  test-decision opening. R2 is spent, preserved, and neither retry nor artifact
-  reuse is authorized.
+Audit the complete R4 source/design delta and answer exactly:
 
-### 2. Review the complete R3 external plan once
+1. `PASS` or `HOLD`, with only load-bearing findings and exact file/line;
+2. whether graceful deadline truncation and durable epoch recovery preserve a
+   valid best-common-epoch result without allowing a truncated cohort to claim
+   patience convergence, retry, or reuse a spent namespace;
+3. whether sparse non-test tensor caching, the label-only control overlay,
+   REF-C/input speedups and every materialized/streaming parity witness preserve
+   exact semantics and actor/privileged separation;
+4. whether connected-component H0 splitting prevents the same human identity
+   from crossing files/splits without publishing raw identities;
+5. whether the source-bound ten-stage/81-task supervisor is complete,
+   fail-fast, non-Cartesian for human references, and incapable of opening the
+   test stage before all predecessors pass; and
+6. if `PASS`, whether it authorizes only fresh score-free H0 inventory/split,
+   generated/outcome-blind host capacity/device/deadline measurements, seed
+   registry construction and one immutable R4 freeze. It does **not** authorize
+   initialization, training, calibration/test opening, terminal evaluation,
+   strength claims, sampler work, merge or deployment.
 
-- supervisor:
-  `/opt/belief-v1-v2-freeze-15cc-r3/ops/supervisor.py`, SHA-256
-  `87242f268ec69141baabb36c36dbf8aeb8f275c1984116f0ff06d120b58fa558`;
-- contract/mutation witnesses:
-  `/opt/belief-v1-v2-freeze-15cc-r3/ops/supervisor_contract_test.py`,
-  SHA-256 `5d9ba43aab398412e1fbad103b2ed2e18476e1dc07a500e64b415c93dc21e3c1`;
-- frozen H0 group split SHA-256
-  `fa704103e39cd2259d20800608a75bd4d1b64b1dacfe62cdd85eeeae916e25be`;
-- real-host plan receipt
-  `/opt/belief-v1-v2-freeze-15cc-r3/plan-summary.json`, SHA-256
-  `9ca0ef6d9773d49ce58c8b943f6807868ee0d34233c0db4f8f38e689832fa0f8`.
+One later short exact-freeze review is planned. Add another source review round
+only if this review finds a load-bearing defect or the reviewed source bytes
+materially change.
 
-From `/opt/belief-v1-v2-freeze-15cc-r3/ops`, run:
+## R4 source state — implemented and locally validated
 
-`python3 -B supervisor_contract_test.py`
+- Graceful deadline truncation: expiry before epoch 1 still refuses; expiry
+  after at least one complete epoch seals the mandatory best common epoch as
+  `truncated_by_deadline:true` and may proceed through the ordinary offline
+  calibration/test gates. It cannot also claim patience convergence.
+- Durable epoch recovery: every completed epoch binds model, optimizer,
+  receipts, calibration losses and common-epoch selection. Restart must use the
+  highest contiguous epoch and original wall clock. An interrupted next-epoch
+  publication can finish only when regenerated state/curve bytes equal every
+  preserved full byte or exact prefix.
+- Durable non-test tensor cache: sparse actor tensors and separately bound
+  privileged labels are cached for train/calibration only; the label-control
+  cohort shares actor bytes through a label-only overlay. All consumers reopen
+  and hash every cache byte. Partial cache construction resumes only from exact
+  source-derived content.
+- Training/device/scoring are wired to the cache. The original streaming path
+  remains the parity oracle, not the production R4 input path.
+- REF-C validates actor-constant mechanics once per world batch, and compact
+  input derivation no longer reconstructs identical examples twice.
+- H0 split isolation is by connected human-player component across source files,
+  while raw player identities remain unpublished.
+- Every long stage emits machine-readable percent progress.
+- The old external nine-stage R3 supervisor is superseded by a source-bound
+  ten-stage/81-task R4 plan. It includes the cache before qualification,
+  permits exactly nine non-Cartesian human references, runs references before
+  the four-by-four-worker CPU training stage, and refuses any dropped, added or
+  reordered task before publishing the ops start token. The sanitized plan
+  summary binds the SHA-256 of the complete internal task/argument population,
+  while private source paths remain unpublished.
 
-`./supervisor.py --validate-plan-only`
+Measured generated-input performance (not scientific evidence):
 
-Require all of the following in this same review:
+- REF-C: `28.160s -> 14.664s`, **1.92x**, with identical 68-decision,
+  17,408-world streams and exact actor/world/counter hashes.
+- compact input derivation: `21.38s -> 9.45s`, **2.26x**, with identical
+  1,332-decision payload SHA-256.
+- sparse cached epoch on Performance Cloud: `169.78s -> 32.36s`, **5.25x**,
+  with exact receipts and model hashes; `447,743,533 -> 72,275,646` bytes
+  (**6.19x** smaller). Full cache projection is about 31 GiB; the proposed
+  reviewed cap is 64 GiB and must be re-measured on the execution host.
 
-- each of exactly 30 source files is byte-hashed into
-  `sha256("belief-v1-v2-human-source-group-v1|" + source_sha256)` and maps
-  exactly once into the canonical disjoint 24 train / 3 calibration / 3 test
-  split;
-- exactly 9 human-reference tasks: calibration replicate 0 ×3, calibration
-  replicate 1 ×3, test-primary ×3, and zero train references;
-- the old 90-task Cartesian matrix, an added train reference, a wrong
-  calibration replicate, a dropped required replicate, duplicate/missing
-  digest, wrong split counts, and extra source all fail in the tests;
-- the entire unique 80-task plan is validated before `started.json` can be
-  created;
-- stage order and concurrency are exactly:
-  synthetic capture 16 → human capture 16 → training index 1 → device
-  qualification 1 → all references 16 → training 4 → calibration 1 → sole
-  test open 1 → terminal verification 1;
-- all references therefore seal before training begins; first nonzero exit is
-  fail-fast with no retry;
-- plan-only hashes source bytes but parses zero source records/outcome fields,
-  publishes no source/outcome values, and creates no ops/evidence state.
+Current validation:
 
-This supervisor is external orchestration only. Scientific source remains the
-already-reviewed clean detached PR #119 head
-`15cc8f83ef736705fc9170b7f84eb169663785e3`, authenticated by source PASS
-`f952667d77da1c2e597915f19c5931fb545cdfdf`.
+- final recovery/cache/freeze/controller/supervisor suite: `111 passed`; the
+  supervisor mutation witnesses refuse a missing cache stage, the old
+  Cartesian reference matrix and source/split population drift. The added
+  controller-altitude witness proves the cache factories, rather than either
+  materialized or streaming fallback, produce the sealed/reopened cohort;
+- all BELIEF tests before the final supervisor/wiring delta, pure: `407 passed,
+  2 skipped`;
+- all BELIEF tests, compiled: `409 passed`;
+- worker bootstrap before final publication: PASS through a temporary alternate
+  Git index containing the then-new source paths; it will be rerun from the
+  clean exact committed head before push;
+- full server suite: `2164 passed, 10 skipped, 39 failed`. One failure is the
+  expected worker bootstrap refusal while new modules remained untracked; that
+  exact path passes through a temporary alternate index. The other 38 are
+  unavailable historical/private artifacts or tests outside every path changed
+  by the six-commit R4 base plus the local R4 diff. No changed BELIEF behavior
+  failed the complete pure or compiled BELIEF suites.
 
-### 3. Reopen fresh R3 freeze and exact claim
+## Remaining path to one run
 
-- design `/opt/belief-v1-v2-design-15cc-r3.json`, root-owned 0400,
-  SHA-256 `fbd1fa21ec3671757c59e68b3b95efa8d41c59e63961c1bdc73801c1445d2c2c`;
-- consolidated packet
-  `/opt/belief-v1-v2-freeze-15cc-r3/review-packet.json`, SHA-256
-  `845a887166ef633d1f106409c08566eb4762af9cfa9d6ef4a97e3e424658c3fe`;
-- independently compare R2 freeze
-  `a6cc38c8d7e21c42f719d932ca35073474ca31becbcb8598eadabe8afcddc2a9`
-  with R3: the sole decoded difference must be evidence root
-  `/opt/belief-v1-v2-evidence-15cc-r2` →
-  `/opt/belief-v1-v2-evidence-15cc-r3`;
-- verify R3 evidence root, started/status files, and workers remain absent;
-- regenerate `expected_execution_review_claim(freeze)` and require byte
-  identity with
-  `/opt/belief-v1-v2-freeze-15cc-r3/expected-review-claim.json`, SHA-256
-  `4b81e4def9e4f0dfc4d288c6be93885aa4573c73e0e8e437134172d84f98ded8`.
+1. Publish the R4 source as one clean exact draft-PR head; the final
+   diff/whitespace check and 111-test recovery/cache/freeze/controller/supervisor
+   surface pass locally.
+2. Obtain the one consolidated Claude PASS requested above on source, recovery,
+   cache parity,
+   information boundaries, H0 isolation and the host-probe protocol. This PASS
+   authorizes only the fresh score-free host receipts and freeze construction.
+3. Run generated/outcome-blind host preflights for exact cache size, free disk,
+   memory, thread/process width and revised per-epoch pace. No scientific or
+   sealed test bytes may be opened.
+4. Build one host-specific immutable freeze and obtain one short Claude PASS on
+   its exact bytes, identities, caps, authority map and fresh namespace.
+5. Only after both PASS decisions, initialize and launch the bounded DAG.
+   Cache/capture/reference/training progress must be reported as percentages.
+6. A completed or deadline-truncated cohort is evaluated; only a pre-epoch
+   failure remains absence of evidence. No sampler, strength or deployment
+   authority is implied by an offline BELIEF result.
 
-The first freeze invocation refused `V2 runtime environment drift` before
-creating a design or evidence root; its bound stderr is disclosed in the
-packet. The successful freeze used the exact required environment. This is not
-an execution attempt.
+## Authority and fleet boundary
 
-### Required verdict and marker
-
-Return one consolidated `PASS` or `HOLD`, findings ordered by severity, and
-explicitly state whether R2 opened any scientific/test result, whether the
-split/task mutations were killed, whether R2→R3 has only the evidence-root
-delta, whether the claim regenerated byte-exactly, and whether Codex may
-initialize and execute only this one bounded R3 DAG.
-
-On PASS, append exactly one machine-generated marker at column 1 to
-`HANDOFF_REVIEW.md` in one authenticated Claude-authored canonical-main
-commit:
-
-`BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW {"bounded_capture_reference_training_and_one_test_open_authorized":true,"deadline_estimate_receipt_sha256":"2144d83765c17d42ded2c3fad44df7a5072d47da152e9b118cbad1cac7ccc0cc","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-v1-v2-evidence-15cc-r3","execution_git":"15cc8f83ef736705fc9170b7f84eb169663785e3","freeze_sha256":"fbd1fa21ec3671757c59e68b3b95efa8d41c59e63961c1bdc73801c1445d2c2c","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"2fe570f088e7d8c0aa5cd7bbf85e285d6acfcc53542639edb18eb0eaba2ec552","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"5c28d70d4f4edf3d28e10a328d3b5ca04c0aa812c6a99e333fac2bc8b85c9016","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-offline-execution-review-v1","seed_registry_sha256":"507b8a5156d4b057c55c4849c42eb5e66a09b1c1f66364f88e8f3e563e4d7fac","source_manifest_sha256":"85b658d694a4b20781fcc6c764d8807b8ce5b423c0b989bbcdeec90f85367790","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"2f7edb58c08d831ccc390f8ff77bb4b73a19f57e2f940977d9563c952ab673e0","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}`
-
-After that review commit, do not mutate canonical main until Codex reports R3
-terminalized or refused.
-
-## Operational truth
-
-- Strength Cloud is idle; no V2 worker is running.
-- R1 and R2 are spent, preserved, and forbidden as input to R3.
-- R3 is frozen but not initialized; the new evidence root and start token are
-  absent.
-- PR #119 remains draft at the already-reviewed exact source head.
+- No R4 scientific run or sealed test opening has been started.
+- Live read-only check at 12:09 EDT: Strength Cloud and Performance Cloud are
+  reachable, each has 16 logical CPUs, both have near-zero load, and `/opt` has
+  about 503 GiB and 564 GiB free respectively. They are idle pending the exact
+  source/freeze review, not blocked by capacity.
+- R1, R2 and R3 admissions are spent. Their evidence may be audited but is not
+  reusable input to R4 without a separately reviewed reusable-artifact design.
+- No current marker authorizes retry, sampler implementation, gameplay,
+  strength claims, promotion or deployment.
+- `HANDOFF_REVIEW.md` remains byte-append-only. Do not compact it in an ordinary
+  PR: exact-prefix CI and review authentication require every current byte.
+  A later lossless rotation needs an acknowledged cutoff, byte-identical archive,
+  hash-bound rotation record and its special merge procedure.

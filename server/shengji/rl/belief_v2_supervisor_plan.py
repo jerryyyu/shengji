@@ -20,11 +20,12 @@ from .belief_v2_human_inventory import H0_GROUP_SCHEMA, H0_SPLIT_SCHEMA
 from .belief_v2_protocol import V2_CAPTURE_LANES
 
 
-SUPERVISOR_PLAN_SCHEMA = "belief-v1-v2-supervisor-plan-v2"
+SUPERVISOR_PLAN_SCHEMA = "belief-v1-v2-supervisor-plan-v3"
 CALIBRATION_REPLICATES = (
     "calibration-replicate-0", "calibration-replicate-1")
 TEST_REPLICATE = "test-primary"
-EXPECTED_GROUP_COUNTS = {"train": 24, "calibration": 3, "test": 3}
+EXPECTED_HUMAN_SOURCE_COUNT = 30
+HUMAN_SPLITS = ("train", "calibration", "test")
 
 
 class BeliefV2SupervisorPlanError(ValueError):
@@ -82,7 +83,7 @@ class V2SupervisorPlanV1:
         """Bind every internal task argument without publishing it in summary."""
         validate_supervisor_plan(self)
         return canonical_json_bytes({
-            "schema": "belief-v1-v2-supervisor-execution-plan-v1",
+            "schema": "belief-v1-v2-supervisor-execution-plan-v2",
             "stages": [{
                 "name": stage.name,
                 "concurrency": stage.concurrency,
@@ -117,12 +118,12 @@ def _split_population(group_split: dict[str, Any]) \
     if type(group_split) is not dict \
             or group_split.get("schema") != H0_SPLIT_SCHEMA \
             or type(group_split.get("splits")) is not dict \
-            or set(group_split["splits"]) != set(EXPECTED_GROUP_COUNTS):
+            or set(group_split["splits"]) != set(HUMAN_SPLITS):
         raise BeliefV2SupervisorPlanError(
             "V2 supervisor H0 split identity drift")
     result: dict[str, frozenset[str]] = {}
     population: set[str] = set()
-    for split, expected in EXPECTED_GROUP_COUNTS.items():
+    for split in HUMAN_SPLITS:
         row = group_split["splits"].get(split)
         values = row.get("group_digests") if type(row) is dict else None
         if type(values) is not list \
@@ -130,14 +131,14 @@ def _split_population(group_split: dict[str, Any]) \
             raise BeliefV2SupervisorPlanError(
                 "V2 supervisor H0 split population drift")
         members = frozenset(values)
-        if len(values) != expected or len(members) != expected \
-                or row.get("group_count") != expected \
+        if not values or len(members) != len(values) \
+                or row.get("group_count") != len(values) \
                 or population.intersection(members):
             raise BeliefV2SupervisorPlanError(
                 "V2 supervisor H0 split population drift")
         population.update(members)
         result[split] = members
-    if len(population) != sum(EXPECTED_GROUP_COUNTS.values()):
+    if len(population) != EXPECTED_HUMAN_SOURCE_COUNT:
         raise BeliefV2SupervisorPlanError(
             "V2 supervisor H0 split union drift")
     return result
@@ -232,9 +233,12 @@ def build_supervisor_plan(
             "terminal-verification", 1,
             (_task("verify-terminal", "verify-terminal"),)),
     )
+    split_counts = {
+        split: sum(row[2] == split for row in sources)
+        for split in HUMAN_SPLITS}
     plan = V2SupervisorPlanV1(
         stages=stages, human_source_count=len(sources),
-        human_split_counts=tuple(EXPECTED_GROUP_COUNTS.items()),
+        human_split_counts=tuple(split_counts.items()),
         human_reference_replicate_counts=tuple(replicate_counts.items()))
     validate_supervisor_plan(plan)
     return plan
@@ -248,7 +252,29 @@ def validate_supervisor_plan(plan: V2SupervisorPlanV1) -> None:
         "training", "calibration", "single-test-opening",
         "terminal-verification")
     expected_concurrency = (16, 16, 1, 1, 1, 16, 4, 1, 1, 1)
-    expected_task_counts = (16, 30, 1, 1, 1, 25, 4, 1, 1, 1)
+    try:
+        split_counts = dict(plan.human_split_counts)
+        replicate_counts = dict(plan.human_reference_replicate_counts)
+    except (TypeError, ValueError) as exc:
+        raise BeliefV2SupervisorPlanError(
+            "V2 supervisor plan identity drift") from exc
+    if set(split_counts) != set(HUMAN_SPLITS) \
+            or any(type(value) is not int or value <= 0
+                   for value in split_counts.values()) \
+            or sum(split_counts.values()) != EXPECTED_HUMAN_SOURCE_COUNT:
+        raise BeliefV2SupervisorPlanError(
+            "V2 supervisor plan identity drift")
+    expected_replicates = {
+        CALIBRATION_REPLICATES[0]: split_counts["calibration"],
+        CALIBRATION_REPLICATES[1]: split_counts["calibration"],
+        TEST_REPLICATE: split_counts["test"],
+    }
+    expected_reference_count = (
+        V2_CAPTURE_LANES + 2 * split_counts["calibration"]
+        + split_counts["test"])
+    expected_task_counts = (
+        16, EXPECTED_HUMAN_SOURCE_COUNT, 1, 1, 1,
+        expected_reference_count, 4, 1, 1, 1)
     if type(plan) is not V2SupervisorPlanV1 \
             or plan.schema != SUPERVISOR_PLAN_SCHEMA \
             or tuple(stage.name for stage in plan.stages) != expected_names \
@@ -256,17 +282,12 @@ def validate_supervisor_plan(plan: V2SupervisorPlanV1) -> None:
             != expected_concurrency \
             or tuple(len(stage.tasks) for stage in plan.stages) \
             != expected_task_counts \
-            or plan.human_source_count != 30 \
-            or dict(plan.human_split_counts) != EXPECTED_GROUP_COUNTS \
-            or dict(plan.human_reference_replicate_counts) != {
-                CALIBRATION_REPLICATES[0]: 3,
-                CALIBRATION_REPLICATES[1]: 3,
-                TEST_REPLICATE: 3,
-            }:
+            or plan.human_source_count != EXPECTED_HUMAN_SOURCE_COUNT \
+            or replicate_counts != expected_replicates:
         raise BeliefV2SupervisorPlanError(
             "V2 supervisor plan identity drift")
     all_tasks = tuple(task for stage in plan.stages for task in stage.tasks)
-    if len(all_tasks) != 81 \
+    if len(all_tasks) != sum(expected_task_counts) \
             or len({task.name for task in all_tasks}) != len(all_tasks) \
             or any(type(task) is not V2SupervisorTaskV1
                    or not task.name or not task.arguments
@@ -277,13 +298,9 @@ def validate_supervisor_plan(plan: V2SupervisorPlanV1) -> None:
             "V2 supervisor task population drift")
     reference_tasks = plan.stages[5].tasks[V2_CAPTURE_LANES:]
     observed_replicates = [task.arguments[-1] for task in reference_tasks]
-    if len(reference_tasks) != 9 \
+    if len(reference_tasks) != expected_reference_count - V2_CAPTURE_LANES \
             or {value: observed_replicates.count(value)
-                for value in set(observed_replicates)} != {
-                    CALIBRATION_REPLICATES[0]: 3,
-                    CALIBRATION_REPLICATES[1]: 3,
-                    TEST_REPLICATE: 3,
-                } \
+                for value in set(observed_replicates)} != expected_replicates \
             or any(len(task.arguments) != 5
                    or task.arguments[0] != "human-reference"
                    or task.arguments[1] != "--source-path"

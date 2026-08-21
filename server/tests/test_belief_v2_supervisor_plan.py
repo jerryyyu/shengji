@@ -26,7 +26,7 @@ def _group_digest(raw: bytes) -> str:
         f"{H0_GROUP_SCHEMA}|{source_sha256}".encode("ascii")).hexdigest()
 
 
-def _inputs(tmp_path):
+def _inputs(tmp_path, *, counts=(24, 3, 3)):
     sources = []
     digests = []
     for index in range(30):
@@ -36,10 +36,11 @@ def _inputs(tmp_path):
         sources.append(path)
         digests.append(_group_digest(raw))
     ordered = sorted(digests)
+    train, calibration, test = counts
     populations = {
-        "train": ordered[:24],
-        "calibration": ordered[24:27],
-        "test": ordered[27:],
+        "train": ordered[:train],
+        "calibration": ordered[train:train + calibration],
+        "test": ordered[train + calibration:train + calibration + test],
     }
     split = {
         "schema": H0_SPLIT_SCHEMA,
@@ -101,6 +102,24 @@ def test_r4_plan_refuses_dropped_cache_and_old_cartesian_matrix(tmp_path):
         validate_supervisor_plan(cartesian)
 
 
+def test_r4_plan_derives_private_component_split_task_count(tmp_path):
+    sources, split = _inputs(tmp_path, counts=(21, 4, 5))
+    plan = build_supervisor_plan(
+        human_source_paths=sources, group_split=split)
+    summary = plan.summary()
+
+    assert summary["human_split_counts"] == {
+        "train": 21, "calibration": 4, "test": 5}
+    assert summary["human_reference_replicate_counts"] == {
+        "calibration-replicate-0": 4,
+        "calibration-replicate-1": 4,
+        "test-primary": 5,
+    }
+    assert summary["stage_task_counts"] == [
+        16, 30, 1, 1, 1, 29, 4, 1, 1, 1]
+    assert summary["task_count"] == 85
+
+
 def test_r4_plan_refuses_source_or_split_population_drift(tmp_path):
     sources, split = _inputs(tmp_path)
     with pytest.raises(BeliefV2SupervisorPlanError,
@@ -111,6 +130,6 @@ def test_r4_plan_refuses_source_or_split_population_drift(tmp_path):
     split["splits"]["train"]["group_digests"].append("0" * 64)
     split["splits"]["train"]["group_count"] += 1
     with pytest.raises(BeliefV2SupervisorPlanError,
-                       match="split population"):
+                       match="split (population|union)"):
         build_supervisor_plan(
             human_source_paths=sources, group_split=split)

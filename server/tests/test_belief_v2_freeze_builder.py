@@ -103,9 +103,10 @@ def _cpu_profile():
 def _inventory():
     groups = []
     components = []
-    for index in range(10):
+    for index in range(30):
         group = {
-            "group_digest": f"{index + 1:x}" * 64,
+            "group_digest": hashlib.sha256(
+                f"group-{index}".encode("ascii")).hexdigest(),
             "source_bytes": 100 + index,
             "complete_rounds": 1, "incomplete_rounds": 0,
             "human_play_decisions": 10,
@@ -123,16 +124,16 @@ def _inventory():
     return {
         "schema": H0_INVENTORY_SCHEMA,
         "source_manifest_sha256": _sha("1"),
-        "source_file_count": 10,
+        "source_file_count": 30,
         "source_digest_population_sha256": _sha("2"),
-        "group_count": 10, "groups": groups,
-        "component_count": 10,
+        "group_count": 30, "groups": groups,
+        "component_count": 30,
         "components": sorted(
             components, key=lambda row: row["component_digest"]),
-        "rounds_seen": 10, "complete_rounds": 10,
-        "incomplete_rounds": 0, "human_play_decisions": 100,
-        "trump_rank_counts": {"2": 10},
-        "attempted_channel_counts": {"absent": 100},
+        "rounds_seen": 30, "complete_rounds": 30,
+        "incomplete_rounds": 0, "human_play_decisions": 300,
+        "trump_rank_counts": {"2": 30},
+        "attempted_channel_counts": {"absent": 300},
         "hidden_ownership_labels_reconstructable_for_complete_rounds": True,
         "group_split_unit": "cross-file-human-player-component",
         "raw_player_identity_published": False,
@@ -418,11 +419,11 @@ def test_builder_derives_one_closed_gpu_capable_freeze(monkeypatch, tmp_path):
     assert [row.cohort_id for row in freeze.cohorts] == [
         "synthetic-primary", "hard-geometry-label-permutation",
         "human-mixture", "synthetic-scale-50"]
-    assert freeze.human_group_count == 10
+    assert freeze.human_group_count == 30
     assert (freeze.human_train_group_count,
             freeze.human_calibration_group_count,
-            freeze.human_test_group_count) == (8, 1, 1)
-    assert freeze.human_eligible_decision_count == 100
+            freeze.human_test_group_count) == (24, 3, 3)
+    assert freeze.human_eligible_decision_count == 300
     assert freeze.resource_caps == _caps()
 
 

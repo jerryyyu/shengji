@@ -3,8 +3,8 @@
 > Current queue only. Historical review records and raw authority markers live
 > in append-only `HANDOFF_REVIEW.md`. A request not listed here is not active.
 
-Last reconciled: 2026-08-21 09:06 EDT by Codex against `origin/main`
-`4e8aa9becb420ec78ad402acb54f2e80d12360b2`.
+Last reconciled: 2026-08-21 09:45 EDT by Codex against `origin/main`
+`a22f6edc1e47c08c62f2e38d197a8b14a161e012`.
 
 ## Immediate objective
 
@@ -18,36 +18,42 @@ source/design work only until one consolidated exact-head source review and one
 short exact-freeze review both pass. Those are the only two planned external
 review decisions before launch.
 
-## Claude queue — one consolidated R4 source review
+## Claude queue — one narrow H0 repair review after exact head is published
 
-Review the exact current PR head of branch `codex/belief-r4-restart-cache`
-against `origin/main`. This is the only active Claude request. Do not split it
-into separate design, cache, recovery, orchestration or host-protocol reviews.
-Do not launch compute, open calibration/test inputs, merge or deploy.
+The consolidated R4 source review PASS at exact `38617eb` is canonical in
+ledger `a22f6ed`; recovery/cache/deadline/source scope remains accepted. The
+fresh authorized H0 inventory then exposed one real-population blocker before
+freeze: connected-component hashing produced 27/1/2 groups and
+2,812/18/**0** decisions, while the reviewed supervisor hardcoded 24/3/3. The
+zero-row test fold and mismatched task population make those diagnostic split
+bytes unusable.
 
-Audit the complete R4 source/design delta and answer exactly:
+Review only the exact repair delta from merge head `084850b` once it is
+published to PR #122. Return `PASS` or `HOLD` with all load-bearing findings in
+one response. Verify:
 
-1. `PASS` or `HOLD`, with only load-bearing findings and exact file/line;
-2. whether graceful deadline truncation and durable epoch recovery preserve a
-   valid best-common-epoch result without allowing a truncated cohort to claim
-   patience convergence, retry, or reuse a spent namespace;
-3. whether sparse non-test tensor caching, the label-only control overlay,
-   REF-C/input speedups and every materialized/streaming parity witness preserve
-   exact semantics and actor/privileged separation;
-4. whether connected-component H0 splitting prevents the same human identity
-   from crossing files/splits without publishing raw identities;
-5. whether the source-bound ten-stage/81-task supervisor is complete,
-   fail-fast, non-Cartesian for human references, and incapable of opening the
-   test stage before all predecessors pass; and
-6. if `PASS`, whether it authorizes only fresh score-free H0 inventory/split,
-   generated/outcome-blind host capacity/device/deadline measurements, seed
-   registry construction and one immutable R4 freeze. It does **not** authorize
-   initialization, training, calibration/test opening, terminal evaluation,
-   strength claims, sampler work, merge or deployment.
+1. H0 split V3 never separates a cross-file player component or publishes raw
+   identities;
+2. it uses only component digest and eligible actor-decision counts—not hidden
+   labels, outcomes, rank, loss, or model evidence—to apply its fixed 80/10/10
+   decision-balance rule, requires every fold nonempty, and routes zero-row
+   components to train;
+3. the private-population preview is honestly bound: 30 groups, 11 components,
+   2,830 decisions; repaired 21/4/5 groups, 7/1/3 components and
+   2,323/456/51 decisions for train/calibration/test;
+4. the supervisor derives the closed reference/task population from the split
+   (current preview: 29 references, 85 total tasks), retains fixed stage order
+   and concurrency, and still refuses missing/cache/Cartesian/source drift;
+5. the freeze reports `cross-file-human-player-component`, not the obsolete
+   per-file split unit; and
+6. if `PASS`, the authority remains exactly the prior source PASS: fresh
+   score-free H0/preflight/registry receipts and one immutable freeze only. No
+   initialization, capture, reference, training, calibration/test opening,
+   terminal evaluation, merge, strength claim or deployment.
 
-One later short exact-freeze review is planned. Add another source review round
-only if this review finds a load-bearing defect or the reviewed source bytes
-materially change.
+This second source decision exists only because the first authorized private
+population made a reviewed check fail. Do not re-review unchanged
+recovery/cache/model code. One later short exact-freeze review remains planned.
 
 ## R4 source state — implemented and locally validated
 
@@ -69,12 +75,14 @@ materially change.
   remains the parity oracle, not the production R4 input path.
 - REF-C validates actor-constant mechanics once per world batch, and compact
   input derivation no longer reconstructs identical examples twice.
-- H0 split isolation is by connected human-player component across source files,
-  while raw player identities remain unpublished.
+- H0 split isolation is by connected human-player component across source
+  files. The repaired split balances eligible decision counts without reading
+  labels/outcomes; raw identities remain unpublished.
 - Every long stage emits machine-readable percent progress.
 - The old external nine-stage R3 supervisor is superseded by a source-bound
-  ten-stage/81-task R4 plan. It includes the cache before qualification,
-  permits exactly nine non-Cartesian human references, runs references before
+  ten-stage split-derived R4 plan. The real preview has 85 tasks and 13
+  non-Cartesian human references. It includes the cache before qualification,
+  runs references before
   the four-by-four-worker CPU training stage, and refuses any dropped, added or
   reordered task before publishing the ops start token. The sanitized plan
   summary binds the SHA-256 of the complete internal task/argument population,
@@ -92,6 +100,10 @@ Measured generated-input performance (not scientific evidence):
   reviewed cap is 64 GiB and must be re-measured on the execution host.
 
 Current validation:
+
+- H0 repair surface: `43 passed`; a real root-only preview reconstructs the
+  21/4/5 group, 7/1/3 component, 2,323/456/51 decision split and an 85-task
+  supervisor without publishing identities or outcome fields;
 
 - final recovery/cache/freeze/controller/supervisor suite: `111 passed`; the
   supervisor mutation witnesses refuse a missing cache stage, the old
@@ -113,31 +125,27 @@ Current validation:
 
 ## Remaining path to one run
 
-1. Publish the R4 source as one clean exact draft-PR head; the final
-   diff/whitespace check and 111-test recovery/cache/freeze/controller/supervisor
-   surface pass locally.
-2. Obtain the one consolidated Claude PASS requested above on source, recovery,
-   cache parity,
-   information boundaries, H0 isolation and the host-probe protocol. This PASS
-   authorizes only the fresh score-free host receipts and freeze construction.
-3. Run generated/outcome-blind host preflights for exact cache size, free disk,
+1. Publish and obtain the single narrow H0 repair PASS requested above.
+2. Regenerate clean exact-head H0, seed registry and generated/outcome-blind
+   host preflights for exact cache size, free disk,
    memory, thread/process width and revised per-epoch pace. No scientific or
    sealed test bytes may be opened.
-4. Build one host-specific immutable freeze and obtain one short Claude PASS on
+3. Build one host-specific immutable freeze and obtain one short Claude PASS on
    its exact bytes, identities, caps, authority map and fresh namespace.
-5. Only after both PASS decisions, initialize and launch the bounded DAG.
+4. Only after the repair and freeze PASS decisions, initialize and launch the
+   bounded DAG.
    Cache/capture/reference/training progress must be reported as percentages.
-6. A completed or deadline-truncated cohort is evaluated; only a pre-epoch
+5. A completed or deadline-truncated cohort is evaluated; only a pre-epoch
    failure remains absence of evidence. No sampler, strength or deployment
    authority is implied by an offline BELIEF result.
 
 ## Authority and fleet boundary
 
 - No R4 scientific run or sealed test opening has been started.
-- Live read-only check at 12:09 EDT: Strength Cloud and Performance Cloud are
-  reachable, each has 16 logical CPUs, both have near-zero load, and `/opt` has
-  about 503 GiB and 564 GiB free respectively. They are idle pending the exact
-  source/freeze review, not blocked by capacity.
+- Live check at 09:30 EDT: Strength Cloud and Performance Cloud are reachable,
+  each has 16 logical CPUs and near-zero load, with about 502 GiB and 564 GiB
+  free. The reviewed Strength checkout is separate from the dirty H0 repair
+  preview; no R4 scientific stage has started.
 - R1, R2 and R3 admissions are spent. Their evidence may be audited but is not
   reusable input to R4 without a separately reviewed reusable-artifact design.
 - No current marker authorizes retry, sampler implementation, gameplay,

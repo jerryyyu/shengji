@@ -339,7 +339,7 @@ class V2ExecutionFreezeV1:
                     self.human_calibration_eligible_decision_count),
                 "test_eligible_decision_count": (
                     self.human_test_eligible_decision_count),
-                "group_split_unit": "source-log-session-digest",
+                "group_split_unit": "cross-file-human-player-component",
                 "raw_identity_model_input": False,
                 "source_path_model_input": False,
                 "world_generating_key_model_input": False,

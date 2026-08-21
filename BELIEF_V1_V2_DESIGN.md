@@ -168,17 +168,19 @@ metadata, and any world-generating key from model input.
 The review branch implements the score-free H0 inventory in
 `belief_v2_human_inventory.py`. It verifies an exact source snapshot, replays
 complete rounds far enough to establish hidden-label and attempted-channel
-availability, groups the entire source-log session as one future split unit,
+availability, and connects source-log sessions that contain the same human
+player into one indivisible future split component,
 and emits only aggregate counts and content-derived group digests. It emits no
 names, file names, hands, kitty cards, actions, or model rows, and every
 training/test/strength authority remains false. The real inventory must not be
 run until this source receives the consolidated design PASS.
 
-That authorized inventory has now run exactly once against source-manifest
+The first source-authorized component inventory ran against source-manifest
 SHA-256 `07ff18fb35f2fb987f18b37b5100172e2751681fbfed17285ce7d7035232aa5e`.
 Its canonical receipt SHA-256 is
-`201ef84e5d914b3ea956714e4d9ae9402baaad8854422b32678c6286cc7de12f`.
-It found 30 whole-session groups, 122 complete and seven incomplete rounds,
+`f1ddcd617dc9743d9d1357f09440c40fbf2eef29fc75ff7a8f00b41143a62071`.
+It found 30 whole-session groups in 11 cross-file player components, 122
+complete and seven incomplete rounds,
 and 2,830 eligible human play decisions. The natural trump-rank population is
 2=49, 3=21, 4=21, 5=10, 6=3, 7=6, 8=3, 9=3, A=4, Q=2; it is neither fixed at
 rank 2 nor rebalanced after observation. Every eligible historical row has an
@@ -196,12 +198,26 @@ source actor's completeness flags remain hash-bound receipt metadata with
 state must produce byte-identical model tensors. This is deliberately more
 conservative than teaching the model that a missing channel means “human.”
 
-The deal-blind whole-session split receipt has SHA-256
-`fa704103e39cd2259d20800608a75bd4d1b64b1dacfe62cdd85eeeae916e25be`.
-It assigns 24/3/3 groups and 2,240/416/174 eligible decisions to
-train/calibration/test. Selection uses only content-derived group digest; it
-does not use labels, outcomes, round count, or decision count. Raw player and
-source identities remain excluded.
+The real component population invalidated the initially reviewed pure-hash
+split before freeze: it assigned 27/1/2 groups and 2,812/18/0 eligible
+decisions, while the supervisor still expected the old per-file 24/3/3 shape.
+That score-free diagnostic receipt is not a freeze input. H0 split V3 repairs
+the population contract rather than changing a namespace until a convenient
+assignment appears. Positive components are ordered by eligible actor-decision
+count and content digest; the largest seeds train, the second calibration and
+the third test, and remaining positive components are assigned by the fixed
+80/10/10 decision-imbalance objective. Zero-decision components go to train.
+The rule uses eligibility counts, but no hidden labels, game outcomes, trump
+rank, loss, or model evidence. It never separates a player component or
+publishes a raw identity.
+
+The repaired real-population preview assigns 21/4/5 source groups and 7/1/3
+player components to train/calibration/test, with 2,323/456/51 eligible
+decisions. Its candidate split SHA-256 is
+`f29dea82f4497ffe6ad0fea9ed1c143c4d4c9864bd8890e664cceb49ca3b72fd`.
+Those bytes must be regenerated from the clean repaired exact head after its
+narrow source review; the dirty preview is validation evidence, not a freeze
+receipt.
 
 Human games provide two artifacts:
 
@@ -211,7 +227,7 @@ Human games provide two artifacts:
    control with the same architecture, seeds, epoch rule, and exact total
    optimizer-decision count.
 
-The initial mixture consumes every one of the 2,240 H0 training decisions
+The initial mixture consumes every one of the 2,323 H0 training decisions
 exactly once per epoch and never oversamples them. Human decisions replace,
 rather than add to, the same number of synthetic training decisions; the
 synthetic-only control and mixed arm therefore consume the same exact realized
@@ -639,13 +655,14 @@ insufficient.
 
 The supervisor task plan is source-bound in
 `belief_v2_supervisor_plan.py`, and the one-shot executor is
-`scripts/belief_v2_supervisor.py`. The exact R4 population is ten ordered
-stages and 81 tasks: 16 synthetic capture, 30 human capture, one input index,
-one tensor cache, one device qualification, 16 synthetic plus nine human
-references, four cohort trainings, one calibration, one test opening, and one
-terminal verification. Human references are exactly two calibration
-replicates for each of three calibration groups plus one test-primary
-replicate for each of three test groups; train groups receive none. The old
+`scripts/belief_v2_supervisor.py`. The source fixes ten ordered stages; the H0
+split receipt fixes the exact task count. The repaired real-population preview
+has 85 tasks: 16 synthetic capture, 30 human capture, one input index, one
+tensor cache, one device qualification, 16 synthetic plus 13 human references,
+four cohort trainings, one calibration, one test opening, and one terminal
+verification. Human references are exactly two calibration replicates for
+each of four calibration groups plus one test-primary replicate for each of
+five test groups; train groups receive none. The old
 30-by-three Cartesian matrix, a missing cache stage, any dropped/extra task,
 or a stage/concurrency reorder refuses before the ops start token is written.
 
@@ -871,7 +888,8 @@ offline path:
   hardware profile, a realized-schedule device qualification gate, portable
   CPU checkpoints, dual-domain calibration selection, one-shot terminal
   publication, and independent reopeners; and
-- one consolidated worker, the closed 81-task supervisor, plus a receipt-driven
+- one consolidated worker, the split-derived closed supervisor, plus a
+  receipt-driven
   `freeze-design` command. The
   command derives H0 counts and hashes, V1 route, preflight/runtime identities,
   exact source manifest, a compact independently reopenable historical/V2 seed
@@ -894,8 +912,8 @@ The following run-specific inputs still gate an exact freeze:
 2. one consolidated external source/design PASS on the final V2 execution
    head, including the worker, freeze builder, GPU qualification, calibration,
    terminal, and adversarial tests;
-3. a fresh complete seed scan/registry generated from that exact execution
-   head. The reviewed H0 inventory and whole-session split already exist;
+3. a fresh complete seed scan/registry and fresh H0 inventory/split generated
+   from that exact execution head;
 4. the final host-specific runtime/native/boot identity, named training
    candidate (explicit CPU only when no supported accelerator exists), measured
    next-unit/epoch deadline receipt, and reviewed resource
@@ -914,7 +932,7 @@ selects CPU on an honest performance miss. REF-C is independent and may run in
 parallel with qualification and final training. No intermediate stage needs a
 new review.
 
-The H0 inventory, whole-session split, seed namespace, multi-rank capacity
-receipt, and local execution source exist; none authorizes population capture
-or training. Until the remaining inputs and one exact execution-freeze PASS
-exist, V2 remains non-executable.
+The private H0 source and score-free diagnostic population exist; no repaired
+exact-head H0 receipt, freeze, or execution admission exists yet. None
+authorizes population capture or training. Until the remaining inputs and one
+exact execution-freeze PASS exist, V2 remains non-executable.

@@ -26,8 +26,11 @@ from .replay_log import EXCLUDE_PLAYERS, rebuild_round
 H0_INVENTORY_SCHEMA = "belief-v1-v2-human-h0-inventory-v2"
 H0_GROUP_SCHEMA = "belief-v1-v2-human-source-group-v1"
 H0_COMPONENT_SCHEMA = "belief-v1-v2-human-player-component-v1"
-H0_SPLIT_SCHEMA = "belief-v1-v2-human-group-split-v2"
-H0_SPLIT_NAMESPACE = "belief-v1-v2-human-component-split-80-10-10-v1"
+H0_SPLIT_SCHEMA = "belief-v1-v2-human-group-split-v3"
+H0_SPLIT_NAMESPACE = (
+    "belief-v1-v2-human-component-decision-balanced-80-10-10-v1")
+H0_TARGET_DECISION_FRACTIONS = {
+    "train": (8, 10), "calibration": (1, 10), "test": (1, 10)}
 
 
 class BeliefV2HumanInventoryError(ValueError):
@@ -528,6 +531,12 @@ def _split_key(component_digest: str) -> bytes:
         f"{H0_SPLIT_NAMESPACE}|{component_digest}".encode("ascii")).digest()
 
 
+def _allocation_key(component_digest: str, split: str) -> bytes:
+    return hashlib.sha256(
+        f"{H0_SPLIT_NAMESPACE}|{component_digest}|{split}".encode(
+            "ascii")).digest()
+
+
 def _split_summary(groups: list[dict[str, Any]]) -> dict[str, Any]:
     ranks: Counter[str] = Counter()
     attempted: Counter[str] = Counter()
@@ -553,31 +562,73 @@ def _split_summary(groups: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _derive_h0_group_split(inventory: dict[str, Any]) -> dict[str, Any]:
     validate_h0_inventory(inventory)
-    if inventory["component_count"] < 10:
+    if inventory["component_count"] < 3:
         raise BeliefV2HumanInventoryError(
-            "H0 player component population is too small for 80/10/10 split")
+            "H0 player component population cannot satisfy frozen split")
     groups_by_component: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for group in inventory["groups"]:
         groups_by_component[group["component_digest"]].append(group)
-    ordered = sorted(
+    ordered = tuple(sorted(
         inventory["components"],
         key=lambda row: (_split_key(row["component_digest"]),
-                         row["component_digest"]))
-    train_count = len(ordered) * 8 // 10
-    calibration_count = len(ordered) // 10
-    test_count = len(ordered) - train_count - calibration_count
-    if min(train_count, calibration_count, test_count) <= 0:
-        raise BeliefV2HumanInventoryError("H0 group split is empty")
-    component_splits = {
-        "train": ordered[:train_count],
-        "calibration": ordered[
-            train_count:train_count + calibration_count],
-        "test": ordered[-test_count:],
+                         row["component_digest"])))
+    decision_counts = {
+        row["component_digest"]: sum(
+            group["human_play_decisions"]
+            for group in groups_by_component[row["component_digest"]])
+        for row in ordered
     }
+    positive = tuple(sorted(
+        (row for row in ordered
+         if decision_counts[row["component_digest"]] > 0),
+        key=lambda row: (
+            -decision_counts[row["component_digest"]],
+            _split_key(row["component_digest"]),
+            row["component_digest"])))
+    if len(positive) < 3:
+        raise BeliefV2HumanInventoryError(
+            "H0 player components cannot produce nonempty frozen splits")
+    component_splits: dict[str, list[dict[str, Any]]] = {
+        "train": [positive[0]],
+        "calibration": [positive[1]],
+        "test": [positive[2]],
+    }
+    assigned_decisions = {
+        split: decision_counts[rows[0]["component_digest"]]
+        for split, rows in component_splits.items()
+    }
+    total_decisions = sum(decision_counts.values())
+    for row in positive[3:]:
+        count = decision_counts[row["component_digest"]]
+        candidates = []
+        for split in H0_TARGET_DECISION_FRACTIONS:
+            after = dict(assigned_decisions)
+            after[split] += count
+            imbalance = sum(abs(
+                after[name] * denominator
+                - total_decisions * numerator)
+                for name, (numerator, denominator)
+                in H0_TARGET_DECISION_FRACTIONS.items())
+            candidates.append((
+                imbalance, _allocation_key(row["component_digest"], split),
+                split))
+        selected = min(candidates)[2]
+        component_splits[selected].append(row)
+        assigned_decisions[selected] += count
+    component_splits["train"].extend(
+        row for row in ordered
+        if decision_counts[row["component_digest"]] == 0)
+    frozen_component_splits = {
+        split: tuple(rows) for split, rows in component_splits.items()}
     splits = {split: _split_summary([
         group for component in components
         for group in groups_by_component[component["component_digest"]]
-    ]) for split, components in component_splits.items()}
+    ]) for split, components in frozen_component_splits.items()}
+    if sum(row["group_count"] for row in splits.values()) \
+            != inventory["group_count"] \
+            or min(row["human_play_decisions"] for row in splits.values()) <= 0:
+        raise BeliefV2HumanInventoryError(
+            "H0 group split feasibility drift")
     population = {
         split: row["group_digests"] for split, row in splits.items()}
     return {
@@ -586,9 +637,18 @@ def _derive_h0_group_split(inventory: dict[str, Any]) -> dict[str, Any]:
         "inventory_sha256": _sha256(inventory_bytes(inventory)),
         "source_digest_population_sha256": (
             inventory["source_digest_population_sha256"]),
-        "selection_inputs": ["component_digest"],
-        "selection_uses_round_or_decision_counts": False,
+        "selection_inputs": [
+            "component_digest", "eligible_decision_count"],
+        "selection_target_decision_fractions": {
+            split: {"numerator": numerator, "denominator": denominator}
+            for split, (numerator, denominator)
+            in H0_TARGET_DECISION_FRACTIONS.items()
+        },
+        "selection_uses_round_counts": False,
+        "selection_uses_decision_count_magnitudes": True,
+        "selection_requires_nonempty_eligible_decisions_per_split": True,
         "selection_uses_labels_or_outcomes": False,
+        "zero_decision_component_destination": "train",
         "group_population_sha256": _sha256(canonical_json_bytes({
             "schema": "belief-v1-v2-human-group-split-population-v1",
             "splits": population,

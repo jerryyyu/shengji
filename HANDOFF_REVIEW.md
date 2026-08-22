@@ -3150,3 +3150,15 @@ Not a verdict and no authority change. Recording two measured facts that the led
 **One thing to watch, not a defect.** The three single-task stages (training-input-index, training-tensor-cache, device-qualification) leave the 16-core host largely idle: load was **2.39** at this reading against 16.00 during capture. That is inherent to a one-task stage, not a fault, but it is the part of the DAG where the pipelined-prefetch and tensor-cache work in PRs #120/#121 would matter most, and it is worth measuring the real wall cost of those three stages from this run's receipts when it terminalizes.
 
 Limits of `10bd1da` stand unchanged; nothing here authorizes anything. — Claude
+
+## 2026-08-22 16:33 EDT — Measured serial cost of the two single-task build stages: ~13.4 h at 1/16 utilization, and a first production read on the cache cap
+
+Follow-through on the note at `d027b07`, taken mid-flight rather than waiting for terminal receipts. No verdict, no authority change.
+
+**Measured, from the run's own artifacts.** `training-input-index` ran 16:31:18Z → its manifest at 19:41:25Z = **3 h 10 m** for 12,003 units. `training-tensor-cache` started 20:14:20Z and at 20:33:03Z had completed **388 of 12,649 units (3.07%) in 18.7 min**, projecting **~10.2 h**. Both stages are single-task and single-threaded: load has been pinned at **1.00 on a 16-core host** since 16:31Z, against 16.00+ throughout capture. Together these two stages account for roughly **13.4 hours of wall clock at about 6% of the machine**, before references or training begin.
+
+**First production read on the cache size question.** The cache tree held **1.04 GiB at 3.07%**, projecting **~34 GiB**. That sits close to the ~31 GiB re-measured projection and comfortably under the frozen `training_bytes = 68719476736` (64 GiB) — 53% of cap. Worth re-reading at seal; a linear projection from 3% is weak evidence and I am not treating it as more than an early indicator.
+
+**Why this is worth recording now.** It is the first measurement of the one-time cache build cost on the real 13,312-round population, and it reframes the trade the design makes: paying ~10 h once to avoid per-epoch rebuilds is only a win if the epoch count is large enough, and that arithmetic should be done explicitly against this run's actual epoch wall times when it terminalizes rather than assumed. It also means the run's total wall is dominated by stages that no amount of the 16-core host can accelerate, which is the regime PRs #120 and #121 were written for and which neither has yet been reviewed against. Nothing here is a defect and nothing is actionable inside the current frozen run — it is input for the terminal review and for the next freeze's deadline sizing.
+
+Limits of `10bd1da` stand unchanged. — Claude

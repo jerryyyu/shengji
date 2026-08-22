@@ -4,84 +4,71 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-22 08:42 EDT.
+Last reconciled: 2026-08-22 09:00 EDT.
 
 ## Immediate objective
 
-Carry BELIEF V2/R4 to one independently reviewed scientific terminal result:
-does the learned ownership model measurably improve held-out calibration over
-REF-C? Offline evidence cannot authorize a sampler, gameplay/strength claim,
-promotion or deployment.
+Carry the live BELIEF V2/R4 offline scientific DAG to one sealed,
+independently reopened terminal result: does the learned ownership model
+measurably improve held-out calibration over REF-C? This run cannot authorize
+a sampler, gameplay/strength claim, promotion or deployment.
 
-## Live state — exact freeze review is the only launch blocker
+## Live scientific run
 
 | field | current binding |
 |---|---|
 | source | draft PR #123, exact head `d2d466f161eb8e55daf26677bfed361ad4110d7c` |
-| source review | PASS marker introduced by `1b276b90ddb2fb3fd51f6e2b6c484d557fb556f3` |
-| source ancestry | sole parent `55f50432c1dabe563cbd5dd0c1983815d65656a6`; reviewed cumulative delta base `656e6d0018a007f32f6b7a5f7bc113ca32dae6ce` |
+| freeze | `573fcade25d985f58c0d179a581a40619b5745fc2152c52f4740e1355ae1fc16` |
+| execution review | PASS marker commit `10bd1dab39ee900a7c4650aba06de28ac62587ce` |
+| admission | `21d9cea8a1ef2905dd0a8a85308e54141e58362e0764f04f388412bedfff0961` |
 | host | `shengji-cloud` / `ubuntu-32gb-hel1-1`, 16 logical CPUs |
-| freeze | `/opt/belief-r4-freeze-d2d466f-r1.json`, SHA-256 `573fcade25d985f58c0d179a581a40619b5745fc2152c52f4740e1355ae1fc16` |
-| review packet | `/opt/belief-r4-d2d466f-freeze-inputs-r1/freeze-review-packet.json`, SHA-256 `9c799bc9d6319adf034614e715da9bdf1b86979ae98a62a20677ae4a30eb8447` |
-| scientific run | not initialized; evidence and ops namespaces absent; no scientific test split opened |
+| service | transient `belief-v2-r4-d2d466f-r1.service`, started 2026-08-22 08:59:17 EDT, `Restart=no` |
+| evidence | `/opt/belief-r4-evidence-d2d466f-r1` |
+| ops | `/opt/belief-r4-ops-d2d466f-r1` |
 
-The source/design review is complete. The marker at `HANDOFF_REVIEW.md:3006`
-authorizes fresh score-free receipts and one immutable freeze only. Fresh H0,
-seed, capacity and deadline receipts were generated on the exact reviewed
-checkout in the new `d2d466f-r1` namespace. Every input and the freeze is
-root-owned, mode `0400`, link count 1.
+The exact packet-bound supervisor plan is live. At reconciliation it was in
+stage 1/10, `synthetic-capture`, with all 16 lanes running, 3–5 of 832 rounds
+complete per lane, and 0.09% task-weighted total progress. All workers report
+outcome-blind progress only. The service is active, `NRestarts=0`, and all 16
+workers are consuming approximately one CPU each.
 
-Key closed values:
+Frozen bounds remain: capture 64 core-hours / 18,000 seconds; reference 40
+core-hours / 14,400 seconds; training 256 device-hours / 172,800 seconds.
+The training next-epoch estimate is 5.346 hours. Graceful truncation may seal a
+valid best-common-epoch curve at the deadline; it must not be described as
+convergence. Human test evidence is descriptive only at exact n=51.
 
-- H0 inventory/split SHA-256: `f1ddcd617dc9743d9d1357f09440c40fbf2eef29fc75ff7a8f00b41143a62071` / `f29dea82f4497ffe6ad0fea9ed1c143c4d4c9864bd8890e664cceb49ca3b72fd`;
-- seed scan/registry SHA-256: `2f501d29bd963ded550be6e429e25822f2ff9495ba7defa9e833f2e8ca3211bf` / `eb86b594c85489f3614ea7b95ff7c30660f8b04adce5a027c27ab4cd238840ec`; 5,553 candidates, 31 populations, zero collisions;
-- capacity/deadline SHA-256: `412ef67840d31fddb9420618382d3b9e55c134ce87357ed9461e62a6fbaccfc0` / `502c316dc1c5ebe6ad77db9a0ee2400b5f8523d4743eb533b0b2000127aaa1cf`;
-- one mechanical caps file SHA-256: `7e59aa6cb8b199947963d9d2af9ff6d7060b1ab4c71c8d4528d0e71e0becc420`; measured capture projects to 63.48 core-hours and therefore derives cap 64, without an alternate cap file;
-- expected review claim SHA-256: `9de3a91caeecfbfce24e799cee6e1e8f5d953618cbfab5b1e2ab3a10c0e16407`;
-- supervisor summary SHA-256: `58dc98f9bcf51cec4ba9f394adb6301338c5669edb71d34047292b3cba99b218`;
-- supervisor execution-plan SHA-256: `8ec0a642def62fd606092ff3c6557ac92872f87a6777210ab92eb52ec6d103b2`.
+Prior spent roots are not reused. In particular, `b78f802-r3` contains prior
+capture artifacts from the canonical-tip failure; the reviewed packet records
+`reuse_authorized: false` and the live root was initialized fresh.
 
-## Review queue — exactly one review before launch
+## Review queue — empty while the DAG is live
 
-### BELIEF V2/R4 exact immutable freeze — active now
+No source, freeze, rehearsal, merge or result review is actionable now. Do not
+append another execution marker, initialize another root, retry, alter the
+service, open evidence for outcome analysis, merge PR #122/#123, or start a
+competing BELIEF run.
 
-Review exact source `d2d466f161eb8e55daf26677bfed361ad4110d7c`,
-freeze `573fcade25d985f58c0d179a581a40619b5745fc2152c52f4740e1355ae1fc16`,
-and packet `9c799bc9d6319adf034614e715da9bdf1b86979ae98a62a20677ae4a30eb8447`
-on `shengji-cloud`. This is the only requested review. Do not reopen PR #123,
-request another rehearsal, merge, initialize or execute.
+The next review becomes actionable only after the supervisor publishes a
+sealed terminal result or a fail-closed refusal. It is one consolidated
+terminal/reproducibility review against the exact admission and artifact
+population.
 
-Verify in one pass:
+## Monitoring contract
 
-1. Reopen every packet input and the freeze byte-exactly; bind source-review
-   commit `1b276b9`, H0 inventory/split, seed scan/registry, fresh capacity and
-   deadline receipts, the single mechanical caps file, runtime/native/Python/
-   Torch/NumPy/boot identities, and unused evidence root
-   `/opt/belief-r4-evidence-d2d466f-r1`.
-2. Recompute the capture cap with the fixed 1.25 rule: measured projection is
-   below 64 core-hours, lane p95 plus reserve is below 18,000 seconds, and four
-   training epochs plus reserve are below 172,800 seconds. Refuse any moved or
-   alternate cap.
-3. Recompute `expected_execution_review_claim`, the exact marker bytes, and the
-   supervisor plan. `--validate-plan-only` must reproduce summary SHA
-   `58dc98f9bcf51cec4ba9f394adb6301338c5669edb71d34047292b3cba99b218`
-   without creating evidence or ops state.
-4. Confirm prior spent R4 roots are disclosed and contain initialization only;
-   no prior scientific stage artifacts are reused, and the new evidence/ops
-   namespaces remain absent.
-5. Return one PASS or HOLD containing all blockers. On PASS append exactly one
-   `BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW` marker for this freeze. The marker
-   may authorize only the bounded offline pipeline and one test opening; retry,
-   sampler/gameplay/strength/promotion/deployment and PR merges remain false.
-
-On PASS, Codex launches the exact systemd/supervisor plan already bound in the
-packet. The user has already requested launch; no additional routine approval
-round is needed.
+- Read operational state from
+  `/opt/belief-r4-ops-d2d466f-r1/status.json` and systemd only.
+- Report `task_weighted_percent_basis_points`, current stage, completed/total
+  tasks, active worker count, elapsed time and deadline headroom.
+- Progress rows are outcome-blind and are not scientific evidence.
+- If the service fails, preserve all artifacts and logs; do not retry.
+- If it completes, do not interpret or promote the result before the terminal
+  reopener and independent review pass.
 
 ## Next operator sequence
 
-1. Claude performs the one exact-freeze review above.
-2. On PASS, Codex initializes the unused namespace and launches immediately.
-3. Codex monitors outcome-blind percentage progress and resource/deadline state.
-4. One terminal/reproducibility review follows completion; PR merge decisions
-   remain separate.
+1. Codex monitors the live ten-stage DAG and reports meaningful transitions.
+2. On sealed completion/refusal, Codex runs only the reviewed terminal reopener.
+3. Claude performs one consolidated terminal/reproducibility review.
+4. Only then do we interpret the BELIEF result and separately decide whether
+   to merge PR #122 followed by PR #123.

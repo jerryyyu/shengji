@@ -103,3 +103,36 @@ def test_new_explicit_required_candidate_refuses_without_reviewed_identity(
     with pytest.raises(BeliefV2SeedRegistryError,
                        match="unclassified explicit seed candidate"):
         build_reviewed_seed_registry(scan)
+
+
+def test_r4_derived_stream_constants_have_exact_reviewed_identities(tmp_path):
+    repo, _ = _selector_repo(tmp_path)
+    exact_candidates = {
+        "server/shengji/rl/belief_cohort.py": (
+            28, "COHORT_SEEDS = ("),
+        "server/shengji/rl/belief_v2_rehearsal.py": (
+            38,
+            'REHEARSAL_SEED_NAMESPACE = '
+            '"belief-v1-v2-full-dag-rehearsal-104-v1"'),
+    }
+    for relative, (line_number, line) in exact_candidates.items():
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "\n" * (line_number - 1) + line + "\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "-c", "user.name=Test", "-c",
+         "user.email=test@example.com", "commit", "-qm", "R4 streams")
+    head = _git(repo, "rev-parse", "HEAD")
+    scan = scan_seed_sources(repo.resolve(), expected_git=head)
+    registry = build_reviewed_seed_registry(scan)
+    classified = {
+        row["candidate_id"]: row["classification"]
+        for row in registry["classifications"]
+    }
+    assert classified[
+        "4debb39e79d757eb8a764eb6a8a1c7cb552dc74c92366e34a75a5438c4dd16b7"
+    ] == "derived-rng-stream"
+    assert classified[
+        "71c53f9a3e7b708ad29d1b8abf251dbfc9b7e96caed770d5ba204f81893d5b32"
+    ] == "derived-rng-stream"

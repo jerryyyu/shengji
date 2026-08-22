@@ -33,11 +33,16 @@ import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 import shengji.rl.belief_v2_training_inputs as TRAINING_INPUTS
 from shengji.rl.belief_artifacts import publish_exclusive_bytes, stable_read_bytes
 from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.belief_v2_accelerator import (
+    available_training_accelerators,
+    build_training_device_profile,
+)
 from shengji.rl.belief_v2_calibration_controller import (
     reopen_v2_calibration_selection,
     run_v2_calibration_selection,
 )
 from shengji.rl.belief_v2_controller import (
+    BeliefV2ControllerError,
     reopen_capture_lane,
     run_capture_lane,
     run_reference_lane,
@@ -45,6 +50,9 @@ from shengji.rl.belief_v2_controller import (
 from shengji.rl.belief_v2_device_controller import (
     reopen_device_qualification,
     run_device_qualification,
+)
+from shengji.rl.belief_v2_device_qualification import (
+    qualification_protocol_sha256,
 )
 from shengji.rl.belief_v2_human_controller import (
     reopen_human_group_manifest,
@@ -62,6 +70,11 @@ from shengji.rl.belief_v2_execution_identity import (
     build_source_bindings,
     configure_numerical_runtime,
     source_manifest_sha256,
+)
+from shengji.rl.belief_v2_freeze import (
+    REVIEW_PREFIX,
+    build_pipeline_admission,
+    expected_execution_review_claim,
 )
 from shengji.rl.belief_v2_progress import (
     PROGRESS_PREFIX,
@@ -127,6 +140,12 @@ from shengji.rl.belief_v2_terminal_controller import (
 
 RUN_FULL_REHEARSAL = (
     os.environ.get("SHENGJI_BELIEF_V2_FULL_DAG_REHEARSAL") == "1")
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(
+        ("git", *args), cwd=repo, check=True, capture_output=True,
+        text=True).stdout.strip()
 
 
 def _fixture_h0(tmp_path: Path):
@@ -567,6 +586,99 @@ def test_rehearsal_profile_reaches_the_scoring_reader(monkeypatch):
         if row.split == "calibration")
     assert SCORING_STAGE.v2_policy_seeds(coordinate) \
         == rehearsal_v2_policy_seeds(coordinate)
+
+
+def test_genuine_admission_traverses_every_unpatched_stage_gate(
+        tmp_path, monkeypatch):
+    """Exercise the production gate at every stage import altitude."""
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    for key, value in (
+            ("PYTHONDONTWRITEBYTECODE", "1"),
+            ("PYTHONHASHSEED", "0"),
+            ("SHENGJI_FAST", "1"),
+            ("SHENGJI_REQUIRE_VOIDS", "1")):
+        monkeypatch.setenv(key, value)
+    configure_numerical_runtime()
+
+    repo = (tmp_path / "execution-repo").resolve()
+    remote = (tmp_path / "canonical.git").resolve()
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    for relative in (
+            "BELIEF_V1_SPEC.md", "BELIEF_V1_V2_DESIGN.md",
+            "server/pyproject.toml", "server/setup.py", "server/uv.lock",
+            "server/scripts/belief_v2_worker.py",
+            "server/shengji/__init__.py"):
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"fixture: {relative}\n", encoding="utf-8")
+    (repo / "HANDOFF_REVIEW.md").write_text("ledger\n", encoding="utf-8")
+    _git(repo, "init", "-q")
+    _git(repo, "add", ".")
+    _git(repo, "-c", "user.name=Execution", "-c",
+         "user.email=execution@example.com", "commit", "-qm", "execution")
+    execution_git = _git(repo, "rev-parse", "HEAD")
+    bindings = build_source_bindings(repo, expected_git=execution_git)
+    runtime = build_runtime_profile()
+    training_device = next(iter(available_training_accelerators()), "cpu")
+    freeze = replace(
+        _cpu_only_freeze(root), execution_git=execution_git,
+        source_manifest_sha256=source_manifest_sha256(
+            execution_git, bindings),
+        source_bindings=bindings, runtime=runtime,
+        source_review_commit=execution_git,
+        training_candidate_device=training_device,
+        training_device_profile=build_training_device_profile(
+            training_device),
+        device_qualification_protocol_sha256=(
+            qualification_protocol_sha256(training_device)))
+
+    marker = REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(
+        expected_execution_review_claim(freeze))
+    with (repo / "HANDOFF_REVIEW.md").open("ab") as handle:
+        handle.write(marker)
+    _git(repo, "add", "HANDOFF_REVIEW.md")
+    _git(repo, "-c", "user.name=Claude", "-c",
+         "user.email=noreply@anthropic.com", "commit", "-qm",
+         "PASS\n\nClaude-Session: https://claude.ai/code/session_test")
+    review_commit = _git(repo, "rev-parse", "HEAD")
+    subprocess.run(("git", "init", "--bare", "-q", str(remote)),
+                   check=True)
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "remote", "add", "origin", str(remote))
+    _git(repo, "push", "-qu", "origin", "main")
+    _git(repo, "checkout", "-q", "--detach", execution_git)
+    monkeypatch.setattr(
+        "shengji.rl.belief_v2_freeze.CANONICAL_REMOTE_URL", str(remote))
+    admission, built_marker = build_pipeline_admission(
+        freeze, repo=repo, review_commit=review_commit)
+    assert built_marker == marker
+
+    stage_gates = (
+        ("synthetic-capture", V2_CONTROLLER._stage_gate),
+        ("human-capture", HUMAN_STAGE._stage_gate),
+        ("training-input-index", INPUT_INDEX_STAGE._stage_gate),
+        ("training-tensor-cache", CACHE_STAGE._stage_gate),
+        ("device-qualification", DEVICE_STAGE._stage_gate),
+        ("synthetic-reference", V2_CONTROLLER._stage_gate),
+        ("human-reference", HUMAN_REF_STAGE._stage_gate),
+        ("training", TRAINING_STAGE._stage_gate),
+        ("calibration", CALIBRATION_STAGE._stage_gate),
+        ("terminal", TERMINAL_STAGE._stage_gate),
+    )
+    assert len(stage_gates) == 10
+    assert all(gate is V2_CONTROLLER._stage_gate
+               for _, gate in stage_gates)
+    for _, gate in stage_gates:
+        gate(root=root, repo=repo, freeze=freeze, admission=admission,
+             review_marker=marker)
+
+    forged = replace(admission, canonical_remote_tip=execution_git)
+    for _, gate in stage_gates:
+        with pytest.raises(BeliefV2ControllerError,
+                           match="stage admission refused"):
+            gate(root=root, repo=repo, freeze=freeze, admission=forged,
+                 review_marker=marker)
 
 
 @pytest.mark.skipif(

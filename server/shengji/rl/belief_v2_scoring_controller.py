@@ -11,6 +11,7 @@ strength, or deployment authority.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 from pathlib import Path
 
@@ -104,8 +105,6 @@ def reopen_trained_scoring_cohorts(
     except ValueError as exc:
         raise BeliefV2ScoringControllerError(
             "V2 scoring device qualification refused") from exc
-    models = []
-    manifest_hashes = []
     try:
         _, _, calibration_factory, control_dose, cache_sha256 = (
             reopen_training_tensor_cache(
@@ -114,7 +113,8 @@ def reopen_trained_scoring_cohorts(
     except ValueError as exc:
         raise BeliefV2ScoringControllerError(
             "V2 scoring tensor cache refused") from exc
-    for realization in training_inputs.realizations:
+
+    def reopen_one(realization):
         try:
             manifest, trained = reopen_training_cohort(
                 root / "training" / realization.cohort_id,
@@ -136,16 +136,26 @@ def reopen_trained_scoring_cohorts(
         if cohort.cohort_id != realization.cohort_id:
             raise BeliefV2ScoringControllerError(
                 "V2 scoring trained cohort order drift")
-        models.append(cohort)
-        manifest_hashes.append((
+        return cohort, (
             realization.cohort_id,
-            _sha256(canonical_json_bytes(manifest))))
+            _sha256(canonical_json_bytes(manifest)))
+
+    # Cohort artifacts and calibration factories are immutable and disjoint.
+    # Reopening them in input order with one worker per cohort preserves the
+    # exact returned population while avoiding a long single-core verification
+    # tail before both calibration and terminal scoring.
+    with ThreadPoolExecutor(
+            max_workers=len(training_inputs.realizations)) as executor:
+        reopened = tuple(executor.map(
+            reopen_one, training_inputs.realizations))
+    models = tuple(row[0] for row in reopened)
+    manifest_hashes = tuple(row[1] for row in reopened)
     expected_ids = tuple(plan.cohort_id for plan in freeze.cohorts)
     if tuple(row.cohort_id for row in models) != expected_ids:
         raise BeliefV2ScoringControllerError(
             "V2 scoring cohort/freeze order drift")
-    return (tuple(models), qualification_plan, qualification_result,
-            tuple(manifest_hashes))
+    return (models, qualification_plan, qualification_result,
+            manifest_hashes)
 
 
 def reopen_synthetic_scoring_round(

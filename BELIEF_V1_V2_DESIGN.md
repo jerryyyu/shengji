@@ -788,6 +788,13 @@ migrated, or retrofitted with any V2 optimization.
 V2 retains the V1 mechanics, isolation, proper-score, calibration, negative-
 control, and exact-synthetic gates. It additionally requires:
 
+At a natural endgame decision with zero unknown receiver-count cells, the
+typed empty ownership and target populations must still reopen and every model
+must emit the same empty population. Such a decision remains in the exact
+round/decision census but contributes no proper-score cell; complete-round
+means average only the round's informative ownership decisions. A complete
+round with no informative ownership decision refuses.
+
 - a positive primary proper-score lower bound across the complete balanced
   synthetic test population;
 - no preregistered material regression in any adequately powered trump-rank
@@ -856,6 +863,73 @@ sampling, preservation of the calibrated marginals, joint-event calibration,
 fixed-world value quality, and natural final-decision flip dose before any
 same-work search screen.
 
+## Mandatory full-DAG dress rehearsal
+
+No future multi-day BELIEF freeze may be reviewed from unit tests and isolated
+capacity probes alone. The exact candidate source, worker, supervisor, runtime,
+native extension and selected device must first complete one disposable
+operational rehearsal through every production stage boundary.
+
+The rehearsal uses a permanently separate, registry-bound seed namespace and
+**104 synthetic rounds: eight at each of the 13 trump ranks**. Ten ranks use a
+6/1/1 train/calibration/disposable-test split; three ranks selected by a frozen
+domain-separated digest use 5/2/1, yielding 75/16/13 overall. Every one of the
+16 production-shaped lanes therefore contains calibration work, while every
+rank retains one disposable test round. Thirty tiny generated
+fixture source groups, split 24/3/3, preserve the production human task matrix
+while exercising its train/calibration/test wiring without opening private human
+data. All four production cohort kinds and all eight member seeds run at least one
+real optimizer epoch through the real cache and device path. This first
+rehearsal keeps the production **256 accepted REF-C worlds per decision** so it
+also exercises exact reference population and reconciliation checks. The
+rehearsal alone uses a 128-decision round-grouped training-batch cap so its
+5,000-ish train decisions still produce at least the production device
+qualification's 32 distinct measured batches; the production run retains its
+frozen 256-decision cap. The
+rehearsal's one/two calibration rounds per rank also reduce the rank-minimum
+smoke threshold to one and observe rather than enforce the production REF-C
+replicate-stability threshold. Those two profile-bound overrides allow the
+real statistics and routing code to execute; they carry no calibration or
+scientific claim and do not alter the production freeze values. The
+actual controller stage functions and artifact reopeners—not mock stage
+results—must perform capture, indexing, caching, device qualification,
+reference construction, training, calibration, one disposable test opening,
+terminal publication and independent terminal reconstruction. Worker CLI
+parsing and supervisor task planning are crossed separately against the same
+stage/task vocabulary; the rehearsal does not claim to test systemd or process
+launch mechanics.
+
+When run from an exact clean checkout, the resulting receipt binds that Git
+head and complete source-manifest digest, the runtime/native/device identities,
+the ordered ten-stage controller plan, a digest of every progress row and
+phase, the closed stage-artifact population, zero retry/drop, and the terminal
+reconstruction hash. Worker CLI parsing and supervisor planning have separate
+can-fail tests; the receipt does **not** claim that pytest observed systemd task
+exits. A dirty or resumed development rehearsal may aid debugging but must set
+`production_freeze_review_eligible: false`. Every receipt carries
+`smoke_only: true`, `scientific_evidence: false`, and false
+sampler/gameplay/strength/promotion/deployment authority. Its rows, models,
+statistics and test result are never inputs to the scientific run.
+
+The single consolidated source/freeze reviewer must bind a passing eligible
+receipt and require its Git/source/runtime/device identities to equal the exact
+freeze packet. The receipt is review evidence, never an executable freeze input
+or a new authority token. A missing, stale, different-source, different-device,
+resumed, retried, or not-all-stages receipt makes that one review packet
+incomplete. Can-fail tests must reject a dropped stage, dirty source identity,
+changed progress population, or raised authority. This rehearsal complements
+rather than replaces the full-size capture/deadline/memory preflights.
+
+Initialization is the sole point that authenticates the execution review
+against the then-live canonical remote and records that exact remote tip in the
+spent admission. Every later worker reauthenticates the marker commit and its
+ancestry against that recorded historical tip. It must not require the moving
+`main` branch to remain byte-identical throughout a multi-day run; an unrelated
+later merge neither invalidates the admitted bytes nor grants the run new
+authority. A witness advances canonical `main` after admission and requires the
+next stage gate to continue, while an admission tip predating the review still
+refuses.
+
 ## Consolidated review path
 
 To avoid repeated source/design/admission round trips while still binding the
@@ -866,7 +940,8 @@ private population and host-specific cap evidence:
    population, profiling protocol, sparse-cache/source-index separation,
    exact cache and epoch recovery, graceful deadline truncation,
    streaming-oracle parity, CPU-member topology, the exact ten-stage supervisor,
-   outcome-blind progress telemetry, metrics, and automatic routing. The
+   outcome-blind progress telemetry, mandatory 104-round full-DAG rehearsal,
+   metrics, and automatic routing. The
    reviewer returns one PASS or one HOLD containing every blocker found in
    that pass; these are not split into subsystem review requests. It may
    authorize only the real score-free H0 inventory and out-of-population

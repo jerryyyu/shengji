@@ -474,7 +474,8 @@ def build_reviewed_seed_registry(scan: dict[str, Any]) -> dict[str, Any]:
 
 
 # Exact candidate identities reviewed as non-population constants or derived
-# RNG/model/test streams at source head 0949404.  A changed or newly introduced
+# RNG/model/test streams through the R4 full-DAG rehearsal source.  A changed
+# or newly introduced
 # explicit-required candidate receives a new identity and refuses above instead
 # of being inferred from its spelling.
 _REVIEWED_NONPOPULATION_CLASSIFICATIONS = (
@@ -492,10 +493,11 @@ _REVIEWED_NONPOPULATION_CLASSIFICATIONS = (
     ("c183669b03e0cd391b758a9b36d97e486cf41c60f29d67d2964a6f3e67ba9ecb", "non-population-context"),
     ("d69108221044dc755f041f35e7e5f33c720975f535ad4969ae1f486e7da9fc15", "non-population-context"),
     ("319e4aa51a00a1347310d09dcf8625dc36ccf0d3cc44168f954392ea6a03e105", "non-population-context"),
-    ("8acdb4170862e2ff8c536ff6e7ca4757ca96941e5976ae186fce0b9850e208a4", "derived-rng-stream"),
+    ("4debb39e79d757eb8a764eb6a8a1c7cb552dc74c92366e34a75a5438c4dd16b7", "derived-rng-stream"),
     ("6b1e3dbaaf5d1d0e61c23cf705072dc7bc403666fcdee2a421eb00aba6e97a5d", "non-population-context"),
     ("2c7e170e6a0dd472bf3dfd346f660a5469cfadc8ec243bd1499beca16a41f23c", "non-population-context"),
     ("a77353882f3807ed364209d28746e368d424e268475d9240cb25cf4ebbc751ef", "derived-rng-stream"),
+    ("71c53f9a3e7b708ad29d1b8abf251dbfc9b7e96caed770d5ba204f81893d5b32", "derived-rng-stream"),
     ("123c8415652bec7652c0d59ce584404ec21386ce861588645e6b6c34ec7ee421", "non-population-context"),
     ("339cb623bb184f0f2e665e7ae461067dc8dd6db6e4fb8f7b82ea019f5f03aa04", "non-population-context"),
     ("5010284aa90ff2fe406de885399f2922a866217b417ebde70448a7f7a1043841", "derived-rng-stream"),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import random
 import shutil
@@ -109,6 +110,10 @@ from shengji.rl.belief_v2_human_inventory import (
 from shengji.rl.belief_v2_protocol import (
     v2_policy_seeds,
     v2_round_coordinates,
+)
+from shengji.rl.belief_v2_progress import (
+    PROGRESS_PREFIX,
+    V2ProgressReporter,
 )
 from shengji.rl.belief_v2_schedule import (
     realize_v2_cohorts,
@@ -1573,6 +1578,16 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
     torch.use_deterministic_algorithms(True)
     try:
         progress = []
+        progress_stream = io.StringIO()
+        ticks = iter(range(10_000))
+        real_reporter = V2ProgressReporter(
+            stage="training", worker=primary.cohort_id,
+            stream=progress_stream, clock=lambda: next(ticks))
+
+        def report_progress(*row):
+            progress.append(row)
+            real_reporter.update(*row)
+
         manifest = run_training_cohort(
             root, freeze, admission, repo=Path("/unused"),
             review_marker=b"review", primary=primary,
@@ -1581,7 +1596,7 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
             calibration_examples=calibration,
             qualification_plan=qualification_plan,
             qualification_result=qualification_result,
-            progress=lambda *row: progress.append(row))
+            progress=report_progress)
         directory = root / "training" / primary.cohort_id
         reopened, trained = reopen_training_cohort(
             directory, freeze=freeze, admission=admission,
@@ -1600,6 +1615,10 @@ def test_training_stage_publishes_reopenable_cpu_fallback_checkpoints(
         (1, 2, "training-batches"),
         (2, 2, "training-batches"),
         (1, 1, "training-epochs")]
+    progress_rows = [json.loads(line.removeprefix(PROGRESS_PREFIX))
+                     for line in progress_stream.getvalue().splitlines()]
+    assert [(row["completed_units"], row["total_units"], row["phase"])
+            for row in progress_rows] == list(progress)
     assert trained.training_device == "cpu"
     assert manifest["resources"]["peak_host_memory_bytes"] > 0
     assert manifest["resources"]["peak_device_memory_bytes"] == 0

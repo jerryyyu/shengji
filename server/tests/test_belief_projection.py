@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import pytest
 
+import shengji.rl.belief_projection as PROJECTION
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.cards import Ordering
 from shengji.engine.game import Game
@@ -63,6 +64,40 @@ def _state(seed=9981, plays=5):
             build_belief_targets(rnd, rnd.turn), transcript)
 
 
+def _state_with_no_hidden_cards(seed=9927):
+    rnd = Game(random.Random(seed)).start_round()
+    bot = HeuristicBot()
+    transcript = PublicTranscriptV1()
+    while rnd.phase == "deal":
+        seat, _, _ = rnd.deal_next()
+        cards = bot.decide_declare(rnd, seat)
+        if cards:
+            rnd.declare(seat, cards)
+            accepted = rnd.declaration
+            transcript = transcript.with_declaration(
+                accepted["seat"], accepted["cards"], accepted["strength"])
+    for seat in range(4):
+        cards = bot.decide_declare(rnd, seat, final=True)
+        if cards:
+            rnd.declare(seat, cards)
+            accepted = rnd.declaration
+            transcript = transcript.with_declaration(
+                accepted["seat"], accepted["cards"], accepted["strength"])
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+    while rnd.phase == "play":
+        actor = build_actor_observation(rnd, rnd.turn, transcript)
+        if not actor.deductions.unseen:
+            return actor
+        seat = rnd.turn
+        attempted = bot.decide_play(rnd, seat)
+        previous_last = rnd.last_trick
+        rnd.play(seat, attempted)
+        transcript = transcript.with_play(
+            seat, attempted, actual_play_after(rnd, seat, previous_last))
+    raise AssertionError("natural round had no zero-hidden-card decision")
+
+
 def _project(actor, weights):
     return project_count_weights(
         actor,
@@ -87,6 +122,16 @@ def test_uniform_projection_is_exact_conserved_and_deterministic():
     assert first.actor_observation_sha256 == actor.sha256()
 
 
+def test_natural_endgame_with_no_hidden_cards_projects_empty_belief():
+    actor = _state_with_no_hidden_cards()
+    weights = uniform_raw_count_weights(
+        actor, behavior_policy_ids=POLICIES)
+    assert weights == ()
+    belief = _project(actor, weights)
+    validate_ownership(actor, belief)
+    assert belief.probabilities == ()
+
+
 def test_positive_random_weights_project_across_roles_and_round_phases():
     rng = random.Random(1201)
     for seed, plays in ((9983, 0), (9985, 7), (9987, 24)):
@@ -100,6 +145,68 @@ def test_positive_random_weights_project_across_roles_and_round_phases():
                 for weight in row.count_weights),
         ) for row in uniform)
         validate_ownership(actor, _project(actor, weighted))
+
+
+def test_near_boundary_projection_uses_exact_transport_repair(monkeypatch):
+    _, actor, _, _ = _state(9970, plays=60)
+    exponents = (
+        (4, 5, 4), (3, 7, 9), (7, 8, 10), (9, 1, 11),
+        (5, 11, 0), (8, 3, 0), (0, 11, 0), (2, 9, 0),
+        (1, 7, 0), (12, 0, 0), (0, 7, 0), (11, 7, 0),
+        (5, 7, 0), (6, 0, 0), (1, 2, 0), (2, 9, 0),
+        (9, 9, 0), (10, 0, 0), (3, 4, 0), (3, 11, 0),
+        (0, 8, 10), (6, 8, 12), (7, 5, 1), (1, 8, 12),
+        (7, 12, 0), (11, 5, 1), (2, 2, 0), (6, 3, 4),
+        (12, 0, 0), (7, 1, 0), (10, 5, 0), (12, 12, 0),
+        (6, 8, 0), (0, 6, 0), (5, 4, 0), (12, 12, 0),
+        (12, 12, 0), (12, 2, 0), (1, 11, 0), (11, 10, 0),
+        (11, 7, 0), (0, 0, 0), (6, 9, 0), (12, 2, 0),
+        (12, 10, 9), (5, 9, 4), (3, 4, 1), (11, 10, 12),
+        (9, 8, 0), (1, 6, 0), (6, 12, 0), (12, 2, 0),
+        (8, 8, 0), (2, 2, 0), (8, 6, 0), (3, 12, 0),
+        (9, 4, 10), (9, 4, 4), (4, 11, 12), (2, 0, 7),
+        (7, 0, 0), (9, 0, 0), (2, 0, 0), (5, 5, 0),
+        (3, 0, 0), (7, 0, 0), (9, 0, 0), (1, 1, 0),
+        (1, 9, 0), (7, 8, 0), (5, 8, 0), (5, 12, 0),
+        (9, 12, 0), (4, 3, 0), (2, 1, 0), (0, 11, 0),
+        (3, 11, 0), (4, 0, 0), (11, 0, 0), (0, 4, 0),
+        (1, 9, 0), (6, 0, 0), (10, 3, 0), (3, 6, 0),
+        (9, 12, 0), (8, 0, 0), (7, 7, 0), (0, 9, 0),
+        (1, 4, 0), (8, 0, 0), (4, 7, 0), (0, 12, 0),
+        (5, 3, 0), (8, 0, 0), (8, 6, 0), (6, 4, 0),
+    )
+    uniform = uniform_raw_count_weights(
+        actor, behavior_policy_ids=POLICIES)
+    assert len(uniform) == len(exponents)
+    weighted = tuple(replace(
+        row, count_weights=tuple(
+            10 ** exponent if allowed else 0
+            for exponent, allowed in zip(
+                powers, row.count_weights, strict=True)))
+        for row, powers in zip(uniform, exponents, strict=True))
+    monkeypatch.setattr(PROJECTION, "PROJECTION_APPROXIMATE_MARGIN_LIMIT", 0)
+    with pytest.raises(BeliefProjectionError, match="did not converge"):
+        _project(actor, weighted)
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_APPROXIMATE_MARGIN_LIMIT", 1e-3)
+    monkeypatch.setattr(PROJECTION, "PROJECTION_APPROXIMATE_GROUP_LIMIT", 0)
+    with pytest.raises(BeliefProjectionError, match="did not converge"):
+        _project(actor, weighted)
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_APPROXIMATE_GROUP_LIMIT", 1e-8)
+    belief = _project(actor, weighted)
+    validate_ownership(actor, belief)
+    assert belief.sha256() \
+        == "d39eedcc69d49217dedeef49fe01c4fd13961c4fcb6137b1da5fe88c520f3d08"
+
+
+def test_approximate_transport_refuses_nonlocal_residual(monkeypatch):
+    _, actor, _, _ = _state(9971, plays=12)
+    weights = uniform_raw_count_weights(
+        actor, behavior_policy_ids=POLICIES)
+    monkeypatch.setattr(PROJECTION, "PROJECTION_MAX_ITERATIONS", 1)
+    with pytest.raises(BeliefProjectionError, match="did not converge"):
+        _project(actor, weights)
 
 
 def test_projection_respects_forged_hard_void_and_declaration_witnesses():
@@ -205,6 +312,16 @@ def test_projection_refuses_missing_bad_bound_and_identity_weights():
         row, count_weights=tuple(values)), *weights[index + 1:])
     with pytest.raises(BeliefProjectionError, match="hard count bounds"):
         _project(actor, changed)
+    allowed_row = next(
+        row for row in weights if sum(weight > 0 for weight in row.count_weights)
+        > 1)
+    index = weights.index(allowed_row)
+    values = list(allowed_row.count_weights)
+    values[next(position for position, value in enumerate(values) if value)] = 0
+    zero_allowed = (*weights[:index], replace(
+        allowed_row, count_weights=tuple(values)), *weights[index + 1:])
+    with pytest.raises(BeliefProjectionError, match="hard count bounds"):
+        _project(actor, zero_allowed)
     with pytest.raises(BeliefProjectionError, match="model identity"):
         project_count_weights(
             actor, behavior_policy_ids=POLICIES,

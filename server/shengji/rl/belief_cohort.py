@@ -5,11 +5,13 @@ equal-weight candidate for the primary comparison.  This module combines only
 already validated public-input ownership predictions.  It never accepts a
 model object, checkpoint, target, score, sampler, corpus, or runtime policy.
 
-The integer member probabilities are summed as equal positive count weights
+The integer member probabilities are summed as equal nonnegative count weights
 and passed through the same exact constrained projection used by each member.
 That final projection is necessary because independent rounding can otherwise
 make a literal component-wise mean miss a card or receiver margin by a few
-parts per billion.
+parts per billion.  A zero is valid here: unlike a raw neural-model weight, it
+is already the exact quantized output of eight independently validated member
+predictions.
 """
 
 from __future__ import annotations
@@ -96,4 +98,5 @@ def ensemble_ownership(
         model_schema=COHORT_SCHEMA,
         model_sha256=identity,
         raw_weights=tuple(raw),
+        allow_zero_allowed_weights=True,
     )

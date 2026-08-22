@@ -902,23 +902,25 @@ def _canonical_remote_tip(repo: Path) -> str:
     return fields[0]
 
 
-def authenticate_execution_review(
+def _authenticate_execution_review_at_tip(
         freeze: V2ExecutionFreezeV1, *, repo: Path,
-        review_commit: str) -> tuple[bytes, str]:
-    """Authenticate the exact marker against the real canonical remote tip."""
+        review_commit: str, canonical_tip: str) -> bytes:
+    """Authenticate the marker against one already-probed canonical tip.
+
+    The canonical tip is recorded durably in the admission at initialization.
+    Later stages must keep authenticating that exact historical admission, not
+    require the moving main branch to remain byte-identical for a multi-day
+    run.
+    """
     validate_execution_freeze(freeze)
     if not isinstance(repo, Path) or not repo.is_absolute() \
-            or not _is_git_sha(review_commit):
+            or not _is_git_sha(review_commit) \
+            or not _is_git_sha(canonical_tip):
         raise BeliefV2FreezeError("V2 execution review input drift")
-    remote_tip = _canonical_remote_tip(repo)
-    local_tip = _git(repo, "rev-parse", "origin/main")
-    if local_tip != remote_tip:
-        raise BeliefV2FreezeError(
-            "V2 local canonical ref differs from real remote")
     try:
         if subprocess.run(
                 ("git", "merge-base", "--is-ancestor", review_commit,
-                 remote_tip), cwd=repo, capture_output=True).returncode != 0:
+                 canonical_tip), cwd=repo, capture_output=True).returncode != 0:
             raise BeliefV2FreezeError(
                 "V2 execution review is not on canonical remote main")
         parents = str(_git(
@@ -964,6 +966,25 @@ def authenticate_execution_review(
             or marker in previous_matches:
         raise BeliefV2FreezeError(
             "V2 execution review marker introduction drift")
+    return marker
+
+
+def authenticate_execution_review(
+        freeze: V2ExecutionFreezeV1, *, repo: Path,
+        review_commit: str) -> tuple[bytes, str]:
+    """Authenticate the exact marker against the real canonical remote tip."""
+    validate_execution_freeze(freeze)
+    if not isinstance(repo, Path) or not repo.is_absolute() \
+            or not _is_git_sha(review_commit):
+        raise BeliefV2FreezeError("V2 execution review input drift")
+    remote_tip = _canonical_remote_tip(repo)
+    local_tip = _git(repo, "rev-parse", "origin/main")
+    if local_tip != remote_tip:
+        raise BeliefV2FreezeError(
+            "V2 local canonical ref differs from real remote")
+    marker = _authenticate_execution_review_at_tip(
+        freeze, repo=repo, review_commit=review_commit,
+        canonical_tip=remote_tip)
     return marker, remote_tip
 
 
@@ -1063,10 +1084,10 @@ def reauthenticate_pipeline_admission(
     """The mandatory gate called by every future stage entry point."""
     validate_pipeline_admission(
         freeze, admission, review_marker=review_marker)
-    authentic_marker, remote_tip = authenticate_execution_review(
-        freeze, repo=repo, review_commit=admission.review_commit)
-    if authentic_marker != review_marker \
-            or remote_tip != admission.canonical_remote_tip:
+    authentic_marker = _authenticate_execution_review_at_tip(
+        freeze, repo=repo, review_commit=admission.review_commit,
+        canonical_tip=admission.canonical_remote_tip)
+    if authentic_marker != review_marker:
         raise BeliefV2FreezeError("V2 pipeline admission remote drift")
 
 

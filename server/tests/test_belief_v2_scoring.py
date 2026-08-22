@@ -63,6 +63,66 @@ def _state(seed: int = 15001, plays: int = 5):
     return rnd, transcript, partition
 
 
+def _informative_and_empty_decisions(seed: int = 9927):
+    rnd = Game(random.Random(seed)).start_round()
+    bot = HeuristicBot()
+    transcript = PublicTranscriptV1()
+    while rnd.phase == "deal":
+        seat, _, _ = rnd.deal_next()
+        cards = bot.decide_declare(rnd, seat)
+        if cards:
+            rnd.declare(seat, cards)
+            declaration = rnd.declaration
+            transcript = transcript.with_declaration(
+                declaration["seat"], declaration["cards"],
+                declaration["strength"])
+    for seat in range(4):
+        cards = bot.decide_declare(rnd, seat, final=True)
+        if cards:
+            rnd.declare(seat, cards)
+            declaration = rnd.declaration
+            transcript = transcript.with_declaration(
+                declaration["seat"], declaration["cards"],
+                declaration["strength"])
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, bot.decide_bury(rnd, rnd.banker))
+    informative = None
+    empty = None
+    decision_index = 0
+    while rnd.phase == "play":
+        partition = build_information_partition(rnd, rnd.turn, transcript)
+        needs_fixture = (partition.actor.deductions.unseen
+                         and informative is None) \
+            or not partition.actor.deductions.unseen
+        if needs_fixture:
+            reference = capture_ref_c_worlds(
+                rnd, rnd.turn, transcript,
+                sampler_seed=17011 + decision_index)
+            common = build_common_surface_tensors(
+                partition.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS)
+            decision = V2ScoringDecisionV1(
+                decision_key=hashlib.sha256(
+                    f"decision-{decision_index}".encode("ascii")
+                ).hexdigest(),
+                source_actor=partition.actor, target=partition.targets,
+                common=common, reference=reference)
+            if partition.actor.deductions.unseen:
+                informative = decision
+            else:
+                empty = decision
+        if empty is not None:
+            break
+        seat = rnd.turn
+        attempted = bot.decide_play(rnd, seat)
+        previous = rnd.last_trick
+        rnd.play(seat, attempted)
+        transcript = transcript.with_play(
+            seat, attempted, actual_play_after(rnd, seat, previous))
+        decision_index += 1
+    assert informative is not None and empty is not None
+    return rnd.trump_rank, informative, empty
+
+
 def _cohort() -> V2CohortModelsV1:
     models = tuple(new_from_scratch_model(seed) for seed in COHORT_SEEDS)
     return V2CohortModelsV1(
@@ -123,3 +183,27 @@ def test_incomplete_human_style_actor_reuses_identical_common_scoring_surface(
     assert row.source_kind == "human"
     assert v2_scoring_actor(incomplete).canonical_bytes() \
         == v2_scoring_actor(partition.actor).canonical_bytes()
+
+
+def test_zero_unknown_endgame_is_counted_but_neutral_in_round_score(
+        monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    trump_rank, informative, empty = _informative_and_empty_decisions()
+    cohort = _cohort()
+    informative_only = score_v2_round(
+        round_key=hashlib.sha256(b"informative-only").hexdigest(),
+        source_kind="synthetic", split="calibration",
+        trump_rank=trump_rank, decisions=(informative,), cohorts=(cohort,))
+    with_empty = score_v2_round(
+        round_key=hashlib.sha256(b"with-empty-endgame").hexdigest(),
+        source_kind="synthetic", split="calibration", trump_rank=trump_rank,
+        decisions=(informative, empty), cohorts=(cohort,))
+    assert with_empty.decision_count == 2
+    assert with_empty.reference_brier_ppb == informative_only.reference_brier_ppb
+    assert with_empty.reference_log_loss_nanonats \
+        == informative_only.reference_log_loss_nanonats
+    assert with_empty.cohort_brier_ppb == informative_only.cohort_brier_ppb
+    assert with_empty.cohort_log_loss_nanonats \
+        == informative_only.cohort_log_loss_nanonats
+    assert with_empty.cohort_member_brier_ppb \
+        == informative_only.cohort_member_brier_ppb

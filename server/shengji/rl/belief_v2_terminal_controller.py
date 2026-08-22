@@ -553,7 +553,8 @@ def run_v2_terminal(
         os.close(descriptor)
     reopened = reopen_v2_terminal(
         final, freeze=freeze, admission=admission,
-        inventory=inventory, group_split=group_split)
+        inventory=inventory, group_split=group_split,
+        progress=progress)
     if reopened != manifest:
         raise BeliefV2TerminalControllerError(
             "V2 terminal post-publish reconstruction drift")
@@ -565,9 +566,12 @@ def run_v2_terminal(
 def reopen_v2_terminal(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        inventory: dict[str, Any], group_split: dict[str, Any]) \
+        inventory: dict[str, Any], group_split: dict[str, Any],
+        progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Reopen raw score populations and rederive every terminal byte."""
+    if progress is not None:
+        progress(0, 5, "verify-terminal-controls")
     expected_names = {
         "attempt.json", "manifest.json", *TEST_POPULATION_FILES.values(),
         *STATISTIC_FILES.values()}
@@ -596,6 +600,8 @@ def reopen_v2_terminal(
             != manifest_raw:
         raise BeliefV2TerminalControllerError(
             "V2 terminal manifest population/canonical drift")
+    if progress is not None:
+        progress(1, 5, "verify-terminal-controls")
     files = {}
     for key, filename in (TEST_POPULATION_FILES | STATISTIC_FILES).items():
         raw = stable_read_bytes(directory / filename)
@@ -608,6 +614,8 @@ def reopen_v2_terminal(
             raise BeliefV2TerminalControllerError(
                 "V2 terminal file byte binding drift")
         files[key] = raw
+    if progress is not None:
+        progress(2, 5, "verify-terminal-files")
     try:
         input_index_manifest, training_inputs = reopen_training_input_index(
             Path(freeze.evidence_root) / "training-input-index" / "result",
@@ -617,6 +625,8 @@ def reopen_v2_terminal(
                 Path(freeze.evidence_root), freeze=freeze,
                 admission=admission, training_inputs=training_inputs))
         cohort_ids = tuple(row.cohort_id for row in cohorts)
+        if progress is not None:
+            progress(3, 5, "verify-terminal-cohorts")
         synthetic = reopen_v2_round_population(
             files["synthetic_test"], cohort_ids=cohort_ids,
             label="synthetic_test")
@@ -652,6 +662,8 @@ def reopen_v2_terminal(
     except ValueError as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal raw reconstruction refused") from exc
+    if progress is not None:
+        progress(4, 5, "verify-terminal-derivation")
     expected_statistic_bytes = {
         "human_selection": human_selection.canonical_bytes(),
         "scale_curve": scale_curve.canonical_bytes(),
@@ -670,4 +682,6 @@ def reopen_v2_terminal(
     if manifest != expected:
         raise BeliefV2TerminalControllerError(
             "V2 terminal manifest reconstruction drift")
+    if progress is not None:
+        progress(5, 5, "verify-terminal-complete")
     return manifest

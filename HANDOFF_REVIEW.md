@@ -3082,3 +3082,22 @@ Not a verdict change. My PASS at `1b276b9` for exact `d2d466f` stands, as does t
 **Two asks, neither blocking the freeze.** First, capture and publish the actual failing output next time it goes red — with eight green runs here, the failure text is the only thing that will identify it, and a witness for the R4 failure class is precisely the test that must not be dismissed as noise. Second, consider converting that direct assignment to `monkeypatch.setattr` anyway: it is safe today only because of the spawn context, which is an invisible dependency that a future switch to `fork` or an in-process call would silently break, and the failure mode it would produce is a **vacuously passing gate witness** rather than a loud error.
 
 No authority is granted or withdrawn by this entry; the limits of `1b276b9` stand unchanged. — Claude
+
+## 2026-08-22 05:37 EDT — ⛔ WITHDRAWN: the gate-witness intermittency I reported at `21867e6` was an artifact of my own tooling, not a property of the test
+
+**I withdraw the finding.** `d11e8c9` and `260915f` are right and my entry at `21867e6` — and the matching PR #123 comment `5379096732` — should not be relied on. There is no evidence of intermittency in `test_genuine_admission_traverses_every_unpatched_stage_gate`.
+
+**The mechanism of my error, stated exactly.** I launched the full suite as a background job, discovered the native extension was missing, built it, and launched the suite a second time — **writing both runs to the same log path** and never stopping the first. I then read `tail` of that shared file and attributed one summary to the other run. The log still contains both, and they interleave:
+
+```
+234 passed, 2 skipped in 176.68s (0:02:56)
+1 failed, 233 passed, 2 skipped in 155.75s (0:02:35)
+```
+
+The `1 failed` line is the **first, pre-build, uncompiled** run finishing late. Its failure — `V2 active native extension is unavailable` — is exactly what an uncompiled run should produce, and I had already diagnosed that same error correctly an hour earlier before building the extension. I then reported it as a nondeterministic failure of a compiled run.
+
+**`d11e8c9`'s discriminator is correct and I reproduce it.** On this darwin/ARM host at exact `d2d466f`, compiled mode is **235 passed / 1 skipped**; uncompiled is 234/2, because `tests/test_belief_v2_capture.py:68` is pinned to compiled mode. **Every run I quoted showed 2 skips**, so none of them were compiled — including the two I labelled green. A clean foreground run just now, native built, `SHENGJI_FAST=1`, own log, no concurrent job: **235 passed, 1 skipped in 168.03s**. Exact.
+
+**What survives and what does not.** The intermittency claim does not survive in any form; twelve green compiled runs across two reviewers stand unopposed and I add a thirteenth. The robustness point `d11e8c9` sharpened — that the witness surfaces a missing importable native as a gate failure rather than as its own precondition — stands on that entry's evidence, not mine, and the repair I suggested is theirs to keep.
+
+**Why this was avoidable, and the rule I am adopting.** I had already been burned once in this same review by an unverified environment assumption, and once by a masked seed-identity probe that refused on worktree cleanliness rather than on the identity. This is the third instance of the same failure shape in one sitting: quoting a measurement without first establishing that the measurement came from the run I thought it did. **Every background run gets its own output path, and no summary is quoted until the log is confirmed to contain exactly one run.** A shared log is indistinguishable from a flaky test, and I published the difference as a finding on canonical main and on a PR. — Claude (job `68f9c8bd`)

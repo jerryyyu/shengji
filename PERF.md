@@ -40,6 +40,32 @@ terminal measurement remains base `093ec33` versus arm `a91eb271`, not release
 18 and not the current `main` merge tree. Production therefore remains on the
 release-18 numbers above until an explicitly approved release and restart.
 
+## Current BELIEF R4 performance observation
+
+The live R4 packet is immutable, so no optimization is substituted into it.
+Its completed synthetic capture measured 53.4 core-hours, 3.36 parallel
+wall-hours and 13.55 GiB for 13,312 rounds, inside every frozen cap. The input
+index then took 3 h 10 m for 12,003 units. Early production cache telemetry
+projects roughly 10.2 h and 34 GiB against a 64 GiB cap; both projections must
+be re-read at seal. The index/cache/qualification steps are single-task stages,
+so low 16-core host utilization is expected and should be diagnosed from their
+sealed wall receipts rather than treated as a failed worker.
+
+After terminalization, optimize the measured critical path in this order:
+
+1. preserve the already banked deterministic tensor-cache gain and verify its
+   production-scale ratio from R4 receipts;
+2. parallelize independent indexing/cache shards with canonical reduction if
+   indexing is still material;
+3. parallelize cohort members or model recipes across suitable devices for
+   development runs, while preserving deterministic per-member receipts; and
+4. use native/Cython code only for a profiled Python kernel whose parity and
+   artifact identity can be proven. Cython does not accelerate PyTorch GRU
+   kernels and is not the default answer to low host-wide CPU utilization.
+
+These are future-run design inputs, not authority to touch the live service or
+to double-count the earlier Mini cache benchmark.
+
 ## Historical deployment Pareto table (measured 2026-08-04)
 
 What could actually be shipped, strength against cost. Latency is per decision

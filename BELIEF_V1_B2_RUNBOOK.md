@@ -1,8 +1,11 @@
 # BELIEF-V1 B2 Mini runbook
 
-Status: pre-execution operational procedure. This document grants no authority.
-The exact merged source, host-specific design, and external marker remain the
-only admission chain.
+Status (2026-08-22): **HISTORICAL / V1 ADMISSION SPENT WITHOUT A RESULT.** The
+Mini run completed capture and REF-C, then exceeded its training wall cap
+before test or terminal. Its partial models are unusable and the namespace may
+not retry. This file preserves that exact operational procedure; it is not the
+R4 runbook and grants no authority. Current operational truth is in
+`HANDOFF_ACTIVE.md`.
 
 ## Purpose
 

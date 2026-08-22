@@ -80,30 +80,26 @@ boundary rather than duplicating it. Learned value, Direct-Q, V11 pairwise
 ranking, action allocation and memory-aware rollout policy remain later,
 separately gated consumers.
 
-## Current BELIEF state — 2026-08-16
+## Current BELIEF state — 2026-08-22
 
 - B0 typed actor/target boundaries, ownership schema and source contracts are
-  merged.
-- The B2 offline publication source and adversarial witnesses merged to main in
-  `959c05d` after exact external PASS at head `3ee0eb8`.
-- The repair covers reference-score debiasing, real mechanics derivation,
-  history linkage, admission/provenance closure, cross-artifact binding and
-  load-bearing mutation witnesses.
-- Mini design `a8c5e05f…1fd53` bound merged source `959c05d`, the 105-file
-  source manifest, runtime/native/boot identity, fixed population/caps and a
-  fresh evidence namespace. Review `209407f` admitted it once. Capture and
-  REF-C completed, but both CPU training cohorts exceeded the frozen eight-hour
-  wall cap because enforcement existed only after natural cohort publication.
-- Claude reviewed a controlled stop; at 00:35 EDT both training children
-  recorded `exit-143` and the supervisor exited before test or terminal. Both
-  cohort directories remain `.partial`. The admission is spent and no model,
-  calibration result, null, or strength verdict exists.
-- V2 base `0949404` implements all-rank synthetic coverage, a separately split
-  human domain, transcript-replayed REF-C, scalable device qualification,
-  portable checkpoints and single-host freeze machinery. It is not runnable:
-  a successor must authenticate resource-failure re-entry, refuse unclassified
-  seed hits, and enforce live epoch/stage deadlines before exact source and
-  host-specific freeze review.
+  merged. V1 later failed operationally before test and produced no learning
+  verdict; its partial models remain unusable.
+- R4 repairs the observed operational classes: live stage/epoch deadlines,
+  graceful but explicit truncation, deterministic tensor caching, fail-closed
+  seed classification, reboot/canonical-tip binding, progress receipts and a
+  fully rehearsed terminal path.
+- One immutable R4 packet is live on `shengji-cloud`: source `d2d466f`, freeze
+  `573fcade…fc16`, review commit `10bd1da` and admission `21d9cea8…0961`.
+  All 13,312 synthetic rounds and 30 human groups sealed with zero retries or
+  drops; the input index sealed and tensor-cache construction is underway. No
+  test outcome is open.
+- R4 covers all trump ranks and separately bound synthetic and human domains.
+  Its four eight-member cohorts compare the primary model, a label-permutation
+  negative control, a human-mixture model and a half-scale data model. Human
+  n=51 test evidence is descriptive, not a promotion gate.
+- Nothing in R4 samples belief-weighted worlds or changes gameplay. A reviewed
+  B2 calibration PASS is only permission to propose B3 sampler mechanics.
 
 ## BELIEF milestone ladder
 
@@ -118,26 +114,56 @@ separately gated consumers.
 
 ### Immediate execution sequence
 
-1. **Done / spent:** V1 exact source/design review, capture and REF-C. Training
-   exceeded its wall cap and was stopped through the reviewed supervisor path
-   before test. No retry or partial-model use.
-2. **Now:** publish one V2 successor that binds the V1 no-result receipt and a
-   narrow resource-failure repair route, makes seed classification fail closed,
-   and adds measured epoch wall plus enforceable in-loop deadlines.
-3. **Next review:** one consolidated exact-head source/design review. Do not
-   spend a separate review on unchanged `0949404`; review the repaired successor.
-4. **Then:** on a single ≥16-CPU host, perform the reviewed all-lane capacity
-   preflight and device qualification, populate every runtime/resource hash,
-   and build one immutable execution freeze.
-5. **Before compute:** obtain one external exact-freeze PASS. Execute once with
-   no retry, seed selection, partial population, or early test opening.
-6. **Terminal:** independently reopen the V2 result and route exactly one
-   mechanics/resource refusal, no-learning closeout, or B3 design permission.
+1. **Now:** leave the live R4 DAG unchanged and monitor only outcome-blind
+   progress. No retry, competing BELIEF run, merge or early test opening.
+2. **Terminal:** run the reviewed reopener, then obtain one consolidated
+   terminal/reproducibility review and one exact route: mechanics/resource
+   refusal, no-learning closeout, valid truncation, or B3 design permission.
+3. **Diagnosis:** publish complete per-epoch train/calibration curves, common-
+   epoch selection, eight-seed dispersion, negative-control behavior,
+   full-versus-half data scaling, human-mixture transfer and stage wall costs.
+4. **If learning is weak or incomplete:** use only the preserved development
+   and calibration surfaces for a small architecture/optimizer/data bakeoff.
+   Choose one recipe before any fresh sealed test; no lucky-seed promotion.
+5. **If B2 passes:** design B3 projection and sampling first. Measure legal
+   support, marginal drift, effective sample size, latency, true-world/value
+   error and natural final-decision flip dose before gameplay.
+6. **Strength path:** compare current sampler, belief sampler and shuffled-
+   belief null at equal work. Keep the separate three-arm ballot-widening
+   confirmation distinct from belief; only detectable causal gains earn fresh
+   whole-game confirmation.
 
 The V1 incident changes the operational contract: a planning cap is not a cap
 unless running code checks it before starting work that cannot finish inside
 the remaining budget. V2 therefore binds epoch-time measurement, safety margin,
 deadline checks, non-sealing timeout behavior, and a durable spent admission.
+
+## Current ownership model and post-R4 diagnosis
+
+`HistoryOwnershipV1` is a sequence model because declarations and plays change
+the meaning of later actions. A two-layer GRU with 128 hidden units reads the
+actor-visible event history, combines it with public/global and per-card
+features, and predicts 0/1/2-copy ownership probabilities for each hidden
+receiver. Privileged hands and kitty supply labels during training only. The
+roughly 267k-parameter model is intentionally small enough that B2 can test the
+representation before model scale becomes the explanation for every result.
+
+The next ML choice comes from measured curves, not a generic model wishlist:
+
+| observed R4 pattern | most likely next question |
+|---|---|
+| train and calibration still improve at truncation | train longer or reduce epoch cost before changing architecture |
+| train improves while calibration worsens | regularization, capacity or data-mixture problem |
+| both plateau early | representation, target or optimizer problem |
+| large member spread | initialization/optimization stability problem |
+| full data beats half data cleanly | more diverse data may be economical |
+| human mixture improves human transfer without hurting synthetic | mixed-domain training is useful |
+| negative control tracks the primary | leakage, estimator or non-learning failure; do not advance |
+
+Later architecture, optimizer and scale experiments should reuse the frozen
+R4 train/calibration corpus through a separately defined reusable-data
+contract. They may run members or recipes in parallel across devices, but one
+fresh held-out test chooses the final recipe only after development selection.
 
 ## B2 scientific gate
 
@@ -258,3 +284,9 @@ inventory and older roadmap are preserved byte-for-byte in
 `docs_archive/rl-plan-through-2026-08-15.md`. Earlier day-by-day chronology is
 in `docs_archive/rl-plan-chronology-through-2026-08-03.md`. Update this file
 only when the current scientific plan or evidence standard changes.
+
+Exact root-level BELIEF specifications remain in place because the V1/V2
+reopeners bind their paths and bytes. `SUPHX_MICRO_SPEC.md` is likewise a
+historical-in-place contract for the closed O0 lineage. Their status banners
+are the archive boundary; moving or shortening them would break historical or
+live reproducibility and is not documentation cleanup.

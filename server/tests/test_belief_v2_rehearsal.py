@@ -1,0 +1,950 @@
+"""Population and authority contract for the full-DAG rehearsal."""
+
+from __future__ import annotations
+
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from dataclasses import replace
+import hashlib
+import io
+import json
+import multiprocessing
+import os
+from pathlib import Path
+import subprocess
+
+import pytest
+
+import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
+import shengji.rl.belief_v2_capture as V2_CAPTURE
+import shengji.rl.belief_v2_controller as V2_CONTROLLER
+import shengji.rl.belief_v2_device_controller as DEVICE_STAGE
+import shengji.rl.belief_v2_human_controller as HUMAN_STAGE
+import shengji.rl.belief_v2_human_reference_controller as HUMAN_REF_STAGE
+import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
+import shengji.rl.belief_v2_reference as V2_REFERENCE
+import shengji.rl.belief_v2_result as V2_RESULT
+import shengji.rl.belief_v2_schedule as V2_SCHEDULE
+import shengji.rl.belief_v2_scoring_controller as SCORING_STAGE
+import shengji.rl.belief_v2_streaming_inputs as STREAMING_INPUTS
+import shengji.rl.belief_v2_statistics as V2_STATISTICS
+import shengji.rl.belief_v2_tensor_cache_controller as CACHE_STAGE
+import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
+import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
+import shengji.rl.belief_v2_training_inputs as TRAINING_INPUTS
+from shengji.rl.belief_artifacts import publish_exclusive_bytes, stable_read_bytes
+from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.belief_v2_calibration_controller import (
+    reopen_v2_calibration_selection,
+    run_v2_calibration_selection,
+)
+from shengji.rl.belief_v2_controller import (
+    reopen_capture_lane,
+    run_capture_lane,
+    run_reference_lane,
+)
+from shengji.rl.belief_v2_device_controller import (
+    reopen_device_qualification,
+    run_device_qualification,
+)
+from shengji.rl.belief_v2_human_controller import (
+    reopen_human_group_manifest,
+    run_human_group_capture,
+)
+from shengji.rl.belief_v2_human_reference_controller import (
+    run_human_reference_group,
+)
+from shengji.rl.belief_v2_input_index_controller import (
+    reopen_training_input_index,
+    run_training_input_index,
+)
+from shengji.rl.belief_v2_execution_identity import (
+    build_runtime_profile,
+    build_source_bindings,
+    configure_numerical_runtime,
+    source_manifest_sha256,
+)
+from shengji.rl.belief_v2_progress import (
+    PROGRESS_PREFIX,
+    PROGRESS_SCHEMA,
+    V2ProgressReporter,
+)
+from shengji.rl.belief_v2_tensor_cache_controller import (
+    reopen_training_tensor_cache,
+    run_training_tensor_cache,
+)
+from shengji.rl.belief_v2_training_controller import (
+    reopen_training_cohort,
+    run_training_cohort,
+)
+from tests.test_belief_v2_controller import _admission, _cpu_only_freeze
+
+from shengji.rl.belief_v2_protocol import (
+    V1_B2_SEED_END,
+    V1_B2_SEED_START,
+    V2_CAPTURE_LANES,
+    V2_RANKS,
+    v2_round_coordinates,
+)
+from shengji.rl.belief_v2_rehearsal import (
+    BeliefV2RehearsalError,
+    REHEARSAL_HUMAN_SPLIT_COUNTS,
+    REHEARSAL_RECEIPT_SCHEMA,
+    REHEARSAL_ROUND_COUNT,
+    REHEARSAL_ROUNDS_PER_RANK,
+    REHEARSAL_SPLIT_COUNTS,
+    REHEARSAL_SPLIT_COUNTS_PER_RANK,
+    REHEARSAL_PROGRESS_STAGES,
+    REHEARSAL_TRAIN_BATCH_DECISION_CAP,
+    REHEARSAL_STAGE_ORDER,
+    rehearsal_lane_coordinates,
+    rehearsal_human_source_bytes,
+    rehearsal_policy_seeds,
+    rehearsal_profile_bytes,
+    rehearsal_profile_dict,
+    rehearsal_profile_sha256,
+    rehearsal_round_coordinates,
+    rehearsal_v2_coordinates,
+    rehearsal_v2_lane_coordinates,
+    rehearsal_v2_policy_seeds,
+    rehearsal_v2_round_coordinate,
+    validate_rehearsal_coordinates,
+    validate_rehearsal_receipt,
+)
+from shengji.rl.belief_v2_human_inventory import (
+    H0_GROUP_SCHEMA,
+    build_h0_group_split,
+    build_h0_inventory,
+    group_split_bytes,
+    inventory_bytes,
+    validate_h0_group_split,
+    validate_h0_inventory,
+)
+from shengji.rl.belief_v2_terminal_controller import (
+    reopen_v2_terminal,
+    run_v2_terminal,
+)
+
+
+RUN_FULL_REHEARSAL = (
+    os.environ.get("SHENGJI_BELIEF_V2_FULL_DAG_REHEARSAL") == "1")
+
+
+def _fixture_h0(tmp_path: Path):
+    source_root = tmp_path / "human-sources"
+    source_root.mkdir()
+    sources = []
+    manifest_rows = []
+    for index in range(30):
+        raw = rehearsal_human_source_bytes(index)
+        path = source_root / f"source-{index:02d}.jsonl"
+        path.write_bytes(raw)
+        sources.append(path)
+        manifest_rows.append(
+            f"{hashlib.sha256(raw).hexdigest()}  {path.name}\n")
+    manifest = tmp_path / "human-source-manifest.txt"
+    manifest.write_text("".join(manifest_rows), encoding="ascii")
+    inventory = build_h0_inventory(
+        source_manifest=manifest, source_paths=sources)
+    split = build_h0_group_split(inventory)
+    for path in (*sources, manifest):
+        path.chmod(0o400)
+    return tuple(sources), inventory, split
+
+
+def _rehearsal_freeze(root: Path, inventory, split):
+    base = _cpu_only_freeze(root)
+    split_counts = {
+        name: row["group_count"] for name, row in split["splits"].items()}
+    decision_counts = {name: sum(
+        group["human_play_decisions"] for group in inventory["groups"]
+        if group["group_digest"] in set(split["splits"][name][
+            "group_digests"])) for name in split_counts}
+    return replace(
+        base,
+        h0_inventory_sha256=hashlib.sha256(
+            inventory_bytes(inventory)).hexdigest(),
+        h0_source_manifest_sha256=inventory["source_manifest_sha256"],
+        h0_source_digest_population_sha256=inventory[
+            "source_digest_population_sha256"],
+        human_group_split_sha256=hashlib.sha256(
+            group_split_bytes(split, inventory=inventory)).hexdigest(),
+        human_group_count=inventory["group_count"],
+        human_train_group_count=split_counts["train"],
+        human_calibration_group_count=split_counts["calibration"],
+        human_test_group_count=split_counts["test"],
+        human_complete_round_count=inventory["complete_rounds"],
+        human_eligible_decision_count=inventory["human_play_decisions"],
+        human_train_eligible_decision_count=decision_counts["train"],
+        human_calibration_eligible_decision_count=(
+            decision_counts["calibration"]),
+        human_test_eligible_decision_count=decision_counts["test"])
+
+
+def _patch_rehearsal_population(monkeypatch) -> None:
+    split_counts = dict(REHEARSAL_SPLIT_COUNTS)
+    monkeypatch.setattr(
+        V2_CONTROLLER, "v2_lane_coordinates",
+        rehearsal_v2_lane_coordinates)
+    monkeypatch.setattr(
+        V2_CAPTURE, "v2_round_coordinate", rehearsal_v2_round_coordinate)
+    monkeypatch.setattr(
+        V2_CAPTURE, "v2_policy_seeds", rehearsal_v2_policy_seeds)
+    monkeypatch.setattr(
+        V2_REFERENCE, "v2_round_coordinate", rehearsal_v2_round_coordinate)
+    monkeypatch.setattr(
+        V2_REFERENCE, "v2_policy_seeds", rehearsal_v2_policy_seeds)
+    monkeypatch.setattr(
+        SCORING_STAGE, "v2_policy_seeds", rehearsal_v2_policy_seeds)
+    monkeypatch.setattr(
+        STREAMING_INPUTS, "v2_lane_coordinates",
+        rehearsal_v2_lane_coordinates)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "V2_SPLIT_COUNTS", REHEARSAL_SPLIT_COUNTS)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "v2_round_coordinates",
+        rehearsal_v2_coordinates)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "v2_round_coordinates", rehearsal_v2_coordinates)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "V2_ROUND_COUNT", REHEARSAL_ROUND_COUNT)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "V2_SPLIT_COUNTS", REHEARSAL_SPLIT_COUNTS)
+    monkeypatch.setattr(
+        V2_RESULT, "V2_ROUND_COUNT", REHEARSAL_ROUND_COUNT)
+    monkeypatch.setattr(
+        V2_RESULT, "V2_SPLIT_COUNTS", REHEARSAL_SPLIT_COUNTS)
+    monkeypatch.setattr(
+        V2_SCHEDULE, "TRAIN_BATCH_DECISION_CAP",
+        REHEARSAL_TRAIN_BATCH_DECISION_CAP)
+    monkeypatch.setattr(
+        V2_STATISTICS, "RANK_CALIBRATION_MINIMUM_ROUNDS", 1)
+    # The rehearsal checks that both independently replayed calibration
+    # populations are complete and scoreable.  Their statistical equivalence
+    # threshold is a production-power question, not an operational smoke gate.
+    real_stability = CALIBRATION_STAGE.v2_reference_replicates_are_stable
+    observed = []
+
+    def record_stability(*args, **kwargs):
+        observed.append(real_stability(*args, **kwargs))
+        return True
+
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "v2_reference_replicates_are_stable",
+        record_stability)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "_rehearsal_observed_stability", observed,
+        raising=False)
+    assert split_counts == {"train": 75, "calibration": 16, "test": 13}
+
+
+def _restore_parent_worker_population(monkeypatch) -> None:
+    """Reinstall direct-import seams after a spawned worker pool exits."""
+    monkeypatch.setattr(
+        V2_CONTROLLER, "v2_lane_coordinates",
+        rehearsal_v2_lane_coordinates)
+    monkeypatch.setattr(
+        V2_CONTROLLER, "v2_policy_seeds", rehearsal_v2_policy_seeds)
+    monkeypatch.setattr(
+        V2_CAPTURE, "v2_round_coordinate", rehearsal_v2_round_coordinate)
+    monkeypatch.setattr(
+        V2_CAPTURE, "v2_policy_seeds", rehearsal_v2_policy_seeds)
+    monkeypatch.setattr(
+        V2_REFERENCE, "v2_round_coordinate", rehearsal_v2_round_coordinate)
+    monkeypatch.setattr(
+        V2_REFERENCE, "v2_policy_seeds", rehearsal_v2_policy_seeds)
+    monkeypatch.setattr(
+        SCORING_STAGE, "v2_policy_seeds", rehearsal_v2_policy_seeds)
+    monkeypatch.setattr(
+        STREAMING_INPUTS, "v2_lane_coordinates",
+        rehearsal_v2_lane_coordinates)
+    monkeypatch.setattr(
+        V2_SCHEDULE, "TRAIN_BATCH_DECISION_CAP",
+        REHEARSAL_TRAIN_BATCH_DECISION_CAP)
+
+
+def _patch_stage_gates(monkeypatch) -> None:
+    for module in (
+            V2_CONTROLLER, HUMAN_STAGE, INPUT_INDEX_STAGE, CACHE_STAGE,
+            DEVICE_STAGE, HUMAN_REF_STAGE, TRAINING_STAGE,
+            CALIBRATION_STAGE, TERMINAL_STAGE):
+        monkeypatch.setattr(module, "_stage_gate", lambda **_kwargs: None)
+
+
+def _reporter(stage: str, worker: str, rows: list[dict]):
+    stream = io.StringIO()
+    real = V2ProgressReporter(stage=stage, worker=worker, stream=stream)
+
+    def update(*args):
+        real.update(*args)
+        rows.append(json.loads(
+            stream.getvalue().splitlines()[-1].removeprefix(
+                PROGRESS_PREFIX)))
+
+    return update
+
+
+def _group_digest(path: Path) -> str:
+    source_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(
+        f"{H0_GROUP_SCHEMA}|{source_sha}".encode("ascii")).hexdigest()
+
+
+def _artifact_population(root: Path) -> list[dict]:
+    return [{
+        "path": path.relative_to(root).as_posix(),
+        "byte_count": path.stat().st_size,
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+    } for path in sorted(root.rglob("*")) if path.is_file()]
+
+
+def _apply_rehearsal_process_overrides() -> None:
+    """Install the opt-in population inside a fresh worker process."""
+    configure_numerical_runtime()
+    V2_CONTROLLER.v2_lane_coordinates = rehearsal_v2_lane_coordinates
+    V2_CONTROLLER.v2_policy_seeds = rehearsal_v2_policy_seeds
+    V2_CAPTURE.v2_round_coordinate = rehearsal_v2_round_coordinate
+    V2_CAPTURE.v2_policy_seeds = rehearsal_v2_policy_seeds
+    V2_REFERENCE.v2_round_coordinate = rehearsal_v2_round_coordinate
+    V2_REFERENCE.v2_policy_seeds = rehearsal_v2_policy_seeds
+    SCORING_STAGE.v2_policy_seeds = rehearsal_v2_policy_seeds
+    STREAMING_INPUTS.v2_lane_coordinates = rehearsal_v2_lane_coordinates
+    V2_SCHEDULE.TRAIN_BATCH_DECISION_CAP = (
+        REHEARSAL_TRAIN_BATCH_DECISION_CAP)
+    for module in (
+            V2_CONTROLLER, HUMAN_STAGE, INPUT_INDEX_STAGE, CACHE_STAGE,
+            DEVICE_STAGE, HUMAN_REF_STAGE, TRAINING_STAGE,
+            CALIBRATION_STAGE, TERMINAL_STAGE):
+        module._stage_gate = lambda **_kwargs: None
+
+
+def _capture_process(args):
+    _apply_rehearsal_process_overrides()
+    root, freeze, admission, lane, review_marker = args
+    rows = []
+    manifest = run_capture_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=lane,
+        review_marker=review_marker,
+        progress=_reporter("capture", f"lane-{lane:02d}", rows))
+    return manifest, rows
+
+
+def _human_capture_process(args):
+    _apply_rehearsal_process_overrides()
+    root, freeze, admission, source_path, inventory, group_split, marker = args
+    rows = []
+    manifest = run_human_group_capture(
+        root, freeze, admission, repo=Path("/unused"),
+        source_path=source_path, inventory=inventory,
+        group_split=group_split, review_marker=marker,
+        progress=_reporter("human-capture", source_path.name, rows))
+    return manifest, rows
+
+
+def _reference_process(args):
+    _apply_rehearsal_process_overrides()
+    (kind, root, freeze, admission, lane, source_path, inventory,
+     group_split, replicate, marker) = args
+    rows = []
+    if kind == "synthetic":
+        manifest = run_reference_lane(
+            root, freeze, admission, repo=Path("/unused"), lane=lane,
+            review_marker=marker,
+            progress=_reporter("reference", f"lane-{lane:02d}", rows))
+    else:
+        manifest = run_human_reference_group(
+            root, freeze, admission, repo=Path("/unused"),
+            source_path=source_path, inventory=inventory,
+            group_split=group_split, replicate=replicate,
+            review_marker=marker,
+            progress=_reporter("human-reference", replicate, rows))
+    return manifest, rows
+
+
+def _process_map(function, tasks, *, max_workers):
+    # Each controller executes in a clean spawned process and explicitly
+    # installs the disposable rehearsal population.  This matches the
+    # production resource shape without weakening production seed guards.
+    with ProcessPoolExecutor(
+            max_workers=max_workers,
+            mp_context=multiprocessing.get_context("spawn")) as executor:
+        return tuple(executor.map(function, tasks))
+
+
+def test_rehearsal_population_is_balanced_disjoint_and_lane_complete():
+    rows = rehearsal_round_coordinates()
+    production = {row.round_seed for row in v2_round_coordinates()}
+
+    assert len(rows) == REHEARSAL_ROUND_COUNT == 104
+    assert len({row.round_seed for row in rows}) == len(rows)
+    assert not production.intersection(row.round_seed for row in rows)
+    assert all(not V1_B2_SEED_START <= row.round_seed <= V1_B2_SEED_END
+               for row in rows)
+    assert {row.trump_rank for row in rows} == set(V2_RANKS)
+    assert all(sum(row.trump_rank == rank for row in rows)
+               == REHEARSAL_ROUNDS_PER_RANK
+               for rank in V2_RANKS)
+    assert {split: sum(row.split == split for row in rows)
+            for split, _ in REHEARSAL_SPLIT_COUNTS} \
+        == dict(REHEARSAL_SPLIT_COUNTS)
+    rank_split_counts = [{
+        split: sum(row.trump_rank == rank and row.split == split
+                   for row in rows)
+        for split, _ in REHEARSAL_SPLIT_COUNTS_PER_RANK}
+        for rank in V2_RANKS]
+    assert rank_split_counts.count(
+        dict(REHEARSAL_SPLIT_COUNTS_PER_RANK)) == 10
+    assert rank_split_counts.count(
+        {"train": 5, "calibration": 2, "test": 1}) == 3
+    assert [len(rehearsal_lane_coordinates(lane))
+            for lane in range(V2_CAPTURE_LANES)] \
+        == [7] * 8 + [6] * 8
+    assert all(any(row.split == "calibration"
+                   for row in rehearsal_lane_coordinates(lane))
+               for lane in range(V2_CAPTURE_LANES))
+    assert all(len(set(rehearsal_policy_seeds(row))) == 4
+               for row in rows)
+    typed = rehearsal_v2_coordinates()
+    assert len(typed) == len(rows)
+    assert all(rehearsal_v2_round_coordinate(
+        row.trump_rank, row.rank_ordinal) == row for row in typed)
+    assert tuple(row for lane in range(V2_CAPTURE_LANES)
+                 for row in rehearsal_v2_lane_coordinates(lane)) == typed
+    assert all(len(set(rehearsal_v2_policy_seeds(row))) == 4
+               for row in typed)
+
+
+def test_rehearsal_profile_is_canonical_and_authorizes_nothing():
+    profile = rehearsal_profile_dict()
+    assert rehearsal_profile_bytes().endswith(b"\n")
+    assert profile["smoke_only"] is True
+    assert profile["scientific_evidence"] is False
+    assert profile["reference_world_count"] == 256
+    assert profile["training_batch_decision_cap"] == 128
+    assert profile["human_fixture_population"]["split_counts"] \
+        == dict(REHEARSAL_HUMAN_SPLIT_COUNTS)
+    assert not any(profile["authority"].values())
+
+
+def test_rehearsal_receipt_refuses_missing_stage_source_and_authority_drift():
+    digest = "a" * 64
+    profile = {"runtime": "test"}
+    progress_rows = [{
+        "schema": PROGRESS_SCHEMA,
+        "stage": stage,
+        "worker": "worker",
+        "phase": "complete",
+        "completed_units": 1,
+        "total_units": 1,
+        "percent_basis_points": 10_000,
+        "elapsed_nanoseconds": index,
+        "estimated_remaining_nanoseconds": 0,
+        "status": "complete",
+        "outcome_blind": True,
+        "evidence_artifact": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    } for index, stage in enumerate(REHEARSAL_PROGRESS_STAGES)]
+    receipt = {
+        "schema": REHEARSAL_RECEIPT_SCHEMA,
+        "smoke_only": True,
+        "scientific_evidence": False,
+        "profile_sha256": rehearsal_profile_sha256(),
+        "freeze_sha256": digest,
+        "admission_sha256": digest,
+        "source_identity": {
+            "execution_git": "b" * 40,
+            "checkout_clean": True,
+            "source_manifest_sha256": digest,
+        },
+        "runtime_identity": {
+            "profile": profile,
+            "profile_sha256": hashlib.sha256(
+                canonical_json_bytes(profile)).hexdigest(),
+        },
+        "device_identity": {
+            "training_device": "cpu",
+            "qualification_plan_sha256": digest,
+            "qualification_result_sha256": digest,
+        },
+        "synthetic_round_count": REHEARSAL_ROUND_COUNT,
+        "human_fixture_source_count": 30,
+        "reference_world_count": 256,
+        "cohort_epoch_counts": {
+            f"cohort-{index}": 1 for index in range(4)},
+        "stage_order": list(REHEARSAL_STAGE_ORDER),
+        "progress": {
+            "row_count": len(progress_rows),
+            "worker_count": len(progress_rows),
+            "phase_count": len(progress_rows),
+            "rows": progress_rows,
+            "population_sha256": hashlib.sha256(
+                canonical_json_bytes(progress_rows)).hexdigest(),
+        },
+        "artifact_count": 1,
+        "artifact_population_sha256": digest,
+        "terminal_manifest_sha256": digest,
+        "stability_observations": [],
+        "development_resume_used": False,
+        "production_freeze_review_eligible": True,
+        "retry_count": 0,
+        "drop_count": 0,
+        "authority": rehearsal_profile_dict()["authority"],
+    }
+    validate_rehearsal_receipt(receipt)
+    with pytest.raises(BeliefV2RehearsalError, match="identity drift"):
+        validate_rehearsal_receipt({
+            **receipt, "stage_order": receipt["stage_order"][:-1]})
+    with pytest.raises(BeliefV2RehearsalError, match="source identity"):
+        validate_rehearsal_receipt({
+            **receipt,
+            "source_identity": {
+                **receipt["source_identity"], "checkout_clean": False}})
+    with pytest.raises(BeliefV2RehearsalError, match="identity drift"):
+        validate_rehearsal_receipt({
+            **receipt,
+            "authority": {**receipt["authority"], "strength_claim": True}})
+    shortened_rows = progress_rows[:-1]
+    with pytest.raises(BeliefV2RehearsalError, match="progress coverage"):
+        validate_rehearsal_receipt({
+            **receipt,
+            "progress": {
+                **receipt["progress"],
+                "row_count": len(shortened_rows),
+                "worker_count": len(shortened_rows),
+                "phase_count": len(shortened_rows),
+                "rows": shortened_rows,
+                "population_sha256": hashlib.sha256(
+                    canonical_json_bytes(shortened_rows)).hexdigest(),
+            },
+        })
+    drifted_rows = [*progress_rows]
+    drifted_rows[0] = {
+        **drifted_rows[0], "strength_claim_authorized": True}
+    with pytest.raises(BeliefV2RehearsalError, match="progress row"):
+        validate_rehearsal_receipt({
+            **receipt,
+            "progress": {
+                **receipt["progress"],
+                "rows": drifted_rows,
+                "population_sha256": hashlib.sha256(
+                    canonical_json_bytes(drifted_rows)).hexdigest(),
+            },
+        })
+
+
+def test_rehearsal_human_fixtures_build_real_24_3_3_h0_split(tmp_path):
+    sources, inventory, split = _fixture_h0(tmp_path)
+    validate_h0_inventory(inventory)
+    validate_h0_group_split(split, inventory=inventory)
+
+    assert inventory["group_count"] == 30
+    assert inventory["component_count"] == 30
+    assert inventory["complete_rounds"] == 30
+    assert inventory["human_play_decisions"] == 30
+    assert {name: row["group_count"]
+            for name, row in split["splits"].items()} \
+        == dict(REHEARSAL_HUMAN_SPLIT_COUNTS)
+    assert all(path.stat().st_mode & 0o222 == 0 for path in sources)
+    assert stable_read_bytes(sources[0]) == rehearsal_human_source_bytes(0)
+
+
+def test_rehearsal_coordinate_mutations_refuse():
+    rows = rehearsal_round_coordinates()
+    with pytest.raises(BeliefV2RehearsalError, match="coordinate drift"):
+        validate_rehearsal_coordinates(rows[:-1])
+    with pytest.raises(BeliefV2RehearsalError, match="coordinate drift"):
+        validate_rehearsal_coordinates((
+            replace(rows[0], split="test"), *rows[1:]))
+    with pytest.raises(BeliefV2RehearsalError, match="population drift"):
+        validate_rehearsal_coordinates((
+            *rows[:-1], replace(rows[-1], lane=rows[0].lane)))
+
+
+def test_rehearsal_profile_reaches_the_scoring_reader(monkeypatch):
+    _patch_rehearsal_population(monkeypatch)
+    coordinate = next(
+        row for row in rehearsal_v2_coordinates()
+        if row.split == "calibration")
+    assert SCORING_STAGE.v2_policy_seeds(coordinate) \
+        == rehearsal_v2_policy_seeds(coordinate)
+
+
+@pytest.mark.skipif(
+    not RUN_FULL_REHEARSAL,
+    reason="set SHENGJI_BELIEF_V2_FULL_DAG_REHEARSAL=1")
+def test_full_dag_rehearsal_traverses_every_stage_and_reopens(
+        tmp_path, monkeypatch):
+    """Run the computational DAG on disposable data with real stage wiring.
+
+    The population/stability overrides are explicit test-harness inputs and
+    are recorded in the receipt.  Production defaults and scientific gates are
+    unchanged outside this opt-in process.
+    """
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    configure_numerical_runtime()
+    _patch_rehearsal_population(monkeypatch)
+    _patch_stage_gates(monkeypatch)
+    resume_value = os.environ.get("SHENGJI_BELIEF_V2_REHEARSAL_RESUME_ROOT")
+    fresh_root_value = os.environ.get("SHENGJI_BELIEF_V2_REHEARSAL_ROOT")
+    if resume_value is not None and fresh_root_value is not None:
+        raise AssertionError("rehearsal root and resume root are exclusive")
+    resumed = resume_value is not None
+    if resumed:
+        root = Path(resume_value).resolve()
+        base = root.parent
+        sources = tuple(sorted((base / "human-sources").glob("*.jsonl")))
+        inventory = build_h0_inventory(
+            source_manifest=base / "human-source-manifest.txt",
+            source_paths=list(sources))
+        group_split = build_h0_group_split(inventory)
+        for failed_partial in (
+                root / "training-input-index" / "result.partial",
+                root / "device-qualification" / "result.partial"):
+            if failed_partial.is_dir() and not any(failed_partial.iterdir()):
+                failed_partial.rmdir()
+    else:
+        root = (Path(fresh_root_value).resolve()
+                if fresh_root_value is not None
+                else (tmp_path / "evidence").resolve())
+        base = root.parent
+        base.mkdir(mode=0o700, exist_ok=True)
+        sources, inventory, group_split = _fixture_h0(base)
+        root.mkdir()
+    freeze = _rehearsal_freeze(root, inventory, group_split)
+    admission = _admission(freeze)
+    review_marker = b"rehearsal-review-marker\n"
+    progress_rows: list[dict] = []
+
+    capture_dirs = tuple(
+        root / "capture" / f"lane-{lane:02d}"
+        for lane in range(V2_CAPTURE_LANES))
+    if resumed and all(path.is_dir() for path in capture_dirs):
+        _restore_parent_worker_population(monkeypatch)
+        capture_manifests = tuple(reopen_capture_lane(
+            path, freeze=freeze, admission=admission, lane=lane)
+            for lane, path in enumerate(capture_dirs))
+    else:
+        capture_results = _process_map(
+            _capture_process,
+            ((root, freeze, admission, lane, review_marker)
+             for lane in range(V2_CAPTURE_LANES)),
+            max_workers=V2_CAPTURE_LANES)
+        capture_manifests = tuple(row[0] for row in capture_results)
+        progress_rows.extend(progress for row in capture_results
+                             for progress in row[1])
+    assert sum(row["round_count"] for row in capture_manifests) == 104
+
+    human_dirs = tuple(
+        root / "human-capture" / f"group-{_group_digest(path)}"
+        for path in sources)
+    if resumed and all(path.is_dir() for path in human_dirs):
+        human_manifests = tuple(reopen_human_group_manifest(
+            path, freeze=freeze, admission=admission)
+            for path in human_dirs)
+    else:
+        human_results = _process_map(
+            _human_capture_process,
+            ((root, freeze, admission, path, inventory, group_split,
+              review_marker) for path in sources),
+            max_workers=V2_CAPTURE_LANES)
+        human_manifests = tuple(row[0] for row in human_results)
+        progress_rows.extend(progress for row in human_results
+                             for progress in row[1])
+    assert sum(row["human_decision_count"]
+               for row in human_manifests) == 30
+
+    _restore_parent_worker_population(monkeypatch)
+    index_directory = root / "training-input-index" / "result"
+    if resumed and index_directory.is_dir():
+        index_manifest, inputs = reopen_training_input_index(
+            index_directory, freeze=freeze, admission=admission)
+    else:
+        index_manifest = run_training_input_index(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=review_marker, inventory=inventory,
+            group_split=group_split,
+            progress=_reporter(
+                "training-input-index", "all-sources", progress_rows))
+        reopened_index_manifest, inputs = reopen_training_input_index(
+            index_directory, freeze=freeze, admission=admission)
+        assert reopened_index_manifest == index_manifest
+    assert len(inputs.realizations) == 4
+
+    cache_directory = root / "training-tensor-cache" / "result"
+    if resumed and cache_directory.is_dir():
+        (cache_manifest, factories, calibration_factory, control_dose,
+         cache_sha) = reopen_training_tensor_cache(
+            cache_directory, freeze=freeze, admission=admission)
+    else:
+        cache_manifest = run_training_tensor_cache(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=review_marker,
+            progress=_reporter(
+                "training-tensor-cache", "all-cohorts", progress_rows))
+        (reopened_cache, factories, calibration_factory, control_dose,
+         cache_sha) = reopen_training_tensor_cache(
+            cache_directory, freeze=freeze, admission=admission)
+        assert reopened_cache == cache_manifest
+    assert tuple(factories) == tuple(
+        row.cohort_id for row in inputs.realizations)
+
+    primary = next(row for row in inputs.realizations
+                   if row.cohort_id == "synthetic-primary")
+    qualification_directory = root / "device-qualification" / "result"
+    if resumed and qualification_directory.is_dir():
+        (qualification_manifest, qualification_plan, qualification) = (
+            reopen_device_qualification(
+                qualification_directory, freeze=freeze,
+                admission=admission, primary=primary))
+    else:
+        qualification_manifest = run_device_qualification(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=review_marker, primary=primary,
+            primary_examples=None,
+            batch_factory=factories[primary.cohort_id],
+            progress=_reporter(
+                "device-qualification", "candidate-device", progress_rows))
+        (reopened_qualification_manifest, qualification_plan,
+         qualification) = reopen_device_qualification(
+            qualification_directory, freeze=freeze,
+            admission=admission, primary=primary)
+        assert reopened_qualification_manifest == qualification_manifest
+
+    reference_tasks = []
+    for lane in range(V2_CAPTURE_LANES):
+        reference_tasks.append((
+            "synthetic", root, freeze, admission, lane, None, inventory,
+            group_split, None, review_marker))
+    by_split = {
+        split: set(row["group_digests"])
+        for split, row in group_split["splits"].items()}
+    for path in sources:
+        digest = _group_digest(path)
+        split = next(name for name, values in by_split.items()
+                     if digest in values)
+        replicates = (
+            ("calibration-replicate-0", "calibration-replicate-1")
+            if split == "calibration"
+            else ("test-primary",) if split == "test" else ())
+        for replicate in replicates:
+            reference_tasks.append((
+                "human", root, freeze, admission, None, path, inventory,
+                group_split, replicate, review_marker))
+
+    reference_directories = tuple(
+        root / "reference" / f"lane-{row[4]:02d}"
+        if row[0] == "synthetic" else
+        root / "human-reference" / f"group-{_group_digest(row[5])}" / row[8]
+        for row in reference_tasks)
+    if resumed and all(path.is_dir() for path in reference_directories):
+        # Every publisher already performed a typed post-publish reopen, and
+        # calibration/terminal will reopen the selected artifacts again.  A
+        # development-only resume needs only the complete slot population;
+        # the official zero-resume rehearsal still executes the publishers.
+        reference_manifests = tuple(
+            {"resumed_directory": str(path)}
+            for path in reference_directories)
+    else:
+        reference_results = _process_map(
+            _reference_process, reference_tasks, max_workers=V2_CAPTURE_LANES)
+        reference_manifests = tuple(row[0] for row in reference_results)
+        progress_rows.extend(progress for row in reference_results
+                             for progress in row[1])
+    assert len(reference_manifests) == 25
+
+    def train(realization):
+        return run_training_cohort(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=review_marker, primary=primary,
+            realization=realization, training_examples=None,
+            calibration=inputs.common_calibration,
+            calibration_examples=None,
+            training_batch_factory=factories[realization.cohort_id],
+            calibration_batch_factory=calibration_factory,
+            cache_manifest_sha256=cache_sha,
+            cache_control_dose=(
+                control_dose if realization.kind
+                == "hard-geometry-label-permutation" else 0),
+            qualification_plan=qualification_plan,
+            qualification_result=qualification,
+            progress=_reporter(
+                "training", realization.cohort_id, progress_rows))
+
+    training_directories = tuple(
+        root / "training" / row.cohort_id for row in inputs.realizations)
+    reused_training = resumed and all(
+        path.is_dir() for path in training_directories)
+    if reused_training:
+        training_manifests = None
+    else:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            training_manifests = tuple(
+                executor.map(train, inputs.realizations))
+    def reopen_trained(item):
+        index, realization = item
+        reopened_manifest, artifacts = reopen_training_cohort(
+            root / "training" / realization.cohort_id, freeze=freeze,
+            admission=admission, primary=primary,
+            realization=realization, training_examples=None,
+            calibration=inputs.common_calibration,
+            calibration_examples=None,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification,
+            calibration_batch_factory=calibration_factory,
+            cache_manifest_sha256=cache_sha,
+            compact_control_dose=(
+                control_dose if realization.kind
+                == "hard-geometry-label-permutation" else 0))
+        if training_manifests is not None:
+            assert reopened_manifest == training_manifests[index]
+        assert len(artifacts.epochs) >= 1
+        return artifacts
+
+    if reused_training:
+        cohort_epoch_counts = {
+            realization.cohort_id: len(tuple(
+                (root / "training" / realization.cohort_id
+                 / "epoch-journal").glob("epoch-[0-9][0-9][0-9][0-9]")))
+            for realization in inputs.realizations}
+        assert min(cohort_epoch_counts.values()) >= 1
+    else:
+        # Re-scoring the four independently sealed checkpoint chains is pure
+        # read-only verification.  Keep the same four-way topology as training
+        # so the dress rehearsal does not add a needless single-core tail.
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            trained = list(executor.map(
+                reopen_trained, enumerate(inputs.realizations)))
+        cohort_epoch_counts = {
+            row.cohort_id: len(row.epochs) for row in trained}
+
+    calibration_directory = root / "calibration" / "selection"
+    if resumed and calibration_directory.is_dir():
+        calibration_manifest = reopen_v2_calibration_selection(
+            calibration_directory, freeze=freeze, admission=admission,
+            inventory=inventory, group_split=group_split)
+    else:
+        calibration_manifest = run_v2_calibration_selection(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=review_marker, inventory=inventory,
+            group_split=group_split,
+            progress=_reporter("calibration", "all-cohorts", progress_rows))
+        assert reopen_v2_calibration_selection(
+            calibration_directory, freeze=freeze,
+            admission=admission, inventory=inventory,
+            group_split=group_split) == calibration_manifest
+
+    terminal_directory = root / "terminal"
+    if resumed and terminal_directory.is_dir():
+        terminal_manifest = reopen_v2_terminal(
+            terminal_directory, freeze=freeze, admission=admission,
+            inventory=inventory, group_split=group_split,
+            progress=_reporter(
+                "terminal-verification", "reopen", progress_rows))
+    else:
+        terminal_manifest = run_v2_terminal(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=review_marker, inventory=inventory,
+            group_split=group_split,
+            progress=_reporter("terminal", "test-opening", progress_rows))
+        assert reopen_v2_terminal(
+            terminal_directory, freeze=freeze, admission=admission,
+            inventory=inventory, group_split=group_split,
+            progress=_reporter(
+                "terminal-verification", "reopen", progress_rows)) \
+            == terminal_manifest
+
+    by_phase: dict[tuple[str, str, str], list[dict]] = {}
+    for row in progress_rows:
+        by_phase.setdefault(
+            (row["stage"], row["worker"], row["phase"]), []).append(row)
+    if not resumed:
+        assert by_phase
+    assert all([row["completed_units"] for row in values]
+               == sorted(row["completed_units"] for row in values)
+               and len({row["total_units"] for row in values}) == 1
+               for values in by_phase.values())
+    by_worker: dict[tuple[str, str], list[dict]] = {}
+    for row in progress_rows:
+        by_worker.setdefault((row["stage"], row["worker"]), []).append(row)
+    assert all(any(row["completed_units"] > 0 for row in values)
+               and values[-1]["completed_units"]
+               == values[-1]["total_units"]
+               for values in by_worker.values())
+
+    artifacts = _artifact_population(root)
+    repo = Path(__file__).resolve().parents[2]
+    execution_git = subprocess.run(
+        ("git", "rev-parse", "HEAD"), cwd=repo, check=True,
+        capture_output=True, text=True).stdout.strip()
+    checkout_clean = not subprocess.run(
+        ("git", "status", "--porcelain", "--untracked-files=all"),
+        cwd=repo, check=True, capture_output=True,
+        text=True).stdout.strip()
+    source_sha = None
+    if checkout_clean:
+        source_sha = source_manifest_sha256(
+            execution_git, build_source_bindings(
+                repo, expected_git=execution_git))
+    runtime = build_runtime_profile()
+    runtime_dict = runtime.to_dict()
+    progress_population_sha256 = hashlib.sha256(
+        canonical_json_bytes(progress_rows)).hexdigest()
+    receipt = {
+        "schema": REHEARSAL_RECEIPT_SCHEMA,
+        "smoke_only": True,
+        "scientific_evidence": False,
+        "profile_sha256": rehearsal_profile_sha256(),
+        "freeze_sha256": freeze.sha256(),
+        "admission_sha256": admission.sha256(),
+        "source_identity": {
+            "execution_git": execution_git,
+            "checkout_clean": checkout_clean,
+            "source_manifest_sha256": source_sha,
+        },
+        "runtime_identity": {
+            "profile": runtime_dict,
+            "profile_sha256": hashlib.sha256(
+                canonical_json_bytes(runtime_dict)).hexdigest(),
+        },
+        "device_identity": {
+            "training_device": qualification.selected_device,
+            "qualification_plan_sha256": qualification_plan.sha256(),
+            "qualification_result_sha256": hashlib.sha256(
+                qualification.canonical_bytes(
+                    qualification_plan)).hexdigest(),
+        },
+        "synthetic_round_count": 104,
+        "human_fixture_source_count": 30,
+        "reference_world_count": 256,
+        "cohort_epoch_counts": cohort_epoch_counts,
+        "stage_order": list(REHEARSAL_STAGE_ORDER),
+        "progress": {
+            "row_count": len(progress_rows),
+            "worker_count": len(by_worker),
+            "phase_count": len(by_phase),
+            "rows": progress_rows,
+            "population_sha256": progress_population_sha256,
+        },
+        "artifact_count": len(artifacts),
+        "artifact_population_sha256": hashlib.sha256(
+            canonical_json_bytes(artifacts)).hexdigest(),
+        "terminal_manifest_sha256": hashlib.sha256(
+            canonical_json_bytes(terminal_manifest)).hexdigest(),
+        "stability_observations": list(
+            CALIBRATION_STAGE._rehearsal_observed_stability),
+        "development_resume_used": resumed,
+        "production_freeze_review_eligible": (
+            not resumed and checkout_clean),
+        "retry_count": 0,
+        "drop_count": 0,
+        "authority": rehearsal_profile_dict()["authority"],
+    }
+    validate_rehearsal_receipt(receipt)
+    assert receipt["cohort_epoch_counts"]
+    assert min(receipt["cohort_epoch_counts"].values()) >= 1
+    assert not any(receipt["authority"].values())
+    output = os.environ.get("SHENGJI_BELIEF_V2_REHEARSAL_RECEIPT")
+    if output:
+        output_path = Path(output).resolve()
+        assert output_path.is_absolute() and not output_path.exists()
+        publish_exclusive_bytes(output_path, canonical_json_bytes(receipt))

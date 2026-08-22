@@ -422,3 +422,32 @@ def test_review_refuses_local_remote_tracking_forgery(tmp_path, monkeypatch):
                        match="differs from real remote"):
         authenticate_execution_review(
             freeze, repo=repo, review_commit=review)
+
+
+def test_spent_admission_survives_canonical_main_advancing(
+        tmp_path, monkeypatch):
+    freeze = _freeze()
+    repo, review, marker = _review_repo(tmp_path, freeze, monkeypatch)
+    admission, built_marker = build_pipeline_admission(
+        freeze, repo=repo, review_commit=review)
+    assert built_marker == marker
+    admitted_tip = admission.canonical_remote_tip
+
+    # A multi-day run must remain bound to the exact tip authenticated when
+    # its one-shot admission was consumed.  New unrelated commits on main do
+    # not rewrite that historical fact or grant the run any new authority.
+    (repo / "later.txt").write_text("main advanced\n")
+    _git(repo, "add", "later.txt")
+    _git(repo, "-c", "user.name=Later", "-c",
+         "user.email=later@example.com", "commit", "-qm", "later")
+    _git(repo, "push", "-q", "origin", "main")
+    assert _git(repo, "rev-parse", "origin/main") != admitted_tip
+
+    reauthenticate_pipeline_admission(
+        freeze, admission, repo=repo, review_marker=marker)
+
+    forged = replace(admission, canonical_remote_tip=_git(
+        repo, "rev-parse", f"{review}^"))
+    with pytest.raises(BeliefV2FreezeError, match="not on canonical"):
+        reauthenticate_pipeline_admission(
+            freeze, forged, repo=repo, review_marker=marker)

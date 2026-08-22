@@ -263,11 +263,20 @@ def score_v2_round(
         for cohort in cohorts:
             members, ensemble = _predict_cohort(
                 actor, decision.common, cohort)
+            if not reference.probabilities:
+                if any(member.probabilities for member in members) \
+                        or ensemble.probabilities:
+                    raise BeliefV2ScoringError(
+                        "V2 empty ownership population drift")
+                continue
             scores = score_target_candidates(
                 actor, decision.target, reference, (*members, ensemble))
             for index, score in enumerate(scores[:-1]):
                 member_scores[cohort.cohort_id][index].append(score)
             ensemble_scores[cohort.cohort_id].append(scores[-1])
+    if not any(ensemble_scores.values()):
+        raise BeliefV2ScoringError(
+            "V2 round has no informative ownership decisions")
     cohort_ids = tuple(cohort.cohort_id for cohort in cohorts)
     first = tuple(ensemble_scores[cohort_ids[0]])
     reference_brier = _mean_brier(first, reference=True)

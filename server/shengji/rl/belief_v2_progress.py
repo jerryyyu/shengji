@@ -34,8 +34,12 @@ class V2ProgressReporter:
         self._started = clock()
         if type(self._started) is not int or self._started < 0:
             raise BeliefV2ProgressError("V2 progress clock drift")
-        self._total: int | None = None
-        self._completed = -1
+        # One worker may expose more than one independently sized progress
+        # dimension.  Training, for example, alternates a 12-epoch curve with
+        # a much larger batch counter.  Bind monotonicity and population size
+        # per phase so switching dimensions cannot either refuse a healthy
+        # worker or hide a regression within one dimension.
+        self._phase_progress: dict[str, tuple[int, int]] = {}
 
     def update(self, completed: int, total: int, phase: str) -> None:
         """Write one monotonic JSON line; percentages are integer basis points."""
@@ -43,12 +47,13 @@ class V2ProgressReporter:
         if type(completed) is not int or type(total) is not int \
                 or total <= 0 or not 0 <= completed <= total \
                 or not _token(phase) \
-                or type(observed) is not int or observed < self._started \
-                or self._completed > completed \
-                or self._total not in {None, total}:
+                or type(observed) is not int or observed < self._started:
             raise BeliefV2ProgressError("V2 progress population drift")
-        self._total = total
-        self._completed = completed
+        previous = self._phase_progress.get(phase)
+        if previous is not None and (
+                previous[0] > completed or previous[1] != total):
+            raise BeliefV2ProgressError("V2 progress population drift")
+        self._phase_progress[phase] = (completed, total)
         elapsed = observed - self._started
         remaining = (None if completed == 0 else
                      elapsed * (total - completed) // completed)

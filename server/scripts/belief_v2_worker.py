@@ -462,7 +462,8 @@ def verify_terminal(args: argparse.Namespace) -> None:
     freeze, admission, _, inventory, group_split = _load_root(root)
     _output(reopen_v2_terminal(
         root / "terminal", freeze=freeze, admission=admission,
-        inventory=inventory, group_split=group_split))
+        inventory=inventory, group_split=group_split,
+        progress=_progress("terminal-verification", "reopen")))
 
 
 def parser() -> argparse.ArgumentParser:

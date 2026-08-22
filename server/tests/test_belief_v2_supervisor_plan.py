@@ -7,6 +7,8 @@ from dataclasses import replace
 
 import pytest
 
+import scripts.belief_v2_worker as WORKER
+
 from shengji.rl.belief_v2_human_inventory import (
     H0_GROUP_SCHEMA,
     H0_SPLIT_NAMESPACE,
@@ -77,6 +79,30 @@ def test_r4_plan_has_exact_cache_stage_and_non_cartesian_references(tmp_path):
     assert summary["outcome_fields_opened"] is False
     assert summary["retry_authorized"] is False
     assert summary["test_split_open_authorized"] is False
+
+
+def test_every_supervisor_task_parses_through_the_real_worker_cli(tmp_path):
+    sources, split = _inputs(tmp_path, counts=(21, 4, 5))
+    plan = build_supervisor_plan(
+        human_source_paths=sources, group_split=split)
+    parser = WORKER.parser()
+    root = tmp_path / "evidence"
+
+    parsed = []
+    for stage in plan.stages:
+        for task in stage.tasks:
+            args = parser.parse_args([
+                *task.arguments, "--root", str(root)])
+            assert callable(args.function)
+            parsed.append((stage.name, task.name, args.command))
+
+    assert len(parsed) == 85
+    assert {row[0] for row in parsed} == {
+        "synthetic-capture", "human-capture", "training-input-index",
+        "training-tensor-cache", "device-qualification", "references",
+        "training", "calibration", "single-test-opening",
+        "terminal-verification",
+    }
 
 
 def test_r4_plan_refuses_dropped_cache_and_old_cartesian_matrix(tmp_path):

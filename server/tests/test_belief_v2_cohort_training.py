@@ -422,16 +422,23 @@ def test_patience_epoch_crash_reopens_and_seals_without_more_training(
     def no_more_training_batches():
         raise AssertionError("a patience-complete journal must not train again")
 
+    progress = []
     resumed = STAGE.train_v2_cohort_from_batch_factories(
         value, schedule, device="cpu",
         training_batches=no_more_training_batches,
         calibration_batches=no_more_training_batches,
-        control_dose=0, resume_state=resume_state)
+        control_dose=0, resume_state=resume_state,
+        progress=lambda *row: progress.append(row))
     uninterrupted = train_v2_cohort_in_memory(
         value, examples, schedule, calibration, device="cpu")
     assert resumed == uninterrupted
     assert resumed.stopped_for_patience is True
     assert resumed.truncated_by_deadline is False
+    assert progress == [
+        (4, 6, "training-epochs"),
+        (8, 12, "training-batches"),
+        (1, 1, "training-worker-complete"),
+    ]
 
 
 def test_deadline_after_completed_epoch_seals_explicit_truncation(

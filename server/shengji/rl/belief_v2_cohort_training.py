@@ -485,8 +485,10 @@ def _train_v2_cohort_from_factories(
         if decision.stopped_for_patience:
             break
     if progress is not None and len(epoch_rows) < TRAIN_MAX_EPOCHS:
-        progress(total_batch_units, total_batch_units, "training-complete")
-        progress(TRAIN_MAX_EPOCHS, TRAIN_MAX_EPOCHS, "training-complete")
+        # Patience or the deadline completed the worker, not the unexecuted
+        # epoch/batch populations.  Keep those curves at their honest
+        # fractions and publish a separate one-unit completion phase.
+        progress(1, 1, "training-worker-complete")
     if decision is None or selected_states is None \
             or selected_receipts is None \
             or decision.stop_epoch != len(epoch_rows):

@@ -11,7 +11,7 @@ research conclusions that affect them. It is not a run log.
 - Full policy history through this compaction:
   `docs_archive/ai-policies-through-2026-08-15.md`
 
-## Current truth — 2026-08-16
+## Current truth — 2026-08-22
 
 - **Production champion:** `mc-s0-report-lcb` remains the only deployed policy
   with a fresh confirmed strength gain.
@@ -22,13 +22,18 @@ research conclusions that affect them. It is not a run log.
   arm was work-matched to treatment, not champion, and used 14.8% more accepted
   worlds and 80.9% more searches than champion. A confirmation must separate
   candidate widening from added compute with three arms.
-- **BELIEF-V1 remains the active milestone, but V1 produced no model result.**
-  Reviewed source `959c05d` and design `a8c5e05f…1fd53` completed capture and
-  REF-C; CPU training then exceeded its frozen eight-hour wall cap. Both
-  children were stopped through the reviewed supervisor path before test or
-  terminal. The admission is spent and partial models are unusable. V2 must
-  repair live deadlines and resource-failure routing before a fresh freeze;
-  no sampler, gameplay, strength, promotion or deployment authority exists.
+- **BELIEF R4 is the active offline scientific run.** Exact source `d2d466f`,
+  freeze `573fcade…fc16` and admission `21d9cea8…0961` are live once on
+  `shengji-cloud`. Synthetic and human capture plus input indexing sealed
+  cleanly; tensor-cache construction is in progress. The run asks only whether
+  an actor-visible ownership model beats
+  the debiased REF-C calibration baseline. It authorizes no sampler, gameplay,
+  strength, promotion or deployment change.
+- **The next model decision waits for the complete curves.** After the terminal
+  reopener, compare train/calibration loss, eight-seed stability, full- versus
+  half-population cohorts, human-mixture transfer and the negative control.
+  Architecture, optimizer and larger-data experiments use preserved
+  train/calibration artifacts; they do not reopen or tune on the sealed test.
 - **Performance is enabling evidence, not strength evidence.** The accepted
   native stack materially reduced rollout wall time, but runs use only exact
   reviewed bytes and percentages from different baselines are never added.
@@ -61,7 +66,7 @@ shared registry. A reviewed experiment arm is not a production policy.
 | **PAIR-ROLL** | Does exhausted-higher-pair memory improve continuations? | **No whole-game evidence.** Air timed out; checkpoint V1 failed closed. Both admissions are spent. |
 | **V11 / Direct-Q / O0** | Can learned ranking, return learning or privileged curricula replace current search? | **No promotable model.** Keep bounded proposal/diagnostic assets and the evaluation chassis; any successor must change target, credit, data or model use. |
 | **H0** | Are human moves useful proposals? | **No scored result.** The run exposed a candidate-geometry bug. The repair is score-free; human actions remain proposals, not truth labels. |
-| **BELIEF-V1** | Can actor-visible history predict hidden ownership well enough to improve same-work search? | **Question still open; V1 packet spent on resource failure.** Capture/reference succeeded, but over-cap CPU training was stopped before test. V2 must first pass repaired source and exact-freeze review; only an eventual offline calibration PASS could open B3 sampler implementation review. |
+| **BELIEF-V1** | Can actor-visible history predict hidden ownership well enough to improve same-work search? | **Question open; R4 is running offline.** V1 failed operationally before a learning result. R4 repairs deadlines/truncation, expands rank and human-domain coverage, and compares fixed multi-seed cohorts against REF-C. Only a reviewed offline calibration PASS may open B3 sampler implementation review. |
 
 `SELECT_NONE` closes the exact population, policy and promotion claim tested.
 It does not erase predeclared dose, phase/role effects, disagreement states or

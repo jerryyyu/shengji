@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-22 09:00 EDT.
+Last reconciled: 2026-08-22 16:50 EDT.
 
 ## Immediate objective
 
@@ -26,13 +26,20 @@ a sampler, gameplay/strength claim, promotion or deployment.
 | evidence | `/opt/belief-r4-evidence-d2d466f-r1` |
 | ops | `/opt/belief-r4-ops-d2d466f-r1` |
 
-The exact packet-bound supervisor plan is live. At reconciliation it was in
-stage 1/10, `synthetic-capture`, with all 16 lanes running, 3–5 of 832 rounds
-complete per lane, and 0.09% task-weighted total progress. All workers report
-outcome-blind progress only. The service is active, `NRestarts=0`, and all 16
-workers are consuming approximately one CPU each.
+The exact packet-bound supervisor plan is live. Synthetic capture sealed all
+16 lanes at 832/832 rounds and all 30 human-capture tasks sealed. Capture used
+53.4/65 core-hours, 13.55/16 GiB and 3.36/5.00 wall-hours, with zero retries or
+drops. The run has crossed both stage boundaries that previously exposed the
+canonical-tip defect and remains healthy.
 
-Frozen bounds remain: capture 64 core-hours / 18,000 seconds; reference 40
+The input index sealed all 12,003 units in 3 h 10 m. At reconciliation the run
+was in stage 4/10, `training-tensor-cache`, at 774/12,649 batches (6.11%) and
+55.36% task-weighted total progress. This is a single-task stage, so low
+host-wide CPU utilization is expected rather than a worker failure. All
+progress is outcome-blind. The service is active, `NRestarts=0`, with no
+recorded failure task.
+
+Frozen bounds remain: capture 65 core-hours / 18,000 seconds; reference 40
 core-hours / 14,400 seconds; training 256 device-hours / 172,800 seconds.
 The training next-epoch estimate is 5.346 hours. Graceful truncation may seal a
 valid best-common-epoch curve at the deadline; it must not be described as
@@ -70,5 +77,9 @@ population.
 1. Codex monitors the live ten-stage DAG and reports meaningful transitions.
 2. On sealed completion/refusal, Codex runs only the reviewed terminal reopener.
 3. Claude performs one consolidated terminal/reproducibility review.
-4. Only then do we interpret the BELIEF result and separately decide whether
-   to merge PR #122 followed by PR #123.
+4. Only then do we interpret the BELIEF result, inspect the full training and
+   calibration curves, and separately decide whether to merge PR #122 followed
+   by PR #123.
+5. A BELIEF pass may open a sampler-mechanics design; a null or truncation
+   instead informs the next data/model experiment. No gameplay experiment is
+   selected before that diagnosis.

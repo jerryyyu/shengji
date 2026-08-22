@@ -134,6 +134,13 @@ Do not manufacture a chain of reviews for facts already bound by the same
 immutable design. Do not collapse source review, execution admission, and
 terminal evidence review when they protect genuinely different boundaries.
 
+For multi-day learning runs, the complete train/calibration curves, member
+dispersion, data-scale comparison, negative control and stage timing are named
+outputs rather than disposable diagnostics. Inspect them before choosing a
+larger model, optimizer, more data or longer cap. Development experiments may
+reuse an explicitly frozen train/calibration corpus; the held-out test remains
+a one-time selector, not a hyperparameter loop.
+
 ## 10. Close recipes; preserve families
 
 A negative result closes its exact population, model, target, sampler,

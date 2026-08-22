@@ -669,7 +669,25 @@ def test_genuine_admission_traverses_every_unpatched_stage_gate(
     assert len(stage_gates) == 10
     assert all(gate is V2_CONTROLLER._stage_gate
                for _, gate in stage_gates)
-    for _, gate in stage_gates:
+    stage_gates[0][1](
+        root=root, repo=repo, freeze=freeze, admission=admission,
+        review_marker=marker)
+
+    # Reproduce the seventh R4 failure class between stage transitions: an
+    # unrelated append-only commit advances canonical main after admission.
+    # Later gates must authenticate the recorded historical tip, not compare
+    # the frozen checkout with the moving remote head.
+    writer = (tmp_path / "canonical-writer").resolve()
+    subprocess.run(("git", "clone", "-q", str(remote), str(writer)),
+                   check=True)
+    (writer / "later.txt").write_text("main advanced\n", encoding="utf-8")
+    _git(writer, "add", "later.txt")
+    _git(writer, "-c", "user.name=Later", "-c",
+         "user.email=later@example.com", "commit", "-qm", "later")
+    _git(writer, "push", "-q", "origin", "main")
+    assert _git(writer, "rev-parse", "HEAD") \
+        != admission.canonical_remote_tip
+    for _, gate in stage_gates[1:]:
         gate(root=root, repo=repo, freeze=freeze, admission=admission,
              review_marker=marker)
 

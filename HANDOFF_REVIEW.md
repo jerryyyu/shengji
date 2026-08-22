@@ -3027,3 +3027,27 @@ Worth noting for what the coverage claim actually means: `assert all(gate is V2_
 **One finding — `HANDOFF_ACTIVE.md` states a parent that is not the parent.** The queue says "against sole parent `656e6d0018a007f32f6b7a5f7bc113ca32dae6ce`". Measured: `d2d466f`'s sole parent is **`55f50432c1dabe563cbd5dd0c1983815d65656a6`**, with two commits between — `55f5043` ("Close R4 freeze admission preflight gaps", +149/−2) and `d2d466f` ("Exercise stage gates after canonical main advances", +19/−1). `656e6d0` **is** an ancestor and the cumulative delta is exactly the claimed 3 files/+167/−2, so nothing is substantively undisclosed and both intervening commits touch only those three files. But "sole parent" is false as written, and the intervening commit is not named anywhere in the queue. The marker at `3006` gets this right (`exact_sole_parent: 55f5043`, `reviewed_delta_base: 656e6d0`); the handoff does not. **Please fix the handoff wording before review 2**, so the freeze review does not inherit a parent claim that byte-verification will contradict.
 
 **Environment note for the next reviewer.** The gate witness sets `SHENGJI_FAST=1` and requires the compiled native; without `uv run --frozen python setup.py build_ext --inplace` it fails with `V2 active native extension is unavailable` at `belief_v2_execution_identity.py:259`, which looks like a defect and is not one. Likewise the `235/1` count only reproduces in compiled mode — plain mode gives `234/2`, the extra skip being `test_belief_v2_capture.py:68` ("pinned to compiled mode"). The other skip is the opt-in 104-round rehearsal, correctly not run. — Claude (session `68f9c8bd`)
+
+## 2026-08-22 03:49 EDT — Concurring independent review of PR #123 at exact `d2d466f`, plus one finding the corroboration does not carry: **the gate witness is intermittently red**
+
+**No second marker.** I reviewed exact `d2d466f161eb8e55daf26677bfed361ad4110d7c` independently and reach the same verdict as `c12e405`: **PASS**. One `BELIEF_V1_V2_R4_SOURCE_DESIGN_REVIEW` marker already names this head, so appending another would duplicate a satisfied requirement. This entry exists for the one thing my run measured that the corroboration did not.
+
+**Finding: `test_genuine_admission_traverses_every_unpatched_stage_gate` fails nondeterministically in the full suite.** Three consecutive compiled `tests/test_belief_v2_*.py` runs on this host, same worktree, same built native, nothing changed between them:
+
+| run | result |
+|---|---|
+| 1 | **1 failed**, 233 passed, 2 skipped |
+| 2 | 234 passed, 2 skipped |
+| 3 | 234 passed, 2 skipped |
+
+The failure is the gate witness itself, raising `BeliefV2ExecutionIdentityError: V2 active native extension is unavailable` at `belief_v2_execution_identity.py:259` — it never reaches its assertions. Standalone and whole-file runs pass every time (`1 passed`, and `7 passed, 1 skipped`).
+
+**This is not a contradiction of `c12e405`'s exact `235 passed / 1 skipped`; the two results together are the evidence.** A clean reproduction on one host and an unexplained red on another, for the same head, is what nondeterminism looks like. It should not be resolved by preferring the green run.
+
+**Why it is worth fixing before the production freeze rather than after.** This single test is what stands between the ten stage gates and the no-op regression that already blocked this PR once at `0e11478`. A gate witness that goes red for reasons unrelated to the gate is the standard path by which such a test gets marked flaky, x-failed or quietly skipped — and the coverage disappears exactly where it was hardest won. The likely mechanism is import-state leakage: the witness requires `shengji.engine.fast._fast` to be a loaded native at call time, and something earlier in a full-suite run can leave that module cached without it.
+
+**Suggested repair, not a blocker:** have the witness assert the native is loaded as an explicit precondition with its own message, or force a fresh import of the fast module, so that a genuine gate failure and an environment artefact are never reported as the same red.
+
+**Independently confirmed while reaching the verdict** (recorded briefly, since `c12e405` already covers the parent-mismatch finding and the compiled-native note): disabling the ancestry check makes the witness fail with `DID NOT RAISE BeliefV2ControllerError`, so it is mutation-proven and not masked; the registry rebuild reproduces `eb86b594c85489f3614ea7b95ff7c30660f8b04adce5a027c27ab4cd238840ec` byte-exact at 5,553/5,553 candidates, 31 populations, 0 collisions; and both seed identities are load-bearing — though my first removal probe was itself masked, refusing on `seed scan checkout is not exact and clean` because the edit dirtied the worktree, and only showed `unclassified explicit seed candidate` once each mutation was committed to a clean detached checkout.
+
+**Environment delta, not a defect:** this darwin/ARM host skips `tests/test_belief_v2_capture.py:68` ("exact V2 champion replay witness is pinned to compiled mode"), giving 234/2 where the production host gives 235/1. — Claude (job `68f9c8bd`)

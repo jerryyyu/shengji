@@ -4,85 +4,101 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-21 12:45 EDT.
+Last reconciled: 2026-08-22 01:33 EDT.
 
 ## Immediate objective
 
-Carry the reviewed BELIEF-V1 V2/R4 offline run through its terminal result and
-determine whether the learned belief model produces a measurable held-out
-calibration improvement over REF-C. Do not convert offline evidence into a
-sampler, gameplay, strength, promotion or deployment claim.
+Carry BELIEF V2/R4 to one independently reviewed scientific terminal result:
+does the learned ownership model measurably improve held-out calibration over
+REF-C? Offline evidence cannot authorize a sampler, gameplay/strength claim,
+promotion or deployment.
 
-## Review queue — empty
-
-Claude's exact-freeze PASS is complete at canonical ledger commit
-`0bcb2f821a909bf375caf88ae52a33582b176ebd`. No further source, freeze or
-execution review is requested while R4 is running. The next Claude ask begins
-only after the supervisor terminalizes or fails and Codex publishes one exact
-terminal/reproducibility packet.
-
-Do not re-review PR #122, regenerate the freeze, append another execution
-marker, initialize another namespace, or retry this admission.
-
-## Live BELIEF R4 execution
+## Live state — exact-head rehearsal, not a scientific run
 
 | field | current binding |
 |---|---|
+| PR | draft PR #123, `codex/belief-r4-progress-fix` |
+| source | `656e6d0018a007f32f6b7a5f7bc113ca32dae6ce` |
+| parent | `b78f802b81f86b7c88d529ad62f180eeef558665` |
+| exact delta | 20 files, `+2323/-104`; CI green; worktree clean |
 | host | `shengji-cloud` (`ubuntu-32gb-hel1-1`, 16 logical CPUs) |
-| service | `belief-v2-r4-b78f802-r3.service` |
-| source | PR #122 exact head `b78f802b81f86b7c88d529ad62f180eeef558665` |
-| source PASS | `db8812304e1095da6887daf5d603f9b80fb7e3e8` |
-| freeze | `/opt/belief-r4-freeze-b78f802-r3.json`, SHA-256 `9986d591af844f6e40516c97968fa37a1f08962f57b78992b05ce0775748deb7` |
-| execution PASS | `0bcb2f821a909bf375caf88ae52a33582b176ebd`; exact marker SHA-256 `66c72b7084feca2e0f384f0fbb9aca375e12aab9285c409eddc57220eb9f90df` |
-| admission | `efdb42a60b1ac579bde8e5a3794af941a0cb3c24208c703cbfde5749eb4231c6` |
-| evidence root | `/opt/belief-r4-evidence-b78f802-r3` |
-| operations root | `/opt/belief-r4-ops-b78f802-r3` |
-| progress source | `/opt/belief-r4-ops-b78f802-r3/status.json` |
+| service | `belief-r4-rehearsal-656e6d0.service` |
+| evidence | `/opt/belief-r4-rehearsal-656e6d0/evidence` |
+| receipt | `/opt/belief-r4-rehearsal-656e6d0/receipt.json` (pending) |
+| hard cutoff | 2026-08-22 04:34:45 EDT |
 
-The service launched at 12:44 EDT. Initial health verification found all 16
-synthetic-capture workers alive, each near one full CPU core, no import/runtime
-errors, and the task-weighted counter advancing from 0 to 0.02%. The immutable
-plan contains 85 tasks across ten ordered stages. Read `status.json` for the
-current percentage; this launch snapshot is not a substitute for the live
-counter.
+This is the one authorized non-scientific 104-round full-DAG rehearsal. It is
+clean, exact-head, zero-resume, and cannot support a BELIEF/REF-C or strength
+claim. Capture, 30 human fixtures, input index, five tensor caches, CPU device
+qualification, all 25 reference tasks, and all four eight-member training
+cohorts completed. Calibration selected `synthetic-primary` before any test
+opening and is now independently reopening the persisted training/calibration
+bytes. Terminal and receipt are not yet published. The service is healthy with
+ample memory and deadline margin. Do not stop, restart or modify it.
 
-The first initialization command refused before creating any namespace because
-the detached checkout's `origin/main` ref was stale. Codex refreshed only that
-remote-tracking ref, confirmed the evidence root/tombstone were still absent,
-then initialized successfully. This was not a consumed execution or retry.
+Non-scientific training diagnostics only: calibration loss fell about 16.2%
+for synthetic-primary and human-mixture, 17.3% for scale-50, and 10.5% for the
+permuted-label control. Human-mixture exercised patience-3 early stopping;
+the others reached the rehearsal's 30-epoch cap. These are pipeline signals,
+not held-out evidence against REF-C.
 
-## Safe monitoring and authority
+## Review queue — one consolidated source review, then one freeze review
 
-- Safe to inspect: systemd state, process identity and resource use,
-  `status.json`, and worker stderr for failures/progress records.
-- Do not manually open calibration/test outcomes, model-selection results or
-  terminal scientific bytes while the supervisor owns the pipeline.
-- The supervisor is sequential and fail-fast. A nonzero worker exit stops the
-  DAG; retry is false.
-- The one true grant is bounded capture, reference, training, calibration and
-  one terminal test opening. Sampler implementation, gameplay screen, strength
-  claim, promotion, deployment and retry remain false.
-- The training wall cap is 48 hours. The frozen next-epoch estimate is about
-  5.51 hours; graceful deadline truncation seals the best common completed
-  epoch instead of discarding a healthy curve.
-- R1 is spent and immutable. R2 was blocked and never initialized. Neither may
-  be reused as an R4 input.
-- Do not stop, reboot or power off `shengji-cloud` while the service is active.
+### 1. PR #123 source/design + eligible-rehearsal review — active
 
-## Next gate
+Claude may begin the code audit now, but must not issue PASS until the service
+finishes and Codex appends the receipt path, SHA-256 and independent reopen
+facts here. Review exact head `656e6d0018a007f32f6b7a5f7bc113ca32dae6ce`
+against sole parent `b78f802b81f86b7c88d529ad62f180eeef558665`.
 
-1. Codex monitors the live outcome-blind counter and reports stage/percentage.
-2. The supervisor either completes all 85 tasks or publishes one fail-closed
-   terminal failure; no operator retry is permitted.
-3. Codex verifies and packages the exact terminal artifacts without making a
-   strength claim.
-4. Claude performs one consolidated terminal/reproducibility review.
-5. Only that reviewed terminal result answers whether BELIEF learned a
-   measurable held-out advantage and whether a separately reviewed sampler
-   implementation should be designed.
+Audit the whole 20-file delta in one pass, especially:
 
-## Standing invariant
+- live canonical-main authorization by ancestry rather than mutable-tip
+  equality, including can-fail history-rewrite witnesses;
+- truthful phase-scoped progress and patience-3 early stopping;
+- exact projection fallback for zero-support/unknown-card cases;
+- fixed-order checkpoint/epoch reopen and exact source-population replay in
+  calibration and terminal scoring;
+- the prior self-consistent substituted-population failure class;
+- the full-DAG rehearsal's exact source/runtime/device identity, all ten stage
+  transitions, zero resume/retry/drop, closed artifact population and all-false
+  authority map.
 
-Integrity protects the scientific question; it is not the result. A clean run
-must still be allowed to report no learning. A positive offline result permits
-only the next design/review rung, never direct gameplay or production use.
+Return one PASS or HOLD containing every blocker found in this pass. On PASS,
+append one canonical `HANDOFF_REVIEW.md` source/design marker. It may authorize
+only fresh score-free H0/seed/capacity/device/deadline receipts and one new
+immutable production freeze at this exact source. It does not authorize
+initialization, scientific execution, test opening, merge or deployment.
+
+### 2. Exact production-freeze review — queued, not yet actionable
+
+After review 1 PASS, Codex will regenerate every source-bound score-free input
+on the 16-CPU cloud host and build one fresh freeze. Claude then performs one
+short exact-freeze review binding the final head, source-review commit, H0
+inventory/split, seed scan/registry, capacity/device/deadline receipts,
+resource caps, runtime/native/boot identities, evidence namespace, supervisor
+plan and all-false downstream authority. No subsystem review is requested
+between reviews 1 and 2.
+
+If review 2 passes, the user has directed Codex to launch the full scientific
+run overnight. No further routine approval round is requested.
+
+## Retired state that must not be revived
+
+- The prior `b78f802` R4 admission is spent and failed before scientific
+  evidence because a mutable-main equality guard killed it. Its partial capture
+  remains historical evidence only and is not reusable.
+- The current rehearsal is disposable and cannot be promoted into scientific
+  evidence or reused as a production input.
+- Do not merge PR #123, open an old sealed outcome, reuse an old freeze,
+  initialize early, or add review layers not named above.
+
+## Next operator sequence
+
+1. Let the rehearsal finish; Codex independently validates the receipt and
+   updates this file with exact receipt evidence.
+2. Claude finishes review 1 and writes one source/design PASS or HOLD.
+3. On PASS, Codex runs fresh score-free inputs and seals one production freeze.
+4. Claude performs review 2 only.
+5. On PASS, Codex launches and monitors the scientific run with exact percent
+   progress, then requests one terminal/reproducibility review.

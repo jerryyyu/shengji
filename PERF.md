@@ -46,22 +46,50 @@ The live R4 packet is immutable, so no optimization is substituted into it.
 Its completed synthetic capture measured 53.4 core-hours, 3.36 parallel
 wall-hours and 13.55 GiB for 13,312 rounds, inside every frozen cap. The input
 index then took 3 h 10 m for 12,003 units. Early production cache telemetry
-projects roughly 10.2 h and 34 GiB against a 64 GiB cap; both projections must
-be re-read at seal. The index/cache/qualification steps are single-task stages,
-so low 16-core host utilization is expected and should be diagnosed from their
-sealed wall receipts rather than treated as a failed worker.
+projects roughly 10–10.5 h and 34 GiB against a 64 GiB cap; both projections
+must be re-read at seal. A point-in-time live sample found the cache worker at
+99.9% of one CPU, about 1.7 GiB RSS and only 0.4% disk utilization on a 16-CPU
+host. The cache is therefore presently CPU/Python-bound and serial, not limited
+by storage bandwidth.
+
+### BELIEF performance principle: work-conserving by default
+
+An authorized stage should use all safely available cores whenever its units
+are independent and memory, I/O and determinism permit it. A stage that remains
+serial must name the dependency or integrity reason, report expected host
+utilization, and expose unit progress plus ETA. This means parallelizing the
+work *inside* the sealed DAG; it does not mean launching unrelated background
+jobs beside a scientific run and contaminating its wall/resource receipts.
 
 After terminalization, optimize the measured critical path in this order:
 
-1. preserve the already banked deterministic tensor-cache gain and verify its
-   production-scale ratio from R4 receipts;
-2. parallelize independent indexing/cache shards with canonical reduction if
-   indexing is still material;
-3. parallelize cohort members or model recipes across suitable devices for
-   development runs, while preserving deterministic per-member receipts; and
-4. use native/Cython code only for a profiled Python kernel whose parity and
-   artifact identity can be proven. Cython does not accelerate PyTorch GRU
-   kernels and is not the default answer to low host-wide CPU utilization.
+| surface | observed R4 basis | proposed next step | admission target |
+|---|---|---|---|
+| input index | 3 h 10 m, one task | range-partition source groups across a bounded worker pool; parent performs canonical reduction | exact index bytes and accounting; at least 3x wall reduction or do not retain |
+| tensor-cache construction | roughly 10–10.5 h projected; one CPU saturated and disk mostly idle | partition canonical batch indices across 4–8 processes; parent owns duplicate, cap, deadline and ordered-manifest checks | identical reconstructed tensors/loss/checkpoint path; at least 3x wall reduction on production-scale score-free input |
+| event encoding | dense tensor is built, scanned and then sparsified | collate directly into the lossless sparse event representation | decode parity for every tensor field and no actor/target boundary change |
+| cache publication | about 25,000 separately fsynced actor/label files | only if profiling says publication remains material, pack 64--256 batches into immutable random-access shards | flipped-byte, missing/extra/overlap/order and resume witnesses; no weaker byte binding |
+| cached epoch I/O | every invocation reopens and verifies the cache population | benchmark prefetch plus verify-once as one A/B/combined bundle; parallelize full-cache verification | retain only the combined measured delta; never add overlapping percentages |
+| CPU training | four cohorts share one 16-CPU host under a 48 h cap | compare a 32-CPU host/member-width 8 anchor and member-stacked ensemble operations | deterministic per-member/state receipts; CPU anchor about 2x is the bar an accelerator must beat |
+| accelerator training | no production-shape GPU number exists | first run one 2--4 h same-host CPU/GPU qualification probe with four-cohort contention and a nondeterministic counterprobe | measured thresholds remain 4.7x to qualify, 16x production break-even and 32x for a 2x epoch cut |
+| pipeline barriers | references cannot currently hide behind the roughly 6.6 h single-task window | source-derived dependency DAG and zero-compute makespan replay before any overlap implementation | projected end-to-end saving at least 5%; every dependency edge gets a can-fail witness |
+| repeated model experiments | capture/index/cache are rebuilt with each one-shot recipe | prospectively version a sealed reusable train/calibration corpus and tensor cache | new recipes remain separately admitted; no post-hoc reuse of R4 authority |
+
+Native/Cython work comes only after profiling identifies a remaining Python
+kernel. Cython does not accelerate PyTorch GRU kernels and is not the default
+answer to low host-wide utilization. The likely first native candidate would
+be a proven hot event-collation/encoding loop after process parallelism, not the
+whole pipeline.
+
+### Post-R4 execution packet
+
+R4's sealed receipts and epoch journal are the measurement source. Freeze the
+benchmark matrix before inspecting candidate timings, then run current versus
+parallel index, current versus parallel cache, direct-sparse, and the combined
+cached-epoch I/O bundle. Use one implementation tranche and one consolidated
+source review for the changes that clear their kill thresholds. Re-derive all
+stage caps from the retained implementation and a representative full-load
+preflight; do not move a cap merely to fit an observed run.
 
 These are future-run design inputs, not authority to touch the live service or
 to double-count the earlier Mini cache benchmark.

@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 10:00 EDT.
+Last reconciled: 2026-08-23 10:45 EDT.
 
 ## Immediate objective
 
@@ -113,6 +113,7 @@ The fresh exact-head receipts and immutable successor freeze are now complete:
 | field | successor binding |
 |---|---|
 | source | draft PR #128, exact head `8d9390e12535bbf0d235b76e81484f54f912cc86` |
+| test-only review witness | PR #128 tip `9a057dfa07d84dda1672d4895bb0db553182a6ad`; parent is exact source head `8d9390e`, one test file +70 lines, zero non-test diff |
 | checkout / venv | `/opt/belief-r5-8d9390e` / `/opt/belief-r5-8d9390e-venv` |
 | freeze | `/opt/belief-r5-freeze-8d9390e-r2.json`, SHA `dc7e3a96ad4624144a2d35fa4c6fcb0e4ff5e539efa45a7b87023ca0a7030a95` |
 | packet | `/opt/belief-r5-8d9390e-freeze-inputs-r2/freeze-review-packet.json`, SHA `f57056fd4da1dbf81603642b7608b1f9600303357d4013ccbd1d2bff7db6537a` |
@@ -134,14 +135,31 @@ refusal receipt SHA `58712f72714de6645f94a7ca78cf1dac461c1e74bec83f147a565b615ee
 remain preserved. R5 shares R4's preregistered population and is not an
 independent scientific replication.
 
-## Review queue — one consolidated R5 source + freeze review now
+## Review queue — close the one HOLD, then finish the same review
 
-Review PR #128 exact head `8d9390e12535bbf0d235b76e81484f54f912cc86`
-and the exact fresh freeze packet above **once**. Do not split this into source,
-memory, reuse and freeze reviews. The reviewed predecessor is `dd8fe314`; the
-repair delta is exactly 6 files, +250/-3, while the full R4-to-R5 delta is 19
-files, +2207/-221. CI is green, `git diff --check` passes and the exact strict
-compiled suite is 248 passed / 4 skipped.
+Ledger commit `dcc7d5ac95fc4ec5f6b00f7032c362b305256803` HOLDed the
+otherwise-reproduced source/freeze because the worker-topology **helper** had a
+witness but the controller wiring did not. That sole blocker is repaired at PR
+#128 test-only tip `9a057dfa07d84dda1672d4895bb0db553182a6ad`:
+
+- parent is exact frozen execution source `8d9390e12535bbf0d235b76e81484f54f912cc86`;
+- delta is exactly `server/tests/test_belief_v2_controller.py`, +70/−0;
+  every non-test byte remains identical to the frozen source;
+- `test_training_input_index_controller_uses_cap_bounded_input_workers`
+  drives `run_training_input_index` with a 16 GiB frozen cap and observes the
+  actual worker count passed through its scanner wiring: exactly six;
+- replaying Claude's exact mutation back to `parallel_cache_worker_count`
+  makes that test fail non-vacuously with observed `[16] != [6]`;
+- focused baseline is 3/3 and exact compiled `tests/test_belief_v2_*.py` is
+  249 passed / 4 skipped in 168.10 seconds; `git diff --check` passes.
+
+Treat this as a **test-only evidentiary extension** to the same consolidated
+review, not a new scientific source or a second freeze. Execution remains
+exact `8d9390e`; freeze `dc7e3a96…`, packet `f57056fd…`, claim `6ef3f4d8…`,
+marker `ba889610…`, receipts and absent namespaces are unchanged. Authenticate
+the one-file extension, confirm it kills the named mutation, then complete
+boundaries 2–4 that the HOLD explicitly said were not reached. Do not request
+new capacity/deadline measurements for a zero-production-byte delta.
 
 Reproduce and audit these load-bearing boundaries:
 
@@ -158,7 +176,8 @@ Reproduce and audit these load-bearing boundaries:
    truncation, independent source replay at terminal, one test opening and all
    false sampler/gameplay/strength/promotion/deployment/merge authority.
 
-If and only if all of that passes, append exactly one
+If and only if the repaired witness and the remaining unchanged boundaries
+pass, append exactly one
 `BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW ` marker plus the exact canonical
 bytes in `expected-review-claim.json` to `HANDOFF_REVIEW.md` in one
 Claude-authored append-only canonical-main commit. That one marker may authorize

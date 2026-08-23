@@ -54,8 +54,19 @@ async function ensureRunning(): Promise<AudioContext> {
 // silence, no console errors. So: listen on several gesture types and keep
 // listening until the context actually reaches "running".
 const UNLOCK_EVENTS = ["pointerdown", "touchend", "click", "keydown"] as const;
+let unlockArmed = false;
 
-function detachUnlock(): void {
+function armUnlock(): void {
+  if (unlockArmed) return;
+  unlockArmed = true;
+  for (const name of UNLOCK_EVENTS) {
+    window.addEventListener(name, unlockHandler, { passive: true });
+  }
+}
+
+function disarmUnlock(): void {
+  if (!unlockArmed) return;
+  unlockArmed = false;
   for (const name of UNLOCK_EVENTS) {
     window.removeEventListener(name, unlockHandler);
   }
@@ -63,13 +74,22 @@ function detachUnlock(): void {
 
 function unlockHandler(): void {
   void ensureRunning().then((c) => {
-    if (c.state === "running") detachUnlock();
+    if (c.state === "running") disarmUnlock();
   });
 }
 
-for (const name of UNLOCK_EVENTS) {
-  window.addEventListener(name, unlockHandler, { passive: true });
-}
+armUnlock();
+
+// Returning from the background can leave the context suspended. Without
+// re-arming there would be no listener left to unlock it again, so audio would
+// die permanently the first time the player switched apps.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (ctx !== null && ctx.state !== "running") {
+    void ctx.resume().catch(() => {});
+    armUnlock();
+  }
+});
 
 /** True when clips cannot play because the context has not been unlocked. */
 export function isAudioBlocked(): boolean {

@@ -55,6 +55,27 @@ const fakeWindow = {
   AudioContext: FakeAudioContext,
 };
 
+/** Minimal document stub: audio.ts re-arms unlock on visibilitychange. */
+const docListeners = new Map<string, Set<Listener>>();
+const fakeDocument = {
+  visibilityState: "visible" as "visible" | "hidden",
+  addEventListener(name: string, fn: Listener) {
+    let set = docListeners.get(name);
+    if (!set) {
+      set = new Set();
+      docListeners.set(name, set);
+    }
+    set.add(fn);
+  },
+  removeEventListener(name: string, fn: Listener) {
+    docListeners.get(name)?.delete(fn);
+  },
+};
+
+function dispatchDoc(name: string): void {
+  for (const fn of docListeners.get(name) ?? []) fn();
+}
+
 const store = new Map<string, string>();
 const fakeLocalStorage = {
   getItem: (k: string) => store.get(k) ?? null,
@@ -65,12 +86,15 @@ const fakeLocalStorage = {
 // its unlock listeners at module scope.
 Object.assign(globalThis, {
   window: fakeWindow,
+  document: fakeDocument,
   localStorage: fakeLocalStorage,
   AudioContext: FakeAudioContext,
 });
 
 async function freshModule() {
   listeners.clear();
+  docListeners.clear();
+  fakeDocument.visibilityState = "visible";
   store.clear();
   FakeAudioContext.last = null;
   FakeAudioContext.allowResume = false;
@@ -111,6 +135,30 @@ describe("audio unlock", () => {
     // `{ once: true }` listener had already removed itself by now.
     FakeAudioContext.allowResume = true;
     dispatch("click");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(FakeAudioContext.last?.state).toBe("running");
+  });
+
+  it("re-arms unlock after returning from the background", async () => {
+    await freshModule();
+
+    FakeAudioContext.allowResume = true;
+    dispatch("click");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(FakeAudioContext.last?.state).toBe("running");
+
+    // Backgrounding suspends the context. Unlock listeners were detached when
+    // it started running, so without re-arming audio would never come back.
+    FakeAudioContext.last!.state = "suspended";
+    FakeAudioContext.allowResume = false;
+    dispatchDoc("visibilitychange");
+    await Promise.resolve();
+
+    FakeAudioContext.allowResume = true;
+    dispatch("touchend");
     await Promise.resolve();
     await Promise.resolve();
 

@@ -3254,3 +3254,25 @@ No verdict, no authority change. R5-r1 and R5-r2 have failed at consecutive stag
 **The generalizable rule, for the next stage that gets parallelized:** the capacity preflight must be written in the same change that introduces the parallelism, not after the run that discovers it. Both instances here cost a full multi-hour run to learn a number a preflight could have measured in minutes.
 
 PR #131 (`+808/−32`, 7 files, stacked on `codex/belief-parallel-cache`) is substantive code with no mailbox packet; noted for Jerry, not reviewed here. — Claude
+## 2026-08-23 17:35 EDT — Cache-refusal mechanics, building on `966dbc4`: the cache worker count never receives the frozen cap, and adding it alone would not have prevented this
+
+**Additive to `966dbc4`, not a restatement.** That entry has the right class framing — caps derived against the serial implementation, exposure bounded to two worker-count-scaled stages — and I agree with it. What follows is the mechanical detail it does not carry, aimed at PR #131 while it is still open. No verdict, no marker, no authority change.
+
+**The two functions are asymmetric in their signatures, and that is the defect.**
+
+- `belief_v2_parallel_inputs.py:65` (repaired at `8d9390e`): `available = min(memory_bytes, host_memory_cap_bytes)`, then `(available - PARENT_RESERVE) // WORKER_BUDGET`. Bounded by physical RAM **and** the frozen stage cap.
+- `belief_v2_parallel_cache.py:64-67`: `(memory_bytes - PARALLEL_CACHE_PARENT_RESERVE_BYTES) // PARALLEL_CACHE_WORKER_BUDGET_BYTES`, then `min(MAX_PARALLEL_CACHE_WORKERS, cpu_count, memory_workers)`. **`host_memory_cap_bytes` is not a parameter of this function at all.**
+
+The input repair added the frozen-cap bound to one path and left the other with a signature that cannot express it. On this 30.59 GiB host: `(30.59 − 4) // 1 = 26` → `min(16, 16, 26)` = **16 workers**, with the 24 GiB cap never consulted.
+
+**Adding the cap alone would not have prevented the refusal — this is the part worth acting on.** `PARALLEL_CACHE_WORKER_BUDGET_BYTES` is **1 GiB**, but the refusal measured **30,452,371,456 B / 16 = 1.77 GiB per worker**. So:
+
+| fix | workers | projected peak | vs 24 GiB cap |
+|---|---|---|---|
+| as shipped (host RAM only, 1 GiB budget) | 16 | 28.4 GiB | **refuses** |
+| add the frozen cap, keep 1 GiB budget | `(24−4)//1 = 20` → still 16 | 28.4 GiB | **still refuses** |
+| measured ~2 GiB budget **and** the cap | `(24−4)//2 = 10` | ~17.7 GiB | fits |
+
+Both changes are required. For contrast the input path already satisfies this: its budget is 2 GiB and its receipt measured 14.83 GiB / 8 = **1.85 GiB per worker** — derived from measurement, and adequate.
+
+**Concrete ask for #131:** make `host_memory_cap_bytes` a **required positional argument** of every `*_worker_count` function, so a topology cannot be sized without the frozen cap in scope, and set the cache budget from the preflight measurement rather than an assumed constant. The signature change is what makes the class un-repeatable; the budget value only fixes this instance. — Claude (job `68f9c8bd`)

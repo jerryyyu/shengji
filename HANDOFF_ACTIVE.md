@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 08:21 EDT.
+Last reconciled: 2026-08-23 08:46 EDT.
 
 ## Immediate objective
 
@@ -82,22 +82,34 @@ false. Synthetic capture sealed all 16 lanes only after their independent
 post-publish typed reconstructions passed. The manifests reconcile to 13,312
 rounds, 54.21/65 core-hours, 13.55/16 GiB, a 3.46/5.00-hour parallel wall span,
 zero retries/drops, one exact freeze/admission and all prohibited authorities
-false. All 30 human-capture tasks then sealed. At reconciliation R5 had advanced
-to stage 3/10, the optimized `training-input-index`, at 128/12,003 units (1.06%)
-and 54.13% task-weighted progress. The service remains `NRestarts=0`, with no
-failure or test opening.
-Input indexing and cache construction were measured at 4.824x and 8.578x over
-their serial paths with exact parity; the live run will provide the operational
-confirmation. R5 shares R4's preregistered population and is not an independent
-scientific replication.
+false. All 30 human-capture tasks then sealed. The optimized input-index build
+completed all 12,003 units in 851.03 seconds, about 13.4x faster than R4's 3 h
+10 m serial stage, and wrote a 311,250,588-byte candidate index. Before any
+manifest/seal or downstream stage, the source measured the 16-worker process
+tree above the frozen 24 GiB host-memory cap and refused with exact error
+`V2 training input index resource cap drift`. The service failed once at
+2026-08-23 08:42:45 EDT with `NRestarts=0`; the index remains only in
+`result.partial`, no test byte was opened, and retry is false. Preserve the
+entire root, ops logs and tombstone. Do not restart this admission or describe
+the 100% progress row as a sealed index.
 
-## Review queue — empty while both DAGs are live
+This is a source/freeze design defect in R5's new concurrency, not a transient
+host failure: wall time and artifact bytes were far inside their caps, while
+systemd measured a 26.7 GiB service peak against the 24 GiB bound. Codex is
+preparing one narrow successor with memory-bounded input-index concurrency,
+a can-fail cap witness and an explicit audited route for reusing only the
+already sealed capture/human artifacts. R5 shares R4's preregistered population
+and is not an independent scientific replication.
 
-No source, freeze, rehearsal, merge or result review is actionable now. Do not
-append another execution marker, initialize another root, retry either run,
-alter either service or open evidence for outcome analysis.
+## Review queue — no review yet; R5 repair is being prepared
 
-After either scientific run seals, one terminal/reproducibility review becomes
+Do not review or authorize anything until Codex posts one exact repaired
+source+reuse/freeze packet. The intended next ask is one consolidated review,
+not separate source, reuse and freeze rounds. Until then do not append another
+execution marker, initialize another root, retry R5, alter R4 or open outcome
+evidence.
+
+R4 remains live. After it seals, its one terminal/reproducibility review becomes
 actionable for that exact admission and artifact population.
 
 ## Monitoring contract
@@ -113,9 +125,12 @@ actionable for that exact admission and artifact population.
 
 ## Next operator sequence
 
-1. Codex monitors both DAGs and reports meaningful transitions and percentages.
-2. On each sealed completion/refusal, Codex runs only the reviewed terminal
-   reopener; Claude performs one terminal/reproducibility review.
-3. Only then inspect the full curves and decide whether belief advances to a
+1. Codex monitors R4 without changing it and preserves the failed R5 root.
+2. Codex closes the R5 memory-cap defect with a measured bounded-worker repair,
+   exact reuse closure and one new immutable freeze packet.
+3. Claude reviews that complete packet once. No execution precedes its PASS.
+4. On each sealed terminal completion, Codex uses only the reviewed reopener;
+   Claude performs one terminal/reproducibility review.
+5. Only then inspect full curves and decide whether belief advances to a
    sampler/gameplay-search design or closes/revises. PR merge decisions remain
    separate from scientific execution.

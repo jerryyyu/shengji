@@ -39,7 +39,11 @@ MAX_PARALLEL_CACHE_WORKERS = 16
 MAX_WORKERS_PER_CACHE_BUILD = 8
 MIN_WORKERS_PER_CONCURRENT_BUILD = 4
 PARALLEL_CACHE_PARENT_RESERVE_BYTES = 4 * 1024 ** 3
-PARALLEL_CACHE_WORKER_BUDGET_BYTES = 1024 ** 3
+# R5-1 measured 30.45 GB at 16 workers despite a frozen 24-GiB cap. A cache
+# worker therefore cannot honestly be budgeted as one GiB. 2.25 GiB per
+# worker plus the four-GiB parent reserve selects eight workers at that exact
+# cap while still allowing reviewed larger-cap hosts to use more cores.
+PARALLEL_CACHE_WORKER_BUDGET_BYTES = 2304 * 1024 ** 2
 
 
 _WORKER_READER: Any = None
@@ -52,28 +56,33 @@ class BeliefV2ParallelCacheError(ValueError):
     """Parallel cache topology or canonical parent accounting drifted."""
 
 
-def parallel_cache_worker_count(runtime) -> int:
-    """Use safe host capacity without assuming every core fits one reader."""
+def parallel_cache_worker_count(runtime, host_memory_cap_bytes: int) -> int:
+    """Use only capacity allowed by both the host and the frozen cap."""
     cpu_count = getattr(runtime, "cpu_count", None)
     memory_bytes = getattr(runtime, "memory_bytes", None)
     if type(cpu_count) is not int or cpu_count <= 0 \
-            or type(memory_bytes) is not int or memory_bytes <= 0:
+            or type(memory_bytes) is not int or memory_bytes <= 0 \
+            or type(host_memory_cap_bytes) is not int \
+            or host_memory_cap_bytes <= 0:
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache runtime capacity drift")
+    available = min(memory_bytes, host_memory_cap_bytes)
     memory_workers = max(
-        1, (memory_bytes - PARALLEL_CACHE_PARENT_RESERVE_BYTES)
+        1, (available - PARALLEL_CACHE_PARENT_RESERVE_BYTES)
         // PARALLEL_CACHE_WORKER_BUDGET_BYTES)
     return max(1, min(
         MAX_PARALLEL_CACHE_WORKERS, cpu_count, memory_workers))
 
 
 def parallel_cache_build_topology(
-        runtime, build_count: int) -> tuple[int, int]:
+        runtime, host_memory_cap_bytes: int,
+        build_count: int) -> tuple[int, int]:
     """Spend safe surplus workers on disjoint caches, not contention."""
     if type(build_count) is not int or build_count <= 0:
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache build population drift")
-    worker_budget = parallel_cache_worker_count(runtime)
+    worker_budget = parallel_cache_worker_count(
+        runtime, host_memory_cap_bytes)
     concurrent_builds = min(
         build_count,
         max(1, worker_budget // MIN_WORKERS_PER_CONCURRENT_BUILD))
@@ -171,7 +180,9 @@ def build_parallel_tensor_cache(
             or type(index) is not V2StreamingTrainingIndexV1 \
             or mode not in {"train", "calibration"} \
             or type(worker_count) is not int or worker_count < 2 \
-            or worker_count > parallel_cache_worker_count(freeze.runtime) \
+            or worker_count > parallel_cache_worker_count(
+                freeze.runtime,
+                freeze.resource_caps.training_host_memory_bytes) \
             or (deadline_check is not None
                 and not callable(deadline_check)) \
             or (progress is not None and not callable(progress)):

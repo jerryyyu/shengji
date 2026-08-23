@@ -89,15 +89,21 @@ def _fixture(tmp_path, monkeypatch):
 def test_worker_count_uses_every_safe_core_and_refuses_bad_runtime():
     gib = 1024 ** 3
     assert parallel_cache_worker_count(SimpleNamespace(
-        cpu_count=10, memory_bytes=16 * gib)) == 10
+        cpu_count=10, memory_bytes=16 * gib), 16 * gib) == 5
     assert parallel_cache_worker_count(SimpleNamespace(
-        cpu_count=16, memory_bytes=32 * gib)) == 16
+        cpu_count=16, memory_bytes=32 * gib), 24 * gib) == 8
     assert parallel_cache_worker_count(SimpleNamespace(
-        cpu_count=1, memory_bytes=2 * gib)) == 1
+        cpu_count=16, memory_bytes=64 * gib), 48 * gib) == 16
+    assert parallel_cache_worker_count(SimpleNamespace(
+        cpu_count=1, memory_bytes=2 * gib), 2 * gib) == 1
     with pytest.raises(BeliefV2ParallelCacheError,
                        match="runtime capacity"):
         parallel_cache_worker_count(SimpleNamespace(
-            cpu_count=True, memory_bytes=16 * gib))
+            cpu_count=True, memory_bytes=16 * gib), 16 * gib)
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="runtime capacity"):
+        parallel_cache_worker_count(SimpleNamespace(
+            cpu_count=16, memory_bytes=32 * gib), True)
 
 
 def test_input_worker_count_respects_frozen_memory_cap_and_larger_reader():
@@ -116,15 +122,15 @@ def test_input_worker_count_respects_frozen_memory_cap_and_larger_reader():
 def test_build_topology_spends_surplus_workers_across_disjoint_caches():
     gib = 1024 ** 3
     runtime = SimpleNamespace(cpu_count=16, memory_bytes=32 * gib)
-    assert parallel_cache_build_topology(runtime, 4) == (4, 4)
-    assert parallel_cache_build_topology(runtime, 1) == (1, 8)
+    assert parallel_cache_build_topology(runtime, 24 * gib, 4) == (2, 4)
+    assert parallel_cache_build_topology(runtime, 24 * gib, 1) == (1, 8)
     assert parallel_cache_build_topology(SimpleNamespace(
-        cpu_count=8, memory_bytes=32 * gib), 4) == (2, 4)
+        cpu_count=8, memory_bytes=32 * gib), 24 * gib, 4) == (2, 4)
     assert parallel_cache_build_topology(SimpleNamespace(
-        cpu_count=4, memory_bytes=32 * gib), 4) == (1, 4)
+        cpu_count=4, memory_bytes=32 * gib), 24 * gib, 4) == (1, 4)
     with pytest.raises(BeliefV2ParallelCacheError,
                        match="build population"):
-        parallel_cache_build_topology(runtime, 0)
+        parallel_cache_build_topology(runtime, 24 * gib, 0)
 
 
 def test_parallel_input_parent_reduces_worker_chunks_in_canonical_order(

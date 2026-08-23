@@ -732,8 +732,13 @@ def test_parallel_cache_benchmark_reproduces_exact_primary(
         freeze, index_manifest["index_sha256"], primary)
     worker_count = min(
         int(os.environ.get("SHENGJI_BELIEF_V2_CACHE_BENCHMARK_WORKERS",
-                           str(parallel_cache_worker_count(freeze.runtime)))),
-        parallel_cache_worker_count(freeze.runtime))
+                           str(parallel_cache_worker_count(
+                               freeze.runtime,
+                               freeze.resource_caps
+                               .training_host_memory_bytes)))),
+        parallel_cache_worker_count(
+            freeze.runtime,
+            freeze.resource_caps.training_host_memory_bytes))
     assert worker_count >= 2
     monkeypatch.setattr(
         PARALLEL_CACHE, "_initialize_worker",
@@ -862,7 +867,8 @@ def test_parallel_cache_group_benchmark_reproduces_exact_stage_population(
     parallel_parent = tmp_path / "parallel"
     parallel_parent.mkdir()
     build_concurrency, workers_per_build = parallel_cache_build_topology(
-        freeze.runtime, len(direct_specs))
+        freeze.runtime, freeze.resource_caps.training_host_memory_bytes,
+        len(direct_specs))
 
     def parallel_build(spec):
         cache_id, schedule, mode, binding = spec
@@ -920,7 +926,8 @@ def test_parallel_cache_group_benchmark_reproduces_exact_stage_population(
         expected[control.cohort_id], serial_overlay, parallel_overlay)
     print("BELIEF_V2_CACHE_GROUP_BENCHMARK " + json.dumps({
         "aggregate_worker_budget": parallel_cache_worker_count(
-            freeze.runtime),
+            freeze.runtime,
+            freeze.resource_caps.training_host_memory_bytes),
         "concurrent_builds": build_concurrency,
         "workers_per_build": workers_per_build,
         "direct_cache_count": len(direct_specs),

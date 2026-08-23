@@ -165,6 +165,48 @@ R4 train/calibration corpus through a separately defined reusable-data
 contract. They may run members or recipes in parallel across devices, but one
 fresh held-out test chooses the final recipe only after development selection.
 
+## BELIEF compute and performance strategy
+
+Performance work optimizes time to interpretable learning evidence. It does
+not change a live packet, weaken the scientific gates, or treat machine
+utilization as a reason to launch another hypothesis. Inside an authorized
+stage, however, the default is work-conserving execution: fill the machine's
+safe CPU capacity with independent units, and require an explicit dependency,
+memory or determinism reason for every intentionally serial stage.
+
+R4 provides the first production-scale basis for this plan. Capture already
+uses parallel lanes; the 3 h 10 m input index and roughly 10–10.5 h projected
+tensor-cache build are the clearest preparation bottlenecks. The live cache
+worker saturates one CPU while disk remains nearly idle. Training remains the
+largest potential cost, with a 48 h cohort cap and a frozen 5.346 h next-epoch
+estimate, so preparation and epoch throughput must be addressed separately.
+
+The post-R4 sequence is:
+
+1. Reopen the sealed stage and epoch receipts, then freeze one timing/profile
+   packet before comparing implementations.
+2. Parallelize index and cache units with canonical parent-side reduction.
+   Preserve deadline checks, duplicate/population accounting, actor/target
+   separation, immutable publication and scheduling-independent manifests.
+3. Remove dense-to-sparse cache work if profiling confirms it is material, and
+   consider packed random-access shards only after CPU parallelism is measured.
+4. Benchmark prefetch, verify-once and parallel cache verification together so
+   overlapping savings are not added.
+5. Establish a roughly 2x 32-CPU/member-width anchor. Run the cheap GPU
+   determinism/contention probe and member-stacking prototype before selecting
+   CPU, accelerator or distributed-cohort execution for R5.
+6. Prospectively freeze reusable capture/index/cache artifacts for model and
+   optimizer bakeoffs. Reuse data bytes, not scientific authority; one fresh
+   held-out test still follows development recipe selection.
+7. Consider pipeline-stage overlap only after a source-derived dependency DAG
+   and makespan replay show at least 5% end-to-end benefit.
+
+Each retained tranche gets one consolidated review after its code and can-fail
+witnesses are complete. Review is not repeated for unchanged measurements, and
+unrelated micro-optimizations are not split into separate approval rounds. A
+large scientific freeze remains a separate decision because it binds the
+measured host, caps, runtime and exact retained implementation.
+
 ## B2 scientific gate
 
 B2 is deliberately offline and asks whether there is real learnable ownership

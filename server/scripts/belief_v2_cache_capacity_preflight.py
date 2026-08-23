@@ -57,6 +57,7 @@ from shengji.rl.belief_v2_parallel_cache import (  # noqa: E402
     parallel_cache_worker_count,
 )
 from shengji.rl.belief_v2_tensor_cache import (  # noqa: E402
+    LABEL_MANIFEST_FILENAME,
     build_label_overlay,
     cached_batch_factory,
     reopen_label_overlay,
@@ -260,7 +261,7 @@ def _reopen_components(parent: Path, *, freeze, index_sha256: str,
             "V2 cache preflight primary receipt drift")
     overlay_directory = parent / CONTROL_OVERLAY_DIRECTORY
     overlay_sha256 = _sha256(stable_read_bytes(
-        overlay_directory / MANIFEST_FILENAME))
+        overlay_directory / LABEL_MANIFEST_FILENAME))
     overlay = reopen_label_overlay(
         overlay_directory, expected_manifest_sha256=overlay_sha256,
         actor_manifest_sha256=primary_receipt["manifest_sha256"],

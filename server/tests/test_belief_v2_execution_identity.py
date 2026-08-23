@@ -7,6 +7,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -209,3 +210,59 @@ def test_cache_capacity_preflight_accepts_exact_clean_git_sha1(monkeypatch):
             CACHE_PREFLIGHT.BeliefV2CacheCapacityPreflightError,
             match="source identity drift"):
         CACHE_PREFLIGHT._clean_git_head("b" * 64)
+
+
+def test_cache_capacity_preflight_reopens_typed_overlay_manifest(
+        tmp_path, monkeypatch):
+    """The preserved control overlay has a labels manifest, not a cache one."""
+    parent = tmp_path / "cache-stage"
+    direct = parent / "cache-synthetic-primary"
+    calibration = parent / "cache-common-calibration"
+    overlay = parent / CACHE_PREFLIGHT.CONTROL_OVERLAY_DIRECTORY
+    direct.mkdir(parents=True)
+    calibration.mkdir()
+    overlay.mkdir()
+    (direct / CACHE_PREFLIGHT.MANIFEST_FILENAME).write_bytes(b"direct")
+    (calibration / CACHE_PREFLIGHT.MANIFEST_FILENAME).write_bytes(
+        b"calibration")
+    (overlay / CACHE_PREFLIGHT.LABEL_MANIFEST_FILENAME).write_bytes(
+        b"overlay")
+    primary = SimpleNamespace(cohort_id="synthetic-primary")
+    control = SimpleNamespace(
+        cohort_id=CACHE_PREFLIGHT.CONTROL_COHORT_ID)
+    inputs = SimpleNamespace(realizations=(primary, control))
+    opened = []
+
+    def stable_read(path):
+        opened.append(path)
+        return path.read_bytes()
+
+    receipt = {
+        "manifest_sha256": "a" * 64,
+        "batch_count": 1,
+        "decision_count": 1,
+        "artifact_bytes": 1,
+    }
+    monkeypatch.setattr(CACHE_PREFLIGHT, "stable_read_bytes", stable_read)
+    monkeypatch.setattr(
+        CACHE_PREFLIGHT, "_direct_specs",
+        lambda *args, **kwargs: (
+            (primary.cohort_id, primary, "train", object()),
+            (CACHE_PREFLIGHT.CALIBRATION_CACHE_ID, object(),
+             "calibration", object())))
+    monkeypatch.setattr(
+        CACHE_PREFLIGHT, "_realization_binding",
+        lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        CACHE_PREFLIGHT, "reopen_tensor_cache",
+        lambda *args, **kwargs: receipt)
+    monkeypatch.setattr(
+        CACHE_PREFLIGHT, "reopen_label_overlay",
+        lambda *args, **kwargs: receipt)
+
+    rows = CACHE_PREFLIGHT._reopen_components(
+        parent, freeze=object(), index_sha256="b" * 64, inputs=inputs,
+        primary=primary, control=control)
+    assert len(rows) == 3
+    assert overlay / CACHE_PREFLIGHT.LABEL_MANIFEST_FILENAME in opened
+    assert overlay / CACHE_PREFLIGHT.MANIFEST_FILENAME not in opened

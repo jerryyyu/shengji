@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 14:35 EDT.
+Last reconciled: 2026-08-23 15:35 EDT.
 
 ## Immediate objective
 
@@ -41,16 +41,17 @@ then passed their post-publish typed byte reconstruction. The run entered stage
 cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
-progress appeared at 07:10 EDT. At reconciliation the three full-data workers
-were each about 18.2% through their exact schedules and the synthetic 50%-scale
-worker was about 33.4% through its schedule. The full-data cohorts have each
+progress appeared at 07:10 EDT. At reconciliation the synthetic-primary,
+hard-label-control and human-mixture workers were respectively 21.96%, 21.95%
+and 22.04% through their exact schedules; the synthetic 50%-scale worker was
+40.42% through its schedule. The full-data cohorts have each
 sealed four epoch journals and reusable resume states; the scale cohort has
 sealed seven. These journals bind all eight member training/calibration
 receipts, common-epoch selection and
 `exact_resume_count=0`, while keeping test, strength and deployment authority
 false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
 journal reopener is deferred until it will not compete with live training.
-Overall task-weighted progress is 92.79%.
+Overall task-weighted progress is 93.01%.
 All progress is outcome-blind. The service is active, `NRestarts=0`, with no
 recorded failure task and no test opening.
 
@@ -141,12 +142,19 @@ wall span and zero retries/drops. The integrity tail independently parsed about
 14 GiB of private/actor bundles before the supervisor advanced; it was not a
 retry or a second capture. All 30 human-capture tasks then sealed.
 
-R5 entered stage 3/10, `training-input-index`, at about 14:31 EDT with 46/85
-tasks complete. The repaired cap-aware route is visibly using eight worker
-processes at full CPU rather than the refused 16-worker predecessor. At
-reconciliation it had scanned 1,700/12,003 exact input units; progress remained
-outcome-blind and no calibration or test artifact existed. The service remains
-active with `NRestarts=0` and no warning or failed task.
+R5 completed stage 3/10, `training-input-index`, and advanced to stage 4/10,
+`training-tensor-cache`, at about 15:25 EDT with 47/85 tasks complete. The
+repaired cap-aware route scanned all 12,003 exact input units with eight
+workers, wrote a 311,250,588-byte immutable index (SHA
+`189334f9ecf14d71abfeae91d1fcda73f2f4e39658e9a93d6600ab2511757c83`),
+and passed its full post-publication reconstruction before the supervisor
+advanced. Its receipt records 34.32 minutes bounded wall, 12,903.27 CPU
+seconds, 15.92/25.77 GB conservative peak host memory, zero retries/drops and
+no synthetic or human test target opening. The manifest SHA is
+`951f1eb0299a025df436d8b81662873a23df69ba19f918e1a8e6c2d6164e52dc`.
+The tensor-cache worker is now active; its initial exact index reopen occurs
+before cache-unit progress appears. Overall task-weighted progress is 55.29%.
+The service remains active with `NRestarts=0` and no warning or failed task.
 
 It will not transplant any artifact whose manifest is bound to the spent R5
 admission. The entire failed root, logs, tombstone and predecessor-refusal

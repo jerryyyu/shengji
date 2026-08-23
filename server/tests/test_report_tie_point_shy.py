@@ -90,6 +90,23 @@ def test_incomplete_fold_declines():
         0.0, None, None, ["H10"], ["S3"]) is None
 
 
+def test_tie_break_counters_aggregate_and_reach_the_harness():
+    """Telemetry witness: firings must survive into eval counters — the
+    per-decision record is overwritten each decision and screens saw {}."""
+    from shengji.evaluation import counters
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["H10"], ["S3"])   # flip
+    arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["S3"], ["D4"])    # keep
+    c = counters([arm])
+    assert c["tie_shy_firings"] == 2
+    assert c["tie_shy_flips"] == 1
+    assert c["tie_shy_risk_saved"] == 10
+    # Champion contributes constant zeros, not missing keys.
+    c0 = counters([_bot("mc-s0-report-lcb")])
+    assert (c0["tie_shy_firings"], c0["tie_shy_flips"],
+            c0["tie_shy_risk_saved"]) == (0, 0, 0)
+
+
 def test_evaluation_margin_fields_present():
     """Stage 1 harness fields: measurement-only margin/bracket recording.
     Brackets must match MCBot's LEVEL_OBJECTIVE convention exactly."""

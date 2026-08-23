@@ -80,6 +80,14 @@ class ProtocolFailure(RuntimeError):
 
 def counters(bots) -> dict:
     return {"rollouts": sum(getattr(b, "rollouts", 0) for b in bots),
+            # ARM 0 (PR #130): tie-break visibility — zero when the flag is
+            # off, so frozen-protocol counter shapes gain three constant keys.
+            "tie_shy_firings": sum(getattr(b, "tie_shy_firings", 0)
+                                   for b in bots),
+            "tie_shy_flips": sum(getattr(b, "tie_shy_flips", 0)
+                                 for b in bots),
+            "tie_shy_risk_saved": sum(getattr(b, "tie_shy_risk_saved", 0)
+                                      for b in bots),
             "searches": sum(getattr(b, "search_calls", 0) for b in bots),
             "search_secs": round(sum(getattr(b, "search_secs", 0.0)
                                      for b in bots), 4),

@@ -564,6 +564,13 @@ class MCBot(SmartBot):
         """
         if not self.REPORT_TIE_POINT_SHY:
             return None
+        # Harness-visible aggregation (PR #130 follow-up): per-decision
+        # records are overwritten each decision, so duel screens could not
+        # see firings at all. These counters survive the round.
+        if not hasattr(self, "tie_shy_firings"):
+            self.tie_shy_firings = 0
+            self.tie_shy_flips = 0
+            self.tie_shy_risk_saved = 0
         if critical is None or se is None:
             return None
         if abs(gap) > critical * se:
@@ -572,6 +579,10 @@ class MCBot(SmartBot):
 
         incumbent_risk = sum(_pts(c) for c in incumbent)
         challenger_risk = sum(_pts(c) for c in challenger)
+        self.tie_shy_firings += 1
+        if challenger_risk < incumbent_risk:
+            self.tie_shy_flips += 1
+            self.tie_shy_risk_saved += incumbent_risk - challenger_risk
         return {
             "schema": "report-tie-point-shy-v1",
             "critical": critical,

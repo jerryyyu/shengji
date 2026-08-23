@@ -1229,6 +1229,42 @@ def test_training_input_index_wires_deadline_around_source_units_and_seal(
     assert not (root / "training-input-index" / "result.partial").exists()
 
 
+def test_training_input_index_memory_cap_refuses_before_manifest_or_seal(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    fake = SimpleNamespace(
+        index=SimpleNamespace(sources=(object(),)),
+        sha256=lambda: "7" * 64,
+        manifest=lambda: {
+            "resident_model_array_bytes": 0,
+            "one_batch_at_a_time": True})
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs",
+        lambda *args, **kwargs: fake)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "streaming_training_inputs_bytes",
+        lambda value, bound_freeze: b"compact-index\n")
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_aggregate_peak_host_memory_bytes",
+        lambda worker_count:
+            freeze.resource_caps.training_host_memory_bytes + 1)
+
+    with pytest.raises(INPUT_INDEX_STAGE.BeliefV2InputIndexControllerError,
+                       match="resource cap drift"):
+        run_training_input_index(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", inventory={}, group_split={})
+    partial = root / "training-input-index" / "result.partial"
+    assert {path.name for path in partial.iterdir()} == {"index.json"}
+    assert not (partial / "manifest.json").exists()
+    assert not (root / "training-input-index" / "result").exists()
+
+
 def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()

@@ -18,6 +18,7 @@ from shengji.rl.belief_v2_parallel_cache import (
 )
 from shengji.rl.belief_v2_parallel_inputs import (
     BeliefV2ParallelInputError,
+    parallel_input_worker_count,
 )
 from shengji.rl.belief_v2_deadline import V2StageDeadlineV1
 from shengji.rl.belief_v2_streaming_training import (
@@ -97,6 +98,19 @@ def test_worker_count_uses_every_safe_core_and_refuses_bad_runtime():
                        match="runtime capacity"):
         parallel_cache_worker_count(SimpleNamespace(
             cpu_count=True, memory_bytes=16 * gib))
+
+
+def test_input_worker_count_respects_frozen_memory_cap_and_larger_reader():
+    gib = 1024 ** 3
+    runtime = SimpleNamespace(cpu_count=16, memory_bytes=32 * gib)
+    assert parallel_input_worker_count(runtime, 24 * gib) == 8
+    assert parallel_input_worker_count(runtime, 16 * gib) == 6
+    assert parallel_input_worker_count(
+        SimpleNamespace(cpu_count=4, memory_bytes=32 * gib), 24 * gib) == 4
+    assert parallel_input_worker_count(runtime, 4 * gib) == 1
+    with pytest.raises(BeliefV2ParallelInputError,
+                       match="runtime capacity"):
+        parallel_input_worker_count(runtime, True)
 
 
 def test_build_topology_spends_surplus_workers_across_disjoint_caches():

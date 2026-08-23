@@ -29,8 +29,8 @@ from .belief_v2_deadline import (
 from .belief_v2_device_runner import host_peak_memory_bytes
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
 from .belief_v2_progress import ProgressCallback
-from .belief_v2_parallel_cache import parallel_cache_worker_count
 from .belief_v2_parallel_inputs import (
+    parallel_input_worker_count,
     scan_parallel_synthetic_training_inputs,
 )
 from .belief_v2_protocol import V2_SPLIT_COUNTS
@@ -181,7 +181,9 @@ def run_training_input_index(
             progress(next_unit_index, total_units, "index-input-sources")
 
     try:
-        worker_count = parallel_cache_worker_count(freeze.runtime)
+        worker_count = parallel_input_worker_count(
+            freeze.runtime,
+            freeze.resource_caps.training_host_memory_bytes)
         synthetic_scan = None if worker_count < 2 else (
             lambda **kwargs: scan_parallel_synthetic_training_inputs(
                 **kwargs, worker_count=worker_count, deadline=deadline))

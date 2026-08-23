@@ -93,6 +93,9 @@ from shengji.rl.belief_v2_parallel_cache import (
     parallel_cache_build_topology,
     parallel_cache_worker_count,
 )
+from shengji.rl.belief_v2_parallel_inputs import (
+    parallel_input_worker_count,
+)
 from shengji.rl.belief_v2_streaming_inputs import V2ArtifactRoundLoader
 from shengji.rl.belief_v2_streaming_training import (
     iter_streaming_calibration_batches,
@@ -674,7 +677,9 @@ def test_parallel_input_index_reproduces_exact_serial_population(
         inventory=inventory, group_split=group_split)
     serial_wall = time.monotonic_ns() - serial_started
 
-    worker_count = parallel_cache_worker_count(freeze.runtime)
+    worker_count = parallel_input_worker_count(
+        freeze.runtime,
+        freeze.resource_caps.training_host_memory_bytes)
     assert worker_count >= 2
     parallel_started = time.monotonic_ns()
     parallel = STREAMING_INPUTS.reopen_streaming_training_inputs(

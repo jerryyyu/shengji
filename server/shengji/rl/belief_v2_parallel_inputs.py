@@ -29,6 +29,9 @@ from .belief_v2_training import label_control_changed_cell_count
 
 
 PARALLEL_INPUT_CHUNK_ROUNDS = 8
+MAX_PARALLEL_INPUT_WORKERS = 8
+PARALLEL_INPUT_PARENT_RESERVE_BYTES = 4 * 1024 ** 3
+PARALLEL_INPUT_WORKER_BUDGET_BYTES = 2 * 1024 ** 3
 
 _WORKER_ROOT: Path | None = None
 _WORKER_FREEZE: V2ExecutionFreezeV1 | None = None
@@ -39,6 +42,30 @@ _WORKER_LANES: dict[int, tuple[tuple[Any, ...], dict[str, Any]]] = {}
 
 class BeliefV2ParallelInputError(ValueError):
     """A parallel input task, result, deadline, or order drifted."""
+
+
+def parallel_input_worker_count(runtime, host_memory_cap_bytes: int) -> int:
+    """Bound the source scanner by both the host and the frozen stage cap.
+
+    Input workers retain decoded round/source rows and therefore have a larger
+    measured memory footprint than tensor-cache workers.  Keep this topology
+    separate from the cache topology so a host with many cores cannot consume
+    the complete frozen training-memory allowance before the stage seals.
+    """
+    cpu_count = getattr(runtime, "cpu_count", None)
+    memory_bytes = getattr(runtime, "memory_bytes", None)
+    if type(cpu_count) is not int or cpu_count <= 0 \
+            or type(memory_bytes) is not int or memory_bytes <= 0 \
+            or type(host_memory_cap_bytes) is not int \
+            or host_memory_cap_bytes <= 0:
+        raise BeliefV2ParallelInputError(
+            "V2 parallel input runtime capacity drift")
+    available = min(memory_bytes, host_memory_cap_bytes)
+    memory_workers = max(
+        1, (available - PARALLEL_INPUT_PARENT_RESERVE_BYTES)
+        // PARALLEL_INPUT_WORKER_BUDGET_BYTES)
+    return max(1, min(MAX_PARALLEL_INPUT_WORKERS,
+                      cpu_count, memory_workers))
 
 
 def _initialize_worker(

@@ -498,13 +498,15 @@ class MCBot(SmartBot):
                     candidates, 0, "report_underfilled", _t0, sampler_before)
             if statistic < self.REPORT_MIN_GAIN:
                 _o = rnd.ordering
+                _tc = (lambda cs: sum(1 for c in cs
+                                      if _o.eff_suit(c) == TRUMP)
+                       if _o is not None else 0)
                 shy = self._report_tie_point_shy_pick(
                     report["gap"], report["se"], critical,
                     candidates[0], candidates[challenger],
                     is_lead=(rnd.trick is None or not rnd.trick.plays),
-                    challenger_trump=(_o is not None and any(
-                        _o.eff_suit(c) == TRUMP
-                        for c in candidates[challenger])))
+                    incumbent_trump=_tc(candidates[0]),
+                    challenger_trump=_tc(candidates[challenger]))
                 if shy is not None:
                     self.last_decision_record["report_tie_break"] = shy
                     if shy["pick"] == "challenger":
@@ -552,7 +554,7 @@ class MCBot(SmartBot):
 
     def _report_tie_point_shy_pick(self, gap, se, critical, incumbent,
                                    challenger, is_lead=False,
-                                   challenger_trump=False):
+                                   incumbent_trump=0, challenger_trump=0):
         """ARM 0 (STRENGTH_STACK_PROPOSAL.md): report-stage point-shy
         tie-break.
 
@@ -562,7 +564,7 @@ class MCBot(SmartBot):
         gate-restore class). On a tie, prefer whichever of
         {incumbent, challenger} risks fewer points; ties on risk keep the
         incumbent. Returns a record dict (always logged when it fires) or
-        None when disabled / not a tie. Pure: no state is touched.
+        None when disabled / not a tie. Mutates only the tie_shy_* counters.
 
         Known tilt, carried from the adversarial review: "points at risk"
         ignores trump-length cost, so results must report drain/cash/junk
@@ -592,7 +594,8 @@ class MCBot(SmartBot):
         challenger_risk = sum(_pts(c) for c in challenger)
         self.tie_shy_firings += 1
         self.tie_shy_fire_lead += 1 if is_lead else 0
-        if challenger_risk < incumbent_risk and challenger_trump:
+        if challenger_risk < incumbent_risk \
+                and challenger_trump > incumbent_trump:
             # ARM II guard pulled forward (pilot: 42% of flips spent trump —
             # the measured -4pt drain family). A tie never flips INTO trump.
             self.tie_shy_trump_guarded += 1
@@ -601,6 +604,9 @@ class MCBot(SmartBot):
                 "gap": gap, "se": se,
                 "incumbent_points_at_risk": incumbent_risk,
                 "challenger_points_at_risk": challenger_risk,
+                "is_lead": bool(is_lead),
+                "incumbent_trump_count": incumbent_trump,
+                "challenger_trump_count": challenger_trump,
                 "pick": "incumbent", "trump_guarded": True,
             }
         if challenger_risk < incumbent_risk:
@@ -609,7 +615,7 @@ class MCBot(SmartBot):
             if is_lead:
                 self.tie_shy_flip_lead += 1
                 self.tie_shy_risk_saved_lead += incumbent_risk - challenger_risk
-            if challenger_trump:
+            if challenger_trump > 0:
                 self.tie_shy_flip_trump += 1
         return {
             "schema": "report-tie-point-shy-v1",
@@ -618,6 +624,9 @@ class MCBot(SmartBot):
             "se": se,
             "incumbent_points_at_risk": incumbent_risk,
             "challenger_points_at_risk": challenger_risk,
+            "is_lead": bool(is_lead),
+            "incumbent_trump_count": incumbent_trump,
+            "challenger_trump_count": challenger_trump,
             "pick": ("challenger" if challenger_risk < incumbent_risk
                      else "incumbent"),
         }

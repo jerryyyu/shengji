@@ -116,6 +116,45 @@ def test_tie_break_counters_aggregate_and_reach_the_harness():
             c0["tie_shy_risk_saved"]) == (0, 0, 0)
 
 
+def test_production_path_wires_context_and_tie_break(monkeypatch):
+    """Codex HOLD repair: kills both wiring mutations. Replays the real
+    incident lead through decide_play with a forced exact tie (gap 0, se 0)
+    and cross-derives is_lead + trump counts from the round itself, so a
+    removed call OR hardcoded context goes red regardless of fixture."""
+    from tests.test_s0_search import incident_state
+    from shengji.ai.registry import S0_REPORT_WORLDS
+    rnd, seat = incident_state()
+    arm = _bot("mc-s0-report-lcb-pointshy")
+
+    def tie_report(*args, seed, **kwargs):
+        # gap 0.4, se 1.0: statistic = 0.4 - 1.70 < 0 (restore branch) AND
+        # |0.4| <= 1.70*1.0 (inside the tie window) -> tie-break must fire.
+        return {"gap": 0.4, "se": 1.0, "worlds": S0_REPORT_WORLDS,
+                "attempts": S0_REPORT_WORLDS, "rejected": 0,
+                "complete": True, "seed": seed}
+
+    monkeypatch.setattr(arm, "_report_fold_gap", tie_report)
+    played = arm.decide_play(rnd, seat)
+    rec = arm.last_decision_record
+    shy = rec.get("report_tie_break")
+    assert shy is not None, "tie-break never invoked on the production path"
+    assert shy["is_lead"] is True
+    o = rnd.ordering
+    from shengji.engine.cards import TRUMP as _T
+    for key, idx in (("incumbent_trump_count", 0),
+                     ("challenger_trump_count", rec["report_candidate_index"])):
+        expect = sum(1 for c in rec["candidates"][idx] if o.eff_suit(c) == _T)
+        assert shy[key] == expect
+    if shy["pick"] == "challenger":
+        assert rec["reason"] == "report_tie_point_shy_override"
+        assert rec["played_index"] == rec["report_candidate_index"]
+        assert arm.tie_shy_flips == 1
+    else:
+        assert rec["played_index"] == 0
+    assert arm.tie_shy_firings == 1 and arm.tie_shy_fire_lead == 1
+    assert played == rec["candidates"][rec["played_index"]]
+
+
 def test_evaluation_margin_fields_present():
     """Stage 1 harness fields: measurement-only margin/bracket recording.
     Brackets must match MCBot's LEVEL_OBJECTIVE convention exactly."""

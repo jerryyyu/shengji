@@ -1229,6 +1229,76 @@ def test_training_input_index_wires_deadline_around_source_units_and_seal(
     assert not (root / "training-input-index" / "result.partial").exists()
 
 
+def test_training_input_index_controller_uses_cap_bounded_input_workers(
+        tmp_path, monkeypatch):
+    """Witness the controller wiring, not only the worker-count helper."""
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    original = _cpu_only_freeze(root)
+    freeze = replace(
+        original,
+        resource_caps=replace(
+            original.resource_caps,
+            training_host_memory_bytes=16 * 1024**3))
+    admission = _admission(freeze)
+    fake = SimpleNamespace(
+        index=SimpleNamespace(sources=(object(),)),
+        sha256=lambda: "7" * 64,
+        manifest=lambda: {
+            "resident_model_array_bytes": 0,
+            "one_batch_at_a_time": True})
+    observed_worker_counts = []
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+
+    class Deadline:
+        def check(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "stage_deadline",
+        lambda *args, **kwargs: Deadline())
+
+    def scan(**kwargs):
+        observed_worker_counts.append(kwargs["worker_count"])
+        return (), (), (), 1, 1
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE,
+        "scan_parallel_synthetic_training_inputs", scan)
+
+    def build(*args, synthetic_scan, **kwargs):
+        assert synthetic_scan is not None
+        assert synthetic_scan(
+            capture=root / "capture", freeze=freeze,
+            admission=admission, deadline_check=None) == (
+                (), (), (), 1, 1)
+        return fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs", build)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "streaming_training_inputs_bytes",
+        lambda value, bound_freeze: b"compact-index\n")
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_aggregate_peak_host_memory_bytes",
+        lambda worker_count: 1024)
+
+    def reopen(directory, **kwargs):
+        return json.loads((directory / "manifest.json").read_bytes()), fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_training_input_index", reopen)
+    run_training_input_index(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+
+    # The 16 GiB frozen stage cap leaves 12 GiB after the parent reserve,
+    # hence exactly six 2 GiB input workers.  The cache topology would choose
+    # sixteen here and reintroduce the resource failure this test guards.
+    assert observed_worker_counts == [6]
+
+
 def test_training_input_index_memory_cap_refuses_before_manifest_or_seal(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()

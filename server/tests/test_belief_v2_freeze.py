@@ -209,6 +209,13 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
     assert cohort_payload[0]["synthetic_selection_rule"] \
         == ALL_SYNTHETIC_TRAIN_DECISIONS
 
+    consolidated = replace(
+        freeze, source_review_commit=freeze.execution_git)
+    consolidated_claim = expected_execution_review_claim(consolidated)
+    assert consolidated_claim["source_review_mode"] \
+        == "consolidated-source-and-freeze"
+    assert "source_review_mode" not in claim
+
 
 def test_cpu_only_freeze_round_trips_with_no_accelerator_claim():
     freeze = replace(

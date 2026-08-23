@@ -627,12 +627,28 @@ def reopen_v2_terminal(
         cohort_ids = tuple(row.cohort_id for row in cohorts)
         if progress is not None:
             progress(3, 5, "verify-terminal-cohorts")
-        synthetic = reopen_v2_round_population(
+        recorded_synthetic = reopen_v2_round_population(
             files["synthetic_test"], cohort_ids=cohort_ids,
             label="synthetic_test")
-        human = reopen_v2_round_population(
+        recorded_human = reopen_v2_round_population(
             files["human_test"], cohort_ids=cohort_ids,
             label="human_test")
+        synthetic, human = _score_test_populations(
+            Path(freeze.evidence_root), freeze, admission, group_split,
+            cohorts)
+        if v2_round_population_bytes(
+                recorded_synthetic, cohort_ids=cohort_ids,
+                label="synthetic_test") != v2_round_population_bytes(
+                    synthetic, cohort_ids=cohort_ids,
+                    label="synthetic_test") \
+                or v2_round_population_bytes(
+                    recorded_human, cohort_ids=cohort_ids,
+                    label="human_test") != v2_round_population_bytes(
+                        human, cohort_ids=cohort_ids,
+                        label="human_test"):
+            raise BeliefV2TerminalControllerError(
+                "V2 terminal persisted score population differs from "
+                "source replay")
         expected_synthetic = _expected_test_synthetic_rounds()
         expected_human = _expected_test_human_rounds(
             Path(freeze.evidence_root), freeze, admission, group_split)
@@ -659,6 +675,8 @@ def reopen_v2_terminal(
         validate_terminal_result(
             freeze, plan, qualification, receipt, human_selection,
             scale_curve, primary, control, human_transfer, result)
+    except BeliefV2TerminalControllerError:
+        raise
     except ValueError as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal raw reconstruction refused") from exc

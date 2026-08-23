@@ -12,6 +12,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import resource
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -27,6 +29,10 @@ from .belief_v2_deadline import (
 from .belief_v2_device_runner import host_peak_memory_bytes
 from .belief_v2_freeze import V2ExecutionFreezeV1, V2PipelineAdmissionV1
 from .belief_v2_progress import ProgressCallback
+from .belief_v2_parallel_cache import parallel_cache_worker_count
+from .belief_v2_parallel_inputs import (
+    scan_parallel_synthetic_training_inputs,
+)
 from .belief_v2_protocol import V2_SPLIT_COUNTS
 from .belief_v2_streaming_inputs import (
     V2StreamingTrainingInputsV1,
@@ -47,6 +53,27 @@ class BeliefV2InputIndexControllerError(ValueError):
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _process_tree_cpu_time_ns() -> int:
+    usages = (resource.getrusage(resource.RUSAGE_SELF),
+              resource.getrusage(resource.RUSAGE_CHILDREN))
+    return int(sum(row.ru_utime + row.ru_stime for row in usages)
+               * 1_000_000_000)
+
+
+def _aggregate_peak_host_memory_bytes(worker_count: int) -> int:
+    if type(worker_count) is not int or worker_count <= 0:
+        raise BeliefV2InputIndexControllerError(
+            "V2 training input index worker count drift")
+    parent = host_peak_memory_bytes()
+    child_value = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+    if type(child_value) not in {int, float} or child_value < 0:
+        raise BeliefV2InputIndexControllerError(
+            "V2 training input index child memory drift")
+    child = (int(child_value) if sys.platform == "darwin"
+             else int(child_value) * 1024)
+    return max(parent, parent + child * worker_count if child else parent)
 
 
 def _resources(
@@ -128,7 +155,7 @@ def run_training_input_index(
             "V2 training input index slot is occupied")
     partial.mkdir(mode=0o700)
     started = time.monotonic_ns()
-    cpu_started = time.process_time_ns()
+    cpu_started = _process_tree_cpu_time_ns()
     deadline = stage_deadline(
         freeze, admission, stage="training", slot="input-index",
         started_monotonic_nanoseconds=started)
@@ -154,10 +181,15 @@ def run_training_input_index(
             progress(next_unit_index, total_units, "index-input-sources")
 
     try:
+        worker_count = parallel_cache_worker_count(freeze.runtime)
+        synthetic_scan = None if worker_count < 2 else (
+            lambda **kwargs: scan_parallel_synthetic_training_inputs(
+                **kwargs, worker_count=worker_count, deadline=deadline))
         inputs = reopen_streaming_training_inputs(
             root, freeze=freeze, admission=admission,
             inventory=inventory, group_split=group_split,
-            deadline_check=deadline_check)
+            deadline_check=deadline_check,
+            synthetic_scan=synthetic_scan)
         index_raw = streaming_training_inputs_bytes(inputs, freeze)
     except ValueError as exc:
         raise BeliefV2InputIndexControllerError(
@@ -167,9 +199,10 @@ def run_training_input_index(
     finished = time.monotonic_ns()
     resources = _resources(
         freeze, started=started, finished=finished,
-        cpu_nanoseconds=time.process_time_ns() - cpu_started,
+        cpu_nanoseconds=_process_tree_cpu_time_ns() - cpu_started,
         artifact_bytes=len(index_raw),
-        peak_host_memory_bytes=host_peak_memory_bytes())
+        peak_host_memory_bytes=_aggregate_peak_host_memory_bytes(
+            worker_count))
     manifest = _manifest(
         freeze, admission, index_raw=index_raw, inputs=inputs,
         resources=resources)

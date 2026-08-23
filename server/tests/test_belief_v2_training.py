@@ -7,6 +7,7 @@ from dataclasses import fields, replace
 
 import numpy as np
 import pytest
+import torch
 
 import shengji.rl.belief_v2_training as TRAINING_STAGE
 from shengji.ai.heuristic import HeuristicBot
@@ -35,6 +36,8 @@ from shengji.rl.belief_v2_training import (
     build_synthetic_training_example,
     collate_v2_label_control_examples,
     collate_v2_training_examples,
+    label_control_batch_from_natural,
+    label_control_changed_cell_count,
     validate_human_training_example,
     validate_synthetic_training_example,
 )
@@ -163,6 +166,18 @@ def test_v2_label_control_preserves_public_tensors_and_hard_geometry():
     natural = collate_v2_training_examples((synthetic, human))
     control, changed_cells = collate_v2_label_control_examples(
         (synthetic, human))
+    cached_control, cached_changed_cells = (
+        label_control_batch_from_natural(natural))
+    assert cached_changed_cells == changed_cells
+    assert label_control_changed_cell_count((synthetic, human)) \
+        == changed_cells
+    for field in fields(control):
+        expected = getattr(control, field.name)
+        actual = getattr(cached_control, field.name)
+        if isinstance(expected, torch.Tensor):
+            assert torch.equal(actual, expected)
+        else:
+            assert actual == expected
     assert changed_cells > 0
     assert control.schema == CONTROL_TRAINING_BATCH_SCHEMA
     assert control.label_transform == GEOMETRY_PERMUTED_LABELS

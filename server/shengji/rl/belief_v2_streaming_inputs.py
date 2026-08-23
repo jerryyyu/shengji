@@ -55,7 +55,7 @@ from .belief_v2_streaming_training import (
 from .belief_v2_training import (
     V2TrainingExampleV1,
     build_human_training_example,
-    collate_v2_label_control_examples,
+    label_control_changed_cell_count,
 )
 
 
@@ -374,7 +374,8 @@ def reopen_streaming_training_inputs(
         root: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         inventory: dict[str, Any], group_split: dict[str, Any],
-        deadline_check: Callable[[str, int], None] | None = None) \
+        deadline_check: Callable[[str, int], None] | None = None,
+        synthetic_scan: Callable[..., Any] | None = None) \
         -> V2StreamingTrainingInputsV1:
     """Scan train/calibration one complete round at a time into compact rows."""
     if not isinstance(root, Path) or root != Path(freeze.evidence_root) \
@@ -393,25 +394,49 @@ def reopen_streaming_training_inputs(
     sources = []
     control_dose = 0
     unit = 0
-    for lane in range(V2_CAPTURE_LANES):
-        directory = capture / f"lane-{lane:02d}"
-        for split in ("train", "calibration"):
-            for coordinate_index, examples in \
-                    iter_synthetic_training_lane_round_examples(
-                        directory, freeze=freeze, admission=admission,
-                        lane=lane, split=split,
-                        deadline_check=deadline_check,
-                        unit_index_start=unit):
-                token = f"synthetic:{lane}:{coordinate_index}"
-                sources.append(_source(examples, token=token))
-                if split == "train":
-                    train_rows.extend(training_row(row) for row in examples)
-                    _, dose = collate_v2_label_control_examples(examples)
-                    control_dose += dose
-                else:
-                    calibration_rows.extend(
-                        calibration_row(row) for row in examples)
-                unit += 1
+    if synthetic_scan is not None:
+        if not callable(synthetic_scan):
+            raise BeliefV2StreamingInputError(
+                "V2 streaming synthetic scanner drift")
+        result = synthetic_scan(
+            capture=capture, freeze=freeze, admission=admission,
+            deadline_check=deadline_check)
+        if type(result) is not tuple or len(result) != 5:
+            raise BeliefV2StreamingInputError(
+                "V2 streaming synthetic scan result drift")
+        (synthetic_train, synthetic_calibration,
+         synthetic_sources, control_dose, unit) = result
+        if any(type(value) is not tuple for value in (
+                synthetic_train, synthetic_calibration,
+                synthetic_sources)) \
+                or type(control_dose) is not int or control_dose <= 0 \
+                or type(unit) is not int or unit <= 0:
+            raise BeliefV2StreamingInputError(
+                "V2 streaming synthetic scan population drift")
+        train_rows.extend(synthetic_train)
+        calibration_rows.extend(synthetic_calibration)
+        sources.extend(synthetic_sources)
+    else:
+        for lane in range(V2_CAPTURE_LANES):
+            directory = capture / f"lane-{lane:02d}"
+            for split in ("train", "calibration"):
+                for coordinate_index, examples in \
+                        iter_synthetic_training_lane_round_examples(
+                            directory, freeze=freeze, admission=admission,
+                            lane=lane, split=split,
+                            deadline_check=deadline_check,
+                            unit_index_start=unit):
+                    token = f"synthetic:{lane}:{coordinate_index}"
+                    sources.append(_source(examples, token=token))
+                    if split == "train":
+                        train_rows.extend(
+                            training_row(row) for row in examples)
+                        control_dose += label_control_changed_cell_count(
+                            examples)
+                    else:
+                        calibration_rows.extend(
+                            calibration_row(row) for row in examples)
+                    unit += 1
 
     human_root = root / "human-capture"
     expected_group_digests = {

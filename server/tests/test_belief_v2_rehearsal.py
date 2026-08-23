@@ -30,6 +30,7 @@ import shengji.rl.belief_v2_streaming_inputs as STREAMING_INPUTS
 import shengji.rl.belief_v2_statistics as V2_STATISTICS
 import shengji.rl.belief_v2_tensor_cache_controller as CACHE_STAGE
 import shengji.rl.belief_v2_parallel_cache as PARALLEL_CACHE
+import shengji.rl.belief_v2_parallel_inputs as PARALLEL_INPUTS
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 import shengji.rl.belief_v2_training_inputs as TRAINING_INPUTS
@@ -89,13 +90,20 @@ from shengji.rl.belief_v2_tensor_cache_controller import (
 )
 from shengji.rl.belief_v2_parallel_cache import (
     build_parallel_tensor_cache,
+    parallel_cache_build_topology,
     parallel_cache_worker_count,
 )
 from shengji.rl.belief_v2_streaming_inputs import V2ArtifactRoundLoader
 from shengji.rl.belief_v2_streaming_training import (
+    iter_streaming_calibration_batches,
     iter_streaming_training_batches,
 )
-from shengji.rl.belief_v2_tensor_cache import build_tensor_cache
+from shengji.rl.belief_v2_tensor_cache import (
+    build_label_overlay,
+    build_tensor_cache,
+    cached_batch_factory,
+)
+from shengji.rl.belief_v2_training import label_control_batch_from_natural
 from shengji.rl.belief_v2_training_controller import (
     reopen_training_cohort,
     run_training_cohort,
@@ -153,7 +161,27 @@ RUN_FULL_REHEARSAL = (
     os.environ.get("SHENGJI_BELIEF_V2_FULL_DAG_REHEARSAL") == "1")
 CACHE_BENCHMARK_ROOT = os.environ.get(
     "SHENGJI_BELIEF_V2_CACHE_BENCHMARK_ROOT")
+
+
+def _assert_cache_benchmark_receipts(
+        expected: dict[str, object], serial: dict[str, object],
+        parallel: dict[str, object]) -> None:
+    """Bind the portable population and exact same-host cache bytes.
+
+    Torch tensor files are not promised byte-identical across architectures,
+    so a Mini-generated manifest cannot be the expected x86 manifest.  The
+    archived stage still pins the platform-independent population dimensions;
+    the freshly built serial arm is the same-host byte oracle for the parallel
+    arm.
+    """
+    portable_keys = ("batch_count", "decision_count", "artifact_bytes")
+    assert {key: serial[key] for key in portable_keys} \
+        == {key: expected[key] for key in portable_keys}
+    assert parallel == serial
+
+
 _PRODUCTION_PARALLEL_CACHE_INITIALIZER = PARALLEL_CACHE._initialize_worker
+_PRODUCTION_PARALLEL_INPUT_INITIALIZER = PARALLEL_INPUTS._initialize_worker
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -231,6 +259,12 @@ def _patch_rehearsal_population(monkeypatch) -> None:
     monkeypatch.setattr(
         STREAMING_INPUTS, "v2_lane_coordinates",
         rehearsal_v2_lane_coordinates)
+    monkeypatch.setattr(
+        PARALLEL_INPUTS, "v2_lane_coordinates",
+        rehearsal_v2_lane_coordinates)
+    monkeypatch.setattr(
+        PARALLEL_INPUTS, "_initialize_worker",
+        _rehearsal_parallel_input_initializer)
     monkeypatch.setattr(
         INPUT_INDEX_STAGE, "V2_SPLIT_COUNTS", REHEARSAL_SPLIT_COUNTS)
     monkeypatch.setattr(
@@ -354,6 +388,13 @@ def _rehearsal_parallel_cache_initializer(*args) -> None:
     """Install disposable coordinates before the production worker opens."""
     _apply_rehearsal_process_overrides()
     _PRODUCTION_PARALLEL_CACHE_INITIALIZER(*args)
+
+
+def _rehearsal_parallel_input_initializer(*args) -> None:
+    """Install disposable coordinates before the input worker opens."""
+    _apply_rehearsal_process_overrides()
+    PARALLEL_INPUTS.v2_lane_coordinates = rehearsal_v2_lane_coordinates
+    _PRODUCTION_PARALLEL_INPUT_INITIALIZER(*args)
 
 
 def _capture_process(args):
@@ -611,6 +652,56 @@ def test_rehearsal_profile_reaches_the_scoring_reader(monkeypatch):
 @pytest.mark.skipif(
     CACHE_BENCHMARK_ROOT is None,
     reason="set SHENGJI_BELIEF_V2_CACHE_BENCHMARK_ROOT")
+def test_parallel_input_index_reproduces_exact_serial_population(
+        monkeypatch):
+    """Time the exact compact index scan without writing a stage artifact."""
+    configure_numerical_runtime()
+    _patch_rehearsal_population(monkeypatch)
+    _restore_parent_worker_population(monkeypatch)
+    root = Path(CACHE_BENCHMARK_ROOT).resolve()
+    base = root.parent
+    sources = tuple(sorted((base / "human-sources").glob("*.jsonl")))
+    inventory = build_h0_inventory(
+        source_manifest=base / "human-source-manifest.txt",
+        source_paths=list(sources))
+    group_split = build_h0_group_split(inventory)
+    freeze = _rehearsal_freeze(root, inventory, group_split)
+    admission = _admission(freeze)
+
+    serial_started = time.monotonic_ns()
+    serial = STREAMING_INPUTS.reopen_streaming_training_inputs(
+        root, freeze=freeze, admission=admission,
+        inventory=inventory, group_split=group_split)
+    serial_wall = time.monotonic_ns() - serial_started
+
+    worker_count = parallel_cache_worker_count(freeze.runtime)
+    assert worker_count >= 2
+    parallel_started = time.monotonic_ns()
+    parallel = STREAMING_INPUTS.reopen_streaming_training_inputs(
+        root, freeze=freeze, admission=admission,
+        inventory=inventory, group_split=group_split,
+        synthetic_scan=lambda **kwargs: (
+            PARALLEL_INPUTS.scan_parallel_synthetic_training_inputs(
+                **kwargs, worker_count=worker_count)))
+    parallel_wall = time.monotonic_ns() - parallel_started
+    serial_raw = STREAMING_INPUTS.streaming_training_inputs_bytes(
+        serial, freeze)
+    parallel_raw = STREAMING_INPUTS.streaming_training_inputs_bytes(
+        parallel, freeze)
+    assert parallel_raw == serial_raw
+    print("BELIEF_V2_INPUT_INDEX_BENCHMARK " + json.dumps({
+        "worker_count": worker_count,
+        "index_sha256": hashlib.sha256(parallel_raw).hexdigest(),
+        "index_bytes": len(parallel_raw),
+        "serial_wall_nanoseconds": serial_wall,
+        "parallel_wall_nanoseconds": parallel_wall,
+        "wall_speedup_ppm": serial_wall * 1_000_000 // parallel_wall,
+    }, sort_keys=True))
+
+
+@pytest.mark.skipif(
+    CACHE_BENCHMARK_ROOT is None,
+    reason="set SHENGJI_BELIEF_V2_CACHE_BENCHMARK_ROOT")
 def test_parallel_cache_benchmark_reproduces_exact_primary(
         tmp_path, monkeypatch):
     """Time only the real primary cache path against sealed rehearsal bytes."""
@@ -667,8 +758,8 @@ def test_parallel_cache_benchmark_reproduces_exact_primary(
     expected_receipt = {key: expected[key] for key in (
         "manifest_sha256", "batch_count", "decision_count",
         "artifact_bytes")}
-    assert serial_receipt == expected_receipt
-    assert parallel_receipt == expected_receipt
+    _assert_cache_benchmark_receipts(
+        expected_receipt, serial_receipt, parallel_receipt)
     assert {path.name: path.read_bytes()
             for path in (tmp_path / "serial-cache").iterdir()} \
         == {path.name: path.read_bytes()
@@ -683,6 +774,177 @@ def test_parallel_cache_benchmark_reproduces_exact_primary(
             serial_wall * 1_000_000 // parallel_wall),
         "manifest_sha256": parallel_receipt["manifest_sha256"],
     }, sort_keys=True))
+
+
+@pytest.mark.skipif(
+    CACHE_BENCHMARK_ROOT is None,
+    reason="set SHENGJI_BELIEF_V2_CACHE_BENCHMARK_ROOT")
+def test_parallel_cache_group_benchmark_reproduces_exact_stage_population(
+        tmp_path, monkeypatch):
+    """Measure the full cache population with the production worker topology."""
+    configure_numerical_runtime()
+    _patch_rehearsal_population(monkeypatch)
+    _restore_parent_worker_population(monkeypatch)
+    _patch_stage_gates(monkeypatch)
+    root = Path(CACHE_BENCHMARK_ROOT).resolve()
+    base = root.parent
+    sources = tuple(sorted((base / "human-sources").glob("*.jsonl")))
+    inventory = build_h0_inventory(
+        source_manifest=base / "human-source-manifest.txt",
+        source_paths=list(sources))
+    group_split = build_h0_group_split(inventory)
+    freeze = _rehearsal_freeze(root, inventory, group_split)
+    admission = _admission(freeze)
+    index_manifest, inputs = reopen_training_input_index(
+        root / "training-input-index" / "result",
+        freeze=freeze, admission=admission)
+    monkeypatch.setattr(
+        PARALLEL_CACHE, "_initialize_worker",
+        _rehearsal_parallel_cache_initializer)
+    index_sha = index_manifest["index_sha256"]
+    primary = next(row for row in inputs.realizations
+                   if row.cohort_id == "synthetic-primary")
+    control = next(row for row in inputs.realizations
+                   if row.cohort_id == "hard-geometry-label-permutation")
+    primary_binding = CACHE_STAGE._realization_binding(
+        freeze, index_sha, primary)
+    direct_specs = tuple(
+        (row.cohort_id, row, "train", CACHE_STAGE._realization_binding(
+            freeze, index_sha, row))
+        for row in inputs.realizations
+        if row.cohort_id != control.cohort_id) + ((
+            CACHE_STAGE.CALIBRATION_CACHE_ID,
+            inputs.common_calibration, "calibration",
+            CACHE_STAGE._calibration_binding(
+                freeze, index_sha, inputs.common_calibration)),)
+    loader = V2ArtifactRoundLoader(
+        root, freeze=freeze, admission=admission, index=inputs.index)
+
+    def serial_build(parent: Path, spec):
+        cache_id, schedule, mode, binding = spec
+        directory = parent / cache_id
+        if mode == "train":
+            receipt = build_tensor_cache(
+                directory,
+                batches=lambda row=schedule: (
+                    iter_streaming_training_batches(
+                        inputs.index, row, load_round=loader)),
+                binding=binding)
+        else:
+            receipt = build_tensor_cache(
+                directory,
+                batches=lambda: iter_streaming_calibration_batches(
+                    inputs.index, inputs.common_calibration,
+                    load_round=loader),
+                binding=binding)
+        return cache_id, receipt
+
+    serial_parent = tmp_path / "serial"
+    serial_parent.mkdir()
+    serial_started = time.monotonic_ns()
+    serial_receipts = dict(
+        serial_build(serial_parent, spec) for spec in direct_specs)
+    serial_overlay = build_label_overlay(
+        serial_parent / "control-overlay",
+        batches=lambda: iter_streaming_training_batches(
+            inputs.index, control, load_round=loader),
+        actor_directory=serial_parent / primary.cohort_id,
+        actor_manifest_sha256=serial_receipts[
+            primary.cohort_id]["manifest_sha256"],
+        binding=primary_binding, overlay_id=control.sha256())
+    serial_wall = time.monotonic_ns() - serial_started
+
+    parallel_parent = tmp_path / "parallel"
+    parallel_parent.mkdir()
+    build_concurrency, workers_per_build = parallel_cache_build_topology(
+        freeze.runtime, len(direct_specs))
+
+    def parallel_build(spec):
+        cache_id, schedule, mode, binding = spec
+        return cache_id, build_parallel_tensor_cache(
+            parallel_parent / cache_id, root=root, freeze=freeze,
+            admission=admission, index=inputs.index, schedule=schedule,
+            mode=mode, binding=binding, worker_count=workers_per_build)
+
+    parallel_started = time.monotonic_ns()
+    with ThreadPoolExecutor(max_workers=build_concurrency) as executor:
+        parallel_receipts = dict(executor.map(
+            parallel_build, direct_specs))
+
+    def cached_control_batches():
+        primary_factory = cached_batch_factory(
+            parallel_parent / primary.cohort_id,
+            expected_manifest_sha256=parallel_receipts[
+                primary.cohort_id]["manifest_sha256"],
+            binding=primary_binding)
+        for natural in primary_factory():
+            transformed, _ = label_control_batch_from_natural(natural)
+            yield transformed
+
+    parallel_overlay = build_label_overlay(
+        parallel_parent / "control-overlay",
+        batches=cached_control_batches,
+        actor_directory=parallel_parent / primary.cohort_id,
+        actor_manifest_sha256=parallel_receipts[
+            primary.cohort_id]["manifest_sha256"],
+        binding=primary_binding, overlay_id=control.sha256())
+    parallel_wall = time.monotonic_ns() - parallel_started
+
+    assert parallel_receipts == serial_receipts
+    assert parallel_overlay == serial_overlay
+    for cache_id, *_ in direct_specs:
+        assert {path.name: path.read_bytes()
+                for path in (parallel_parent / cache_id).iterdir()} \
+            == {path.name: path.read_bytes()
+                for path in (serial_parent / cache_id).iterdir()}
+    assert {path.name: path.read_bytes()
+            for path in (parallel_parent / "control-overlay").iterdir()} \
+        == {path.name: path.read_bytes()
+            for path in (serial_parent / "control-overlay").iterdir()}
+    stage = json.loads((
+        root / "training-tensor-cache" / "result" / "manifest.json"
+    ).read_bytes())
+    expected = {row["cohort_id"]: row
+                for row in stage["cohort_caches"]}
+    for cache_id, receipt in serial_receipts.items():
+        source = (stage["common_calibration_cache"]
+                  if cache_id == CACHE_STAGE.CALIBRATION_CACHE_ID
+                  else expected[cache_id])
+        _assert_cache_benchmark_receipts(source, receipt, receipt)
+    _assert_cache_benchmark_receipts(
+        expected[control.cohort_id], serial_overlay, parallel_overlay)
+    print("BELIEF_V2_CACHE_GROUP_BENCHMARK " + json.dumps({
+        "aggregate_worker_budget": parallel_cache_worker_count(
+            freeze.runtime),
+        "concurrent_builds": build_concurrency,
+        "workers_per_build": workers_per_build,
+        "direct_cache_count": len(direct_specs),
+        "serial_wall_nanoseconds": serial_wall,
+        "parallel_wall_nanoseconds": parallel_wall,
+        "wall_speedup_ppm": serial_wall * 1_000_000 // parallel_wall,
+        "direct_artifact_bytes": sum(
+            row["artifact_bytes"] for row in parallel_receipts.values()),
+        "overlay_artifact_bytes": parallel_overlay["artifact_bytes"],
+    }, sort_keys=True))
+
+
+def test_cache_benchmark_receipt_binding_is_cross_platform_but_exact():
+    expected = {
+        "manifest_sha256": "a" * 64,
+        "batch_count": 71,
+        "decision_count": 5536,
+        "artifact_bytes": 71579039,
+    }
+    serial = dict(expected, manifest_sha256="b" * 64)
+    parallel = dict(serial)
+    _assert_cache_benchmark_receipts(expected, serial, parallel)
+
+    with pytest.raises(AssertionError):
+        _assert_cache_benchmark_receipts(
+            expected, serial, dict(parallel, manifest_sha256="c" * 64))
+    with pytest.raises(AssertionError):
+        _assert_cache_benchmark_receipts(
+            expected, dict(serial, decision_count=5535), parallel)
 
 
 def test_genuine_admission_traverses_every_unpatched_stage_gate(

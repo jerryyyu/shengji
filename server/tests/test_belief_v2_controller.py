@@ -1276,11 +1276,15 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         lambda *args, **kwargs: object())
     monkeypatch.setattr(
         CACHE_STAGE, "parallel_cache_worker_count", lambda runtime: 1)
+    monkeypatch.setattr(
+        CACHE_STAGE, "parallel_cache_build_topology",
+        lambda runtime, build_count: (1, 1))
 
     def training_batches(index, realization, *, load_round):
-        batch = (control_batch if realization.kind
-                 == "hard-geometry-label-permutation" else natural_batch)
-        return iter((batch,))
+        if realization.kind == "hard-geometry-label-permutation":
+            pytest.fail(
+                "control overlay reparsed source rows after primary cache")
+        return iter((natural_batch,))
 
     monkeypatch.setattr(
         CACHE_STAGE, "iter_streaming_training_batches", training_batches)

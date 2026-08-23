@@ -36,6 +36,8 @@ from .belief_v2_tensor_cache import (
 
 
 MAX_PARALLEL_CACHE_WORKERS = 16
+MAX_WORKERS_PER_CACHE_BUILD = 8
+MIN_WORKERS_PER_CONCURRENT_BUILD = 4
 PARALLEL_CACHE_PARENT_RESERVE_BYTES = 4 * 1024 ** 3
 PARALLEL_CACHE_WORKER_BUDGET_BYTES = 1024 ** 3
 
@@ -63,6 +65,25 @@ def parallel_cache_worker_count(runtime) -> int:
         // PARALLEL_CACHE_WORKER_BUDGET_BYTES)
     return max(1, min(
         MAX_PARALLEL_CACHE_WORKERS, cpu_count, memory_workers))
+
+
+def parallel_cache_build_topology(
+        runtime, build_count: int) -> tuple[int, int]:
+    """Spend safe surplus workers on disjoint caches, not contention."""
+    if type(build_count) is not int or build_count <= 0:
+        raise BeliefV2ParallelCacheError(
+            "V2 parallel cache build population drift")
+    worker_budget = parallel_cache_worker_count(runtime)
+    concurrent_builds = min(
+        build_count,
+        max(1, worker_budget // MIN_WORKERS_PER_CONCURRENT_BUILD))
+    workers_per_build = min(
+        MAX_WORKERS_PER_CACHE_BUILD,
+        max(1, worker_budget // concurrent_builds))
+    if concurrent_builds * workers_per_build > worker_budget:
+        raise BeliefV2ParallelCacheError(
+            "V2 parallel cache build topology drift")
+    return concurrent_builds, workers_per_build
 
 
 def _initialize_worker(

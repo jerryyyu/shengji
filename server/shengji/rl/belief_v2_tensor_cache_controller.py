@@ -13,11 +13,13 @@ training, evaluation, gameplay, strength, or deployment authority.
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import json
 import os
 import resource
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -41,6 +43,7 @@ from .belief_v2_device_runner import host_peak_memory_bytes
 from .belief_v2_progress import ProgressCallback
 from .belief_v2_parallel_cache import (
     build_parallel_tensor_cache,
+    parallel_cache_build_topology,
     parallel_cache_worker_count,
 )
 from .belief_v2_streaming_inputs import V2ArtifactRoundLoader
@@ -48,6 +51,7 @@ from .belief_v2_streaming_training import (
     iter_streaming_calibration_batches,
     iter_streaming_training_batches,
 )
+from .belief_v2_training import label_control_batch_from_natural
 from .belief_v2_tensor_cache import (
     V2TensorCacheBindingV1,
     build_label_overlay,
@@ -414,41 +418,120 @@ def run_training_tensor_cache(
     deadline = stage_deadline(
         freeze, admission, stage="training", slot="tensor-cache",
         started_monotonic_nanoseconds=started)
+    deadline_lock = threading.Lock()
 
     def deadline_check(phase: str, next_unit_index: int) -> None:
-        try:
-            deadline.check(
-                phase=phase, next_unit_index=next_unit_index,
-                observed_monotonic_nanoseconds=time.monotonic_ns())
-        except BeliefV2DeadlineError as exc:
-            if not (partial / "deadline-refusal.json").exists():
-                publish_deadline_refusal(partial, exc.refusal)
-            raise
+        with deadline_lock:
+            try:
+                deadline.check(
+                    phase=phase, next_unit_index=next_unit_index,
+                    observed_monotonic_nanoseconds=time.monotonic_ns())
+            except BeliefV2DeadlineError as exc:
+                if not (partial / "deadline-refusal.json").exists():
+                    publish_deadline_refusal(partial, exc.refusal)
+                raise
 
     total_batches = (sum(len(row.batches) for row in inputs.realizations)
                      + len(inputs.common_calibration.batches))
     cache_workers = parallel_cache_worker_count(freeze.runtime)
-    completed = 0
+    progress_lock = threading.Lock()
+    progress_totals = {
+        row.cohort_id: len(row.batches) for row in inputs.realizations}
+    progress_totals[CALIBRATION_CACHE_ID] = len(
+        inputs.common_calibration.batches)
+    progress_done = {key: 0 for key in progress_totals}
     if progress is not None:
         progress(0, total_batches, "cache-non-test-batches")
 
-    def cache_progress(done: int, total: int, _label: str) -> None:
-        if progress is not None:
-            progress(completed + done, total_batches,
-                     "cache-non-test-batches")
+    def cache_progress(cache_id: str):
+        def update(done: int, total: int, _label: str) -> None:
+            if cache_id not in progress_totals \
+                    or total != progress_totals[cache_id]:
+                raise BeliefV2TensorCacheControllerError(
+                    "V2 tensor cache progress population drift")
+            with progress_lock:
+                if done < progress_done[cache_id]:
+                    raise BeliefV2TensorCacheControllerError(
+                        "V2 tensor cache progress order drift")
+                progress_done[cache_id] = done
+                if progress is not None:
+                    progress(sum(progress_done.values()), total_batches,
+                             "cache-non-test-batches")
+        return update
 
     loader = V2ArtifactRoundLoader(
         root, freeze=freeze, admission=admission, index=inputs.index)
     entries: list[dict[str, Any]] = []
     primary_binding = _realization_binding(
         freeze, input_index_sha256, primary_rows[0])
-    primary_receipt = None
+    calibration_binding = _calibration_binding(
+        freeze, input_index_sha256, inputs.common_calibration)
+    direct_specs = tuple(
+        (row.cohort_id, partial / _cache_directory_name(row.cohort_id),
+         row, "train", _realization_binding(
+             freeze, input_index_sha256, row))
+        for row in inputs.realizations
+        if row.cohort_id != CONTROL_COHORT_ID) + ((
+            CALIBRATION_CACHE_ID,
+            partial / _cache_directory_name(CALIBRATION_CACHE_ID),
+            inputs.common_calibration, "calibration", calibration_binding),)
+    build_concurrency, workers_per_build = parallel_cache_build_topology(
+        freeze.runtime, len(direct_specs))
+
+    def build_direct(spec):
+        cache_id, cache_directory, schedule, mode, binding = spec
+        receipt = _completed_cache_receipt(
+            cache_directory, binding=binding)
+        if receipt is None:
+            if workers_per_build > 1:
+                receipt = build_parallel_tensor_cache(
+                    cache_directory, root=root, freeze=freeze,
+                    admission=admission, index=inputs.index,
+                    schedule=schedule, mode=mode, binding=binding,
+                    worker_count=workers_per_build,
+                    deadline_check=deadline_check,
+                    progress=cache_progress(cache_id))
+            elif mode == "train":
+                receipt = build_tensor_cache(
+                    cache_directory,
+                    batches=lambda row=schedule: (
+                        iter_streaming_training_batches(
+                            inputs.index, row, load_round=loader)),
+                    binding=binding, deadline_check=deadline_check,
+                    progress=cache_progress(cache_id))
+            else:
+                receipt = build_tensor_cache(
+                    cache_directory,
+                    batches=lambda: iter_streaming_calibration_batches(
+                        inputs.index, inputs.common_calibration,
+                        load_round=loader),
+                    binding=binding, deadline_check=deadline_check,
+                    progress=cache_progress(cache_id))
+        else:
+            cache_progress(cache_id)(
+                len(schedule.batches), len(schedule.batches), cache_id)
+        return cache_id, receipt
+
     try:
+        with concurrent.futures.ThreadPoolExecutor(
+                max_workers=build_concurrency) as executor:
+            direct_receipts = dict(executor.map(
+                build_direct, direct_specs))
+        primary_receipt = direct_receipts[PRIMARY_COHORT_ID]
+        primary_directory = partial / _cache_directory_name(
+            PRIMARY_COHORT_ID)
+        primary_batch_factory = cached_batch_factory(
+            primary_directory,
+            expected_manifest_sha256=primary_receipt["manifest_sha256"],
+            binding=primary_binding)
+
+        def control_batches():
+            for natural in primary_batch_factory():
+                control, _ = label_control_batch_from_natural(natural)
+                yield control
+
         for realization in inputs.realizations:
             if realization.cohort_id == CONTROL_COHORT_ID:
-                if primary_receipt is None:
-                    raise BeliefV2TensorCacheControllerError(
-                        "V2 tensor cache control precedes primary")
                 overlay_directory = partial / CONTROL_OVERLAY_DIRECTORY
                 receipt = _completed_overlay_receipt(
                     overlay_directory,
@@ -458,17 +541,18 @@ def run_training_tensor_cache(
                 if receipt is None:
                     receipt = build_label_overlay(
                         overlay_directory,
-                        batches=lambda row=realization: (
-                            iter_streaming_training_batches(
-                                inputs.index, row, load_round=loader)),
-                        actor_directory=(partial / _cache_directory_name(
-                            PRIMARY_COHORT_ID)),
+                        batches=control_batches,
+                        actor_directory=primary_directory,
                         actor_manifest_sha256=(
                             primary_receipt["manifest_sha256"]),
                         binding=primary_binding,
                         overlay_id=realization.sha256(),
                         deadline_check=deadline_check,
-                        progress=cache_progress)
+                        progress=cache_progress(CONTROL_COHORT_ID))
+                else:
+                    cache_progress(CONTROL_COHORT_ID)(
+                        len(realization.batches), len(realization.batches),
+                        CONTROL_COHORT_ID)
                 entries.append(_entry(
                     cohort_id=realization.cohort_id,
                     realization_sha256=realization.sha256(),
@@ -482,62 +566,18 @@ def run_training_tensor_cache(
                 binding = _realization_binding(
                     freeze, input_index_sha256, realization)
                 directory = _cache_directory_name(realization.cohort_id)
-                cache_directory = partial / directory
-                receipt = _completed_cache_receipt(
-                    cache_directory, binding=binding)
-                if receipt is None:
-                    if cache_workers > 1:
-                        receipt = build_parallel_tensor_cache(
-                            cache_directory, root=root, freeze=freeze,
-                            admission=admission, index=inputs.index,
-                            schedule=realization, mode="train",
-                            binding=binding, worker_count=cache_workers,
-                            deadline_check=deadline_check,
-                            progress=cache_progress)
-                    else:
-                        receipt = build_tensor_cache(
-                            cache_directory,
-                            batches=lambda row=realization: (
-                                iter_streaming_training_batches(
-                                    inputs.index, row, load_round=loader)),
-                            binding=binding, deadline_check=deadline_check,
-                            progress=cache_progress)
+                receipt = direct_receipts[realization.cohort_id]
                 entries.append(_entry(
                     cohort_id=realization.cohort_id,
                     realization_sha256=realization.sha256(),
                     kind="actor-and-label-cache", directory=directory,
                     binding=binding, receipt=receipt))
-                if realization.cohort_id == PRIMARY_COHORT_ID:
-                    primary_receipt = receipt
-            completed += len(realization.batches)
-
-        calibration_binding = _calibration_binding(
-            freeze, input_index_sha256, inputs.common_calibration)
-        calibration_directory = partial / _cache_directory_name(
-            CALIBRATION_CACHE_ID)
-        calibration_receipt = _completed_cache_receipt(
-            calibration_directory, binding=calibration_binding)
-        if calibration_receipt is None:
-            if cache_workers > 1:
-                calibration_receipt = build_parallel_tensor_cache(
-                    calibration_directory, root=root, freeze=freeze,
-                    admission=admission, index=inputs.index,
-                    schedule=inputs.common_calibration,
-                    mode="calibration", binding=calibration_binding,
-                    worker_count=cache_workers,
-                    deadline_check=deadline_check,
-                    progress=cache_progress)
-            else:
-                calibration_receipt = build_tensor_cache(
-                    calibration_directory,
-                    batches=lambda: iter_streaming_calibration_batches(
-                        inputs.index, inputs.common_calibration,
-                        load_round=loader),
-                    binding=calibration_binding,
-                    deadline_check=deadline_check,
-                    progress=cache_progress)
-        completed += len(inputs.common_calibration.batches)
-        deadline_check("before-seal", completed)
+        calibration_receipt = direct_receipts[CALIBRATION_CACHE_ID]
+        if any(progress_done[key] != progress_totals[key]
+               for key in progress_totals):
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache progress completion drift")
+        deadline_check("before-seal", total_batches)
     except (RuntimeError, ValueError) as exc:
         raise BeliefV2TensorCacheControllerError(
             "V2 tensor cache construction refused") from exc

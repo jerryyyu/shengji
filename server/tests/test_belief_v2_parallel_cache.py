@@ -9,11 +9,17 @@ from types import SimpleNamespace
 import pytest
 
 import shengji.rl.belief_v2_parallel_cache as PARALLEL
+import shengji.rl.belief_v2_parallel_inputs as PARALLEL_INPUTS
 from shengji.rl.belief_v2_parallel_cache import (
     BeliefV2ParallelCacheError,
     build_parallel_tensor_cache,
+    parallel_cache_build_topology,
     parallel_cache_worker_count,
 )
+from shengji.rl.belief_v2_parallel_inputs import (
+    BeliefV2ParallelInputError,
+)
+from shengji.rl.belief_v2_deadline import V2StageDeadlineV1
 from shengji.rl.belief_v2_streaming_training import (
     V2StreamingTrainingBatchReaderV1,
 )
@@ -91,6 +97,116 @@ def test_worker_count_uses_every_safe_core_and_refuses_bad_runtime():
                        match="runtime capacity"):
         parallel_cache_worker_count(SimpleNamespace(
             cpu_count=True, memory_bytes=16 * gib))
+
+
+def test_build_topology_spends_surplus_workers_across_disjoint_caches():
+    gib = 1024 ** 3
+    runtime = SimpleNamespace(cpu_count=16, memory_bytes=32 * gib)
+    assert parallel_cache_build_topology(runtime, 4) == (4, 4)
+    assert parallel_cache_build_topology(runtime, 1) == (1, 8)
+    assert parallel_cache_build_topology(SimpleNamespace(
+        cpu_count=8, memory_bytes=32 * gib), 4) == (2, 4)
+    assert parallel_cache_build_topology(SimpleNamespace(
+        cpu_count=4, memory_bytes=32 * gib), 4) == (1, 4)
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="build population"):
+        parallel_cache_build_topology(runtime, 0)
+
+
+def test_parallel_input_parent_reduces_worker_chunks_in_canonical_order(
+        tmp_path, monkeypatch):
+    root = tmp_path / "evidence"
+    capture = root / "capture"
+    capture.mkdir(parents=True)
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    tasks = (
+        (0, 0, "train", (2,), 0),
+        (1, 0, "calibration", (3,), 1),
+    )
+    monkeypatch.setattr(PARALLEL_INPUTS, "_tasks", lambda: tasks)
+    monkeypatch.setattr(
+        PARALLEL_INPUTS.concurrent.futures, "ProcessPoolExecutor",
+        _ImmediateExecutor)
+
+    def scan(task):
+        index = task[0]
+        if index == 0:
+            return index, (("train-row",), (), ("train-source",), 7, 1), None
+        return index, ((), ("calibration-row",),
+                       ("calibration-source",), 0, 1), None
+
+    monkeypatch.setattr(PARALLEL_INPUTS, "_scan_chunk", scan)
+    phases = []
+    result = PARALLEL_INPUTS.scan_parallel_synthetic_training_inputs(
+        capture, freeze=freeze, admission=admission, worker_count=2,
+        deadline_check=lambda phase, unit: phases.append((phase, unit)))
+    assert result == (
+        ("train-row",), ("calibration-row",),
+        ("train-source", "calibration-source"), 7, 2)
+    assert phases == [
+        ("before-unit", 0), ("before-unit", 1),
+        ("after-unit", 1), ("after-unit", 2)]
+
+
+def test_parallel_input_worker_expiry_reaches_parent_deadline_wiring(
+        tmp_path, monkeypatch):
+    root = tmp_path / "evidence"
+    capture = root / "capture"
+    capture.mkdir(parents=True)
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    monkeypatch.setattr(
+        PARALLEL_INPUTS, "_tasks",
+        lambda: ((0, 0, "train", (2,), 0),))
+    monkeypatch.setattr(
+        PARALLEL_INPUTS.concurrent.futures, "ProcessPoolExecutor",
+        _ImmediateExecutor)
+    refusal = SimpleNamespace(phase="before-unit", next_unit_index=0)
+    monkeypatch.setattr(
+        PARALLEL_INPUTS, "_scan_chunk",
+        lambda task: (task[0], None, refusal))
+    phases = []
+
+    def deadline(phase, unit):
+        phases.append((phase, unit))
+        if len(phases) == 2:
+            raise BeliefV2ParallelInputError("deadline witness")
+
+    with pytest.raises(BeliefV2ParallelInputError,
+                       match="deadline witness"):
+        PARALLEL_INPUTS.scan_parallel_synthetic_training_inputs(
+            capture, freeze=freeze, admission=admission, worker_count=2,
+            deadline_check=deadline)
+    assert phases == [("before-unit", 0), ("before-unit", 0)]
+
+
+def test_parallel_input_worker_checks_deadline_before_opening_round(
+        tmp_path, monkeypatch):
+    deadline = V2StageDeadlineV1(
+        freeze_sha256="a" * 64, admission_sha256="b" * 64,
+        stage="training", slot="input-index",
+        started_monotonic_nanoseconds=1,
+        wall_cap_nanoseconds=100,
+        next_unit_wall_estimate_nanoseconds=20,
+        safety_reserve_nanoseconds=10)
+    monkeypatch.setattr(PARALLEL_INPUTS, "_WORKER_ROOT", tmp_path)
+    monkeypatch.setattr(PARALLEL_INPUTS, "_WORKER_DEADLINE", deadline)
+    monkeypatch.setattr(
+        PARALLEL_INPUTS, "_worker_lane",
+        lambda lane: ((SimpleNamespace(split="train"),),
+                      {"rounds": (object(),)}))
+    monkeypatch.setattr(
+        PARALLEL_INPUTS, "_reopen_synthetic_training_round_examples",
+        lambda *args, **kwargs: pytest.fail(
+            "expired worker opened a round"))
+    monkeypatch.setattr(PARALLEL_INPUTS.time, "monotonic_ns", lambda: 100)
+    index, result, refusal = PARALLEL_INPUTS._scan_chunk(
+        (0, 0, "train", (0,), 0))
+    assert index == 0
+    assert result is None
+    assert refusal.phase == "before-unit"
+    assert refusal.next_unit_index == 0
 
 
 def test_parallel_parent_is_byte_identical_to_serial(tmp_path, monkeypatch):

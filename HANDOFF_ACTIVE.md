@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 17:47 EDT.
+Last reconciled: 2026-08-23 18:16 EDT.
 
 ## Immediate objective
 
@@ -41,17 +41,17 @@ then passed their post-publish typed byte reconstruction. The run entered stage
 cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
-progress appeared at 07:10 EDT. At reconciliation the synthetic-primary,
-hard-label-control and human-mixture workers were respectively 26.26%, 26.21%
-and 26.71% through their exact schedules; the synthetic 50%-scale worker was
-48.53% through its schedule. The full-data cohorts have each
-sealed four epoch journals and reusable resume states; the scale cohort has
-sealed seven. These journals bind all eight member training/calibration
-receipts, common-epoch selection and
+progress appeared at 07:10 EDT. At the latest reconciliation the
+synthetic-primary, hard-label-control and human-mixture workers were
+respectively 28.97%, 28.92% and 29.19% through their exact schedules; the
+synthetic 50%-scale worker was 53.80% through its schedule. The full-data
+cohorts have each sealed eight epoch journals and reusable resume states; the
+scale cohort has sealed sixteen. These journals bind all eight member
+training/calibration receipts, common-epoch selection and
 `exact_resume_count=0`, while keeping test, strength and deployment authority
 false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
 journal reopener is deferred until it will not compete with live training.
-Overall task-weighted progress is 93.26%.
+Overall task-weighted progress is 93.42%.
 All progress is outcome-blind. The service is active, `NRestarts=0`, with no
 recorded failure task and no test opening.
 
@@ -171,26 +171,30 @@ preserved over-cap attempt into a passing receipt. The exact root, ops logs,
 component caches and tombstone are evidence and must remain untouched.
 
 The repair is now draft PR #131, stacked on reviewed PR #128, at exact head
-`d698457b84053f2eadda8bf10f226248707b995b`. It leaves the 24-GiB cap
+`222ba5bf6d31b369dde19aa60f0fab52dace8dec`. It leaves the 24-GiB cap
 unchanged, derives an eight-worker aggregate cache budget as two concurrent
 builds of four workers, durably publishes any measured cap refusal before
 raising, and permanently refuses same-admission resume. Complete V2 suites at
-this head pass 250/255 pure and 251/255 strict compiled (five/four intentional
-skips respectively), including a direct clean-Git preflight witness and the
-resource-refusal tamper/resume witnesses. Draft PR #131 grants no execution,
-test, gameplay, merge, strength or deployment authority.
+this head pass 451/457 pure and 453/457 strict compiled (six/four intentional
+skips respectively), including direct clean-Git and typed-overlay preflight
+witnesses plus the resource-refusal tamper/resume witnesses. Draft PR #131
+grants no execution, test, gameplay, merge, strength or deployment authority.
 
 The score-free capacity proof is live on `shengji-perf` as transient unit
-`belief-r5-cache-capacity-d698457-v3.service`, `Restart=no`, with a hard
+`belief-r5-cache-capacity-222ba5b-v4.service`, `Restart=no`, with a hard
 25,769,803,776-byte cgroup limit. Before launch, the exact source-clean probe
-and full 311-MB input-index reopen independently reproduced the failed
-freeze/admission/index hashes and derived topology `8 = 2 x 4`. The live proof
-rebuilds only train/calibration caches into
-`/opt/belief-r5-cache-capacity-d698457-v3`, compares all five component
+reproduced the intended topology `8 = 2 x 4`. The live proof first reopens the
+full 311-MB input index and all five preserved cache components, then rebuilds
+only train/calibration caches into
+`/opt/belief-r5-cache-capacity-222ba5b-v4`, compares all five component
 manifests against the preserved failed components and records percent progress.
-It cannot retry the failed admission or open test targets. Two earlier
-preflight units failed before evidence access or scratch creation on CLI-only
-bugs; both are repaired with can-fail tests and are not scientific attempts.
+It cannot retry the failed admission or open test targets. Three earlier
+preflight units produced no scratch cache or receipt and were not scientific
+attempts: two refused before evidence access on CLI-only bugs, while the third
+strictly reopened the old index/direct caches but used the generic
+`manifest.json` name for the typed control overlay's valid
+`labels-manifest.json`. That one-line harness bug is repaired at this head with
+a direct can-fail witness; it did not expose an incomplete old component.
 The successor will use one consolidated source/freeze review after this proof
 and all fresh host receipts are complete.
 The completed non-test cache components may be authenticated for diagnostics

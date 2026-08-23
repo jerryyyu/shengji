@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 10:52 EDT.
+Last reconciled: 2026-08-23 14:35 EDT.
 
 ## Immediate objective
 
@@ -41,15 +41,16 @@ then passed their post-publish typed byte reconstruction. The run entered stage
 cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
-progress appeared at 07:10 EDT. At reconciliation the four workers had consumed
-8,809/118,800, 8,673/118,800, 8,770/119,040 and 8,388/62,340 total scheduled
-batch units. All four cohorts have sealed an epoch-1 journal and reusable resume
-state; the synthetic 50%-scale cohort has also sealed epoch 2. These journals
-bind all eight member training/calibration receipts, common-epoch selection and
+progress appeared at 07:10 EDT. At reconciliation the three full-data workers
+were each about 18.2% through their exact schedules and the synthetic 50%-scale
+worker was about 33.4% through its schedule. The full-data cohorts have each
+sealed four epoch journals and reusable resume states; the scale cohort has
+sealed seven. These journals bind all eight member training/calibration
+receipts, common-epoch selection and
 `exact_resume_count=0`, while keeping test, strength and deployment authority
 false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
 journal reopener is deferred until it will not compete with live training.
-Overall task-weighted progress is 92.18%.
+Overall task-weighted progress is 92.79%.
 All progress is outcome-blind. The service is active, `NRestarts=0`, with no
 recorded failure task and no test opening.
 
@@ -133,9 +134,23 @@ reopens to 85 exact tasks with 16/16/1/1/1/16/4/1/1/1 concurrency.
 
 The successor initialized once only after the exact marker landed. The
 production root reopener returned `verified: true`, then the packet-bound
-supervisor started all 16 synthetic-capture lanes. It will not transplant any
-artifact whose manifest is bound to the spent R5 admission. The entire failed
-root, logs, tombstone and predecessor-refusal receipt SHA
+supervisor started all 16 synthetic-capture lanes. All lanes sealed only after
+their full post-publication typed reopens passed. Their manifests reconcile to
+13,312 rounds, 54.97/65 core-hours, 13.546/16 GiB, a 3.476/5.00-hour parallel
+wall span and zero retries/drops. The integrity tail independently parsed about
+14 GiB of private/actor bundles before the supervisor advanced; it was not a
+retry or a second capture. All 30 human-capture tasks then sealed.
+
+R5 entered stage 3/10, `training-input-index`, at about 14:31 EDT with 46/85
+tasks complete. The repaired cap-aware route is visibly using eight worker
+processes at full CPU rather than the refused 16-worker predecessor. At
+reconciliation it had scanned 1,700/12,003 exact input units; progress remained
+outcome-blind and no calibration or test artifact existed. The service remains
+active with `NRestarts=0` and no warning or failed task.
+
+It will not transplant any artifact whose manifest is bound to the spent R5
+admission. The entire failed root, logs, tombstone and predecessor-refusal
+receipt SHA
 `58712f72714de6645f94a7ca78cf1dac461c1e74bec83f147a565b615ee5ec6b`
 remain preserved. R5 shares R4's preregistered population and is not an
 independent scientific replication.

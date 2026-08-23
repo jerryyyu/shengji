@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 08:14 EDT.
+Last reconciled: 2026-08-23 08:21 EDT.
 
 ## Immediate objective
 
@@ -78,14 +78,14 @@ capture artifacts from the canonical-tip failure; the reviewed packet records
 The production reopener authenticated the exact append-only marker (marker SHA
 `f3bce678…`) and initialized this namespace once. The root then reopened with
 the frozen admission/inventory/group split and all prohibited authorities
-false. At reconciliation R5 remained in stage 1/10, `synthetic-capture`, after
-all 16 final lane directories were published. Their manifests reconcile to
-13,312 rounds, 54.21/65 core-hours, 13.55/16 GiB, a 3.46/5.00-hour parallel
-wall span, zero retries/drops, one exact freeze/admission and all prohibited
-authorities false. The 16 workers are still performing their independent
-post-publish typed reconstructions, so capture is not yet called sealed and the
-supervisor has not advanced. Overall task-weighted progress is 18.82%,
-`NRestarts=0`, with no failure or test opening.
+false. Synthetic capture sealed all 16 lanes only after their independent
+post-publish typed reconstructions passed. The manifests reconcile to 13,312
+rounds, 54.21/65 core-hours, 13.55/16 GiB, a 3.46/5.00-hour parallel wall span,
+zero retries/drops, one exact freeze/admission and all prohibited authorities
+false. All 30 human-capture tasks then sealed. At reconciliation R5 had advanced
+to stage 3/10, the optimized `training-input-index`, at 128/12,003 units (1.06%)
+and 54.13% task-weighted progress. The service remains `NRestarts=0`, with no
+failure or test opening.
 Input indexing and cache construction were measured at 4.824x and 8.578x over
 their serial paths with exact parity; the live run will provide the operational
 confirmation. R5 shares R4's preregistered population and is not an independent

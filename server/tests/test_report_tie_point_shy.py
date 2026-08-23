@@ -97,17 +97,19 @@ def test_tie_break_counters_aggregate_and_reach_the_harness():
     arm = _bot("mc-s0-report-lcb-pointshy")
     arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["H10"], ["S3"])   # flip
     arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["S3"], ["D4"])    # keep
-    arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["S10"], ["S3"],
-                                   is_lead=True, challenger_trump=True)
+    shy = arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["S10"], ["S3"],
+                                         is_lead=True, challenger_trump=True)
+    # Trump guard: a tie must never flip INTO trump (pilot: 42% of
+    # unguarded flips were trump spends, the measured -4pt drain family).
+    assert shy["pick"] == "incumbent" and shy["trump_guarded"] is True
     c = counters([arm])
     assert c["tie_shy_firings"] == 3
     assert c["tie_shy_fire_lead"] == 1
-    assert c["tie_shy_flip_lead"] == 1
-    assert c["tie_shy_flip_trump"] == 1
-    assert c["tie_shy_risk_saved_lead"] == 10
-    assert c["tie_shy_firings"] == 3 or True  # follow strata = totals - lead
-    assert c["tie_shy_flips"] == 2
-    assert c["tie_shy_risk_saved"] == 20
+    assert c["tie_shy_trump_guarded"] == 1
+    assert c["tie_shy_flip_lead"] == 0
+    assert c["tie_shy_flip_trump"] == 0
+    assert c["tie_shy_flips"] == 1
+    assert c["tie_shy_risk_saved"] == 10
     # Champion contributes constant zeros, not missing keys.
     c0 = counters([_bot("mc-s0-report-lcb")])
     assert (c0["tie_shy_firings"], c0["tie_shy_flips"],

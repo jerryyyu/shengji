@@ -581,6 +581,7 @@ class MCBot(SmartBot):
             self.tie_shy_flip_lead = 0
             self.tie_shy_flip_trump = 0
             self.tie_shy_risk_saved_lead = 0
+            self.tie_shy_trump_guarded = 0
         if critical is None or se is None:
             return None
         if abs(gap) > critical * se:
@@ -591,6 +592,17 @@ class MCBot(SmartBot):
         challenger_risk = sum(_pts(c) for c in challenger)
         self.tie_shy_firings += 1
         self.tie_shy_fire_lead += 1 if is_lead else 0
+        if challenger_risk < incumbent_risk and challenger_trump:
+            # ARM II guard pulled forward (pilot: 42% of flips spent trump —
+            # the measured -4pt drain family). A tie never flips INTO trump.
+            self.tie_shy_trump_guarded += 1
+            return {
+                "schema": "report-tie-point-shy-v1", "critical": critical,
+                "gap": gap, "se": se,
+                "incumbent_points_at_risk": incumbent_risk,
+                "challenger_points_at_risk": challenger_risk,
+                "pick": "incumbent", "trump_guarded": True,
+            }
         if challenger_risk < incumbent_risk:
             self.tie_shy_flips += 1
             self.tie_shy_risk_saved += incumbent_risk - challenger_risk

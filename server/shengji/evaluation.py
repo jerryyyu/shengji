@@ -94,6 +94,8 @@ def counters(bots) -> dict:
                                      for b in bots),
             "tie_shy_flip_trump": sum(getattr(b, "tie_shy_flip_trump", 0)
                                       for b in bots),
+            "tie_shy_trump_guarded": sum(
+                getattr(b, "tie_shy_trump_guarded", 0) for b in bots),
             "tie_shy_risk_saved_lead": sum(
                 getattr(b, "tie_shy_risk_saved_lead", 0) for b in bots),
             "searches": sum(getattr(b, "search_calls", 0) for b in bots),

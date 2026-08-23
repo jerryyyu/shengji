@@ -112,6 +112,11 @@ def _is_sha256(value: object) -> bool:
         and all(char in "0123456789abcdef" for char in value)
 
 
+def _is_git_sha(value: object) -> bool:
+    return type(value) is str and len(value) == 40 \
+        and all(char in "0123456789abcdef" for char in value)
+
+
 def _clean_git_head(expected: str) -> None:
     try:
         head = subprocess.run(
@@ -123,7 +128,7 @@ def _clean_git_head(expected: str) -> None:
     except (OSError, subprocess.CalledProcessError) as exc:
         raise BeliefV2CacheCapacityPreflightError(
             "V2 cache preflight Git probe failed") from exc
-    if not _is_sha256(expected) or head != expected or status:
+    if not _is_git_sha(expected) or head != expected or status:
         raise BeliefV2CacheCapacityPreflightError(
             "V2 cache preflight source identity drift")
 

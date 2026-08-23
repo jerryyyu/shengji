@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+import scripts.belief_v2_cache_capacity_preflight as CACHE_PREFLIGHT
+
 from shengji.rl.belief_v2_execution_identity import (
     BeliefV2ExecutionIdentityError,
     V2InstalledDistributionV1,
@@ -186,3 +188,24 @@ def test_cache_capacity_preflight_bootstraps_under_safe_flags():
         (sys.executable, "-P", "-B", str(script), "--help"), cwd=repo,
         env=environment, check=True, capture_output=True, text=True)
     assert "{run,verify}" in result.stdout
+
+
+def test_cache_capacity_preflight_accepts_exact_clean_git_sha1(monkeypatch):
+    """The host source probe binds Git's 40-hex object name, not SHA-256."""
+    head = "a" * 40
+
+    class Result:
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    def run(command, *args, **kwargs):
+        return Result(head + "\n" if command[1:] == (
+            "rev-parse", "HEAD") else "")
+
+    monkeypatch.setattr(
+        CACHE_PREFLIGHT.subprocess, "run", run)
+    CACHE_PREFLIGHT._clean_git_head(head)
+    with pytest.raises(
+            CACHE_PREFLIGHT.BeliefV2CacheCapacityPreflightError,
+            match="source identity drift"):
+        CACHE_PREFLIGHT._clean_git_head("b" * 64)

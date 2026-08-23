@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 07:11 EDT.
+Last reconciled: 2026-08-23 08:14 EDT.
 
 ## Immediate objective
 
@@ -42,10 +42,15 @@ cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
 progress appeared at 07:10 EDT. At reconciliation the four workers had consumed
-34/118,800, 35/119,040, 38/118,800 and 38/62,340 total scheduled batch units.
-No epoch or reusable checkpoint has completed yet. All progress is
-outcome-blind. The service is active, `NRestarts=0`, with no recorded failure
-task and no test opening.
+2,518/118,800, 2,569/119,040, 2,574/118,800 and 2,542/62,340 total scheduled
+batch units. The synthetic 50%-scale cohort sealed its epoch-1 journal and
+reusable resume state: the manifest binds eight member training/calibration
+receipts, selects common epoch 1, records `exact_resume_count=0`, and keeps test,
+strength and deployment authority false. Its persisted file sizes and SHA-256
+bindings reopen directly; the full typed journal reopener is deferred until it
+will not compete with live training. Overall task-weighted progress is 91.88%.
+All progress is outcome-blind. The service is active, `NRestarts=0`, with no
+recorded failure task and no test opening.
 
 Frozen bounds remain: capture 65 core-hours / 18,000 seconds; reference 40
 core-hours / 14,400 seconds; training 256 device-hours / 172,800 seconds.
@@ -73,9 +78,14 @@ capture artifacts from the canonical-tip failure; the reviewed packet records
 The production reopener authenticated the exact append-only marker (marker SHA
 `f3bce678…`) and initialized this namespace once. The root then reopened with
 the frozen admission/inventory/group split and all prohibited authorities
-false. At reconciliation R5 was in stage 1/10, `synthetic-capture`, with all 16
-lanes reporting 71.75--74.03%, `NRestarts=0`, no failure and 13.78%
-task-weighted progress. No test opening exists.
+false. At reconciliation R5 remained in stage 1/10, `synthetic-capture`, after
+all 16 final lane directories were published. Their manifests reconcile to
+13,312 rounds, 54.21/65 core-hours, 13.55/16 GiB, a 3.46/5.00-hour parallel
+wall span, zero retries/drops, one exact freeze/admission and all prohibited
+authorities false. The 16 workers are still performing their independent
+post-publish typed reconstructions, so capture is not yet called sealed and the
+supervisor has not advanced. Overall task-weighted progress is 18.82%,
+`NRestarts=0`, with no failure or test opening.
 Input indexing and cache construction were measured at 4.824x and 8.578x over
 their serial paths with exact parity; the live run will provide the operational
 confirmation. R5 shares R4's preregistered population and is not an independent

@@ -326,21 +326,7 @@ def _finish_directory(partial: Path, final: Path) -> None:
         os.close(descriptor)
 
 
-def build_tensor_cache(
-        directory: Path, *, batches: Callable[[], Any],
-        binding: V2TensorCacheBindingV1,
-        deadline_check: Callable[[str, int], None] | None = None,
-        progress: Callable[[int, int, str], None] | None = None) \
-        -> dict[str, Any]:
-    """Serialize one batch stream into a fresh hash-bound cache directory."""
-    if not isinstance(directory, Path) or not callable(batches):
-        raise BeliefV2TensorCacheError("V2 tensor cache build inputs drift")
-    _validate_binding(binding)
-    if (deadline_check is not None and not callable(deadline_check)) \
-            or (progress is not None and not callable(progress)):
-        raise BeliefV2TensorCacheError(
-            "V2 tensor cache callback drift")
-    split = binding.split
+def _prepare_cache_directory(directory: Path) -> Path:
     partial = _partial_path(directory)
     if directory.exists() or directory.is_symlink():
         raise BeliefV2TensorCacheError(
@@ -350,66 +336,95 @@ def build_tensor_cache(
         raise BeliefV2TensorCacheError(
             "V2 tensor cache partial drift")
     partial.mkdir(parents=True, mode=0o700, exist_ok=True)
-    rows: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    total_bytes = 0
-    if progress is not None:
-        progress(0, binding.expected_batch_count, binding.cache_id)
-    for index, batch in enumerate(batches()):
-        if deadline_check is not None:
-            deadline_check("before-unit", index)
-        if type(batch) is not BeliefTrainingBatchV1:
-            raise BeliefV2TensorCacheError("V2 tensor cache batch type drift")
-        if batch.split != split:
-            raise BeliefV2TensorCacheError(
-                "V2 tensor cache batch split drift")
-        if not batch.decision_keys \
-                or any(key in seen for key in batch.decision_keys):
-            raise BeliefV2TensorCacheError(
-                "V2 tensor cache duplicate decision")
-        seen.update(batch.decision_keys)
-        actor_candidate = _serialize(_encode_actor_tensors(batch))
-        privileged_candidate = _serialize(
-            {name: getattr(batch, name)
-             for name in PRIVILEGED_TENSOR_FIELDS})
-        actor_name = f"batch-{index:05d}.actor.pt"
-        privileged_name = f"batch-{index:05d}.labels.pt"
-        actor_raw, _ = _reuse_or_publish_batch_file(
-            partial / actor_name, actor_candidate, batch=batch,
-            privileged=False)
-        privileged_raw, _ = _reuse_or_publish_batch_file(
-            partial / privileged_name, privileged_candidate, batch=batch,
-            privileged=True)
-        total_bytes += len(actor_raw) + len(privileged_raw)
-        if total_bytes > binding.storage_cap_bytes:
-            raise BeliefV2TensorCacheError(
-                "V2 tensor cache storage cap exceeded")
-        rows.append({
-            "index": index,
-            "decision_keys": list(batch.decision_keys),
-            "actor_file": actor_name,
-            "actor_sha256": _sha256(actor_raw),
-            "privileged_file": privileged_name,
-            "privileged_sha256": _sha256(privileged_raw),
-            "static": {name: getattr(batch, name)
-                       for name in _STATIC_FIELDS},
-        })
-        if deadline_check is not None:
-            deadline_check("after-unit", index + 1)
-        if progress is not None:
-            progress(index + 1, binding.expected_batch_count,
-                     binding.cache_id)
-    if not rows:
-        raise BeliefV2TensorCacheError("V2 tensor cache is empty")
-    if len(rows) != binding.expected_batch_count \
-            or len(seen) != binding.expected_decision_count:
+    return partial
+
+
+def _build_tensor_cache_batch(
+        partial: Path, *, index: int, batch: BeliefTrainingBatchV1,
+        binding: V2TensorCacheBindingV1,
+        reserve_bytes: Callable[[int], None] | None = None) \
+        -> tuple[dict[str, Any], int]:
+    """Build and publish one uniquely named batch for serial or pool use."""
+    if not isinstance(partial, Path) or partial.is_symlink() \
+            or not partial.is_dir() \
+            or type(index) is not int or index < 0 \
+            or type(batch) is not BeliefTrainingBatchV1:
+        raise BeliefV2TensorCacheError("V2 tensor cache batch type drift")
+    _validate_binding(binding)
+    if batch.split != binding.split:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache batch split drift")
+    if not batch.decision_keys \
+            or len(batch.decision_keys) != len(set(batch.decision_keys)):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache duplicate decision")
+    if reserve_bytes is not None and not callable(reserve_bytes):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache byte reservation drift")
+    actor_candidate = _serialize(_encode_actor_tensors(batch))
+    privileged_candidate = _serialize(
+        {name: getattr(batch, name)
+         for name in PRIVILEGED_TENSOR_FIELDS})
+    artifact_bytes = len(actor_candidate) + len(privileged_candidate)
+    if artifact_bytes > binding.storage_cap_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache storage cap exceeded")
+    if reserve_bytes is not None:
+        reserve_bytes(artifact_bytes)
+    actor_name = f"batch-{index:05d}.actor.pt"
+    privileged_name = f"batch-{index:05d}.labels.pt"
+    actor_raw, _ = _reuse_or_publish_batch_file(
+        partial / actor_name, actor_candidate, batch=batch,
+        privileged=False)
+    privileged_raw, _ = _reuse_or_publish_batch_file(
+        partial / privileged_name, privileged_candidate, batch=batch,
+        privileged=True)
+    if len(actor_raw) + len(privileged_raw) != artifact_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache resumed batch byte drift")
+    return ({
+        "index": index,
+        "decision_keys": list(batch.decision_keys),
+        "actor_file": actor_name,
+        "actor_sha256": _sha256(actor_raw),
+        "privileged_file": privileged_name,
+        "privileged_sha256": _sha256(privileged_raw),
+        "static": {name: getattr(batch, name)
+                   for name in _STATIC_FIELDS},
+    }, artifact_bytes)
+
+
+def _seal_tensor_cache(
+        directory: Path, *, partial: Path,
+        rows: list[dict[str, Any]], total_bytes: int,
+        binding: V2TensorCacheBindingV1,
+        deadline_check: Callable[[str, int], None] | None = None) \
+        -> dict[str, Any]:
+    if not isinstance(directory, Path) or not isinstance(partial, Path) \
+            or type(rows) is not list or not rows \
+            or type(total_bytes) is not int or total_bytes <= 0:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache seal inputs drift")
+    _validate_binding(binding)
+    if deadline_check is not None and not callable(deadline_check):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache callback drift")
+    if [row.get("index") for row in rows] \
+            != list(range(binding.expected_batch_count)):
         raise BeliefV2TensorCacheError(
             "V2 tensor cache bound population drift")
+    keys = tuple(key for row in rows for key in row["decision_keys"])
+    if len(rows) != binding.expected_batch_count \
+            or len(keys) != binding.expected_decision_count \
+            or len(keys) != len(set(keys)):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache duplicate decision" if len(keys) != len(set(keys))
+            else "V2 tensor cache bound population drift")
     manifest = {
         "schema": TENSOR_CACHE_SCHEMA,
         "binding": binding.to_dict(),
         "cache_id": binding.cache_id,
-        "split": split,
+        "split": binding.split,
         "batch_count": len(rows),
         "batches": rows,
         "actor_features_only_in_actor_files": True,
@@ -437,8 +452,55 @@ def build_tensor_cache(
     _reuse_or_publish_exact_file(partial / MANIFEST_FILENAME, raw_manifest)
     _finish_directory(partial, directory)
     return {"manifest_sha256": _sha256(raw_manifest),
-            "batch_count": len(rows), "decision_count": len(seen),
+            "batch_count": len(rows), "decision_count": len(keys),
             "artifact_bytes": total_bytes + len(raw_manifest)}
+
+
+def build_tensor_cache(
+        directory: Path, *, batches: Callable[[], Any],
+        binding: V2TensorCacheBindingV1,
+        deadline_check: Callable[[str, int], None] | None = None,
+        progress: Callable[[int, int, str], None] | None = None) \
+        -> dict[str, Any]:
+    """Serialize one batch stream into a fresh hash-bound cache directory."""
+    if not isinstance(directory, Path) or not callable(batches):
+        raise BeliefV2TensorCacheError("V2 tensor cache build inputs drift")
+    _validate_binding(binding)
+    if (deadline_check is not None and not callable(deadline_check)) \
+            or (progress is not None and not callable(progress)):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache callback drift")
+    partial = _prepare_cache_directory(directory)
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    total_bytes = 0
+    if progress is not None:
+        progress(0, binding.expected_batch_count, binding.cache_id)
+    for index, batch in enumerate(batches()):
+        if deadline_check is not None:
+            deadline_check("before-unit", index)
+        if type(batch) is not BeliefTrainingBatchV1:
+            raise BeliefV2TensorCacheError("V2 tensor cache batch type drift")
+        if not batch.decision_keys \
+                or any(key in seen for key in batch.decision_keys):
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache duplicate decision")
+        seen.update(batch.decision_keys)
+        row, artifact_bytes = _build_tensor_cache_batch(
+            partial, index=index, batch=batch, binding=binding)
+        total_bytes += artifact_bytes
+        if total_bytes > binding.storage_cap_bytes:
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache storage cap exceeded")
+        rows.append(row)
+        if deadline_check is not None:
+            deadline_check("after-unit", index + 1)
+        if progress is not None:
+            progress(index + 1, binding.expected_batch_count,
+                     binding.cache_id)
+    return _seal_tensor_cache(
+        directory, partial=partial, rows=rows, total_bytes=total_bytes,
+        binding=binding, deadline_check=deadline_check)
 
 
 def _load_manifest(

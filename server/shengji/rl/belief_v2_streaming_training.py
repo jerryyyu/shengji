@@ -148,35 +148,113 @@ def _selected_examples(
     return tuple(loaded[key] for key in keys)
 
 
+class V2StreamingTrainingBatchReaderV1:
+    """Random-access one exact train batch without materializing the corpus."""
+
+    def __init__(
+            self, index: V2StreamingTrainingIndexV1,
+            realization: V2CohortRealizationV1, *,
+            load_round: RoundLoader) -> None:
+        validate_streaming_training_index(index)
+        if not callable(load_round):
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming round loader drift")
+        try:
+            realization.canonical_bytes()
+        except ValueError as exc:
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming realization refused") from exc
+        rows_by_key = {row.decision_key: row for row in index.train_rows}
+        if set(rows_by_key) \
+                != {row.decision_key for row in index.train_rows} \
+                or any(row.decision_key not in rows_by_key
+                       or rows_by_key[row.decision_key] != row
+                       for row in realization.rows):
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming realization/index drift")
+        self._index = index
+        self._realization = realization
+        self._load_round = load_round
+        self._rows_by_key = rows_by_key
+        self._sources_by_group = {
+            row.round_group_key: row for row in index.sources}
+
+    @property
+    def batch_count(self) -> int:
+        return len(self._realization.batches)
+
+    def batch(self, batch_index: int) \
+            -> tuple[BeliefTrainingBatchV1, int]:
+        if type(batch_index) is not int \
+                or not 0 <= batch_index < self.batch_count:
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming train batch index drift")
+        selected = _selected_examples(
+            keys=self._realization.batches[batch_index],
+            rows_by_key=self._rows_by_key,
+            sources_by_group=self._sources_by_group,
+            load_round=self._load_round, split="train")
+        if self._realization.kind == CONTROL_KIND:
+            return collate_v2_label_control_examples(selected)
+        return collate_v2_training_examples(selected), 0
+
+
+class V2StreamingCalibrationBatchReaderV1:
+    """Random-access one exact calibration batch from the compact index."""
+
+    def __init__(
+            self, index: V2StreamingTrainingIndexV1,
+            schedule: V2CalibrationScheduleV1, *,
+            load_round: RoundLoader) -> None:
+        validate_streaming_training_index(index)
+        if not callable(load_round):
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming round loader drift")
+        try:
+            schedule.canonical_bytes()
+        except ValueError as exc:
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming calibration schedule refused") from exc
+        rows_by_key = {row.decision_key: row
+                       for row in index.calibration_rows}
+        if set(rows_by_key) != {row.decision_key for row in schedule.rows} \
+                or any(rows_by_key.get(row.decision_key) != row
+                       for row in schedule.rows):
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming calibration/index drift")
+        self._schedule = schedule
+        self._load_round = load_round
+        self._rows_by_key = rows_by_key
+        self._sources_by_group = {
+            row.round_group_key: row for row in index.sources}
+
+    @property
+    def batch_count(self) -> int:
+        return len(self._schedule.batches)
+
+    def batch(self, batch_index: int) -> BeliefTrainingBatchV1:
+        if type(batch_index) is not int \
+                or not 0 <= batch_index < self.batch_count:
+            raise BeliefV2StreamingTrainingError(
+                "V2 streaming calibration batch index drift")
+        return collate_v2_training_examples(_selected_examples(
+            keys=self._schedule.batches[batch_index],
+            rows_by_key=self._rows_by_key,
+            sources_by_group=self._sources_by_group,
+            load_round=self._load_round, split="calibration"))
+
+
 def iter_streaming_training_batches(
         index: V2StreamingTrainingIndexV1,
         realization: V2CohortRealizationV1, *,
         load_round: RoundLoader) -> Iterator[BeliefTrainingBatchV1]:
     """Reopen and release one exact scheduled train batch at a time."""
-    validate_streaming_training_index(index)
-    try:
-        realization.canonical_bytes()
-    except ValueError as exc:
-        raise BeliefV2StreamingTrainingError(
-            "V2 streaming realization refused") from exc
-    rows_by_key = {row.decision_key: row for row in index.train_rows}
-    if set(rows_by_key) != {row.decision_key for row in index.train_rows} \
-            or any(row.decision_key not in rows_by_key
-                   or rows_by_key[row.decision_key] != row
-                   for row in realization.rows):
-        raise BeliefV2StreamingTrainingError(
-            "V2 streaming realization/index drift")
-    sources = {row.round_group_key: row for row in index.sources}
+    reader = V2StreamingTrainingBatchReaderV1(
+        index, realization, load_round=load_round)
     changed = 0
-    for keys in realization.batches:
-        selected = _selected_examples(
-            keys=keys, rows_by_key=rows_by_key,
-            sources_by_group=sources, load_round=load_round, split="train")
-        if realization.kind == CONTROL_KIND:
-            batch, dose = collate_v2_label_control_examples(selected)
-            changed += dose
-        else:
-            batch = collate_v2_training_examples(selected)
+    for batch_index in range(reader.batch_count):
+        batch, dose = reader.batch(batch_index)
+        changed += dose
         yield batch
     if realization.kind == CONTROL_KIND:
         if changed != index.control_changed_cell_count:
@@ -192,25 +270,10 @@ def iter_streaming_calibration_batches(
         schedule: V2CalibrationScheduleV1, *,
         load_round: RoundLoader) -> Iterator[BeliefTrainingBatchV1]:
     """Reopen and release one common calibration batch at a time."""
-    validate_streaming_training_index(index)
-    try:
-        schedule.canonical_bytes()
-    except ValueError as exc:
-        raise BeliefV2StreamingTrainingError(
-            "V2 streaming calibration schedule refused") from exc
-    rows_by_key = {row.decision_key: row
-                   for row in index.calibration_rows}
-    if set(rows_by_key) != {row.decision_key for row in schedule.rows} \
-            or any(rows_by_key.get(row.decision_key) != row
-                   for row in schedule.rows):
-        raise BeliefV2StreamingTrainingError(
-            "V2 streaming calibration/index drift")
-    sources = {row.round_group_key: row for row in index.sources}
-    for keys in schedule.batches:
-        yield collate_v2_training_examples(_selected_examples(
-            keys=keys, rows_by_key=rows_by_key,
-            sources_by_group=sources, load_round=load_round,
-            split="calibration"))
+    reader = V2StreamingCalibrationBatchReaderV1(
+        index, schedule, load_round=load_round)
+    for batch_index in range(reader.batch_count):
+        yield reader.batch(batch_index)
 
 
 def resident_array_bytes(value: Any) -> int:

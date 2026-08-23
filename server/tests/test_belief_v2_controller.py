@@ -1274,6 +1274,8 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     monkeypatch.setattr(
         CACHE_STAGE, "V2ArtifactRoundLoader",
         lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        CACHE_STAGE, "parallel_cache_worker_count", lambda runtime: 1)
 
     def training_batches(index, realization, *, load_round):
         batch = (control_batch if realization.kind
@@ -1310,6 +1312,8 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         == calibration_batch.decision_keys
     assert manifest["test_split_cached"] is False
     assert manifest["training_authorized_by_this_artifact"] is False
+    assert manifest["resources"][
+        "cpu_nanoseconds_is_conservative_upper_bound"] is False
 
     cache_parent = root / "training-tensor-cache"
     cache_root = cache_parent / "result"
@@ -1328,6 +1332,10 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
     assert manifest["resources"]["resumed_from_exact_partial"] is True
+    assert manifest["resources"][
+        "cpu_nanoseconds_is_conservative_upper_bound"] is True
+    assert manifest["resources"]["cpu_nanoseconds"] == (
+        manifest["resources"]["wall_nanoseconds"] * 2)
     assert next(
         row["manifest_sha256"] for row in manifest["cohort_caches"]
         if row["cohort_id"] == "synthetic-primary") \

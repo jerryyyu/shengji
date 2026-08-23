@@ -520,6 +520,35 @@ original monotonic start and may reuse sealed child caches, so a process
 interruption does not discard hours of exact preprocessing or reset the wall
 cap.
 
+A future freeze may use the source-pinned process-parallel cache builder added
+after R4.  This does not retrofit or alter the live `d2d466f` R4 execution.
+The parallel builder applies only to the three natural actor-plus-label caches
+and the common calibration cache; the hard-geometry control remains the exact
+serial label-only overlay over the primary actor cache.  Worker count is a
+deterministic function of the frozen runtime: at most sixteen workers, bounded
+by logical CPU count and by a four-GiB parent reserve plus one GiB per worker.
+Each spawned worker configures the frozen numerical runtime, reopens the exact
+non-test source manifests, reconstructs one scheduled batch, and publishes
+only its uniquely indexed actor and label files.
+
+The parent remains the sole protocol authority.  It checks the deadline before
+every submission and after every canonical completion, reserves aggregate
+artifact bytes through one synchronized counter before publication, rejects
+duplicate decisions across workers, orders manifest rows by scheduled batch
+index rather than completion order, emits progress as canonical batches become
+complete, and alone performs the pre-seal deadline check and atomic manifest
+seal.  A worker failure or deadline leaves only a resumable partial directory;
+it can never publish a complete cache.  Resume rederives every batch and accepts
+an existing file only when its decoded tensor content equals the exact source
+batch.  The stage receipt records the worker count, process-tree CPU, and a
+conservative parent-plus-worker peak-memory bound.  A fresh invocation can
+measure process-tree CPU directly; an exact-partial resume instead records and
+labels the conservative upper bound of elapsed stage wall multiplied by the
+worker pool plus parent, rather than inventing precision for CPU spent by an
+earlier process.  Serial and parallel cache bytes must be identical in tests.
+The schema change requires a fresh future freeze/review and grants no authority
+to the running R4 namespace.
+
 The retained benchmarks are outcome-blind and generated-data-only. On 5,512
 decisions, sparse bytes were 72,275,646 versus 447,743,533 for the dense PR
 #121 form (6.19x smaller); one cached epoch was 32.36 seconds versus 169.78
@@ -531,6 +560,26 @@ generated round from 28.160 to 14.664 seconds (1.920x) while preserving all 68
 actor rows, 17,408 worlds, sampler counters, ordered world bytes, and complete
 seed/counter/attempt-stream SHA. These are implementation-retention results,
 not learning or strength evidence.
+
+The first process-parallel cache rehearsal used the same exact 104-round,
+255-batch Mini population as the retained serial rehearsal.  Eight workers
+reproduced the identical 205,634,410 artifact bytes and completed the cache
+stage in 140.334 seconds versus 188.036 seconds serial, a 25.37% wall reduction
+(1.340x), while process CPU rose from 187.733 to 540.711 seconds.  The
+conservative aggregate peak-memory receipt was 4,176,052,224 bytes and observed
+workers were roughly 0.42 GiB each.  This justifies a one-GiB-per-worker bound,
+but it is a small-population operational result, not an x86 production-scale
+retention claim; the final all-core topology still requires its exact-host
+capacity and wall benchmark before a future freeze.
+
+On the final source, an apples-to-apples ten-worker Mini benchmark rebuilt the
+same primary cache both ways: 71 batches, 71,579,039 artifact bytes, and exact
+manifest SHA-256
+`4a35fff5d930db9ab95894aa30633d98d29f518cf3f80ce40191a638ffa57ceb`.
+Serial wall was 43.996 seconds and process-parallel wall was 27.039 seconds, a
+38.54% reduction (1.627x).  This isolates construction topology from cache
+population and bytes; it remains a generated-data operational benchmark, not
+a learning, strength, or future-host capacity claim.
 
 The full cache population is projected at roughly 31 GiB, including primary,
 label overlay, mixed-human, scale, and shared calibration caches. The fresh

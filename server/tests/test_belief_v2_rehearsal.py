@@ -11,6 +11,7 @@ import multiprocessing
 import os
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 
@@ -28,6 +29,7 @@ import shengji.rl.belief_v2_scoring_controller as SCORING_STAGE
 import shengji.rl.belief_v2_streaming_inputs as STREAMING_INPUTS
 import shengji.rl.belief_v2_statistics as V2_STATISTICS
 import shengji.rl.belief_v2_tensor_cache_controller as CACHE_STAGE
+import shengji.rl.belief_v2_parallel_cache as PARALLEL_CACHE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 import shengji.rl.belief_v2_training_inputs as TRAINING_INPUTS
@@ -85,6 +87,15 @@ from shengji.rl.belief_v2_tensor_cache_controller import (
     reopen_training_tensor_cache,
     run_training_tensor_cache,
 )
+from shengji.rl.belief_v2_parallel_cache import (
+    build_parallel_tensor_cache,
+    parallel_cache_worker_count,
+)
+from shengji.rl.belief_v2_streaming_inputs import V2ArtifactRoundLoader
+from shengji.rl.belief_v2_streaming_training import (
+    iter_streaming_training_batches,
+)
+from shengji.rl.belief_v2_tensor_cache import build_tensor_cache
 from shengji.rl.belief_v2_training_controller import (
     reopen_training_cohort,
     run_training_cohort,
@@ -140,6 +151,9 @@ from shengji.rl.belief_v2_terminal_controller import (
 
 RUN_FULL_REHEARSAL = (
     os.environ.get("SHENGJI_BELIEF_V2_FULL_DAG_REHEARSAL") == "1")
+CACHE_BENCHMARK_ROOT = os.environ.get(
+    "SHENGJI_BELIEF_V2_CACHE_BENCHMARK_ROOT")
+_PRODUCTION_PARALLEL_CACHE_INITIALIZER = PARALLEL_CACHE._initialize_worker
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -334,6 +348,12 @@ def _apply_rehearsal_process_overrides() -> None:
             DEVICE_STAGE, HUMAN_REF_STAGE, TRAINING_STAGE,
             CALIBRATION_STAGE, TERMINAL_STAGE):
         module._stage_gate = lambda **_kwargs: None
+
+
+def _rehearsal_parallel_cache_initializer(*args) -> None:
+    """Install disposable coordinates before the production worker opens."""
+    _apply_rehearsal_process_overrides()
+    _PRODUCTION_PARALLEL_CACHE_INITIALIZER(*args)
 
 
 def _capture_process(args):
@@ -588,6 +608,83 @@ def test_rehearsal_profile_reaches_the_scoring_reader(monkeypatch):
         == rehearsal_v2_policy_seeds(coordinate)
 
 
+@pytest.mark.skipif(
+    CACHE_BENCHMARK_ROOT is None,
+    reason="set SHENGJI_BELIEF_V2_CACHE_BENCHMARK_ROOT")
+def test_parallel_cache_benchmark_reproduces_exact_primary(
+        tmp_path, monkeypatch):
+    """Time only the real primary cache path against sealed rehearsal bytes."""
+    configure_numerical_runtime()
+    _patch_rehearsal_population(monkeypatch)
+    _restore_parent_worker_population(monkeypatch)
+    _patch_stage_gates(monkeypatch)
+    root = Path(CACHE_BENCHMARK_ROOT).resolve()
+    base = root.parent
+    sources = tuple(sorted((base / "human-sources").glob("*.jsonl")))
+    inventory = build_h0_inventory(
+        source_manifest=base / "human-source-manifest.txt",
+        source_paths=list(sources))
+    group_split = build_h0_group_split(inventory)
+    freeze = _rehearsal_freeze(root, inventory, group_split)
+    admission = _admission(freeze)
+    index_manifest, inputs = reopen_training_input_index(
+        root / "training-input-index" / "result",
+        freeze=freeze, admission=admission)
+    primary = next(row for row in inputs.realizations
+                   if row.cohort_id == "synthetic-primary")
+    binding = CACHE_STAGE._realization_binding(
+        freeze, index_manifest["index_sha256"], primary)
+    worker_count = min(
+        int(os.environ.get("SHENGJI_BELIEF_V2_CACHE_BENCHMARK_WORKERS",
+                           str(parallel_cache_worker_count(freeze.runtime)))),
+        parallel_cache_worker_count(freeze.runtime))
+    assert worker_count >= 2
+    monkeypatch.setattr(
+        PARALLEL_CACHE, "_initialize_worker",
+        _rehearsal_parallel_cache_initializer)
+
+    loader = V2ArtifactRoundLoader(
+        root, freeze=freeze, admission=admission, index=inputs.index)
+    serial_started = time.monotonic_ns()
+    serial_receipt = build_tensor_cache(
+        tmp_path / "serial-cache",
+        batches=lambda: iter_streaming_training_batches(
+            inputs.index, primary, load_round=loader),
+        binding=binding)
+    serial_wall = time.monotonic_ns() - serial_started
+
+    parallel_started = time.monotonic_ns()
+    parallel_receipt = build_parallel_tensor_cache(
+        tmp_path / "cache", root=root, freeze=freeze, admission=admission,
+        index=inputs.index, schedule=primary, mode="train",
+        binding=binding, worker_count=worker_count)
+    parallel_wall = time.monotonic_ns() - parallel_started
+    stage = json.loads((
+        root / "training-tensor-cache" / "result" / "manifest.json"
+    ).read_bytes())
+    expected = next(row for row in stage["cohort_caches"]
+                    if row["cohort_id"] == primary.cohort_id)
+    expected_receipt = {key: expected[key] for key in (
+        "manifest_sha256", "batch_count", "decision_count",
+        "artifact_bytes")}
+    assert serial_receipt == expected_receipt
+    assert parallel_receipt == expected_receipt
+    assert {path.name: path.read_bytes()
+            for path in (tmp_path / "serial-cache").iterdir()} \
+        == {path.name: path.read_bytes()
+            for path in (tmp_path / "cache").iterdir()}
+    print("BELIEF_V2_CACHE_BENCHMARK " + json.dumps({
+        "worker_count": worker_count,
+        "batch_count": parallel_receipt["batch_count"],
+        "artifact_bytes": parallel_receipt["artifact_bytes"],
+        "serial_wall_nanoseconds": serial_wall,
+        "parallel_wall_nanoseconds": parallel_wall,
+        "wall_speedup_ppm": (
+            serial_wall * 1_000_000 // parallel_wall),
+        "manifest_sha256": parallel_receipt["manifest_sha256"],
+    }, sort_keys=True))
+
+
 def test_genuine_admission_traverses_every_unpatched_stage_gate(
         tmp_path, monkeypatch):
     """Exercise the production gate at every stage import altitude."""
@@ -714,6 +811,9 @@ def test_full_dag_rehearsal_traverses_every_stage_and_reopens(
     configure_numerical_runtime()
     _patch_rehearsal_population(monkeypatch)
     _patch_stage_gates(monkeypatch)
+    monkeypatch.setattr(
+        PARALLEL_CACHE, "_initialize_worker",
+        _rehearsal_parallel_cache_initializer)
     resume_value = os.environ.get("SHENGJI_BELIEF_V2_REHEARSAL_RESUME_ROOT")
     fresh_root_value = os.environ.get("SHENGJI_BELIEF_V2_REHEARSAL_ROOT")
     if resume_value is not None and fresh_root_value is not None:

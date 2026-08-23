@@ -65,7 +65,9 @@ from shengji.rl.belief_v2_training_inputs import (
 )
 from shengji.rl.belief_v2_streaming_training import (
     BeliefV2StreamingTrainingError,
+    V2StreamingCalibrationBatchReaderV1,
     V2StreamingSourceV1,
+    V2StreamingTrainingBatchReaderV1,
     V2StreamingTrainingIndexV1,
     iter_streaming_calibration_batches,
     iter_streaming_training_batches,
@@ -627,6 +629,45 @@ def test_streaming_batches_equal_materialized_batches_without_resident_arrays():
                and torch.equal(left.count_labels, right.count_labels)
                for left, right in zip(
                    actual_calibration, expected_calibration, strict=True))
+
+
+def test_streaming_batch_readers_are_random_access_and_iterator_identical():
+    index, realized, schedule, by_group = _streaming_fixture()
+    primary = next(row for row in realized
+                   if row.kind == "synthetic-primary")
+    load = lambda source: by_group[source.round_group_key]  # noqa: E731
+    train_reader = V2StreamingTrainingBatchReaderV1(
+        index, primary, load_round=load)
+    train_expected = tuple(iter_streaming_training_batches(
+        index, primary, load_round=load))
+    train_actual = tuple(train_reader.batch(index)[0]
+                         for index in reversed(
+                             range(train_reader.batch_count)))
+    assert all(left.decision_keys == right.decision_keys
+               and torch.equal(left.events, right.events)
+               and torch.equal(left.count_labels, right.count_labels)
+               for left, right in zip(
+                   train_actual, reversed(train_expected), strict=True))
+
+    calibration_reader = V2StreamingCalibrationBatchReaderV1(
+        index, schedule, load_round=load)
+    calibration_expected = tuple(iter_streaming_calibration_batches(
+        index, schedule, load_round=load))
+    calibration_actual = tuple(calibration_reader.batch(index)
+                               for index in reversed(
+                                   range(calibration_reader.batch_count)))
+    assert all(left.decision_keys == right.decision_keys
+               and torch.equal(left.events, right.events)
+               and torch.equal(left.count_labels, right.count_labels)
+               for left, right in zip(
+                   calibration_actual, reversed(calibration_expected),
+                   strict=True))
+    with pytest.raises(BeliefV2StreamingTrainingError,
+                       match="train batch index drift"):
+        train_reader.batch(train_reader.batch_count)
+    with pytest.raises(BeliefV2StreamingTrainingError,
+                       match="calibration batch index drift"):
+        calibration_reader.batch(-1)
 
 
 def test_compact_input_artifact_round_trip_binds_every_row_without_arrays(

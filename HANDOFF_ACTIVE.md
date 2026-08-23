@@ -4,13 +4,12 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 04:05 EDT.
+Last reconciled: 2026-08-23 04:43 EDT.
 
 ## Immediate objective
 
-Carry live BELIEF R4 to a sealed, independently reopened terminal result while
-starting one exact reviewed R5 performance successor on the idle Performance
-Cloud. Determine whether public-history ownership learning improves held-out
+Carry live BELIEF R4 and R5 to sealed, independently reopened terminal results.
+Determine whether public-history ownership learning improves held-out
 hidden-hand calibration over REF-C, then decide separately whether belief
 should enter gameplay search. Neither run authorizes a sampler, gameplay or
 strength claim, promotion, deployment or merge.
@@ -36,10 +35,10 @@ canonical-tip defect and remains healthy.
 
 The input index sealed all 12,003 units in 3 h 10 m. The 26 GiB training cache
 then completed all 12,649 units and passed its exact reopen/hash verification.
-At reconciliation the run was in stage 5/10, `device-qualification`, with
-48/85 tasks complete and 56.47% task-weighted total progress. All progress is
-outcome-blind. The service is active, `NRestarts=0`, with no recorded failure
-task.
+Device qualification then sealed cleanly. At reconciliation the run was in
+stage 6/10, `references`, with 49/85 tasks complete, 61.14% task-weighted total
+progress and all 16 reference lanes active. All progress is outcome-blind. The
+service is active, `NRestarts=0`, with no recorded failure task.
 
 Frozen bounds remain: capture 65 core-hours / 18,000 seconds; reference 40
 core-hours / 14,400 seconds; training 256 device-hours / 172,800 seconds.
@@ -51,36 +50,42 @@ Prior spent roots are not reused. In particular, `b78f802-r3` contains prior
 capture artifacts from the canonical-tip failure; the reviewed packet records
 `reuse_authorized: false` and the live root was initialized fresh.
 
-## Review queue — one precise launch ask
+## Parallel R5 scientific run
 
-1. **R5 consolidated source + immutable-freeze review (launch-blocking):**
-   review draft PR #128 at exact head
-   `dd8fe3141e9142b1cbd60d998cbde34441b5ecb3` together with freeze
-   `/opt/belief-r5-freeze-dd8fe31-r1.json`, SHA-256
-   `3f56662cb7ba2a7d24a870b648949ef9529afecda860c4874806459265047cfb`,
-   on `shengji-perf`. The complete request and plan-only addendum are PR
-   comments `5384770069` and `5384782753`. Perform **one** review, not separate
-   source/freeze rounds. If PASS, append exactly one canonical marker from
-   `expected-review-claim.json` in an append-only Claude-authored main commit.
-   PASS authorizes only initialization and the bounded offline R5 run; retry,
-   test leakage, gameplay, strength, promotion, deployment and merge remain
-   false. If HOLD, report all source/freeze blockers together.
+| field | current binding |
+|---|---|
+| source | draft PR #128, exact head `dd8fe3141e9142b1cbd60d998cbde34441b5ecb3` |
+| freeze | `3f56662cb7ba2a7d24a870b648949ef9529afecda860c4874806459265047cfb` |
+| execution review | consolidated PASS marker commit `b0693e132aae6346c7888598ce96e6ac2f061fd8` |
+| admission | `66d42c7e137929534658650686a905ede8c261f706c46e5eee4e8ca801deffbf` |
+| host | `shengji-perf` / `ubuntu-32gb-hel1-2`, 16 logical CPUs |
+| service | transient `belief-v2-r5-dd8fe31-r1.service`, started 2026-08-23 04:42:03 EDT, `Restart=no` |
+| evidence | `/opt/belief-r5-evidence-dd8fe31-r1` |
+| ops | `/opt/belief-r5-evidence-dd8fe31-r1.ops` |
 
-R5 is otherwise ready and inert: exact-head compiled suite 246 passed / 4
-skipped; input indexing is 4.824x faster and cache construction 8.578x faster
-with exact parity; the 85-task plan reopens; live source/runtime/native/package
-and boot bindings pass; all scientific root, partial, tombstone and ops paths
-are absent. R5 uses the same preregistered population as R4 and is not an
-independent scientific replication. Do not initialize before the marker and
-do not request another rehearsal.
+The production reopener authenticated the exact append-only marker (marker SHA
+`f3bce678…`) and initialized this namespace once. The root then reopened with
+the frozen admission/inventory/group split and all prohibited authorities
+false. At reconciliation R5 was in stage 1/10, `synthetic-capture`, with all 16
+lanes reporting, `NRestarts=0`, no failure and 0.03% task-weighted progress.
+Input indexing and cache construction were measured at 4.824x and 8.578x over
+their serial paths with exact parity; the live run will provide the operational
+confirmation. R5 shares R4's preregistered population and is not an independent
+scientific replication.
+
+## Review queue — empty while both DAGs are live
+
+No source, freeze, rehearsal, merge or result review is actionable now. Do not
+append another execution marker, initialize another root, retry either run,
+alter either service or open evidence for outcome analysis.
 
 After either scientific run seals, one terminal/reproducibility review becomes
 actionable for that exact admission and artifact population.
 
 ## Monitoring contract
 
-- Read operational state from
-  `/opt/belief-r4-ops-d2d466f-r1/status.json` and systemd only.
+- Read operational state from each run's exact ops `status.json` and systemd
+  unit only.
 - Report `task_weighted_percent_basis_points`, current stage, completed/total
   tasks, active worker count, elapsed time and deadline headroom.
 - Progress rows are outcome-blind and are not scientific evidence.
@@ -90,12 +95,9 @@ actionable for that exact admission and artifact population.
 
 ## Next operator sequence
 
-1. Claude performs the one R5 source+freeze review above.
-2. After an exact marker, Codex authenticates it, initializes once and starts
-   R5 under the prepared root-owned transient systemd unit on `shengji-perf`.
-3. Codex monitors both DAGs and reports meaningful transitions and percentages.
-4. On each sealed completion/refusal, Codex runs only the reviewed terminal
+1. Codex monitors both DAGs and reports meaningful transitions and percentages.
+2. On each sealed completion/refusal, Codex runs only the reviewed terminal
    reopener; Claude performs one terminal/reproducibility review.
-5. Only then inspect the full curves and decide whether belief advances to a
+3. Only then inspect the full curves and decide whether belief advances to a
    sampler/gameplay-search design or closes/revises. PR merge decisions remain
    separate from scientific execution.

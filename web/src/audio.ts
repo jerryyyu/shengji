@@ -18,21 +18,83 @@ let pumping = false;
 let muted = localStorage.getItem(MUTE_KEY) === "1"; // default: unmuted
 
 function ensureCtx(): AudioContext {
-  if (!ctx) ctx = new AudioContext();
+  const AC: typeof AudioContext =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext: typeof AudioContext })
+      .webkitAudioContext;
+  if (!ctx) ctx = new AC();
   if (ctx.state === "suspended") {
     void ctx.resume().catch(() => {});
   }
   return ctx;
 }
 
-// Unlock the context on the first user gesture (autoplay policy).
-window.addEventListener(
-  "pointerdown",
-  () => {
-    ensureCtx();
-  },
-  { once: true }
-);
+/** Resolve once the context is running, or immediately if it stays blocked. */
+async function ensureRunning(): Promise<AudioContext> {
+  const c = ensureCtx();
+  if (c.state !== "running") {
+    // resume() is async: the old code checked state synchronously right after
+    // firing it, so the first clip after unlock was always dropped.
+    try {
+      await c.resume();
+    } catch {
+      /* still blocked — callers degrade to silence */
+    }
+  }
+  return c;
+}
+
+// Unlock the context on a user gesture (autoplay policy).
+//
+// iOS (all browsers there are WebKit, including iPhone Chrome) does not
+// reliably unlock audio on `pointerdown`; `touchend`/`click` are the gestures
+// that count. The previous single `{ once: true }` pointerdown listener spent
+// its only attempt on a gesture that never unlocked anything, and because it
+// removed itself there was no second chance for the life of the page — total
+// silence, no console errors. So: listen on several gesture types and keep
+// listening until the context actually reaches "running".
+const UNLOCK_EVENTS = ["pointerdown", "touchend", "click", "keydown"] as const;
+let unlockArmed = false;
+
+function armUnlock(): void {
+  if (unlockArmed) return;
+  unlockArmed = true;
+  for (const name of UNLOCK_EVENTS) {
+    window.addEventListener(name, unlockHandler, { passive: true });
+  }
+}
+
+function disarmUnlock(): void {
+  if (!unlockArmed) return;
+  unlockArmed = false;
+  for (const name of UNLOCK_EVENTS) {
+    window.removeEventListener(name, unlockHandler);
+  }
+}
+
+function unlockHandler(): void {
+  void ensureRunning().then((c) => {
+    if (c.state === "running") disarmUnlock();
+  });
+}
+
+armUnlock();
+
+// Returning from the background can leave the context suspended. Without
+// re-arming there would be no listener left to unlock it again, so audio would
+// die permanently the first time the player switched apps.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  if (ctx !== null && ctx.state !== "running") {
+    void ctx.resume().catch(() => {});
+    armUnlock();
+  }
+});
+
+/** True when clips cannot play because the context has not been unlocked. */
+export function isAudioBlocked(): boolean {
+  return !muted && ctx !== null && ctx.state !== "running";
+}
 
 export function isMuted(): boolean {
   return muted;
@@ -60,13 +122,10 @@ function loadClip(name: string): Promise<AudioBuffer | null> {
   return p;
 }
 
-function playBuffer(buffer: AudioBuffer): Promise<void> {
+async function playBuffer(buffer: AudioBuffer): Promise<void> {
+  const c = await ensureRunning();
+  if (c.state !== "running") return; // still blocked — drop, don't stall
   return new Promise((resolve) => {
-    const c = ensureCtx();
-    if (c.state !== "running") {
-      resolve(); // not unlocked yet — drop rather than stall the queue
-      return;
-    }
     const src = c.createBufferSource();
     src.buffer = buffer;
     src.playbackRate.value = PLAYBACK_RATE;
@@ -94,18 +153,19 @@ function sleep(ms: number): Promise<void> {
 /** Short synthesized click for plays with no voice line (junk dumps). */
 function playTick(): void {
   if (muted) return;
-  const c = ensureCtx();
-  if (c.state !== "running") return;
-  const t = c.currentTime;
-  const osc = c.createOscillator();
-  const gain = c.createGain();
-  osc.frequency.value = 2100;
-  gain.gain.setValueAtTime(0.07, t);
-  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-  osc.connect(gain);
-  gain.connect(c.destination);
-  osc.start(t);
-  osc.stop(t + 0.07);
+  void ensureRunning().then((c) => {
+    if (c.state !== "running") return;
+    const t = c.currentTime;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.frequency.value = 2100;
+    gain.gain.setValueAtTime(0.07, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.start(t);
+    osc.stop(t + 0.07);
+  });
 }
 
 /** Enqueue a sequence of clip names (played in order, never overlapping). */

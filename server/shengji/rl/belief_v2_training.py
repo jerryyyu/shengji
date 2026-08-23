@@ -295,10 +295,29 @@ def collate_v2_training_examples(
 def _geometry_permuted_labels(
         example: V2TrainingExampleV1) -> tuple[np.ndarray, int]:
     """Apply the V1 hard-geometry control to the V2 common surface."""
-    labels = example.count_labels
-    active = example.active_mask
-    minimums = example.common.tensors.count_minimums
-    maximums = example.common.tensors.count_maximums
+    return _geometry_permuted_label_arrays(
+        decision_key=example.decision_key,
+        labels=example.count_labels,
+        active=example.active_mask,
+        minimums=example.common.tensors.count_minimums,
+        maximums=example.common.tensors.count_maximums)
+
+
+def _geometry_permuted_label_arrays(
+        *, decision_key: str, labels: np.ndarray, active: np.ndarray,
+        minimums: np.ndarray, maximums: np.ndarray) \
+        -> tuple[np.ndarray, int]:
+    """Apply the control using only one batch row's bound label geometry."""
+    if type(decision_key) is not str or not decision_key \
+            or any(type(value) is not np.ndarray for value in (
+                labels, active, minimums, maximums)) \
+            or labels.dtype != np.int64 or active.dtype != np.bool_ \
+            or minimums.dtype != np.int64 or maximums.dtype != np.int64 \
+            or labels.ndim != 2 or active.shape != labels.shape \
+            or minimums.shape != labels.shape \
+            or maximums.shape != labels.shape:
+        raise BeliefV2TrainingError(
+            "V2 label control geometry inputs drift")
     groups: dict[tuple[int, ...], list[int]] = {}
     for card in range(labels.shape[0]):
         if not bool(active[card].any()):
@@ -314,7 +333,7 @@ def _geometry_permuted_labels(
         ordered = sorted(cards, key=lambda card: (
             hashlib.sha256(
                 "belief-v1-b2-negative-control-example-v1|labels|"
-                f"{example.decision_key}|{card}".encode("ascii")).digest(),
+                f"{decision_key}|{card}".encode("ascii")).digest(),
             card))
         sources = ordered[1:] + ordered[:1]
         for destination, source in zip(ordered, sources, strict=True):
@@ -330,13 +349,48 @@ def _geometry_permuted_labels(
         changed != labels))
 
 
-def collate_v2_label_control_examples(
-        examples: tuple[V2TrainingExampleV1, ...]) \
+def label_control_batch_from_natural(
+        natural: BeliefTrainingBatchV1) \
         -> tuple[BeliefTrainingBatchV1, int]:
-    """Build the exact V2 label control without changing public tensors."""
-    natural = collate_v2_training_examples(examples)
-    transformed = tuple(_geometry_permuted_labels(example)
-                        for example in examples)
+    """Derive exact control labels from an already-bound natural batch.
+
+    This is intentionally independent of source-row parsing.  The primary
+    tensor cache already binds the ordered decisions, labels, active mask and
+    hard geometry needed by the deterministic negative control; rebuilding
+    those same tensors from every corpus row merely repeats expensive work.
+    """
+    tensor_fields = (
+        natural.count_labels, natural.active_mask,
+        natural.count_minimums, natural.count_maximums) \
+        if type(natural) is BeliefTrainingBatchV1 else ()
+    if type(natural) is not BeliefTrainingBatchV1 \
+            or not natural.decision_keys \
+            or len(natural.decision_keys) != len(set(natural.decision_keys)) \
+            or natural.history_transform != NATURAL_HISTORY \
+            or natural.label_transform != EXACT_TARGET_LABELS \
+            or natural.control_kind != "candidate" \
+            or natural.privileged_targets_consumed is not True \
+            or natural.runtime_artifact is not False \
+            or any(type(value) is not torch.Tensor
+                   or value.device.type != "cpu" for value in tensor_fields) \
+            or natural.count_labels.dtype != torch.int64 \
+            or natural.active_mask.dtype != torch.bool \
+            or natural.count_minimums.dtype != torch.int64 \
+            or natural.count_maximums.dtype != torch.int64 \
+            or natural.count_labels.ndim != 3 \
+            or natural.count_labels.shape[0] != len(natural.decision_keys) \
+            or natural.active_mask.shape != natural.count_labels.shape \
+            or natural.count_minimums.shape != natural.count_labels.shape \
+            or natural.count_maximums.shape != natural.count_labels.shape:
+        raise BeliefV2TrainingError(
+            "V2 natural label-control batch drift")
+    transformed = tuple(_geometry_permuted_label_arrays(
+        decision_key=key,
+        labels=natural.count_labels[index].numpy(),
+        active=natural.active_mask[index].numpy(),
+        minimums=natural.count_minimums[index].numpy(),
+        maximums=natural.count_maximums[index].numpy())
+        for index, key in enumerate(natural.decision_keys))
     labels = torch.from_numpy(np.stack(
         [value for value, _ in transformed]))
     changed_cells = sum(count for _, count in transformed)
@@ -351,7 +405,30 @@ def collate_v2_label_control_examples(
             or control.history_transform != NATURAL_HISTORY \
             or control.label_transform != GEOMETRY_PERMUTED_LABELS \
             or control.control_kind != LABEL_PERMUTATION_CONTROL \
-            or control.schema != CONTROL_TRAINING_BATCH_SCHEMA \
-            or natural.label_transform != EXACT_TARGET_LABELS:
+            or control.schema != CONTROL_TRAINING_BATCH_SCHEMA:
         raise BeliefV2TrainingError("V2 label control batch drift")
     return control, changed_cells
+
+
+def label_control_changed_cell_count(
+        examples: tuple[V2TrainingExampleV1, ...]) -> int:
+    """Count negative-control dose without materializing public tensors.
+
+    Input indexing needs only this integer.  Padding and stacking all actor
+    tensors there duplicated work later performed by the sealed cache stage.
+    """
+    if type(examples) is not tuple or not examples \
+            or any(type(example) is not V2TrainingExampleV1
+                   for example in examples):
+        raise BeliefV2TrainingError(
+            "V2 label control dose population drift")
+    return sum(_geometry_permuted_labels(example)[1]
+               for example in examples)
+
+
+def collate_v2_label_control_examples(
+        examples: tuple[V2TrainingExampleV1, ...]) \
+        -> tuple[BeliefTrainingBatchV1, int]:
+    """Build the exact V2 label control without changing public tensors."""
+    natural = collate_v2_training_examples(examples)
+    return label_control_batch_from_natural(natural)

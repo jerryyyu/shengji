@@ -64,6 +64,7 @@ from shengji.rl.belief_v2_statistics import (
     V2RoundScoreV1,
     V2ScaleCurveResultV1,
     V2ScaleCurveRowV1,
+    v2_round_population_bytes,
 )
 
 
@@ -559,6 +560,47 @@ def test_terminal_round_trip_and_coordinated_result_rehash_refuse(
     with pytest.raises(
             TERMINAL_STAGE.BeliefV2TerminalControllerError,
             match="result reconstruction"):
+        TERMINAL_STAGE.reopen_v2_terminal(
+            directory, freeze=freeze, admission=admission,
+            inventory={}, group_split={})
+
+
+def test_terminal_source_replay_refuses_self_consistent_score_substitution(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _admission(freeze)
+    _stub_terminal_dependencies(monkeypatch, freeze)
+    TERMINAL_STAGE.run_v2_terminal(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+
+    directory = root / "terminal"
+    cohort_ids = tuple(row.cohort_id for row in freeze.cohorts)
+    substituted = replace(
+        _terminal_score("synthetic", cohort_ids),
+        reference_brier_ppb=101)
+    population_raw = v2_round_population_bytes(
+        (substituted,), cohort_ids=cohort_ids, label="synthetic_test")
+    population_path = directory / "synthetic-test-scores.json"
+    population_path.chmod(0o600)
+    population_path.write_bytes(population_raw)
+    population_path.chmod(0o400)
+
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    manifest["files"]["synthetic_test"].update({
+        "byte_count": len(population_raw),
+        "sha256": hashlib.sha256(population_raw).hexdigest(),
+    })
+    manifest_path.chmod(0o600)
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    manifest_path.chmod(0o400)
+
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="persisted score population differs from source replay"):
         TERMINAL_STAGE.reopen_v2_terminal(
             directory, freeze=freeze, admission=admission,
             inventory={}, group_split={})

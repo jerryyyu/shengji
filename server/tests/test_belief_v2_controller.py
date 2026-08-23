@@ -1229,6 +1229,112 @@ def test_training_input_index_wires_deadline_around_source_units_and_seal(
     assert not (root / "training-input-index" / "result.partial").exists()
 
 
+def test_training_input_index_controller_uses_cap_bounded_input_workers(
+        tmp_path, monkeypatch):
+    """Witness the controller wiring, not only the worker-count helper."""
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    original = _cpu_only_freeze(root)
+    freeze = replace(
+        original,
+        resource_caps=replace(
+            original.resource_caps,
+            training_host_memory_bytes=16 * 1024**3))
+    admission = _admission(freeze)
+    fake = SimpleNamespace(
+        index=SimpleNamespace(sources=(object(),)),
+        sha256=lambda: "7" * 64,
+        manifest=lambda: {
+            "resident_model_array_bytes": 0,
+            "one_batch_at_a_time": True})
+    observed_worker_counts = []
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+
+    class Deadline:
+        def check(self, **kwargs):
+            pass
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "stage_deadline",
+        lambda *args, **kwargs: Deadline())
+
+    def scan(**kwargs):
+        observed_worker_counts.append(kwargs["worker_count"])
+        return (), (), (), 1, 1
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE,
+        "scan_parallel_synthetic_training_inputs", scan)
+
+    def build(*args, synthetic_scan, **kwargs):
+        assert synthetic_scan is not None
+        assert synthetic_scan(
+            capture=root / "capture", freeze=freeze,
+            admission=admission, deadline_check=None) == (
+                (), (), (), 1, 1)
+        return fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs", build)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "streaming_training_inputs_bytes",
+        lambda value, bound_freeze: b"compact-index\n")
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_aggregate_peak_host_memory_bytes",
+        lambda worker_count: 1024)
+
+    def reopen(directory, **kwargs):
+        return json.loads((directory / "manifest.json").read_bytes()), fake
+
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_training_input_index", reopen)
+    run_training_input_index(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review", inventory={}, group_split={})
+
+    # The 16 GiB frozen stage cap leaves 12 GiB after the parent reserve,
+    # hence exactly six 2 GiB input workers.  The cache topology would choose
+    # sixteen here and reintroduce the resource failure this test guards.
+    assert observed_worker_counts == [6]
+
+
+def test_training_input_index_memory_cap_refuses_before_manifest_or_seal(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "evidence").resolve()
+    root.mkdir()
+    freeze = _cpu_only_freeze(root)
+    admission = _admission(freeze)
+    fake = SimpleNamespace(
+        index=SimpleNamespace(sources=(object(),)),
+        sha256=lambda: "7" * 64,
+        manifest=lambda: {
+            "resident_model_array_bytes": 0,
+            "one_batch_at_a_time": True})
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "reopen_streaming_training_inputs",
+        lambda *args, **kwargs: fake)
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "streaming_training_inputs_bytes",
+        lambda value, bound_freeze: b"compact-index\n")
+    monkeypatch.setattr(
+        INPUT_INDEX_STAGE, "_aggregate_peak_host_memory_bytes",
+        lambda worker_count:
+            freeze.resource_caps.training_host_memory_bytes + 1)
+
+    with pytest.raises(INPUT_INDEX_STAGE.BeliefV2InputIndexControllerError,
+                       match="resource cap drift"):
+        run_training_input_index(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review", inventory={}, group_split={})
+    partial = root / "training-input-index" / "result.partial"
+    assert {path.name for path in partial.iterdir()} == {"index.json"}
+    assert not (partial / "manifest.json").exists()
+    assert not (root / "training-input-index" / "result").exists()
+
+
 def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -1274,11 +1380,17 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     monkeypatch.setattr(
         CACHE_STAGE, "V2ArtifactRoundLoader",
         lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        CACHE_STAGE, "parallel_cache_worker_count", lambda runtime: 1)
+    monkeypatch.setattr(
+        CACHE_STAGE, "parallel_cache_build_topology",
+        lambda runtime, build_count: (1, 1))
 
     def training_batches(index, realization, *, load_round):
-        batch = (control_batch if realization.kind
-                 == "hard-geometry-label-permutation" else natural_batch)
-        return iter((batch,))
+        if realization.kind == "hard-geometry-label-permutation":
+            pytest.fail(
+                "control overlay reparsed source rows after primary cache")
+        return iter((natural_batch,))
 
     monkeypatch.setattr(
         CACHE_STAGE, "iter_streaming_training_batches", training_batches)
@@ -1310,6 +1422,8 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         == calibration_batch.decision_keys
     assert manifest["test_split_cached"] is False
     assert manifest["training_authorized_by_this_artifact"] is False
+    assert manifest["resources"][
+        "cpu_nanoseconds_is_conservative_upper_bound"] is False
 
     cache_parent = root / "training-tensor-cache"
     cache_root = cache_parent / "result"
@@ -1328,6 +1442,10 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
     assert manifest["resources"]["resumed_from_exact_partial"] is True
+    assert manifest["resources"][
+        "cpu_nanoseconds_is_conservative_upper_bound"] is True
+    assert manifest["resources"]["cpu_nanoseconds"] == (
+        manifest["resources"]["wall_nanoseconds"] * 2)
     assert next(
         row["manifest_sha256"] for row in manifest["cohort_caches"]
         if row["cohort_id"] == "synthetic-primary") \

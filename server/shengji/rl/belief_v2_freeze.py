@@ -790,7 +790,7 @@ def execution_freeze_from_bytes(raw: bytes) -> V2ExecutionFreezeV1:
 def expected_execution_review_claim(
         freeze: V2ExecutionFreezeV1) -> dict[str, Any]:
     validate_execution_freeze(freeze)
-    return {
+    claim = {
         "schema": REVIEW_SCHEMA,
         "run_id": RUN_ID,
         "freeze_sha256": freeze.sha256(),
@@ -822,6 +822,9 @@ def expected_execution_review_claim(
         "promotion_authorized": False,
         "deployment_authorized": False,
     }
+    if freeze.source_review_commit == freeze.execution_git:
+        claim["source_review_mode"] = "consolidated-source-and-freeze"
+    return claim
 
 
 @dataclass(frozen=True)

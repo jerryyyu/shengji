@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 09:09 EDT.
+Last reconciled: 2026-08-23 10:00 EDT.
 
 ## Immediate objective
 
@@ -42,14 +42,14 @@ cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
 progress appeared at 07:10 EDT. At reconciliation the four workers had consumed
-5,992/118,800, 6,083/119,040, 6,098/118,800 and 5,665/62,340 total scheduled
+8,809/118,800, 8,673/118,800, 8,770/119,040 and 8,388/62,340 total scheduled
 batch units. All four cohorts have sealed an epoch-1 journal and reusable resume
 state; the synthetic 50%-scale cohort has also sealed epoch 2. These journals
 bind all eight member training/calibration receipts, common-epoch selection and
 `exact_resume_count=0`, while keeping test, strength and deployment authority
 false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
 journal reopener is deferred until it will not compete with live training.
-Overall task-weighted progress is 92.05%.
+Overall task-weighted progress is 92.18%.
 All progress is outcome-blind. The service is active, `NRestarts=0`, with no
 recorded failure task and no test opening.
 
@@ -63,7 +63,7 @@ Prior spent roots are not reused. In particular, `b78f802-r3` contains prior
 capture artifacts from the canonical-tip failure; the reviewed packet records
 `reuse_authorized: false` and the live root was initialized fresh.
 
-## Parallel R5 scientific run
+## Prior R5 refusal and fresh successor
 
 | field | current binding |
 |---|---|
@@ -101,26 +101,69 @@ repair is pushed on PR #128 at exact head
 `8d9390e12535bbf0d235b76e81484f54f912cc86`: input indexing is now capped at
 eight workers by the unchanged frozen memory allowance, the stage has a
 can-fail over-memory witness, CI is green, and the exact compiled suite is 248
-passed / 4 skipped. A score-free eight-worker preflight is running on Perf
-Cloud against the preserved failed index. It may retain only a receipt and must
-reproduce the exact 311,250,588-byte index and SHA `e4958a13…` below 24 GiB;
-it cannot initialize, train or open test bytes.
+passed / 4 skipped. A score-free eight-worker full-corpus preflight completed
+and independently reopened against the preserved failed index. It reproduced
+the exact 311,250,588-byte index and SHA `e4958a13…` with a conservative
+9.28 GiB process-tree peak under the unchanged 24 GiB cap, 34.27 minutes wall,
+no test target or outcome opening and no retained index. Receipt SHA is
+`ea772763dcf21016fbca9881f5f36b13b5cbf934a1a39db8f678d024ccde0f69`.
 
-The successor will use a fresh evidence namespace and recapture the same
-deterministic synthetic/human population after review. It will not transplant
-artifacts whose manifests are bound to the spent R5 admission: avoiding that
-new rebinding trust boundary is worth the roughly 3.5-hour recapture cost. The
-entire failed root, logs, tombstone and exact predecessor-refusal receipt remain
-preserved for audit. R5 shares R4's preregistered population and is not an
+The fresh exact-head receipts and immutable successor freeze are now complete:
+
+| field | successor binding |
+|---|---|
+| source | draft PR #128, exact head `8d9390e12535bbf0d235b76e81484f54f912cc86` |
+| checkout / venv | `/opt/belief-r5-8d9390e` / `/opt/belief-r5-8d9390e-venv` |
+| freeze | `/opt/belief-r5-freeze-8d9390e-r2.json`, SHA `dc7e3a96ad4624144a2d35fa4c6fcb0e4ff5e539efa45a7b87023ca0a7030a95` |
+| packet | `/opt/belief-r5-8d9390e-freeze-inputs-r2/freeze-review-packet.json`, SHA `f57056fd4da1dbf81603642b7608b1f9600303357d4013ccbd1d2bff7db6537a` |
+| claim / marker | claim SHA `6ef3f4d870293e9e59cccd89066419ba9598f81d44af0ed4757052f0bab09792`; marker SHA `ba889610c84d7f3a49c809ebc74e0674676d2f2fa8ba16f53ebaa2890caf9ffa` |
+| fresh evidence / ops | `/opt/belief-r5-evidence-8d9390e-r2` and `/opt/belief-r5-ops-8d9390e-r2`, both absent |
+
+Fresh capacity is 416/416 score-free rounds over 16 lanes and all 13 trump
+ranks: 377.40 seconds parallel wall, derived capture cap 65 core-hours. Fresh
+deadline estimates are 18.013-second capture p95, 34.010-second REF-C p95,
+6.089-hour conservative epoch wall and 18.27-minute reserve; exactly seven
+complete epochs fit before the fixed 48-hour deadline reserve, after which
+graceful truncation remains load-bearing. The supervisor plan independently
+reopens to 85 exact tasks with 16/16/1/1/1/16/4/1/1/1 concurrency.
+
+The successor will recapture the same deterministic synthetic/human population
+after review. It will not transplant any artifact whose manifest is bound to
+the spent R5 admission. The entire failed root, logs, tombstone and predecessor
+refusal receipt SHA `58712f72714de6645f94a7ca78cf1dac461c1e74bec83f147a565b615ee5ec6b`
+remain preserved. R5 shares R4's preregistered population and is not an
 independent scientific replication.
 
-## Review queue — no review yet; R5 repair is being prepared
+## Review queue — one consolidated R5 source + freeze review now
 
-Do not review or authorize anything until Codex posts one exact repaired
-source+fresh-freeze packet. The intended next ask is one consolidated review,
-not separate source, reuse and freeze rounds. Until then do not append another
-execution marker, initialize another root, retry R5, alter R4 or open outcome
-evidence.
+Review PR #128 exact head `8d9390e12535bbf0d235b76e81484f54f912cc86`
+and the exact fresh freeze packet above **once**. Do not split this into source,
+memory, reuse and freeze reviews. The reviewed predecessor is `dd8fe314`; the
+repair delta is exactly 6 files, +250/-3, while the full R4-to-R5 delta is 19
+files, +2207/-221. CI is green, `git diff --check` passes and the exact strict
+compiled suite is 248 passed / 4 skipped.
+
+Reproduce and audit these load-bearing boundaries:
+
+1. Eight-worker input indexing stays below the unchanged 24 GiB host cap,
+   preserves exact lane/split/coordinate order, cannot read test targets, and
+   cannot advance or seal after deadline/resource refusal. Reopen the exact
+   memory receipt and predecessor-refusal receipt from the packet.
+2. Reopen every freeze/input/claim/plan byte and bind exact Git, complete source
+   closure, Python/native/numerical runtime, live boot, H0 split, all-rank seed
+   registry, fixed cap derivation, deadline receipt and fresh absent namespace.
+3. Confirm the prior R5 admission is spent with no test/model/terminal result,
+   this freeze requires fresh capture, and no prior corpus/index is reused.
+4. Preserve recoverable caches/checkpoints, progress curves, graceful
+   truncation, independent source replay at terminal, one test opening and all
+   false sampler/gameplay/strength/promotion/deployment/merge authority.
+
+If and only if all of that passes, append exactly one
+`BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW ` marker plus the exact canonical
+bytes in `expected-review-claim.json` to `HANDOFF_REVIEW.md` in one
+Claude-authored append-only canonical-main commit. That one marker may authorize
+only initialization and this bounded offline run. Do not request a second
+review. Until PASS, do not initialize, retry R5, alter R4 or open outcomes.
 
 R4 remains live. After it seals, its one terminal/reproducibility review becomes
 actionable for that exact admission and artifact population.
@@ -139,9 +182,10 @@ actionable for that exact admission and artifact population.
 ## Next operator sequence
 
 1. Codex monitors R4 without changing it and preserves the failed R5 root.
-2. Codex closes the R5 memory-cap defect with a measured bounded-worker repair,
-   an exact prior-refusal receipt and one fresh immutable freeze packet.
-3. Claude reviews that complete packet once. No execution precedes its PASS.
+2. Claude reviews the complete R5 repair + freeze packet once. No execution
+   precedes its PASS.
+3. After PASS, Codex initializes only the exact fresh namespace and launches
+   the reviewed supervisor once with `Restart=no`.
 4. On each sealed terminal completion, Codex uses only the reviewed reopener;
    Claude performs one terminal/reproducibility review.
 5. Only then inspect full curves and decide whether belief advances to a

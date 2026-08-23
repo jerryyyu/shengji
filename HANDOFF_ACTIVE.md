@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 10:45 EDT.
+Last reconciled: 2026-08-23 10:52 EDT.
 
 ## Immediate objective
 
@@ -118,7 +118,10 @@ The fresh exact-head receipts and immutable successor freeze are now complete:
 | freeze | `/opt/belief-r5-freeze-8d9390e-r2.json`, SHA `dc7e3a96ad4624144a2d35fa4c6fcb0e4ff5e539efa45a7b87023ca0a7030a95` |
 | packet | `/opt/belief-r5-8d9390e-freeze-inputs-r2/freeze-review-packet.json`, SHA `f57056fd4da1dbf81603642b7608b1f9600303357d4013ccbd1d2bff7db6537a` |
 | claim / marker | claim SHA `6ef3f4d870293e9e59cccd89066419ba9598f81d44af0ed4757052f0bab09792`; marker SHA `ba889610c84d7f3a49c809ebc74e0674676d2f2fa8ba16f53ebaa2890caf9ffa` |
-| fresh evidence / ops | `/opt/belief-r5-evidence-8d9390e-r2` and `/opt/belief-r5-ops-8d9390e-r2`, both absent |
+| execution review | PASS marker commit `4b68717394297d90838368d40e38fdc02cedf06c` |
+| admission | `4e95d87b2c2ffdec99ac1c0fdb5111e176c2389d5f83384fb2af21f2d25bf756` |
+| host / service | `shengji-perf`; `belief-v2-r5-8d9390e-r2.service`, started 2026-08-23 10:51:01 EDT, `Restart=no` |
+| evidence / ops | `/opt/belief-r5-evidence-8d9390e-r2` / `/opt/belief-r5-ops-8d9390e-r2` |
 
 Fresh capacity is 416/416 score-free rounds over 16 lanes and all 13 trump
 ranks: 377.40 seconds parallel wall, derived capture cap 65 core-hours. Fresh
@@ -128,64 +131,28 @@ complete epochs fit before the fixed 48-hour deadline reserve, after which
 graceful truncation remains load-bearing. The supervisor plan independently
 reopens to 85 exact tasks with 16/16/1/1/1/16/4/1/1/1 concurrency.
 
-The successor will recapture the same deterministic synthetic/human population
-after review. It will not transplant any artifact whose manifest is bound to
-the spent R5 admission. The entire failed root, logs, tombstone and predecessor
-refusal receipt SHA `58712f72714de6645f94a7ca78cf1dac461c1e74bec83f147a565b615ee5ec6b`
+The successor initialized once only after the exact marker landed. The
+production root reopener returned `verified: true`, then the packet-bound
+supervisor started all 16 synthetic-capture lanes. It will not transplant any
+artifact whose manifest is bound to the spent R5 admission. The entire failed
+root, logs, tombstone and predecessor-refusal receipt SHA
+`58712f72714de6645f94a7ca78cf1dac461c1e74bec83f147a565b615ee5ec6b`
 remain preserved. R5 shares R4's preregistered population and is not an
 independent scientific replication.
 
-## Review queue — close the one HOLD, then finish the same review
+## Review queue — empty until a sealed terminal exists
 
-Ledger commit `dcc7d5ac95fc4ec5f6b00f7032c362b305256803` HOLDed the
-otherwise-reproduced source/freeze because the worker-topology **helper** had a
-witness but the controller wiring did not. That sole blocker is repaired at PR
-#128 test-only tip `9a057dfa07d84dda1672d4895bb0db553182a6ad`:
+Claude PASS commit `4b68717394297d90838368d40e38fdc02cedf06c` appended the
+exact marker once and authorized initialization plus this bounded offline run.
+The append-only delta, author/committer identity, claim and marker bytes were
+authenticated before initialization. No source/freeze review remains. Do not
+review, retry, relaunch, alter R4, or open outcomes while either service runs.
 
-- parent is exact frozen execution source `8d9390e12535bbf0d235b76e81484f54f912cc86`;
-- delta is exactly `server/tests/test_belief_v2_controller.py`, +70/−0;
-  every non-test byte remains identical to the frozen source;
-- `test_training_input_index_controller_uses_cap_bounded_input_workers`
-  drives `run_training_input_index` with a 16 GiB frozen cap and observes the
-  actual worker count passed through its scanner wiring: exactly six;
-- replaying Claude's exact mutation back to `parallel_cache_worker_count`
-  makes that test fail non-vacuously with observed `[16] != [6]`;
-- focused baseline is 3/3 and exact compiled `tests/test_belief_v2_*.py` is
-  249 passed / 4 skipped in 168.10 seconds; `git diff --check` passes.
-
-Treat this as a **test-only evidentiary extension** to the same consolidated
-review, not a new scientific source or a second freeze. Execution remains
-exact `8d9390e`; freeze `dc7e3a96…`, packet `f57056fd…`, claim `6ef3f4d8…`,
-marker `ba889610…`, receipts and absent namespaces are unchanged. Authenticate
-the one-file extension, confirm it kills the named mutation, then complete
-boundaries 2–4 that the HOLD explicitly said were not reached. Do not request
-new capacity/deadline measurements for a zero-production-byte delta.
-
-Reproduce and audit these load-bearing boundaries:
-
-1. Eight-worker input indexing stays below the unchanged 24 GiB host cap,
-   preserves exact lane/split/coordinate order, cannot read test targets, and
-   cannot advance or seal after deadline/resource refusal. Reopen the exact
-   memory receipt and predecessor-refusal receipt from the packet.
-2. Reopen every freeze/input/claim/plan byte and bind exact Git, complete source
-   closure, Python/native/numerical runtime, live boot, H0 split, all-rank seed
-   registry, fixed cap derivation, deadline receipt and fresh absent namespace.
-3. Confirm the prior R5 admission is spent with no test/model/terminal result,
-   this freeze requires fresh capture, and no prior corpus/index is reused.
-4. Preserve recoverable caches/checkpoints, progress curves, graceful
-   truncation, independent source replay at terminal, one test opening and all
-   false sampler/gameplay/strength/promotion/deployment/merge authority.
-
-If and only if the repaired witness and the remaining unchanged boundaries
-pass, append exactly one
-`BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW ` marker plus the exact canonical
-bytes in `expected-review-claim.json` to `HANDOFF_REVIEW.md` in one
-Claude-authored append-only canonical-main commit. That one marker may authorize
-only initialization and this bounded offline run. Do not request a second
-review. Until PASS, do not initialize, retry R5, alter R4 or open outcomes.
-
-R4 remains live. After it seals, its one terminal/reproducibility review becomes
-actionable for that exact admission and artifact population.
+The next review is one terminal/reproducibility review for each sealed result.
+It must independently replay raw score populations and statistics, distinguish
+truncation from convergence, preserve human n=51 as descriptive only, and
+remember that R4/R5 share one preregistered population rather than two
+independent replications.
 
 ## Monitoring contract
 
@@ -200,13 +167,10 @@ actionable for that exact admission and artifact population.
 
 ## Next operator sequence
 
-1. Codex monitors R4 without changing it and preserves the failed R5 root.
-2. Claude reviews the complete R5 repair + freeze packet once. No execution
-   precedes its PASS.
-3. After PASS, Codex initializes only the exact fresh namespace and launches
-   the reviewed supervisor once with `Restart=no`.
-4. On each sealed terminal completion, Codex uses only the reviewed reopener;
+1. Codex monitors both active services without changing either and preserves
+   the failed R5 root.
+2. On each sealed terminal completion, Codex uses only the reviewed reopener;
    Claude performs one terminal/reproducibility review.
-5. Only then inspect full curves and decide whether belief advances to a
+3. Only then inspect full curves and decide whether belief advances to a
    sampler/gameplay-search design or closes/revises. PR merge decisions remain
    separate from scientific execution.

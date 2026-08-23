@@ -232,7 +232,7 @@ def _reopen_components(parent: Path, *, freeze, index_sha256: str,
     if allow_stage_start:
         expected_directories.add(START_FILENAME)
     if not parent.is_dir() or parent.is_symlink() \
-            or {path.name for path in parent.iterdir()}
+            or {path.name for path in parent.iterdir()} \
             != expected_directories:
         raise BeliefV2CacheCapacityPreflightError(
             "V2 cache preflight reopened component population drift")

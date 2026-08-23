@@ -170,3 +170,19 @@ def test_worker_bootstrap_requires_safe_flags_and_has_closed_command_surface():
         cwd=repo, env=environment, capture_output=True, text=True)
     assert unsafe.returncode != 0
     assert "requires Python -P -B safe flags" in unsafe.stderr
+
+
+def test_cache_capacity_preflight_bootstraps_under_safe_flags():
+    """The reviewed host preflight must at least parse and close its CLI."""
+    repo = Path(__file__).resolve().parents[2]
+    script = repo / "server" / "scripts" / (
+        "belief_v2_cache_capacity_preflight.py")
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    environment.update({
+        "PYTHONDONTWRITEBYTECODE": "1", "PYTHONHASHSEED": "0",
+        "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"})
+    result = subprocess.run(
+        (sys.executable, "-P", "-B", str(script), "--help"), cwd=repo,
+        env=environment, check=True, capture_output=True, text=True)
+    assert "{run,verify}" in result.stdout

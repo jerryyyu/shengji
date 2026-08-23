@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 15:35 EDT.
+Last reconciled: 2026-08-23 17:00 EDT.
 
 ## Immediate objective
 
@@ -42,16 +42,16 @@ cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
 progress appeared at 07:10 EDT. At reconciliation the synthetic-primary,
-hard-label-control and human-mixture workers were respectively 21.96%, 21.95%
-and 22.04% through their exact schedules; the synthetic 50%-scale worker was
-40.42% through its schedule. The full-data cohorts have each
+hard-label-control and human-mixture workers were respectively 25.58%, 25.54%
+and 25.78% through their exact schedules; the synthetic 50%-scale worker was
+47.33% through its schedule. The full-data cohorts have each
 sealed four epoch journals and reusable resume states; the scale cohort has
 sealed seven. These journals bind all eight member training/calibration
 receipts, common-epoch selection and
 `exact_resume_count=0`, while keeping test, strength and deployment authority
 false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
 journal reopener is deferred until it will not compete with live training.
-Overall task-weighted progress is 93.01%.
+Overall task-weighted progress is 93.22%.
 All progress is outcome-blind. The service is active, `NRestarts=0`, with no
 recorded failure task and no test opening.
 
@@ -142,19 +142,40 @@ wall span and zero retries/drops. The integrity tail independently parsed about
 14 GiB of private/actor bundles before the supervisor advanced; it was not a
 retry or a second capture. All 30 human-capture tasks then sealed.
 
-R5 completed stage 3/10, `training-input-index`, and advanced to stage 4/10,
-`training-tensor-cache`, at about 15:25 EDT with 47/85 tasks complete. The
-repaired cap-aware route scanned all 12,003 exact input units with eight
-workers, wrote a 311,250,588-byte immutable index (SHA
+R5 completed stage 3/10, `training-input-index`, then failed closed at the end
+of stage 4/10, `training-tensor-cache`, at 16:34:16 EDT with 47/85 tasks
+complete. The repaired input-index route scanned all 12,003 exact input units
+with eight workers, wrote a 311,250,588-byte immutable index (SHA
 `189334f9ecf14d71abfeae91d1fcda73f2f4e39658e9a93d6600ab2511757c83`),
 and passed its full post-publication reconstruction before the supervisor
 advanced. Its receipt records 34.32 minutes bounded wall, 12,903.27 CPU
 seconds, 15.92/25.77 GB conservative peak host memory, zero retries/drops and
 no synthetic or human test target opening. The manifest SHA is
 `951f1eb0299a025df436d8b81662873a23df69ba19f918e1a8e6c2d6164e52dc`.
-The tensor-cache worker is now active; its initial exact index reopen occurs
-before cache-unit progress appears. Overall task-weighted progress is 55.29%.
-The service remains active with `NRestarts=0` and no warning or failed task.
+
+The tensor-cache worker completed all 12,649/12,649 non-test batches and left
+five independently sealed component caches in `result.partial` (synthetic
+primary, human mixture, synthetic 50%-scale, common calibration and the
+hard-label overlay). It then refused before publishing the stage manifest:
+the 16-worker topology peaked at 30,452,371,456 bytes while the frozen host
+cap is 25,769,803,776 bytes. Wall (~68.34 minutes) and artifact population
+(~26 GiB) were within their frozen bounds. Exact exception:
+`BeliefV2TensorCacheControllerError: V2 tensor cache resource cap drift`.
+The service is `failed`, `NRestarts=0`, `ExecMainStatus=1`; overall
+task-weighted progress remains 55.29%. No model, qualification, reference,
+calibration, test or terminal artifact exists, and no test byte was opened.
+
+Do **not** restart this admission. Source `8d9390e` resumes a complete partial
+and recomputes resource usage only in the new process; that could turn the
+preserved over-cap attempt into a passing receipt. The exact root, ops logs,
+component caches and tombstone are evidence and must remain untouched. The
+repair is being built separately from PR #128: derive cache concurrency from
+the frozen 24-GiB cap (eight workers at this host), durably publish any
+resource refusal before raising, and make such a partial permanently
+non-resumable. The successor will use one consolidated source/freeze review.
+The completed non-test cache components may be authenticated for diagnostics
+or an explicitly reviewed import design, but they are not a passed cache
+stage and grant no training authority.
 
 It will not transplant any artifact whose manifest is bound to the spent R5
 admission. The entire failed root, logs, tombstone and predecessor-refusal
@@ -163,13 +184,13 @@ receipt SHA
 remain preserved. R5 shares R4's preregistered population and is not an
 independent scientific replication.
 
-## Review queue — empty until a sealed terminal exists
+## Review queue — R5 recovery source/freeze, then terminal reviews
 
-Claude PASS commit `4b68717394297d90838368d40e38fdc02cedf06c` appended the
-exact marker once and authorized initialization plus this bounded offline run.
-The append-only delta, author/committer identity, claim and marker bytes were
-authenticated before initialization. No source/freeze review remains. Do not
-review, retry, relaunch, alter R4, or open outcomes while either service runs.
+Claude PASS commit `4b68717394297d90838368d40e38fdc02cedf06c` authorized only
+the now-failed R5 admission. It does not authorize retry or a successor. Codex
+is preparing one compact recovery source plus a fresh immutable freeze; queue
+one exact review only after both are complete. Until then: do not restart R5,
+do not alter R4, and do not open outcomes.
 
 The next review is one terminal/reproducibility review for each sealed result.
 It must independently replay raw score populations and statistics, distinguish
@@ -190,10 +211,12 @@ independent replications.
 
 ## Next operator sequence
 
-1. Codex monitors both active services without changing either and preserves
-   the failed R5 root.
-2. On each sealed terminal completion, Codex uses only the reviewed reopener;
+1. Codex monitors R4 without changing it and preserves the failed R5 root.
+2. Codex closes the cache memory/topology and same-admission-resume defects,
+   validates them score-free on Performance Cloud, and prepares one fresh R5
+   freeze/review packet. No scientific relaunch precedes that PASS.
+3. On each sealed terminal completion, Codex uses only the reviewed reopener;
    Claude performs one terminal/reproducibility review.
-3. Only then inspect full curves and decide whether belief advances to a
+4. Only then inspect full curves and decide whether belief advances to a
    sampler/gameplay-search design or closes/revises. PR merge decisions remain
    separate from scientific execution.

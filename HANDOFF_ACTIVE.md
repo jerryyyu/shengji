@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 08:46 EDT.
+Last reconciled: 2026-08-23 09:09 EDT.
 
 ## Immediate objective
 
@@ -42,13 +42,14 @@ cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
 progress appeared at 07:10 EDT. At reconciliation the four workers had consumed
-2,518/118,800, 2,569/119,040, 2,574/118,800 and 2,542/62,340 total scheduled
-batch units. The synthetic 50%-scale cohort sealed its epoch-1 journal and
-reusable resume state: the manifest binds eight member training/calibration
-receipts, selects common epoch 1, records `exact_resume_count=0`, and keeps test,
-strength and deployment authority false. Its persisted file sizes and SHA-256
-bindings reopen directly; the full typed journal reopener is deferred until it
-will not compete with live training. Overall task-weighted progress is 91.88%.
+5,992/118,800, 6,083/119,040, 6,098/118,800 and 5,665/62,340 total scheduled
+batch units. All four cohorts have sealed an epoch-1 journal and reusable resume
+state; the synthetic 50%-scale cohort has also sealed epoch 2. These journals
+bind all eight member training/calibration receipts, common-epoch selection and
+`exact_resume_count=0`, while keeping test, strength and deployment authority
+false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
+journal reopener is deferred until it will not compete with live training.
+Overall task-weighted progress is 92.05%.
 All progress is outcome-blind. The service is active, `NRestarts=0`, with no
 recorded failure task and no test opening.
 
@@ -95,16 +96,28 @@ the 100% progress row as a sealed index.
 
 This is a source/freeze design defect in R5's new concurrency, not a transient
 host failure: wall time and artifact bytes were far inside their caps, while
-systemd measured a 26.7 GiB service peak against the 24 GiB bound. Codex is
-preparing one narrow successor with memory-bounded input-index concurrency,
-a can-fail cap witness and an explicit audited route for reusing only the
-already sealed capture/human artifacts. R5 shares R4's preregistered population
-and is not an independent scientific replication.
+systemd measured a 26.7 GiB service peak against the 24 GiB bound. The narrow
+repair is pushed on PR #128 at exact head
+`8d9390e12535bbf0d235b76e81484f54f912cc86`: input indexing is now capped at
+eight workers by the unchanged frozen memory allowance, the stage has a
+can-fail over-memory witness, CI is green, and the exact compiled suite is 248
+passed / 4 skipped. A score-free eight-worker preflight is running on Perf
+Cloud against the preserved failed index. It may retain only a receipt and must
+reproduce the exact 311,250,588-byte index and SHA `e4958a13…` below 24 GiB;
+it cannot initialize, train or open test bytes.
+
+The successor will use a fresh evidence namespace and recapture the same
+deterministic synthetic/human population after review. It will not transplant
+artifacts whose manifests are bound to the spent R5 admission: avoiding that
+new rebinding trust boundary is worth the roughly 3.5-hour recapture cost. The
+entire failed root, logs, tombstone and exact predecessor-refusal receipt remain
+preserved for audit. R5 shares R4's preregistered population and is not an
+independent scientific replication.
 
 ## Review queue — no review yet; R5 repair is being prepared
 
 Do not review or authorize anything until Codex posts one exact repaired
-source+reuse/freeze packet. The intended next ask is one consolidated review,
+source+fresh-freeze packet. The intended next ask is one consolidated review,
 not separate source, reuse and freeze rounds. Until then do not append another
 execution marker, initialize another root, retry R5, alter R4 or open outcome
 evidence.
@@ -127,7 +140,7 @@ actionable for that exact admission and artifact population.
 
 1. Codex monitors R4 without changing it and preserves the failed R5 root.
 2. Codex closes the R5 memory-cap defect with a measured bounded-worker repair,
-   exact reuse closure and one new immutable freeze packet.
+   an exact prior-refusal receipt and one fresh immutable freeze packet.
 3. Claude reviews that complete packet once. No execution precedes its PASS.
 4. On each sealed terminal completion, Codex uses only the reviewed reopener;
    Claude performs one terminal/reproducibility review.

@@ -497,9 +497,14 @@ class MCBot(SmartBot):
                 return self._finish_decision(
                     candidates, 0, "report_underfilled", _t0, sampler_before)
             if statistic < self.REPORT_MIN_GAIN:
+                _o = rnd.ordering
                 shy = self._report_tie_point_shy_pick(
                     report["gap"], report["se"], critical,
-                    candidates[0], candidates[challenger])
+                    candidates[0], candidates[challenger],
+                    is_lead=(rnd.trick is None or not rnd.trick.plays),
+                    challenger_trump=(_o is not None and any(
+                        _o.eff_suit(c) == TRUMP
+                        for c in candidates[challenger])))
                 if shy is not None:
                     self.last_decision_record["report_tie_break"] = shy
                     if shy["pick"] == "challenger":
@@ -546,7 +551,8 @@ class MCBot(SmartBot):
             "candidate0_best", _t0, sampler_before)
 
     def _report_tie_point_shy_pick(self, gap, se, critical, incumbent,
-                                   challenger):
+                                   challenger, is_lead=False,
+                                   challenger_trump=False):
         """ARM 0 (STRENGTH_STACK_PROPOSAL.md): report-stage point-shy
         tie-break.
 
@@ -571,6 +577,10 @@ class MCBot(SmartBot):
             self.tie_shy_firings = 0
             self.tie_shy_flips = 0
             self.tie_shy_risk_saved = 0
+            self.tie_shy_fire_lead = 0
+            self.tie_shy_flip_lead = 0
+            self.tie_shy_flip_trump = 0
+            self.tie_shy_risk_saved_lead = 0
         if critical is None or se is None:
             return None
         if abs(gap) > critical * se:
@@ -580,9 +590,15 @@ class MCBot(SmartBot):
         incumbent_risk = sum(_pts(c) for c in incumbent)
         challenger_risk = sum(_pts(c) for c in challenger)
         self.tie_shy_firings += 1
+        self.tie_shy_fire_lead += 1 if is_lead else 0
         if challenger_risk < incumbent_risk:
             self.tie_shy_flips += 1
             self.tie_shy_risk_saved += incumbent_risk - challenger_risk
+            if is_lead:
+                self.tie_shy_flip_lead += 1
+                self.tie_shy_risk_saved_lead += incumbent_risk - challenger_risk
+            if challenger_trump:
+                self.tie_shy_flip_trump += 1
         return {
             "schema": "report-tie-point-shy-v1",
             "critical": critical,

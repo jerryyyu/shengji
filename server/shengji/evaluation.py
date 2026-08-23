@@ -88,6 +88,14 @@ def counters(bots) -> dict:
                                  for b in bots),
             "tie_shy_risk_saved": sum(getattr(b, "tie_shy_risk_saved", 0)
                                       for b in bots),
+            "tie_shy_fire_lead": sum(getattr(b, "tie_shy_fire_lead", 0)
+                                     for b in bots),
+            "tie_shy_flip_lead": sum(getattr(b, "tie_shy_flip_lead", 0)
+                                     for b in bots),
+            "tie_shy_flip_trump": sum(getattr(b, "tie_shy_flip_trump", 0)
+                                      for b in bots),
+            "tie_shy_risk_saved_lead": sum(
+                getattr(b, "tie_shy_risk_saved_lead", 0) for b in bots),
             "searches": sum(getattr(b, "search_calls", 0) for b in bots),
             "search_secs": round(sum(getattr(b, "search_secs", 0.0)
                                      for b in bots), 4),

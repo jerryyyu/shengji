@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 17:00 EDT.
+Last reconciled: 2026-08-23 17:47 EDT.
 
 ## Immediate objective
 
@@ -42,16 +42,16 @@ cohorts active: synthetic primary, hard-geometry label-permutation, human
 mixture and synthetic 50%-scale. Each worker independently authenticated the
 cache population for about 31 minutes before the first honest epoch-1 batch
 progress appeared at 07:10 EDT. At reconciliation the synthetic-primary,
-hard-label-control and human-mixture workers were respectively 25.58%, 25.54%
-and 25.78% through their exact schedules; the synthetic 50%-scale worker was
-47.33% through its schedule. The full-data cohorts have each
+hard-label-control and human-mixture workers were respectively 26.26%, 26.21%
+and 26.71% through their exact schedules; the synthetic 50%-scale worker was
+48.53% through its schedule. The full-data cohorts have each
 sealed four epoch journals and reusable resume states; the scale cohort has
 sealed seven. These journals bind all eight member training/calibration
 receipts, common-epoch selection and
 `exact_resume_count=0`, while keeping test, strength and deployment authority
 false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
 journal reopener is deferred until it will not compete with live training.
-Overall task-weighted progress is 93.22%.
+Overall task-weighted progress is 93.26%.
 All progress is outcome-blind. The service is active, `NRestarts=0`, with no
 recorded failure task and no test opening.
 
@@ -168,11 +168,31 @@ calibration, test or terminal artifact exists, and no test byte was opened.
 Do **not** restart this admission. Source `8d9390e` resumes a complete partial
 and recomputes resource usage only in the new process; that could turn the
 preserved over-cap attempt into a passing receipt. The exact root, ops logs,
-component caches and tombstone are evidence and must remain untouched. The
-repair is being built separately from PR #128: derive cache concurrency from
-the frozen 24-GiB cap (eight workers at this host), durably publish any
-resource refusal before raising, and make such a partial permanently
-non-resumable. The successor will use one consolidated source/freeze review.
+component caches and tombstone are evidence and must remain untouched.
+
+The repair is now draft PR #131, stacked on reviewed PR #128, at exact head
+`d698457b84053f2eadda8bf10f226248707b995b`. It leaves the 24-GiB cap
+unchanged, derives an eight-worker aggregate cache budget as two concurrent
+builds of four workers, durably publishes any measured cap refusal before
+raising, and permanently refuses same-admission resume. Complete V2 suites at
+this head pass 250/255 pure and 251/255 strict compiled (five/four intentional
+skips respectively), including a direct clean-Git preflight witness and the
+resource-refusal tamper/resume witnesses. Draft PR #131 grants no execution,
+test, gameplay, merge, strength or deployment authority.
+
+The score-free capacity proof is live on `shengji-perf` as transient unit
+`belief-r5-cache-capacity-d698457-v3.service`, `Restart=no`, with a hard
+25,769,803,776-byte cgroup limit. Before launch, the exact source-clean probe
+and full 311-MB input-index reopen independently reproduced the failed
+freeze/admission/index hashes and derived topology `8 = 2 x 4`. The live proof
+rebuilds only train/calibration caches into
+`/opt/belief-r5-cache-capacity-d698457-v3`, compares all five component
+manifests against the preserved failed components and records percent progress.
+It cannot retry the failed admission or open test targets. Two earlier
+preflight units failed before evidence access or scratch creation on CLI-only
+bugs; both are repaired with can-fail tests and are not scientific attempts.
+The successor will use one consolidated source/freeze review after this proof
+and all fresh host receipts are complete.
 The completed non-test cache components may be authenticated for diagnostics
 or an explicitly reviewed import design, but they are not a passed cache
 stage and grant no training authority.
@@ -187,10 +207,11 @@ independent scientific replication.
 ## Review queue — R5 recovery source/freeze, then terminal reviews
 
 Claude PASS commit `4b68717394297d90838368d40e38fdc02cedf06c` authorized only
-the now-failed R5 admission. It does not authorize retry or a successor. Codex
-is preparing one compact recovery source plus a fresh immutable freeze; queue
-one exact review only after both are complete. Until then: do not restart R5,
-do not alter R4, and do not open outcomes.
+the now-failed R5 admission. It does not authorize retry or a successor. Do
+**not** review PR #131 yet: Codex is appending the exact score-free capacity
+receipt and fresh host-specific freeze so Claude can perform one consolidated
+source-and-freeze review at one immutable head. Until that one precise ask is
+posted here: do not restart R5, do not alter R4, and do not open outcomes.
 
 The next review is one terminal/reproducibility review for each sealed result.
 It must independently replay raw score populations and statistics, distinguish

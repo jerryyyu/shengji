@@ -4,7 +4,7 @@
 > in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
 > active.
 
-Last reconciled: 2026-08-23 04:43 EDT.
+Last reconciled: 2026-08-23 07:11 EDT.
 
 ## Immediate objective
 
@@ -35,10 +35,17 @@ canonical-tip defect and remains healthy.
 
 The input index sealed all 12,003 units in 3 h 10 m. The 26 GiB training cache
 then completed all 12,649 units and passed its exact reopen/hash verification.
-Device qualification then sealed cleanly. At reconciliation the run was in
-stage 6/10, `references`, with 49/85 tasks complete, 61.14% task-weighted total
-progress and all 16 reference lanes active. All progress is outcome-blind. The
-service is active, `NRestarts=0`, with no recorded failure task.
+Device qualification sealed cleanly. All 29 synthetic/human reference tasks
+then passed their post-publish typed byte reconstruction. The run entered stage
+7/10, `training`, at 2026-08-23 06:40 EDT with 78/85 tasks complete and four
+cohorts active: synthetic primary, hard-geometry label-permutation, human
+mixture and synthetic 50%-scale. Each worker independently authenticated the
+cache population for about 31 minutes before the first honest epoch-1 batch
+progress appeared at 07:10 EDT. At reconciliation the four workers had consumed
+34/118,800, 35/119,040, 38/118,800 and 38/62,340 total scheduled batch units.
+No epoch or reusable checkpoint has completed yet. All progress is
+outcome-blind. The service is active, `NRestarts=0`, with no recorded failure
+task and no test opening.
 
 Frozen bounds remain: capture 65 core-hours / 18,000 seconds; reference 40
 core-hours / 14,400 seconds; training 256 device-hours / 172,800 seconds.
@@ -67,7 +74,8 @@ The production reopener authenticated the exact append-only marker (marker SHA
 `f3bce678…`) and initialized this namespace once. The root then reopened with
 the frozen admission/inventory/group split and all prohibited authorities
 false. At reconciliation R5 was in stage 1/10, `synthetic-capture`, with all 16
-lanes reporting, `NRestarts=0`, no failure and 0.03% task-weighted progress.
+lanes reporting 71.75--74.03%, `NRestarts=0`, no failure and 13.78%
+task-weighted progress. No test opening exists.
 Input indexing and cache construction were measured at 4.824x and 8.578x over
 their serial paths with exact parity; the live run will provide the operational
 confirmation. R5 shares R4's preregistered population and is not an independent

@@ -84,6 +84,26 @@ def test_context_refuses_live_runtime_drift(tmp_path, monkeypatch):
     assert PROFILE._require_live_runtime(freeze) is None
 
 
+def test_cli_configures_numerical_runtime_before_stage(monkeypatch, capsys):
+    state = {"configured": False}
+
+    def configure():
+        state["configured"] = True
+
+    def run(_args):
+        assert state["configured"] is True
+        return {"status": "configured-before-stage"}
+
+    monkeypatch.setattr(PROFILE, "configure_numerical_runtime", configure)
+    monkeypatch.setattr(PROFILE, "run", run)
+    monkeypatch.setattr(
+        PROFILE.argparse.ArgumentParser, "parse_args",
+        lambda _self, _argv: SimpleNamespace(command="run"))
+    assert PROFILE.main([]) == 0
+    assert json.loads(capsys.readouterr().out) \
+        == {"status": "configured-before-stage"}
+
+
 def test_profile_run_reopens_and_summary_tamper_refuses(
         tmp_path, monkeypatch, capsys):
     (index, realization, _batches, freeze, admission,

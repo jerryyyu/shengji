@@ -91,6 +91,7 @@ from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
 from shengji.rl.belief_v2_freeze import PRIMARY_COHORT_ID  # noqa: E402
 from shengji.rl.belief_v2_execution_identity import (  # noqa: E402
     build_runtime_profile,
+    configure_numerical_runtime,
 )
 from shengji.rl.belief_v2_parallel_cache import (  # noqa: E402
     build_profiled_parallel_tensor_cache_with_control_overlay,
@@ -544,6 +545,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify_parser.add_argument("--receipt", required=True)
     verify_parser.add_argument("--expected-source-git", required=True)
     args = parser.parse_args(argv)
+    configure_numerical_runtime()
     try:
         result = run(args) if args.command == "run" else verify(args)
     except (BeliefV2CacheParentProfileError, ValueError) as exc:

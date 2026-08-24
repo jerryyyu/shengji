@@ -526,7 +526,8 @@ def build_profiled_parallel_tensor_cache(
 
     This is deliberately separate from the production entry point.  It emits
     identical cache bytes for the supplied schedule; the observer sees only
-    phase names, unit indices, and elapsed wall/thread-CPU nanoseconds.
+    phase names, unit indices, and elapsed wall/caller-thread/parent-process
+    CPU nanoseconds.
     """
     direct, overlay = _build_parallel_tensor_cache(
         directory, root=root, freeze=freeze, admission=admission,

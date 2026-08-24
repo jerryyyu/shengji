@@ -4,8 +4,10 @@
 This diagnostic intentionally cannot prove full-population capacity.  It
 reopens the authenticated pre-test R5 train index, selects a deterministic
 quantile sample of the primary training schedule, builds only that sample,
-and publishes parent-thread phase timings plus a hash-bound cache receipt.
-No calibration/test target, model, loss, score, or outcome is opened.
+and publishes parent-thread/parent-process phase timings plus a hash-bound
+cache receipt. Canonical phase lines survive in the supervisor journal if the
+bounded diagnostic is cut off. No calibration/test target, model, loss, score,
+or outcome is opened.
 """
 
 from __future__ import annotations
@@ -60,6 +62,8 @@ from scripts.belief_v2_cache_capacity_preflight import (  # noqa: E402
 
 
 SCHEMA = "belief-v2-r5-cache-parent-profile-v1"
+JOURNAL_SCHEMA = "belief-v2-r5-cache-parent-profile-progress-v1"
+JOURNAL_PREFIX = "BELIEF_V2_PARENT_PROFILE_EVENT "
 AUTHORITY = {
     "full_capacity_proven": False,
     "freeze_authorized": False,
@@ -82,6 +86,15 @@ class BeliefV2CacheParentProfileError(ValueError):
 
 def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _journal(kind: str, payload: dict[str, Any]) -> None:
+    if type(kind) is not str or not kind or type(payload) is not dict:
+        raise BeliefV2CacheParentProfileError(
+            "V2 parent profile journal input drift")
+    row = {"schema": JOURNAL_SCHEMA, "kind": kind, **payload}
+    sys.stderr.write(JOURNAL_PREFIX + canonical_json_bytes(row).decode("ascii"))
+    sys.stderr.flush()
 
 
 def _sample_indices(total: int, count: int) -> tuple[int, ...]:
@@ -232,6 +245,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         raise BeliefV2CacheParentProfileError(
             "V2 parent profile exact input/topology drift")
 
+    _journal("start", {
+        "source_git": args.expected_source_git,
+        "failed_freeze_sha256": freeze.sha256(),
+        "failed_admission_sha256": admission.sha256(),
+        "training_input_index_sha256": index_manifest["index_sha256"],
+        "sample_batch_count": len(sample.batches),
+        "sample_decision_population_sha256": (
+            sample.decision_population_sha256),
+        "sample_batch_schedule_sha256": sample.batch_schedule_sha256,
+        "worker_count": worker_count,
+        "synthetic_test_targets_opened": False,
+        "human_test_targets_opened": False,
+        "outcome_fields_opened": False,
+    })
+
     scratch.mkdir(mode=0o700)
     cache = scratch / "sample-cache"
     events: list[dict[str, Any]] = []
@@ -239,13 +267,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     def observe(
             phase: str, unit_index: int, wall: int, thread_cpu: int,
             process_cpu: int) -> None:
-        events.append({
+        row = {
             "phase": phase,
             "unit_index": unit_index,
             "wall_nanoseconds": wall,
             "thread_cpu_nanoseconds": thread_cpu,
             "process_cpu_nanoseconds": process_cpu,
-        })
+        }
+        events.append(row)
+        _journal("phase", row)
 
     def progress(completed: int, total: int, _cache_id: str) -> None:
         if completed == 0 or completed == total or completed % 8 == 0:

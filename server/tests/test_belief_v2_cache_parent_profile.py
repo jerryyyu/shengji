@@ -32,7 +32,7 @@ def test_quantile_sample_is_exact_distinct_and_endpoint_bound():
 
 
 def test_profile_run_reopens_and_summary_tamper_refuses(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, capsys):
     (index, realization, _batches, freeze, admission,
      binding) = _fixture(tmp_path, monkeypatch)
     root = (tmp_path / "profile-evidence").resolve()
@@ -57,6 +57,16 @@ def test_profile_run_reopens_and_summary_tamper_refuses(
         expected_index_sha256="a" * 64,
         expected_worker_count=2, sample_batch_count=1)
     result = PROFILE.run(args)
+    journal = [
+        json.loads(line.removeprefix(PROFILE.JOURNAL_PREFIX))
+        for line in capsys.readouterr().err.splitlines()
+        if line.startswith(PROFILE.JOURNAL_PREFIX)]
+    assert journal[0]["schema"] == PROFILE.JOURNAL_SCHEMA
+    assert journal[0]["kind"] == "start"
+    assert journal[0]["sample_batch_schedule_sha256"] \
+        == realization.batch_schedule_sha256
+    assert any(row["kind"] == "phase" for row in journal[1:])
+    assert all(row["schema"] == PROFILE.JOURNAL_SCHEMA for row in journal)
     receipt = result["receipt"]
     assert receipt["sample_batch_count"] == 1
     assert receipt["sample_cache_reopened"] is True

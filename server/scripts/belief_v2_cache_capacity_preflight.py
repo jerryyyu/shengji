@@ -53,14 +53,12 @@ from shengji.rl.belief_v2_input_index_controller import (  # noqa: E402
 )
 from shengji.rl.belief_v2_parallel_cache import (  # noqa: E402
     build_parallel_tensor_cache,
+    build_parallel_tensor_cache_with_control_overlay,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
-    primary_cache_last_build_order,
 )
 from shengji.rl.belief_v2_tensor_cache import (  # noqa: E402
     LABEL_MANIFEST_FILENAME,
-    build_label_overlay,
-    cached_batch_factory,
     reopen_label_overlay,
     reopen_tensor_cache,
 )
@@ -74,9 +72,6 @@ from shengji.rl.belief_v2_tensor_cache_controller import (  # noqa: E402
     _calibration_binding,
     _process_tree_cpu_time_ns,
     _realization_binding,
-)
-from shengji.rl.belief_v2_training import (  # noqa: E402
-    label_control_batch_from_natural,
 )
 from scripts.belief_v2_worker import _private_inputs  # noqa: E402
 
@@ -193,15 +188,14 @@ def _context(root: Path):
 
 
 def _direct_specs(freeze, index_sha256: str, inputs):
-    return primary_cache_last_build_order(tuple(
+    return tuple(
         (row.cohort_id, row, "train", _realization_binding(
             freeze, index_sha256, row))
         for row in inputs.realizations
         if row.cohort_id != CONTROL_COHORT_ID) + ((
             CALIBRATION_CACHE_ID, inputs.common_calibration, "calibration",
             _calibration_binding(
-                freeze, index_sha256, inputs.common_calibration)),),
-        PRIMARY_COHORT_ID)
+                freeze, index_sha256, inputs.common_calibration)),)
 
 
 def _receipt_row(cache_id: str, kind: str,
@@ -340,31 +334,31 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     def build_one(spec):
         cache_id, schedule, mode, binding = spec
-        receipt = build_parallel_tensor_cache(
-            scratch / _cache_directory_name(cache_id), root=root,
-            freeze=freeze, admission=admission, index=inputs.index,
-            schedule=schedule, mode=mode, binding=binding,
-            worker_count=workers_per_build, progress=progress)
-        return cache_id, receipt
+        if cache_id == PRIMARY_COHORT_ID:
+            receipt, overlay = (
+                build_parallel_tensor_cache_with_control_overlay(
+                    scratch / _cache_directory_name(cache_id),
+                    control_overlay_directory=(
+                        scratch / CONTROL_OVERLAY_DIRECTORY),
+                    control_overlay_id=control.sha256(),
+                    expected_control_changed_cell_count=(
+                        inputs.index.control_changed_cell_count),
+                    root=root, freeze=freeze, admission=admission,
+                    index=inputs.index, schedule=schedule,
+                    binding=binding, worker_count=workers_per_build,
+                    progress=progress,
+                    control_overlay_progress=overlay_progress))
+        else:
+            receipt = build_parallel_tensor_cache(
+                scratch / _cache_directory_name(cache_id), root=root,
+                freeze=freeze, admission=admission, index=inputs.index,
+                schedule=schedule, mode=mode, binding=binding,
+                worker_count=workers_per_build, progress=progress)
+            overlay = None
+        return cache_id, receipt, overlay
 
     started = time.monotonic_ns()
     cpu_started = _process_tree_cpu_time_ns()
-    with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        direct_receipts = dict(executor.map(build_one, specs))
-
-    primary_binding = _realization_binding(
-        freeze, index_manifest["index_sha256"], primary)
-
-    def control_batches():
-        factory = cached_batch_factory(
-            scratch / _cache_directory_name(PRIMARY_COHORT_ID),
-            expected_manifest_sha256=direct_receipts[
-                PRIMARY_COHORT_ID]["manifest_sha256"],
-            binding=primary_binding)
-        for natural in factory():
-            transformed, _ = label_control_batch_from_natural(natural)
-            yield transformed
-
     overlay_total = len(control.batches)
 
     def overlay_progress(completed: int, total: int, cache_id: str) -> None:
@@ -378,14 +372,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 f"percent={percent / 100:.2f}",
                 file=sys.stderr, flush=True)
 
-    build_label_overlay(
-        scratch / CONTROL_OVERLAY_DIRECTORY, batches=control_batches,
-        actor_directory=(
-            scratch / _cache_directory_name(PRIMARY_COHORT_ID)),
-        actor_manifest_sha256=direct_receipts[
-            PRIMARY_COHORT_ID]["manifest_sha256"],
-        binding=primary_binding, overlay_id=control.sha256(),
-        progress=overlay_progress)
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        built_rows = tuple(executor.map(build_one, specs))
+    direct_receipts = {
+        cache_id: receipt for cache_id, receipt, _ in built_rows}
+    overlays = tuple(overlay for _, _, overlay in built_rows
+                     if overlay is not None)
+    if len(overlays) != 1:
+        raise BeliefV2CacheCapacityPreflightError(
+            "V2 cache preflight control-overlay population drift")
     finished = time.monotonic_ns()
     cpu_nanoseconds = _process_tree_cpu_time_ns() - cpu_started
     peak = _aggregate_peak_host_memory_bytes(worker_count)

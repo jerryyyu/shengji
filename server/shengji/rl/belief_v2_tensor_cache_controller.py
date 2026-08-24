@@ -43,9 +43,9 @@ from .belief_v2_device_runner import host_peak_memory_bytes
 from .belief_v2_progress import ProgressCallback
 from .belief_v2_parallel_cache import (
     build_parallel_tensor_cache,
+    build_parallel_tensor_cache_with_control_overlay,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
-    primary_cache_last_build_order,
 )
 from .belief_v2_streaming_inputs import V2ArtifactRoundLoader
 from .belief_v2_streaming_training import (
@@ -564,7 +564,7 @@ def run_training_tensor_cache(
         freeze, input_index_sha256, primary_rows[0])
     calibration_binding = _calibration_binding(
         freeze, input_index_sha256, inputs.common_calibration)
-    direct_specs = primary_cache_last_build_order(tuple(
+    direct_specs = tuple(
         (row.cohort_id, partial / _cache_directory_name(row.cohort_id),
          row, "train", _realization_binding(
              freeze, input_index_sha256, row))
@@ -572,8 +572,7 @@ def run_training_tensor_cache(
         if row.cohort_id != CONTROL_COHORT_ID) + ((
             CALIBRATION_CACHE_ID,
             partial / _cache_directory_name(CALIBRATION_CACHE_ID),
-            inputs.common_calibration, "calibration", calibration_binding),),
-        PRIMARY_COHORT_ID)
+            inputs.common_calibration, "calibration", calibration_binding),)
     build_concurrency, workers_per_build = parallel_cache_build_topology(
         freeze.runtime, freeze.resource_caps.training_host_memory_bytes,
         len(direct_specs))
@@ -582,8 +581,25 @@ def run_training_tensor_cache(
         cache_id, cache_directory, schedule, mode, binding = spec
         receipt = _completed_cache_receipt(
             cache_directory, binding=binding)
+        overlay_receipt = None
         if receipt is None:
-            if workers_per_build > 1:
+            if cache_id == PRIMARY_COHORT_ID and workers_per_build > 1:
+                receipt, overlay_receipt = (
+                    build_parallel_tensor_cache_with_control_overlay(
+                        cache_directory,
+                        control_overlay_directory=(
+                            partial / CONTROL_OVERLAY_DIRECTORY),
+                        control_overlay_id=control_rows[0].sha256(),
+                        expected_control_changed_cell_count=(
+                            inputs.index.control_changed_cell_count),
+                        root=root, freeze=freeze, admission=admission,
+                        index=inputs.index, schedule=schedule,
+                        binding=binding, worker_count=workers_per_build,
+                        deadline_check=deadline_check,
+                        progress=cache_progress(cache_id),
+                        control_overlay_progress=cache_progress(
+                            CONTROL_COHORT_ID)))
+            elif workers_per_build > 1:
                 receipt = build_parallel_tensor_cache(
                     cache_directory, root=root, freeze=freeze,
                     admission=admission, index=inputs.index,
@@ -610,13 +626,22 @@ def run_training_tensor_cache(
         else:
             cache_progress(cache_id)(
                 len(schedule.batches), len(schedule.batches), cache_id)
-        return cache_id, receipt
+        return cache_id, receipt, overlay_receipt
 
     try:
         with concurrent.futures.ThreadPoolExecutor(
                 max_workers=build_concurrency) as executor:
-            direct_receipts = dict(executor.map(
-                build_direct, direct_specs))
+            built_rows = tuple(executor.map(build_direct, direct_specs))
+        direct_receipts = {
+            cache_id: receipt for cache_id, receipt, _ in built_rows}
+        combined_overlay_rows = tuple(
+            overlay for _, _, overlay in built_rows
+            if overlay is not None)
+        if len(combined_overlay_rows) > 1:
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache combined overlay population drift")
+        combined_overlay_receipt = (
+            combined_overlay_rows[0] if combined_overlay_rows else None)
         primary_receipt = direct_receipts[PRIMARY_COHORT_ID]
         primary_directory = partial / _cache_directory_name(
             PRIMARY_COHORT_ID)
@@ -638,7 +663,13 @@ def run_training_tensor_cache(
                     actor_manifest_sha256=(
                         primary_receipt["manifest_sha256"]),
                     binding=primary_binding)
-                if receipt is None:
+                if combined_overlay_receipt is not None:
+                    if receipt is None:
+                        receipt = combined_overlay_receipt
+                    elif receipt != combined_overlay_receipt:
+                        raise BeliefV2TensorCacheControllerError(
+                            "V2 tensor cache combined overlay receipt drift")
+                elif receipt is None:
                     receipt = build_label_overlay(
                         overlay_directory,
                         batches=control_batches,

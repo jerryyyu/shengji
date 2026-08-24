@@ -672,23 +672,14 @@ def build_label_overlay(
             raise BeliefV2TensorCacheError(
                 "V2 tensor label overlay actor drift")
         seen.update(batch.decision_keys)
-        candidate = _serialize({name: getattr(batch, name)
-                                for name in PRIVILEGED_TENSOR_FIELDS})
-        name = f"batch-{actor_row['index']:05d}.labels.pt"
-        raw, _ = _reuse_or_publish_batch_file(
-            partial / name, candidate, batch=batch, privileged=True)
-        total_bytes += len(raw)
+        row, artifact_bytes = _build_label_overlay_batch(
+            partial, index=actor_row["index"], batch=batch,
+            binding=binding)
+        total_bytes += artifact_bytes
         if total_bytes > binding.storage_cap_bytes:
             raise BeliefV2TensorCacheError(
                 "V2 tensor label overlay storage cap exceeded")
-        rows.append({
-            "index": actor_row["index"],
-            "decision_keys": list(batch.decision_keys),
-            "privileged_file": name,
-            "privileged_sha256": _sha256(raw),
-            "static": {field: getattr(batch, field)
-                       for field in _LABEL_STATIC_FIELDS},
-        })
+        rows.append(row)
         if deadline_check is not None:
             deadline_check("after-unit", actor_row["index"] + 1)
         if progress is not None:
@@ -701,8 +692,84 @@ def build_label_overlay(
     else:
         raise BeliefV2TensorCacheError(
             "V2 tensor label overlay batch population drift")
+    return _seal_label_overlay(
+        directory, partial=partial, rows=rows, total_bytes=total_bytes,
+        actor_manifest_sha256=actor_manifest_sha256, binding=binding,
+        overlay_id=overlay_id, deadline_check=deadline_check)
+
+
+def _build_label_overlay_batch(
+        partial: Path, *, index: int, batch: BeliefTrainingBatchV1,
+        binding: V2TensorCacheBindingV1,
+        reserve_bytes: Callable[[int], None] | None = None) \
+        -> tuple[dict[str, Any], int]:
+    """Publish one label-only batch without reopening its actor tensors."""
+    if not isinstance(partial, Path) or partial.is_symlink() \
+            or not partial.is_dir() \
+            or type(index) is not int or index < 0 \
+            or type(batch) is not BeliefTrainingBatchV1:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay batch type drift")
+    _validate_binding(binding)
+    if batch.split != binding.split \
+            or not batch.decision_keys \
+            or len(batch.decision_keys) != len(set(batch.decision_keys)):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay batch identity drift")
+    if reserve_bytes is not None and not callable(reserve_bytes):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay byte reservation drift")
+    candidate = _serialize({name: getattr(batch, name)
+                            for name in PRIVILEGED_TENSOR_FIELDS})
+    artifact_bytes = len(candidate)
+    if artifact_bytes > binding.storage_cap_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay storage cap exceeded")
+    if reserve_bytes is not None:
+        reserve_bytes(artifact_bytes)
+    name = f"batch-{index:05d}.labels.pt"
+    raw, _ = _reuse_or_publish_batch_file(
+        partial / name, candidate, batch=batch, privileged=True)
+    if len(raw) != artifact_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay resumed batch byte drift")
+    return ({
+        "index": index,
+        "decision_keys": list(batch.decision_keys),
+        "privileged_file": name,
+        "privileged_sha256": _sha256(raw),
+        "static": {field: getattr(batch, field)
+                   for field in _LABEL_STATIC_FIELDS},
+    }, artifact_bytes)
+
+
+def _seal_label_overlay(
+        directory: Path, *, partial: Path,
+        rows: list[dict[str, Any]], total_bytes: int,
+        actor_manifest_sha256: str, binding: V2TensorCacheBindingV1,
+        overlay_id: str,
+        deadline_check: Callable[[str, int], None] | None = None) \
+        -> dict[str, Any]:
+    """Seal already-bound label rows against one actor-cache manifest."""
+    if not isinstance(directory, Path) or not isinstance(partial, Path) \
+            or type(rows) is not list or not rows \
+            or type(total_bytes) is not int or total_bytes <= 0 \
+            or not _is_sha256(actor_manifest_sha256) \
+            or not _is_sha256(overlay_id):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay seal inputs drift")
+    _validate_binding(binding)
+    if deadline_check is not None and not callable(deadline_check):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay callback drift")
+    if [row.get("index") for row in rows] \
+            != list(range(binding.expected_batch_count)):
+        raise BeliefV2TensorCacheError(
+            "V2 tensor label overlay bound population drift")
+    keys = tuple(key for row in rows for key in row["decision_keys"])
     if len(rows) != binding.expected_batch_count \
-            or len(seen) != binding.expected_decision_count:
+            or len(keys) != binding.expected_decision_count \
+            or len(keys) != len(set(keys)):
         raise BeliefV2TensorCacheError(
             "V2 tensor label overlay bound population drift")
     manifest = {
@@ -738,7 +805,7 @@ def build_label_overlay(
     _finish_directory(partial, directory)
     return {
         "manifest_sha256": _sha256(raw),
-        "batch_count": len(rows), "decision_count": len(seen),
+        "batch_count": len(rows), "decision_count": len(keys),
         "artifact_bytes": total_bytes + len(raw),
     }
 

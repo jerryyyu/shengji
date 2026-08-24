@@ -1383,10 +1383,10 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         lambda *args, **kwargs: object())
     monkeypatch.setattr(
         CACHE_STAGE, "parallel_cache_worker_count",
-        lambda runtime, host_memory_cap_bytes: 1)
+        lambda runtime, host_memory_cap_bytes: 2)
     monkeypatch.setattr(
         CACHE_STAGE, "parallel_cache_build_topology",
-        lambda runtime, host_memory_cap_bytes, build_count: (1, 1))
+        lambda runtime, host_memory_cap_bytes, build_count: (1, 2))
 
     def training_batches(index, realization, *, load_round):
         if realization.kind == "hard-geometry-label-permutation":
@@ -1401,21 +1401,63 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         lambda *args, **kwargs: iter((calibration_batch,)))
     monkeypatch.setattr(CACHE_STAGE, "host_peak_memory_bytes", lambda: 1024)
     built_direct = []
+    combined_overlay_builds = []
+    cold_overlay_builds = []
     real_build_tensor_cache = CACHE_STAGE.build_tensor_cache
+    real_build_label_overlay = CACHE_STAGE.build_label_overlay
 
-    def record_direct_build(directory, *args, **kwargs):
+    def serial_parallel_build(
+            directory, *, schedule, mode, binding, deadline_check,
+            progress, **_kwargs):
         built_direct.append(directory.name)
-        return real_build_tensor_cache(directory, *args, **kwargs)
+        batches = ((calibration_batch,) if mode == "calibration"
+                   else (natural_batch,))
+        return real_build_tensor_cache(
+            directory, batches=lambda: iter(batches), binding=binding,
+            deadline_check=deadline_check, progress=progress)
+
+    def serial_parallel_build_with_overlay(
+            directory, *, control_overlay_directory,
+            control_overlay_id, expected_control_changed_cell_count,
+            binding, deadline_check, progress,
+            control_overlay_progress, **kwargs):
+        combined_overlay_builds.append(directory.name)
+        if expected_control_changed_cell_count != changed:
+            pytest.fail("controller passed the wrong control-label dose")
+        direct = serial_parallel_build(
+            directory, schedule=kwargs["schedule"], mode="train",
+            binding=binding, deadline_check=deadline_check,
+            progress=progress)
+        overlay = real_build_label_overlay(
+            control_overlay_directory,
+            batches=lambda: iter((control_batch,)),
+            actor_directory=directory,
+            actor_manifest_sha256=direct["manifest_sha256"],
+            binding=binding, overlay_id=control_overlay_id,
+            deadline_check=deadline_check,
+            progress=control_overlay_progress)
+        return direct, overlay
+
+    def record_cold_overlay(*args, **kwargs):
+        cold_overlay_builds.append(Path(args[0]).name)
+        return real_build_label_overlay(*args, **kwargs)
 
     monkeypatch.setattr(
-        CACHE_STAGE, "build_tensor_cache", record_direct_build)
+        CACHE_STAGE, "build_parallel_tensor_cache", serial_parallel_build)
+    monkeypatch.setattr(
+        CACHE_STAGE, "build_parallel_tensor_cache_with_control_overlay",
+        serial_parallel_build_with_overlay)
+    monkeypatch.setattr(
+        CACHE_STAGE, "build_label_overlay", record_cold_overlay)
 
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
     assert built_direct == [
-        "cache-human-mixture", "cache-synthetic-scale-50",
-        "cache-common-calibration", "cache-synthetic-primary"]
+        "cache-synthetic-primary", "cache-human-mixture",
+        "cache-synthetic-scale-50", "cache-common-calibration"]
+    assert combined_overlay_builds == ["cache-synthetic-primary"]
+    assert cold_overlay_builds == []
     reopened, factories, calibration_factory, dose, stage_sha = (
         reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result",
@@ -1455,11 +1497,14 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
+    assert combined_overlay_builds == ["cache-synthetic-primary"]
+    assert cold_overlay_builds == [
+        "overlay-hard-geometry-label-permutation"]
     assert manifest["resources"]["resumed_from_exact_partial"] is True
     assert manifest["resources"][
         "cpu_nanoseconds_is_conservative_upper_bound"] is True
     assert manifest["resources"]["cpu_nanoseconds"] == (
-        manifest["resources"]["wall_nanoseconds"] * 2)
+        manifest["resources"]["wall_nanoseconds"] * 3)
     assert next(
         row["manifest_sha256"] for row in manifest["cohort_caches"]
         if row["cohort_id"] == "synthetic-primary") \

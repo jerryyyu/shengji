@@ -212,7 +212,7 @@ def test_cache_capacity_preflight_accepts_exact_clean_git_sha1(monkeypatch):
         CACHE_PREFLIGHT._clean_git_head("b" * 64)
 
 
-def test_cache_capacity_preflight_schedules_primary_cache_last(monkeypatch):
+def test_cache_capacity_preflight_preserves_direct_population(monkeypatch):
     primary = SimpleNamespace(cohort_id="synthetic-primary")
     control = SimpleNamespace(
         cohort_id=CACHE_PREFLIGHT.CONTROL_COHORT_ID)
@@ -232,10 +232,10 @@ def test_cache_capacity_preflight_schedules_primary_cache_last(monkeypatch):
     specs = CACHE_PREFLIGHT._direct_specs(
         object(), "a" * 64, inputs)
     assert tuple(row[0] for row in specs) == (
-        "human-mixture", "synthetic-scale-50",
-        CACHE_PREFLIGHT.CALIBRATION_CACHE_ID, "synthetic-primary")
+        "synthetic-primary", "human-mixture", "synthetic-scale-50",
+        CACHE_PREFLIGHT.CALIBRATION_CACHE_ID)
     assert tuple(row[1] for row in specs) == (
-        human, scale, calibration, primary)
+        primary, human, scale, calibration)
 
 
 def test_cache_capacity_preflight_reopens_typed_overlay_manifest(

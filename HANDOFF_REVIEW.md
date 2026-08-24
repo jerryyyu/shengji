@@ -3449,3 +3449,25 @@ BELIEF_R5_GC_SCOPE_SOURCE_V1_REVIEW {"deployment_authorized":false,"failed_admis
 **Measured on `shengji-perf`:** `belief-r5-cache-capacity-b016780-v9.service` is `ActiveState=failed`, `Result=timeout`, and `/opt/belief-r5-cache-capacity-b016780-v9.json` does not exist. Six capacity attempts across six heads have now produced zero receipts. Mid-run, `MemoryPeak` had already pinned at exactly `25,769,803,776` — the same signature as v8 — **with the PR #138 GC fix present and reviewed-correct**. The GC-stall hypothesis is therefore falsified as the binding constraint: the parallel cache genuinely needs more than the 24 GiB cap, which is consistent with R4's production cache measuring ~31 GB two days ago.
 
 **The stop rule bound at `780413e` now applies:** no v10 full-build preflight at any head. The next step for this lane is the bounded-sample cache-cap derivation (per the 09:24 advisory) brought as its own reviewed design — derive the cap from a fixed bounded sample of batches in minutes, the same mechanical-derivation discipline as `derived_capture_core_hour_cap()`. Given R4's ~31 GB measured cache, any viable R5 freeze will also need the cache byte cap re-derived upward from measurement rather than inherited; I flagged at `4b68717`-review time that my own freeze PASS missed exactly this, and the record should carry it: **the cap was the defect, six runs before the lane measured it.** Preserve the v9 scratch and unit evidence per the never-delete rules. — Claude (session `68f9c8bd`)
+
+## 2026-08-24 14:34 EDT — Corroborating the v9 stop-rule entry, and sizing the gap the next design has to close
+
+**No competing verdict.** The 14:24 entry stands: v9 timed out with no receipt, the stop rule at `780413e` fires, GC is falsified as the binding constraint, and the lane moves to bounded-sample derivation rather than a v10. I reopened the closed failure packet independently and agree on every measured field. This adds two quantities that entry does not carry, because they change what the successor design must aim at.
+
+**How much the GC fix actually bought — measured, not estimated.** Comparing the two terminal packets directly, same 4 h wall, same 24 GiB ceiling:
+
+| | v8 (no GC fix) | v9 (GC fix) | delta |
+|---|---|---|---|
+| result / status | timeout / 15 | timeout / 15 | — |
+| CPU consumed | 18,114,835,010,000 ns | 18,247,347,324,000 ns | **+0.7%** |
+| partial files | 3,195 | 3,342 | **+4.6%** |
+| partial bytes | 3,469,353,708 | 3,628,382,648 | **+4.6%** |
+| `memory_peak == memory_max` | 25,769,803,776 | 25,769,803,776 | identical |
+
+So the repair is real and it did produce more output per unit CPU — **4.6% more work for 0.7% more CPU** — but that is roughly two orders of magnitude short of mattering. This is a precise falsification rather than a qualitative one: the GC scoping was correct, mutation-proven, and simply not where the time goes.
+
+**The size of the gap, which is the number the next design needs.** v9's packet records `direct_completed_batch_count: 1114` of `direct_total_batch_count: 9128` (and overlay 1114 of 3521) in exactly four hours. At that observed rate a full build needs **≈32.8 hours — 8.2× the 4 h budget.**
+
+**State that carefully.** This is throughput *measured while pinned at the 24 GiB ceiling*, so it does not establish that the build would still take 33 h with more memory — relieving memory pressure could move it a great deal. What it does establish is the **magnitude of the improvement any successor must deliver**: raising the cap alone has to buy better than 8× before a full build fits a four-hour envelope, and nothing so far suggests it would. That is the quantitative case for the bounded-sample route, independent of the memory argument.
+
+**Concretely, for the successor design:** derive the cap from a fixed bounded sample sized so the proof completes in minutes, and report the extrapolation with its sampling error, in the same mechanical-derivation style as `derived_capture_core_hour_cap()`. Hold the source head fixed so consecutive measurements are comparable — six attempts across six heads produced six non-comparable results, which is its own reason the series never converged. — Claude

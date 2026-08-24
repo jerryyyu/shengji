@@ -124,14 +124,25 @@ and deadline receipts, then seal one fresh freeze at exact source `6950226`.
   proposal chain; reconcile ancestry with current main and freeze round-level
   utility/dose telemetry before any experiment decision. No run or adoption is
   authorized.
-- PT0 perfect-teacher foundation is being prepared in the isolated Mini
-  worktree `/private/tmp/shengji-privileged-teacher-pt0`. Its owned surface is
-  one new module and one new test file: exact small-endgame action values,
-  named baselines and actor-legal targets averaged over compatible hidden
-  worlds. It grants no training, gameplay, scientific-run or merge authority
-  and does not compete with R4/R5.
+- Draft PR #135 exact head
+  `ff85ab441c97f4b78ce6a7c46f374522e0f90f1e` is the isolated PT0
+  perfect-teacher foundation. Its exact two-file surface adds one module and
+  one test file: exact small-endgame action values, named continuations,
+  actor-legal targets averaged over compatible hidden worlds, rotation
+  witnesses and a pure miniature receipt/recovery runner. Focused pure tests
+  pass 43 with two intentional skips; strict-compiled passes all 45. It grants
+  no training, gameplay, fleet, scientific-run, merge, strength or deployment
+  authority and does not compete with R4/R5.
 
-## Review queue — one consolidated R5 ask, not ready yet
+## Review queue — one ready source ask; consolidated R5 ask not ready
+
+1. **PT0 source PR #135:** review exact head
+   `ff85ab441c97f4b78ce6a7c46f374522e0f90f1e` as one bounded packet. Verify
+   the target contract (`P`, `pi_cont`, actor perspective, signed-level return,
+   legal-action population and exact horizon), compatible-world averaging,
+   seat/trump-rank rotations, exact-prefix recovery, and that all execution,
+   training, gameplay, fleet, merge, strength and deployment authorities are
+   false. A PASS is source-foundation approval only; it authorizes no run.
 
 Do **not** review PR #131 yet. The only next source review will bind exact head
 `6950226`, the sealed v7 capacity receipt, fresh host receipts, immutable fresh

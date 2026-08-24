@@ -14,6 +14,7 @@ import concurrent.futures
 import gc
 import multiprocessing
 from pathlib import Path
+import time
 from typing import Any, Callable
 
 from .belief_v2_execution_identity import configure_numerical_runtime
@@ -61,6 +62,26 @@ _WORKER_CONTROL_OVERLAY_RESERVED_BYTES: Any = None
 
 class BeliefV2ParallelCacheError(ValueError):
     """Parallel cache topology or canonical parent accounting drifted."""
+
+
+ParentPhaseObserver = Callable[[str, int, int, int], None]
+
+
+def _observe_parent_phase(
+        observer: ParentPhaseObserver | None, phase: str, unit_index: int,
+        wall_started: int, cpu_started: int) -> None:
+    """Publish outcome-free parent timing without changing cache bytes."""
+    if observer is None:
+        return
+    wall = time.monotonic_ns() - wall_started
+    cpu = time.thread_time_ns() - cpu_started
+    if (type(phase) is not str or not phase
+            or type(unit_index) is not int or unit_index < 0
+            or type(wall) is not int or wall < 0
+            or type(cpu) is not int or cpu < 0):
+        raise BeliefV2ParallelCacheError(
+            "V2 parallel cache parent phase timing drift")
+    observer(phase, unit_index, wall, cpu)
 
 
 def parallel_cache_worker_count(runtime, host_memory_cap_bytes: int) -> int:
@@ -246,7 +267,9 @@ def _build_parallel_tensor_cache(
         control_overlay_id: str | None = None,
         expected_control_changed_cell_count: int | None = None,
         control_overlay_progress: Callable[[int, int, str], None]
-        | None = None) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        | None = None,
+        parent_phase_observer: ParentPhaseObserver | None = None) \
+        -> tuple[dict[str, Any], dict[str, Any] | None]:
     """Build one cache with bounded spawn workers and one canonical parent."""
     if not isinstance(directory, Path) or not isinstance(root, Path) \
             or type(freeze) is not V2ExecutionFreezeV1 \
@@ -261,7 +284,9 @@ def _build_parallel_tensor_cache(
                 and not callable(deadline_check)) \
             or (progress is not None and not callable(progress)) \
             or (control_overlay_progress is not None
-                and not callable(control_overlay_progress)):
+                and not callable(control_overlay_progress)) \
+            or (parent_phase_observer is not None
+                and not callable(parent_phase_observer)):
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache build inputs drift")
     overlay_requested = control_overlay_directory is not None
@@ -325,7 +350,12 @@ def _build_parallel_tensor_cache(
                 "V2 parallel cache executor state drift")
         if deadline_check is not None:
             deadline_check("before-unit", batch_index)
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
         future = executor.submit(_build_worker_batch, batch_index)
+        _observe_parent_phase(
+            parent_phase_observer, "submit", batch_index,
+            wall_started, cpu_started)
         futures[future] = batch_index
 
     # The immutable index/schedule graph contains millions of tracked
@@ -337,22 +367,37 @@ def _build_parallel_tensor_cache(
     if automatic_gc_was_enabled:
         gc.disable()
     try:
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
         executor = concurrent.futures.ProcessPoolExecutor(
             max_workers=worker_count, mp_context=context,
             initializer=_initialize_worker,
             initargs=(root, freeze, admission, index, schedule, mode,
                       partial, binding, reserved_bytes, overlay_partial,
                       overlay_reserved_bytes))
+        _observe_parent_phase(
+            parent_phase_observer, "executor-construction", 0,
+            wall_started, cpu_started)
         while next_submit < min(worker_count, batch_count):
             submit_one(next_submit)
             next_submit += 1
         while futures:
+            wall_started = time.monotonic_ns()
+            cpu_started = time.thread_time_ns()
             done, _ = concurrent.futures.wait(
                 futures, return_when=concurrent.futures.FIRST_COMPLETED)
+            _observe_parent_phase(
+                parent_phase_observer, "wait", next_emit,
+                wall_started, cpu_started)
             for future in done:
                 expected_index = futures.pop(future)
+                wall_started = time.monotonic_ns()
+                cpu_started = time.thread_time_ns()
                 (actual_index, row, artifact_bytes, overlay_row,
                  overlay_artifact_bytes, changed_cells) = future.result()
+                _observe_parent_phase(
+                    parent_phase_observer, "future-result", expected_index,
+                    wall_started, cpu_started)
                 if actual_index != expected_index \
                         or actual_index in rows_by_index:
                     raise BeliefV2ParallelCacheError(
@@ -364,6 +409,8 @@ def _build_parallel_tensor_cache(
                     submit_one(next_submit)
                     next_submit += 1
             while next_emit in rows_by_index:
+                wall_started = time.monotonic_ns()
+                cpu_started = time.thread_time_ns()
                 (row, artifact_bytes, overlay_row,
                  overlay_artifact_bytes,
                  changed_cells) = rows_by_index.pop(next_emit)
@@ -404,7 +451,15 @@ def _build_parallel_tensor_cache(
                 if control_overlay_progress is not None:
                     control_overlay_progress(
                         next_emit, batch_count, control_overlay_id)
+                _observe_parent_phase(
+                    parent_phase_observer, "emit", next_emit - 1,
+                    wall_started, cpu_started)
+        wall_started = time.monotonic_ns()
+        cpu_started = time.thread_time_ns()
         executor.shutdown(wait=True)
+        _observe_parent_phase(
+            parent_phase_observer, "executor-shutdown", batch_count,
+            wall_started, cpu_started)
     except BaseException:
         for future in futures:
             future.cancel()
@@ -422,16 +477,55 @@ def _build_parallel_tensor_cache(
                 != expected_control_changed_cell_count):
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache parent accounting drift")
+    wall_started = time.monotonic_ns()
+    cpu_started = time.thread_time_ns()
     direct_receipt = _seal_tensor_cache(
         directory, partial=partial, rows=rows, total_bytes=total_bytes,
         binding=binding, deadline_check=deadline_check)
+    _observe_parent_phase(
+        parent_phase_observer, "direct-seal", batch_count,
+        wall_started, cpu_started)
+    wall_started = time.monotonic_ns()
+    cpu_started = time.thread_time_ns()
     overlay_receipt = (_seal_label_overlay(
         control_overlay_directory, partial=overlay_partial,
         rows=overlay_rows, total_bytes=overlay_total_bytes,
         actor_manifest_sha256=direct_receipt["manifest_sha256"],
         binding=binding, overlay_id=control_overlay_id,
         deadline_check=deadline_check) if overlay_requested else None)
+    if overlay_requested:
+        _observe_parent_phase(
+            parent_phase_observer, "overlay-seal", batch_count,
+            wall_started, cpu_started)
     return direct_receipt, overlay_receipt
+
+
+def build_profiled_parallel_tensor_cache(
+        directory: Path, *, root: Path,
+        freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        index: V2StreamingTrainingIndexV1,
+        schedule: V2CohortRealizationV1 | V2CalibrationScheduleV1,
+        mode: str, binding: V2TensorCacheBindingV1,
+        worker_count: int,
+        parent_phase_observer: ParentPhaseObserver,
+        progress: Callable[[int, int, str], None] | None = None) \
+        -> dict[str, Any]:
+    """Build one diagnostic cache with outcome-free parent phase timings.
+
+    This is deliberately separate from the production entry point.  It emits
+    identical cache bytes for the supplied schedule; the observer sees only
+    phase names, unit indices, and elapsed wall/thread-CPU nanoseconds.
+    """
+    direct, overlay = _build_parallel_tensor_cache(
+        directory, root=root, freeze=freeze, admission=admission,
+        index=index, schedule=schedule, mode=mode, binding=binding,
+        worker_count=worker_count, progress=progress,
+        parent_phase_observer=parent_phase_observer)
+    if overlay is not None:
+        raise BeliefV2ParallelCacheError(
+            "V2 profiled parallel cache returned an unexpected overlay")
+    return direct
 
 
 def build_parallel_tensor_cache(

@@ -14,6 +14,7 @@ from shengji.rl.belief_v2_parallel_cache import (
     BeliefV2ParallelCacheError,
     build_parallel_tensor_cache,
     build_parallel_tensor_cache_with_control_overlay,
+    build_profiled_parallel_tensor_cache,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
     primary_cache_first_build_order,
@@ -299,7 +300,6 @@ def test_parallel_parent_suspends_automatic_gc_and_restores_on_every_exit(
     assert receipt["batch_count"] == binding.expected_batch_count
     assert state["enabled"] is True
     assert calls == ["disable", "enable"]
-
     state["enabled"] = False
     calls.clear()
     monkeypatch.setattr(
@@ -332,6 +332,41 @@ def test_parallel_parent_suspends_automatic_gc_and_restores_on_every_exit(
             worker_count=2)
     assert state["enabled"] is True
     assert calls == ["disable", "enable"]
+
+
+def test_profiled_parent_wires_every_phase_without_changing_cache_bytes(
+        tmp_path, monkeypatch):
+    (index, realization, batches, freeze, admission,
+     binding) = _fixture(tmp_path, monkeypatch)
+    serial = build_tensor_cache(
+        tmp_path / "profile-serial", batches=lambda: iter(batches),
+        binding=binding)
+    events = []
+    profiled = build_profiled_parallel_tensor_cache(
+        tmp_path / "profiled", root=tmp_path / "evidence",
+        freeze=freeze, admission=admission, index=index,
+        schedule=realization, mode="train", binding=binding,
+        worker_count=2,
+        parent_phase_observer=lambda *row: events.append(row))
+
+    assert profiled == serial
+    assert {path.name: path.read_bytes()
+            for path in (tmp_path / "profiled").iterdir()} \
+        == {path.name: path.read_bytes()
+            for path in (tmp_path / "profile-serial").iterdir()}
+    phases = [row[0] for row in events]
+    assert phases.count("executor-construction") == 1
+    assert phases.count("submit") == binding.expected_batch_count
+    assert phases.count("future-result") == binding.expected_batch_count
+    assert phases.count("emit") == binding.expected_batch_count
+    assert phases.count("executor-shutdown") == 1
+    assert phases.count("direct-seal") == 1
+    assert "wait" in phases
+    assert all(
+        type(phase) is str and type(index_value) is int
+        and type(wall) is int and wall >= 0
+        and type(cpu) is int and cpu >= 0
+        for phase, index_value, wall, cpu in events)
 
 
 def test_parallel_primary_build_emits_byte_identical_control_overlay_in_pass(

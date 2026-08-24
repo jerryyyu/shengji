@@ -45,6 +45,7 @@ from .belief_v2_parallel_cache import (
     build_parallel_tensor_cache,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
+    primary_cache_last_build_order,
 )
 from .belief_v2_streaming_inputs import V2ArtifactRoundLoader
 from .belief_v2_streaming_training import (
@@ -563,7 +564,7 @@ def run_training_tensor_cache(
         freeze, input_index_sha256, primary_rows[0])
     calibration_binding = _calibration_binding(
         freeze, input_index_sha256, inputs.common_calibration)
-    direct_specs = tuple(
+    direct_specs = primary_cache_last_build_order(tuple(
         (row.cohort_id, partial / _cache_directory_name(row.cohort_id),
          row, "train", _realization_binding(
              freeze, input_index_sha256, row))
@@ -571,7 +572,8 @@ def run_training_tensor_cache(
         if row.cohort_id != CONTROL_COHORT_ID) + ((
             CALIBRATION_CACHE_ID,
             partial / _cache_directory_name(CALIBRATION_CACHE_ID),
-            inputs.common_calibration, "calibration", calibration_binding),)
+            inputs.common_calibration, "calibration", calibration_binding),),
+        PRIMARY_COHORT_ID)
     build_concurrency, workers_per_build = parallel_cache_build_topology(
         freeze.runtime, freeze.resource_caps.training_host_memory_bytes,
         len(direct_specs))

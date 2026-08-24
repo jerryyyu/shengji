@@ -95,6 +95,33 @@ def parallel_cache_build_topology(
     return concurrent_builds, workers_per_build
 
 
+def primary_cache_last_build_order(
+        specs: tuple[tuple[Any, ...], ...],
+        primary_cache_id: str) -> tuple[tuple[Any, ...], ...]:
+    """Keep the primary actor cache hot for its immediate overlay consumer.
+
+    With fewer concurrent builds than direct cache specifications, building
+    the primary first lets later large caches evict its pages under the hard
+    cgroup limit.  The label-overlay stage then has to rehydrate every sparse
+    actor batch from cold storage.  Reordering only task launch leaves each
+    cache's canonical bytes and the final manifest order unchanged.
+    """
+    if type(specs) is not tuple or not specs \
+            or type(primary_cache_id) is not str or not primary_cache_id \
+            or any(type(spec) is not tuple or not spec \
+                   or type(spec[0]) is not str or not spec[0]
+                   for spec in specs):
+        raise BeliefV2ParallelCacheError(
+            "V2 parallel cache build order inputs drift")
+    cache_ids = tuple(spec[0] for spec in specs)
+    if len(cache_ids) != len(set(cache_ids)) \
+            or cache_ids.count(primary_cache_id) != 1:
+        raise BeliefV2ParallelCacheError(
+            "V2 parallel cache build order population drift")
+    return tuple(spec for spec in specs if spec[0] != primary_cache_id) + \
+        tuple(spec for spec in specs if spec[0] == primary_cache_id)
+
+
 def _initialize_worker(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,

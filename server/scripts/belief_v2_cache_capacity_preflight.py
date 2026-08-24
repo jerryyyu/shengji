@@ -55,6 +55,7 @@ from shengji.rl.belief_v2_parallel_cache import (  # noqa: E402
     build_parallel_tensor_cache,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
+    primary_cache_last_build_order,
 )
 from shengji.rl.belief_v2_tensor_cache import (  # noqa: E402
     LABEL_MANIFEST_FILENAME,
@@ -192,14 +193,15 @@ def _context(root: Path):
 
 
 def _direct_specs(freeze, index_sha256: str, inputs):
-    return tuple(
+    return primary_cache_last_build_order(tuple(
         (row.cohort_id, row, "train", _realization_binding(
             freeze, index_sha256, row))
         for row in inputs.realizations
         if row.cohort_id != CONTROL_COHORT_ID) + ((
             CALIBRATION_CACHE_ID, inputs.common_calibration, "calibration",
             _calibration_binding(
-                freeze, index_sha256, inputs.common_calibration)),)
+                freeze, index_sha256, inputs.common_calibration)),),
+        PRIMARY_COHORT_ID)
 
 
 def _receipt_row(cache_id: str, kind: str,

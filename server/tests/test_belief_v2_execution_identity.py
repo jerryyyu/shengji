@@ -212,6 +212,32 @@ def test_cache_capacity_preflight_accepts_exact_clean_git_sha1(monkeypatch):
         CACHE_PREFLIGHT._clean_git_head("b" * 64)
 
 
+def test_cache_capacity_preflight_schedules_primary_cache_last(monkeypatch):
+    primary = SimpleNamespace(cohort_id="synthetic-primary")
+    control = SimpleNamespace(
+        cohort_id=CACHE_PREFLIGHT.CONTROL_COHORT_ID)
+    human = SimpleNamespace(cohort_id="human-mixture")
+    scale = SimpleNamespace(cohort_id="synthetic-scale-50")
+    calibration = object()
+    inputs = SimpleNamespace(
+        realizations=(primary, control, human, scale),
+        common_calibration=calibration)
+    monkeypatch.setattr(
+        CACHE_PREFLIGHT, "_realization_binding",
+        lambda _freeze, _index, row: f"binding-{row.cohort_id}")
+    monkeypatch.setattr(
+        CACHE_PREFLIGHT, "_calibration_binding",
+        lambda *_args: "binding-calibration")
+
+    specs = CACHE_PREFLIGHT._direct_specs(
+        object(), "a" * 64, inputs)
+    assert tuple(row[0] for row in specs) == (
+        "human-mixture", "synthetic-scale-50",
+        CACHE_PREFLIGHT.CALIBRATION_CACHE_ID, "synthetic-primary")
+    assert tuple(row[1] for row in specs) == (
+        human, scale, calibration, primary)
+
+
 def test_cache_capacity_preflight_reopens_typed_overlay_manifest(
         tmp_path, monkeypatch):
     """The preserved control overlay has a labels manifest, not a cache one."""

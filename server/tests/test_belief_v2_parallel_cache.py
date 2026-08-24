@@ -15,6 +15,7 @@ from shengji.rl.belief_v2_parallel_cache import (
     build_parallel_tensor_cache,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
+    primary_cache_last_build_order,
 )
 from shengji.rl.belief_v2_parallel_inputs import (
     BeliefV2ParallelInputError,
@@ -131,6 +132,27 @@ def test_build_topology_spends_surplus_workers_across_disjoint_caches():
     with pytest.raises(BeliefV2ParallelCacheError,
                        match="build population"):
         parallel_cache_build_topology(runtime, 24 * gib, 0)
+
+
+def test_primary_cache_is_scheduled_last_without_changing_population():
+    specs = (
+        ("synthetic-primary", "primary"),
+        ("human-mixture", "human"),
+        ("synthetic-scale-50", "scale"),
+        ("common-calibration", "calibration"),
+    )
+    ordered = primary_cache_last_build_order(
+        specs, "synthetic-primary")
+    assert ordered == (
+        specs[1], specs[2], specs[3], specs[0])
+    assert sorted(ordered) == sorted(specs)
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="order population"):
+        primary_cache_last_build_order(
+            specs + (specs[0],), "synthetic-primary")
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="order population"):
+        primary_cache_last_build_order(specs, "absent")
 
 
 def test_parallel_input_parent_reduces_worker_chunks_in_canonical_order(

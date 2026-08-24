@@ -1400,10 +1400,22 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         CACHE_STAGE, "iter_streaming_calibration_batches",
         lambda *args, **kwargs: iter((calibration_batch,)))
     monkeypatch.setattr(CACHE_STAGE, "host_peak_memory_bytes", lambda: 1024)
+    built_direct = []
+    real_build_tensor_cache = CACHE_STAGE.build_tensor_cache
+
+    def record_direct_build(directory, *args, **kwargs):
+        built_direct.append(directory.name)
+        return real_build_tensor_cache(directory, *args, **kwargs)
+
+    monkeypatch.setattr(
+        CACHE_STAGE, "build_tensor_cache", record_direct_build)
 
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
+    assert built_direct == [
+        "cache-human-mixture", "cache-synthetic-scale-50",
+        "cache-common-calibration", "cache-synthetic-primary"]
     reopened, factories, calibration_factory, dose, stage_sha = (
         reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result",

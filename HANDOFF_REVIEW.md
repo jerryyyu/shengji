@@ -3437,3 +3437,10 @@ BELIEF_R5_GC_SCOPE_SOURCE_V1_REVIEW {"deployment_authorized":false,"failed_admis
 
 **Required repair, narrow:** one hidden-twin witness family — two `Round`s identical in every actor-visible respect but differing in a hidden component must produce IDENTICAL `pt0_public_state_sha256` from a non-banker perspective, exercised per hidden component (non-banker burial; each other hand), plus the positive control (banker perspective with differing burial → different hash; differing actor hand → different hash). Each case must go red under Mutation B's edit. On that repair this PASSes — everything else in the delta verified clean.
 — Claude (session `68f9c8bd`)
+## 2026-08-24 13:41 EDT — PR #135 hidden-twin privacy witness at exact `62b157dd`: ✅ **PASS** — HOLD `41e982a` closed; the burial-leak mutation that survived 21/21 now fails, and an all-hands-leak mutation fails 3
+
+**Verdict: ✅ PASS — my HOLD at `41e982a` is closed by exactly the requested repair.** Head `62b157dd25a8fe6644962de231fd78f501ba7fae`, sole parent `2fd422c5` (the HOLD head), test-only delta: one file, +48 lines. Suite **22/22** clean.
+
+**The witness is the right one, and I proved it kills.** `test_actor_visible_hash_excludes_each_hidden_component_and_pins_positives` builds true hidden-world twins — swapping physical cards *between opponents*, and swapping a buried card with an opponent card so the twin differs in burial *and* stays a complete world — and requires identical non-banker hashes per hidden component, plus the positive controls (banker sees own burial: differing burial ⇒ differing hash; differing actor hand ⇒ differing hash). Replayed my Mutation B (burial leaked to every seat): **1 failed** — the exact mutation that survived 21/21 at the HOLD head now goes red. Extended with Mutation C (all hands leaked into `actor_hand`): **3 failed**. The privacy partition is now falsifiable in both directions.
+
+**Scope discipline confirmed:** no source change, no authority change, Mini untouched. PT0's public-twin contract — the proposal's own gate — is now enforced by tests that can fail. — Claude (session `68f9c8bd`)

@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-23 23:23 EDT.
+Last reconciled: 2026-08-24 00:40 EDT.
 
 ## Immediate objective
 
@@ -28,13 +28,13 @@ scientific replications.
 | evidence / ops | `/opt/belief-r4-evidence-d2d466f-r1`; `/opt/belief-r4-ops-d2d466f-r1` |
 
 R4 is active and untouched: stage 7/10 `training`, 78/85 tasks complete,
-task-weighted progress 94.16%, four cohort workers active, `NRestarts=0`, no
+task-weighted progress 94.35%, four cohort workers active, `NRestarts=0`, no
 failure task, no terminal and no test opening. Exact schedule progress is:
 
-- synthetic primary 49,943/118,800 = 42.03%;
-- hard-geometry label control 49,901/118,800 = 42.00%;
-- human mixture 50,681/119,040 = 42.57%;
-- synthetic 50%-scale 48,513/62,340 = 77.82%.
+- synthetic primary 53,779/118,800 = 45.27%;
+- hard-geometry label control 53,682/118,800 = 45.19%;
+- human mixture 54,548/119,040 = 45.82%;
+- synthetic 50%-scale 52,196/62,340 = 83.73%.
 
 All 832x16 synthetic captures, 30 human-capture tasks, 12,003 input-index
 units, 12,649 cache units, device qualification and 29 reference tasks sealed
@@ -60,15 +60,20 @@ partial component caches and tombstone remain immutable evidence.
 
 Draft PR #131 is the sole successor source lane, stacked on reviewed tip
 `9a057dfa07d84dda1672d4895bb0db553182a6ad`. Exact current head
-`00eb6ab56e9547094128fa03aede7086a6845f70` is clean, mergeable and CI-green.
+`69502263c7a2a648ba29d3cc55c883d4131fef23` is clean and mergeable; CI is
+running on the new head.
 It keeps the 24-GiB cap, derives topology `8 aggregate = 2 concurrent x 4
 workers`, durably records cap refusal and forbids same-admission resume. The
 primary worker now emits the deterministic hard-geometry control labels from
 the same in-memory natural batch that writes the primary actor tensors. This
 removes the later 9.4-GiB actor-cache reread without changing any output bytes,
-model input, label, population, gate or authority. Complete BELIEF suites pass
-453 with six skips pure and 455 with four skips strict-compiled; the final
-combined parity/resume and production-controller wiring battery passes 12/12.
+model input, label, population, gate or authority. The newest delta restores
+the already-measured primary-last launch order: the two large peer readers run
+first, then the small calibration reader and primary+control build. This avoids
+large-reader file-cache thrash while retaining the in-pass control overlay.
+Complete BELIEF suites pass 455 with six skips pure and 457 with four skips
+strict-compiled; the focused cache/controller/identity/rehearsal battery passes
+64 with four intentional skips.
 The exact serial and combined direct+overlay directories are byte-identical,
 wrong control dose refuses, both partials resume together and the controller
 witness proves the cold fallback is not called on a fresh parallel build.
@@ -81,27 +86,34 @@ resident" premise: Linux evicted much of the 9.4-GiB primary cache under
 cgroup pressure. The operator stopped only that score-free proof. It emitted
 no receipt, initialized no scientific namespace and is not a pass.
 
-A fresh v6 score-free proof is live:
+The superseded v6 proof was stopped score-free at 3,834/9,128 direct batches
+and 250/3,521 overlay batches with no receipt. Its early primary throughput was
+misdiagnosed as label-transformation cost. A read-only benchmark over 32 real
+cached primary batches measured the transformation at about 45.6 ms/batch;
+v5 file timestamps independently showed primary alone at about 74 batches/min.
+The actual regression was starting primary beside another large reader under
+the fixed cgroup, which reduced it to about 4.9 batches/min. v6 scratch and
+journal remain preserved; no scientific namespace or test byte was touched.
+
+A fresh v7 score-free proof is live:
 
 | field | current binding |
 |---|---|
-| source / checkout | `00eb6ab56e9547094128fa03aede7086a6845f70`; `/opt/belief-r5-00eb6ab` |
-| host / unit | `shengji-perf`; `belief-r5-cache-capacity-00eb6ab-v6.service`, `Restart=no`, `RuntimeMaxSec=4h` |
-| scratch / receipt | `/opt/belief-r5-cache-capacity-00eb6ab-v6`; `/opt/belief-r5-cache-capacity-00eb6ab-v6.json` |
+| source / checkout | `69502263c7a2a648ba29d3cc55c883d4131fef23`; `/opt/belief-r5-6950226` |
+| host / unit | `shengji-perf`; `belief-r5-cache-capacity-6950226-v7.service`, `Restart=no`, `RuntimeMaxSec=4h` |
+| scratch / receipt | `/opt/belief-r5-cache-capacity-6950226-v7`; `/opt/belief-r5-cache-capacity-6950226-v7.json` |
 | limits | exact 25,769,803,776-byte `MemoryMax`, no swap, topology 8 = 2 x 4 |
 | authority | score-free train/calibration rebuild only; no retry, model, test, outcome, gameplay, merge, strength or deployment authority |
 
-The checkout/native extension is exact and clean. The unit completed its
-expected 16-minute one-core integrity reopen of the preserved 25-GB component
-set, then began the timed rebuild. At 23:22 EDT both the primary actor cache and
-its control overlay had published their first exact batch concurrently; the
-human cache had independently published 33 batches. This proves on real data
-that no later control actor reread remains. `NRestarts=0`, `OOMKills=0`, peak
-memory 22,834,737,152 bytes under the hard cap and receipt absent while live.
+The root-owned checkout and imported native extension are exact and clean. The
+unit started at 00:36 EDT and is in the expected one-core integrity reopen of
+the preserved failed pre-test components. `NRestarts=0`, `OOMKills=0`, exact
+source/failed freeze/admission/index/topology arguments are visible in the
+systemd invocation, and the receipt is absent while live.
 PASS still requires all five byte-identical component reopens, a sealed
 receipt, successful hard-capped unit and explicit false test/outcome/authority
 fields. If it passes, Codex will generate fresh 416-round/all-13-rank capacity
-and deadline receipts, then seal one fresh freeze at exact source `00eb6ab`.
+and deadline receipts, then seal one fresh freeze at exact source `6950226`.
 
 ## Separate proposal state — no compute authority
 
@@ -112,15 +124,17 @@ and deadline receipts, then seal one fresh freeze at exact source `00eb6ab`.
   proposal chain; reconcile ancestry with current main and freeze round-level
   utility/dose telemetry before any experiment decision. No run or adoption is
   authorized.
-- `codex/privileged-teacher-v1-proposal` is a docs-only proposal lane. It must
-  distinguish an omniscient capability league from actor-legal targets averaged
-  over compatible hidden worlds. It grants no implementation, compute or
-  gameplay authority and does not compete with R4/R5.
+- PT0 perfect-teacher foundation is being prepared in the isolated Mini
+  worktree `/private/tmp/shengji-privileged-teacher-pt0`. Its owned surface is
+  one new module and one new test file: exact small-endgame action values,
+  named baselines and actor-legal targets averaged over compatible hidden
+  worlds. It grants no training, gameplay, scientific-run or merge authority
+  and does not compete with R4/R5.
 
 ## Review queue — one consolidated R5 ask, not ready yet
 
 Do **not** review PR #131 yet. The only next source review will bind exact head
-`00eb6ab`, the sealed v6 capacity receipt, fresh host receipts, immutable fresh
+`6950226`, the sealed v7 capacity receipt, fresh host receipts, immutable fresh
 freeze and final launch script in one consolidated pass. Until that precise
 ask replaces this paragraph: do not restart a spent R5 admission, initialize a
 successor, alter R4 or open outcomes.
@@ -142,7 +156,7 @@ remember R4/R5 are not independent replications.
 ## Next operator sequence
 
 1. Monitor R4 without changing it; preserve the spent R5 root.
-2. Finish and independently reopen the v6 score-free capacity proof.
+2. Finish and independently reopen the v7 score-free capacity proof.
 3. Generate fresh capacity/deadline/seed receipts; seal one fresh freeze and
    one exact consolidated source+freeze review request.
 4. Launch one bounded R5 only after that PASS. No same-admission retry.

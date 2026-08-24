@@ -16,7 +16,7 @@ from shengji.rl.belief_v2_parallel_cache import (
     build_parallel_tensor_cache_with_control_overlay,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
-    primary_cache_last_build_order,
+    primary_cache_first_build_order,
 )
 from shengji.rl.belief_v2_parallel_inputs import (
     BeliefV2ParallelInputError,
@@ -123,13 +123,13 @@ def test_input_worker_count_respects_frozen_memory_cap_and_larger_reader():
         parallel_input_worker_count(runtime, True)
 
 
-def test_build_topology_spends_surplus_workers_across_disjoint_caches():
+def test_build_topology_serializes_large_readers_and_uses_safe_workers():
     gib = 1024 ** 3
     runtime = SimpleNamespace(cpu_count=16, memory_bytes=32 * gib)
-    assert parallel_cache_build_topology(runtime, 24 * gib, 4) == (2, 4)
+    assert parallel_cache_build_topology(runtime, 24 * gib, 4) == (1, 8)
     assert parallel_cache_build_topology(runtime, 24 * gib, 1) == (1, 8)
     assert parallel_cache_build_topology(SimpleNamespace(
-        cpu_count=8, memory_bytes=32 * gib), 24 * gib, 4) == (2, 4)
+        cpu_count=8, memory_bytes=32 * gib), 24 * gib, 4) == (1, 8)
     assert parallel_cache_build_topology(SimpleNamespace(
         cpu_count=4, memory_bytes=32 * gib), 24 * gib, 4) == (1, 4)
     with pytest.raises(BeliefV2ParallelCacheError,
@@ -137,24 +137,24 @@ def test_build_topology_spends_surplus_workers_across_disjoint_caches():
         parallel_cache_build_topology(runtime, 24 * gib, 0)
 
 
-def test_primary_cache_is_scheduled_last_without_changing_population():
+def test_primary_cache_is_scheduled_first_without_changing_population():
     specs = (
         ("synthetic-primary", "primary"),
         ("human-mixture", "human"),
         ("synthetic-scale-50", "scale"),
         ("common-calibration", "calibration"),
     )
-    ordered = primary_cache_last_build_order(
+    ordered = primary_cache_first_build_order(
         specs, "synthetic-primary")
-    assert ordered == (specs[1], specs[2], specs[3], specs[0])
+    assert ordered == (specs[0], specs[1], specs[2], specs[3])
     assert sorted(ordered) == sorted(specs)
     with pytest.raises(BeliefV2ParallelCacheError,
                        match="order population"):
-        primary_cache_last_build_order(
+        primary_cache_first_build_order(
             specs + (specs[0],), "synthetic-primary")
     with pytest.raises(BeliefV2ParallelCacheError,
                        match="order population"):
-        primary_cache_last_build_order(specs, "absent")
+        primary_cache_first_build_order(specs, "absent")
 
 
 def test_parallel_input_parent_reduces_worker_chunks_in_canonical_order(

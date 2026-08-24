@@ -42,7 +42,6 @@ from .belief_v2_training import label_control_batch_from_natural
 
 MAX_PARALLEL_CACHE_WORKERS = 16
 MAX_WORKERS_PER_CACHE_BUILD = 8
-MIN_WORKERS_PER_CONCURRENT_BUILD = 4
 PARALLEL_CACHE_PARENT_RESERVE_BYTES = 4 * 1024 ** 3
 # R5-1 measured 30.45 GB at 16 workers despite a frozen 24-GiB cap. A cache
 # worker therefore cannot honestly be budgeted as one GiB. 2.25 GiB per
@@ -84,34 +83,35 @@ def parallel_cache_worker_count(runtime, host_memory_cap_bytes: int) -> int:
 def parallel_cache_build_topology(
         runtime, host_memory_cap_bytes: int,
         build_count: int) -> tuple[int, int]:
-    """Spend safe surplus workers on disjoint caches, not contention."""
+    """Give one cache the full safe worker budget before opening the next.
+
+    Concurrent large readers caused measured page-cache churn under the R5
+    24-GiB cgroup even when their aggregate worker count was memory-safe. A
+    single build is the explicit source-read barrier; process parallelism
+    remains inside that build.
+    """
     if type(build_count) is not int or build_count <= 0:
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache build population drift")
     worker_budget = parallel_cache_worker_count(
         runtime, host_memory_cap_bytes)
-    concurrent_builds = min(
-        build_count,
-        max(1, worker_budget // MIN_WORKERS_PER_CONCURRENT_BUILD))
-    workers_per_build = min(
-        MAX_WORKERS_PER_CACHE_BUILD,
-        max(1, worker_budget // concurrent_builds))
+    concurrent_builds = 1
+    workers_per_build = min(MAX_WORKERS_PER_CACHE_BUILD, worker_budget)
     if concurrent_builds * workers_per_build > worker_budget:
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache build topology drift")
     return concurrent_builds, workers_per_build
 
 
-def primary_cache_last_build_order(
+def primary_cache_first_build_order(
         specs: tuple[tuple[Any, ...], ...],
         primary_cache_id: str) -> tuple[tuple[Any, ...], ...]:
-    """Run the largest shared actor/overlay build after peer readers drain.
+    """Build the shared primary actor/overlay cache before peer readers.
 
-    The in-pass control overlay removes the later cold reread, but the primary
-    build still reopens the largest synthetic source population. Starting it
-    beside another large cache makes both fight for the fixed 24-GiB cgroup's
-    file cache. Reordering only task launch leaves every cache's canonical
-    bytes, schedule, and final manifest order unchanged.
+    With the one-build barrier, primary-first consumes its source once before
+    later cache outputs occupy the fixed cgroup's file cache. Reordering only
+    task launch leaves every cache's canonical bytes, schedule, and final
+    manifest order unchanged.
     """
     if type(specs) is not tuple or not specs \
             or type(primary_cache_id) is not str or not primary_cache_id \
@@ -125,8 +125,8 @@ def primary_cache_last_build_order(
             or cache_ids.count(primary_cache_id) != 1:
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache build order population drift")
-    return tuple(spec for spec in specs if spec[0] != primary_cache_id) + \
-        tuple(spec for spec in specs if spec[0] == primary_cache_id)
+    return tuple(spec for spec in specs if spec[0] == primary_cache_id) + \
+        tuple(spec for spec in specs if spec[0] != primary_cache_id)
 
 
 def _initialize_worker(

@@ -1387,6 +1387,16 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     monkeypatch.setattr(
         CACHE_STAGE, "parallel_cache_build_topology",
         lambda runtime, host_memory_cap_bytes, build_count: (1, 2))
+    real_executor = CACHE_STAGE.concurrent.futures.ThreadPoolExecutor
+    executor_widths = []
+
+    def recording_executor(*, max_workers):
+        executor_widths.append(max_workers)
+        return real_executor(max_workers=max_workers)
+
+    monkeypatch.setattr(
+        CACHE_STAGE.concurrent.futures, "ThreadPoolExecutor",
+        recording_executor)
 
     def training_batches(index, realization, *, load_round):
         if realization.kind == "hard-geometry-label-permutation":
@@ -1454,8 +1464,9 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
     assert built_direct == [
-        "cache-human-mixture", "cache-synthetic-scale-50",
-        "cache-common-calibration", "cache-synthetic-primary"]
+        "cache-synthetic-primary", "cache-human-mixture",
+        "cache-synthetic-scale-50", "cache-common-calibration"]
+    assert executor_widths == [1]
     assert combined_overlay_builds == ["cache-synthetic-primary"]
     assert cold_overlay_builds == []
     reopened, factories, calibration_factory, dose, stage_sha = (
@@ -1497,6 +1508,7 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
+    assert executor_widths == [1, 1]
     assert combined_overlay_builds == ["cache-synthetic-primary"]
     assert cold_overlay_builds == [
         "overlay-hard-geometry-label-permutation"]

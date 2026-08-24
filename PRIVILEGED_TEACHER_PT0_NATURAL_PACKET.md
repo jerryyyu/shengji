@@ -59,21 +59,28 @@ must:
 
 - pass exact card conservation and hand-size checks;
 - reproduce the state's derived actor-visible SHA-256;
-- have a unique canonical hidden-world SHA-256; and
 - be sampled without selecting or specially weighting the actual true deal.
 
-Worlds are domain-separated before sampling into two disjoint cohorts:
+The sampler produces two independently seeded posterior-draw cohorts:
 
 1. **proposal worlds** select the canonical PT action from exact averaged
    signed-level values; and
 2. **evaluation worlds** measure that already-selected action against each
    frozen baseline action.
 
-The first packet proposes 16 unique proposal and 16 unique evaluation worlds
-per state. Cross-cohort hash overlap, short population, relaxed-void world or
-public-state drift refuses the state. Using the proposal worlds for both
-selection and evaluation is forbidden because the resulting nonnegative
-"regret" would be an in-sample tautology rather than evidence.
+The first packet uses 16 proposal and 16 evaluation draws per state, sampled
+with replacement. Each accepted draw receives a unique, cohort-separated draw
+identity, while the same underlying hidden world may correctly appear more
+than once within a cohort or in both cohorts. This preserves the empirical
+posterior frequency on small-support late-game information sets; deduplicating
+or sampling without replacement would distort that posterior, and requiring
+cross-cohort hidden-world disjointness is impossible when the compatible
+support is small. The packet reports only counts of unique underlying worlds
+and cross-cohort overlap, never their identities. Draw-identity overlap, short
+draw population, relaxed-void world or public-state drift refuses the state.
+Using the proposal draw stream for both selection and evaluation remains
+forbidden because the resulting nonnegative "regret" would be an in-sample
+tautology rather than evidence.
 
 ## Frozen comparisons and outputs
 
@@ -88,6 +95,8 @@ For every state publish only actor-safe evidence:
 
 - public-state SHA-256, trump rank, role, horizon and selection order;
 - proposal/evaluation world-population SHA-256 and counts, never hidden hands;
+- unique-underlying-world counts and their cross-cohort overlap count, never
+  hidden-world identities;
 - proposal argmax, per-action mean/variance and proposal/evaluation ranking
   stability;
 - held-out signed-level delta

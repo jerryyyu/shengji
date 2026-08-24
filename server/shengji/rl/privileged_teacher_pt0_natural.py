@@ -204,8 +204,9 @@ def _role(rnd: object, seat: int) -> str:
 
 
 def _world_hash(rnd: object, *, actor: int, buried: Sequence[str]) -> str:
-    # This identity is used only for canonical sorting/deduplication.  It is
-    # never included in a safe state record or used to choose an action.
+    # This underlying-world identity is used only to count repeated posterior
+    # draws.  It is never included in a safe state record or used to choose an
+    # action.
     payload = {"hands": [sorted(hand) for hand in rnd.hands],
                "buried": sorted(buried), "actor": actor}
     return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
@@ -336,8 +337,7 @@ def _dispersion(target: Mapping[str, object]) -> dict[str, dict[str, int]]:
 
 def _sample_worlds(design: NaturalPT0Design, state: object, *, role: str,
                    threshold: int, round_seed: int, trump_rank: str,
-                   cohort: str, count: int,
-                   excluded_world_sha256s: frozenset[str] = frozenset()):
+                   cohort: str, count: int):
     from ..ai.mcbot import MCBot, DeterminizationContractError
     from ..ai.memory import Memory
 
@@ -349,7 +349,8 @@ def _sample_worlds(design: NaturalPT0Design, state: object, *, role: str,
         "natural-sampler", cohort, round_seed, trump_rank, state.banker,
         seat, role, threshold, public))
     memory = Memory(state, seat, own_kitty=True)
-    worlds: dict[str, object] = {}
+    draws: list[tuple[str, object]] = []
+    underlying_world_sha256s: list[str] = []
     for _ in range(design.max_sampler_attempts):
         sampled = sampler._sample_hands(state, seat, memory)
         if sampled is None:
@@ -361,40 +362,44 @@ def _sample_worlds(design: NaturalPT0Design, state: object, *, role: str,
         except DeterminizationContractError as exc:
             raise NaturalPT0Error("MCBot sampled world failed exact completion") from exc
         world = _clone_world(state, complete, buried)
-        identity = _world_hash(world, actor=seat, buried=buried)
-        if identity in excluded_world_sha256s:
-            continue
-        worlds.setdefault(identity, world)
-        if len(worlds) == count:
+        underlying_identity = _world_hash(
+            world, actor=seat, buried=buried)
+        draw_identity = hashlib.sha256(canonical_json_bytes([
+            NATURAL_PT0_SCHEMA, "posterior-draw", public, cohort,
+            len(draws), underlying_identity,
+        ])).hexdigest()
+        draws.append((draw_identity, world))
+        underlying_world_sha256s.append(underlying_identity)
+        if len(draws) == count:
             break
-    if len(worlds) != count:
-        raise NaturalPT0Error("natural PT0 sampler attempt cap underfilled unique worlds")
-    ordered = sorted(worlds.items())
+    if len(draws) != count:
+        raise NaturalPT0Error("natural PT0 sampler attempt cap underfilled posterior draws")
+    ordered = sorted(draws)
+    if len({identity for identity, _ in ordered}) != count:
+        raise NaturalPT0Error("natural PT0 posterior draw identity collision")
     if any(pt0_public_state_sha256(world, perspective_seat=seat) != public
            for _, world in ordered):
         raise NaturalPT0Error("natural PT0 compatible world public fingerprint drift")
-    return ordered, public
+    return ordered, public, frozenset(underlying_world_sha256s)
 
 
 def _make_record(design: NaturalPT0Design, state: object, *, role: str,
                  threshold: int, round_seed: int, trump_rank: str) -> dict[str, object]:
     seat = state.turn
-    proposal_worlds, public = _sample_worlds(
+    proposal_worlds, public, proposal_underlying = _sample_worlds(
         design, state, role=role, threshold=threshold, round_seed=round_seed,
         trump_rank=trump_rank, cohort="proposal",
         count=design.proposal_worlds_per_state)
-    evaluation_worlds, evaluation_public = _sample_worlds(
+    evaluation_worlds, evaluation_public, evaluation_underlying = _sample_worlds(
         design, state, role=role, threshold=threshold, round_seed=round_seed,
         trump_rank=trump_rank, cohort="evaluation",
-        count=design.evaluation_worlds_per_state,
-        excluded_world_sha256s=frozenset(
-            identity for identity, _ in proposal_worlds))
+        count=design.evaluation_worlds_per_state)
     if public != evaluation_public:
         raise NaturalPT0Error("natural PT0 cohort public fingerprint drift")
-    proposal_hashes = {identity for identity, _ in proposal_worlds}
-    evaluation_hashes = {identity for identity, _ in evaluation_worlds}
-    if proposal_hashes & evaluation_hashes:
-        raise NaturalPT0Error("natural PT0 proposal/evaluation world-hash overlap")
+    proposal_draw_ids = {identity for identity, _ in proposal_worlds}
+    evaluation_draw_ids = {identity for identity, _ in evaluation_worlds}
+    if proposal_draw_ids & evaluation_draw_ids:
+        raise NaturalPT0Error("natural PT0 proposal/evaluation draw identity overlap")
     try:
         result = run_pt0_miniature(
             public, proposal_worlds, perspective_seat=seat,
@@ -457,8 +462,12 @@ def _make_record(design: NaturalPT0Design, state: object, *, role: str,
         "public_state_sha256": public,
         "proposal_world_population_sha256": target["world_population_sha256"],
         "proposal_world_count": target["world_count"],
+        "proposal_unique_underlying_world_count": len(proposal_underlying),
         "evaluation_world_population_sha256": evaluation_result.target["world_population_sha256"],
         "evaluation_world_count": evaluation_result.target["world_count"],
+        "evaluation_unique_underlying_world_count": len(evaluation_underlying),
+        "cross_cohort_underlying_world_overlap_count": len(
+            proposal_underlying & evaluation_underlying),
         # Compatibility aliases make the fixed proposal population explicit
         # to consumers that do not need the independent evaluation cohort.
         "world_population_sha256": target["world_population_sha256"],

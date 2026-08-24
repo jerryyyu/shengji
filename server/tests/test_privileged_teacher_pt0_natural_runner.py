@@ -332,7 +332,26 @@ def test_real_core_bundle_reopens_exact_state_population(
         tmp_path / "bundle", design=_design(),
         expected_source_git=SOURCE) == result
     packet = json.loads((tmp_path / "bundle" / "packet.json").read_text())
+    assert all(
+        1 <= record["proposal_unique_underlying_world_count"]
+        <= record["proposal_world_count"]
+        and 1 <= record["evaluation_unique_underlying_world_count"]
+        <= record["evaluation_world_count"]
+        and 0 <= record["cross_cohort_underlying_world_overlap_count"]
+        <= min(record["proposal_unique_underlying_world_count"],
+               record["evaluation_unique_underlying_world_count"])
+        for record in packet["records"])
     packet["records"][0]["role"] = "attacker-team" \
         if packet["records"][0]["role"] == "banker-team" else "banker-team"
     with pytest.raises(runner.RunnerRefused, match="state population"):
+        runner._validate_packet_records(_design(), packet["records"])
+
+
+def test_underlying_world_count_bounds_are_load_bearing(
+        monkeypatch, tmp_path, source):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    _run(tmp_path, source)
+    packet = json.loads((tmp_path / "bundle" / "packet.json").read_text())
+    packet["records"][0]["proposal_unique_underlying_world_count"] = 0
+    with pytest.raises(runner.RunnerRefused, match="identity drift"):
         runner._validate_packet_records(_design(), packet["records"])

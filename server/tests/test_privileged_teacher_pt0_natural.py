@@ -102,12 +102,13 @@ def test_sampled_worlds_share_public_fingerprint_and_are_hidden_from_packet(monk
     design = _design()
     state = next(iter(capture_natural_states(
         design, capture_secret=CAPTURE_SECRET).values()))
-    worlds, public = _sample_worlds(
+    worlds, public, underlying = _sample_worlds(
         design, state, role="banker-team", threshold=2, round_seed=1,
         trump_rank="7", cohort="proposal", count=2)
     from shengji.rl.privileged_teacher_pt0 import pt0_public_state_sha256
     assert all(pt0_public_state_sha256(world, perspective_seat=state.turn) == public
                for _, world in worlds)
+    assert 1 <= len(underlying) <= len(worlds)
     packet = run_natural_packet(design, capture_secret=CAPTURE_SECRET)
     raw = json.dumps(packet, sort_keys=True).lower()
     assert "true_world" not in raw and "hidden_hands" not in raw
@@ -213,24 +214,52 @@ def test_bucket_completeness_refuses_missing_bucket(monkeypatch):
             state_capture=lambda _: captured)
 
 
-def test_proposal_evaluation_overlap_refuses(monkeypatch):
+def test_repeated_underlying_worlds_fill_independent_draw_cohorts(monkeypatch):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     design = _design()
-    state = next(iter(capture_natural_states(
-        design, capture_secret=CAPTURE_SECRET).values()))
-    original = _sample_worlds
+    state = capture_natural_states(
+        design, capture_secret=CAPTURE_SECRET)[
+            ("7", 0, "banker-team", 2)]
+    from shengji.ai.mcbot import MCBot
+    from shengji.ai.memory import Memory
 
-    def overlap(*args, **kwargs):
-        return original(*args, **{
-            **kwargs, "cohort": "proposal", "count": 2,
-            "excluded_world_sha256s": frozenset(),
-        })
+    probe = MCBot(seed=731)
+    memory = Memory(state, state.turn, own_kitty=True)
+    sampled = None
+    for _ in range(100):
+        sampled = probe._sample_hands(state, state.turn, memory)
+        if sampled is not None:
+            break
+    assert sampled is not None
+    frozen_hands, frozen_buried = sampled
 
-    monkeypatch.setattr(
-        "shengji.rl.privileged_teacher_pt0_natural._sample_worlds", overlap)
-    with pytest.raises(NaturalPT0Error, match="overlap"):
-        _make_record(design, state, role="banker-team", threshold=2,
-                     round_seed=1, trump_rank="7")
+    def repeat_one_world(self, rnd, seat, mem):
+        del self, rnd, seat, mem
+        return copy.deepcopy(frozen_hands), list(frozen_buried)
+
+    monkeypatch.setattr(MCBot, "_sample_hands", repeat_one_world)
+    proposal, public, proposal_underlying = _sample_worlds(
+        design, state, role="banker-team", threshold=2, round_seed=1,
+        trump_rank="7", cohort="proposal", count=2)
+    evaluation, evaluation_public, evaluation_underlying = _sample_worlds(
+        design, state, role="banker-team", threshold=2, round_seed=1,
+        trump_rank="7", cohort="evaluation", count=2)
+    assert public == evaluation_public
+    assert len({identity for identity, _ in proposal}) == 2
+    assert len({identity for identity, _ in evaluation}) == 2
+    assert {identity for identity, _ in proposal}.isdisjoint(
+        identity for identity, _ in evaluation)
+    assert len(proposal_underlying) == len(evaluation_underlying) == 1
+    assert proposal_underlying == evaluation_underlying
+
+    record = _make_record(
+        design, state, role="banker-team", threshold=2,
+        round_seed=1, trump_rank="7")
+    assert record["proposal_world_count"] == 2
+    assert record["evaluation_world_count"] == 2
+    assert record["proposal_unique_underlying_world_count"] == 1
+    assert record["evaluation_unique_underlying_world_count"] == 1
+    assert record["cross_cohort_underlying_world_overlap_count"] == 1
 
 
 def test_public_drift_and_duplicate_population_are_load_bearing(monkeypatch):
@@ -241,10 +270,10 @@ def test_public_drift_and_duplicate_population_are_load_bearing(monkeypatch):
     original = _sample_worlds
 
     def drift(*args, **kwargs):
-        worlds, public = original(*args, **kwargs)
+        worlds, public, underlying = original(*args, **kwargs)
         altered = copy.copy(worlds[0][1])
         altered.attacker_points += 1
-        return [(worlds[0][0], altered), *worlds[1:]], public
+        return [(worlds[0][0], altered), *worlds[1:]], public, underlying
 
     monkeypatch.setattr(
         "shengji.rl.privileged_teacher_pt0_natural._sample_worlds", drift)

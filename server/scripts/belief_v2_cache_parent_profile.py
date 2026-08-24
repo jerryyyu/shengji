@@ -154,6 +154,8 @@ def _phase_summary(events: Sequence[dict[str, Any]]) \
                 row["wall_nanoseconds"] for row in selected),
             "thread_cpu_nanoseconds": sum(
                 row["thread_cpu_nanoseconds"] for row in selected),
+            "process_cpu_nanoseconds": sum(
+                row["process_cpu_nanoseconds"] for row in selected),
             "maximum_wall_nanoseconds": maximum["wall_nanoseconds"],
             "maximum_wall_unit_index": maximum["unit_index"],
         })
@@ -168,7 +170,7 @@ def _validate_events(events: object, batch_count: int) \
     rows = tuple(events)
     if (any(type(row) is not dict or set(row) != {
                 "phase", "unit_index", "wall_nanoseconds",
-                "thread_cpu_nanoseconds"}
+                "thread_cpu_nanoseconds", "process_cpu_nanoseconds"}
             or row["phase"] not in PHASES
             or type(row["unit_index"]) is not int
             or not 0 <= row["unit_index"] <= batch_count
@@ -176,6 +178,8 @@ def _validate_events(events: object, batch_count: int) \
             or row["wall_nanoseconds"] < 0
             or type(row["thread_cpu_nanoseconds"]) is not int
             or row["thread_cpu_nanoseconds"] < 0
+            or type(row["process_cpu_nanoseconds"]) is not int
+            or row["process_cpu_nanoseconds"] < 0
             for row in rows)
             or sum(row["phase"] == "submit" for row in rows) != batch_count
             or sum(row["phase"] == "future-result" for row in rows)
@@ -232,12 +236,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     cache = scratch / "sample-cache"
     events: list[dict[str, Any]] = []
 
-    def observe(phase: str, unit_index: int, wall: int, cpu: int) -> None:
+    def observe(
+            phase: str, unit_index: int, wall: int, thread_cpu: int,
+            process_cpu: int) -> None:
         events.append({
             "phase": phase,
             "unit_index": unit_index,
             "wall_nanoseconds": wall,
-            "thread_cpu_nanoseconds": cpu,
+            "thread_cpu_nanoseconds": thread_cpu,
+            "process_cpu_nanoseconds": process_cpu,
         })
 
     def progress(completed: int, total: int, _cache_id: str) -> None:

@@ -365,8 +365,9 @@ def test_profiled_parent_wires_every_phase_without_changing_cache_bytes(
     assert all(
         type(phase) is str and type(index_value) is int
         and type(wall) is int and wall >= 0
-        and type(cpu) is int and cpu >= 0
-        for phase, index_value, wall, cpu in events)
+        and type(thread_cpu) is int and thread_cpu >= 0
+        and type(process_cpu) is int and process_cpu >= 0
+        for phase, index_value, wall, thread_cpu, process_cpu in events)
 
 
 def test_parallel_primary_build_emits_byte_identical_control_overlay_in_pass(

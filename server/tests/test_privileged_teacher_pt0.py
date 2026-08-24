@@ -18,6 +18,7 @@ from shengji.rl.privileged_teacher_pt0 import (
     exact_world_action_values,
     evaluate_named_baseline,
     information_set_target,
+    pt0_public_state_sha256,
     rotate_round_seats,
     run_pt0_miniature,
     signed_level_utility,
@@ -28,6 +29,18 @@ from shengji.engine.round import Round, Trick
 
 def _sha(char: str) -> str:
     return char * 64
+
+
+def _public_sha(rnd: Round, seat: int = 1) -> str:
+    return pt0_public_state_sha256(rnd, perspective_seat=seat)
+
+
+def _values(
+        world_char: str, action_utilities, *, public_char: str = "a") \
+        -> WorldActionValues:
+    return WorldActionValues.build(
+        _sha(world_char), action_utilities,
+        public_state_sha256=_sha(public_char))
 
 
 def _two_card_round(trump_rank: str = "7") -> Round:
@@ -109,17 +122,18 @@ def test_exact_world_evaluator_runs_genuine_three_card_endgame():
 
 def test_miniature_run_resumes_exact_prefix_byte_identically():
     worlds = [(_sha("5"), _two_card_round()), (_sha("4"), _two_card_round())]
+    public_state = _public_sha(worlds[0][1])
     full = run_pt0_miniature(
-        _sha("e"), worlds, perspective_seat=1,
+        public_state, worlds, perspective_seat=1,
         monotonic=iter((0.0, 0.0, 1.0, 1.0, 1.0, 1.0)).__next__)
     partial = run_pt0_miniature(
-        _sha("e"), worlds, perspective_seat=1, deadline=0.5,
+        public_state, worlds, perspective_seat=1, deadline=0.5,
         monotonic=iter((0.0, 0.0, 1.0, 1.0)).__next__)
     assert partial.status == "DEADLINE"
     assert partial.completed_units == 1
     assert partial.receipt["progress"]["percent_basis_points"] == 5_000
     resumed = run_pt0_miniature(
-        _sha("e"), worlds, perspective_seat=1,
+        public_state, worlds, perspective_seat=1,
         monotonic=lambda: 1.0, checkpoint=partial.checkpoint)
     assert resumed.status == "COMPLETE"
     assert canonical_json_bytes(resumed.target) == \
@@ -136,10 +150,12 @@ def test_miniature_run_resumes_exact_prefix_byte_identically():
 
 
 def test_miniature_aggregates_different_values_on_same_public_ballot():
+    first = _two_card_round()
+    second = _two_card_hidden_world_with_different_value()
     result = run_pt0_miniature(
-        _sha("e"), [
-            (_sha("4"), _two_card_round()),
-            (_sha("5"), _two_card_hidden_world_with_different_value()),
+        _public_sha(first), [
+            (_sha("4"), first),
+            (_sha("5"), second),
         ], perspective_seat=1, monotonic=lambda: 0.0)
     assert result.status == "COMPLETE"
     assert result.target is not None
@@ -154,8 +170,9 @@ def test_miniature_run_emits_canonical_checkpoints_and_deadline_can_fail():
     emitted = []
     calls = iter((0.0, 0.0, 1.0, 1.0))
     worlds = [(_sha("4"), _two_card_round()), (_sha("5"), _two_card_round())]
+    public_state = _public_sha(worlds[0][1])
     result = run_pt0_miniature(
-        _sha("e"), worlds, perspective_seat=1, deadline=0.5,
+        public_state, worlds, perspective_seat=1, deadline=0.5,
         monotonic=lambda: next(calls), checkpoint_sink=emitted.append)
     assert result.status == "DEADLINE"
     assert result.target is None
@@ -170,13 +187,13 @@ def test_miniature_run_emits_canonical_checkpoints_and_deadline_can_fail():
     tampered[-2] = ord(" ")
     with pytest.raises(PrivilegedTeacherPT0Error, match="checkpoint is not"):
         run_pt0_miniature(
-            _sha("e"), worlds, perspective_seat=1,
+            public_state, worlds, perspective_seat=1,
             monotonic=lambda: 0.0, checkpoint=bytes(tampered))
     semantic_tamper = json.loads(result.checkpoint.decode("ascii"))
     semantic_tamper["work"]["nodes"] += 1
     with pytest.raises(PrivilegedTeacherPT0Error, match="work drift"):
         run_pt0_miniature(
-            _sha("e"), worlds, perspective_seat=1,
+            public_state, worlds, perspective_seat=1,
             monotonic=lambda: 0.0,
             checkpoint=canonical_json_bytes(semantic_tamper))
 
@@ -184,8 +201,9 @@ def test_miniature_run_emits_canonical_checkpoints_and_deadline_can_fail():
 def test_miniature_resume_recomputes_completed_world_and_refuses_forgery():
     worlds = [(_sha("4"), _two_card_round()),
               (_sha("5"), _two_card_round())]
+    public_state = _public_sha(worlds[0][1])
     partial = run_pt0_miniature(
-        _sha("e"), worlds, perspective_seat=1, deadline=0.5,
+        public_state, worlds, perspective_seat=1, deadline=0.5,
         monotonic=iter((0.0, 0.0, 1.0, 1.0)).__next__)
     forged = json.loads(partial.checkpoint.decode("ascii"))
     forged["completed_evaluations"][0]["action_utilities"][0][1] += 10
@@ -193,9 +211,32 @@ def test_miniature_resume_recomputes_completed_world_and_refuses_forgery():
             PrivilegedTeacherPT0Error,
             match="PT0 checkpoint completed evaluation drift"):
         run_pt0_miniature(
-            _sha("e"), worlds, perspective_seat=1,
+            public_state, worlds, perspective_seat=1,
             monotonic=lambda: 1.0,
             checkpoint=canonical_json_bytes(forged))
+
+
+def test_miniature_binds_public_state_and_allows_only_hidden_twin_drift():
+    first = _two_card_round()
+    hidden_twin = _two_card_hidden_world_with_different_value()
+    public_state = _public_sha(first)
+    assert _public_sha(hidden_twin) == public_state
+    assert run_pt0_miniature(
+        public_state,
+        [(_sha("4"), first), (_sha("5"), hidden_twin)],
+        perspective_seat=1, monotonic=lambda: 0.0,
+    ).status == "COMPLETE"
+
+    public_drift = _two_card_hidden_world_with_different_value()
+    public_drift.attacker_points = 0
+    assert _public_sha(public_drift) != public_state
+    with pytest.raises(
+            PrivilegedTeacherPT0Error,
+            match="PT0 compatible world public state drift"):
+        run_pt0_miniature(
+            public_state,
+            [(_sha("4"), first), (_sha("5"), public_drift)],
+            perspective_seat=1, monotonic=lambda: 0.0)
 
 
 def test_exact_world_evaluator_refuses_non_actor_perspective():
@@ -239,8 +280,11 @@ def test_named_public_baseline_adapter_reports_exact_regret():
         max_hand_cards=2)
     # Duplicate the known world only to build a minimal information-set target;
     # the two world identities are distinct while their exact values agree.
-    twin = WorldActionValues.build(_sha("5"), exact.values.action_utilities)
-    target = information_set_target(_sha("e"), [exact.values, twin])
+    twin = WorldActionValues.build(
+        _sha("5"), exact.values.action_utilities,
+        public_state_sha256=exact.values.public_state_sha256)
+    target = information_set_target(
+        exact.values.public_state_sha256, [exact.values, twin])
     for policy in ("heuristic", "smart"):
         got = evaluate_named_baseline(rnd, target, policy=policy, seed=19)
         assert got.policy == policy and got.seed == 19
@@ -261,8 +305,11 @@ def test_baseline_and_rotation_refuse_unfrozen_inputs():
     exact = exact_world_action_values(
         _two_card_round(), world_sha256=_sha("4"), perspective_seat=1,
         max_hand_cards=2)
-    twin = WorldActionValues.build(_sha("5"), exact.values.action_utilities)
-    target = information_set_target(_sha("e"), [exact.values, twin])
+    twin = WorldActionValues.build(
+        _sha("5"), exact.values.action_utilities,
+        public_state_sha256=exact.values.public_state_sha256)
+    target = information_set_target(
+        exact.values.public_state_sha256, [exact.values, twin])
     with pytest.raises(PrivilegedTeacherPT0Error, match="not frozen"):
         evaluate_named_baseline(
             _two_card_round(), target, policy="mc", seed=1)
@@ -271,11 +318,11 @@ def test_baseline_and_rotation_refuse_unfrozen_inputs():
 
 
 def test_information_set_target_is_order_and_true_world_invariant():
-    first = WorldActionValues.build(_sha("1"), [
+    first = _values("1", [
         (("C2",), 1), (("D3",), -1), (("S4",), 1)])
-    second = WorldActionValues.build(_sha("2"), [
+    second = _values("2", [
         (("C2",), -1), (("D3",), 2), (("S4",), 1)])
-    third = WorldActionValues.build(_sha("3"), [
+    third = _values("3", [
         (("C2",), 2), (("D3",), -1), (("S4",), 1)])
 
     one = information_set_target(_sha("a"), [first, second, third])
@@ -290,8 +337,7 @@ def test_information_set_target_is_order_and_true_world_invariant():
 
 
 def test_information_set_target_refuses_single_true_world_population():
-    one = WorldActionValues.build(
-        _sha("1"), [(('C2',), 1), (('D3',), -1)])
+    one = _values("1", [(('C2',), 1), (('D3',), -1)])
     with pytest.raises(
             PrivilegedTeacherPT0Error,
             match="information-set aggregation requires at least two worlds"):
@@ -300,8 +346,8 @@ def test_information_set_target_refuses_single_true_world_population():
 
 def test_best_world_probability_reports_rank_instability_and_ties():
     worlds = [
-        WorldActionValues.build(_sha("1"), [(('C2',), 1), (('D3',), 1)]),
-        WorldActionValues.build(_sha("2"), [(('C2',), 2), (('D3',), -1)]),
+        _values("1", [(('C2',), 1), (('D3',), 1)], public_char="b"),
+        _values("2", [(('C2',), 2), (('D3',), -1)], public_char="b"),
     ]
     target = information_set_target(_sha("b"), worlds)
     by_cards = {tuple(row["cards"]): row for row in target["actions"]}
@@ -313,8 +359,8 @@ def test_best_world_probability_reports_rank_instability_and_ties():
 
 def test_baseline_regret_is_exact_and_refuses_off_ballot_actions():
     target = information_set_target(_sha("c"), [
-        WorldActionValues.build(_sha("1"), [(('C2',), 1), (('D3',), 3)]),
-        WorldActionValues.build(_sha("2"), [(('C2',), -1), (('D3',), 1)]),
+        _values("1", [(('C2',), 1), (('D3',), 3)], public_char="c"),
+        _values("2", [(('C2',), -1), (('D3',), 1)], public_char="c"),
     ])
     assert baseline_regret(target, ["D3"]) == Fraction(0)
     assert baseline_regret(target, ["C2"]) == Fraction(2)
@@ -323,23 +369,29 @@ def test_baseline_regret_is_exact_and_refuses_off_ballot_actions():
 
 
 def test_aggregation_refuses_world_or_action_population_drift():
-    one = WorldActionValues.build(_sha("1"), [(('C2',), 1), (('D3',), -1)])
-    different = WorldActionValues.build(
-        _sha("2"), [(('C2',), 1), (('S4',), -1)])
+    one = _values("1", [(('C2',), 1), (('D3',), -1)], public_char="d")
+    different = _values(
+        "2", [(('C2',), 1), (('S4',), -1)], public_char="d")
     with pytest.raises(PrivilegedTeacherPT0Error, match="legal-action"):
         information_set_target(_sha("d"), [one, different])
     with pytest.raises(PrivilegedTeacherPT0Error, match="duplicate"):
         information_set_target(_sha("d"), [one, one])
+    public_drift = _values(
+        "2", [(('C2',), 1), (('D3',), -1)], public_char="e")
+    with pytest.raises(
+            PrivilegedTeacherPT0Error,
+            match="compatible world public state drift"):
+        information_set_target(_sha("d"), [one, public_drift])
 
 
 def test_aggregation_refuses_non_world_values_and_baseline_authority_drift():
-    one = WorldActionValues.build(_sha("1"), [(('C2',), 1), (('D3',), -1)])
+    one = _values("1", [(('C2',), 1), (('D3',), -1)], public_char="d")
     with pytest.raises(PrivilegedTeacherPT0Error, match="exact WorldActionValues"):
         information_set_target(_sha("d"), [one, object()])
 
     target = information_set_target(_sha("d"), [
         one,
-        WorldActionValues.build(_sha("2"), [(('C2',), 2), (('D3',), 1)]),
+        _values("2", [(('C2',), 2), (('D3',), 1)], public_char="d"),
     ])
     target["gameplay_authorized"] = True
     with pytest.raises(PrivilegedTeacherPT0Error, match="authority"):
@@ -348,8 +400,8 @@ def test_aggregation_refuses_non_world_values_and_baseline_authority_drift():
 
 def test_baseline_regret_refuses_duplicate_target_actions():
     target = information_set_target(_sha("d"), [
-        WorldActionValues.build(_sha("1"), [(('C2',), 1), (('D3',), -1)]),
-        WorldActionValues.build(_sha("2"), [(('C2',), 2), (('D3',), 1)]),
+        _values("1", [(('C2',), 1), (('D3',), -1)], public_char="d"),
+        _values("2", [(('C2',), 2), (('D3',), 1)], public_char="d"),
     ])
     target["actions"].append(target["actions"][0])
     with pytest.raises(PrivilegedTeacherPT0Error, match="duplicate action"):
@@ -358,7 +410,6 @@ def test_baseline_regret_refuses_duplicate_target_actions():
 
 def test_world_values_refuse_duplicate_or_zero_utility_rows():
     with pytest.raises(PrivilegedTeacherPT0Error, match="nonempty and unique"):
-        WorldActionValues.build(
-            _sha("1"), [(('C2',), 1), (('C2',), -1)])
+        _values("1", [(('C2',), 1), (('C2',), -1)])
     with pytest.raises(PrivilegedTeacherPT0Error, match="nonzero"):
-        WorldActionValues.build(_sha("1"), [(('C2',), 0)])
+        _values("1", [(('C2',), 0)])

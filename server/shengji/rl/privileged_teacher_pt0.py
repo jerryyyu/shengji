@@ -27,6 +27,7 @@ from typing import Callable, Iterable, Mapping, Sequence
 PT0_TARGET_SCHEMA = "privileged-teacher-pt0-information-set-target-v1"
 PT0_RECEIPT_SCHEMA = "privileged-teacher-pt0-miniature-receipt-v1"
 PT0_CHECKPOINT_SCHEMA = "privileged-teacher-pt0-prefix-checkpoint-v1"
+PT0_PUBLIC_STATE_SCHEMA = "privileged-teacher-pt0-actor-visible-state-v1"
 PT0_BASELINE_POLICIES = (
     "heuristic", "smart", "mc-strong", "mc-s0-report-lcb")
 
@@ -101,22 +102,120 @@ def _action_key(cards: Sequence[str]) -> tuple[str, ...]:
     return tuple(sorted(cards))
 
 
+def _public_trick_payload(trick: object | None) -> object | None:
+    """Encode only the actor-visible part of one engine trick."""
+    if trick is None:
+        return None
+    return {
+        "leader": trick.leader,
+        "plays": [
+            {"seat": play.seat, "cards": sorted(play.cards)}
+            for play in trick.plays
+        ],
+        "winner": trick.winner,
+        "points": trick.points,
+    }
+
+
+def _public_declaration_payload(declaration: object | None) \
+        -> object | None:
+    if declaration is None:
+        return None
+    if not isinstance(declaration, Mapping) or set(declaration) != {
+            "seat", "cards", "strength"}:
+        raise PrivilegedTeacherPT0Error(
+            "PT0 public declaration shape drift")
+    cards = declaration.get("cards")
+    if isinstance(cards, (str, bytes)) or not isinstance(cards, Sequence):
+        raise PrivilegedTeacherPT0Error(
+            "PT0 public declaration shape drift")
+    return {
+        "seat": declaration.get("seat"),
+        "cards": sorted(cards),
+        "strength": declaration.get("strength"),
+    }
+
+
+def pt0_public_state_sha256(
+        rnd: object, *, perspective_seat: int) -> str:
+    """Hash the complete actor-visible state shared by compatible worlds.
+
+    The true other hands, undealt deck order, and (for a non-banker) buried
+    card identities are deliberately absent.  The actor's own hand and a
+    banker's own burial are private-to-actor observations and therefore are
+    included.  PT0 derives this value from every supplied ``Round``; callers
+    cannot merely assert that separately solved worlds form one information
+    set.
+    """
+    from shengji.engine.round import Round  # pylint: disable=import-outside-toplevel
+
+    if type(rnd) is not Round:
+        raise PrivilegedTeacherPT0Error(
+            "PT0 public state requires exact Round")
+    if (isinstance(perspective_seat, bool)
+            or not isinstance(perspective_seat, int)
+            or not 0 <= perspective_seat < 4):
+        raise PrivilegedTeacherPT0Error(
+            "perspective_seat must be an integer seat in [0, 3]")
+    if rnd.phase != "play" or rnd.turn != perspective_seat \
+            or rnd.banker is None or rnd.ordering is None \
+            or rnd.trick is None:
+        raise PrivilegedTeacherPT0Error(
+            "PT0 public state requires an active actor decision")
+    payload = {
+        "schema": PT0_PUBLIC_STATE_SCHEMA,
+        "perspective_seat": perspective_seat,
+        "phase": rnd.phase,
+        "turn": rnd.turn,
+        "banker": rnd.banker,
+        "first_round": rnd.first_round,
+        "trump_rank": rnd.trump_rank,
+        "trump_suit": rnd.trump_suit,
+        "trump_is_nt": rnd.trump_is_nt,
+        "declaration": _public_declaration_payload(rnd.declaration),
+        "passed": sorted(rnd.passed),
+        "hand_sizes": [len(hand) for hand in rnd.hands],
+        "actor_hand": sorted(rnd.hands[perspective_seat]),
+        "burial": {
+            "count": len(rnd.buried),
+            "actor_visible_cards": (
+                sorted(rnd.buried)
+                if perspective_seat == rnd.banker else None),
+        },
+        "attacker_points": rnd.attacker_points,
+        "history": [_public_trick_payload(trick) for trick in rnd.history],
+        "current_trick": _public_trick_payload(rnd.trick),
+    }
+    try:
+        return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+    except (TypeError, ValueError) as exc:
+        raise PrivilegedTeacherPT0Error(
+            "PT0 public state is not canonical") from exc
+
+
 @dataclass(frozen=True)
 class WorldActionValues:
     """Exact values for every retained action in one compatible world."""
 
     world_sha256: str
+    public_state_sha256: str
     action_utilities: tuple[tuple[tuple[str, ...], int], ...]
 
     @classmethod
     def build(
             cls, world_sha256: str,
             action_utilities: Mapping[Sequence[str], int] | Iterable[
-                tuple[Sequence[str], int]]) -> "WorldActionValues":
+                tuple[Sequence[str], int]], *,
+            public_state_sha256: str) -> "WorldActionValues":
         if type(world_sha256) is not str or len(world_sha256) != 64 \
                 or any(char not in "0123456789abcdef"
                        for char in world_sha256):
             raise PrivilegedTeacherPT0Error("invalid world SHA-256")
+        if type(public_state_sha256) is not str \
+                or len(public_state_sha256) != 64 \
+                or any(char not in "0123456789abcdef"
+                       for char in public_state_sha256):
+            raise PrivilegedTeacherPT0Error("invalid public-state SHA-256")
         source = (action_utilities.items()
                   if isinstance(action_utilities, Mapping)
                   else action_utilities)
@@ -133,6 +232,7 @@ class WorldActionValues:
             raise PrivilegedTeacherPT0Error(
                 "world action population must be nonempty and unique")
         return cls(world_sha256=world_sha256,
+                   public_state_sha256=public_state_sha256,
                    action_utilities=tuple(rows))
 
 
@@ -226,7 +326,10 @@ def exact_world_action_values(
         utility_rows.append((cards, signed_level_utility(
             points, banker_seat=rnd.banker,
             perspective_seat=perspective_seat)))
-    values = WorldActionValues.build(world_sha256, utility_rows)
+    values = WorldActionValues.build(
+        world_sha256, utility_rows,
+        public_state_sha256=pt0_public_state_sha256(
+            rnd, perspective_seat=perspective_seat))
     ordered_points = tuple(sorted(
         points_rows, key=lambda row: (len(row[0]), row[0])))
     if tuple(cards for cards, _ in ordered_points) != tuple(
@@ -245,6 +348,7 @@ def _evaluation_payload(evaluation: ExactWorldEvaluation) -> dict[str, object]:
     """Encode one exact result without retaining a Round or hidden state."""
     return {
         "world_sha256": evaluation.values.world_sha256,
+        "public_state_sha256": evaluation.values.public_state_sha256,
         "action_utilities": [
             [list(cards), utility]
             for cards, utility in evaluation.values.action_utilities
@@ -262,10 +366,12 @@ def _evaluation_from_payload(payload: object) -> ExactWorldEvaluation:
     """Decode and validate a checkpointed exact result."""
     if not isinstance(payload, Mapping):
         raise PrivilegedTeacherPT0Error("PT0 checkpoint evaluation drift")
-    if set(payload) != {"world_sha256", "action_utilities",
+    if set(payload) != {"world_sha256", "public_state_sha256",
+                        "action_utilities",
                         "final_attacker_points", "nodes", "cache_hits"}:
         raise PrivilegedTeacherPT0Error("PT0 checkpoint evaluation drift")
     world_sha256 = payload.get("world_sha256")
+    public_state_sha256 = payload.get("public_state_sha256")
     action_rows = payload.get("action_utilities")
     point_rows = payload.get("final_attacker_points")
     if (type(world_sha256) is not str
@@ -273,7 +379,9 @@ def _evaluation_from_payload(payload: object) -> ExactWorldEvaluation:
             or not isinstance(point_rows, list)):
         raise PrivilegedTeacherPT0Error("PT0 checkpoint evaluation drift")
     try:
-        values = WorldActionValues.build(world_sha256, action_rows)
+        values = WorldActionValues.build(
+            world_sha256, action_rows,
+            public_state_sha256=public_state_sha256)
         final_points = []
         for row in point_rows:
             if not isinstance(row, list) or len(row) != 2:
@@ -492,6 +600,12 @@ def run_pt0_miniature(
     world_sha256s = [item[0] for item in ordered_worlds]
     if len(set(world_sha256s)) != len(world_sha256s):
         raise PrivilegedTeacherPT0Error("duplicate compatible world")
+    for _, rnd in ordered_worlds:
+        if pt0_public_state_sha256(
+                rnd, perspective_seat=perspective_seat) \
+                != public_state_sha256:
+            raise PrivilegedTeacherPT0Error(
+                "PT0 compatible world public state drift")
 
     now = float(monotonic())
     if not math.isfinite(now):
@@ -718,6 +832,10 @@ def information_set_target(
     ordered = sorted(worlds, key=lambda world: world.world_sha256)
     if len({world.world_sha256 for world in ordered}) != len(ordered):
         raise PrivilegedTeacherPT0Error("duplicate compatible world")
+    if any(world.public_state_sha256 != public_state_sha256
+           for world in ordered):
+        raise PrivilegedTeacherPT0Error(
+            "compatible world public state drift")
     action_population = tuple(cards for cards, _ in ordered[0].action_utilities)
     for world in ordered:
         if tuple(cards for cards, _ in world.action_utilities) \

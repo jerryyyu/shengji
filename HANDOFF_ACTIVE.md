@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-24 07:54 EDT.
+Last reconciled: 2026-08-24 08:58 EDT.
 
 ## Immediate objective
 
@@ -119,6 +119,21 @@ the failed unit using the previously dummy-tested script SHA-256
 It neither signals the target nor reads project/cache bytes and exists only to
 keep the exact terminal properties live through the hourly review.
 
+The terminal evidence is now closed independently of the transient unit at
+`/opt/belief-r5-v8-terminal-evidence-8221eec-v8`. Its seven-file population is
+root-owned, mode-closed and manifest-bound: manifest SHA-256
+`43a4a95b52e7e12c8d409fbfdbaa60d525220fce7cfb9c72952396e04ce97d46`,
+packet SHA-256
+`8141c5854ad10efb37657e7ba4a0bbb6db3b36d30bb62d332dc8e97d9291c6ed`,
+partial-inventory SHA-256
+`962f8985cf817d54e138c3a7927b1867a00fcd7eca426ecffce9b9390caa1b55`
+and source-checkout binding SHA-256
+`e32cfc30d028b98e43bc8dbc6168b28d05e95386ab4a3347f8e3f55d2301ef8e`.
+The inventory binds and independently rehashed all 3,195 partial files and
+3,469,353,708 payload bytes. The packet verdict is
+`REFUSE_CAPACITY_TIMEOUT_NO_RECEIPT`; every execution, reuse, retry, freeze,
+test, merge, strength and deployment authority is false.
+
 The terminal file timestamps make the new bottleneck precise without
 attaching to or altering v8: 131 inter-batch pauses longer than 90 seconds
 consumed 13,167.451 of the 13,303.838-second file-production span (98.97%);
@@ -198,7 +213,10 @@ on success, worker failure and already-disabled entry, spawned children remain
 unchanged, and output bytes/topology/order/deadlines/caps/authorities do not
 change.
 
-Bind the complete predecessor evidence: reviewed v8 unit
+Bind the complete predecessor evidence by independently reopening the closed
+root `/opt/belief-r5-v8-terminal-evidence-8221eec-v8`, its exact manifest,
+packet, inventory and checkout hashes stated above, and checking its live
+scratch inventory and retained systemd bytes. The reviewed v8 unit is
 `belief-r5-cache-capacity-8221eec-v8.service`, invocation
 `15dae1729a65413b81ce174f796eda28`, exact 03:51:30--07:51:30 EDT four-hour
 wall, `Result=timeout`, `ExecMainStatus=15`, `NRestarts=0`, exact

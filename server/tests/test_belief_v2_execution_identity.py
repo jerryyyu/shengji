@@ -232,10 +232,10 @@ def test_cache_capacity_preflight_preserves_direct_population(monkeypatch):
     specs = CACHE_PREFLIGHT._direct_specs(
         object(), "a" * 64, inputs)
     assert tuple(row[0] for row in specs) == (
-        "synthetic-primary", "human-mixture", "synthetic-scale-50",
-        CACHE_PREFLIGHT.CALIBRATION_CACHE_ID)
+        "human-mixture", "synthetic-scale-50",
+        CACHE_PREFLIGHT.CALIBRATION_CACHE_ID, "synthetic-primary")
     assert tuple(row[1] for row in specs) == (
-        primary, human, scale, calibration)
+        human, scale, calibration, primary)
 
 
 def test_cache_capacity_preflight_reopens_typed_overlay_manifest(

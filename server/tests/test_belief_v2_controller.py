@@ -1454,8 +1454,8 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
     assert built_direct == [
-        "cache-synthetic-primary", "cache-human-mixture",
-        "cache-synthetic-scale-50", "cache-common-calibration"]
+        "cache-human-mixture", "cache-synthetic-scale-50",
+        "cache-common-calibration", "cache-synthetic-primary"]
     assert combined_overlay_builds == ["cache-synthetic-primary"]
     assert cold_overlay_builds == []
     reopened, factories, calibration_factory, dose, stage_sha = (

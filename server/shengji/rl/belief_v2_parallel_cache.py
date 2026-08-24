@@ -11,6 +11,7 @@ cannot change either logical cache.
 from __future__ import annotations
 
 import concurrent.futures
+import gc
 import multiprocessing
 from pathlib import Path
 from typing import Any, Callable
@@ -316,20 +317,32 @@ def _build_parallel_tensor_cache(
     next_submit = 0
     next_emit = 0
     futures: dict[concurrent.futures.Future, int] = {}
-    executor = concurrent.futures.ProcessPoolExecutor(
-        max_workers=worker_count, mp_context=context,
-        initializer=_initialize_worker,
-        initargs=(root, freeze, admission, index, schedule, mode,
-                  partial, binding, reserved_bytes, overlay_partial,
-                  overlay_reserved_bytes))
+    executor: concurrent.futures.ProcessPoolExecutor | None = None
 
     def submit_one(batch_index: int) -> None:
+        if executor is None:
+            raise BeliefV2ParallelCacheError(
+                "V2 parallel cache executor state drift")
         if deadline_check is not None:
             deadline_check("before-unit", batch_index)
         future = executor.submit(_build_worker_batch, batch_index)
         futures[future] = batch_index
 
+    # The immutable index/schedule graph contains millions of tracked
+    # objects.  Automatic full collections in this parent stop submissions
+    # while ready workers sit idle; reference counting still reclaims each
+    # bounded Future/result as it leaves the loop.  Preserve the caller's GC
+    # state and restore it on every exit.
+    automatic_gc_was_enabled = gc.isenabled()
+    if automatic_gc_was_enabled:
+        gc.disable()
     try:
+        executor = concurrent.futures.ProcessPoolExecutor(
+            max_workers=worker_count, mp_context=context,
+            initializer=_initialize_worker,
+            initargs=(root, freeze, admission, index, schedule, mode,
+                      partial, binding, reserved_bytes, overlay_partial,
+                      overlay_reserved_bytes))
         while next_submit < min(worker_count, batch_count):
             submit_one(next_submit)
             next_submit += 1
@@ -395,8 +408,12 @@ def _build_parallel_tensor_cache(
     except BaseException:
         for future in futures:
             future.cancel()
-        executor.shutdown(wait=True, cancel_futures=True)
+        if executor is not None:
+            executor.shutdown(wait=True, cancel_futures=True)
         raise
+    finally:
+        if automatic_gc_was_enabled:
+            gc.enable()
     if rows_by_index or next_emit != batch_count \
             or reserved_bytes.value != total_bytes \
             or overlay_requested and (

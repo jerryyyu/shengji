@@ -597,6 +597,7 @@ def run_natural_packet(
         design: NaturalPT0Design, *, capture_secret: bytes,
         progress_sink: Callable[[int, int, int], object] | None = None,
         record_sink: Callable[[int, bytes], object] | None = None,
+        deadline_exempt_prefix: int = 0,
         deadline: float | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         state_capture: Callable[[NaturalPT0Design],
@@ -622,19 +623,26 @@ def run_natural_packet(
                 f"expected {sorted(design.bucket_keys)}, "
                 f"got {sorted(captured)}")
     total = len(design.bucket_keys)
+    if (isinstance(deadline_exempt_prefix, bool)
+            or not isinstance(deadline_exempt_prefix, int)
+            or deadline_exempt_prefix < 0
+            or deadline_exempt_prefix > total):
+        raise NaturalPT0Error("deadline-exempt prefix is outside the grid")
     records = []
     # A state capture callback is intentionally state-only; provenance values
     # are fixed by the design and bucket.  No hidden identity can enter here.
     cell_key = None
     cell_states: dict[tuple[str, int, str, int], object] = {}
     for key in sorted(design.bucket_keys):
-        if deadline is not None and monotonic() >= deadline:
+        replaying_prefix = len(records) < deadline_exempt_prefix
+        active_deadline = None if replaying_prefix else deadline
+        if active_deadline is not None and monotonic() >= active_deadline:
             break
         rank, banker, role, threshold = key
         if captured is None and cell_key != (rank, banker):
             cell_states, expired = _capture_cell(
                 design, secret, rank=rank, banker=banker,
-                deadline=deadline, monotonic=monotonic)
+                deadline=active_deadline, monotonic=monotonic)
             if expired:
                 break
             cell_key = (rank, banker)

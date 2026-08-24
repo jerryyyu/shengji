@@ -44,7 +44,8 @@ def _design() -> NaturalPT0Design:
 def _fake_core(monkeypatch, *, status="COMPLETE", crash=False):
     def fake(design, *, record_sink=None, **kwargs):
         records = []
-        count = len(design.bucket_keys) if status == "COMPLETE" else 0
+        count = (len(design.bucket_keys) if status == "COMPLETE"
+                 else kwargs.get("deadline_exempt_prefix", 0))
         for index in range(count):
             record = {"schema": "safe-record-v1", "index": index}
             records.append(record)
@@ -161,6 +162,36 @@ def test_mismatched_existing_record_refused_on_resume(monkeypatch, tmp_path, sou
         runner.run_bundle(
             tmp_path / "design.json", tmp_path / "capture-secret.bin",
             tmp_path / "bundle", SOURCE)
+
+
+def test_expired_resume_cannot_return_less_than_durable_prefix(
+        monkeypatch, tmp_path, source):
+    _fake_core(monkeypatch, crash=True)
+    with pytest.raises(RuntimeError):
+        _run(tmp_path, source)
+    _fake_core(monkeypatch, status="TRUNCATED")
+    result = runner.run_bundle(
+        tmp_path / "design.json", tmp_path / "capture-secret.bin",
+        tmp_path / "bundle", SOURCE, deadline_seconds=0)
+    assert result["status"] == "TRUNCATED"
+    assert result["record_count"] == 1
+    assert not (tmp_path / "bundle.partial").exists()
+
+
+def test_source_refusal_happens_before_project_import(
+        monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        runner, "_check_expected_source",
+        lambda *_: (_ for _ in ()).throw(
+            runner.RunnerRefused("synthetic source refusal")))
+    monkeypatch.setattr(
+        runner, "_load_core",
+        lambda *_: (_ for _ in ()).throw(
+            AssertionError("project import happened before source refusal")))
+    with pytest.raises(runner.RunnerRefused, match="synthetic source refusal"):
+        runner.run_bundle(
+            tmp_path / "missing-design.json",
+            tmp_path / "missing-secret.bin", tmp_path / "bundle", SOURCE)
 
 
 def test_extra_file_and_symlink_refused(monkeypatch, tmp_path, source):

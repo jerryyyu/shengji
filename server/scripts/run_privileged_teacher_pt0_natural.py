@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import json
 import math
 import os
@@ -18,11 +19,8 @@ import subprocess
 import sys
 import tempfile
 import time
+from types import ModuleType
 from typing import Mapping, Sequence
-
-from shengji.rl import privileged_teacher_pt0_natural as core
-from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
-
 
 RUNNER_SCHEMA = "privileged-teacher-pt0-natural-runner-v1"
 PARTIAL_SCHEMA = "privileged-teacher-pt0-natural-partial-v1"
@@ -48,10 +46,32 @@ RECORD_KEYS = {
     "proposal_action_rank", "proposal_action_rank_in_evaluation",
     "target_dispersion", "baselines", "work", "authority",
 }
+core: ModuleType | None = None
 
 
 class RunnerRefused(ValueError):
     """The filesystem runner detected identity, integrity, or authority drift."""
+
+
+def canonical_json_bytes(value: object) -> bytes:
+    """Encode runner bootstrap records without importing project code."""
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=True) + "\n").encode("ascii")
+
+
+def _load_core(repo_root: Path | None = None) -> ModuleType:
+    """Import the reviewed project module only after the bootstrap gate."""
+    global core
+    if core is None:
+        core = importlib.import_module(
+            "shengji.rl.privileged_teacher_pt0_natural")
+    if repo_root is not None:
+        expected = (repo_root / "server" / "shengji" / "rl"
+                    / "privileged_teacher_pt0_natural.py").resolve()
+        actual = Path(str(core.__file__)).resolve()
+        if actual != expected:
+            raise RunnerRefused("natural core import path drift")
+    return core
 
 
 def _sha(data: bytes) -> str:
@@ -178,11 +198,12 @@ def _atomic_replace(path: Path, data: bytes) -> None:
             temporary.unlink()
 
 
-def _design_from_bytes(data: bytes) -> core.NaturalPT0Design:
+def _design_from_bytes(data: bytes) -> object:
+    active_core = _load_core()
     value = _canonical_load(data, "design")
     if not isinstance(value, dict):
         raise RunnerRefused("design must be a JSON object")
-    required = set(core.NaturalPT0Design(
+    required = set(active_core.NaturalPT0Design(
         capture_secret_sha256="0" * 64, trump_ranks=("2",)).payload())
     if set(value) != required:
         raise RunnerRefused("design keys are not the frozen design schema")
@@ -191,7 +212,7 @@ def _design_from_bytes(data: bytes) -> core.NaturalPT0Design:
     try:
         proposal = value["proposal_worlds_per_state"]
         evaluation = value["evaluation_worlds_per_state"]
-        design = core.NaturalPT0Design(
+        design = active_core.NaturalPT0Design(
             capture_secret_sha256=value["capture_secret_sha256"],
             trump_ranks=tuple(value["trump_ranks"]),
             production_policy=value["production_policy"],
@@ -208,7 +229,8 @@ def _design_from_bytes(data: bytes) -> core.NaturalPT0Design:
             baseline_seeds_per_state=value["baseline_seeds_per_state"],
             bootstrap_replicates=value["bootstrap_replicates"],
         )
-    except (KeyError, TypeError, ValueError, core.NaturalPT0Error) as exc:
+    except (KeyError, TypeError, ValueError,
+            active_core.NaturalPT0Error) as exc:
         raise RunnerRefused("design values are invalid") from exc
     if canonical_json_bytes(design.payload()) != data:
         raise RunnerRefused("design does not round-trip canonically")
@@ -217,7 +239,8 @@ def _design_from_bytes(data: bytes) -> core.NaturalPT0Design:
 
 def _capture_secret_from_path(
         path_value: str | os.PathLike[str],
-        design: core.NaturalPT0Design) -> bytes:
+        design: object) -> bytes:
+    active_core = _load_core()
     path = Path(path_value)
     _regular(path, "capture secret")
     info = path.lstat()
@@ -226,9 +249,16 @@ def _capture_secret_from_path(
         raise RunnerRefused("capture secret ownership mode/link drift")
     data = path.read_bytes()
     try:
-        return core._check_capture_secret(design, data)
-    except core.NaturalPT0Error as exc:
+        return active_core._check_capture_secret(design, data)
+    except active_core.NaturalPT0Error as exc:
         raise RunnerRefused("capture secret commitment drift") from exc
+
+
+def _require_isolated_runtime() -> None:
+    if (not sys.flags.safe_path or not sys.dont_write_bytecode
+            or os.environ.get("PYTHONPATH")):
+        raise RunnerRefused(
+            "natural PT0 runner requires Python -P -B and no PYTHONPATH")
 
 
 def _git_identity(repo_root: Path) -> str:
@@ -243,11 +273,37 @@ def _git_identity(repo_root: Path) -> str:
         raise RunnerRefused("could not verify source git identity") from exc
     if dirty:
         raise RunnerRefused("source tree is dirty")
-    pyc_roots = (repo_root / "server" / "shengji",
-                 repo_root / "server" / "scripts")
-    if any(path.is_file() for root in pyc_roots
-           for path in root.rglob("*.pyc")):
-        raise RunnerRefused("importable bytecode cache is present")
+    try:
+        tracked_raw = subprocess.check_output(
+            ["git", "-C", str(repo_root), "ls-files", "-z"])
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise RunnerRefused("could not inventory tracked source") from exc
+    tracked = {item.decode("utf-8") for item in tracked_raw.split(b"\0")
+               if item}
+    server = repo_root / "server"
+    loadable_suffixes = {".py", ".pyc", ".pyo", ".so", ".pyd", ".dylib"}
+    candidates = set()
+    candidates.update(path for path in server.iterdir()
+                      if path.is_file() and path.suffix in loadable_suffixes)
+    candidates.update(path for path in server.glob("*/__init__.py"))
+    for scan_root in (server / "shengji", server / "scripts"):
+        candidates.update(path for path in scan_root.rglob("*")
+                          if path.is_file()
+                          and path.suffix in loadable_suffixes)
+    native = []
+    for path in sorted(candidates):
+        relative = path.relative_to(repo_root).as_posix()
+        if path.suffix in {".pyc", ".pyo"}:
+            raise RunnerRefused("importable bytecode cache is present")
+        if (path.suffix in {".so", ".pyd", ".dylib"}
+                and path.parent == server / "shengji" / "engine"
+                and path.name.startswith("_fast.")):
+            native.append(path)
+            continue
+        if relative not in tracked:
+            raise RunnerRefused("untracked import shadow is present")
+    if len(native) > 1:
+        raise RunnerRefused("native extension population drift")
     if len(head) != 40 or any(ch not in "0123456789abcdef" for ch in head):
         raise RunnerRefused("live git HEAD is not a SHA-1")
     return head
@@ -263,7 +319,7 @@ def _check_expected_source(expected: str, repo_root: Path) -> str:
     return live
 
 
-def _partial_meta(design: core.NaturalPT0Design, source_git: str) -> dict[str, object]:
+def _partial_meta(design: object, source_git: str) -> dict[str, object]:
     return {
         "schema": PARTIAL_SCHEMA,
         "design_sha256": _sha(canonical_json_bytes(design.payload())),
@@ -284,7 +340,7 @@ def _progress(completed: int, total: int, status: str) -> bytes:
     })
 
 
-def _validate_partial(partial: Path, design: core.NaturalPT0Design,
+def _validate_partial(partial: Path, design: object,
                       source_git: str) -> Path:
     _directory(partial, "partial directory")
     entries = {item.name for item in partial.iterdir()}
@@ -334,6 +390,23 @@ def _population(records: Path, record_count: int) -> list[dict[str, object]]:
     return rows
 
 
+def _existing_records(
+        records: Path, design: object) -> list[dict[str, object]]:
+    """Reopen the exact contiguous prefix already durably published."""
+    names = sorted(item.name for item in records.iterdir())
+    expected = [f"record-{index:06d}.json" for index in range(len(names))]
+    if names != expected:
+        raise RunnerRefused("partial record prefix is not contiguous")
+    values = []
+    for index, name in enumerate(names):
+        path = records / name
+        _regular(path, "partial record")
+        value = _safe_record(path.read_bytes(), f"record {index}")
+        values.append(value)
+    _validate_packet_records(design, values)
+    return values
+
+
 def _packet_hash(packet: Mapping[str, object]) -> str:
     if "packet_sha256" not in packet:
         raise RunnerRefused("packet hash missing")
@@ -362,8 +435,9 @@ def _hex_sha256(value: object) -> bool:
 
 
 def _validate_packet_records(
-        design: core.NaturalPT0Design,
+        design: object,
         records: Sequence[object]) -> None:
+    active_core = _load_core()
     expected_keys = sorted(design.bucket_keys)[:len(records)]
     actual_keys = []
     capture_ids = set()
@@ -373,7 +447,7 @@ def _validate_packet_records(
         key = (record["trump_rank"], record["banker"], record["role"],
                record["remaining_hand_threshold"])
         actual_keys.append(key)
-        if (record["schema"] != core.NATURAL_PT0_RECORD_SCHEMA
+        if (record["schema"] != active_core.NATURAL_PT0_RECORD_SCHEMA
                 or record["authority"] != AUTHORITY
                 or not _hex_sha256(record["capture_id_sha256"])
                 or not _hex_sha256(record["public_state_sha256"])
@@ -428,9 +502,10 @@ def _validate_packet_records(
 
 def verify_bundle(
         output_root: str | os.PathLike[str], *,
-        design: core.NaturalPT0Design,
+        design: object,
         expected_source_git: str | None = None) -> dict[str, object]:
     """Independently reopen and verify a COMPLETE/TRUNCATED final bundle."""
+    active_core = _load_core()
     root = Path(output_root)
     _directory(root, "bundle root")
     entries = {item.name for item in root.iterdir()}
@@ -459,7 +534,7 @@ def verify_bundle(
             or total_record_count != len(design.bucket_keys)
             or record_count > total_record_count):
         raise RunnerRefused("packet record counts drift")
-    if (packet.get("schema") != core.NATURAL_PT0_SCHEMA
+    if (packet.get("schema") != active_core.NATURAL_PT0_SCHEMA
             or packet.get("authority") != AUTHORITY
             or not isinstance(packet.get("records"), list)
             or record_count != len(packet["records"])
@@ -474,7 +549,7 @@ def verify_bundle(
                     record_count * 10_000) // total_record_count,
             }
             or manifest.get("schema") != MANIFEST_SCHEMA) \
-            or manifest.get("packet_schema") != core.NATURAL_PT0_SCHEMA \
+            or manifest.get("packet_schema") != active_core.NATURAL_PT0_SCHEMA \
             or manifest.get("packet_sha256") != packet_hash \
             or manifest.get("packet_bytes_sha256") != _sha((root / PACKET_NAME).read_bytes()) \
             or manifest.get("authority") != AUTHORITY \
@@ -498,7 +573,7 @@ def verify_bundle(
         if canonical_json_bytes(record) != _record_path(records, index).read_bytes():
             raise RunnerRefused("packet/record bytes drift")
     _validate_packet_records(design, packet["records"])
-    expected_summary = core.summarize_natural_records(
+    expected_summary = active_core.summarize_natural_records(
         design, packet["records"], complete=status == "COMPLETE")
     if packet.get("summary") != expected_summary:
         raise RunnerRefused("packet summary reconstruction drift")
@@ -520,14 +595,16 @@ def run_bundle(design_path: str | os.PathLike[str],
                output_root: str | os.PathLike[str], expected_source_git: str,
                *, deadline_seconds: float | None = None,
                repo_root: str | os.PathLike[str] | None = None) -> dict[str, object]:
+    _require_isolated_runtime()
+    repo = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
+    source_git = _check_expected_source(expected_source_git, repo)
+    active_core = _load_core(repo)
     design_data = Path(design_path).read_bytes()
     design = _design_from_bytes(design_data)
     root = Path(output_root)
     partial = root.with_name(root.name + PARTIAL_NAME)
     if root.is_symlink() or partial.is_symlink():
         raise RunnerRefused("output symlink refused")
-    repo = Path(repo_root) if repo_root is not None else Path(__file__).resolve().parents[2]
-    source_git = _check_expected_source(expected_source_git, repo)
     if root.exists():
         if partial.exists():
             raise RunnerRefused("final and partial output both exist")
@@ -557,6 +634,8 @@ def run_bundle(design_path: str | os.PathLike[str],
         _atomic_exclusive(partial / "progress.json",
                           _progress(0, len(design.bucket_keys), "RUNNING"))
 
+    completed_prefix = _existing_records(records_dir, design)
+
     def record_sink(index: int, data: bytes) -> None:
         _safe_record(data, f"record {index}")
         _atomic_exclusive(_record_path(records_dir, index), data)
@@ -566,6 +645,11 @@ def run_bundle(design_path: str | os.PathLike[str],
     kwargs: dict[str, object] = {
         "record_sink": record_sink,
         "capture_secret": capture_secret,
+        # Completed rows are not trusted blindly: the core deterministically
+        # recomputes this exact prefix and record_sink demands byte identity.
+        # Deadline expiry may stop only after that integrity replay, never by
+        # returning a shorter population than is already durable on disk.
+        "deadline_exempt_prefix": len(completed_prefix),
     }
     if deadline_seconds is not None:
         if (isinstance(deadline_seconds, bool)
@@ -575,7 +659,7 @@ def run_bundle(design_path: str | os.PathLike[str],
             raise RunnerRefused("deadline_seconds must be nonnegative")
         kwargs["deadline"] = time.monotonic() + deadline_seconds
     try:
-        packet = core.run_natural_packet(design, **kwargs)
+        packet = active_core.run_natural_packet(design, **kwargs)
         if not isinstance(packet, dict):
             raise RunnerRefused("natural core returned a non-object packet")
         for index, record in enumerate(packet.get("records", [])):
@@ -599,7 +683,7 @@ def run_bundle(design_path: str | os.PathLike[str],
             "record_count": record_count,
             "total_record_count": packet["total_record_count"],
             "packet_sha256": packet["packet_sha256"],
-            "packet_schema": core.NATURAL_PT0_SCHEMA,
+            "packet_schema": active_core.NATURAL_PT0_SCHEMA,
             "packet_bytes_sha256": _sha(packet_data),
             "record_population": population,
             "record_population_sha256": _sha(canonical_json_bytes(population)),
@@ -638,10 +722,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.verify:
+            _require_isolated_runtime()
+            repo = Path(__file__).resolve().parents[2]
+            source_git = _check_expected_source(args.expected_source_git, repo)
+            _load_core(repo)
             design = _design_from_bytes(Path(args.design).read_bytes())
             result = verify_bundle(
                 args.output_root, design=design,
-                expected_source_git=args.expected_source_git)
+                expected_source_git=source_git)
         else:
             if args.capture_secret is None:
                 raise RunnerRefused("--capture-secret is required for execution")

@@ -1,20 +1,22 @@
 # Active Claude/Codex handoff
 
-> Current operational truth and review queue only. Historical reviews belong
-> in `HANDOFF_REVIEW.md` and Git history. A request not listed here is not
-> active.
+> Current operational truth and precise review queue only. Historical reviews
+> belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
+> not active.
 
-Last reconciled: 2026-08-23 18:16 EDT.
+Last reconciled: 2026-08-23 20:43 EDT.
 
 ## Immediate objective
 
-Carry live BELIEF R4 and R5 to sealed, independently reopened terminal results.
-Determine whether public-history ownership learning improves held-out
-hidden-hand calibration over REF-C, then decide separately whether belief
-should enter gameplay search. Neither run authorizes a sampler, gameplay or
-strength claim, promotion, deployment or merge.
+Carry live BELIEF R4 and one efficient, recoverable R5 successor to sealed,
+independently reopened terminal results. Determine whether public-history
+ownership learning improves held-out hidden-hand calibration over REF-C, then
+decide separately whether belief should enter gameplay search. Neither lane
+authorizes a sampler, gameplay or strength claim, promotion, deployment or
+merge. R4 and R5 share one preregistered population and are not independent
+scientific replications.
 
-## Live scientific run
+## Live scientific R4
 
 | field | current binding |
 |---|---|
@@ -22,226 +24,105 @@ strength claim, promotion, deployment or merge.
 | freeze | `573fcade25d985f58c0d179a581a40619b5745fc2152c52f4740e1355ae1fc16` |
 | execution review | PASS marker commit `10bd1dab39ee900a7c4650aba06de28ac62587ce` |
 | admission | `21d9cea8a1ef2905dd0a8a85308e54141e58362e0764f04f388412bedfff0961` |
-| host | `shengji-cloud` / `ubuntu-32gb-hel1-1`, 16 logical CPUs |
-| service | transient `belief-v2-r4-d2d466f-r1.service`, started 2026-08-22 08:59:17 EDT, `Restart=no` |
-| evidence | `/opt/belief-r4-evidence-d2d466f-r1` |
-| ops | `/opt/belief-r4-ops-d2d466f-r1` |
+| host / unit | `shengji-cloud`; `belief-v2-r4-d2d466f-r1.service`, `Restart=no` |
+| evidence / ops | `/opt/belief-r4-evidence-d2d466f-r1`; `/opt/belief-r4-ops-d2d466f-r1` |
 
-The exact packet-bound supervisor plan is live. Synthetic capture sealed all
-16 lanes at 832/832 rounds and all 30 human-capture tasks sealed. Capture used
-53.4/65 core-hours, 13.55/16 GiB and 3.36/5.00 wall-hours, with zero retries or
-drops. The run has crossed both stage boundaries that previously exposed the
-canonical-tip defect and remains healthy.
+R4 is active and untouched: stage 7/10 `training`, 78/85 tasks complete,
+task-weighted progress 93.78%, four cohort workers active, `NRestarts=0`, no
+failure task, no terminal and no test opening. Exact schedule progress is:
 
-The input index sealed all 12,003 units in 3 h 10 m. The 26 GiB training cache
-then completed all 12,649 units and passed its exact reopen/hash verification.
-Device qualification sealed cleanly. All 29 synthetic/human reference tasks
-then passed their post-publish typed byte reconstruction. The run entered stage
-7/10, `training`, at 2026-08-23 06:40 EDT with 78/85 tasks complete and four
-cohorts active: synthetic primary, hard-geometry label-permutation, human
-mixture and synthetic 50%-scale. Each worker independently authenticated the
-cache population for about 31 minutes before the first honest epoch-1 batch
-progress appeared at 07:10 EDT. At the latest reconciliation the
-synthetic-primary, hard-label-control and human-mixture workers were
-respectively 28.97%, 28.92% and 29.19% through their exact schedules; the
-synthetic 50%-scale worker was 53.80% through its schedule. The full-data
-cohorts have each sealed eight epoch journals and reusable resume states; the
-scale cohort has sealed sixteen. These journals bind all eight member
-training/calibration receipts, common-epoch selection and
-`exact_resume_count=0`, while keeping test, strength and deployment authority
-false. Persisted file sizes and SHA-256 bindings reopen directly; the full typed
-journal reopener is deferred until it will not compete with live training.
-Overall task-weighted progress is 93.42%.
-All progress is outcome-blind. The service is active, `NRestarts=0`, with no
-recorded failure task and no test opening.
+- synthetic primary 42,052/118,800 = 35.39%;
+- hard-geometry label control 42,047/118,800 = 35.39%;
+- human mixture 42,624/119,040 = 35.80%;
+- synthetic 50%-scale 40,810/62,340 = 65.46%.
 
-Frozen bounds remain: capture 65 core-hours / 18,000 seconds; reference 40
-core-hours / 14,400 seconds; training 256 device-hours / 172,800 seconds.
-The training next-epoch estimate is 5.346 hours. Graceful truncation may seal a
-valid best-common-epoch curve at the deadline; it must not be described as
-convergence. Human test evidence is descriptive only at exact n=51.
+All 832x16 synthetic captures, 30 human-capture tasks, 12,003 input-index
+units, 12,649 cache units, device qualification and 29 reference tasks sealed
+and independently reopened before training. Full-data cohorts have durable
+epoch journals/resume states; progress remains outcome-blind. Frozen training
+cap is 256 device-hours / 172,800 seconds. Graceful truncation may seal the
+best common epoch at the deadline but must not be described as convergence.
+Human test evidence is descriptive only at exact n=51.
 
-Prior spent roots are not reused. In particular, `b78f802-r3` contains prior
-capture artifacts from the canonical-tip failure; the reviewed packet records
-`reuse_authorized: false` and the live root was initialized fresh.
+## Spent R5 admission
 
-## Prior R5 refusal and fresh successor
+Source `8d9390e12535bbf0d235b76e81484f54f912cc86`, admission
+`4e95d87b2c2ffdec99ac1c0fdb5111e176c2389d5f83384fb2af21f2d25bf756`
+and root `/opt/belief-r5-evidence-8d9390e-r2` are preserved. Its eight-worker
+input index sealed exactly. The tensor-cache stage then completed every
+non-test batch but measured 30,452,371,456 bytes against the frozen
+25,769,803,776-byte cap and refused before publishing. The service failed once
+with `NRestarts=0`; no model, reference, calibration, test or terminal artifact
+exists, no test byte opened and this admission may never be retried. Its five
+partial component caches and tombstone remain immutable evidence.
+
+## PR #131 repair and live score-free proof
+
+Draft PR #131 is the sole successor source lane, stacked on reviewed tip
+`9a057dfa07d84dda1672d4895bb0db553182a6ad`. Exact current head
+`5e3bb6bb36cef7a184a821cda25e85a15d5a6fc1` is clean, mergeable and CI-green.
+It keeps the 24-GiB cap, derives topology `8 aggregate = 2 concurrent x 4
+workers`, durably records cap refusal, forbids same-admission resume and orders
+direct builds human, scale, calibration, primary so the primary pages are hot
+when the control-label overlay begins. Output/manifest order is unchanged.
+Focused tests pass 54/54; complete V2 suites pass 453 with six skips pure and
+455 with four skips strict-compiled. Reverting the new ordering helper makes
+all three schedule/wiring witnesses fail.
+
+The previous non-scientific v4 proof rebuilt all 9,128 direct batches under
+the hard 24-GiB cgroup with no OOM or restart, but primary finished about 48
+minutes before overlay. Under file-cache pressure the overlay advanced only
+53/3,521 batches and projected about 12.5 hours. The operator stopped it before
+its three-hour timeout. It emitted no receipt and is not a pass. An external
+one-batch diagnostic after stop reopened the same bytes in 0.648 seconds and
+transformed them in 0.046 seconds, isolating cold-cache schedule rather than
+data or algorithm parity.
+
+A fresh v5 score-free proof is live:
 
 | field | current binding |
 |---|---|
-| source | draft PR #128, exact head `dd8fe3141e9142b1cbd60d998cbde34441b5ecb3` |
-| freeze | `3f56662cb7ba2a7d24a870b648949ef9529afecda860c4874806459265047cfb` |
-| execution review | consolidated PASS marker commit `b0693e132aae6346c7888598ce96e6ac2f061fd8` |
-| admission | `66d42c7e137929534658650686a905ede8c261f706c46e5eee4e8ca801deffbf` |
-| host | `shengji-perf` / `ubuntu-32gb-hel1-2`, 16 logical CPUs |
-| service | transient `belief-v2-r5-dd8fe31-r1.service`, started 2026-08-23 04:42:03 EDT, `Restart=no` |
-| evidence | `/opt/belief-r5-evidence-dd8fe31-r1` |
-| ops | `/opt/belief-r5-evidence-dd8fe31-r1.ops` |
+| source / checkout | `5e3bb6bb36cef7a184a821cda25e85a15d5a6fc1`; `/opt/belief-r5-5e3bb6b` |
+| host / unit | `shengji-perf`; `belief-r5-cache-capacity-5e3bb6b-v5.service`, `Restart=no`, `RuntimeMaxSec=3h` |
+| scratch / receipt | `/opt/belief-r5-cache-capacity-5e3bb6b-v5`; `/opt/belief-r5-cache-capacity-5e3bb6b-v5.json` |
+| limits | exact 25,769,803,776-byte `MemoryMax`, no swap, topology 8 = 2 x 4 |
+| authority | score-free train/calibration rebuild only; no retry, model, test, outcome, gameplay, merge, strength or deployment authority |
 
-The production reopener authenticated the exact append-only marker (marker SHA
-`f3bce678…`) and initialized this namespace once. The root then reopened with
-the frozen admission/inventory/group split and all prohibited authorities
-false. Synthetic capture sealed all 16 lanes only after their independent
-post-publish typed reconstructions passed. The manifests reconcile to 13,312
-rounds, 54.21/65 core-hours, 13.55/16 GiB, a 3.46/5.00-hour parallel wall span,
-zero retries/drops, one exact freeze/admission and all prohibited authorities
-false. All 30 human-capture tasks then sealed. The optimized input-index build
-completed all 12,003 units in 851.03 seconds, about 13.4x faster than R4's 3 h
-10 m serial stage, and wrote a 311,250,588-byte candidate index. Before any
-manifest/seal or downstream stage, the source measured the 16-worker process
-tree above the frozen 24 GiB host-memory cap and refused with exact error
-`V2 training input index resource cap drift`. The service failed once at
-2026-08-23 08:42:45 EDT with `NRestarts=0`; the index remains only in
-`result.partial`, no test byte was opened, and retry is false. Preserve the
-entire root, ops logs and tombstone. Do not restart this admission or describe
-the 100% progress row as a sealed index.
+The checkout/native extension is exact and clean. At launch the unit was
+active with `NRestarts=0`, receipt absent and no fresh scientific namespace
+initialized. PASS requires five byte-identical component reopens, a sealed
+receipt, successful hard-capped unit and explicit false test/outcome/authority
+fields. If it passes, Codex will generate fresh 416-round/all-13-rank capacity
+and deadline receipts, then seal one R3 freeze at exact source `5e3bb6b`.
 
-This is a source/freeze design defect in R5's new concurrency, not a transient
-host failure: wall time and artifact bytes were far inside their caps, while
-systemd measured a 26.7 GiB service peak against the 24 GiB bound. The narrow
-repair is pushed on PR #128 at exact head
-`8d9390e12535bbf0d235b76e81484f54f912cc86`: input indexing is now capped at
-eight workers by the unchanged frozen memory allowance, the stage has a
-can-fail over-memory witness, CI is green, and the exact compiled suite is 248
-passed / 4 skipped. A score-free eight-worker full-corpus preflight completed
-and independently reopened against the preserved failed index. It reproduced
-the exact 311,250,588-byte index and SHA `e4958a13…` with a conservative
-9.28 GiB process-tree peak under the unchanged 24 GiB cap, 34.27 minutes wall,
-no test target or outcome opening and no retained index. Receipt SHA is
-`ea772763dcf21016fbca9881f5f36b13b5cbf934a1a39db8f678d024ccde0f69`.
+## Review queue — one consolidated R5 ask, not ready yet
 
-The fresh exact-head receipts and immutable successor freeze are now complete:
+Do **not** review PR #131 yet. The only next source review will bind exact head
+`5e3bb6b`, the sealed v5 capacity receipt, fresh host receipts, immutable R3
+freeze and final launch script in one consolidated pass. Until that precise
+ask replaces this paragraph: do not restart a spent R5 admission, initialize a
+successor, alter R4 or open outcomes.
 
-| field | successor binding |
-|---|---|
-| source | draft PR #128, exact head `8d9390e12535bbf0d235b76e81484f54f912cc86` |
-| test-only review witness | PR #128 tip `9a057dfa07d84dda1672d4895bb0db553182a6ad`; parent is exact source head `8d9390e`, one test file +70 lines, zero non-test diff |
-| checkout / venv | `/opt/belief-r5-8d9390e` / `/opt/belief-r5-8d9390e-venv` |
-| freeze | `/opt/belief-r5-freeze-8d9390e-r2.json`, SHA `dc7e3a96ad4624144a2d35fa4c6fcb0e4ff5e539efa45a7b87023ca0a7030a95` |
-| packet | `/opt/belief-r5-8d9390e-freeze-inputs-r2/freeze-review-packet.json`, SHA `f57056fd4da1dbf81603642b7608b1f9600303357d4013ccbd1d2bff7db6537a` |
-| claim / marker | claim SHA `6ef3f4d870293e9e59cccd89066419ba9598f81d44af0ed4757052f0bab09792`; marker SHA `ba889610c84d7f3a49c809ebc74e0674676d2f2fa8ba16f53ebaa2890caf9ffa` |
-| execution review | PASS marker commit `4b68717394297d90838368d40e38fdc02cedf06c` |
-| admission | `4e95d87b2c2ffdec99ac1c0fdb5111e176c2389d5f83384fb2af21f2d25bf756` |
-| host / service | `shengji-perf`; `belief-v2-r5-8d9390e-r2.service`, started 2026-08-23 10:51:01 EDT, `Restart=no` |
-| evidence / ops | `/opt/belief-r5-evidence-8d9390e-r2` / `/opt/belief-r5-ops-8d9390e-r2` |
-
-Fresh capacity is 416/416 score-free rounds over 16 lanes and all 13 trump
-ranks: 377.40 seconds parallel wall, derived capture cap 65 core-hours. Fresh
-deadline estimates are 18.013-second capture p95, 34.010-second REF-C p95,
-6.089-hour conservative epoch wall and 18.27-minute reserve; exactly seven
-complete epochs fit before the fixed 48-hour deadline reserve, after which
-graceful truncation remains load-bearing. The supervisor plan independently
-reopens to 85 exact tasks with 16/16/1/1/1/16/4/1/1/1 concurrency.
-
-The successor initialized once only after the exact marker landed. The
-production root reopener returned `verified: true`, then the packet-bound
-supervisor started all 16 synthetic-capture lanes. All lanes sealed only after
-their full post-publication typed reopens passed. Their manifests reconcile to
-13,312 rounds, 54.97/65 core-hours, 13.546/16 GiB, a 3.476/5.00-hour parallel
-wall span and zero retries/drops. The integrity tail independently parsed about
-14 GiB of private/actor bundles before the supervisor advanced; it was not a
-retry or a second capture. All 30 human-capture tasks then sealed.
-
-R5 completed stage 3/10, `training-input-index`, then failed closed at the end
-of stage 4/10, `training-tensor-cache`, at 16:34:16 EDT with 47/85 tasks
-complete. The repaired input-index route scanned all 12,003 exact input units
-with eight workers, wrote a 311,250,588-byte immutable index (SHA
-`189334f9ecf14d71abfeae91d1fcda73f2f4e39658e9a93d6600ab2511757c83`),
-and passed its full post-publication reconstruction before the supervisor
-advanced. Its receipt records 34.32 minutes bounded wall, 12,903.27 CPU
-seconds, 15.92/25.77 GB conservative peak host memory, zero retries/drops and
-no synthetic or human test target opening. The manifest SHA is
-`951f1eb0299a025df436d8b81662873a23df69ba19f918e1a8e6c2d6164e52dc`.
-
-The tensor-cache worker completed all 12,649/12,649 non-test batches and left
-five independently sealed component caches in `result.partial` (synthetic
-primary, human mixture, synthetic 50%-scale, common calibration and the
-hard-label overlay). It then refused before publishing the stage manifest:
-the 16-worker topology peaked at 30,452,371,456 bytes while the frozen host
-cap is 25,769,803,776 bytes. Wall (~68.34 minutes) and artifact population
-(~26 GiB) were within their frozen bounds. Exact exception:
-`BeliefV2TensorCacheControllerError: V2 tensor cache resource cap drift`.
-The service is `failed`, `NRestarts=0`, `ExecMainStatus=1`; overall
-task-weighted progress remains 55.29%. No model, qualification, reference,
-calibration, test or terminal artifact exists, and no test byte was opened.
-
-Do **not** restart this admission. Source `8d9390e` resumes a complete partial
-and recomputes resource usage only in the new process; that could turn the
-preserved over-cap attempt into a passing receipt. The exact root, ops logs,
-component caches and tombstone are evidence and must remain untouched.
-
-The repair is now draft PR #131, stacked on reviewed PR #128, at exact head
-`222ba5bf6d31b369dde19aa60f0fab52dace8dec`. It leaves the 24-GiB cap
-unchanged, derives an eight-worker aggregate cache budget as two concurrent
-builds of four workers, durably publishes any measured cap refusal before
-raising, and permanently refuses same-admission resume. Complete V2 suites at
-this head pass 451/457 pure and 453/457 strict compiled (six/four intentional
-skips respectively), including direct clean-Git and typed-overlay preflight
-witnesses plus the resource-refusal tamper/resume witnesses. Draft PR #131
-grants no execution, test, gameplay, merge, strength or deployment authority.
-
-The score-free capacity proof is live on `shengji-perf` as transient unit
-`belief-r5-cache-capacity-222ba5b-v4.service`, `Restart=no`, with a hard
-25,769,803,776-byte cgroup limit. Before launch, the exact source-clean probe
-reproduced the intended topology `8 = 2 x 4`. The live proof first reopens the
-full 311-MB input index and all five preserved cache components, then rebuilds
-only train/calibration caches into
-`/opt/belief-r5-cache-capacity-222ba5b-v4`, compares all five component
-manifests against the preserved failed components and records percent progress.
-It cannot retry the failed admission or open test targets. Three earlier
-preflight units produced no scratch cache or receipt and were not scientific
-attempts: two refused before evidence access on CLI-only bugs, while the third
-strictly reopened the old index/direct caches but used the generic
-`manifest.json` name for the typed control overlay's valid
-`labels-manifest.json`. That one-line harness bug is repaired at this head with
-a direct can-fail witness; it did not expose an incomplete old component.
-The successor will use one consolidated source/freeze review after this proof
-and all fresh host receipts are complete.
-The completed non-test cache components may be authenticated for diagnostics
-or an explicitly reviewed import design, but they are not a passed cache
-stage and grant no training authority.
-
-It will not transplant any artifact whose manifest is bound to the spent R5
-admission. The entire failed root, logs, tombstone and predecessor-refusal
-receipt SHA
-`58712f72714de6645f94a7ca78cf1dac461c1e74bec83f147a565b615ee5ec6b`
-remain preserved. R5 shares R4's preregistered population and is not an
-independent scientific replication.
-
-## Review queue — R5 recovery source/freeze, then terminal reviews
-
-Claude PASS commit `4b68717394297d90838368d40e38fdc02cedf06c` authorized only
-the now-failed R5 admission. It does not authorize retry or a successor. Do
-**not** review PR #131 yet: Codex is appending the exact score-free capacity
-receipt and fresh host-specific freeze so Claude can perform one consolidated
-source-and-freeze review at one immutable head. Until that one precise ask is
-posted here: do not restart R5, do not alter R4, and do not open outcomes.
-
-The next review is one terminal/reproducibility review for each sealed result.
-It must independently replay raw score populations and statistics, distinguish
-truncation from convergence, preserve human n=51 as descriptive only, and
-remember that R4/R5 share one preregistered population rather than two
-independent replications.
+After each scientific run seals, one terminal/reproducibility review must
+independently replay raw score populations and statistics, distinguish
+truncation from convergence, preserve human n=51 as descriptive only and
+remember R4/R5 are not independent replications.
 
 ## Monitoring contract
 
-- Read operational state from each run's exact ops `status.json` and systemd
-  unit only.
-- Report `task_weighted_percent_basis_points`, current stage, completed/total
-  tasks, active worker count, elapsed time and deadline headroom.
-- Progress rows are outcome-blind and are not scientific evidence.
-- If the service fails, preserve all artifacts and logs; do not retry.
-- If it completes, do not interpret or promote the result before the terminal
+- Read each scientific run from its exact ops `status.json` and systemd unit.
+- Report task-weighted percent, stage, completed/total tasks, active workers,
+  elapsed time and deadline headroom. Progress is outcome-blind, not evidence.
+- On failure, preserve artifacts/logs and do not retry.
+- On completion, do not interpret or promote before the reviewed terminal
   reopener and independent review pass.
 
 ## Next operator sequence
 
-1. Codex monitors R4 without changing it and preserves the failed R5 root.
-2. Codex closes the cache memory/topology and same-admission-resume defects,
-   validates them score-free on Performance Cloud, and prepares one fresh R5
-   freeze/review packet. No scientific relaunch precedes that PASS.
-3. On each sealed terminal completion, Codex uses only the reviewed reopener;
-   Claude performs one terminal/reproducibility review.
-4. Only then inspect full curves and decide whether belief advances to a
-   sampler/gameplay-search design or closes/revises. PR merge decisions remain
-   separate from scientific execution.
+1. Monitor R4 without changing it; preserve the spent R5 root.
+2. Finish and independently reopen the v5 score-free capacity proof.
+3. Generate fresh capacity/deadline/seed receipts; seal R3 freeze and one exact
+   consolidated source+freeze review request.
+4. Launch one bounded R5 only after that PASS. No same-admission retry.
+5. Independently reopen each terminal, then decide whether belief advances to
+   gameplay-search design or closes/revises. Merge remains a separate choice.

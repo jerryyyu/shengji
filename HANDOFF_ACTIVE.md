@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-24 00:40 EDT.
+Last reconciled: 2026-08-24 01:09 EDT.
 
 ## Immediate objective
 
@@ -60,8 +60,8 @@ partial component caches and tombstone remain immutable evidence.
 
 Draft PR #131 is the sole successor source lane, stacked on reviewed tip
 `9a057dfa07d84dda1672d4895bb0db553182a6ad`. Exact current head
-`69502263c7a2a648ba29d3cc55c883d4131fef23` is clean and mergeable; CI is
-running on the new head.
+`69502263c7a2a648ba29d3cc55c883d4131fef23` is clean and mergeable; both CI
+checks pass on the new head.
 It keeps the 24-GiB cap, derives topology `8 aggregate = 2 concurrent x 4
 workers`, durably records cap refusal and forbids same-admission resume. The
 primary worker now emits the deterministic hard-geometry control labels from
@@ -106,14 +106,37 @@ A fresh v7 score-free proof is live:
 | authority | score-free train/calibration rebuild only; no retry, model, test, outcome, gameplay, merge, strength or deployment authority |
 
 The root-owned checkout and imported native extension are exact and clean. The
-unit started at 00:36 EDT and is in the expected one-core integrity reopen of
-the preserved failed pre-test components. `NRestarts=0`, `OOMKills=0`, exact
-source/failed freeze/admission/index/topology arguments are visible in the
-systemd invocation, and the receipt is absent while live.
+unit started at 00:36 EDT, completed the expected integrity reopen and entered
+the real eight-worker build. At 01:07 it had sealed 1,552/9,128 direct batches
+(17.0%) under the hard cgroup ceiling with `NRestarts=0`, `OOMKills=0`; the
+receipt remains absent while live. Exact source/failed
+freeze/admission/index/topology arguments are visible in the systemd
+invocation.
 PASS still requires all five byte-identical component reopens, a sealed
 receipt, successful hard-capped unit and explicit false test/outcome/authority
 fields. If it passes, Codex will generate fresh 416-round/all-13-rank capacity
 and deadline receipts, then seal one fresh freeze at exact source `6950226`.
+
+Before any fresh receipt, Codex found that the preserved virtual environment's
+editable pointer still named the spent old checkout for scripts without an
+explicit source bootstrap. v7 is unaffected because its script inserts the
+new source root before project imports. The successor launch view
+`/opt/belief-r5-6950226-venv` now hard-links every dependency byte to the
+preserved environment and changes only a root-owned mode-0444 editable pointer
+(SHA-256 `b46247d2…df1c`) to `/opt/belief-r5-6950226/server`. New-source seed
+scan/registry reproduction is byte-identical, and preflight, deadline,
+supervisor and native imports all resolve to the exact new checkout. The
+freeze/launch scripts recheck this binding and will publish a closed identity
+receipt; no scientific namespace exists.
+
+A detached fail-closed score-free preparation queue is active as
+`belief-r5-freeze-prep-6950226-r5.service`, exact script SHA-256
+`835315f4…75c2`, `Restart=no`, 256-MiB/no-swap/10-hour limits. It can only wait
+for v7 success, finalize and reopen that receipt, run/finalize the fresh
+capacity and deadline preflights, derive caps, and freeze. Any failed guard
+terminates the queue. It cannot initialize R5, authenticate a review, open a
+test byte or start scientific execution; the final status must be
+`freeze-complete-review-required`.
 
 ## Separate proposal state — no compute authority
 

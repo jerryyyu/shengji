@@ -3347,3 +3347,19 @@ if (isinstance(worlds, (str, bytes))
 **Related standing caveat, since both will land together:** R4 and R5 share one preregistered population — identical H0 split `f29dea82…` — so they are not independent replications and their calibration results must never be pooled or presented as mutual confirmation. That is already queue policy in `HANDOFF_ACTIVE.md`; repeated here because the terminal reviews are where it would actually get violated.
 
 **I am not publishing Codex's entry under its identity**, and I take no position on why it stayed local. — Claude (job `68f9c8bd`)
+
+## 2026-08-24 09:25 EDT — The R5 cache-capacity preflight has produced no receipt in five attempts across five source heads; it now costs more than the failures it was added to prevent
+
+No verdict and no authority change. At `966dbc4` I recorded that a capacity preflight must ship with the parallelism that needs it, because R5-r1 and R5-r2 each burned a run to learn a cap. That preflight now exists — and has itself become the bottleneck. Recording it because a sixth attempt is already staged.
+
+**Measured, read-only on `shengji-perf`.** Five capacity-proof namespaces exist, one per source head: `222ba5b-v4`, `5e3bb6b-v5`, `00eb6ab-v6`, `6950226-v7`, `8221eec-v8`. **None produced a freeze.** The only freeze receipts on the box remain `belief-r5-freeze-dd8fe31-r1.json` and `belief-r5-freeze-8d9390e-r2.json`, both from the spent-and-failed admissions.
+
+**v8's own terminal evidence states the outcome plainly** (`/opt/belief-r5-v8-terminal-evidence-8221eec-v8/packet.json`, schema `belief-r5-v8-terminal-evidence-v1`): `result: timeout`, `exec_main_status: 15` (SIGTERM), `runtime_max_usec: 4h`, `receipt_absent: true`, `n_restarts: 0`, `managed_oom_kills: 0`, with **3,195 partial files / 3,469,353,708 bytes** written and no receipt. The unit journal confirms `Failed with result 'timeout'` after `Consumed 5h 1min 54s` CPU. `prospective_source_head` already names a sixth head, `b016780d3d84b9a33233ea63b9b09b009f75469d`.
+
+**One measured detail worth naming, with its interpretation marked as inference.** `memory_peak_bytes` equals `memory_max_bytes` exactly — both 25,769,803,736 bytes (24 GiB), the cgroup ceiling — while `managed_oom_kills` is 0. **Measured:** the proof reached its memory ceiling without being OOM-killed. **Inferred, not established:** that sustained operation at the ceiling caused reclaim pressure which slowed the build enough to hit the 4h wall. A high-water mark landing exactly on the limit is consistent with that reading, but it is equally consistent with the accounting simply clamping. Do not treat the mechanism as diagnosed; it needs one instrumented run that records reclaim/stall counters, not another retry at a new head.
+
+**Why this is worth stopping to look at.** The preflight's purpose was to make the cache cap cheap to learn — minutes instead of a multi-hour run. It is now consuming 4–5 hours per attempt, has consumed five attempts, and has produced zero receipts, which is a worse cost profile than the two runs it was meant to replace. Iterating the source head between attempts also means no two attempts are measuring the same code, so the five results are not a series that converges on anything.
+
+**The concrete ask, and it is not "try v9 at b016780".** Bound the measurement instead of the build: derive the cache cap from a fixed bounded sample of batches extrapolated to the full population, with the sample size chosen so the proof completes well inside its wall budget, rather than constructing the entire cache to observe its peak. If the full build genuinely must run, then size its wall and memory budgets from v8's measured 5h CPU and 24 GiB ceiling before starting, and hold the source head fixed across attempts so consecutive results are comparable.
+
+Nothing here blocks R4, which is unaffected and healthy at 95.39% with one of four cohorts sealed. — Claude

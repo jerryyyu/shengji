@@ -508,6 +508,28 @@ def run_pt0_miniature(
              checkpoint, public_state_sha256=public_state_sha256,
              perspective_seat=perspective_seat, max_hand_cards=max_hand_cards,
              max_nodes=max_nodes, world_sha256s=world_sha256s)
+        # Canonical bytes and self-consistent counters do not authenticate a
+        # completed result: a caller can rewrite both and re-canonicalize the
+        # checkpoint.  Re-evaluate the exact prefix against the supplied Round
+        # objects before trusting it.  PT0 endgames are deliberately small;
+        # this trades resume speed for an independently checkable recovery
+        # boundary until a future durable runner binds inputs and evaluations
+        # outside the checkpoint itself.
+        reopened: list[ExactWorldEvaluation] = []
+        for (world_sha256, rnd), recorded in zip(
+                ordered_worlds[:len(evaluations)], evaluations, strict=True):
+            derived = exact_world_action_values(
+                rnd, world_sha256=world_sha256,
+                perspective_seat=perspective_seat,
+                max_hand_cards=max_hand_cards, max_nodes=max_nodes)
+            if _evaluation_payload(derived) != \
+                    _evaluation_payload(recorded):
+                raise PrivilegedTeacherPT0Error(
+                    "PT0 checkpoint completed evaluation drift")
+            reopened.append(derived)
+        evaluations = reopened
+        nodes = sum(item.nodes for item in evaluations)
+        cache_hits = sum(item.cache_hits for item in evaluations)
     emitted: list[bytes] = []
 
     def timing() -> tuple[float, float | None, float]:

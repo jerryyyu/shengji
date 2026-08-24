@@ -3331,3 +3331,19 @@ if (isinstance(worlds, (str, bytes))
 **Coverage limits.** Deep: identity and scope, the full contract metadata, the authority map and its re-validation, the aggregation guard set with three mutations and a differential probe, and the test inventory against each named item. **Not deep:** the exact-endgame evaluator's minimax internals beyond its refusal paths, the checkpoint byte format beyond the resume test, and the rotation implementation beyond its passing witnesses.
 
 **Nothing is authorized by this entry.** PT0 remains unrunnable by construction, and this HOLD blocks only the source-foundation approval. — Claude (job `68f9c8bd`)
+
+## 2026-08-24 09:24 EDT — For whoever reviews R4's terminal: **R4's reopener lacks the independent source rescore that R5 has**, and this warning exists nowhere else on canonical main
+
+**Filed now because it stops being useful after R4 seals.** R4 is ~11.7 h from finishing training (three cohorts at 69.10/70.30/69.32% of their schedules, 26.23 h elapsed), then calibration, test opening and terminal follow. No verdict, no marker, no authority change.
+
+**Measured, not recalled.** At R4's executing head `d2d466f161eb8e55daf26677bfed361ad4110d7c`, `server/shengji/rl/belief_v2_terminal_controller.py` contains **zero** occurrences of `recorded_synthetic` and **zero** of the `"…differs from source replay"` refusal. At `dd8fe314` (the R5 line) both are present — `recorded_synthetic` at :630, `_score_test_populations` at reopen :636, the refusal at :651. R4 has `_score_test_populations` only at publish time (:494).
+
+**Consequence for the terminal review.** R4's `reopen_v2_terminal` reads the persisted `synthetic_test` and `human_test` populations and validates them against the manifest; it does **not** independently regenerate them from bound sources and reopened checkpoints, and therefore **cannot refuse a self-consistent substituted score population** — one where the persisted bytes and the manifest's `byte_count`/`sha256` were changed together. R5's reopener can, and that refusal is mutation-proven (ledger `b0693e13`: disabling the comparison yields `DID NOT RAISE`).
+
+**Why this needs saying on main.** The objection originates in Codex's 2026-08-22 08:47 EDT entry, which has now sat for two days as an uncommitted edit in the Codex-owned working tree and **has never reached canonical main** — I re-checked this cycle: zero occurrences. My own notes on it have only ever gone to Jerry in chat and into a scheduled prompt. So a reviewer reading canonical main today finds nothing indicating that R4's terminal reconstruction carries a weaker guarantee than R5's, and would reasonably assess the two as equivalent. They are not.
+
+**What I suggest the terminal reviewer do, without prejudging it:** treat R4's manifest-hash reconstruction as necessary but not sufficient, and re-verify R4's sealed test populations using the R5-line reopener (or an equivalent independent rescore from bound sources and checkpoints) before treating the terminal artifact as independently reconstructed. If that is impractical, say plainly in the verdict that R4's terminal was reconstructed under the weaker guarantee, rather than leaving it unstated.
+
+**Related standing caveat, since both will land together:** R4 and R5 share one preregistered population — identical H0 split `f29dea82…` — so they are not independent replications and their calibration results must never be pooled or presented as mutual confirmation. That is already queue policy in `HANDOFF_ACTIVE.md`; repeated here because the terminal reviews are where it would actually get violated.
+
+**I am not publishing Codex's entry under its identity**, and I take no position on why it stayed local. — Claude (job `68f9c8bd`)

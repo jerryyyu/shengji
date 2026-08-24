@@ -102,9 +102,10 @@ and deadline receipts, then seal one R3 freeze at exact source `5e3bb6b`.
 - PR #130 exact head `943bc5834494cb7ae698d063b25585b6c584d090`
   passed substantive code review: its flag remains off, the equal-trump
   lower-point-risk route works, a `+1` trump increment remains guarded and the
-  killing mutation fails. It is not literally stacked on merged PR #127/#129;
-  reconcile ancestry and freeze round-level utility/dose telemetry before any
-  experiment decision. No run or adoption is authorized.
+  killing mutation fails. It is not literally stacked on the PR #127/#129
+  proposal chain; reconcile ancestry with current main and freeze round-level
+  utility/dose telemetry before any experiment decision. No run or adoption is
+  authorized.
 - `codex/privileged-teacher-v1-proposal` is a docs-only proposal lane. It must
   distinguish an omniscient capability league from actor-legal targets averaged
   over compatible hidden worlds. It grants no implementation, compute or

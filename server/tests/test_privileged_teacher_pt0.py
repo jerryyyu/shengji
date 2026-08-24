@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from fractions import Fraction
 import json
 import random
@@ -237,6 +238,53 @@ def test_miniature_binds_public_state_and_allows_only_hidden_twin_drift():
             public_state,
             [(_sha("4"), first), (_sha("5"), public_drift)],
             perspective_seat=1, monotonic=lambda: 0.0)
+
+
+def test_actor_visible_hash_excludes_each_hidden_component_and_pins_positives():
+    base = _two_card_round()
+    expected = _public_sha(base)
+
+    # Other-hand ownership is hidden. Swap physical cards between opponents so
+    # the full card population remains unchanged while the actor sees the same
+    # hand, counts, history and burial.
+    other_hands = copy.deepcopy(base)
+    other_hands.hands[0][0], other_hands.hands[2][0] = (
+        other_hands.hands[2][0], other_hands.hands[0][0])
+    assert _public_sha(other_hands) == expected
+
+    # A non-banker does not see the buried identities. Swap one buried card
+    # with one opponent card so this is a complete hidden-world twin, not a
+    # malformed card-population shortcut. This is the canary for accidentally
+    # including true burial bytes in every seat's information-set hash.
+    hidden_burial = copy.deepcopy(base)
+    hidden_burial.buried[0], hidden_burial.hands[2][0] = (
+        hidden_burial.hands[2][0], hidden_burial.buried[0])
+    assert _public_sha(hidden_burial) == expected
+
+    # The historical shuffled deck is server-private after the deal and must
+    # not split otherwise identical play decisions.
+    deck_order = copy.deepcopy(base)
+    deck_order.deck = list(reversed(deck_order.deck))
+    assert _public_sha(deck_order) == expected
+
+    own_hand = copy.deepcopy(base)
+    own_hand.hands[1][0], own_hand.hands[2][0] = (
+        own_hand.hands[2][0], own_hand.hands[1][0])
+    assert _public_sha(own_hand) != expected
+
+    public_points = copy.deepcopy(base)
+    public_points.attacker_points = 0
+    assert _public_sha(public_points) != expected
+
+    # The same burial is private-to-actor for the banker, who selected it.
+    banker_base = copy.deepcopy(base)
+    banker_base.turn = 0
+    banker_base.trick = Trick(leader=0)
+    banker_twin = copy.deepcopy(banker_base)
+    banker_twin.buried[0], banker_twin.hands[2][0] = (
+        banker_twin.hands[2][0], banker_twin.buried[0])
+    assert _public_sha(banker_twin, seat=0) != _public_sha(
+        banker_base, seat=0)
 
 
 def test_exact_world_evaluator_refuses_non_actor_perspective():

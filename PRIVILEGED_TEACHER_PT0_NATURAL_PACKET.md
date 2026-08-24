@@ -111,18 +111,24 @@ information contract.
 Capture proceeds one rank/banker cell at a time, checking the deadline before
 every new engine round. Each scored state seals independently with its exact
 inputs, proposal and evaluation world hashes, target, baseline choices, work
-and source identity. Resume replays the committed secret and independently
-recomputes completed state records before trusting them. A deadline seals a
-valid `truncated_by_deadline=true` scored prefix and cannot masquerade as a
-complete grid. At most the currently executing engine round or exact-world
-evaluation is repeated after interruption; no completed state is discarded.
+and source identity. Before importing any Shengji module, the runner requires
+isolated `-P -B` Python, refuses `PYTHONPATH` and import shadows, and verifies
+the exact clean Git head; the imported core must then resolve to that checkout.
+Resume replays the committed secret and independently recomputes the entire
+completed state prefix before trusting its bytes. That replay can repeat more
+than the interrupted state and must be included in any future resume resource
+budget. A deadline seals a valid `truncated_by_deadline=true` scored prefix and
+cannot masquerade as a complete grid; expiry is honored only after the durable
+prefix has been re-established, so no completed state is discarded.
 
 The immutable packet review must bind the final source head, design bytes,
 seed derivations, population size, strict sampler mode, world counts, exact
 node bound, baseline identities/seeds, runtime/native hashes, wall/memory
 caps, progress contract, output manifest and all-false authority map. Source,
 population and freeze are reviewed together once. A PASS authorizes one
-score-free Mini execution only.
+score-free Mini execution only. The first freeze must use `Restart=no` and say
+explicitly whether any manual resume is authorized; runner support alone is no
+resume authority.
 
 A positive held-out endgame delta establishes realistic local policy
 headroom, not that a privileged teacher wins whole games. The subsequent PT1

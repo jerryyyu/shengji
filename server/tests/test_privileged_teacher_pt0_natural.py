@@ -141,6 +141,27 @@ def test_deadline_seals_only_complete_record_prefix(monkeypatch):
             deadline=float("nan"))
 
 
+def test_resume_recomputes_durable_prefix_before_honoring_expired_deadline(
+        monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    captured = capture_natural_states(
+        _design(), capture_secret=CAPTURE_SECRET)
+    emitted = []
+    packet = run_natural_packet(
+        _design(), capture_secret=CAPTURE_SECRET,
+        deadline=0.5, monotonic=lambda: 1.0,
+        deadline_exempt_prefix=1,
+        state_capture=lambda _: captured,
+        record_sink=lambda index, raw: emitted.append((index, raw)))
+    assert packet["status"] == "TRUNCATED"
+    assert packet["record_count"] == 1
+    assert [index for index, _ in emitted] == [0]
+    with pytest.raises(NaturalPT0Error, match="deadline-exempt prefix"):
+        run_natural_packet(
+            _design(), capture_secret=CAPTURE_SECRET,
+            deadline_exempt_prefix=5)
+
+
 def test_deadline_can_truncate_inside_capture_before_another_round(monkeypatch):
     calls = []
 

@@ -184,3 +184,45 @@ def test_profile_run_reopens_and_summary_tamper_refuses(
     with pytest.raises(PROFILE.BeliefV2CacheParentProfileError,
                        match="aggregate timing"):
         PROFILE.verify(verify_args)
+
+
+@pytest.mark.parametrize(("reopener_name", "message"), (
+    ("reopen_tensor_cache", "cache reopen drift"),
+    ("reopen_label_overlay", "control overlay reopen drift"),
+))
+def test_profile_run_refuses_mismatched_reopened_cache_receipt(
+        tmp_path, monkeypatch, reopener_name, message):
+    (index, realization, _batches, freeze, admission,
+     binding) = _fixture(tmp_path, monkeypatch)
+    root = (tmp_path / "profile-evidence").resolve()
+    root.mkdir()
+    inputs = SimpleNamespace(index=index)
+    context = (
+        freeze, admission, {"index_sha256": "a" * 64}, inputs,
+        realization, realization, realization, (0,), binding)
+    monkeypatch.setattr(PROFILE, "_clean_git_head", lambda _expected: None)
+    monkeypatch.setattr(
+        PROFILE, "_context_and_sample",
+        lambda _root, _count: context)
+    monkeypatch.setattr(
+        PROFILE, "parallel_cache_worker_count", lambda *_args: 2)
+
+    original = getattr(PROFILE, reopener_name)
+
+    def mismatched_reopen(*args, **kwargs):
+        receipt = dict(original(*args, **kwargs))
+        receipt["manifest_sha256"] = "0" * 64
+        return receipt
+
+    monkeypatch.setattr(PROFILE, reopener_name, mismatched_reopen)
+    args = SimpleNamespace(
+        root=str(root), scratch=str(tmp_path / "profile-scratch"),
+        out=str(tmp_path / "profile-receipt.json"),
+        expected_source_git="f" * 40,
+        expected_failed_freeze_sha256=freeze.sha256(),
+        expected_failed_admission_sha256=admission.sha256(),
+        expected_index_sha256="a" * 64,
+        expected_worker_count=2, sample_batch_count=1)
+    with pytest.raises(
+            PROFILE.BeliefV2CacheParentProfileError, match=message):
+        PROFILE.run(args)

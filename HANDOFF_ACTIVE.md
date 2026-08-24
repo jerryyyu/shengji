@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-24 08:58 EDT.
+Last reconciled: 2026-08-24 09:54 EDT.
 
 ## Immediate objective
 
@@ -155,15 +155,21 @@ caller branch is pinned; server/frontend CI are green; `git diff --check`
 passes. Exact file hashes are `47f7b2fa…2836` for
 `belief_v2_parallel_cache.py` and `74f7e965…c57f` for its test.
 
-The prospective v9 checkout is root-owned, detached, clean and bytecode-free
+The v9 checkout is root-owned, detached, clean and bytecode-free
 at `/opt/belief-r5-b016780`. Safe-flag imports resolve the package and changed
 parallel-cache module inside that exact checkout; the preflight entry point is
 `/opt/belief-r5-b016780/server/scripts/belief_v2_cache_capacity_preflight.py`
 with unchanged SHA-256 `bf355ce4…d7f8`, and the single imported native
-extension remains root-owned mode 0755 SHA-256 `ca75df4c…4ff`. Nothing has
-launched from this checkout. The review queue below asks once for both this
-exact source and one fresh score-free proof; there is no separate rehearsal or
-automatic prep queue.
+extension remains root-owned mode 0755 SHA-256 `ca75df4c…4ff`. Claude's
+authenticated ledger commit `780413e0ff2e33cc813bba55b9999b38ff15a7f4`
+passed the exact source and v8 lineage and authorized one final full-build
+proof. Unit `belief-r5-cache-capacity-b016780-v9.service`, invocation
+`f9f5785f90ed48ab881097589a55bf00`, launched at 09:50:57 EDT with
+`Restart=no`, `RuntimeMaxSec=4h`, `MemoryMax=25769803776`, zero swap,
+`OOMPolicy=stop`, one build x eight workers, fresh scratch and no receipt yet.
+Metadata-only keeper `belief-r5-v9-systemd-evidence-keeper-b016780-r7.service`
+retains its terminal systemd properties without signaling it or reading cache
+bytes. There is no rehearsal or automatic prep queue.
 
 Superseded v5--v7 diagnostics and the failed detached prep queue are preserved
 on Perf Cloud and recorded in `HANDOFF_REVIEW.md`. Collectively they established
@@ -200,58 +206,17 @@ authority. Do not reuse their partial scratch or prep queue.
   review. It has no training, gameplay, fleet, scientific run, merge, strength
   or deployment authority and does not compete with R4/R5.
 
-## Review queue — one consolidated PR #138 source + v9 proof ask
+## Review queue — none while v9 and R4 are live
 
-Top priority. Independently review draft PR #138 exact head
-`b016780d3d84b9a33233ea63b9b09b009f75469d`, parent
-`8221eec405b3bfa58fc30918838e1780eea4e2b9`. This is one review boundary, not
-two rounds. Verify the exact two-file delta, the 13 focused tests, complete
-456+6 pure / 458+4 strict-compiled evidence, green CI, clean diff and the
-killing GC-state wiring witness. Confirm that automatic cyclic GC is suspended
-only in the parent ProcessPool reduction, the prior caller state is restored
-on success, worker failure and already-disabled entry, spawned children remain
-unchanged, and output bytes/topology/order/deadlines/caps/authorities do not
-change.
-
-Bind the complete predecessor evidence by independently reopening the closed
-root `/opt/belief-r5-v8-terminal-evidence-8221eec-v8`, its exact manifest,
-packet, inventory and checkout hashes stated above, and checking its live
-scratch inventory and retained systemd bytes. The reviewed v8 unit is
-`belief-r5-cache-capacity-8221eec-v8.service`, invocation
-`15dae1729a65413b81ce174f796eda28`, exact 03:51:30--07:51:30 EDT four-hour
-wall, `Result=timeout`, `ExecMainStatus=15`, `NRestarts=0`, exact
-25,769,803,776-byte `MemoryPeak`/`MemoryMax`, zero swap, `OOMKills=0`,
-`ManagedOOMKills=0`, absent receipt and only the two unsealed partial
-populations described above. Confirm no sealed cache, later reader, model,
-checkpoint, test, result, terminal or scientific namespace was created. Treat
-the 131 >90-second stalls / 98.97% stall-span measurement as diagnostic
-evidence, not proof that GC is causal or that the repair fits memory.
-
-If and only if source and lineage pass, authorize exactly one fresh score-free
-capacity proof on Perf Cloud:
-
-- unit `belief-r5-cache-capacity-b016780-v9.service`, `Restart=no`,
-  `RuntimeMaxSec=4h`, `MemoryMax=25769803776`, `MemorySwapMax=0`,
-  `OOMPolicy=stop`, topology 1 build x 8 workers;
-- root-owned clean detached checkout `/opt/belief-r5-b016780`, exact safe-flag
-  paths/hashes stated above;
-- preserved read-only root `/opt/belief-r5-evidence-8d9390e-r2` with failed
-  freeze `dc7e3a96…30a95`, admission `4e95d87b…bf756` and input index
-  `189334f9…57c83`;
-- fresh scratch `/opt/belief-r5-cache-capacity-b016780-v9` and sole prospective
-  receipt `/opt/belief-r5-cache-capacity-b016780-v9.json`; do not copy or resume
-  v8 partial files;
-- no automatic freeze/prep queue and no retry. The proof may read only bound
-  train/calibration inputs and may publish only its score-free cache receipt.
-
-Append exactly this marker only on PASS; otherwise append concise blockers:
-
-`BELIEF_R5_GC_SCOPE_SOURCE_V1_REVIEW {"deployment_authorized":false,"failed_admission_sha256":"4e95d87b2c2ffdec99ac1c0fdb5111e176c2389d5f83384fb2af21f2d25bf756","failed_freeze_sha256":"dc7e3a96ad4624144a2d35fa4c6fcb0e4ff5e539efa45a7b87023ca0a7030a95","failed_input_index_sha256":"189334f9ecf14d71abfeae91d1fcda73f2f4e39658e9a93d6600ab2511757c83","freeze_authorized":false,"gameplay_authorized":false,"git":"b016780d3d84b9a33233ea63b9b09b009f75469d","independent_review":true,"merge_authorized":false,"one_score_free_capacity_proof_authorized":true,"outcome_open_authorized":false,"parent":"8221eec405b3bfa58fc30918838e1780eea4e2b9","proof_build_concurrency":1,"proof_checkout":"/opt/belief-r5-b016780","proof_memory_max_bytes":25769803776,"proof_receipt":"/opt/belief-r5-cache-capacity-b016780-v9.json","proof_restart_authorized":false,"proof_runtime_max_seconds":14400,"proof_scratch":"/opt/belief-r5-cache-capacity-b016780-v9","proof_scratch_must_be_fresh":true,"proof_swap_max_bytes":0,"proof_unit":"belief-r5-cache-capacity-b016780-v9.service","proof_workers_per_build":8,"retry_authorized":false,"schema":"belief-r5-gc-scope-source-review-v1","scientific_execution_authorized":false,"strength_claim_authorized":false,"test_open_authorized":false,"training_authorized":false,"v8_receipt_is_capacity_pass":false,"v8_scratch_reuse_authorized":false,"verdict":"PASS"}`
-
-This marker cannot authorize a freeze, model, test opening, scientific run,
-gameplay, strength claim, merge or deployment. A passing v9 receipt must be
-independently reopened before fresh all-rank capacity/deadline/seed receipts
-and one later consolidated immutable-freeze/launch review.
+PR #138 source and the v8 lineage are reviewed at authenticated ledger commit
+`780413e0`. Do not re-review them and do not inspect or interpret partial v9
+contents. When v9 terminalizes, independently reopen its score-free receipt or
+closed failure packet. A passing receipt permits fresh all-rank
+capacity/deadline/seed receipt generation only; it does not authorize a freeze
+or scientific run. If v9 produces no receipt, the binding review stop rule
+forbids another full-build attempt: design a minutes-scale bounded-sample cap
+derivation instead. R4's terminal review remains separate and starts only
+after its terminal seals.
 
 After each scientific run seals, one terminal/reproducibility review must
 independently replay raw score populations and statistics, distinguish
@@ -270,10 +235,10 @@ remember R4/R5 are not independent replications.
 ## Next operator sequence
 
 1. Monitor R4 without changing it; preserve the spent R5 root.
-2. Wait for the single exact PR #138 source/v9-proof review above; do not run
-   staged source without its marker.
-3. On PASS, launch only the fresh hard-capped v9 score-free proof and preserve
-   its terminal evidence. Do not reuse v8 partial files.
+2. Monitor the active hard-capped v9 score-free proof and preserve its terminal
+   evidence. Do not reuse v8 partial files or inspect partial content.
+3. If v9 produces no receipt, stop full-build attempts and design the reviewed
+   bounded-sample alternative required by Claude's binding stop rule.
 4. If v9 passes and independently reopens, generate fresh all-rank
    capacity/deadline/seed receipts, seal one fresh freeze and request one exact
    consolidated freeze/launch review.

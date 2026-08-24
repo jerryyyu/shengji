@@ -272,7 +272,7 @@ def _build_parallel_tensor_cache(
         control_overlay_progress: Callable[[int, int, str], None]
         | None = None,
         parent_phase_observer: ParentPhaseObserver | None = None) \
-        -> tuple[dict[str, Any], dict[str, Any] | None]:
+        -> tuple[dict[str, Any], dict[str, Any] | None, int]:
     """Build one cache with bounded spawn workers and one canonical parent."""
     if not isinstance(directory, Path) or not isinstance(root, Path) \
             or type(freeze) is not V2ExecutionFreezeV1 \
@@ -294,8 +294,6 @@ def _build_parallel_tensor_cache(
             "V2 parallel cache build inputs drift")
     overlay_requested = control_overlay_directory is not None
     if overlay_requested != (control_overlay_id is not None) \
-            or overlay_requested \
-            != (expected_control_changed_cell_count is not None) \
             or overlay_requested and (
                 mode != "train"
                 or not isinstance(control_overlay_directory, Path)
@@ -304,8 +302,11 @@ def _build_parallel_tensor_cache(
                 or len(control_overlay_id) != 64
                 or any(char not in "0123456789abcdef"
                        for char in control_overlay_id)
-                or type(expected_control_changed_cell_count) is not int
-                or expected_control_changed_cell_count <= 0):
+                or expected_control_changed_cell_count is not None and (
+                    type(expected_control_changed_cell_count) is not int
+                    or expected_control_changed_cell_count <= 0)
+                or expected_control_changed_cell_count is None
+                and parent_phase_observer is None):
         raise BeliefV2ParallelCacheError(
             "V2 parallel control-overlay inputs drift")
     if mode == "train":
@@ -482,7 +483,8 @@ def _build_parallel_tensor_cache(
             or reserved_bytes.value != total_bytes \
             or overlay_requested and (
                 overlay_reserved_bytes.value != overlay_total_bytes
-                or control_changed_cell_count
+                or expected_control_changed_cell_count is not None
+                and control_changed_cell_count
                 != expected_control_changed_cell_count):
         raise BeliefV2ParallelCacheError(
             "V2 parallel cache parent accounting drift")
@@ -508,7 +510,7 @@ def _build_parallel_tensor_cache(
         _observe_parent_phase(
             parent_phase_observer, "overlay-seal", batch_count,
             wall_started, thread_cpu_started, process_cpu_started)
-    return direct_receipt, overlay_receipt
+    return direct_receipt, overlay_receipt, control_changed_cell_count
 
 
 def build_profiled_parallel_tensor_cache(
@@ -529,7 +531,7 @@ def build_profiled_parallel_tensor_cache(
     phase names, unit indices, and elapsed wall/caller-thread/parent-process
     CPU nanoseconds.
     """
-    direct, overlay = _build_parallel_tensor_cache(
+    direct, overlay, _ = _build_parallel_tensor_cache(
         directory, root=root, freeze=freeze, admission=admission,
         index=index, schedule=schedule, mode=mode, binding=binding,
         worker_count=worker_count, progress=progress,
@@ -538,6 +540,39 @@ def build_profiled_parallel_tensor_cache(
         raise BeliefV2ParallelCacheError(
             "V2 profiled parallel cache returned an unexpected overlay")
     return direct
+
+
+def build_profiled_parallel_tensor_cache_with_control_overlay(
+        directory: Path, *, control_overlay_directory: Path,
+        control_overlay_id: str,
+        root: Path, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        index: V2StreamingTrainingIndexV1,
+        schedule: V2CohortRealizationV1,
+        binding: V2TensorCacheBindingV1, worker_count: int,
+        parent_phase_observer: ParentPhaseObserver,
+        progress: Callable[[int, int, str], None] | None = None,
+        control_overlay_progress: Callable[[int, int, str], None]
+        | None = None) -> tuple[dict[str, Any], dict[str, Any], int]:
+    """Profile the exact primary+control path without a scientific dose gate.
+
+    The diagnostic still reopens both byte populations.  The actual changed
+    cell count is returned as evidence; only this observer-only entry point may
+    omit the full-population expected count required by production callers.
+    """
+    direct, overlay, changed = _build_parallel_tensor_cache(
+        directory, root=root, freeze=freeze, admission=admission,
+        index=index, schedule=schedule, mode="train", binding=binding,
+        worker_count=worker_count, progress=progress,
+        control_overlay_directory=control_overlay_directory,
+        control_overlay_id=control_overlay_id,
+        expected_control_changed_cell_count=None,
+        control_overlay_progress=control_overlay_progress,
+        parent_phase_observer=parent_phase_observer)
+    if overlay is None or changed <= 0:
+        raise BeliefV2ParallelCacheError(
+            "V2 profiled parallel cache omitted its control overlay")
+    return direct, overlay, changed
 
 
 def build_parallel_tensor_cache(
@@ -552,7 +587,7 @@ def build_parallel_tensor_cache(
         progress: Callable[[int, int, str], None] | None = None) \
         -> dict[str, Any]:
     """Build one direct cache without an alternate-label overlay."""
-    direct, overlay = _build_parallel_tensor_cache(
+    direct, overlay, _ = _build_parallel_tensor_cache(
         directory, root=root, freeze=freeze, admission=admission,
         index=index, schedule=schedule, mode=mode, binding=binding,
         worker_count=worker_count, deadline_check=deadline_check,
@@ -577,7 +612,7 @@ def build_parallel_tensor_cache_with_control_overlay(
         control_overlay_progress: Callable[[int, int, str], None]
         | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build natural actors and deterministic control labels in one pass."""
-    direct, overlay = _build_parallel_tensor_cache(
+    direct, overlay, _ = _build_parallel_tensor_cache(
         directory, root=root, freeze=freeze, admission=admission,
         index=index, schedule=schedule, mode="train", binding=binding,
         worker_count=worker_count, deadline_check=deadline_check,

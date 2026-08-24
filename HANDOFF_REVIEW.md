@@ -3298,3 +3298,36 @@ So the flags are not decorative — they are load-bearing and can fail.
 **Authorized: nothing operational.** This is source-foundation approval only. No execution, training, gameplay, fleet use, scientific run, merge, strength claim or deployment. It does not compete with or alter R4/R5, and per the standing queue I have **not** reviewed PR #131. — Claude
 
 PRIVILEGED_TEACHER_PT0_SOURCE_REVIEW {"authority_guard_mutation_proven":true,"delta_deletions":0,"delta_files":2,"delta_insertions":1127,"deployment_authorized":false,"exact_head":"ff85ab441c97f4b78ce6a7c46f374522e0f90f1e","exact_parent":"180cfabe5525f2c20f0ed08fccc15acb1c0156b7","execution_authorized":false,"fleet_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"pt0_test_file_passed":18,"schema":"privileged-teacher-pt0-source-review-v1","source_foundation_approval_only":true,"strength_claim_authorized":false,"training_authorized":false,"true_world_selects_target":false,"verdict":"PASS","world_averaging_mutation_proven":true}
+
+## 2026-08-24 02:36 EDT — PT0 source foundation review at exact `ff85ab44`: ⛔ **HOLD** — one blocker: the minimum-population guard that enforces the anti-leakage claim survives mutation
+
+**Verdict: HOLD.** One blocker; the module is otherwise well-built and every other named contract item verified. **No marker written.** A PASS here would have been source-foundation approval only, authorizing no run.
+
+**Scope verified exactly.** Exact head `ff85ab441c97f4b78ce6a7c46f374522e0f90f1e` is PR #135's head, sole parent `180cfabe` (a canonical main commit, so the merge-base equals the parent), delta **2 files, +1127/−0**, `git diff --check` clean. Focused suite at the exact head: **18 passed** (log confirmed to hold exactly one summary).
+
+**The contract is fully pinned, and all six named items are present** in `_pt0_contract_metadata()`: `world_distribution` = "P(w|h): caller-supplied compatible worlds, sorted by world SHA-256"; `continuation` = "pi_cont: existing ExactWorldSession partnership minimax"; `legal_action_enumeration` = "existing exhaustive_legal_actions"; `acting_team_perspective` = "acting seat signed against banker-team parity"; `return_definition` = "signed_level_utility at round_end"; `terminal_horizon` = "round_end". The authority map `_pt0_authority()` returns `gameplay_authorized`, `strength_claim_authorized`, `deployment_authorized` and `training_authorized` all **false**, is embedded in both the checkpoint and target payloads, and is re-validated on checkpoint load (`PT0 checkpoint authority drift`).
+
+**The blocker.** The module's headline safety claim is in its own docstring: *"The aggregation API intentionally has no `true_world` argument. A true hidden deal may be an evaluation label, but it may never select the public target action."* The signature honours that — `information_set_target(public_state_sha256, worlds)` has no world-truth channel, and `true_world` appears in the file only as that docstring, a recorded `"true_world_selects_target": False` flag, and a validation loop.
+
+The mechanical enforcement of the claim is the minimum-population check:
+
+```python
+if (isinstance(worlds, (str, bytes))
+        or not isinstance(worlds, Sequence) or len(worlds) < 2):
+    raise PrivilegedTeacherPT0Error(
+        "information-set aggregation requires at least two worlds")
+```
+
+**I relaxed `< 2` to `< 1` — permitting a single world — and all 18 tests still passed.** With a one-element population the "information-set target" collapses to the exact perfect-information best action *for that single world*; a caller passing the true world alone would get precisely the true-world-selected action the docstring forbids.
+
+**Adjudicated by differential probe, not assumed redundant.** `information_set_target` carries exactly five guards: invalid public-state SHA-256; the `< 2` population check; `WorldActionValues` type enforcement; duplicate-world rejection; and legal-action-set disagreement. **None of the other four refuses a single valid world** — the duplicate check is `1 != 1` (false), the population-consistency loop is trivially satisfied, and the type and SHA checks are orthogonal. So the `< 2` guard is the only thing standing between the API and the leak it advertises against.
+
+**What makes this worth a HOLD rather than a note.** A test named `test_information_set_target_is_order_and_true_world_invariant` already exists, which reads as though the property were witnessed. It is not: it establishes that the result does not depend on *which* of two-or-more worlds is true, while the guard that forbids a *one*-world population goes untested. An advertised invariant whose enforcement cannot fail is exactly the false confidence this program has been repairing all week, and this is the foundation every later teacher change will inherit — the review that could catch it is this one.
+
+**Repair is one test:** assert that a single-element `worlds` sequence is refused with `information-set aggregation requires at least two worlds`. Anything that fails when `< 2` is relaxed closes it.
+
+**Everything else I checked passed, including two mutations that were caught.** Neutering the `true_world_selects_target` / authority flag loop in the baseline-regret path fails a test; dropping `ordered = sorted(worlds, key=...)` fails a test — so the flag validation and the order-invariance are both genuinely witnessed. The 18 tests cover every named contract item: `test_signed_level_utility_matches_round_scoring_for_both_roles`, `test_exact_world_evaluator_refuses_non_actor_perspective`, `test_all_rank_and_seat_rotations_preserve_exact_action_values`, `test_miniature_run_resumes_exact_prefix_byte_identically`, `test_miniature_run_emits_canonical_checkpoints_and_deadline_can_fail`, `test_baseline_regret_is_exact_and_refuses_off_ballot_actions` and `test_aggregation_refuses_world_or_action_population_drift` among them. The deliberate design choices are sound: descriptive per-action probabilities that need not sum to one under ties, `Fraction` arithmetic for exact regret, and canonical JSON with a trailing newline for target hashes.
+
+**Coverage limits.** Deep: identity and scope, the full contract metadata, the authority map and its re-validation, the aggregation guard set with three mutations and a differential probe, and the test inventory against each named item. **Not deep:** the exact-endgame evaluator's minimax internals beyond its refusal paths, the checkpoint byte format beyond the resume test, and the rotation implementation beyond its passing witnesses.
+
+**Nothing is authorized by this entry.** PT0 remains unrunnable by construction, and this HOLD blocks only the source-foundation approval. — Claude (job `68f9c8bd`)

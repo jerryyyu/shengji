@@ -43,8 +43,10 @@ from .belief_v2_device_runner import host_peak_memory_bytes
 from .belief_v2_progress import ProgressCallback
 from .belief_v2_parallel_cache import (
     build_parallel_tensor_cache,
+    build_parallel_tensor_cache_with_control_overlay,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
+    primary_cache_first_build_order,
 )
 from .belief_v2_streaming_inputs import V2ArtifactRoundLoader
 from .belief_v2_streaming_training import (
@@ -66,10 +68,13 @@ TENSOR_CACHE_STAGE_SCHEMA = "belief-v1-v2-training-tensor-cache-stage-v3"
 TENSOR_CACHE_RESOURCE_SCHEMA = (
     "belief-v1-v2-training-tensor-cache-resource-v3")
 TENSOR_CACHE_START_SCHEMA = "belief-v1-v2-training-tensor-cache-start-v1"
+TENSOR_CACHE_RESOURCE_REFUSAL_SCHEMA = (
+    "belief-v1-v2-training-tensor-cache-resource-refusal-v1")
 STAGE_DIRECTORY = "training-tensor-cache"
 RESULT_DIRECTORY = "result"
 MANIFEST_FILENAME = "manifest.json"
 START_FILENAME = "stage-start.json"
+RESOURCE_REFUSAL_FILENAME = "resource-refusal.json"
 CALIBRATION_CACHE_ID = "common-calibration"
 CONTROL_OVERLAY_DIRECTORY = f"overlay-{CONTROL_COHORT_ID}"
 
@@ -167,7 +172,8 @@ def _resource_row(
             or type(cache_worker_count) is not int \
             or cache_worker_count <= 0 \
             or cache_worker_count \
-            != parallel_cache_worker_count(freeze.runtime) \
+            != parallel_cache_worker_count(
+                freeze.runtime, caps.training_host_memory_bytes) \
             or finished - started > caps.training_wall_seconds * 1_000_000_000 \
             or artifact_bytes > caps.training_bytes \
             or peak_host_memory_bytes > caps.training_host_memory_bytes:
@@ -188,6 +194,63 @@ def _resource_row(
         "retry_count": 0,
         "drop_count": 0,
         "resumed_from_exact_partial": resumed_from_partial,
+    }
+
+
+def _resource_refusal_payload(
+        freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1, *,
+        input_index_sha256: str, stage_start_sha256: str,
+        started: int, finished: int, cpu_nanoseconds: int,
+        artifact_bytes: int, peak_host_memory_bytes: int,
+        cache_worker_count: int) -> dict[str, Any] | None:
+    """Return an immutable refusal only for a measured cap exceedance."""
+    caps = freeze.resource_caps
+    if any(type(value) is not int or value <= 0 for value in (
+            started, finished, artifact_bytes, peak_host_memory_bytes,
+            cache_worker_count)) \
+            or finished <= started \
+            or type(cpu_nanoseconds) is not int or cpu_nanoseconds < 0 \
+            or cache_worker_count != parallel_cache_worker_count(
+                freeze.runtime, caps.training_host_memory_bytes):
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache resource refusal inputs drift")
+    wall_nanoseconds = finished - started
+    exceeded = []
+    if wall_nanoseconds > caps.training_wall_seconds * 1_000_000_000:
+        exceeded.append("wall_nanoseconds")
+    if artifact_bytes > caps.training_bytes:
+        exceeded.append("artifact_bytes")
+    if peak_host_memory_bytes > caps.training_host_memory_bytes:
+        exceeded.append("peak_host_memory_bytes")
+    if not exceeded:
+        return None
+    return {
+        "schema": TENSOR_CACHE_RESOURCE_REFUSAL_SCHEMA,
+        "freeze_sha256": freeze.sha256(),
+        "admission_sha256": admission.sha256(),
+        "training_input_index_sha256": input_index_sha256,
+        "stage_start_sha256": stage_start_sha256,
+        "boot_identity": freeze.runtime.boot_identity,
+        "started_monotonic_nanoseconds": started,
+        "finished_monotonic_nanoseconds": finished,
+        "wall_nanoseconds": wall_nanoseconds,
+        "cpu_nanoseconds": cpu_nanoseconds,
+        "artifact_bytes": artifact_bytes,
+        "peak_host_memory_bytes": peak_host_memory_bytes,
+        "cache_worker_count": cache_worker_count,
+        "caps": {
+            "wall_nanoseconds": (
+                caps.training_wall_seconds * 1_000_000_000),
+            "artifact_bytes": caps.training_bytes,
+            "peak_host_memory_bytes": caps.training_host_memory_bytes,
+        },
+        "exceeded_dimensions": exceeded,
+        "retry_authorized": False,
+        "stage_seal_authorized": False,
+        "test_split_open_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
     }
 
 
@@ -266,6 +329,40 @@ def _reopen_stage_start(
         raise BeliefV2TensorCacheControllerError(
             "V2 tensor cache start receipt drift")
     return payload, raw
+
+
+def reopen_tensor_cache_resource_refusal(
+        path: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        input_index_sha256: str) -> dict[str, Any]:
+    """Independently reconstruct one terminal cache resource refusal."""
+    raw = stable_read_bytes(path)
+    try:
+        payload = json.loads(raw)
+        _, start_raw = _reopen_stage_start(
+            path.parent / START_FILENAME, freeze, admission,
+            input_index_sha256=input_index_sha256)
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache resource refusal reopen failed") from exc
+    if type(payload) is not dict:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache resource refusal drift")
+    expected = _resource_refusal_payload(
+        freeze, admission,
+        input_index_sha256=input_index_sha256,
+        stage_start_sha256=_sha256(start_raw),
+        started=payload.get("started_monotonic_nanoseconds"),
+        finished=payload.get("finished_monotonic_nanoseconds"),
+        cpu_nanoseconds=payload.get("cpu_nanoseconds"),
+        artifact_bytes=payload.get("artifact_bytes"),
+        peak_host_memory_bytes=payload.get("peak_host_memory_bytes"),
+        cache_worker_count=payload.get("cache_worker_count"))
+    if expected is None or payload != expected \
+            or canonical_json_bytes(payload) != raw:
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache resource refusal drift")
+    return payload
 
 
 def _completed_cache_receipt(
@@ -404,9 +501,10 @@ def run_training_tensor_cache(
             started_monotonic_nanoseconds=started))
         publish_exclusive_bytes(partial / START_FILENAME, start_raw)
     else:
-        if (partial / "deadline-refusal.json").exists():
+        if (partial / "deadline-refusal.json").exists() \
+                or (partial / RESOURCE_REFUSAL_FILENAME).exists():
             raise BeliefV2TensorCacheControllerError(
-                "V2 tensor cache expired partial cannot resume")
+                "V2 tensor cache refused partial cannot resume")
         start, start_raw = _reopen_stage_start(
             partial / START_FILENAME, freeze, admission,
             input_index_sha256=input_index_sha256)
@@ -433,7 +531,8 @@ def run_training_tensor_cache(
 
     total_batches = (sum(len(row.batches) for row in inputs.realizations)
                      + len(inputs.common_calibration.batches))
-    cache_workers = parallel_cache_worker_count(freeze.runtime)
+    cache_workers = parallel_cache_worker_count(
+        freeze.runtime, freeze.resource_caps.training_host_memory_bytes)
     progress_lock = threading.Lock()
     progress_totals = {
         row.cohort_id: len(row.batches) for row in inputs.realizations}
@@ -466,7 +565,7 @@ def run_training_tensor_cache(
         freeze, input_index_sha256, primary_rows[0])
     calibration_binding = _calibration_binding(
         freeze, input_index_sha256, inputs.common_calibration)
-    direct_specs = tuple(
+    direct_specs = primary_cache_first_build_order(tuple(
         (row.cohort_id, partial / _cache_directory_name(row.cohort_id),
          row, "train", _realization_binding(
              freeze, input_index_sha256, row))
@@ -474,16 +573,35 @@ def run_training_tensor_cache(
         if row.cohort_id != CONTROL_COHORT_ID) + ((
             CALIBRATION_CACHE_ID,
             partial / _cache_directory_name(CALIBRATION_CACHE_ID),
-            inputs.common_calibration, "calibration", calibration_binding),)
+            inputs.common_calibration, "calibration", calibration_binding),),
+        PRIMARY_COHORT_ID)
     build_concurrency, workers_per_build = parallel_cache_build_topology(
-        freeze.runtime, len(direct_specs))
+        freeze.runtime, freeze.resource_caps.training_host_memory_bytes,
+        len(direct_specs))
 
     def build_direct(spec):
         cache_id, cache_directory, schedule, mode, binding = spec
         receipt = _completed_cache_receipt(
             cache_directory, binding=binding)
+        overlay_receipt = None
         if receipt is None:
-            if workers_per_build > 1:
+            if cache_id == PRIMARY_COHORT_ID and workers_per_build > 1:
+                receipt, overlay_receipt = (
+                    build_parallel_tensor_cache_with_control_overlay(
+                        cache_directory,
+                        control_overlay_directory=(
+                            partial / CONTROL_OVERLAY_DIRECTORY),
+                        control_overlay_id=control_rows[0].sha256(),
+                        expected_control_changed_cell_count=(
+                            inputs.index.control_changed_cell_count),
+                        root=root, freeze=freeze, admission=admission,
+                        index=inputs.index, schedule=schedule,
+                        binding=binding, worker_count=workers_per_build,
+                        deadline_check=deadline_check,
+                        progress=cache_progress(cache_id),
+                        control_overlay_progress=cache_progress(
+                            CONTROL_COHORT_ID)))
+            elif workers_per_build > 1:
                 receipt = build_parallel_tensor_cache(
                     cache_directory, root=root, freeze=freeze,
                     admission=admission, index=inputs.index,
@@ -510,13 +628,22 @@ def run_training_tensor_cache(
         else:
             cache_progress(cache_id)(
                 len(schedule.batches), len(schedule.batches), cache_id)
-        return cache_id, receipt
+        return cache_id, receipt, overlay_receipt
 
     try:
         with concurrent.futures.ThreadPoolExecutor(
                 max_workers=build_concurrency) as executor:
-            direct_receipts = dict(executor.map(
-                build_direct, direct_specs))
+            built_rows = tuple(executor.map(build_direct, direct_specs))
+        direct_receipts = {
+            cache_id: receipt for cache_id, receipt, _ in built_rows}
+        combined_overlay_rows = tuple(
+            overlay for _, _, overlay in built_rows
+            if overlay is not None)
+        if len(combined_overlay_rows) > 1:
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache combined overlay population drift")
+        combined_overlay_receipt = (
+            combined_overlay_rows[0] if combined_overlay_rows else None)
         primary_receipt = direct_receipts[PRIMARY_COHORT_ID]
         primary_directory = partial / _cache_directory_name(
             PRIMARY_COHORT_ID)
@@ -538,7 +665,13 @@ def run_training_tensor_cache(
                     actor_manifest_sha256=(
                         primary_receipt["manifest_sha256"]),
                     binding=primary_binding)
-                if receipt is None:
+                if combined_overlay_receipt is not None:
+                    if receipt is None:
+                        receipt = combined_overlay_receipt
+                    elif receipt != combined_overlay_receipt:
+                        raise BeliefV2TensorCacheControllerError(
+                            "V2 tensor cache combined overlay receipt drift")
+                elif receipt is None:
                     receipt = build_label_overlay(
                         overlay_directory,
                         batches=control_batches,
@@ -597,12 +730,26 @@ def run_training_tensor_cache(
         wall_nanoseconds * (cache_workers + 1)
         if resumed_from_partial
         else _process_tree_cpu_time_ns() - cpu_started)
+    peak_host_memory_bytes = _aggregate_peak_host_memory_bytes(
+        cache_workers)
+    refusal = _resource_refusal_payload(
+        freeze, admission, input_index_sha256=input_index_sha256,
+        stage_start_sha256=_sha256(start_raw), started=started,
+        finished=finished, cpu_nanoseconds=cpu_nanoseconds,
+        artifact_bytes=artifact_bytes,
+        peak_host_memory_bytes=peak_host_memory_bytes,
+        cache_worker_count=cache_workers)
+    if refusal is not None:
+        publish_exclusive_bytes(
+            partial / RESOURCE_REFUSAL_FILENAME,
+            canonical_json_bytes(refusal))
+        raise BeliefV2TensorCacheControllerError(
+            "V2 tensor cache resource cap exceeded and recorded")
     resources = _resource_row(
         freeze, started=started, finished=finished,
         cpu_nanoseconds=cpu_nanoseconds,
         artifact_bytes=artifact_bytes,
-        peak_host_memory_bytes=_aggregate_peak_host_memory_bytes(
-            cache_workers),
+        peak_host_memory_bytes=peak_host_memory_bytes,
         resumed_from_partial=resumed_from_partial,
         cache_worker_count=cache_workers)
     manifest = _manifest(
@@ -778,7 +925,8 @@ def reopen_training_tensor_cache(
             or resources["peak_host_memory_bytes"] \
             > caps.training_host_memory_bytes \
             or resources["cache_worker_count"] \
-            != parallel_cache_worker_count(freeze.runtime) \
+            != parallel_cache_worker_count(
+                freeze.runtime, caps.training_host_memory_bytes) \
             or resources["retry_count"] != 0 \
             or resources["drop_count"] != 0 \
             or type(resources["resumed_from_exact_partial"]) is not bool:
@@ -790,7 +938,8 @@ def reopen_training_tensor_cache(
         control_dose=inputs.index.control_changed_cell_count,
         stage_start_sha256=_sha256(start_raw),
         resources=resources,
-        cache_worker_count=parallel_cache_worker_count(freeze.runtime))
+        cache_worker_count=parallel_cache_worker_count(
+            freeze.runtime, caps.training_host_memory_bytes))
     expected_files = {
         MANIFEST_FILENAME, START_FILENAME, CONTROL_OVERLAY_DIRECTORY,
         _cache_directory_name(CALIBRATION_CACHE_ID),

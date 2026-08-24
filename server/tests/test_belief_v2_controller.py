@@ -96,6 +96,7 @@ from shengji.rl.belief_v2_input_index_controller import (
     run_training_input_index,
 )
 from shengji.rl.belief_v2_tensor_cache_controller import (
+    reopen_tensor_cache_resource_refusal,
     reopen_training_tensor_cache,
     run_training_tensor_cache,
 )
@@ -1381,10 +1382,21 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         CACHE_STAGE, "V2ArtifactRoundLoader",
         lambda *args, **kwargs: object())
     monkeypatch.setattr(
-        CACHE_STAGE, "parallel_cache_worker_count", lambda runtime: 1)
+        CACHE_STAGE, "parallel_cache_worker_count",
+        lambda runtime, host_memory_cap_bytes: 2)
     monkeypatch.setattr(
         CACHE_STAGE, "parallel_cache_build_topology",
-        lambda runtime, build_count: (1, 1))
+        lambda runtime, host_memory_cap_bytes, build_count: (1, 2))
+    real_executor = CACHE_STAGE.concurrent.futures.ThreadPoolExecutor
+    executor_widths = []
+
+    def recording_executor(*, max_workers):
+        executor_widths.append(max_workers)
+        return real_executor(max_workers=max_workers)
+
+    monkeypatch.setattr(
+        CACHE_STAGE.concurrent.futures, "ThreadPoolExecutor",
+        recording_executor)
 
     def training_batches(index, realization, *, load_round):
         if realization.kind == "hard-geometry-label-permutation":
@@ -1398,10 +1410,65 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         CACHE_STAGE, "iter_streaming_calibration_batches",
         lambda *args, **kwargs: iter((calibration_batch,)))
     monkeypatch.setattr(CACHE_STAGE, "host_peak_memory_bytes", lambda: 1024)
+    built_direct = []
+    combined_overlay_builds = []
+    cold_overlay_builds = []
+    real_build_tensor_cache = CACHE_STAGE.build_tensor_cache
+    real_build_label_overlay = CACHE_STAGE.build_label_overlay
+
+    def serial_parallel_build(
+            directory, *, schedule, mode, binding, deadline_check,
+            progress, **_kwargs):
+        built_direct.append(directory.name)
+        batches = ((calibration_batch,) if mode == "calibration"
+                   else (natural_batch,))
+        return real_build_tensor_cache(
+            directory, batches=lambda: iter(batches), binding=binding,
+            deadline_check=deadline_check, progress=progress)
+
+    def serial_parallel_build_with_overlay(
+            directory, *, control_overlay_directory,
+            control_overlay_id, expected_control_changed_cell_count,
+            binding, deadline_check, progress,
+            control_overlay_progress, **kwargs):
+        combined_overlay_builds.append(directory.name)
+        if expected_control_changed_cell_count != changed:
+            pytest.fail("controller passed the wrong control-label dose")
+        direct = serial_parallel_build(
+            directory, schedule=kwargs["schedule"], mode="train",
+            binding=binding, deadline_check=deadline_check,
+            progress=progress)
+        overlay = real_build_label_overlay(
+            control_overlay_directory,
+            batches=lambda: iter((control_batch,)),
+            actor_directory=directory,
+            actor_manifest_sha256=direct["manifest_sha256"],
+            binding=binding, overlay_id=control_overlay_id,
+            deadline_check=deadline_check,
+            progress=control_overlay_progress)
+        return direct, overlay
+
+    def record_cold_overlay(*args, **kwargs):
+        cold_overlay_builds.append(Path(args[0]).name)
+        return real_build_label_overlay(*args, **kwargs)
+
+    monkeypatch.setattr(
+        CACHE_STAGE, "build_parallel_tensor_cache", serial_parallel_build)
+    monkeypatch.setattr(
+        CACHE_STAGE, "build_parallel_tensor_cache_with_control_overlay",
+        serial_parallel_build_with_overlay)
+    monkeypatch.setattr(
+        CACHE_STAGE, "build_label_overlay", record_cold_overlay)
 
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
+    assert built_direct == [
+        "cache-synthetic-primary", "cache-human-mixture",
+        "cache-synthetic-scale-50", "cache-common-calibration"]
+    assert executor_widths == [1]
+    assert combined_overlay_builds == ["cache-synthetic-primary"]
+    assert cold_overlay_builds == []
     reopened, factories, calibration_factory, dose, stage_sha = (
         reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result",
@@ -1441,11 +1508,15 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
+    assert executor_widths == [1, 1]
+    assert combined_overlay_builds == ["cache-synthetic-primary"]
+    assert cold_overlay_builds == [
+        "overlay-hard-geometry-label-permutation"]
     assert manifest["resources"]["resumed_from_exact_partial"] is True
     assert manifest["resources"][
         "cpu_nanoseconds_is_conservative_upper_bound"] is True
     assert manifest["resources"]["cpu_nanoseconds"] == (
-        manifest["resources"]["wall_nanoseconds"] * 2)
+        manifest["resources"]["wall_nanoseconds"] * 3)
     assert next(
         row["manifest_sha256"] for row in manifest["cohort_caches"]
         if row["cohort_id"] == "synthetic-primary") \
@@ -1468,6 +1539,55 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
             match="reopen refused|byte drift"):
         reopen_training_tensor_cache(
             cache_root, freeze=freeze, admission=admission)
+    actor_path.chmod(0o600)
+    actor_path.write_bytes(raw)
+    actor_path.chmod(0o400)
+
+    # A measured cap failure after every reusable cache is complete must
+    # publish a durable refusal before raising. The same admission can never
+    # resume and relabel that over-cap attempt as a successful cache stage.
+    cache_root.rename(partial)
+    (partial / "manifest.json").unlink()
+    observed_peak = freeze.resource_caps.training_host_memory_bytes + 1
+    monkeypatch.setattr(
+        CACHE_STAGE, "_aggregate_peak_host_memory_bytes",
+        lambda worker_count: observed_peak)
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="resource cap exceeded and recorded"):
+        run_training_tensor_cache(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review")
+    refusal = reopen_tensor_cache_resource_refusal(
+        partial / CACHE_STAGE.RESOURCE_REFUSAL_FILENAME,
+        freeze=freeze, admission=admission,
+        input_index_sha256=index_manifest["index_sha256"])
+    assert refusal["exceeded_dimensions"] == ["peak_host_memory_bytes"]
+    assert refusal["peak_host_memory_bytes"] == observed_peak
+    assert refusal["retry_authorized"] is False
+    assert refusal["stage_seal_authorized"] is False
+    assert not cache_root.exists()
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="refused partial cannot resume"):
+        run_training_tensor_cache(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review")
+    refusal_path = partial / CACHE_STAGE.RESOURCE_REFUSAL_FILENAME
+    refusal_raw = refusal_path.read_bytes()
+    refusal_path.chmod(0o600)
+    refusal_path.write_bytes(canonical_json_bytes(
+        dict(refusal, stage_seal_authorized=True)))
+    refusal_path.chmod(0o400)
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="resource refusal drift"):
+        reopen_tensor_cache_resource_refusal(
+            refusal_path, freeze=freeze, admission=admission,
+            input_index_sha256=index_manifest["index_sha256"])
+    refusal_path.chmod(0o600)
+    refusal_path.write_bytes(refusal_raw)
+    refusal_path.chmod(0o400)
 
 
 def test_training_input_index_deadline_records_refusal_cannot_seal_or_retry(

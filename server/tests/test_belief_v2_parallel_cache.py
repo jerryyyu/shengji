@@ -13,8 +13,10 @@ import shengji.rl.belief_v2_parallel_inputs as PARALLEL_INPUTS
 from shengji.rl.belief_v2_parallel_cache import (
     BeliefV2ParallelCacheError,
     build_parallel_tensor_cache,
+    build_parallel_tensor_cache_with_control_overlay,
     parallel_cache_build_topology,
     parallel_cache_worker_count,
+    primary_cache_first_build_order,
 )
 from shengji.rl.belief_v2_parallel_inputs import (
     BeliefV2ParallelInputError,
@@ -27,8 +29,10 @@ from shengji.rl.belief_v2_streaming_training import (
 from shengji.rl.belief_v2_schedule import _schedule_sha256
 from shengji.rl.belief_v2_tensor_cache import (
     V2TensorCacheBindingV1,
+    build_label_overlay,
     build_tensor_cache,
 )
+from shengji.rl.belief_v2_training import label_control_batch_from_natural
 from tests.test_belief_v2_cohort_training import _streaming_fixture
 from tests.test_belief_v2_controller import _admission, _cpu_only_freeze
 
@@ -89,15 +93,21 @@ def _fixture(tmp_path, monkeypatch):
 def test_worker_count_uses_every_safe_core_and_refuses_bad_runtime():
     gib = 1024 ** 3
     assert parallel_cache_worker_count(SimpleNamespace(
-        cpu_count=10, memory_bytes=16 * gib)) == 10
+        cpu_count=10, memory_bytes=16 * gib), 16 * gib) == 5
     assert parallel_cache_worker_count(SimpleNamespace(
-        cpu_count=16, memory_bytes=32 * gib)) == 16
+        cpu_count=16, memory_bytes=32 * gib), 24 * gib) == 8
     assert parallel_cache_worker_count(SimpleNamespace(
-        cpu_count=1, memory_bytes=2 * gib)) == 1
+        cpu_count=16, memory_bytes=64 * gib), 48 * gib) == 16
+    assert parallel_cache_worker_count(SimpleNamespace(
+        cpu_count=1, memory_bytes=2 * gib), 2 * gib) == 1
     with pytest.raises(BeliefV2ParallelCacheError,
                        match="runtime capacity"):
         parallel_cache_worker_count(SimpleNamespace(
-            cpu_count=True, memory_bytes=16 * gib))
+            cpu_count=True, memory_bytes=16 * gib), 16 * gib)
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="runtime capacity"):
+        parallel_cache_worker_count(SimpleNamespace(
+            cpu_count=16, memory_bytes=32 * gib), True)
 
 
 def test_input_worker_count_respects_frozen_memory_cap_and_larger_reader():
@@ -113,18 +123,38 @@ def test_input_worker_count_respects_frozen_memory_cap_and_larger_reader():
         parallel_input_worker_count(runtime, True)
 
 
-def test_build_topology_spends_surplus_workers_across_disjoint_caches():
+def test_build_topology_serializes_large_readers_and_uses_safe_workers():
     gib = 1024 ** 3
     runtime = SimpleNamespace(cpu_count=16, memory_bytes=32 * gib)
-    assert parallel_cache_build_topology(runtime, 4) == (4, 4)
-    assert parallel_cache_build_topology(runtime, 1) == (1, 8)
+    assert parallel_cache_build_topology(runtime, 24 * gib, 4) == (1, 8)
+    assert parallel_cache_build_topology(runtime, 24 * gib, 1) == (1, 8)
     assert parallel_cache_build_topology(SimpleNamespace(
-        cpu_count=8, memory_bytes=32 * gib), 4) == (2, 4)
+        cpu_count=8, memory_bytes=32 * gib), 24 * gib, 4) == (1, 8)
     assert parallel_cache_build_topology(SimpleNamespace(
-        cpu_count=4, memory_bytes=32 * gib), 4) == (1, 4)
+        cpu_count=4, memory_bytes=32 * gib), 24 * gib, 4) == (1, 4)
     with pytest.raises(BeliefV2ParallelCacheError,
                        match="build population"):
-        parallel_cache_build_topology(runtime, 0)
+        parallel_cache_build_topology(runtime, 24 * gib, 0)
+
+
+def test_primary_cache_is_scheduled_first_without_changing_population():
+    specs = (
+        ("synthetic-primary", "primary"),
+        ("human-mixture", "human"),
+        ("synthetic-scale-50", "scale"),
+        ("common-calibration", "calibration"),
+    )
+    ordered = primary_cache_first_build_order(
+        specs, "synthetic-primary")
+    assert ordered == (specs[0], specs[1], specs[2], specs[3])
+    assert sorted(ordered) == sorted(specs)
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="order population"):
+        primary_cache_first_build_order(
+            specs + (specs[0],), "synthetic-primary")
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="order population"):
+        primary_cache_first_build_order(specs, "absent")
 
 
 def test_parallel_input_parent_reduces_worker_chunks_in_canonical_order(
@@ -241,6 +271,55 @@ def test_parallel_parent_is_byte_identical_to_serial(tmp_path, monkeypatch):
             for path in (tmp_path / "serial").iterdir()}
 
 
+def test_parallel_primary_build_emits_byte_identical_control_overlay_in_pass(
+        tmp_path, monkeypatch):
+    (index, realization, batches, freeze, admission,
+     binding) = _fixture(tmp_path, monkeypatch)
+    serial = build_tensor_cache(
+        tmp_path / "serial", batches=lambda: iter(batches), binding=binding)
+    controls_and_dose = tuple(
+        label_control_batch_from_natural(batch) for batch in batches)
+    serial_overlay = build_label_overlay(
+        tmp_path / "serial-overlay",
+        batches=lambda: (row for row, _ in controls_and_dose),
+        actor_directory=tmp_path / "serial",
+        actor_manifest_sha256=serial["manifest_sha256"],
+        binding=binding, overlay_id="e" * 64)
+
+    parallel, parallel_overlay = (
+        build_parallel_tensor_cache_with_control_overlay(
+            tmp_path / "parallel",
+            control_overlay_directory=tmp_path / "parallel-overlay",
+            control_overlay_id="e" * 64,
+            expected_control_changed_cell_count=sum(
+                dose for _, dose in controls_and_dose),
+            root=tmp_path / "evidence", freeze=freeze,
+            admission=admission, index=index, schedule=realization,
+            binding=binding, worker_count=2))
+
+    assert parallel == serial
+    assert parallel_overlay == serial_overlay
+    for expected, actual in (
+            (tmp_path / "serial", tmp_path / "parallel"),
+            (tmp_path / "serial-overlay",
+             tmp_path / "parallel-overlay")):
+        assert {path.name: path.read_bytes() for path in actual.iterdir()} \
+            == {path.name: path.read_bytes()
+                for path in expected.iterdir()}
+
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="parent accounting"):
+        build_parallel_tensor_cache_with_control_overlay(
+            tmp_path / "bad-dose",
+            control_overlay_directory=tmp_path / "bad-dose-overlay",
+            control_overlay_id="e" * 64,
+            expected_control_changed_cell_count=(
+                sum(dose for _, dose in controls_and_dose) + 1),
+            root=tmp_path / "evidence", freeze=freeze,
+            admission=admission, index=index, schedule=realization,
+            binding=binding, worker_count=2)
+
+
 def test_deadline_refuses_seal_then_exact_partial_resumes(
         tmp_path, monkeypatch):
     (index, realization, _, freeze, admission,
@@ -272,6 +351,49 @@ def test_deadline_refuses_seal_then_exact_partial_resumes(
         mode="train", binding=binding, worker_count=2)
     assert receipt["batch_count"] == binding.expected_batch_count
     assert directory.is_dir()
+
+
+def test_combined_primary_and_control_partials_resume_together(
+        tmp_path, monkeypatch):
+    (index, realization, batches, freeze, admission,
+     binding) = _fixture(tmp_path, monkeypatch)
+    changed = sum(label_control_batch_from_natural(batch)[1]
+                  for batch in batches)
+    phases = []
+
+    def expire_before_seal(phase, unit):
+        phases.append((phase, unit))
+        if phase == "before-seal":
+            raise BeliefV2ParallelCacheError("combined deadline witness")
+
+    direct = tmp_path / "combined"
+    overlay = tmp_path / "combined-overlay"
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="combined deadline witness"):
+        build_parallel_tensor_cache_with_control_overlay(
+            direct, control_overlay_directory=overlay,
+            control_overlay_id="e" * 64,
+            expected_control_changed_cell_count=changed,
+            root=tmp_path / "evidence", freeze=freeze,
+            admission=admission, index=index, schedule=realization,
+            binding=binding, worker_count=2,
+            deadline_check=expire_before_seal)
+    assert not direct.exists() and not overlay.exists()
+    assert direct.with_name("combined.partial").is_dir()
+    assert overlay.with_name("combined-overlay.partial").is_dir()
+    assert phases[-1] == ("before-seal", binding.expected_batch_count)
+
+    direct_receipt, overlay_receipt = (
+        build_parallel_tensor_cache_with_control_overlay(
+            direct, control_overlay_directory=overlay,
+            control_overlay_id="e" * 64,
+            expected_control_changed_cell_count=changed,
+            root=tmp_path / "evidence", freeze=freeze,
+            admission=admission, index=index, schedule=realization,
+            binding=binding, worker_count=2))
+    assert direct_receipt["batch_count"] == binding.expected_batch_count
+    assert overlay_receipt["batch_count"] == binding.expected_batch_count
+    assert direct.is_dir() and overlay.is_dir()
 
 
 def test_parallel_cap_is_global_across_workers(tmp_path, monkeypatch):

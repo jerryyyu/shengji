@@ -271,6 +271,69 @@ def test_parallel_parent_is_byte_identical_to_serial(tmp_path, monkeypatch):
             for path in (tmp_path / "serial").iterdir()}
 
 
+def test_parallel_parent_suspends_automatic_gc_and_restores_on_every_exit(
+        tmp_path, monkeypatch):
+    (index, realization, _, freeze, admission,
+     binding) = _fixture(tmp_path, monkeypatch)
+    state = {"enabled": True}
+    calls = []
+    monkeypatch.setattr(PARALLEL, "gc", SimpleNamespace(
+        isenabled=lambda: state["enabled"],
+        disable=lambda: (calls.append("disable"),
+                         state.__setitem__("enabled", False)),
+        enable=lambda: (calls.append("enable"),
+                        state.__setitem__("enabled", True))))
+    original = PARALLEL._build_worker_batch
+
+    def succeed_under_suspension(batch_index):
+        assert state["enabled"] is False
+        return original(batch_index)
+
+    monkeypatch.setattr(
+        PARALLEL, "_build_worker_batch", succeed_under_suspension)
+    receipt = build_parallel_tensor_cache(
+        tmp_path / "gc-success", root=tmp_path / "evidence",
+        freeze=freeze, admission=admission, index=index,
+        schedule=realization, mode="train", binding=binding,
+        worker_count=2)
+    assert receipt["batch_count"] == binding.expected_batch_count
+    assert state["enabled"] is True
+    assert calls == ["disable", "enable"]
+
+    state["enabled"] = False
+    calls.clear()
+    monkeypatch.setattr(
+        PARALLEL, "_build_worker_batch", succeed_under_suspension)
+    disabled_receipt = build_parallel_tensor_cache(
+        tmp_path / "gc-already-disabled", root=tmp_path / "evidence",
+        freeze=freeze, admission=admission, index=index,
+        schedule=realization, mode="train", binding=binding,
+        worker_count=2)
+    assert disabled_receipt["batch_count"] == binding.expected_batch_count
+    assert state["enabled"] is False
+    assert calls == []
+    state["enabled"] = True
+    calls.clear()
+
+    def fail_under_suspension(batch_index):
+        assert state["enabled"] is False
+        if batch_index == 0:
+            raise BeliefV2ParallelCacheError("GC restoration witness")
+        return original(batch_index)
+
+    monkeypatch.setattr(
+        PARALLEL, "_build_worker_batch", fail_under_suspension)
+    with pytest.raises(BeliefV2ParallelCacheError,
+                       match="GC restoration witness"):
+        build_parallel_tensor_cache(
+            tmp_path / "gc-failure", root=tmp_path / "evidence",
+            freeze=freeze, admission=admission, index=index,
+            schedule=realization, mode="train", binding=binding,
+            worker_count=2)
+    assert state["enabled"] is True
+    assert calls == ["disable", "enable"]
+
+
 def test_parallel_primary_build_emits_byte_identical_control_overlay_in_pass(
         tmp_path, monkeypatch):
     (index, realization, batches, freeze, admission,

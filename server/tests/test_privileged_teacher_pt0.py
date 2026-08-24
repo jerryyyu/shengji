@@ -181,6 +181,23 @@ def test_miniature_run_emits_canonical_checkpoints_and_deadline_can_fail():
             checkpoint=canonical_json_bytes(semantic_tamper))
 
 
+def test_miniature_resume_recomputes_completed_world_and_refuses_forgery():
+    worlds = [(_sha("4"), _two_card_round()),
+              (_sha("5"), _two_card_round())]
+    partial = run_pt0_miniature(
+        _sha("e"), worlds, perspective_seat=1, deadline=0.5,
+        monotonic=iter((0.0, 0.0, 1.0, 1.0)).__next__)
+    forged = json.loads(partial.checkpoint.decode("ascii"))
+    forged["completed_evaluations"][0]["action_utilities"][0][1] += 10
+    with pytest.raises(
+            PrivilegedTeacherPT0Error,
+            match="PT0 checkpoint completed evaluation drift"):
+        run_pt0_miniature(
+            _sha("e"), worlds, perspective_seat=1,
+            monotonic=lambda: 1.0,
+            checkpoint=canonical_json_bytes(forged))
+
+
 def test_exact_world_evaluator_refuses_non_actor_perspective():
     with pytest.raises(PrivilegedTeacherPT0Error, match="acting seat"):
         exact_world_action_values(
@@ -270,6 +287,15 @@ def test_information_set_target_is_order_and_true_world_invariant():
     # A single true world would select C2, D3, or tie on S4 depending on which
     # hidden deal was exposed. None of those identities exists in target bytes.
     assert b"true_world_sha256" not in canonical_json_bytes(one)
+
+
+def test_information_set_target_refuses_single_true_world_population():
+    one = WorldActionValues.build(
+        _sha("1"), [(('C2',), 1), (('D3',), -1)])
+    with pytest.raises(
+            PrivilegedTeacherPT0Error,
+            match="information-set aggregation requires at least two worlds"):
+        information_set_target(_sha("a"), [one])
 
 
 def test_best_world_probability_reports_rank_instability_and_ties():

@@ -80,7 +80,7 @@ boundary rather than duplicating it. Learned value, Direct-Q, V11 pairwise
 ranking, action allocation and memory-aware rollout policy remain later,
 separately gated consumers.
 
-## Current BELIEF state — 2026-08-22
+## Current BELIEF state — 2026-08-23
 
 - B0 typed actor/target boundaries, ownership schema and source contracts are
   merged. V1 later failed operationally before test and produced no learning
@@ -92,8 +92,16 @@ separately gated consumers.
 - One immutable R4 packet is live on `shengji-cloud`: source `d2d466f`, freeze
   `573fcade…fc16`, review commit `10bd1da` and admission `21d9cea8…0961`.
   All 13,312 synthetic rounds and 30 human groups sealed with zero retries or
-  drops; the input index sealed and tensor-cache construction is underway. No
-  test outcome is open.
+  drops; input indexing, tensor caching, device qualification and references
+  sealed. Stage 7/10 training has 78/85 tasks complete and all four cohort
+  workers remain active. No test outcome is open.
+- The first R5 admission is spent after its tensor cache correctly refused a
+  30.45-GB population under the exact 25.77-GB cap. It produced no model or
+  test result. Draft PR #131 exact `5e3bb6b` keeps that cap, uses a measured
+  `2 x 4` build topology, preserves reusable train/calibration artifacts and
+  orders the label overlay immediately after its primary component. A
+  full-size score-free proof is live on Performance Cloud; no scientific R5
+  namespace exists yet.
 - R4 covers all trump ranks and separately bound synthetic and human domains.
   Its four eight-member cohorts compare the primary model, a label-permutation
   negative control, a human-mixture model and a half-scale data model. Human
@@ -115,20 +123,26 @@ separately gated consumers.
 ### Immediate execution sequence
 
 1. **Now:** leave the live R4 DAG unchanged and monitor only outcome-blind
-   progress. No retry, competing BELIEF run, merge or early test opening.
-2. **Terminal:** run the reviewed reopener, then obtain one consolidated
+   progress. In parallel, complete PR #131's score-free full-size cache proof
+   on Performance Cloud without opening a scientific namespace.
+2. **R5 freeze:** if the proof reopens byte-exactly under the hard cap, create
+   fresh all-rank capacity and deadline receipts, seal one immutable host
+   freeze and request one consolidated source-plus-freeze review. Launch once
+   only after that exact PASS; no rehearsal/review ladder or same-admission
+   retry.
+3. **Terminal:** run each reviewed reopener, then obtain one consolidated
    terminal/reproducibility review and one exact route: mechanics/resource
    refusal, no-learning closeout, valid truncation, or B3 design permission.
-3. **Diagnosis:** publish complete per-epoch train/calibration curves, common-
+4. **Diagnosis:** publish complete per-epoch train/calibration curves, common-
    epoch selection, eight-seed dispersion, negative-control behavior,
    full-versus-half data scaling, human-mixture transfer and stage wall costs.
-4. **If learning is weak or incomplete:** use only the preserved development
+5. **If learning is weak or incomplete:** use only the preserved development
    and calibration surfaces for a small architecture/optimizer/data bakeoff.
    Choose one recipe before any fresh sealed test; no lucky-seed promotion.
-5. **If B2 passes:** design B3 projection and sampling first. Measure legal
+6. **If B2 passes:** design B3 projection and sampling first. Measure legal
    support, marginal drift, effective sample size, latency, true-world/value
    error and natural final-decision flip dose before gameplay.
-6. **Strength path:** compare current sampler, belief sampler and shuffled-
+7. **Strength path:** compare current sampler, belief sampler and shuffled-
    belief null at equal work. Keep the separate three-arm ballot-widening
    confirmation distinct from belief; only detectable causal gains earn fresh
    whole-game confirmation.
@@ -204,6 +218,8 @@ partnership Sheng Ji.
 | [Suphx](https://arxiv.org/abs/2003.13590) | Privileged hands may shape a training curriculum, never leak into runtime inference. Decision-type specialization and controlled adaptation deserve separate tests. |
 | [DouZero](https://proceedings.mlr.press/v139/zha21a.html) | Direct return learning is a distinct role-conditioned/action-conditioned algorithm. Earlier residual/value experiments do not reject it wholesale. |
 | [Student of Games](https://arxiv.org/abs/2112.03178) and cooperative partially observed search | Teammates interpret public actions through a shared policy; preserve actor perspective and continuation identity. |
+| [COMA](https://ojs.aaai.org/index.php/AAAI/article/view/11794) | A privileged centralized critic may improve counterfactual credit assignment during training, but a deployed actor must remain decentralized and actor-visible. |
+| [Policy-Space Response Oracles](https://papers.neurips.cc/paper_files/paper/2017/file/3323fe11e9595c09af38fe67567a9394-Paper.pdf) | Evaluate a new self-play teacher against a frozen policy population, not only its latest partner, to expose cycling and narrow exploitation. |
 
 The first BELIEF head is ownership only because it is the cheapest head to
 falsify offline. Value, Q, pairwise and uncertainty heads wait until search has
@@ -244,6 +260,14 @@ targets averaged over compatible hidden worlds for Direct-Q or pairwise
 ranking. Those learners remain downstream because earlier failures were
 dominated by target, information and causal-attribution contracts rather than
 raw model capacity.
+
+`PRIVILEGED_TEACHER_V1_PROPOSAL.md` defines the complementary teacher path.
+It first requires a full-state policy to beat frozen continuations and a policy
+mixture, then reduces its action values to
+`E[Q(h, world, action) | actor-visible h]`. A true-world omniscient argmax is
+never a public target. BELIEF may improve the compatible-world distribution,
+but it does not substitute for proving that the continuation policy itself is
+strong.
 
 ## Data and evaluation contract
 

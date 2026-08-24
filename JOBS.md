@@ -1,6 +1,7 @@
 # Fleet job ledger
 
-Last reconciled: 2026-08-22 14:59 EDT during the live BELIEF R4 DAG. This file
+Last reconciled: 2026-08-23 21:18 EDT during the live BELIEF R4 DAG and R5
+score-free cache proof. This file
 owns current compute and compact terminal stubs. Historical detail is archived in
 `docs_archive/jobs-through-2026-08-11.md`; execution priority is in
 `BACKLOG.md`.
@@ -11,22 +12,26 @@ owns current compute and compact terminal stubs. Historical detail is archived i
 |---|---|---|
 | **Mini** | none | **NOT PART OF R4.** Available only for explicitly scoped development or later model experiments; never use it to alter, shadow or inspect the live scientific result. Spent V1 partial models remain unusable. |
 | **Air** | none | **IDLE AFTER TERMINAL TIMEOUT.** The broad Pair screen reached its fixed 64.08h cutoff with `0/8` terminal shards and published no shard bundle, manifest, aggregate or final. Canonical review `483ed02` preserves the fail-closed terminal. No retry, resize, resume or partial-result use. |
-| **Cloud (`shengji-cloud`)** | `belief-v2-r4-d2d466f-r1.service` | **ACTIVE / HEALTHY.** Exact source `d2d466f`, freeze `573fcade…fc16`, admission `21d9cea8…0961`; service `Restart=no`, zero restarts. Synthetic/human capture and input indexing sealed; tensor-cache construction is underway. Monitor only the outcome-blind ops status; no retry, mutation or early result access. |
-| **Performance Cloud** | powered off | **PAIR CHECKPOINT ATTEMPT SPENT.** The sole reviewed V1 execution fail-closed on microshard 3 with `treatment work drift` and no terminal evidence; canonical ledger `2b1fba5`. The later host shutdown makes the invocation unreachable. Any power-on permits score-free recovery inspection only—never resume, retry, outcome access or aggregation. |
+| **Cloud (`shengji-cloud`)** | `belief-v2-r4-d2d466f-r1.service` | **ACTIVE / HEALTHY.** Exact source `d2d466f`, freeze `573fcade…fc16`, admission `21d9cea8…0961`; service `Restart=no`, zero restarts. Capture, indexing, cache, qualification and references sealed; four cohorts are training. Monitor only outcome-blind ops status; no retry, mutation or early result access. |
+| **Performance Cloud** | `belief-r5-cache-capacity-5e3bb6b-v5.service` | **ACTIVE / SCORE-FREE.** Draft PR #131 exact `5e3bb6b`; hard 25,769,803,776-byte cgroup cap, no swap, topology `8 = 2 x 4`, `Restart=no`, three-hour limit. It rebuilds only train/calibration cache components and may publish one capacity receipt. No scientific R5 namespace, model, test, outcome or gameplay authority exists. |
 | **Fly production** | `mc-s0-report-lcb` | Release 18 / image `kitty-xray-b5a35ae` is healthy. This is the release-17 runtime plus PR #11 kitty X-ray only; no policy changed. Rollback runtime remains release 17 / `latency-cd6789e`. |
 
 ## Reviewed queue
 
 | order | job | current gate |
 |---:|---|---|
-| 1 | BELIEF-V1 R4 offline milestone | **RUNNING; REVIEW QUEUE EMPTY.** Wait for one sealed completion/refusal, run the reviewed terminal reopener, then request one consolidated terminal/reproducibility review. No source/freeze/rehearsal review is actionable while the DAG is live. |
-| 2 | Pair checkpoint recovery | **HOLD / BOTH EVIDENCE PATHS SPENT.** Air timed out with no terminal shards; Performance V1 refused and the host is off. Diagnose/recover only through a fresh reviewed design and namespace; no old result may be opened or resumed. |
-| 3 | Post-null roadmap | **BELIEF-V1 IS THE CHOSEN REPRESENTATION MILESTONE.** T4, S4 and combined S6 selected none. B0 contracts and B2 implementation exist; the first B2 packet failed operationally before its test. No scored campaign follows until a valid calibration result, sampler fidelity, same-work causality and natural-dose/MDE gates are satisfied. |
+| 1 | BELIEF R5 efficient successor | **NOT READY FOR REVIEW.** Finish and independently reopen the full-size v5 cache proof, then generate fresh all-rank capacity/deadline receipts and one immutable host freeze. The next request is one consolidated PR #131 source-plus-freeze review; no piecemeal source review or scientific launch first. |
+| 2 | BELIEF R4 offline milestone | **RUNNING; REVIEW QUEUE EMPTY.** Wait for one sealed completion/refusal, run the reviewed terminal reopener, then request one consolidated terminal/reproducibility review. |
+| 3 | PR #130 point-risk tie candidate | **SOURCE ACCEPTANCE PASS; NO JOB.** Exact `943bc58` is flag-off and mechanically guarded. Reconcile branch ancestry, freeze round-level utility/dose telemetry and make a separate experiment decision before any run. |
+| 4 | Privileged Teacher V1 | **PROPOSAL ONLY; NO JOB.** Review `PRIVILEGED_TEACHER_V1_PROPOSAL.md`; the first admissible implementation is exact-endgame/baseline instrumentation, not self-play compute. |
 
 After R4 terminal review, publish one curve-and-timing diagnosis before choosing
 an architecture, optimizer, data-scale or sampler follow-up. The preserved
 train/calibration surface may support bounded ML comparisons; the sealed test
 does not become a tuning set.
+
+The earlier Pair checkpoint attempt remains spent and quarantined. Performance
+Cloud's present R5 proof does not revive, inspect or aggregate it.
 
 The spent Pair, S4, S6 and T4 namespaces remain quarantined and grant no retry,
 resume or partial-result authority. A design or implementation review never

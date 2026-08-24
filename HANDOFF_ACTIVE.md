@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-23 20:43 EDT.
+Last reconciled: 2026-08-23 21:22 EDT.
 
 ## Immediate objective
 
@@ -28,13 +28,13 @@ scientific replications.
 | evidence / ops | `/opt/belief-r4-evidence-d2d466f-r1`; `/opt/belief-r4-ops-d2d466f-r1` |
 
 R4 is active and untouched: stage 7/10 `training`, 78/85 tasks complete,
-task-weighted progress 93.78%, four cohort workers active, `NRestarts=0`, no
+task-weighted progress 93.88%, four cohort workers active, `NRestarts=0`, no
 failure task, no terminal and no test opening. Exact schedule progress is:
 
-- synthetic primary 42,052/118,800 = 35.39%;
-- hard-geometry label control 42,047/118,800 = 35.39%;
-- human mixture 42,624/119,040 = 35.80%;
-- synthetic 50%-scale 40,810/62,340 = 65.46%.
+- synthetic primary 44,133/118,800 = 37.14%;
+- hard-geometry label control 44,117/118,800 = 37.13%;
+- human mixture 44,749/119,040 = 37.59%;
+- synthetic 50%-scale 42,714/62,340 = 68.51%.
 
 All 832x16 synthetic captures, 30 human-capture tasks, 12,003 input-index
 units, 12,649 cache units, device qualification and 29 reference tasks sealed
@@ -90,10 +90,25 @@ A fresh v5 score-free proof is live:
 
 The checkout/native extension is exact and clean. At launch the unit was
 active with `NRestarts=0`, receipt absent and no fresh scientific namespace
-initialized. PASS requires five byte-identical component reopens, a sealed
+initialized. At 21:18 EDT it had rebuilt 2,191/9,128 direct batches (24.00%),
+with `NRestarts=0` and 23,653,978,112-byte peak memory under the hard cap. PASS
+requires five byte-identical component reopens, a sealed
 receipt, successful hard-capped unit and explicit false test/outcome/authority
 fields. If it passes, Codex will generate fresh 416-round/all-13-rank capacity
 and deadline receipts, then seal one R3 freeze at exact source `5e3bb6b`.
+
+## Separate proposal state — no compute authority
+
+- PR #130 exact head `943bc5834494cb7ae698d063b25585b6c584d090`
+  passed substantive code review: its flag remains off, the equal-trump
+  lower-point-risk route works, a `+1` trump increment remains guarded and the
+  killing mutation fails. It is not literally stacked on merged PR #127/#129;
+  reconcile ancestry and freeze round-level utility/dose telemetry before any
+  experiment decision. No run or adoption is authorized.
+- `codex/privileged-teacher-v1-proposal` is a docs-only proposal lane. It must
+  distinguish an omniscient capability league from actor-legal targets averaged
+  over compatible hidden worlds. It grants no implementation, compute or
+  gameplay authority and does not compete with R4/R5.
 
 ## Review queue — one consolidated R5 ask, not ready yet
 

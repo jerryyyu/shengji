@@ -11,7 +11,7 @@ research conclusions that affect them. It is not a run log.
 - Full policy history through this compaction:
   `docs_archive/ai-policies-through-2026-08-15.md`
 
-## Current truth — 2026-08-22
+## Current truth — 2026-08-23
 
 - **Production champion:** `mc-s0-report-lcb` remains the only deployed policy
   with a fresh confirmed strength gain.
@@ -24,11 +24,23 @@ research conclusions that affect them. It is not a run log.
   candidate widening from added compute with three arms.
 - **BELIEF R4 is the active offline scientific run.** Exact source `d2d466f`,
   freeze `573fcade…fc16` and admission `21d9cea8…0961` are live once on
-  `shengji-cloud`. Synthetic and human capture plus input indexing sealed
-  cleanly; tensor-cache construction is in progress. The run asks only whether
-  an actor-visible ownership model beats
+  `shengji-cloud`. Synthetic and human capture, indexing, caching, device
+  qualification and references sealed cleanly; all four model cohorts are
+  training. The run asks only whether an actor-visible ownership model beats
   the debiased REF-C calibration baseline. It authorizes no sampler, gameplay,
   strength, promotion or deployment change.
+- **R5 is the operationally improved successor on the same population, not a
+  planned independent scientific sample.** The first admission spent itself on
+  a measured cache-cap refusal before models or test. Draft PR #131 preserves
+  the fixed 24-GiB cap, durable train/calibration artifacts, graceful deadline
+  truncation and exact progress. Its full-size score-free cache proof is live
+  on Performance Cloud; no scientific R5 namespace or review authority exists
+  yet.
+- **PR #130 is a disabled experiment candidate, not policy evidence.** At exact
+  head `943bc58`, its report-tie rule may prefer lower immediate point risk only
+  without incremental trump spend. The guard and route witnesses pass, but
+  round-level benefit, natural dose and integration on current main remain
+  unproved. The production flag stays off.
 - **The next model decision waits for the complete curves.** After the terminal
   reopener, compare train/calibration loss, eight-seed stability, full- versus
   half-population cohorts, human-mixture transfer and the negative control.
@@ -67,6 +79,7 @@ shared registry. A reviewed experiment arm is not a production policy.
 | **V11 / Direct-Q / O0** | Can learned ranking, return learning or privileged curricula replace current search? | **No promotable model.** Keep bounded proposal/diagnostic assets and the evaluation chassis; any successor must change target, credit, data or model use. |
 | **H0** | Are human moves useful proposals? | **No scored result.** The run exposed a candidate-geometry bug. The repair is score-free; human actions remain proposals, not truth labels. |
 | **BELIEF-V1** | Can actor-visible history predict hidden ownership well enough to improve same-work search? | **Question open; R4 is running offline.** V1 failed operationally before a learning result. R4 repairs deadlines/truncation, expands rank and human-domain coverage, and compares fixed multi-seed cohorts against REF-C. Only a reviewed offline calibration PASS may open B3 sampler implementation review. |
+| **PRIVILEGED-TEACHER-V1** | Can an optimized full-state policy become a safe teacher for public play? | **Proposal only.** First prove the full-state teacher beats frozen baselines and a policy mixture; then average per-action values over worlds compatible with the public history. Never copy a true-world omniscient argmax into a runtime policy. |
 
 `SELECT_NONE` closes the exact population, policy and promotion claim tested.
 It does not erase predeclared dose, phase/role effects, disagreement states or
@@ -101,6 +114,10 @@ separately.
 - Public facts such as proven voids and legal follow obligations must not be
   mixed with soft behavioral beliefs such as “this player is probably short”
   or “probably lacks a pair.”
+- Privileged training may use every hand and the kitty, but public targets must
+  average over compatible worlds. An all-omniscient league measures a
+  capability ceiling, not a legal policy, deployable convention or strength
+  claim.
 - Factory seeds must reach every stochastic component. Evaluations use mirrored
   deal clusters, independent folds, exact work counters and fail-closed short/
   zero-world handling.

@@ -116,6 +116,26 @@ def test_tie_break_counters_aggregate_and_reach_the_harness():
             c0["tie_shy_risk_saved"]) == (0, 0, 0)
 
 
+def test_trump_guard_is_incremental_not_any_trump():
+    """Codex re-entry tooth: equal-trump point-saving flips must be ALLOWED;
+    only a positive trump delta guards. Killing mutation: reverting the
+    predicate to `challenger_trump > 0` fails the first case."""
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    # Lower risk, equal trump (1 == 1): flip, not guarded.
+    shy = arm._report_tie_point_shy_pick(
+        0.1, 1.0, 1.70, ["S10"], ["S3"],
+        incumbent_trump=1, challenger_trump=1)
+    assert shy["pick"] == "challenger" and "trump_guarded" not in shy
+    # Same cards/context, challenger_trump=2 > 1: guarded, incumbent.
+    shy = arm._report_tie_point_shy_pick(
+        0.1, 1.0, 1.70, ["S10"], ["S3"],
+        incumbent_trump=1, challenger_trump=2)
+    assert shy["pick"] == "incumbent" and shy["trump_guarded"] is True
+    assert arm.tie_shy_trump_guarded == 1
+    assert arm.tie_shy_flips == 1
+    assert arm.tie_shy_risk_saved == 10
+
+
 def test_production_path_wires_context_and_tie_break(monkeypatch):
     """Codex HOLD repair: kills both wiring mutations. Replays the real
     incident lead through decide_play with a forced exact tie (gap 0, se 0)

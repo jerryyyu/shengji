@@ -40,7 +40,10 @@ RECORD_KEYS = {
     "schema", "capture_id_sha256", "trump_rank", "banker", "role",
     "remaining_hand_threshold", "public_state_sha256",
     "proposal_world_population_sha256", "proposal_world_count",
+    "proposal_unique_underlying_world_count",
     "evaluation_world_population_sha256", "evaluation_world_count",
+    "evaluation_unique_underlying_world_count",
+    "cross_cohort_underlying_world_overlap_count",
     "world_population_sha256", "world_count", "target_sha256",
     "target_argmax", "proposal_action", "evaluation_argmax",
     "proposal_action_rank", "proposal_action_rank_in_evaluation",
@@ -459,6 +462,29 @@ def _validate_packet_records(
                 != design.proposal_worlds_per_state
                 or record["evaluation_world_count"]
                 != design.evaluation_worlds_per_state
+                or isinstance(
+                    record["proposal_unique_underlying_world_count"], bool)
+                or not isinstance(
+                    record["proposal_unique_underlying_world_count"], int)
+                or not 1 <= record[
+                    "proposal_unique_underlying_world_count"] \
+                    <= record["proposal_world_count"]
+                or isinstance(
+                    record["evaluation_unique_underlying_world_count"], bool)
+                or not isinstance(
+                    record["evaluation_unique_underlying_world_count"], int)
+                or not 1 <= record[
+                    "evaluation_unique_underlying_world_count"] \
+                    <= record["evaluation_world_count"]
+                or isinstance(
+                    record["cross_cohort_underlying_world_overlap_count"], bool)
+                or not isinstance(
+                    record["cross_cohort_underlying_world_overlap_count"], int)
+                or not 0 <= record[
+                    "cross_cohort_underlying_world_overlap_count"] \
+                    <= min(
+                        record["proposal_unique_underlying_world_count"],
+                        record["evaluation_unique_underlying_world_count"])
                 or record["world_count"] != record["proposal_world_count"]
                 or record["world_population_sha256"]
                 != record["proposal_world_population_sha256"]

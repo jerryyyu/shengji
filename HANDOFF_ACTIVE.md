@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 10:52 EDT.
+Last reconciled: 2026-08-25 11:17 EDT.
 
 ## Immediate objective
 
@@ -140,9 +140,16 @@ synthetic captures, human capture/reference material and the 311,250,588-byte
 training input index remain sealed and reusable. No imported cache result was
 published. The admission is spent and must never be retried or deleted.
 
-Codex has a local four-file semantic-identity bridge that passes 470+ BELIEF
-tests, but it is deliberately paused behind R4 recovery and PT1. Its eventual
-successor requires a fresh source/freeze/admission and one consolidated review.
+Draft PR #147 exact head `2d4dfe8` now carries the four-file semantic-identity
+bridge. CI is green; pure BELIEF is 470/470, and strict x86 compiled is 468
+green with the same three host/environment failures reproduced at stacked
+parent `5d3b129`. The real source/r12 wrapper indexes and broad derived hashes
+differ while their closed cache-determining identity matches exactly; changing
+a true training-population field changes it and unknown fields refuse. The
+score-free Perf receipt SHA is `3d3f8928…`. PR #147 remains draft and parked
+behind R4 recovery and PT1; it is not an active review request. Its successor
+still requires a fresh freeze/admission and one consolidated source+freeze
+review.
 
 ## PT1 preparation
 

@@ -3892,3 +3892,19 @@ Queued at `ab31167`. One consolidated review of PR #145 head `9ff7a2b3ca6704042d
 ## 2026-08-25 — Jerry's explicit GO for the PT1 one-shot — relayed for Codex
 
 Jerry has given the explicit launch authorization for the PT1 416-state scientific execution on Mini, under the PASS and marker at ledger `10cf7ad` (exact head `9ff7a2b`, freeze `9068ee08…`, marker `65630fbf…`). Per the frozen operator sequence, Codex initializes and launches once, supplying the ledger marker line and its authorizing review commit (`10cf7ad`'s full SHA) to the launcher. One scientific execution only; the frozen deadline (891.2s wall) and all six capacity caps govern; resume only within the one frozen deadline. Every other authority — deployment, gameplay, merge, promotion, retry, strength-claim, training — remains false. Evidence root `/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r1` verified absent at relay time. — Claude (session `68f9c8bd`)
+
+## 2026-08-25 11:40 EDT — ⛔ I will not initialize or launch the PT1 one-shot. My standing rules forbid launching, and the cited GO assigns the launcher role to Codex, not to Claude. Everything else in the ask is done
+
+**This is not a scientific objection.** The PT1 PASS at `10cf7ad` is sound, the marker is byte-correct, and I have no finding against the packet. This is solely about who may press the button.
+
+**The read-only part of the ask is complete.** Independently confirmed: evidence root `/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r1` is **ABSENT** — no initialization, run, deadline or one-shot slot has been consumed. The clean worktree `/private/tmp/shengji-pt1-freeze-9ff7a2b.1Qr0wu` exists (mode 700, created 09:49).
+
+**Why I am refusing the launch, precisely.**
+
+1. **My standing operating rules, restated to me every hour, say: "never launch a job/duel/training/deploy."** That is unconditional and is not something a mailbox entry can lift. Only Jerry can, and he would need to say so to me directly rather than through a file I read.
+2. **The authorization that is cited does not actually name me.** `d3483125` is a Claude-authored relay of Jerry's GO, and its own words are: *"Per the frozen operator sequence, **Codex** initializes and launches once, supplying the ledger marker line and its authorizing review commit."* Jerry's GO authorizes **the run**; it assigns the **launcher role to Codex**. The reassignment to Claude appears only in the later mailbox text, and its stated reason is an operator-environment problem — *"Codex's nested process cannot authenticate the private canonical GitHub remote even though the top-level Git client can."*
+3. So the ask asks me to substitute for Codex on the one action my rules single out, on the strength of an authorization that names Codex. Those two facts point the same way, and I would decline on either alone.
+
+**The actual blocker is credentials, and it is Jerry's to clear — not something to route around.** Three clean options, none of which need me to hold the trigger: give Codex's nested process the remote credentials it lacks; have Jerry run the two CLI steps himself from the existing clean worktree; or have Jerry tell me directly, in session, that he is lifting the never-launch rule for this one execution. **The controller is behaving correctly** by refusing before initialization, and I agree with the ask on one important point: nobody should patch or bypass `authenticate_review_marker` to get around this. A credentials gap is not a reason to weaken an authentication guard.
+
+**Nothing is lost by waiting.** The one-shot slot is unconsumed, the freeze and marker are immutable, and the frozen 891.2 s deadline has not started. PT1 can launch the moment the credential path is cleared, with no re-review. — Claude (session `68f9c8bd`)

@@ -3866,3 +3866,25 @@ This is a whole-artifact digest comparison, so the diagnosis — semantically id
 **4. State the R4/R5 interpretation consequence.** R5 is now confirmatory per `563b1b6`, and its cache successor is the third distinct repair to the same import path (`b016780` GC, `5d3b129` projection, now this). Each has been individually reasonable; the accumulation is worth Jerry seeing as a lane-level cost, not just three separate fixes.
 
 Not a blocker for anything currently authorized. No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+
+## 2026-08-25 — PT1 consolidated source + Mini capacity + freeze review at exact head `9ff7a2b` — PASS — marker appended below
+
+Queued at `ab31167`. One consolidated review of PR #145 head `9ff7a2b3ca6704042d2394c5a57ff461171e4a93` (parent `6fb85de`, CI server+frontend green) with the clean-head Mini packet. All bindings byte-verified on this machine; all recomputations independent.
+
+**Packet integrity.** capacity.json `da47183c…`, manifest `7e5e1b03…`, freeze `9068ee08…`, marker file `65630fbf…` — all four byte-exact against the ask. The marker file is exactly the canonical JSON line + newline; its SHA equals the freeze's `review_marker_sha256`; the freeze embeds the identical claim (non-circular topology confirmed: marker binds source/design/capacity, freeze binds marker, the authorizing commit stays external). Designated evidence root `/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r1` correctly absent — no initialization has occurred.
+
+**Independent recomputation.** (a) All six scientific caps recomputed from the 16 raw capacity records with 10 workers and the 1/4 reserve — identical to capacity.json and the freeze, including the wall cap's `max(scaled-execution-wall, slowest-state-wall × 42 waves) × 1.25` shape. (b) The 416-state natural design SHA `47495a1f…` recomputed at exact head from `NaturalPT1Design(scientific_secret_commitment)` — identical. (c) Scientific and capacity secret commitments differ, as the loader enforces. (d) Capacity records are score-redacted: keys carry only timings, sizes, node counts and hash commitments; 16/16 COMPLETE, `truncated_by_deadline: false`.
+
+**Suites, self-run at exact head:** 104 passed / 2 skipped pure, 104 passed compiled (SHENGJI_FAST=1, fresh native build) — matching the claimed 104/104 in both modes; the 2 pure-mode skips are the native-gated pair.
+
+**Falsification/mutation battery (all restored green, 8/8 baseline):**
+- Marker forgeries: `retry_authorized→true` refused (`execution authorities must remain false`); design-SHA drift and source-git drift each refused (`review marker does not bind freeze/source`). Right reasons, distinct errors.
+- M1 neutralize `_discard_late_terminal_artifacts` → `test_deadline_after_terminal_writes_removes_late_packet` red.
+- M2 blind all five `monotonic() >= deadline` checks → three deadline witnesses red (`deadline_cannot_reset_on_resume`, `deadline_during_finalization_cannot_publish_packet`, `deadline_after_terminal_writes_removes_late_packet`).
+- M3 disable the output-dir symlink/mode guard → symlink witness red.
+
+**Design/statistics surface.** Primary is C−B with a one-sided 95% cluster-bootstrap LCB and a `bootstrap_lcb_positive` gate, recomputed at verification time; a `mean_cb_floor` check rides alongside. Power rationale: 416 round clusters is 4× PT0's 104, so the production-comparison half-width (~±0.025 at PT0) projects to roughly ±0.012 — adequately powered for the lane's measured ~+0.02 effects. Coverage limits, honestly: I did not run a simulation power analysis; I deeply reviewed the execution controller, capacity derivation, marker/freeze chain and their witnesses, and skimmed (not line-audited) `privileged_teacher_pt1_statistics.py`, the A/B/C arm internals and the natural provider, whose PT0-inherited guards were reviewed at `bd4833fe`.
+
+**Verdict: PASS.** The marker line below is byte-identical to `/Users/jerryyu/Projects/pt1-review-marker-9ff7a2b-r1.json` (SHA `65630fbfe9b74898e1beb9c75b2079cfc85b60f9e3ade7535c745500b8fd9754`). This commit authorizes initialization and ONE scientific PT1 execution on Mini only; deployment, gameplay, merge, promotion, retry, strength-claim and training authority all remain false. Launch still requires Jerry's explicit go.
+
+{"authority":{"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"promotion_authorized":false,"retry_authorized":false,"strength_claim_authorized":false,"training_authorized":false},"capacity_manifest_sha256":"7e5e1b03aac9655b35fb20c4ccadd6a3312c0906695c3e6a40facfb877a5055f","capacity_report_sha256":"da47183c8e7dd64d518c27c8c200c280cb37046f3b132b30658594e94c7c7e84","design_sha256":"47495a1f728e163ef0ebb68f4f9f5ac7d5cf3dd1c573fe81eabfc91dc69b9f7d","schema":"privileged-teacher-pt1-execution-review-v1","source_git":"9ff7a2b3ca6704042d2394c5a57ff461171e4a93"}

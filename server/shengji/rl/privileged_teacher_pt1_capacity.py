@@ -10,6 +10,7 @@ capture secret never cross the report boundary.
 from __future__ import annotations
 
 import copy
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 import hashlib
 import hmac
 import json
@@ -68,6 +69,7 @@ def _sha(value: object, label: str) -> str:
 @dataclass(frozen=True)
 class CapacityDesign:
     capture_secret_sha256: str
+    parallel_workers: int = 1
     capture_attempts: int = 64
     reserve_numerator: int = CAPACITY_RESERVE_NUMERATOR
     reserve_denominator: int = CAPACITY_RESERVE_DENOMINATOR
@@ -77,6 +79,11 @@ class CapacityDesign:
 
     def __post_init__(self) -> None:
         _sha(self.capture_secret_sha256, "capacity capture secret commitment")
+        if isinstance(self.parallel_workers, bool) \
+                or not isinstance(self.parallel_workers, int) \
+                or self.parallel_workers <= 0 \
+                or self.parallel_workers > CAPACITY_STATE_COUNT:
+            raise PT1CapacityError("capacity parallel worker count drift")
         if self.capture_attempts <= 0 or isinstance(self.capture_attempts, bool):
             raise PT1CapacityError("capacity capture attempts must be positive")
         if (self.reserve_numerator <= 0 or self.reserve_denominator <= 0
@@ -93,6 +100,7 @@ class CapacityDesign:
         return {"schema": CAPACITY_SCHEMA,
                 "capture_secret_sha256": self.capture_secret_sha256,
                 "capture_attempts": self.capture_attempts,
+                "parallel_workers": self.parallel_workers,
                 "reserve": {"numerator": self.reserve_numerator,
                              "denominator": self.reserve_denominator},
                 "production_policy": self.production_policy,
@@ -212,6 +220,35 @@ def capture_capacity_states(
     return tuple(states)
 
 
+def _capture_one(design: CapacityDesign, secret: bytes,
+                 coordinate: CapacityCoordinate, *,
+                 state_capture: Callable[..., object] | None = None) \
+        -> NaturalPT1State:
+    natural_design = NaturalPT1Design(
+        capture_secret_sha256=hashlib.sha256(secret).hexdigest())
+    for attempt in range(design.capture_attempts):
+        round_seed = _seed(secret, coordinate, attempt)
+        candidate = (state_capture(design, coordinate, round_seed, attempt)
+                     if state_capture is not None else
+                     _capture_round(natural_design, round_seed,
+                                    coordinate.rank, coordinate.banker).get(
+                                        (coordinate.role, coordinate.threshold)))
+        if isinstance(candidate, Mapping):
+            candidate = candidate.get((coordinate.role, coordinate.threshold))
+        if candidate is None:
+            continue
+        eligible = _first_eligible(
+            candidate, role=coordinate.role, threshold=coordinate.threshold)
+        if eligible is not None:
+            return _state_from_round(
+                natural_design, eligible, rank=coordinate.rank,
+                banker=coordinate.banker, role=coordinate.role,
+                threshold=coordinate.threshold, replicate=0,
+                round_seed=round_seed)
+    raise PT1CapacityError(
+        f"capacity state cell incomplete: {coordinate.payload()}")
+
+
 def _runtime_identity() -> dict[str, object]:
     root = Path(__file__).resolve().parents[3]
     try:
@@ -292,6 +329,7 @@ def _work(record: PT1Record, arm_name: str) -> dict[str, int]:
 
 def _redacted_row(coordinate: CapacityCoordinate, state: NaturalPT1State,
                   records: Sequence[PT1Record], *, wall_ns: int, cpu_ns: int,
+                  capture_wall_ns: int, capture_cpu_ns: int,
                   rss_raw: int, rss_unit: str) -> dict[str, object]:
     if len(records) != len(CAPACITY_POLICY_SEEDS):
         raise PT1CapacityError("capacity evaluator seed count drift")
@@ -321,6 +359,8 @@ def _redacted_row(coordinate: CapacityCoordinate, state: NaturalPT1State,
            "evaluator_identity_sha256": hashlib.sha256(canonical_json_bytes(
                sorted(record.evaluator_identity for record in records))).hexdigest(),
            "policy_seed_count": len(records), "work": work,
+           "capture_wall_nanoseconds": capture_wall_ns,
+           "capture_cpu_nanoseconds": capture_cpu_ns,
            "wall_nanoseconds": wall_ns, "cpu_nanoseconds": cpu_ns,
            "peak_rss_raw": rss_raw, "peak_rss_unit": rss_unit,
            # Measure the real four-record scientific payload without
@@ -335,16 +375,21 @@ def _cap(value: int, numerator: int, denominator: int) -> int:
 
 
 def _caps(rows: Sequence[Mapping[str, object]], design: CapacityDesign,
-          *, capture_wall_ns: int = 0, capture_cpu_ns: int = 0) -> dict[str, int]:
-    if type(capture_wall_ns) is not int or type(capture_cpu_ns) is not int \
-            or capture_wall_ns < 0 or capture_cpu_ns < 0:
-        raise PT1CapacityError("capacity capture resource drift")
+          *, execution_wall_ns: int = 0,
+          aggregate_cpu_ns: int = 0) -> dict[str, int]:
+    if type(execution_wall_ns) is not int or type(aggregate_cpu_ns) is not int \
+            or execution_wall_ns < 0 or aggregate_cpu_ns < 0:
+        raise PT1CapacityError("capacity aggregate resource drift")
     if not rows:
         return {}
-    capture_scale = (TARGET_STATE_COUNT + CAPACITY_STATE_COUNT - 1) \
-        // CAPACITY_STATE_COUNT
-    max_wall = max(int(row["wall_nanoseconds"]) for row in rows)
-    max_cpu = max(int(row["cpu_nanoseconds"]) for row in rows)
+    scientific_waves = (TARGET_STATE_COUNT + design.parallel_workers - 1) \
+        // design.parallel_workers
+    capacity_waves = (CAPACITY_STATE_COUNT + design.parallel_workers - 1) \
+        // design.parallel_workers
+    max_wall = max(int(row["capture_wall_nanoseconds"])
+                   + int(row["wall_nanoseconds"]) for row in rows)
+    max_cpu = max(int(row["capture_cpu_nanoseconds"])
+                  + int(row["cpu_nanoseconds"]) for row in rows)
     max_artifact = max(int(row["artifact_projection_bytes"]) for row in rows)
     max_nodes = max(int(row["work"]["C"]["exact_nodes"]) for row in rows)
     max_rss_bytes = max(
@@ -353,13 +398,17 @@ def _caps(rows: Sequence[Mapping[str, object]], design: CapacityDesign,
         for row in rows)
     return {
         "scientific_wall_nanoseconds": _cap(
-            capture_wall_ns * capture_scale + max_wall * TARGET_STATE_COUNT,
+            max((execution_wall_ns * scientific_waves
+                 + capacity_waves - 1) // capacity_waves,
+                max_wall * scientific_waves),
             design.reserve_numerator, design.reserve_denominator),
         "scientific_cpu_nanoseconds": _cap(
-            capture_cpu_ns * capture_scale + max_cpu * TARGET_STATE_COUNT,
+            max(aggregate_cpu_ns, max_cpu) *
+            ((TARGET_STATE_COUNT + len(rows) - 1) // len(rows)),
             design.reserve_numerator, design.reserve_denominator),
         "peak_rss_bytes": _cap(
-            max_rss_bytes, design.reserve_numerator, design.reserve_denominator),
+            max_rss_bytes * design.parallel_workers,
+            design.reserve_numerator, design.reserve_denominator),
         "scientific_artifact_bytes": _cap(
             max_artifact * TARGET_STATE_COUNT,
             design.reserve_numerator, design.reserve_denominator),
@@ -369,6 +418,36 @@ def _caps(rows: Sequence[Mapping[str, object]], design: CapacityDesign,
             max_nodes * TARGET_STATE_COUNT,
             design.reserve_numerator, design.reserve_denominator),
     }
+
+
+def _run_capacity_unit(
+        design: CapacityDesign, secret: bytes, coordinate: CapacityCoordinate,
+        *, state_capture: Callable[..., object] | None = None,
+        evaluator: Callable[..., Sequence[PT1Record]] = evaluate_state_batch) \
+        -> dict[str, object]:
+    capture_started = time.perf_counter_ns()
+    capture_cpu_started = time.process_time_ns()
+    state = _capture_one(
+        design, secret, coordinate, state_capture=state_capture)
+    capture_wall_ns = time.perf_counter_ns() - capture_started
+    capture_cpu_ns = time.process_time_ns() - capture_cpu_started
+    started = time.perf_counter_ns()
+    cpu_started = time.process_time_ns()
+    records = tuple(evaluator(
+        state.public_round, state.true_world, seeds=CAPACITY_POLICY_SEEDS))
+    return _redacted_row(
+        coordinate, state, records,
+        wall_ns=time.perf_counter_ns() - started,
+        cpu_ns=time.process_time_ns() - cpu_started,
+        capture_wall_ns=capture_wall_ns, capture_cpu_ns=capture_cpu_ns,
+        rss_raw=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+        rss_unit="bytes" if sys.platform == "darwin" else "kibibytes")
+
+
+def _run_capacity_unit_default(args: tuple[CapacityDesign, bytes,
+                                            CapacityCoordinate]) \
+        -> dict[str, object]:
+    return _run_capacity_unit(*args)
 
 
 def run_capacity(
@@ -384,30 +463,21 @@ def run_capacity(
     if not callable(monotonic) or (progress_sink is not None
                                    and not callable(progress_sink)):
         raise PT1CapacityError("capacity callback drift")
-    capture_started = time.perf_counter_ns()
-    capture_cpu_started = time.process_time_ns()
-    states = capture_capacity_states(
-        design, capture_secret=capture_secret, state_capture=state_capture)
-    capture_wall_ns = time.perf_counter_ns() - capture_started
-    capture_cpu_ns = time.process_time_ns() - capture_cpu_started
+    secret = _secret(design, capture_secret)
+    # Refuse a selector collision before any expensive work starts.
+    all_seeds = [_seed(secret, coordinate, attempt)
+                 for coordinate in capacity_coordinates()
+                 for attempt in range(design.capture_attempts)]
+    if len(all_seeds) != len(set(all_seeds)):
+        raise PT1CapacityError("capacity round seed collision")
     runtime = _runtime_identity()
     if runtime["source_tree_dirty"] is not False:
         raise PT1CapacityError("capacity source tree must be clean")
     rows = []
-    for coordinate, state in states:
-        if deadline is not None and monotonic() >= deadline:
-            break
-        started = time.perf_counter_ns()
-        cpu_started = time.process_time_ns()
-        records = tuple(evaluator(
-            state.public_round, state.true_world,
-            seeds=CAPACITY_POLICY_SEEDS))
-        row = _redacted_row(
-            coordinate, state, records,
-            wall_ns=time.perf_counter_ns() - started,
-            cpu_ns=time.process_time_ns() - cpu_started,
-            rss_raw=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
-            rss_unit="bytes" if sys.platform == "darwin" else "kibibytes")
+    execution_started = time.perf_counter_ns()
+    coordinates = iter(capacity_coordinates())
+
+    def publish(row: dict[str, object]) -> None:
         rows.append(row)
         if progress_sink is not None:
             progress_sink({"completed_units": len(rows),
@@ -415,6 +485,50 @@ def run_capacity(
                            "percent_basis_points": len(rows) * 10_000
                            // CAPACITY_STATE_COUNT,
                            "status": "TRUNCATED"})
+
+    if design.parallel_workers == 1:
+        for coordinate in coordinates:
+            if deadline is not None and monotonic() >= deadline:
+                break
+            publish(_run_capacity_unit(
+                design, secret, coordinate, state_capture=state_capture,
+                evaluator=evaluator))
+    else:
+        if state_capture is not None or evaluator is not evaluate_state_batch:
+            raise PT1CapacityError(
+                "capacity parallel execution refuses injected callbacks")
+        with ProcessPoolExecutor(max_workers=design.parallel_workers) as pool:
+            pending = {}
+            for _ in range(design.parallel_workers):
+                coordinate = next(coordinates, None)
+                if coordinate is None or (deadline is not None
+                                           and monotonic() >= deadline):
+                    break
+                future = pool.submit(
+                    _run_capacity_unit_default, (design, secret, coordinate))
+                pending[future] = coordinate
+            while pending:
+                completed, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)
+                for future in completed:
+                    pending.pop(future)
+                    try:
+                        publish(future.result())
+                    except Exception as exc:
+                        raise PT1CapacityError(
+                            "capacity worker failed closed") from exc
+                    if deadline is not None and monotonic() >= deadline:
+                        continue
+                    coordinate = next(coordinates, None)
+                    if coordinate is not None:
+                        replacement = pool.submit(
+                            _run_capacity_unit_default,
+                            (design, secret, coordinate))
+                        pending[replacement] = coordinate
+    rows.sort(key=lambda row: row["index"])
+    execution_wall_ns = time.perf_counter_ns() - execution_started
+    aggregate_cpu_ns = sum(
+        int(row["capture_cpu_nanoseconds"]) + int(row["cpu_nanoseconds"])
+        for row in rows)
     complete = len(rows) == CAPACITY_STATE_COUNT
     body = {"schema": CAPACITY_REPORT_SCHEMA,
             "design_sha256": hashlib.sha256(
@@ -423,8 +537,9 @@ def run_capacity(
             "selector_namespace": CAPACITY_SEED_NAMESPACE,
             "schedule_sha256": capacity_schedule_sha256(),
             "runtime": runtime,
-            "capture_wall_nanoseconds": capture_wall_ns,
-            "capture_cpu_nanoseconds": capture_cpu_ns,
+            "parallel_workers": design.parallel_workers,
+            "execution_wall_nanoseconds": execution_wall_ns,
+            "aggregate_cpu_nanoseconds": aggregate_cpu_ns,
             "records": rows, "record_count": len(rows),
             "total_record_count": CAPACITY_STATE_COUNT,
             "status": "COMPLETE" if complete else "TRUNCATED",
@@ -435,8 +550,8 @@ def run_capacity(
                          // CAPACITY_STATE_COUNT},
             "reserve": {"numerator": design.reserve_numerator,
                         "denominator": design.reserve_denominator},
-            "caps": _caps(rows, design, capture_wall_ns=capture_wall_ns,
-                          capture_cpu_ns=capture_cpu_ns),
+            "caps": _caps(rows, design, execution_wall_ns=execution_wall_ns,
+                          aggregate_cpu_ns=aggregate_cpu_ns),
             "authority": dict(CAPACITY_AUTHORITIES)}
     body["population_digest_sha256"] = hashlib.sha256(
         canonical_json_bytes([[row["index"], row["public_state_sha256"],
@@ -466,7 +581,8 @@ def verify_capacity_report(
         raise PT1CapacityError("capacity report type refused")
     required = {"schema", "design_sha256", "capture_secret_sha256",
                 "selector_namespace", "schedule_sha256", "runtime", "records",
-                "capture_wall_nanoseconds", "capture_cpu_nanoseconds",
+                "parallel_workers", "execution_wall_nanoseconds",
+                "aggregate_cpu_nanoseconds",
                 "record_count", "total_record_count", "status",
                 "truncated_by_deadline", "progress", "reserve", "caps",
                 "authority", "population_digest_sha256", "report_sha256"}
@@ -514,7 +630,12 @@ def verify_capacity_report(
             or runtime["compiled_engine"] is not True \
             or runtime["strict_voids"] is not True:
         raise PT1CapacityError("capacity runtime identity drift")
-    for key in ("capture_wall_nanoseconds", "capture_cpu_nanoseconds"):
+    if payload["parallel_workers"] != (design.parallel_workers if design else
+                                        payload["parallel_workers"]) \
+            or type(payload["parallel_workers"]) is not int \
+            or not 1 <= payload["parallel_workers"] <= CAPACITY_STATE_COUNT:
+        raise PT1CapacityError("capacity parallel worker drift")
+    for key in ("execution_wall_nanoseconds", "aggregate_cpu_nanoseconds"):
         if type(payload[key]) is not int or payload[key] < 0:
             raise PT1CapacityError("capacity capture resource drift")
     records = payload["records"]
@@ -534,16 +655,23 @@ def verify_capacity_report(
         // CAPACITY_STATE_COUNT}
     if progress != expected_progress:
         raise PT1CapacityError("capacity progress drift")
-    expected = capacity_coordinates()
+    expected = {row.index: row for row in capacity_coordinates()}
     observed = []
+    observed_indexes = set()
     row_keys = {"schema", "index", "trump_rank", "banker", "role",
                 "remaining_hand_threshold", "public_state_sha256",
                 "true_world_sha256", "capture_id_sha256",
                 "evaluator_identity_sha256", "policy_seed_count", "work",
+                "capture_wall_nanoseconds", "capture_cpu_nanoseconds",
                 "wall_nanoseconds", "cpu_nanoseconds", "peak_rss_raw",
                 "peak_rss_unit", "artifact_projection_bytes"}
-    for coordinate, row in zip(expected, records):
-        if type(row) is not dict or set(row) != row_keys \
+    for row in records:
+        if type(row) is not dict or type(row.get("index")) is not int \
+                or row["index"] not in expected \
+                or row["index"] in observed_indexes:
+            raise PT1CapacityError("capacity selector/coverage drift")
+        coordinate = expected[row["index"]]
+        if set(row) != row_keys \
                 or row.get("schema") != CAPACITY_REPORT_SCHEMA \
                 or row.get("index") != coordinate.index \
                 or row.get("trump_rank") != coordinate.rank \
@@ -559,7 +687,8 @@ def verify_capacity_report(
         for key in ("public_state_sha256", "true_world_sha256",
                     "capture_id_sha256", "evaluator_identity_sha256"):
             _sha(row[key], f"capacity row {key}")
-        for key in ("wall_nanoseconds", "cpu_nanoseconds", "peak_rss_raw",
+        for key in ("capture_wall_nanoseconds", "capture_cpu_nanoseconds",
+                    "wall_nanoseconds", "cpu_nanoseconds", "peak_rss_raw",
                     "artifact_projection_bytes"):
             if type(row[key]) is not int or row[key] < 0:
                 raise PT1CapacityError("capacity resource receipt drift")
@@ -580,6 +709,7 @@ def verify_capacity_report(
                        for value in arm_work.values())
                 for arm_work in work.values()):
             raise PT1CapacityError("capacity work receipt drift")
+        observed_indexes.add(row["index"])
         observed.append(row)
     if payload["population_digest_sha256"] != hashlib.sha256(
             canonical_json_bytes([[row["index"], row["public_state_sha256"],
@@ -591,10 +721,12 @@ def verify_capacity_report(
                    "denominator": CAPACITY_RESERVE_DENOMINATOR}:
         raise PT1CapacityError("capacity reserve drift")
     expected_caps = _caps(observed, CapacityDesign(
-        payload["capture_secret_sha256"], reserve_numerator=reserve["numerator"],
+        payload["capture_secret_sha256"],
+        parallel_workers=payload["parallel_workers"],
+        reserve_numerator=reserve["numerator"],
         reserve_denominator=reserve["denominator"]),
-        capture_wall_ns=payload["capture_wall_nanoseconds"],
-        capture_cpu_ns=payload["capture_cpu_nanoseconds"]) if observed else {}
+        execution_wall_ns=payload["execution_wall_nanoseconds"],
+        aggregate_cpu_ns=payload["aggregate_cpu_nanoseconds"]) if observed else {}
     if payload["caps"] != expected_caps:
         raise PT1CapacityError("capacity derived caps drift")
     if design is not None and payload["runtime"] != _runtime_identity():

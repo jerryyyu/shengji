@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import random
+from concurrent.futures import Future
 from pathlib import Path
 
 import pytest
@@ -37,7 +38,8 @@ RUNTIME = {"git_head": "a" * 40, "source_tree_dirty": False,
 
 
 def _design():
-    return capacity.CapacityDesign(capture_secret_sha256=SECRET_SHA)
+    return capacity.CapacityDesign(
+        capture_secret_sha256=SECRET_SHA, parallel_workers=1)
 
 
 def _round(coordinate, hidden=0):
@@ -129,6 +131,8 @@ def test_exact_16_marginal_coverage_and_real_batch_calls(monkeypatch):
     assert payload["caps"]["scientific_cpu_nanoseconds"] > 0
     assert payload["caps"]["scientific_artifact_bytes"] > 0
     assert payload["caps"]["scientific_exact_nodes"] > 0
+    assert payload["caps"]["peak_rss_bytes"] >= max(
+        row["peak_rss_raw"] for row in payload["records"])
     assert all(row["work"]["C"]["exact_nodes"] == 17
                for row in payload["records"])
     assert all(row["artifact_projection_bytes"] == sum(
@@ -178,6 +182,39 @@ def test_deadline_seals_truncated_prefix_without_claiming_complete(monkeypatch):
     assert payload["record_count"] == 0
 
 
+def test_parallel_topology_uses_frozen_worker_pool_and_reopens(monkeypatch):
+    template, _ = _run(monkeypatch)
+    rows = {row["index"]: row for row in template.payload()["records"]}
+    observed = {"workers": None, "submitted": 0}
+
+    class FakePool:
+        def __init__(self, *, max_workers):
+            observed["workers"] = max_workers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def submit(self, function, args):
+            observed["submitted"] += 1
+            coordinate = args[2]
+            future = Future()
+            future.set_result(copy.deepcopy(rows[coordinate.index]))
+            return future
+
+    monkeypatch.setattr(capacity, "ProcessPoolExecutor", FakePool)
+    design = capacity.CapacityDesign(
+        capture_secret_sha256=SECRET_SHA, parallel_workers=4)
+    report = capacity.run_capacity(design, capture_secret=SECRET)
+    assert observed == {"workers": 4, "submitted": 16}
+    assert report.payload()["parallel_workers"] == 4
+    assert report.payload()["record_count"] == 16
+    assert capacity.verify_capacity_report(
+        report, design=design).payload() == report.payload()
+
+
 def test_cli_write_once_and_progress_publication(monkeypatch, tmp_path):
     report, _ = _run(monkeypatch)
     monkeypatch.setattr(capacity_cli, "run_capacity",
@@ -187,6 +224,7 @@ def test_cli_write_once_and_progress_publication(monkeypatch, tmp_path):
     secret_file.write_bytes(SECRET)
     secret_file.chmod(0o400)
     argv = ["--secret-file", str(secret_file), "--output-dir", str(output)]
+    argv += ["--workers", "1"]
     assert capacity_cli.main(argv) == 0
     packet = (output / "capacity.json").read_bytes()
     manifest = (output / "manifest.json").read_bytes()

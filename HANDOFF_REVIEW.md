@@ -3809,3 +3809,15 @@ I neutralized it (`or authority != {` → `or False and authority != {`, verifie
 **The fix is one test:** flip a single value in the spec payload's `authority`, rebind the spec (the suite's own `bind_spec` helper already does this), and assert `BeliefV2CacheImportError` with `match="field/authority drift"`. That closes it in the same style as the four forgeries already present.
 
 **Coverage limits, honestly.** 10 files and +1195/−84 is large and I did not audit it line by line. I went deep on the projection repair and its witness, the freeze/packet/claim/verifier chain, and the cache-import spec and its guards; I did not deeply audit `belief_v2_tensor_cache_controller.py` (+388) or `belief_v2_tensor_cache.py` (+133). On this ARM host five belief tests fail for environmental reasons — I verified they fail **identically at parent `9e44c0f`** (5 failed / 23 passed / 4 skipped, same names), so they are pre-existing, and 465 + 5 = the claimed 470. I could not reproduce the strict-compiled count here and did not pretend to; `19b63f8` did, natively. — Claude (session `68f9c8bd`)
+
+## 2026-08-25 — Jerry direction, relayed for Codex: DRAFT an R4-completion freeze (draft only — no launch, no authority granted here)
+
+Jerry has asked to salvage R4 to get the lane's first scientific signal early and to surface any further post-training defects before r12 reaches stage 8. Request to Codex: **draft** an R4-completion freeze/packet for review — do not launch anything.
+
+- New admission binding repaired source `5d3b129` and R4's four sealed cohort checkpoints as SHA-bound **read-only** inputs. R4's namespaces stay untouched (permanent-never-delete); fresh evidence/ops roots on `shengji-cloud`, which is idle. No contention with r12 on perf.
+- Stages: calibration under the repaired reroute → dev/reference scoring → the frozen R4 test opening, serialized as usual, human stratum descriptive-only.
+- **Pre-registration, recorded now before any new results exist:** R4-completion's test opening is the lane's primary decision-grade answer; r12's later test opening is confirmatory/replication-labeled. R4 and R5 were already declared non-independent (same scientific population); this fixes the interpretation before either test opens rather than after. r12's frozen text is not modified; it continues untouched and its recoverable-cache infrastructure value stands regardless of which run answers first.
+- Jerry may instead choose the dev-only variant (drop the test stage, preserve r12's opening as primary) — Codex should structure the draft so the test stage is cleanly separable, and flag any conflict between this pre-registration and r12's frozen protocol text rather than papering over one.
+- Side benefit to state honestly: R4-completion exercises the same repaired stages 8–10 code r12 will run, hours earlier and at near-zero cost — a pathfinder for latent defects, not a substitute for r12.
+
+Launch authority is NOT granted by this entry. The path remains: Codex drafts → Claude freeze review + machine-generated marker → Jerry's explicit go. — Claude (session `68f9c8bd`)

@@ -280,3 +280,57 @@ def test_public_drift_and_duplicate_population_are_load_bearing(monkeypatch):
     with pytest.raises(NaturalPT0Error, match="public state drift"):
         _make_record(design, state, role="banker-team", threshold=2,
                      round_seed=1, trump_rank="7")
+
+
+def test_make_record_refuses_forged_evaluation_public_fingerprint(monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    design = _design()
+    state = next(iter(capture_natural_states(
+        design, capture_secret=CAPTURE_SECRET).values()))
+    original = _sample_worlds
+
+    def forged_fingerprint(*args, **kwargs):
+        worlds, public, underlying = original(*args, **kwargs)
+        if kwargs["cohort"] == "evaluation":
+            public = "0" * 64
+        return worlds, public, underlying
+
+    monkeypatch.setattr(
+        "shengji.rl.privileged_teacher_pt0_natural._sample_worlds",
+        forged_fingerprint)
+    with pytest.raises(
+            NaturalPT0Error,
+            match="^natural PT0 cohort public fingerprint drift$"):
+        _make_record(design, state, role="banker-team", threshold=2,
+                     round_seed=1, trump_rank="7")
+
+
+def test_make_record_refuses_proposal_evaluation_draw_identity_overlap(
+        monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    design = _design()
+    state = next(iter(capture_natural_states(
+        design, capture_secret=CAPTURE_SECRET).values()))
+    original = _sample_worlds
+    proposal_draw_ids: list[str] = []
+
+    def overlapping_draws(*args, **kwargs):
+        worlds, public, underlying = original(*args, **kwargs)
+        if kwargs["cohort"] == "proposal":
+            proposal_draw_ids[:] = [identity for identity, _ in worlds]
+        else:
+            assert len(proposal_draw_ids) == len(worlds)
+            worlds = [
+                (proposal_draw_ids[index], world)
+                for index, (_, world) in enumerate(worlds)
+            ]
+        return worlds, public, underlying
+
+    monkeypatch.setattr(
+        "shengji.rl.privileged_teacher_pt0_natural._sample_worlds",
+        overlapping_draws)
+    with pytest.raises(
+            NaturalPT0Error,
+            match="^natural PT0 proposal/evaluation draw identity overlap$"):
+        _make_record(design, state, role="banker-team", threshold=2,
+                     round_seed=1, trump_rank="7")

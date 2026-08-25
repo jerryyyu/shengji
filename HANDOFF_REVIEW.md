@@ -4010,3 +4010,28 @@ BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW {"bounded_capture_reference_training_an
 **3. Worth recording as a positive, so the successor does not re-litigate it: the boot-identity repair worked.** `deadline-receipt.json` carries `boot_identity_sha256 60b50967b8fbe35a27624ae4e7b5ba35c3e5ac9b3ce40a63f25f9c2924211212` — the same value I independently confirmed against live `sha256(kern.bootsessionuuid)` when verifying the `r3` freeze. Initialization therefore cleared `authenticate_review_marker` and the live runtime/capacity binding, which is precisely what killed `r1` and `r2`. **This failure is downstream of that repair and unrelated to it.**
 
 **A narrowing that follows from the two diagnostics, offered as inference not measurement.** Both exonerating probes — the single real `ProcessPoolExecutor` `_scientific_worker` and the ten parallel `_capture_one_state` calls — ran with *fresh unrelated secrets* on *out-of-population* states. The scientific run differs from them in exactly two respects: the frozen scientific secret, and the frozen natural population/cell manifest. So the candidate surface is not the pool, the native extension or capture in general, but whatever those two inputs reach that the diagnostics never touched. The successor's requirement (1) — freeze a complete exact natural-cell capture manifest **before** opening the scientific namespace — is well aimed at that surface, and would also convert this class of failure from "spent slot, unknown cause" into "refused before the slot was consumed." — Claude (session `68f9c8bd`)
+
+## 2026-08-25 14:40 EDT — R4 completion is running blind: its only progress artifact is written once at startup, and a literal `\n` hides the staleness field. Monitoring finding, run not endangered
+
+Measured read-only on `shengji-cloud` while `belief-r4-completion-721b5f8-r1.service` is active. **Nothing here says stop the run** — it is healthy by every direct measure I can take. The problem is that nobody can tell that from the artifact everyone is quoting.
+
+**The status artifact is stale by construction.** `/opt/belief-r4-completion-721b5f8-r1.status` reads `phase=calibrating completed=1 total=4 percent=25.00`, and `HANDOFF_ACTIVE` quotes exactly that as current progress. Its mtime is **2026-08-25 17:25:41Z** — 18 seconds after the service started at 17:25:23Z. At my read, 18:35:58Z, it had not been touched in **1h10m17s**. That value is the initialization state, not live progress.
+
+The cause is structural, not a stall: the launch script's `write_status()` helper is called only at phase transitions, there is no periodic updater (`grep -E "while |sleep |until "` on the script returns nothing), and `belief_v2_worker.py` never references `status_file`. The shell is blocked on the worker for the entire calibration stage, so the file *cannot* advance while the longest stage runs. A monitor polling it sees a healthy-looking `percent=25.00` indefinitely — identical output whether the run is progressing, hung, or thrashing.
+
+**A formatting bug hides the one field that would reveal this.** Line 38 of `/opt/belief-r4-completion-launch-721b5f8-r1.sh`:
+
+```sh
+awk -v done="$completed" -v all="$total" 'BEGIN { printf "percent=%.2f\\n", (100 * done / all) }'
+```
+
+Inside the single-quoted awk program `\\n` reaches awk as a literal backslash-n, so awk emits the two characters `\` `n` rather than a newline. `od -c` confirms `. 0 0 \ n u p d a t e d _ u t c`. Lines 35–36 use shell `printf 'phase=%s\n'` and are correct — only the awk line is wrong. The consequence is that `percent` and `updated_utc` share one physical line, so `grep '^updated_utc='` returns **nothing** and `grep '^percent='` returns `percent=25.00\nupdated_utc=…`. The staleness timestamp is unreachable by line-based parsing, which is exactly why the file reads as fresh.
+
+**Why this matters here specifically.** This is the same class as `84043d9` ("R4 stage 8 calibrate emits no progress signal") — and the completion run has re-entered calibration, the stage that killed R4 the first time, under a 48-hour ceiling with `Restart=no`. R3 was lost to deadline expiry. A run that cannot be distinguished from a hung run for hours is how that repeats.
+
+**Direct measurements, since the artifact cannot supply them.** Service `active/running`, started 17:25:23Z, elapsed **1h10m35s** at my read. Worker at **~630% CPU** and **7.1–7.4 GiB RSS**; cgroup `MemoryCurrent` **15.32 GiB**, `MemoryPeak` **16.48 GiB** against `MemoryMax` **24.00 GiB** — **68.7% of the ceiling**. RSS was not monotonic across a 45s sample (7.66 → 7.12 GiB), so I am not claiming a leak. But `HANDOFF_ACTIVE` describes this worker as "one full CPU core and roughly 2.6 GiB RSS", which understates real cgroup usage by roughly 6×; that figure should not be used for headroom planning, particularly in a lane whose v8 preflight died with `memory_peak_bytes == memory_max_bytes` at this same 24 GiB ceiling. `calibration/`, `terminal/`, `terminal.partial/` and `test` are all absent — the test split is unopened, as claimed.
+
+**Suggested fix, cheap and out of the critical path:** emit `BELIEF_V2_PROGRESS` from the worker to stderr as every other stage already does (`StandardOutput=journal` is already configured, and the journal currently holds 6 lines total for this unit), or have the worker refresh the status file on a heartbeat. Separately, change line 38 to a shell `printf 'percent=%.2f\n'` or use `\n` (single backslash) inside the awk program. Neither change touches the running service.
+
+No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+

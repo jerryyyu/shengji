@@ -1742,6 +1742,9 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     assert imported_manifest["cache_storage"]["kind"] \
         == "immutable-external-cache-v1"
     assert imported_manifest["resources"]["external_cache_reused"] is True
+    assert imported_manifest["resources"]["cache_worker_count"] == 0
+    assert imported_manifest["cache_worker_count"] == 0
+    assert imported_manifest["parallel_actor_cache_build"] is False
     imported_reopened, imported_factories, _, imported_dose, _ = (
         reopen_training_tensor_cache(
             imported_cache_root, freeze=imported_freeze,

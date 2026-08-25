@@ -178,11 +178,11 @@ def _resource_row(
             or type(cpu_nanoseconds) is not int or cpu_nanoseconds < 0 \
             or type(resumed_from_partial) is not bool \
             or type(cache_worker_count) is not int \
-            or cache_worker_count <= 0 \
+            or cache_worker_count < 0 \
             or type(external_cache_reused) is not bool \
             or cache_worker_count \
-            != parallel_cache_worker_count(
-                freeze.runtime, caps.training_host_memory_bytes) \
+            != (0 if external_cache_reused else parallel_cache_worker_count(
+                freeze.runtime, caps.training_host_memory_bytes)) \
             or finished - started > caps.training_wall_seconds * 1_000_000_000 \
             or artifact_bytes > caps.training_bytes \
             or peak_host_memory_bytes > caps.training_host_memory_bytes:
@@ -214,16 +214,19 @@ def _resource_refusal_payload(
         input_index_sha256: str, stage_start_sha256: str,
         started: int, finished: int, cpu_nanoseconds: int,
         artifact_bytes: int, peak_host_memory_bytes: int,
-        cache_worker_count: int) -> dict[str, Any] | None:
+        cache_worker_count: int, external_cache_reused: bool) \
+        -> dict[str, Any] | None:
     """Return an immutable refusal only for a measured cap exceedance."""
     caps = freeze.resource_caps
     if any(type(value) is not int or value <= 0 for value in (
-            started, finished, artifact_bytes, peak_host_memory_bytes,
-            cache_worker_count)) \
+            started, finished, artifact_bytes, peak_host_memory_bytes)) \
             or finished <= started \
             or type(cpu_nanoseconds) is not int or cpu_nanoseconds < 0 \
-            or cache_worker_count != parallel_cache_worker_count(
-                freeze.runtime, caps.training_host_memory_bytes):
+            or type(cache_worker_count) is not int \
+            or type(external_cache_reused) is not bool \
+            or cache_worker_count \
+            != (0 if external_cache_reused else parallel_cache_worker_count(
+                freeze.runtime, caps.training_host_memory_bytes)):
         raise BeliefV2TensorCacheControllerError(
             "V2 tensor cache resource refusal inputs drift")
     wall_nanoseconds = finished - started
@@ -250,6 +253,7 @@ def _resource_refusal_payload(
         "artifact_bytes": artifact_bytes,
         "peak_host_memory_bytes": peak_host_memory_bytes,
         "cache_worker_count": cache_worker_count,
+        "external_cache_reused": external_cache_reused,
         "caps": {
             "wall_nanoseconds": (
                 caps.training_wall_seconds * 1_000_000_000),
@@ -369,7 +373,8 @@ def reopen_tensor_cache_resource_refusal(
         cpu_nanoseconds=payload.get("cpu_nanoseconds"),
         artifact_bytes=payload.get("artifact_bytes"),
         peak_host_memory_bytes=payload.get("peak_host_memory_bytes"),
-        cache_worker_count=payload.get("cache_worker_count"))
+        cache_worker_count=payload.get("cache_worker_count"),
+        external_cache_reused=payload.get("external_cache_reused"))
     if expected is None or payload != expected \
             or canonical_json_bytes(payload) != raw:
         raise BeliefV2TensorCacheControllerError(
@@ -698,6 +703,7 @@ def run_training_tensor_cache(
         cache_base = import_spec.source_cache_root
         cache_storage = _imported_cache_storage(
             import_spec, import_receipt_raw)
+    realized_cache_workers = 0 if import_spec is not None else cache_workers
 
     loader = None if import_spec is not None else V2ArtifactRoundLoader(
         root, freeze=freeze, admission=admission, index=inputs.index)
@@ -887,7 +893,7 @@ def run_training_tensor_cache(
                       + calibration_receipt["artifact_bytes"])
     wall_nanoseconds = finished - started
     cpu_nanoseconds = (
-        wall_nanoseconds * (cache_workers + 1)
+        wall_nanoseconds * (realized_cache_workers + 1)
         if resumed_from_partial
         else _process_tree_cpu_time_ns() - cpu_started)
     peak_host_memory_bytes = (
@@ -901,7 +907,8 @@ def run_training_tensor_cache(
         finished=finished, cpu_nanoseconds=cpu_nanoseconds,
         artifact_bytes=artifact_bytes,
         peak_host_memory_bytes=peak_host_memory_bytes,
-        cache_worker_count=cache_workers)
+        cache_worker_count=realized_cache_workers,
+        external_cache_reused=import_spec is not None)
     if refusal is not None:
         publish_exclusive_bytes(
             partial / RESOURCE_REFUSAL_FILENAME,
@@ -914,14 +921,14 @@ def run_training_tensor_cache(
         artifact_bytes=artifact_bytes,
         peak_host_memory_bytes=peak_host_memory_bytes,
         resumed_from_partial=resumed_from_partial,
-        cache_worker_count=cache_workers,
+        cache_worker_count=realized_cache_workers,
         external_cache_reused=import_spec is not None)
     manifest = _manifest(
         freeze, admission, input_index_sha256=input_index_sha256,
         entries=entries, calibration=calibration_entry,
         control_dose=inputs.index.control_changed_cell_count,
         stage_start_sha256=_sha256(start_raw),
-        resources=resources, cache_worker_count=cache_workers,
+        resources=resources, cache_worker_count=realized_cache_workers,
         cache_storage=cache_storage)
     publish_exclusive_bytes(
         partial / MANIFEST_FILENAME, canonical_json_bytes(manifest))
@@ -1154,8 +1161,8 @@ def reopen_training_tensor_cache(
             or resources["peak_host_memory_bytes"] \
             > caps.training_host_memory_bytes \
             or resources["cache_worker_count"] \
-            != parallel_cache_worker_count(
-                freeze.runtime, caps.training_host_memory_bytes) \
+            != (0 if import_spec is not None else parallel_cache_worker_count(
+                freeze.runtime, caps.training_host_memory_bytes)) \
             or resources["retry_count"] != 0 \
             or resources["drop_count"] != 0 \
             or resources["external_cache_reused"] \
@@ -1169,8 +1176,9 @@ def reopen_training_tensor_cache(
         control_dose=inputs.index.control_changed_cell_count,
         stage_start_sha256=_sha256(start_raw),
         resources=resources,
-        cache_worker_count=parallel_cache_worker_count(
-            freeze.runtime, caps.training_host_memory_bytes),
+        cache_worker_count=(
+            0 if import_spec is not None else parallel_cache_worker_count(
+                freeze.runtime, caps.training_host_memory_bytes)),
         cache_storage=cache_storage)
     expected_files = (
         {MANIFEST_FILENAME, START_FILENAME, IMPORT_RECEIPT_FILENAME}

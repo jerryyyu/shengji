@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 11:45 EDT.
+Last reconciled: 2026-08-25 12:00 EDT.
 
 ## Immediate objective
 
@@ -179,13 +179,27 @@ second ignored native library under `server/build/`; the exact execution binder
 correctly classified it as an untracked loadable shadow. No deadline receipt,
 scientific namespace, training, calibration or test opening was created. The
 build tree was moved intact to
-`/opt/belief-r5-index-bridge-2d4dfe8-build-artifacts-r13a`; the active native
-library and Git source remain exact and clean. Deadline-only unit
-`belief-r5-deadline-2d4dfe8-r13b.service`, invocation
-`6fb1d3381d8846da90144f8e8a6bc106`, is now active under `MemoryMax=30G`, zero
-swap, `Restart=no` and the same twelve-hour wall guard. The valid capacity
-receipt is reused; it is not being rerun. After the deadline receipt passes,
-Codex will build the complete fresh freeze and request one consolidated
+`/opt/belief-r5-index-bridge-2d4dfe8-build-artifacts-r13a`; the Git source
+remained exact and clean. Deadline-only unit `r13b` then completed successfully
+in 3m48s with no restart: 416 capture samples, 32 reference samples and two
+matching training probes. Deadline receipt SHA-256 is `a22221d5…f361`; it
+opened no production seed, retained no rows/models/worlds and authorizes no
+pipeline or strength action.
+
+The first exact-freeze build exposed one final deployment-runtime seam before
+review or science: the newly compiled native library was byte-different from
+the exact native library bound to the reusable 27.8 GB cache, even though the
+Git engine sources are unchanged. The cache importer correctly refused
+`source runtime/cap identity drift`; the fresh evidence root remained absent.
+The new native was moved intact into the existing build-artifact quarantine,
+and the previously frozen native binary (`e449d885…e3c`) was restored to the
+active checkout. Fresh score-free `r13c` capacity/deadline preflights are now
+active under 30 GiB memory, zero swap, `Restart=no` and a twelve-hour wall
+guard. This rerun is required because both receipts bind the exact active
+runtime; it cannot initialize science or open calibration/test. The superseded
+`r13a` freeze `602d20b3…fb21` grants no execution authority and must not be
+reviewed or launched. After `r13c` passes, Codex will build one fresh freeze,
+double-reopen the imported cache, and request one consolidated PR #147
 source+freeze review.
 
 ## PT1 preparation
@@ -225,7 +239,7 @@ training/evaluation data.
 |---|---|---|
 | Mini | PT1 current-boot capacity/freeze `r2` complete; idle pending one narrow marker review | Never rerun PT0; do not touch R4/R5; launch only after exact `r2` PASS. |
 | Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
-| Performance Cloud | R5 `r12` stopped pre-training and is preserved; exact PR #147 score-free capacity/deadline preflights active | Never retry/delete `r12`; preflights cannot initialize science or open calibration/test. |
+| Performance Cloud | R5 `r12` preserved; PR #147 exact-native score-free `r13c` capacity/deadline preflights active | Never retry/delete `r12`; preflights cannot initialize science or open calibration/test. |
 | Production | untouched | No deploy or policy change from research evidence. |
 
 ## Next operator sequence

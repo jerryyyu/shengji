@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 08:15 EDT.
+Last reconciled: 2026-08-25 08:41 EDT.
 
 ## Immediate objective
 
@@ -27,8 +27,10 @@ independent packets, in this order:
 1. one consolidated R4-completion source + exact Strength Cloud freeze; and
 2. one consolidated PT1 source + exact Mini capacity/freeze packet.
 
-Neither exact head/freeze exists yet. R5 has failed safely and has no active
-review request. Do not review, retry or relaunch the spent R5 `r12` admission.
+Both isolated source heads now exist, but neither exact host freeze exists yet.
+Do not review partial source without its packet. R5 has failed safely and has
+no active review request. Do not review, retry or relaunch the spent R5 `r12`
+admission.
 
 ## PT0 result — closed and interpreted
 
@@ -66,6 +68,18 @@ decision index 68 / key `666ee457…e135`, `synthetic-primary` member 6 / model
 general exact-transport fallback repairs this real prediction with maximum
 cell movement 2.38 ppb and then passes full ownership validation. This is an
 operational/model-path defect, not a positive or negative belief result.
+
+Draft PR #146 now carries the fresh one-shot R4 completion route at exact head
+`721b5f8`. It binds every original R4 input/training manifest, writes only to a
+fresh namespace, proves stable calibration before a durable test attempt and
+grants no retry/gameplay/deployment authority. Pure and strict BELIEF suites
+were green before the live-artifact diagnostic. That diagnostic correctly
+found a second pre-calibration compatibility seam: current code initially
+rejected R4's exact legacy V2 tensor-cache accounting schema. The repaired
+head permits that legacy schema only when the caller supplies the exact pinned
+R4 cache-manifest SHA; ordinary V4 reopening still refuses it and wrong hashes
+refuse. Focused tests are green and an actual sealed-cache/cohort reopen is now
+running read-only. No calibration or test bytes have been opened.
 
 ## R5 `r12` — stopped safely before training or test
 
@@ -124,14 +138,17 @@ Primary `C-B` measures policy improvement after both receive perfect
 information; `B-A` measures value of information. The teacher must beat
 production MC with a positive held-out lower bound, not merely beat heuristic.
 
-Draft PR #145 contains the three exact A/B/C search arms. The repaired source
-fails closed on underfilled production work before persistence. A separate
-natural provider now builds the specified 416-state population as 416 distinct
+Draft PR #145 exact head `2fbfe23` contains the three A/B/C search arms, natural
+416-state provider and exact state-bootstrap statistics. It fails closed on
+underfilled production work before persistence. The population is 416 distinct
 engine-round clusters across all 13 ranks, two banker representatives, two
-roles, two remaining-hand horizons and four replicates. Statistics, capacity,
-runner/freeze and primary integration review remain. Do not review or run it
-until Codex publishes one exact source+Mini-capacity+freeze request. PT0 records
-are not reused as training/evaluation data.
+roles, two remaining-hand horizons and four replicates. C's deterministic
+exact solve is now shared across the four policy seeds per state, eliminating
+75% of duplicated C work while A/B stay seed-specific; checkpoints expose only
+complete four-seed state groups. Both engine modes pass all 86 privileged-
+teacher tests. Capacity, freeze and final integration review remain. Do not
+review or run it until Codex publishes one exact source+Mini-capacity+freeze
+request. PT0 records are not reused as training/evaluation data.
 
 ## Fleet
 

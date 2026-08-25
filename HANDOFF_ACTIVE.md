@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 12:37 EDT.
+Last reconciled: 2026-08-25 12:48 EDT.
 
 ## Immediate objective
 
@@ -19,7 +19,7 @@ fresh three-arm privileged-teacher acquisition screen whose primary bar is an
 improved exact/full-information teacher beating production MC given the same
 true world. PT1 is isolated to Mini and cannot touch R4/R5.
 
-## Review queue — three precise asks, one pass each
+## Review queue — two precise asks, one pass each
 
 ### 1. PT1 PR #145 `95a142d` + `r3` — NARROW SOURCE REPAIR + FREEZE
 
@@ -81,32 +81,6 @@ test opening cannot precede stable calibration. If exact, append the
 byte-identical expected marker once and PASS. Codex will then run the
 completion once and independently reproduce its terminal. No retry, gameplay,
 strength, promotion, deployment or merge authority follows.
-
-### 3. R5 PR #147 `2d4dfe8` — CONSOLIDATED SOURCE + FREEZE
-
-Review this once at exact head
-`2d4dfe84280d7c1cb433b000aa18670bf4abfdd1` against stacked parent
-`5d3b129bae04e0afc6cd5369b206ea87a967731e`. CI is green. The four-file delta
-changes only reusable-cache admission from provenance-wrapper byte identity to
-the closed semantic training identity, with unknown fields and any true
-training-population change still refusing. Pure BELIEF is 470/470; strict x86
-is 468 green with the same three host/fixture failures reproduced at parent.
-
-Exact review packet
-`/opt/belief-r5-freeze-inputs-2d4dfe8-r13c/freeze-review-packet.json` is
-byte-identical to its independent rebuild, SHA-256
-`771e52f8429631c32babe6e7fbf6c09c8677ebf650dcc4820cb64aa2b87b3453`.
-It binds capacity `cb3704c9…6f7`, deadline `10ae8be0…74d`, caps
-`70737c0f…d26`, exact freeze `5bfeef78…f078`, expected marker
-`8237ea76…1448`, exact cache-bound native `e449d885…e3c`, two complete cache
-reopens with the same five child manifests and 27,822,677,063 logical bytes,
-the 85-task DAG summary `13c5216f…249b`, and guarded launch script
-`a534e2c4…8274`. Scientific root
-`/opt/belief-r5-evidence-cache-semantic-v1-r1` is absent. Review source and
-freeze together; if exact, append the byte-identical marker once and PASS. Do
-not retry or delete spent `r12`. Even after PASS, Codex will not launch R5 until
-R4's terminal is independently reproduced and interpreted. No gameplay,
-strength, retry, promotion, deployment or merge authority follows.
 
 ## PT0 result — closed and interpreted
 
@@ -265,10 +239,17 @@ The imported cache reopened twice with the same five child manifests and
 85 tasks with one serialized test opening, and the guarded launch script binds
 all reviewed bytes. The review packet was independently generated twice at
 `771e52f8…3453`. No scientific namespace, model training, calibration or test
-opening occurred. PR #147 is now ready for the single consolidated
-source+freeze review above; it must not launch before R4 is interpreted. The
-superseded `r13a` freeze `602d20b3…fb21` grants no execution authority and must
-not be reviewed or launched.
+opening occurred. Claude's single consolidated review PASS is canonical at
+`9b1833312f874ad91ed43a75fd7ec5e82b83b6d1`; the appended marker is
+byte-identical to the expected marker at `8237ea76…1448`. Codex independently
+recompared those bytes and confirmed the scientific root is still absent.
+PR #147 is fully prepared but must not launch before R4 is interpreted. The
+actual packet path is
+`/opt/belief-r5-index-bridge-2d4dfe8-freeze-inputs-r13c/freeze-review-packet.json`;
+the native is bound transitively through the exact freeze, correcting the two
+non-blocking wording defects in the review request. The superseded `r13a`
+freeze `602d20b3…fb21` grants no execution authority and must not be reviewed
+or launched.
 
 ## PT1 preparation
 
@@ -310,7 +291,7 @@ as training/evaluation data.
 |---|---|---|
 | Mini | PT1 stable-boot repair + `r3` capacity/freeze complete; idle pending one narrow repaired-head review | Never rerun PT0; do not touch R4/R5; launch only after exact `r3` PASS. |
 | Strength Cloud | R4 audit and fresh completion freeze PASS locally; idle pending consolidated PR #146 review | Never restart or alter the original R4 namespace. |
-| Performance Cloud | R5 `r12` preserved; PR #147 exact-native freeze/review packet complete; idle pending review and R4 interpretation | Never retry/delete `r12`; do not launch R5 ahead of R4's decision. |
+| Performance Cloud | R5 `r12` preserved; PR #147 exact-native consolidated PASS authenticated; idle pending R4 interpretation | Never retry/delete `r12`; do not launch R5 ahead of R4's decision. |
 | Production | untouched | No deploy or policy change from research evidence. |
 
 ## Next operator sequence
@@ -319,8 +300,7 @@ as training/evaluation data.
    after their independent PASS markers, Codex launches both isolated runs.
 2. Codex independently reproduces and interprets R4's terminal before any R5
    execution decision.
-3. Claude may review PR #147's already-complete source+freeze packet in
-   parallel; a PASS prepares but does not launch R5.
+3. R5 PR #147 is already consolidated-PASSed and launch-ready but remains held.
 4. If R4's result still justifies confirmation, Codex launches R5 once on the
    exact reviewed bytes. R5 remains confirmatory because it shares R4's
    scientific population.

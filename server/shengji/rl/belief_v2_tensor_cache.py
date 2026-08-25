@@ -18,10 +18,12 @@ files, and refuses the ``test`` split at both build and load time.
 Byte identity across rebuilds is deliberately NOT claimed (torch serialization
 is not specified to be byte-stable); the load-bearing claims are content
 parity — reloaded batches train byte-identically to freshly built ones — and
-the manifest binding of the artifact as built.  R4 wires the cache into device
-qualification, cohort training, and independent calibration re-scoring only
-after the cache controller has reopened every byte.  No cache artifact grants
-execution, test-opening, strength, or deployment authority.
+the manifest binding of the artifact as built.  The stage publisher and
+terminal verifier reopen every byte.  Device qualification and cohort workers
+reopen the closed manifest/file population first, then hash and parse every
+exact batch they actually consume; they do not pre-read unrelated cohorts.
+No cache artifact grants execution, test-opening, strength, or deployment
+authority.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ import hashlib
 import io
 import json
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -255,6 +258,42 @@ def _publish_cache_file(path: Path, raw: bytes) -> None:
             "V2 tensor cache publication refused") from exc
 
 
+def _drop_verified_cache_pages(path: Path) -> None:
+    """Release cold immutable output pages after byte verification.
+
+    Linux charges clean file-cache pages to the cache builder's cgroup.  The
+    complete R5 population is much larger than RAM and none of these files is
+    consumed again until the cache has sealed, so retaining freshly written
+    pages starves the workers without improving correctness or locality.
+    ``POSIX_FADV_DONTNEED`` is advisory and intentionally a no-op on runtimes
+    that do not expose it; artifact bytes and manifests are unchanged.
+    """
+    advise = getattr(os, "posix_fadvise", None)
+    dont_need = getattr(os, "POSIX_FADV_DONTNEED", None)
+    if advise is None or type(dont_need) is not int:
+        return
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache page-release open refused") from exc
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 \
+                or info.st_mode & 0o222:
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache page-release identity drift")
+        try:
+            advise(descriptor, 0, 0, dont_need)
+        except OSError:
+            # This is an optimization hint, not an authority or integrity
+            # boundary. Unsupported filesystems must preserve exact behavior.
+            return
+    finally:
+        os.close(descriptor)
+
+
 def _discard_incomplete_atomic_write(path: Path) -> None:
     partial = path.with_name(path.name + ".partial")
     if not partial.exists() and not partial.is_symlink():
@@ -301,8 +340,10 @@ def _reuse_or_publish_batch_file(
         if not matches:
             raise BeliefV2TensorCacheError(
                 "V2 tensor cache resumed batch content drift")
+        _drop_verified_cache_pages(path)
         return existing, True
     _publish_cache_file(path, raw)
+    _drop_verified_cache_pages(path)
     return raw, False
 
 
@@ -312,8 +353,10 @@ def _reuse_or_publish_exact_file(path: Path, raw: bytes) -> bool:
         if stable_read_bytes(path) != raw:
             raise BeliefV2TensorCacheError(
                 "V2 tensor cache resumed manifest drift")
+        _drop_verified_cache_pages(path)
         return True
     _publish_cache_file(path, raw)
+    _drop_verified_cache_pages(path)
     return False
 
 
@@ -601,6 +644,60 @@ def reopen_tensor_cache(
         "decision_count": sum(
             len(row["decision_keys"]) for row in manifest["batches"]),
         "artifact_bytes": total_bytes,
+    }
+
+
+def _immutable_file_population_bytes(
+        directory: Path, names: tuple[str, ...]) -> int:
+    total = 0
+    for name in names:
+        path = directory / name
+        if path.is_symlink():
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache manifest-only file shape drift")
+        try:
+            info = path.stat()
+        except OSError as exc:
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache manifest-only file stat refused") from exc
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 \
+                or info.st_mode & 0o222 or info.st_size <= 0:
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache manifest-only file shape drift")
+        total += info.st_size
+    return total
+
+
+def reopen_tensor_cache_manifest(
+        directory: Path, *, expected_manifest_sha256: str,
+        expected_artifact_bytes: int,
+        binding: V2TensorCacheBindingV1) -> dict[str, Any]:
+    """Reopen structure now; each consumed batch is hash-checked lazily.
+
+    This is a startup optimization only.  The stage publisher and terminal
+    verifier still call :func:`reopen_tensor_cache`, while the returned batch
+    factory hashes the exact actor/label bytes before every parse.
+    """
+    if type(expected_artifact_bytes) is not int \
+            or expected_artifact_bytes <= 0:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache manifest-only byte count drift")
+    manifest = _load_manifest(
+        directory, expected_manifest_sha256, binding)
+    names = (MANIFEST_FILENAME, *(name for row in manifest["batches"]
+                                  for name in (row["actor_file"],
+                                               row["privileged_file"])))
+    artifact_bytes = _immutable_file_population_bytes(directory, names)
+    if artifact_bytes != expected_artifact_bytes \
+            or artifact_bytes > binding.storage_cap_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache manifest-only byte count drift")
+    return {
+        "manifest_sha256": expected_manifest_sha256,
+        "batch_count": manifest["batch_count"],
+        "decision_count": sum(
+            len(row["decision_keys"]) for row in manifest["batches"]),
+        "artifact_bytes": artifact_bytes,
     }
 
 
@@ -899,6 +996,34 @@ def reopen_label_overlay(
         "decision_count": sum(
             len(row["decision_keys"]) for row in manifest["batches"]),
         "artifact_bytes": total_bytes,
+    }
+
+
+def reopen_label_overlay_manifest(
+        directory: Path, *, expected_manifest_sha256: str,
+        expected_artifact_bytes: int, actor_manifest_sha256: str,
+        binding: V2TensorCacheBindingV1) -> dict[str, Any]:
+    """Reopen overlay structure; hash each label when the factory consumes it."""
+    if type(expected_artifact_bytes) is not int \
+            or expected_artifact_bytes <= 0:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor overlay manifest-only byte count drift")
+    manifest = _load_label_overlay(
+        directory, expected_manifest_sha256=expected_manifest_sha256,
+        actor_manifest_sha256=actor_manifest_sha256, binding=binding)
+    names = (LABEL_MANIFEST_FILENAME,
+             *(row["privileged_file"] for row in manifest["batches"]))
+    artifact_bytes = _immutable_file_population_bytes(directory, names)
+    if artifact_bytes != expected_artifact_bytes \
+            or artifact_bytes > binding.storage_cap_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor overlay manifest-only byte count drift")
+    return {
+        "manifest_sha256": expected_manifest_sha256,
+        "batch_count": manifest["batch_count"],
+        "decision_count": sum(
+            len(row["decision_keys"]) for row in manifest["batches"]),
+        "artifact_bytes": artifact_bytes,
     }
 
 

@@ -14,6 +14,8 @@ from dataclasses import replace
 import pytest
 import torch
 
+import shengji.rl.belief_v2_tensor_cache as CACHE
+
 from shengji.ai.heuristic import HeuristicBot
 from shengji.rl.belief_capture import CHAMPION_POLICY, _capture_with_policies
 from shengji.rl.belief_cohort import COHORT_SEEDS
@@ -91,6 +93,47 @@ def _built(tmp_path, split="train"):
         tmp_path / "cache", batches=lambda: iter(batches),
         binding=binding)
     return batches, receipt, binding
+
+
+def test_cache_publication_releases_verified_cold_pages(
+        tmp_path, monkeypatch):
+    calls = []
+
+    def advise(descriptor, offset, length, advice):
+        info = CACHE.os.fstat(descriptor)
+        calls.append((offset, length, advice, info.st_size, info.st_mode))
+
+    monkeypatch.setattr(
+        CACHE.os, "POSIX_FADV_DONTNEED", 4, raising=False)
+    monkeypatch.setattr(CACHE.os, "posix_fadvise", advise, raising=False)
+    _built(tmp_path)
+
+    cache_files = tuple((tmp_path / "cache").iterdir())
+    assert len(calls) == len(cache_files) == 7
+    assert all(offset == 0 and length == 0 and advice == 4
+               and size > 0 and mode & 0o222 == 0
+               for offset, length, advice, size, mode in calls)
+
+
+def test_cache_page_release_advice_is_never_an_integrity_dependency(
+        tmp_path, monkeypatch):
+    calls = []
+
+    def unsupported(*args):
+        calls.append(args)
+        raise OSError("advisory operation unavailable")
+
+    monkeypatch.setattr(
+        CACHE.os, "POSIX_FADV_DONTNEED", 4, raising=False)
+    monkeypatch.setattr(
+        CACHE.os, "posix_fadvise", unsupported, raising=False)
+    _, receipt, binding = _built(tmp_path)
+
+    assert len(calls) == 7
+    assert len(tuple(cached_batch_factory(
+        tmp_path / "cache",
+        expected_manifest_sha256=receipt["manifest_sha256"],
+        binding=binding)())) == binding.expected_batch_count
 
 
 def test_cached_training_is_byte_identical_to_fresh_batches(tmp_path):

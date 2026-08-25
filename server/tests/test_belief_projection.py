@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import random
 from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -198,6 +199,49 @@ def test_near_boundary_projection_uses_exact_transport_repair(monkeypatch):
     validate_ownership(actor, belief)
     assert belief.sha256() \
         == "d39eedcc69d49217dedeef49fe01c4fd13961c4fcb6137b1da5fe88c520f3d08"
+
+
+def test_residual_increment_dead_end_reroutes_through_exact_transport(
+        monkeypatch):
+    """Witness the real R4 calibration failure at the transport boundary."""
+    scale = PROBABILITY_SCALE
+    cards = (
+        SimpleNamespace(
+            card="A", unseen_count=1,
+            min_count_by_receiver=(0, 0),
+            max_count_by_receiver=(1, 0),
+            required_receiver_group=(),
+            required_receiver_group_min_count=0,
+        ),
+        SimpleNamespace(
+            card="B", unseen_count=1,
+            min_count_by_receiver=(0, 0),
+            max_count_by_receiver=(1, 1),
+            required_receiver_group=(),
+            required_receiver_group_min_count=0,
+        ),
+    )
+    model_input = SimpleNamespace(receivers=(
+        SimpleNamespace(receiver="left", card_count=1),
+        SimpleNamespace(receiver="right", card_count=1),
+    ))
+    expected = [
+        [0.999999999, 0.0],
+        [0.0000000012, 0.9999999998],
+    ]
+    repair = PROJECTION._repair_approximate_transport
+    calls = 0
+
+    def witnessed_repair(*args):
+        nonlocal calls
+        calls += 1
+        return repair(*args)
+
+    monkeypatch.setattr(
+        PROJECTION, "_repair_approximate_transport", witnessed_repair)
+    assert PROJECTION._round_transport(
+        expected, cards, model_input) == [[scale, 0], [0, scale]]
+    assert calls == 1
 
 
 def test_approximate_transport_refuses_nonlocal_residual(monkeypatch):

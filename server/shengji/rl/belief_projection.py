@@ -437,11 +437,19 @@ def _round_transport(
 
         total = sum(row_need)
         if _augment_flow(graph, source, sink, total) != total:
-            raise BeliefProjectionError(
-                "integral projection flow is infeasible")
-        for (card, receiver), edge in cell_edges.items():
-            if edge.capacity == 0:
-                rounded[card][receiver] += 1
+            # A near-boundary fractional solution can leave a valid row with
+            # its only one-PPB increment aimed at an already-full column.  A
+            # different row must then move one PPB between columns before the
+            # first row can be completed.  The residual ``+1`` graph above
+            # cannot express that decrement-and-reroute cycle; the general
+            # exact transport repair can and remains bounded by the same hard
+            # lower/upper margins.
+            rounded = _repair_approximate_transport(
+                expected, cards, model_input)
+        else:
+            for (card, receiver), edge in cell_edges.items():
+                if edge.capacity == 0:
+                    rounded[card][receiver] += 1
     if any(sum(row) != card.unseen_count * PROBABILITY_SCALE
            for card, row in zip(cards, rounded, strict=True)) \
             or any(sum(rounded[card][receiver] for card in range(n_cards))

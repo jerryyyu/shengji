@@ -71,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--secret-file", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--workers", required=True, type=int)
     parser.add_argument("--deadline-seconds", type=float)
     args = parser.parse_args(argv)
     try:
@@ -83,7 +84,8 @@ def main(argv: list[str] | None = None) -> int:
         if len(secret) != 32:
             raise PT1CapacityError("capacity secret must be 32 bytes")
         design = CapacityDesign(
-            capture_secret_sha256=__import__("hashlib").sha256(secret).hexdigest())
+            capture_secret_sha256=__import__("hashlib").sha256(secret).hexdigest(),
+            parallel_workers=args.workers)
         deadline = (time.monotonic() + args.deadline_seconds
                     if args.deadline_seconds is not None else None)
         progress = args.output_dir / "progress.json"

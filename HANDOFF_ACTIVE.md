@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 11:27 EDT.
+Last reconciled: 2026-08-25 11:35 EDT.
 
 ## Immediate objective
 
@@ -94,7 +94,14 @@ rejected R4's exact legacy V2 tensor-cache accounting schema. The repaired
 head permits that legacy schema only when the caller supplies the exact pinned
 R4 cache-manifest SHA; ordinary V4 reopening still refuses it and wrong hashes
 refuse. Focused tests are green and an actual sealed-cache/cohort reopen is now
-running read-only. No calibration or test bytes have been opened.
+running read-only. It is sustaining about nine CPU cores and has read more than
+146 GB without writing source/evidence bytes. No calibration or test bytes have
+been opened. The prepared post-audit operator was hardened after the R5
+score-free wrapper exposed Python forkserver's `<stdin>` limitation: exact Bash
+SHA-256 is `f511b57b…5a4e`, exact guarded capacity-runner SHA-256 is
+`18e04d0e…e82`, syntax and deployment hashes pass, and all four output stages
+remain absent. This operator-only change does not alter PR #146 source or the
+running audit and now emits 0/25/50/75/100% progress.
 
 ## R5 `r12` — stopped safely before training or test
 

@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 08:41 EDT.
+Last reconciled: 2026-08-25 09:15 EDT.
 
 ## Immediate objective
 
@@ -138,23 +138,30 @@ Primary `C-B` measures policy improvement after both receive perfect
 information; `B-A` measures value of information. The teacher must beat
 production MC with a positive held-out lower bound, not merely beat heuristic.
 
-Draft PR #145 exact head `2fbfe23` contains the three A/B/C search arms, natural
-416-state provider and exact state-bootstrap statistics. It fails closed on
+Draft PR #145 exact pushed head `6fb85de` contains the three A/B/C search arms,
+natural 416-state provider, exact state-bootstrap statistics and a bounded
+parallel Mini capacity preflight. It fails closed on
 underfilled production work before persistence. The population is 416 distinct
 engine-round clusters across all 13 ranks, two banker representatives, two
 roles, two remaining-hand horizons and four replicates. C's deterministic
 exact solve is now shared across the four policy seeds per state, eliminating
 75% of duplicated C work while A/B stay seed-specific; checkpoints expose only
-complete four-seed state groups. Both engine modes pass all 86 privileged-
-teacher tests. Capacity, freeze and final integration review remain. Do not
-review or run it until Codex publishes one exact source+Mini-capacity+freeze
-request. PT0 records are not reused as training/evaluation data.
+complete four-seed state groups. The capacity route measures ten-worker
+capture and evaluation, counts shared C work once, projects the full scientific
+wall/CPU/RSS/node/byte caps and retains no actions, values, points, raw seeds
+or hidden worlds. A first score-free computation finished all 16 capacity
+states but correctly refused to seal because the shared worktree changed while
+the scientific execution controller was being added; no capacity result
+exists. Codex is consolidating execution/recovery before taking one clean-head
+receipt. Existing tests are green, but the source/freeze packet is not final.
+Do not review or run it until Codex publishes one exact source+Mini-capacity+
+freeze request. PT0 records are not reused as training/evaluation data.
 
 ## Fleet
 
 | host | current use | invariant |
 |---|---|---|
-| Mini | idle; reserved for isolated PT1 capacity/run after review | Never rerun PT0; do not touch R4/R5. |
+| Mini | idle; PT1 execution source integration in progress, no sealed capacity receipt | Never rerun PT0; do not touch R4/R5. |
 | Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
 | Performance Cloud | R5 stopped pre-training; immutable reusable inputs preserved | Never retry/delete `r12`; successor work waits behind R4/PT1. |
 | Production | untouched | No deploy or policy change from research evidence. |

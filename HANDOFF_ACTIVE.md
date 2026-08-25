@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 11:25 EDT.
+Last reconciled: 2026-08-25 11:27 EDT.
 
 ## Immediate objective
 
@@ -149,10 +149,14 @@ a true training-population field changes it and unknown fields refuse. The
 score-free Perf receipt SHA is `3d3f8928…`. PR #147 remains draft and is not
 an active review request. Exact source is deployed cleanly at
 `/opt/belief-r5-index-bridge-2d4dfe8` with an isolated validation environment.
-The bounded score-free capacity/deadline preflight is now active on Performance
-Cloud as `belief-r5-preflights-2d4dfe8-r13.service`, invocation
-`8239a6ddc1634991a0f569a90e49c9e0`, under `MemoryMax=30G`, zero swap,
-`Restart=no` and a twelve-hour wall guard. It started at 11:24 EDT and currently
+The first score-free operator wrapper `r13` refused after 1.5 seconds because a
+forkserver worker cannot reload a `<stdin>` main module. It created no receipt,
+scientific namespace or data opening. The source remained unchanged; the
+wrapper now uses a real guarded module and a fresh receipt namespace. The
+bounded score-free capacity/deadline preflight is active on Performance Cloud
+as `belief-r5-preflights-2d4dfe8-r13a.service`, invocation
+`371feba841c74f4baa932445d9462b90`, under `MemoryMax=30G`, zero swap,
+`Restart=no` and a twelve-hour wall guard. It started at 11:27 EDT and currently
 reports phase 1/2 `capacity` (0% of the two serialized phases). It cannot create
 the scientific namespace, train, open calibration/test or authorize execution.
 After both receipts pass, Codex will build the complete fresh freeze and request

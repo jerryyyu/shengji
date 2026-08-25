@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-24 21:38 EDT.
+Last reconciled: 2026-08-24 23:25 EDT.
 
 ## Immediate objective
 
@@ -27,15 +27,13 @@ scientific replications.
 | host / unit | `shengji-cloud`; `belief-v2-r4-d2d466f-r1.service`, `Restart=no` |
 | evidence / ops | `/opt/belief-r4-evidence-d2d466f-r1`; `/opt/belief-r4-ops-d2d466f-r1` |
 
-R4 is active and untouched: stage 7/10 `training`, 80/85 supervisor tasks
+R4 is active and untouched: stage 8/10 `calibration`, 82/85 supervisor tasks
 reconciled and task-weighted progress 96.47%, with `NRestarts=0`, no failure
-task, no terminal and no test opening. All four epoch loops and manifests are
-complete: synthetic primary 30 epochs, human mixture 30, hard-geometry label
-permutation 26 and synthetic 50%-scale 30. The two full-data workers remain
-active only because each is reopening every saved epoch and independently
-recomputing calibration loss from the cached source population. That mandatory
-post-publish audit uses roughly four CPU cores per worker and has no finer
-progress counter; it is not more training and is not proof of convergence.
+task, no terminal and no test opening. All four training manifests/checkpoint
+populations are sealed: synthetic primary 30 epochs, human mixture 30,
+hard-geometry label permutation 26 and synthetic 50%-scale 30. Final
+calibration is the only active worker. The sole test opening/terminal and
+terminal verification remain after it.
 
 All 832x16 synthetic captures, 30 human-capture tasks, 12,003 input-index
 units, 12,649 cache units, device qualification and 29 reference tasks sealed
@@ -349,26 +347,33 @@ the repaired source witnesses but accidentally bound the superseded `3f27ddb`
 capacity/freeze; it cannot authenticate this replacement packet. One
 replacement-packet binding correction is required before execution.
 
-## Review queue — one active packet-binding correction
+## Review queue — exactly one active consolidated review
 
 ### PT0 natural-state repaired source + replacement freeze
 
-PR #135's repaired foundation remains PASS at ledger `7cfef47`; never repeat
-that review. PR #142 head `3f27ddb` received HOLD at ledger `b435e03`. Claude's
-21:37 EDT entry correctly closed both exact source-witness blockers at repaired
-head `17cb5f8`, but its execution paragraph re-opened and authorized the old
-`3f27ddb` freeze `46c1191a…72bd` instead of the requested replacement. That
-marker cross-binds two heads and is not executable; neither packet was launched.
+PR #135's repaired foundation remains PASS at ledger `7cfef47`; do not repeat
+that foundation/privacy review. Review exact PR #142 head
+`bd4833fed1aa6196bca94b1ef65752cc5c4b10c3` once. Its six-file delta honestly
+renames the sampler estimand as the production MCBot constraint-completion
+algorithmic distribution and changes inference from state bootstrap to opaque
+capture-round-cluster bootstrap, with same-round/cross-round/whole-cluster and
+runner-schema witnesses. Clean PT/endgame/native-parity/game batteries are
+102/102 pure and 102/102 strict compiled; `git diff --check` passes.
 
-Do not repeat the source review. Reopen only replacement capacity root
-`/private/tmp/shengji-pt0-natural-capacity-17cb5f8-c1` and replacement freeze
-`/private/tmp/shengji-pt0-natural-freeze-17cb5f8-r1`, then append a corrected
-`PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW` marker bound to exact
-source `17cb5f8`, capacity `b63db134…cb55d` / `530485c1…0293`, source manifest
-`42c86d52…80e7`, freeze `53165e07…18d7` and freeze manifest `dbd8e589…33bf7`.
-PR comment `5403903524` is the precise correction ask. If exact, authorize only
-one score-free 104-state Mini execution. All merge, retry, training, gameplay,
-strength, deployment and PT1 authority remains false.
+Reopen capacity root
+`/private/tmp/shengji-pt0-natural-capacity-bd4833f-c1`: receipt
+`ec2728f57a767922361ca51356e7f856101908bbf735b2a9d36d6d6de0349924`,
+manifest `c0ce960f66e532891d8962328f936e464ec194fe860f89d345ef32aac4a55074`.
+Reopen freeze `/private/tmp/shengji-pt0-natural-freeze-bd4833f-r1`: design
+`f4001fcd3db02bee1ae85963971d610795fa0703c43ff84bce1a99b9ad9237c6`,
+source manifest `373b628a44ec562d5598ae2328746b31cc44748dde78f7855be132aa19c4549a`,
+freeze `6be498e8137d41533df912fe271c51813eb5cfdacf2ac8193a6a6b6b1b0d222d`,
+freeze manifest `fc1cc23569b6c9eef7c2bc578f9c30f15fe46a64463ec5cfec4ea5ba7707d196`
+and launchd plist `85f56911766aff36d83e498a29c5423900a2410056b96a082c52e9b1897c818c`.
+PR comment `5404603859` is the precise ask. If exact, append one
+`PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW` PASS marker
+authorizing only one score-free 104-state Mini execution. Merge, retry,
+training, gameplay, strength, deployment and PT1 authority remain false.
 
 ### R5 bounded parent profiler — review closed, no review requested
 
@@ -415,8 +420,8 @@ remember R4/R5 are not independent replications.
 
 1. Monitor R4 without changing it; after the source re-score audits, reopen its
    sole terminal once and preserve the spent R5 root.
-2. Obtain the one active PT0 replacement-packet binding correction for exact
-   head `17cb5f8`; the source verdict is already PASS and must not be repeated.
+2. Obtain the one active consolidated PT0 source+freeze PASS for exact head
+   `bd4833f`; do not repeat the already-PASSed PR #135 foundation review.
 3. Authenticate that marker, then launch the exact score-free 104-state Mini
    packet once. Do not merge first and do not run another rehearsal.
 4. Independently reopen the PT0 terminal and decide whether the privileged

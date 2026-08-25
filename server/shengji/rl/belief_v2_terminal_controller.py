@@ -173,9 +173,13 @@ def _score_test_populations(
 def _calibration_statistics(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        inventory: dict[str, Any], group_split: dict[str, Any]):
+        inventory: dict[str, Any], group_split: dict[str, Any], *,
+        calibration_directory: Path | None = None):
+    directory = (root / "calibration" / "selection"
+                 if calibration_directory is None
+                 else calibration_directory)
     manifest = reopen_v2_calibration_selection(
-        root / "calibration" / "selection", freeze=freeze,
+        directory, freeze=freeze,
         admission=admission, inventory=inventory, group_split=group_split)
     if manifest["calibration_passed"] is not True \
             or manifest["selected_cohort_id"] not in {
@@ -183,7 +187,6 @@ def _calibration_statistics(
         raise BeliefV2TerminalControllerError(
             "V2 terminal test opening lacks stable calibration selection")
     cohort_ids = tuple(manifest["cohort_ids"])
-    directory = root / "calibration" / "selection"
     try:
         synthetic = reopen_v2_round_population(
             stable_read_bytes(directory / CALIBRATION_POPULATION_FILES[
@@ -567,7 +570,8 @@ def reopen_v2_terminal(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         inventory: dict[str, Any], group_split: dict[str, Any],
-        progress: ProgressCallback | None = None) \
+        progress: ProgressCallback | None = None,
+        calibration_directory: Path | None = None) \
         -> dict[str, Any]:
     """Reopen raw score populations and rederive every terminal byte."""
     if progress is not None:
@@ -589,7 +593,8 @@ def reopen_v2_terminal(
         raise BeliefV2TerminalControllerError(
             "V2 terminal control artifact is not JSON") from exc
     calibration, human_selection, scale_curve = _calibration_statistics(
-        Path(freeze.evidence_root), freeze, admission, inventory, group_split)
+        Path(freeze.evidence_root), freeze, admission, inventory, group_split,
+        calibration_directory=calibration_directory)
     if attempt != _attempt(freeze, admission, calibration) \
             or canonical_json_bytes(attempt) != attempt_raw:
         raise BeliefV2TerminalControllerError(

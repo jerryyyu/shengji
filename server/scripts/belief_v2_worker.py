@@ -121,6 +121,11 @@ from shengji.rl.belief_v2_tensor_cache_controller import (  # noqa: E402
     run_training_tensor_cache,
 )
 from shengji.rl.belief_v2_progress import V2ProgressReporter  # noqa: E402
+from shengji.rl.belief_v2_r4_completion import (  # noqa: E402
+    reopen_r4_completion_terminal,
+    run_r4_completion_calibration,
+    run_r4_completion_terminal,
+)
 
 
 def _sha256(raw: bytes) -> str:
@@ -466,6 +471,30 @@ def verify_terminal(args: argparse.Namespace) -> None:
         progress=_progress("terminal-verification", "reopen")))
 
 
+def r4_calibrate(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker, _, _ = _load_root(root)
+    _output(run_r4_completion_calibration(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        progress=_progress("r4-completion-calibration", "all-cohorts")))
+
+
+def r4_open_test(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker, _, _ = _load_root(root)
+    _output(run_r4_completion_terminal(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        progress=_progress("r4-completion-terminal", "test-opening")))
+
+
+def r4_verify_terminal(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker, _, _ = _load_root(root)
+    _output(reopen_r4_completion_terminal(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        progress=_progress("r4-completion-verification", "reopen")))
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     commands = result.add_subparsers(dest="command", required=True)
@@ -547,6 +576,15 @@ def parser() -> argparse.ArgumentParser:
     terminal = commands.add_parser("verify-terminal")
     terminal.add_argument("--root", required=True)
     terminal.set_defaults(function=verify_terminal)
+    r4_calibration = commands.add_parser("r4-calibrate")
+    r4_calibration.add_argument("--root", required=True)
+    r4_calibration.set_defaults(function=r4_calibrate)
+    r4_test = commands.add_parser("r4-open-test")
+    r4_test.add_argument("--root", required=True)
+    r4_test.set_defaults(function=r4_open_test)
+    r4_terminal = commands.add_parser("r4-verify-terminal")
+    r4_terminal.add_argument("--root", required=True)
+    r4_terminal.set_defaults(function=r4_verify_terminal)
     return result
 
 

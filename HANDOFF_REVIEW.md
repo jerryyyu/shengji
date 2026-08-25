@@ -3842,3 +3842,27 @@ Launch authority is NOT granted by this entry. The path remains: Codex drafts �
 **Where this is worth checking now, before the next launch.** The R4-completion freeze and the PT1 packet are both being prepared. Both will contain index/manifest/runtime comparisons of exactly this kind — the runtime profile alone carries `boot_identity`, host paths and native digests. A pass over their equality guards asking "is the incidental part in scope?" is far cheaper than a ninth multi-hour refusal.
 
 **Preserved and untouched, per never-delete:** the spent `r12` admission, all 13,312 synthetic captures, the human capture/reference material and the 311,250,588-byte training input index. — Claude (session `68f9c8bd`)
+
+## 2026-08-25 — R5 `r12` failure verified independently; what the tensor-cache successor packet must witness (not a review of unpublished bytes)
+
+**Measured on `shengji-perf`, read-only.** Every factual claim in the `6ff07e8` entry reproduces: `ExecMainStatus=1`, start `06:50:28` → exit `11:45:26` UTC (**4h54m58s**), `state=failed`, stage `training-tensor-cache` (4/10), **47/85 = 55.29%**, exact refusal `BeliefV2TensorCacheControllerError: V2 tensor cache import input index drift`. `training/`, `calibration/`, `terminal/` and `terminal.partial/` are all **absent** — no cohort training, calibration or test opening occurred, and the test split is unopened. The capture, human-capture and training-input-index artifacts are present and sealed. Nothing here contests the entry.
+
+**The guard that refused, quoted exactly** (`belief_v2_tensor_cache_controller.py:515`):
+
+```python
+if input_index_sha256 != spec.source_input_index_sha256:
+    raise BeliefV2TensorCacheControllerError(
+        "V2 tensor cache import input index drift")
+```
+
+This is a whole-artifact digest comparison, so the diagnosis — semantically identical index, different provenance-bearing wrapper bytes — is structurally consistent with the code. I am **not** reviewing the paused four-file bridge; these are the falsifications I will require whenever it is published, recorded now because they should shape the design rather than be discovered at review.
+
+**1. The relaxation moves the trust anchor from bound data to unbound code.** `source_input_index_sha256` is a required field of `V2TensorCacheImportSpecV1`, and the spec is itself SHA-bound into `freeze.source_bindings` (`belief_v2_cache_import.py:176-180`: exactly one binding, byte_count and digest both checked). Today the anchor is an immutable value inside a reviewed freeze. A semantic-identity predicate is a *function*, and unless its definition is pinned into the freeze the same way, the successor is strictly weaker than what it replaces — a freeze that no longer determines what will be accepted.
+
+**2. A failing-direction witness is mandatory, and the obvious one is insufficient.** A test showing "provenance differs → accepted" witnesses only the permissive direction. The load-bearing witness is the converse: construct an index whose **semantic training identity genuinely differs** (a changed row count, a changed ordering key, a changed label binding) while the provenance wrapper is held constant, and assert the new check still refuses. Without that, the check cannot fail in the direction that matters — the ninth instance of the masked-witness class in this lane.
+
+**3. Name the excluded bytes exhaustively, and bind the exclusion.** "Provenance-bearing wrapper" must be an enumerated field list, not a predicate that skips whatever differs. If the exclusion set is computed from the observed diff, it will always succeed by construction.
+
+**4. State the R4/R5 interpretation consequence.** R5 is now confirmatory per `563b1b6`, and its cache successor is the third distinct repair to the same import path (`b016780` GC, `5d3b129` projection, now this). Each has been individually reasonable; the accumulation is worth Jerry seeing as a lane-level cost, not just three separate fixes.
+
+Not a blocker for anything currently authorized. No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)

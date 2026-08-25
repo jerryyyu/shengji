@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 09:51 EDT.
+Last reconciled: 2026-08-25 10:52 EDT.
 
 ## Immediate objective
 
@@ -19,39 +19,33 @@ fresh three-arm privileged-teacher acquisition screen whose primary bar is an
 improved exact/full-information teacher beating production MC given the same
 true world. PT1 is isolated to Mini and cannot touch R4/R5.
 
-## Review queue — one exact consolidated ask
+## Review queue — one precise operator ask
 
-### 1. PT1 source + Mini capacity + freeze — REVIEW NOW
+### 1. PT1 exact reviewed one-shot — INITIALIZE AND LAUNCH NOW
 
-Review draft PR #145 at exact head
-`9ff7a2b3ca6704042d2394c5a57ff461171e4a93` together with the single clean-head
-Mini packet below. This is one source+capacity+freeze review, not separate
-rounds.
+The consolidated source+capacity+freeze PASS is canonical at review commit
+`10cf7ad28ceb9ef22968c00148d99f8b6f60bae6`, and Jerry's explicit GO is
+canonical at `d3483125a6facbbb9600c9135c272da89f5d9cc5`. Exact source is PR #145 head
+`9ff7a2b3ca6704042d2394c5a57ff461171e4a93`; freeze SHA is `9068ee08…` and
+marker SHA is `65630fbf…`. The evidence root
+`/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r1` remains absent: no
+initialization, run, deadline or one-shot slot has been consumed.
 
-| field | exact binding |
-|---|---|
-| source / CI | `9ff7a2b3ca6704042d2394c5a57ff461171e4a93`; server + frontend SUCCESS |
-| capacity | `/private/tmp/pt1-capacity-9ff7a2b-r1/capacity.json`; SHA `da47183c8e7dd64d518c27c8c200c280cb37046f3b132b30658594e94c7c7e84` |
-| capacity manifest | `/private/tmp/pt1-capacity-9ff7a2b-r1/manifest.json`; SHA `7e5e1b03aac9655b35fb20c4ccadd6a3312c0906695c3e6a40facfb877a5055f` |
-| capacity result | Mini, 10 workers, 16/16 COMPLETE, score-redacted, no scientific namespace |
-| natural design | 416 distinct round clusters; SHA `47495a1f728e163ef0ebb68f4f9f5ac7d5cf3dd1c573fe81eabfc91dc69b9f7d` |
-| freeze | `/Users/jerryyu/Projects/pt1-freeze-9ff7a2b-r1.json`; SHA `9068ee08c75b21de62d7f718e4770ea4be909cf945f359af37f9622c2cfdda22` |
-| evidence / deadline | `/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r1`; `891212953733` ns |
-| marker file / SHA | `/Users/jerryyu/Projects/pt1-review-marker-9ff7a2b-r1.json`; `65630fbfe9b74898e1beb9c75b2079cfc85b60f9e3ade7535c745500b8fd9754` |
-
-The source passed 104/104 PT tests in both canonical pure and compiled modes.
-The final independent repair review PASSed authentic remote-review binding,
-deadline crossings before/after terminal publication, and output/group symlink
-refusal. If the consolidated packet passes, append exactly the canonical JSON
-line from the marker file to `HANDOFF_REVIEW.md` in one Claude-authored,
-single-parent, ledger-only commit on canonical main with the standard
-`Claude-Session:` trailer. That exact commit authorizes initialization and one
-scientific PT1 execution only; every gameplay/strength/promotion/deployment/
-training/retry/merge authority remains false.
+Codex's nested process cannot authenticate the private canonical GitHub remote
+even though the top-level Git client can; the unchanged controller correctly
+refuses before initialization. This is an operator-environment issue, not a
+source or scientific finding. Claude: from the clean worktree
+`/private/tmp/shengji-pt1-freeze-9ff7a2b.1Qr0wu`, run the reviewed CLI's
+`initialize` and then its one scientific `run` using the exact freeze, secret,
+marker and review commit above. Do not patch or bypass
+`authenticate_review_marker`. Before acting, independently confirm the evidence
+root is absent; after launch, record the exact process/progress evidence here.
+Every gameplay/strength/promotion/deployment/training/retry/merge authority
+remains false.
 
 R4's consolidated source+freeze ask is next, after its current read-only cohort
-reopen and capacity proof finish. R5 has no active review request. Do not
-review, retry or relaunch the spent R5 `r12` admission.
+reopen and uncontended capacity proof finish. R5 has no active review request.
+Do not review, retry or relaunch the spent R5 `r12` admission.
 
 ## PT0 result — closed and interpreted
 
@@ -174,15 +168,16 @@ or hidden worlds. The final execution controller preserves complete four-seed
 groups, resumes only within one frozen deadline, discards late waves, and
 cannot publish a valid packet after deadline. One clean-head Mini capacity run
 completed 16/16 with ten workers and derived all six scientific caps. The exact
-416-state freeze and canonical non-circular review marker are now in the review
-queue above. Do not initialize or run until that single consolidated review
-PASS lands. PT0 records are not reused as training/evaluation data.
+416-state freeze and canonical non-circular review marker received a single
+consolidated PASS at `10cf7ad`; Jerry's GO is at `d348312`. Launch is pending
+only on an operator environment that can satisfy the unchanged live GitHub
+provenance check. PT0 records are not reused as training/evaluation data.
 
 ## Fleet
 
 | host | current use | invariant |
 |---|---|---|
-| Mini | PT1 16-state capacity finished; idle while exact source+freeze review runs | Never rerun PT0; do not touch R4/R5. |
+| Mini | PT1 capacity finished; idle pending authenticated initialization/launch | Never rerun PT0; do not touch R4/R5. |
 | Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
 | Performance Cloud | R5 stopped pre-training; immutable reusable inputs preserved | Never retry/delete `r12`; successor work waits behind R4/PT1. |
 | Production | untouched | No deploy or policy change from research evidence. |
@@ -193,8 +188,8 @@ PASS lands. PT0 records are not reused as training/evaluation data.
 2. Codex publishes one fresh R4-completion source+freeze request; Claude reviews
    it once at the exact head. Only a PASS may authorize the fresh completion
    namespace and sole original-R4 test opening.
-3. Claude reviews the one exact PT1 source+Mini-capacity+freeze packet above;
-   on PASS, Codex initializes and launches the 416-state Mini run once.
+3. Claude initializes and launches the already-PASSed 416-state PT1 Mini run
+   once from the unchanged reviewed source; no further review round is needed.
 4. After R4/PT1 progress, publish the narrow R5 semantic-cache successor in one
    consolidated source+freeze review. R5 remains confirmatory because it shares
    R4's scientific population.

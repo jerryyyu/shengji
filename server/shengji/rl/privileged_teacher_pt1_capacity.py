@@ -249,6 +249,24 @@ def _capture_one(design: CapacityDesign, secret: bytes,
         f"capacity state cell incomplete: {coordinate.payload()}")
 
 
+def _boot_identity_bytes() -> bytes:
+    boot_source = Path("/proc/sys/kernel/random/boot_id")
+    try:
+        if boot_source.is_file():
+            boot_identity = boot_source.read_bytes().strip()
+        elif sys.platform == "darwin":
+            boot_identity = subprocess.check_output(
+                ["sysctl", "-n", "kern.bootsessionuuid"],
+                stderr=subprocess.DEVNULL).strip()
+        else:
+            raise PT1CapacityError("capacity boot identity unavailable")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise PT1CapacityError("capacity boot identity unavailable") from exc
+    if not boot_identity:
+        raise PT1CapacityError("capacity boot identity unavailable")
+    return boot_identity
+
+
 def _runtime_identity() -> dict[str, object]:
     root = Path(__file__).resolve().parents[3]
     try:
@@ -282,20 +300,7 @@ def _runtime_identity() -> dict[str, object]:
     executable = Path(sys.executable).resolve()
     if not executable.is_file():
         raise PT1CapacityError("capacity Python identity unavailable")
-    boot_source = Path("/proc/sys/kernel/random/boot_id")
-    try:
-        if boot_source.is_file():
-            boot_identity = boot_source.read_bytes().strip()
-        elif sys.platform == "darwin":
-            boot_identity = subprocess.check_output(
-                ["sysctl", "-n", "kern.boottime"],
-                stderr=subprocess.DEVNULL).strip()
-        else:
-            raise PT1CapacityError("capacity boot identity unavailable")
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise PT1CapacityError("capacity boot identity unavailable") from exc
-    if not boot_identity:
-        raise PT1CapacityError("capacity boot identity unavailable")
+    boot_identity = _boot_identity_bytes()
     return {"git_head": head, "source_tree_dirty": dirty,
             "source_population_sha256": hashlib.sha256(
                 canonical_json_bytes(files)).hexdigest(),

@@ -37,6 +37,33 @@ RUNTIME = {"git_head": "a" * 40, "source_tree_dirty": False,
            "strict_voids": True}
 
 
+def test_capacity_darwin_boot_identity_uses_stable_session_uuid(monkeypatch):
+    session = {"uuid": b"stable-capacity-session-1\n"}
+    commands = []
+
+    def sysctl(command, **_kwargs):
+        commands.append(tuple(command))
+        assert command == ["sysctl", "-n", "kern.bootsessionuuid"]
+        return session["uuid"]
+
+    monkeypatch.setattr(capacity.sys, "platform", "darwin")
+    original_is_file = capacity.Path.is_file
+    monkeypatch.setattr(capacity.Path, "is_file", lambda path: False
+                        if str(path) == "/proc/sys/kernel/random/boot_id"
+                        else original_is_file(path))
+    monkeypatch.setattr(capacity.subprocess, "check_output", sysctl)
+    before = capacity._boot_identity_bytes()
+    # A clock correction is irrelevant because no wall-clock-derived value is read.
+    assert capacity._boot_identity_bytes() == before
+    session["uuid"] = b"stable-capacity-session-2\n"
+    assert capacity._boot_identity_bytes() != before
+    assert commands == [
+        ("sysctl", "-n", "kern.bootsessionuuid"),
+        ("sysctl", "-n", "kern.bootsessionuuid"),
+        ("sysctl", "-n", "kern.bootsessionuuid"),
+    ]
+
+
 def _design():
     return capacity.CapacityDesign(
         capture_secret_sha256=SECRET_SHA, parallel_workers=1)

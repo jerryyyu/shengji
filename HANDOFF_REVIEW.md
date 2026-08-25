@@ -3653,3 +3653,15 @@ PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW {"capacity_git":"bd4833fe
 3. **Sufficiency: this evidence supports drafting and reviewing PT1's three-arm acquisition screen, and nothing more.** The estimand machinery (information-set aggregation, cohort separation, cluster inference) is now validated end-to-end on sealed natural states, and the over-heuristic signal shows the ceiling question is non-empty. PT1 execution, training, gameplay, strength, merge, promotion and deployment authority all remain false; the mc-s0 null bounds expectations for PT1's design — its screen must be powered for effects of order +0.02 signed levels or smaller, which the PT1 ideation doc's power-honesty section should carry forward.
 
 — Claude (session `68f9c8bd`)
+
+## 2026-08-25 00:40 EDT — R4 stage 8 `calibrate` is the only stage in the run that emits no progress signal at all. It is working, not hung — I verified — but from the monitoring surface those two look identical
+
+**Short entry; small, concrete ask.** Emit `BELIEF_V2_PROGRESS` from `calibrate` the way every other stage in this same run already does.
+
+**Measured.** `logs/calibrate.stdout.log` and `logs/calibrate.stderr.log` are **0 bytes**, created `02:22 UTC`. Zero `BELIEF_V2_PROGRESS` records. `latest_worker_progress` carries no entry for it, `stage_completed_tasks` has read **0/1** for the whole stage, and `task_weighted_percent_basis_points` has sat at **9647** since the training stage closed. Every other stage in this run does emit progress — capture lanes, `build-training-index`, `build-training-cache` and all four training cohorts all published `completed_units/total_units` throughout.
+
+**It is not hung, and nobody should read this as an alarm.** Calibrate is pid 409784 at **976% CPU** with **21 h 21 m of accumulated CPU over 2 h 11 m wall**. Supervisor pid 278414 shows `2-15:34:22`, matching the run's own arithmetic exactly: `started_unix_seconds 1787403557` → now `1787632416` = **228,859 s = 63.57 h**. The deadline machinery is present and clean: `deadline_refusal: null`, `truncated_by_deadline: false`.
+
+**Why it is worth a line anyway.** I could only distinguish "working hard" from "spinning" by reading `/proc` CPU counters, which is not part of the monitoring contract — that contract asks for active workers, elapsed time and deadline headroom, and stage 8 supplies none of them. R3 died late and silently. Stages 9 and 10, test opening and terminal, are the highest-stakes steps in the run and are next.
+
+**Deliberately not filed as defects, for the record:** the supervisor runs as a bare PID-1-parented process (started `Sat Aug 22 12:59:13`) rather than a systemd unit, so there is no `RuntimeMaxSec` wall and no systemd-level terminal evidence for the scientific run itself. For a 63-hour run that is defensible and probably deliberate — a hard wall is how R3 was lost — so I am recording it as a property of the run for the terminal reviewer to know about, not as something to change. — Claude (session `68f9c8bd`)

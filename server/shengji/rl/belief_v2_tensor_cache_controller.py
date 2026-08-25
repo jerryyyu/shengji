@@ -30,6 +30,7 @@ from .belief_v2_controller import _stage_gate
 from .belief_v2_cache_import import (
     BeliefV2CacheImportError,
     V2TensorCacheImportSpecV1,
+    cache_input_identity_sha256,
     load_tensor_cache_import_spec,
 )
 from .belief_v2_deadline import (
@@ -511,12 +512,15 @@ def _local_cache_storage() -> dict[str, Any]:
 
 def _cache_import_receipt(
         spec: V2TensorCacheImportSpecV1, *,
-        input_index_sha256: str) -> dict[str, Any]:
-    if input_index_sha256 != spec.source_input_index_sha256:
+        input_index_sha256: str,
+        derived_input_sha256: str,
+        current_cache_input_identity_sha256: str) -> dict[str, Any]:
+    if current_cache_input_identity_sha256 \
+            != spec.source_cache_input_identity_sha256:
         raise BeliefV2TensorCacheControllerError(
-            "V2 tensor cache import input index drift")
+            "V2 tensor cache import cache-input semantic identity drift")
     return {
-        "schema": "belief-v1-v2-tensor-cache-import-receipt-v1",
+        "schema": "belief-v1-v2-tensor-cache-import-receipt-v2",
         "import_spec_sha256": spec.spec_sha256,
         "source_evidence_root": str(spec.source_evidence_root),
         "source_cache_root": str(spec.source_cache_root),
@@ -529,6 +533,14 @@ def _cache_import_receipt(
         "source_input_index_sha256": spec.source_input_index_sha256,
         "source_input_index_manifest_sha256": (
             spec.source_input_index_manifest_sha256),
+        "source_derived_input_sha256": (
+            spec.source_derived_input_sha256),
+        "source_cache_input_identity_sha256": (
+            spec.source_cache_input_identity_sha256),
+        "current_input_index_sha256": input_index_sha256,
+        "current_derived_input_sha256": derived_input_sha256,
+        "current_cache_input_identity_sha256": (
+            current_cache_input_identity_sha256),
         "source_runtime_profile_sha256": (
             spec.source_runtime_profile_sha256),
         "runtime_portability_rule": (
@@ -557,7 +569,10 @@ def _imported_binding(
         cache_id=binding.cache_id, split=binding.split,
         decision_population_sha256=binding.decision_population_sha256,
         batch_schedule_sha256=binding.batch_schedule_sha256,
-        source_index_sha256=binding.source_index_sha256,
+        # Imported child manifests retain the old raw index binding.  The
+        # enclosing fresh stage binds its current raw index separately, while
+        # the import receipt proves the cache-determining identities match.
+        source_index_sha256=spec.source_input_index_sha256,
         runtime_profile_sha256=spec.source_runtime_profile_sha256,
         expected_decision_count=binding.expected_decision_count,
         expected_batch_count=binding.expected_batch_count,
@@ -691,8 +706,16 @@ def run_training_tensor_cache(
     cache_storage = _local_cache_storage()
     import_receipt_raw = b""
     if import_spec is not None:
+        try:
+            cache_identity_sha256 = cache_input_identity_sha256(
+                index_manifest)
+        except BeliefV2CacheImportError as exc:
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache current input identity refused") from exc
         import_receipt_raw = canonical_json_bytes(_cache_import_receipt(
-            import_spec, input_index_sha256=input_index_sha256))
+            import_spec, input_index_sha256=input_index_sha256,
+            derived_input_sha256=index_manifest["derived_input_sha256"],
+            current_cache_input_identity_sha256=cache_identity_sha256))
         import_path = partial / IMPORT_RECEIPT_FILENAME
         if import_path.exists():
             if stable_read_bytes(import_path) != import_receipt_raw:
@@ -980,12 +1003,22 @@ def reopen_training_tensor_cache(
     import_receipt_raw = b""
     cache_storage = _local_cache_storage()
     if import_spec is not None:
+        try:
+            cache_identity_sha256 = cache_input_identity_sha256(
+                index_manifest)
+        except BeliefV2CacheImportError as exc:
+            raise BeliefV2TensorCacheControllerError(
+                "V2 tensor cache current input identity refused") from exc
         import_receipt_raw = stable_read_bytes(
             directory / IMPORT_RECEIPT_FILENAME)
         if import_receipt_raw != canonical_json_bytes(
                 _cache_import_receipt(
                     import_spec,
-                    input_index_sha256=input_index_sha256)):
+                    input_index_sha256=input_index_sha256,
+                    derived_input_sha256=(
+                        index_manifest["derived_input_sha256"]),
+                    current_cache_input_identity_sha256=(
+                        cache_identity_sha256))):
             raise BeliefV2TensorCacheControllerError(
                 "V2 tensor cache import receipt reconstruction drift")
         cache_base = import_spec.source_cache_root

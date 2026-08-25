@@ -155,6 +155,44 @@ def _sha(char: str) -> str:
     return char * 64
 
 
+def _cache_derived_manifest(*, human_group_char: str = "1",
+                            human_train_char: str = "2") -> dict:
+    return {
+        "schema": "belief-v1-v2-streaming-training-inputs-v1",
+        "synthetic_train_decision_count": 10,
+        "synthetic_train_population_sha256": _sha("3"),
+        "synthetic_calibration_decision_count": 4,
+        "synthetic_calibration_population_sha256": _sha("4"),
+        "human_train_decision_count": 2,
+        "human_train_population_sha256": _sha(human_train_char),
+        "source_population_sha256": _sha("5"),
+        "control_changed_cell_count": 8,
+        "common_calibration_sha256": _sha("6"),
+        "human_group_manifest_sha256s": [_sha(human_group_char)],
+        "cohort_plan_set_sha256": _sha("7"),
+        "cohort_realization_set_sha256": _sha("8"),
+        "cohorts": [{
+            "cohort_id": "synthetic-primary",
+            "kind": "synthetic-primary",
+            "realization_sha256": _sha("9"),
+            "decision_count": 10,
+            "active_label_count": 20,
+        }],
+        "resident_model_array_bytes": 0,
+        "one_batch_at_a_time": True,
+        "synthetic_test_targets_opened": False,
+        "human_test_targets_opened": False,
+        "training_authorized_by_this_artifact": False,
+        "test_split_open_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
+def _cache_derived_sha(manifest: dict) -> str:
+    return hashlib.sha256(canonical_json_bytes(manifest)).hexdigest()
+
+
 def _bindings():
     paths = sorted((
         "BELIEF_V1_SPEC.md", "BELIEF_V1_V2_DESIGN.md",
@@ -376,9 +414,26 @@ def test_tensor_cache_import_spec_reopens_spent_source_and_tombstone(
     tombstone_path = source.with_name(source.name + ".consumed.json")
     tombstone_raw = pipeline_consumption_tombstone_bytes(old_admission)
     tombstone_sha = immutable(tombstone_path, tombstone_raw)
-    index_sha = immutable(index_root / "index.json", b"index\n")
+    index_raw = b"index\n"
+    index_sha = immutable(index_root / "index.json", index_raw)
+    derived_manifest = _cache_derived_manifest()
+    derived_input_sha = _cache_derived_sha(derived_manifest)
     index_manifest_sha = immutable(
-        index_root / "manifest.json", b"{}\n")
+        index_root / "manifest.json", canonical_json_bytes({
+            "schema": "belief-v1-v2-training-input-index-stage-v1",
+            "freeze_sha256": old_freeze.sha256(),
+            "admission_sha256": old_admission.sha256(),
+            "index_byte_count": len(index_raw),
+            "index_sha256": index_sha,
+            "derived_input_sha256": derived_input_sha,
+            "derived_manifest": derived_manifest,
+            "synthetic_test_targets_opened": False,
+            "human_test_targets_opened": False,
+            "training_authorized_by_this_artifact": False,
+            "test_split_open_authorized": False,
+            "strength_claim_authorized": False,
+            "deployment_authorized": False,
+        }))
     stage_start_sha = immutable(
         cache_root / "stage-start.json", canonical_json_bytes({
             "schema": "belief-v1-v2-training-tensor-cache-start-v1",
@@ -440,6 +495,10 @@ def test_tensor_cache_import_spec_reopens_spent_source_and_tombstone(
     assert reopened is not None
     assert reopened.source_cache_root == cache_root
     assert reopened.source_consumption_tombstone_sha256 == tombstone_sha
+    assert reopened.source_derived_input_sha256 == derived_input_sha
+    assert reopened.source_cache_input_identity_sha256 \
+        == CACHE_IMPORT.cache_input_identity_sha256({
+            "derived_manifest": derived_manifest})
     rebooted = replace(
         current_freeze,
         runtime=replace(
@@ -483,6 +542,33 @@ def test_tensor_cache_import_spec_reopens_spent_source_and_tombstone(
                 *(row for row in current_freeze.source_bindings
                   if row.path != CACHE_IMPORT.CACHE_IMPORT_SOURCE_PATH),
                 binding), key=lambda row: row.path)))
+
+    source_index_manifest_path = index_root / "manifest.json"
+    source_index_manifest_raw = source_index_manifest_path.read_bytes()
+    source_index_manifest = json.loads(source_index_manifest_raw)
+    source_index_manifest["derived_input_sha256"] = _sha("f")
+    forged_index_manifest_raw = canonical_json_bytes(source_index_manifest)
+    rewrite_immutable(source_index_manifest_path, forged_index_manifest_raw)
+    forged_index_spec = dict(
+        spec_payload,
+        source_input_index_manifest_sha256=hashlib.sha256(
+            forged_index_manifest_raw).hexdigest())
+    with pytest.raises(
+            CACHE_IMPORT.BeliefV2CacheImportError,
+            match="source index semantic binding drift"):
+        CACHE_IMPORT.load_tensor_cache_import_spec(
+            bind_spec(forged_index_spec))
+    rewrite_immutable(source_index_manifest_path, source_index_manifest_raw)
+    current_freeze = bind_spec(spec_payload)
+
+    forged_authority = dict(spec_payload["authority"])
+    forged_authority["training_authorized_by_source_artifact"] = True
+    with pytest.raises(
+            CACHE_IMPORT.BeliefV2CacheImportError,
+            match="field/authority drift"):
+        CACHE_IMPORT.load_tensor_cache_import_spec(bind_spec(dict(
+            spec_payload, authority=forged_authority)))
+    current_freeze = bind_spec(spec_payload)
 
     forged_tombstone = json.loads(tombstone_raw)
     forged_tombstone["retry_authorized"] = True
@@ -1584,7 +1670,23 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     inputs = SimpleNamespace(
         index=SimpleNamespace(control_changed_cell_count=changed),
         realizations=realizations, common_calibration=calibration)
-    index_manifest = {"index_sha256": _sha("7")}
+    source_index_sha = _sha("7")
+    current_index_sha = _sha("8")
+    source_derived_manifest = _cache_derived_manifest(human_group_char="a")
+    current_derived_manifest = _cache_derived_manifest(human_group_char="b")
+    source_derived_input_sha = _cache_derived_sha(source_derived_manifest)
+    current_derived_input_sha = _cache_derived_sha(current_derived_manifest)
+    cache_input_identity_sha = CACHE_IMPORT.cache_input_identity_sha256({
+        "derived_manifest": source_derived_manifest})
+    assert current_derived_input_sha != source_derived_input_sha
+    assert CACHE_IMPORT.cache_input_identity_sha256({
+        "derived_manifest": current_derived_manifest,
+    }) == cache_input_identity_sha
+    index_manifest = {
+        "index_sha256": source_index_sha,
+        "derived_input_sha256": source_derived_input_sha,
+        "derived_manifest": source_derived_manifest,
+    }
     monkeypatch.setattr(CACHE_STAGE, "_stage_gate", lambda **kwargs: None)
     monkeypatch.setattr(
         CACHE_STAGE, "reopen_training_input_index",
@@ -1726,18 +1828,51 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
         source_admission_sha256=admission.sha256(),
         source_review_marker_sha256=_sha("a"),
         source_consumption_tombstone_sha256=_sha("b"),
-        source_input_index_sha256=index_manifest["index_sha256"],
+        source_input_index_sha256=source_index_sha,
         source_input_index_manifest_sha256=_sha("c"),
+        source_derived_input_sha256=source_derived_input_sha,
+        source_cache_input_identity_sha256=cache_input_identity_sha,
         source_runtime_profile_sha256=hashlib.sha256(
             canonical_json_bytes(freeze.runtime.to_dict())).hexdigest(),
         source_stage_start_sha256=_sha("e"),
         child_manifest_sha256s=tuple(sorted(child_manifests.items())),
         required_uid=0, spec_sha256=_sha("f"))
+    drifted_root = (tmp_path / "semantic-drift-evidence").resolve()
+    drifted_root.mkdir()
+    drifted_freeze = replace(
+        imported_freeze, evidence_root=str(drifted_root))
+    drifted_admission = _admission(drifted_freeze)
+    drifted_spec = replace(
+        import_spec, destination_evidence_root=drifted_root)
     monkeypatch.setattr(
         CACHE_STAGE, "load_tensor_cache_import_spec",
-        lambda candidate: (
-            import_spec if candidate.evidence_root == str(imported_root)
-            else None))
+        lambda candidate: ({
+            str(imported_root): import_spec,
+            str(drifted_root): drifted_spec,
+        }.get(candidate.evidence_root)))
+    # A fresh freeze changes the raw index bytes while preserving the exact
+    # tensor population/schedules.  Its broader derived identity also changes
+    # because human capture provenance is deliberately retained there.
+    index_manifest["index_sha256"] = current_index_sha
+    index_manifest["derived_input_sha256"] = _cache_derived_sha(
+        _cache_derived_manifest(
+            human_group_char="c", human_train_char="0"))
+    index_manifest["derived_manifest"] = _cache_derived_manifest(
+        human_group_char="c", human_train_char="0")
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="cache-input semantic identity drift"):
+        run_training_tensor_cache(
+            drifted_root, drifted_freeze, drifted_admission,
+            repo=Path("/unused"), review_marker=b"review")
+    drifted_partial = (
+        drifted_root / "training-tensor-cache" / "result.partial")
+    assert {path.name for path in drifted_partial.iterdir()} == {
+        "stage-start.json"}
+    assert not (
+        drifted_root / "training-tensor-cache" / "result").exists()
+    index_manifest["derived_input_sha256"] = current_derived_input_sha
+    index_manifest["derived_manifest"] = current_derived_manifest
     imported_manifest = run_training_tensor_cache(
         imported_root, imported_freeze, imported_admission,
         repo=Path("/unused"), review_marker=b"review")
@@ -1757,6 +1892,26 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     assert imported_manifest["resources"]["cache_worker_count"] == 0
     assert imported_manifest["cache_worker_count"] == 0
     assert imported_manifest["parallel_actor_cache_build"] is False
+    assert imported_manifest["training_input_index_sha256"] \
+        == current_index_sha
+    import_receipt = json.loads(
+        (imported_cache_root / "cache-import.json").read_bytes())
+    assert import_receipt["schema"] \
+        == "belief-v1-v2-tensor-cache-import-receipt-v2"
+    assert import_receipt["source_input_index_sha256"] == source_index_sha
+    assert import_receipt["current_input_index_sha256"] == current_index_sha
+    assert import_receipt["source_derived_input_sha256"] \
+        == source_derived_input_sha
+    assert import_receipt["current_derived_input_sha256"] \
+        == current_derived_input_sha
+    assert import_receipt["source_cache_input_identity_sha256"] \
+        == cache_input_identity_sha
+    assert import_receipt["current_cache_input_identity_sha256"] \
+        == cache_input_identity_sha
+    assert all(row["binding"]["source_index_sha256"] == source_index_sha
+               for row in imported_manifest["cohort_caches"])
+    assert imported_manifest["common_calibration_cache"]["binding"][
+        "source_index_sha256"] == source_index_sha
     imported_reopened, imported_factories, _, imported_dose, _ = (
         reopen_training_tensor_cache(
             imported_cache_root, freeze=imported_freeze,
@@ -1786,6 +1941,10 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     import_receipt_path.chmod(0o600)
     import_receipt_path.write_bytes(import_receipt_raw)
     import_receipt_path.chmod(0o400)
+
+    index_manifest["index_sha256"] = source_index_sha
+    index_manifest["derived_input_sha256"] = source_derived_input_sha
+    index_manifest["derived_manifest"] = source_derived_manifest
 
     original_primary_sha = next(
         row["manifest_sha256"] for row in manifest["cohort_caches"]
@@ -1832,6 +1991,9 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
             match="reopen refused|byte drift"):
         reopen_training_tensor_cache(
             cache_root, freeze=freeze, admission=admission)
+    index_manifest["index_sha256"] = current_index_sha
+    index_manifest["derived_input_sha256"] = current_derived_input_sha
+    index_manifest["derived_manifest"] = current_derived_manifest
     with pytest.raises(
             CACHE_STAGE.BeliefV2TensorCacheControllerError,
             match="reopen refused|byte drift"):
@@ -1846,6 +2008,9 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     actor_path.chmod(0o600)
     actor_path.write_bytes(raw)
     actor_path.chmod(0o400)
+    index_manifest["index_sha256"] = source_index_sha
+    index_manifest["derived_input_sha256"] = source_derived_input_sha
+    index_manifest["derived_manifest"] = source_derived_manifest
 
     # A measured cap failure after every reusable cache is complete must
     # publish a durable refusal before raising. The same admission can never

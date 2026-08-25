@@ -185,6 +185,74 @@ def test_hidden_twin_changes_b_decision_and_c_exact_value_bytes():
         (c_second.values.action_utilities, c_second.final_attacker_points)
 
 
+def test_batch_reuses_one_exact_evaluation_and_matches_serial_bytes(monkeypatch):
+    state = _real_late_round()
+    sealed = pt1.seal_true_world(state)
+    calls = {"exact": 0, "production": 0}
+    original_exact = pt1.exact_world_action_values
+    original_production = pt1._select_production
+
+    def counted_exact(*args, **kwargs):
+        calls["exact"] += 1
+        return original_exact(*args, **kwargs)
+
+    def counted_production(*args, **kwargs):
+        calls["production"] += 1
+        return original_production(*args, **kwargs)
+
+    monkeypatch.setattr(pt1, "exact_world_action_values", counted_exact)
+    monkeypatch.setattr(pt1, "_select_production", counted_production)
+    monkeypatch.setattr(pt1.time, "perf_counter_ns", lambda: 123456)
+    batched = pt1.evaluate_state_batch(
+        state, sealed, seeds=(0, 1, 2, 3), max_hand_cards=2)
+    assert calls["exact"] == 1
+    assert calls["production"] == 8
+    calls["exact"] = 0
+    calls["production"] = 0
+    serial = tuple(pt1.evaluate_state(
+        state, sealed, seed=seed, max_hand_cards=2)
+    for seed in (0, 1, 2, 3))
+    assert calls["exact"] == 4
+    assert calls["production"] == 8
+    assert [record.canonical_bytes() for record in batched] == \
+        [record.canonical_bytes() for record in serial]
+
+
+def test_deadline_and_checkpoint_sink_are_whole_state_batches(monkeypatch):
+    first = _real_late_round()
+    second = _real_late_round()
+    second.attacker_points = 1
+
+    def fake_batch(public_round, true_world, *, seeds, **kwargs):
+        public = pt1.pt0_public_state_sha256(public_round, perspective_seat=1)
+        world = pt1._world_hash(true_world.verify())
+        base = _record()
+        evaluator = pt1._evaluator_identity(
+            public, world, base.evaluation_action_utilities,
+            base.evaluation_final_points, 0, 0)
+        return tuple(replace(
+            base, public_state_sha256=public, true_world_sha256=world,
+            arms=tuple(replace(arm, public_state_sha256=public,
+                               true_world_sha256=world, seed=seed,
+                               evaluator_schema=evaluator)
+                        for arm in base.arms), evaluator_identity=evaluator,
+            capture_id_sha256=hashlib.sha256(
+                f"{public}:{seed}".encode()).hexdigest())
+                     for seed in seeds)
+
+    monkeypatch.setattr(pt1, "evaluate_state_batch", fake_batch)
+    checkpoints = []
+    ticks = iter((0.0, 2.0))
+    run = pt1.run_pt1(
+        [(first, pt1.seal_true_world(first)),
+         (second, pt1.seal_true_world(second))], seeds=(0, 1), deadline=1.0,
+        monotonic=lambda: next(ticks), checkpoint_sink=checkpoints.append)
+    assert run.status == "TRUNCATED"
+    assert run.progress["completed_units"] == 2
+    assert [json.loads(item.decode())["completed_units"] for item in checkpoints] == [2]
+    assert all(len(record.arms) == 3 for record in run.records)
+
+
 def test_record_is_immutable_and_semantic_tamper_refused():
     record = _record()
     assert pt1.verify_record(record) is record
@@ -274,10 +342,12 @@ def test_run_prefix_is_explicitly_truncated_and_checkpoint_canonical():
 
 def test_checkpoint_resume_reopens_prefix_and_is_byte_identical(monkeypatch):
     state = _real_late_round()
-    public = pt1.pt0_public_state_sha256(state, perspective_seat=1)
-    world = pt1._world_hash(state)
+    second_state = _real_late_round()
+    second_state.attacker_points = 1
 
     def fake_evaluate(public_round, true_world, *, seed, **kwargs):
+        public = pt1.pt0_public_state_sha256(public_round, perspective_seat=1)
+        world = pt1._world_hash(true_world.verify())
         base = _record()
         evaluator = pt1._evaluator_identity(
             public, world, base.evaluation_action_utilities,
@@ -289,19 +359,24 @@ def test_checkpoint_resume_reopens_prefix_and_is_byte_identical(monkeypatch):
         return replace(base, public_state_sha256=public,
                        true_world_sha256=world, arms=arms,
                        evaluator_identity=evaluator,
-                       capture_id_sha256=hashlib.sha256(
-                           f"{public}:{seed}".encode()).hexdigest())
+                               capture_id_sha256=hashlib.sha256(
+                               f"{public}:{seed}".encode()).hexdigest())
 
-    monkeypatch.setattr(pt1, "evaluate_state", fake_evaluate)
-    ticks = iter((0.0, 2.0, 2.0))
-    partial = pt1.run_pt1([(state, pt1.seal_true_world(state))],
+    monkeypatch.setattr(pt1, "evaluate_state_batch",
+                        lambda public, true, *, seeds, **kwargs:
+                        tuple(fake_evaluate(public, true, seed=seed)
+                              for seed in seeds))
+    ticks = iter((0.0, 2.0))
+    states = [(state, pt1.seal_true_world(state)),
+              (second_state, pt1.seal_true_world(second_state))]
+    partial = pt1.run_pt1(states,
                            seeds=(0, 1), deadline=1.0,
                            monotonic=lambda: next(ticks))
     assert partial.status == "TRUNCATED"
-    resumed = pt1.run_pt1([(state, pt1.seal_true_world(state))],
+    resumed = pt1.run_pt1(states,
                            seeds=(0, 1), checkpoint=partial.checkpoint,
                            monotonic=lambda: 0.0)
-    full = pt1.run_pt1([(state, pt1.seal_true_world(state))],
+    full = pt1.run_pt1(states,
                         seeds=(0, 1), monotonic=lambda: 0.0)
     assert resumed.status == "COMPLETE"
     assert resumed.payload() == full.payload()
@@ -370,10 +445,12 @@ def test_runner_fsyncs_directory_for_final_and_progress_publication(
 def test_cli_advances_two_truncations_and_refuses_divergent_checkpoint(
         monkeypatch, tmp_path):
     state = _real_late_round()
-    public = pt1.pt0_public_state_sha256(state, perspective_seat=1)
-    world = pt1._world_hash(state)
+    second_state = _real_late_round()
+    second_state.attacker_points = 1
 
     def fake_evaluate(public_round, true_world, *, seed, **kwargs):
+        public = pt1.pt0_public_state_sha256(public_round, perspective_seat=1)
+        world = pt1._world_hash(true_world.verify())
         base = _record()
         evaluator = pt1._evaluator_identity(
             public, world, base.evaluation_action_utilities,
@@ -388,15 +465,19 @@ def test_cli_advances_two_truncations_and_refuses_divergent_checkpoint(
                        capture_id_sha256=hashlib.sha256(
                            f"{public}:{seed}".encode()).hexdigest())
 
-    monkeypatch.setattr(pt1, "evaluate_state", fake_evaluate)
+    monkeypatch.setattr(pt1, "evaluate_state_batch",
+                        lambda public, true, *, seeds, **kwargs:
+                        tuple(fake_evaluate(public, true, seed=seed)
+                              for seed in seeds))
     monkeypatch.setattr(pt1_runner, "_load_states",
-                        lambda path: [(state, pt1.seal_true_world(state))])
+                        lambda path: [(state, pt1.seal_true_world(state)),
+                                      (second_state, pt1.seal_true_world(second_state))])
     invocation = {"count": 0}
 
     def wrapped_run(states, *, seeds, deadline, checkpoint, checkpoint_sink):
         invocation["count"] += 1
         if invocation["count"] < 3:
-            ticks = iter((0.0, 2.0, 2.0))
+            ticks = iter((0.0, 2.0))
             return pt1.run_pt1(
                 states, seeds=seeds, deadline=1.0, checkpoint=checkpoint,
                 monotonic=lambda: next(ticks), checkpoint_sink=checkpoint_sink)
@@ -412,10 +493,10 @@ def test_cli_advances_two_truncations_and_refuses_divergent_checkpoint(
             "--seeds", "0,1,2", "--deadline-seconds", "1"]
     assert pt1_runner.main(args) == 0
     first_checkpoint = (output / "checkpoint.json").read_bytes()
-    assert json.loads(first_checkpoint)["completed_units"] == 1
+    assert json.loads(first_checkpoint)["completed_units"] == 3
     assert pt1_runner.main(args + ["--resume"]) == 0
     second_checkpoint = (output / "checkpoint.json").read_bytes()
-    assert json.loads(second_checkpoint)["completed_units"] == 2
+    assert json.loads(second_checkpoint)["completed_units"] == 6
     assert first_checkpoint != second_checkpoint
     divergent = json.loads(second_checkpoint)
     divergent["records"][0]["capture_id_sha256"] = "f" * 64
@@ -432,11 +513,15 @@ def test_cli_advances_two_truncations_and_refuses_divergent_checkpoint(
     (output / "checkpoint.json").write_bytes(semantic_bytes)
     with pytest.raises(pt1.PrivilegedTeacherPT1Error,
                        match="checkpoint replay semantic drift"):
-        pt1.run_pt1([(state, pt1.seal_true_world(state))], seeds=(0, 1, 2),
+        pt1.run_pt1([(state, pt1.seal_true_world(state)),
+                     (second_state, pt1.seal_true_world(second_state))],
+                    seeds=(0, 1, 2),
                     checkpoint=semantic_bytes, monotonic=lambda: 0.0)
     with pytest.raises(SystemExit):
         pt1_runner.main(args + ["--resume"])
     (output / "checkpoint.json").write_bytes(second_checkpoint)
+    (output / "packet.json").unlink()
+    (output / "manifest.json").unlink()
 
     original_write_once = pt1_runner._write_once
     def crash_once(path, data):

@@ -371,29 +371,36 @@ def _choose_exact(evaluation, *, seat: int, banker: int) -> tuple[str, ...]:
                key=lambda cards: (len(cards), cards))
 
 
-def evaluate_state(public_rnd: object, true_world: TrueWorld, *, seed: int = 0,
-                   max_hand_cards: int | None = None,
-                   max_nodes: int = MAX_EXACT_NODES) -> PT1Record:
-    """Select A/B/C and score all selected actions using one exact evaluator."""
+def _exact_context(public_rnd: object, true_world: TrueWorld, *,
+                   max_hand_cards: int | None,
+                   max_nodes: int):
+    """Compute the immutable C evaluation context once for one natural state."""
     world, seat, public = _true_world_check(public_rnd, true_world)
-    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
-        raise PrivilegedTeacherPT1Error("policy seed must be nonnegative")
     threshold = max_hand_cards or max(len(h) for h in world.hands)
     world_identity = _world_hash(world)
-    a = _select_production(public_rnd, seed=seed, arm="A",
-                            world_identity=world_identity)
-    b = _select_production(public_rnd, seed=seed, arm="B", true_world=world,
-                            world_identity=world_identity)
     # C uses PT0's exact-world evaluator, which enumerates every root action
     # and shares one ExactWorldSession transposition table.
     evaluation = exact_world_action_values(
         world, world_sha256=_world_hash(world), perspective_seat=seat,
         max_hand_cards=threshold, max_nodes=max_nodes)
     ballot = tuple(cards for cards, _ in evaluation.values.action_utilities)
-    c_selected = _choose_exact(evaluation, seat=seat, banker=world.banker)
     evaluator_identity = _evaluator_identity(
         public, world_identity, evaluation.values.action_utilities,
         evaluation.final_attacker_points, evaluation.nodes, evaluation.cache_hits)
+    return world, seat, public, threshold, world_identity, evaluation, ballot, evaluator_identity
+
+
+def _evaluate_state_with_context(public_rnd: object, *, seed: int,
+                                 world: object, seat: int, public: str,
+                                 threshold: int, world_identity: str,
+                                 evaluation, ballot, evaluator_identity: str) -> PT1Record:
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise PrivilegedTeacherPT1Error("policy seed must be nonnegative")
+    a = _select_production(public_rnd, seed=seed, arm="A",
+                            world_identity=world_identity)
+    b = _select_production(public_rnd, seed=seed, arm="B", true_world=world,
+                            world_identity=world_identity)
+    c_selected = _choose_exact(evaluation, seat=seat, banker=world.banker)
     a = replace(a, ballot=ballot, evaluator_schema=evaluator_identity)
     b = replace(b, ballot=ballot, evaluator_schema=evaluator_identity)
     c = ArmDecision("C", c_selected, ballot, public, world_identity,
@@ -416,6 +423,41 @@ def evaluate_state(public_rnd: object, true_world: TrueWorld, *, seed: int = 0,
                      evaluation.values.action_utilities,
                      evaluation.final_attacker_points, evaluator_identity,
                      c_regret, AUTHORITY)
+
+
+def evaluate_state(public_rnd: object, true_world: TrueWorld, *, seed: int = 0,
+                   max_hand_cards: int | None = None,
+                   max_nodes: int = MAX_EXACT_NODES) -> PT1Record:
+    """Select A/B/C and score all selected actions using one exact evaluator."""
+    context = _exact_context(public_rnd, true_world,
+                             max_hand_cards=max_hand_cards, max_nodes=max_nodes)
+    return _evaluate_state_with_context(
+        public_rnd, seed=seed, world=context[0], seat=context[1],
+        public=context[2], threshold=context[3], world_identity=context[4],
+        evaluation=context[5], ballot=context[6], evaluator_identity=context[7])
+
+
+def evaluate_state_batch(
+        public_rnd: object, true_world: TrueWorld, *,
+        seeds: Sequence[int] = (0, 1, 2, 3),
+        max_hand_cards: int | None = None,
+        max_nodes: int = MAX_EXACT_NODES) -> tuple[PT1Record, ...]:
+    """Evaluate one natural state for several policy seeds, sharing C exactly."""
+    if not isinstance(seeds, Sequence) or isinstance(seeds, (str, bytes)) \
+            or not seeds:
+        raise PrivilegedTeacherPT1Error("batch seeds must be a nonempty sequence")
+    if any(isinstance(seed, bool) or not isinstance(seed, int) or seed < 0
+           for seed in seeds):
+        raise PrivilegedTeacherPT1Error("policy seed must be nonnegative")
+    if len(set(seeds)) != len(seeds):
+        raise PrivilegedTeacherPT1Error("batch policy seeds must be unique")
+    context = _exact_context(public_rnd, true_world,
+                             max_hand_cards=max_hand_cards, max_nodes=max_nodes)
+    return tuple(_evaluate_state_with_context(
+        public_rnd, seed=seed, world=context[0], seat=context[1],
+        public=context[2], threshold=context[3], world_identity=context[4],
+        evaluation=context[5], ballot=context[6], evaluator_identity=context[7])
+                 for seed in seeds)
 
 
 def verify_record(record: PT1Record | Mapping[str, object] | bytes) -> PT1Record:
@@ -626,6 +668,14 @@ def run_pt1(states: Sequence[tuple[object, TrueWorld]], *, seeds: Sequence[int] 
             or (record_sink is not None and not callable(record_sink))
             or (checkpoint_sink is not None and not callable(checkpoint_sink))):
         raise PrivilegedTeacherPT1Error("invalid progress callback")
+    if not isinstance(seeds, Sequence) or isinstance(seeds, (str, bytes)) \
+            or not seeds:
+        raise PrivilegedTeacherPT1Error("seeds must be a nonempty sequence")
+    if any(isinstance(seed, bool) or not isinstance(seed, int) or seed < 0
+           for seed in seeds):
+        raise PrivilegedTeacherPT1Error("seeds must be nonnegative")
+    if len(set(seeds)) != len(seeds):
+        raise PrivilegedTeacherPT1Error("seeds must be unique")
     total = len(states) * len(seeds)
     records = []
     seen = set()
@@ -647,11 +697,15 @@ def run_pt1(states: Sequence[tuple[object, TrueWorld]], *, seeds: Sequence[int] 
         if not isinstance(prefix, list) or checkpoint_payload["completed_units"] != len(prefix) \
                 or len(prefix) > total:
             raise PrivilegedTeacherPT1Error("checkpoint progress drift")
+        if len(prefix) % len(seeds) != 0:
+            raise PrivilegedTeacherPT1Error(
+                "checkpoint prefix splits a state seed batch")
         if checkpoint_payload["truncated_by_deadline"] is not (len(prefix) < total):
             raise PrivilegedTeacherPT1Error("checkpoint completion drift")
         for row in prefix:
             records.append(verify_record(canonical_json_bytes(row)))
         resume_count = len(records)
+    completed_states = resume_count // len(seeds)
     for state_index, pair in enumerate(states):
         if not isinstance(pair, Sequence) or len(pair) != 2:
             raise PrivilegedTeacherPT1Error("state must be a public/true-world pair")
@@ -659,44 +713,54 @@ def run_pt1(states: Sequence[tuple[object, TrueWorld]], *, seeds: Sequence[int] 
         if candidate_public in seen_public_states:
             raise PrivilegedTeacherPT1Error("state reuse or cross-split reuse")
         seen_public_states.add(candidate_public)
-        for seed_index, seed in enumerate(seeds):
-            flat_index = state_index * len(seeds) + seed_index
-            if flat_index < resume_count:
-                prior = records[flat_index]
+        if state_index < completed_states:
+            current_world = pair[1].verify()
+            current_world_identity = _world_hash(current_world)
+            start = state_index * len(seeds)
+            prior_batch = records[start:start + len(seeds)]
+            if len(prior_batch) != len(seeds):
+                raise PrivilegedTeacherPT1Error("checkpoint state prefix drift")
+            replayed_batch = evaluate_state_batch(
+                pair[0], pair[1], seeds=seeds)
+            for seed, prior, replayed in zip(seeds, prior_batch, replayed_batch):
                 if prior.public_state_sha256 != candidate_public \
+                        or prior.true_world_sha256 != current_world_identity \
                         or any(a.seed != seed for a in prior.arms):
-                    raise PrivilegedTeacherPT1Error("checkpoint state/seed identity drift")
-                current_world = pair[1].verify()
-                if prior.true_world_sha256 != _world_hash(current_world):
-                    raise PrivilegedTeacherPT1Error("checkpoint true-world identity drift")
-                replayed = evaluate_state(pair[0], pair[1], seed=seed)
+                    raise PrivilegedTeacherPT1Error(
+                        "checkpoint state/seed identity drift")
                 if _replay_semantics(replayed) != _replay_semantics(prior):
                     raise PrivilegedTeacherPT1Error("checkpoint replay semantic drift")
                 seen.add((prior.public_state_sha256, seed))
-                continue
-            if deadline is not None and monotonic() >= deadline:
-                break
-            rec = evaluate_state(pair[0], pair[1], seed=seed)
-            # Validate before exposing bytes to checkpoint sinks or any
-            # persistence boundary. A malformed/underfilled first-run result
-            # therefore leaves no durable prefix.
+            continue
+        if state_index != completed_states:
+            raise PrivilegedTeacherPT1Error("checkpoint state order drift")
+        if deadline is not None and monotonic() >= deadline:
+            break
+        # Evaluate and validate the complete state batch before exposing any
+        # record or checkpoint bytes. A deadline cannot publish a partial
+        # four-seed state.
+        batch = evaluate_state_batch(pair[0], pair[1], seeds=seeds)
+        if len(batch) != len(seeds):
+            raise PrivilegedTeacherPT1Error("state seed batch underfilled")
+        for seed, rec in zip(seeds, batch):
             verify_record(rec)
             key = (rec.public_state_sha256, seed)
             if key in seen:
                 raise PrivilegedTeacherPT1Error("state reuse or cross-split reuse")
-            seen.add(key)
-            records.append(rec)
-            if record_sink is not None:
-                record_sink(len(records) - 1, rec.canonical_bytes())
-            if checkpoint_sink is not None:
-                checkpoint_sink(canonical_json_bytes({
-                    "schema": PT1_CHECKPOINT_SCHEMA,
-                    "completed_units": len(records),
-                    "records": [r.payload() for r in records],
-                    "truncated_by_deadline": len(records) < total,
-                }))
-        if deadline is not None and len(records) < (state_index + 1) * len(seeds) and monotonic() >= deadline:
-            break
+        for seed, rec in zip(seeds, batch):
+            seen.add((rec.public_state_sha256, seed))
+        records.extend(batch)
+        if record_sink is not None:
+            for index, rec in enumerate(batch, start=len(records) - len(batch)):
+                record_sink(index, rec.canonical_bytes())
+        if checkpoint_sink is not None:
+            checkpoint_sink(canonical_json_bytes({
+                "schema": PT1_CHECKPOINT_SCHEMA,
+                "completed_units": len(records),
+                "records": [r.payload() for r in records],
+                "truncated_by_deadline": len(records) < total,
+            }))
+        completed_states += 1
     complete = len(records) == total
     progress = {"completed_units": len(records), "total_units": total,
                 "percent_basis_points": 10_000 if total == 0 else (len(records) * 10_000) // total}
@@ -712,5 +776,6 @@ run_privileged_teacher_pt1 = run_pt1
 __all__ = ["ARM_NAMES", "AUTHORITY", "MAX_EXACT_NODES", "N_DETERMINIZATIONS",
            "PRODUCTION_POLICY", "PT1_RECORD_SCHEMA", "PT1_SCHEMA", "PT1Run",
            "PT1Record", "PrivilegedTeacherPT1Error", "TrueWorld", "WorkReceipt",
-           "evaluate_state", "run_pt1", "run_privileged_teacher_pt1",
+           "evaluate_state", "evaluate_state_batch", "run_pt1",
+           "run_privileged_teacher_pt1",
            "seal_true_world", "verify_manifest", "verify_record", "manifest_for"]

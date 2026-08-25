@@ -152,6 +152,24 @@ def _source_identity(repo_root: Path | None = None) -> dict[str, object]:
             "files_sha256": _hash_bytes(canonical_json_bytes(files))}
 
 
+def _boot_identity_bytes() -> bytes:
+    if sys.platform == "darwin":
+        try:
+            boot = subprocess.check_output(
+                ["sysctl", "-n", "kern.bootsessionuuid"],
+                stderr=subprocess.DEVNULL).strip()
+        except (OSError, subprocess.CalledProcessError) as exc:
+            raise PT1ExecutionError("execution Darwin boot identity unavailable") from exc
+    else:
+        boot_path = Path("/proc/sys/kernel/random/boot_id")
+        if not boot_path.is_file():
+            raise PT1ExecutionError("execution boot identity unavailable")
+        boot = boot_path.read_bytes().strip()
+    if not boot:
+        raise PT1ExecutionError("execution boot identity unavailable")
+    return boot
+
+
 def _runtime_identity(worker_count: int) -> dict[str, object]:
     if isinstance(worker_count, bool) or not isinstance(worker_count, int) \
             or worker_count <= 0:
@@ -163,17 +181,7 @@ def _runtime_identity(worker_count: int) -> dict[str, object]:
         native = Path()
     if not native.is_file():
         raise PT1ExecutionError("execution native identity unavailable")
-    if sys.platform == "darwin":
-        try:
-            boot = subprocess.check_output(["sysctl", "-n", "kern.boottime"],
-                                           stderr=subprocess.DEVNULL)
-        except (OSError, subprocess.CalledProcessError) as exc:
-            raise PT1ExecutionError("execution Darwin boot identity unavailable") from exc
-    else:
-        boot_path = Path("/proc/sys/kernel/random/boot_id")
-        if not boot_path.is_file():
-            raise PT1ExecutionError("execution boot identity unavailable")
-        boot = boot_path.read_bytes()
+    boot = _boot_identity_bytes()
     executable = Path(sys.executable).resolve()
     if not executable.is_file():
         raise PT1ExecutionError("execution Python identity unavailable")

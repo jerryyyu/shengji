@@ -33,6 +33,30 @@ def _authenticated_review_seam(monkeypatch):
         execution, "_authenticate_review_provenance", lambda *args: None)
 
 
+def test_darwin_boot_identity_tracks_session_uuid_not_adjusted_clock(monkeypatch):
+    session = {"uuid": b"stable-boot-session-1\n"}
+    commands = []
+
+    def sysctl(command, **_kwargs):
+        commands.append(tuple(command))
+        assert command == ["sysctl", "-n", "kern.bootsessionuuid"]
+        return session["uuid"]
+
+    monkeypatch.setattr(execution.sys, "platform", "darwin")
+    monkeypatch.setattr(execution.subprocess, "check_output", sysctl)
+    before = execution._boot_identity_bytes()
+    # A wall-clock/NTP adjustment cannot affect the session UUID primitive.
+    after_clock_adjustment = execution._boot_identity_bytes()
+    assert before == after_clock_adjustment == b"stable-boot-session-1"
+    session["uuid"] = b"stable-boot-session-2\n"
+    assert execution._boot_identity_bytes() != before
+    assert commands == [
+        ("sysctl", "-n", "kern.bootsessionuuid"),
+        ("sysctl", "-n", "kern.bootsessionuuid"),
+        ("sysctl", "-n", "kern.bootsessionuuid"),
+    ]
+
+
 class FakeDesign:
     def __init__(self, commitment):
         self.commitment = commitment

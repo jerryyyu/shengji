@@ -3697,3 +3697,45 @@ PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW {"capacity_git":"bd4833fe
 **Sufficiency.** The evidence is sufficient **only** to draft and review a PT1 three-arm acquisition design — and that design must be powered against `mc-s0-report-lcb` specifically, since that is the comparison this result leaves open. It is **not** sufficient for any strength, gameplay, sampler, promotion, merge or deployment claim, consistent with the all-false authority map carried in every record and in the packet. Do not relaunch or resume this execution. — Claude
 
 PRIVILEGED_TEACHER_PT0_NATURAL_TERMINAL_V1_REVIEW {"advantage_vs_production_mc_inconclusive":true,"bootstrap_replicates":5000,"capture_round_cluster_count":29,"deployment_authorized":false,"design_sha256":"f4001fcd3db02bee1ae85963971d610795fa0703c43ff84bce1a99b9ad9237c6","evaluation_draws":16,"freeze_sha256":"6be498e8137d41533df912fe271c51813eb5cfdacf2ac8193a6a6b6b1b0d222d","gameplay_authorized":false,"grid":"13rank_x_2banker_x_2role_x_2horizon","headroom_vs_weak_baselines_proven":true,"manifest_file_sha256":"f039afdb2f7d88d4160cfef3d860f0ce0e57923310f113cea3b9b0454881440b","manifest_self_sha256":"52097d6180afaed044a2e1a60c10f40b7a8cfc232fafc60252b663a089246e4c","merge_authorized":false,"packet_file_sha256":"23b5374218903ac19f6c82ec70ded0986ded2e2dafffeacbf49f49b95cbd6e5a","packet_self_sha256":"692179df282bea3358275cc140b9609deeefd9fdaebba2333c2b41fdc69388e9","promotion_authorized":false,"proposal_draws":16,"pt1_execution_authorized":false,"record_count":104,"result_root":"/private/tmp/shengji-pt0-natural-run-bd4833f-r1","sampler_implementation_authorized":false,"schema":"privileged-teacher-pt0-natural-terminal-review-v1","sealed_root_unmodified":true,"source_git":"bd4833fed1aa6196bca94b1ef65752cc5c4b10c3","strength_claim_authorized":false,"sufficient_only_for_pt1_design_draft_and_review":true,"summaries_reproduced_exactly":true,"training_authorized":false,"verdict":"PASS","verify_path_passed":true,"with_replacement_confirmed":true}
+
+## 2026-08-25 01:40 EDT — R4 died at 63.57 h in calibration: **seventh belief-lane failure, new class.** The transport precondition is checked against unconstrained bounds while the graph it guards is built with capacity-constrained ones — and it raises instead of using the fallback written for exactly this case
+
+**Measured state.** `state: failed`, `failure_task: calibrate`, stage 8/10, 82/85 tasks, `bp` 9647. Cloud is now idle at load 0.01. `calibrate.stderr.log` went from **0 bytes to 3,988** at `04:59 UTC` — the traceback is the only thing that stage ever wrote, which is the observability gap I filed an hour ago at `84043d9` doing real damage: there was no signal at all until the corpse.
+
+**Exact cause chain**, root first, all in the frozen R4 source `d2d466f`:
+
+```
+belief_projection.py:440   _round_transport      -> BeliefProjectionError: integral projection flow is infeasible
+belief_projection.py:617   project_count_weights
+belief_v2_scoring.py:202   _predict_cohort       -> BeliefV2ScoringError: V2 scoring member prediction refused
+belief_v2_scoring.py:264   score_v2_round
+belief_v2_calibration_controller.py:96  _score_synthetic  (replicate="calibration-replicate-0")
+belief_v2_calibration_controller.py:215 run_v2_calibration_selection -> V2 calibration scoring population refused
+```
+
+**The defect, precisely.** `_round_transport` chooses between a fast dependent-rounding path and `_repair_approximate_transport` using this precondition:
+
+```python
+if sum(row_need) != sum(col_need) \
+        or any(not 0 <= need <= n_receivers for need in row_need) \
+        or any(not 0 <= need <= n_cards for need in col_need):
+    rounded = _repair_approximate_transport(...)
+else:
+    ... build flow graph ...
+```
+
+`row_need[card] <= n_receivers` is the bound that would hold **if every receiver could absorb a unit.** But the graph it guards only creates a unit-capacity cell edge where there is headroom:
+
+```python
+upper_bound = cards[card].max_count_by_receiver[receiver] * PROBABILITY_SCALE
+if rounded[card][receiver] < upper_bound:
+    cell_edges[(card, receiver)] = _add_edge(graph, row_offset + card, col_offset + receiver, 1)
+```
+
+**So the precondition counts all receivers while the graph offers only unsaturated ones.** Once `max_count_by_receiver` saturates enough cells in a row (or `n_cards` worth in a column), the guard passes, the fast path is taken, `_augment_flow` cannot carry `total`, and it **raises** — rather than deferring to the fallback. And `_repair_approximate_transport` is written for this exact situation; its own docstring says so: *"Late-game hard capacities can put the KL optimum on the boundary… This fallback first maximizes flow at or below each approximate cell floor, then opens the remaining hard capacity. It is used only when the ordinary one-PPB dependent rounding precondition is not met."* It is the only branch that consults `min_count_by_receiver` and `max_count_by_receiver` at all.
+
+**Minimal repair, in preference order.** (1) On `_augment_flow(graph, source, sink, total) != total`, fall back to `_repair_approximate_transport` instead of raising — this makes the fast path an optimization with a correct escape rather than a partial method that can hard-fail. (2) Or tighten the precondition to count only cells with headroom: `row_need[card] <= #{receiver : rounded[card][receiver] < upper[card][receiver]}`, and the column symmetric. **Honest caveat: (1) is not a proof of totality.** `_repair_approximate_transport` has its own refusal, `"approximate transport lower margin is infeasible"`, so this converts a hard failure into a strictly more general method that may still refuse. Any repair should come with a witness that constructs a saturated late-game configuration, drives `project_count_weights`, and fails red when the new escape is neutralized.
+
+**Why this one matters more than the wall-clock.** `project_count_weights` is the production projection entry point, not test scaffolding, and the trigger is ordinary late-game hard capacity — data-dependent, so it recurs rather than being a one-off. **I have not verified whether any deployed release exercises this path**, and I am not claiming the live bot is affected; prod is release 19 and I did not trace its inference path. That check is worth doing separately rather than assuming either way.
+
+**Cost and count.** 63.57 h of compute, four fully trained cohorts, and stages 9–10 never reached. This is the **seventh** belief-lane attempt to end without a scientific result, and a class distinct from the previous six — not sizing, not ordering, not a masked witness, but a feasibility guard whose bound does not match the structure it guards. — Claude (session `68f9c8bd`)

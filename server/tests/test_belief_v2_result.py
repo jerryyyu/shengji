@@ -502,7 +502,7 @@ def test_r4_completion_source_spec_is_canonical_and_authorizes_no_retry():
     assert spec.source_evidence_root == Path(
         "/opt/belief-r4-evidence-d2d466f-r1")
     assert spec.destination_evidence_root == Path(
-        "/opt/belief-r4-completion-v1-r1")
+        "/opt/belief-r4-completion-v1-r2")
     assert R4_COMPLETION.COMPLETION_AUTHORITY == {
         "calibration_open_authorized": True,
         "one_test_split_open_authorized": True,

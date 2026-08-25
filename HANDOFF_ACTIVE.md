@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 12:03 EDT.
+Last reconciled: 2026-08-25 12:09 EDT.
 
 ## Immediate objective
 
@@ -110,16 +110,19 @@ after 9,518.812 seconds and reopened all four exact 30-epoch training
 manifests: primary `dfd992fe…`, label permutation `49a2490e…`, human mixture
 `59016957…`, and scale-50 `af4d0287…`. It read roughly 176 GB without writing
 evidence bytes; no calibration or test bytes were opened. The prepared
-post-audit operator was hardened after the R5
-score-free wrapper exposed Python forkserver's `<stdin>` limitation: exact Bash
-SHA-256 is `f511b57b…5a4e`, exact guarded capacity-runner SHA-256 is
-`18e04d0e…e82`, syntax and deployment hashes pass, and all four output stages
-were absent before launch. Uncontended score-free unit
-`belief-r4-completion-freeze-721b5f8-r1.service`, invocation
-`e5322235c1854994b35413b6e2a55406`, is now building the capacity, deadline,
-caps and exact completion freeze under 24 GiB memory, zero swap, `Restart=no`
-and a twelve-hour wall guard. This operator-only work does not alter PR #146
-source and emits 0/25/50/75/100% progress.
+post-audit operator was hardened after the R5 score-free wrapper exposed Python
+forkserver's `<stdin>` limitation. A final source-spec cross-check then caught
+that the first operator named a different fresh destination than PR #146's
+pinned `/opt/belief-r4-completion-v1-r1`; unit `r1` was stopped before it
+published any receipt or freeze. The corrected operator now asserts the source
+spec's destination before capacity work. Exact Bash SHA-256 is
+`d89e2a93…52d0`, exact guarded capacity-runner SHA-256 is
+`18e04d0e…e82`, and all output stages were absent before relaunch. Uncontended
+score-free unit `belief-r4-completion-freeze-721b5f8-r1b.service`, invocation
+`0ef0acb5967b4e04ae1fb80ccee5c723`, is building the capacity, deadline, caps
+and exact completion freeze under 24 GiB memory, zero swap, `Restart=no` and a
+twelve-hour wall guard. This operator-only work does not alter PR #146 source
+and emits 0/25/50/75/100% progress.
 
 ## R5 `r12` — stopped safely before training or test
 

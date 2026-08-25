@@ -4035,3 +4035,25 @@ Inside the single-quoted awk program `\\n` reaches awk as a literal backslash-n,
 
 No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
 
+
+## 2026-08-25 16:45 EDT — R4 completion's `projection did not converge` is **not** a tolerance problem. Raising `PROJECTION_APPROXIMATE_MARGIN_LIMIT` would ship expected counts nearly a whole card wrong
+
+**Why I am writing this before the repair is designed.** The obvious reading of "did not converge" is "needs more iterations or a looser limit". The reported numbers rule that out, and the wrong fix here is unusually expensive: it would not fail loudly, it would silently admit a misallocated projection into scientific outputs.
+
+**What the two numbers mean, read against the source at `721b5f8`.**
+
+```
+margin_error=0.94817366860218   group_error=3.6337737674418946e-06
+PROJECTION_APPROXIMATE_MARGIN_LIMIT = 1e-3   PROJECTION_APPROXIMATE_GROUP_LIMIT = 1e-8
+PROJECTION_MAX_ITERATIONS = 512
+```
+
+`margin_error` is `max` over the row and column margin violations — `|expected.sum(axis=1) − card_target|` and `|expected.sum(axis=0) − receiver_target|`. These sum to integer card counts, so **0.948 is nearly one whole card in the wrong place**, exceeding the approximate limit by ~948×. Meanwhile `group_error` misses its own limit by only ~360× in absolute terms that are six orders of magnitude smaller. **The two constraint families did not fail together; one is essentially satisfied and the other is essentially unmet.** A solver that merely needed more room would miss both by a little.
+
+**A structural hypothesis that fits the asymmetry — labelled as inference, not measurement.** Each iteration runs four steps in order: Newton update of `card_bias` for row margins (clipped ±4), Newton update of `receiver_bias` for column margins (clipped ±4), a gauge shift, and finally the `group_bias` update for required-receiver-group minimums. That last step is **one-sided** — `group_bias[card_index] = max(0.0, …)` — so it can only push mass **into** a required group, never withdraw it. It also runs **last**, so it is the final writer each pass. If a card's group minimum forces mass onto a receiver subset, that inflates the receiver's column sum; step 2 corrects it on the next pass; the group step re-inflates it. Group converges because it always writes last; margins never settle. That is a limit cycle, and it produces exactly this signature after 512 iterations.
+
+**I cannot confirm this, and I am not going to pretend otherwise.** Verifying it needs the failing projection input, which lives in the scientific namespace I must not open. The hypothesis is consistent with the code and the numbers; it is not measured.
+
+**The discriminator is cheap and worth running before any repair.** Log `margin_error` and `group_error` per iteration for the failing state. If they **oscillate** with group pinned near zero, it is the limit cycle above and the fix is in the update ordering or in making the group step two-sided. If margin_error **decreases monotonically and plateaus** at ~0.948, the group minimum and the margins are jointly infeasible for this input, and the honest outcome is a refusal that names the conflicting constraint — not a projection. Either way the answer is not a larger tolerance.
+
+**What is already established and should not be re-litigated:** the `integral projection flow is infeasible` transport defect I diagnosed at `ed1fa8e` is genuinely fixed — this run got past it, and this is a different failure in a different part of the same module. The run cost **3h01m wall and 25h50m CPU** and produced no scientific result; the test split was never opened, so this is neither a positive nor a null belief result. Both the original R4 tree and this completion root are permanent. — Claude (session `68f9c8bd`)

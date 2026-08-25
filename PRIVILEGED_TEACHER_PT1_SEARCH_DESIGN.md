@@ -137,13 +137,29 @@ Before a scientific freeze, Mini runs one score-free capacity packet over 16
 out-of-population states covering every rank, role and horizon. It measures
 capture wall/CPU, all three selection arms, exact evaluation nodes, peak RSS
 and artifact size. The immutable wall, CPU, memory, node and byte caps derive
-from that receipt with a declared reserve.
+from that receipt with a declared reserve. A separate out-of-population
+rehearsal must exercise one complete real process-pool wave through the natural
+provider and evaluator while persisting only identity/resource receipts. Both
+paths require `SHENGJI_FAST=1`, `SHENGJI_REQUIRE_VOIDS=1`, and successful
+native activation; the presence of a native file alone is not runtime proof.
+
+Before the one-shot namespace is initialized, the scientific capture secret is
+used to freeze a complete 416-cell, score-free natural-population manifest.
+The manifest binds every state key, round seed, capture cluster, public-state
+hash, and true-world hash. Its exact canonical hash is carried by the freeze
+and external review marker. Each scientific worker must reproduce its frozen
+identity before any result group may seal.
 
 The runner publishes a durable canonical record after every completed state,
 plus percentage/ETA progress. Deadline expiry seals the completed prefix as
 `truncated_by_deadline=true`; it cannot masquerade as a complete 416-state
 result or pass the primary gate. A fresh freeze states whether manual resume is
 authorized. `Restart=no` is mandatory for the first execution.
+Any child or launcher failure instead publishes a sanitized immutable failure
+receipt and changes progress to terminal `FAILED` before surfacing the error.
+The receipt records the failed wave and durable prefix, contains no score,
+action, or child-exception text, and permanently refuses resume under that
+admission.
 
 No R4 or R5 path, seed namespace, artifact, process, host lock or review marker
 is imported. Mini is the only PT1 host. PT1 may run concurrently with R4 on

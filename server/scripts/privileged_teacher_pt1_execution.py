@@ -33,13 +33,17 @@ def _private_bytes(path: Path, label: str) -> bytes:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("freeze", "initialize", "run",
-                                              "resume", "verify"))
+    parser.add_argument("command", choices=(
+        "capture-population", "rehearse", "freeze", "initialize", "run",
+        "resume", "verify"))
     parser.add_argument("--freeze", type=Path)
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--freeze-output", type=Path)
     parser.add_argument("--capacity-report", type=Path)
     parser.add_argument("--capacity-manifest", type=Path)
+    parser.add_argument("--population-manifest", type=Path)
+    parser.add_argument("--population-manifest-output", type=Path)
+    parser.add_argument("--rehearsal-output", type=Path)
     parser.add_argument("--scientific-secret-commitment")
     parser.add_argument("--capture-secret", type=Path)
     parser.add_argument("--review-marker", type=Path)
@@ -54,8 +58,31 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _require_isolated_runtime()
         execution, canonical = _load()
+        if args.command == "capture-population":
+            if (args.capture_secret is None
+                    or args.population_manifest_output is None):
+                raise execution.PT1ExecutionError(
+                    "capture-population requires secret and output")
+            manifest = execution.capture_population_manifest(
+                capture_secret=_private_bytes(
+                    args.capture_secret, "capture secret"),
+                worker_count=args.worker_count)
+            execution._write_once(
+                args.population_manifest_output, canonical(manifest))
+            return 0
+        if args.command == "rehearse":
+            if args.capture_secret is None or args.rehearsal_output is None:
+                raise execution.PT1ExecutionError(
+                    "rehearse requires secret and output")
+            receipt = execution.rehearse_process_pool_wave(
+                capture_secret=_private_bytes(
+                    args.capture_secret, "rehearsal secret"),
+                worker_count=args.worker_count)
+            execution._write_once(args.rehearsal_output, canonical(receipt))
+            return 0
         if args.command == "freeze":
             required = (args.capacity_report, args.capacity_manifest,
+                        args.population_manifest,
                         args.scientific_secret_commitment,
                         args.design_sha256, args.evidence_root)
             if any(value is None for value in required) or args.freeze_output is None:
@@ -67,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
                 design_sha256=args.design_sha256,
                 scientific_capture_secret_sha256=args.scientific_secret_commitment,
                 capacity_report=report, capacity_manifest=manifest,
+                population_manifest=_private_bytes(
+                    args.population_manifest, "population manifest"),
                 review_marker=(args.review_marker.read_bytes()
                                if args.review_marker is not None else None),
                 evidence_root=args.evidence_root,
@@ -120,6 +149,16 @@ def main(argv: list[str] | None = None) -> int:
                                 deadline=None)
         return 0
     except Exception as exc:
+        if (execution is not None and args.output_root is not None
+                and args.freeze is not None and args.output_root.is_dir()):
+            try:
+                frozen = execution.verify_freeze(args.freeze.read_bytes())
+                execution.record_execution_failure(
+                    frozen, args.output_root, code="cli_failure")
+            except Exception:
+                pass
+        print("PT1_EXECUTION_FAILED failure_receipt=required-if-initialized",
+              file=sys.stderr, flush=True)
         if execution is not None and not isinstance(
                 exc, (OSError, ValueError, RuntimeError,
                       execution.PT1ExecutionError)):

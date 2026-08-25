@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 import pytest
 
 from shengji.rl import privileged_teacher_pt1_execution as execution
+
+
+_CLI_SPEC = importlib.util.spec_from_file_location(
+    "privileged_teacher_pt1_execution_cli",
+    Path(__file__).parents[1] / "scripts" / "privileged_teacher_pt1_execution.py")
+assert _CLI_SPEC is not None and _CLI_SPEC.loader is not None
+execution_cli = importlib.util.module_from_spec(_CLI_SPEC)
+_CLI_SPEC.loader.exec_module(execution_cli)
 
 
 KEYS = tuple((f"r{i}", i % 2, "banker-team" if i % 2 == 0 else "attacker-team",
@@ -60,6 +70,7 @@ def test_darwin_boot_identity_tracks_session_uuid_not_adjusted_clock(monkeypatch
 class FakeDesign:
     def __init__(self, commitment):
         self.commitment = commitment
+        self.capture_secret_sha256 = commitment
         self.state_keys = KEYS
 
     def payload(self):
@@ -160,6 +171,7 @@ def _states():
 
 def _freeze(monkeypatch, tmp_path):
     monkeypatch.setattr(execution, "NaturalPT1Design", FakeDesign)
+    monkeypatch.setattr(execution, "validate_population", lambda *args: None)
     monkeypatch.setattr(execution, "verify_capacity_report", lambda value: FakeReport())
     monkeypatch.setattr(execution, "verify_manifest", lambda manifest, report: None)
     design_sha = hashlib.sha256(execution.canonical_json_bytes(
@@ -169,6 +181,7 @@ def _freeze(monkeypatch, tmp_path):
         "design_sha256": design_sha, "capacity_report_sha256": hashlib.sha256(
             b'{"capacity":true}\n').hexdigest(),
         "capacity_manifest_sha256": "3" * 64,
+        "population_manifest_sha256": "4" * 64,
         "authority": dict(execution.AUTHORITIES)})
     # The fake manifest bytes are supplied by the freeze input and are bound by
     # the marker; this keeps the test independent of capacity capture details.
@@ -176,10 +189,15 @@ def _freeze(monkeypatch, tmp_path):
     marker_value = json.loads(marker)
     marker_value["capacity_manifest_sha256"] = hashlib.sha256(
         execution.canonical_json_bytes(manifest)).hexdigest()
+    population_manifest = execution.build_population_manifest(
+        FakeDesign(SCIENTIFIC_SHA), _states())
+    marker_value["population_manifest_sha256"] = hashlib.sha256(
+        execution.canonical_json_bytes(population_manifest)).hexdigest()
     marker = execution.canonical_json_bytes(marker_value)
     freeze = execution.freeze_execution(
         design_sha256=design_sha, scientific_capture_secret_sha256=SCIENTIFIC_SHA,
         capacity_report=FakeReport(), capacity_manifest=manifest,
+        population_manifest=population_manifest,
         review_marker=marker, evidence_root=tmp_path / "evidence",
         deadline_nanoseconds=1_000_000_000, worker_count=2, resume_allowed=True,
         source=SOURCE, runtime=RUNTIME)
@@ -339,7 +357,8 @@ def test_parallel_groups_complete_and_final_reopen(monkeypatch, tmp_path):
         review_commit="4" * 40)["status"] == "COMPLETE"
     wrong = dict(states)
     wrong[KEYS[0]] = replace(wrong[KEYS[0]], true_world_sha256="8" * 64)
-    with pytest.raises(execution.PT1ExecutionError, match="recapture identity"):
+    with pytest.raises(execution.PT1ExecutionError,
+                       match="differs from frozen population"):
         execution.verify_execution(
             root, freeze, capture_secret=SCIENTIFIC, population=wrong,
             review_marker=execution.canonical_json_bytes(
@@ -446,4 +465,129 @@ def test_worker_failure_retains_durable_groups_and_no_final_packet(monkeypatch, 
             population=_states(), executor_factory=lambda n: SpyExecutor(n),
             worker=failing, review_marker=execution.canonical_json_bytes(dict(freeze.review_marker)),
             review_commit="4" * 40)
-    assert not (tmp_path / "evidence" / execution.PACKET_NAME).exists()
+    root = tmp_path / "evidence"
+    assert not (root / execution.PACKET_NAME).exists()
+    failure_raw = (root / execution.FAILURE_NAME).read_bytes()
+    failure = json.loads(failure_raw)
+    assert failure == {
+        "schema": execution.FAILURE_SCHEMA,
+        "freeze_sha256": hashlib.sha256(freeze.canonical_bytes()).hexdigest(),
+        "failure_code": "worker_failure", "completed_units": 2,
+        "total_units": 416, "wave_start": 2, "wave_stop": 4,
+        "score_or_action_bytes_persisted": False,
+        "retry_authorized": False, "authority": execution.AUTHORITIES,
+    }
+    assert b"worker failed" not in failure_raw
+    progress = json.loads((root / execution.PROGRESS_NAME).read_bytes())
+    assert progress["status"] == "FAILED"
+    assert progress["completed_units"] == 2
+    assert execution.verify_execution(
+        root, freeze, capture_secret=SCIENTIFIC, population=_states(),
+        review_marker=execution.canonical_json_bytes(dict(freeze.review_marker)),
+        review_commit="4" * 40)["status"] == "FAILED"
+    with pytest.raises(execution.PT1ExecutionError,
+                       match="failure receipt is terminal"):
+        execution.run_execution(
+            freeze, output_root=root, capture_secret=SCIENTIFIC,
+            population=_states(), executor_factory=lambda n: SpyExecutor(n),
+            worker=_fake_worker,
+            review_marker=execution.canonical_json_bytes(
+                dict(freeze.review_marker)), review_commit="4" * 40)
+    assert (root / execution.FAILURE_NAME).read_bytes() == failure_raw
+
+
+def test_freeze_population_manifest_is_complete_and_marker_bound(monkeypatch,
+                                                                  tmp_path):
+    freeze = _freeze(monkeypatch, tmp_path)
+    manifest = freeze.population_manifest
+    assert manifest["record_count"] == 416
+    assert len(manifest["records"]) == 416
+    assert freeze.review_marker["population_manifest_sha256"] \
+        == freeze.population_manifest_sha256
+    altered = freeze.payload()
+    altered["population_manifest"]["records"][0]["true_world_sha256"] = "9" * 64
+    with pytest.raises(execution.PT1ExecutionError,
+                       match="freeze values drift"):
+        execution.verify_freeze(altered)
+
+
+def test_runtime_identity_requires_environment_and_successful_activation(
+        monkeypatch):
+    from shengji.engine import fast
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(fast, "activate", lambda: False)
+    with pytest.raises(execution.PT1ExecutionError,
+                       match="active compiled engine and strict voids"):
+        execution._runtime_identity(2)
+    monkeypatch.setattr(fast, "activate", lambda: True)
+    monkeypatch.delenv("SHENGJI_REQUIRE_VOIDS")
+    with pytest.raises(execution.PT1ExecutionError,
+                       match="active compiled engine and strict voids"):
+        execution._runtime_identity(2)
+
+
+def test_cli_failure_publishes_operator_signal_and_terminal_receipt(
+        monkeypatch, tmp_path, capsys):
+    freeze = _freeze(monkeypatch, tmp_path)
+    freeze_path = tmp_path / "freeze.json"
+    freeze_path.write_bytes(freeze.canonical_bytes())
+    root = tmp_path / "evidence"
+    root.mkdir(mode=0o700)
+    execution._write_once(root / execution.FREEZE_NAME,
+                          freeze.canonical_bytes())
+    marker = tmp_path / "marker.json"
+    marker.write_bytes(execution.canonical_json_bytes(dict(freeze.review_marker)))
+    marker.chmod(0o400)
+    secret = tmp_path / "secret.bin"
+    secret.write_bytes(SCIENTIFIC)
+    secret.chmod(0o400)
+    monkeypatch.setattr(execution_cli, "_require_isolated_runtime", lambda: None)
+    monkeypatch.setattr(
+        execution, "run_execution",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            execution.PT1ExecutionError("child detail must not persist")))
+    with pytest.raises(SystemExit):
+        execution_cli.main([
+            "run", "--freeze", str(freeze_path), "--output-root", str(root),
+            "--capture-secret", str(secret), "--review-marker", str(marker),
+            "--review-commit", "4" * 40])
+    captured = capsys.readouterr()
+    assert "PT1_EXECUTION_FAILED" in captured.err
+    failure_raw = (root / execution.FAILURE_NAME).read_bytes()
+    assert b"child detail" not in failure_raw
+    assert json.loads(failure_raw)["failure_code"] == "cli_failure"
+    assert json.loads((root / execution.PROGRESS_NAME).read_bytes())[
+        "status"] == "FAILED"
+
+
+def test_population_capture_and_rehearsal_receipts_wire_real_boundaries(
+        monkeypatch):
+    monkeypatch.setattr(execution, "NaturalPT1Design", FakeDesign)
+    monkeypatch.setattr(execution, "validate_population", lambda *args: None)
+    monkeypatch.setattr(execution, "_source_identity", lambda *args: SOURCE)
+    monkeypatch.setattr(execution, "_runtime_identity", lambda count: RUNTIME)
+    monkeypatch.setattr(execution, "_capture_population_parallel",
+                        lambda *args: _states())
+    manifest = execution.capture_population_manifest(
+        capture_secret=SCIENTIFIC, worker_count=2,
+        executor_factory=lambda n: SpyExecutor(n))
+    assert manifest["record_count"] == 416
+    assert manifest["capture_secret_sha256"] == SCIENTIFIC_SHA
+
+    states = _states()
+    def wave(payload):
+        _design, _secret, key = payload
+        state = states[key]
+        records = _fake_worker((key, state))[1]
+        return key, state, records, 11, 13, 17
+    monkeypatch.setattr(execution, "_scientific_worker", wave)
+    monkeypatch.setattr(execution, "verify_record", _fake_verify)
+    receipt = execution.rehearse_process_pool_wave(
+        capture_secret=SCIENTIFIC, worker_count=2,
+        executor_factory=lambda n: SpyExecutor(n))
+    assert receipt["state_count"] == 2
+    assert receipt["record_count"] == 8
+    assert receipt["score_or_action_bytes_persisted"] is False
+    assert "score" not in json.dumps(receipt).lower().replace(
+        "score_or_action_bytes_persisted", "")

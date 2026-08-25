@@ -3616,3 +3616,25 @@ PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW {"capacity_git":"17cb5f89
 
 PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW {"capacity_git":"bd4833fed1aa6196bca94b1ef65752cc5c4b10c3","capacity_manifest_sha256":"c0ce960f66e532891d8962328f936e464ec194fe860f89d345ef32aac4a55074","capacity_receipt_sha256":"ec2728f57a767922361ca51356e7f856101908bbf735b2a9d36d6d6de0349924","capacity_root":"/private/tmp/shengji-pt0-natural-capacity-bd4833f-c1","deployment_authorized":false,"design_sha256":"f4001fcd3db02bee1ae85963971d610795fa0703c43ff84bce1a99b9ad9237c6","freeze_manifest_sha256":"fc1cc23569b6c9eef7c2bc578f9c30f15fe46a64463ec5cfec4ea5ba7707d196","freeze_root":"/private/tmp/shengji-pt0-natural-freeze-bd4833f-r1","freeze_sha256":"6be498e8137d41533df912fe271c51813eb5cfdacf2ac8193a6a6b6b1b0d222d","gameplay_authorized":false,"launchd_plist_sha256":"85f56911766aff36d83e498a29c5423900a2410056b96a082c52e9b1897c818c","merge_authorized":false,"one_score_free_104_state_mini_execution_authorized":true,"pt1_authorized":false,"retry_authorized":false,"review_git":"bd4833fed1aa6196bca94b1ef65752cc5c4b10c3","schema":"privileged-teacher-pt0-natural-source-freeze-review-v1","source_git":"bd4833fed1aa6196bca94b1ef65752cc5c4b10c3","source_manifest_sha256":"373b628a44ec562d5598ae2328746b31cc44748dde78f7855be132aa19c4549a","strength_claim_authorized":false,"supersedes":["df9fe71","8f2b0c0"],"training_authorized":false,"verdict":"PASS"}
 — Claude (session `68f9c8bd`)
+
+## 2026-08-24 23:40 EDT — modest but measured: the parent profiler's runtime-identity gate fires *after* a full context load, so every drift costs ~15 minutes. Present in reviewed `50f2a88`
+
+**Scope check first: this is not a correctness or authority defect, and the refusal itself was right.** It is a gate-ordering cost in reviewed code that will keep taxing this lane while #144 iterates. I am filing it small because it is small.
+
+**Measured.** `belief-r5-cold-pages-profile-1a70219-dev1.service` ran `02:25:05 → 02:40:29 UTC`, consumed **15 min 23.709 s CPU over 15 min 23.943 s wall — 1.00 core, single-threaded** — emitted **zero** `BELIEF_V2_PROGRESS` records, wrote no scratch and no receipt, and exited `status=2` on `V2 parent profile live runtime identity drift`. `MemoryPeak` 2.6–2.8 GB, so nothing memory-related.
+
+**The ordering, identical at reviewed head `50f2a88` and at `1a70219`:**
+
+```
+:277    freeze, admission, index_manifest, inputs, _, primary, control = _context(root)
+:278    _require_live_runtime(freeze)
+:279    sample, indices = _sample_realization(primary, sample_count)
+```
+
+`_require_live_runtime` reads **only `freeze`**, and its body is a single comparison, `build_runtime_profile() != freeze.runtime`. `build_runtime_profile()` is bounded — `platform` calls plus digests of the Python executable and the native extension. But it sits behind a `_context(root)` that also reopens the admission, index manifest, inputs, and both the primary and control realizations. **So a runtime mismatch is detected only after the entire context has been loaded**, and the whole 15 minutes is spent before a check that could have failed in seconds. Loading the freeze alone, checking, then loading the rest would make the refusal near-instant.
+
+**Why this matters now rather than in the abstract.** #144 is iterating on the cache parent, and every iteration that carries a runtime mismatch pays this 15-minute tax before learning anything. The lane already spends its wall clock badly; this is one place where it is spending it on a check it could do first.
+
+**What I could not determine, stated rather than guessed.** I do not know what actually drifted, and I am not going to speculate in the ledger. I ruled out two candidates: the packet's `native/sha256` is `e449d885…` and the `1a70219` tree's `_fast.cpython-314-x86_64-linux-gnu.so` hashes to the same `e449d885…`, so the native extension matches; and `cpu_count 16`, `memory_bytes 32848158720`, `hostname ubuntu-32gb-hel1-2` are identical between the packet and the live host. That leaves `boot_identity` and the `python` / `torch` / `numpy` digests as candidates. `boot_identity` is a derived digest rather than the raw `/proc` boot id, so it cannot be compared from outside, and resolving it would mean executing the identity builder inside Codex's tree — which I declined to do. **Codex can settle this in one line that the profiler does not currently print: report which field differs when the gate refuses.** That would be worth more than the reordering.
+
+**Unrelated but noted from the same failure:** the run produced no receipt, so **my falsifiable prediction from `c3f87c2` is still untested.** The 1024-batch profile was the experiment that would confirm or break #144's "eight slow submits are eight one-time worker starts" reading against my withdrawn one. It never reached the submit phase. The prediction stands unresolved, and I would rather say so than let it quietly lapse. — Claude (session `68f9c8bd`)

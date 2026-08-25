@@ -396,7 +396,7 @@ def qualify_device(args: argparse.Namespace) -> None:
                    if row.cohort_id == "synthetic-primary")
     _, factories, _, _, _ = reopen_training_tensor_cache(
         root / "training-tensor-cache" / "result", freeze=freeze,
-        admission=admission)
+        admission=admission, verify_all_bytes=False)
     _output(run_device_qualification(
         root, freeze, admission, repo=REPO, review_marker=marker,
         primary=primary, primary_examples=None,
@@ -423,7 +423,7 @@ def train_cohort(args: argparse.Namespace) -> None:
     _, factories, calibration_factory, control_dose, cache_sha256 = (
         reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result", freeze=freeze,
-            admission=admission))
+            admission=admission, verify_all_bytes=False))
     _output(run_training_cohort(
         root, freeze, admission, repo=REPO, review_marker=marker,
         primary=primary, realization=realization,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import random
 import shutil
 from dataclasses import replace
@@ -15,6 +16,7 @@ import pytest
 import torch
 
 import shengji.rl.belief_v2_cohort_training as COHORT_STAGE
+import shengji.rl.belief_v2_cache_import as CACHE_IMPORT
 import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
 import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
@@ -72,6 +74,9 @@ from shengji.rl.belief_v2_freeze import (
     V2ExecutionFreezeV1,
     V2PipelineAdmissionV1,
     V2ResourceCapsV1,
+    REVIEW_PREFIX,
+    expected_execution_review_claim,
+    pipeline_consumption_tombstone_bytes,
 )
 from shengji.rl.belief_v2_human_controller import (
     BeliefV2HumanControllerError,
@@ -100,6 +105,7 @@ from shengji.rl.belief_v2_tensor_cache_controller import (
     reopen_training_tensor_cache,
     run_training_tensor_cache,
 )
+from shengji.rl.belief_v2_cache_import import V2TensorCacheImportSpecV1
 from shengji.rl.belief_v2_human_inventory import (
     H0_INVENTORY_SCHEMA,
     _component_digest,
@@ -328,6 +334,199 @@ def _admission(freeze):
         seed_registry_sha256=freeze.seed_registry_sha256,
         review_commit="c" * 40, canonical_remote_tip="d" * 40,
         review_marker_sha256=_sha("e"), evidence_root=freeze.evidence_root)
+
+
+def test_tensor_cache_import_spec_reopens_spent_source_and_tombstone(
+        tmp_path, monkeypatch):
+    source = (tmp_path / "spent-source").resolve()
+    destination = (tmp_path / "fresh-destination").resolve()
+    source.mkdir(mode=0o700)
+    destination.mkdir(mode=0o700)
+    old_freeze = _cpu_only_freeze(source)
+    review_marker = (
+        REVIEW_PREFIX.encode("ascii")
+        + canonical_json_bytes(expected_execution_review_claim(old_freeze)))
+    old_admission = V2PipelineAdmissionV1(
+        freeze_sha256=old_freeze.sha256(),
+        execution_git=old_freeze.execution_git,
+        source_manifest_sha256=old_freeze.source_manifest_sha256,
+        seed_registry_sha256=old_freeze.seed_registry_sha256,
+        review_commit="c" * 40, canonical_remote_tip="d" * 40,
+        review_marker_sha256=hashlib.sha256(review_marker).hexdigest(),
+        evidence_root=str(source))
+    cache_parent = source / "training-tensor-cache"
+    cache_parent.mkdir(mode=0o700)
+    cache_root = cache_parent / "result.partial"
+    cache_root.mkdir(mode=0o700)
+    for name in CACHE_IMPORT.EXPECTED_CACHE_DIRECTORIES:
+        (cache_root / name).mkdir(mode=0o700)
+    index_root = source / "training-input-index" / "result"
+    index_root.mkdir(mode=0o700, parents=True)
+
+    def immutable(path: Path, raw: bytes) -> str:
+        path.write_bytes(raw)
+        path.chmod(0o400)
+        return hashlib.sha256(raw).hexdigest()
+
+    freeze_sha = immutable(source / "freeze.json",
+                           old_freeze.canonical_bytes())
+    review_sha = immutable(source / "review.md", review_marker)
+    admission_sha = immutable(source / "admission.json",
+                              old_admission.canonical_bytes())
+    tombstone_path = source.with_name(source.name + ".consumed.json")
+    tombstone_raw = pipeline_consumption_tombstone_bytes(old_admission)
+    tombstone_sha = immutable(tombstone_path, tombstone_raw)
+    index_sha = immutable(index_root / "index.json", b"index\n")
+    index_manifest_sha = immutable(
+        index_root / "manifest.json", b"{}\n")
+    stage_start_sha = immutable(
+        cache_root / "stage-start.json", canonical_json_bytes({
+            "schema": "belief-v1-v2-training-tensor-cache-start-v1",
+            "freeze_sha256": old_freeze.sha256(),
+            "admission_sha256": old_admission.sha256(),
+            "training_input_index_sha256": index_sha,
+            "boot_identity": old_freeze.runtime.boot_identity,
+            "started_monotonic_nanoseconds": 1,
+            "retry_authorized": False,
+            "test_split_open_authorized": False,
+            "strength_claim_authorized": False,
+            "deployment_authorized": False,
+        }))
+    runtime_sha = hashlib.sha256(canonical_json_bytes(
+        old_freeze.runtime.to_dict())).hexdigest()
+    child = {
+        name: hashlib.sha256(name.encode("ascii")).hexdigest()
+        for name in CACHE_IMPORT.EXPECTED_CACHE_DIRECTORIES}
+    spec_payload = {
+        "schema": CACHE_IMPORT.CACHE_IMPORT_SPEC_SCHEMA,
+        "destination_evidence_root": str(destination),
+        "source_evidence_root": str(source),
+        "source_cache_root": str(cache_root),
+        "source_execution_git": old_freeze.execution_git,
+        "source_freeze_sha256": freeze_sha,
+        "source_admission_sha256": admission_sha,
+        "source_review_marker_sha256": review_sha,
+        "source_consumption_tombstone_sha256": tombstone_sha,
+        "source_input_index_sha256": index_sha,
+        "source_input_index_manifest_sha256": index_manifest_sha,
+        "source_runtime_profile_sha256": runtime_sha,
+        "source_stage_start_sha256": stage_start_sha,
+        "child_manifest_sha256s": child,
+        "required_uid": os.getuid(),
+        "authority": {
+            "retry_authorized": False,
+            "test_split_cached": False,
+            "test_split_open_authorized": False,
+            "training_authorized_by_source_artifact": False,
+            "gameplay_strength_screen_authorized": False,
+            "strength_claim_authorized": False,
+            "deployment_authorized": False,
+        },
+    }
+    spec_path = tmp_path / "cache-import.json"
+    spec_raw = canonical_json_bytes(spec_payload)
+    immutable(spec_path, spec_raw)
+    import_binding = V2SourceBindingV1(
+        path=CACHE_IMPORT.CACHE_IMPORT_SOURCE_PATH,
+        sha256=hashlib.sha256(spec_raw).hexdigest(),
+        byte_count=len(spec_raw))
+    current_freeze = replace(
+        old_freeze, evidence_root=str(destination),
+        source_bindings=tuple(sorted(
+            (*old_freeze.source_bindings, import_binding),
+            key=lambda row: row.path)))
+    monkeypatch.setattr(CACHE_IMPORT, "CACHE_IMPORT_SPEC_PATH", spec_path)
+    reopened = CACHE_IMPORT.load_tensor_cache_import_spec(current_freeze)
+    assert reopened is not None
+    assert reopened.source_cache_root == cache_root
+    assert reopened.source_consumption_tombstone_sha256 == tombstone_sha
+    rebooted = replace(
+        current_freeze,
+        runtime=replace(
+            current_freeze.runtime, boot_identity="f" * 64))
+    assert CACHE_IMPORT.load_tensor_cache_import_spec(rebooted) is not None
+    native_drift = replace(
+        current_freeze,
+        runtime=replace(
+            current_freeze.runtime, native_sha256="0" * 64))
+    with pytest.raises(
+            CACHE_IMPORT.BeliefV2CacheImportError,
+            match="runtime/cap identity drift"):
+        CACHE_IMPORT.load_tensor_cache_import_spec(native_drift)
+
+    def rewrite_immutable(path: Path, raw: bytes) -> None:
+        path.chmod(0o600)
+        path.write_bytes(raw)
+        path.chmod(0o400)
+
+    def bind_spec(payload: dict) -> V2ExecutionFreezeV1:
+        raw = canonical_json_bytes(payload)
+        rewrite_immutable(spec_path, raw)
+        binding = V2SourceBindingV1(
+            path=CACHE_IMPORT.CACHE_IMPORT_SOURCE_PATH,
+            sha256=hashlib.sha256(raw).hexdigest(), byte_count=len(raw))
+        return replace(
+            current_freeze,
+            source_bindings=tuple(sorted((
+                *(row for row in current_freeze.source_bindings
+                  if row.path != CACHE_IMPORT.CACHE_IMPORT_SOURCE_PATH),
+                binding), key=lambda row: row.path)))
+
+    forged_tombstone = json.loads(tombstone_raw)
+    forged_tombstone["retry_authorized"] = True
+    forged_tombstone_raw = canonical_json_bytes(forged_tombstone)
+    rewrite_immutable(tombstone_path, forged_tombstone_raw)
+    tombstone_spec = dict(
+        spec_payload,
+        source_consumption_tombstone_sha256=hashlib.sha256(
+            forged_tombstone_raw).hexdigest())
+    tombstone_freeze = bind_spec(tombstone_spec)
+    with pytest.raises(
+            CACHE_IMPORT.BeliefV2CacheImportError,
+            match="spent admission reopen refused"):
+        CACHE_IMPORT.load_tensor_cache_import_spec(tombstone_freeze)
+    rewrite_immutable(tombstone_path, tombstone_raw)
+
+    start_payload = json.loads((cache_root / "stage-start.json").read_bytes())
+    start_payload["deployment_authorized"] = True
+    forged_start_raw = canonical_json_bytes(start_payload)
+    rewrite_immutable(cache_root / "stage-start.json", forged_start_raw)
+    start_spec = dict(
+        spec_payload,
+        source_stage_start_sha256=hashlib.sha256(
+            forged_start_raw).hexdigest())
+    start_freeze = bind_spec(start_spec)
+    with pytest.raises(
+            CACHE_IMPORT.BeliefV2CacheImportError,
+            match="source stage start drift"):
+        CACHE_IMPORT.load_tensor_cache_import_spec(start_freeze)
+    rewrite_immutable(cache_root / "stage-start.json",
+                      canonical_json_bytes({
+                          "schema": (
+                              "belief-v1-v2-training-tensor-cache-start-v1"),
+                          "freeze_sha256": old_freeze.sha256(),
+                          "admission_sha256": old_admission.sha256(),
+                          "training_input_index_sha256": index_sha,
+                          "boot_identity": old_freeze.runtime.boot_identity,
+                          "started_monotonic_nanoseconds": 1,
+                          "retry_authorized": False,
+                          "test_split_open_authorized": False,
+                          "strength_claim_authorized": False,
+                          "deployment_authorized": False,
+                      }))
+    current_freeze = bind_spec(spec_payload)
+
+    tombstone_path.chmod(0o600)
+    tombstone_path.write_bytes(tombstone_raw + b" ")
+    tombstone_path.chmod(0o400)
+    with pytest.raises(
+            CACHE_IMPORT.BeliefV2CacheImportError,
+            match="source byte binding drift"):
+        CACHE_IMPORT.load_tensor_cache_import_spec(current_freeze)
+    unrelated = replace(
+        current_freeze,
+        evidence_root=str((tmp_path / "unrelated").resolve()))
+    assert CACHE_IMPORT.load_tensor_cache_import_spec(unrelated) is None
 
 
 def _coordinate(split="calibration"):
@@ -1494,6 +1693,79 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
 
     cache_parent = root / "training-tensor-cache"
     cache_root = cache_parent / "result"
+    imported_root = (tmp_path / "imported-evidence").resolve()
+    imported_root.mkdir()
+    imported_freeze = replace(
+        freeze, evidence_root=str(imported_root),
+        runtime=replace(freeze.runtime, boot_identity="f" * 64))
+    imported_admission = _admission(imported_freeze)
+    child_manifests = {
+        row["directory"]: row["manifest_sha256"]
+        for row in manifest["cohort_caches"]
+    }
+    child_manifests[manifest["common_calibration_cache"]["directory"]] = (
+        manifest["common_calibration_cache"]["manifest_sha256"])
+    import_spec = V2TensorCacheImportSpecV1(
+        destination_evidence_root=imported_root,
+        source_evidence_root=root,
+        source_cache_root=cache_root,
+        source_execution_git=freeze.execution_git,
+        source_freeze_sha256=freeze.sha256(),
+        source_admission_sha256=admission.sha256(),
+        source_review_marker_sha256=_sha("a"),
+        source_consumption_tombstone_sha256=_sha("b"),
+        source_input_index_sha256=index_manifest["index_sha256"],
+        source_input_index_manifest_sha256=_sha("c"),
+        source_runtime_profile_sha256=hashlib.sha256(
+            canonical_json_bytes(freeze.runtime.to_dict())).hexdigest(),
+        source_stage_start_sha256=_sha("e"),
+        child_manifest_sha256s=tuple(sorted(child_manifests.items())),
+        required_uid=0, spec_sha256=_sha("f"))
+    monkeypatch.setattr(
+        CACHE_STAGE, "load_tensor_cache_import_spec",
+        lambda candidate: (
+            import_spec if candidate.evidence_root == str(imported_root)
+            else None))
+    imported_manifest = run_training_tensor_cache(
+        imported_root, imported_freeze, imported_admission,
+        repo=Path("/unused"), review_marker=b"review")
+    imported_cache_root = (
+        imported_root / "training-tensor-cache" / "result")
+    assert {path.name for path in imported_cache_root.iterdir()} == {
+        "manifest.json", "stage-start.json", "cache-import.json"}
+    assert imported_manifest["cache_storage"]["kind"] \
+        == "immutable-external-cache-v1"
+    assert imported_manifest["resources"]["external_cache_reused"] is True
+    imported_reopened, imported_factories, _, imported_dose, _ = (
+        reopen_training_tensor_cache(
+            imported_cache_root, freeze=imported_freeze,
+            admission=imported_admission))
+    assert imported_reopened == imported_manifest
+    assert imported_dose == changed
+    assert next(imported_factories["synthetic-primary"]()).decision_keys \
+        == natural_batch.decision_keys
+    lightweight_manifest, lightweight_factories, _, _, _ = (
+        reopen_training_tensor_cache(
+            imported_cache_root, freeze=imported_freeze,
+            admission=imported_admission, verify_all_bytes=False))
+    assert lightweight_manifest == imported_manifest
+    assert next(lightweight_factories["synthetic-primary"]()).decision_keys \
+        == natural_batch.decision_keys
+    import_receipt_path = imported_cache_root / "cache-import.json"
+    import_receipt_raw = import_receipt_path.read_bytes()
+    import_receipt_path.chmod(0o600)
+    import_receipt_path.write_bytes(import_receipt_raw + b" ")
+    import_receipt_path.chmod(0o400)
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="import receipt reconstruction drift"):
+        reopen_training_tensor_cache(
+            imported_cache_root, freeze=imported_freeze,
+            admission=imported_admission)
+    import_receipt_path.chmod(0o600)
+    import_receipt_path.write_bytes(import_receipt_raw)
+    import_receipt_path.chmod(0o400)
+
     original_primary_sha = next(
         row["manifest_sha256"] for row in manifest["cohort_caches"]
         if row["cohort_id"] == "synthetic-primary")
@@ -1508,7 +1780,7 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
-    assert executor_widths == [1, 1]
+    assert executor_widths == [1, 1, 1]
     assert combined_overlay_builds == ["cache-synthetic-primary"]
     assert cold_overlay_builds == [
         "overlay-hard-geometry-label-permutation"]
@@ -1539,6 +1811,17 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
             match="reopen refused|byte drift"):
         reopen_training_tensor_cache(
             cache_root, freeze=freeze, admission=admission)
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="reopen refused|byte drift"):
+        reopen_training_tensor_cache(
+            imported_cache_root, freeze=imported_freeze,
+            admission=imported_admission)
+    _, tampered_factories, _, _, _ = reopen_training_tensor_cache(
+        imported_cache_root, freeze=imported_freeze,
+        admission=imported_admission, verify_all_bytes=False)
+    with pytest.raises(ValueError, match="batch 0 byte drift"):
+        next(tampered_factories["synthetic-primary"]())
     actor_path.chmod(0o600)
     actor_path.write_bytes(raw)
     actor_path.chmod(0o400)

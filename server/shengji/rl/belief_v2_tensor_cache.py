@@ -18,10 +18,12 @@ files, and refuses the ``test`` split at both build and load time.
 Byte identity across rebuilds is deliberately NOT claimed (torch serialization
 is not specified to be byte-stable); the load-bearing claims are content
 parity — reloaded batches train byte-identically to freshly built ones — and
-the manifest binding of the artifact as built.  R4 wires the cache into device
-qualification, cohort training, and independent calibration re-scoring only
-after the cache controller has reopened every byte.  No cache artifact grants
-execution, test-opening, strength, or deployment authority.
+the manifest binding of the artifact as built.  The stage publisher and
+terminal verifier reopen every byte.  Device qualification and cohort workers
+reopen the closed manifest/file population first, then hash and parse every
+exact batch they actually consume; they do not pre-read unrelated cohorts.
+No cache artifact grants execution, test-opening, strength, or deployment
+authority.
 """
 
 from __future__ import annotations
@@ -645,6 +647,60 @@ def reopen_tensor_cache(
     }
 
 
+def _immutable_file_population_bytes(
+        directory: Path, names: tuple[str, ...]) -> int:
+    total = 0
+    for name in names:
+        path = directory / name
+        if path.is_symlink():
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache manifest-only file shape drift")
+        try:
+            info = path.stat()
+        except OSError as exc:
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache manifest-only file stat refused") from exc
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 \
+                or info.st_mode & 0o222 or info.st_size <= 0:
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache manifest-only file shape drift")
+        total += info.st_size
+    return total
+
+
+def reopen_tensor_cache_manifest(
+        directory: Path, *, expected_manifest_sha256: str,
+        expected_artifact_bytes: int,
+        binding: V2TensorCacheBindingV1) -> dict[str, Any]:
+    """Reopen structure now; each consumed batch is hash-checked lazily.
+
+    This is a startup optimization only.  The stage publisher and terminal
+    verifier still call :func:`reopen_tensor_cache`, while the returned batch
+    factory hashes the exact actor/label bytes before every parse.
+    """
+    if type(expected_artifact_bytes) is not int \
+            or expected_artifact_bytes <= 0:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache manifest-only byte count drift")
+    manifest = _load_manifest(
+        directory, expected_manifest_sha256, binding)
+    names = (MANIFEST_FILENAME, *(name for row in manifest["batches"]
+                                  for name in (row["actor_file"],
+                                               row["privileged_file"])))
+    artifact_bytes = _immutable_file_population_bytes(directory, names)
+    if artifact_bytes != expected_artifact_bytes \
+            or artifact_bytes > binding.storage_cap_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache manifest-only byte count drift")
+    return {
+        "manifest_sha256": expected_manifest_sha256,
+        "batch_count": manifest["batch_count"],
+        "decision_count": sum(
+            len(row["decision_keys"]) for row in manifest["batches"]),
+        "artifact_bytes": artifact_bytes,
+    }
+
+
 def _tensors_equal(
         batch: BeliefTrainingBatchV1,
         expected: dict[str, torch.Tensor]) -> bool:
@@ -940,6 +996,34 @@ def reopen_label_overlay(
         "decision_count": sum(
             len(row["decision_keys"]) for row in manifest["batches"]),
         "artifact_bytes": total_bytes,
+    }
+
+
+def reopen_label_overlay_manifest(
+        directory: Path, *, expected_manifest_sha256: str,
+        expected_artifact_bytes: int, actor_manifest_sha256: str,
+        binding: V2TensorCacheBindingV1) -> dict[str, Any]:
+    """Reopen overlay structure; hash each label when the factory consumes it."""
+    if type(expected_artifact_bytes) is not int \
+            or expected_artifact_bytes <= 0:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor overlay manifest-only byte count drift")
+    manifest = _load_label_overlay(
+        directory, expected_manifest_sha256=expected_manifest_sha256,
+        actor_manifest_sha256=actor_manifest_sha256, binding=binding)
+    names = (LABEL_MANIFEST_FILENAME,
+             *(row["privileged_file"] for row in manifest["batches"]))
+    artifact_bytes = _immutable_file_population_bytes(directory, names)
+    if artifact_bytes != expected_artifact_bytes \
+            or artifact_bytes > binding.storage_cap_bytes:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor overlay manifest-only byte count drift")
+    return {
+        "manifest_sha256": expected_manifest_sha256,
+        "batch_count": manifest["batch_count"],
+        "decision_count": sum(
+            len(row["decision_keys"]) for row in manifest["batches"]),
+        "artifact_bytes": artifact_bytes,
     }
 
 

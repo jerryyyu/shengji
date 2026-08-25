@@ -3821,3 +3821,24 @@ Jerry has asked to salvage R4 to get the lane's first scientific signal early an
 - Side benefit to state honestly: R4-completion exercises the same repaired stages 8–10 code r12 will run, hours earlier and at near-zero cost — a pathfinder for latent defects, not a substitute for r12.
 
 Launch authority is NOT granted by this entry. The path remains: Codex drafts → Claude freeze review + machine-generated marker → Jerry's explicit go. — Claude (session `68f9c8bd`)
+
+## 2026-08-25 08:40 EDT — R5's `input index drift` is the **second** failure of one specific shape: equality asserted on a representation that carries more than the invariant needs. Naming it, with the remedy and the witness that would have caught both
+
+**No new diagnosis of R5 — Jerry's `6ff07e8` already has it exactly right**, and I am not restating it. This entry is only about the pattern it completes, which is not written down anywhere yet.
+
+**The shape.** A guard asserts byte- or value-equality on an object that carries *incidental* content — provenance, location, wrapper framing — when the invariant it actually protects is a narrower semantic property of that object. The guard is fail-closed, so it looks safe; it refuses legitimate inputs and the cost lands hours into a live run.
+
+**Two instances, and I am deliberately excluding the ones that do not fit.**
+
+1. **Canonical-tip equality** (`belief_v2_freeze.py`, seventh class). `if local_tip != remote_tip: raise` — but the invariant was *ancestry*, not tip equality. Repaired by `_authenticate_execution_review_at_tip(...)` doing an ancestry check, with the equality surviving only at admission build where it is genuinely the right question.
+2. **R5 `training-tensor-cache`** (today, at 5.70 h). The controller required equality of the **provenance-bearing wrapper index bytes** when the invariant was the imported cache's **semantic training identity** — which, per `6ff07e8`, *did* match. Refused at `0/12649` units, `ExecMainStatus=1`.
+
+**Not this shape, for the record:** R4's `integral projection flow is infeasible` was a *bound* that did not match the structure it guarded (`row_need <= n_receivers` against a graph offering only unsaturated cells), not an equality on the wrong object. Lumping it in would make the pattern look broader than the evidence supports.
+
+**Why it keeps costing whole runs.** Both guards are correct-looking and fail-closed, so review reads them as conservative. Neither can be caught by a test that feeds it *matching* inputs — the only witness that discriminates is one that supplies an input differing **only** in the incidental part and asserts acceptance. Every existing test in both areas fed either identical or semantically-different inputs, so both guards passed review and both fired in production.
+
+**Concrete remedy, cheap enough to apply as a checklist item.** Wherever a guard compares whole bytes or whole objects, ask what the invariant actually is. If the compared object carries provenance, host paths, boot identity, wrapper framing or timestamps, compare the semantic projection instead — and ship **two** witnesses, not one: (a) an input differing only in the incidental part must be **accepted**, and (b) an input differing in the semantic part must be **refused**. Witness (a) is the one that is always missing; it is exactly the test that would have turned both of these red before launch.
+
+**Where this is worth checking now, before the next launch.** The R4-completion freeze and the PT1 packet are both being prepared. Both will contain index/manifest/runtime comparisons of exactly this kind — the runtime profile alone carries `boot_identity`, host paths and native digests. A pass over their equality guards asking "is the incidental part in scope?" is far cheaper than a ninth multi-hour refusal.
+
+**Preserved and untouched, per never-delete:** the spent `r12` admission, all 13,312 synthetic captures, the human capture/reference material and the 311,250,588-byte training input index. — Claude (session `68f9c8bd`)

@@ -4,8 +4,13 @@ The import is deliberately narrow.  It does not resume or relabel the spent
 source admission, and it never copies, links, or mutates its files.  A fresh
 pipeline may reference the individually sealed non-test cache components only
 when its exact evidence root matches the tracked import specification and all
-source identity, consumption, runtime, index, ownership, and byte bindings
-reopen independently.
+source identity, consumption, runtime, cache-input semantics, ownership, and byte
+bindings reopen independently.  A fresh freeze necessarily changes the raw
+index artifact because that artifact embeds its freeze SHA-256.  The broader
+derived-input identity also changes because it retains transport/resource
+provenance for human capture manifests.  Reuse therefore binds both complete
+indexes exactly and separately compares only the fields that determine cached
+tensor bytes.
 """
 
 from __future__ import annotations
@@ -38,6 +43,32 @@ EXPECTED_CACHE_DIRECTORIES = {
     "cache-synthetic-primary",
     "cache-synthetic-scale-50",
     "overlay-hard-geometry-label-permutation",
+}
+CACHE_INPUT_IDENTITY_SCHEMA = (
+    "belief-v1-v2-tensor-cache-input-identity-v1")
+_DERIVED_INPUT_MANIFEST_KEYS = {
+    "schema",
+    "synthetic_train_decision_count",
+    "synthetic_train_population_sha256",
+    "synthetic_calibration_decision_count",
+    "synthetic_calibration_population_sha256",
+    "human_train_decision_count",
+    "human_train_population_sha256",
+    "source_population_sha256",
+    "control_changed_cell_count",
+    "common_calibration_sha256",
+    "human_group_manifest_sha256s",
+    "cohort_plan_set_sha256",
+    "cohort_realization_set_sha256",
+    "cohorts",
+    "resident_model_array_bytes",
+    "one_batch_at_a_time",
+    "synthetic_test_targets_opened",
+    "human_test_targets_opened",
+    "training_authorized_by_this_artifact",
+    "test_split_open_authorized",
+    "strength_claim_authorized",
+    "deployment_authorized",
 }
 
 
@@ -106,6 +137,45 @@ def _portable_runtime_identity(runtime) -> dict[str, Any]:
     return payload
 
 
+def cache_input_identity_sha256(index_manifest: Any) -> str:
+    """Hash exactly the input/schedule fields that determine cache tensors.
+
+    The complete input-index bytes and their broader derived identity remain
+    separately bound.  Human group-manifest hashes are intentionally excluded
+    here: their freeze/admission/boot/timing receipts change on an exact replay,
+    while the human row-population hash below binds every training example that
+    can affect a cached tensor.
+    """
+    if type(index_manifest) is not dict:
+        raise BeliefV2CacheImportError(
+            "V2 cache import input index manifest drift")
+    derived = index_manifest.get("derived_manifest")
+    if type(derived) is not dict \
+            or set(derived) != _DERIVED_INPUT_MANIFEST_KEYS \
+            or derived.get("schema") \
+            != "belief-v1-v2-streaming-training-inputs-v1" \
+            or type(derived.get("human_group_manifest_sha256s")) is not list \
+            or not derived["human_group_manifest_sha256s"] \
+            or any(not _is_sha256(value)
+                   for value in derived["human_group_manifest_sha256s"]) \
+            or derived.get("resident_model_array_bytes") != 0 \
+            or derived.get("one_batch_at_a_time") is not True \
+            or any(derived.get(key) is not False for key in (
+                "synthetic_test_targets_opened",
+                "human_test_targets_opened",
+                "training_authorized_by_this_artifact",
+                "test_split_open_authorized",
+                "strength_claim_authorized",
+                "deployment_authorized",
+            )):
+        raise BeliefV2CacheImportError(
+            "V2 cache import derived input manifest drift")
+    identity = dict(derived)
+    del identity["human_group_manifest_sha256s"]
+    identity["schema"] = CACHE_INPUT_IDENTITY_SCHEMA
+    return _sha256(canonical_json_bytes(identity))
+
+
 @dataclass(frozen=True)
 class V2TensorCacheImportSpecV1:
     destination_evidence_root: Path
@@ -118,6 +188,8 @@ class V2TensorCacheImportSpecV1:
     source_consumption_tombstone_sha256: str
     source_input_index_sha256: str
     source_input_index_manifest_sha256: str
+    source_derived_input_sha256: str
+    source_cache_input_identity_sha256: str
     source_runtime_profile_sha256: str
     source_stage_start_sha256: str
     child_manifest_sha256s: tuple[tuple[str, str], ...]
@@ -257,6 +329,41 @@ def load_tensor_cache_import_spec(
         raise BeliefV2CacheImportError(
             "V2 cache import source byte binding drift")
     try:
+        source_index_manifest = _strict_json(index_manifest_raw)
+    except ValueError as exc:
+        raise BeliefV2CacheImportError(
+            "V2 cache import source index manifest refused") from exc
+    source_derived_input_sha256 = source_index_manifest.get(
+        "derived_input_sha256")
+    if source_index_manifest.get("schema") \
+            != "belief-v1-v2-training-input-index-stage-v1" \
+            or source_index_manifest.get("index_sha256") \
+            != payload["source_input_index_sha256"] \
+            or source_index_manifest.get("index_byte_count") \
+            != len(index_raw) \
+            or source_index_manifest.get("freeze_sha256") \
+            != payload["source_freeze_sha256"] \
+            or not _is_sha256(source_derived_input_sha256) \
+            or source_derived_input_sha256 != _sha256(
+                canonical_json_bytes(
+                    source_index_manifest.get("derived_manifest"))) \
+            or source_index_manifest.get(
+                "synthetic_test_targets_opened") is not False \
+            or source_index_manifest.get(
+                "human_test_targets_opened") is not False \
+            or source_index_manifest.get(
+                "training_authorized_by_this_artifact") is not False \
+            or source_index_manifest.get(
+                "test_split_open_authorized") is not False \
+            or source_index_manifest.get(
+                "strength_claim_authorized") is not False \
+            or source_index_manifest.get(
+                "deployment_authorized") is not False:
+        raise BeliefV2CacheImportError(
+            "V2 cache import source index semantic binding drift")
+    source_cache_input_identity_sha256 = cache_input_identity_sha256(
+        source_index_manifest)
+    try:
         old_freeze = execution_freeze_from_bytes(freeze_raw)
         old_admission = pipeline_admission_from_bytes(
             admission_raw, freeze=old_freeze, review_marker=review_raw)
@@ -295,6 +402,8 @@ def load_tensor_cache_import_spec(
             or old_admission.evidence_root != str(source) \
             or old_freeze.sha256() != payload["source_freeze_sha256"] \
             or old_admission.sha256() != payload["source_admission_sha256"] \
+            or source_index_manifest.get("admission_sha256") \
+            != old_admission.sha256() \
             or runtime_sha256 != payload["source_runtime_profile_sha256"] \
             or current_portable_runtime != old_portable_runtime \
             or freeze.resource_caps.training_bytes \
@@ -315,6 +424,9 @@ def load_tensor_cache_import_spec(
         source_input_index_sha256=payload["source_input_index_sha256"],
         source_input_index_manifest_sha256=(
             payload["source_input_index_manifest_sha256"]),
+        source_derived_input_sha256=source_derived_input_sha256,
+        source_cache_input_identity_sha256=(
+            source_cache_input_identity_sha256),
         source_runtime_profile_sha256=(
             payload["source_runtime_profile_sha256"]),
         source_stage_start_sha256=payload["source_stage_start_sha256"],

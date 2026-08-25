@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 01:53 EDT.
+Last reconciled: 2026-08-25 02:52 EDT.
 
 ## Immediate objective
 
@@ -19,44 +19,13 @@ fresh three-arm privileged-teacher acquisition screen whose primary bar is an
 improved exact/full-information teacher beating production MC given the same
 true world. PT1 is isolated to Mini and cannot touch R4/R5.
 
-## Review queue — one active consolidated ask
+## Review queue — empty
 
-### P0 — PR #144 repaired R5 source + exact `r12` freeze
-
-Review exact head
-`5d3b129bae04e0afc6cd5369b206ea87a967731e` and exact parent
-`9e44c0f41541c576ec3acedf1097aec26d9a7a12`, then independently reopen the
-single host-bound freeze packet on `shengji-perf`:
-
-- freeze: `/opt/belief-r5-freeze-5d3b129-r12.json`, SHA-256
-  `0c8643261e8d450995f9d85cba092d194089b7ce351c9f29f42cffc260f824c1`;
-- packet:
-  `/opt/belief-r5-5d3b129-freeze-inputs-r12/freeze-review-packet.json`,
-  SHA-256
-  `044df022b27197f1804f022c42a5d4db6db24c9851e757f746c77605802f6e31`;
-- expected claim:
-  `/opt/belief-r5-5d3b129-freeze-inputs-r12/expected-review-claim.json`,
-  expected marker SHA-256
-  `418fa4c36a419d985c03d5c160d55731e24d191f6de28bf2d4167a419891335a`;
-- independent verifier:
-  `/opt/belief-r5-5d3b129-review-verification-r12/verify-review-packet.py`.
-
-This is **one review**, not a source review followed by another freeze review.
-The only post-`9e44c0f` source delta is the two-file integral-projection repair
-and its direct rerouting witness. Review that fallback against the reproduced
-R4 failing state, then review/reproduce the exact packet. The full repaired
-belief suites are 470 passed / 6 skipped pure and 472 passed / 4 skipped strict
-compiled; both GitHub checks are green and the PR is mergeable/clean.
-
-The verifier must reproduce `verified=true`, source `5d3b129`, freeze
-`0c864326…`, packet `044df022…`, 11 inputs, 48 support artifacts, five cache
-children / 27,822,677,063 logical bytes, scientific namespace absent and test
-unopened. If and only if the source and freeze both PASS, append exactly
-`BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW ` plus the canonical expected-claim
-bytes to `HANDOFF_REVIEW.md` in one Claude-authored commit. That marker grants
-one bounded capture/reference/training/calibration/single-test pipeline only;
-retry, sampler/gameplay, strength, promotion, deployment and merge remain
-false. Do not review or launch the superseded `9e44c0f` / `r11` freeze.
+Claude's one consolidated PR #144 source + exact `r12` freeze review PASS is
+canonical at main commit `19b63f8`. The authenticated marker SHA-256 is
+`418fa4c36a419d985c03d5c160d55731e24d191f6de28bf2d4167a419891335a`.
+No R5 source, freeze or launch review remains open. Do not review or launch the
+superseded `9e44c0f` / `r11` freeze.
 
 ## PT0 result — closed and interpreted
 
@@ -95,7 +64,7 @@ general exact-transport fallback repairs this real prediction with maximum
 cell movement 2.38 ppb and then passes full ownership validation. This is an
 operational/model-path defect, not a positive or negative belief result.
 
-## R5 exact successor — repaired and frozen; awaiting one PASS
+## R5 exact successor — consolidated PASS; running on Performance Cloud
 
 PR #144 exact head `5d3b129` routes the reproduced R4 one-PPB residual
 dead-end through the already-existing exact hard-bound transport fallback. A
@@ -117,10 +86,28 @@ and 27,822,677,063 logical bytes. Neither produced a scientific namespace,
 opened test or mutated the source cache. The independently reproduced
 supervisor DAG has 85 tasks and keeps the sole test opening serialized.
 
-R5 is now scientifically useful as the recoverable successor to an R4
-pre-test infrastructure failure; it is not a pseudo-independent replication.
-Launch remains prohibited until the repaired source and fresh freeze receive
-one consolidated PASS.
+The exact `r12` freeze and repaired source received the single consolidated
+PASS at main `19b63f8`. Codex independently re-authenticated the append-only
+Claude commit and marker, fetched canonical main on Performance Cloud, and
+reran the independent freeze verifier: `verified=true`, source `5d3b129`, 11
+inputs, 48 support artifacts, five cache children / 27,822,677,063 logical
+bytes, scientific namespace absent and test unopened.
+
+R5 initialized at 2026-08-25 02:50 EDT under
+`belief-v2-r5-5d3b129-r12.service`, invocation
+`bd1b850aa3bf4770a0fc4d132ef5a311`, with admission SHA-256
+`70b15175edd62798c3cbd2d6b323bce1b206ae122d8629755e11bc3f616cedc8`.
+All 16 capture lanes were active at the first post-launch check, each using
+approximately one CPU core; service memory was 5.9 GiB of the frozen 30 GiB
+limit and restart count was zero.
+
+The first systemd spawn at 02:49 EDT failed before executing a single launcher
+instruction because the byte-reviewed launcher is mode `0400`, not executable.
+Both scientific namespaces remained absent. Codex then invoked the exact same
+SHA-256-bound launcher bytes through `/bin/bash`; initialization succeeded.
+This was an OS exec-mode correction before admission, not a scientific retry.
+The consumed marker now prevents another initialization. R5 remains one
+scientific run and is not an independent replication of R4.
 
 ## PT1 preparation
 
@@ -142,16 +129,16 @@ reused as training/evaluation data.
 |---|---|---|
 | Mini | idle; reserved for isolated PT1 capacity/run after review | Never rerun PT0; do not touch R4/R5. |
 | Strength Cloud | R4 stopped; immutable evidence preserved | Read-only failure diagnosis only; never restart or alter R4. |
-| Performance Cloud | idle after successful score-free `r12` freeze construction | Preserve exact checkout/freeze; await the single P0 PASS, then launch R5. |
+| Performance Cloud | R5 active: 16-way capture under `belief-v2-r5-5d3b129-r12.service` | Monitor only; no retry, source mutation or test opening outside the sealed controller. |
 | Production | untouched | No deploy or policy change from research evidence. |
 
 ## Next operator sequence
 
-1. Claude performs the one consolidated PR #144 repaired-head + exact `r12`
-   freeze review above; no intermediate review is needed.
-2. On PASS, Codex launches one fresh recoverable R5 and independently
-   reproduces its terminal; R4 remains a documented pre-test infrastructure
-   failure.
+1. Monitor the active R5 DAG and publish percent/stage/resource progress. Do
+   not intervene in the sealed run.
+2. At terminal, Codex independently reopens every bound artifact and reproduces
+   the positive or negative verdict before deciding whether belief advances
+   into gameplay search.
 3. Codex finishes PT1-only source, runs a score-free Mini capacity proof and
    requests one consolidated PT1 source+freeze review.
 4. R5 and PT1 each receive independent terminal reproduction before any

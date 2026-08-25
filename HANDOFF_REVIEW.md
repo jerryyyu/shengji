@@ -3739,3 +3739,30 @@ if rounded[card][receiver] < upper_bound:
 **Why this one matters more than the wall-clock.** `project_count_weights` is the production projection entry point, not test scaffolding, and the trigger is ordinary late-game hard capacity — data-dependent, so it recurs rather than being a one-off. **I have not verified whether any deployed release exercises this path**, and I am not claiming the live bot is affected; prod is release 19 and I did not trace its inference path. That check is worth doing separately rather than assuming either way.
 
 **Cost and count.** 63.57 h of compute, four fully trained cohorts, and stages 9–10 never reached. This is the **seventh** belief-lane attempt to end without a scientific result, and a class distinct from the previous six — not sizing, not ordering, not a masked witness, but a feasibility guard whose bound does not match the structure it guards. — Claude (session `68f9c8bd`)
+
+## 2026-08-25 01:35 EDT — ⛔ **R4 FAILED at calibration — eighth failure class: integral-transport infeasibility on first trained-model use.** The mandatory dress rehearsal ran this exact stage and could not have caught it
+
+R4 is `state: failed`, `failure_task: calibrate`, at **82/85 tasks / 96.47%**, after roughly two and a half days in which capture, human-capture, input index, tensor cache, device qualification, 29 references and all four training cohorts sealed cleanly. `retry_authorized: false`, `outcome_blind: true`, namespace tombstoned, no test split opened.
+
+**Root cause, read from the run's own traceback.** The refusal chain is three deep and the innermost is the defect:
+
+```
+belief_projection.py:440 in _round_transport
+  BeliefProjectionError: integral projection flow is infeasible
+    -> belief_v2_scoring.py:202 _predict_cohort -> project_count_weights(...)
+    -> BeliefV2ScoringError: V2 scoring member prediction refused
+    -> belief_v2_calibration_controller.py:236
+    -> BeliefV2CalibrationControllerError: V2 calibration scoring population refused
+```
+
+**Mechanism.** `_round_transport` rounds fractional expected counts to integers by solving a bipartite flow. Each cell `(card, receiver)` is given an edge of capacity 1 **only if** `rounded[card][receiver] < cards[card].max_count_by_receiver[receiver] * PROBABILITY_SCALE`; cells already at their per-receiver maximum get no edge at all. When the residual rounding demand concentrates on cells that are already saturated, max-flow falls short of `total` and the function refuses. This is deterministic in the model weights — the same checkpoints will reproduce it every time — and it sits on the **production scoring path**, not in test scaffolding. The guard behaved correctly: it refused rather than emit a projection violating card-count constraints.
+
+**The structural finding, and it is the one that matters. The full-DAG dress rehearsal ran calibration successfully and still could not have caught this.** That rehearsal was introduced in PR #123 specifically to stop multi-day losses, and its evidence tree at `/opt/belief-r4-rehearsal-656e6d0/evidence` **contains a `calibration` directory** — the stage executed and passed on the disposable 104-round population. R4 then failed at the same stage on the real population. The reason is that infeasibility here depends on the **numerical values of trained weights**, not on which code runs: a 104-round toy population trains weights that happen to round feasibly. **A rehearsal that certifies code paths cannot certify numerical regimes.** That distinction is now paid for, and it should be written into what any future rehearsal is allowed to claim: traversing ten stages proves the DAG is wired, and proves nothing about whether real-population weights are representable.
+
+**Cost, and what survived.** Calibration itself ran **9,314,746,987,043 ns ≈ 2.59 h** before refusing, on top of the ~2.5-day run. Nothing is partial: calibration created no artifact before it refused, and the sealed evidence — **59,495 files / 53,055,512,691 bytes** — is intact, including all four training cohorts with their member checkpoints (**3.8 GB** under `training/`).
+
+**The repair can be validated in minutes, not days, and nobody needs a new run to do it.** The exact inputs that triggered the refusal are sealed on disk: the member checkpoints under `/opt/belief-r4-evidence-d2d466f-r1/training/{synthetic-primary,human-mixture,hard-geometry-label-permutation,synthetic-scale-50}/member-*.checkpoint.bin`. Any candidate fix should be required to replay `project_count_weights` over **those** weights and produce a feasible integral projection — a deterministic, minutes-scale reproduction of the real failure. A repair validated only against rehearsal-scale weights would be the same mistake a second time.
+
+**Credit where due:** the PR #144 review at `9e44c0f` was withdrawn before its marker was appended, because that head shares this projection defect and its `r11` freeze would have failed in calibration too. R4's failure was caught early enough to stop a second run walking into the same wall.
+
+This is the **eighth** distinct failure class, after wall-cap sizing, fully-known decisions, marker sequencing, stage dependency ordering, reference replicate matrix, deadline-expiry-cannot-seal, and canonical-ref live-equality-vs-mutable-remote. Preserve the spent namespace per the never-delete rules; do not retry this admission. — Claude

@@ -778,9 +778,15 @@ def run_training_tensor_cache(
         return cache_id, receipt, overlay_receipt
 
     try:
-        with concurrent.futures.ThreadPoolExecutor(
-                max_workers=build_concurrency) as executor:
-            built_rows = tuple(executor.map(build_direct, direct_specs))
+        if import_spec is not None:
+            # External children are already sealed.  Reopen them directly;
+            # creating an executor here adds worker startup and obscures the
+            # fact that this path performs no cache construction.
+            built_rows = tuple(build_direct(spec) for spec in direct_specs)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=build_concurrency) as executor:
+                built_rows = tuple(executor.map(build_direct, direct_specs))
         direct_receipts = {
             cache_id: receipt for cache_id, receipt, _ in built_rows}
         combined_overlay_rows = tuple(

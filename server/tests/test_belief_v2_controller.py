@@ -1729,6 +1729,12 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     imported_manifest = run_training_tensor_cache(
         imported_root, imported_freeze, imported_admission,
         repo=Path("/unused"), review_marker=b"review")
+    assert executor_widths == [1]
+    assert built_direct == [
+        "cache-synthetic-primary", "cache-human-mixture",
+        "cache-synthetic-scale-50", "cache-common-calibration"]
+    assert combined_overlay_builds == ["cache-synthetic-primary"]
+    assert cold_overlay_builds == []
     imported_cache_root = (
         imported_root / "training-tensor-cache" / "result")
     assert {path.name for path in imported_cache_root.iterdir()} == {
@@ -1780,7 +1786,7 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     manifest = run_training_tensor_cache(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review")
-    assert executor_widths == [1, 1, 1]
+    assert executor_widths == [1, 1]
     assert combined_overlay_builds == ["cache-synthetic-primary"]
     assert cold_overlay_builds == [
         "overlay-hard-geometry-label-permutation"]

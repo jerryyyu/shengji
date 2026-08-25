@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 12:00 EDT.
+Last reconciled: 2026-08-25 12:03 EDT.
 
 ## Immediate objective
 
@@ -105,15 +105,21 @@ found a second pre-calibration compatibility seam: current code initially
 rejected R4's exact legacy V2 tensor-cache accounting schema. The repaired
 head permits that legacy schema only when the caller supplies the exact pinned
 R4 cache-manifest SHA; ordinary V4 reopening still refuses it and wrong hashes
-refuse. Focused tests are green and an actual sealed-cache/cohort reopen is now
-running read-only. It is sustaining about nine CPU cores and has read more than
-146 GB without writing source/evidence bytes. No calibration or test bytes have
-been opened. The prepared post-audit operator was hardened after the R5
+refuse. Focused tests are green. The actual sealed-cache/cohort audit passed
+after 9,518.812 seconds and reopened all four exact 30-epoch training
+manifests: primary `dfd992fe…`, label permutation `49a2490e…`, human mixture
+`59016957…`, and scale-50 `af4d0287…`. It read roughly 176 GB without writing
+evidence bytes; no calibration or test bytes were opened. The prepared
+post-audit operator was hardened after the R5
 score-free wrapper exposed Python forkserver's `<stdin>` limitation: exact Bash
 SHA-256 is `f511b57b…5a4e`, exact guarded capacity-runner SHA-256 is
 `18e04d0e…e82`, syntax and deployment hashes pass, and all four output stages
-remain absent. This operator-only change does not alter PR #146 source or the
-running audit and now emits 0/25/50/75/100% progress.
+were absent before launch. Uncontended score-free unit
+`belief-r4-completion-freeze-721b5f8-r1.service`, invocation
+`e5322235c1854994b35413b6e2a55406`, is now building the capacity, deadline,
+caps and exact completion freeze under 24 GiB memory, zero swap, `Restart=no`
+and a twelve-hour wall guard. This operator-only work does not alter PR #146
+source and emits 0/25/50/75/100% progress.
 
 ## R5 `r12` — stopped safely before training or test
 
@@ -238,7 +244,7 @@ training/evaluation data.
 | host | current use | invariant |
 |---|---|---|
 | Mini | PT1 current-boot capacity/freeze `r2` complete; idle pending one narrow marker review | Never rerun PT0; do not touch R4/R5; launch only after exact `r2` PASS. |
-| Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
+| Strength Cloud | R4 cohort audit PASS; uncontended score-free completion freeze builder active | Never restart or alter the original R4 namespace. |
 | Performance Cloud | R5 `r12` preserved; PR #147 exact-native score-free `r13c` capacity/deadline preflights active | Never retry/delete `r12`; preflights cannot initialize science or open calibration/test. |
 | Production | untouched | No deploy or policy change from research evidence. |
 

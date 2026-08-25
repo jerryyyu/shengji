@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 11:42 EDT.
+Last reconciled: 2026-08-25 11:45 EDT.
 
 ## Immediate objective
 
@@ -171,15 +171,22 @@ an active review request. Exact source is deployed cleanly at
 The first score-free operator wrapper `r13` refused after 1.5 seconds because a
 forkserver worker cannot reload a `<stdin>` main module. It created no receipt,
 scientific namespace or data opening. The source remained unchanged; the
-wrapper now uses a real guarded module and a fresh receipt namespace. The
-bounded score-free capacity/deadline preflight is active on Performance Cloud
-as `belief-r5-preflights-2d4dfe8-r13a.service`, invocation
-`371feba841c74f4baa932445d9462b90`, under `MemoryMax=30G`, zero swap,
-`Restart=no` and a twelve-hour wall guard. It started at 11:27 EDT and currently
-reports phase 1/2 `capacity` (0% of the two serialized phases). It cannot create
-the scientific namespace, train, open calibration/test or authorize execution.
-After both receipts pass, Codex will build the complete fresh freeze and request
-one consolidated source+freeze review.
+wrapper then used a real guarded module and fresh receipt namespace. `r13a`
+completed all 416 rank-diverse capacity rounds in 6m39s at full 16-worker use;
+canonical capacity SHA-256 is `48aef73e…2df1`. The serialized deadline step
+then refused before sampling because the compiled-test checkout retained a
+second ignored native library under `server/build/`; the exact execution binder
+correctly classified it as an untracked loadable shadow. No deadline receipt,
+scientific namespace, training, calibration or test opening was created. The
+build tree was moved intact to
+`/opt/belief-r5-index-bridge-2d4dfe8-build-artifacts-r13a`; the active native
+library and Git source remain exact and clean. Deadline-only unit
+`belief-r5-deadline-2d4dfe8-r13b.service`, invocation
+`6fb1d3381d8846da90144f8e8a6bc106`, is now active under `MemoryMax=30G`, zero
+swap, `Restart=no` and the same twelve-hour wall guard. The valid capacity
+receipt is reused; it is not being rerun. After the deadline receipt passes,
+Codex will build the complete fresh freeze and request one consolidated
+source+freeze review.
 
 ## PT1 preparation
 

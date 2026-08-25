@@ -292,6 +292,11 @@ def _runtime_identity() -> dict[str, object]:
                       "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     try:
         from ..engine import fast
+        if (os.environ.get("SHENGJI_FAST") != "1"
+                or os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1"
+                or not fast.activate()):
+            raise PT1CapacityError(
+                "capacity requires active compiled engine and strict voids")
         native = Path(getattr(getattr(fast, "_fast", None), "__file__", ""))
     except (ImportError, AttributeError, TypeError):
         native = Path()

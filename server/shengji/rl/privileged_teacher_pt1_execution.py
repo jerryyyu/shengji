@@ -42,11 +42,13 @@ from .privileged_teacher_pt1_statistics import (
 
 
 EXECUTION_SCHEMA = "privileged-teacher-pt1-execution-v1"
-FREEZE_SCHEMA = "privileged-teacher-pt1-freeze-v1"
+FREEZE_SCHEMA = "privileged-teacher-pt1-freeze-v2"
 GROUP_SCHEMA = "privileged-teacher-pt1-execution-group-v1"
 PROGRESS_SCHEMA = "privileged-teacher-pt1-execution-progress-v1"
 MANIFEST_SCHEMA = "privileged-teacher-pt1-execution-manifest-v1"
-REVIEW_MARKER_SCHEMA = "privileged-teacher-pt1-execution-review-v1"
+POPULATION_MANIFEST_SCHEMA = "privileged-teacher-pt1-population-manifest-v1"
+FAILURE_SCHEMA = "privileged-teacher-pt1-execution-failure-v1"
+REVIEW_MARKER_SCHEMA = "privileged-teacher-pt1-execution-review-v2"
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
 REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
@@ -59,6 +61,7 @@ PROGRESS_NAME = "progress.json"
 DEADLINE_NAME = "deadline-receipt.json"
 PACKET_NAME = "packet.json"
 MANIFEST_NAME = "manifest.json"
+FAILURE_NAME = "failure.json"
 CAPACITY_RESERVE_KEYS = {"wall_nanoseconds", "cpu_nanoseconds",
                          "peak_rss_raw", "artifact_projection_bytes"}
 SCIENTIFIC_CAP_KEYS = {"scientific_wall_nanoseconds", "scientific_cpu_nanoseconds",
@@ -176,6 +179,11 @@ def _runtime_identity(worker_count: int) -> dict[str, object]:
         raise PT1ExecutionError("worker count must be positive")
     try:
         from ..engine import fast
+        if (os.environ.get("SHENGJI_FAST") != "1"
+                or os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1"
+                or not fast.activate()):
+            raise PT1ExecutionError(
+                "execution requires active compiled engine and strict voids")
         native = Path(getattr(getattr(fast, "_fast", None), "__file__", ""))
     except (ImportError, AttributeError, TypeError):
         native = Path()
@@ -194,11 +202,126 @@ def _runtime_identity(worker_count: int) -> dict[str, object]:
             "worker_count": worker_count}
 
 
+def build_population_manifest(
+        design: NaturalPT1Design,
+        states: Mapping[tuple[str, int, str, int, int], NaturalPT1State]) \
+        -> dict[str, object]:
+    """Bind the complete score-free natural population before admission.
+
+    The manifest intentionally contains identities only.  It exposes no
+    action, score, arm, or teacher value, but makes the exact 416 natural
+    cells reviewable before the one-shot execution namespace is created.
+    """
+    validate_population(design, states)
+    records = []
+    for key in design.state_keys:
+        state = states[key]
+        records.append({
+            "state_key": list(key), "state_schema": state.schema,
+            "round_seed": state.round_seed,
+            "capture_round_cluster_sha256": state.capture_round_cluster_sha256,
+            "capture_id_sha256": state.capture_id_sha256,
+            "public_state_sha256": state.public_state_sha256,
+            "true_world_sha256": state.true_world_sha256,
+        })
+    body = {
+        "schema": POPULATION_MANIFEST_SCHEMA,
+        "design_sha256": _hash_bytes(canonical_json_bytes(design.payload())),
+        "capture_secret_sha256": design.capture_secret_sha256,
+        "record_count": len(records), "records": records,
+        "authority": dict(AUTHORITIES),
+    }
+    body["manifest_sha256"] = _hash_bytes(canonical_json_bytes(body))
+    return body
+
+
+def verify_population_manifest(
+        manifest: Mapping[str, object] | bytes,
+        design: NaturalPT1Design) -> dict[str, object]:
+    value = (_canonical_load(manifest, "population manifest")
+             if isinstance(manifest, bytes) else copy.deepcopy(dict(manifest)))
+    fields = {"schema", "design_sha256", "capture_secret_sha256",
+              "record_count", "records", "authority", "manifest_sha256"}
+    if (not isinstance(value, dict) or set(value) != fields
+            or value.get("schema") != POPULATION_MANIFEST_SCHEMA
+            or value.get("design_sha256")
+            != _hash_bytes(canonical_json_bytes(design.payload()))
+            or value.get("capture_secret_sha256")
+            != design.capture_secret_sha256
+            or value.get("record_count") != TARGET_STATE_COUNT
+            or value.get("authority") != AUTHORITIES):
+        raise PT1ExecutionError("population manifest identity drift")
+    claimed = value.get("manifest_sha256")
+    _sha(claimed, "population manifest")
+    body = dict(value); body.pop("manifest_sha256")
+    if claimed != _hash_bytes(canonical_json_bytes(body)):
+        raise PT1ExecutionError("population manifest hash drift")
+    records = value.get("records")
+    if not isinstance(records, list) or len(records) != TARGET_STATE_COUNT:
+        raise PT1ExecutionError("population manifest record population drift")
+    expected_fields = {"state_key", "state_schema", "round_seed",
+                       "capture_round_cluster_sha256", "capture_id_sha256",
+                       "public_state_sha256", "true_world_sha256"}
+    seeds, clusters, capture_ids = set(), set(), set()
+    for expected_key, record in zip(design.state_keys, records, strict=True):
+        if (not isinstance(record, dict) or set(record) != expected_fields
+                or record.get("state_key") != list(expected_key)
+                or record.get("state_schema") != NATURAL_PT1_STATE_SCHEMA
+                or isinstance(record.get("round_seed"), bool)
+                or not isinstance(record.get("round_seed"), int)
+                or record["round_seed"] < 0):
+            raise PT1ExecutionError("population manifest record identity drift")
+        for name in ("capture_round_cluster_sha256", "capture_id_sha256",
+                     "public_state_sha256", "true_world_sha256"):
+            _sha(record.get(name), f"population manifest {name}")
+        if (record["capture_round_cluster_sha256"]
+                != _cluster_sha256(record["round_seed"])
+                or record["capture_id_sha256"] != _capture_id_sha256(
+                    expected_key[0], expected_key[1], expected_key[2],
+                    expected_key[3], expected_key[4],
+                    record["public_state_sha256"])
+                or record["round_seed"] in seeds
+                or record["capture_round_cluster_sha256"] in clusters
+                or record["capture_id_sha256"] in capture_ids):
+            raise PT1ExecutionError("population manifest natural identity drift")
+        seeds.add(record["round_seed"])
+        clusters.add(record["capture_round_cluster_sha256"])
+        capture_ids.add(record["capture_id_sha256"])
+    return value
+
+
+def _population_record(freeze: "PT1ExecutionFreeze", index: int) \
+        -> Mapping[str, object]:
+    records = freeze.population_manifest["records"]
+    return records[index]
+
+
+def _require_population_identity(state: object,
+                                 record: Mapping[str, object]) -> None:
+    def field(name: str) -> object:
+        return (state.get(name) if isinstance(state, Mapping)
+                else getattr(state, name, None))
+    if any((
+            (field("state_schema") if isinstance(state, Mapping)
+             else field("schema")) != record["state_schema"],
+            field("round_seed") != record["round_seed"],
+            field("capture_round_cluster_sha256")
+            != record["capture_round_cluster_sha256"],
+            field("capture_id_sha256")
+            != record["capture_id_sha256"],
+            field("public_state_sha256")
+            != record["public_state_sha256"],
+            field("true_world_sha256")
+            != record["true_world_sha256"])):
+        raise PT1ExecutionError("execution state differs from frozen population")
+
+
 def _review_marker_claim(marker: bytes) -> dict[str, object]:
     value = _canonical_load(marker, "review marker")
     if not isinstance(value, dict) or set(value) != {
             "schema", "source_git", "design_sha256", "capacity_report_sha256",
-            "capacity_manifest_sha256", "authority"}:
+            "capacity_manifest_sha256", "population_manifest_sha256",
+            "authority"}:
         raise PT1ExecutionError("review marker fields drift")
     if value["schema"] != REVIEW_MARKER_SCHEMA:
         raise PT1ExecutionError("review marker schema drift")
@@ -206,6 +329,8 @@ def _review_marker_claim(marker: bytes) -> dict[str, object]:
     _sha(value["design_sha256"], "review marker design")
     _sha(value["capacity_report_sha256"], "review marker capacity")
     _sha(value["capacity_manifest_sha256"], "review marker manifest")
+    _sha(value["population_manifest_sha256"],
+         "review marker population manifest")
     _authority(value["authority"])
     return value
 
@@ -224,6 +349,8 @@ def authenticate_review_marker(marker: bytes, freeze: "PT1ExecutionFreeze",
     if claim["design_sha256"] != freeze.design_sha256 \
             or claim["capacity_report_sha256"] != freeze.capacity_report_sha256 \
             or claim["capacity_manifest_sha256"] != freeze.capacity_manifest_sha256 \
+            or claim["population_manifest_sha256"] \
+            != freeze.population_manifest_sha256 \
             or claim["source_git"] != freeze.source.get("git_head") \
             or marker != canonical_json_bytes(dict(freeze.review_marker)) \
             or _hash_bytes(marker) != freeze.review_marker_sha256:
@@ -294,6 +421,8 @@ class PT1ExecutionFreeze:
     scientific_capture_secret_sha256: str
     capacity_report_sha256: str
     capacity_manifest_sha256: str
+    population_manifest_sha256: str
+    population_manifest: Mapping[str, object]
     capacity_caps: Mapping[str, int]
     capacity_runtime: Mapping[str, object]
     source: Mapping[str, object]
@@ -314,6 +443,12 @@ class PT1ExecutionFreeze:
         _sha(self.scientific_capture_secret_sha256, "scientific secret commitment")
         _sha(self.capacity_report_sha256, "capacity report")
         _sha(self.capacity_manifest_sha256, "capacity manifest")
+        _sha(self.population_manifest_sha256, "population manifest")
+        natural = NaturalPT1Design(self.scientific_capture_secret_sha256)
+        manifest = verify_population_manifest(self.population_manifest, natural)
+        if (_hash_bytes(canonical_json_bytes(manifest))
+                != self.population_manifest_sha256):
+            raise PT1ExecutionError("freeze population manifest byte drift")
         if type(self.capacity_caps) is not dict:
             raise PT1ExecutionError("freeze capacity caps drift")
         if any(type(v) is not int or v < 0 for v in self.capacity_caps.values()):
@@ -331,8 +466,7 @@ class PT1ExecutionFreeze:
         if type(self.resume_allowed) is not bool:
             raise PT1ExecutionError("freeze resume flag drift")
         _sha(self.review_marker_sha256, "freeze review marker")
-        if tuple(self.state_keys) != NaturalPT1Design(
-                self.scientific_capture_secret_sha256).state_keys:
+        if tuple(self.state_keys) != natural.state_keys:
             raise PT1ExecutionError("freeze state-key population drift")
         if self.worker_count <= 0 or isinstance(self.worker_count, bool):
             raise PT1ExecutionError("freeze worker count drift")
@@ -349,6 +483,9 @@ class PT1ExecutionFreeze:
                 "scientific_capture_secret_sha256": self.scientific_capture_secret_sha256,
                 "capacity_report_sha256": self.capacity_report_sha256,
                 "capacity_manifest_sha256": self.capacity_manifest_sha256,
+                "population_manifest_sha256": self.population_manifest_sha256,
+                "population_manifest": copy.deepcopy(dict(
+                    self.population_manifest)),
                 "capacity_caps": dict(self.capacity_caps),
                 "capacity_runtime": copy.deepcopy(dict(self.capacity_runtime)),
                 "source": copy.deepcopy(dict(self.source)),
@@ -367,7 +504,9 @@ class PT1ExecutionFreeze:
 def freeze_execution(
         *, design_sha256: str, scientific_capture_secret_sha256: str,
         capacity_report: Mapping[str, object] | bytes,
-        capacity_manifest: Mapping[str, object], review_marker: bytes | None = None,
+        capacity_manifest: Mapping[str, object],
+        population_manifest: Mapping[str, object] | bytes,
+        review_marker: bytes | None = None,
         evidence_root: str | os.PathLike[str], deadline_nanoseconds: int | None,
         worker_count: int = 10, resume_allowed: bool = False,
         source: Mapping[str, object] | None = None,
@@ -400,6 +539,8 @@ def freeze_execution(
     natural = NaturalPT1Design(scientific_capture_secret_sha256)
     if design_sha256 != _hash_bytes(canonical_json_bytes(natural.payload())):
         raise PT1ExecutionError("freeze natural design identity drift")
+    population_value = verify_population_manifest(population_manifest, natural)
+    population_bytes = canonical_json_bytes(population_value)
     source_value = dict(source) if source is not None else _source_identity()
     runtime_value = dict(runtime) if runtime is not None else _runtime_identity(worker_count)
     _git_sha(source_value.get("git_head"), "freeze source")
@@ -411,6 +552,7 @@ def freeze_execution(
         "design_sha256": design_sha256,
         "capacity_report_sha256": _hash_bytes(report_bytes),
         "capacity_manifest_sha256": _hash_bytes(manifest_bytes),
+        "population_manifest_sha256": _hash_bytes(population_bytes),
         "authority": dict(AUTHORITIES)}
     if review_marker is None:
         marker_claim = expected_marker_claim
@@ -424,7 +566,8 @@ def freeze_execution(
     marker_claim = copy.deepcopy(marker_claim)
     return PT1ExecutionFreeze(
         design_sha256, scientific_capture_secret_sha256, _hash_bytes(report_bytes),
-        _hash_bytes(manifest_bytes), dict(caps),
+        _hash_bytes(manifest_bytes), _hash_bytes(population_bytes),
+        population_value, dict(caps),
         dict(report_payload.get("runtime", {})), source_value,
         runtime_value, natural.state_keys, POLICY_SEEDS, deadline_nanoseconds,
         root, resume_allowed, _hash_bytes(review_marker), marker_claim,
@@ -449,6 +592,7 @@ def verify_freeze(freeze: PT1ExecutionFreeze | Mapping[str, object] | bytes) -> 
         typed = PT1ExecutionFreeze(
             value["design_sha256"], value["scientific_capture_secret_sha256"],
             value["capacity_report_sha256"], value["capacity_manifest_sha256"],
+            value["population_manifest_sha256"], value["population_manifest"],
             value["capacity_caps"], value["capacity_runtime"], value["source"],
             value["runtime"], state_keys,
             tuple(value["seeds"]), value["deadline_nanoseconds"], value["evidence_root"],
@@ -596,6 +740,77 @@ def _capture_population_parallel(design: NaturalPT1Design, secret: bytes,
     if len(population) != TARGET_STATE_COUNT:
         raise PT1ExecutionError("parallel capture dropped a state")
     return population
+
+
+def capture_population_manifest(
+        *, capture_secret: bytes, worker_count: int = 10,
+        executor_factory: Callable[[int], object] | None = None) \
+        -> dict[str, object]:
+    """Capture and bind all natural cells before a scientific slot exists."""
+    if type(capture_secret) is not bytes or len(capture_secret) != 32:
+        raise PT1ExecutionError("population capture secret must be 32 bytes")
+    if type(worker_count) is not int or isinstance(worker_count, bool) \
+            or worker_count <= 0:
+        raise PT1ExecutionError("population capture worker count drift")
+    _source_identity()
+    _runtime_identity(worker_count)
+    design = NaturalPT1Design(hashlib.sha256(capture_secret).hexdigest())
+    factory = (executor_factory if executor_factory is not None else
+               lambda workers: ProcessPoolExecutor(max_workers=workers))
+    states = _capture_population_parallel(
+        design, capture_secret, worker_count, factory)
+    return build_population_manifest(design, states)
+
+
+def rehearse_process_pool_wave(
+        *, capture_secret: bytes, worker_count: int = 10,
+        executor_factory: Callable[[int], object] | None = None) \
+        -> dict[str, object]:
+    """Exercise one real natural-provider/evaluator wave, retaining no score."""
+    if type(capture_secret) is not bytes or len(capture_secret) != 32:
+        raise PT1ExecutionError("rehearsal secret must be 32 bytes")
+    if type(worker_count) is not int or isinstance(worker_count, bool) \
+            or worker_count <= 0:
+        raise PT1ExecutionError("rehearsal worker count drift")
+    source = _source_identity()
+    runtime = _runtime_identity(worker_count)
+    design = NaturalPT1Design(hashlib.sha256(capture_secret).hexdigest())
+    keys = design.state_keys[:worker_count]
+    factory = (executor_factory if executor_factory is not None else
+               lambda workers: ProcessPoolExecutor(max_workers=workers))
+    started = time.perf_counter_ns()
+    with factory(worker_count) as executor:
+        futures = [executor.submit(
+            _scientific_worker, (design, capture_secret, key)) for key in keys]
+        results = [future.result() for future in futures]
+    identities = []
+    total_cpu = 0
+    peak_rss = 0
+    for expected_key, result in zip(keys, results, strict=True):
+        key, state, records, _wall, cpu, rss = result
+        if key != expected_key or len(records) != len(POLICY_SEEDS):
+            raise PT1ExecutionError("rehearsal worker population drift")
+        for record in records:
+            verify_record(record)
+        identities.append([
+            *key, state.round_seed, state.capture_id_sha256,
+            state.public_state_sha256, state.true_world_sha256])
+        total_cpu += int(cpu)
+        peak_rss += int(rss)
+    receipt = {
+        "schema": "privileged-teacher-pt1-process-pool-rehearsal-v1",
+        "source_git": source["git_head"], "runtime": runtime,
+        "worker_count": worker_count, "state_count": len(results),
+        "record_count": len(results) * len(POLICY_SEEDS),
+        "wall_nanoseconds": time.perf_counter_ns() - started,
+        "cpu_nanoseconds": total_cpu, "parallel_peak_rss_bytes": peak_rss,
+        "identity_population_sha256": _hash_bytes(
+            canonical_json_bytes(identities)),
+        "score_or_action_bytes_persisted": False,
+        "authority": dict(AUTHORITIES),
+    }
+    receipt["receipt_sha256"] = _hash_bytes(canonical_json_bytes(receipt))
+    return receipt
 
 
 def _fsync_dir(path: Path) -> None:
@@ -800,13 +1015,17 @@ def _resource_totals(groups: Sequence[Mapping[str, object]],
 
 
 def _validate_group_population(design: NaturalPT1Design,
-                               groups: Sequence[Mapping[str, object]]) \
+                               groups: Sequence[Mapping[str, object]],
+                               population_manifest: Mapping[str, object] | None = None) \
         -> dict[tuple, _ReopenedNaturalState]:
     if len(groups) != TARGET_STATE_COUNT:
         raise PT1ExecutionError("execution natural population incomplete")
     states = {}
     seeds, clusters, capture_ids = set(), set(), set()
-    for expected_key, group in zip(design.state_keys, groups, strict=True):
+    manifest_records = (population_manifest.get("records")
+                        if population_manifest is not None else None)
+    for index, (expected_key, group) in enumerate(
+            zip(design.state_keys, groups, strict=True)):
         state = _state_from_group(group)
         key = (state.rank, state.banker, state.role,
                state.remaining_hand_threshold, state.replicate)
@@ -815,6 +1034,8 @@ def _validate_group_population(design: NaturalPT1Design,
                 or state.capture_round_cluster_sha256 in clusters \
                 or state.capture_id_sha256 in capture_ids:
             raise PT1ExecutionError("execution natural population identity drift")
+        if manifest_records is not None:
+            _require_population_identity(state, manifest_records[index])
         states[key] = state
         seeds.add(state.round_seed)
         clusters.add(state.capture_round_cluster_sha256)
@@ -824,11 +1045,71 @@ def _validate_group_population(design: NaturalPT1Design,
 
 def _progress_payload(freeze: PT1ExecutionFreeze, completed: int,
                       status: str, eta_nanoseconds: int = 0) -> dict[str, object]:
+    if status not in {"RUNNING", "FINALIZING", "TRUNCATED", "COMPLETE",
+                      "FAILED"}:
+        raise PT1ExecutionError("execution progress status drift")
     return {"schema": PROGRESS_SCHEMA, "freeze_sha256": _hash_bytes(freeze.canonical_bytes()),
             "completed_units": completed, "total_units": TARGET_STATE_COUNT,
             "percent_basis_points": completed * 10_000 // TARGET_STATE_COUNT,
             "eta_nanoseconds": eta_nanoseconds,
             "status": status, "authority": dict(AUTHORITIES)}
+
+
+def record_execution_failure(
+        freeze: PT1ExecutionFreeze, root: str | os.PathLike[str], *,
+        code: str, completed: int | None = None,
+        wave_start: int | None = None, wave_stop: int | None = None) \
+        -> dict[str, object]:
+    """Durably record a score-free terminal failure without child details."""
+    typed = verify_freeze(freeze)
+    evidence = Path(root).resolve()
+    if not evidence.is_dir():
+        raise PT1ExecutionError("failure receipt requires initialized evidence")
+    published = evidence / FREEZE_NAME
+    if (not published.is_file()
+            or _immutable_bytes(published, "published freeze")
+            != typed.canonical_bytes()):
+        raise PT1ExecutionError("failure receipt requires initialized freeze")
+    path = evidence / FAILURE_NAME
+    if path.exists():
+        value = _canonical_load(
+            _immutable_bytes(path, "execution failure receipt"),
+            "execution failure receipt")
+        if (not isinstance(value, dict) or value.get("schema") != FAILURE_SCHEMA
+                or value.get("freeze_sha256")
+                != _hash_bytes(typed.canonical_bytes())
+                or value.get("authority") != AUTHORITIES):
+            raise PT1ExecutionError("execution failure receipt drift")
+        _write_progress(evidence / PROGRESS_NAME, _progress_payload(
+            typed, int(value["completed_units"]), "FAILED", 0))
+        return value
+    if completed is None:
+        progress_path = evidence / PROGRESS_NAME
+        progress = (_canonical_load(progress_path.read_bytes(), "progress")
+                    if progress_path.is_file() else {})
+        completed = (progress.get("completed_units", 0)
+                     if isinstance(progress, dict) else 0)
+    if (type(completed) is not int or not 0 <= completed <= TARGET_STATE_COUNT
+            or type(code) is not str
+            or code not in {"worker_failure", "cli_failure"}
+            or (wave_start is not None and
+                (type(wave_start) is not int or wave_start < 0))
+            or (wave_stop is not None and
+                (type(wave_stop) is not int or wave_stop < 0))):
+        raise PT1ExecutionError("execution failure receipt values drift")
+    value = {
+        "schema": FAILURE_SCHEMA,
+        "freeze_sha256": _hash_bytes(typed.canonical_bytes()),
+        "failure_code": code, "completed_units": completed,
+        "total_units": TARGET_STATE_COUNT,
+        "wave_start": wave_start, "wave_stop": wave_stop,
+        "score_or_action_bytes_persisted": False,
+        "retry_authorized": False, "authority": dict(AUTHORITIES),
+    }
+    _write_once(path, canonical_json_bytes(value))
+    _write_progress(evidence / PROGRESS_NAME, _progress_payload(
+        typed, completed, "FAILED", 0))
+    return value
 
 
 def _deadline_receipt(freeze: PT1ExecutionFreeze, root: Path,
@@ -945,6 +1226,8 @@ def run_execution(
                         review_commit=review_commit,
                         repo_root=repo_root)
     root = Path(output_root).resolve()
+    if (root / FAILURE_NAME).exists():
+        raise PT1ExecutionError("execution failure receipt is terminal")
     receipt = _deadline_receipt(typed, root, monotonic)
     frozen_deadline = receipt["deadline_monotonic_nanoseconds"] / 1e9
     supplied_states = (dict(population) if population is not None else
@@ -955,6 +1238,9 @@ def run_execution(
     if supplied_states is not None:
         try:
             validate_population(natural, supplied_states)
+            for index, key in enumerate(natural.state_keys):
+                _require_population_identity(
+                    supplied_states[key], _population_record(typed, index))
         except Exception as exc:
             raise PT1ExecutionError(
                 "scientific natural population refused") from exc
@@ -970,6 +1256,7 @@ def run_execution(
                 path, index,
                 supplied_states[key] if supplied_states is not None else None,
                 key=key)
+            _require_population_identity(value, _population_record(typed, index))
             if (value["parallel_wave_peak_rss_bytes"]
                     > typed.capacity_caps["peak_rss_bytes"]
                     or value["exact_nodes"]
@@ -1010,6 +1297,9 @@ def run_execution(
                 results = [future.result() for future in futures]
                 batch_wall_ns = time.perf_counter_ns() - batch_started
             except Exception as exc:
+                record_execution_failure(
+                    typed, root, code="worker_failure", completed=completed,
+                    wave_start=batch[0][0], wave_stop=batch[-1][0] + 1)
                 raise PT1ExecutionError(
                     "execution worker failure; durable groups retained") from exc
             # A wave that finishes after the frozen boundary consumed compute,
@@ -1040,6 +1330,8 @@ def run_execution(
             new_groups = []
             for index, key in batch:
                 state, records, worker_wall, worker_cpu, worker_rss = normalized[key]
+                _require_population_identity(
+                    state, _population_record(typed, index))
                 group = _group_payload(
                     index, key, state, records, worker_wall, worker_cpu,
                     worker_rss, batch_wall_ns, batch_cpu_ns,
@@ -1078,7 +1370,8 @@ def run_execution(
         if supplied_states is not None else None,
         key=natural.state_keys[index])
                   for index in range(TARGET_STATE_COUNT)]
-    states = _validate_group_population(natural, all_groups)
+    states = _validate_group_population(
+        natural, all_groups, typed.population_manifest)
     records = [record for group in all_groups for record in group["records"]]
     typed_records = tuple(verify_record(record) for record in records)
     statistics = reduce_pt1_statistics(natural, states, typed_records)
@@ -1142,6 +1435,9 @@ def verify_execution(output_root: str | os.PathLike[str],
               capture_natural_states(natural, capture_secret=capture_secret,
                                      state_capture=state_capture))
     validate_population(natural, states)
+    for index, key in enumerate(natural.state_keys):
+        _require_population_identity(
+            states[key], _population_record(typed, index))
     if _canonical_load(
             _immutable_bytes(root / FREEZE_NAME, "published freeze"),
             "freeze") != typed.payload():
@@ -1163,15 +1459,30 @@ def verify_execution(output_root: str | os.PathLike[str],
     if actual_names != expected_names:
         raise PT1ExecutionError("execution group namespace is not closed")
     status = progress.get("status")
-    if status not in {"RUNNING", "FINALIZING", "TRUNCATED", "COMPLETE"}:
+    if status not in {"RUNNING", "FINALIZING", "TRUNCATED", "COMPLETE",
+                      "FAILED"}:
         raise PT1ExecutionError("execution progress status drift")
     expected_root = {FREEZE_NAME, PROGRESS_NAME, DEADLINE_NAME, GROUP_DIR}
     if status == "COMPLETE":
         expected_root |= {PACKET_NAME, MANIFEST_NAME}
+    if status == "FAILED":
+        expected_root |= {FAILURE_NAME}
     if {path.name for path in root.iterdir()} != expected_root:
         raise PT1ExecutionError("execution root namespace is not closed")
     if status == "COMPLETE" and count != TARGET_STATE_COUNT:
         raise PT1ExecutionError("execution completion drift")
+    if status == "FAILED":
+        failure = record_execution_failure(typed, root, code="cli_failure")
+        for index in range(count):
+            group = _verify_group(
+                groups / f"group-{index:04d}.json", index,
+                states[natural.state_keys[index]],
+                key=natural.state_keys[index])
+            _require_population_identity(group, _population_record(typed, index))
+        return {"status": "FAILED", "completed_units": count,
+                "total_units": TARGET_STATE_COUNT,
+                "failure_code": failure["failure_code"],
+                "authority": dict(AUTHORITIES)}
     if status == "TRUNCATED":
         for index in range(count):
             _verify_group(groups / f"group-{index:04d}.json", index,
@@ -1190,7 +1501,8 @@ def verify_execution(output_root: str | os.PathLike[str],
         verified_groups.append(_verify_group(
             groups / f"group-{index:04d}.json", index,
             states[natural.state_keys[index]], key=natural.state_keys[index]))
-    _validate_group_population(natural, verified_groups)
+    _validate_group_population(
+        natural, verified_groups, typed.population_manifest)
     packet_raw = _immutable_bytes(root / PACKET_NAME, "execution packet")
     manifest_raw = _immutable_bytes(root / MANIFEST_NAME, "execution manifest")
     packet = _canonical_load(packet_raw, "packet")
@@ -1241,8 +1553,12 @@ def verify_execution(output_root: str | os.PathLike[str],
             "manifest_sha256": claimed, "authority": dict(AUTHORITIES)}
 
 
-__all__ = ["AUTHORITIES", "EXECUTION_SCHEMA", "FREEZE_SCHEMA", "GROUP_SCHEMA",
-           "MANIFEST_SCHEMA", "POLICY_SEEDS", "PROGRESS_SCHEMA",
-           "PT1ExecutionError", "PT1ExecutionFreeze", "freeze_execution",
-           "authenticate_review_marker", "initialize_execution", "run_execution", "verify_execution",
-           "verify_freeze"]
+__all__ = ["AUTHORITIES", "EXECUTION_SCHEMA", "FAILURE_SCHEMA", "FREEZE_SCHEMA",
+           "GROUP_SCHEMA", "MANIFEST_SCHEMA", "POLICY_SEEDS",
+           "POPULATION_MANIFEST_SCHEMA", "PROGRESS_SCHEMA",
+           "PT1ExecutionError", "PT1ExecutionFreeze",
+           "authenticate_review_marker", "build_population_manifest",
+           "capture_population_manifest", "freeze_execution",
+           "initialize_execution", "record_execution_failure",
+           "rehearse_process_pool_wave", "run_execution",
+           "verify_execution", "verify_freeze", "verify_population_manifest"]

@@ -64,6 +64,16 @@ def test_capacity_darwin_boot_identity_uses_stable_session_uuid(monkeypatch):
     ]
 
 
+def test_capacity_runtime_requires_strict_environment_and_activation(monkeypatch):
+    from shengji.engine import fast
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(fast, "activate", lambda: False)
+    with pytest.raises(capacity.PT1CapacityError,
+                       match="active compiled engine and strict voids"):
+        capacity._runtime_identity()
+
+
 def _design():
     return capacity.CapacityDesign(
         capture_secret_sha256=SECRET_SHA, parallel_workers=1)

@@ -440,7 +440,9 @@ def run_r4_completion_calibration(
             reopen_trained_scoring_cohorts(
                 source.spec.source_evidence_root,
                 freeze=source.freeze, admission=source.admission,
-                training_inputs=training_inputs))
+                training_inputs=training_inputs,
+                legacy_tensor_cache_manifest_sha256=(
+                    source.spec.source_tensor_cache_manifest_sha256)))
     except ValueError as exc:
         raise BeliefV2R4CompletionError(
             "R4 completion training population refused") from exc
@@ -714,7 +716,9 @@ def run_r4_completion_terminal(
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 source.spec.source_evidence_root, freeze=source.freeze,
-                admission=source.admission, training_inputs=training_inputs))
+                admission=source.admission, training_inputs=training_inputs,
+                legacy_tensor_cache_manifest_sha256=(
+                    source.spec.source_tensor_cache_manifest_sha256)))
         if progress is not None:
             progress(2, 6, "r4-test-inputs-reopened")
         synthetic, human = _score_test_populations(

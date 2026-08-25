@@ -80,7 +80,8 @@ def synthetic_round_key(round_seed: int) -> str:
 def reopen_trained_scoring_cohorts(
         root: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        training_inputs: V2StreamingTrainingInputsV1) \
+        training_inputs: V2StreamingTrainingInputsV1,
+        legacy_tensor_cache_manifest_sha256: str | None = None) \
         -> tuple[tuple[V2CohortModelsV1, ...],
                  V2DeviceQualificationPlanV1,
                  V2DeviceQualificationResultV1,
@@ -109,7 +110,9 @@ def reopen_trained_scoring_cohorts(
         _, _, calibration_factory, control_dose, cache_sha256 = (
             reopen_training_tensor_cache(
                 root / "training-tensor-cache" / "result",
-                freeze=freeze, admission=admission))
+                freeze=freeze, admission=admission,
+                legacy_manifest_sha256=(
+                    legacy_tensor_cache_manifest_sha256)))
     except ValueError as exc:
         raise BeliefV2ScoringControllerError(
             "V2 scoring tensor cache refused") from exc

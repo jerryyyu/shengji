@@ -543,6 +543,7 @@ def test_r4_completion_calibration_writes_only_fresh_namespace(
     spec = SimpleNamespace(
         source_evidence_root=source_root,
         destination_evidence_root=root,
+        source_tensor_cache_manifest_sha256=_sha("legacy tensor cache"),
         sha256=lambda: _sha("R4 source spec"))
     source = SimpleNamespace(
         spec=spec, freeze=source_freeze, admission=source_admission,
@@ -660,6 +661,7 @@ def test_r4_completion_attempt_is_durable_before_original_test_read(
     }
     spec = SimpleNamespace(
         source_evidence_root=source_root,
+        source_tensor_cache_manifest_sha256=_sha("legacy tensor cache"),
         sha256=lambda: _sha("R4 source spec"))
     source = SimpleNamespace(
         spec=spec, freeze=source_freeze, admission=source_admission,
@@ -759,6 +761,7 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
     }
     spec = SimpleNamespace(
         source_evidence_root=source_root,
+        source_tensor_cache_manifest_sha256=_sha("legacy tensor cache"),
         sha256=lambda: _sha("R4 source spec"))
     source = SimpleNamespace(
         spec=spec, freeze=source_freeze, admission=source_admission,

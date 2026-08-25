@@ -445,6 +445,18 @@ def test_tensor_cache_import_spec_reopens_spent_source_and_tombstone(
         runtime=replace(
             current_freeze.runtime, boot_identity="f" * 64))
     assert CACHE_IMPORT.load_tensor_cache_import_spec(rebooted) is not None
+    relocated = replace(
+        current_freeze,
+        runtime=replace(
+            current_freeze.runtime,
+            native_path="/new/source/shengji/engine/_fast.so",
+            torch=replace(
+                current_freeze.runtime.torch,
+                root="/new/venv/lib/python3.14/site-packages"),
+            numpy=replace(
+                current_freeze.runtime.numpy,
+                root="/new/venv/lib/python3.14/site-packages")))
+    assert CACHE_IMPORT.load_tensor_cache_import_spec(relocated) is not None
     native_drift = replace(
         current_freeze,
         runtime=replace(

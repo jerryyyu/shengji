@@ -96,6 +96,16 @@ def _require_directory(path: Path, *, uid: int) -> None:
             "V2 cache import directory ownership/mode drift")
 
 
+def _portable_runtime_identity(runtime) -> dict[str, Any]:
+    """Bind numerical/runtime content while permitting a clean relocation."""
+    payload = runtime.to_dict()
+    del payload["boot_identity"]
+    del payload["native"]["path"]
+    del payload["torch"]["distribution"]["root"]
+    del payload["numpy"]["root"]
+    return payload
+
+
 @dataclass(frozen=True)
 class V2TensorCacheImportSpecV1:
     destination_evidence_root: Path
@@ -278,10 +288,8 @@ def load_tensor_cache_import_spec(
             "V2 cache import source stage start drift")
     runtime_sha256 = _sha256(canonical_json_bytes(
         old_freeze.runtime.to_dict()))
-    old_portable_runtime = old_freeze.runtime.to_dict()
-    current_portable_runtime = freeze.runtime.to_dict()
-    del old_portable_runtime["boot_identity"]
-    del current_portable_runtime["boot_identity"]
+    old_portable_runtime = _portable_runtime_identity(old_freeze.runtime)
+    current_portable_runtime = _portable_runtime_identity(freeze.runtime)
     if old_freeze.execution_git != payload["source_execution_git"] \
             or old_freeze.evidence_root != str(source) \
             or old_admission.evidence_root != str(source) \

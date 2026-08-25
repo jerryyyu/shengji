@@ -532,7 +532,7 @@ def _cache_import_receipt(
         "source_runtime_profile_sha256": (
             spec.source_runtime_profile_sha256),
         "runtime_portability_rule": (
-            "exact-runtime-profile-except-boot-identity-v1"),
+            "exact-runtime-content-except-boot-and-install-paths-v1"),
         "source_stage_start_sha256": spec.source_stage_start_sha256,
         "child_manifest_sha256s": dict(spec.child_manifest_sha256s),
         "source_admission_remains_spent": True,

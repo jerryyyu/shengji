@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 11:35 EDT.
+Last reconciled: 2026-08-25 11:42 EDT.
 
 ## Immediate objective
 
@@ -19,27 +19,39 @@ fresh three-arm privileged-teacher acquisition screen whose primary bar is an
 improved exact/full-information teacher beating production MC given the same
 true world. PT1 is isolated to Mini and cannot touch R4/R5.
 
-## Review queue — one precise operator ask
+## Review queue — one precise narrow ask
 
-### 1. PT1 exact reviewed one-shot — INITIALIZE AND LAUNCH NOW
+### 1. PT1 current-boot refresh `r2` — REVIEW NEW CAPACITY/FREEZE ONLY
 
-The consolidated source+capacity+freeze PASS is canonical at review commit
-`10cf7ad28ceb9ef22968c00148d99f8b6f60bae6`, and Jerry's explicit GO is
-canonical at `d3483125a6facbbb9600c9135c272da89f5d9cc5`. Exact source is PR #145 head
-`9ff7a2b3ca6704042d2394c5a57ff461171e4a93`; freeze SHA is `9068ee08…` and
-marker SHA is `65630fbf…`. The evidence root
-`/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r1` remains absent: no
-initialization, run, deadline or one-shot slot has been consumed.
+Do not repeat the source/design audit and do not launch. Exact source remains
+the already-PASSed PR #145 head
+`9ff7a2b3ca6704042d2394c5a57ff461171e4a93`; server/frontend CI and the prior
+104/104 source batteries remain unchanged. Claude's refusal at `5dea183` was
+operator-only. Codex then used the normal user Terminal/keychain environment:
+live GitHub review provenance authenticated successfully, but the unchanged
+controller refused before initialization with exact error
+`execution live runtime identity drift`. The sole live/frozen differences were
+the execution and capacity `boot_identity_sha256` fields; Mini had rebooted
+after the prior capacity/freeze. Both `r1` evidence roots remain absent and no
+deadline/one-shot slot was consumed.
 
-Codex's nested process cannot authenticate the private canonical GitHub remote
-even though the top-level Git client can; the unchanged controller correctly
-refuses before initialization. This is an operator-environment issue, not a
-source or scientific finding. Claude: from the clean worktree
-`/private/tmp/shengji-pt1-freeze-9ff7a2b.1Qr0wu`, run the reviewed CLI's
-`initialize` and then its one scientific `run` using the exact freeze, secret,
-marker and review commit above. Do not patch or bypass
-`authenticate_review_marker`. Before acting, independently confirm the evidence
-root is absent; after launch, record the exact process/progress evidence here.
+Fresh current-boot score-free capacity at
+`/private/tmp/pt1-capacity-9ff7a2b-r2` completed 16/16 with ten workers and no
+truncation. Capacity SHA-256 is `583ab992…a08bd`; manifest SHA-256 is
+`7dd14653…fa10`. Recompute its six caps, verify score redaction and current boot,
+then review fresh freeze
+`/Users/jerryyu/Projects/pt1-freeze-9ff7a2b-r2.json` (SHA-256
+`96b490ff…24bb2`) and marker
+`/Users/jerryyu/Projects/pt1-review-marker-9ff7a2b-r2.json` (SHA-256
+`093a41c0…c445`). Fresh evidence root
+`/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r2` is absent. The exact
+freeze passes the real live source/runtime/capacity binding check. Versus `r1`,
+only 12 leaves change: the two boot hashes, three measured caps, their matching
+deadline, capacity/manifest hashes, marker hashes and the fresh evidence root;
+source, population, states, policy seeds, design and all authorities are
+identical. If exact, append the byte-identical new marker once and PASS this
+narrow runtime refresh. Jerry's standing PT1 launch GO remains in force; Codex
+will launch through the now-proven normal Terminal/keychain path after PASS.
 Every gameplay/strength/promotion/deployment/training/retry/merge authority
 remains false.
 
@@ -193,16 +205,18 @@ or hidden worlds. The final execution controller preserves complete four-seed
 groups, resumes only within one frozen deadline, discards late waves, and
 cannot publish a valid packet after deadline. One clean-head Mini capacity run
 completed 16/16 with ten workers and derived all six scientific caps. The exact
-416-state freeze and canonical non-circular review marker received a single
-consolidated PASS at `10cf7ad`; Jerry's GO is at `d348312`. Launch is pending
-only on an operator environment that can satisfy the unchanged live GitHub
-provenance check. PT0 records are not reused as training/evaluation data.
+416-state `r1` freeze and canonical non-circular review marker received a single
+consolidated PASS at `10cf7ad`; Jerry's GO is at `d348312`. Normal Terminal
+authentication is now proven, but a Mini reboot invalidated `r1`'s two explicit
+boot bindings. Fresh current-boot capacity/freeze `r2` is complete and awaits
+only the narrow review above. PT0 records are not reused as
+training/evaluation data.
 
 ## Fleet
 
 | host | current use | invariant |
 |---|---|---|
-| Mini | PT1 capacity finished; idle pending authenticated initialization/launch | Never rerun PT0; do not touch R4/R5. |
+| Mini | PT1 current-boot capacity/freeze `r2` complete; idle pending one narrow marker review | Never rerun PT0; do not touch R4/R5; launch only after exact `r2` PASS. |
 | Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
 | Performance Cloud | R5 `r12` stopped pre-training and is preserved; exact PR #147 score-free capacity/deadline preflights active | Never retry/delete `r12`; preflights cannot initialize science or open calibration/test. |
 | Production | untouched | No deploy or policy change from research evidence. |
@@ -213,8 +227,8 @@ provenance check. PT0 records are not reused as training/evaluation data.
 2. Codex publishes one fresh R4-completion source+freeze request; Claude reviews
    it once at the exact head. Only a PASS may authorize the fresh completion
    namespace and sole original-R4 test opening.
-3. Claude initializes and launches the already-PASSed 416-state PT1 Mini run
-   once from the unchanged reviewed source; no further review round is needed.
+3. Claude reviews only the fresh PT1 current-boot capacity/freeze marker; after
+   PASS, Codex launches once through the proven normal Terminal/keychain path.
 4. Finish the active score-free R5 receipts, build its exact successor freeze,
    then publish one consolidated source+freeze review. R5 remains confirmatory
    because it shares R4's scientific population.

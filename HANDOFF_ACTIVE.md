@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-24 23:25 EDT.
+Last reconciled: 2026-08-24 23:30 EDT.
 
 ## Immediate objective
 
@@ -347,18 +347,16 @@ the repaired source witnesses but accidentally bound the superseded `3f27ddb`
 capacity/freeze; it cannot authenticate this replacement packet. One
 replacement-packet binding correction is required before execution.
 
-## Review queue — exactly one active consolidated review
+## Review queue — empty
 
-### PT0 natural-state repaired source + replacement freeze
+### PT0 natural-state packet — PASS; awaiting user launch decision
 
-PR #135's repaired foundation remains PASS at ledger `7cfef47`; do not repeat
-that foundation/privacy review. Review exact PR #142 head
-`bd4833fed1aa6196bca94b1ef65752cc5c4b10c3` once. Its six-file delta honestly
-renames the sampler estimand as the production MCBot constraint-completion
-algorithmic distribution and changes inference from state bootstrap to opaque
-capture-round-cluster bootstrap, with same-round/cross-round/whole-cluster and
-runner-schema witnesses. Clean PT/endgame/native-parity/game batteries are
-102/102 pure and 102/102 strict compiled; `git diff --check` passes.
+Claude's consolidated source+freeze review passed at canonical ledger commit
+`cdd5f31` for exact PR #142 head
+`bd4833fed1aa6196bca94b1ef65752cc5c4b10c3`. The marker supersedes the old
+`17cb5f8` authorization and authorizes exactly one score-free 104-state Mini
+execution. No PT review is active and no additional source/freeze review is
+needed unless reviewed bytes or packet bytes change.
 
 Reopen capacity root
 `/private/tmp/shengji-pt0-natural-capacity-bd4833f-c1`: receipt
@@ -370,10 +368,12 @@ source manifest `373b628a44ec562d5598ae2328746b31cc44748dde78f7855be132aa19c4549
 freeze `6be498e8137d41533df912fe271c51813eb5cfdacf2ac8193a6a6b6b1b0d222d`,
 freeze manifest `fc1cc23569b6c9eef7c2bc578f9c30f15fe46a64463ec5cfec4ea5ba7707d196`
 and launchd plist `85f56911766aff36d83e498a29c5423900a2410056b96a082c52e9b1897c818c`.
-PR comment `5404603859` is the precise ask. If exact, append one
-`PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW` PASS marker
-authorizing only one score-free 104-state Mini execution. Merge, retry,
-training, gameplay, strength, deployment and PT1 authority remain false.
+The authenticated marker is
+`PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW` at
+`HANDOFF_REVIEW.md:3617`. The job has not been loaded or launched; the run and
+partial-run namespaces remain absent. Merge, retry, training, gameplay,
+strength, deployment and PT1 authority remain false. Await explicit user
+scientific-launch approval, then execute this packet once without merging.
 
 ### R5 bounded parent profiler — review closed, no review requested
 
@@ -420,10 +420,11 @@ remember R4/R5 are not independent replications.
 
 1. Monitor R4 without changing it; after the source re-score audits, reopen its
    sole terminal once and preserve the spent R5 root.
-2. Obtain the one active consolidated PT0 source+freeze PASS for exact head
-   `bd4833f`; do not repeat the already-PASSed PR #135 foundation review.
-3. Authenticate that marker, then launch the exact score-free 104-state Mini
-   packet once. Do not merge first and do not run another rehearsal.
+2. Await the user's PT0 scientific-launch approval; the exact `bd4833f`
+   source+freeze marker is already PASS and must not be reviewed again.
+3. After that approval, authenticate the marker and launch the exact score-free
+   104-state Mini packet once. Do not merge first and do not run another
+   rehearsal.
 4. Independently reopen the PT0 terminal and decide whether the privileged
    teacher has enough endgame signal to justify a larger/whole-game successor.
 5. Finish the independent R5 profiler-receipt reopen, then derive one

@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 02:52 EDT.
+Last reconciled: 2026-08-25 08:15 EDT.
 
 ## Immediate objective
 
@@ -19,13 +19,16 @@ fresh three-arm privileged-teacher acquisition screen whose primary bar is an
 improved exact/full-information teacher beating production MC given the same
 true world. PT1 is isolated to Mini and cannot touch R4/R5.
 
-## Review queue — empty
+## Review queue — empty until Codex publishes the next exact packet
 
-Claude's one consolidated PR #144 source + exact `r12` freeze review PASS is
-canonical at main commit `19b63f8`. The authenticated marker SHA-256 is
-`418fa4c36a419d985c03d5c160d55731e24d191f6de28bf2d4167a419891335a`.
-No R5 source, freeze or launch review remains open. Do not review or launch the
-superseded `9e44c0f` / `r11` freeze.
+Do not spend a review on work-in-progress bytes. Codex is preparing two
+independent packets, in this order:
+
+1. one consolidated R4-completion source + exact Strength Cloud freeze; and
+2. one consolidated PT1 source + exact Mini capacity/freeze packet.
+
+Neither exact head/freeze exists yet. R5 has failed safely and has no active
+review request. Do not review, retry or relaunch the spent R5 `r12` admission.
 
 ## PT0 result — closed and interpreted
 
@@ -64,7 +67,7 @@ general exact-transport fallback repairs this real prediction with maximum
 cell movement 2.38 ppb and then passes full ownership validation. This is an
 operational/model-path defect, not a positive or negative belief result.
 
-## R5 exact successor — consolidated PASS; running on Performance Cloud
+## R5 `r12` — stopped safely before training or test
 
 PR #144 exact head `5d3b129` routes the reproduced R4 one-PPB residual
 dead-end through the already-existing exact hard-bound transport fallback. A
@@ -97,17 +100,20 @@ R5 initialized at 2026-08-25 02:50 EDT under
 `belief-v2-r5-5d3b129-r12.service`, invocation
 `bd1b850aa3bf4770a0fc4d132ef5a311`, with admission SHA-256
 `70b15175edd62798c3cbd2d6b323bce1b206ae122d8629755e11bc3f616cedc8`.
-All 16 capture lanes were active at the first post-launch check, each using
-approximately one CPU core; service memory was 5.9 GiB of the frozen 30 GiB
-limit and restart count was zero.
+It later stopped at task 47/85 (55.29%), `build-training-cache`, with
+`ExecMainStatus=1`, `NRestarts=0` and exact refusal:
+`BeliefV2TensorCacheControllerError: V2 tensor cache import input index drift`.
+The imported cache's semantic training identity matched, but the controller
+incorrectly required equality of the provenance-bearing wrapper index bytes.
 
-The first systemd spawn at 02:49 EDT failed before executing a single launcher
-instruction because the byte-reviewed launcher is mode `0400`, not executable.
-Both scientific namespaces remained absent. Codex then invoked the exact same
-SHA-256-bound launcher bytes through `/bin/bash`; initialization succeeded.
-This was an OS exec-mode correction before admission, not a scientific retry.
-The consumed marker now prevents another initialization. R5 remains one
-scientific run and is not an independent replication of R4.
+No R5 cohort training, calibration or test opening occurred. All 13,312
+synthetic captures, human capture/reference material and the 311,250,588-byte
+training input index remain sealed and reusable. No imported cache result was
+published. The admission is spent and must never be retried or deleted.
+
+Codex has a local four-file semantic-identity bridge that passes 470+ BELIEF
+tests, but it is deliberately paused behind R4 recovery and PT1. Its eventual
+successor requires a fresh source/freeze/admission and one consolidated review.
 
 ## PT1 preparation
 
@@ -118,28 +124,34 @@ Primary `C-B` measures policy improvement after both receive perfect
 information; `B-A` measures value of information. The teacher must beat
 production MC with a positive held-out lower bound, not merely beat heuristic.
 
-Implementation is being prepared in new PT1-only files. Do not review or run
-it until Codex publishes one exact source+Mini-capacity+freeze request. The
-first intended population is fresh and cluster-powered; PT0 records are not
-reused as training/evaluation data.
+Draft PR #145 contains the three exact A/B/C search arms. The repaired source
+fails closed on underfilled production work before persistence. A separate
+natural provider now builds the specified 416-state population as 416 distinct
+engine-round clusters across all 13 ranks, two banker representatives, two
+roles, two remaining-hand horizons and four replicates. Statistics, capacity,
+runner/freeze and primary integration review remain. Do not review or run it
+until Codex publishes one exact source+Mini-capacity+freeze request. PT0 records
+are not reused as training/evaluation data.
 
 ## Fleet
 
 | host | current use | invariant |
 |---|---|---|
 | Mini | idle; reserved for isolated PT1 capacity/run after review | Never rerun PT0; do not touch R4/R5. |
-| Strength Cloud | R4 stopped; immutable evidence preserved | Read-only failure diagnosis only; never restart or alter R4. |
-| Performance Cloud | R5 active: 16-way capture under `belief-v2-r5-5d3b129-r12.service` | Monitor only; no retry, source mutation or test opening outside the sealed controller. |
+| Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
+| Performance Cloud | R5 stopped pre-training; immutable reusable inputs preserved | Never retry/delete `r12`; successor work waits behind R4/PT1. |
 | Production | untouched | No deploy or policy change from research evidence. |
 
 ## Next operator sequence
 
-1. Monitor the active R5 DAG and publish percent/stage/resource progress. Do
-   not intervene in the sealed run.
-2. At terminal, Codex independently reopens every bound artifact and reproduces
-   the positive or negative verdict before deciding whether belief advances
-   into gameplay search.
-3. Codex finishes PT1-only source, runs a score-free Mini capacity proof and
-   requests one consolidated PT1 source+freeze review.
-4. R5 and PT1 each receive independent terminal reproduction before any
-   belief-to-gameplay or privileged-teacher-to-public-policy decision.
+1. Finish the read-only R4 calibration diagnostic without touching test bytes.
+2. Codex publishes one fresh R4-completion source+freeze request; Claude reviews
+   it once at the exact head. Only a PASS may authorize the fresh completion
+   namespace and sole original-R4 test opening.
+3. In parallel, Codex finishes PT1 statistics/runner, runs one score-free Mini
+   capacity proof and requests one consolidated PT1 source+freeze review.
+4. After R4/PT1 progress, publish the narrow R5 semantic-cache successor in one
+   consolidated source+freeze review. R5 remains confirmatory because it shares
+   R4's scientific population.
+5. Independently reproduce every terminal before any belief-to-gameplay or
+   privileged-teacher-to-public-policy decision.

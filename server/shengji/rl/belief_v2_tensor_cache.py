@@ -30,6 +30,7 @@ import hashlib
 import io
 import json
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -255,6 +256,42 @@ def _publish_cache_file(path: Path, raw: bytes) -> None:
             "V2 tensor cache publication refused") from exc
 
 
+def _drop_verified_cache_pages(path: Path) -> None:
+    """Release cold immutable output pages after byte verification.
+
+    Linux charges clean file-cache pages to the cache builder's cgroup.  The
+    complete R5 population is much larger than RAM and none of these files is
+    consumed again until the cache has sealed, so retaining freshly written
+    pages starves the workers without improving correctness or locality.
+    ``POSIX_FADV_DONTNEED`` is advisory and intentionally a no-op on runtimes
+    that do not expose it; artifact bytes and manifests are unchanged.
+    """
+    advise = getattr(os, "posix_fadvise", None)
+    dont_need = getattr(os, "POSIX_FADV_DONTNEED", None)
+    if advise is None or type(dont_need) is not int:
+        return
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise BeliefV2TensorCacheError(
+            "V2 tensor cache page-release open refused") from exc
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 \
+                or info.st_mode & 0o222:
+            raise BeliefV2TensorCacheError(
+                "V2 tensor cache page-release identity drift")
+        try:
+            advise(descriptor, 0, 0, dont_need)
+        except OSError:
+            # This is an optimization hint, not an authority or integrity
+            # boundary. Unsupported filesystems must preserve exact behavior.
+            return
+    finally:
+        os.close(descriptor)
+
+
 def _discard_incomplete_atomic_write(path: Path) -> None:
     partial = path.with_name(path.name + ".partial")
     if not partial.exists() and not partial.is_symlink():
@@ -301,8 +338,10 @@ def _reuse_or_publish_batch_file(
         if not matches:
             raise BeliefV2TensorCacheError(
                 "V2 tensor cache resumed batch content drift")
+        _drop_verified_cache_pages(path)
         return existing, True
     _publish_cache_file(path, raw)
+    _drop_verified_cache_pages(path)
     return raw, False
 
 
@@ -312,8 +351,10 @@ def _reuse_or_publish_exact_file(path: Path, raw: bytes) -> bool:
         if stable_read_bytes(path) != raw:
             raise BeliefV2TensorCacheError(
                 "V2 tensor cache resumed manifest drift")
+        _drop_verified_cache_pages(path)
         return True
     _publish_cache_file(path, raw)
+    _drop_verified_cache_pages(path)
     return False
 
 

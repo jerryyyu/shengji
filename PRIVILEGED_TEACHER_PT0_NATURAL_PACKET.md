@@ -61,7 +61,8 @@ must:
 - reproduce the state's derived actor-visible SHA-256;
 - be sampled without selecting or specially weighting the actual true deal.
 
-The sampler produces two independently seeded posterior-draw cohorts:
+The current production constraint sampler produces two independently seeded
+completed-world cohorts:
 
 1. **proposal worlds** select the canonical PT action from exact averaged
    signed-level values; and
@@ -72,15 +73,19 @@ The first packet uses 16 proposal and 16 evaluation draws per state, sampled
 with replacement. Each accepted draw receives a unique, cohort-separated draw
 identity, while the same underlying hidden world may correctly appear more
 than once within a cohort or in both cohorts. This preserves the empirical
-posterior frequency on small-support late-game information sets; deduplicating
-or sampling without replacement would distort that posterior, and requiring
-cross-cohort hidden-world disjointness is impossible when the compatible
-support is small. The packet reports only counts of unique underlying worlds
-and cross-cohort overlap, never their identities. Draw-identity overlap, short
-draw population, relaxed-void world or public-state drift refuses the state.
-Using the proposal draw stream for both selection and evaluation remains
-forbidden because the resulting nonnegative "regret" would be an in-sample
-tautology rather than evidence.
+frequency induced by the exact production MCBot completion algorithm on
+small-support late-game information sets; deduplicating or sampling without
+replacement would change that algorithmic target, and requiring cross-cohort
+hidden-world disjointness is impossible when the compatible support is small.
+This packet does **not** claim that first-feasible randomized backtracking is a
+calibrated Bayesian posterior. Its estimand is explicitly performance under
+the production sampler's constraint-consistent completed-world distribution.
+The packet reports only counts of unique underlying worlds and cross-cohort
+overlap, never their identities. Draw-identity overlap, short draw population,
+relaxed-void world or public-state drift refuses the state. Using the proposal
+draw stream for both selection and evaluation remains forbidden because the
+resulting nonnegative "regret" would be an in-sample tautology rather than
+evidence.
 
 ## Frozen comparisons and outputs
 
@@ -108,8 +113,10 @@ For every state publish only actor-safe evidence:
 
 The terminal summary reports the equal-state-weight mean held-out delta,
 positive/zero/negative state counts, natural decision-flip dose, rank/role/
-horizon slices and a 5,000-replicate fixed-seed state-cluster percentile
-bootstrap interval. A truncated grid is descriptive only and emits no
+horizon slices and a 5,000-replicate fixed-seed capture-round-cluster
+percentile bootstrap interval. Records from the same engine round share one
+opaque cluster token and are always resampled together. A truncated grid is
+descriptive only and emits no
 bootstrap interval. Human states
 are not part of this first packet; a later descriptive transfer packet may use
 only human logs with complete server-side hidden truth and the same actor

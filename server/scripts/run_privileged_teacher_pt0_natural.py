@@ -37,7 +37,8 @@ AUTHORITY = {
     "training_authorized": False,
 }
 RECORD_KEYS = {
-    "schema", "capture_id_sha256", "trump_rank", "banker", "role",
+    "schema", "capture_id_sha256", "capture_round_cluster_sha256",
+    "trump_rank", "banker", "role",
     "remaining_hand_threshold", "public_state_sha256",
     "proposal_world_population_sha256", "proposal_world_count",
     "proposal_unique_underlying_world_count",
@@ -453,6 +454,7 @@ def _validate_packet_records(
         if (record["schema"] != active_core.NATURAL_PT0_RECORD_SCHEMA
                 or record["authority"] != AUTHORITY
                 or not _hex_sha256(record["capture_id_sha256"])
+                or not _hex_sha256(record["capture_round_cluster_sha256"])
                 or not _hex_sha256(record["public_state_sha256"])
                 or not _hex_sha256(record["proposal_world_population_sha256"])
                 or not _hex_sha256(record["evaluation_world_population_sha256"])

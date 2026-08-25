@@ -33,6 +33,9 @@ NATURAL_PT0_RECORD_SCHEMA = "privileged-teacher-pt0-natural-state-v1"
 ROLE_BUCKETS = ("banker-team", "attacker-team")
 REMAINING_HAND_THRESHOLDS = (2, 3)
 BASELINE_POLICIES = ("heuristic", "smart", "mc-s0-report-lcb")
+SAMPLER_ESTIMAND = (
+    "production-mcbot-constraint-sampler-algorithmic-distribution-v1")
+BOOTSTRAP_UNIT = "capture-round-cluster-v1"
 
 
 class NaturalPT0Error(PrivilegedTeacherPT0Error):
@@ -165,6 +168,8 @@ class NaturalPT0Design:
             "baseline_policies": list(self.baseline_policies),
             "baseline_seeds_per_state": self.baseline_seeds_per_state,
             "bootstrap_replicates": self.bootstrap_replicates,
+            "sampler_estimand": SAMPLER_ESTIMAND,
+            "bootstrap_unit": BOOTSTRAP_UNIT,
             "authority": self.authority(),
         }
 
@@ -204,7 +209,7 @@ def _role(rnd: object, seat: int) -> str:
 
 
 def _world_hash(rnd: object, *, actor: int, buried: Sequence[str]) -> str:
-    # This underlying-world identity is used only to count repeated posterior
+    # This underlying-world identity is used only to count repeated sampler
     # draws.  It is never included in a safe state record or used to choose an
     # action.
     payload = {"hands": [sorted(hand) for hand in rnd.hands],
@@ -365,7 +370,7 @@ def _sample_worlds(design: NaturalPT0Design, state: object, *, role: str,
         underlying_identity = _world_hash(
             world, actor=seat, buried=buried)
         draw_identity = hashlib.sha256(canonical_json_bytes([
-            NATURAL_PT0_SCHEMA, "posterior-draw", public, cohort,
+            NATURAL_PT0_SCHEMA, "constraint-sampler-draw", public, cohort,
             len(draws), underlying_identity,
         ])).hexdigest()
         draws.append((draw_identity, world))
@@ -373,10 +378,11 @@ def _sample_worlds(design: NaturalPT0Design, state: object, *, role: str,
         if len(draws) == count:
             break
     if len(draws) != count:
-        raise NaturalPT0Error("natural PT0 sampler attempt cap underfilled posterior draws")
+        raise NaturalPT0Error(
+            "natural PT0 sampler attempt cap underfilled constraint-consistent draws")
     ordered = sorted(draws)
     if len({identity for identity, _ in ordered}) != count:
-        raise NaturalPT0Error("natural PT0 posterior draw identity collision")
+        raise NaturalPT0Error("natural PT0 sampler draw identity collision")
     if any(pt0_public_state_sha256(world, perspective_seat=seat) != public
            for _, world in ordered):
         raise NaturalPT0Error("natural PT0 compatible world public fingerprint drift")
@@ -452,9 +458,17 @@ def _make_record(design: NaturalPT0Design, state: object, *, role: str,
     capture_id = hashlib.sha256(canonical_json_bytes([
         NATURAL_PT0_RECORD_SCHEMA, trump_rank, state.banker, role, threshold,
         public])).hexdigest()
+    # The capture round is an inference cluster: one natural round may supply
+    # several role/horizon records.  Hash the secret-derived round seed into an
+    # opaque grouping token so the terminal can preserve that dependence
+    # without publishing a replayable seed or hidden deal identity.
+    capture_round_cluster = hashlib.sha256(canonical_json_bytes([
+        NATURAL_PT0_RECORD_SCHEMA, "capture-round-cluster", round_seed,
+    ])).hexdigest()
     record = {
         "schema": NATURAL_PT0_RECORD_SCHEMA,
         "capture_id_sha256": capture_id,
+        "capture_round_cluster_sha256": capture_round_cluster,
         "trump_rank": trump_rank,
         "banker": state.banker,
         "role": role,
@@ -508,6 +522,30 @@ def _percentile(values: Sequence[Fraction], numerator: int,
     return ordered[index]
 
 
+def _capture_round_bootstrap(
+        state_rows: Sequence[tuple[Mapping[str, object], Fraction]], *,
+        replicates: int, rng: random.Random) -> tuple[list[Fraction], int]:
+    """Bootstrap opaque capture-round clusters, retaining all member states."""
+    clusters: dict[str, list[Fraction]] = {}
+    for record, state_mean in state_rows:
+        cluster = record.get("capture_round_cluster_sha256")
+        if (type(cluster) is not str or len(cluster) != 64
+                or any(char not in "0123456789abcdef" for char in cluster)):
+            raise NaturalPT0Error("natural PT0 capture round cluster drift")
+        clusters.setdefault(cluster, []).append(state_mean)
+    cluster_ids = tuple(sorted(clusters))
+    if not cluster_ids:
+        raise NaturalPT0Error("natural PT0 capture round population is empty")
+    bootstrap = []
+    for _ in range(replicates):
+        sampled_states = []
+        for _ in cluster_ids:
+            selected = cluster_ids[rng.randrange(len(cluster_ids))]
+            sampled_states.extend(clusters[selected])
+        bootstrap.append(_mean(sampled_states))
+    return bootstrap, len(cluster_ids)
+
+
 def summarize_natural_records(
         design: NaturalPT0Design, records: Sequence[Mapping[str, object]], *,
         complete: bool) -> dict[str, object]:
@@ -548,6 +586,9 @@ def summarize_natural_records(
         summary: dict[str, object] = {
             "policy": policy,
             "state_count": len(state_means),
+            "capture_round_cluster_count": len({
+                record["capture_round_cluster_sha256"] for record, _ in state_rows
+            }),
             "mean_held_out_delta": _fraction_payload(_mean(state_means)),
             "positive_state_count": positive,
             "zero_state_count": zero,
@@ -560,17 +601,19 @@ def summarize_natural_records(
         }
         if complete:
             rng = random.Random(_seed(
-                "natural-pt0-state-bootstrap", policy,
+                "natural-pt0-capture-round-bootstrap", policy,
                 hashlib.sha256(canonical_json_bytes(
                     [record["capture_id_sha256"]
                      for record in records])).hexdigest()))
-            bootstrap = [_mean([
-                state_means[rng.randrange(len(state_means))]
-                for _ in state_means])
-                for _ in range(design.bootstrap_replicates)]
+            bootstrap, cluster_count = _capture_round_bootstrap(
+                state_rows, replicates=design.bootstrap_replicates, rng=rng)
+            if cluster_count != summary["capture_round_cluster_count"]:
+                raise NaturalPT0Error(
+                    "natural PT0 capture round cluster reconstruction drift")
             summary["bootstrap_interval"] = {
-                "schema": "fixed-state-bootstrap-percentile-v1",
+                "schema": "fixed-capture-round-cluster-bootstrap-percentile-v1",
                 "replicates": design.bootstrap_replicates,
+                "cluster_count": cluster_count,
                 "lower_2_5_percent": _fraction_payload(
                     _percentile(bootstrap, 25, 1_000)),
                 "upper_97_5_percent": _fraction_payload(

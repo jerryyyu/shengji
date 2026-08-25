@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 11:17 EDT.
+Last reconciled: 2026-08-25 11:25 EDT.
 
 ## Immediate objective
 
@@ -146,10 +146,17 @@ green with the same three host/environment failures reproduced at stacked
 parent `5d3b129`. The real source/r12 wrapper indexes and broad derived hashes
 differ while their closed cache-determining identity matches exactly; changing
 a true training-population field changes it and unknown fields refuse. The
-score-free Perf receipt SHA is `3d3f8928…`. PR #147 remains draft and parked
-behind R4 recovery and PT1; it is not an active review request. Its successor
-still requires a fresh freeze/admission and one consolidated source+freeze
-review.
+score-free Perf receipt SHA is `3d3f8928…`. PR #147 remains draft and is not
+an active review request. Exact source is deployed cleanly at
+`/opt/belief-r5-index-bridge-2d4dfe8` with an isolated validation environment.
+The bounded score-free capacity/deadline preflight is now active on Performance
+Cloud as `belief-r5-preflights-2d4dfe8-r13.service`, invocation
+`8239a6ddc1634991a0f569a90e49c9e0`, under `MemoryMax=30G`, zero swap,
+`Restart=no` and a twelve-hour wall guard. It started at 11:24 EDT and currently
+reports phase 1/2 `capacity` (0% of the two serialized phases). It cannot create
+the scientific namespace, train, open calibration/test or authorize execution.
+After both receipts pass, Codex will build the complete fresh freeze and request
+one consolidated source+freeze review.
 
 ## PT1 preparation
 
@@ -186,7 +193,7 @@ provenance check. PT0 records are not reused as training/evaluation data.
 |---|---|---|
 | Mini | PT1 capacity finished; idle pending authenticated initialization/launch | Never rerun PT0; do not touch R4/R5. |
 | Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
-| Performance Cloud | R5 stopped pre-training; immutable reusable inputs preserved | Never retry/delete `r12`; successor work waits behind R4/PT1. |
+| Performance Cloud | R5 `r12` stopped pre-training and is preserved; exact PR #147 score-free capacity/deadline preflights active | Never retry/delete `r12`; preflights cannot initialize science or open calibration/test. |
 | Production | untouched | No deploy or policy change from research evidence. |
 
 ## Next operator sequence
@@ -197,8 +204,8 @@ provenance check. PT0 records are not reused as training/evaluation data.
    namespace and sole original-R4 test opening.
 3. Claude initializes and launches the already-PASSed 416-state PT1 Mini run
    once from the unchanged reviewed source; no further review round is needed.
-4. After R4/PT1 progress, publish the narrow R5 semantic-cache successor in one
-   consolidated source+freeze review. R5 remains confirmatory because it shares
-   R4's scientific population.
+4. Finish the active score-free R5 receipts, build its exact successor freeze,
+   then publish one consolidated source+freeze review. R5 remains confirmatory
+   because it shares R4's scientific population.
 5. Independently reproduce every terminal before any belief-to-gameplay or
    privileged-teacher-to-public-policy decision.

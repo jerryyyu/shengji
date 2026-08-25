@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md` and Git history. A request not listed here is
 > not active.
 
-Last reconciled: 2026-08-24 15:55 EDT.
+Last reconciled: 2026-08-24 21:38 EDT.
 
 ## Immediate objective
 
@@ -27,32 +27,28 @@ scientific replications.
 | host / unit | `shengji-cloud`; `belief-v2-r4-d2d466f-r1.service`, `Restart=no` |
 | evidence / ops | `/opt/belief-r4-evidence-d2d466f-r1`; `/opt/belief-r4-ops-d2d466f-r1` |
 
-R4 is active and untouched: stage 7/10 `training`, 79/85 supervisor tasks
-reconciled, task-weighted progress 96.17%, the primary and human full-data
-workers active, and the hard-geometry control plus 50%-scale workers complete,
-`NRestarts=0`, no failure task, no terminal and no
-test opening. Exact schedule progress is:
-
-- synthetic primary 103,300/118,800 = 86.95%;
-- hard-geometry label control reports protocol completion;
-- human mixture 105,099/119,040 = 88.28%;
-- synthetic 50%-scale 30/30 epochs = 100%.
+R4 is active and untouched: stage 7/10 `training`, 80/85 supervisor tasks
+reconciled and task-weighted progress 96.47%, with `NRestarts=0`, no failure
+task, no terminal and no test opening. All four epoch loops and manifests are
+complete: synthetic primary 30 epochs, human mixture 30, hard-geometry label
+permutation 26 and synthetic 50%-scale 30. The two full-data workers remain
+active only because each is reopening every saved epoch and independently
+recomputing calibration loss from the cached source population. That mandatory
+post-publish audit uses roughly four CPU cores per worker and has no finer
+progress counter; it is not more training and is not proof of convergence.
 
 All 832x16 synthetic captures, 30 human-capture tasks, 12,003 input-index
 units, 12,649 cache units, device qualification and 29 reference tasks sealed
 and independently reopened before training. Full-data cohorts have durable
 epoch journals/resume states; progress remains outcome-blind. Frozen training
-cap is 256 device-hours / 172,800 seconds. Graceful truncation may seal the
-best common epoch at the deadline but must not be described as convergence.
-Human test evidence is descriptive only at exact n=51.
-At the 15:55 EDT progress sample, the hard-geometry control worker had emitted
-its outcome-blind completion event; its curve and selection reason remain
-sealed. Primary and human respectively reported 86.95% and 88.28%, projecting
-roughly 4.9 and 4.4 hours remaining and leaving ample margin inside the frozen
-48-hour training cap. No curve value or test/outcome field was opened to make
-that operational estimate. Terminal review must classify each cohort as
-patience-stopped, full-epoch-complete or deadline-truncated from sealed evidence
-rather than treating worker completion as proof of convergence.
+cap was 256 device-hours / 172,800 seconds and all training sealed inside it.
+Human test evidence is descriptive only at exact n=51. After the two source
+re-score audits, the remaining supervisor tasks are final calibration, the sole
+test opening/terminal derivation and terminal verification. Current ETA is
+roughly two to four hours, with six hours as a conservative outside range.
+Terminal review must classify each cohort as patience-stopped,
+full-epoch-complete or deadline-truncated from sealed evidence rather than
+treating worker completion as convergence.
 
 R4 itself is a transient systemd unit, so its host-level success/restart/OOM
 and peak-memory fields would otherwise disappear immediately after completion.
@@ -248,10 +244,18 @@ The exact root-owned checkout is `/opt/belief-r5-50f2a88`; runtime equals the
 failed freeze byte-for-byte, including boot/native/Python/packages. The packet
 binds 64 batches, eight workers, 30 minutes, 24 GiB, zero swap and `Restart=no`.
 An independent reopen verified all five packet files and 157 source rows.
-The unit is not loaded, scratch/receipt are absent and every authority is false.
-The prior `b47ed10-v1` packet remains immutable but is superseded and must not run.
-V9 produced no receipt, so this is the single bounded diagnostic required by
-the stop rule: review source+launch once, then run it instead of v10.
+Claude's exact marker at canonical commit `a327f761` authorized one score-free
+execution. Unit `belief-r5-parent-profile-50f2a88-v2.service` then completed
+successfully with zero restarts: 64/64 sampled batches, eight workers, no test
+or outcome access and receipt SHA-256
+`569c23bbd9cee56e90bdefb07eb026534b6d578b3e78ce6f1fb99e896b5a2382`.
+The measured cache phase took 76.747 seconds wall / 375.476 process-tree CPU
+seconds for 14,160 decisions and emitted 181,848,590 direct plus 28,615,206
+overlay bytes. The full unit took about 17 minutes because exact reconstruction
+and canonical validation of the 311,250,588-byte input index is serial before
+the measured cache phase. An independent source-level receipt reopen is active;
+do not treat this quantile sample as full-capacity evidence or launch another
+full build. The prior `b47ed10-v1` packet remains immutable and superseded.
 
 Superseded v5--v7 diagnostics and the failed detached prep queue are preserved
 on Perf Cloud and recorded in `HANDOFF_REVIEW.md`. Collectively they established
@@ -293,8 +297,8 @@ authority. Do not reuse their partial scratch or prep queue.
   deployment authority and does not compete with R4/R5.
 
 Draft stacked PR #142 is pushed and clean at exact head
-`3f27ddbc38350ccffba53df15a66e410aa6a6765` over PR #135. Its exact newest
-five-file repair changes proposal and evaluation to independently seeded
+`17cb5f89c3ab0bd5c07d610dd69453afe0eee638` over PR #135. Its production
+five-file implementation changes proposal and evaluation to independently seeded
 posterior draws **with replacement**. Every draw has a unique,
 cohort-separated draw identity; repeated underlying worlds and cross-cohort
 underlying overlap are valid and publish only as counts. This preserves
@@ -304,92 +308,81 @@ battery passes 89 with two skips pure and 91/91 strict compiled,
 `git diff --check` passes and both PR CI jobs are green. Claude's consolidated
 review at ledger `b435e03` returned HOLD on exactly two missing same-altitude
 witnesses: cohort public-fingerprint mismatch and proposal/evaluation draw-ID
-overlap. A local uncommitted test-only repair now adds those two witnesses.
+overlap. Exact head `17cb5f8` adds only those two tests, +54/-0; production
+source is unchanged.
 Neutralizing the public-fingerprint comparison makes only its named test red;
 restoring it and neutralizing the draw-ID overlap comparison makes only that
 named test red. The clean PT0 battery is 53/53 and `git diff --check` passes.
 The broader PT0/endgame/native-parity/game battery is 109/109 in both pure
-and strict compiled modes.
-No production source changed. This repair still needs an authorized exact
-commit/push, fresh CI, and regenerated clean-head capacity/freeze artifacts
-before one narrow re-review; do not review the local bytes or old freeze.
+and strict compiled modes. Server and frontend CI pass at the exact head and
+merge state is CLEAN.
 
-The prior clean-head bounded Mini capacity sample completed all four records at
-16 proposal plus 16 evaluation draws/state in 7.04 seconds wall, with zero
-swaps, 110,608,384-byte maximum RSS and an independent byte-equal reopen. The
-formerly binding state validly reported 11/16 and 10/16 unique underlying
-worlds with six cross-cohort overlaps. The closed capacity root is
-`/private/tmp/shengji-pt0-natural-capacity-3f27ddb-c1`; receipt SHA-256 is
-`190c48b42f87fb1122dd5435cb9d2523a848c6938cf65e2b1ad3d3e9f2f158bd`
+The replacement clean-head bounded Mini capacity sample completed all four
+records at 16 proposal plus 16 evaluation draws/state in 6.83 seconds wall,
+with zero swaps, 114,327,552-byte maximum RSS and an independent byte-equal
+reopen. Its closed root is
+`/private/tmp/shengji-pt0-natural-capacity-17cb5f8-c1`; receipt SHA-256 is
+`b63db13402495c195ae8ed764feffe85605d1588fe3e2a54151ea75213ccb55d`
 and manifest SHA-256 is
-`b251ff98611a41e65851c0e1d7edc5f2669468512f9fd3cdcf363aaa7b23fa4e`.
-It is capacity-only, uses a distinct secret and has all authority false. It is
-preserved as evidence but will be superseded when the test-only repair gets an
-exact committed source head; do not use it to launch.
+`530485c197fb660b5e92131c0525074a1bffc801a665c0200633ffc372cb0293`.
+It is capacity-only, re-executes rather than reuses the prior bounded sample,
+uses a secret distinct from the scientific population and has all authority
+false.
 
-The prior immutable 104-state freeze is sealed at
-`/private/tmp/shengji-pt0-natural-freeze-3f27ddb-r1`. Its design SHA-256 is
+The replacement immutable 104-state freeze is sealed at
+`/private/tmp/shengji-pt0-natural-freeze-17cb5f8-r1`. Its design SHA-256 is
 `2ff49b3a47463079fb7e5733bb3dbc633949f5d6538e68bad0207668c148ccc7`,
 source-manifest SHA-256 is
-`53ee55df9cdef82fd87ef0f86bda1b02e30b0bf056ec6d68f312572f9a5d3775`,
+`42c86d5282bd95133c889b7eb2db62f75138bd24b368058f95d87e339b5e80e7`,
 freeze SHA-256 is
-`46c1191a4d8c5c502e236cdc8296ff31a7f1e829a09bea2782f6b863c91372bd`
+`53165e078bb4967e3caec0e2f3972165f4848f72e5a38a46674d19cd309b18d7`
 and freeze-manifest SHA-256 is
-`0d21d24c4cde7a109195b8ac3f7cbb623179ba5c7cd9a6a88fc101152ad59216`.
+`dbd8e589c9672a00e9b99e2f29e7fc3748c2e3fe7a50707dd07c9a854d633bf7`.
 The freeze independently binds 144 source/native files, exact Python/native/
 boot/Mini identity, the 13-rank x 2-banker x 2-role x 2-horizon grid, 16+16
 with-replacement draws, four baseline seeds, a 30-minute graceful deadline,
 4-GiB launchd RSS cap, no automatic restart, no manual resume and every
 execution/merge/gameplay/strength/deployment authority false. The launchd job
 is not loaded, the ops directory is empty and scientific run/output namespaces
-do not exist. It remains unopened and immutable but must be regenerated at the
-repaired exact source head; it has no execution authority.
+do not exist. It is unopened and immutable. Claude's 21:37 EDT entry accepted
+the repaired source witnesses but accidentally bound the superseded `3f27ddb`
+capacity/freeze; it cannot authenticate this replacement packet. One
+replacement-packet binding correction is required before execution.
 
-## Review queue — one active review, one locally repaired HOLD
+## Review queue — one active packet-binding correction
 
-### PT0 natural-state source + freeze — not yet reviewable
+### PT0 natural-state repaired source + replacement freeze
 
 PR #135's repaired foundation remains PASS at ledger `7cfef47`; never repeat
-that review. PR #142 head `3f27ddb` received HOLD at ledger `b435e03`; never
-issue a PASS against its old capacity/freeze packet. The two requested
-failing-direction witnesses are locally implemented and proven, but no review
-is requested until the exact test-only repair is committed/pushed, CI passes,
-and a new clean-head Mini capacity receipt plus 104-state freeze are sealed.
-At that point request exactly one narrow HOLD re-review covering the two tests,
-new source manifest and replacement capacity/freeze hashes. All execution,
-merge, training, gameplay, strength and deployment authority remains false.
+that review. PR #142 head `3f27ddb` received HOLD at ledger `b435e03`. Claude's
+21:37 EDT entry correctly closed both exact source-witness blockers at repaired
+head `17cb5f8`, but its execution paragraph re-opened and authorized the old
+`3f27ddb` freeze `46c1191a…72bd` instead of the requested replacement. That
+marker cross-binds two heads and is not executable; neither packet was launched.
 
-### R5 bounded parent profiler HOLD repair + launch
+Do not repeat the source review. Reopen only replacement capacity root
+`/private/tmp/shengji-pt0-natural-capacity-17cb5f8-c1` and replacement freeze
+`/private/tmp/shengji-pt0-natural-freeze-17cb5f8-r1`, then append a corrected
+`PRIVILEGED_TEACHER_PT0_NATURAL_SOURCE_FREEZE_V1_REVIEW` marker bound to exact
+source `17cb5f8`, capacity `b63db134…cb55d` / `530485c1…0293`, source manifest
+`42c86d52…80e7`, freeze `53165e07…18d7` and freeze manifest `dbd8e589…33bf7`.
+PR comment `5403903524` is the precise correction ask. If exact, authorize only
+one score-free 104-state Mini execution. All merge, retry, training, gameplay,
+strength, deployment and PT1 authority remains false.
 
-**This is a narrow re-review of one named witness blocker, not a v9 or broad
-source re-review.** PR #138 source and
-the v8 lineage are already PASS at ledger commit `780413e0`; V9 is closed
-`REFUSE_CAPACITY_TIMEOUT_NO_RECEIPT`. Do not inspect or interpret its partial
-cache contents and do not authorize v10. Claude's first PR #143 review at exact
-head `b47ed10e…e1a0` verified the complete four-file source/launch surface and
-returned HOLD only because the direct and overlay reopen comparisons lacked a
-witness. Review exact repaired head
-`50f2a88f8f6d95594bd8d92fa6546f0613915f15`, whose only delta from that HOLD
-head is `server/tests/test_belief_v2_cache_parent_profile.py` +42/-0, together
-with immutable Perf packet `/opt/belief-r5-parent-profile-freeze-50f2a88-v2`.
+### R5 bounded parent profiler — review closed, no review requested
 
-Verify the new parametrized witness drives the real `run()` path with a
-mismatched direct-cache receipt and mismatched overlay receipt, and that each
-case fails under exactly its corresponding comparison neutralization. Reopen
-all five repaired packet files and 157 source rows; confirm production profiler
-and parallel-cache hashes remain `34195d7d…ce63` and `924f65b2…3859`, runtime
-remains `812b11b3…bc21`, the unit is absent, scratch/receipt are absent, and
-every packet authority remains false.
-
-If clean, append one
-`BELIEF_R5_BOUNDED_PARENT_PROFILE_SOURCE_LAUNCH_V1_REVIEW` PASS marker bound to
-source `50f2a88f…1f15`, source manifest `a5187c40…e264`, runtime
-`812b11b3…bc21`, launch `ee021c3c…74ed`, packet `f983d4c0…f426` and manifest
-`45314733…9540`. That marker may authorize exactly one minutes-scale,
-score-free profiler execution only. It grants no full-capacity claim,
-scientific/retry/partial-reuse/test/training/gameplay/merge/strength/deployment
-authority. Do not request another source review unless reviewed bytes change.
-R4 terminal review remains separate and starts only after its terminal seals.
+Claude supplied the exact
+`BELIEF_R5_BOUNDED_PARENT_PROFILE_SOURCE_LAUNCH_V1_REVIEW` marker at canonical
+commit `a327f761b2b781b34fb2765138e9d08355a74e26`. Its one score-free execution
+completed successfully on Perf at exact head `50f2a88`: 64/64 sampled batches,
+zero restarts, no test/outcome access and receipt SHA-256
+`569c23bbd9cee56e90bdefb07eb026534b6d578b3e78ce6f1fb99e896b5a2382`.
+No new R5 review is requested. Independently reopen the receipt, derive the
+next recoverable full-capacity design from its phase measurements, and request
+one consolidated source+freeze review only after that successor is complete.
+Do not authorize v10, reinterpret failed v9 partials or treat the quantile
+sample as full capacity evidence.
 
 A narrow R4-only terminal audit repair is prepared locally at exact commit
 `51cf7c3` on branch `codex/belief-r4-terminal-rescore-audit`, based directly on
@@ -420,15 +413,18 @@ remember R4/R5 are not independent replications.
 
 ## Next operator sequence
 
-1. Monitor R4 without changing it; preserve the spent R5 root.
-2. Commit/push the local two-test PT0 HOLD repair only with explicit authority,
-   then regenerate its clean-head Mini capacity receipt and 104-state freeze.
-3. Obtain one narrow PT0 repaired-head+replacement-freeze PASS, then launch
-   that score-free 104-state packet exactly once; do not merge first.
-4. Obtain the narrow PR #143 HOLD re-review at exact head `50f2a88`, then
-   run the frozen 64-batch profiler exactly once instead of v10.
-5. Use the profiler result to design the next R5 cache-capacity proof; no
-   scientific R5 launch until a fresh capacity receipt and consolidated freeze
-   PASS exist.
-6. Independently reopen each scientific terminal, then decide whether belief advances to
-   gameplay-search design or closes/revises. Merge remains a separate choice.
+1. Monitor R4 without changing it; after the source re-score audits, reopen its
+   sole terminal once and preserve the spent R5 root.
+2. Obtain the one active PT0 replacement-packet binding correction for exact
+   head `17cb5f8`; the source verdict is already PASS and must not be repeated.
+3. Authenticate that marker, then launch the exact score-free 104-state Mini
+   packet once. Do not merge first and do not run another rehearsal.
+4. Independently reopen the PT0 terminal and decide whether the privileged
+   teacher has enough endgame signal to justify a larger/whole-game successor.
+5. Finish the independent R5 profiler-receipt reopen, then derive one
+   recoverable full-capacity successor from the measured serial-index and
+   full-scale memory-pressure bottlenecks. Do not launch blind v10.
+6. Request one consolidated R5 successor source+capacity+freeze review, then
+   run only after PASS. Independently reopen each scientific terminal and
+   decide whether belief advances to gameplay-search design or closes/revises.
+   Merge remains a separate choice.

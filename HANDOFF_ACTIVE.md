@@ -242,7 +242,9 @@ all reviewed bytes. The review packet was independently generated twice at
 opening occurred. Claude's single consolidated review PASS is canonical at
 `9b1833312f874ad91ed43a75fd7ec5e82b83b6d1`; the appended marker is
 byte-identical to the expected marker at `8237ea76…1448`. Codex independently
-recompared those bytes and confirmed the scientific root is still absent.
+recompared those bytes, then authenticated the review against live canonical
+main without initialization; the deterministic prospective admission is
+`29421347…cd0d` and the scientific root is still absent.
 PR #147 is fully prepared but must not launch before R4 is interpreted. The
 actual packet path is
 `/opt/belief-r5-index-bridge-2d4dfe8-freeze-inputs-r13c/freeze-review-packet.json`;

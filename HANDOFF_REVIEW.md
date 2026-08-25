@@ -3544,3 +3544,28 @@ The direct population governs. **This stage is not slightly over a four-hour wal
 **Scope, unchanged from the ask:** exactly one minutes-scale, score-free bounded parent-phase profile on `shengji-perf`. No freeze, no scientific execution, no training, no test opening, no merge, no strength or deployment claim, and **no v10 full build** — the `780413e` stop rule stands. The profiler's sealed receipts feed the bounded-sample cap derivation, which returns for its own review. — Claude
 
 BELIEF_R5_BOUNDED_PARENT_PROFILE_SOURCE_LAUNCH_V1_REVIEW {"deployment_authorized":false,"exact_head":"50f2a88f8f6d95594bd8d92fa6546f0613915f15","exact_parent":"b47ed10e46cff56165a75287ef002fec4be4e1a0","freeze_authorized":false,"gameplay_strength_screen_authorized":false,"launch_sha256":"ee021c3cb89fbb713d1a5fcee60aadffa00d678c9710eee93d3b28dd595674ed","manifest_sha256":"4531473320f7f833850fa3009b8c775fb730038186ecf19f27bbd2c21fc49540","merge_authorized":false,"one_score_free_bounded_profile_execution_authorized":true,"packet_root":"/opt/belief-r5-parent-profile-freeze-50f2a88-v2","packet_sha256":"f983d4c063365c76193e1e14577f0297898a6c36f97e24ee0fc6eba0eacbf426","runtime_sha256":"812b11b394b19fba7ef8207500fd959e99cf6efbd611e7b619879b00878cbc21","schema":"belief-r5-bounded-parent-profile-source-launch-v1-review-v1","scientific_execution_authorized":false,"source_manifest_sha256":"a5187c40fd944ff988556425ef38f67bdb4a77f91df938e9fbe6db965557e264","source_rows":157,"strength_claim_authorized":false,"supplies_missing_marker_for_prose_pass":"17:25 EDT entry","test_split_open_authorized":false,"training_authorized":false,"v10_full_build_authorized":false,"verdict":"PASS"}
+
+## 2026-08-24 21:40 EDT — the bounded profiler's sealed receipt names the R5 bottleneck: a **single-threaded parent `submit` path**, 52% of wall. Not the workers, not GC, and not fixable by the cap alone
+
+**The R5 lane has its first receipt in seven attempts.** `/opt/belief-r5-parent-profile-receipt-50f2a88-v2.json` (schema `belief-v2-r5-cache-parent-profile-v1`, `source_git 50f2a88f…1f15`) sealed on `shengji-perf`, with scratch and both reopened sample caches retained. Read as a terminal sealed artifact; it is score-free by construction (`synthetic_test_targets_opened: False`).
+
+**Phase decomposition, 64-batch bounded sample, `worker_count = 8`, total wall 76.747 s:**
+
+| phase | events | wall s | % wall | proc CPU s | caller-thread CPU s | max single s |
+|---|---|---|---|---|---|---|
+| `submit` | 64 | **39.908** | **52.0%** | 21.839 | **21.721** | 5.060 |
+| `wait` | 52 | **21.266** | **27.7%** | 0.040 | 0.007 | 2.442 |
+| `executor-shutdown` | 1 | 2.784 | 3.6% | 0.002 | 0.001 | 2.784 |
+| `direct-seal` | 1 | 0.390 | 0.5% | 0.384 | 0.384 | 0.390 |
+| `overlay-seal`, `emit`, `executor-construction`, `future-result` | — | 0.017 | 0.0% | — | — | — |
+| *unattributed* | — | 12.383 | 16.1% | — | — | — |
+
+**`submit` and `wait` together are 79.7% of wall, and both are parent-side.** The decisive number is `submit`'s **21.721 s of caller-thread CPU** — 54% of its own 39.908 s is the parent's single thread burning CPU, the rest blocking on executor backpressure. `wait` is 21.266 s at **0.007 s** thread CPU: the parent sitting idle. One `submit` event alone blocked **5.060 s**.
+
+**This names the bottleneck, and it is not what the lane has been fixing.** Eight workers cannot be fed faster than one parent thread can serialize for them. That is why the GC repair bought only ~4.6% (`a306ec7`), and it is the mechanism behind the prediction in that same entry that raising the memory cap alone could not add parallelism to this stage — confirmed here, but with a better remedy available than more wall: **reduce per-batch parent serialization cost** (shared-memory or pre-serialized payloads, fewer/larger submissions), rather than more workers, more cap, or more `RuntimeMaxSec`.
+
+**Worker occupancy for context:** `process_tree_cpu 375.476 s / 76.747 s wall = 4.89 cores mean` against 8 workers — **61%**, versus v9's 1.27 of 8 = **16%**. I am **not** attributing that gap to `submit` alone: this bounded sample runs at a fraction of a full build's memory footprint, so relieved reclaim pressure plausibly explains much of it. The two effects are not separated by this receipt.
+
+**Limits, stated because they matter.** The receipt itself asserts `quantile_sample_is_not_full_capacity_evidence: True`, and I am honoring that: **no wall extrapolation to a full build appears in this entry, and none should be read into it.** 64 of 3,521 primary batches is a deterministic quantile sample, not a capacity proof. **16.1% of wall is unattributed** by the phase table — a sixth of the run is simply not decomposed, and any submit-path work should be re-profiled rather than assumed to have closed it. Nothing here authorizes v10, a freeze, or any scientific execution; the `780413e`/`5e395f9` stop rule is untouched.
+
+**For the bounded-sample cap derivation:** it now has a target. Size the parent's submit path first — a cap derived while one thread serializes for eight workers would encode the bottleneck rather than remove it. — Claude (session `68f9c8bd`)

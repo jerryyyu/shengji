@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 12:23 EDT.
+Last reconciled: 2026-08-25 12:37 EDT.
 
 ## Immediate objective
 
@@ -21,39 +21,39 @@ true world. PT1 is isolated to Mini and cannot touch R4/R5.
 
 ## Review queue — three precise asks, one pass each
 
-### 1. PT1 current-boot refresh `r2` — REVIEW NEW CAPACITY/FREEZE ONLY
+### 1. PT1 PR #145 `95a142d` + `r3` — NARROW SOURCE REPAIR + FREEZE
 
-Do not repeat the source/design audit and do not launch. Exact source remains
-the already-PASSed PR #145 head
-`9ff7a2b3ca6704042d2394c5a57ff461171e4a93`; server/frontend CI and the prior
-104/104 source batteries remain unchanged. Claude's refusal at `5dea183` was
-operator-only. Codex then used the normal user Terminal/keychain environment:
-live GitHub review provenance authenticated successfully, but the unchanged
-controller refused before initialization with exact error
-`execution live runtime identity drift`. The sole live/frozen differences were
-the execution and capacity `boot_identity_sha256` fields; Mini had rebooted
-after the prior capacity/freeze. Both `r1` evidence roots remain absent and no
-deadline/one-shot slot was consumed.
+Review this once as the repaired-head successor to Claude's exact `r2` HOLD at
+`4620fac`; do not repeat the already-PASSed PT1 search/statistics/design audit.
+Exact head is `95a142de0f04e524c9ac0565ac8e541de26974af`, parent
+`9ff7a2b3ca6704042d2394c5a57ff461171e4a93`. The four-file delta changes only
+the Darwin boot primitive in both execution/capacity modules and adds one
+failing-direction witness per module. Darwin now hashes
+`kern.bootsessionuuid`; Linux still hashes `/proc/sys/kernel/random/boot_id`.
+Both full PT batteries are 106/106 green. Mutating either command back to
+`kern.boottime` turns its named witness red; both restore green. Live execution
+and capacity probes independently returned the same real session UUID hash
+`60b50967…11212` twice, while a simulated session-UUID change changes identity.
 
-Fresh current-boot score-free capacity at
-`/private/tmp/pt1-capacity-9ff7a2b-r2` completed 16/16 with ten workers and no
-truncation. Capacity SHA-256 is `583ab992…a08bd`; manifest SHA-256 is
-`7dd14653…fa10`. Recompute its six caps, verify score redaction and current boot,
-then review fresh freeze
-`/Users/jerryyu/Projects/pt1-freeze-9ff7a2b-r2.json` (SHA-256
-`96b490ff…24bb2`) and marker
-`/Users/jerryyu/Projects/pt1-review-marker-9ff7a2b-r2.json` (SHA-256
-`093a41c0…c445`). Fresh evidence root
-`/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r2` is absent. The exact
-freeze passes the real live source/runtime/capacity binding check. Versus `r1`,
-only 12 leaves change: the two boot hashes, three measured caps, their matching
-deadline, capacity/manifest hashes, marker hashes and the fresh evidence root;
-source, population, states, policy seeds, design and all authorities are
-identical. If exact, append the byte-identical new marker once and PASS this
-narrow runtime refresh. Jerry's standing PT1 launch GO remains in force; Codex
-will launch through the now-proven normal Terminal/keychain path after PASS.
-Every gameplay/strength/promotion/deployment/training/retry/merge authority
-remains false.
+Fresh score-free capacity at `/private/tmp/pt1-capacity-95a142d-r3` completed
+16/16 with ten workers and no truncation. Capacity SHA-256 is
+`f16a063821a1200f48bae5bf898510e4118693ee48ee45b1394318294872902f`;
+manifest SHA-256 is
+`56e1ba7cfe6b461a2886f4b6e21b2a72a2055d4b0a45415e4aa25ba8d1f94bd6`.
+Recompute the six caps and score redaction, then review freeze
+`/Users/jerryyu/Projects/pt1-freeze-95a142d-r3.json` (SHA-256
+`2352967a3a6963dc24cae05ea8ebe24bed26bac834a68ea6121d0b67a18a9860`)
+and marker `/Users/jerryyu/Projects/pt1-review-marker-95a142d-r3.json`
+(SHA-256
+`a9f6057fd65c7078335dfd080fc3c321554a57973179141fbd8681a0990d6f04`).
+The independent freeze rebuild is byte-identical, and the real live
+source/runtime/capacity binder passed twice after freeze. Fresh evidence root
+`/Users/jerryyu/Projects/shengji-pt1-evidence-95a142d-r3` is absent. If exact,
+append the byte-identical marker once and PASS this consolidated narrow repair
++ freeze. Jerry's standing PT1 launch GO carries over; Codex will launch once
+through the proven normal Terminal/keychain path after PASS. Every gameplay,
+strength, promotion, deployment, training, retry and merge authority remains
+false. The dead `r1`/`r2` freezes must never launch.
 
 ### 2. R4 completion PR #146 `721b5f` — CONSOLIDATED SOURCE + FREEZE
 
@@ -279,7 +279,7 @@ Primary `C-B` measures policy improvement after both receive perfect
 information; `B-A` measures value of information. The teacher must beat
 production MC with a positive held-out lower bound, not merely beat heuristic.
 
-Draft PR #145 exact pushed head `9ff7a2b` contains the three A/B/C search arms,
+Draft PR #145 exact pushed head `95a142d` contains the three A/B/C search arms,
 natural 416-state provider, exact state-bootstrap statistics and a bounded
 parallel Mini capacity preflight. It fails closed on
 underfilled production work before persistence. The population is 416 distinct
@@ -296,23 +296,26 @@ cannot publish a valid packet after deadline. One clean-head Mini capacity run
 completed 16/16 with ten workers and derived all six scientific caps. The exact
 416-state `r1` freeze and canonical non-circular review marker received a single
 consolidated PASS at `10cf7ad`; Jerry's GO is at `d348312`. Normal Terminal
-authentication is now proven, but a Mini reboot invalidated `r1`'s two explicit
-boot bindings. Fresh current-boot capacity/freeze `r2` is complete and awaits
-only the narrow review above. PT0 records are not reused as
-training/evaluation data.
+authentication is proven. Claude's `r2` audit then found the Darwin boot
+identity was incorrectly derived from the clock-adjustable `kern.boottime`,
+not a reboot event. Exact four-file head `95a142d` replaces it with stable
+`kern.bootsessionuuid` in both paths and carries two mutation-killing
+witnesses. Fresh `r3` capacity/freeze is complete, passes the live binder, and
+awaits only the narrow repaired-head review above. PT0 records are not reused
+as training/evaluation data.
 
 ## Fleet
 
 | host | current use | invariant |
 |---|---|---|
-| Mini | PT1 current-boot capacity/freeze `r2` complete; idle pending one narrow marker review | Never rerun PT0; do not touch R4/R5; launch only after exact `r2` PASS. |
+| Mini | PT1 stable-boot repair + `r3` capacity/freeze complete; idle pending one narrow repaired-head review | Never rerun PT0; do not touch R4/R5; launch only after exact `r3` PASS. |
 | Strength Cloud | R4 audit and fresh completion freeze PASS locally; idle pending consolidated PR #146 review | Never restart or alter the original R4 namespace. |
 | Performance Cloud | R5 `r12` preserved; PR #147 exact-native freeze/review packet complete; idle pending review and R4 interpretation | Never retry/delete `r12`; do not launch R5 ahead of R4's decision. |
 | Production | untouched | No deploy or policy change from research evidence. |
 
 ## Next operator sequence
 
-1. Claude reviews the PT1 `r2` runtime refresh and PR #146 R4 completion packet;
+1. Claude reviews the PT1 `r3` narrow repair/freeze and PR #146 completion packet;
    after their independent PASS markers, Codex launches both isolated runs.
 2. Codex independently reproduces and interprets R4's terminal before any R5
    execution decision.

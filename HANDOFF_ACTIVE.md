@@ -90,6 +90,31 @@ semantic cache reuse, graceful deadline truncation, a 30 GiB memory cap and a
 48-hour wall cap. Launch once after R4 interpretation, then independently
 reopen its terminal before any gameplay decision.
 
+The exact one-shot outer launch envelope is fixed below. The four-day service
+ceiling is deliberately outside the frozen 48-hour training-stage deadline so
+deadline truncation has time to seal and the remaining terminal stages can
+finish. Do not add `--collect`, restart policy, swap, or an alternate source,
+review commit, evidence root, or launcher.
+
+```sh
+systemd-run --unit=belief-v2-r5-2d4dfe8-r13c \
+  --property=Type=exec \
+  --property=WorkingDirectory=/opt/belief-r5-index-bridge-2d4dfe8/server \
+  --property=MemoryMax=32212254720 \
+  --property=MemorySwapMax=0 \
+  --property=RuntimeMaxSec=4d \
+  --property=Restart=no \
+  --property=KillMode=control-group \
+  --property=TimeoutStopSec=2min \
+  --property=OOMPolicy=stop \
+  --property=StandardOutput=journal \
+  --property=StandardError=journal \
+  --setenv=PYTHONPATH= \
+  /bin/bash \
+  /opt/belief-r5-index-bridge-2d4dfe8-review-support-r13c/launch-r5.sh \
+  9b1833312f874ad91ed43a75fd7ec5e82b83b6d1
+```
+
 ### PT1 `r3` — spent at 0/416; repair not yet ready for review
 
 | binding | exact value |

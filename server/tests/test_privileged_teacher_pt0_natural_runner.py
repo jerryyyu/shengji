@@ -109,11 +109,14 @@ def test_noncanonical_design_refused(tmp_path, source):
 def test_frozen_design_is_canonical_and_pins_the_104_state_grid():
     raw = _FROZEN_DESIGN.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == \
-        "450a1b0faf66ffe6f2a2bab061ce3a2feaad0ceaebe4cc84bc9e5182633b8b5a"
+        "f4001fcd3db02bee1ae85963971d610795fa0703c43ff84bce1a99b9ad9237c6"
     design = runner._design_from_bytes(raw)
     assert len(design.bucket_keys) == 104
     assert design.proposal_worlds_per_state == 16
     assert design.evaluation_worlds_per_state == 16
+    assert design.payload()["bootstrap_unit"] == "capture-round-cluster-v1"
+    assert design.payload()["sampler_estimand"] == (
+        "production-mcbot-constraint-sampler-algorithmic-distribution-v1")
     assert design.baseline_seeds_per_state == 4
     assert design.bootstrap_replicates == 5_000
     assert b"round_seeds" not in raw
@@ -353,5 +356,15 @@ def test_underlying_world_count_bounds_are_load_bearing(
     _run(tmp_path, source)
     packet = json.loads((tmp_path / "bundle" / "packet.json").read_text())
     packet["records"][0]["proposal_unique_underlying_world_count"] = 0
+    with pytest.raises(runner.RunnerRefused, match="identity drift"):
+        runner._validate_packet_records(_design(), packet["records"])
+
+
+def test_capture_round_cluster_identity_is_load_bearing(
+        monkeypatch, tmp_path, source):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    _run(tmp_path, source)
+    packet = json.loads((tmp_path / "bundle" / "packet.json").read_text())
+    packet["records"][0]["capture_round_cluster_sha256"] = "not-a-sha"
     with pytest.raises(runner.RunnerRefused, match="identity drift"):
         runner._validate_packet_records(_design(), packet["records"])

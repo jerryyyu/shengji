@@ -83,6 +83,12 @@ def test_same_seed_packet_is_byte_reproducible(monkeypatch):
     }
     assert all(row["bootstrap_interval"]["replicates"] == 5_000
                for row in first["summary"]["policy_summaries"])
+    assert all(
+        row["bootstrap_interval"]["schema"]
+        == "fixed-capture-round-cluster-bootstrap-percentile-v1"
+        and row["bootstrap_interval"]["cluster_count"]
+        == row["capture_round_cluster_count"]
+        for row in first["summary"]["policy_summaries"])
     assert all({row["dimension"] for row in policy["descriptive_slices"]} == {
         "trump_rank", "banker", "role", "remaining_hand_threshold",
     } for policy in first["summary"]["policy_summaries"])
@@ -200,6 +206,59 @@ def test_held_out_summary_preserves_negative_teacher_delta(monkeypatch):
     } for row in summary["policy_summaries"])
     assert all(row["negative_state_count"] == 4
                for row in summary["policy_summaries"])
+
+
+def test_round_cluster_identity_matches_shared_capture_round(monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    design = _design()
+    captured = capture_natural_states(design, capture_secret=CAPTURE_SECRET)
+    packet = run_natural_packet(
+        design, capture_secret=CAPTURE_SECRET,
+        state_capture=lambda _: captured)
+    seed_by_key = {
+        key: state._natural_round_seed for key, state in captured.items()
+    }
+    cluster_by_seed: dict[int, set[str]] = {}
+    seed_by_cluster: dict[str, set[int]] = {}
+    for record in packet["records"]:
+        key = (record["trump_rank"], record["banker"], record["role"],
+               record["remaining_hand_threshold"])
+        seed = seed_by_key[key]
+        cluster = record["capture_round_cluster_sha256"]
+        cluster_by_seed.setdefault(seed, set()).add(cluster)
+        seed_by_cluster.setdefault(cluster, set()).add(seed)
+    assert all(len(clusters) == 1 for clusters in cluster_by_seed.values())
+    assert all(len(seeds) == 1 for seeds in seed_by_cluster.values())
+
+
+def test_summary_bootstraps_shared_capture_rounds_as_whole_clusters(monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    design = _design()
+    packet = run_natural_packet(design, capture_secret=CAPTURE_SECRET)
+    records = copy.deepcopy(packet["records"])
+    assert len(records) == 4
+    for index, record in enumerate(records):
+        record["capture_round_cluster_sha256"] = (
+            "a" * 64 if index < 3 else "b" * 64)
+        for baseline in record["baselines"]:
+            baseline["evaluation_delta_pt0_minus_baseline"] = {
+                "numerator": 1 if index < 3 else -1,
+                "denominator": 1,
+            }
+    from shengji.rl.privileged_teacher_pt0_natural import (
+        summarize_natural_records,
+    )
+    summary = summarize_natural_records(design, records, complete=True)
+    for policy in summary["policy_summaries"]:
+        interval = policy["bootstrap_interval"]
+        assert policy["capture_round_cluster_count"] == 2
+        assert interval["cluster_count"] == 2
+        assert interval["lower_2_5_percent"] == {
+            "numerator": -1, "denominator": 1,
+        }
+        assert interval["upper_97_5_percent"] == {
+            "numerator": 1, "denominator": 1,
+        }
 
 
 def test_bucket_completeness_refuses_missing_bucket(monkeypatch):

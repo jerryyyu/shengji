@@ -4,7 +4,7 @@
 > rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
 > here is not active.
 
-Last reconciled: 2026-08-25 09:15 EDT.
+Last reconciled: 2026-08-25 09:51 EDT.
 
 ## Immediate objective
 
@@ -19,18 +19,39 @@ fresh three-arm privileged-teacher acquisition screen whose primary bar is an
 improved exact/full-information teacher beating production MC given the same
 true world. PT1 is isolated to Mini and cannot touch R4/R5.
 
-## Review queue — empty until Codex publishes the next exact packet
+## Review queue — one exact consolidated ask
 
-Do not spend a review on work-in-progress bytes. Codex is preparing two
-independent packets, in this order:
+### 1. PT1 source + Mini capacity + freeze — REVIEW NOW
 
-1. one consolidated R4-completion source + exact Strength Cloud freeze; and
-2. one consolidated PT1 source + exact Mini capacity/freeze packet.
+Review draft PR #145 at exact head
+`9ff7a2b3ca6704042d2394c5a57ff461171e4a93` together with the single clean-head
+Mini packet below. This is one source+capacity+freeze review, not separate
+rounds.
 
-Both isolated source heads now exist, but neither exact host freeze exists yet.
-Do not review partial source without its packet. R5 has failed safely and has
-no active review request. Do not review, retry or relaunch the spent R5 `r12`
-admission.
+| field | exact binding |
+|---|---|
+| source / CI | `9ff7a2b3ca6704042d2394c5a57ff461171e4a93`; server + frontend SUCCESS |
+| capacity | `/private/tmp/pt1-capacity-9ff7a2b-r1/capacity.json`; SHA `da47183c8e7dd64d518c27c8c200c280cb37046f3b132b30658594e94c7c7e84` |
+| capacity manifest | `/private/tmp/pt1-capacity-9ff7a2b-r1/manifest.json`; SHA `7e5e1b03aac9655b35fb20c4ccadd6a3312c0906695c3e6a40facfb877a5055f` |
+| capacity result | Mini, 10 workers, 16/16 COMPLETE, score-redacted, no scientific namespace |
+| natural design | 416 distinct round clusters; SHA `47495a1f728e163ef0ebb68f4f9f5ac7d5cf3dd1c573fe81eabfc91dc69b9f7d` |
+| freeze | `/Users/jerryyu/Projects/pt1-freeze-9ff7a2b-r1.json`; SHA `9068ee08c75b21de62d7f718e4770ea4be909cf945f359af37f9622c2cfdda22` |
+| evidence / deadline | `/Users/jerryyu/Projects/shengji-pt1-evidence-9ff7a2b-r1`; `891212953733` ns |
+| marker file / SHA | `/Users/jerryyu/Projects/pt1-review-marker-9ff7a2b-r1.json`; `65630fbfe9b74898e1beb9c75b2079cfc85b60f9e3ade7535c745500b8fd9754` |
+
+The source passed 104/104 PT tests in both canonical pure and compiled modes.
+The final independent repair review PASSed authentic remote-review binding,
+deadline crossings before/after terminal publication, and output/group symlink
+refusal. If the consolidated packet passes, append exactly the canonical JSON
+line from the marker file to `HANDOFF_REVIEW.md` in one Claude-authored,
+single-parent, ledger-only commit on canonical main with the standard
+`Claude-Session:` trailer. That exact commit authorizes initialization and one
+scientific PT1 execution only; every gameplay/strength/promotion/deployment/
+training/retry/merge authority remains false.
+
+R4's consolidated source+freeze ask is next, after its current read-only cohort
+reopen and capacity proof finish. R5 has no active review request. Do not
+review, retry or relaunch the spent R5 `r12` admission.
 
 ## PT0 result — closed and interpreted
 
@@ -138,7 +159,7 @@ Primary `C-B` measures policy improvement after both receive perfect
 information; `B-A` measures value of information. The teacher must beat
 production MC with a positive held-out lower bound, not merely beat heuristic.
 
-Draft PR #145 exact pushed head `6fb85de` contains the three A/B/C search arms,
+Draft PR #145 exact pushed head `9ff7a2b` contains the three A/B/C search arms,
 natural 416-state provider, exact state-bootstrap statistics and a bounded
 parallel Mini capacity preflight. It fails closed on
 underfilled production work before persistence. The population is 416 distinct
@@ -149,19 +170,19 @@ exact solve is now shared across the four policy seeds per state, eliminating
 complete four-seed state groups. The capacity route measures ten-worker
 capture and evaluation, counts shared C work once, projects the full scientific
 wall/CPU/RSS/node/byte caps and retains no actions, values, points, raw seeds
-or hidden worlds. A first score-free computation finished all 16 capacity
-states but correctly refused to seal because the shared worktree changed while
-the scientific execution controller was being added; no capacity result
-exists. Codex is consolidating execution/recovery before taking one clean-head
-receipt. Existing tests are green, but the source/freeze packet is not final.
-Do not review or run it until Codex publishes one exact source+Mini-capacity+
-freeze request. PT0 records are not reused as training/evaluation data.
+or hidden worlds. The final execution controller preserves complete four-seed
+groups, resumes only within one frozen deadline, discards late waves, and
+cannot publish a valid packet after deadline. One clean-head Mini capacity run
+completed 16/16 with ten workers and derived all six scientific caps. The exact
+416-state freeze and canonical non-circular review marker are now in the review
+queue above. Do not initialize or run until that single consolidated review
+PASS lands. PT0 records are not reused as training/evaluation data.
 
 ## Fleet
 
 | host | current use | invariant |
 |---|---|---|
-| Mini | idle; PT1 execution source integration in progress, no sealed capacity receipt | Never rerun PT0; do not touch R4/R5. |
+| Mini | PT1 16-state capacity finished; idle while exact source+freeze review runs | Never rerun PT0; do not touch R4/R5. |
 | Strength Cloud | R4 stopped; immutable evidence preserved; read-only repaired calibration diagnostic active | Never restart or alter the original R4 namespace. |
 | Performance Cloud | R5 stopped pre-training; immutable reusable inputs preserved | Never retry/delete `r12`; successor work waits behind R4/PT1. |
 | Production | untouched | No deploy or policy change from research evidence. |
@@ -172,8 +193,8 @@ freeze request. PT0 records are not reused as training/evaluation data.
 2. Codex publishes one fresh R4-completion source+freeze request; Claude reviews
    it once at the exact head. Only a PASS may authorize the fresh completion
    namespace and sole original-R4 test opening.
-3. In parallel, Codex finishes PT1 statistics/runner, runs one score-free Mini
-   capacity proof and requests one consolidated PT1 source+freeze review.
+3. Claude reviews the one exact PT1 source+Mini-capacity+freeze packet above;
+   on PASS, Codex initializes and launches the 416-state Mini run once.
 4. After R4/PT1 progress, publish the narrow R5 semantic-cache successor in one
    consolidated source+freeze review. R5 remains confirmatory because it shares
    R4's scientific population.

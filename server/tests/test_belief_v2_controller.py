@@ -2924,6 +2924,48 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
     return human_selection, scale_curve
 
 
+def test_calibration_scoring_reports_progress_inside_each_population(
+        tmp_path, monkeypatch):
+    """A long calibration pass must advance before its whole arm completes."""
+    coordinates = tuple(SimpleNamespace(
+        split="calibration", round_seed=seed, trump_rank="2", lane=0)
+        for seed in (7101, 7102))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "v2_round_coordinates", lambda: coordinates)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_synthetic_scoring_round",
+        lambda *args, **kwargs: ("decision",))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_human_scoring_rounds",
+        lambda *args, group_digest, **kwargs: ((
+            hashlib.sha256(group_digest.encode()).hexdigest(), "2",
+            ("decision",)),))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "score_v2_round",
+        lambda **kwargs: SimpleNamespace(round_key=kwargs["round_key"]))
+    progress = []
+    callback = lambda completed, total, phase: progress.append(
+        (completed, total, phase))
+
+    synthetic = CALIBRATION_STAGE._score_synthetic(
+        tmp_path, SimpleNamespace(), SimpleNamespace(), (),
+        replicate="calibration-replicate-0", progress=callback,
+        progress_phase="synthetic-inner")
+    human = CALIBRATION_STAGE._score_human(
+        tmp_path, SimpleNamespace(), SimpleNamespace(), {
+            "splits": {"calibration": {
+                "group_digests": ["group-b", "group-a"]}}}, (),
+        replicate="calibration-replicate-0", progress=callback,
+        progress_phase="human-inner")
+
+    assert len(synthetic) == 2 and len(human) == 2
+    assert progress == [
+        (0, 2, "synthetic-inner"), (1, 2, "synthetic-inner"),
+        (2, 2, "synthetic-inner"), (0, 2, "human-inner"),
+        (1, 2, "human-inner"), (2, 2, "human-inner"),
+    ]
+
+
 def test_calibration_selection_wires_stability_and_selected_cohort(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()

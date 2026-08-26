@@ -1,10 +1,11 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 10:45 EDT.
+Last reconciled: 2026-08-26 11:24 EDT.
 
 Current operational truth only. Historical evidence belongs in
-`HANDOFF_REVIEW.md`. There is exactly **one active review ask**, PR #151 below.
-Do not repeat PT1, R4-source, earlier R5, or superseded freeze reviews.
+`HANDOFF_REVIEW.md`. There are exactly **two active review asks**: the
+consolidated R4 source+freeze review on PR #152 and the narrow PT-Full re-check
+on PR #151. Do not repeat PT1, earlier R4/R5, or superseded freeze reviews.
 
 ## Priority 1 — live R4: monitor only
 
@@ -12,9 +13,9 @@ Do not repeat PT1, R4-source, earlier R5, or superseded freeze reviews.
   `belief-r4-completion-e10cb3d-r3.service`.
 - Exact source: `e10cb3d3426d758f2d757d41462aba6a06bc60c8`.
 - Evidence root: `/opt/belief-r4-completion-v1-r3`.
-- Latest read-only sample at 09:29 EDT: active/running, `NRestarts=0`, no
-  terminal or failure artifact, about 18.5 GiB unit memory / 20.7 GB peak;
-  the scoring worker itself is about 6.1 GiB and 289% CPU.
+- Latest read-only sample at 11:22 EDT: active/running, `NRestarts=0`, no
+  calibration final/partial, test-attempt, terminal or terminal-partial
+  artifact; about 7.6 GiB current / 19.3 GiB peak unit memory.
 
 R4 remains inside its calibration phase. The coarse outer
 progress record is not a useful within-stage ETA: outer unit 1 alone scores all
@@ -28,13 +29,59 @@ bytes, or alter the host. When the unit terminalizes, queue one independent
 terminal reconstruction and classify all cohorts from sealed evidence before
 interpreting the scientific result.
 
-Codex is preparing draft PR #152, an exact-output parallel evaluator on Perf
-using a fresh completion namespace and a byte-for-byte copy of the already
-sealed R4 source artifacts. This is preparation, not an active review ask yet.
-The serial unit is the safety path and must not be stopped until the optimized
-path has completed all calibration, independently reopened it, and passed the
-explicit pre-test readiness check with both test namespaces untouched. Only
-then may one cutover precede the single test opening.
+Draft PR #152 is now the final exact head
+`d82ba224eb59a25014b076fb07116eaa6513934a`, stacked on reviewed R4 source
+`e10cb3d3426d758f2d757d41462aba6a06bc60c8`. It adds only exact-output
+parallel projection for calibration/test/reconstruction, progress telemetry,
+and an explicit read-only pre-test readiness gate. Neural inference and
+quantization remain serial and canonical; 16 forkserver workers perform only
+target-blind exact projection, and ordered reduction preserves bytes.
+
+The immutable Perf freeze is
+`/opt/belief-r4-parallel-completion-freeze-d82ba22-r1.json`, SHA-256
+`3070cff6cf9d391a0ac1ed6aa0f12ee57baa8266a3103b40e70171ae69508318`.
+The consolidated packet is
+`/opt/belief-r4-parallel-d82ba22-freeze-inputs-r1/freeze-review-packet.json`,
+SHA-256
+`25caad7e79615ef7cc042c1457b11259297bc59b33aab194e82a047bf60cfa84`.
+The expected marker is beside it as `expected-review-marker.txt`, SHA-256
+`414163234de2eb5aa9b4ca7a5a079790c51fb09553dfe927192efe1efd88c24e`.
+The destination evidence root `/opt/belief-r4-parallel-completion-v1-r1`
+and its consumption tombstone are absent; no calibration or test byte has
+been opened there.
+
+### Review queue — ask A: one consolidated PR #152 source+freeze review
+
+Review the exact head and packet once; do not split source, receipts, freeze,
+or cutover into later review rounds:
+
+1. Verify the nine-file delta against `e10cb3d`, including exact ordered
+   serial/parallel parity and the `r4-verify-calibration` can-fail boundary.
+   Local and exact-Perf strict selections are 75/75; CI is green. The fresh
+   32-task Perf receipt is byte-identical and measures 27.94 s serial versus
+   3.21 s parallel (`8.699891x`) with 16 workers.
+2. Reopen the freeze and every packet input. The sealed source transfer is
+   53,055,512,691 bytes / 59,495 files with file-metadata population SHA
+   `95d14f9a9576de9f4bc9d0d73c8d03a33e90c62f953374c63e2201528b218add`.
+   Fresh clean-head capacity is 6m33 wall / 1h39m54 CPU /
+   2.4 GiB peak; deadline derivation is 3m55 wall / 16m49 CPU / 3.2 GiB peak.
+   The resulting caps retain 48h wall and 24 GiB host memory.
+3. Confirm the packet's disclosed fail-closed preparation events: an ignored
+   duplicate native shadow, a stale pre-final-head seed registry, and a stale
+   local `origin/main` were each refused before freeze/evidence initialization;
+   fresh clean receipts/registry/ref were then used. A score-free review-helper
+   attribute error happened only after immutable freeze publication and did
+   not alter freeze bytes or initialize the evidence root.
+4. Confirm the cutover contract: PASS authorizes initialization and optimized
+   calibration only at first. The serial R4 stays live until optimized
+   calibration completes, independently reopens, and the read-only readiness
+   gate proves both test namespaces untouched. Only then may the serial unit
+   stop immediately before the single optimized test opening.
+
+If clean, append the packet's exact marker once. That one PASS is the only
+review requested; it authorizes the two-phase cutover above, but no capture,
+reference generation, training, retry, merge, gameplay, strength, promotion,
+or deployment.
 
 ## Priority 2 — PT1 is closed as a clean negative
 
@@ -64,7 +111,7 @@ world B, across 13 ranks and both partnership roles (26 roots / 52 comparison
 records / 130 played rounds). It is DEV-only and all scientific, gameplay,
 strength, promotion, deployment, merge and training authority is false.
 
-### Review queue — precise ask
+### Review queue — ask B: narrow PT-Full repaired-head re-check
 
 Perform only the promised narrow repaired-head re-check at exact
 `c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`:

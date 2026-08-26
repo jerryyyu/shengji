@@ -193,7 +193,7 @@ def freeze_design(args: argparse.Namespace) -> None:
         else stable_read_bytes(Path(args.v1_resource_failure_receipt)))
     freeze = build_execution_freeze_from_receipts(
         repo=REPO, expected_git=args.expected_git,
-        source_review_commit=args.source_review_commit,
+        source_review_commit=args.expected_git,
         v1_terminal_report_raw=terminal_raw,
         v1_resource_failure_receipt_raw=failure_raw,
         v2_reentry_rationale_raw=rationale_raw,
@@ -214,6 +214,7 @@ def freeze_design(args: argparse.Namespace) -> None:
         "freeze_path": str(output), "freeze_sha256": digest,
         "execution_git": freeze.execution_git,
         "source_review_commit": freeze.source_review_commit,
+        "source_review_mode": "consolidated-source-and-freeze",
         "training_candidate_device": freeze.training_candidate_device,
         "bounded_offline_pipeline_authorized": False,
         "execution_started": False,
@@ -598,7 +599,6 @@ def parser() -> argparse.ArgumentParser:
     close_v1.set_defaults(function=close_v1_resource_failure)
     freeze = commands.add_parser("freeze-design")
     freeze.add_argument("--expected-git", required=True)
-    freeze.add_argument("--source-review-commit", required=True)
     v1_route = freeze.add_mutually_exclusive_group(required=True)
     v1_route.add_argument("--v1-terminal-report")
     v1_route.add_argument("--v1-resource-failure-receipt")

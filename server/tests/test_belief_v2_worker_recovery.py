@@ -37,6 +37,68 @@ def _root_binding(module, monkeypatch, root):
     return freeze, admission
 
 
+def test_freeze_design_forces_one_consolidated_source_and_freeze_review(
+        tmp_path, monkeypatch):
+    module = _load_worker()
+    expected_git = "a" * 40
+    evidence = (tmp_path / "evidence").resolve()
+    output = (tmp_path / "freeze.json").resolve()
+    captured = {}
+
+    class Freeze:
+        execution_git = expected_git
+        source_review_commit = expected_git
+        training_candidate_device = "cpu"
+
+        @staticmethod
+        def canonical_bytes():
+            return b"freeze\n"
+
+        @staticmethod
+        def sha256():
+            return "b" * 64
+
+    monkeypatch.setattr(module, "stable_read_bytes", lambda _path: b"{}\n")
+    monkeypatch.setattr(
+        module, "resource_caps_from_bytes", lambda _raw: object())
+    monkeypatch.setattr(
+        module, "build_execution_freeze_from_receipts",
+        lambda **kwargs: captured.update(kwargs) or Freeze())
+    monkeypatch.setattr(
+        module, "publish_exclusive_bytes",
+        lambda path, raw: "b" * 64
+        if path == output and raw == b"freeze\n"
+        else (_ for _ in ()).throw(AssertionError("freeze publish drift")))
+    emitted = []
+    monkeypatch.setattr(module, "_output", emitted.append)
+    args = SimpleNamespace(
+        out=str(output), evidence_root=str(evidence),
+        expected_git=expected_git, v2_reentry_rationale=None,
+        v1_terminal_report="terminal.json",
+        v1_resource_failure_receipt=None, inventory="inventory.json",
+        group_split="split.json", preflight_result="preflight.json",
+        seed_scan="scan.json", seed_registry="registry.json",
+        training_candidate_device="cpu",
+        deadline_estimate_receipt="deadline.json",
+        resource_caps="caps.json")
+
+    module.freeze_design(args)
+
+    assert captured["source_review_commit"] == expected_git
+    assert emitted == [{
+        "freeze_path": str(output), "freeze_sha256": "b" * 64,
+        "execution_git": expected_git,
+        "source_review_commit": expected_git,
+        "source_review_mode": "consolidated-source-and-freeze",
+        "training_candidate_device": "cpu",
+        "bounded_offline_pipeline_authorized": False,
+        "execution_started": False,
+        "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }]
+
+
 def test_reference_recovery_uses_manifest_boundary_not_world_reopen(
         tmp_path, monkeypatch):
     module = _load_worker()

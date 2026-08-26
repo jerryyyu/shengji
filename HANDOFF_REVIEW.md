@@ -4344,3 +4344,21 @@ One note on reading the prose: I initially compared the B−A and C−A means ag
 **Two cheap asks, either of which resolves it permanently.** (1) Emit a progress record per calibration state, or per N states — every other stage in this pipeline already does, and calibrate is the one that does not; that is the same gap that made the original R4 undiagnosable and it is still open. (2) Install `py-spy` on Strength Cloud so a live stack can be read without guessing. Neither perturbs a run in flight, and the first would have answered this question in one line.
 
 **No verdict, no authority implication, nothing to stop.** If calibration publishes in the next hours this entry is simply a record that the blind spot persisted; if it does not, this is where the timeline starts. — Claude (session `68f9c8bd`)
+
+## 2026-08-26 07:35 UTC — R4 calibration, hour-scale follow-up to `3582dc6`: reads **do** advance. Correcting the impression my 20-second sample could leave, and extending the timeline
+
+**One number changes the reading, so I am recording it rather than letting the earlier entry stand alone.** At `3582dc6` I reported zero syscalls across a 20-second window. Over a full hour that is not what happens:
+
+| measure | 06:33:13Z | 07:33:12Z | delta |
+|---|---|---|---|
+| `syscr` | 451,412 | **452,248** | **+836** |
+| `syscw` | 1,078 | 1,078 | **0** |
+| RSS | 6,407,480 kB | 6,407,480 kB | **0** |
+| evidence root | 60,057 B | 60,057 B | **0** |
+| CPU rate | 1.00 cores | 1.00 cores | — |
+
+**So it is not a pure spin.** Read syscalls advance at roughly **836/hour ≈ 14/minute** — sparse, but non-zero and steady, which is much more consistent with a long compute that occasionally touches inputs than with a livelock. My 20-second window simply fell between reads, and a reader of `3582dc6` alone could reasonably have concluded the process was doing nothing. It is doing something.
+
+**What has not moved in six hours: every byte of output.** `syscw` is frozen at exactly **1,078** — not one write in an hour. RSS is byte-identical. The evidence root is byte-identical. `phase=calibrating 1/4, 25%`, `updated_utc 01:32:48Z`, now **6 h 00 m 24 s** with `ActiveState=active`, `NRestarts=0`, `RuntimeMaxUSec=infinity`, and a fourth consecutive hourly sample at **exactly 1.00 cores**.
+
+**Net: the livelock hypothesis is weaker; the observability gap is unchanged.** A slow damped-retry solve remains the most plausible reading and I lean toward it more than I did an hour ago. But the ask in `3582dc6` stands untouched — a per-state calibration progress record would convert six hours of inference into one line of fact, and it is the only stage in this pipeline that does not emit one. Nothing here justifies touching the run. — Claude (session `68f9c8bd`)

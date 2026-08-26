@@ -243,7 +243,7 @@ def test_parallel_groups_deadline_cannot_reset_on_resume(monkeypatch, tmp_path):
                         lambda: {})
     monkeypatch.setattr(execution, "validate_population", lambda *args: None)
     monkeypatch.setattr(execution, "verify_record", _fake_verify)
-    monkeypatch.setattr(execution, "reduce_pt1_statistics",
+    monkeypatch.setattr(execution, "reduce_reopened_pt1_statistics",
                         lambda *args: type("S", (), {"payload": lambda self: {"ok": True}})())
     monkeypatch.setattr(execution, "verify_statistics_report", lambda *args, **kwargs: None)
     clock = iter((0.0, 0.0, 2.0))
@@ -274,7 +274,7 @@ def test_deadline_during_finalization_cannot_publish_packet(monkeypatch, tmp_pat
                         lambda: {})
     monkeypatch.setattr(execution, "validate_population", lambda *args: None)
     monkeypatch.setattr(execution, "verify_record", _fake_verify)
-    monkeypatch.setattr(execution, "reduce_pt1_statistics",
+    monkeypatch.setattr(execution, "reduce_reopened_pt1_statistics",
                         lambda *args: type("S", (), {"payload": lambda self: {"ok": True}})())
     monkeypatch.setattr(execution, "verify_statistics_report", lambda *args, **kwargs: None)
     calls = 0
@@ -307,7 +307,7 @@ def test_deadline_after_terminal_writes_removes_late_packet(monkeypatch, tmp_pat
                         lambda: {})
     monkeypatch.setattr(execution, "validate_population", lambda *args: None)
     monkeypatch.setattr(execution, "verify_record", _fake_verify)
-    monkeypatch.setattr(execution, "reduce_pt1_statistics",
+    monkeypatch.setattr(execution, "reduce_reopened_pt1_statistics",
                         lambda *args: type("S", (), {"payload": lambda self: {"ok": True}})())
     monkeypatch.setattr(execution, "verify_statistics_report", lambda *args, **kwargs: None)
     calls = 0
@@ -343,8 +343,18 @@ def test_parallel_groups_complete_and_final_reopen(monkeypatch, tmp_path):
                         lambda: {})
     monkeypatch.setattr(execution, "validate_population", lambda *args: None)
     monkeypatch.setattr(execution, "verify_record", _fake_verify)
-    monkeypatch.setattr(execution, "reduce_pt1_statistics",
-                        lambda *args: type("S", (), {"payload": lambda self: {"ok": True}})())
+    reopened_calls = []
+
+    def reduce_reopened(_design, states, records):
+        assert len(states) == 416
+        assert {type(state) for state in states.values()} \
+            == {execution.PT1PopulationStateIdentity}
+        assert len(records) == 1664
+        reopened_calls.append(tuple(states))
+        return type("S", (), {"payload": lambda self: {"ok": True}})()
+
+    monkeypatch.setattr(execution, "reduce_reopened_pt1_statistics",
+                        reduce_reopened)
     monkeypatch.setattr(execution, "verify_statistics_report", lambda *args, **kwargs: None)
     root = tmp_path / "evidence"
     result = execution.run_execution(
@@ -360,6 +370,7 @@ def test_parallel_groups_complete_and_final_reopen(monkeypatch, tmp_path):
         root, freeze, capture_secret=SCIENTIFIC, population=states,
         review_marker=execution.canonical_json_bytes(dict(freeze.review_marker)),
         review_commit="4" * 40)["status"] == "COMPLETE"
+    assert reopened_calls == [KEYS, KEYS]
     wrong = dict(states)
     wrong[KEYS[0]] = replace(wrong[KEYS[0]], true_world_sha256="8" * 64)
     with pytest.raises(execution.PT1ExecutionError,
@@ -404,7 +415,7 @@ def test_actual_path_combines_parallel_capture_evaluation_and_child_cpu(
     monkeypatch.setattr("shengji.rl.privileged_teacher_pt1_capacity._runtime_identity",
                         lambda: {})
     monkeypatch.setattr(execution, "verify_record", _fake_verify)
-    monkeypatch.setattr(execution, "reduce_pt1_statistics",
+    monkeypatch.setattr(execution, "reduce_reopened_pt1_statistics",
                         lambda *args: type("S", (), {"payload": lambda self: {"ok": True}})())
     monkeypatch.setattr(execution, "verify_statistics_report", lambda *args, **kwargs: None)
     states = _states()

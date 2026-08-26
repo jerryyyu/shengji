@@ -37,7 +37,8 @@ from .privileged_teacher_pt1_natural import (
     _capture_round_seed, _cluster_sha256, _first_eligible, _state_from_round,
     capture_natural_states, validate_population)
 from .privileged_teacher_pt1_statistics import (
-    POLICY_SEEDS, PT1StatisticsReport, reduce_pt1_statistics,
+    POLICY_SEEDS, PT1PopulationStateIdentity, PT1StatisticsReport,
+    reduce_reopened_pt1_statistics,
     verify_statistics_report)
 
 
@@ -700,7 +701,7 @@ def _scientific_worker(payload: tuple[NaturalPT1Design, bytes, tuple]) -> tuple:
     key, state = _capture_one_state(payload)
     records = evaluate_state_batch(
         state.public_round, state.true_world, seeds=POLICY_SEEDS)
-    identity = _ReopenedNaturalState(
+    identity = PT1PopulationStateIdentity(
         state.rank, state.banker, state.role,
         state.remaining_hand_threshold, state.replicate, state.round_seed,
         state.capture_round_cluster_sha256, state.capture_id_sha256,
@@ -897,14 +898,11 @@ def _truncate_at_deadline(freeze: PT1ExecutionFreeze, root: Path,
             "authority": dict(AUTHORITIES)}
 
 
-def _verify_group(path: Path, index: int,
-                  state: NaturalPT1State | None = None, *,
-                  key: tuple | None = None) -> dict[str, object]:
-    info = path.lstat()
-    if (not path.is_file() or path.is_symlink() or info.st_nlink != 1
-            or (info.st_mode & 0o777) != 0o400):
-        raise PT1ExecutionError("execution group artifact missing or unsafe")
-    value = _canonical_load(path.read_bytes(), f"execution group {index}")
+def _verify_group_bytes(raw: bytes, index: int,
+                        state: NaturalPT1State | None = None, *,
+                        key: tuple | None = None) -> dict[str, object]:
+    """Verify the exact group bytes supplied by the caller."""
+    value = _canonical_load(raw, f"execution group {index}")
     expected_fields = {"schema", "index", "state_key", "state_schema", "round_seed",
                        "capture_round_cluster_sha256", "capture_id_sha256",
                        "public_state_sha256",
@@ -973,24 +971,21 @@ def _verify_group(path: Path, index: int,
     return value
 
 
-@dataclass(frozen=True)
-class _ReopenedNaturalState:
-    rank: str
-    banker: int
-    role: str
-    remaining_hand_threshold: int
-    replicate: int
-    round_seed: int
-    capture_round_cluster_sha256: str
-    capture_id_sha256: str
-    public_state_sha256: str
-    true_world_sha256: str
-    schema: str = NATURAL_PT1_STATE_SCHEMA
+def _verify_group(path: Path, index: int,
+                  state: NaturalPT1State | None = None, *,
+                  key: tuple | None = None) -> dict[str, object]:
+    info = path.lstat()
+    if (not path.is_file() or path.is_symlink() or info.st_nlink != 1
+            or (info.st_mode & 0o777) != 0o400):
+        raise PT1ExecutionError("execution group artifact missing or unsafe")
+    return _verify_group_bytes(
+        _immutable_bytes(path, f"execution group {index}"), index,
+        state, key=key)
 
 
-def _state_from_group(group: Mapping[str, object]) -> _ReopenedNaturalState:
+def _state_from_group(group: Mapping[str, object]) -> PT1PopulationStateIdentity:
     key = group["state_key"]
-    return _ReopenedNaturalState(
+    return PT1PopulationStateIdentity(
         key[0], key[1], key[2], key[3], key[4], group["round_seed"],
         group["capture_round_cluster_sha256"], group["capture_id_sha256"],
         group["public_state_sha256"], group["true_world_sha256"])
@@ -1063,7 +1058,7 @@ def _validate_resource_overages(value: object) \
 def _validate_group_population(design: NaturalPT1Design,
                                groups: Sequence[Mapping[str, object]],
                                population_manifest: Mapping[str, object] | None = None) \
-        -> dict[tuple, _ReopenedNaturalState]:
+        -> dict[tuple, PT1PopulationStateIdentity]:
     if len(groups) != TARGET_STATE_COUNT:
         raise PT1ExecutionError("execution natural population incomplete")
     states = {}
@@ -1435,7 +1430,8 @@ def run_execution(
         natural, all_groups, typed.population_manifest)
     records = [record for group in all_groups for record in group["records"]]
     typed_records = tuple(verify_record(record) for record in records)
-    statistics = reduce_pt1_statistics(natural, states, typed_records)
+    statistics = reduce_reopened_pt1_statistics(
+        natural, states, typed_records)
     verify_statistics_report(statistics, design=natural)
     if monotonic() >= deadline:
         return _truncate_at_deadline(typed, root, completed)
@@ -1562,7 +1558,7 @@ def verify_execution(output_root: str | os.PathLike[str],
         verified_groups.append(_verify_group(
             groups / f"group-{index:04d}.json", index,
             states[natural.state_keys[index]], key=natural.state_keys[index]))
-    _validate_group_population(
+    reopened_states = _validate_group_population(
         natural, verified_groups, typed.population_manifest)
     packet_raw = _immutable_bytes(root / PACKET_NAME, "execution packet")
     manifest_raw = _immutable_bytes(root / MANIFEST_NAME, "execution manifest")
@@ -1604,7 +1600,7 @@ def verify_execution(output_root: str | os.PathLike[str],
         raise PT1ExecutionError("execution manifest hash drift")
     if statistics_design is not None:
         verify_statistics_report(packet["statistics"], design=statistics_design)
-    reconstructed = reduce_pt1_statistics(natural, states, tuple(
+    reconstructed = reduce_reopened_pt1_statistics(natural, reopened_states, tuple(
         verify_record(record) for group in verified_groups
         for record in group["records"]))
     if reconstructed.payload() != packet.get("statistics"):

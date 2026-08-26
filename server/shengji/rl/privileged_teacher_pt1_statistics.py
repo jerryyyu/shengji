@@ -21,7 +21,7 @@ from .privileged_teacher_pt1 import (
 )
 from .privileged_teacher_pt1_natural import (
     NATURAL_PT1_STATE_SCHEMA, TARGET_STATE_COUNT, NaturalPT1Design,
-    NaturalPT1State, validate_population,
+    NaturalPT1State, _capture_id_sha256, _cluster_sha256, validate_population,
 )
 
 
@@ -38,6 +38,29 @@ REFUSED_STATUS = "REFUSED"
 
 class PT1StatisticsError(PrivilegedTeacherPT1Error):
     """The PT1 population or aggregate failed closed."""
+
+
+@dataclass(frozen=True)
+class PT1PopulationStateIdentity:
+    """Manifest-bound state identity reopened from a sealed execution group.
+
+    This is intentionally not a substitute for ``NaturalPT1State`` at capture
+    or evaluation time.  It exists only so terminal reduction can consume the
+    exact identities already validated against the frozen population manifest
+    without reconstructing private ``Round`` objects after scores are sealed.
+    """
+
+    rank: str
+    banker: int
+    role: str
+    remaining_hand_threshold: int
+    replicate: int
+    round_seed: int
+    capture_round_cluster_sha256: str
+    capture_id_sha256: str
+    public_state_sha256: str
+    true_world_sha256: str
+    schema: str = NATURAL_PT1_STATE_SCHEMA
 
 
 def _sha(value: object, label: str) -> str:
@@ -89,7 +112,8 @@ def _record_deltas(record: PT1Record) -> tuple[int, int, int]:
 
 def _population_identity(
         design: NaturalPT1Design,
-        population: Mapping[tuple[str, int, str, int, int], NaturalPT1State]) -> str:
+        population: Mapping[tuple[str, int, str, int, int],
+                            NaturalPT1State | PT1PopulationStateIdentity]) -> str:
     rows = []
     for key in design.state_keys:
         state = population[key]
@@ -230,22 +254,80 @@ def _require_fixed_seeds(seeds: Sequence[int]) -> tuple[int, ...]:
     return POLICY_SEEDS
 
 
-def reduce_pt1_statistics(
+def validate_reopened_population(
         design: NaturalPT1Design,
-        population: Mapping[tuple[str, int, str, int, int], NaturalPT1State],
-        records: Sequence[PT1Record | Mapping[str, object] | bytes], *,
-        seeds: Sequence[int] = POLICY_SEEDS,
-        bootstrap_seed: int = BOOTSTRAP_SEED) -> PT1StatisticsReport:
-    """Verify and reduce exactly one four-seed record set per natural state."""
+        population: Mapping[tuple[str, int, str, int, int],
+                            PT1PopulationStateIdentity]) -> None:
+    """Validate the identity-only population produced by group reopening.
+
+    Full public/hidden mechanics are validated before evaluation and bound by
+    the frozen population manifest.  This terminal boundary revalidates every
+    identity field, derivation and uniqueness property that remains available
+    after the live capabilities have deliberately been discarded.
+    """
     if type(design) is not NaturalPT1Design:
-        raise PT1StatisticsError("statistics require NaturalPT1Design")
+        raise PT1StatisticsError("reopened statistics require NaturalPT1Design")
+    if not isinstance(population, Mapping) \
+            or set(population) != set(design.state_keys):
+        raise PT1StatisticsError("reopened population cells incomplete or duplicated")
+    round_seeds: set[int] = set()
+    clusters: set[str] = set()
+    capture_ids: set[str] = set()
+    public_true: set[tuple[str, str]] = set()
+    for key in design.state_keys:
+        state = population[key]
+        if (type(state) is not PT1PopulationStateIdentity
+                or type(state.rank) is not str
+                or type(state.banker) is not int
+                or isinstance(state.banker, bool)
+                or type(state.role) is not str
+                or type(state.remaining_hand_threshold) is not int
+                or isinstance(state.remaining_hand_threshold, bool)
+                or type(state.replicate) is not int
+                or isinstance(state.replicate, bool)
+                or key != (state.rank, state.banker, state.role,
+                           state.remaining_hand_threshold, state.replicate)):
+            raise PT1StatisticsError("reopened population state identity drift")
+        if state.schema != NATURAL_PT1_STATE_SCHEMA:
+            raise PT1StatisticsError("reopened population state schema drift")
+        if (type(state.round_seed) is not int or state.round_seed < 0
+                or state.capture_round_cluster_sha256
+                != _cluster_sha256(state.round_seed)
+                or state.capture_id_sha256 != _capture_id_sha256(
+                    state.rank, state.banker, state.role,
+                    state.remaining_hand_threshold, state.replicate,
+                    state.public_state_sha256)):
+            raise PT1StatisticsError("reopened population derivation drift")
+        for value, label in (
+                (state.capture_round_cluster_sha256, "capture cluster"),
+                (state.capture_id_sha256, "capture identity"),
+                (state.public_state_sha256, "public state"),
+                (state.true_world_sha256, "true world")):
+            _sha(value, f"reopened {label}")
+        identity = (state.public_state_sha256, state.true_world_sha256)
+        if (state.round_seed in round_seeds
+                or state.capture_round_cluster_sha256 in clusters
+                or state.capture_id_sha256 in capture_ids
+                or identity in public_true):
+            raise PT1StatisticsError("reopened population duplicate identity")
+        round_seeds.add(state.round_seed)
+        clusters.add(state.capture_round_cluster_sha256)
+        capture_ids.add(state.capture_id_sha256)
+        public_true.add(identity)
+    if len(round_seeds) != TARGET_STATE_COUNT:
+        raise PT1StatisticsError("reopened population coverage drift")
+
+
+def _reduce_prevalidated_pt1_statistics(
+        design: NaturalPT1Design,
+        population: Mapping[tuple[str, int, str, int, int],
+                            NaturalPT1State | PT1PopulationStateIdentity],
+        records: Sequence[PT1Record | Mapping[str, object] | bytes], *,
+        seeds: Sequence[int], bootstrap_seed: int) -> PT1StatisticsReport:
+    """Reduce a population whose appropriate validator already succeeded."""
     fixed_seeds = _require_fixed_seeds(seeds)
     if bootstrap_seed != BOOTSTRAP_SEED:
         raise PT1StatisticsError("PT1 requires the fixed bootstrap seed")
-    try:
-        validate_population(design, population)
-    except (PrivilegedTeacherPT0Error, PrivilegedTeacherPT1Error) as exc:
-        raise PT1StatisticsError("natural population integrity refusal") from exc
     if not isinstance(records, Sequence) or isinstance(records, (str, bytes)):
         raise PT1StatisticsError("records must be a sequence")
     # Reopen every record before binding or calculating any aggregate.
@@ -311,7 +393,6 @@ def reduce_pt1_statistics(
         ("B_C", sum(row.action_flips_bc for row in rows), TOTAL_RECORD_COUNT),
         ("A_C", sum(row.action_flips_ac for row in rows), TOTAL_RECORD_COUNT),
     )
-    role_means = [row.mean_cb for row in rows]
     role_gate = all(_mean([r.mean_cb for r in rows if r.role == role]) >= 0
                     for role in ("banker-team", "attacker-team"))
     horizon_gate = all(_mean([r.mean_cb for r in rows
@@ -337,6 +418,38 @@ def reduce_pt1_statistics(
         len(verified), rows, strata, flip_totals, mean_cb, bootstrap_seed,
         BOOTSTRAP_REPLICATES, bootstrap_lcb,
         sum(row.mean_cb > 0 for row in rows), 0, gates, status, dict(AUTHORITY))
+
+
+def reduce_pt1_statistics(
+        design: NaturalPT1Design,
+        population: Mapping[tuple[str, int, str, int, int], NaturalPT1State],
+        records: Sequence[PT1Record | Mapping[str, object] | bytes], *,
+        seeds: Sequence[int] = POLICY_SEEDS,
+        bootstrap_seed: int = BOOTSTRAP_SEED) -> PT1StatisticsReport:
+    """Verify and reduce exactly one four-seed record set per natural state."""
+    if type(design) is not NaturalPT1Design:
+        raise PT1StatisticsError("statistics require NaturalPT1Design")
+    try:
+        validate_population(design, population)
+    except (PrivilegedTeacherPT0Error, PrivilegedTeacherPT1Error) as exc:
+        raise PT1StatisticsError("natural population integrity refusal") from exc
+    return _reduce_prevalidated_pt1_statistics(
+        design, population, records, seeds=seeds,
+        bootstrap_seed=bootstrap_seed)
+
+
+def reduce_reopened_pt1_statistics(
+        design: NaturalPT1Design,
+        population: Mapping[tuple[str, int, str, int, int],
+                            PT1PopulationStateIdentity],
+        records: Sequence[PT1Record | Mapping[str, object] | bytes], *,
+        seeds: Sequence[int] = POLICY_SEEDS,
+        bootstrap_seed: int = BOOTSTRAP_SEED) -> PT1StatisticsReport:
+    """Reduce exact group-reopened identities after manifest validation."""
+    validate_reopened_population(design, population)
+    return _reduce_prevalidated_pt1_statistics(
+        design, population, records, seeds=seeds,
+        bootstrap_seed=bootstrap_seed)
 
 
 def _report_from_payload(payload: Mapping[str, object]) -> PT1StatisticsReport:
@@ -498,8 +611,11 @@ run_pt1_statistics = reduce_pt1_statistics
 
 __all__ = [
     "BOOTSTRAP_REPLICATES", "BOOTSTRAP_SEED", "PASS_STATUS", "POLICY_SEEDS",
-    "PT1StatisticsError", "PT1StatisticsReport", "PT1StateStatistic",
+    "PT1PopulationStateIdentity", "PT1StatisticsError", "PT1StatisticsReport",
+    "PT1StateStatistic",
     "PT1StratumStatistic", "REFUSED_STATUS", "RECORDS_PER_STATE",
     "STATISTICS_REPORT_SCHEMA", "STATISTICS_SCHEMA", "TOTAL_RECORD_COUNT",
-    "reduce_pt1_statistics", "run_pt1_statistics", "verify_statistics_report",
+    "reduce_pt1_statistics", "reduce_reopened_pt1_statistics",
+    "run_pt1_statistics", "validate_reopened_population",
+    "verify_statistics_report",
 ]

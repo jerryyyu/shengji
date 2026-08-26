@@ -173,6 +173,19 @@ admission. A resource refusal additionally records every exceeded cap's name,
 observed value, frozen cap and exact excess so a sizing defect cannot collapse
 into an uninterpretable generic failure.
 
+A terminal-reducer defect discovered only after **all 416 groups** are sealed
+does not authorize another scientific attempt and does not make the spent root
+mutable. One separately reviewed terminal-only recovery may instead bind the
+original freeze, terminal failure receipt, progress/deadline receipts and the
+ordered SHA-256 of every immutable group. It writes to a fresh namespace,
+opens exactly all 416 groups in canonical state-key order, revalidates every
+group/record/frozen-population binding, and computes only the preregistered
+aggregate above. It cannot capture, evaluate, drop, replace or choose states;
+it cannot publish into the source root; and its marker keeps retry, gameplay,
+strength, promotion, deployment, training and merge authority false. A
+recovery failure is itself terminal. This is deterministic completion of an
+already fixed population, not a retry or a new sample.
+
 No R4 or R5 path, seed namespace, artifact, process, host lock or review marker
 is imported. Mini is the only PT1 host. PT1 may run concurrently with R4 on
 Strength Cloud and R5 preparation on Performance Cloud.
@@ -206,6 +219,11 @@ One consolidated source-and-freeze review binds the exact code head, this
 design, population commitments, Mini runtime/native identity, capacity receipt,
 caps, runner, progress/recovery contract, output manifest and all-false
 authority map. No scientific run starts before that PASS.
+
+For the exceptional all-groups-sealed recovery above, one consolidated
+source-and-recovery-freeze review replaces any further scientific-run review.
+It must bind the exact 416-hash group tree and the original terminal failure;
+no rehearsal or repeated scientific execution is required.
 
 A PT1 PASS authorizes only a separately reviewed PT2 evaluation of the accepted
 privileged teacher against an incumbent/checkpoint mixture on fresh mirrored

@@ -16,8 +16,9 @@ from shengji.rl import privileged_teacher_pt1 as pt1
 from shengji.rl import privileged_teacher_pt1_natural as natural
 from shengji.rl.privileged_teacher_pt1_statistics import (
     BOOTSTRAP_REPLICATES, POLICY_SEEDS, PT1StatisticsError,
-    PASS_STATUS, REFUSED_STATUS, TOTAL_RECORD_COUNT,
-    reduce_pt1_statistics, verify_statistics_report,
+    PASS_STATUS, PT1PopulationStateIdentity, REFUSED_STATUS,
+    TOTAL_RECORD_COUNT, reduce_pt1_statistics,
+    reduce_reopened_pt1_statistics, verify_statistics_report,
 )
 
 
@@ -96,6 +97,15 @@ def _records(design, population, *, cb: int = 1, ba: int = 0):
             for key in design.state_keys for seed in POLICY_SEEDS]
 
 
+def _reopened(design, population):
+    return {key: PT1PopulationStateIdentity(
+        state.rank, state.banker, state.role,
+        state.remaining_hand_threshold, state.replicate, state.round_seed,
+        state.capture_round_cluster_sha256, state.capture_id_sha256,
+        state.public_state_sha256, state.true_world_sha256)
+        for key in design.state_keys for state in (population[key],)}
+
+
 def test_exact_416_by_four_reduction_and_strata_are_canonical():
     design, population = _population()
     records = _records(design, population)
@@ -118,6 +128,30 @@ def test_fixed_seed_bootstrap_and_report_bytes_are_deterministic():
     second = reduce_pt1_statistics(design, population, records)
     assert first.canonical_bytes() == second.canonical_bytes()
     assert first.bootstrap_lcb_cb == second.bootstrap_lcb_cb
+
+
+def test_group_reopened_identity_population_reduces_byte_identically():
+    design, population = _population()
+    records = _records(design, population)
+    live = reduce_pt1_statistics(design, population, records)
+    reopened = reduce_reopened_pt1_statistics(
+        design, _reopened(design, population), records)
+    assert reopened.canonical_bytes() == live.canonical_bytes()
+
+
+def test_group_reopened_identity_derivation_and_population_are_load_bearing():
+    design, population = _population()
+    identities = _reopened(design, population)
+    records = _records(design, population)
+    key = design.state_keys[0]
+    identities[key] = replace(
+        identities[key], capture_round_cluster_sha256="0" * 64)
+    with pytest.raises(PT1StatisticsError, match="derivation drift"):
+        reduce_reopened_pt1_statistics(design, identities, records)
+    identities = _reopened(design, population)
+    identities.pop(design.state_keys[-1])
+    with pytest.raises(PT1StatisticsError, match="cells incomplete"):
+        reduce_reopened_pt1_statistics(design, identities, records)
 
 
 def test_record_seed_drop_duplicate_and_state_swaps_refuse():

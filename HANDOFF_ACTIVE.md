@@ -1,88 +1,93 @@
 # Active Claude/Codex handoff
 
-> Current operational truth and exact review asks only. Historical evidence
-> belongs in `HANDOFF_REVIEW.md` and Git history. Do not repeat a superseded
-> review. There is no active review ask below.
+Last reconciled: 2026-08-25 23:59 EDT.
 
-Last reconciled: 2026-08-25 22:38 EDT.
+This file contains only current operational truth and precise review work.
+Historical reviews belong in `HANDOFF_REVIEW.md`. Do not repeat a review that
+is not named below.
 
-## Immediate objective
+## One active review ask — PT1 successor source + immutable r7 freeze
 
-1. Leave the live R4 completion run untouched through calibration, one held-out
-   test opening, terminal verification, and independent interpretation.
-2. Preserve the spent, result-free PT1 `r6` evidence. Diagnose its first-wave
-   resource-cap refusal without retrying or opening hidden scientific bytes.
-3. Keep R5 held until R4 is terminally interpreted and a final fresh Perf
-   packet binds that result. R4 and R5 share one population and are not
-   independent replications.
+Review this once as a consolidated source/freeze packet. There is no separate
+source-review, capacity-review or rehearsal-review round.
 
-## Live execution — R4 completion-only
+- Draft PR: #149, `codex/privileged-teacher-pt1-cap-repair`.
+- Exact source head: `76508ec9c15638e715dc8d48ee6719412233918b`.
+- Exact reviewed parent: PR #145 head
+  `e27240e46981cae9db099236113a2b655d88570c`.
+- PR CI: server and frontend green; merge state clean.
+- Source validation: 60/60 PT1 tests pure and 60/60 strict compiled; `git
+  diff --check` clean; source worktree clean.
 
-R4 requires no further source/freeze review and is active on Strength Cloud
-under the exact `e10cb3d/r3` PASS marker in ledger commit `68e4522f`.
+The eight-file successor delta does three related things only:
 
-- unit: `belief-r4-completion-e10cb3d-r3.service`
-- source: `e10cb3d3426d758f2d757d41462aba6a06bc60c8`
-- freeze SHA-256:
-  `59c747be56bdd20c792608ed09be307b9661c8aff6ad7e0e720cd8156de7fea4`
-- evidence: `/opt/belief-r4-completion-v1-r3`
-- phase: calibration, 1/4 outer stages, test unopened
-- last direct health check, 2026-08-26 02:30 UTC: active/running,
-  `NRestarts=0`; cgroup peak `20,569,944,064` bytes below the 24 GiB cap
+1. replaces the old coupled 16-state capacity sample with an independent
+   score-redacted 416/416 full-grid packet;
+2. records exact sanitized cap overages and score-free worker failures at the
+   production controller/CLI wiring; and
+3. requires every captured scientific state both to expose at least two exact
+   legal actions and to enter production's actual multi-candidate MC search.
+   Tractor-locked leads and one-candidate production ballots are structurally
+   ineligible. This predicate uses actor-visible state and deterministic
+   production candidate generation only; it runs no rollout and reads no arm
+   action, value, regret, point result or hidden-world outcome.
 
-Do not modify, restart, delete, merge, or infer a result from the outer 25%
-counter. It advances only after the whole calibration stage publishes.
+Exact immutable inputs on Mini:
 
-## PT1 `r6` — terminal resource refusal, no result
-
-After Jerry reported the narrow `r6b` operator review PASS, Codex invoked the
-corrected launcher once using the existing source+freeze marker at ledger
-commit `31cca4d18bd1c2254f2dfbec9fd8a639cb265ee5`.
-
-- source `e27240e46981cae9db099236113a2b655d88570c`
-- launcher SHA-256
-  `ca7743de78a65c9599eee8aae0b0e1c245f44eb6178598f47e683856bc5c9fef`
-- freeze SHA-256
-  `64352206b3e930eefa431c3b358356915bd5cb65708d0056c7711b7ef367d8dc`
-- evidence `/Users/jerryyu/Projects/shengji-pt1-evidence-e27240e-r6`
-- outcome: `FAILED`, `0/416`, `failure_code=cli_failure`, retry false
-- exact CLI refusal: `execution scientific cap exceeded`
-- no group artifact was admitted; score/action bytes persisted=false
-- the 930.72-second deadline was not exhausted; about 14.4 minutes remained
-  when the refusal was inspected
-
-The first ten-state wave completed in memory, then failed the aggregate frozen
-resource envelope before any group could publish. The receipt does not identify
-which resource dimension exceeded its cap. Preserve this root; do not retry,
-delete, reinterpret as a teacher verdict, or inspect the spent scientific
-secret. A successor must first add a sanitized failing-cap dimension/observed
-value receipt and repair the capacity population so the scientific population
-cannot exceed an unmeasured envelope.
-
-## Review queue
-
-None. Do not review a PT1 successor until Codex has a narrow diagnosed repair
-and fresh unspent freeze. Do not review R5 until R4 is terminally interpreted.
-
-## Held — not an active review
-
-PR #148 at exact head `7e14b529065383baee152c9dd2b8d3473627235c`
-is source/CI green. Its old Perf freeze is boot-bound and must not be reused
-after the host power cycle. After R4 terminal interpretation, Codex will build
-one fresh final R5 packet binding the R4 result and request one consolidated
-source+freeze review. Performance Cloud is offline and is not currently needed.
-
-## Fleet
-
-| host | current state | next action |
+| artifact | path | SHA-256 |
 |---|---|---|
-| Strength Cloud | R4 completion active in calibration | monitor only; interpret terminal result |
-| Mini | idle after PT1 `r6` terminal cap refusal at 0/416 | preserve evidence; diagnose without retry |
-| Performance Cloud | offline; no R5 job | hold until R4 interpretation |
-| Air | idle / not required | none |
+| capacity report | `/Users/jerryyu/Projects/pt1-capacity-76508ec-v1/capacity.json` | `7a4e84171cab5242398776adae1cc12c9f6bcce70f1e4cb9645db29c302c96dd` |
+| capacity manifest | `/Users/jerryyu/Projects/pt1-capacity-76508ec-v1/manifest.json` | `b1b4c5c63b91a5c554d743d275a31e17c8e1bc8362430d62c5f0bebd7715ddb4` |
+| scientific population | `/Users/jerryyu/Projects/pt1-population-manifest-76508ec-r7.json` | `e7fe84dd2fcf79555c429b9950a3e2dc80b103db1701d804b82f1c218c73ec1c` |
+| process-wave receipt | `/Users/jerryyu/Projects/pt1-rehearsal-76508ec-r7.json` | `60418974229ba6fcd1cb6b5ccf131d116baa8e442b625d537255059821a3e002` |
+| freeze | `/Users/jerryyu/Projects/pt1-freeze-76508ec-r7.json` | `d05070d755d12f1a7c9a67471599377e0e590ed100f6beb315f7d8ccd915bc90` |
+| expected marker | `/Users/jerryyu/Projects/pt1-review-marker-76508ec-r7.json` | `cb3e4667961b065412bf4c6586767aaeb66445b358c70b6d66254e2ff1ae38b7` |
 
-## Authority boundaries
+The capacity packet completed all 416 cells with 10 workers in
+`665984859167` wall nanoseconds and `6169311405000` aggregate CPU
+nanoseconds. It retained no action, score, point, hidden-world or raw-seed
+bytes. The freeze copies the mechanically derived caps without manual edits:
 
-No active packet authorizes merge, retry, deployment, promotion, gameplay, or
-a strength claim. R4 is already running once under its exact marker. PT1 `r6`
-is spent and result-free; no retry is authorized. R5 remains held.
+- wall `2320480286303` ns;
+- CPU `7711639256250` ns;
+- aggregate peak-RSS accounting `10949836800` bytes;
+- artifact bytes `9357920`;
+- total exact nodes `66846000`;
+- exact nodes/state `160688`.
+
+The fresh scientific manifest binds 416/416 distinct cells under commitment
+`c7c0ae4953e7fc3c378d573d388728b8bcc5012e2b14360fc2004f02f1fbf942`.
+The separate required process-wave receipt exercised 10 real workers / 40
+records in 20.0 seconds and persisted no scores or actions. Freeze schema is
+`privileged-teacher-pt1-freeze-v3`, deadline equals the derived wall cap,
+resume is allowed, runtime/native/boot identities match the completed packet,
+and the destination `/Users/jerryyu/Projects/shengji-pt1-evidence-76508ec-r7`
+is absent.
+
+Review the actor-visible eligibility predicate, its one-candidate and
+tractor-lock witnesses, the worker-failure wiring/redaction, full-grid cap
+derivation, population binding, process-wave receipt and exact freeze/marker
+reconstruction. If every boundary passes, append the exact marker at column 1
+and authorize one initialization, execution/resume as frozen, and terminal
+verification of r7. Nothing is initialized and no scientific result has run.
+No merge, retry outside the frozen resume contract, gameplay, training,
+strength, promotion or deployment authority follows.
+
+## Live R4 — monitor only, do not touch
+
+- Host/unit: `shengji-cloud` /
+  `belief-r4-completion-e10cb3d-r3.service`.
+- Exact source: `e10cb3d3426d758f2d757d41462aba6a06bc60c8`.
+- Evidence root: `/opt/belief-r4-completion-v1-r3`.
+- Last read-only check: service active/running, `NRestarts=0`, calibration
+  partition 1/4 (25%), no terminal/failure/result file and test still unopened.
+- Memory current/peak: about 19.3/20.7 GB, below the frozen 24-GiB boundary.
+
+R4 remains the first scientific verdict. PT1 preparation/review may proceed on
+Mini without changing R4.
+
+## R5 — held
+
+Do not launch or request another R5 review until R4 is terminally interpreted
+and PT1 has progressed. Preserve the isolated R5 successor work and evidence;
+there is no active R5 review ask.

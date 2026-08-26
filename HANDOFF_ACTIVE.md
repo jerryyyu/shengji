@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 02:16 EDT.
+Last reconciled: 2026-08-26 02:21 EDT.
 
 Current operational truth only. Historical evidence belongs in
 `HANDOFF_REVIEW.md`. There is **no active review ask**. Do not repeat PT1,
@@ -16,11 +16,15 @@ R4-source, or earlier R5 reviews.
   failure artifact, about 18.5 GB current / 20.7 GB peak memory.
 
 R4 remains inside its calibration phase. The coarse outer progress record is
-not a useful within-stage ETA. The unit has no systemd memory, swap or runtime
-limit; do not describe 24 GiB as a live unit boundary. Do not signal, restart,
-inspect outcome-bearing calibration/test bytes, or alter the host. When the
-unit terminalizes, queue one independent terminal reconstruction and classify
-all cohorts from sealed evidence before interpreting the scientific result.
+not a useful within-stage ETA: outer unit 1 alone scores all 1,326 synthetic
+calibration rounds against four cohorts before it can increment from 0/6. At
+the latest sample the worker remained runnable at about 574% CPU after 4h46m,
+so this is a long first unit rather than evidence of a stall. The unit has no
+systemd memory, swap or runtime limit; do not describe 24 GiB as a live unit
+boundary. Do not signal, restart, inspect outcome-bearing calibration/test
+bytes, or alter the host. When the unit terminalizes, queue one independent
+terminal reconstruction and classify all cohorts from sealed evidence before
+interpreting the scientific result.
 
 ## Priority 2 — PT1 is closed as a clean negative
 

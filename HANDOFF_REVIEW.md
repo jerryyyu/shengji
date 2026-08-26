@@ -4229,3 +4229,30 @@ Consolidated review per the queued ask (PR #149). Head `76508ec9c15638e715dc8d48
 **Authority:** the marker below authorizes exactly one r7 initialization, execution/resume within the frozen deadline contract, and terminal verification under `/Users/jerryyu/Projects/shengji-pt1-evidence-76508ec-r7`. Spent r3/r6 roots remain immutable; no merge, retry beyond the frozen resume contract, gameplay, training, strength, promotion or deployment authority follows. — Claude (session `68f9c8bd`)
 
 {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"promotion_authorized":false,"retry_authorized":false,"strength_claim_authorized":false,"training_authorized":false},"capacity_manifest_sha256":"b1b4c5c63b91a5c554d743d275a31e17c8e1bc8362430d62c5f0bebd7715ddb4","capacity_report_sha256":"7a4e84171cab5242398776adae1cc12c9f6bcce70f1e4cb9645db29c302c96dd","design_sha256":"fba8f44de035959a1db52f6e2eb26b1b60caedf4b6697a63acd0260b567cd0a2","population_manifest_sha256":"e7fe84dd2fcf79555c429b9950a3e2dc80b103db1701d804b82f1c218c73ec1c","schema":"privileged-teacher-pt1-execution-review-v2","source_git":"76508ec9c15638e715dc8d48ee6719412233918b"}
+
+## 2026-08-26 00:40 EDT — LIVE R4 completion `r3` is running with every systemd resource guard removed: no memory cap, no swap cap, no runtime ceiling. Peak is already 19.27 GiB on a 30 GiB host
+
+Measured read-only on `shengji-cloud` while `belief-r4-completion-e10cb3d-r3.service` is active. **The run is healthy and I am not asking for it to be stopped** — it is past the point where the previous attempt died, and the science looks fine. This is about what happens if it is not.
+
+**The guards present on the previous attempt are absent on this one.** Compared property-by-property via `systemctl show`:
+
+| property | `721b5f8`/`r1` (previous) | `e10cb3d`/`r3` (live now) |
+|---|---|---|
+| `MemoryMax` | `25769803776` (24.00 GiB) | **`infinity`** |
+| `MemorySwapMax` | `0` | **`infinity`** |
+| `RuntimeMaxUSec` | `2d` | **`infinity`** |
+| `Restart` | `no` | `no` |
+| `TasksMax` | `34441` | `34441` |
+
+`HANDOFF_ACTIVE` described the previous run as protected by "24 GiB memory, zero swap and a 48-hour runtime ceiling". Three of those five properties are now unbounded. I could not find any entry recording that as an intentional change, which is why I am filing it rather than assuming.
+
+**Why it is not academic.** `MemoryPeak` for the live run is already **20,688,039,936 B = 19.27 GiB**, against **16.48 GiB** for the previous attempt — the same lane, further along. The host reports **30 GiB total with 23 GiB available**. With `MemoryMax=infinity` and `MemorySwapMax=infinity`, growth past the available figure does not hit a clean cgroup refusal; it swaps, then reaches host-level OOM, which is a worse and less legible failure than the bounded refusal the previous configuration would have produced. The R4/R5 lane has already lost one run to a resource ceiling (the v8 preflight ended with `memory_peak_bytes == memory_max_bytes` at exactly 24 GiB, `managed_oom_kills: 0`), so this is a known-live failure mode for this workload, not a hypothetical.
+
+**It compounds with the observability gap I filed at `2ed8d1c`, which is still unfixed.** `/opt/belief-r4-completion-e10cb3d-r3.status` is stamped `2026-08-26T01:32:48Z` — 18 seconds after the service started — and still reads `phase=calibrating completed=1 total=4 percent=25.00` three hours later. The unit's journal holds **18 lines total**. So the live run now has no progress telemetry, no runtime ceiling, and no memory ceiling simultaneously: a hung or runaway run is both invisible and unbounded, and the original R3 was lost precisely to deadline expiry.
+
+**Two corrections to my own reading, recorded so nobody repeats them.** First, cloud's `uptime` load average of 1.00 looked like a stall next to a worker reporting 850% CPU; `ps` `%CPU` is a *lifetime* average, so 850% is the three-hour mean while `top` confirms **100.0%** instantaneous — the run has simply moved from parallel calibration into a single-threaded phase. Nothing is wrong. Second, I initially computed "80.3% of ceiling" for the 19.27 GiB peak; that used the *previous* run's 24 GiB cap, which this service does not have. There is no ceiling to be a percentage of, which is the actual finding.
+
+**Suggested, and none of it touches the running service:** confirm whether dropping `MemoryMax`/`MemorySwapMax`/`RuntimeMaxUSec` was deliberate; if not, restore them on the next launcher revision. If it was deliberate, record the reason, because the packet's `resource_caps_sha256` binding then describes caps that nothing enforces at the systemd layer. Either way the `2ed8d1c` status/progress fix is now load-bearing rather than cosmetic.
+
+No authority is granted or withdrawn by this entry, and nothing here contests the `68e4522` PASS — the source and freeze were reviewed at the code layer; this is the execution wrapper. — Claude (session `68f9c8bd`)
+

@@ -703,7 +703,7 @@ reporter and callbacks from real controller paths; a helper-only witness is
 insufficient.
 
 The supervisor task plan is source-bound in
-`belief_v2_supervisor_plan.py`, and the one-shot executor is
+`belief_v2_supervisor_plan.py`, and the same-admission executor is
 `scripts/belief_v2_supervisor.py`. The source fixes ten ordered stages; the H0
 split receipt fixes the exact task count. The repaired real-population preview
 has 85 tasks: 16 synthetic capture, 30 human capture, one input index, one
@@ -714,6 +714,22 @@ each of four calibration groups plus one test-primary replicate for each of
 five test groups; train groups receive none. The old
 30-by-three Cartesian matrix, a missing cache stage, any dropped/extra task,
 or a stage/concurrency reorder refuses before the ops start token is written.
+
+R5 distinguishes exact process resume from scientific retry. The reviewed
+admission, task plan and consumption tombstone must all authorize
+`same_admission_process_resume_authorized=true` while retaining
+`retry_authorized=false`. A resume is allowed only under the same source,
+freeze, admission, boot identity and monotonic deadline after an operational
+`running` or signal-`interrupted` supervisor stops and no recorded worker PID
+is live. It replays the complete closed task plan: already sealed stages are
+authenticated through their manifest-only boundaries, the tensor cache and
+training cohorts use their exact partial-state resume contracts, and no
+completed artifact is regenerated. A failed worker, occupied lock, live child,
+drifted plan/status, non-resumable partial, terminal partial, changed boot, or
+spent/changed admission refuses. Recovery may reopen an already sealed
+terminal for verification, but may never create a second test opening. Every
+resume writes a hash-bound receipt and new log suffix; it grants no outcome
+selection, model retry, gameplay, strength, promotion or deployment authority.
 
 ## Preliminary capacity projection and host allocation
 

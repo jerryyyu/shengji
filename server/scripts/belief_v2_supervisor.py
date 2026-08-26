@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot, fail-fast orchestration for the reviewed BELIEF V2/R4 DAG."""
+"""Fail-fast orchestration with exact process recovery for BELIEF V2/R5."""
 
 from __future__ import annotations
 
@@ -10,11 +10,13 @@ if not sys.flags.safe_path or not sys.dont_write_bytecode:
     raise RuntimeError("BELIEF V2 supervisor requires Python -P -B")
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
 import signal
+import stat
 import subprocess
 import threading
 import time
@@ -25,6 +27,9 @@ SCRIPT = Path(__file__).resolve()
 REPO = SCRIPT.parents[2]
 SOURCE_ROOT = REPO / "server" / "shengji"
 PROGRESS_PREFIX = "BELIEF_V2_PROGRESS "
+STATUS_SCHEMA = "belief-v1-v2-ops-status-v3"
+START_SCHEMA = "belief-v1-v2-ops-start-v3"
+RESUME_SCHEMA = "belief-v1-v2-ops-resume-v1"
 
 
 def _refuse_import_shadows() -> None:
@@ -51,7 +56,7 @@ class BeliefV2SupervisorError(RuntimeError):
 class Supervisor:
     def __init__(
             self, *, plan: V2SupervisorPlanV1, root: Path, ops: Path,
-            python: Path, worker: Path) -> None:
+            python: Path, worker: Path, resume: bool = False) -> None:
         self.plan = plan
         self.root = root
         self.ops = ops
@@ -65,20 +70,29 @@ class Supervisor:
         self.stdout_files: dict[str, Any] = {}
         self.stderr_files: dict[str, Any] = {}
         self.stop_requested = False
+        self.recover_existing = resume
+        self.resume_count = 0
+        self.lock_descriptor: int | None = None
         self.lock = threading.RLock()
         self.state: dict[str, Any] = {
-            "schema": "belief-v1-v2-ops-status-v2",
+            "schema": STATUS_SCHEMA,
             "state": "starting",
             "current_stage": "supervisor-start",
             "stage_index": 0,
             "stage_count": len(plan.stages),
             "completed_tasks": 0,
+            "completed_task_names": [],
             "total_tasks": sum(len(stage.tasks) for stage in plan.stages),
             "running_tasks": [],
+            "running_processes": {},
+            "launching_task": None,
             "latest_worker_progress": {},
             "task_weighted_percent_basis_points": 0,
             "outcome_blind": True,
             "retry_authorized": False,
+            "resume_authorized": True,
+            "resume_count": 0,
+            "resume_mode": False,
             "strength_claim_authorized": False,
             "deployment_authorized": False,
         }
@@ -93,7 +107,8 @@ class Supervisor:
         self.environment.pop("PYTHONPATH", None)
 
     def _atomic_json(self, path: Path, value: dict[str, Any]) -> None:
-        partial = path.with_name(path.name + ".partial")
+        partial = path.with_name(
+            f"{path.name}.partial-{os.getpid()}-{threading.get_ident()}")
         raw = canonical_json_bytes(value)
         descriptor = os.open(
             partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -141,13 +156,21 @@ class Supervisor:
                 continue
 
     def _worker_command(self, task: V2SupervisorTaskV1) -> list[str]:
+        recovery = ["--recover-existing"] if self.recover_existing else []
+        completed = (["--require-existing-final"]
+                     if self.recover_existing and task.name in self.state[
+                         "completed_task_names"] else [])
         return [str(self.python), "-P", "-B", str(self.worker),
-                *task.arguments, "--root", str(self.root)]
+                *task.arguments, "--root", str(self.root),
+                *recovery, *completed]
 
     def _start_task(self, task: V2SupervisorTaskV1) -> None:
-        out = (self.logs / f"{task.name}.stdout.log").open(
+        suffix = ("" if self.resume_count == 0
+                  else f".resume-{self.resume_count:02d}")
+        self._update_status(launching_task=task.name)
+        out = (self.logs / f"{task.name}{suffix}.stdout.log").open(
             "x", encoding="utf-8")
-        err = (self.logs / f"{task.name}.stderr.log").open(
+        err = (self.logs / f"{task.name}{suffix}.stderr.log").open(
             "x", encoding="utf-8")
         process = subprocess.Popen(
             self._worker_command(task), env=self.environment,
@@ -165,6 +188,11 @@ class Supervisor:
             name=f"progress-{task.name}", daemon=True)
         self.reader_threads[task.name] = thread
         thread.start()
+        self._update_status(
+            launching_task=None,
+            running_tasks=sorted(self.active),
+            running_processes={
+                name: child.pid for name, child in self.active.items()})
 
     def _close_task(self, name: str) -> None:
         self.reader_threads[name].join(timeout=5)
@@ -199,6 +227,158 @@ class Supervisor:
             state="interrupted", failure=f"signal-{signum}")
         self._terminate_active()
 
+    def _acquire_lock(self) -> None:
+        path = self.ops / "supervisor.lock"
+        try:
+            descriptor = os.open(
+                path, os.O_RDWR | os.O_CREAT
+                | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        except OSError as exc:
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor lock open refused") from exc
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 \
+                or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            os.close(descriptor)
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor lock identity drift")
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            os.close(descriptor)
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor is already active") from exc
+        self.lock_descriptor = descriptor
+
+    def _release_lock(self) -> None:
+        if self.lock_descriptor is not None:
+            fcntl.flock(self.lock_descriptor, fcntl.LOCK_UN)
+            os.close(self.lock_descriptor)
+            self.lock_descriptor = None
+
+    def _prepare_resume(self) -> None:
+        if not self.ops.is_dir() or self.ops.is_symlink() \
+                or not self.logs.is_dir() or self.logs.is_symlink():
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor recovery ops shape drift")
+        started_raw = self.started_path.read_bytes()
+        status_raw = self.status_path.read_bytes()
+        started = _strict_json(self.started_path)
+        prior = _strict_json(self.status_path)
+        expected_summary = hashlib.sha256(
+            self.plan.canonical_summary_bytes()).hexdigest()
+        expected_execution = self.plan.execution_sha256()
+        if set(started) != {
+                "schema", "started_unix_seconds",
+                "started_monotonic_nanoseconds", "pid",
+                "plan_summary_sha256", "execution_plan_sha256",
+                "retry_authorized", "resume_authorized"} \
+                or started["schema"] != START_SCHEMA \
+                or started["plan_summary_sha256"] != expected_summary \
+                or started["execution_plan_sha256"] != expected_execution \
+                or started["retry_authorized"] is not False \
+                or started["resume_authorized"] is not True \
+                or type(started["started_monotonic_nanoseconds"]) is not int \
+                or started["started_monotonic_nanoseconds"] < 0:
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor recovery start binding drift")
+        all_names = {
+            task.name for stage in self.plan.stages for task in stage.tasks}
+        completed = prior.get("completed_task_names")
+        running = prior.get("running_tasks")
+        processes = prior.get("running_processes")
+        if prior.get("schema") != STATUS_SCHEMA \
+                or prior.get("state") not in {
+                    "running", "interrupted", "recovering"} \
+                or prior.get("outcome_blind") is not True \
+                or prior.get("retry_authorized") is not False \
+                or prior.get("resume_authorized") is not True \
+                or prior.get("strength_claim_authorized") is not False \
+                or prior.get("deployment_authorized") is not False \
+                or type(prior.get("resume_count")) is not int \
+                or prior["resume_count"] < 0 \
+                or type(completed) is not list \
+                or len(completed) != len(set(completed)) \
+                or completed != sorted(completed) \
+                or not set(completed).issubset(all_names) \
+                or prior.get("completed_tasks") != len(completed) \
+                or prior.get("total_tasks") != len(all_names) \
+                or prior.get("launching_task") is not None \
+                or type(running) is not list \
+                or running != sorted(running) \
+                or len(running) != len(set(running)) \
+                or type(processes) is not dict \
+                or not set(processes).issubset(all_names) \
+                or set(running) != set(processes) \
+                or set(completed) & set(running) \
+                or len(processes.values()) != len(set(processes.values())) \
+                or any(type(pid) is not int or pid <= 0
+                       for pid in processes.values()):
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor recovery status drift")
+        for pid in processes.values():
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                continue
+            except PermissionError as exc:
+                raise BeliefV2SupervisorError(
+                    "BELIEF V2 recovery worker identity unavailable") from exc
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 recovery worker is still active")
+        self.resume_count = prior["resume_count"] + 1
+        receipt_path = self.ops / f"resume-{self.resume_count:02d}.json"
+        receipt = {
+            "schema": RESUME_SCHEMA,
+            "resume_count": self.resume_count,
+            "pid": os.getpid(),
+            "started_sha256": hashlib.sha256(started_raw).hexdigest(),
+            "prior_status_sha256": hashlib.sha256(status_raw).hexdigest(),
+            "plan_summary_sha256": expected_summary,
+            "execution_plan_sha256": expected_execution,
+            "original_started_monotonic_nanoseconds": (
+                started["started_monotonic_nanoseconds"]),
+            "completed_task_names_before_recovery": sorted(completed),
+            "test_split_open_authorized": False,
+            "retry_authorized": False,
+            "resume_authorized": True,
+            "strength_claim_authorized": False,
+            "deployment_authorized": False,
+        }
+        if receipt_path.is_symlink():
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor recovery receipt identity drift")
+        if receipt_path.exists():
+            existing = _strict_json(receipt_path)
+            # A process may die after the receipt's durable rename and before
+            # status.json advances.  Reusing only the byte-exact same intent
+            # (apart from the observational writer PID) closes that
+            # availability window without creating another scientific
+            # attempt or silently overwriting a receipt.
+            existing_intent = dict(existing)
+            receipt_intent = dict(receipt)
+            existing_pid = existing_intent.pop("pid", None)
+            receipt_intent.pop("pid")
+            if type(existing_pid) is not int or existing_pid <= 0 \
+                    or existing_intent != receipt_intent:
+                raise BeliefV2SupervisorError(
+                    "BELIEF V2 supervisor recovery receipt slot is occupied")
+        else:
+            self._atomic_json(receipt_path, receipt)
+        self.state = prior
+        self.state.update({
+            "state": "recovering",
+            "current_stage": "supervisor-recovery",
+            "stage_index": 0,
+            "running_tasks": [],
+            "running_processes": {},
+            "launching_task": None,
+            "latest_worker_progress": {},
+            "resume_count": self.resume_count,
+            "resume_mode": True,
+        })
+        self._update_status()
+
     def _run_stage(self, stage_index: int) -> None:
         stage = self.plan.stages[stage_index - 1]
         pending = list(stage.tasks)
@@ -225,37 +405,59 @@ class Supervisor:
                     self._update_status(
                         state="failed", failure_task=name,
                         failure_returncode=returncode,
-                        running_tasks=sorted(self.active))
+                        running_tasks=sorted(self.active),
+                        running_processes={
+                            task_name: child.pid
+                            for task_name, child in self.active.items()})
                     self._terminate_active()
                     raise BeliefV2SupervisorError(
                         f"BELIEF V2 task {name} failed with {returncode}")
                 completed += 1
+                completed_names = list(self.state["completed_task_names"])
+                if name not in completed_names:
+                    completed_names.append(name)
                 self._update_status(
-                    completed_tasks=self.state["completed_tasks"] + 1,
+                    completed_tasks=len(completed_names),
+                    completed_task_names=sorted(completed_names),
                     stage_completed_tasks=completed,
-                    running_tasks=sorted(self.active))
+                    running_tasks=sorted(self.active),
+                    running_processes={
+                        task_name: child.pid
+                        for task_name, child in self.active.items()})
 
     def run(self) -> None:
-        if self.ops.exists() or self.ops.is_symlink():
-            raise BeliefV2SupervisorError(
-                "BELIEF V2 supervisor ops slot is occupied")
-        self.ops.mkdir(mode=0o700, parents=True)
-        self.logs.mkdir(mode=0o700)
-        self._atomic_json(self.started_path, {
-            "schema": "belief-v1-v2-ops-start-v2",
-            "started_unix_seconds": int(time.time()),
-            "pid": os.getpid(),
-            "plan_summary_sha256": hashlib.sha256(
-                self.plan.canonical_summary_bytes()).hexdigest(),
-            "execution_plan_sha256": self.plan.execution_sha256(),
-            "retry_authorized": False,
-        })
         try:
+            if self.recover_existing:
+                if not self.ops.exists() or self.ops.is_symlink():
+                    raise BeliefV2SupervisorError(
+                        "BELIEF V2 supervisor recovery ops slot is absent")
+                self._acquire_lock()
+                self._prepare_resume()
+            else:
+                if self.ops.exists() or self.ops.is_symlink():
+                    raise BeliefV2SupervisorError(
+                        "BELIEF V2 supervisor ops slot is occupied")
+                self.ops.mkdir(mode=0o700, parents=True)
+                self.logs.mkdir(mode=0o700)
+                self._acquire_lock()
+                self._atomic_json(self.started_path, {
+                    "schema": START_SCHEMA,
+                    "started_unix_seconds": int(time.time()),
+                    "started_monotonic_nanoseconds": time.monotonic_ns(),
+                    "pid": os.getpid(),
+                    "plan_summary_sha256": hashlib.sha256(
+                        self.plan.canonical_summary_bytes()).hexdigest(),
+                    "execution_plan_sha256": self.plan.execution_sha256(),
+                    "retry_authorized": False,
+                    "resume_authorized": True,
+                })
+                self._update_status()
             for stage_index in range(1, len(self.plan.stages) + 1):
                 self._run_stage(stage_index)
             self._update_status(
                 state="complete", current_stage="complete",
                 stage_index=len(self.plan.stages), running_tasks=[],
+                running_processes={}, launching_task=None,
                 completed_tasks=self.state["total_tasks"],
                 task_weighted_percent_basis_points=10_000)
         except BaseException as exc:
@@ -263,8 +465,10 @@ class Supervisor:
             if self.state.get("state") not in {"failed", "interrupted"}:
                 self._update_status(
                     state="failed", failure=f"{type(exc).__name__}: {exc}",
-                    running_tasks=[])
+                    running_tasks=[], running_processes={})
             raise
+        finally:
+            self._release_lock()
 
 
 def _strict_json(path: Path) -> dict[str, Any]:
@@ -297,6 +501,7 @@ def main() -> None:
     parser.add_argument("--human-sources", type=Path, required=True)
     parser.add_argument("--group-split", type=Path, required=True)
     parser.add_argument("--validate-plan-only", action="store_true")
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     if os.environ.get("PYTHONPATH"):
         raise BeliefV2SupervisorError("BELIEF V2 supervisor refuses PYTHONPATH")
@@ -320,13 +525,17 @@ def main() -> None:
         human_source_paths=sources,
         group_split=_strict_json(group_split_path))
     if args.validate_plan_only:
+        if args.resume:
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 plan-only cannot recover execution")
         if ops.exists() or ops.is_symlink():
             raise BeliefV2SupervisorError(
                 "BELIEF V2 plan-only ops slot is occupied")
         sys.stdout.buffer.write(plan.canonical_summary_bytes())
         return
     supervisor = Supervisor(
-        plan=plan, root=root, ops=ops, python=python, worker=worker)
+        plan=plan, root=root, ops=ops, python=python, worker=worker,
+        resume=args.resume)
     signal.signal(signal.SIGTERM,
                   lambda signum, _frame: supervisor.request_stop(signum))
     signal.signal(signal.SIGINT,

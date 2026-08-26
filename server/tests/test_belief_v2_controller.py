@@ -20,6 +20,7 @@ import shengji.rl.belief_v2_cache_import as CACHE_IMPORT
 import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
 import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
+import shengji.rl.belief_v2_human_reference_controller as HUMAN_REF_STAGE
 import shengji.rl.belief_v2_tensor_cache_controller as CACHE_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
@@ -95,6 +96,7 @@ from shengji.rl.belief_v2_human_reference import (
 )
 from shengji.rl.belief_v2_human_reference_controller import (
     reopen_human_reference_group,
+    reopen_human_reference_group_manifest,
     run_human_reference_group,
 )
 from shengji.rl.belief_v2_input_index_controller import (
@@ -1232,9 +1234,25 @@ def test_human_reference_stage_reopens_against_actor_only_capture(
     assert progress == [
         (0, 1, "replay-human-reference"),
         (1, 1, "publish-human-reference")]
-    reopened = reopen_human_reference_group(
+    reference_directory = (
         root / "human-reference" / f"group-{captured.group_digest}"
-        / "calibration-replicate-0",
+        / "calibration-replicate-0")
+    reference_file = reference_directory / "decision-000000.json"
+    real_read = HUMAN_REF_STAGE.stable_read_bytes
+
+    def refuse_reference_bytes(path):
+        if Path(path) == reference_file:
+            raise AssertionError("manifest recovery opened human REF-C bytes")
+        return real_read(path)
+
+    monkeypatch.setattr(
+        HUMAN_REF_STAGE, "stable_read_bytes", refuse_reference_bytes)
+    manifest_only = reopen_human_reference_group_manifest(
+        reference_directory, freeze=freeze, admission=admission)
+    assert manifest_only == manifest
+    monkeypatch.setattr(HUMAN_REF_STAGE, "stable_read_bytes", real_read)
+    reopened = reopen_human_reference_group(
+        reference_directory,
         freeze=freeze, admission=admission)
     assert reopened == manifest
     assert manifest["contains_privileged_training_targets"] is False

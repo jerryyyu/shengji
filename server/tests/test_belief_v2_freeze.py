@@ -17,6 +17,7 @@ from shengji.rl.belief_v2_freeze import (
     MIXED_WORK_RULE,
     NO_HUMAN_DECISIONS,
     PRIMARY_WORK_RULE,
+    REVIEW_PREFIX,
     SCALE_SYNTHETIC_TRAIN_DECISIONS,
     SCALE_WORK_RULE,
     V2CohortPlanV1,
@@ -198,10 +199,13 @@ def test_freeze_round_trips_and_review_claim_is_bounded():
         == qualification_protocol_sha256("mps")
     assert claim["training_device_profile_sha256"] \
         == freeze.training_device_profile.sha256()
+    assert claim["same_admission_process_resume_authorized"] is True
     assert claim["retry_authorized"] is False
     assert claim["gameplay_strength_screen_authorized"] is False
     assert claim["deployment_authorized"] is False
     cohort_payload = freeze.to_dict()["cohorts"]
+    assert freeze.to_dict()["authority"][
+        "same_admission_process_resume_authorized"] is False
     assert all("optimizer_decisions_per_epoch" not in row
                for row in cohort_payload)
     assert all("synthetic_decision_manifest_sha256" not in row
@@ -348,16 +352,15 @@ def _review_repo(tmp_path, freeze, monkeypatch, *, prior_freeze=None):
     ledger = b"ledger\n"
     if prior_freeze is not None:
         ledger += (
-            b"BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW "
+            REVIEW_PREFIX.encode("ascii")
             + canonical_json_bytes(expected_execution_review_claim(
                 prior_freeze)))
     (repo / "HANDOFF_REVIEW.md").write_bytes(ledger)
     _git(repo, "add", "HANDOFF_REVIEW.md")
     _git(repo, "-c", "user.name=Base", "-c",
          "user.email=base@example.com", "commit", "-qm", "base")
-    marker = (
-        "BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW ".encode()
-        + canonical_json_bytes(expected_execution_review_claim(freeze)))
+    marker = (REVIEW_PREFIX.encode("ascii")
+              + canonical_json_bytes(expected_execution_review_claim(freeze)))
     with (repo / "HANDOFF_REVIEW.md").open("ab") as handle:
         handle.write(marker)
     _git(repo, "add", "HANDOFF_REVIEW.md")
@@ -389,7 +392,10 @@ def test_review_and_admission_require_actual_remote_append_only_marker(
     reauthenticate_pipeline_admission(
         freeze, admission, repo=repo, review_marker=marker)
     tombstone = pipeline_consumption_tombstone_bytes(admission)
+    assert b'"same_admission_process_resume_authorized":true' in tombstone
     assert b'"retry_authorized":false' in tombstone
+    assert admission.to_dict()["authority"][
+        "same_admission_process_resume_authorized"] is True
     assert pipeline_admission_from_bytes(
         admission.canonical_bytes(), freeze=freeze,
         review_marker=marker) == admission

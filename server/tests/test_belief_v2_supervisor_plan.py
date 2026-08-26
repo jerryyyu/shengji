@@ -77,6 +77,7 @@ def test_r4_plan_has_exact_cache_stage_and_non_cartesian_references(tmp_path):
     }
     assert summary["human_source_records_parsed"] is False
     assert summary["outcome_fields_opened"] is False
+    assert summary["same_admission_process_resume_authorized"] is True
     assert summary["retry_authorized"] is False
     assert summary["test_split_open_authorized"] is False
 

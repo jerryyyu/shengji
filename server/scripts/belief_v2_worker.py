@@ -68,9 +68,12 @@ from shengji.rl.belief_artifacts import (  # noqa: E402
 )
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
 from shengji.rl.belief_v2_calibration_controller import (  # noqa: E402
+    reopen_v2_calibration_selection,
     run_v2_calibration_selection,
 )
 from shengji.rl.belief_v2_controller import (  # noqa: E402
+    reopen_actor_capture_lane_manifest,
+    reopen_reference_lane_manifest,
     run_capture_lane,
     run_reference_lane,
 )
@@ -96,13 +99,16 @@ from shengji.rl.belief_v2_freeze_builder import (  # noqa: E402
     resource_caps_from_bytes,
 )
 from shengji.rl.belief_v2_human_controller import (  # noqa: E402
+    reopen_human_group_manifest,
     run_human_group_capture,
 )
 from shengji.rl.belief_v2_human_inventory import (  # noqa: E402
+    H0_GROUP_SCHEMA,
     group_split_bytes,
     inventory_bytes,
 )
 from shengji.rl.belief_v2_human_reference_controller import (  # noqa: E402
+    reopen_human_reference_group_manifest,
     run_human_reference_group,
 )
 from shengji.rl.belief_v2_terminal_controller import (  # noqa: E402
@@ -110,6 +116,7 @@ from shengji.rl.belief_v2_terminal_controller import (  # noqa: E402
     run_v2_terminal,
 )
 from shengji.rl.belief_v2_training_controller import (  # noqa: E402
+    reopen_training_cohort,
     run_training_cohort,
 )
 from shengji.rl.belief_v2_input_index_controller import (  # noqa: E402
@@ -312,6 +319,23 @@ def _progress(stage: str, worker: str):
     return V2ProgressReporter(stage=stage, worker=worker).update
 
 
+def _recover_final(args: argparse.Namespace, final: Path) -> bool:
+    """Return whether recovery must authenticate an existing final slot."""
+    if getattr(args, "require_existing_final", False) \
+            and not args.recover_existing:
+        raise ValueError("V2 completed-artifact flag requires recovery")
+    exists = final.exists() or final.is_symlink()
+    if getattr(args, "require_existing_final", False) and not exists:
+        raise ValueError("V2 completed recovery artifact is absent")
+    return bool(args.recover_existing and exists)
+
+
+def _human_group_digest(source_path: Path) -> str:
+    source_sha256 = _sha256(stable_read_bytes(source_path))
+    return hashlib.sha256(
+        f"{H0_GROUP_SCHEMA}|{source_sha256}".encode("ascii")).hexdigest()
+
+
 def verify_root(args: argparse.Namespace) -> None:
     freeze, admission, _, inventory, group_split = _load_root(
         Path(args.root))
@@ -333,6 +357,11 @@ def verify_root(args: argparse.Namespace) -> None:
 def capture_lane(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, _, _ = _load_root(root)
+    final = root / "capture" / f"lane-{args.lane:02d}"
+    if _recover_final(args, final):
+        _output(reopen_actor_capture_lane_manifest(
+            final, freeze=freeze, admission=admission, lane=args.lane))
+        return
     _output(run_capture_lane(
         root, freeze, admission, repo=REPO, lane=args.lane,
         review_marker=marker,
@@ -342,6 +371,13 @@ def capture_lane(args: argparse.Namespace) -> None:
 def reference_lane(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, _, _ = _load_root(root)
+    final = root / "reference" / f"lane-{args.lane:02d}"
+    if _recover_final(args, final):
+        _output(reopen_reference_lane_manifest(
+            final,
+            capture_directory=root / "capture" / f"lane-{args.lane:02d}",
+            freeze=freeze, admission=admission, lane=args.lane))
+        return
     _output(run_reference_lane(
         root, freeze, admission, repo=REPO, lane=args.lane,
         review_marker=marker,
@@ -351,6 +387,12 @@ def reference_lane(args: argparse.Namespace) -> None:
 def human_capture(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
+    final = (root / "human-capture"
+             / f"group-{_human_group_digest(Path(args.source_path))}")
+    if _recover_final(args, final):
+        _output(reopen_human_group_manifest(
+            final, freeze=freeze, admission=admission))
+        return
     _output(run_human_group_capture(
         root, freeze, admission, repo=REPO,
         source_path=Path(args.source_path), inventory=inventory,
@@ -361,6 +403,13 @@ def human_capture(args: argparse.Namespace) -> None:
 def human_reference(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
+    final = (root / "human-reference"
+             / f"group-{_human_group_digest(Path(args.source_path))}"
+             / args.replicate)
+    if _recover_final(args, final):
+        _output(reopen_human_reference_group_manifest(
+            final, freeze=freeze, admission=admission))
+        return
     _output(run_human_reference_group(
         root, freeze, admission, repo=REPO,
         source_path=Path(args.source_path), inventory=inventory,
@@ -372,6 +421,12 @@ def human_reference(args: argparse.Namespace) -> None:
 def build_training_index(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
+    final = root / "training-input-index" / "result"
+    if _recover_final(args, final):
+        manifest, _ = reopen_training_input_index(
+            final, freeze=freeze, admission=admission)
+        _output(manifest)
+        return
     _output(run_training_input_index(
         root, freeze, admission, repo=REPO, review_marker=marker,
         inventory=inventory, group_split=group_split,
@@ -381,6 +436,13 @@ def build_training_index(args: argparse.Namespace) -> None:
 def build_training_cache(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, _, _ = _load_root(root)
+    final = root / "training-tensor-cache" / "result"
+    if _recover_final(args, final):
+        manifest, _, _, _, _ = reopen_training_tensor_cache(
+            final, freeze=freeze, admission=admission,
+            verify_all_bytes=False)
+        _output(manifest)
+        return
     _output(run_training_tensor_cache(
         root, freeze, admission, repo=REPO, review_marker=marker,
         progress=_progress("training-tensor-cache", "all-cohorts")))
@@ -394,6 +456,12 @@ def qualify_device(args: argparse.Namespace) -> None:
         admission=admission)
     primary = next(row for row in inputs.realizations
                    if row.cohort_id == "synthetic-primary")
+    final = root / "device-qualification" / "result"
+    if _recover_final(args, final):
+        manifest, _, _ = reopen_device_qualification(
+            final, freeze=freeze, admission=admission, primary=primary)
+        _output(manifest)
+        return
     _, factories, _, _, _ = reopen_training_tensor_cache(
         root / "training-tensor-cache" / "result", freeze=freeze,
         admission=admission, verify_all_bytes=False)
@@ -424,6 +492,22 @@ def train_cohort(args: argparse.Namespace) -> None:
         reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result", freeze=freeze,
             admission=admission, verify_all_bytes=False))
+    compact_control_dose = (
+        control_dose if realization.kind
+        == "hard-geometry-label-permutation" else 0)
+    final = root / "training" / realization.cohort_id
+    if _recover_final(args, final):
+        manifest, _ = reopen_training_cohort(
+            final, freeze=freeze, admission=admission,
+            primary=primary, realization=realization,
+            training_examples=None, calibration=inputs.common_calibration,
+            calibration_examples=None,
+            qualification_plan=plan, qualification_result=result,
+            compact_control_dose=compact_control_dose,
+            calibration_batch_factory=calibration_factory,
+            cache_manifest_sha256=cache_sha256)
+        _output(manifest)
+        return
     _output(run_training_cohort(
         root, freeze, admission, repo=REPO, review_marker=marker,
         primary=primary, realization=realization,
@@ -432,9 +516,7 @@ def train_cohort(args: argparse.Namespace) -> None:
         training_batch_factory=factories[realization.cohort_id],
         calibration_batch_factory=calibration_factory,
         cache_manifest_sha256=cache_sha256,
-        cache_control_dose=(
-            control_dose if realization.kind
-            == "hard-geometry-label-permutation" else 0),
+        cache_control_dose=compact_control_dose,
         qualification_plan=plan, qualification_result=result,
         progress=_progress("training", args.cohort_id)))
 
@@ -442,6 +524,12 @@ def train_cohort(args: argparse.Namespace) -> None:
 def calibrate(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
+    final = root / "calibration" / "selection"
+    if _recover_final(args, final):
+        _output(reopen_v2_calibration_selection(
+            final, freeze=freeze, admission=admission,
+            inventory=inventory, group_split=group_split))
+        return
     _output(run_v2_calibration_selection(
         root, freeze, admission, repo=REPO, review_marker=marker,
         inventory=inventory, group_split=group_split,
@@ -451,6 +539,13 @@ def calibrate(args: argparse.Namespace) -> None:
 def open_test(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
+    final = root / "terminal"
+    if _recover_final(args, final):
+        _output(reopen_v2_terminal(
+            final, freeze=freeze, admission=admission,
+            inventory=inventory, group_split=group_split,
+            progress=_progress("terminal", "test-opening-reopen")))
+        return
     _output(run_v2_terminal(
         root, freeze, admission, repo=REPO, review_marker=marker,
         inventory=inventory, group_split=group_split,
@@ -547,6 +642,16 @@ def parser() -> argparse.ArgumentParser:
     terminal = commands.add_parser("verify-terminal")
     terminal.add_argument("--root", required=True)
     terminal.set_defaults(function=verify_terminal)
+    for operational in (
+            capture, reference, human_capture_parser,
+            human_reference_parser, training_index, training_cache,
+            qualify, train, calibration, test, terminal):
+        operational.add_argument(
+            "--recover-existing", action="store_true",
+            help=argparse.SUPPRESS)
+        operational.add_argument(
+            "--require-existing-final", action="store_true",
+            help=argparse.SUPPRESS)
     return result
 
 

@@ -20,7 +20,7 @@ from .belief_v2_human_inventory import H0_GROUP_SCHEMA, H0_SPLIT_SCHEMA
 from .belief_v2_protocol import V2_CAPTURE_LANES
 
 
-SUPERVISOR_PLAN_SCHEMA = "belief-v1-v2-supervisor-plan-v3"
+SUPERVISOR_PLAN_SCHEMA = "belief-v1-v2-supervisor-plan-v4"
 CALIBRATION_REPLICATES = (
     "calibration-replicate-0", "calibration-replicate-1")
 TEST_REPLICATE = "test-primary"
@@ -70,6 +70,7 @@ class V2SupervisorPlanV1:
             "human_source_records_parsed": False,
             "outcome_fields_opened": False,
             "cache_stage_count": 1,
+            "same_admission_process_resume_authorized": True,
             "retry_authorized": False,
             "test_split_open_authorized": False,
             "strength_claim_authorized": False,
@@ -83,7 +84,7 @@ class V2SupervisorPlanV1:
         """Bind every internal task argument without publishing it in summary."""
         validate_supervisor_plan(self)
         return canonical_json_bytes({
-            "schema": "belief-v1-v2-supervisor-execution-plan-v2",
+            "schema": "belief-v1-v2-supervisor-execution-plan-v3",
             "stages": [{
                 "name": stage.name,
                 "concurrency": stage.concurrency,
@@ -92,6 +93,7 @@ class V2SupervisorPlanV1:
                     "arguments": list(task.arguments),
                 } for task in stage.tasks],
             } for stage in self.stages],
+            "same_admission_process_resume_authorized": True,
             "retry_authorized": False,
             "test_split_open_authorized": False,
             "strength_claim_authorized": False,

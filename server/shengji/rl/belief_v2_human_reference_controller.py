@@ -243,10 +243,16 @@ _ROW_KEYS = {
 }
 
 
-def reopen_human_reference_group(
+def reopen_human_reference_group_manifest(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1) -> dict[str, Any]:
-    """Reopen all human REF-C bytes and rebind each to actor-only capture."""
+    """Authenticate one human REF-C manifest without opening world bytes.
+
+    Supervisor recovery uses this boundary before the one test opening.  It
+    validates the complete file population, immutable sizes, row identities,
+    capture binding, resources and authorities while deliberately leaving the
+    reference bundles (including test-primary bundles) physically unopened.
+    """
     if not isinstance(directory, Path) or directory.is_symlink() \
             or not directory.is_dir() or directory.parent.parent.name \
             != "human-reference" or not directory.parent.name.startswith(
@@ -336,36 +342,12 @@ def reopen_human_reference_group(
                 "V2 human reference row drift")
         path = directory / row["filename"]
         info = path.lstat()
-        raw_batch = stable_read_bytes(path)
         if path.is_symlink() or not stat.S_ISREG(info.st_mode) \
                 or info.st_nlink != 1 or info.st_mode & 0o222 \
-                or info.st_size != row["byte_count"] \
-                or len(raw_batch) != row["byte_count"] \
-                or _sha256(raw_batch) != row["bundle_sha256"]:
+                or info.st_size != row["byte_count"]:
             raise BeliefV2HumanReferenceControllerError(
-                "V2 human reference selected byte drift")
-        try:
-            source_actor, _, metadata = reopen_human_actor_row(
-                stable_read_bytes(
-                    capture_directory / "actor-only"
-                    / capture_row["actor_filename"]))
-            scoring_actor = v2_scoring_actor(source_actor)
-            batch = reopen_reference_external_actor_batch_bundle(
-                raw_batch, actor=scoring_actor)
-        except ValueError as exc:
-            raise BeliefV2HumanReferenceControllerError(
-                "V2 human reference typed reopen refused") from exc
-        if metadata["decision_key"] != row["decision_key"] \
-                or batch.actor.canonical_bytes() \
-                != scoring_actor.canonical_bytes() \
-                or batch.actor.sha256() != row["actor_observation_sha256"] \
-                or batch.manifest_sha256() \
-                != row["reference_manifest_sha256"] \
-                or len(batch.worlds) != row["accepted_world_count"] \
-                or batch.attempts != row["attempt_count"]:
-            raise BeliefV2HumanReferenceControllerError(
-                "V2 human reference actor/reconstruction drift")
-        artifact_bytes += len(raw_batch)
+                "V2 human reference selected file drift")
+        artifact_bytes += info.st_size
     resources = payload["resources"]
     if type(resources) is not dict or set(resources) != {
             "schema", "boot_identity", "started_monotonic_nanoseconds",
@@ -396,4 +378,52 @@ def reopen_human_reference_group(
             or resources["artifact_bytes"] > caps.reference_bytes:
         raise BeliefV2HumanReferenceControllerError(
             "V2 human reference resource cap drift")
+    return payload
+
+
+def reopen_human_reference_group(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1) -> dict[str, Any]:
+    """Reopen all human REF-C bytes and rebind each to actor-only capture."""
+    payload = reopen_human_reference_group_manifest(
+        directory, freeze=freeze, admission=admission)
+    capture_directory = (
+        Path(freeze.evidence_root) / "human-capture"
+        / f"group-{payload['group_digest']}")
+    capture = reopen_human_group_manifest(
+        capture_directory, freeze=freeze, admission=admission)
+    artifact_bytes = 0
+    for row, capture_row in zip(
+            payload["rows"], capture["rows"], strict=True):
+        path = directory / row["filename"]
+        raw_batch = stable_read_bytes(path)
+        if len(raw_batch) != row["byte_count"] \
+                or _sha256(raw_batch) != row["bundle_sha256"]:
+            raise BeliefV2HumanReferenceControllerError(
+                "V2 human reference selected byte drift")
+        try:
+            source_actor, _, metadata = reopen_human_actor_row(
+                stable_read_bytes(
+                    capture_directory / "actor-only"
+                    / capture_row["actor_filename"]))
+            scoring_actor = v2_scoring_actor(source_actor)
+            batch = reopen_reference_external_actor_batch_bundle(
+                raw_batch, actor=scoring_actor)
+        except ValueError as exc:
+            raise BeliefV2HumanReferenceControllerError(
+                "V2 human reference typed reopen refused") from exc
+        if metadata["decision_key"] != row["decision_key"] \
+                or batch.actor.canonical_bytes() \
+                != scoring_actor.canonical_bytes() \
+                or batch.actor.sha256() != row["actor_observation_sha256"] \
+                or batch.manifest_sha256() \
+                != row["reference_manifest_sha256"] \
+                or len(batch.worlds) != row["accepted_world_count"] \
+                or batch.attempts != row["attempt_count"]:
+            raise BeliefV2HumanReferenceControllerError(
+                "V2 human reference actor/reconstruction drift")
+        artifact_bytes += len(raw_batch)
+    if artifact_bytes != payload["resources"]["artifact_bytes"]:
+        raise BeliefV2HumanReferenceControllerError(
+            "V2 human reference selected byte total drift")
     return payload

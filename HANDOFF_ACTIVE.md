@@ -1,12 +1,13 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 00:31 EDT.
+Last reconciled: 2026-08-26 04:17 EDT.
 
 Current operational truth only. Historical review evidence belongs in
-`HANDOFF_REVIEW.md`. There is no active review ask; do not repeat the PT1 r7
-review or any earlier PT/R4/R5 review.
+`HANDOFF_REVIEW.md`. There is no review ask yet; do not repeat the PT1 r7
+source/freeze review or any earlier PT/R4/R5 review. Codex is preparing one
+consolidated terminal-recovery source+packet ask below.
 
-## Live PT1 r7 — reviewed scientific execution on Mini
+## PT1 r7 — 416/416 sealed; terminal reducer defect; recovery in preparation
 
 - Source: draft PR #149, exact head
   `76508ec9c15638e715dc8d48ee6719412233918b`.
@@ -14,27 +15,31 @@ review or any earlier PT/R4/R5 review.
   `d05070d755d12f1a7c9a67471599377e0e590ed100f6beb315f7d8ccd915bc90`.
 - Consolidated PASS/marker commit:
   `5824d512d93f353730178b7697ed746b52a53680`.
-- Exact launcher: `/Users/jerryyu/Projects/launch-pt1-76508ec-r7.sh`, SHA-256
-  `061acb97850f9727d4721ea5bf6402f63ada36f5105134e7f23a6f1d882222f6`.
 - Evidence root:
   `/Users/jerryyu/Projects/shengji-pt1-evidence-76508ec-r7`.
-- Frozen runtime: Mini, 10 workers, strict compiled engine, 416 natural states,
-  38.7-minute deadline ceiling.
+- Durable state: `FAILED`, completed `416/416`, all 416 immutable group files
+  present, no `packet.json` or `manifest.json`, score/action payloads not opened
+  for interpretation. Failure receipt SHA-256:
+  `5b19450cbf775b721b5b8b6bf678d3f09dd509fc1d9529e134006aa6d0fe740d`.
 
-The reviewed launcher first refused before initialization because one ignored
-top-level `shengji/__pycache__/__init__.pyc` was present. The evidence root was
-proven absent, so no admission, deadline, group, scientific byte or attempt was
-spent. The cache was moved intact to
-`/private/tmp/pt1-r7-prelaunch-pyc-20260826-002811`; an exact `-P -B` import
-then proved `dont_write=True`, `safe_path=True`, strict native activation and
-no regenerated cache. Invoking the unchanged reviewed launcher subsequently
-authenticated the marker, initialized r7 once and entered scientific work.
+The failure is downstream plumbing, not a scientific verdict. The execution
+path reopens each group into a hash-bound identity-only state and validates all
+416 identities against the frozen population manifest. It then passes those
+identity-only states to `reduce_pt1_statistics`, whose first line incorrectly
+calls the live-population validator requiring a `NaturalPT1State` with a live
+`Round` and true-world capability. That type mismatch deterministically raises
+`natural population integrity refusal` only after the final group is sealed.
+Every execution test had monkeypatched the reducer, so no end-to-end witness
+crossed this exact handoff.
 
-At the first durable sample r7 was `RUNNING`, 10/416 groups (2.4%), ETA about
-10.4 minutes, with all ten workers active around 93–98% CPU. Monitor only. Do
-not signal, restart, mutate, inspect score/action payloads, merge the PR, or
-create another review. The launcher will fetch canonical main again and run
-the reviewed terminal verifier after execution.
+Top priority: preserve the spent r7 root byte-for-byte and build a narrow,
+separately reviewed terminal-only reducer. It must consume exactly the frozen
+416 group hashes in canonical order, verify every group/record/manifest binding,
+write to a fresh recovery root, and publish the one preregistered aggregate.
+It may not run workers, choose/drop states, mutate r7, or inspect results before
+the review marker. Request exactly one consolidated source+recovery-packet
+review when Codex posts the exact head and packet; no rehearsal and no second
+scientific run are planned.
 
 ## Live R4 — monitor only, do not touch
 

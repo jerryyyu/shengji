@@ -4322,3 +4322,25 @@ One note on reading the prose: I initially compared the B−A and C−A means ag
 
 **Unrelated, carried forward:** `HANDOFF_ACTIVE`'s live-R4 line reads "memory current/peak about 18.3/20.7 GB below the 24-GiB boundary". There is no 24-GiB boundary on that unit — `MemoryMax=infinity`, per my entry at `1248d6c`. The numbers are right; the boundary is not there. — Claude (session `68f9c8bd`)
 
+
+## 2026-08-26 06:35 UTC — live R4 completion: 5 hours in calibration, **exactly one core, zero syscalls, zero bytes written**. This may be entirely normal, and that is the problem — nothing on this run can tell us
+
+**Monitor-only, no action taken, nothing touched.** I did not attach a profiler or signal the process; `py-spy` is not installed on Strength Cloud, so no stack sample is available even in principle. This is a measurement plus one cheap ask.
+
+**Measured on pid running `r4-calibrate --root /opt/belief-r4-completion-v1-r3`:**
+
+- Unit `belief-r4-completion-e10cb3d-r3.service`: `ActiveState=active`, `NRestarts=0`, `MemoryPeak` **20,688,039,936** (unchanged across three hourly samples), **`RuntimeMaxUSec=infinity`**.
+- `ExecMainStartTimestamp 2026-08-26 01:32:30 UTC`; operator status `updated_utc 01:32:48Z`. Against a `06:33:13Z` reading that is **5 h 00 m 43 s of run, essentially all of it inside `phase=calibrating` 1/4, 25%**.
+- CPU rate from the unit's own `CPUUsageNSec` delta: **exactly 1.00 cores**, on three consecutive hourly samples. Load average `1.00, 1.00, 1.00`.
+- **RSS perfectly static**: 6,407,480 kB → 6,407,480 kB over 30 s, zero drift.
+- **Zero syscalls over 20 s**: `syscr` 451,412 → 451,412, `syscw` 1,078 → 1,078, `read_bytes` and `write_bytes` byte-identical.
+- Process state `R`; **1 of 16 threads** doing anything.
+- Evidence root `/opt/belief-r4-completion-v1-r3` still **60,057 bytes** — the same five files (`admission`, `freeze`, `group-split`, `inventory`, `review.md`) it had at 03:33. **Nothing has been written in five hours.**
+
+**The honest reading, and I want to be careful not to cry wolf.** Pure userspace compute with no I/O is exactly what the new damped retry should look like: `PROJECTION_DAMPED_RETRY_MAX_ITERATIONS = 8192` gives 16× the iteration budget, and a calibration pass that hits many states needing damped retry would be slow, single-threaded and syscall-free. **This is plausibly a healthy long solve.** I am not claiming it is stuck.
+
+**What I am claiming is that nobody can currently tell the difference.** A livelock produces an identical signature: `R` state, one core, static RSS, no syscalls, no output. The distinguishing evidence would be a progress record or a stack sample, and this run has neither — no `BELIEF_V2_PROGRESS` from calibrate, no per-state counter, no `py-spy`. The earlier R4 taught this lesson at a cost of 63.57 h: the failure was invisible until the traceback. **This run exists to recover that 63.57 h, it has `RuntimeMaxUSec=infinity`, and its parallel phase ended four hours ago.**
+
+**Two cheap asks, either of which resolves it permanently.** (1) Emit a progress record per calibration state, or per N states — every other stage in this pipeline already does, and calibrate is the one that does not; that is the same gap that made the original R4 undiagnosable and it is still open. (2) Install `py-spy` on Strength Cloud so a live stack can be read without guessing. Neither perturbs a run in flight, and the first would have answered this question in one line.
+
+**No verdict, no authority implication, nothing to stop.** If calibration publishes in the next hours this entry is simply a record that the blind spot persisted; if it does not, this is where the timeline starts. — Claude (session `68f9c8bd`)

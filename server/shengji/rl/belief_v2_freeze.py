@@ -915,10 +915,34 @@ def _authenticate_execution_review_at_tip(
     require the moving main branch to remain byte-identical for a multi-day
     run.
     """
+    marker = REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(
+        expected_execution_review_claim(freeze))
+    _authenticate_review_marker_at_tip(
+        freeze, repo=repo, review_commit=review_commit,
+        canonical_tip=canonical_tip, marker=marker,
+        marker_prefix=REVIEW_PREFIX)
+    return marker
+
+
+def _authenticate_review_marker_at_tip(
+        freeze: V2ExecutionFreezeV1, *, repo: Path,
+        review_commit: str, canonical_tip: str, marker: bytes,
+        marker_prefix: str) -> None:
+    """Authenticate one exact append-only marker at a pinned main tip.
+
+    The R4 completion lane deliberately uses a narrower admission and marker
+    than the full offline pipeline.  Keeping the Git/actor/append-only proof
+    here avoids duplicating or weakening that external-review boundary while
+    allowing the two authority shapes to remain type-distinct.
+    """
     validate_execution_freeze(freeze)
     if not isinstance(repo, Path) or not repo.is_absolute() \
             or not _is_git_sha(review_commit) \
-            or not _is_git_sha(canonical_tip):
+            or not _is_git_sha(canonical_tip) \
+            or type(marker) is not bytes or not marker \
+            or type(marker_prefix) is not str or not marker_prefix \
+            or not marker.startswith(marker_prefix.encode("ascii")) \
+            or not marker.endswith(b"\n") or marker.count(b"\n") != 1:
         raise BeliefV2FreezeError("V2 execution review input drift")
     try:
         if subprocess.run(
@@ -958,9 +982,7 @@ def _authenticate_execution_review_at_tip(
             or not current.startswith(previous):
         raise BeliefV2FreezeError(
             "V2 execution review ledger is not append-only")
-    marker = REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(
-        expected_execution_review_claim(freeze))
-    prefix = REVIEW_PREFIX.encode("ascii")
+    prefix = marker_prefix.encode("ascii")
     current_matches = [line for line in current.splitlines(keepends=True)
                        if line.startswith(prefix)]
     previous_matches = [line for line in previous.splitlines(keepends=True)
@@ -969,7 +991,6 @@ def _authenticate_execution_review_at_tip(
             or marker in previous_matches:
         raise BeliefV2FreezeError(
             "V2 execution review marker introduction drift")
-    return marker
 
 
 def authenticate_execution_review(

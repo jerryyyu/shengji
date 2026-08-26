@@ -32,6 +32,8 @@ MAX_RAW_WEIGHT = 10**18
 PROJECTION_MAX_ITERATIONS = 512
 PROJECTION_APPROXIMATE_MARGIN_LIMIT = 1e-3
 PROJECTION_APPROXIMATE_GROUP_LIMIT = 1e-8
+PROJECTION_DAMPED_RETRY_FACTOR = 0.75
+PROJECTION_DAMPED_RETRY_MAX_ITERATIONS = 8192
 
 
 class BeliefProjectionError(ValueError):
@@ -171,87 +173,124 @@ def _fractional_expectations(
             or np.any(receiver_target < lower.sum(axis=0)) \
             or np.any(receiver_target > upper.sum(axis=0)):
         raise BeliefProjectionError("projection margin is infeasible")
-    card_bias = np.zeros(n_cards, dtype=np.float64)
-    receiver_bias = np.zeros(n_receivers, dtype=np.float64)
-    group_bias = np.zeros(n_cards, dtype=np.float64)
+    def solve(damping: float, max_iterations: int) -> tuple[
+            bool, list[list[float]], np.ndarray, float, float]:
+        card_bias = np.zeros(n_cards, dtype=np.float64)
+        receiver_bias = np.zeros(n_receivers, dtype=np.float64)
+        group_bias = np.zeros(n_cards, dtype=np.float64)
 
-    def evaluate() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        scores = log_weights + counts * (
-            card_bias[:, None, None]
-            + receiver_bias[None, :, None]
-            + group_bias[:, None, None] * group_mask[:, :, None]
-        )
-        maximum = np.max(scores, axis=2, keepdims=True)
-        mass = np.exp(scores - maximum)
-        mass /= mass.sum(axis=2, keepdims=True)
-        expected = (mass * counts).sum(axis=2)
-        variance = (mass * counts * counts).sum(axis=2) - expected * expected
-        return mass, expected, variance
+        def evaluate() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            scores = log_weights + counts * (
+                card_bias[:, None, None]
+                + receiver_bias[None, :, None]
+                + group_bias[:, None, None] * group_mask[:, :, None]
+            )
+            maximum = np.max(scores, axis=2, keepdims=True)
+            mass = np.exp(scores - maximum)
+            mass /= mass.sum(axis=2, keepdims=True)
+            expected = (mass * counts).sum(axis=2)
+            variance = ((mass * counts * counts).sum(axis=2)
+                        - expected * expected)
+            return mass, expected, variance
 
-    for _ in range(PROJECTION_MAX_ITERATIONS):
-        _, expected, variance = evaluate()
-        residual = card_target - expected.sum(axis=1)
-        curvature = variance.sum(axis=1)
-        movable = curvature > 1e-15
-        if np.any(~movable & (np.abs(residual) > 1e-10)):
-            raise BeliefProjectionError("card projection margin is fixed wrong")
-        card_bias[movable] += np.clip(
-            residual[movable] / curvature[movable], -4.0, 4.0)
+        for _ in range(max_iterations):
+            _, expected, variance = evaluate()
+            residual = card_target - expected.sum(axis=1)
+            curvature = variance.sum(axis=1)
+            movable = curvature > 1e-15
+            if np.any(~movable & (np.abs(residual) > 1e-10)):
+                raise BeliefProjectionError(
+                    "card projection margin is fixed wrong")
+            card_step = np.clip(
+                residual[movable] / curvature[movable], -4.0, 4.0)
+            if damping != 1.0:
+                card_step *= damping
+            card_bias[movable] += card_step
 
-        _, expected, variance = evaluate()
-        residual = receiver_target - expected.sum(axis=0)
-        curvature = variance.sum(axis=0)
-        movable = curvature > 1e-15
-        if np.any(~movable & (np.abs(residual) > 1e-10)):
-            raise BeliefProjectionError(
-                "receiver projection margin is fixed wrong")
-        receiver_bias[movable] += np.clip(
-            residual[movable] / curvature[movable], -4.0, 4.0)
-        gauge = float(card_bias.mean())
-        card_bias -= gauge
-        receiver_bias += gauge
+            _, expected, variance = evaluate()
+            residual = receiver_target - expected.sum(axis=0)
+            curvature = variance.sum(axis=0)
+            movable = curvature > 1e-15
+            if np.any(~movable & (np.abs(residual) > 1e-10)):
+                raise BeliefProjectionError(
+                    "receiver projection margin is fixed wrong")
+            receiver_step = np.clip(
+                residual[movable] / curvature[movable], -4.0, 4.0)
+            if damping != 1.0:
+                receiver_step *= damping
+            receiver_bias[movable] += receiver_step
+            gauge = float(card_bias.mean())
+            card_bias -= gauge
+            receiver_bias += gauge
 
-        probabilities, expected, variance = evaluate()
-        for card_index in range(n_cards):
-            if not group_minimum[card_index]:
-                continue
-            mask = group_mask[card_index]
-            current = float(expected[card_index, mask].sum())
-            curvature = float(variance[card_index, mask].sum())
-            residual = group_minimum[card_index] - current
-            if residual > 1e-11 or (
-                    group_bias[card_index] > 0 and residual < -1e-11):
-                if curvature <= 1e-15:
-                    raise BeliefProjectionError(
-                        "required receiver group is fixed infeasible")
-                group_bias[card_index] = max(
-                    0.0,
-                    group_bias[card_index]
-                    + float(np.clip(residual / curvature, -4.0, 4.0)),
-                )
+            probabilities, expected, variance = evaluate()
+            for card_index in range(n_cards):
+                if not group_minimum[card_index]:
+                    continue
+                mask = group_mask[card_index]
+                current = float(expected[card_index, mask].sum())
+                curvature = float(variance[card_index, mask].sum())
+                residual = group_minimum[card_index] - current
+                if residual > 1e-11 or (
+                        group_bias[card_index] > 0 and residual < -1e-11):
+                    if curvature <= 1e-15:
+                        raise BeliefProjectionError(
+                            "required receiver group is fixed infeasible")
+                    group_step = float(np.clip(
+                        residual / curvature, -4.0, 4.0))
+                    if damping != 1.0:
+                        group_step *= damping
+                    group_bias[card_index] = max(
+                        0.0, group_bias[card_index] + group_step)
 
-        probabilities, expected, _ = evaluate()
-        margin_error = max(
-            float(np.max(np.abs(expected.sum(axis=1) - card_target))),
-            float(np.max(np.abs(expected.sum(axis=0) - receiver_target))),
-        )
-        group_error = 0.0
-        for card_index in range(n_cards):
-            if not group_minimum[card_index]:
-                continue
-            current = float(expected[card_index, group_mask[card_index]].sum())
-            if group_bias[card_index] > 1e-12:
-                group_error = max(
-                    group_error, abs(current - group_minimum[card_index]))
-            else:
-                group_error = max(
-                    group_error, group_minimum[card_index] - current)
-        if max(margin_error, group_error) < 1e-11:
-            return expected.tolist(), probabilities
-    if np.isfinite(margin_error) and np.isfinite(group_error) \
-            and margin_error <= PROJECTION_APPROXIMATE_MARGIN_LIMIT \
-            and group_error <= PROJECTION_APPROXIMATE_GROUP_LIMIT:
-        return expected.tolist(), probabilities
+            probabilities, expected, _ = evaluate()
+            margin_error = max(
+                float(np.max(np.abs(
+                    expected.sum(axis=1) - card_target))),
+                float(np.max(np.abs(
+                    expected.sum(axis=0) - receiver_target))),
+            )
+            group_error = 0.0
+            for card_index in range(n_cards):
+                if not group_minimum[card_index]:
+                    continue
+                current = float(
+                    expected[card_index, group_mask[card_index]].sum())
+                if group_bias[card_index] > 1e-12:
+                    group_error = max(
+                        group_error,
+                        abs(current - group_minimum[card_index]))
+                else:
+                    group_error = max(
+                        group_error,
+                        group_minimum[card_index] - current)
+            if max(margin_error, group_error) < 1e-11:
+                return (True, expected.tolist(), probabilities,
+                        margin_error, group_error)
+        return (False, expected.tolist(), probabilities,
+                margin_error, group_error)
+
+    converged, expected, probabilities, margin_error, group_error = solve(
+        1.0, PROJECTION_MAX_ITERATIONS)
+    if converged or (
+            np.isfinite(margin_error) and np.isfinite(group_error)
+            and margin_error <= PROJECTION_APPROXIMATE_MARGIN_LIMIT
+            and group_error <= PROJECTION_APPROXIMATE_GROUP_LIMIT):
+        return expected, probabilities
+
+    # Undamped coordinate Newton can enter a stable two-cycle on a valid,
+    # tightly constrained transportation polytope.  Restarting the same
+    # objective with a fixed damped step preserves every previously accepted
+    # byte path while giving the oscillating case a monotone route to the
+    # identical constrained optimum.
+    converged, expected, probabilities, margin_error, group_error = solve(
+        PROJECTION_DAMPED_RETRY_FACTOR,
+        PROJECTION_DAMPED_RETRY_MAX_ITERATIONS)
+    if converged or (
+            np.isfinite(margin_error) and np.isfinite(group_error)
+            and margin_error <= PROJECTION_APPROXIMATE_MARGIN_LIMIT
+            and group_error <= PROJECTION_APPROXIMATE_GROUP_LIMIT):
+        return expected, probabilities
     raise BeliefProjectionError(
         "projection did not converge: "
         f"margin_error={margin_error!r}, group_error={group_error!r}")

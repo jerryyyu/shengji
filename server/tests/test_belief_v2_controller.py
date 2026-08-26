@@ -1703,6 +1703,51 @@ def test_training_tensor_cache_stage_reopens_exact_wiring_and_tamper_refuses(
     assert manifest["resources"][
         "cpu_nanoseconds_is_conservative_upper_bound"] is False
 
+    # R4 predates the parallel-cache accounting fields.  Its sealed cache may
+    # be reopened only through an explicitly pinned legacy-manifest digest;
+    # the ordinary V4 reader must continue to refuse those bytes.
+    manifest_path = root / "training-tensor-cache" / "result" / "manifest.json"
+    current_manifest_raw = manifest_path.read_bytes()
+    legacy = json.loads(current_manifest_raw)
+    legacy["schema"] = "belief-v1-v2-training-tensor-cache-stage-v2"
+    for key in ("cache_worker_count", "cache_storage",
+                "parallel_actor_cache_build"):
+        legacy.pop(key)
+    legacy["resources"]["schema"] = (
+        "belief-v1-v2-training-tensor-cache-resource-v2")
+    for key in ("cpu_nanoseconds_is_conservative_upper_bound",
+                "artifact_bytes_are_logical_referenced_bytes",
+                "external_cache_reused", "cache_worker_count"):
+        legacy["resources"].pop(key)
+    legacy_raw = canonical_json_bytes(legacy)
+    legacy_sha = hashlib.sha256(legacy_raw).hexdigest()
+    manifest_path.chmod(0o600)
+    manifest_path.write_bytes(legacy_raw)
+    manifest_path.chmod(0o400)
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="resource reconstruction"):
+        reopen_training_tensor_cache(
+            root / "training-tensor-cache" / "result",
+            freeze=freeze, admission=admission)
+    with pytest.raises(
+            CACHE_STAGE.BeliefV2TensorCacheControllerError,
+            match="legacy tensor cache reconstruction"):
+        reopen_training_tensor_cache(
+            root / "training-tensor-cache" / "result",
+            freeze=freeze, admission=admission,
+            legacy_manifest_sha256="0" * 64)
+    legacy_reopened, _, _, _, legacy_reopened_sha = (
+        reopen_training_tensor_cache(
+            root / "training-tensor-cache" / "result",
+            freeze=freeze, admission=admission,
+            legacy_manifest_sha256=legacy_sha))
+    assert legacy_reopened == legacy
+    assert legacy_reopened_sha == legacy_sha
+    manifest_path.chmod(0o600)
+    manifest_path.write_bytes(current_manifest_raw)
+    manifest_path.chmod(0o400)
+
     cache_parent = root / "training-tensor-cache"
     cache_root = cache_parent / "result"
     imported_root = (tmp_path / "imported-evidence").resolve()
@@ -2757,6 +2802,48 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
         CALIBRATION_STAGE, "evaluate_scale_curve",
         lambda *args, **kwargs: scale_curve)
     return human_selection, scale_curve
+
+
+def test_calibration_scoring_reports_progress_inside_each_population(
+        tmp_path, monkeypatch):
+    """A long calibration pass must advance before its whole arm completes."""
+    coordinates = tuple(SimpleNamespace(
+        split="calibration", round_seed=seed, trump_rank="2", lane=0)
+        for seed in (7101, 7102))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "v2_round_coordinates", lambda: coordinates)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_synthetic_scoring_round",
+        lambda *args, **kwargs: ("decision",))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_human_scoring_rounds",
+        lambda *args, group_digest, **kwargs: ((
+            hashlib.sha256(group_digest.encode()).hexdigest(), "2",
+            ("decision",)),))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "score_v2_round",
+        lambda **kwargs: SimpleNamespace(round_key=kwargs["round_key"]))
+    progress = []
+    callback = lambda completed, total, phase: progress.append(
+        (completed, total, phase))
+
+    synthetic = CALIBRATION_STAGE._score_synthetic(
+        tmp_path, SimpleNamespace(), SimpleNamespace(), (),
+        replicate="calibration-replicate-0", progress=callback,
+        progress_phase="synthetic-inner")
+    human = CALIBRATION_STAGE._score_human(
+        tmp_path, SimpleNamespace(), SimpleNamespace(), {
+            "splits": {"calibration": {
+                "group_digests": ["group-b", "group-a"]}}}, (),
+        replicate="calibration-replicate-0", progress=callback,
+        progress_phase="human-inner")
+
+    assert len(synthetic) == 2 and len(human) == 2
+    assert progress == [
+        (0, 2, "synthetic-inner"), (1, 2, "synthetic-inner"),
+        (2, 2, "synthetic-inner"), (0, 2, "human-inner"),
+        (1, 2, "human-inner"), (2, 2, "human-inner"),
+    ]
 
 
 def test_calibration_selection_wires_stability_and_selected_cohort(

@@ -191,11 +191,11 @@ def _adapt_reference(
 def _predict_cohort(
         actor: ActorObservationV1,
         common: V2CommonSurfaceTensorsV1,
-        cohort: V2CohortModelsV1) \
+        cohort: V2CohortModelsV1, *, decision_key: str) \
         -> tuple[tuple[BeliefOwnershipV1, ...], BeliefOwnershipV1]:
     members = []
-    for model, model_sha in zip(
-            cohort.models, cohort.model_sha256s, strict=True):
+    for member_index, (model, model_sha) in enumerate(zip(
+            cohort.models, cohort.model_sha256s, strict=True)):
         try:
             logits = inference_logits(model, common.tensors)
             raw = quantize_raw_count_weights(common.tensors, logits)
@@ -205,7 +205,11 @@ def _predict_cohort(
                 model_sha256=model_sha, raw_weights=raw)
         except ValueError as exc:
             raise BeliefV2ScoringError(
-                "V2 scoring member prediction refused") from exc
+                "V2 scoring member prediction refused: "
+                f"decision_key={decision_key}, "
+                f"cohort_id={cohort.cohort_id}, "
+                f"member_index={member_index}, "
+                f"model_sha256={model_sha}") from exc
         members.append(prediction)
     try:
         ensemble = ensemble_ownership(actor, tuple(members))
@@ -262,7 +266,8 @@ def score_v2_round(
         reference = _adapt_reference(actor, decision.reference)
         for cohort in cohorts:
             members, ensemble = _predict_cohort(
-                actor, decision.common, cohort)
+                actor, decision.common, cohort,
+                decision_key=decision.decision_key)
             if not reference.probabilities:
                 if any(member.probabilities for member in members) \
                         or ensemble.probabilities:

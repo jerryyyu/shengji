@@ -10,7 +10,10 @@ from types import SimpleNamespace
 
 import pytest
 
+import shengji.rl.belief_v2_controller as PIPELINE_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
+import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
+import shengji.rl.belief_v2_r4_completion as R4_COMPLETION
 
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_v2_device_qualification import (
@@ -432,6 +435,17 @@ def _admission(freeze):
         evidence_root=freeze.evidence_root)
 
 
+def _completion_admission(freeze):
+    return R4_COMPLETION.R4CompletionAdmissionV1(
+        freeze_sha256=freeze.sha256(), execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        source_spec_sha256=_sha("completion-spec"),
+        review_commit="c" * 40, canonical_remote_tip="d" * 40,
+        review_marker_sha256=_sha("completion-review-marker"),
+        evidence_root=freeze.evidence_root)
+
+
 def _terminal_score(source: str, cohort_ids: tuple[str, ...]):
     return V2RoundScoreV1(
         round_key=_sha(f"{source}-test-round"), source_kind=source,
@@ -494,6 +508,207 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
     return calibration
 
 
+def test_r4_completion_source_spec_is_canonical_and_authorizes_no_retry():
+    raw = R4_COMPLETION.SOURCE_SPEC_PATH.read_bytes()
+    spec = R4_COMPLETION.load_r4_completion_source_spec(raw)
+    assert spec.canonical_bytes() == raw
+    assert spec.source_evidence_root == Path(
+        "/opt/belief-r4-evidence-d2d466f-r1")
+    assert spec.destination_evidence_root == Path(
+        "/opt/belief-r4-completion-v1-r3")
+    assert R4_COMPLETION.COMPLETION_AUTHORITY == {
+        "calibration_open_authorized": True,
+        "one_test_split_open_authorized": True,
+        "training_authorized": False,
+        "retry_authorized": False,
+        "sampler_implementation_authorized": False,
+        "gameplay_strength_screen_authorized": False,
+        "strength_claim_authorized": False,
+        "promotion_authorized": False,
+        "deployment_authorized": False,
+        "merge_authorized": False,
+    }
+    forged = json.loads(raw)
+    forged["authority"]["retry_authorized"] = True
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="field/authority drift"):
+        R4_COMPLETION.load_r4_completion_source_spec(
+            canonical_json_bytes(forged))
+
+
+def test_r4_completion_admission_is_narrow_and_round_trips():
+    spec = R4_COMPLETION.load_r4_completion_source_spec()
+    freeze = replace(_freeze(), evidence_root=str(
+        spec.destination_evidence_root))
+    marker = R4_COMPLETION.expected_r4_completion_review_marker(
+        freeze, spec)
+    claim = R4_COMPLETION.expected_r4_completion_review_claim(freeze, spec)
+    assert claim["execution_mode"] == \
+        "r4-calibration-test-terminal-only"
+    assert "bounded_capture_reference_training_and_one_test_open_authorized" \
+        not in claim
+    assert claim["authority"] == \
+        R4_COMPLETION.COMPLETION_ADMISSION_AUTHORITY
+    admission = R4_COMPLETION.R4CompletionAdmissionV1(
+        freeze_sha256=freeze.sha256(),
+        execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        source_spec_sha256=spec.sha256(), review_commit="c" * 40,
+        canonical_remote_tip="d" * 40,
+        review_marker_sha256=hashlib.sha256(marker).hexdigest(),
+        evidence_root=freeze.evidence_root)
+    raw = admission.canonical_bytes()
+    reopened = R4_COMPLETION.r4_completion_admission_from_bytes(
+        raw, freeze=freeze, review_marker=marker, spec=spec)
+    assert reopened == admission
+    authority = reopened.to_dict()["authority"]
+    assert authority["calibration_open_authorized"] is True
+    assert authority["one_test_split_open_authorized"] is True
+    assert authority["terminal_reconstruction_authorized"] is True
+    assert authority["capture_authorized"] is False
+    assert authority["reference_generation_authorized"] is False
+    assert authority["training_authorized"] is False
+    tombstone = R4_COMPLETION.r4_completion_consumption_tombstone_bytes(
+        admission)
+    R4_COMPLETION.validate_r4_completion_consumption_tombstone(
+        tombstone, admission=admission)
+    forged = json.loads(raw)
+    forged["authority"]["training_authorized"] = True
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="field/authority drift"):
+        R4_COMPLETION.r4_completion_admission_from_bytes(
+            canonical_json_bytes(forged), freeze=freeze,
+            review_marker=marker, spec=spec)
+
+
+def test_r4_completion_admission_cannot_enter_generic_work_stages(tmp_path):
+    root = tmp_path.resolve()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = R4_COMPLETION.R4CompletionAdmissionV1(
+        freeze_sha256=freeze.sha256(),
+        execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        source_spec_sha256=_sha("completion spec"),
+        review_commit="c" * 40, canonical_remote_tip="d" * 40,
+        review_marker_sha256=_sha("review"), evidence_root=str(root))
+    with pytest.raises(
+            PIPELINE_STAGE.BeliefV2ControllerError,
+            match="stage admission refused"):
+        PIPELINE_STAGE.run_capture_lane(
+            root, freeze, admission, repo=root, lane=0,
+            review_marker=b"review")
+    with pytest.raises(
+            PIPELINE_STAGE.BeliefV2ControllerError,
+            match="stage admission refused"):
+        PIPELINE_STAGE.run_reference_lane(
+            root, freeze, admission, repo=root, lane=0,
+            review_marker=b"review")
+    with pytest.raises(
+            PIPELINE_STAGE.BeliefV2ControllerError,
+            match="stage admission refused"):
+        TRAINING_STAGE.run_training_cohort(
+            root, freeze, admission, repo=root, review_marker=b"review",
+            primary=None, realization=None, training_examples=None,
+            calibration=None, calibration_examples=None,
+            qualification_plan=None, qualification_result=None)
+    assert not (root / "capture").exists()
+    assert not (root / "reference").exists()
+    assert not (root / "training").exists()
+
+
+def test_r4_completion_calibration_writes_only_fresh_namespace(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    root.mkdir()
+    source_root.mkdir()
+    completion_freeze = replace(_freeze(), evidence_root=str(root))
+    completion_admission = _completion_admission(completion_freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source_admission = _admission(source_freeze)
+    plan, qualification = _qualification(source_freeze)
+    human_selection, scale, _, _, _ = _statistics()
+    cohort_ids = tuple(row.cohort_id for row in source_freeze.cohorts)
+    cohorts = tuple(SimpleNamespace(cohort_id=value) for value in cohort_ids)
+    synthetic_rows = (_terminal_score("synthetic", cohort_ids),)
+    human_rows = (_terminal_score("human", cohort_ids),)
+    spec = SimpleNamespace(
+        source_evidence_root=source_root,
+        destination_evidence_root=root,
+        source_tensor_cache_manifest_sha256=_sha("legacy tensor cache"),
+        sha256=lambda: _sha("R4 source spec"))
+    source = SimpleNamespace(
+        spec=spec, freeze=source_freeze, admission=source_admission,
+        inventory={}, group_split={})
+    monkeypatch.setattr(
+        R4_COMPLETION, "load_r4_completion_source_spec", lambda: spec)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_completion_stage_gate",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_r4_completion_source",
+        lambda *args, **kwargs: source)
+    training_inputs = SimpleNamespace(sha256=lambda: _sha("inputs"))
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, training_inputs))
+    training_hashes = tuple((value, _sha(value)) for value in cohort_ids)
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_trained_scoring_cohorts",
+        lambda *args, **kwargs: (
+            cohorts, plan, qualification, training_hashes))
+    monkeypatch.setattr(
+        R4_COMPLETION, "_score_synthetic",
+        lambda *args, **kwargs: synthetic_rows)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_score_human",
+        lambda *args, **kwargs: human_rows)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_expected_synthetic_rounds",
+        lambda: ((synthetic_rows[0].round_key, "2"),))
+    monkeypatch.setattr(
+        R4_COMPLETION, "v2_reference_replicates_are_stable",
+        lambda *args, **kwargs: True)
+    monkeypatch.setattr(
+        R4_COMPLETION, "evaluate_human_mixture_selection",
+        lambda *args, **kwargs: human_selection)
+    monkeypatch.setattr(
+        R4_COMPLETION, "evaluate_scale_curve",
+        lambda *args, **kwargs: scale)
+
+    reopened_manifests = []
+
+    def reopen_selection(directory, **kwargs):
+        raw = (directory / "manifest.json").read_bytes()
+        value = json.loads(raw)
+        assert canonical_json_bytes(value) == raw
+        reopened_manifests.append(value)
+        return value
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_v2_calibration_selection",
+        reopen_selection)
+    outer = R4_COMPLETION.run_r4_completion_calibration(
+        root, completion_freeze, completion_admission,
+        repo=Path("/unused"), review_marker=b"review")
+    assert outer["calibration_completed_before_test_open"] is True
+    assert outer["source_test_split_opened"] is False
+    assert outer["authority"]["one_test_split_open_authorized"] is True
+    assert not tuple(source_root.iterdir())
+    assert (root / "calibration" / "selection" / "manifest.json").is_file()
+    assert not (root / "r4-completion-test-attempt.json").exists()
+    inner, reopened_source = R4_COMPLETION.reopen_r4_completion_calibration(
+        root, completion_freeze, completion_admission,
+        repo=Path("/unused"), review_marker=b"review")
+    assert reopened_source is source
+    assert inner == reopened_manifests[0]
+    assert len(reopened_manifests) == 2
+
+
 def test_terminal_attempt_is_durable_before_test_scorer_failure(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -522,6 +737,208 @@ def test_terminal_attempt_is_durable_before_test_scorer_failure(
         TERMINAL_STAGE.run_v2_terminal(
             root, freeze, admission, repo=Path("/unused"),
             review_marker=b"review", inventory={}, group_split={})
+
+
+def test_r4_completion_attempt_is_durable_before_original_test_read(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    root.mkdir()
+    source_root.mkdir()
+    completion_freeze = replace(_freeze(), evidence_root=str(root))
+    completion_admission = _completion_admission(completion_freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source_admission = _admission(source_freeze)
+    calibration = {
+        "schema": "test-calibration",
+        "cohort_ids": [row.cohort_id for row in source_freeze.cohorts],
+        "calibration_passed": True,
+        "selected_cohort_id": "synthetic-primary",
+    }
+    spec = SimpleNamespace(
+        source_evidence_root=source_root,
+        source_tensor_cache_manifest_sha256=_sha("legacy tensor cache"),
+        sha256=lambda: _sha("R4 source spec"))
+    source = SimpleNamespace(
+        spec=spec, freeze=source_freeze, admission=source_admission,
+        inventory={}, group_split={})
+    monkeypatch.setattr(
+        R4_COMPLETION, "load_r4_completion_source_spec", lambda: spec)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_completion_stage_gate",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_r4_completion_calibration",
+        lambda *args, **kwargs: (calibration, source))
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, SimpleNamespace()))
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_trained_scoring_cohorts",
+        lambda *args, **kwargs: ((), None, None, ()))
+
+    test_reads = 0
+
+    def test_read_sentinel(*args, **kwargs):
+        nonlocal test_reads
+        test_reads += 1
+        raise AssertionError("test scorer must not run before calibration gate")
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "_calibration_statistics",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ValueError("injected unstable calibration")))
+    monkeypatch.setattr(
+        R4_COMPLETION, "_score_test_populations", test_read_sentinel)
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="not eligible for test opening"):
+        R4_COMPLETION.run_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review")
+    assert test_reads == 0
+    assert not (root / "r4-completion-test-attempt.json").exists()
+    assert not (root / "terminal.partial").exists()
+    monkeypatch.setattr(
+        R4_COMPLETION, "_calibration_statistics",
+        lambda *args, **kwargs: (calibration, None, None))
+
+    calls = 0
+
+    def fail_at_original_test_read(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        assert (root / "r4-completion-test-attempt.json").is_file()
+        assert (root / "terminal.partial" / "attempt.json").is_file()
+        raise ValueError("injected original R4 test read failure")
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "_score_test_populations",
+        fail_at_original_test_read)
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="after durable attempt"):
+        R4_COMPLETION.run_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review")
+    assert calls == 1
+    assert {path.name for path in (root / "terminal.partial").iterdir()} \
+        == {"attempt.json"}
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="namespace is already occupied"):
+        R4_COMPLETION.run_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review")
+    assert calls == 1
+
+
+def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    root.mkdir()
+    source_root.mkdir()
+    completion_freeze = replace(_freeze(), evidence_root=str(root))
+    completion_admission = _completion_admission(completion_freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source_admission = _admission(source_freeze)
+    plan, qualification = _qualification(source_freeze)
+    receipt = _receipt(source_freeze, plan, qualification)
+    human_selection, scale, primary, control, human = _statistics()
+    cohort_ids = tuple(row.cohort_id for row in source_freeze.cohorts)
+    cohorts = tuple(SimpleNamespace(cohort_id=value) for value in cohort_ids)
+    synthetic_rows = (_terminal_score("synthetic", cohort_ids),)
+    human_rows = (_terminal_score("human", cohort_ids),)
+    calibration = {
+        "schema": "test-calibration", "cohort_ids": list(cohort_ids),
+        "calibration_passed": True,
+        "selected_cohort_id": "synthetic-primary",
+    }
+    spec = SimpleNamespace(
+        source_evidence_root=source_root,
+        source_tensor_cache_manifest_sha256=_sha("legacy tensor cache"),
+        sha256=lambda: _sha("R4 source spec"))
+    source = SimpleNamespace(
+        spec=spec, freeze=source_freeze, admission=source_admission,
+        inventory={}, group_split={})
+    monkeypatch.setattr(
+        R4_COMPLETION, "load_r4_completion_source_spec", lambda: spec)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_completion_stage_gate",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_r4_completion_calibration",
+        lambda *args, **kwargs: (calibration, source))
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, SimpleNamespace()))
+    training_hashes = tuple((value, _sha(value)) for value in cohort_ids)
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_trained_scoring_cohorts",
+        lambda *args, **kwargs: (
+            cohorts, plan, qualification, training_hashes))
+    monkeypatch.setattr(
+        R4_COMPLETION, "_score_test_populations",
+        lambda *args, **kwargs: (synthetic_rows, human_rows))
+    monkeypatch.setattr(
+        R4_COMPLETION, "_expected_test_synthetic_rounds",
+        lambda: ((synthetic_rows[0].round_key, "2"),))
+    monkeypatch.setattr(
+        R4_COMPLETION, "_expected_test_human_rounds",
+        lambda *args, **kwargs: ((human_rows[0].round_key, "2"),))
+    monkeypatch.setattr(
+        R4_COMPLETION, "evaluate_primary_test",
+        lambda *args, **kwargs: primary)
+    monkeypatch.setattr(
+        R4_COMPLETION, "evaluate_label_control_test",
+        lambda *args, **kwargs: control)
+    monkeypatch.setattr(
+        R4_COMPLETION, "evaluate_human_transfer_test",
+        lambda *args, **kwargs: human)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_derive_integrity_receipt",
+        lambda *args, **kwargs: receipt)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_calibration_statistics",
+        lambda *args, **kwargs: (calibration, human_selection, scale))
+
+    inner_manifests = []
+
+    def reopen_inner(directory, **kwargs):
+        raw = (directory / "manifest.json").read_bytes()
+        manifest = json.loads(raw)
+        assert canonical_json_bytes(manifest) == raw
+        inner_manifests.append(manifest)
+        return manifest
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_v2_terminal", reopen_inner)
+    outer = R4_COMPLETION.run_r4_completion_terminal(
+        root, completion_freeze, completion_admission,
+        repo=Path("/unused"), review_marker=b"review")
+    assert outer["terminal_route"] == PASS_B3
+    assert outer["source_test_split_decision_open_count"] == 1
+    assert outer["retry_count"] == 0
+    assert outer["authority"]["deployment_authorized"] is False
+    assert (root / "terminal" / "result.json").is_file()
+    assert R4_COMPLETION.reopen_r4_completion_terminal(
+        root, completion_freeze, completion_admission,
+        repo=Path("/unused"), review_marker=b"review") == outer
+    assert len(inner_manifests) == 2
+
+    outer_path = root / "r4-completion-terminal.json"
+    forged = json.loads(outer_path.read_bytes())
+    forged["terminal_route"] = SELECT_NONE
+    outer_path.chmod(0o600)
+    outer_path.write_bytes(canonical_json_bytes(forged))
+    outer_path.chmod(0o400)
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="outer binding drift"):
+        R4_COMPLETION.reopen_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review")
 
 
 def test_terminal_round_trip_and_coordinated_result_rehash_refuse(

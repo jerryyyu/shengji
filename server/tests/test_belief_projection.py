@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import random
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -22,15 +25,28 @@ from shengji.rl.belief_contract import (
 )
 from shengji.rl.belief_ownership import (KITTY_RECEIVER, PROBABILITY_SCALE,
                                          validate_ownership)
+from shengji.rl.belief_model import MODEL_SCHEMA
 from shengji.rl.belief_projection import (
     BeliefProjectionError,
     RawCountWeightV1,
     project_count_weights,
     uniform_raw_count_weights,
 )
+from shengji.rl.belief_reopen import actor_observation_from_dict
+from shengji.rl.belief_v2_human_corpus import UNIVERSAL_POLICY_IDS
+from shengji.rl.belief_v2_scoring import v2_scoring_actor
 
 
 POLICIES = ("mc-s0-report-lcb",)
+R4_NATURAL_FAILURE = (
+    Path(__file__).parent / "fixtures"
+    / "belief_projection_r4_calibration_failure.json")
+R4_NATURAL_ENDGAME_FAILURE = (
+    Path(__file__).parent / "fixtures"
+    / "belief_projection_r4_calibration_failure_endgame.json")
+R4_NATURAL_LATE_ENDGAME_FAILURE = (
+    Path(__file__).parent / "fixtures"
+    / "belief_projection_r4_calibration_failure_late_endgame.json")
 
 
 def _state(seed=9981, plays=5):
@@ -109,6 +125,127 @@ def _project(actor, weights):
     )
 
 
+def test_r4_natural_calibration_two_cycle_uses_damped_retry(monkeypatch):
+    """Bind the exact non-test R4 member that exposed the Newton two-cycle."""
+    payload = json.loads(R4_NATURAL_FAILURE.read_text(encoding="ascii"))
+    assert payload["schema"] == "belief-projection-natural-regression-v1"
+    assert payload["split"] == "calibration"
+    source_actor = actor_observation_from_dict(payload["source_actor"])
+    assert source_actor.sha256() == payload["source_actor_sha256"]
+    actor = v2_scoring_actor(source_actor)
+    assert actor.sha256() == payload["scoring_actor_sha256"]
+    weights = tuple(RawCountWeightV1(
+        card=row["card"], receiver=row["receiver"],
+        count_weights=tuple(row["count_weights"]))
+        for row in payload["raw_weights"])
+    weight_bytes = (json.dumps([
+        [row.card, row.receiver, list(row.count_weights)] for row in weights
+    ], sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode(
+        "ascii")
+    assert hashlib.sha256(weight_bytes).hexdigest() \
+        == payload["raw_weights_sha256"]
+
+    def project():
+        return project_count_weights(
+            actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS,
+            model_schema=MODEL_SCHEMA,
+            model_sha256=payload["model_sha256"], raw_weights=weights)
+
+    # Neutralizing the damping must reproduce the exact production refusal;
+    # this proves that the fallback, rather than fixture drift, closes it.
+    monkeypatch.setattr(PROJECTION, "PROJECTION_DAMPED_RETRY_FACTOR", 1.0)
+    with pytest.raises(BeliefProjectionError, match="did not converge"):
+        project()
+    monkeypatch.setattr(PROJECTION, "PROJECTION_DAMPED_RETRY_FACTOR", 0.75)
+    belief = project()
+    validate_ownership(actor, belief)
+    assert belief.sha256() \
+        == "153a665c86b196b4a917a80b1e462f23344f0984bd690894872f20eaadbf1cd2"
+
+
+def test_r4_natural_endgame_uses_extended_damped_retry(monkeypatch):
+    """Bind the second R4 failure through the production projection path."""
+    payload = json.loads(
+        R4_NATURAL_ENDGAME_FAILURE.read_text(encoding="ascii"))
+    assert payload["schema"] == "belief-r4-calibration-projection-failure-v1"
+    assert payload["split"] == "calibration"
+    source_payload = copy.deepcopy(payload["actor"])
+    for trick in (*source_payload["completed_tricks"],
+                  source_payload["current_trick"]):
+        for play in trick["plays"]:
+            assert play["failed_throw"] is False
+            play["attempted_cards"] = list(play["cards"])
+    source_actor = actor_observation_from_dict(source_payload)
+    actor = v2_scoring_actor(source_actor)
+    assert actor.sha256() == payload["actor_sha256"]
+    weights = tuple(RawCountWeightV1(
+        card=row["card"], receiver=row["receiver"],
+        count_weights=tuple(row["count_weights"]))
+        for row in payload["raw_weights"])
+    raw_bytes = (json.dumps([
+        [row.card, row.receiver, list(row.count_weights)] for row in weights
+    ], sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode(
+        "ascii")
+    assert hashlib.sha256(raw_bytes).hexdigest() \
+        == payload["raw_weights_sha256"]
+
+    def project():
+        return project_count_weights(
+            actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS,
+            model_schema=MODEL_SCHEMA,
+            model_sha256=payload["model_sha256"], raw_weights=weights)
+
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_DAMPED_RETRY_MAX_ITERATIONS", 512)
+    with pytest.raises(BeliefProjectionError, match="did not converge"):
+        project()
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_DAMPED_RETRY_MAX_ITERATIONS", 4096)
+    belief = project()
+    validate_ownership(actor, belief)
+    assert belief.sha256() \
+        == "492882d8c3bce5b574f9082d75a3e9ead1e1593bf3c1c5d72fae7a91a02d4618"
+
+
+def test_r4_natural_late_endgame_uses_complete_damped_retry(monkeypatch):
+    """Bind the third R4 failure through the production projection path."""
+    payload = json.loads(
+        R4_NATURAL_LATE_ENDGAME_FAILURE.read_text(encoding="ascii"))
+    assert payload["schema"] == "belief-r4-calibration-projection-failure-v2"
+    assert payload["split"] == "calibration"
+    source_actor = actor_observation_from_dict(payload["source_actor"])
+    assert source_actor.sha256() == payload["source_actor_sha256"]
+    actor = v2_scoring_actor(source_actor)
+    assert actor.sha256() == payload["scoring_actor_sha256"]
+    weights = tuple(RawCountWeightV1(
+        card=row["card"], receiver=row["receiver"],
+        count_weights=tuple(row["count_weights"]))
+        for row in payload["raw_weights"])
+    raw_bytes = (json.dumps([
+        [row.card, row.receiver, list(row.count_weights)] for row in weights
+    ], sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode(
+        "ascii")
+    assert hashlib.sha256(raw_bytes).hexdigest() \
+        == payload["raw_weights_sha256"]
+
+    def project():
+        return project_count_weights(
+            actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS,
+            model_schema=MODEL_SCHEMA,
+            model_sha256=payload["model_sha256"], raw_weights=weights)
+
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_DAMPED_RETRY_MAX_ITERATIONS", 4096)
+    with pytest.raises(BeliefProjectionError, match="did not converge"):
+        project()
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_DAMPED_RETRY_MAX_ITERATIONS", 8192)
+    belief = project()
+    validate_ownership(actor, belief)
+    assert belief.sha256() \
+        == "7080acf7a1cb9158aeb78d7c3903babbf08aa1b7655b3c67ac73f583eb2f1c86"
+
+
 def test_uniform_projection_is_exact_conserved_and_deterministic():
     _, actor, _, _ = _state()
     weights = uniform_raw_count_weights(
@@ -185,6 +322,8 @@ def test_near_boundary_projection_uses_exact_transport_repair(monkeypatch):
             for exponent, allowed in zip(
                 powers, row.count_weights, strict=True)))
         for row, powers in zip(uniform, exponents, strict=True))
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_DAMPED_RETRY_MAX_ITERATIONS", 1)
     monkeypatch.setattr(PROJECTION, "PROJECTION_APPROXIMATE_MARGIN_LIMIT", 0)
     with pytest.raises(BeliefProjectionError, match="did not converge"):
         _project(actor, weighted)
@@ -249,6 +388,8 @@ def test_approximate_transport_refuses_nonlocal_residual(monkeypatch):
     weights = uniform_raw_count_weights(
         actor, behavior_policy_ids=POLICIES)
     monkeypatch.setattr(PROJECTION, "PROJECTION_MAX_ITERATIONS", 1)
+    monkeypatch.setattr(
+        PROJECTION, "PROJECTION_DAMPED_RETRY_MAX_ITERATIONS", 1)
     with pytest.raises(BeliefProjectionError, match="did not converge"):
         _project(actor, weights)
 

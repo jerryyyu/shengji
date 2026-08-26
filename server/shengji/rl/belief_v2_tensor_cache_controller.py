@@ -74,6 +74,10 @@ from .belief_v2_tensor_cache import (
 TENSOR_CACHE_STAGE_SCHEMA = "belief-v1-v2-training-tensor-cache-stage-v4"
 TENSOR_CACHE_RESOURCE_SCHEMA = (
     "belief-v1-v2-training-tensor-cache-resource-v4")
+LEGACY_TENSOR_CACHE_STAGE_SCHEMA = (
+    "belief-v1-v2-training-tensor-cache-stage-v2")
+LEGACY_TENSOR_CACHE_RESOURCE_SCHEMA = (
+    "belief-v1-v2-training-tensor-cache-resource-v2")
 TENSOR_CACHE_START_SCHEMA = "belief-v1-v2-training-tensor-cache-start-v1"
 TENSOR_CACHE_RESOURCE_REFUSAL_SCHEMA = (
     "belief-v1-v2-training-tensor-cache-resource-refusal-v1")
@@ -949,11 +953,17 @@ def run_training_tensor_cache(
 def reopen_training_tensor_cache(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        verify_all_bytes: bool = True) \
+        verify_all_bytes: bool = True,
+        legacy_manifest_sha256: str | None = None) \
         -> tuple[dict[str, Any], dict[str, Callable[[], Any]],
                  Callable[[], Any], int, str]:
     """Reopen all cache bytes and return trainer-compatible factories."""
     if type(verify_all_bytes) is not bool \
+            or (legacy_manifest_sha256 is not None
+                and (type(legacy_manifest_sha256) is not str
+                     or len(legacy_manifest_sha256) != 64
+                     or any(char not in "0123456789abcdef"
+                            for char in legacy_manifest_sha256))) \
             or not isinstance(directory, Path) or directory.is_symlink() \
             or not directory.is_dir() or directory.name != RESULT_DIRECTORY:
         raise BeliefV2TensorCacheControllerError(
@@ -1129,6 +1139,77 @@ def reopen_training_tensor_cache(
         raise BeliefV2TensorCacheControllerError(
             "V2 tensor cache imported calibration manifest drift")
     resources = payload.get("resources")
+    if legacy_manifest_sha256 is not None:
+        legacy_resource_keys = {
+            "schema", "boot_identity", "started_monotonic_nanoseconds",
+            "finished_monotonic_nanoseconds", "wall_nanoseconds",
+            "cpu_nanoseconds", "artifact_bytes", "peak_host_memory_bytes",
+            "retry_count", "drop_count", "resumed_from_exact_partial"}
+        legacy_artifact_bytes = (
+            len(start_raw)
+            + sum(row["artifact_bytes"] for row in receipts)
+            + calibration_receipt["artifact_bytes"])
+        caps = freeze.resource_caps
+        expected = {
+            "schema": LEGACY_TENSOR_CACHE_STAGE_SCHEMA,
+            "freeze_sha256": freeze.sha256(),
+            "admission_sha256": admission.sha256(),
+            "training_input_index_sha256": input_index_sha256,
+            "stage_start_sha256": _sha256(start_raw),
+            "runtime_profile_sha256": _runtime_sha256(freeze),
+            "cohort_caches": entries,
+            "common_calibration_cache": calibration_expected,
+            "control_changed_cell_count_per_epoch": (
+                inputs.index.control_changed_cell_count),
+            "resources": resources,
+            "lossless_sparse_event_encoding": True,
+            "actor_and_privileged_labels_separate": True,
+            "test_split_cached": False,
+            "training_authorized_by_this_artifact": False,
+            "test_split_open_authorized": False,
+            "gameplay_strength_screen_authorized": False,
+            "strength_claim_authorized": False,
+            "deployment_authorized": False,
+        }
+        expected_files = {
+            MANIFEST_FILENAME, START_FILENAME, CONTROL_OVERLAY_DIRECTORY,
+            _cache_directory_name(CALIBRATION_CACHE_ID),
+            *(_cache_directory_name(row.cohort_id)
+              for row in inputs.realizations
+              if row.cohort_id != CONTROL_COHORT_ID),
+        }
+        if import_spec is not None \
+                or _sha256(manifest_raw) != legacy_manifest_sha256 \
+                or type(resources) is not dict \
+                or set(resources) != legacy_resource_keys \
+                or resources["schema"] != LEGACY_TENSOR_CACHE_RESOURCE_SCHEMA \
+                or resources["boot_identity"] != freeze.runtime.boot_identity \
+                or resources["wall_nanoseconds"] != (
+                    resources["finished_monotonic_nanoseconds"]
+                    - resources["started_monotonic_nanoseconds"]) \
+                or resources["wall_nanoseconds"] <= 0 \
+                or resources["cpu_nanoseconds"] < 0 \
+                or resources["artifact_bytes"] != legacy_artifact_bytes \
+                or legacy_artifact_bytes > caps.training_bytes \
+                or resources["peak_host_memory_bytes"] <= 0 \
+                or resources["peak_host_memory_bytes"] \
+                > caps.training_host_memory_bytes \
+                or resources["retry_count"] != 0 \
+                or resources["drop_count"] != 0 \
+                or type(resources["resumed_from_exact_partial"]) is not bool \
+                or canonical_json_bytes(payload) != manifest_raw \
+                or payload != expected \
+                or {path.name for path in directory.iterdir()} \
+                != expected_files:
+            raise BeliefV2TensorCacheControllerError(
+                "V2 legacy tensor cache reconstruction drift")
+        calibration_factory = cached_batch_factory(
+            calibration_directory,
+            expected_manifest_sha256=calibration_receipt["manifest_sha256"],
+            binding=calibration_binding)
+        return (payload, factories, calibration_factory,
+                inputs.index.control_changed_cell_count,
+                _sha256(manifest_raw))
     resource_keys = {
         "schema", "boot_identity", "started_monotonic_nanoseconds",
         "finished_monotonic_nanoseconds", "wall_nanoseconds",

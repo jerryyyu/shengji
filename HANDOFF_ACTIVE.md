@@ -4,7 +4,7 @@
 > belongs in HANDOFF_REVIEW.md and Git history. Do not act on an older request
 > when an exact head below supersedes it.
 
-Last reconciled: 2026-08-25 21:27 EDT.
+Last reconciled: 2026-08-25 21:34 EDT.
 
 ## Immediate objective
 
@@ -14,48 +14,39 @@ evidence to decide whether the already-prepared recoverable R5 successor should
 run and whether belief merits a gameplay-search experiment. PT1 remains an
 independent Mini endgame-teacher lane.
 
-## Review queue — two independent consolidated reviews
+## Live execution — R4 completion-only
 
-### 1. Top priority: R4 completion-only source + freeze
+Claude appended the exact `e10cb3d/r3` PASS marker in canonical ledger commit
+`68e4522ffa1f2a3e6e4c1048455ffc083342a723`. Codex authenticated that the
+machine-generated marker was absent in its parent, present once in the review
+commit, and present once on current main.
 
-Review PR #146 once at exact head
-e10cb3d3426d758f2d757d41462aba6a06bc60c8. This r3 route supersedes the
-a5e06a7/r2 request; do not append or use the old r2 marker.
+The first operator attempt refused before initialization because review/testing
+had left one ignored `__init__.cpython-314.pyc` in the exact checkout. The
+fresh namespace, partial, and consumption record were all absent. That one
+generated file and its empty directory were removed, the failed status receipt
+was preserved as
+`/opt/belief-r4-completion-e10cb3d-r3.status.preinit-refusal-20260826T013147Z`,
+and the exact reviewed launcher was invoked again with the authenticated review
+commit. This was an operational pre-initialization refusal, not a scientific
+retry and not a test opening.
 
-Exact Strength Cloud artifacts:
+The authorized run is active on Strength Cloud:
 
-- freeze: /opt/belief-r4-completion-freeze-e10cb3d-r3.json
-  - SHA-256 59c747be56bdd20c792608ed09be307b9661c8aff6ad7e0e720cd8156de7fea4
-- packet:
-  /opt/belief-r4-completion-e10cb3d-freeze-inputs-r3/freeze-review-packet.json
-  - SHA-256 afc7374933ec6fd6d100061da3a7ec79f9b56bd3c14e6d18efc72a449d364d8e
-- byte-identical packet reopen:
-  /opt/belief-r4-completion-freeze-review-packet-e10cb3d-r3.reopen.json
-- expected marker:
-  /opt/belief-r4-completion-e10cb3d-freeze-inputs-r3/expected-review-marker.txt
-  - SHA-256 d4bd42f70bf4e545d7aa0cc7f547402fcffdad3d5fbb25925354dbe53b5c0709
-- inspect-only launcher:
-  /opt/belief-r4-completion-e10cb3d-review-support-r3/launch-r4-completion.sh
-  - SHA-256 a5008eb0846138748aa4be882515b4ac90bc29a1c5d22ea7028d620e03d2f3e7
-- launch manifest:
-  /opt/belief-r4-completion-e10cb3d-review-support-r3/launch-manifest.json
-  - SHA-256 731f558c3a5dc64ff1c7a2c38f25020cc5f6e725616fff5897128707548e88e4
+- systemd unit: `belief-r4-completion-e10cb3d-r3.service`
+- evidence root: `/opt/belief-r4-completion-v1-r3`
+- status: `/opt/belief-r4-completion-e10cb3d-r3.status`
+- current phase at reconciliation: `calibrating`, 1/4 stages, 25%
+- source: exact clean `e10cb3d3426d758f2d757d41462aba6a06bc60c8`
+- freeze: `59c747be56bdd20c792608ed09be307b9661c8aff6ad7e0e720cd8156de7fea4`
 
-The inherited a5e06a7 projection repair is unchanged. The five-file e10cb3d
-delta makes admission completion-only. Authority permits calibration, one test
-opening, and terminal reconstruction; capture, reference generation, training,
-retry, sampler, gameplay, strength, promotion, deployment, and merge are false.
+Do not modify, restart, delete, or merge this lane. Its next valid transitions
+are calibration publication, one held-out test opening, terminal verification,
+and independent interpretation. No retraining is running or authorized.
 
-Fresh exact-head capacity completed 416/416 diverse-rank rounds at 16 lanes.
-The exact execution venv imports the e10cb3d tree. The fresh r3 evidence,
-partial, and consumed paths are absent. Original R4 and spent r1/r2 evidence
-remain immutable and test-unopened.
+## Review queue — one independent consolidated review
 
-If clean, append the exact expected marker to canonical HANDOFF_REVIEW.md,
-comment PASS on PR #146, and authorize exactly one r3 initialization,
-calibration, held-out test opening, and terminal verification.
-
-### 2. Parallel: PT1 narrow repaired-head source + Mini freeze
+### 1. PT1 narrow repaired-head source + Mini freeze
 
 Review PR #145 once at exact head
 fc957502e32eeb418469f9daf8984122f6b89740, true parent
@@ -124,7 +115,7 @@ unless the R4 result changes the final packet or Codex posts a new exact ask.
 
 | host | current state | next action |
 |---|---|---|
-| Strength Cloud | idle after fresh R4 r3 preflight/freeze | launch completion only after R4 PASS |
+| Strength Cloud | R4 completion active; calibrating, 25% stage progress | monitor only; interpret terminal result |
 | Mini | idle; PT1 repaired-head packet ready, no scientific run | launch once only after exact fc95750 PASS |
 | Performance Cloud | unavailable/offline; no live R5 job | hold until R4 interpretation |
 | Air | idle / not required | none |
@@ -132,5 +123,5 @@ unless the R4 result changes the final packet or Codex posts a new exact ask.
 ## Authority boundaries
 
 No active packet authorizes merge, retry, deployment, promotion, gameplay, or
-a strength claim. R4 and PT1 may each initialize only once after their own
-exact marker. R5 remains held.
+a strength claim. R4 is running once under its exact marker. PT1 may initialize
+once only after its exact `fc95750` marker. R5 remains held.

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 02:43 EDT.
+Last reconciled: 2026-08-26 02:16 EDT.
 
 Current operational truth only. Historical evidence belongs in
 `HANDOFF_REVIEW.md`. There is **no active review ask**. Do not repeat PT1,
@@ -40,16 +40,18 @@ PT1 review, rerun, gameplay, strength, promotion or deployment action follows.
 
 ## Priority 3 — prepare one recoverable R5 successor; launch held
 
-Draft PR #148 remains at reviewed-source candidate
-`7e14b529065383baee152c9dd2b8d3473627235c`.
-Its prior `r14c` freeze is not an active review request and must not launch.
-Perf Cloud is currently unreachable/powered off.
+Draft PR #148 is now exact clean head
+`232fc27610b9caef759179a94751308f49f8a939`. Its prior `7e14b52` / `r14c`
+freeze is superseded, is not an active review request, and must not launch.
+Frontend CI is green; server CI is still running. Full exact-head BELIEF is
+485 passed / 6 skipped pure and 487 passed / 4 skipped strict compiled.
 
-Codex is hardening the isolated successor so same-admission process recovery
-is explicit and separately bound from scientific retry: sealed stages reopen,
-the cache and training resume only from exact partial state, failed workers and
+The source now binds same-admission process recovery separately from retry:
+sealed stages reopen, cache/training resume only from exact partial state,
+completed tasks may never regenerate a missing final, failed workers and
 terminal partials fail closed, and a sealed terminal can only be reconstructed.
-This work must pass the full pure/strict BELIEF suites and a score-free Perf
-Cloud rehearsal before one fresh source+freeze review is queued. Do not review
-or launch R5 until that exact head/packet replaces this paragraph and R4 has a
-terminally interpreted result.
+Perf Cloud is currently unreachable/powered off. Once it is available, run one
+score-free exact-head recovery/capacity validation and generate one fresh
+source+freeze packet. Only that replacement packet receives the consolidated
+review. Do not review or launch R5 before then, and do not launch until R4 has
+a terminally interpreted result.

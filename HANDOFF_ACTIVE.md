@@ -43,8 +43,9 @@ PT1 review, rerun, gameplay, strength, promotion or deployment action follows.
 Draft PR #148 is now exact clean head
 `232fc27610b9caef759179a94751308f49f8a939`. Its prior `7e14b52` / `r14c`
 freeze is superseded, is not an active review request, and must not launch.
-Frontend CI is green; server CI is still running. Full exact-head BELIEF is
-485 passed / 6 skipped pure and 487 passed / 4 skipped strict compiled.
+Server and frontend CI are green and the PR is mergeable. Full exact-head
+BELIEF is 485 passed / 6 skipped pure and 487 passed / 4 skipped strict
+compiled.
 
 The source now binds same-admission process recovery separately from retry:
 sealed stages reopen, cache/training resume only from exact partial state,

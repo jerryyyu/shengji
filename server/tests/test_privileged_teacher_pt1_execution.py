@@ -122,8 +122,8 @@ class FakeReport:
 
     def payload(self):
         return {"capture_secret_sha256": "f" * 64, "caps": CAPS,
-                "status": "COMPLETE", "record_count": 16,
-                "total_record_count": 16, "truncated_by_deadline": False,
+                "status": "COMPLETE", "record_count": 416,
+                "total_record_count": 416, "truncated_by_deadline": False,
                 "parallel_workers": 2, "runtime": {}}
 
 
@@ -450,6 +450,14 @@ def test_aggregate_exact_node_cap_is_wired_at_execution(monkeypatch, tmp_path):
             review_marker=execution.canonical_json_bytes(
                 dict(capped.review_marker)), review_commit="4" * 40,
             monotonic=lambda: 0.0)
+    failure = json.loads((tmp_path / "evidence" /
+                          execution.FAILURE_NAME).read_bytes())
+    assert failure["failure_code"] == "resource_cap_exceeded"
+    assert failure["completed_units"] == 0
+    assert failure["wave_start"] == 0 and failure["wave_stop"] == 2
+    assert failure["resource_overages"] == [{
+        "name": "scientific_exact_nodes", "observed": 2,
+        "cap": 0, "excess": 2}]
 
 
 def test_worker_failure_retains_durable_groups_and_no_final_packet(monkeypatch, tmp_path):
@@ -479,6 +487,7 @@ def test_worker_failure_retains_durable_groups_and_no_final_packet(monkeypatch, 
         "freeze_sha256": hashlib.sha256(freeze.canonical_bytes()).hexdigest(),
         "failure_code": "worker_failure", "completed_units": 2,
         "total_units": 416, "wave_start": 2, "wave_stop": 4,
+        "resource_overages": [],
         "score_or_action_bytes_persisted": False,
         "retry_authorized": False, "authority": execution.AUTHORITIES,
     }

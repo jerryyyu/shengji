@@ -35,6 +35,8 @@ RUNTIME = {"git_head": "a" * 40, "source_tree_dirty": False,
            "python_version": "3.14.0", "python_executable_sha256": "c" * 64,
            "native_extension_sha256": "d" * 64, "compiled_engine": True,
            "strict_voids": True}
+_CACHED_CAPACITY_PAYLOAD = None
+_CACHED_CAPACITY_CALLS = None
 
 
 def test_capacity_darwin_boot_identity_uses_stable_session_uuid(monkeypatch):
@@ -129,20 +131,47 @@ def _record(state, seed):
 
 
 def _run(monkeypatch, *, deadline=None):
+    global _CACHED_CAPACITY_PAYLOAD, _CACHED_CAPACITY_CALLS
+    if deadline is None and _CACHED_CAPACITY_PAYLOAD is not None:
+        return (capacity.CapacityReport(copy.deepcopy(_CACHED_CAPACITY_PAYLOAD)),
+                list(_CACHED_CAPACITY_CALLS))
     monkeypatch.setattr(capacity, "_runtime_identity", lambda: copy.deepcopy(RUNTIME))
+    # These unit tests exercise the capacity schedule, redaction and resource
+    # wiring. Natural-state eligibility is covered by the natural-provider
+    # suite; bypass its comparatively expensive action enumeration here.
+    monkeypatch.setattr(capacity, "_first_eligible",
+                        lambda state, **_kwargs: copy.deepcopy(state))
+    def state_from(_design, _state, *, rank, banker, role, threshold,
+                   replicate, round_seed):
+        public_sha = hashlib.sha256(
+            f"public:{rank}:{banker}:{role}:{threshold}:{replicate}:"
+            f"{round_seed}".encode()).hexdigest()
+        true_sha = hashlib.sha256(f"true:{public_sha}".encode()).hexdigest()
+        public = type("Public", (), {"public_sha256": public_sha})()
+        true = type("True", (), {"true_sha256": true_sha})()
+        return capacity.NaturalPT1State(
+            rank, banker, role, threshold, replicate, round_seed,
+            hashlib.sha256(f"cluster:{round_seed}".encode()).hexdigest(),
+            hashlib.sha256(
+                f"capture:{rank}:{banker}:{role}:{threshold}:{replicate}:"
+                f"{public_sha}".encode()).hexdigest(),
+            public_sha, true_sha, public, true)
+    monkeypatch.setattr(capacity, "_state_from_round", state_from)
     calls = []
 
     def evaluator(public, true, *, seeds):
         calls.append(tuple(seeds))
         state = type("State", (), {})()
-        state.public_state_sha256 = pt1.pt0_public_state_sha256(
-            public, perspective_seat=public.turn)
-        state.true_world_sha256 = pt1._world_hash(true.verify())
+        state.public_state_sha256 = public.public_sha256
+        state.true_world_sha256 = true.true_sha256
         return tuple(_record(state, seed) for seed in seeds)
 
     report = capacity.run_capacity(
         _design(), capture_secret=SECRET, state_capture=_capture,
         evaluator=evaluator, deadline=deadline, monotonic=lambda: 0.0)
+    if deadline is None:
+        _CACHED_CAPACITY_PAYLOAD = report.payload()
+        _CACHED_CAPACITY_CALLS = list(calls)
     return report, calls
 
 
@@ -153,17 +182,21 @@ def _reseal(payload):
     return payload
 
 
-def test_exact_16_marginal_coverage_and_real_batch_calls(monkeypatch):
+def test_exact_full_grid_coverage_and_real_batch_calls(monkeypatch):
     report, calls = _run(monkeypatch)
     payload = report.payload()
-    assert payload["record_count"] == 16
-    assert len(calls) == 16 and all(seed == (0, 1, 2, 3) for seed in calls)
+    assert payload["record_count"] == capacity.TARGET_STATE_COUNT == 416
+    assert len(calls) == 416 and all(seed == (0, 1, 2, 3) for seed in calls)
     assert {row["trump_rank"] for row in payload["records"]} == set(
         row.rank for row in capacity.capacity_coordinates())
     assert {row["role"] for row in payload["records"]} == {
         "banker-team", "attacker-team"}
     assert {row["remaining_hand_threshold"] for row in payload["records"]} == {3, 4}
     assert {row["banker"] for row in payload["records"]} == {0, 1}
+    assert {row["replicate"] for row in payload["records"]} == set(range(4))
+    assert len({(row["trump_rank"], row["banker"], row["role"],
+                row["remaining_hand_threshold"], row["replicate"])
+                for row in payload["records"]}) == 416
     assert payload["caps"]["scientific_wall_nanoseconds"] > 0
     assert payload["caps"]["scientific_cpu_nanoseconds"] > 0
     assert payload["caps"]["scientific_artifact_bytes"] > 0
@@ -172,11 +205,14 @@ def test_exact_16_marginal_coverage_and_real_batch_calls(monkeypatch):
         row["peak_rss_raw"] for row in payload["records"])
     assert all(row["work"]["C"]["exact_nodes"] == 17
                for row in payload["records"])
-    assert all(row["artifact_projection_bytes"] == sum(
-        len(_record(type("State", (), {
-            "public_state_sha256": row["public_state_sha256"],
-            "true_world_sha256": row["true_world_sha256"]})(), seed).canonical_bytes())
+    sample = payload["records"][0]
+    sample_state = type("State", (), {
+        "public_state_sha256": sample["public_state_sha256"],
+        "true_world_sha256": sample["true_world_sha256"]})()
+    expected_artifact_bytes = sum(
+        len(_record(sample_state, seed).canonical_bytes())
         for seed in capacity.CAPACITY_POLICY_SEEDS)
+    assert all(row["artifact_projection_bytes"] == expected_artifact_bytes
                for row in payload["records"])
     assert report.payload()["authority"] == capacity.CAPACITY_AUTHORITIES
     assert capacity.verify_capacity_report(report, design=_design()).payload() == payload
@@ -185,8 +221,11 @@ def test_exact_16_marginal_coverage_and_real_batch_calls(monkeypatch):
 def test_report_redacts_distinctive_actions_values_points_worlds_and_seeds(monkeypatch):
     report, _ = _run(monkeypatch)
     raw = json.dumps(report.payload(), sort_keys=True)
-    for forbidden in ("C4", "D4", "12345", "9876", "selected_action",
-                      "selected_utilities", "selected_points", "round_seed"):
+    # Numeric score literals can occur coincidentally inside timing counters;
+    # privacy is a field/string boundary, not a decimal-substring boundary.
+    for forbidden in ("C4", "D4", "selected_action",
+                      "selected_utilities", "selected_points", "round_seed",
+                      "legal_ballot", "hidden_state"):
         assert forbidden not in raw
 
 
@@ -221,6 +260,8 @@ def test_deadline_seals_truncated_prefix_without_claiming_complete(monkeypatch):
 
 def test_parallel_topology_uses_frozen_worker_pool_and_reopens(monkeypatch):
     template, _ = _run(monkeypatch)
+    monkeypatch.setattr(capacity, "_runtime_identity",
+                        lambda: copy.deepcopy(RUNTIME))
     rows = {row["index"]: row for row in template.payload()["records"]}
     observed = {"workers": None, "submitted": 0}
 
@@ -245,15 +286,17 @@ def test_parallel_topology_uses_frozen_worker_pool_and_reopens(monkeypatch):
     design = capacity.CapacityDesign(
         capture_secret_sha256=SECRET_SHA, parallel_workers=4)
     report = capacity.run_capacity(design, capture_secret=SECRET)
-    assert observed == {"workers": 4, "submitted": 16}
+    assert observed == {"workers": 4, "submitted": 416}
     assert report.payload()["parallel_workers"] == 4
-    assert report.payload()["record_count"] == 16
+    assert report.payload()["record_count"] == 416
     assert capacity.verify_capacity_report(
         report, design=design).payload() == report.payload()
 
 
 def test_cli_write_once_and_progress_publication(monkeypatch, tmp_path):
     report, _ = _run(monkeypatch)
+    monkeypatch.setattr(capacity, "_runtime_identity",
+                        lambda: copy.deepcopy(RUNTIME))
     monkeypatch.setattr(capacity_cli, "run_capacity",
                         lambda *args, **kwargs: report)
     output = tmp_path / "capacity"

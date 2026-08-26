@@ -133,11 +133,15 @@ agreement and per-rank/role/horizon distributions.
 
 ## Capacity, recovery and one-shot execution
 
-Before a scientific freeze, Mini runs one score-free capacity packet over 16
-out-of-population states covering every rank, role and horizon. It measures
-capture wall/CPU, all three selection arms, exact evaluation nodes, peak RSS
-and artifact size. The immutable wall, CPU, memory, node and byte caps derive
-from that receipt with a declared reserve. A separate out-of-population
+Before a scientific freeze, Mini runs one score-free capacity packet over an
+independent 416-state population with the exact scientific coordinate shape:
+all 13 ranks × 2 banker representatives × 2 roles × 2 horizons × 4 replicates.
+The distinct secret and selector namespace make those states disjoint from the
+scientific population. The packet measures capture wall/CPU, all three
+selection arms, exact evaluation nodes, peak RSS and artifact size while
+retaining no action, score, point, hidden-world or raw-seed bytes. The immutable
+wall, CPU, memory, node and byte caps derive from that receipt with a declared
+reserve. A separate out-of-population
 rehearsal must exercise one complete real process-pool wave through the natural
 provider and evaluator while persisting only identity/resource receipts. Both
 paths require `SHENGJI_FAST=1`, `SHENGJI_REQUIRE_VOIDS=1`, and successful
@@ -159,7 +163,9 @@ Any child or launcher failure instead publishes a sanitized immutable failure
 receipt and changes progress to terminal `FAILED` before surfacing the error.
 The receipt records the failed wave and durable prefix, contains no score,
 action, or child-exception text, and permanently refuses resume under that
-admission.
+admission. A resource refusal additionally records every exceeded cap's name,
+observed value, frozen cap and exact excess so a sizing defect cannot collapse
+into an uninterpretable generic failure.
 
 No R4 or R5 path, seed namespace, artifact, process, host lock or review marker
 is imported. Mini is the only PT1 host. PT1 may run concurrently with R4 on

@@ -1,10 +1,11 @@
 """Score-redacted PT1 capacity capture and evaluation.
 
 This lane is deliberately separate from the scientific population.  It
-captures exactly sixteen out-of-population states, runs the real PT1 batch
-evaluator, and retains only identity digests, work counters and resource
-projections.  Actions, utilities, points, hidden worlds, raw seeds and the
-capture secret never cross the report boundary.
+captures one independent out-of-population state for every cell in the full
+PT1 coordinate grid, runs the real PT1 batch evaluator, and retains only
+identity digests, work counters and resource projections.  Actions,
+utilities, points, hidden worlds, raw seeds and the capture secret never cross
+the report boundary.
 """
 
 from __future__ import annotations
@@ -35,11 +36,11 @@ from .privileged_teacher_pt1_natural import (
 )
 
 
-CAPACITY_SCHEMA = "privileged-teacher-pt1-capacity-v1"
-CAPACITY_REPORT_SCHEMA = "privileged-teacher-pt1-capacity-report-v1"
-CAPACITY_MANIFEST_SCHEMA = "privileged-teacher-pt1-capacity-manifest-v1"
-CAPACITY_SEED_NAMESPACE = "privileged-teacher-pt1-capacity-out-of-population-v1"
-CAPACITY_STATE_COUNT = 16
+CAPACITY_SCHEMA = "privileged-teacher-pt1-capacity-v2"
+CAPACITY_REPORT_SCHEMA = "privileged-teacher-pt1-capacity-report-v2"
+CAPACITY_MANIFEST_SCHEMA = "privileged-teacher-pt1-capacity-manifest-v2"
+CAPACITY_SEED_NAMESPACE = "privileged-teacher-pt1-capacity-out-of-population-v2"
+CAPACITY_STATE_COUNT = TARGET_STATE_COUNT
 CAPACITY_POLICY_SEEDS = (0, 1, 2, 3)
 CAPACITY_RESERVE_NUMERATOR = 1
 CAPACITY_RESERVE_DENOMINATOR = 4
@@ -117,11 +118,13 @@ class CapacityCoordinate:
     banker: int
     role: str
     threshold: int
+    replicate: int
 
     def payload(self) -> dict[str, object]:
         return {"index": self.index, "trump_rank": self.rank,
                 "banker": self.banker, "role": self.role,
-                "remaining_hand_threshold": self.threshold}
+                "remaining_hand_threshold": self.threshold,
+                "replicate": self.replicate}
 
 
 @dataclass(frozen=True)
@@ -136,17 +139,30 @@ class CapacityReport:
 
 
 def capacity_coordinates() -> tuple[CapacityCoordinate, ...]:
+    # Reuse the natural design's canonical coordinate order while binding the
+    # capacity lane to a distinct secret and selector namespace.  This avoids
+    # the old 16-row marginal sample, whose index parity coupled banker, role,
+    # and horizon and therefore never exercised most scientific cells.
     from ..engine.cards import RANKS
-    rows = tuple(CapacityCoordinate(
-        index, RANKS[index % len(RANKS)], index % 2,
-        "banker-team" if index % 2 == 0 else "attacker-team",
-        3 if index % 2 == 0 else 4) for index in range(CAPACITY_STATE_COUNT))
+    rows = tuple(CapacityCoordinate(index, rank, banker, role, threshold,
+                                    replicate)
+                 for index, (rank, banker, role, threshold, replicate)
+                 in enumerate((
+                     (rank, banker, role, threshold, replicate)
+                     for rank in RANKS
+                     for banker in (0, 1)
+                     for role in ("banker-team", "attacker-team")
+                     for threshold in (3, 4)
+                     for replicate in range(4))))
     if len(rows) != CAPACITY_STATE_COUNT \
             or {row.rank for row in rows} != set(RANKS) \
             or {row.banker for row in rows} != {0, 1} \
             or {row.role for row in rows} != {"banker-team", "attacker-team"} \
-            or {row.threshold for row in rows} != {3, 4}:
-        raise PT1CapacityError("capacity marginal coverage drift")
+            or {row.threshold for row in rows} != {3, 4} \
+            or {row.replicate for row in rows} != set(range(4)) \
+            or len({(row.rank, row.banker, row.role, row.threshold,
+                     row.replicate) for row in rows}) != CAPACITY_STATE_COUNT:
+        raise PT1CapacityError("capacity full-grid coverage drift")
     return rows
 
 
@@ -205,7 +221,7 @@ def capture_capacity_states(
             state = _state_from_round(
                 natural_design, eligible, rank=coordinate.rank,
                 banker=coordinate.banker, role=coordinate.role,
-                threshold=coordinate.threshold, replicate=0,
+                threshold=coordinate.threshold, replicate=coordinate.replicate,
                 round_seed=round_seed)
             found = state
             break
@@ -243,7 +259,7 @@ def _capture_one(design: CapacityDesign, secret: bytes,
             return _state_from_round(
                 natural_design, eligible, rank=coordinate.rank,
                 banker=coordinate.banker, role=coordinate.role,
-                threshold=coordinate.threshold, replicate=0,
+                threshold=coordinate.threshold, replicate=coordinate.replicate,
                 round_seed=round_seed)
     raise PT1CapacityError(
         f"capacity state cell incomplete: {coordinate.payload()}")
@@ -363,6 +379,7 @@ def _redacted_row(coordinate: CapacityCoordinate, state: NaturalPT1State,
            "index": coordinate.index, "trump_rank": coordinate.rank,
            "banker": coordinate.banker, "role": coordinate.role,
            "remaining_hand_threshold": coordinate.threshold,
+           "replicate": coordinate.replicate,
            "public_state_sha256": state.public_state_sha256,
            "true_world_sha256": state.true_world_sha256,
            "capture_id_sha256": state.capture_id_sha256,
@@ -669,7 +686,7 @@ def verify_capacity_report(
     observed = []
     observed_indexes = set()
     row_keys = {"schema", "index", "trump_rank", "banker", "role",
-                "remaining_hand_threshold", "public_state_sha256",
+                "remaining_hand_threshold", "replicate", "public_state_sha256",
                 "true_world_sha256", "capture_id_sha256",
                 "evaluator_identity_sha256", "policy_seed_count", "work",
                 "capture_wall_nanoseconds", "capture_cpu_nanoseconds",
@@ -687,7 +704,8 @@ def verify_capacity_report(
                 or row.get("trump_rank") != coordinate.rank \
                 or row.get("banker") != coordinate.banker \
                 or row.get("role") != coordinate.role \
-                or row.get("remaining_hand_threshold") != coordinate.threshold:
+                or row.get("remaining_hand_threshold") != coordinate.threshold \
+                or row.get("replicate") != coordinate.replicate:
             raise PT1CapacityError("capacity selector/coverage drift")
         forbidden = {"selected_action", "selected_utilities", "selected_points",
                      "legal_ballot", "arms", "hidden_state", "true_world",

@@ -4,7 +4,7 @@
 > belongs in HANDOFF_REVIEW.md and Git history. Do not act on an older request
 > when an exact head below supersedes it.
 
-Last reconciled: 2026-08-25 21:12 EDT.
+Last reconciled: 2026-08-25 21:27 EDT.
 
 ## Immediate objective
 
@@ -55,31 +55,63 @@ If clean, append the exact expected marker to canonical HANDOFF_REVIEW.md,
 comment PASS on PR #146, and authorize exactly one r3 initialization,
 calibration, held-out test opening, and terminal verification.
 
-### 2. Parallel: PT1 successor source + Mini freeze
+### 2. Parallel: PT1 narrow repaired-head source + Mini freeze
 
 Review PR #145 once at exact head
-7068caf426cd0d0436936ad5748bb24fe4c83347. Do not retry spent/result-free
-95a142d/r3 and do not reopen settled PT1 design/statistics questions.
+fc957502e32eeb418469f9daf8984122f6b89740, true parent
+7068caf426cd0d0436936ad5748bb24fe4c83347. This exact r5 request supersedes
+the held 7068caf/r4 packet. Carry forward the already-verified PT1
+design/search/statistics and 7068caf source/freeze findings; review only the
+two-file +23/-2 repair and the freshly rebound artifacts.
+
+The repair closes the two blockers named in ledger 452af4d:
+
+- M3: corrupting only the population manifest's internal self-hash now raises
+  the exact `population manifest hash drift`; neutralizing that guard makes
+  the named witness fail with DID NOT RAISE.
+- M5: an internally self-consistent embedded-manifest forgery, while the
+  freeze-bound file hash remains unchanged, raises the exact
+  `freeze population manifest byte drift`; neutralizing that guard makes the
+  named witness fail with DID NOT RAISE.
+- The only production change preserves `PT1ExecutionError` before generic
+  `ValueError` normalization, so M5's independent refusal remains observable.
 
 Exact Mini artifacts:
 
-- packet: /private/tmp/shengji-pt1-review-packet-7068caf-r4.json
-  - SHA-256 83a31214757eb7314a17379fa2c69e72f392ca6e633e45045d1a419d114b8fd6
+- packet: /private/tmp/shengji-pt1-review-packet-fc95750-r5.json
+  - SHA-256 c20703c8b7d19a1922d5afce6731da1e95631e4721440b3feb35976fd531a739
+- byte-identical packet reopen:
+  /private/tmp/shengji-pt1-review-packet-fc95750-r5.reopen.json
 - population:
-  /Users/jerryyu/Projects/pt1-population-manifest-7068caf-r4.json
-  - SHA-256 5ef579d2e052b28a9202478499c29fb934f539158e2620de92b22b34622d0e7f
+  /Users/jerryyu/Projects/pt1-population-manifest-fc95750-r5.json
+  - SHA-256 dfa50966aa7b846a9b072a3585403249c15b80fa8026f2e277cfe644ca1ae87c
+  - 416/416 natural cells
 - capacity:
-  /private/tmp/shengji-pt1-capacity-7068caf-r4/capacity.json
-- freeze: /Users/jerryyu/Projects/pt1-freeze-7068caf-r4.json
+  /private/tmp/shengji-pt1-capacity-fc95750-r5/capacity.json
+  - SHA-256 be275a82eec532541a55f3d05057afbef592a540e9ea41075896c12b8515e72f
+  - 16/16 complete, ten workers, strict/native, untruncated
+- rehearsal:
+  /private/tmp/shengji-pt1-rehearsal-receipt-fc95750-r5.json
+  - SHA-256 45b6e6a72d036ce1497ccdbd2eedd109f75b92ff6dd8428327cc528c1312425a
+  - ten natural states / 40 records / 21.99s; no score/action bytes persisted
+- freeze: /Users/jerryyu/Projects/pt1-freeze-fc95750-r5.json
+  - SHA-256 db798bad5bd4f7a5417c3e0f66c40e459e65f3714e07bf808d94b0cdf0810ea7
 - expected marker:
-  /Users/jerryyu/Projects/pt1-review-marker-7068caf-r4.json
+  /Users/jerryyu/Projects/pt1-review-marker-fc95750-r5.json
+  - SHA-256 35ab3e3dad8edad0438faac9852fc659452f023a9c3ad5d6d48eeabdc6401135
 - inspect-only launcher:
-  /private/tmp/pt1-launch-operator-7068caf-r4.sh
+  /private/tmp/pt1-launch-operator-fc95750-r5.sh
+  - SHA-256 6d7e5acb0a4cbb97c35ea2d96ba29271cc1c448422cabd8f00a1a179d636f93e
 
-If clean, append the exact marker, comment PASS on PR #145, and authorize one
-Mini initialization, scientific execution, and verification under the fresh r4
-namespace. Merge, retry, training, gameplay, strength, promotion, and
-deployment remain false.
+Full privileged-teacher battery is 112/112 pure and 112/112 strict/native;
+CI server/frontend is green. Fresh evidence root
+/Users/jerryyu/Projects/shengji-pt1-evidence-fc95750-r5 and the launcher
+status/log slots are absent. Spent/result-free r3 remains preserved.
+
+If clean, append the exact expected marker, comment PASS on PR #145, and
+authorize one Mini initialization, scientific execution, and verification
+under the fresh r5 namespace. Merge, retry, training, gameplay, strength,
+promotion, and deployment remain false.
 
 ## Held, not an active review
 
@@ -93,7 +125,7 @@ unless the R4 result changes the final packet or Codex posts a new exact ask.
 | host | current state | next action |
 |---|---|---|
 | Strength Cloud | idle after fresh R4 r3 preflight/freeze | launch completion only after R4 PASS |
-| Mini | idle; PT0 complete, PT1 not running | launch PT1 only after PT1 PASS |
+| Mini | idle; PT1 repaired-head packet ready, no scientific run | launch once only after exact fc95750 PASS |
 | Performance Cloud | unavailable/offline; no live R5 job | hold until R4 interpretation |
 | Air | idle / not required | none |
 

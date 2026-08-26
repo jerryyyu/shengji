@@ -266,6 +266,17 @@ def test_exact_work_and_bare_point_wiring_can_fail():
     assert telemetry["selected_differs_from_candidate_zero"] == 1
     assert telemetry["bare_point_avoidance"] == 1
     assert telemetry["positive_exact_gap"] == 1
+    for means, gap_field in (([1.0, 1.0], "zero_exact_gap"),
+                             ([1.0, 0.0], "negative_exact_gap")):
+        no_edge = copy.deepcopy(record)
+        no_edge["means"] = means
+        no_edge_telemetry = c0._telemetry()
+        assert c0._observe_decision(
+            no_edge_telemetry, SimpleNamespace(last_decision_record=no_edge),
+            was_lead=True,
+            production_ballot={("H10",), ("S3",)}) == 2
+        assert no_edge_telemetry["bare_point_avoidance"] == 0
+        assert no_edge_telemetry[gap_field] == 1
     for mutate in (
             lambda row: row.update(n_determinizations=30),
             lambda row: row["alloc"].update(n_by_candidate=[1, 0]),
@@ -360,9 +371,11 @@ def test_reconstructed_root_and_both_roles_are_bound_before_play(monkeypatch):
     assert len(records) == 2
     bad_rows = copy.deepcopy(rows)
     bad_rows[(*coordinate, "attacker-team")]["root_sha256"] = "f" * 64
+    calls.clear()
     with pytest.raises(c0.PrivilegedTeacherC0Error,
                        match="reconstructed parent root drift"):
         c0._run_root(design, parent_design, bad_rows, _SECRET, coordinate)
+    assert calls == []
 
 
 def test_report_roundtrip_tamper_and_privacy_boundaries():

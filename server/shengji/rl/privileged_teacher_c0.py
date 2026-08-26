@@ -347,13 +347,13 @@ def _observe_decision(telemetry: dict[str, int], bot: object, *,
     selected_points = total_points(selected)
     incumbent_points = total_points(incumbent)
     single_swap = len(incumbent) == len(selected) == 1
+    gap = means[played_index] - means[0]
     telemetry["bare_point_avoidance"] += int(
         was_lead and single_swap and changed
-        and incumbent_points > 0 and selected_points == 0)
+        and incumbent_points > 0 and selected_points == 0 and gap > 0)
     telemetry["bare_point_introduction"] += int(
         was_lead and single_swap and changed
-        and incumbent_points == 0 and selected_points > 0)
-    gap = means[played_index] - means[0]
+        and incumbent_points == 0 and selected_points > 0 and gap > 0)
     telemetry["positive_exact_gap"] += int(gap > 0)
     telemetry["zero_exact_gap"] += int(gap == 0)
     telemetry["negative_exact_gap"] += int(gap < 0)
@@ -485,11 +485,15 @@ def _run_root(design: C0Design, parent_design: full.FullABDesign,
     root = full._build_root(
         parent_design, seed_secret, rank, banker, replicate)
     root_sha256 = full._root_sha256(root)
+    role_parents = {
+        role: parent_records.get((*coordinate, role)) for role in ROLES}
+    if any(type(parent) is not dict
+           or parent.get("root_sha256") != root_sha256
+           for parent in role_parents.values()):
+        raise PrivilegedTeacherC0Error("reconstructed parent root drift")
     records = []
     for role in ROLES:
-        parent = parent_records.get((*coordinate, role))
-        if type(parent) is not dict or parent.get("root_sha256") != root_sha256:
-            raise PrivilegedTeacherC0Error("reconstructed parent root drift")
+        parent = role_parents[role]
         banker_team = banker % 2
         treatment = banker_team if role == "banker-team" else 1 - banker_team
         outcomes = tuple(_play_arm(

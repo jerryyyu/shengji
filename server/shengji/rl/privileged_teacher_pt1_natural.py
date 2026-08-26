@@ -201,10 +201,36 @@ def _role(rnd: object, seat: int) -> str:
     return "banker-team" if seat % 2 == rnd.banker % 2 else "attacker-team"
 
 
+def _production_search_eligible(rnd: object, seat: int) -> bool:
+    """Return whether production reaches its multi-candidate search route.
+
+    PT1 compares an exact teacher with the production MC search.  Production
+    deliberately skips that search for tractor-locked leads and one-candidate
+    ballots, so those states cannot supply the frozen A/B work receipt.  This
+    predicate mirrors only those actor-visible structural branches; it never
+    runs a rollout or inspects a hidden-world outcome.
+    """
+    from ..ai.registry import make_bot
+    from ..engine.combos import decompose
+    from ..engine.round import Round
+
+    if type(rnd) is not Round or rnd.phase != "play" or rnd.turn != seat \
+            or rnd.trick is None or rnd.ordering is None:
+        raise NaturalPT1Error(
+            "production-search eligibility requires active exact Round")
+    bot = make_bot("mc-s0-report-lcb", seed=0)
+    if bot.TRACTOR_LOCK and not rnd.trick.plays:
+        pick = bot.canonical_lead(rnd, seat)
+        decomposition = decompose(pick, rnd.ordering)
+        if len(decomposition.components) == 1 \
+                and decomposition.components[0].pair_len >= 2:
+            return False
+    return len(bot._candidates(rnd, seat)) > 1
+
+
 def _capture_round(design: NaturalPT1Design, round_seed: int,
                    rank: str, banker: int):
     """Run ordinary production play and return first eligible hits only."""
-    from ..ai.endgame import exhaustive_legal_actions
     from ..ai.registry import make_bot
     from ..engine.round import Round
 
@@ -233,10 +259,9 @@ def _capture_round(design: NaturalPT1Design, round_seed: int,
         threshold = max(len(hand) for hand in rnd.hands)
         key = (_role(rnd, seat), threshold)
         if threshold in design.remaining_hand_thresholds and key not in hits:
-            actions = exhaustive_legal_actions(rnd, seat,
-                                                max_hand_cards=threshold)
-            if len(actions) >= 2:
-                hits[key] = copy.deepcopy(rnd)
+            eligible = _first_eligible(rnd, role=key[0], threshold=threshold)
+            if eligible is not None:
+                hits[key] = eligible
         rnd.play(seat, bots[seat].decide_play(rnd, seat))
         if len(hits) == len(ROLE_BUCKETS) * len(REMAINING_HAND_THRESHOLDS):
             break
@@ -253,6 +278,8 @@ def _first_eligible(state: object, *, role: str, threshold: int):
     if _role(state, seat) != role or max(len(hand) for hand in state.hands) != threshold:
         return None
     if len(exhaustive_legal_actions(state, seat, max_hand_cards=threshold)) < 2:
+        return None
+    if not _production_search_eligible(state, seat):
         return None
     return copy.deepcopy(state)
 

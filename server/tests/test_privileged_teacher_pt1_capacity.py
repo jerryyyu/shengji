@@ -319,3 +319,44 @@ def test_cli_write_once_and_progress_publication(monkeypatch, tmp_path):
     assert (output / "manifest.json").read_bytes() == manifest
     with pytest.raises(capacity.PT1CapacityError):
         capacity_cli._write_once(output / "capacity.json", b"different")
+
+
+def test_worker_failure_binds_coordinate_and_cli_publishes_redacted_receipt(
+        monkeypatch, tmp_path):
+    coordinate = capacity.capacity_coordinates()[0]
+    monkeypatch.setattr(capacity, "_runtime_identity",
+                        lambda: copy.deepcopy(RUNTIME))
+    monkeypatch.setattr(
+        capacity, "_run_capacity_unit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            pt1.PrivilegedTeacherPT1Error(
+                "production route did not expose decision telemetry")))
+    with pytest.raises(capacity.PT1CapacityWorkerError) as failure:
+        capacity.run_capacity(_design(), capture_secret=SECRET)
+    assert failure.value.coordinate == coordinate
+    assert failure.value.cause_code == "PRODUCTION_ROUTE_NO_TELEMETRY"
+    assert failure.value.completed_units == 0
+
+    output = tmp_path / "failed-capacity"
+    secret_file = tmp_path / "secret"
+    secret_file.write_bytes(SECRET)
+    secret_file.chmod(0o400)
+    monkeypatch.setattr(
+        capacity_cli, "run_capacity",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(failure.value))
+    argv = ["--secret-file", str(secret_file), "--output-dir", str(output),
+            "--workers", "1"]
+    with pytest.raises(SystemExit, match="2"):
+        capacity_cli.main(argv)
+    receipt = json.loads((output / "failure.json").read_bytes())
+    progress = json.loads((output / "progress.json").read_bytes())
+    assert receipt["failed_coordinate"] == coordinate.payload()
+    assert receipt["cause_code"] == "PRODUCTION_ROUTE_NO_TELEMETRY"
+    assert receipt["completed_units"] == 0
+    assert receipt["score_redacted"] is True
+    assert receipt["authority"] == capacity.CAPACITY_AUTHORITIES
+    assert progress["status"] == "FAILED"
+    raw = json.dumps(receipt, sort_keys=True)
+    for forbidden in ("selected_action", "selected_utilities", "selected_points",
+                      "round_seed", "legal_ballot", "hidden_state"):
+        assert forbidden not in raw

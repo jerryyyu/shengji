@@ -11,8 +11,8 @@ import tempfile
 import time
 
 from shengji.rl.privileged_teacher_pt1_capacity import (
-    CapacityDesign, PT1CapacityError, manifest_for, run_capacity,
-    verify_capacity_report, verify_manifest,
+    CapacityDesign, PT1CapacityError, PT1CapacityWorkerError, manifest_for,
+    run_capacity, verify_capacity_report, verify_manifest,
 )
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
@@ -105,6 +105,18 @@ def main(argv: list[str] | None = None) -> int:
             "status": report.payload()["status"],
             "truncated_by_deadline": report.payload()["truncated_by_deadline"]})
     except (OSError, ValueError, PT1CapacityError) as exc:
+        if isinstance(exc, PT1CapacityWorkerError):
+            failure = exc.failure_payload()
+            _write_once(args.output_dir / "failure.json",
+                        canonical_json_bytes(failure))
+            _write_progress(args.output_dir / "progress.json", {
+                "completed_units": failure["completed_units"],
+                "total_units": failure["total_units"],
+                "percent_basis_points": failure["percent_basis_points"],
+                "status": "FAILED",
+                "cause_code": failure["cause_code"],
+                "failed_coordinate": failure["failed_coordinate"],
+            })
         parser.error(str(exc))
     return 0
 

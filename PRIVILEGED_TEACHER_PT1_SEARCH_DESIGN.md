@@ -71,7 +71,13 @@ The target population is **416 states**:
 
 Each retained state comes from a distinct engine round seed and therefore a
 distinct inference cluster. Capture walks the natural production policy until
-the first ordinary-play decision satisfying its exact cell. It may not select
+the first ordinary-play decision satisfying its exact cell, exposing at least
+two exhaustive legal actions, and reaching production's actual multi-candidate
+MC search route. Tractor-locked leads and production ballots with at most one
+candidate are structurally ineligible because they produce no A/B search work
+receipt and therefore cannot answer the frozen teacher-versus-search estimand.
+This predicate uses only the actor-visible Round and production candidate
+generation; it runs no rollout and reads no arm outcome. Capture may not select
 or drop a state based on an arm action, exact value, regret, solver work or
 terminal result. Missing cells or an exact-solver budget refusal are explicit
 run outcomes, never silent drops.

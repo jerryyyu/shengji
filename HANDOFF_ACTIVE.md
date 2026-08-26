@@ -1,11 +1,11 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 04:17 EDT.
+Last reconciled: 2026-08-26 05:09 EDT.
 
 Current operational truth only. Historical review evidence belongs in
-`HANDOFF_REVIEW.md`. There is no review ask yet; do not repeat the PT1 r7
-source/freeze review or any earlier PT/R4/R5 review. Codex is preparing one
-consolidated terminal-recovery source+packet ask below.
+`HANDOFF_REVIEW.md`. There is exactly one active review ask: the consolidated
+PT1 r7 terminal-recovery source+freeze review below. Do not repeat the PT1 r7
+scientific source/freeze review or any earlier PT/R4/R5 review.
 
 ## PT1 r7 — 416/416 sealed; terminal reducer defect; recovery in preparation
 
@@ -32,14 +32,47 @@ calls the live-population validator requiring a `NaturalPT1State` with a live
 Every execution test had monkeypatched the reducer, so no end-to-end witness
 crossed this exact handoff.
 
-Top priority: preserve the spent r7 root byte-for-byte and build a narrow,
-separately reviewed terminal-only reducer. It must consume exactly the frozen
-416 group hashes in canonical order, verify every group/record/manifest binding,
-write to a fresh recovery root, and publish the one preregistered aggregate.
-It may not run workers, choose/drop states, mutate r7, or inspect results before
-the review marker. Request exactly one consolidated source+recovery-packet
-review when Codex posts the exact head and packet; no rehearsal and no second
-scientific run are planned.
+The spent r7 root remains byte-for-byte unchanged. No score/action outcome was
+opened while preparing the recovery; only file identity, terminal receipts and
+SHA-256 hashes were read. No rehearsal and no second scientific run are
+planned.
+
+### Review queue — one consolidated PT1 recovery ask
+
+Review draft PR #150 at exact head
+`d1a79012dab8213b90ec4da9045cd811afbb9939`, stacked directly on reviewed
+PR #149 head `76508ec9c15638e715dc8d48ee6719412233918b`, together with the exact
+score-blind recovery freeze:
+
+- freeze path:
+  `/Users/jerryyu/Projects/pt1-recovery-freeze-d1a7901-r1.json`;
+- freeze SHA-256:
+  `6cf5124e2c4476cce40008074aa7c3cee19b5a6abd8b6676a40a791ea5cb839b`;
+- original r7 freeze SHA-256:
+  `d05070d755d12f1a7c9a67471599377e0e590ed100f6beb315f7d8ccd915bc90`;
+- original terminal failure SHA-256:
+  `5b19450cbf775b721b5b8b6bf678d3f09dd509fc1d9529e134006aa6d0fe740d`;
+- ordered 416-group tree SHA-256:
+  `0a7b1e5523b883b051c0e99cbc7af0b68c47b6b66c6e98257189d69ef5041f74`;
+- fresh recovery root, which must still be absent before execution:
+  `/Users/jerryyu/Projects/shengji-pt1-recovery-d1a7901-r1`;
+- exact marker file:
+  `/Users/jerryyu/Projects/pt1-recovery-review-marker-d1a7901-r1.json`,
+  SHA-256
+  `e200bae6336125482b9bceafacf2f2f6834d5b99f1d23b78092e7f49ed15d56d`.
+
+Review the exact type-handoff fix, all-416 ordered hash binding, immutable
+source-root rule, record/manifest/statistics reconstruction, outcome packet
+published last, and failure/no-retry witnesses. Independently reproduce the
+freeze and marker claim without parsing group result payloads. Evidence at the
+head: **66/66 PT1 pure** and **66/66 strict compiled**, CI server/frontend
+green, clean tree and diff-check. If and only if all boundaries PASS, append
+the exact marker line from the marker file to `HANDOFF_REVIEW.md` in one
+single-file authenticated review commit. That marker authorizes only one
+terminal-only recovery into the named fresh root; it authorizes no worker,
+capture, evaluation, retry, state choice/drop, gameplay, strength, promotion,
+deployment, training, merge or source-root mutation. No additional review
+round is requested unless this review finds a load-bearing defect.
 
 ## Live R4 — monitor only, do not touch
 

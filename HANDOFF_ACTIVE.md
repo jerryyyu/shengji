@@ -1,127 +1,146 @@
 # Active Claude/Codex handoff
 
 > Current operational truth and exact review asks only. Historical evidence
-> belongs in HANDOFF_REVIEW.md and Git history. Do not act on an older request
-> when an exact head below supersedes it.
+> belongs in `HANDOFF_REVIEW.md` and Git history. Do not repeat a superseded
+> review. There is exactly one active review ask below.
 
-Last reconciled: 2026-08-25 21:34 EDT.
+Last reconciled: 2026-08-25 22:04 EDT.
 
 ## Immediate objective
 
-Finish the preserved R4 cohorts through repaired calibration, one held-out test
-opening, and independently reproduced terminal interpretation. Then use that
-evidence to decide whether the already-prepared recoverable R5 successor should
-run and whether belief merits a gameplay-search experiment. PT1 remains an
-independent Mini endgame-teacher lane.
+1. Leave the live R4 completion run untouched through calibration, one held-out
+   test opening, terminal verification, and independent interpretation.
+2. Perform one narrow PT1 repaired-head review; if PASS, append its exact marker
+   so Codex can launch the one authorized Mini execution.
+3. Keep R5 held until R4 is terminally interpreted and a final packet binds
+   that result. R4 and R5 share one population and are not independent
+   replications.
 
 ## Live execution — R4 completion-only
 
-Claude appended the exact `e10cb3d/r3` PASS marker in canonical ledger commit
-`68e4522ffa1f2a3e6e4c1048455ffc083342a723`. Codex authenticated that the
-machine-generated marker was absent in its parent, present once in the review
-commit, and present once on current main.
+R4 requires no further source/freeze review and is already active on Strength
+Cloud under the exact `e10cb3d/r3` PASS marker in canonical ledger commit
+`68e4522ffa1f2a3e6e4c1048455ffc083342a723`.
 
-The first operator attempt refused before initialization because review/testing
-had left one ignored `__init__.cpython-314.pyc` in the exact checkout. The
-fresh namespace, partial, and consumption record were all absent. That one
-generated file and its empty directory were removed, the failed status receipt
-was preserved as
-`/opt/belief-r4-completion-e10cb3d-r3.status.preinit-refusal-20260826T013147Z`,
-and the exact reviewed launcher was invoked again with the authenticated review
-commit. This was an operational pre-initialization refusal, not a scientific
-retry and not a test opening.
-
-The authorized run is active on Strength Cloud:
-
-- systemd unit: `belief-r4-completion-e10cb3d-r3.service`
-- evidence root: `/opt/belief-r4-completion-v1-r3`
+- unit: `belief-r4-completion-e10cb3d-r3.service`
+- source: `e10cb3d3426d758f2d757d41462aba6a06bc60c8`
+- freeze SHA-256:
+  `59c747be56bdd20c792608ed09be307b9661c8aff6ad7e0e720cd8156de7fea4`
+- evidence: `/opt/belief-r4-completion-v1-r3`
 - status: `/opt/belief-r4-completion-e10cb3d-r3.status`
-- current phase at reconciliation: `calibrating`, 1/4 stages, 25%
-- source: exact clean `e10cb3d3426d758f2d757d41462aba6a06bc60c8`
-- freeze: `59c747be56bdd20c792608ed09be307b9661c8aff6ad7e0e720cd8156de7fea4`
+- current phase: `calibrating`, 1/4 stages, 25%
+- health at reconciliation: active/running, `NRestarts=0`, test unopened;
+  `MemoryCurrent=MemoryPeak=12,941,238,272` bytes
 
-Do not modify, restart, delete, or merge this lane. Its next valid transitions
-are calibration publication, one held-out test opening, terminal verification,
-and independent interpretation. No retraining is running or authorized.
+The first launcher invocation refused before initialization because review
+testing left one ignored `.pyc`; the evidence root and one-shot slot were
+absent. Its receipt is preserved. The exact reviewed launcher then started the
+single authorized run. Do not modify, restart, delete, merge, or infer a result
+from operational progress. The only valid next transitions are calibration
+publication, one test opening, terminal verification, and independent review.
 
-## Review queue — one independent consolidated review
+## Review queue — exactly one narrow review
 
-### 1. PT1 narrow repaired-head source + Mini freeze
+### PT1 canonical-provenance repair + fresh Mini `r6` freeze
 
 Review PR #145 once at exact head
-fc957502e32eeb418469f9daf8984122f6b89740, true parent
-7068caf426cd0d0436936ad5748bb24fe4c83347. This exact r5 request supersedes
-the held 7068caf/r4 packet. Carry forward the already-verified PT1
-design/search/statistics and 7068caf source/freeze findings; review only the
-two-file +23/-2 repair and the freshly rebound artifacts.
+`e27240e46981cae9db099236113a2b655d88570c`, true parent
+`fc957502e32eeb418469f9daf8984122f6b89740`. Carry forward the exact
+`fc95750/r5` PT1 design/search/statistics and source/freeze PASS. Review only
+the two-file `+6/-1` delta and freshly rebound artifacts; do not reopen settled
+surfaces.
 
-The repair closes the two blockers named in ledger 452af4d:
+Why the prior PASS cannot launch: the exact `fc95750/r5` launcher reached the
+real initialization command but refused with `review marker provenance
+unavailable`. It completed 0/3 operator stages, created no evidence root, and
+opened no scientific/test/score bytes. The source's canonical GitHub URL had a
+one-character repository-owner typo. This was a pre-initialization refusal, so
+no scientific slot was consumed and no retry is being requested.
 
-- M3: corrupting only the population manifest's internal self-hash now raises
-  the exact `population manifest hash drift`; neutralizing that guard makes
-  the named witness fail with DID NOT RAISE.
-- M5: an internally self-consistent embedded-manifest forgery, while the
-  freeze-bound file hash remains unchanged, raises the exact
-  `freeze population manifest byte drift`; neutralizing that guard makes the
-  named witness fail with DID NOT RAISE.
-- The only production change preserves `PT1ExecutionError` before generic
-  `ValueError` normalization, so M5's independent refusal remains observable.
+The repaired head:
 
-Exact Mini artifacts:
+- corrects only `CANONICAL_REMOTE_URL` to
+  `https://github.com/jerryyu/shengji.git`;
+- adds `test_review_provenance_uses_the_canonical_repository_url`, which pins
+  that exact production literal;
+- fails that named witness when the bad literal is restored;
+- authenticates the already-PASSed `fc95750/r5` marker and review commit live
+  through the repaired production path;
+- passes 113/113 privileged-teacher tests in pure and strict/native modes;
+- has green server/frontend CI and a clean exact checkout.
 
-- packet: /private/tmp/shengji-pt1-review-packet-fc95750-r5.json
-  - SHA-256 c20703c8b7d19a1922d5afce6731da1e95631e4721440b3feb35976fd531a739
-- byte-identical packet reopen:
-  /private/tmp/shengji-pt1-review-packet-fc95750-r5.reopen.json
-- population:
-  /Users/jerryyu/Projects/pt1-population-manifest-fc95750-r5.json
-  - SHA-256 dfa50966aa7b846a9b072a3585403249c15b80fa8026f2e277cfe644ca1ae87c
-  - 416/416 natural cells
-- capacity:
-  /private/tmp/shengji-pt1-capacity-fc95750-r5/capacity.json
-  - SHA-256 be275a82eec532541a55f3d05057afbef592a540e9ea41075896c12b8515e72f
+One byte-reproduced packet binds the complete ask:
+
+- packet:
+  `/private/tmp/shengji-pt1-review-packet-e27240e-r6.json`
+  - SHA-256
+    `20d69d00c06ae4c5ff744cf60723d2f0f2880113c1ada2d9259985fcbe0ba0fd`
+- byte-identical reopen:
+  `/private/tmp/shengji-pt1-review-packet-e27240e-r6.reopen.json`
+- freshly regenerated 416/416 natural-state population:
+  `/Users/jerryyu/Projects/pt1-population-manifest-e27240e-r6.json`
+  - SHA-256
+    `dfa50966aa7b846a9b072a3585403249c15b80fa8026f2e277cfe644ca1ae87c`
+  - byte-identical to the prior population because capture semantics and the
+    unspent scientific secret did not change
+- fresh Mini capacity:
+  `/private/tmp/shengji-pt1-capacity-e27240e-r6/capacity.json`
+  - SHA-256
+    `35957f033e8d038e69e29174b95fa87e1b0b767ed8b6eb4cc7db1b102dc7bce1`
   - 16/16 complete, ten workers, strict/native, untruncated
-- rehearsal:
-  /private/tmp/shengji-pt1-rehearsal-receipt-fc95750-r5.json
-  - SHA-256 45b6e6a72d036ce1497ccdbd2eedd109f75b92ff6dd8428327cc528c1312425a
-  - ten natural states / 40 records / 21.99s; no score/action bytes persisted
-- freeze: /Users/jerryyu/Projects/pt1-freeze-fc95750-r5.json
-  - SHA-256 db798bad5bd4f7a5417c3e0f66c40e459e65f3714e07bf808d94b0cdf0810ea7
+- capacity manifest:
+  `/private/tmp/shengji-pt1-capacity-e27240e-r6/manifest.json`
+  - SHA-256
+    `058fbc9b367a41f7a129a5aee80daea6d18d58d7e1a52af50ab415db005ef857`
+- fresh ten-state/40-record rehearsal:
+  `/private/tmp/shengji-pt1-rehearsal-receipt-e27240e-r6.json`
+  - SHA-256
+    `3cd6b4a75a52e6e5096fd99b5bf6323b5c7de8a70b195dbf4bc317b01082df0a`
+  - 19.55 seconds, no score/action bytes persisted
+- freeze:
+  `/Users/jerryyu/Projects/pt1-freeze-e27240e-r6.json`
+  - SHA-256
+    `64352206b3e930eefa431c3b358356915bd5cb65708d0056c7711b7ef367d8dc`
+  - deadline `930,722,524,358` ns, ten workers, same-namespace resume only
 - expected marker:
-  /Users/jerryyu/Projects/pt1-review-marker-fc95750-r5.json
-  - SHA-256 35ab3e3dad8edad0438faac9852fc659452f023a9c3ad5d6d48eeabdc6401135
+  `/Users/jerryyu/Projects/pt1-review-marker-e27240e-r6.json`
+  - SHA-256
+    `14abd7e247c137f3869761375959412ffd79e3d9009ec08470acf4b4030d5502`
 - inspect-only launcher:
-  /private/tmp/pt1-launch-operator-fc95750-r5.sh
-  - SHA-256 6d7e5acb0a4cbb97c35ea2d96ba29271cc1c448422cabd8f00a1a179d636f93e
+  `/private/tmp/pt1-launch-operator-e27240e-r6.sh`
+  - SHA-256
+    `7974bf9064358ffac8bc7a8d86fda146b614de523b5676ec1159fb3955f1b0a4`
 
-Full privileged-teacher battery is 112/112 pure and 112/112 strict/native;
-CI server/frontend is green. Fresh evidence root
-/Users/jerryyu/Projects/shengji-pt1-evidence-fc95750-r5 and the launcher
-status/log slots are absent. Spent/result-free r3 remains preserved.
+The fresh evidence root and `r6` launcher status/log slots are absent. The old
+`fc95750/r5` refusal log is preserved, and spent/result-free `95a142d/r3`
+remains immutable at 0/416.
 
-If clean, append the exact expected marker, comment PASS on PR #145, and
-authorize one Mini initialization, scientific execution, and verification
-under the fresh r5 namespace. Merge, retry, training, gameplay, strength,
-promotion, and deployment remain false.
+If and only if the narrow repair and fresh bindings pass, append the exact
+expected marker at column 1, comment PASS on PR #145, and authorize one Mini
+initialization, scientific execution, and verification under
+`/Users/jerryyu/Projects/shengji-pt1-evidence-e27240e-r6`. No merge, retry,
+training, gameplay, strength, promotion, or deployment authority follows.
 
-## Held, not an active review
+## Held — not an active review
 
-PR #148 at exact head 7e14b529065383baee152c9dd2b8d3473627235c is
-source/CI green and has a prepared R5 successor, but R5 initialization remains
-held until R4 is terminally interpreted. Do not launch or repeat review work
-unless the R4 result changes the final packet or Codex posts a new exact ask.
+PR #148 at exact head `7e14b529065383baee152c9dd2b8d3473627235c`
+is source/CI green and has a prepared R5 successor. Do not launch or repeat its
+old review. After R4 terminal interpretation, Codex will rebuild one final R5
+packet that explicitly binds the R4 completion result and independent terminal
+review. Performance Cloud is offline and is not currently needed.
 
 ## Fleet
 
 | host | current state | next action |
 |---|---|---|
-| Strength Cloud | R4 completion active; calibrating, 25% stage progress | monitor only; interpret terminal result |
-| Mini | idle; PT1 repaired-head packet ready, no scientific run | launch once only after exact fc95750 PASS |
-| Performance Cloud | unavailable/offline; no live R5 job | hold until R4 interpretation |
+| Strength Cloud | R4 completion active; calibrating at 25% stage progress | monitor only; interpret terminal result |
+| Mini | idle after fresh PT1 score-free artifacts | launch PT1 once after exact `e27240e/r6` PASS |
+| Performance Cloud | offline; no R5 job | hold until R4 interpretation |
 | Air | idle / not required | none |
 
 ## Authority boundaries
 
 No active packet authorizes merge, retry, deployment, promotion, gameplay, or
-a strength claim. R4 is running once under its exact marker. PT1 may initialize
-once only after its exact `fc95750` marker. R5 remains held.
+a strength claim. R4 is already running once under its exact marker. PT1 may
+initialize once only after its exact `e27240e/r6` marker is appended by an
+authentic review commit. R5 remains held.

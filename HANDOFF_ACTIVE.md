@@ -1,11 +1,12 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 11:24 EDT.
+Last reconciled: 2026-08-26 11:29 EDT.
 
 Current operational truth only. Historical evidence belongs in
-`HANDOFF_REVIEW.md`. There are exactly **two active review asks**: the
-consolidated R4 source+freeze review on PR #152 and the narrow PT-Full re-check
-on PR #151. Do not repeat PT1, earlier R4/R5, or superseded freeze reviews.
+`HANDOFF_REVIEW.md`. There is exactly **one active review ask**: the
+consolidated R4 source+freeze review on PR #152. PT-Full has passed and is
+running; do not repeat its review. Do not repeat PT1, earlier R4/R5, or
+superseded freeze reviews.
 
 ## Priority 1 — live R4: monitor only
 
@@ -99,35 +100,27 @@ The exact teacher changed 1,128/1,664 actions but almost all changes were
 round-value ties. This closes this late-endgame acquisition recipe; no further
 PT1 review, rerun, gameplay, strength, promotion or deployment action follows.
 
-## Priority 3 — one PT-Full source review, then bounded Mini DEV run
+## Priority 3 — PT-Full bounded Mini DEV run is active
 
-Draft PR #151 is exact repaired head
-`c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`. Its production and design bytes
-are unchanged from reviewed head `2b874075`; the repaired head adds exactly two
-failure directions to one test. The lane asks the
-whole-play information-value question that PT1 could not: public production A
-versus repeated public-world collapse control A0 versus repeated exact true
-world B, across 13 ranks and both partnership roles (26 roots / 52 comparison
-records / 130 played rounds). It is DEV-only and all scientific, gameplay,
-strength, promotion, deployment, merge and training authority is false.
+PR #151 passed at canonical ledger commit `deb3ecf`; both formerly missing
+N=30 mutation witnesses are now load-bearing at exact head
+`c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`. The one authorized DEV run asks
+the whole-play information-value question that PT1 could not: public
+production A versus repeated public-world collapse A0 versus repeated exact
+true world B, across 13 ranks and both partnership roles (26 roots / 52
+comparison records / 130 played rounds).
 
-### Review queue — ask B: narrow PT-Full repaired-head re-check
+Mini launchd label `com.shengji.ptfull-c6e8d08-r1` is active with PID 34778
+and ten worker processes at the exact reviewed head. Output is exclusively
+`/Users/jerryyu/Projects/shengji-ptfull-c6e8d08-r1.json`; progress/stdout and
+stderr are the sibling `.log` and `.err.log` files. A first `nohup` delivery
+attempt was terminated with zero output/progress/report bytes when its tool
+shell closed; launchd repeats the identical deterministic invocation with the
+same 0600 seed and output slot, so no outcome was observed or selected.
 
-Perform only the promised narrow repaired-head re-check at exact
-`c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`:
-
-1. neutralize the record-level `n_determinizations == 30` guard and require
-   `test_exact_work_wiring_passes_and_each_failure_direction_refuses` to fail;
-2. restore it, neutralize the per-candidate `n_by_candidate == 30` guard, and
-   require the same test to fail with the exact-work refusal.
-
-The repaired head is CI-green; the focused witness is 1/1 in pure and strict
-compiled modes; the complete privileged-teacher chain is 125/125 in both
-modes; `git diff --check` passes. All other findings from ledger `74d6064`
-carry forward. If both mutations are killed, append one exact-head `PASS`
-authorizing only one bounded 26-root open-DEV Mini run. Do not repeat the full
-source review or require a second freeze review, and do not authorize merge,
-gameplay, strength, promotion or deployment.
+This remains DEV-only. When COMPLETE, validate the report and summarize A,
+A0 and B contrasts; do not infer a scientific/strength claim or authorize
+gameplay, training, promotion, deployment or merge.
 
 ## Priority 4 — prepare one recoverable, faster R5 successor; launch held
 

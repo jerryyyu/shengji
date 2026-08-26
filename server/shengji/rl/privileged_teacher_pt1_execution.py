@@ -598,6 +598,8 @@ def verify_freeze(freeze: PT1ExecutionFreeze | Mapping[str, object] | bytes) -> 
             tuple(value["seeds"]), value["deadline_nanoseconds"], value["evidence_root"],
             value["resume_allowed"], value["review_marker_sha256"], value["review_marker"],
             value["worker_count"], value["authority"], value["schema"])
+    except PT1ExecutionError:
+        raise
     except (KeyError, TypeError, ValueError) as exc:
         raise PT1ExecutionError("freeze values drift") from exc
     if canonical_json_bytes(typed.payload()) != canonical_json_bytes(value):

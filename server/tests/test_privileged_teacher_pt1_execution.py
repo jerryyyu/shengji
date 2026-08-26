@@ -505,10 +505,29 @@ def test_freeze_population_manifest_is_complete_and_marker_bound(monkeypatch,
     assert freeze.review_marker["population_manifest_sha256"] \
         == freeze.population_manifest_sha256
     altered = freeze.payload()
-    altered["population_manifest"]["records"][0]["true_world_sha256"] = "9" * 64
+    manifest = altered["population_manifest"]
+    record = manifest["records"][0]
+    record["public_state_sha256"] = "9" * 64
+    record["capture_id_sha256"] = execution._capture_id_sha256(
+        *record["state_key"], record["public_state_sha256"])
+    body = dict(manifest)
+    body.pop("manifest_sha256")
+    manifest["manifest_sha256"] = hashlib.sha256(
+        execution.canonical_json_bytes(body)).hexdigest()
     with pytest.raises(execution.PT1ExecutionError,
-                       match="freeze values drift"):
+                       match="^freeze population manifest byte drift$"):
         execution.verify_freeze(altered)
+
+
+def test_population_manifest_internal_hash_corruption_hits_hash_guard(monkeypatch):
+    monkeypatch.setattr(execution, "validate_population", lambda *args: None)
+    design = FakeDesign(SCIENTIFIC_SHA)
+    manifest = execution.build_population_manifest(design, _states())
+    corrupted = copy.deepcopy(manifest)
+    corrupted["manifest_sha256"] = "0" * 64
+    with pytest.raises(execution.PT1ExecutionError,
+                       match="^population manifest hash drift$"):
+        execution.verify_population_manifest(corrupted, design)
 
 
 def test_runtime_identity_requires_environment_and_successful_activation(

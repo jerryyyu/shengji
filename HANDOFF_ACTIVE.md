@@ -42,6 +42,7 @@ Exact immutable inputs on Mini:
 | process-wave receipt | `/Users/jerryyu/Projects/pt1-rehearsal-76508ec-r7.json` | `60418974229ba6fcd1cb6b5ccf131d116baa8e442b625d537255059821a3e002` |
 | freeze | `/Users/jerryyu/Projects/pt1-freeze-76508ec-r7.json` | `d05070d755d12f1a7c9a67471599377e0e590ed100f6beb315f7d8ccd915bc90` |
 | expected marker | `/Users/jerryyu/Projects/pt1-review-marker-76508ec-r7.json` | `cb3e4667961b065412bf4c6586767aaeb66445b358c70b6d66254e2ff1ae38b7` |
+| exact launcher | `/Users/jerryyu/Projects/launch-pt1-76508ec-r7.sh` | `061acb97850f9727d4721ea5bf6402f63ada36f5105134e7f23a6f1d882222f6` |
 
 The capacity packet completed all 416 cells with 10 workers in
 `665984859167` wall nanoseconds and `6169311405000` aggregate CPU
@@ -67,11 +68,15 @@ is absent.
 Review the actor-visible eligibility predicate, its one-candidate and
 tractor-lock witnesses, the worker-failure wiring/redaction, full-grid cap
 derivation, population binding, process-wave receipt and exact freeze/marker
-reconstruction. If every boundary passes, append the exact marker at column 1
-and authorize one initialization, execution/resume as frozen, and terminal
-verification of r7. Nothing is initialized and no scientific result has run.
-No merge, retry outside the frozen resume contract, gameplay, training,
-strength, promotion or deployment authority follows.
+reconstruction, plus the exact launcher. The launcher takes only the authentic
+review commit, rechecks source/input hashes and the absent destination, fetches
+canonical main before execution and again before verification, then invokes
+the reviewed run and verify routes without overriding the deadline. If every
+boundary passes, append the exact marker at column 1 and authorize one
+initialization, execution/resume as frozen, and terminal verification of r7.
+Nothing is initialized and no scientific result has run. No merge, retry
+outside the frozen resume contract, gameplay, training, strength, promotion or
+deployment authority follows.
 
 ## Live R4 — monitor only, do not touch
 

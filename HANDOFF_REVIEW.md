@@ -4145,3 +4145,42 @@ Narrow review per the queued ask. Head `e27240e46981cae9db099236113a2b655d88570c
 **Authority:** the marker below authorizes exactly one Mini initialization, scientific execution, and verification under `/Users/jerryyu/Projects/shengji-pt1-evidence-e27240e-r6`, through the repaired live-provenance path with no bypass. Jerry's standing PT1 launch GO (`d348312`) carries forward. Merge, retry, training, gameplay, strength, promotion and deployment remain false. — Claude (session `68f9c8bd`)
 
 {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"promotion_authorized":false,"retry_authorized":false,"strength_claim_authorized":false,"training_authorized":false},"capacity_manifest_sha256":"058fbc9b367a41f7a129a5aee80daea6d18d58d7e1a52af50ab415db005ef857","capacity_report_sha256":"35957f033e8d038e69e29174b95fa87e1b0b767ed8b6eb4cc7db1b102dc7bce1","design_sha256":"f0f214187d1269759a14048171ddf1b2447d83b2a98b6592be54f28b6082978c","population_manifest_sha256":"dfa50966aa7b846a9b072a3585403249c15b80fa8026f2e277cfe644ca1ae87c","schema":"privileged-teacher-pt1-execution-review-v2","source_git":"e27240e46981cae9db099236113a2b655d88570c"}
+## 2026-08-25 22:38 EDT — PT1 `e27240e/r6` exact launch: terminal resource refusal at 0/416; no teacher result and no retry
+
+Jerry reported the narrow `r6b` operator-wrapper review PASS. Codex verified
+the wrapper remained mode `0500`, link-count 1, `zsh -n` clean, and SHA-256
+`ca7743de78a65c9599eee8aae0b0e1c245f44eb6178598f47e683856bc5c9fef`,
+then invoked it once with the already-authenticated scientific marker commit
+`31cca4d18bd1c2254f2dfbec9fd8a639cb265ee5`. Source, freeze, population,
+secret commitment and native bindings were unchanged from the source+freeze
+PASS.
+
+Initialization succeeded and durably created
+`/Users/jerryyu/Projects/shengji-pt1-evidence-e27240e-r6`. The first ten-state
+wave completed in memory, but before any group was admitted the controller
+raised the exact refusal `execution scientific cap exceeded`. Durable outcome:
+
+- progress: `FAILED`, `0/416`; no group files exist
+- failure receipt SHA-256
+  `604e565361664b67cfd212005049c430dda554eea2364f5d1c0a846ba15b121d`
+- deadline receipt SHA-256
+  `5aecb983fc6a307f37b0364cb164cc4fed1bde55da28ea5aa47861c63066d1f5`
+- operator status SHA-256
+  `a6d73326d5f8161efa4cbcf428ea8520d2f5529f6e3d323cf72b36054a60ca71`
+- operator log SHA-256
+  `fb108e8da3334d23a8d5264ccb8e7b4657d8802b46a0ccdffb4136e72c4b2126`
+- `retry_authorized=false`; `score_or_action_bytes_persisted=false`
+
+This was not a deadline expiry: the durable deadline is exactly
+930,722,524,358 ns after initialization, and about 14.4 minutes remained when
+the failure was inspected. It is also not a PT1 scientific verdict: no record
+was admitted and no aggregate exists. The current receipt records only the
+generic cap refusal, not the failing resource name, cap and observed value.
+Therefore no retry or cap increase is justified from this evidence alone.
+
+Preserve the spent namespace. A successor must first make the cap refusal
+diagnostic but sanitized, then use an independent score-free capacity
+population that covers the scientific resource envelope before requesting one
+fresh source+freeze review. No merge, retry, training, gameplay, strength,
+promotion, or deployment authority follows. R4 remained untouched and healthy
+through this PT1 attempt.

@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 09:40 EDT.
+Last reconciled: 2026-08-26 10:45 EDT.
 
 Current operational truth only. Historical evidence belongs in
 `HANDOFF_REVIEW.md`. There is exactly **one active review ask**, PR #151 below.
@@ -16,7 +16,7 @@ Do not repeat PT1, R4-source, earlier R5, or superseded freeze reviews.
   terminal or failure artifact, about 18.5 GiB unit memory / 20.7 GB peak;
   the scoring worker itself is about 6.1 GiB and 289% CPU.
 
-R4 remains inside its calibration phase after about 12 hours. The coarse outer
+R4 remains inside its calibration phase. The coarse outer
 progress record is not a useful within-stage ETA: outer unit 1 alone scores all
 1,326 synthetic calibration rounds against four cohorts before it can increment
 from 0/6. The worker remains runnable, so this is a long serial scoring unit
@@ -27,6 +27,14 @@ boundary. Do not signal, restart, inspect outcome-bearing calibration/test
 bytes, or alter the host. When the unit terminalizes, queue one independent
 terminal reconstruction and classify all cohorts from sealed evidence before
 interpreting the scientific result.
+
+Codex is preparing draft PR #152, an exact-output parallel evaluator on Perf
+using a fresh completion namespace and a byte-for-byte copy of the already
+sealed R4 source artifacts. This is preparation, not an active review ask yet.
+The serial unit is the safety path and must not be stopped until the optimized
+path has completed all calibration, independently reopened it, and passed the
+explicit pre-test readiness check with both test namespaces untouched. Only
+then may one cutover precede the single test opening.
 
 ## Priority 2 — PT1 is closed as a clean negative
 
@@ -46,8 +54,10 @@ PT1 review, rerun, gameplay, strength, promotion or deployment action follows.
 
 ## Priority 3 — one PT-Full source review, then bounded Mini DEV run
 
-Draft PR #151 is exact head
-`ee1c27e708bf5323b3c1854ee6b59eec24607982`, four new files only. It asks the
+Draft PR #151 is exact repaired head
+`c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`. Its production and design bytes
+are unchanged from reviewed head `2b874075`; the repaired head adds exactly two
+failure directions to one test. The lane asks the
 whole-play information-value question that PT1 could not: public production A
 versus repeated public-world collapse control A0 versus repeated exact true
 world B, across 13 ranks and both partnership roles (26 roots / 52 comparison
@@ -56,24 +66,21 @@ strength, promotion, deployment, merge and training authority is false.
 
 ### Review queue — precise ask
 
-Review PR #151 once at exact head `ee1c27e`. Check especially:
+Perform only the promised narrow repaired-head re-check at exact
+`c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`:
 
-1. private 32-byte mode-0600 seed input: only its SHA-256 commitment and root
-   hashes leave the runner, so coordinates cannot reconstruct hidden deals;
-2. exact-work wiring: every contested decision must prove `N=30`, report
-   `R=300`, selection `30*K`, report 600, total `30*K+600`, complete sampler
-   reconciliation, and aggregate equality; any short/zero path refuses;
-3. A is run once per root; A0/B treat each partnership separately with shared
-   initial root and policy seeds; A0 is hidden-twin invariant and B returns the
-   exact current hidden world;
-4. hard Mini hostname, exact clean Git/native identities, deterministic output,
-   false authority, semantic re-open and progress visibility.
+1. neutralize the record-level `n_determinizations == 30` guard and require
+   `test_exact_work_wiring_passes_and_each_failure_direction_refuses` to fail;
+2. restore it, neutralize the per-candidate `n_by_candidate == 30` guard, and
+   require the same test to fail with the exact-work refusal.
 
-Evidence: 125/125 focused PT tests pure and 125/125 strict compiled; independent
-Terra adversarial review found and then verified repairs for reconstructible
-seeds and underfilled work. If clean, append one exact-head `PASS` authorizing
-only one bounded 26-root open-DEV Mini run. Do not require a second freeze
-review, and do not authorize merge, gameplay, strength, promotion or deployment.
+The repaired head is CI-green; the focused witness is 1/1 in pure and strict
+compiled modes; the complete privileged-teacher chain is 125/125 in both
+modes; `git diff --check` passes. All other findings from ledger `74d6064`
+carry forward. If both mutations are killed, append one exact-head `PASS`
+authorizing only one bounded 26-root open-DEV Mini run. Do not repeat the full
+source review or require a second freeze review, and do not authorize merge,
+gameplay, strength, promotion or deployment.
 
 ## Priority 4 — prepare one recoverable, faster R5 successor; launch held
 

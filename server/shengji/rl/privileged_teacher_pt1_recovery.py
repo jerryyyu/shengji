@@ -102,7 +102,9 @@ def _group_tree_sha256(group_hashes: Sequence[str]) -> str:
 def _recovery_marker_claim(raw: bytes) -> dict[str, object]:
     value = _canonical_load(raw, "recovery review marker")
     fields = {"schema", "source_git", "source_execution_freeze_sha256",
-              "source_failure_sha256", "source_group_tree_sha256",
+              "source_failure_sha256", "source_progress_sha256",
+              "source_deadline_sha256", "source_group_tree_sha256",
+              "source_review_commit", "runtime_sha256",
               "recovery_evidence_root", "authority"}
     if (not isinstance(value, dict) or set(value) != fields
             or value.get("schema") != RECOVERY_REVIEW_SCHEMA
@@ -111,8 +113,10 @@ def _recovery_marker_claim(raw: bytes) -> dict[str, object]:
             or not os.path.isabs(value["recovery_evidence_root"])):
         raise PT1RecoveryError("recovery review marker fields drift")
     _git_sha(value["source_git"], "recovery review source")
+    _git_sha(value["source_review_commit"], "recovery source review commit")
     for name in ("source_execution_freeze_sha256", "source_failure_sha256",
-                 "source_group_tree_sha256"):
+                 "source_progress_sha256", "source_deadline_sha256",
+                 "source_group_tree_sha256", "runtime_sha256"):
         _sha(value[name], f"recovery review {name}")
     return value
 
@@ -243,8 +247,15 @@ class PT1TerminalRecoveryFreeze:
                 or claim["source_execution_freeze_sha256"]
                 != self.source_execution_freeze_sha256
                 or claim["source_failure_sha256"] != self.source_failure_sha256
+                or claim["source_progress_sha256"]
+                != self.source_progress_sha256
+                or claim["source_deadline_sha256"]
+                != self.source_deadline_sha256
                 or claim["source_group_tree_sha256"]
                 != self.source_group_tree_sha256
+                or claim["source_review_commit"] != self.source_review_commit
+                or claim["runtime_sha256"] != _hash_bytes(
+                    canonical_json_bytes(dict(self.runtime)))
                 or claim["recovery_evidence_root"]
                 != self.recovery_evidence_root):
             raise PT1RecoveryError("recovery marker does not bind freeze")
@@ -295,7 +306,11 @@ def freeze_terminal_recovery(
         "source_git": source_value["git_head"],
         "source_execution_freeze_sha256": inputs["freeze_sha256"],
         "source_failure_sha256": inputs["failure_sha256"],
+        "source_progress_sha256": inputs["progress_sha256"],
+        "source_deadline_sha256": inputs["deadline_sha256"],
         "source_group_tree_sha256": inputs["group_tree_sha256"],
+        "source_review_commit": source_review_commit,
+        "runtime_sha256": _hash_bytes(canonical_json_bytes(runtime_value)),
         "recovery_evidence_root": str(recovery_root),
         "authority": dict(AUTHORITIES),
     }

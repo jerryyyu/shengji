@@ -36,7 +36,12 @@ def _freeze(tmp_path: Path) -> recovery.PT1TerminalRecoveryFreeze:
         "source_git": SOURCE["git_head"],
         "source_execution_freeze_sha256": "1" * 64,
         "source_failure_sha256": "2" * 64,
+        "source_progress_sha256": "3" * 64,
+        "source_deadline_sha256": "4" * 64,
         "source_group_tree_sha256": recovery._group_tree_sha256(HASHES),
+        "source_review_commit": "5" * 40,
+        "runtime_sha256": hashlib.sha256(
+            canonical_json_bytes(RUNTIME)).hexdigest(),
         "recovery_evidence_root": str(target),
         "authority": dict(recovery.AUTHORITIES),
     }
@@ -71,6 +76,11 @@ def test_freeze_binds_all_416_hashes_without_opening_group_records(
     altered["source_group_hashes"][9] = "f" * 64
     with pytest.raises(recovery.PT1RecoveryError,
                        match="source group tree drift"):
+        recovery.verify_recovery_freeze(altered)
+    altered = typed.payload()
+    altered["runtime"]["hostname"] = "unreviewed-host"
+    with pytest.raises(recovery.PT1RecoveryError,
+                       match="marker does not bind freeze"):
         recovery.verify_recovery_freeze(altered)
 
 

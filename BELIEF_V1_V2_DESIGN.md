@@ -433,7 +433,12 @@ V2 optimizes measured stages in this order:
    parallel (3.806x), after 4.008 seconds of one-time pool warm-up, with byte-
    identical round scores. This is performance evidence only; the fresh R5
    host receipt must still qualify the exact sixteen-worker population and its
-   memory bound.
+   memory bound. Before any test attempt, calibration then starts sixteen
+   distinct worker PIDs, revalidates every exact selected model SHA in every
+   worker, and completes both synthetic plus both human reference populations
+   through that same pool. Thus the exact trained-model memory and execution
+   path are exercised at full calibration scale before the one-shot test can
+   open; a pool or memory failure cannot be discovered first on test data.
 
    Separately, perform the full saved-epoch/cache proof once before the test
    and bind it into the durable readiness receipt; do not repeat that proof

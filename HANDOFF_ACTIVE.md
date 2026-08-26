@@ -60,13 +60,18 @@ score-blind recovery freeze:
   `/Users/jerryyu/Projects/pt1-recovery-review-marker-d1a7901-r1.json`,
   SHA-256
   `e200bae6336125482b9bceafacf2f2f6834d5b99f1d23b78092e7f49ed15d56d`.
+- exact one-shot launcher:
+  `/Users/jerryyu/Projects/launch-pt1-r7-recovery-d1a7901.sh`, mode `0500`,
+  SHA-256
+  `ac444faefa70a925c618b3af3bd44b9fadac171124e1d8efe7451a98ed2ccb26`.
 
 Review the exact type-handoff fix, all-416 ordered hash binding, immutable
 source-root rule, record/manifest/statistics reconstruction, outcome packet
 published last, and failure/no-retry witnesses. Independently reproduce the
-freeze and marker claim without parsing group result payloads. Evidence at the
-head: **66/66 PT1 pure** and **66/66 strict compiled**, CI server/frontend
-green, clean tree and diff-check. If and only if all boundaries PASS, append
+freeze, marker claim and launcher without parsing group result payloads.
+Evidence at the head: **66/66 PT1 pure** and **66/66 strict compiled**, CI
+server/frontend green, clean tree, diff-check and `zsh -n` launcher check. If
+and only if all boundaries PASS, append
 the exact marker line from the marker file to `HANDOFF_REVIEW.md` in one
 single-file authenticated review commit. That marker authorizes only one
 terminal-only recovery into the named fresh root; it authorizes no worker,

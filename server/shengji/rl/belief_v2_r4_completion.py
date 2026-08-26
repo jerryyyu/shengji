@@ -92,6 +92,8 @@ from .belief_v2_terminal_controller import (
 
 SOURCE_SPEC_SCHEMA = "belief-v1-v2-r4-completion-source-spec-v1"
 CALIBRATION_OUTER_SCHEMA = "belief-v1-v2-r4-completion-calibration-v1"
+PRETEST_READINESS_SCHEMA = (
+    "belief-v1-v2-r4-completion-pretest-readiness-v1")
 TEST_ATTEMPT_SCHEMA = "belief-v1-v2-r4-completion-test-attempt-v1"
 TERMINAL_OUTER_SCHEMA = "belief-v1-v2-r4-completion-terminal-v1"
 COMPLETION_REVIEW_SCHEMA = (
@@ -945,6 +947,48 @@ def reopen_r4_completion_calibration(
     return inner, source
 
 
+def r4_completion_pretest_readiness(
+        root: Path, completion_freeze: V2ExecutionFreezeV1,
+        completion_admission: R4CompletionAdmissionV1, *, repo: Path,
+        review_marker: bytes) -> dict[str, Any]:
+    """Reopen calibration and prove the one-shot test slot is untouched."""
+    forbidden = (
+        root / "calibration" / "selection.partial",
+        root / "r4-completion-test-attempt.json",
+        root / "terminal.partial",
+        root / "terminal",
+        root / "r4-completion-terminal.json",
+    )
+    if any(path.exists() or path.is_symlink() for path in forbidden):
+        raise BeliefV2R4CompletionError(
+            "R4 completion pretest namespace is already consumed")
+    calibration, source = reopen_r4_completion_calibration(
+        root, completion_freeze, completion_admission, repo=repo,
+        review_marker=review_marker)
+    return {
+        "schema": PRETEST_READINESS_SCHEMA,
+        "completion_freeze_sha256": completion_freeze.sha256(),
+        "completion_admission_sha256": completion_admission.sha256(),
+        "completion_execution_git": completion_freeze.execution_git,
+        "source_spec_sha256": source.spec.sha256(),
+        "source_freeze_sha256": source.freeze.sha256(),
+        "source_admission_sha256": source.admission.sha256(),
+        "source_calibration_manifest_sha256": _sha256(
+            canonical_json_bytes(calibration)),
+        "synthetic_test_expected_round_count": len(
+            _expected_test_synthetic_rounds()),
+        "calibration_independently_reopened": True,
+        "test_population_metadata_opened": False,
+        "test_attempt_file_absent": True,
+        "terminal_population_absent": True,
+        "source_test_split_decision_open_count": 0,
+        "test_opening_executed": False,
+        "execution_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
 def _completion_test_attempt(
         *, completion_freeze: V2ExecutionFreezeV1,
         completion_admission: R4CompletionAdmissionV1,
@@ -1208,6 +1252,7 @@ def reopen_r4_completion_terminal(
 __all__ = [
     "BeliefV2R4CompletionError", "R4CompletionSourceSpecV1",
     "R4CompletionSourceV1", "load_r4_completion_source_spec",
+    "r4_completion_pretest_readiness",
     "reopen_r4_completion_calibration", "reopen_r4_completion_source",
     "reopen_r4_completion_terminal", "run_r4_completion_calibration",
     "run_r4_completion_terminal",

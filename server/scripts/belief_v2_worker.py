@@ -129,6 +129,7 @@ from shengji.rl.belief_v2_r4_completion import (  # noqa: E402
     r4_completion_admission_from_bytes,
     r4_completion_consumption_tombstone_bytes,
     reauthenticate_r4_completion_admission,
+    r4_completion_pretest_readiness,
     reopen_r4_completion_terminal,
     run_r4_completion_calibration,
     run_r4_completion_terminal,
@@ -527,6 +528,13 @@ def r4_open_test(args: argparse.Namespace) -> None:
         progress=_progress("r4-completion-terminal", "test-opening")))
 
 
+def r4_verify_calibration(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker, _, _ = _load_root(root)
+    _output(r4_completion_pretest_readiness(
+        root, freeze, admission, repo=REPO, review_marker=marker))
+
+
 def r4_verify_terminal(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, _, _ = _load_root(root)
@@ -625,6 +633,9 @@ def parser() -> argparse.ArgumentParser:
     r4_test = commands.add_parser("r4-open-test")
     r4_test.add_argument("--root", required=True)
     r4_test.set_defaults(function=r4_open_test)
+    r4_readiness = commands.add_parser("r4-verify-calibration")
+    r4_readiness.add_argument("--root", required=True)
+    r4_readiness.set_defaults(function=r4_verify_calibration)
     r4_terminal = commands.add_parser("r4-verify-terminal")
     r4_terminal.add_argument("--root", required=True)
     r4_terminal.set_defaults(function=r4_verify_terminal)

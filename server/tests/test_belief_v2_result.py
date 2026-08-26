@@ -731,6 +731,47 @@ def test_r4_completion_calibration_writes_only_fresh_namespace(
     assert len(reopened_manifests) == 2
 
 
+def test_r4_pretest_readiness_reopens_calibration_and_refuses_consumed_slot(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    root.mkdir()
+    source_root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source = SimpleNamespace(
+        spec=SimpleNamespace(sha256=lambda: _sha("source spec")),
+        freeze=source_freeze, admission=_admission(source_freeze),
+        group_split={})
+    calibration = {"schema": "calibration", "decision": "selected"}
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_r4_completion_calibration",
+        lambda *args, **kwargs: (calibration, source))
+    monkeypatch.setattr(
+        R4_COMPLETION, "_expected_test_synthetic_rounds",
+        lambda: ((_sha("synthetic-a"), "2"),
+                 (_sha("synthetic-b"), "A")))
+    readiness = R4_COMPLETION.r4_completion_pretest_readiness(
+        root, freeze, admission, repo=Path("/unused"),
+        review_marker=b"review")
+    assert readiness["source_calibration_manifest_sha256"] == hashlib.sha256(
+        canonical_json_bytes(calibration)).hexdigest()
+    assert readiness["synthetic_test_expected_round_count"] == 2
+    assert readiness["test_population_metadata_opened"] is False
+    assert readiness["source_test_split_decision_open_count"] == 0
+    assert readiness["test_opening_executed"] is False
+    assert readiness["execution_authorized"] is False
+
+    (root / "r4-completion-test-attempt.json").write_bytes(b"occupied\n")
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="pretest namespace is already consumed"):
+        R4_COMPLETION.r4_completion_pretest_readiness(
+            root, freeze, admission, repo=Path("/unused"),
+            review_marker=b"review")
+
+
 def test_terminal_attempt_is_durable_before_test_scorer_failure(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()

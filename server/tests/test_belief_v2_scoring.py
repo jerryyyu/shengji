@@ -5,6 +5,9 @@ from __future__ import annotations
 import hashlib
 import random
 
+import pytest
+
+import shengji.rl.belief_v2_scoring as SCORING
 from shengji.ai.heuristic import HeuristicBot
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
@@ -158,6 +161,36 @@ def test_v2_round_scoring_uses_common_surface_and_corrected_ref_c(
     assert row.reference_brier_ppb >= 0
     assert row.cohort_brier_ppb[0][0] == "synthetic-primary-v2"
     assert len(row.cohort_member_brier_ppb[0][1]) == len(COHORT_SEEDS)
+
+
+def test_member_projection_failure_reports_exact_scoring_context(monkeypatch):
+    """Witness the public identifiers needed to diagnose a failed member."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    rnd, transcript, partition = _state(15002)
+    reference = capture_ref_c_worlds(
+        rnd, rnd.turn, transcript, sampler_seed=17002)
+    common = build_common_surface_tensors(
+        partition.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS)
+    decision = V2ScoringDecisionV1(
+        decision_key="c" * 64, source_actor=partition.actor,
+        target=partition.targets, common=common, reference=reference)
+    cohort = _cohort()
+
+    def refuse(*args, **kwargs):
+        raise ValueError("projection refused")
+
+    monkeypatch.setattr(SCORING, "project_count_weights", refuse)
+    expected = (
+        "V2 scoring member prediction refused: "
+        f"decision_key={'c' * 64}, "
+        f"cohort_id={cohort.cohort_id}, member_index=0, "
+        f"model_sha256={cohort.model_sha256s[0]}")
+    with pytest.raises(SCORING.BeliefV2ScoringError, match=expected):
+        score_v2_round(
+            round_key=hashlib.sha256(b"failed-round").hexdigest(),
+            source_kind="synthetic", split="calibration",
+            trump_rank=rnd.trump_rank, decisions=(decision,),
+            cohorts=(cohort,))
 
 
 def test_incomplete_human_style_actor_reuses_identical_common_scoring_surface(

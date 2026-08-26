@@ -84,11 +84,16 @@ def _scale_fractions(freeze: V2ExecutionFreezeV1) \
 
 def _score_synthetic(
         root: Path, freeze: V2ExecutionFreezeV1,
-        admission: V2PipelineAdmissionV1, cohorts, *, replicate: str):
+        admission: V2PipelineAdmissionV1, cohorts, *, replicate: str,
+        progress: ProgressCallback | None = None,
+        progress_phase: str = "score-synthetic-rounds"):
     rows = []
-    for coordinate in v2_round_coordinates():
-        if coordinate.split != "calibration":
-            continue
+    coordinates = tuple(
+        coordinate for coordinate in v2_round_coordinates()
+        if coordinate.split == "calibration")
+    if progress is not None:
+        progress(0, len(coordinates), progress_phase)
+    for unit_index, coordinate in enumerate(coordinates):
         decisions = reopen_synthetic_scoring_round(
             root, freeze=freeze, admission=admission,
             coordinate=coordinate, replicate=replicate,
@@ -98,16 +103,23 @@ def _score_synthetic(
             source_kind="synthetic", split="calibration",
             trump_rank=coordinate.trump_rank,
             decisions=decisions, cohorts=cohorts))
+        if progress is not None:
+            progress(unit_index + 1, len(coordinates), progress_phase)
     return tuple(rows)
 
 
 def _score_human(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, group_split: dict[str, Any],
-        cohorts, *, replicate: str):
+        cohorts, *, replicate: str,
+        progress: ProgressCallback | None = None,
+        progress_phase: str = "score-human-groups"):
     rows = []
-    for digest in sorted(
-            group_split["splits"]["calibration"]["group_digests"]):
+    digests = tuple(sorted(
+        group_split["splits"]["calibration"]["group_digests"]))
+    if progress is not None:
+        progress(0, len(digests), progress_phase)
+    for unit_index, digest in enumerate(digests):
         rounds = reopen_human_scoring_rounds(
             root, freeze=freeze, admission=admission,
             group_digest=digest, replicate=replicate,
@@ -117,6 +129,8 @@ def _score_human(
                 round_key=round_digest, source_kind="human",
                 split="calibration", trump_rank=trump_rank,
                 decisions=decisions, cohorts=cohorts))
+        if progress is not None:
+            progress(unit_index + 1, len(digests), progress_phase)
     return tuple(sorted(rows, key=lambda row: row.round_key))
 
 
@@ -214,22 +228,26 @@ def run_v2_calibration_selection(
     try:
         synthetic_0 = _score_synthetic(
             root, freeze, admission, cohorts,
-            replicate="calibration-replicate-0")
+            replicate="calibration-replicate-0", progress=progress,
+            progress_phase="score-synthetic-ref0-rounds")
         if progress is not None:
             progress(1, 6, "score-calibration-populations")
         synthetic_1 = _score_synthetic(
             root, freeze, admission, cohorts,
-            replicate="calibration-replicate-1")
+            replicate="calibration-replicate-1", progress=progress,
+            progress_phase="score-synthetic-ref1-rounds")
         if progress is not None:
             progress(2, 6, "score-calibration-populations")
         human_0 = _score_human(
             root, freeze, admission, group_split, cohorts,
-            replicate="calibration-replicate-0")
+            replicate="calibration-replicate-0", progress=progress,
+            progress_phase="score-human-ref0-groups")
         if progress is not None:
             progress(3, 6, "score-calibration-populations")
         human_1 = _score_human(
             root, freeze, admission, group_split, cohorts,
-            replicate="calibration-replicate-1")
+            replicate="calibration-replicate-1", progress=progress,
+            progress_phase="score-human-ref1-groups")
         if progress is not None:
             progress(4, 6, "score-calibration-populations")
     except ValueError as exc:

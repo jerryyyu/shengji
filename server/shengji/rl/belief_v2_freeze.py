@@ -50,10 +50,10 @@ from .belief_v2_device_qualification import (
 FREEZE_SCHEMA = "belief-v1-v2-offline-execution-freeze-v2"
 COHORT_SCHEMA = "belief-v1-v2-training-cohort-plan-v1"
 CAP_SCHEMA = "belief-v1-v2-resource-caps-v2"
-REVIEW_SCHEMA = "belief-v1-v2-offline-execution-review-v1"
-ADMISSION_SCHEMA = "belief-v1-v2-offline-pipeline-admission-v1"
-CONSUMPTION_SCHEMA = "belief-v1-v2-offline-consumption-tombstone-v1"
-REVIEW_PREFIX = "BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW "
+REVIEW_SCHEMA = "belief-v1-v2-offline-execution-review-v2"
+ADMISSION_SCHEMA = "belief-v1-v2-offline-pipeline-admission-v2"
+CONSUMPTION_SCHEMA = "belief-v1-v2-offline-consumption-tombstone-v2"
+REVIEW_PREFIX = "BELIEF_V1_V2_OFFLINE_EXECUTION_V2_REVIEW "
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
 REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
@@ -399,6 +399,7 @@ class V2ExecutionFreezeV1:
                 "design_freeze_authorized": True,
                 "offline_pipeline_execution_authorized": False,
                 "test_split_open_authorized": False,
+                "same_admission_process_resume_authorized": False,
                 "sampler_implementation_authorized": False,
                 "gameplay_strength_screen_authorized": False,
                 "strength_claim_authorized": False,
@@ -815,6 +816,7 @@ def expected_execution_review_claim(
         "training_candidate_device": freeze.training_candidate_device,
         "evidence_root": freeze.evidence_root,
         "bounded_capture_reference_training_and_one_test_open_authorized": True,
+        "same_admission_process_resume_authorized": True,
         "retry_authorized": False,
         "sampler_implementation_authorized": False,
         "gameplay_strength_screen_authorized": False,
@@ -859,6 +861,7 @@ class V2PipelineAdmissionV1:
                 "training_authorized": True,
                 "one_test_split_open_authorized": True,
                 "terminal_reconstruction_authorized": True,
+                "same_admission_process_resume_authorized": True,
                 "retry_authorized": False,
                 "sampler_implementation_authorized": False,
                 "gameplay_strength_screen_authorized": False,
@@ -1055,7 +1058,9 @@ def pipeline_admission_from_bytes(
             or set(authority) != {
                 "capture_authorized", "reference_generation_authorized",
                 "training_authorized", "one_test_split_open_authorized",
-                "terminal_reconstruction_authorized", "retry_authorized",
+                "terminal_reconstruction_authorized",
+                "same_admission_process_resume_authorized",
+                "retry_authorized",
                 "sampler_implementation_authorized",
                 "gameplay_strength_screen_authorized",
                 "strength_claim_authorized", "promotion_authorized",
@@ -1107,6 +1112,7 @@ def pipeline_consumption_tombstone_bytes(
         "canonical_remote_tip": admission.canonical_remote_tip,
         "evidence_root": admission.evidence_root,
         "initialization_consumed": True,
+        "same_admission_process_resume_authorized": True,
         "retry_authorized": False,
     })
 

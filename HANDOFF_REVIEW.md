@@ -4184,3 +4184,26 @@ population that covers the scientific resource envelope before requesting one
 fresh source+freeze review. No merge, retry, training, gameplay, strength,
 promotion, or deployment authority follows. R4 remained untouched and healthy
 through this PT1 attempt.
+
+## 2026-08-25 22:40 EDT — PT1 `r6b` operator-launcher review — ⛔ HOLD: the launch already ran and failed six minutes after the ask was written; the `e27240e`/`r6` namespace is initialized. No operator PASS appended
+
+**The launcher delta is clean; it is not the blocker.** New `/private/tmp/pt1-launch-operator-e27240e-r6b.sh` = `ca7743de78a65c9599eee8aae0b0e1c245f44eb6178598f47e683856bc5c9fef` and reviewed `r6` = `7974bf9064358ffac8bc7a8d86fda146b614de523b5676ec1159fb3955f1b0a4`, both matching the ask. `diff` is **exactly three lines and nothing else** — lines 31–32 move the operator status/log slots `r6`→`r6b`, line 71 corrects `jerryyu`→`jerryyyu`; both files are 111 lines, so nothing was inserted or removed. Mode `500`, `zsh -n` green. I confirmed the URL behaviour independently: the corrected owner resolves to `80ff3462fc95b1d6c5c494985da21a9121085d70`, equal to the canonical main tip, and the old owner returns `Repository not found`. Both old `r6` refusal receipt hashes match byte-for-byte (`2051c342…dafbb`, `ae16b2fc…48953`).
+
+**What stops it.** Three of the ask's stated preconditions were true at 02:24:35Z and false by the time I measured them:
+
+| ask claim | measured |
+|---|---|
+| fresh `r6b` slots absent | **PRESENT**, `.status` and `.log`, mtime **02:30:25Z** |
+| evidence root absent | **PRESENT** — `/Users/jerryyu/Projects/shengji-pt1-evidence-e27240e-r6`, mtime 02:30:25Z |
+| one scientific slot unconsumed | root **initialized**: `freeze.json`, `deadline-receipt.json`, `progress.json`, `failure.json`, `groups/` |
+
+`r6b.status` reads `phase=failed completed=0 total=3`. The failure receipt reads `failure_code=cli_failure`, `completed_units=0`, `total_units=416`, `retry_authorized=False`, `score_or_action_bytes_persisted=False`, and the operator log terminates with `privileged_teacher_pt1_execution.py: error: execution scientific cap exceeded`. `groups/` is empty. So the launcher repair worked — it cleared `ls-remote` and reached the CLI — and then hit a different guard, before any scientific byte was opened. That part is clean and no data leaked.
+
+**Why no marker.** This is the identical shape by which PT1 `r3` was declared spent: a durable initialized root holding the exact freeze, a deadline receipt, empty `groups/`, and progress at 0/416. By that standard `e27240e`/`r6` is consumed. Appending an operator PASS now would either ratify a launch that already occurred or, given the ask's closing "Codex then launches once under the existing authority", read as authorizing a retry into a spent namespace — contradicted by `retry_authorized=False` on the receipt itself.
+
+**Unblocking is cheap and I can turn it around immediately, since the launcher review is done:** (1) state explicitly whether `e27240e`/`r6` is spent — if so this needs a fresh evidence root and operator slot, not a `r6b` PASS; (2) diagnose `execution scientific cap exceeded`, which fires inside argparse validation before the run starts, so either the launcher passes a wrong `--worker-count`/deadline or the cap is mis-derived; (3) re-measure preconditions at request time.
+
+**Lane observation, stated plainly.** This is the third consecutive PT1 attempt lost to operator/CLI defects rather than science: `r3` worker failure at 0/416 with the child exception discarded, `r6` `ls-remote` owner typo before initialization, and now `r6` cap refusal at 0/416 after initialization. Not one scientific unit has been produced across them, and each consumed or nearly consumed a one-shot namespace. The source and freeze reviews have all been clean; the losses are all in the operator path, which is the part receiving the least review rigour.
+
+The `e27240e`/`r6` source+freeze PASS at ledger `31cca4d` is untouched and remains valid on its own terms. No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+

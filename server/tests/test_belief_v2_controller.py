@@ -2909,7 +2909,21 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
     scale_curve = SimpleNamespace(
         canonical_bytes=lambda: canonical_json_bytes({
             "schema": "test-scale-curve", "positive": True}))
+    projection_token = object()
+    warmed = []
+
+    class Pool:
+        def __enter__(self):
+            return projection_token
+
+        def __exit__(self, *args):
+            return False
+
     monkeypatch.setattr(CALIBRATION_STAGE, "_stage_gate", lambda **kwargs: None)
+    monkeypatch.setattr(CALIBRATION_STAGE, "projection_pool", Pool)
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "warm_projection_pool",
+        lambda executor: warmed.append(executor))
     monkeypatch.setattr(
         CALIBRATION_STAGE, "reopen_training_input_index",
         lambda *args, **kwargs: ({}, training_inputs))
@@ -2917,12 +2931,18 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
         CALIBRATION_STAGE, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (
             cohorts, plan, qualification, training_hashes))
+    def synthetic_score(*args, **kwargs):
+        assert kwargs["projection_executor"] is projection_token
+        return synthetic
+
+    def human_score(*args, **kwargs):
+        assert kwargs["projection_executor"] is projection_token
+        return human
+
     monkeypatch.setattr(
-        CALIBRATION_STAGE, "_score_synthetic",
-        lambda *args, **kwargs: synthetic)
+        CALIBRATION_STAGE, "_score_synthetic", synthetic_score)
     monkeypatch.setattr(
-        CALIBRATION_STAGE, "_score_human",
-        lambda *args, **kwargs: human)
+        CALIBRATION_STAGE, "_score_human", human_score)
     monkeypatch.setattr(
         CALIBRATION_STAGE, "_expected_synthetic_rounds",
         lambda: ((synthetic[0].round_key, "2"),))
@@ -2939,7 +2959,7 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
     monkeypatch.setattr(
         CALIBRATION_STAGE, "evaluate_scale_curve",
         lambda *args, **kwargs: scale_curve)
-    return human_selection, scale_curve
+    return human_selection, scale_curve, warmed
 
 
 def test_calibration_scoring_reports_progress_inside_each_population(
@@ -2990,7 +3010,7 @@ def test_calibration_selection_wires_stability_and_selected_cohort(
     root.mkdir()
     freeze = _freeze(root)
     admission = _admission(freeze)
-    _stub_calibration_dependencies(monkeypatch, freeze)
+    _, _, warmed = _stub_calibration_dependencies(monkeypatch, freeze)
     result = CALIBRATION_STAGE.run_v2_calibration_selection(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review", inventory={}, group_split={})
@@ -3002,6 +3022,7 @@ def test_calibration_selection_wires_stability_and_selected_cohort(
     assert set(result["files"]) == (
         set(CALIBRATION_STAGE.POPULATION_FILES)
         | set(CALIBRATION_STAGE.RESULT_FILES))
+    assert len(warmed) == 1
     assert CALIBRATION_STAGE.reopen_v2_calibration_selection(
         root / "calibration" / "selection", freeze=freeze,
         admission=admission, inventory={}, group_split={}) == result
@@ -3013,13 +3034,15 @@ def test_calibration_selection_refuses_instability_and_coordinated_rehash(
     root.mkdir()
     freeze = _freeze(root)
     admission = _admission(freeze)
-    _stub_calibration_dependencies(monkeypatch, freeze, stable=False)
+    _, _, warmed = _stub_calibration_dependencies(
+        monkeypatch, freeze, stable=False)
     result = CALIBRATION_STAGE.run_v2_calibration_selection(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review", inventory={}, group_split={})
     assert result["human_reference_replicates_stable"] is False
     assert result["calibration_passed"] is False
     assert result["selected_cohort_id"] is None
+    assert len(warmed) == 1
 
     directory = root / "calibration" / "selection"
     result_path = directory / CALIBRATION_STAGE.RESULT_FILES[

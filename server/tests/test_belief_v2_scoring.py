@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 import hashlib
+import multiprocessing
 import random
 
 import pytest
@@ -161,6 +163,33 @@ def test_v2_round_scoring_uses_common_surface_and_corrected_ref_c(
     assert row.reference_brier_ppb >= 0
     assert row.cohort_brier_ppb[0][0] == "synthetic-primary-v2"
     assert len(row.cohort_member_brier_ppb[0][1]) == len(COHORT_SEEDS)
+
+
+def test_process_parallel_projection_is_byte_identical(monkeypatch):
+    """The fixed worker path must reproduce serial score bytes exactly."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    rnd, transcript, partition = _state(15004)
+    reference = capture_ref_c_worlds(
+        rnd, rnd.turn, transcript, sampler_seed=17004)
+    common = build_common_surface_tensors(
+        partition.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS)
+    decision = V2ScoringDecisionV1(
+        decision_key="d" * 64, source_actor=partition.actor,
+        target=partition.targets, common=common, reference=reference)
+    cohort = _cohort()
+    kwargs = {
+        "round_key": hashlib.sha256(b"parallel-round").hexdigest(),
+        "source_kind": "synthetic", "split": "calibration",
+        "trump_rank": rnd.trump_rank, "decisions": (decision,),
+        "cohorts": (cohort,),
+    }
+    serial = score_v2_round(**kwargs)
+    with ProcessPoolExecutor(
+            max_workers=2,
+            mp_context=multiprocessing.get_context("forkserver")) as executor:
+        parallel = score_v2_round(
+            **kwargs, projection_executor=executor)
+    assert parallel == serial
 
 
 def test_member_projection_failure_reports_exact_scoring_context(monkeypatch):

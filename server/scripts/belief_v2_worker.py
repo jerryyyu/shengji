@@ -128,6 +128,10 @@ from shengji.rl.belief_v2_tensor_cache_controller import (  # noqa: E402
     run_training_tensor_cache,
 )
 from shengji.rl.belief_v2_progress import V2ProgressReporter  # noqa: E402
+from shengji.rl.belief_v2_scoring import (  # noqa: E402
+    projection_pool,
+    warm_projection_pool,
+)
 
 
 def _sha256(raw: bytes) -> str:
@@ -540,25 +544,32 @@ def open_test(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
     final = root / "terminal"
-    if _recover_final(args, final):
-        _output(reopen_v2_terminal(
-            final, freeze=freeze, admission=admission,
+    with projection_pool() as projection_executor:
+        warm_projection_pool(projection_executor)
+        if _recover_final(args, final):
+            _output(reopen_v2_terminal(
+                final, freeze=freeze, admission=admission,
+                inventory=inventory, group_split=group_split,
+                projection_executor=projection_executor,
+                progress=_progress("terminal", "test-opening-reopen")))
+            return
+        _output(run_v2_terminal(
+            root, freeze, admission, repo=REPO, review_marker=marker,
             inventory=inventory, group_split=group_split,
-            progress=_progress("terminal", "test-opening-reopen")))
-        return
-    _output(run_v2_terminal(
-        root, freeze, admission, repo=REPO, review_marker=marker,
-        inventory=inventory, group_split=group_split,
-        progress=_progress("terminal", "test-opening")))
+            projection_executor=projection_executor,
+            progress=_progress("terminal", "test-opening")))
 
 
 def verify_terminal(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, _, inventory, group_split = _load_root(root)
-    _output(reopen_v2_terminal(
-        root / "terminal", freeze=freeze, admission=admission,
-        inventory=inventory, group_split=group_split,
-        progress=_progress("terminal-verification", "reopen")))
+    with projection_pool() as projection_executor:
+        warm_projection_pool(projection_executor)
+        _output(reopen_v2_terminal(
+            root / "terminal", freeze=freeze, admission=admission,
+            inventory=inventory, group_split=group_split,
+            projection_executor=projection_executor,
+            progress=_progress("terminal-verification", "reopen")))
 
 
 def parser() -> argparse.ArgumentParser:

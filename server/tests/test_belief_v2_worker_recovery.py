@@ -188,6 +188,20 @@ def test_sealed_terminal_recovery_reopens_and_never_creates_second_opening(
     final.mkdir(parents=True)
     freeze, admission = _root_binding(module, monkeypatch, root)
     observed = []
+    projection_token = object()
+    warmed = []
+
+    class Pool:
+        def __enter__(self):
+            return projection_token
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(module, "projection_pool", Pool)
+    monkeypatch.setattr(
+        module, "warm_projection_pool",
+        lambda executor: warmed.append(executor))
     monkeypatch.setattr(
         module, "reopen_v2_terminal",
         lambda directory, **kwargs: observed.append((directory, kwargs)) or {
@@ -204,3 +218,5 @@ def test_sealed_terminal_recovery_reopens_and_never_creates_second_opening(
     assert observed[0][0] == final
     assert observed[0][1]["freeze"] is freeze
     assert observed[0][1]["admission"] is admission
+    assert observed[0][1]["projection_executor"] is projection_token
+    assert warmed == [projection_token]

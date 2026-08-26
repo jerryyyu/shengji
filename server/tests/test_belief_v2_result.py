@@ -458,6 +458,7 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         "schema": "test-calibration", "cohort_ids": list(cohort_ids),
         "calibration_passed": True,
         "selected_cohort_id": "synthetic-primary"}
+    projection_executors = []
     monkeypatch.setattr(TERMINAL_STAGE, "_stage_gate", lambda **kwargs: None)
     monkeypatch.setattr(
         TERMINAL_STAGE, "_calibration_statistics",
@@ -470,9 +471,12 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         lambda *args, **kwargs: (
             cohorts, plan, qualification,
             tuple((value, _sha(value)) for value in cohort_ids)))
+    def score_test(*args, **kwargs):
+        projection_executors.append(kwargs.get("projection_executor"))
+        return synthetic_rows, human_rows
+
     monkeypatch.setattr(
-        TERMINAL_STAGE, "_score_test_populations",
-        lambda *args, **kwargs: (synthetic_rows, human_rows))
+        TERMINAL_STAGE, "_score_test_populations", score_test)
     monkeypatch.setattr(
         TERMINAL_STAGE, "_expected_test_synthetic_rounds",
         lambda: ((synthetic_rows[0].round_key, "2"),))
@@ -491,7 +495,7 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
     monkeypatch.setattr(
         TERMINAL_STAGE, "_derive_integrity_receipt",
         lambda *args, **kwargs: receipt)
-    return calibration
+    return calibration, projection_executors
 
 
 def test_terminal_attempt_is_durable_before_test_scorer_failure(
@@ -530,13 +534,17 @@ def test_terminal_round_trip_and_coordinated_result_rehash_refuse(
     root.mkdir()
     freeze = replace(_freeze(), evidence_root=str(root))
     admission = _admission(freeze)
-    _stub_terminal_dependencies(monkeypatch, freeze)
+    _, projection_executors = _stub_terminal_dependencies(
+        monkeypatch, freeze)
+    projection_token = object()
     result = TERMINAL_STAGE.run_v2_terminal(
         root, freeze, admission, repo=Path("/unused"),
-        review_marker=b"review", inventory={}, group_split={})
+        review_marker=b"review", inventory={}, group_split={},
+        projection_executor=projection_token)
     assert result["terminal_route"] == PASS_B3
     assert result["test_split_decision_open_count"] == 1
     assert result["deployment_authorized"] is False
+    assert projection_executors == [projection_token, projection_token]
     directory = root / "terminal"
     assert TERMINAL_STAGE.reopen_v2_terminal(
         directory, freeze=freeze, admission=admission,

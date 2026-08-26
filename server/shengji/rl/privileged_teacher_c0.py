@@ -625,7 +625,7 @@ def run_dev(design: C0Design, *, parent_report: dict[str, object],
 
 def _validate_telemetry(arm: str, telemetry: object) -> None:
     if (type(telemetry) is not dict
-            or tuple(telemetry) != TELEMETRY_FIELDS
+            or set(telemetry) != set(TELEMETRY_FIELDS)
             or any(isinstance(value, bool) or not isinstance(value, int)
                    or value < 0 for value in telemetry.values())):
         raise PrivilegedTeacherC0Error("C0 telemetry shape drift")
@@ -706,7 +706,7 @@ def validate_report(report: dict[str, object], design: C0Design,
         if roots[coordinate] != record["root_sha256"]:
             raise PrivilegedTeacherC0Error("C0 root role binding drift")
         arms = record["arms"]
-        if type(arms) is not dict or tuple(arms) != ARMS:
+        if type(arms) is not dict or set(arms) != set(ARMS):
             raise PrivilegedTeacherC0Error("C0 arm population drift")
         for arm in ARMS:
             row = arms[arm]

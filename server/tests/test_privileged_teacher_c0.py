@@ -398,7 +398,13 @@ def test_report_roundtrip_tamper_and_privacy_boundaries():
     external = design.parent_external_sha256
     raw = c0.report_bytes(
         report, design, parent, parent_external_sha256=external)
-    assert json.loads(raw)["report_sha256"] == report["report_sha256"]
+    reopened = json.loads(raw)
+    assert reopened["report_sha256"] == report["report_sha256"]
+    c0.validate_report(
+        reopened, design, parent, parent_external_sha256=external)
+    assert c0.report_bytes(
+        reopened, design, parent,
+        parent_external_sha256=external) == raw
     forbidden = {"hands", "buried", "deck", "seed", "rng_state"}
 
     def walk(value):

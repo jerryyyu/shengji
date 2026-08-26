@@ -2928,22 +2928,24 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
     scale_curve = SimpleNamespace(
         canonical_bytes=lambda: canonical_json_bytes({
             "schema": "test-scale-curve", "positive": True}))
-    projection_token = object()
     warmed = []
     readiness = []
 
     class Pool:
+        def __init__(self, observed_cohorts):
+            assert observed_cohorts == cohorts
+
         def __enter__(self):
-            return projection_token
+            return self
 
         def __exit__(self, *args):
             return False
 
+        def warm(self):
+            warmed.append(self)
+
     monkeypatch.setattr(CALIBRATION_STAGE, "_stage_gate", lambda **kwargs: None)
-    monkeypatch.setattr(CALIBRATION_STAGE, "projection_pool", Pool)
-    monkeypatch.setattr(
-        CALIBRATION_STAGE, "warm_projection_pool",
-        lambda executor: warmed.append(executor))
+    monkeypatch.setattr(CALIBRATION_STAGE, "V2DecisionScoringPool", Pool)
     monkeypatch.setattr(
         CALIBRATION_STAGE, "reopen_training_input_index",
         lambda *args, **kwargs: ({}, training_inputs))
@@ -2962,11 +2964,11 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
                 "calibration_manifest_sha256": hashlib.sha256(
                     canonical_json_bytes(expected_calibration)).hexdigest()})
     def synthetic_score(*args, **kwargs):
-        assert kwargs["projection_executor"] is projection_token
+        assert kwargs["decision_pool"] is warmed[0]
         return synthetic
 
     def human_score(*args, **kwargs):
-        assert kwargs["projection_executor"] is projection_token
+        assert kwargs["decision_pool"] is warmed[0]
         return human
 
     monkeypatch.setattr(

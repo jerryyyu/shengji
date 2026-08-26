@@ -132,8 +132,7 @@ from shengji.rl.belief_v2_readiness_controller import (  # noqa: E402
     reopen_v2_calibration_readiness,
 )
 from shengji.rl.belief_v2_scoring import (  # noqa: E402
-    projection_pool,
-    warm_projection_pool,
+    V2DecisionScoringPool,
 )
 
 
@@ -558,31 +557,39 @@ def open_test(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
     final = root / "terminal"
-    with projection_pool() as projection_executor:
-        warm_projection_pool(projection_executor)
+    readiness = reopen_v2_calibration_readiness(
+        root / "calibration" / "readiness", freeze=freeze,
+        admission=admission, inventory=inventory, group_split=group_split)
+    cohorts = readiness[4]
+    with V2DecisionScoringPool(cohorts) as decision_pool:
+        decision_pool.warm()
         if _recover_final(args, final):
             _output(reopen_v2_terminal(
                 final, freeze=freeze, admission=admission,
                 inventory=inventory, group_split=group_split,
-                projection_executor=projection_executor,
+                decision_pool=decision_pool,
                 progress=_progress("terminal", "test-opening-reopen")))
             return
         _output(run_v2_terminal(
             root, freeze, admission, repo=REPO, review_marker=marker,
             inventory=inventory, group_split=group_split,
-            projection_executor=projection_executor,
+            decision_pool=decision_pool,
             progress=_progress("terminal", "test-opening")))
 
 
 def verify_terminal(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, _, inventory, group_split = _load_root(root)
-    with projection_pool() as projection_executor:
-        warm_projection_pool(projection_executor)
+    readiness = reopen_v2_calibration_readiness(
+        root / "calibration" / "readiness", freeze=freeze,
+        admission=admission, inventory=inventory, group_split=group_split)
+    cohorts = readiness[4]
+    with V2DecisionScoringPool(cohorts) as decision_pool:
+        decision_pool.warm()
         _output(reopen_v2_terminal(
             root / "terminal", freeze=freeze, admission=admission,
             inventory=inventory, group_split=group_split,
-            projection_executor=projection_executor,
+            decision_pool=decision_pool,
             progress=_progress("terminal-verification", "reopen")))
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Executor
 import hashlib
 import json
 import os
@@ -51,7 +50,7 @@ from .belief_v2_progress import ProgressCallback
 from .belief_v2_readiness_controller import (
     reopen_v2_calibration_readiness,
 )
-from .belief_v2_scoring import score_v2_round
+from .belief_v2_scoring import V2DecisionScoringPool, score_v2_round
 from .belief_v2_scoring_controller import (
     reopen_human_scoring_rounds,
     reopen_synthetic_scoring_round,
@@ -140,7 +139,7 @@ def _score_test_populations(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         group_split: dict[str, Any], cohorts, *,
-        projection_executor: Executor | None = None):
+        decision_pool: V2DecisionScoringPool | None = None):
     synthetic = []
     for coordinate in v2_round_coordinates():
         if coordinate.split != "test":
@@ -154,7 +153,7 @@ def _score_test_populations(
             source_kind="synthetic", split="test",
             trump_rank=coordinate.trump_rank,
             decisions=decisions, cohorts=cohorts,
-            projection_executor=projection_executor))
+            decision_pool=decision_pool))
     human = []
     for digest in _human_group_digests(group_split, "test"):
         rounds = reopen_human_scoring_rounds(
@@ -166,7 +165,7 @@ def _score_test_populations(
                 round_key=round_digest, source_kind="human", split="test",
                 trump_rank=trump_rank, decisions=decisions,
                 cohorts=cohorts,
-                projection_executor=projection_executor))
+                decision_pool=decision_pool))
     if not synthetic or not human:
         raise BeliefV2TerminalControllerError(
             "V2 terminal test score population is empty")
@@ -463,7 +462,7 @@ def run_v2_terminal(
         admission: V2PipelineAdmissionV1, *, repo: Path,
         review_marker: bytes, inventory: dict[str, Any],
         group_split: dict[str, Any],
-        projection_executor: Executor | None = None,
+        decision_pool: V2DecisionScoringPool | None = None,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Consume the sole test opening after durable attempt publication."""
     _stage_gate(root=root, repo=repo, freeze=freeze, admission=admission,
@@ -504,7 +503,7 @@ def run_v2_terminal(
             progress(2, 5, "test-inputs-reopened")
         synthetic, human = _score_test_populations(
             root, freeze, admission, group_split, cohorts,
-            projection_executor=projection_executor)
+            decision_pool=decision_pool)
         if progress is not None:
             progress(3, 5, "test-populations-scored")
         cohort_ids = tuple(row.cohort_id for row in cohorts)
@@ -566,7 +565,7 @@ def run_v2_terminal(
     reopened = reopen_v2_terminal(
         final, freeze=freeze, admission=admission,
         inventory=inventory, group_split=group_split,
-        projection_executor=projection_executor,
+        decision_pool=decision_pool,
         progress=progress)
     if reopened != manifest:
         raise BeliefV2TerminalControllerError(
@@ -580,7 +579,7 @@ def reopen_v2_terminal(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         inventory: dict[str, Any], group_split: dict[str, Any],
-        projection_executor: Executor | None = None,
+        decision_pool: V2DecisionScoringPool | None = None,
         progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
     """Reopen raw score populations and rederive every terminal byte."""
@@ -653,7 +652,7 @@ def reopen_v2_terminal(
             label="human_test")
         synthetic, human = _score_test_populations(
             Path(freeze.evidence_root), freeze, admission, group_split,
-            cohorts, projection_executor=projection_executor)
+            cohorts, decision_pool=decision_pool)
         if v2_round_population_bytes(
                 recorded_synthetic, cohort_ids=cohort_ids,
                 label="synthetic_test") != v2_round_population_bytes(

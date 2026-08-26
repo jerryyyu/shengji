@@ -6,6 +6,7 @@ from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import multiprocessing
 import random
+from types import SimpleNamespace
 
 import pytest
 
@@ -190,6 +191,68 @@ def test_process_parallel_projection_is_byte_identical(monkeypatch):
         parallel = score_v2_round(
             **kwargs, projection_executor=executor)
     assert parallel == serial
+
+
+def test_process_parallel_decisions_are_byte_identical(monkeypatch):
+    """Each worker runs unchanged serial scoring on a distinct decision."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(SCORING, "V2_DECISION_WORKERS", 2)
+    rnd, transcript, partition = _state(15005)
+    reference = capture_ref_c_worlds(
+        rnd, rnd.turn, transcript, sampler_seed=17005)
+    common = build_common_surface_tensors(
+        partition.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS)
+    decisions = tuple(V2ScoringDecisionV1(
+        decision_key=hashlib.sha256(
+            f"decision-parallel-{index}".encode("ascii")).hexdigest(),
+        source_actor=partition.actor, target=partition.targets,
+        common=common, reference=reference) for index in range(4))
+    cohort = _cohort()
+    kwargs = {
+        "round_key": hashlib.sha256(b"decision-parallel-round").hexdigest(),
+        "source_kind": "synthetic", "split": "calibration",
+        "trump_rank": rnd.trump_rank, "decisions": decisions,
+        "cohorts": (cohort,),
+    }
+    serial = score_v2_round(**kwargs)
+    with SCORING.V2DecisionScoringPool((cohort,)) as pool:
+        pool.warm()
+        parallel = score_v2_round(**kwargs, decision_pool=pool)
+    assert parallel == serial
+
+
+def test_decision_pool_identity_and_result_order_can_refuse(monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    cohort = _cohort()
+    wrong = SCORING.V2CohortModelsV1(
+        cohort_id="wrong-cohort", models=cohort.models,
+        model_sha256s=cohort.model_sha256s)
+    pool = object.__new__(SCORING.V2DecisionScoringPool)
+    pool.cohort_identity = SCORING._cohort_identity((cohort,))
+    rnd, transcript, partition = _state(15007)
+    reference = capture_ref_c_worlds(
+        rnd, rnd.turn, transcript, sampler_seed=17007)
+    decision = V2ScoringDecisionV1(
+        decision_key=hashlib.sha256(b"wrong-pool-decision").hexdigest(),
+        source_actor=partition.actor, target=partition.targets,
+        common=build_common_surface_tensors(
+            partition.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS),
+        reference=reference)
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="decision pool identity"):
+        score_v2_round(
+            round_key=hashlib.sha256(b"wrong-pool").hexdigest(),
+            source_kind="synthetic", split="calibration", trump_rank="2",
+            decisions=(decision,), cohorts=(wrong,), decision_pool=pool)
+
+    first = SimpleNamespace(decision_key="a" * 64)
+    second = SimpleNamespace(decision_key="b" * 64)
+    pool._executor = SimpleNamespace(map=lambda *args, **kwargs: (
+        SCORING._ScoredDecisionV1(second.decision_key, ()),
+        SCORING._ScoredDecisionV1(first.decision_key, ())))
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="result order drift"):
+        pool.score((first, second))
 
 
 def test_member_projection_failure_reports_exact_scoring_context(monkeypatch):

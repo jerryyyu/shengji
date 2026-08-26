@@ -8,7 +8,6 @@ and replicate-stability checks are sealed before any test target is opened.
 
 from __future__ import annotations
 
-from concurrent.futures import Executor
 import hashlib
 import json
 import os
@@ -31,9 +30,8 @@ from .belief_v2_human_reference_controller import (
 )
 from .belief_v2_protocol import v2_round_coordinates
 from .belief_v2_scoring import (
-    projection_pool,
+    V2DecisionScoringPool,
     score_v2_round,
-    warm_projection_pool,
 )
 from .belief_v2_scoring_controller import (
     reopen_checkpoint_scoring_cohorts,
@@ -99,7 +97,7 @@ def _scale_fractions(freeze: V2ExecutionFreezeV1) \
 def _score_synthetic(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, cohorts, *, replicate: str,
-        projection_executor: Executor | None = None,
+        decision_pool: V2DecisionScoringPool | None = None,
         progress: ProgressCallback | None = None,
         progress_phase: str = "score-synthetic-rounds"):
     rows = []
@@ -118,7 +116,7 @@ def _score_synthetic(
             source_kind="synthetic", split="calibration",
             trump_rank=coordinate.trump_rank,
             decisions=decisions, cohorts=cohorts,
-            projection_executor=projection_executor))
+            decision_pool=decision_pool))
         if progress is not None:
             progress(unit_index + 1, len(coordinates), progress_phase)
     return tuple(rows)
@@ -128,7 +126,7 @@ def _score_human(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, group_split: dict[str, Any],
         cohorts, *, replicate: str,
-        projection_executor: Executor | None = None,
+        decision_pool: V2DecisionScoringPool | None = None,
         progress: ProgressCallback | None = None,
         progress_phase: str = "score-human-groups"):
     rows = []
@@ -146,7 +144,7 @@ def _score_human(
                 round_key=round_digest, source_kind="human",
                 split="calibration", trump_rank=trump_rank,
                 decisions=decisions, cohorts=cohorts,
-                projection_executor=projection_executor))
+                decision_pool=decision_pool))
         if progress is not None:
             progress(unit_index + 1, len(digests), progress_phase)
     return tuple(sorted(rows, key=lambda row: row.round_key))
@@ -243,35 +241,35 @@ def run_v2_calibration_selection(
     cpu_started = _process_tree_cpu_time_ns()
     if progress is not None:
         progress(0, 6, "score-calibration-populations")
-    with projection_pool() as projection_executor:
-        warm_projection_pool(projection_executor)
+    with V2DecisionScoringPool(cohorts) as decision_pool:
+        decision_pool.warm()
         try:
             synthetic_0 = _score_synthetic(
                 root, freeze, admission, cohorts,
                 replicate="calibration-replicate-0", progress=progress,
                 progress_phase="score-synthetic-ref0-rounds",
-                projection_executor=projection_executor)
+                decision_pool=decision_pool)
             if progress is not None:
                 progress(1, 6, "score-calibration-populations")
             synthetic_1 = _score_synthetic(
                 root, freeze, admission, cohorts,
                 replicate="calibration-replicate-1", progress=progress,
                 progress_phase="score-synthetic-ref1-rounds",
-                projection_executor=projection_executor)
+                decision_pool=decision_pool)
             if progress is not None:
                 progress(2, 6, "score-calibration-populations")
             human_0 = _score_human(
                 root, freeze, admission, group_split, cohorts,
                 replicate="calibration-replicate-0", progress=progress,
                 progress_phase="score-human-ref0-groups",
-                projection_executor=projection_executor)
+                decision_pool=decision_pool)
             if progress is not None:
                 progress(3, 6, "score-calibration-populations")
             human_1 = _score_human(
                 root, freeze, admission, group_split, cohorts,
                 replicate="calibration-replicate-1", progress=progress,
                 progress_phase="score-human-ref1-groups",
-                projection_executor=projection_executor)
+                decision_pool=decision_pool)
             if progress is not None:
                 progress(4, 6, "score-calibration-populations")
         except ValueError as exc:

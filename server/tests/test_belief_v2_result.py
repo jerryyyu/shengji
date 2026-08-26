@@ -458,7 +458,7 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         "schema": "test-calibration", "cohort_ids": list(cohort_ids),
         "calibration_passed": True,
         "selected_cohort_id": "synthetic-primary"}
-    projection_executors = []
+    decision_pools = []
     monkeypatch.setattr(TERMINAL_STAGE, "_stage_gate", lambda **kwargs: None)
     monkeypatch.setattr(
         TERMINAL_STAGE, "_calibration_statistics",
@@ -470,7 +470,7 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
             SimpleNamespace(), cohorts, plan, qualification,
             tuple((value, _sha(value)) for value in cohort_ids)))
     def score_test(*args, **kwargs):
-        projection_executors.append(kwargs.get("projection_executor"))
+        decision_pools.append(kwargs.get("decision_pool"))
         return synthetic_rows, human_rows
 
     monkeypatch.setattr(
@@ -493,7 +493,7 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
     monkeypatch.setattr(
         TERMINAL_STAGE, "_derive_integrity_receipt",
         lambda *args, **kwargs: receipt)
-    return calibration, projection_executors
+    return calibration, decision_pools
 
 
 def test_terminal_attempt_is_durable_before_test_scorer_failure(
@@ -532,17 +532,17 @@ def test_terminal_round_trip_and_coordinated_result_rehash_refuse(
     root.mkdir()
     freeze = replace(_freeze(), evidence_root=str(root))
     admission = _admission(freeze)
-    _, projection_executors = _stub_terminal_dependencies(
+    _, decision_pools = _stub_terminal_dependencies(
         monkeypatch, freeze)
-    projection_token = object()
+    decision_token = object()
     result = TERMINAL_STAGE.run_v2_terminal(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review", inventory={}, group_split={},
-        projection_executor=projection_token)
+        decision_pool=decision_token)
     assert result["terminal_route"] == PASS_B3
     assert result["test_split_decision_open_count"] == 1
     assert result["deployment_authorized"] is False
-    assert projection_executors == [projection_token, projection_token]
+    assert decision_pools == [decision_token, decision_token]
     directory = root / "terminal"
     assert TERMINAL_STAGE.reopen_v2_terminal(
         directory, freeze=freeze, admission=admission,

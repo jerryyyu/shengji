@@ -250,20 +250,27 @@ def test_sealed_terminal_recovery_reopens_and_never_creates_second_opening(
     final.mkdir(parents=True)
     freeze, admission = _root_binding(module, monkeypatch, root)
     observed = []
-    projection_token = object()
     warmed = []
+    cohorts = (object(),)
 
     class Pool:
+        def __init__(self, observed_cohorts):
+            assert observed_cohorts is cohorts
+
         def __enter__(self):
-            return projection_token
+            return self
 
         def __exit__(self, *args):
             return False
 
-    monkeypatch.setattr(module, "projection_pool", Pool)
+        def warm(self):
+            warmed.append(self)
+
     monkeypatch.setattr(
-        module, "warm_projection_pool",
-        lambda executor: warmed.append(executor))
+        module, "reopen_v2_calibration_readiness",
+        lambda *args, **kwargs: ({}, {}, {}, object(), cohorts,
+                                 object(), object(), ()))
+    monkeypatch.setattr(module, "V2DecisionScoringPool", Pool)
     monkeypatch.setattr(
         module, "reopen_v2_terminal",
         lambda directory, **kwargs: observed.append((directory, kwargs)) or {
@@ -280,5 +287,5 @@ def test_sealed_terminal_recovery_reopens_and_never_creates_second_opening(
     assert observed[0][0] == final
     assert observed[0][1]["freeze"] is freeze
     assert observed[0][1]["admission"] is admission
-    assert observed[0][1]["projection_executor"] is projection_token
-    assert warmed == [projection_token]
+    assert observed[0][1]["decision_pool"] is warmed[0]
+    assert len(warmed) == 1

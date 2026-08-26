@@ -416,15 +416,29 @@ V2 optimizes measured stages in this order:
    materially improves and the reviewed probability, optimizer, checkpoint,
    memory, and reproducibility contracts still hold. Comparing unrelated
    machines is a separate capacity decision, not part of this device gate.
-6. **Calibration/test evaluation:** keep model inference and integer
-   quantization serial, but distribute only the deterministic target-blind
-   ownership projection across a fixed 16-worker process pool and reduce rows
-   in original order. On the reviewed R4 completion workload this reproduced
+6. **Calibration/test evaluation:** R4 distributes target-blind ownership
+   projection across a fixed 16-worker process pool and reduces rows in
+   original order. On the reviewed R4 completion workload this reproduced
    exact score bytes while reducing the same scoring probe from 27.94 seconds
-   to 3.21 seconds (8.70x). Separately, perform the full saved-epoch/cache proof
-   once before the test and bind it into the durable readiness receipt; do not
-   repeat that proof inside cohort publication, calibration scoring, terminal
-   scoring, post-publication reopen, and independent terminal reconstruction.
+   to 3.21 seconds (8.70x), but steady host observation showed that serial
+   inference and quantization still left cores idle. The R5 successor therefore
+   binds all frozen cohorts once in each of sixteen workers and dispatches
+   distinct decisions. Every worker runs the unchanged serial
+   inference/quantization/projection/proper-score path; only decision scheduling
+   changes, and the parent rejects cohort-identity, result-order, or worker-
+   population drift before reduction. Calibration, the one-shot test opening,
+   its immediate reconstruction, and independent terminal verification use
+   this same source path. An eight-worker, four-cohort, 32-natural-decision Mini
+   diagnostic measured 6.955 seconds serial versus 1.827 seconds steady
+   parallel (3.806x), after 4.008 seconds of one-time pool warm-up, with byte-
+   identical round scores. This is performance evidence only; the fresh R5
+   host receipt must still qualify the exact sixteen-worker population and its
+   memory bound.
+
+   Separately, perform the full saved-epoch/cache proof once before the test
+   and bind it into the durable readiness receipt; do not repeat that proof
+   inside cohort publication, calibration scoring, terminal scoring, post-
+   publication reopen, and independent terminal reconstruction.
    The one full proof reports aggregate completed saved epochs across all four
    concurrent cohorts, so this long boundary has percentage and ETA telemetry
    rather than another opaque single-core tail.

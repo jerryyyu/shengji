@@ -16,6 +16,7 @@ from concurrent.futures import Executor, ProcessPoolExecutor
 from dataclasses import dataclass, replace
 import multiprocessing
 import os
+import time
 from typing import Any
 
 from .belief_cohort import COHORT_SEEDS, ensemble_ownership
@@ -52,6 +53,7 @@ from .belief_v2_statistics import V2RoundScoreV1, validate_v2_round_score
 
 PPB = 1_000_000_000
 V2_PROJECTION_WORKERS = 16
+V2_DECISION_WORKERS = 16
 
 
 class BeliefV2ScoringError(ValueError):
@@ -66,6 +68,24 @@ class _ProjectionTaskV1:
     decision_key: str
     cohort_id: str
     member_index: int
+
+
+@dataclass(frozen=True)
+class _DecisionTaskV1:
+    decision: V2ScoringDecisionV1
+    cohort_identity: tuple[tuple[str, tuple[str, ...]], ...]
+
+
+@dataclass(frozen=True)
+class _ScoredDecisionV1:
+    decision_key: str
+    cohort_scores: tuple[
+        tuple[str, tuple[DecisionProperScoreV1, ...]], ...]
+
+
+_DECISION_WORKER_COHORTS: tuple[V2CohortModelsV1, ...] | None = None
+_DECISION_WORKER_IDENTITY: tuple[
+    tuple[str, tuple[str, ...]], ...] | None = None
 
 
 def _projection_worker_probe(_: int) -> int:
@@ -216,6 +236,109 @@ def _validate_decision(value: V2ScoringDecisionV1) -> None:
             "V2 scoring reference public surface drift")
 
 
+def _cohort_identity(cohorts: tuple[V2CohortModelsV1, ...]) \
+        -> tuple[tuple[str, tuple[str, ...]], ...]:
+    return tuple((cohort.cohort_id, cohort.model_sha256s)
+                 for cohort in cohorts)
+
+
+def _initialize_decision_worker(
+        cohorts: tuple[V2CohortModelsV1, ...]) -> None:
+    from .belief_v2_execution_identity import configure_numerical_runtime
+    configure_numerical_runtime()
+    if type(cohorts) is not tuple or not cohorts:
+        raise BeliefV2ScoringError(
+            "V2 decision worker cohort population drift")
+    for cohort in cohorts:
+        validate_v2_cohort_models(cohort)
+    global _DECISION_WORKER_COHORTS, _DECISION_WORKER_IDENTITY
+    _DECISION_WORKER_COHORTS = cohorts
+    _DECISION_WORKER_IDENTITY = _cohort_identity(cohorts)
+
+
+def _decision_worker_probe(
+        expected: tuple[tuple[str, tuple[str, ...]], ...]) \
+        -> tuple[int, tuple[tuple[str, tuple[str, ...]], ...]]:
+    if _DECISION_WORKER_COHORTS is None \
+            or _DECISION_WORKER_IDENTITY != expected:
+        raise BeliefV2ScoringError(
+            "V2 decision worker cohort identity drift")
+    # Keep each probe resident briefly so warm-up proves the complete worker
+    # population exists instead of letting one early process consume them all.
+    time.sleep(0.05)
+    return os.getpid(), _DECISION_WORKER_IDENTITY
+
+
+class V2DecisionScoringPool:
+    """Bind every cohort once, then score distinct decisions in parallel."""
+
+    def __init__(self, cohorts: tuple[V2CohortModelsV1, ...]):
+        if type(cohorts) is not tuple or not cohorts:
+            raise BeliefV2ScoringError(
+                "V2 decision pool cohort population drift")
+        for cohort in cohorts:
+            validate_v2_cohort_models(cohort)
+        self.cohort_identity = _cohort_identity(cohorts)
+        if "forkserver" not in multiprocessing.get_all_start_methods():
+            raise BeliefV2ScoringError(
+                "V2 decision worker start method is unavailable")
+        self._executor = ProcessPoolExecutor(
+            max_workers=V2_DECISION_WORKERS,
+            mp_context=multiprocessing.get_context("forkserver"),
+            initializer=_initialize_decision_worker,
+            initargs=(cohorts,))
+
+    def __enter__(self) -> V2DecisionScoringPool:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self._executor.shutdown(wait=True, cancel_futures=True)
+
+    def warm(self) -> None:
+        try:
+            observed = tuple(self._executor.map(
+                _decision_worker_probe,
+                (self.cohort_identity
+                 for _ in range(4 * V2_DECISION_WORKERS)),
+                chunksize=1))
+        except BeliefV2ScoringError:
+            raise
+        except (OSError, RuntimeError) as exc:
+            raise BeliefV2ScoringError(
+                "V2 decision worker startup refused") from exc
+        pids = tuple(pid for pid, _ in observed)
+        if len(observed) != 4 * V2_DECISION_WORKERS \
+                or len(set(pids)) != V2_DECISION_WORKERS \
+                or any(type(pid) is not int or pid <= 0
+                       or identity != self.cohort_identity
+                       for pid, identity in observed):
+            raise BeliefV2ScoringError(
+                "V2 decision worker startup population drift")
+
+    def score(
+            self, decisions: tuple[V2ScoringDecisionV1, ...]) \
+            -> tuple[_ScoredDecisionV1, ...]:
+        tasks = tuple(_DecisionTaskV1(
+            decision=decision, cohort_identity=self.cohort_identity)
+            for decision in decisions)
+        try:
+            rows = tuple(self._executor.map(
+                _score_decision_task, tasks, chunksize=1,
+                buffersize=2 * V2_DECISION_WORKERS))
+        except BeliefV2ScoringError:
+            raise
+        except (OSError, RuntimeError) as exc:
+            raise BeliefV2ScoringError(
+                "V2 decision worker execution refused") from exc
+        if len(rows) != len(decisions) \
+                or any(type(row) is not _ScoredDecisionV1 for row in rows) \
+                or tuple(row.decision_key for row in rows) \
+                != tuple(decision.decision_key for decision in decisions):
+            raise BeliefV2ScoringError(
+                "V2 decision worker result order drift")
+        return rows
+
+
 def _adapt_reference(
         actor: ActorObservationV1,
         batch: ReferenceWorldBatchV1) -> BeliefOwnershipV1:
@@ -338,6 +461,43 @@ def _predict_cohorts(
     return tuple(results)
 
 
+def _score_decision(
+        decision: V2ScoringDecisionV1,
+        cohorts: tuple[V2CohortModelsV1, ...], *,
+        projection_executor: Executor | None = None) -> _ScoredDecisionV1:
+    actor = v2_scoring_actor(decision.source_actor)
+    reference = _adapt_reference(actor, decision.reference)
+    predictions = _predict_cohorts(
+        actor, decision.common, cohorts,
+        decision_key=decision.decision_key,
+        projection_executor=projection_executor)
+    cohort_scores = []
+    for cohort, (members, ensemble) in zip(
+            cohorts, predictions, strict=True):
+        if not reference.probabilities:
+            if any(member.probabilities for member in members) \
+                    or ensemble.probabilities:
+                raise BeliefV2ScoringError(
+                    "V2 empty ownership population drift")
+            scores = ()
+        else:
+            scores = score_target_candidates(
+                actor, decision.target, reference, (*members, ensemble))
+        cohort_scores.append((cohort.cohort_id, scores))
+    return _ScoredDecisionV1(
+        decision_key=decision.decision_key,
+        cohort_scores=tuple(cohort_scores))
+
+
+def _score_decision_task(task: _DecisionTaskV1) -> _ScoredDecisionV1:
+    if type(task) is not _DecisionTaskV1 \
+            or _DECISION_WORKER_COHORTS is None \
+            or _DECISION_WORKER_IDENTITY != task.cohort_identity:
+        raise BeliefV2ScoringError(
+            "V2 decision worker task identity drift")
+    return _score_decision(task.decision, _DECISION_WORKER_COHORTS)
+
+
 def _score_ppb(numerator: int, denominator: int) -> int:
     return _round_divide(numerator * PPB, denominator)
 
@@ -360,19 +520,26 @@ def score_v2_round(
         *, round_key: str, source_kind: str, split: str, trump_rank: str,
         decisions: tuple[V2ScoringDecisionV1, ...],
         cohorts: tuple[V2CohortModelsV1, ...],
-        projection_executor: Executor | None = None) -> V2RoundScoreV1:
+        projection_executor: Executor | None = None,
+        decision_pool: V2DecisionScoringPool | None = None) \
+        -> V2RoundScoreV1:
     """Predict all frozen cohorts and reduce one complete round exactly."""
     if not _is_sha256(round_key) or source_kind not in {"synthetic", "human"} \
             or split not in {"calibration", "test"} \
             or type(trump_rank) is not str \
             or type(decisions) is not tuple or not decisions \
             or type(cohorts) is not tuple or not cohorts \
-            or len({cohort.cohort_id for cohort in cohorts}) != len(cohorts):
+            or len({cohort.cohort_id for cohort in cohorts}) != len(cohorts) \
+            or projection_executor is not None and decision_pool is not None:
         raise BeliefV2ScoringError("V2 scoring round identity drift")
     for decision in decisions:
         _validate_decision(decision)
-    for cohort in cohorts:
-        validate_v2_cohort_models(cohort)
+    if decision_pool is None:
+        for cohort in cohorts:
+            validate_v2_cohort_models(cohort)
+    elif type(decision_pool) is not V2DecisionScoringPool \
+            or decision_pool.cohort_identity != _cohort_identity(cohorts):
+        raise BeliefV2ScoringError("V2 decision pool identity drift")
     if len({decision.decision_key for decision in decisions}) \
             != len(decisions):
         raise BeliefV2ScoringError("V2 scoring decision duplicate")
@@ -381,30 +548,36 @@ def score_v2_round(
         cohort.cohort_id: [] for cohort in cohorts}
     member_scores: dict[str, list[list[DecisionProperScoreV1]]] = {
         cohort.cohort_id: [[] for _ in COHORT_SEEDS] for cohort in cohorts}
-    for decision in decisions:
-        actor = v2_scoring_actor(decision.source_actor)
-        reference = _adapt_reference(actor, decision.reference)
-        predictions = _predict_cohorts(
-            actor, decision.common, cohorts,
-            decision_key=decision.decision_key,
-            projection_executor=projection_executor)
-        for cohort, (members, ensemble) in zip(
-                cohorts, predictions, strict=True):
-            if not reference.probabilities:
-                if any(member.probabilities for member in members) \
-                        or ensemble.probabilities:
-                    raise BeliefV2ScoringError(
-                        "V2 empty ownership population drift")
+    scored_decisions = (decision_pool.score(decisions)
+                        if decision_pool is not None else tuple(
+                            _score_decision(
+                                decision, cohorts,
+                                projection_executor=projection_executor)
+                            for decision in decisions))
+    cohort_ids = tuple(cohort.cohort_id for cohort in cohorts)
+    for decision, scored in zip(decisions, scored_decisions, strict=True):
+        if type(scored) is not _ScoredDecisionV1 \
+                or scored.decision_key != decision.decision_key \
+                or type(scored.cohort_scores) is not tuple \
+                or any(type(row) is not tuple or len(row) != 2
+                       for row in scored.cohort_scores) \
+                or tuple(row[0] for row in scored.cohort_scores) != cohort_ids \
+                or any(type(row[1]) is not tuple
+                       or len(row[1]) not in {0, len(COHORT_SEEDS) + 1}
+                       or any(type(score) is not DecisionProperScoreV1
+                              for score in row[1])
+                       for row in scored.cohort_scores):
+            raise BeliefV2ScoringError(
+                "V2 decision score identity drift")
+        for cohort_id, scores in scored.cohort_scores:
+            if not scores:
                 continue
-            scores = score_target_candidates(
-                actor, decision.target, reference, (*members, ensemble))
             for index, score in enumerate(scores[:-1]):
-                member_scores[cohort.cohort_id][index].append(score)
-            ensemble_scores[cohort.cohort_id].append(scores[-1])
+                member_scores[cohort_id][index].append(score)
+            ensemble_scores[cohort_id].append(scores[-1])
     if not any(ensemble_scores.values()):
         raise BeliefV2ScoringError(
             "V2 round has no informative ownership decisions")
-    cohort_ids = tuple(cohort.cohort_id for cohort in cohorts)
     first = tuple(ensemble_scores[cohort_ids[0]])
     reference_brier = _mean_brier(first, reference=True)
     reference_log = _mean(tuple(

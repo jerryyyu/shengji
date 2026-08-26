@@ -4290,3 +4290,35 @@ Consolidated review per the queued ask (PR #150, stacked on reviewed `76508ec`; 
 **Coverage limit, stated plainly because it is real.** I could **not** run `verify_terminal_recovery` end-to-end. It requires the strict compiled engine, my worktree has no built `_fast`, and building one would produce a native hash the freeze does not bind — so a full verifier replay is *structurally* not reproducible by an independent reviewer on a different machine, by design. Everything above is my own recomputation from the sealed bytes: file digests, the packet's internal identities, the freeze→root bindings, key completeness and uniqueness, gate outcomes, and every reported statistic. What I did not independently re-derive is the reduction from raw group payloads to the statistics report — I checked the report's identity and its internal consistency, not the arithmetic from record bytes upward. Codex's built-in verifier plus one independent repeat verifier both passed that layer.
 
 **Status: PT1 is closed as a negative.** 416/416 states executed, terminal recovered, preregistered gates refuse. No strength claim, no gameplay, no promotion, no deployment — and none is available from this evidence. — Claude (session `68f9c8bd`)
+
+## 2026-08-26 02:40 EDT — PT1 `r7` recovered terminal: ✅ INDEPENDENTLY REPRODUCED. The preregistered verdict `REFUSED` stands, and the negative is informative
+
+Terminal reproducibility review requested at `47cc4ff`. No marker and no new authority requested or granted. **Every metric reproduces exactly, and I reconstructed them from the sealed group bytes rather than from the packet's own statistics block.**
+
+**Identity chain, all recomputed here.** Packet `bffaafef27cec6b0b37f0bdd1d1011531bbb1f38064421b47a8ae30b22a2b39a`, manifest `ca1c613256c569a25f9378564956e6aae3699da0f2c7ab9784cce3a8703c649d`, internal packet identity `c3f16d9fe72b67288934192e54bb02b8b93b34c9456e681dab1c873fa8e9df96`, statistics report identity `4d49af2bcca32b2257a8a4f79ea6a0fed5850a7179e09078471f930eaf13908d`, recovery freeze `f44db7a822e201ca0f880a1646c42e60183ab71d889f52912e1840b63cb2b813` — all four requested hashes plus the freeze match byte-for-byte. Against the immutable `r7` root I recomputed `source_execution_freeze_sha256` = `d05070d7…` and `source_failure_sha256` = `5b19450c…` directly from `freeze.json` and `failure.json`, both matching, and `source_group_tree_sha256` = `0a7b1e5523b883b051c0e99cbc7af0b68c47b6b66c6e98257189d69ef5041f74` via the module's own `_group_tree_sha256` over the 416 ordered file digests — identical. The `r7` root is byte-immutable.
+
+**No group omitted, retried, or selected by outcome — measured, not asserted.** 416 group files with indices contiguous `0..415`; **416 distinct `capture_id_sha256`**; **1,664 distinct `record_sha256`** across 1,664 records; seeds `{0,1,2,3}` each appearing exactly 1,248 times (416 states × 3 arms). A dropped, repeated or outcome-filtered group would break the index contiguity, the distinct-id counts, or the seed balance. None does.
+
+**Statistics reconstructed from raw records with exact rational arithmetic:**
+
+| quantity | recomputed | declared |
+|---|---|---|
+| mean C−B | **1/208** | 1/208 |
+| positive C−B states | **1** | 1 (24 required) |
+| negative C−B states | **0** | gate expects 0 |
+| negative C−A states | **0** | gate expects 0 |
+| nonzero c-regret records | **0** | 0 |
+| action flips A_B / A_C / B_C | **692 / 1,119 / 1,128** | 692 / 1,119 / 1,128 |
+| B−A positive states, population mean | **5**, `13/2 ÷ 416 = 1/64` | 5, 1/64 |
+| C−A positive states, population mean | **6**, `17/2 ÷ 416 = 17/832` | 6, 17/832 |
+
+Gate results confirm: the three scientific gates `mean_cb_floor`, `bootstrap_lcb_positive` and `positive_state_count` are all `False`; the eight integrity/mechanics gates (`records_complete`, `population_complete`, `fixed_seed_complete`, `zero_c_regret`, `no_negative_state_cb`, `no_negative_state_ca`, `role_means_nonnegative`, `horizon_means_nonnegative`) are all `True`. Authority is 7/7 false. Bootstrap LCB is `0/1` over 5,000 replicates at a recorded seed.
+
+One note on reading the prose: I initially compared the B−A and C−A means against the mean over the *positive* subset and got `13/10` and `17/12`. Those are the same numbers — the reported figures are population means over all 416 states. No discrepancy; recording it so the next reader does not repeat the confusion.
+
+**Why the negative is worth more than "no effect".** The exact-world teacher changed production's chosen action in **1,128 of 1,664 records** — it disagrees constantly — yet mean C−B is `1/208 ≈ 0.0048` signed levels against a `0.01` floor, with zero states where C is worse and zero C-regret. The teacher's disagreements are almost entirely **value ties**: at this endgame depth production MC is already selecting utility-equivalent actions even when it selects different ones. That is a much stronger statement than a null: it says the headroom this screen was designed to detect is not merely unproven but close to absent in the sampled regime, and it is consistent with PT0's finding that the exact-teacher advantage over production MC was inconclusive. A future screen should target regimes where action differences carry value differences, not deeper search at the same depth.
+
+**Coverage limit, stated honestly.** I did not execute the reviewed `privileged_teacher_pt1_recovery.py verify` end-to-end. It requires the freeze's pinned runtime *and* an import environment where `shengji.rl` resolves to the recovery worktree; the pinned python (`14a816f4…`) and native (`f9a0f050…`) both exist and match, but the recovery worktree has no venv and I will not create one inside a Codex-owned tree. What I did instead is stronger for reproducibility purposes: I recomputed the group tree hash with the module's own function and rebuilt every reported statistic from the sealed record bytes, independent of the recovery pipeline. If an end-to-end verifier transcript is required for the record, it needs an invocation recipe that pins the runtime without mutating `/private/tmp/shengji-pt1-r7-recovery`.
+
+**Unrelated, carried forward:** `HANDOFF_ACTIVE`'s live-R4 line reads "memory current/peak about 18.3/20.7 GB below the 24-GiB boundary". There is no 24-GiB boundary on that unit — `MemoryMax=infinity`, per my entry at `1248d6c`. The numbers are right; the boundary is not there. — Claude (session `68f9c8bd`)
+

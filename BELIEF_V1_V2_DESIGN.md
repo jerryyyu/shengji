@@ -415,7 +415,19 @@ V2 optimizes measured stages in this order:
    materially improves and the reviewed probability, optimizer, checkpoint,
    memory, and reproducibility contracts still hold. Comparing unrelated
    machines is a separate capacity decision, not part of this device gate.
-6. **Native sampler work:** profile only after replay. A native REF-C assignment
+6. **Calibration/test evaluation:** keep model inference and integer
+   quantization serial, but distribute only the deterministic target-blind
+   ownership projection across a fixed 16-worker process pool and reduce rows
+   in original order. On the reviewed R4 completion workload this reproduced
+   exact score bytes while reducing the same scoring probe from 27.94 seconds
+   to 3.21 seconds (8.70x). Separately, perform the full saved-epoch/cache proof
+   once before the test and bind it into the durable readiness receipt; do not
+   repeat that proof inside cohort publication, calibration scoring, terminal
+   scoring, post-publication reopen, and independent terminal reconstruction.
+   The one full proof reports aggregate completed saved epochs across all four
+   concurrent cohorts, so this long boundary has percentage and ETA telemetry
+   rather than another opaque single-core tail.
+7. **Native sampler work:** profile only after replay. A native REF-C assignment
    kernel is lower priority if replay reduces the complete reference stage to
    a small fraction of capture/training cost.
 
@@ -664,8 +676,21 @@ to a mandatory-latest journal. Expiry then seals the best common epoch with
 select an earlier operator-chosen checkpoint, and remains eligible for the
 ordinary calibration/test gates. The final training manifest binds the exact
 deadline refusal, so the global stage gate allows only that fully sealed narrow
-case. Every reopener re-scores every journal epoch from the common calibration
-cache before trusting it. A process restart must resume the highest contiguous
+case. Replaying every saved epoch at every later boundary is not itself new
+scientific evidence. Cached cohort publication, exact-process recovery, and
+calibration scoring therefore authenticate the complete stage manifest,
+journal chain, trained manifest, and selected checkpoint bytes without
+re-evaluating the common calibration cache. After all cohorts and calibration
+scores seal, the calibration worker must run the full saved-epoch re-score once
+and publish an immutable `calibration/readiness/receipt.json`. That receipt
+binds the calibration manifest, all training manifests, every selected model-
+state digest, device qualification, freeze, and admission; it is the only
+artifact that can satisfy the terminal's pre-test readiness dependency. A
+missing, forged, or stale receipt refuses before `terminal.partial/attempt.json`
+can exist. Terminal execution and independent terminal reconstruction still
+re-score the complete test population from exact checkpoint and source bytes,
+but authenticate the readiness receipt rather than replaying training curves
+again. A process restart must resume the highest contiguous
 epoch and original monotonic wall; it cannot restart from scratch, reset the
 deadline, or choose a model. If publication of the next journal entry itself
 was interrupted, the regenerated state/curve bytes must equal every preserved
@@ -1004,7 +1029,8 @@ private population and host-specific cap evidence:
    PR #116 successor, H0 identity/privacy boundary, model arms, exact synthetic
    population, profiling protocol, sparse-cache/source-index separation,
    exact cache and epoch recovery, graceful deadline truncation,
-   streaming-oracle parity, CPU-member topology, the exact ten-stage supervisor,
+   streaming-oracle parity, CPU-member topology, the one-time durable
+   calibration-readiness proof, the exact ten-stage supervisor,
    outcome-blind progress telemetry, mandatory 104-round full-DAG rehearsal,
    metrics, and automatic routing. The
    reviewer returns one PASS or one HOLD containing every blocker found in
@@ -1037,7 +1063,8 @@ offline path:
 - one shared CPU/MPS/CUDA training implementation, an exact live accelerator
   hardware profile, a realized-schedule device qualification gate, portable
   CPU checkpoints, dual-domain calibration selection, one-shot terminal
-  publication, and independent reopeners; and
+  publication, a hash-bound one-time saved-curve readiness proof, and
+  independent test-score reopeners; and
 - one consolidated worker, the split-derived closed supervisor, plus a
   receipt-driven
   `freeze-design` command. The

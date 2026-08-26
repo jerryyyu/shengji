@@ -16,7 +16,7 @@ import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import torch
 
@@ -95,6 +95,23 @@ class V2ReopenedEpochSnapshotV1:
     current_model_states: tuple[dict[str, torch.Tensor], ...]
     optimizer_states: tuple[dict[str, Any], ...]
     selected_model_states: tuple[dict[str, torch.Tensor], ...]
+
+
+@dataclass(frozen=True)
+class V2ReopenedEpochManifestV1:
+    """One hash-bound epoch without deserializing optimizer/model tensors."""
+
+    epoch: int
+    manifest: dict[str, Any]
+    curves: tuple[V2TrainingEpochCurveRowV1, ...]
+
+
+@dataclass(frozen=True)
+class _V2ReopenedEpochRecordV1:
+    """Internal manifest record retaining exact state bytes for full reopen."""
+
+    reopened: V2ReopenedEpochManifestV1
+    state_raw: bytes
 
 
 def _validate_binding(binding: V2EpochJournalBindingV1) -> None:
@@ -552,16 +569,16 @@ def _load_state_payload(raw: bytes) -> tuple[
     return current, optimizers, selected
 
 
-def reopen_epoch_snapshots(
+def _iter_epoch_records(
         directory: Path, binding: V2EpochJournalBindingV1) \
-        -> tuple[V2ReopenedEpochSnapshotV1, ...]:
-    """Reopen and authenticate every durable epoch without mutating it."""
+        -> Iterator[_V2ReopenedEpochRecordV1]:
+    """Authenticate the journal chain and exact bytes without tensor loads."""
     _validate_binding(binding)
     if not directory.exists():
-        return ()
+        return
     entries = _journal_entries(directory)
     if not entries:
-        return ()
+        return
     previous = None
     stage_started = None
     prior_observed = None
@@ -569,7 +586,6 @@ def reopen_epoch_snapshots(
     prior_resume_count = None
     prior_curves = None
     total_bytes = 0
-    snapshots = []
     for epoch, entry in enumerate(entries, 1):
         if entry.is_symlink() or not entry.is_dir() \
                 or {path.name for path in entry.iterdir()} != {
@@ -648,8 +664,6 @@ def reopen_epoch_snapshots(
             raise BeliefV2EpochJournalError(
                 "V2 epoch journal manifest chain drift")
         curves = _reopen_curves(curves_raw)
-        current_states, optimizer_states, selected_states = (
-            _load_state_payload(state_raw))
         if len(curves) != epoch \
                 or (prior_curves is not None
                     and curves[:-1] != prior_curves):
@@ -659,28 +673,25 @@ def reopen_epoch_snapshots(
             curve.member_calibration_loss_nanonats[index]
             for curve in curves) for index in range(len(COHORT_SEEDS)))
         decision = select_common_epoch(losses)
-        current_hashes = _model_hashes(current_states)
-        selected_hashes = _model_hashes(selected_states)
+        current_hashes = tuple(
+            receipt.model_state_sha256_after
+            for receipt in curves[-1].member_training_receipts)
+        selected_hashes = tuple(
+            receipt.model_state_sha256_after for receipt in curves[
+                decision.selected_epoch - 1].member_training_receipts)
         if decision.stop_epoch != epoch \
                 or manifest["selected_common_epoch"] \
                 != decision.selected_epoch \
                 or manifest["current_model_state_sha256s"] \
                 != list(current_hashes) \
                 or manifest["selected_model_state_sha256s"] \
-                != list(selected_hashes) \
-                or current_hashes != tuple(
-                    receipt.model_state_sha256_after
-                    for receipt in curves[-1].member_training_receipts) \
-                or selected_hashes != tuple(
-                    receipt.model_state_sha256_after for receipt in curves[
-                        decision.selected_epoch - 1].member_training_receipts):
+                != list(selected_hashes):
             raise BeliefV2EpochJournalError(
                 "V2 epoch journal recovered trajectory drift")
-        snapshots.append(V2ReopenedEpochSnapshotV1(
-            epoch=epoch, manifest=manifest, curves=curves,
-            current_model_states=current_states,
-            optimizer_states=optimizer_states,
-            selected_model_states=selected_states))
+        yield _V2ReopenedEpochRecordV1(
+            reopened=V2ReopenedEpochManifestV1(
+                epoch=epoch, manifest=manifest, curves=curves),
+            state_raw=state_raw)
         stage_started = manifest["stage_started_monotonic_nanoseconds"]
         prior_observed = manifest["observed_monotonic_nanoseconds"]
         prior_cpu = manifest["cumulative_cpu_nanoseconds"]
@@ -690,6 +701,38 @@ def reopen_epoch_snapshots(
     if total_bytes > binding.journal_byte_cap:
         raise BeliefV2EpochJournalError(
             "V2 epoch journal byte cap exceeded")
+
+
+def reopen_epoch_manifests(
+        directory: Path, binding: V2EpochJournalBindingV1) \
+        -> tuple[V2ReopenedEpochManifestV1, ...]:
+    """Reopen exact journal bytes without loading model/optimizer tensors."""
+    return tuple(record.reopened for record in _iter_epoch_records(
+        directory, binding))
+
+
+def reopen_epoch_snapshots(
+        directory: Path, binding: V2EpochJournalBindingV1) \
+        -> tuple[V2ReopenedEpochSnapshotV1, ...]:
+    """Fully reopen every epoch, including all model and optimizer tensors."""
+    snapshots = []
+    for record in _iter_epoch_records(directory, binding):
+        current_states, optimizer_states, selected_states = (
+            _load_state_payload(record.state_raw))
+        current_hashes = _model_hashes(current_states)
+        selected_hashes = _model_hashes(selected_states)
+        manifest = record.reopened.manifest
+        if manifest["current_model_state_sha256s"] != list(current_hashes) \
+                or manifest["selected_model_state_sha256s"] \
+                != list(selected_hashes):
+            raise BeliefV2EpochJournalError(
+                "V2 epoch journal recovered trajectory drift")
+        snapshots.append(V2ReopenedEpochSnapshotV1(
+            epoch=record.reopened.epoch, manifest=manifest,
+            curves=record.reopened.curves,
+            current_model_states=current_states,
+            optimizer_states=optimizer_states,
+            selected_model_states=selected_states))
     return tuple(snapshots)
 
 

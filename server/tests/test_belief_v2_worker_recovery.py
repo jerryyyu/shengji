@@ -148,7 +148,7 @@ def test_training_recovery_reaches_exact_partial_and_reopens_final(
         lambda *args, **kwargs: runs.append((args, kwargs)) or {
             "resumed": True})
     monkeypatch.setattr(
-        module, "reopen_training_cohort",
+        module, "reopen_training_cohort_checkpoint_identity",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("partial recovery used final reopener")))
     args = SimpleNamespace(
@@ -167,7 +167,7 @@ def test_training_recovery_reaches_exact_partial_and_reopens_final(
     runs.clear()
     reopens = []
     monkeypatch.setattr(
-        module, "reopen_training_cohort",
+        module, "reopen_training_cohort_checkpoint_identity",
         lambda directory, **kwargs: reopens.append((directory, kwargs)) or (
             {"reopened": True}, object()))
 
@@ -176,7 +176,7 @@ def test_training_recovery_reaches_exact_partial_and_reopens_final(
     assert not runs
     assert reopens[0][0] == final
     assert reopens[0][1]["cache_manifest_sha256"] == cache_sha
-    assert reopens[0][1]["calibration_batch_factory"] is calibration_factory
+    assert "calibration_batch_factory" not in reopens[0][1]
     assert reopens[0][1]["compact_control_dose"] == 0
 
 

@@ -21,6 +21,7 @@ import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_controller as V2_CONTROLLER
 import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
 import shengji.rl.belief_v2_human_reference_controller as HUMAN_REF_STAGE
+import shengji.rl.belief_v2_readiness_controller as READINESS_STAGE
 import shengji.rl.belief_v2_tensor_cache_controller as CACHE_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
@@ -2536,6 +2537,21 @@ def test_training_stage_cache_factory_wiring_seals_and_reopens_exactly(
 
     monkeypatch.setattr(
         TRAINING_STAGE, "train_v2_cohort_from_batch_factories", cached)
+    fast_reopens = []
+    real_fast_reopen = (
+        TRAINING_STAGE.reopen_training_cohort_checkpoint_identity)
+
+    def fast_reopen(*args, **kwargs):
+        fast_reopens.append((args, kwargs))
+        return real_fast_reopen(*args, **kwargs)
+
+    monkeypatch.setattr(
+        TRAINING_STAGE, "reopen_training_cohort_checkpoint_identity",
+        fast_reopen)
+    monkeypatch.setattr(
+        TRAINING_STAGE, "reopen_training_cohort",
+        lambda *args, **kwargs: pytest.fail(
+            "cached publish repeated the full saved-epoch proof"))
     previous = torch.are_deterministic_algorithms_enabled()
     torch.use_deterministic_algorithms(True)
     try:
@@ -2561,6 +2577,9 @@ def test_training_stage_cache_factory_wiring_seals_and_reopens_exactly(
         == cache_manifest_sha256
     assert manifest["test_split_opened"] is False
     assert (root / "training" / primary.cohort_id).is_dir()
+    assert len(fast_reopens) == 1
+    assert fast_reopens[0][1]["cache_manifest_sha256"] \
+        == cache_manifest_sha256
 
 
 def test_training_controller_resumes_only_latest_epoch_and_matches_clean_run(
@@ -2911,6 +2930,7 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
             "schema": "test-scale-curve", "positive": True}))
     projection_token = object()
     warmed = []
+    readiness = []
 
     class Pool:
         def __enter__(self):
@@ -2931,6 +2951,16 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
         CALIBRATION_STAGE, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (
             cohorts, plan, qualification, training_hashes))
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "reopen_checkpoint_scoring_cohorts",
+        lambda *args, **kwargs: (
+            cohorts, plan, qualification, training_hashes))
+    monkeypatch.setattr(
+        READINESS_STAGE, "publish_v2_calibration_readiness",
+        lambda *args, expected_calibration, **kwargs: readiness.append(
+            expected_calibration) or {
+                "calibration_manifest_sha256": hashlib.sha256(
+                    canonical_json_bytes(expected_calibration)).hexdigest()})
     def synthetic_score(*args, **kwargs):
         assert kwargs["projection_executor"] is projection_token
         return synthetic
@@ -2959,7 +2989,7 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
     monkeypatch.setattr(
         CALIBRATION_STAGE, "evaluate_scale_curve",
         lambda *args, **kwargs: scale_curve)
-    return human_selection, scale_curve, warmed
+    return human_selection, scale_curve, warmed, readiness
 
 
 def test_calibration_scoring_reports_progress_inside_each_population(
@@ -3010,7 +3040,8 @@ def test_calibration_selection_wires_stability_and_selected_cohort(
     root.mkdir()
     freeze = _freeze(root)
     admission = _admission(freeze)
-    _, _, warmed = _stub_calibration_dependencies(monkeypatch, freeze)
+    _, _, warmed, readiness = _stub_calibration_dependencies(
+        monkeypatch, freeze)
     result = CALIBRATION_STAGE.run_v2_calibration_selection(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review", inventory={}, group_split={})
@@ -3023,6 +3054,7 @@ def test_calibration_selection_wires_stability_and_selected_cohort(
         set(CALIBRATION_STAGE.POPULATION_FILES)
         | set(CALIBRATION_STAGE.RESULT_FILES))
     assert len(warmed) == 1
+    assert readiness == [result]
     assert CALIBRATION_STAGE.reopen_v2_calibration_selection(
         root / "calibration" / "selection", freeze=freeze,
         admission=admission, inventory={}, group_split={}) == result
@@ -3034,7 +3066,7 @@ def test_calibration_selection_refuses_instability_and_coordinated_rehash(
     root.mkdir()
     freeze = _freeze(root)
     admission = _admission(freeze)
-    _, _, warmed = _stub_calibration_dependencies(
+    _, _, warmed, readiness = _stub_calibration_dependencies(
         monkeypatch, freeze, stable=False)
     result = CALIBRATION_STAGE.run_v2_calibration_selection(
         root, freeze, admission, repo=Path("/unused"),
@@ -3043,6 +3075,7 @@ def test_calibration_selection_refuses_instability_and_coordinated_rehash(
     assert result["calibration_passed"] is False
     assert result["selected_cohort_id"] is None
     assert len(warmed) == 1
+    assert readiness == [result]
 
     directory = root / "calibration" / "selection"
     result_path = directory / CALIBRATION_STAGE.RESULT_FILES[

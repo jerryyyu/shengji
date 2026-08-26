@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import json
 from pathlib import Path
+import threading
 
 from .belief_artifacts import (
     reopen_reference_external_actor_batch_bundle,
@@ -39,13 +41,17 @@ from .belief_v2_human_reference_controller import (
     reopen_human_reference_group,
 )
 from .belief_v2_protocol import V2RoundCoordinate, v2_policy_seeds
+from .belief_v2_progress import ProgressCallback
 from .belief_v2_scoring import (
     V2CohortModelsV1,
     V2ScoringDecisionV1,
     cohort_models_from_trained,
     v2_scoring_actor,
 )
-from .belief_v2_training_controller import reopen_training_cohort
+from .belief_v2_training_controller import (
+    reopen_training_cohort,
+    reopen_training_cohort_checkpoint_identity,
+)
 from .belief_v2_streaming_inputs import (
     V2StreamingTrainingInputsV1,
     validate_streaming_training_inputs,
@@ -80,12 +86,16 @@ def synthetic_round_key(round_seed: int) -> str:
 def reopen_trained_scoring_cohorts(
         root: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        training_inputs: V2StreamingTrainingInputsV1) \
+        training_inputs: V2StreamingTrainingInputsV1,
+        progress: ProgressCallback | None = None) \
         -> tuple[tuple[V2CohortModelsV1, ...],
                  V2DeviceQualificationPlanV1,
                  V2DeviceQualificationResultV1,
                  tuple[tuple[str, str], ...]]:
     """Reopen every selected portable checkpoint and its training receipt."""
+    if progress is not None and not callable(progress):
+        raise BeliefV2ScoringControllerError(
+            "V2 scoring progress callback drift")
     try:
         validate_streaming_training_inputs(training_inputs)
     except ValueError as exc:
@@ -114,6 +124,31 @@ def reopen_trained_scoring_cohorts(
         raise BeliefV2ScoringControllerError(
             "V2 scoring tensor cache refused") from exc
 
+    progress_lock = threading.Lock()
+    progress_rows = {
+        row.cohort_id: None for row in training_inputs.realizations}
+    if progress is not None:
+        progress(0, 10_000, "reopen-all-saved-epoch-curves")
+
+    def cohort_progress(cohort_id: str):
+        def update(done: int, total: int, _phase: str) -> None:
+            with progress_lock:
+                prior = progress_rows[cohort_id]
+                if total <= 0 or not 0 <= done <= total \
+                        or (prior is not None and (
+                            prior[1] != total or done < prior[0])):
+                    raise BeliefV2ScoringControllerError(
+                        "V2 scoring saved-epoch progress drift")
+                progress_rows[cohort_id] = (done, total)
+                if progress is not None:
+                    basis_points = sum(
+                        0 if row is None else row[0] * 10_000 // row[1]
+                        for row in progress_rows.values()
+                    ) // len(progress_rows)
+                    progress(basis_points, 10_000,
+                             "reopen-all-saved-epoch-curves")
+        return update
+
     def reopen_one(realization):
         try:
             manifest, trained = reopen_training_cohort(
@@ -128,7 +163,8 @@ def reopen_trained_scoring_cohorts(
                     control_dose if realization.kind
                     == "hard-geometry-label-permutation" else 0),
                 calibration_batch_factory=calibration_factory,
-                cache_manifest_sha256=cache_sha256)
+                cache_manifest_sha256=cache_sha256,
+                progress=cohort_progress(realization.cohort_id))
             cohort = cohort_models_from_trained(trained)
         except ValueError as exc:
             raise BeliefV2ScoringControllerError(
@@ -154,6 +190,100 @@ def reopen_trained_scoring_cohorts(
     if tuple(row.cohort_id for row in models) != expected_ids:
         raise BeliefV2ScoringControllerError(
             "V2 scoring cohort/freeze order drift")
+    return (models, qualification_plan, qualification_result,
+            manifest_hashes)
+
+
+def reopen_checkpoint_scoring_cohorts(
+        root: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        training_inputs: V2StreamingTrainingInputsV1) \
+        -> tuple[tuple[V2CohortModelsV1, ...],
+                 V2DeviceQualificationPlanV1,
+                 V2DeviceQualificationResultV1,
+                 tuple[tuple[str, str], ...]]:
+    """Load exact selected checkpoints without claiming saved-curve proof.
+
+    This is the target-blind input boundary for calibration.  A later durable
+    readiness stage must call :func:`reopen_trained_scoring_cohorts` before a
+    test opening is allowed.  The fast boundary still reopens the complete
+    stage manifest, epoch-journal chain, trained manifest, and every selected
+    checkpoint; it skips only the repeated per-epoch calibration evaluation.
+    """
+    try:
+        validate_streaming_training_inputs(training_inputs)
+    except ValueError as exc:
+        raise BeliefV2ScoringControllerError(
+            "V2 checkpoint scoring training input population refused") \
+            from exc
+    primary_rows = [row for row in training_inputs.realizations
+                    if row.cohort_id == PRIMARY_COHORT_ID]
+    if len(primary_rows) != 1:
+        raise BeliefV2ScoringControllerError(
+            "V2 checkpoint scoring primary realization drift")
+    primary = primary_rows[0]
+    try:
+        _, qualification_plan, qualification_result = (
+            reopen_device_qualification(
+                root / "device-qualification" / "result",
+                freeze=freeze, admission=admission, primary=primary))
+    except ValueError as exc:
+        raise BeliefV2ScoringControllerError(
+            "V2 checkpoint scoring device qualification refused") from exc
+
+    def reopen_one(realization):
+        directory = root / "training" / realization.cohort_id
+        try:
+            stage_raw = stable_read_bytes(directory / "manifest.json")
+            trained_raw = stable_read_bytes(directory / "trained-cohort.json")
+            stage = json.loads(stage_raw)
+            trained_payload = json.loads(trained_raw)
+        except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BeliefV2ScoringControllerError(
+                "V2 checkpoint scoring control artifact refused") from exc
+        cache_sha256 = (stage.get("tensor_cache_stage_manifest_sha256")
+                        if type(stage) is dict else None)
+        control_dose = (trained_payload.get(
+            "label_control_changed_cell_count_per_epoch")
+                        if type(trained_payload) is dict else None)
+        if type(stage) is not dict or type(trained_payload) is not dict \
+                or canonical_json_bytes(stage) != stage_raw \
+                or canonical_json_bytes(trained_payload) != trained_raw \
+                or type(cache_sha256) is not str \
+                or len(cache_sha256) != 64 \
+                or type(control_dose) is not int or control_dose < 0:
+            raise BeliefV2ScoringControllerError(
+                "V2 checkpoint scoring control identity drift")
+        try:
+            manifest, trained = reopen_training_cohort_checkpoint_identity(
+                directory, freeze=freeze, admission=admission,
+                primary=primary, realization=realization,
+                calibration=training_inputs.common_calibration,
+                qualification_plan=qualification_plan,
+                qualification_result=qualification_result,
+                compact_control_dose=control_dose,
+                cache_manifest_sha256=cache_sha256)
+            cohort = cohort_models_from_trained(trained)
+        except ValueError as exc:
+            raise BeliefV2ScoringControllerError(
+                "V2 checkpoint scoring cohort refused") from exc
+        if manifest != stage or cohort.cohort_id != realization.cohort_id:
+            raise BeliefV2ScoringControllerError(
+                "V2 checkpoint scoring cohort identity drift")
+        return cohort, (
+            realization.cohort_id,
+            _sha256(canonical_json_bytes(manifest)))
+
+    with ThreadPoolExecutor(
+            max_workers=len(training_inputs.realizations)) as executor:
+        reopened = tuple(executor.map(
+            reopen_one, training_inputs.realizations))
+    models = tuple(row[0] for row in reopened)
+    manifest_hashes = tuple(row[1] for row in reopened)
+    expected_ids = tuple(plan.cohort_id for plan in freeze.cohorts)
+    if tuple(row.cohort_id for row in models) != expected_ids:
+        raise BeliefV2ScoringControllerError(
+            "V2 checkpoint scoring cohort/freeze order drift")
     return (models, qualification_plan, qualification_result,
             manifest_hashes)
 

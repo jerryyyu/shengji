@@ -14,7 +14,6 @@ from .belief_cohort import COHORT_SEEDS
 from .belief_contract import canonical_json_bytes
 from .belief_v2_calibration_controller import (
     POPULATION_FILES as CALIBRATION_POPULATION_FILES,
-    reopen_v2_calibration_selection,
     _expected_human_rounds_from_references,
     _expected_synthetic_rounds,
     _scale_fractions,
@@ -49,11 +48,13 @@ from .belief_v2_result import (
     validate_terminal_result,
 )
 from .belief_v2_progress import ProgressCallback
+from .belief_v2_readiness_controller import (
+    reopen_v2_calibration_readiness,
+)
 from .belief_v2_scoring import score_v2_round
 from .belief_v2_scoring_controller import (
     reopen_human_scoring_rounds,
     reopen_synthetic_scoring_round,
-    reopen_trained_scoring_cohorts,
     synthetic_round_key,
 )
 from .belief_v2_statistics import (
@@ -65,12 +66,11 @@ from .belief_v2_statistics import (
     reopen_v2_round_population,
     v2_round_population_bytes,
 )
-from .belief_v2_input_index_controller import reopen_training_input_index
 from .belief_v2_tensor_cache_controller import reopen_training_tensor_cache
 
 
-TERMINAL_ATTEMPT_SCHEMA = "belief-v1-v2-test-opening-attempt-v1"
-TERMINAL_STAGE_SCHEMA = "belief-v1-v2-terminal-stage-v1"
+TERMINAL_ATTEMPT_SCHEMA = "belief-v1-v2-test-opening-attempt-v2"
+TERMINAL_STAGE_SCHEMA = "belief-v1-v2-terminal-stage-v2"
 TEST_POPULATION_FILES = {
     "synthetic_test": "synthetic-test-scores.json",
     "human_test": "human-test-scores.json",
@@ -177,10 +177,7 @@ def _score_test_populations(
 def _calibration_statistics(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        inventory: dict[str, Any], group_split: dict[str, Any]):
-    manifest = reopen_v2_calibration_selection(
-        root / "calibration" / "selection", freeze=freeze,
-        admission=admission, inventory=inventory, group_split=group_split)
+        group_split: dict[str, Any], manifest: dict[str, Any]):
     if manifest["calibration_passed"] is not True \
             or manifest["selected_cohort_id"] not in {
                 PRIMARY_COHORT_ID, HUMAN_COHORT_ID}:
@@ -291,7 +288,7 @@ def _derive_integrity_receipt(
     try:
         cache_manifest, _, _, _, _ = reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result",
-            freeze=freeze, admission=admission)
+            freeze=freeze, admission=admission, verify_all_bytes=False)
     except ValueError as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal tensor cache refused") from exc
@@ -409,13 +406,16 @@ def _derive_integrity_receipt(
 
 def _attempt(
         freeze: V2ExecutionFreezeV1, admission: V2PipelineAdmissionV1,
-        calibration: dict[str, Any]) -> dict[str, Any]:
+        calibration: dict[str, Any], readiness: dict[str, Any]) \
+        -> dict[str, Any]:
     return {
         "schema": TERMINAL_ATTEMPT_SCHEMA,
         "freeze_sha256": freeze.sha256(),
         "admission_sha256": admission.sha256(),
         "calibration_manifest_sha256": _sha256(
             canonical_json_bytes(calibration)),
+        "calibration_readiness_sha256": _sha256(
+            canonical_json_bytes(readiness)),
         "selected_cohort_id": calibration["selected_cohort_id"],
         "test_split_decision_open_count": 1,
         "retry_count": 0,
@@ -429,7 +429,8 @@ def _attempt(
 
 def _stage_manifest(
         freeze: V2ExecutionFreezeV1, admission: V2PipelineAdmissionV1,
-        calibration: dict[str, Any], attempt: dict[str, Any],
+        calibration: dict[str, Any], readiness: dict[str, Any],
+        attempt: dict[str, Any],
         files: dict[str, bytes], terminal_route: str) -> dict[str, Any]:
     return {
         "schema": TERMINAL_STAGE_SCHEMA,
@@ -437,6 +438,8 @@ def _stage_manifest(
         "admission_sha256": admission.sha256(),
         "calibration_manifest_sha256": _sha256(
             canonical_json_bytes(calibration)),
+        "calibration_readiness_sha256": _sha256(
+            canonical_json_bytes(readiness)),
         "attempt_sha256": _sha256(canonical_json_bytes(attempt)),
         "selected_cohort_id": calibration["selected_cohort_id"],
         "terminal_route": terminal_route,
@@ -467,9 +470,19 @@ def run_v2_terminal(
                 review_marker=review_marker)
     if progress is not None:
         progress(0, 5, "prepare-test-opening")
+    try:
+        (_readiness, calibration, input_index_manifest, _training_inputs,
+         cohorts, plan, qualification, training_hashes) = (
+            reopen_v2_calibration_readiness(
+                root / "calibration" / "readiness", freeze=freeze,
+                admission=admission, inventory=inventory,
+                group_split=group_split))
+    except ValueError as exc:
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal lacks durable calibration readiness") from exc
     calibration, human_selection, scale_curve = _calibration_statistics(
-        root, freeze, admission, inventory, group_split)
-    attempt = _attempt(freeze, admission, calibration)
+        root, freeze, admission, group_split, calibration)
+    attempt = _attempt(freeze, admission, calibration, _readiness)
     partial = root / "terminal.partial"
     final = root / "terminal"
     if final.exists() or partial.exists() or final.is_symlink() \
@@ -487,13 +500,6 @@ def run_v2_terminal(
     if progress is not None:
         progress(1, 5, "test-opening-recorded")
     try:
-        input_index_manifest, training_inputs = reopen_training_input_index(
-            root / "training-input-index" / "result", freeze=freeze,
-            admission=admission)
-        cohorts, plan, qualification, training_hashes = (
-            reopen_trained_scoring_cohorts(
-                root, freeze=freeze, admission=admission,
-                training_inputs=training_inputs))
         if progress is not None:
             progress(2, 5, "test-inputs-reopened")
         synthetic, human = _score_test_populations(
@@ -547,7 +553,7 @@ def run_v2_terminal(
         publish_exclusive_bytes(
             partial / (TEST_POPULATION_FILES | STATISTIC_FILES)[key], raw)
     manifest = _stage_manifest(
-        freeze, admission, calibration, attempt, files,
+        freeze, admission, calibration, _readiness, attempt, files,
         result.terminal_route)
     publish_exclusive_bytes(
         partial / "manifest.json", canonical_json_bytes(manifest))
@@ -596,9 +602,20 @@ def reopen_v2_terminal(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal control artifact is not JSON") from exc
+    try:
+        (_readiness, calibration, input_index_manifest, _training_inputs,
+         cohorts, plan, qualification, training_hashes) = (
+            reopen_v2_calibration_readiness(
+                Path(freeze.evidence_root) / "calibration" / "readiness",
+                freeze=freeze, admission=admission, inventory=inventory,
+                group_split=group_split))
+    except ValueError as exc:
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal readiness reconstruction refused") from exc
     calibration, human_selection, scale_curve = _calibration_statistics(
-        Path(freeze.evidence_root), freeze, admission, inventory, group_split)
-    if attempt != _attempt(freeze, admission, calibration) \
+        Path(freeze.evidence_root), freeze, admission, group_split,
+        calibration)
+    if attempt != _attempt(freeze, admission, calibration, _readiness) \
             or canonical_json_bytes(attempt) != attempt_raw:
         raise BeliefV2TerminalControllerError(
             "V2 terminal attempt reconstruction drift")
@@ -625,13 +642,6 @@ def reopen_v2_terminal(
     if progress is not None:
         progress(2, 5, "verify-terminal-files")
     try:
-        input_index_manifest, training_inputs = reopen_training_input_index(
-            Path(freeze.evidence_root) / "training-input-index" / "result",
-            freeze=freeze, admission=admission)
-        cohorts, plan, qualification, training_hashes = (
-            reopen_trained_scoring_cohorts(
-                Path(freeze.evidence_root), freeze=freeze,
-                admission=admission, training_inputs=training_inputs))
         cohort_ids = tuple(row.cohort_id for row in cohorts)
         if progress is not None:
             progress(3, 5, "verify-terminal-cohorts")
@@ -703,7 +713,7 @@ def reopen_v2_terminal(
         raise BeliefV2TerminalControllerError(
             "V2 terminal result reconstruction drift")
     expected = _stage_manifest(
-        freeze, admission, calibration, attempt, files,
+        freeze, admission, calibration, _readiness, attempt, files,
         result.terminal_route)
     if manifest != expected:
         raise BeliefV2TerminalControllerError(

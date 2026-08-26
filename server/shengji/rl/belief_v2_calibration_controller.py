@@ -36,6 +36,7 @@ from .belief_v2_scoring import (
     warm_projection_pool,
 )
 from .belief_v2_scoring_controller import (
+    reopen_checkpoint_scoring_cohorts,
     reopen_human_scoring_rounds,
     reopen_synthetic_scoring_round,
     reopen_trained_scoring_cohorts,
@@ -231,7 +232,7 @@ def run_v2_calibration_selection(
             root / "training-input-index" / "result", freeze=freeze,
             admission=admission)
         cohorts, plan, qualification, training_hashes = (
-            reopen_trained_scoring_cohorts(
+            reopen_checkpoint_scoring_cohorts(
                 root, freeze=freeze, admission=admission,
                 training_inputs=training_inputs))
     except ValueError as exc:
@@ -357,15 +358,19 @@ def run_v2_calibration_selection(
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    reopened = reopen_v2_calibration_selection(
-        final, freeze=freeze, admission=admission,
-        inventory=inventory, group_split=group_split)
-    if reopened != manifest:
-        raise BeliefV2CalibrationControllerError(
-            "V2 calibration post-publish drift")
+    # The readiness artifact is published only after the one full saved-epoch
+    # re-score and independent calibration reconstruction succeeds.  Importing
+    # locally avoids a module cycle: readiness depends on this reopener.
+    from .belief_v2_readiness_controller import (
+        publish_v2_calibration_readiness,
+    )
+    publish_v2_calibration_readiness(
+        root, freeze=freeze, admission=admission,
+        inventory=inventory, group_split=group_split,
+        expected_calibration=manifest, progress=progress)
     if progress is not None:
         progress(6, 6, "calibration-complete")
-    return reopened
+    return manifest
 
 
 def _expected_human_rounds_from_references(
@@ -394,12 +399,17 @@ def _expected_human_rounds_from_references(
     return tuple(sorted(rows))
 
 
-def reopen_v2_calibration_selection(
+def _reopen_v2_calibration_selection(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        inventory: dict[str, Any], group_split: dict[str, Any]) \
+        inventory: dict[str, Any], group_split: dict[str, Any],
+        full_training_curve_proof: bool,
+        progress: ProgressCallback | None = None) \
         -> dict[str, Any]:
-    """Reopen raw score populations and independently rederive selection."""
+    """Reopen score populations at one explicit training-proof altitude."""
+    if type(full_training_curve_proof) is not bool:
+        raise BeliefV2CalibrationControllerError(
+            "V2 calibration training proof altitude drift")
     if not isinstance(directory, Path) or directory.is_symlink() \
             or not directory.is_dir() or directory.name != "selection" \
             or {path.name for path in directory.iterdir()} != {
@@ -452,10 +462,17 @@ def reopen_v2_calibration_selection(
         _, training_inputs = reopen_training_input_index(
             Path(freeze.evidence_root) / "training-input-index" / "result",
             freeze=freeze, admission=admission)
-        _, plan, qualification, training_hashes = (
-            reopen_trained_scoring_cohorts(
-                Path(freeze.evidence_root), freeze=freeze,
-                admission=admission, training_inputs=training_inputs))
+        if full_training_curve_proof:
+            _, plan, qualification, training_hashes = (
+                reopen_trained_scoring_cohorts(
+                    Path(freeze.evidence_root), freeze=freeze,
+                    admission=admission, training_inputs=training_inputs,
+                    progress=progress))
+        else:
+            _, plan, qualification, training_hashes = (
+                reopen_checkpoint_scoring_cohorts(
+                    Path(freeze.evidence_root), freeze=freeze,
+                    admission=admission, training_inputs=training_inputs))
     except ValueError as exc:
         raise BeliefV2CalibrationControllerError(
             "V2 calibration training reopener refused") from exc
@@ -557,3 +574,34 @@ def reopen_v2_calibration_selection(
         raise BeliefV2CalibrationControllerError(
             "V2 calibration manifest reconstruction drift")
     return payload
+
+
+def reopen_v2_calibration_selection(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        inventory: dict[str, Any], group_split: dict[str, Any],
+        progress: ProgressCallback | None = None) \
+        -> dict[str, Any]:
+    """Independently rederive selection and re-score every saved epoch."""
+    return _reopen_v2_calibration_selection(
+        directory, freeze=freeze, admission=admission,
+        inventory=inventory, group_split=group_split,
+        full_training_curve_proof=True, progress=progress)
+
+
+def reopen_v2_calibration_selection_checkpoint_identity(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        inventory: dict[str, Any], group_split: dict[str, Any]) \
+        -> dict[str, Any]:
+    """Reconstruct selection after a durable readiness proof exists.
+
+    This validates every score/statistic byte and selected checkpoint identity,
+    but it does not itself claim that the saved epoch curves were re-scored.
+    Callers must separately authenticate the readiness artifact that can only
+    be published after the full reopener above succeeds.
+    """
+    return _reopen_v2_calibration_selection(
+        directory, freeze=freeze, admission=admission,
+        inventory=inventory, group_split=group_split,
+        full_training_curve_proof=False, progress=None)

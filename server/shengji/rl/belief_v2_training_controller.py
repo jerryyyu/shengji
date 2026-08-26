@@ -40,6 +40,7 @@ from .belief_v2_epoch_journal import (
     MANIFEST_FILENAME as EPOCH_JOURNAL_MANIFEST_FILENAME,
     V2EpochJournalBindingV1,
     publish_epoch_resume_state,
+    reopen_epoch_manifests,
     reopen_epoch_snapshots,
     reopen_latest_epoch_resume,
 )
@@ -490,32 +491,45 @@ def run_training_cohort(
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    reopened = reopen_training_cohort(
-        final, freeze=freeze, admission=admission, primary=primary,
-        realization=realization, training_examples=training_examples,
-        calibration=calibration,
-        calibration_examples=calibration_examples,
-        qualification_plan=qualification_plan,
-        qualification_result=qualification_result,
-        compact_control_dose=(
-            cache_control_dose if cached else
-            streaming_index.control_changed_cell_count
-            if streaming and realization.kind
-            == "hard-geometry-label-permutation" else 0
-            if streaming else None),
-        calibration_batch_factory=(
-            calibration_batch_factory if cached else
-            (lambda: iter_streaming_calibration_batches(
-                streaming_index, calibration, load_round=load_round))
-            if streaming else None),
-        cache_manifest_sha256=cache_manifest_sha256)
+    reopen_control_dose = (
+        cache_control_dose if cached else
+        streaming_index.control_changed_cell_count
+        if streaming and realization.kind
+        == "hard-geometry-label-permutation" else 0
+        if streaming else None)
+    if cached:
+        # The cached R5 path performs the expensive saved-epoch re-score once,
+        # after every cohort and the calibration selection have sealed.  Here
+        # we still reopen the complete journal/stage/checkpoint identity, but
+        # do not replay the same calibration cache after each cohort publish.
+        reopened = reopen_training_cohort_checkpoint_identity(
+            final, freeze=freeze, admission=admission, primary=primary,
+            realization=realization, calibration=calibration,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result,
+            compact_control_dose=reopen_control_dose,
+            cache_manifest_sha256=cache_manifest_sha256)
+    else:
+        reopened = reopen_training_cohort(
+            final, freeze=freeze, admission=admission, primary=primary,
+            realization=realization, training_examples=training_examples,
+            calibration=calibration,
+            calibration_examples=calibration_examples,
+            qualification_plan=qualification_plan,
+            qualification_result=qualification_result,
+            compact_control_dose=reopen_control_dose,
+            calibration_batch_factory=(
+                (lambda: iter_streaming_calibration_batches(
+                    streaming_index, calibration, load_round=load_round))
+                if streaming else None),
+            cache_manifest_sha256=cache_manifest_sha256)
     if reopened[0] != manifest or reopened[1] != trained:
         raise BeliefV2TrainingControllerError(
             "V2 training cohort post-publish drift")
     return manifest
 
 
-def reopen_training_cohort(
+def _reopen_training_cohort(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         primary: V2CohortRealizationV1,
@@ -527,9 +541,11 @@ def reopen_training_cohort(
         qualification_result: V2DeviceQualificationResultV1,
         compact_control_dose: int | None = None,
         calibration_batch_factory: Callable[[], Any] | None = None,
-        cache_manifest_sha256: str | None = None) \
+        cache_manifest_sha256: str | None = None,
+        verify_epoch_calibration_losses: bool,
+        progress: ProgressCallback | None = None) \
         -> tuple[dict[str, Any], V2TrainedCohortArtifactsV1]:
-    """Reopen every persisted byte and reconstruct the trained cohort."""
+    """Reopen persisted bytes at one explicitly selected proof altitude."""
     _validate_realization_binding(freeze, realization)
     selected_device = _validate_device_binding(
         freeze, primary, qualification_plan, qualification_result)
@@ -537,9 +553,14 @@ def reopen_training_cohort(
     materialized = training_examples is not None \
         and calibration_examples is not None
     cached = cache_manifest_sha256 is not None
-    if (training_examples is None) != (calibration_examples is None) \
+    if type(verify_epoch_calibration_losses) is not bool \
+            or progress is not None and not callable(progress) \
+            or (training_examples is None) != (calibration_examples is None) \
             or compact == materialized \
-            or compact != callable(calibration_batch_factory) \
+            or (verify_epoch_calibration_losses
+                and compact != callable(calibration_batch_factory)) \
+            or (not verify_epoch_calibration_losses
+                and calibration_batch_factory is not None) \
             or cached and (type(cache_manifest_sha256) is not str
                            or len(cache_manifest_sha256) != 64):
         raise BeliefV2TrainingControllerError(
@@ -573,40 +594,48 @@ def reopen_training_cohort(
     journal = directory / "epoch-journal"
     journal_binding = _journal_binding(
         freeze, admission, realization, calibration, selected_device)
-    snapshots = reopen_epoch_snapshots(journal, journal_binding)
+    snapshots = (reopen_epoch_snapshots(journal, journal_binding)
+                 if verify_epoch_calibration_losses
+                 else reopen_epoch_manifests(journal, journal_binding))
     if len(snapshots) != len(trained.epochs):
         raise BeliefV2TrainingControllerError(
             "V2 persisted epoch journal head drift")
     if snapshots[-1].curves != trained.epochs:
         raise BeliefV2TrainingControllerError(
             "V2 persisted epoch curve cross-binding drift")
-    if materialized:
-        calibration_batches = _calibration_batches(
-            calibration, calibration_examples)
-        calibration_factory = lambda: iter(calibration_batches)
-    else:
-        calibration_factory = calibration_batch_factory
-    for snapshot, curve in zip(
-            snapshots, trained.epochs, strict=True):
-        models = []
-        for seed, state in zip(
-                COHORT_SEEDS, snapshot.current_model_states, strict=True):
-            model = new_from_scratch_model(seed)
+    if verify_epoch_calibration_losses:
+        if materialized:
+            calibration_batches = _calibration_batches(
+                calibration, calibration_examples)
+            calibration_factory = lambda: iter(calibration_batches)
+        else:
+            calibration_factory = calibration_batch_factory
+        if progress is not None:
+            progress(0, len(snapshots), "reopen-saved-epoch-curves")
+        for epoch_index, (snapshot, curve) in enumerate(zip(
+                snapshots, trained.epochs, strict=True), 1):
+            models = []
+            for seed, state in zip(
+                    COHORT_SEEDS, snapshot.current_model_states, strict=True):
+                model = new_from_scratch_model(seed)
+                try:
+                    model.load_state_dict(state, strict=True)
+                except (RuntimeError, ValueError) as exc:
+                    raise BeliefV2TrainingControllerError(
+                        "V2 epoch calibration model state refused") from exc
+                models.append(model)
             try:
-                model.load_state_dict(state, strict=True)
-            except (RuntimeError, ValueError) as exc:
+                rescored = evaluate_v2_calibration_cohort_stream_nanonats(
+                    tuple(models), calibration_factory(), device="cpu")
+            except ValueError as exc:
                 raise BeliefV2TrainingControllerError(
-                    "V2 epoch calibration model state refused") from exc
-            models.append(model)
-        try:
-            rescored = evaluate_v2_calibration_cohort_stream_nanonats(
-                tuple(models), calibration_factory(), device="cpu")
-        except ValueError as exc:
-            raise BeliefV2TrainingControllerError(
-                "V2 epoch calibration source re-score refused") from exc
-        if rescored != curve.member_calibration_loss_nanonats:
-            raise BeliefV2TrainingControllerError(
-                "V2 epoch calibration loss re-score drift")
+                    "V2 epoch calibration source re-score refused") from exc
+            if rescored != curve.member_calibration_loss_nanonats:
+                raise BeliefV2TrainingControllerError(
+                    "V2 epoch calibration loss re-score drift")
+            if progress is not None:
+                progress(epoch_index, len(snapshots),
+                         "reopen-saved-epoch-curves")
     journal_head = snapshots[-1].manifest
     journal_head_raw = stable_read_bytes(
         journal / f"epoch-{len(trained.epochs):04d}"
@@ -705,3 +734,64 @@ def reopen_training_cohort(
         raise BeliefV2TrainingControllerError(
             "V2 training stage resource drift")
     return payload, trained
+
+
+def reopen_training_cohort(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        primary: V2CohortRealizationV1,
+        realization: V2CohortRealizationV1,
+        training_examples: tuple[V2TrainingExampleV1, ...] | None,
+        calibration: V2CalibrationScheduleV1,
+        calibration_examples: tuple[V2TrainingExampleV1, ...] | None,
+        qualification_plan: V2DeviceQualificationPlanV1,
+        qualification_result: V2DeviceQualificationResultV1,
+        compact_control_dose: int | None = None,
+        calibration_batch_factory: Callable[[], Any] | None = None,
+        cache_manifest_sha256: str | None = None,
+        progress: ProgressCallback | None = None) \
+        -> tuple[dict[str, Any], V2TrainedCohortArtifactsV1]:
+    """Fully reopen a cohort, including every saved-epoch loss re-score."""
+    return _reopen_training_cohort(
+        directory, freeze=freeze, admission=admission, primary=primary,
+        realization=realization, training_examples=training_examples,
+        calibration=calibration,
+        calibration_examples=calibration_examples,
+        qualification_plan=qualification_plan,
+        qualification_result=qualification_result,
+        compact_control_dose=compact_control_dose,
+        calibration_batch_factory=calibration_batch_factory,
+        cache_manifest_sha256=cache_manifest_sha256,
+        verify_epoch_calibration_losses=True, progress=progress)
+
+
+def reopen_training_cohort_checkpoint_identity(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        primary: V2CohortRealizationV1,
+        realization: V2CohortRealizationV1,
+        calibration: V2CalibrationScheduleV1,
+        qualification_plan: V2DeviceQualificationPlanV1,
+        qualification_result: V2DeviceQualificationResultV1,
+        compact_control_dose: int,
+        cache_manifest_sha256: str) \
+        -> tuple[dict[str, Any], V2TrainedCohortArtifactsV1]:
+    """Authenticate selected checkpoints without claiming curve re-score.
+
+    Calibration may use this target-blind identity boundary before the durable
+    pre-test readiness stage performs the one full saved-epoch proof.  It is
+    intentionally unable to consume a batch factory or authorize a test open.
+    """
+    if type(compact_control_dose) is not int or compact_control_dose < 0:
+        raise BeliefV2TrainingControllerError(
+            "V2 checkpoint identity control dose drift")
+    return _reopen_training_cohort(
+        directory, freeze=freeze, admission=admission, primary=primary,
+        realization=realization, training_examples=None,
+        calibration=calibration, calibration_examples=None,
+        qualification_plan=qualification_plan,
+        qualification_result=qualification_result,
+        compact_control_dose=compact_control_dose,
+        calibration_batch_factory=None,
+        cache_manifest_sha256=cache_manifest_sha256,
+        verify_epoch_calibration_losses=False, progress=None)

@@ -464,12 +464,10 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         TERMINAL_STAGE, "_calibration_statistics",
         lambda *args, **kwargs: (calibration, human_selection, scale))
     monkeypatch.setattr(
-        TERMINAL_STAGE, "reopen_training_input_index",
-        lambda *args, **kwargs: ({}, SimpleNamespace()))
-    monkeypatch.setattr(
-        TERMINAL_STAGE, "reopen_trained_scoring_cohorts",
+        TERMINAL_STAGE, "reopen_v2_calibration_readiness",
         lambda *args, **kwargs: (
-            cohorts, plan, qualification,
+            {"schema": "test-readiness"}, calibration, {},
+            SimpleNamespace(), cohorts, plan, qualification,
             tuple((value, _sha(value)) for value in cohort_ids)))
     def score_test(*args, **kwargs):
         projection_executors.append(kwargs.get("projection_executor"))

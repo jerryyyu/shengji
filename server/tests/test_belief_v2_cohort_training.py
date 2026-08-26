@@ -273,6 +273,28 @@ def test_completed_epoch_journal_resumes_to_byte_identical_trajectory(
         train_v2_cohort_in_memory(
             value, examples, schedule, calibration, device="cpu",
             epoch_checkpoint=first_checkpoint)
+    with monkeypatch.context() as patch:
+        def refuse_tensor_load(_raw):
+            raise AssertionError(
+                "manifest-only reopen must not deserialize tensor state")
+
+        patch.setattr(JOURNAL, "_load_state_payload", refuse_tensor_load)
+        manifest_rows = JOURNAL.reopen_epoch_manifests(journal, binding)
+    assert len(manifest_rows) == 1
+    assert manifest_rows[0].curves[0].epoch == 1
+
+    state_path = journal / "epoch-0001" / JOURNAL.STATE_FILENAME
+    state_raw = state_path.read_bytes()
+    state_path.chmod(0o600)
+    state_path.write_bytes(state_raw[:-1] + bytes([state_raw[-1] ^ 1]))
+    state_path.chmod(0o400)
+    with pytest.raises(BeliefV2EpochJournalError,
+                       match="manifest chain drift"):
+        JOURNAL.reopen_epoch_manifests(journal, binding)
+    state_path.chmod(0o600)
+    state_path.write_bytes(state_raw)
+    state_path.chmod(0o400)
+
     reopened = reopen_latest_epoch_resume(journal, binding)
     assert reopened is not None
     resume_state, head = reopened

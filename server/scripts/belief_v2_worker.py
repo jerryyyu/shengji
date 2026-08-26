@@ -68,7 +68,6 @@ from shengji.rl.belief_artifacts import (  # noqa: E402
 )
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
 from shengji.rl.belief_v2_calibration_controller import (  # noqa: E402
-    reopen_v2_calibration_selection,
     run_v2_calibration_selection,
 )
 from shengji.rl.belief_v2_controller import (  # noqa: E402
@@ -116,7 +115,7 @@ from shengji.rl.belief_v2_terminal_controller import (  # noqa: E402
     run_v2_terminal,
 )
 from shengji.rl.belief_v2_training_controller import (  # noqa: E402
-    reopen_training_cohort,
+    reopen_training_cohort_checkpoint_identity,
     run_training_cohort,
 )
 from shengji.rl.belief_v2_input_index_controller import (  # noqa: E402
@@ -128,6 +127,10 @@ from shengji.rl.belief_v2_tensor_cache_controller import (  # noqa: E402
     run_training_tensor_cache,
 )
 from shengji.rl.belief_v2_progress import V2ProgressReporter  # noqa: E402
+from shengji.rl.belief_v2_readiness_controller import (  # noqa: E402
+    publish_v2_calibration_readiness,
+    reopen_v2_calibration_readiness,
+)
 from shengji.rl.belief_v2_scoring import (  # noqa: E402
     projection_pool,
     warm_projection_pool,
@@ -501,14 +504,12 @@ def train_cohort(args: argparse.Namespace) -> None:
         == "hard-geometry-label-permutation" else 0)
     final = root / "training" / realization.cohort_id
     if _recover_final(args, final):
-        manifest, _ = reopen_training_cohort(
+        manifest, _ = reopen_training_cohort_checkpoint_identity(
             final, freeze=freeze, admission=admission,
             primary=primary, realization=realization,
-            training_examples=None, calibration=inputs.common_calibration,
-            calibration_examples=None,
+            calibration=inputs.common_calibration,
             qualification_plan=plan, qualification_result=result,
             compact_control_dose=compact_control_dose,
-            calibration_batch_factory=calibration_factory,
             cache_manifest_sha256=cache_sha256)
         _output(manifest)
         return
@@ -528,16 +529,28 @@ def train_cohort(args: argparse.Namespace) -> None:
 def calibrate(args: argparse.Namespace) -> None:
     root = Path(args.root)
     freeze, admission, marker, inventory, group_split = _load_root(root)
+    progress = _progress("calibration", "all-cohorts")
     final = root / "calibration" / "selection"
     if _recover_final(args, final):
-        _output(reopen_v2_calibration_selection(
-            final, freeze=freeze, admission=admission,
-            inventory=inventory, group_split=group_split))
+        readiness = root / "calibration" / "readiness"
+        if readiness.exists() or readiness.is_symlink():
+            reopened = reopen_v2_calibration_readiness(
+                readiness, freeze=freeze, admission=admission,
+                inventory=inventory, group_split=group_split)
+            _output(reopened[1])
+        else:
+            publish_v2_calibration_readiness(
+                root, freeze=freeze, admission=admission,
+                inventory=inventory, group_split=group_split,
+                progress=progress)
+            _output(reopen_v2_calibration_readiness(
+                readiness, freeze=freeze, admission=admission,
+                inventory=inventory, group_split=group_split)[1])
         return
     _output(run_v2_calibration_selection(
         root, freeze, admission, repo=REPO, review_marker=marker,
         inventory=inventory, group_split=group_split,
-        progress=_progress("calibration", "all-cohorts")))
+        progress=progress))
 
 
 def open_test(args: argparse.Namespace) -> None:

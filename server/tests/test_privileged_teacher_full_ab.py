@@ -288,6 +288,8 @@ def test_exact_work_wiring_passes_and_each_failure_direction_refuses():
     assert full._verify_decision_work(
         SimpleNamespace(last_decision_record=record)) == 660
     for mutate in (
+            lambda row: row.update(n_determinizations=29),
+            lambda row: row["alloc"].update(n_by_candidate=[30, 29]),
             lambda row: row["alloc"].update(short=True),
             lambda row: row["work"].update(report_rollouts=598),
             lambda row: row["work"].update(

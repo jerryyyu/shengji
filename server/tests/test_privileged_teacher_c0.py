@@ -210,6 +210,18 @@ def test_c0_design_reuses_parent_population_and_authorizes_nothing():
     with pytest.raises(c0.PrivilegedTeacherC0Error,
                        match="parent report refused"):
         c0.validate_parent(tampered, design)
+    wrong_external = c0.C0Design(
+        seed_commitment_sha256=design.seed_commitment_sha256,
+        execution_git=design.execution_git,
+        native_sha256=design.native_sha256,
+        hostname=design.hostname,
+        parent_external_sha256="e" * 64,
+        parent_report_sha256=design.parent_report_sha256,
+        parent_execution_git=design.parent_execution_git,
+    )
+    with pytest.raises(c0.PrivilegedTeacherC0Error,
+                       match="parent report identity drift"):
+        c0.validate_parent(parent, wrong_external)
 
 
 def test_c0_policy_ladder_changes_one_axis_at_a_time():

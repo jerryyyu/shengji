@@ -101,14 +101,26 @@ def _validate_receipt_progress(
         raise BeliefV2RehearsalError("V2 rehearsal progress identity drift")
     phases: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     workers: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    phase_started_elapsed: dict[tuple[str, str, str], int] = {}
     for row in progress["rows"]:
         completed = row.get("completed_units") if type(row) is dict else None
         total = row.get("total_units") if type(row) is dict else None
         elapsed = row.get("elapsed_nanoseconds") if type(row) is dict else None
-        remaining = (None if completed == 0 else
-                     elapsed * (total - completed) // completed) \
+        phase_key = ((row.get("stage"), row.get("worker"), row.get("phase"))
+                     if type(row) is dict else (None, None, None))
+        if type(elapsed) is int and elapsed >= 0 \
+                and all(type(value) is str for value in phase_key):
+            phase_started = phase_started_elapsed.setdefault(phase_key, elapsed)
+            phase_elapsed = elapsed - phase_started
+        else:
+            phase_elapsed = None
+        phase_first = phase_key not in phases
+        remaining = (None if completed == 0
+                     or phase_first and completed < total else
+                     phase_elapsed * (total - completed) // completed) \
             if type(completed) is int and type(total) is int \
-            and type(elapsed) is int and completed >= 0 and total > 0 \
+            and type(phase_elapsed) is int and phase_elapsed >= 0 \
+            and completed >= 0 and total > 0 \
             else object()
         if type(row) is not dict or set(row) != _PROGRESS_ROW_KEYS \
                 or row.get("schema") != PROGRESS_SCHEMA \

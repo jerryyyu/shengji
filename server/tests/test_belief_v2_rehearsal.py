@@ -23,6 +23,7 @@ import shengji.rl.belief_v2_human_controller as HUMAN_STAGE
 import shengji.rl.belief_v2_human_reference_controller as HUMAN_REF_STAGE
 import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
 import shengji.rl.belief_v2_reference as V2_REFERENCE
+import shengji.rl.belief_v2_rehearsal as REHEARSAL
 import shengji.rl.belief_v2_result as V2_RESULT
 import shengji.rl.belief_v2_schedule as V2_SCHEDULE
 import shengji.rl.belief_v2_scoring_controller as SCORING_STAGE
@@ -506,6 +507,48 @@ def test_rehearsal_profile_is_canonical_and_authorizes_nothing():
     assert profile["human_fixture_population"]["split_counts"] \
         == dict(REHEARSAL_HUMAN_SPLIT_COUNTS)
     assert not any(profile["authority"].values())
+
+
+def test_rehearsal_receipt_validates_phase_local_eta_not_stage_elapsed():
+    rows = [{
+        "schema": PROGRESS_SCHEMA,
+        "stage": "calibration",
+        "worker": "all-cohorts",
+        "phase": phase,
+        "completed_units": completed,
+        "total_units": total,
+        "percent_basis_points": completed * 10_000 // total,
+        "elapsed_nanoseconds": elapsed,
+        "estimated_remaining_nanoseconds": remaining,
+        "status": "complete" if completed == total else "running",
+        "outcome_blind": True,
+        "evidence_artifact": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    } for phase, completed, total, elapsed, remaining in (
+        ("reopen-checkpoints", 0, 1, 0, None),
+        ("reopen-checkpoints", 1, 1, 100, 0),
+        ("score-rounds", 0, 100, 100, None),
+        ("score-rounds", 10, 100, 200, 900),
+    )]
+
+    def receipt(progress_rows):
+        return {
+            "row_count": len(progress_rows),
+            "worker_count": 1,
+            "phase_count": 2,
+            "population_sha256": hashlib.sha256(
+                canonical_json_bytes(progress_rows)).hexdigest(),
+            "rows": progress_rows,
+        }
+
+    REHEARSAL._validate_receipt_progress(receipt(rows), eligible=False)
+    broken = [dict(row) for row in rows]
+    broken[-1]["estimated_remaining_nanoseconds"] = 1_800
+    with pytest.raises(BeliefV2RehearsalError,
+                       match="progress row drift"):
+        REHEARSAL._validate_receipt_progress(
+            receipt(broken), eligible=False)
 
 
 def test_rehearsal_receipt_refuses_missing_stage_source_and_authority_drift():

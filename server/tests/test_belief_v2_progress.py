@@ -104,3 +104,20 @@ def test_human_stage_can_finish_with_a_one_unit_completion_phase():
     assert rows[-1]["phase"] == "human-group-complete"
     assert rows[-1]["status"] == "complete"
     assert rows[-1]["percent_basis_points"] == 10_000
+
+
+def test_eta_uses_current_phase_pace_not_prior_stage_work():
+    ticks = iter((0, 0, 100, 100, 200))
+    stream = io.StringIO()
+    reporter = V2ProgressReporter(
+        stage="calibration", worker="all-cohorts", stream=stream,
+        clock=lambda: next(ticks))
+    reporter.update(0, 1, "reopen-checkpoints")
+    reporter.update(1, 1, "reopen-checkpoints")
+    reporter.update(0, 100, "score-rounds")
+    reporter.update(10, 100, "score-rounds")
+
+    rows = [json.loads(line.removeprefix(PROGRESS_PREFIX))
+            for line in stream.getvalue().splitlines()]
+    assert rows[-1]["elapsed_nanoseconds"] == 200
+    assert rows[-1]["estimated_remaining_nanoseconds"] == 900

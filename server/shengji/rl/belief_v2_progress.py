@@ -39,7 +39,7 @@ class V2ProgressReporter:
         # a much larger batch counter.  Bind monotonicity and population size
         # per phase so switching dimensions cannot either refuse a healthy
         # worker or hide a regression within one dimension.
-        self._phase_progress: dict[str, tuple[int, int]] = {}
+        self._phase_progress: dict[str, tuple[int, int, int]] = {}
 
     def update(self, completed: int, total: int, phase: str) -> None:
         """Write one monotonic JSON line; percentages are integer basis points."""
@@ -53,10 +53,13 @@ class V2ProgressReporter:
         if previous is not None and (
                 previous[0] > completed or previous[1] != total):
             raise BeliefV2ProgressError("V2 progress population drift")
-        self._phase_progress[phase] = (completed, total)
+        phase_started = observed if previous is None else previous[2]
+        self._phase_progress[phase] = (completed, total, phase_started)
         elapsed = observed - self._started
-        remaining = (None if completed == 0 else
-                     elapsed * (total - completed) // completed)
+        phase_elapsed = observed - phase_started
+        remaining = (None if completed == 0
+                     or previous is None and completed < total else
+                     phase_elapsed * (total - completed) // completed)
         payload = {
             "schema": PROGRESS_SCHEMA,
             "stage": self._stage,

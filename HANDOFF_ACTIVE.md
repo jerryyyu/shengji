@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 05:09 EDT.
+Last reconciled: 2026-08-26 05:18 EDT.
 
 Current operational truth only. Historical review evidence belongs in
 `HANDOFF_REVIEW.md`. There is exactly one active review ask: the consolidated
@@ -39,15 +39,20 @@ planned.
 
 ### Review queue — one consolidated PT1 recovery ask
 
+The earlier `d1a7901` / `-r1` draft freeze and launcher are superseded and must
+not be reviewed or executed; they never initialized a recovery root. Codex
+strengthened the marker before review so every load-bearing receipt and runtime
+field is authenticated.
+
 Review draft PR #150 at exact head
-`d1a79012dab8213b90ec4da9045cd811afbb9939`, stacked directly on reviewed
+`0faffcd4409af3c49750a52614cb955bc0be16cf`, stacked directly on reviewed
 PR #149 head `76508ec9c15638e715dc8d48ee6719412233918b`, together with the exact
 score-blind recovery freeze:
 
 - freeze path:
-  `/Users/jerryyu/Projects/pt1-recovery-freeze-d1a7901-r1.json`;
+  `/Users/jerryyu/Projects/pt1-recovery-freeze-0faffcd-r2.json`;
 - freeze SHA-256:
-  `6cf5124e2c4476cce40008074aa7c3cee19b5a6abd8b6676a40a791ea5cb839b`;
+  `f44db7a822e201ca0f880a1646c42e60183ab71d889f52912e1840b63cb2b813`;
 - original r7 freeze SHA-256:
   `d05070d755d12f1a7c9a67471599377e0e590ed100f6beb315f7d8ccd915bc90`;
 - original terminal failure SHA-256:
@@ -55,19 +60,22 @@ score-blind recovery freeze:
 - ordered 416-group tree SHA-256:
   `0a7b1e5523b883b051c0e99cbc7af0b68c47b6b66c6e98257189d69ef5041f74`;
 - fresh recovery root, which must still be absent before execution:
-  `/Users/jerryyu/Projects/shengji-pt1-recovery-d1a7901-r1`;
+  `/Users/jerryyu/Projects/shengji-pt1-recovery-0faffcd-r2`;
 - exact marker file:
-  `/Users/jerryyu/Projects/pt1-recovery-review-marker-d1a7901-r1.json`,
+  `/Users/jerryyu/Projects/pt1-recovery-review-marker-0faffcd-r2.json`,
   SHA-256
-  `e200bae6336125482b9bceafacf2f2f6834d5b99f1d23b78092e7f49ed15d56d`.
+  `8eac41b2449cc2b5461688d0de6d89cf11fd4708cd75c9fe401e346b655bd1fc`.
 - exact one-shot launcher:
-  `/Users/jerryyu/Projects/launch-pt1-r7-recovery-d1a7901.sh`, mode `0500`,
+  `/Users/jerryyu/Projects/launch-pt1-r7-recovery-0faffcd-r2.sh`, mode `0500`,
   SHA-256
-  `ac444faefa70a925c618b3af3bd44b9fadac171124e1d8efe7451a98ed2ccb26`.
+  `8963bd94ed0bf030249b072a0357d7acf4f5cb3587a463e3e0b2c91017501e6c`.
 
 Review the exact type-handoff fix, all-416 ordered hash binding, immutable
 source-root rule, record/manifest/statistics reconstruction, outcome packet
-published last, and failure/no-retry witnesses. Independently reproduce the
+published last, and failure/no-retry witnesses. The repaired marker now also
+binds the source progress/deadline receipts, original review commit and exact
+recovery runtime hash; mutating the runtime while retaining the marker is a
+permanent red test. Independently reproduce the
 freeze, marker claim and launcher without parsing group result payloads.
 Evidence at the head: **66/66 PT1 pure** and **66/66 strict compiled**, CI
 server/frontend green, clean tree, diff-check and `zsh -n` launcher check. If

@@ -10,7 +10,9 @@ from types import SimpleNamespace
 
 import pytest
 
+import shengji.rl.belief_v2_controller as PIPELINE_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
+import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 import shengji.rl.belief_v2_r4_completion as R4_COMPLETION
 
 from shengji.rl.belief_contract import canonical_json_bytes
@@ -433,6 +435,17 @@ def _admission(freeze):
         evidence_root=freeze.evidence_root)
 
 
+def _completion_admission(freeze):
+    return R4_COMPLETION.R4CompletionAdmissionV1(
+        freeze_sha256=freeze.sha256(), execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        source_spec_sha256=_sha("completion-spec"),
+        review_commit="c" * 40, canonical_remote_tip="d" * 40,
+        review_marker_sha256=_sha("completion-review-marker"),
+        evidence_root=freeze.evidence_root)
+
+
 def _terminal_score(source: str, cohort_ids: tuple[str, ...]):
     return V2RoundScoreV1(
         round_key=_sha(f"{source}-test-round"), source_kind=source,
@@ -502,7 +515,7 @@ def test_r4_completion_source_spec_is_canonical_and_authorizes_no_retry():
     assert spec.source_evidence_root == Path(
         "/opt/belief-r4-evidence-d2d466f-r1")
     assert spec.destination_evidence_root == Path(
-        "/opt/belief-r4-completion-v1-r2")
+        "/opt/belief-r4-completion-v1-r3")
     assert R4_COMPLETION.COMPLETION_AUTHORITY == {
         "calibration_open_authorized": True,
         "one_test_split_open_authorized": True,
@@ -524,6 +537,89 @@ def test_r4_completion_source_spec_is_canonical_and_authorizes_no_retry():
             canonical_json_bytes(forged))
 
 
+def test_r4_completion_admission_is_narrow_and_round_trips():
+    spec = R4_COMPLETION.load_r4_completion_source_spec()
+    freeze = replace(_freeze(), evidence_root=str(
+        spec.destination_evidence_root))
+    marker = R4_COMPLETION.expected_r4_completion_review_marker(
+        freeze, spec)
+    claim = R4_COMPLETION.expected_r4_completion_review_claim(freeze, spec)
+    assert claim["execution_mode"] == \
+        "r4-calibration-test-terminal-only"
+    assert "bounded_capture_reference_training_and_one_test_open_authorized" \
+        not in claim
+    assert claim["authority"] == \
+        R4_COMPLETION.COMPLETION_ADMISSION_AUTHORITY
+    admission = R4_COMPLETION.R4CompletionAdmissionV1(
+        freeze_sha256=freeze.sha256(),
+        execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        source_spec_sha256=spec.sha256(), review_commit="c" * 40,
+        canonical_remote_tip="d" * 40,
+        review_marker_sha256=hashlib.sha256(marker).hexdigest(),
+        evidence_root=freeze.evidence_root)
+    raw = admission.canonical_bytes()
+    reopened = R4_COMPLETION.r4_completion_admission_from_bytes(
+        raw, freeze=freeze, review_marker=marker, spec=spec)
+    assert reopened == admission
+    authority = reopened.to_dict()["authority"]
+    assert authority["calibration_open_authorized"] is True
+    assert authority["one_test_split_open_authorized"] is True
+    assert authority["terminal_reconstruction_authorized"] is True
+    assert authority["capture_authorized"] is False
+    assert authority["reference_generation_authorized"] is False
+    assert authority["training_authorized"] is False
+    tombstone = R4_COMPLETION.r4_completion_consumption_tombstone_bytes(
+        admission)
+    R4_COMPLETION.validate_r4_completion_consumption_tombstone(
+        tombstone, admission=admission)
+    forged = json.loads(raw)
+    forged["authority"]["training_authorized"] = True
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="field/authority drift"):
+        R4_COMPLETION.r4_completion_admission_from_bytes(
+            canonical_json_bytes(forged), freeze=freeze,
+            review_marker=marker, spec=spec)
+
+
+def test_r4_completion_admission_cannot_enter_generic_work_stages(tmp_path):
+    root = tmp_path.resolve()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = R4_COMPLETION.R4CompletionAdmissionV1(
+        freeze_sha256=freeze.sha256(),
+        execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        source_spec_sha256=_sha("completion spec"),
+        review_commit="c" * 40, canonical_remote_tip="d" * 40,
+        review_marker_sha256=_sha("review"), evidence_root=str(root))
+    with pytest.raises(
+            PIPELINE_STAGE.BeliefV2ControllerError,
+            match="stage admission refused"):
+        PIPELINE_STAGE.run_capture_lane(
+            root, freeze, admission, repo=root, lane=0,
+            review_marker=b"review")
+    with pytest.raises(
+            PIPELINE_STAGE.BeliefV2ControllerError,
+            match="stage admission refused"):
+        PIPELINE_STAGE.run_reference_lane(
+            root, freeze, admission, repo=root, lane=0,
+            review_marker=b"review")
+    with pytest.raises(
+            PIPELINE_STAGE.BeliefV2ControllerError,
+            match="stage admission refused"):
+        TRAINING_STAGE.run_training_cohort(
+            root, freeze, admission, repo=root, review_marker=b"review",
+            primary=None, realization=None, training_examples=None,
+            calibration=None, calibration_examples=None,
+            qualification_plan=None, qualification_result=None)
+    assert not (root / "capture").exists()
+    assert not (root / "reference").exists()
+    assert not (root / "training").exists()
+
+
 def test_r4_completion_calibration_writes_only_fresh_namespace(
         tmp_path, monkeypatch):
     root = (tmp_path / "completion").resolve()
@@ -531,7 +627,7 @@ def test_r4_completion_calibration_writes_only_fresh_namespace(
     root.mkdir()
     source_root.mkdir()
     completion_freeze = replace(_freeze(), evidence_root=str(root))
-    completion_admission = _admission(completion_freeze)
+    completion_admission = _completion_admission(completion_freeze)
     source_freeze = replace(_freeze(), evidence_root=str(source_root))
     source_admission = _admission(source_freeze)
     plan, qualification = _qualification(source_freeze)
@@ -650,7 +746,7 @@ def test_r4_completion_attempt_is_durable_before_original_test_read(
     root.mkdir()
     source_root.mkdir()
     completion_freeze = replace(_freeze(), evidence_root=str(root))
-    completion_admission = _admission(completion_freeze)
+    completion_admission = _completion_admission(completion_freeze)
     source_freeze = replace(_freeze(), evidence_root=str(source_root))
     source_admission = _admission(source_freeze)
     calibration = {
@@ -744,7 +840,7 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
     root.mkdir()
     source_root.mkdir()
     completion_freeze = replace(_freeze(), evidence_root=str(root))
-    completion_admission = _admission(completion_freeze)
+    completion_admission = _completion_admission(completion_freeze)
     source_freeze = replace(_freeze(), evidence_root=str(source_root))
     source_admission = _admission(source_freeze)
     plan, qualification = _qualification(source_freeze)

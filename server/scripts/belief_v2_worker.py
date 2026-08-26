@@ -122,9 +122,17 @@ from shengji.rl.belief_v2_tensor_cache_controller import (  # noqa: E402
 )
 from shengji.rl.belief_v2_progress import V2ProgressReporter  # noqa: E402
 from shengji.rl.belief_v2_r4_completion import (  # noqa: E402
+    COMPLETION_ADMISSION_SCHEMA,
+    R4CompletionAdmissionV1,
+    build_r4_completion_admission,
+    load_r4_completion_source_spec,
+    r4_completion_admission_from_bytes,
+    r4_completion_consumption_tombstone_bytes,
+    reauthenticate_r4_completion_admission,
     reopen_r4_completion_terminal,
     run_r4_completion_calibration,
     run_r4_completion_terminal,
+    validate_r4_completion_consumption_tombstone,
 )
 
 
@@ -250,16 +258,26 @@ def initialize(args: argparse.Namespace) -> None:
     inventory_raw = stable_read_bytes(Path(args.inventory))
     split_raw = stable_read_bytes(Path(args.group_split))
     _private_inputs(inventory_raw, split_raw, freeze)
-    admission, marker = build_pipeline_admission(
-        freeze, repo=REPO, review_commit=args.review_commit)
+    completion_spec = None
+    if args.r4_completion:
+        completion_spec = load_r4_completion_source_spec()
+        if root != completion_spec.destination_evidence_root:
+            raise ValueError("R4 completion initialization destination drift")
+        admission, marker = build_r4_completion_admission(
+            freeze, repo=REPO, review_commit=args.review_commit,
+            spec=completion_spec)
+        tombstone_raw = r4_completion_consumption_tombstone_bytes(admission)
+    else:
+        admission, marker = build_pipeline_admission(
+            freeze, repo=REPO, review_commit=args.review_commit)
+        tombstone_raw = pipeline_consumption_tombstone_bytes(admission)
     partial = root.with_name(root.name + ".partial")
     tombstone = root.with_name(root.name + ".consumed.json")
     if root.exists() or partial.exists() or root.is_symlink() \
             or partial.is_symlink() or tombstone.exists() \
             or tombstone.is_symlink():
         raise ValueError("V2 evidence namespace is already occupied")
-    publish_exclusive_bytes(
-        tombstone, pipeline_consumption_tombstone_bytes(admission))
+    publish_exclusive_bytes(tombstone, tombstone_raw)
     _fsync_parent(tombstone)
     partial.mkdir(mode=0o700)
     publish_exclusive_bytes(partial / "freeze.json", freeze_raw)
@@ -276,6 +294,8 @@ def initialize(args: argparse.Namespace) -> None:
         "evidence_root": str(root), "freeze_sha256": freeze.sha256(),
         "admission_sha256": admission.sha256(),
         "review_commit": admission.review_commit,
+        "execution_mode": ("r4-calibration-test-terminal-only"
+                           if args.r4_completion else "full-v2-pipeline"),
         "execution_initialized": True,
         "gameplay_started": False,
         "strength_claim_authorized": False,
@@ -294,15 +314,32 @@ def _load_root(root: Path):
     freeze = execution_freeze_from_bytes(freeze_raw)
     if Path(freeze.evidence_root) != root:
         raise ValueError("V2 evidence root binding drift")
-    admission = pipeline_admission_from_bytes(
-        admission_raw, freeze=freeze, review_marker=review_marker)
-    validate_pipeline_consumption_tombstone(
-        stable_read_bytes(root.with_name(root.name + ".consumed.json")),
-        admission=admission)
+    admission_payload = _strict_json(
+        admission_raw, label="pipeline admission")
+    tombstone_raw = stable_read_bytes(
+        root.with_name(root.name + ".consumed.json"))
+    if admission_payload.get("schema") == COMPLETION_ADMISSION_SCHEMA:
+        completion_spec = load_r4_completion_source_spec()
+        admission = r4_completion_admission_from_bytes(
+            admission_raw, freeze=freeze, review_marker=review_marker,
+            spec=completion_spec)
+        validate_r4_completion_consumption_tombstone(
+            tombstone_raw, admission=admission)
+    else:
+        completion_spec = None
+        admission = pipeline_admission_from_bytes(
+            admission_raw, freeze=freeze, review_marker=review_marker)
+        validate_pipeline_consumption_tombstone(
+            tombstone_raw, admission=admission)
     inventory, group_split = _private_inputs(
         inventory_raw, split_raw, freeze)
-    reauthenticate_pipeline_admission(
-        freeze, admission, repo=REPO, review_marker=review_marker)
+    if type(admission) is R4CompletionAdmissionV1:
+        reauthenticate_r4_completion_admission(
+            freeze, admission, repo=REPO, review_marker=review_marker,
+            spec=completion_spec)
+    else:
+        reauthenticate_pipeline_admission(
+            freeze, admission, repo=REPO, review_marker=review_marker)
     validate_live_execution(
         repo=REPO, execution_git=freeze.execution_git,
         source_bindings=freeze.source_bindings, runtime=freeze.runtime)
@@ -326,7 +363,10 @@ def verify_root(args: argparse.Namespace) -> None:
         "inventory_sha256": _sha256(inventory_bytes(inventory)),
         "group_split_sha256": _sha256(group_split_bytes(
             group_split, inventory=inventory)),
-        "bounded_offline_pipeline_authorized": True,
+        "bounded_offline_pipeline_authorized": (
+            type(admission) is not R4CompletionAdmissionV1),
+        "r4_completion_calibration_test_terminal_authorized": (
+            type(admission) is R4CompletionAdmissionV1),
         "retry_authorized": False,
         "sampler_implementation_authorized": False,
         "gameplay_strength_screen_authorized": False,
@@ -530,6 +570,9 @@ def parser() -> argparse.ArgumentParser:
     initialize_parser.add_argument("--review-commit", required=True)
     initialize_parser.add_argument("--inventory", required=True)
     initialize_parser.add_argument("--group-split", required=True)
+    initialize_parser.add_argument(
+        "--r4-completion", action="store_true",
+        help="consume the narrow R4 calibration/test completion admission")
     initialize_parser.set_defaults(function=initialize)
     verify = commands.add_parser("verify-root")
     verify.add_argument("--root", required=True)

@@ -39,15 +39,25 @@ from .belief_v2_calibration_controller import (
     _score_synthetic,
     reopen_v2_calibration_selection,
 )
-from .belief_v2_controller import _stage_gate
+from .belief_v2_accelerator import build_training_device_profile
+from .belief_v2_execution_identity import (
+    BeliefV2ExecutionIdentityError,
+    validate_live_execution,
+)
 from .belief_v2_freeze import (
+    BeliefV2FreezeError,
     HUMAN_COHORT_ID,
     PRIMARY_COHORT_ID,
     V2ExecutionFreezeV1,
     V2PipelineAdmissionV1,
+    _authenticate_review_marker_at_tip,
+    _canonical_remote_tip,
+    _git,
     execution_freeze_from_bytes,
+    expected_execution_review_claim,
     pipeline_admission_from_bytes,
     reauthenticate_pipeline_admission,
+    validate_execution_freeze,
     validate_pipeline_consumption_tombstone,
 )
 from .belief_v2_input_index_controller import reopen_training_input_index
@@ -81,6 +91,14 @@ SOURCE_SPEC_SCHEMA = "belief-v1-v2-r4-completion-source-spec-v1"
 CALIBRATION_OUTER_SCHEMA = "belief-v1-v2-r4-completion-calibration-v1"
 TEST_ATTEMPT_SCHEMA = "belief-v1-v2-r4-completion-test-attempt-v1"
 TERMINAL_OUTER_SCHEMA = "belief-v1-v2-r4-completion-terminal-v1"
+COMPLETION_REVIEW_SCHEMA = (
+    "belief-v1-v2-r4-completion-execution-review-v1")
+COMPLETION_ADMISSION_SCHEMA = (
+    "belief-v1-v2-r4-completion-pipeline-admission-v1")
+COMPLETION_CONSUMPTION_SCHEMA = (
+    "belief-v1-v2-r4-completion-consumption-tombstone-v1")
+COMPLETION_REVIEW_PREFIX = (
+    "BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW ")
 SOURCE_SPEC_PATH = (
     Path(__file__).resolve().parents[2]
     / "scripts" / "belief_v2_r4_completion.v1.json")
@@ -107,6 +125,20 @@ COMPLETION_AUTHORITY = {
     "deployment_authorized": False,
     "merge_authorized": False,
 }
+COMPLETION_ADMISSION_AUTHORITY = {
+    "capture_authorized": False,
+    "reference_generation_authorized": False,
+    "training_authorized": False,
+    "calibration_open_authorized": True,
+    "one_test_split_open_authorized": True,
+    "terminal_reconstruction_authorized": True,
+    "retry_authorized": False,
+    "sampler_implementation_authorized": False,
+    "gameplay_strength_screen_authorized": False,
+    "strength_claim_authorized": False,
+    "promotion_authorized": False,
+    "deployment_authorized": False,
+}
 
 
 class BeliefV2R4CompletionError(ValueError):
@@ -119,6 +151,11 @@ def _sha256(raw: bytes) -> str:
 
 def _is_sha256(value: Any) -> bool:
     return type(value) is str and len(value) == 64 and all(
+        char in "0123456789abcdef" for char in value)
+
+
+def _is_git_sha(value: Any) -> bool:
+    return type(value) is str and len(value) == 40 and all(
         char in "0123456789abcdef" for char in value)
 
 
@@ -190,6 +227,43 @@ class R4CompletionSourceV1:
     review_marker: bytes
     inventory: dict[str, Any]
     group_split: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class R4CompletionAdmissionV1:
+    """Durable authority for calibration/test completion, never training."""
+
+    freeze_sha256: str
+    execution_git: str
+    source_manifest_sha256: str
+    seed_registry_sha256: str
+    source_spec_sha256: str
+    review_commit: str
+    canonical_remote_tip: str
+    review_marker_sha256: str
+    evidence_root: str
+    schema: str = COMPLETION_ADMISSION_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "freeze_sha256": self.freeze_sha256,
+            "execution_git": self.execution_git,
+            "source_manifest_sha256": self.source_manifest_sha256,
+            "seed_registry_sha256": self.seed_registry_sha256,
+            "source_spec_sha256": self.source_spec_sha256,
+            "review_commit": self.review_commit,
+            "canonical_remote_tip": self.canonical_remote_tip,
+            "review_marker_sha256": self.review_marker_sha256,
+            "evidence_root": self.evidence_root,
+            "authority": dict(COMPLETION_ADMISSION_AUTHORITY),
+        }
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_json_bytes(self.to_dict())
+
+    def sha256(self) -> str:
+        return _sha256(self.canonical_bytes())
 
 
 def load_r4_completion_source_spec(
@@ -283,6 +357,213 @@ def load_r4_completion_source_spec(
     return result
 
 
+def expected_r4_completion_review_claim(
+        freeze: V2ExecutionFreezeV1,
+        spec: R4CompletionSourceSpecV1 | None = None) -> dict[str, Any]:
+    """Return the exact marker claim for completion-only execution."""
+    validate_execution_freeze(freeze)
+    if spec is None:
+        spec = load_r4_completion_source_spec()
+    if type(spec) is not R4CompletionSourceSpecV1 \
+            or Path(freeze.evidence_root) != spec.destination_evidence_root:
+        raise BeliefV2R4CompletionError(
+            "R4 completion review destination drift")
+    claim = expected_execution_review_claim(freeze)
+    claim["schema"] = COMPLETION_REVIEW_SCHEMA
+    claim.pop(
+        "bounded_capture_reference_training_and_one_test_open_authorized")
+    claim["source_spec_sha256"] = spec.sha256()
+    claim["execution_mode"] = "r4-calibration-test-terminal-only"
+    claim["authority"] = dict(COMPLETION_ADMISSION_AUTHORITY)
+    return claim
+
+
+def expected_r4_completion_review_marker(
+        freeze: V2ExecutionFreezeV1,
+        spec: R4CompletionSourceSpecV1 | None = None) -> bytes:
+    return COMPLETION_REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(
+        expected_r4_completion_review_claim(freeze, spec))
+
+
+def validate_r4_completion_admission(
+        freeze: V2ExecutionFreezeV1,
+        admission: R4CompletionAdmissionV1, *, review_marker: bytes,
+        spec: R4CompletionSourceSpecV1 | None = None) -> None:
+    validate_execution_freeze(freeze)
+    if spec is None:
+        spec = load_r4_completion_source_spec()
+    expected_marker = expected_r4_completion_review_marker(freeze, spec)
+    if type(admission) is not R4CompletionAdmissionV1 \
+            or admission.schema != COMPLETION_ADMISSION_SCHEMA \
+            or admission.freeze_sha256 != freeze.sha256() \
+            or admission.execution_git != freeze.execution_git \
+            or admission.source_manifest_sha256 \
+            != freeze.source_manifest_sha256 \
+            or admission.seed_registry_sha256 \
+            != freeze.seed_registry_sha256 \
+            or admission.source_spec_sha256 != spec.sha256() \
+            or not _is_git_sha(admission.review_commit) \
+            or not _is_git_sha(admission.canonical_remote_tip) \
+            or type(review_marker) is not bytes \
+            or review_marker != expected_marker \
+            or admission.review_marker_sha256 != _sha256(review_marker) \
+            or admission.evidence_root != freeze.evidence_root \
+            or Path(admission.evidence_root) \
+            != spec.destination_evidence_root:
+        raise BeliefV2R4CompletionError(
+            "R4 completion admission identity/authority drift")
+
+
+def authenticate_r4_completion_review(
+        freeze: V2ExecutionFreezeV1, *, repo: Path, review_commit: str,
+        spec: R4CompletionSourceSpecV1 | None = None) \
+        -> tuple[bytes, str]:
+    """Authenticate the narrow marker against the real canonical main tip."""
+    if spec is None:
+        spec = load_r4_completion_source_spec()
+    if not isinstance(repo, Path) or not repo.is_absolute() \
+            or not _is_git_sha(review_commit):
+        raise BeliefV2R4CompletionError(
+            "R4 completion review input drift")
+    marker = expected_r4_completion_review_marker(freeze, spec)
+    try:
+        remote_tip = _canonical_remote_tip(repo)
+        if _git(repo, "rev-parse", "origin/main") != remote_tip:
+            raise BeliefV2R4CompletionError(
+                "R4 completion local canonical ref differs from real remote")
+        _authenticate_review_marker_at_tip(
+            freeze, repo=repo, review_commit=review_commit,
+            canonical_tip=remote_tip, marker=marker,
+            marker_prefix=COMPLETION_REVIEW_PREFIX)
+    except BeliefV2FreezeError as exc:
+        raise BeliefV2R4CompletionError(
+            "R4 completion external review authentication refused") from exc
+    return marker, remote_tip
+
+
+def build_r4_completion_admission(
+        freeze: V2ExecutionFreezeV1, *, repo: Path, review_commit: str,
+        spec: R4CompletionSourceSpecV1 | None = None) \
+        -> tuple[R4CompletionAdmissionV1, bytes]:
+    if spec is None:
+        spec = load_r4_completion_source_spec()
+    marker, remote_tip = authenticate_r4_completion_review(
+        freeze, repo=repo, review_commit=review_commit, spec=spec)
+    admission = R4CompletionAdmissionV1(
+        freeze_sha256=freeze.sha256(),
+        execution_git=freeze.execution_git,
+        source_manifest_sha256=freeze.source_manifest_sha256,
+        seed_registry_sha256=freeze.seed_registry_sha256,
+        source_spec_sha256=spec.sha256(), review_commit=review_commit,
+        canonical_remote_tip=remote_tip,
+        review_marker_sha256=_sha256(marker),
+        evidence_root=freeze.evidence_root)
+    validate_r4_completion_admission(
+        freeze, admission, review_marker=marker, spec=spec)
+    return admission, marker
+
+
+def r4_completion_admission_from_bytes(
+        raw: bytes, *, freeze: V2ExecutionFreezeV1,
+        review_marker: bytes,
+        spec: R4CompletionSourceSpecV1 | None = None) \
+        -> R4CompletionAdmissionV1:
+    if type(raw) is not bytes or not raw:
+        raise BeliefV2R4CompletionError(
+            "R4 completion admission bytes are empty")
+    try:
+        payload = json.loads(
+            raw.decode("ascii"), object_pairs_hook=_strict_object,
+            parse_float=lambda value: (_ for _ in ()).throw(
+                BeliefV2R4CompletionError(
+                    f"R4 completion admission invalid number {value}")),
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                BeliefV2R4CompletionError(
+                    f"R4 completion admission invalid number {value}")))
+    except BeliefV2R4CompletionError:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2R4CompletionError(
+            "R4 completion admission is not strict JSON") from exc
+    expected = {
+        "schema", "freeze_sha256", "execution_git",
+        "source_manifest_sha256", "seed_registry_sha256",
+        "source_spec_sha256", "review_commit", "canonical_remote_tip",
+        "review_marker_sha256", "evidence_root", "authority",
+    }
+    if type(payload) is not dict or set(payload) != expected \
+            or payload.get("authority") != COMPLETION_ADMISSION_AUTHORITY:
+        raise BeliefV2R4CompletionError(
+            "R4 completion admission field/authority drift")
+    try:
+        admission = R4CompletionAdmissionV1(
+            schema=payload["schema"],
+            freeze_sha256=payload["freeze_sha256"],
+            execution_git=payload["execution_git"],
+            source_manifest_sha256=payload["source_manifest_sha256"],
+            seed_registry_sha256=payload["seed_registry_sha256"],
+            source_spec_sha256=payload["source_spec_sha256"],
+            review_commit=payload["review_commit"],
+            canonical_remote_tip=payload["canonical_remote_tip"],
+            review_marker_sha256=payload["review_marker_sha256"],
+            evidence_root=payload["evidence_root"])
+    except (KeyError, TypeError) as exc:
+        raise BeliefV2R4CompletionError(
+            "R4 completion admission field drift") from exc
+    validate_r4_completion_admission(
+        freeze, admission, review_marker=review_marker, spec=spec)
+    if admission.canonical_bytes() != raw:
+        raise BeliefV2R4CompletionError(
+            "R4 completion admission reconstruction drift")
+    return admission
+
+
+def reauthenticate_r4_completion_admission(
+        freeze: V2ExecutionFreezeV1,
+        admission: R4CompletionAdmissionV1, *, repo: Path,
+        review_marker: bytes,
+        spec: R4CompletionSourceSpecV1 | None = None) -> None:
+    if spec is None:
+        spec = load_r4_completion_source_spec()
+    validate_r4_completion_admission(
+        freeze, admission, review_marker=review_marker, spec=spec)
+    try:
+        _authenticate_review_marker_at_tip(
+            freeze, repo=repo, review_commit=admission.review_commit,
+            canonical_tip=admission.canonical_remote_tip,
+            marker=review_marker, marker_prefix=COMPLETION_REVIEW_PREFIX)
+    except BeliefV2FreezeError as exc:
+        raise BeliefV2R4CompletionError(
+            "R4 completion admission remote authentication refused") \
+            from exc
+
+
+def r4_completion_consumption_tombstone_bytes(
+        admission: R4CompletionAdmissionV1) -> bytes:
+    if type(admission) is not R4CompletionAdmissionV1:
+        raise BeliefV2R4CompletionError(
+            "R4 completion tombstone admission drift")
+    return canonical_json_bytes({
+        "schema": COMPLETION_CONSUMPTION_SCHEMA,
+        "admission_sha256": admission.sha256(),
+        "freeze_sha256": admission.freeze_sha256,
+        "source_spec_sha256": admission.source_spec_sha256,
+        "review_commit": admission.review_commit,
+        "canonical_remote_tip": admission.canonical_remote_tip,
+        "evidence_root": admission.evidence_root,
+        "initialization_consumed": True,
+        "retry_authorized": False,
+    })
+
+
+def validate_r4_completion_consumption_tombstone(
+        raw: bytes, *, admission: R4CompletionAdmissionV1) -> None:
+    if type(raw) is not bytes \
+            or raw != r4_completion_consumption_tombstone_bytes(admission):
+        raise BeliefV2R4CompletionError(
+            "R4 completion consumption tombstone drift")
+
+
 def reopen_r4_completion_source(
         spec: R4CompletionSourceSpecV1, *, repo: Path) \
         -> R4CompletionSourceV1:
@@ -374,16 +655,27 @@ def _fsync_directory(path: Path) -> None:
 
 def _completion_stage_gate(
         root: Path, freeze: V2ExecutionFreezeV1,
-        admission: V2PipelineAdmissionV1, *, repo: Path,
+        admission: R4CompletionAdmissionV1, *, repo: Path,
         review_marker: bytes, spec: R4CompletionSourceSpecV1) -> None:
     try:
-        _stage_gate(
-            root=root, repo=repo, freeze=freeze, admission=admission,
-            review_marker=review_marker)
-    except ValueError as exc:
+        validate_execution_freeze(freeze)
+        reauthenticate_r4_completion_admission(
+            freeze, admission, repo=repo, review_marker=review_marker,
+            spec=spec)
+        validate_live_execution(
+            repo=repo, execution_git=freeze.execution_git,
+            source_bindings=freeze.source_bindings, runtime=freeze.runtime)
+        if build_training_device_profile(
+                freeze.training_candidate_device) \
+                != freeze.training_device_profile:
+            raise BeliefV2ExecutionIdentityError(
+                "R4 completion live device identity drift")
+    except (ValueError, BeliefV2ExecutionIdentityError) as exc:
         raise BeliefV2R4CompletionError(
             "R4 completion fresh stage admission refused") from exc
-    if root != spec.destination_evidence_root \
+    if not isinstance(root, Path) or not root.is_absolute() \
+            or root.is_symlink() or not root.is_dir() \
+            or root != spec.destination_evidence_root \
             or root != Path(freeze.evidence_root):
         raise BeliefV2R4CompletionError(
             "R4 completion destination binding drift")
@@ -391,7 +683,7 @@ def _completion_stage_gate(
 
 def _calibration_outer_manifest(
         *, completion_freeze: V2ExecutionFreezeV1,
-        completion_admission: V2PipelineAdmissionV1,
+        completion_admission: R4CompletionAdmissionV1,
         source: R4CompletionSourceV1,
         source_calibration_manifest: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -413,7 +705,7 @@ def _calibration_outer_manifest(
 
 def run_r4_completion_calibration(
         root: Path, completion_freeze: V2ExecutionFreezeV1,
-        completion_admission: V2PipelineAdmissionV1, *, repo: Path,
+        completion_admission: R4CompletionAdmissionV1, *, repo: Path,
         review_marker: bytes,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Re-score the sealed R4 calibration split and publish it freshly."""
@@ -568,7 +860,7 @@ def run_r4_completion_calibration(
 
 def reopen_r4_completion_calibration(
         root: Path, completion_freeze: V2ExecutionFreezeV1,
-        completion_admission: V2PipelineAdmissionV1, *, repo: Path,
+        completion_admission: R4CompletionAdmissionV1, *, repo: Path,
         review_marker: bytes) \
         -> tuple[dict[str, Any], R4CompletionSourceV1]:
     """Reopen the fresh outer binding and rederive original R4 selection."""
@@ -599,7 +891,7 @@ def reopen_r4_completion_calibration(
 
 def _completion_test_attempt(
         *, completion_freeze: V2ExecutionFreezeV1,
-        completion_admission: V2PipelineAdmissionV1,
+        completion_admission: R4CompletionAdmissionV1,
         source: R4CompletionSourceV1,
         source_calibration_manifest: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -622,7 +914,7 @@ def _completion_test_attempt(
 
 def _terminal_outer_manifest(
         *, completion_freeze: V2ExecutionFreezeV1,
-        completion_admission: V2PipelineAdmissionV1,
+        completion_admission: R4CompletionAdmissionV1,
         source: R4CompletionSourceV1,
         source_calibration_manifest: dict[str, Any],
         completion_attempt: dict[str, Any],
@@ -652,7 +944,7 @@ def _terminal_outer_manifest(
 
 def run_r4_completion_terminal(
         root: Path, completion_freeze: V2ExecutionFreezeV1,
-        completion_admission: V2PipelineAdmissionV1, *, repo: Path,
+        completion_admission: R4CompletionAdmissionV1, *, repo: Path,
         review_marker: bytes,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Open the original R4 test split once under a fresh durable attempt."""
@@ -804,7 +1096,7 @@ def run_r4_completion_terminal(
 
 def reopen_r4_completion_terminal(
         root: Path, completion_freeze: V2ExecutionFreezeV1,
-        completion_admission: V2PipelineAdmissionV1, *, repo: Path,
+        completion_admission: R4CompletionAdmissionV1, *, repo: Path,
         review_marker: bytes,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Re-score original R4 test bytes and reconstruct the fresh binding."""

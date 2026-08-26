@@ -1,145 +1,104 @@
 # Active Claude/Codex handoff
 
-> Current operational truth and precise review queue only. Historical review
-> rounds belong in `HANDOFF_REVIEW.md` and Git history. A request not listed
-> here is not active.
+> Current operational truth and exact review asks only. Historical evidence
+> belongs in HANDOFF_REVIEW.md and Git history. Do not act on an older request
+> when an exact head below supersedes it.
 
-Last reconciled: 2026-08-25 16:30 EDT.
+Last reconciled: 2026-08-25 21:12 EDT.
 
 ## Immediate objective
 
-Produce a decision-grade answer on whether actor-visible public history
-improves hidden-card ownership prediction. R4 stopped before opening test and
-therefore produced no efficacy verdict. Diagnose its calibration-only
-projection failure, repair the shared R4/R5 path once, then launch and
-independently reproduce one recoverable R5 successor. R4 and R5 use the same
-scientific population and are not independent replications.
+Finish the preserved R4 cohorts through repaired calibration, one held-out test
+opening, and independently reproduced terminal interpretation. Then use that
+evidence to decide whether the already-prepared recoverable R5 successor should
+run and whether belief merits a gameplay-search experiment. PT1 remains an
+independent Mini endgame-teacher lane.
 
-PT1 is an isolated Mini endgame-teacher lane. Its `r3` namespace is spent at
-0/416 with no result; its fresh successor remains below the belief critical
-path.
+## Review queue — two independent consolidated reviews
 
-## Review queue — empty pending repaired artifacts
+### 1. Top priority: R4 completion-only source + freeze
 
-There is no review action Claude can take yet.
+Review PR #146 once at exact head
+e10cb3d3426d758f2d757d41462aba6a06bc60c8. This r3 route supersedes the
+a5e06a7/r2 request; do not append or use the old r2 marker.
 
-- Do **not** reuse PR #147's `r13c` execution marker: exact source `2d4dfe8`
-  contains the same projection bytes that just stopped R4.
-- Do **not** retry PR #146 / R4 completion or PR #145 / PT1 `r3`; both exact
-  one-shot namespaces are spent.
-- Codex's next belief ask will be one consolidated repaired R5
-  source+freeze review, with the reproduced R4 failing calibration input and
-  a failing-direction projection witness bound at the new head.
-- Codex's next PT1 ask will be one consolidated successor source+freeze
-  review only after the natural-cell manifest and durable child-failure path
-  are implemented and exercised score-free.
+Exact Strength Cloud artifacts:
 
-## Live fleet
+- freeze: /opt/belief-r4-completion-freeze-e10cb3d-r3.json
+  - SHA-256 59c747be56bdd20c792608ed09be307b9661c8aff6ad7e0e720cd8156de7fea4
+- packet:
+  /opt/belief-r4-completion-e10cb3d-freeze-inputs-r3/freeze-review-packet.json
+  - SHA-256 afc7374933ec6fd6d100061da3a7ec79f9b56bd3c14e6d18efc72a449d364d8e
+- byte-identical packet reopen:
+  /opt/belief-r4-completion-freeze-review-packet-e10cb3d-r3.reopen.json
+- expected marker:
+  /opt/belief-r4-completion-e10cb3d-freeze-inputs-r3/expected-review-marker.txt
+  - SHA-256 d4bd42f70bf4e545d7aa0cc7f547402fcffdad3d5fbb25925354dbe53b5c0709
+- inspect-only launcher:
+  /opt/belief-r4-completion-e10cb3d-review-support-r3/launch-r4-completion.sh
+  - SHA-256 a5008eb0846138748aa4be882515b4ac90bc29a1c5d22ea7028d620e03d2f3e7
+- launch manifest:
+  /opt/belief-r4-completion-e10cb3d-review-support-r3/launch-manifest.json
+  - SHA-256 731f558c3a5dc64ff1c7a2c38f25020cc5f6e725616fff5897128707548e88e4
 
-| host | lane | state |
+The inherited a5e06a7 projection repair is unchanged. The five-file e10cb3d
+delta makes admission completion-only. Authority permits calibration, one test
+opening, and terminal reconstruction; capture, reference generation, training,
+retry, sampler, gameplay, strength, promotion, deployment, and merge are false.
+
+Fresh exact-head capacity completed 416/416 diverse-rank rounds at 16 lanes.
+The exact execution venv imports the e10cb3d tree. The fresh r3 evidence,
+partial, and consumed paths are absent. Original R4 and spent r1/r2 evidence
+remain immutable and test-unopened.
+
+If clean, append the exact expected marker to canonical HANDOFF_REVIEW.md,
+comment PASS on PR #146, and authorize exactly one r3 initialization,
+calibration, held-out test opening, and terminal verification.
+
+### 2. Parallel: PT1 successor source + Mini freeze
+
+Review PR #145 once at exact head
+7068caf426cd0d0436936ad5748bb24fe4c83347. Do not retry spent/result-free
+95a142d/r3 and do not reopen settled PT1 design/statistics questions.
+
+Exact Mini artifacts:
+
+- packet: /private/tmp/shengji-pt1-review-packet-7068caf-r4.json
+  - SHA-256 83a31214757eb7314a17379fa2c69e72f392ca6e633e45045d1a419d114b8fd6
+- population:
+  /Users/jerryyu/Projects/pt1-population-manifest-7068caf-r4.json
+  - SHA-256 5ef579d2e052b28a9202478499c29fb934f539158e2620de92b22b34622d0e7f
+- capacity:
+  /private/tmp/shengji-pt1-capacity-7068caf-r4/capacity.json
+- freeze: /Users/jerryyu/Projects/pt1-freeze-7068caf-r4.json
+- expected marker:
+  /Users/jerryyu/Projects/pt1-review-marker-7068caf-r4.json
+- inspect-only launcher:
+  /private/tmp/pt1-launch-operator-7068caf-r4.sh
+
+If clean, append the exact marker, comment PASS on PR #145, and authorize one
+Mini initialization, scientific execution, and verification under the fresh r4
+namespace. Merge, retry, training, gameplay, strength, promotion, and
+deployment remain false.
+
+## Held, not an active review
+
+PR #148 at exact head 7e14b529065383baee152c9dd2b8d3473627235c is
+source/CI green and has a prepared R5 successor, but R5 initialization remains
+held until R4 is terminally interpreted. Do not launch or repeat review work
+unless the R4 result changes the final packet or Codex posts a new exact ask.
+
+## Fleet
+
+| host | current state | next action |
 |---|---|---|
-| Strength Cloud (`shengji-cloud`) | R4 completion | **FAILED; EVIDENCE PRESERVED; TEST UNOPENED** |
-| Performance Cloud (`shengji-perf`) | R5 `r13c` | **IDLE; OLD LAUNCH HELD** |
-| Mini | PT1 `r3` | **FAILED 0/416; NAMESPACE SPENT; HOST IDLE** |
-| Air | none | idle / not required |
-
-### R4 completion — calibration source failure, no scientific result
-
-| binding | exact value |
-|---|---|
-| source | `721b5f8944f17718a833cfab051ff13cec1dfbfd` |
-| review commit | `4cee5908880741920ef3360468f714209fd0bcc6` |
-| freeze | `0d651819ad8c4e7f71bb1b7ecf8a38f1a9fe7280691886d17272f07c34c7f4f1` |
-| admission | `99f0089ac7433833e2cb0af4dfe35b7a6fee3f2f8f36110ace04bb75c5df3d3c` |
-| service | `belief-r4-completion-721b5f8-r1.service` |
-| evidence | `/opt/belief-r4-completion-v1-r1` |
-
-The service ran from 13:25:23 to 16:26:27 EDT: 3h01m wall, 25h50m CPU,
-17,698,279,424-byte systemd peak, exit status 1, no OOM. It failed inside the
-first synthetic calibration pass before publishing calibration, terminal or
-test-attempt bytes:
-
-```text
-BeliefProjectionError: projection did not converge:
-margin_error=0.94817366860218,
-group_error=np.float64(3.6337737674418946e-06)
-```
-
-The permanent root still contains only admission, freeze, group split,
-inventory and review. The test split was never opened. This is neither a
-positive nor a null belief result; it is a projection/execution defect. Never
-restart this service or reuse this admission.
-
-The immediate diagnostic is calibration-only and target-safe: reproduce the
-failing decision/member from preserved non-test inputs, bind its actor and raw
-weight bytes, then repair the deterministic projection with a real natural
-witness. Also make future scoring persist the failing decision/member and
-increment progress inside a pass so another three-hour failure is observable.
-
-### R5 `r13c` — old PASS is technically intact but operationally superseded
-
-| binding | exact value |
-|---|---|
-| source | `2d4dfe84280d7c1cb433b000aa18670bf4abfdd1` |
-| review commit | `9b1833312f874ad91ed43a75fd7ec5e82b83b6d1` |
-| freeze | `5bfeef783ce991e385cda4eaccd4fbb5c98d2b70b5ce3c9ff7c450571680f078` |
-| evidence | `/opt/belief-r5-evidence-cache-semantic-v1-r1` |
-
-No R5 scientific service or worker is running, and the evidence/partial/
-consumed namespaces remain absent. The reviewed R5 and failed R4 projection
-module and test file are byte-identical (`c4603424…` and `5ee38bac…`). Launching
-`r13c` would therefore risk repeating the same late calibration failure after
-expensive training. The old launch command has been removed from the active
-queue; do not execute it.
-
-Reusable capture/reference/training-input/cache artifacts remain intact. The
-successor should change only the shared projection/scoring observability seam,
-reproduce parity and test isolation, generate one fresh exact freeze, receive
-one consolidated repaired-head+freeze PASS, and launch once on Performance
-Cloud.
-
-### PT1 `r3` — no teacher result; successor not ready
-
-| binding | exact value |
-|---|---|
-| source | `95a142de0f04e524c9ac0565ac8e541de26974af` |
-| review commit | `59217cbbccb4b96ef197962d6e26eb8861c5941f` |
-| freeze | `2352967a3a6963dc24cae05ea8ebe24bed26bac834a68ea6121d0b67a18a9860` |
-| evidence | `/Users/jerryyu/Projects/shengji-pt1-evidence-95a142d-r3` |
-
-The authenticated execution failed in its first ten-worker wave before any
-of 416 groups sealed. The durable root contains freeze, deadline receipt,
-empty `groups/`, and a stale `progress.json` saying `RUNNING 0/416`; the
-operator status says `phase=failed`. No packet, statistics, comparison,
-strength claim or gameplay artifact exists. The CLI and wrapper both lost the
-child exception. Preserve the root and never retry `r3`.
-
-A successor needs four coupled repairs before review: freeze the complete
-natural-cell capture manifest before consuming the one-shot slot; persist a
-sanitized per-worker failure receipt and terminal failed state; capture
-launcher output; and exercise the real process pool plus natural provider on
-fresh out-of-population states. Then generate a fresh capacity receipt/freeze
-and request one consolidated review.
-
-## Next actions — fixed order
-
-1. Reproduce and diagnose R4's calibration-only projection failure without
-   opening test or mutating the spent evidence root.
-2. Repair the shared projection/scoring path and prepare one fresh R5 head,
-   capacity/deadline receipt and freeze.
-3. Request one consolidated repaired R5 source+freeze review; on PASS, launch
-   exactly once on Performance Cloud.
-4. Independently reproduce R5's terminal and decide whether belief advances
-   into gameplay search.
-5. In parallel spare bandwidth, implement the PT1 successor failure-evidence
-   and natural-manifest repairs, then request one consolidated PT1 review.
+| Strength Cloud | idle after fresh R4 r3 preflight/freeze | launch completion only after R4 PASS |
+| Mini | idle; PT0 complete, PT1 not running | launch PT1 only after PT1 PASS |
+| Performance Cloud | unavailable/offline; no live R5 job | hold until R4 interpretation |
+| Air | idle / not required | none |
 
 ## Authority boundaries
 
-- No merge, deployment, promotion, gameplay or strength claim is authorized.
-- R4 completion and PT1 `r3` may not retry; their permanent evidence roots are
-  read-only forensic inputs.
-- R5 `r13c` must not launch. A fresh repaired freeze and authentic review are
-  required before one successor execution.
-- Diagnostics must remain score-free or calibration-only; neither belief nor
-  PT1 test populations may be opened outside a fresh reviewed admission.
+No active packet authorizes merge, retry, deployment, promotion, gameplay, or
+a strength claim. R4 and PT1 may each initialize only once after their own
+exact marker. R5 remains held.

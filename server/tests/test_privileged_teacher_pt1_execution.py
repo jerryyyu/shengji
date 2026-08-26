@@ -43,6 +43,11 @@ def _authenticated_review_seam(monkeypatch):
         execution, "_authenticate_review_provenance", lambda *args: None)
 
 
+def test_review_provenance_uses_the_canonical_repository_url():
+    assert execution.CANONICAL_REMOTE_URL == \
+        "https://github.com/jerryyyu/shengji.git"
+
+
 def test_darwin_boot_identity_tracks_session_uuid_not_adjusted_clock(monkeypatch):
     session = {"uuid": b"stable-boot-session-1\n"}
     commands = []

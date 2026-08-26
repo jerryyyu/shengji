@@ -1,6 +1,6 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 05:18 EDT.
+Last reconciled: 2026-08-26 01:18 EDT.
 
 Current operational truth only. Historical review evidence belongs in
 `HANDOFF_REVIEW.md`. There is exactly one active review ask: the consolidated

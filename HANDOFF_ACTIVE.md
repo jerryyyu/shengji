@@ -1,91 +1,55 @@
 # Active Claude/Codex handoff
 
-Last reconciled: 2026-08-26 01:18 EDT.
+Last reconciled: 2026-08-26 01:32 EDT.
 
 Current operational truth only. Historical review evidence belongs in
-`HANDOFF_REVIEW.md`. There is exactly one active review ask: the consolidated
-PT1 r7 terminal-recovery source+freeze review below. Do not repeat the PT1 r7
-scientific source/freeze review or any earlier PT/R4/R5 review.
+`HANDOFF_REVIEW.md`. There is exactly one active review ask: independently
+reproduce the PT1 r7 recovered terminal result below. Do not repeat any PT1
+source/freeze review or any earlier PT/R4/R5 review.
 
-## PT1 r7 — 416/416 sealed; terminal reducer defect; recovery in preparation
+## PT1 r7 — recovered terminal packet says `REFUSED`; reproduce once
 
-- Source: draft PR #149, exact head
-  `76508ec9c15638e715dc8d48ee6719412233918b`.
-- Freeze: `/Users/jerryyu/Projects/pt1-freeze-76508ec-r7.json`, SHA-256
-  `d05070d755d12f1a7c9a67471599377e0e590ed100f6beb315f7d8ccd915bc90`.
-- Consolidated PASS/marker commit:
-  `5824d512d93f353730178b7697ed746b52a53680`.
-- Evidence root:
-  `/Users/jerryyu/Projects/shengji-pt1-evidence-76508ec-r7`.
-- Durable state: `FAILED`, completed `416/416`, all 416 immutable group files
-  present, no `packet.json` or `manifest.json`, score/action payloads not opened
-  for interpretation. Failure receipt SHA-256:
-  `5b19450cbf775b721b5b8b6bf678d3f09dd509fc1d9529e134006aa6d0fe740d`.
+- Recovery source: draft PR #150, exact head
+  `0faffcd4409af3c49750a52614cb955bc0be16cf`.
+- Recovery authorization/PASS commit:
+  `6d700051b78f0b5a7c437e7e426733ef0b7b556a`.
+- Recovery root:
+  `/Users/jerryyu/Projects/shengji-pt1-recovery-0faffcd-r2`.
+- Packet SHA-256:
+  `bffaafef27cec6b0b37f0bdd1d1011531bbb1f38064421b47a8ae30b22a2b39a`;
+  internal packet identity
+  `c3f16d9fe72b67288934192e54bb02b8b93b34c9456e681dab1c873fa8e9df96`.
+- Manifest SHA-256:
+  `ca1c613256c569a25f9378564956e6aae3699da0f2c7ab9784cce3a8703c649d`.
+- Statistics report identity:
+  `4d49af2bcca32b2257a8a4f79ea6a0fed5850a7179e09078471f930eaf13908d`.
 
-The failure is downstream plumbing, not a scientific verdict. The execution
-path reopens each group into a hash-bound identity-only state and validates all
-416 identities against the frozen population manifest. It then passes those
-identity-only states to `reduce_pt1_statistics`, whose first line incorrectly
-calls the live-population validator requiring a `NaturalPT1State` with a live
-`Round` and true-world capability. That type mismatch deterministically raises
-`natural population integrity refusal` only after the final group is sealed.
-Every execution test had monkeypatched the reducer, so no end-to-end witness
-crossed this exact handoff.
+Codex ran the exact reviewed launcher after moving Claude-review-created
+ignored bytecode caches intact to
+`/private/tmp/pt1-recovery-review-pyc.GzlkxN`. The first invocation refused
+before recovery-root creation; the unchanged second invocation completed, and
+its built-in verifier plus one independent repeat verifier both PASSed. The
+spent r7 source root retains the exact freeze/failure/progress/deadline hashes
+and all 416 groups.
 
-The spent r7 root remains byte-for-byte unchanged. No score/action outcome was
-opened while preparing the recovery; only file identity, terminal receipts and
-SHA-256 hashes were read. No rehearsal and no second scientific run are
-planned.
+The preregistered result is `REFUSED`: 416 states / 1,664 records complete;
+mean C−B `1/208 ≈ 0.00481` signed levels (floor `0.01`), bootstrap lower bound
+`0`, and only **1/416** positive states (required 24). All integrity/mechanics
+gates pass: zero C regret, no negative C−B/C−A states, nonnegative role and
+horizon means. The exact teacher changed B's action in 1,128/1,664 records but
+almost every change was a value tie. B−A was positive in 5/416 states with
+mean `1/64`; C−A was positive in 6/416 with mean `17/832`.
 
-### Review queue — one consolidated PT1 recovery ask
+### Review queue — one terminal reproducibility ask
 
-The earlier `d1a7901` / `-r1` draft freeze and launcher are superseded and must
-not be reviewed or executed; they never initialized a recovery root. Codex
-strengthened the marker before review so every load-bearing receipt and runtime
-field is authenticated.
-
-Review draft PR #150 at exact head
-`0faffcd4409af3c49750a52614cb955bc0be16cf`, stacked directly on reviewed
-PR #149 head `76508ec9c15638e715dc8d48ee6719412233918b`, together with the exact
-score-blind recovery freeze:
-
-- freeze path:
-  `/Users/jerryyu/Projects/pt1-recovery-freeze-0faffcd-r2.json`;
-- freeze SHA-256:
-  `f44db7a822e201ca0f880a1646c42e60183ab71d889f52912e1840b63cb2b813`;
-- original r7 freeze SHA-256:
-  `d05070d755d12f1a7c9a67471599377e0e590ed100f6beb315f7d8ccd915bc90`;
-- original terminal failure SHA-256:
-  `5b19450cbf775b721b5b8b6bf678d3f09dd509fc1d9529e134006aa6d0fe740d`;
-- ordered 416-group tree SHA-256:
-  `0a7b1e5523b883b051c0e99cbc7af0b68c47b6b66c6e98257189d69ef5041f74`;
-- fresh recovery root, which must still be absent before execution:
-  `/Users/jerryyu/Projects/shengji-pt1-recovery-0faffcd-r2`;
-- exact marker file:
-  `/Users/jerryyu/Projects/pt1-recovery-review-marker-0faffcd-r2.json`,
-  SHA-256
-  `8eac41b2449cc2b5461688d0de6d89cf11fd4708cd75c9fe401e346b655bd1fc`.
-- exact one-shot launcher:
-  `/Users/jerryyu/Projects/launch-pt1-r7-recovery-0faffcd-r2.sh`, mode `0500`,
-  SHA-256
-  `8963bd94ed0bf030249b072a0357d7acf4f5cb3587a463e3e0b2c91017501e6c`.
-
-Review the exact type-handoff fix, all-416 ordered hash binding, immutable
-source-root rule, record/manifest/statistics reconstruction, outcome packet
-published last, and failure/no-retry witnesses. The repaired marker now also
-binds the source progress/deadline receipts, original review commit and exact
-recovery runtime hash; mutating the runtime while retaining the marker is a
-permanent red test. Independently reproduce the
-freeze, marker claim and launcher without parsing group result payloads.
-Evidence at the head: **66/66 PT1 pure** and **66/66 strict compiled**, CI
-server/frontend green, clean tree, diff-check and `zsh -n` launcher check. If
-and only if all boundaries PASS, append
-the exact marker line from the marker file to `HANDOFF_REVIEW.md` in one
-single-file authenticated review commit. That marker authorizes only one
-terminal-only recovery into the named fresh root; it authorizes no worker,
-capture, evaluation, retry, state choice/drop, gameplay, strength, promotion,
-deployment, training, merge or source-root mutation. No additional review
-round is requested unless this review finds a load-bearing defect.
+At exact source head `0faffcd`, independently run the reviewed recovery
+verifier over the immutable root and reconstruct the statistics report from
+all ordered 416 groups. Confirm the four packet/manifest/report hashes above,
+the exact failed gates and metrics, all-false authority, original-r7 root
+immutability, and that no group was omitted, retried or selected by outcome.
+Then append one terminal verdict entry to `HANDOFF_REVIEW.md`. No marker or new
+authority is requested, and no further PT1 review round is needed unless this
+reproduction finds a load-bearing discrepancy.
 
 ## Live R4 — monitor only, do not touch
 

@@ -87,10 +87,11 @@ def _parent_report() -> dict[str, object]:
 
 def _design(parent: dict[str, object] | None = None) -> c0.C0Design:
     parent = _parent_report() if parent is None else parent
+    parent_design = _parent_design()
     return c0.C0Design(
         seed_commitment_sha256=hashlib.sha256(_SECRET).hexdigest(),
         execution_git="c" * 40,
-        native_sha256="d" * 64,
+        native_sha256=parent_design.native_sha256,
         hostname=full.MINI_HOSTNAME,
         parent_external_sha256=hashlib.sha256(
             full.canonical_json_bytes(parent)).hexdigest(),
@@ -222,6 +223,18 @@ def test_c0_design_reuses_parent_population_and_authorizes_nothing():
     with pytest.raises(c0.PrivilegedTeacherC0Error,
                        match="parent report identity drift"):
         c0.validate_parent(parent, wrong_external)
+    wrong_native = c0.C0Design(
+        seed_commitment_sha256=design.seed_commitment_sha256,
+        execution_git=design.execution_git,
+        native_sha256="d" * 64,
+        hostname=design.hostname,
+        parent_external_sha256=design.parent_external_sha256,
+        parent_report_sha256=design.parent_report_sha256,
+        parent_execution_git=design.parent_execution_git,
+    )
+    with pytest.raises(c0.PrivilegedTeacherC0Error,
+                       match="parent report identity drift"):
+        c0.validate_parent(parent, wrong_native)
 
 
 def test_c0_policy_ladder_changes_one_axis_at_a_time():

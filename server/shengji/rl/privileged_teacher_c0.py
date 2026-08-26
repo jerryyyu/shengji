@@ -224,6 +224,7 @@ def validate_parent(report: dict[str, object], design: C0Design) \
             or parent_design.execution_git != design.parent_execution_git
             or parent_design.seed_commitment_sha256 !=
             design.seed_commitment_sha256
+            or parent_design.native_sha256 != design.native_sha256
             or parent_design.hostname != design.hostname
             or parent_design.root_coordinates != design.root_coordinates):
         raise PrivilegedTeacherC0Error("parent report identity drift")

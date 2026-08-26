@@ -112,6 +112,56 @@ def test_design_refuses_nonproduction_policy():
             capture_secret_sha256=SECRET_SHA, production_policy="heuristic")
 
 
+def test_capture_requires_actual_multi_candidate_production_search(monkeypatch):
+    from shengji.ai import endgame, registry
+
+    rnd = _round("7", 0, "attacker-team", 3)
+    monkeypatch.setattr(endgame, "exhaustive_legal_actions",
+                        lambda *_args, **_kwargs: (("C2",), ("D2",)))
+
+    class FakeBot:
+        TRACTOR_LOCK = False
+
+        def _candidates(self, _rnd, _seat):
+            return [["C2"]]
+
+    monkeypatch.setattr(registry, "make_bot", lambda *_args, **_kwargs: FakeBot())
+    assert natural._first_eligible(
+        rnd, role="attacker-team", threshold=3) is None
+
+    FakeBot._candidates = lambda self, _rnd, _seat: [["C2"], ["D2"]]
+    accepted = natural._first_eligible(
+        rnd, role="attacker-team", threshold=3)
+    assert accepted is not None and accepted is not rnd
+
+
+def test_capture_rejects_production_tractor_lock_early_return(monkeypatch):
+    from types import SimpleNamespace
+    from shengji.ai import endgame, registry
+    from shengji.engine import combos
+
+    rnd = _round("7", 0, "attacker-team", 3)
+    monkeypatch.setattr(endgame, "exhaustive_legal_actions",
+                        lambda *_args, **_kwargs: (("C2",), ("D2",)))
+    monkeypatch.setattr(
+        combos, "decompose",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            components=(SimpleNamespace(pair_len=2),)))
+
+    class FakeBot:
+        TRACTOR_LOCK = True
+
+        def canonical_lead(self, _rnd, _seat):
+            return ["C2", "C2"]
+
+        def _candidates(self, _rnd, _seat):
+            return [["C2"], ["D2"]]
+
+    monkeypatch.setattr(registry, "make_bot", lambda *_args, **_kwargs: FakeBot())
+    assert natural._first_eligible(
+        rnd, role="attacker-team", threshold=3) is None
+
+
 def test_population_rejects_every_load_bearing_identity_mutation(monkeypatch):
     design, states = _captured(monkeypatch)
     key = design.state_keys[0]

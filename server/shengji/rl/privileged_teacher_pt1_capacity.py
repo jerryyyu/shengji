@@ -39,6 +39,7 @@ from .privileged_teacher_pt1_natural import (
 CAPACITY_SCHEMA = "privileged-teacher-pt1-capacity-v2"
 CAPACITY_REPORT_SCHEMA = "privileged-teacher-pt1-capacity-report-v2"
 CAPACITY_MANIFEST_SCHEMA = "privileged-teacher-pt1-capacity-manifest-v2"
+CAPACITY_FAILURE_SCHEMA = "privileged-teacher-pt1-capacity-failure-v1"
 CAPACITY_SEED_NAMESPACE = "privileged-teacher-pt1-capacity-out-of-population-v2"
 CAPACITY_STATE_COUNT = TARGET_STATE_COUNT
 CAPACITY_POLICY_SEEDS = (0, 1, 2, 3)
@@ -58,6 +59,56 @@ CAPACITY_AUTHORITIES = {
 
 class PT1CapacityError(PrivilegedTeacherPT1Error):
     """A capacity identity, resource, privacy, or write boundary drifted."""
+
+
+class PT1CapacityWorkerError(PT1CapacityError):
+    """One score-free grid coordinate failed without leaking its evidence."""
+
+    def __init__(self, coordinate: "CapacityCoordinate", *, cause_code: str,
+                 completed_units: int):
+        if type(coordinate) is not CapacityCoordinate:
+            raise PT1CapacityError("capacity failure coordinate drift")
+        if type(cause_code) is not str or not cause_code \
+                or any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ_" for char in cause_code):
+            raise PT1CapacityError("capacity failure code drift")
+        if isinstance(completed_units, bool) or not isinstance(completed_units, int) \
+                or not 0 <= completed_units < CAPACITY_STATE_COUNT:
+            raise PT1CapacityError("capacity failure completion drift")
+        self.coordinate = coordinate
+        self.cause_code = cause_code
+        self.completed_units = completed_units
+        super().__init__(
+            f"capacity worker failed closed at coordinate {coordinate.index}: "
+            f"{cause_code}")
+
+    def failure_payload(self) -> dict[str, object]:
+        body = {
+            "schema": CAPACITY_FAILURE_SCHEMA,
+            "status": "FAILED",
+            "completed_units": self.completed_units,
+            "total_units": CAPACITY_STATE_COUNT,
+            "percent_basis_points": self.completed_units * 10_000
+            // CAPACITY_STATE_COUNT,
+            "failed_coordinate": self.coordinate.payload(),
+            "cause_code": self.cause_code,
+            "score_redacted": True,
+            "authority": dict(CAPACITY_AUTHORITIES),
+        }
+        body["failure_sha256"] = hashlib.sha256(
+            canonical_json_bytes(body)).hexdigest()
+        return body
+
+
+def _worker_failure_code(exc: Exception) -> str:
+    if str(exc) == "production route did not expose decision telemetry":
+        return "PRODUCTION_ROUTE_NO_TELEMETRY"
+    if isinstance(exc, NaturalPT1Error):
+        return "NATURAL_POPULATION_REFUSED"
+    if isinstance(exc, PT1CapacityError):
+        return "CAPACITY_UNIT_REFUSED"
+    if isinstance(exc, PrivilegedTeacherPT1Error):
+        return "PT1_EVALUATION_REFUSED"
+    return "WORKER_EXCEPTION"
 
 
 def _sha(value: object, label: str) -> str:
@@ -192,7 +243,7 @@ def capture_capacity_states(
         design: CapacityDesign, *, capture_secret: bytes,
         state_capture: Callable[..., object] | None = None) \
         -> tuple[tuple[CapacityCoordinate, NaturalPT1State], ...]:
-    """Capture the fixed sixteen states through the real production route."""
+    """Capture the fixed full grid through the real production route."""
     secret = _secret(design, capture_secret)
     natural_design = NaturalPT1Design(
         capture_secret_sha256=hashlib.sha256(secret).hexdigest())
@@ -517,9 +568,15 @@ def run_capacity(
         for coordinate in coordinates:
             if deadline is not None and monotonic() >= deadline:
                 break
-            publish(_run_capacity_unit(
-                design, secret, coordinate, state_capture=state_capture,
-                evaluator=evaluator))
+            try:
+                row = _run_capacity_unit(
+                    design, secret, coordinate, state_capture=state_capture,
+                    evaluator=evaluator)
+            except Exception as exc:
+                raise PT1CapacityWorkerError(
+                    coordinate, cause_code=_worker_failure_code(exc),
+                    completed_units=len(rows)) from exc
+            publish(row)
     else:
         if state_capture is not None or evaluator is not evaluate_state_batch:
             raise PT1CapacityError(
@@ -537,12 +594,14 @@ def run_capacity(
             while pending:
                 completed, _ = wait(tuple(pending), return_when=FIRST_COMPLETED)
                 for future in completed:
-                    pending.pop(future)
+                    failed_coordinate = pending.pop(future)
                     try:
                         publish(future.result())
                     except Exception as exc:
-                        raise PT1CapacityError(
-                            "capacity worker failed closed") from exc
+                        raise PT1CapacityWorkerError(
+                            failed_coordinate,
+                            cause_code=_worker_failure_code(exc),
+                            completed_units=len(rows)) from exc
                     if deadline is not None and monotonic() >= deadline:
                         continue
                     coordinate = next(coordinates, None)
@@ -783,7 +842,8 @@ __all__ = [
     "CAPACITY_REPORT_SCHEMA", "CAPACITY_RESERVE_DENOMINATOR",
     "CAPACITY_RESERVE_NUMERATOR", "CAPACITY_SCHEMA", "CAPACITY_SEED_NAMESPACE",
     "CAPACITY_STATE_COUNT", "CapacityCoordinate", "CapacityDesign",
-    "CapacityReport", "PT1CapacityError", "capacity_coordinates",
+    "CapacityReport", "PT1CapacityError", "PT1CapacityWorkerError",
+    "capacity_coordinates",
     "capacity_schedule_sha256", "capture_capacity_states", "manifest_for",
     "run_capacity", "verify_capacity_report", "verify_manifest",
 ]

@@ -12,6 +12,7 @@ training, gameplay, or execution authority.
 
 from __future__ import annotations
 
+from concurrent.futures import Executor
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -31,7 +32,7 @@ from .belief_model import (
     quantize_raw_count_weights,
 )
 from .belief_ownership import BeliefOwnershipV1, validate_ownership
-from .belief_projection import project_count_weights
+from .belief_projection import RawCountWeightV1, project_count_weights
 from .belief_refc_capture import (
     ReferenceWorldBatchV1,
     validate_reference_world_batch,
@@ -52,6 +53,16 @@ PPB = 1_000_000_000
 
 class BeliefV2ScoringError(ValueError):
     """A V2 common actor, model, reference, or round score drifted."""
+
+
+@dataclass(frozen=True)
+class _ProjectionTaskV1:
+    actor: ActorObservationV1
+    raw_weights: tuple[RawCountWeightV1, ...]
+    model_sha256: str
+    decision_key: str
+    cohort_id: str
+    member_index: int
 
 
 def _is_sha256(value: Any) -> bool:
@@ -219,6 +230,80 @@ def _predict_cohort(
     return tuple(members), ensemble
 
 
+def _project_member_task(task: _ProjectionTaskV1) -> BeliefOwnershipV1:
+    """Project one target-blind member in an isolated worker process."""
+    if type(task) is not _ProjectionTaskV1:
+        raise BeliefV2ScoringError("V2 projection task identity drift")
+    try:
+        return project_count_weights(
+            task.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS,
+            model_schema=MODEL_SCHEMA,
+            model_sha256=task.model_sha256,
+            raw_weights=task.raw_weights)
+    except ValueError as exc:
+        raise BeliefV2ScoringError(
+            "V2 scoring member prediction refused: "
+            f"decision_key={task.decision_key}, "
+            f"cohort_id={task.cohort_id}, "
+            f"member_index={task.member_index}, "
+            f"model_sha256={task.model_sha256}") from exc
+
+
+def _predict_cohorts(
+        actor: ActorObservationV1,
+        common: V2CommonSurfaceTensorsV1,
+        cohorts: tuple[V2CohortModelsV1, ...], *, decision_key: str,
+        projection_executor: Executor | None) -> tuple[
+            tuple[tuple[BeliefOwnershipV1, ...], BeliefOwnershipV1], ...]:
+    if projection_executor is None:
+        return tuple(_predict_cohort(
+            actor, common, cohort, decision_key=decision_key)
+            for cohort in cohorts)
+
+    tasks = []
+    for cohort in cohorts:
+        for member_index, (model, model_sha) in enumerate(zip(
+                cohort.models, cohort.model_sha256s, strict=True)):
+            try:
+                logits = inference_logits(model, common.tensors)
+                raw = quantize_raw_count_weights(common.tensors, logits)
+            except ValueError as exc:
+                raise BeliefV2ScoringError(
+                    "V2 scoring member prediction refused: "
+                    f"decision_key={decision_key}, "
+                    f"cohort_id={cohort.cohort_id}, "
+                    f"member_index={member_index}, "
+                    f"model_sha256={model_sha}") from exc
+            tasks.append(_ProjectionTaskV1(
+                actor=actor, raw_weights=raw, model_sha256=model_sha,
+                decision_key=decision_key, cohort_id=cohort.cohort_id,
+                member_index=member_index))
+    try:
+        projected = tuple(projection_executor.map(
+            _project_member_task, tasks, chunksize=1))
+    except BeliefV2ScoringError:
+        raise
+    except (OSError, RuntimeError) as exc:
+        raise BeliefV2ScoringError(
+            "V2 projection worker execution refused") from exc
+    expected = len(cohorts) * len(COHORT_SEEDS)
+    if len(projected) != expected:
+        raise BeliefV2ScoringError(
+            "V2 projection worker population drift")
+    results = []
+    offset = 0
+    for cohort in cohorts:
+        members = projected[offset:offset + len(COHORT_SEEDS)]
+        offset += len(COHORT_SEEDS)
+        try:
+            ensemble = ensemble_ownership(actor, members)
+        except ValueError as exc:
+            raise BeliefV2ScoringError(
+                "V2 scoring ensemble prediction refused") from exc
+        results.append((members, ensemble))
+    return tuple(results)
+
+
 def _score_ppb(numerator: int, denominator: int) -> int:
     return _round_divide(numerator * PPB, denominator)
 
@@ -240,7 +325,8 @@ def _mean_brier(scores: tuple[DecisionProperScoreV1, ...], *,
 def score_v2_round(
         *, round_key: str, source_kind: str, split: str, trump_rank: str,
         decisions: tuple[V2ScoringDecisionV1, ...],
-        cohorts: tuple[V2CohortModelsV1, ...]) -> V2RoundScoreV1:
+        cohorts: tuple[V2CohortModelsV1, ...],
+        projection_executor: Executor | None = None) -> V2RoundScoreV1:
     """Predict all frozen cohorts and reduce one complete round exactly."""
     if not _is_sha256(round_key) or source_kind not in {"synthetic", "human"} \
             or split not in {"calibration", "test"} \
@@ -264,10 +350,12 @@ def score_v2_round(
     for decision in decisions:
         actor = v2_scoring_actor(decision.source_actor)
         reference = _adapt_reference(actor, decision.reference)
-        for cohort in cohorts:
-            members, ensemble = _predict_cohort(
-                actor, decision.common, cohort,
-                decision_key=decision.decision_key)
+        predictions = _predict_cohorts(
+            actor, decision.common, cohorts,
+            decision_key=decision.decision_key,
+            projection_executor=projection_executor)
+        for cohort, (members, ensemble) in zip(
+                cohorts, predictions, strict=True):
             if not reference.probabilities:
                 if any(member.probabilities for member in members) \
                         or ensemble.probabilities:

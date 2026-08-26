@@ -8,6 +8,7 @@ and replicate-stability checks are sealed before any test target is opened.
 
 from __future__ import annotations
 
+from concurrent.futures import Executor
 import hashlib
 import json
 import os
@@ -85,6 +86,7 @@ def _scale_fractions(freeze: V2ExecutionFreezeV1) \
 def _score_synthetic(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, cohorts, *, replicate: str,
+        projection_executor: Executor | None = None,
         progress: ProgressCallback | None = None,
         progress_phase: str = "score-synthetic-rounds"):
     rows = []
@@ -102,7 +104,8 @@ def _score_synthetic(
             round_key=synthetic_round_key(coordinate.round_seed),
             source_kind="synthetic", split="calibration",
             trump_rank=coordinate.trump_rank,
-            decisions=decisions, cohorts=cohorts))
+            decisions=decisions, cohorts=cohorts,
+            projection_executor=projection_executor))
         if progress is not None:
             progress(unit_index + 1, len(coordinates), progress_phase)
     return tuple(rows)
@@ -112,6 +115,7 @@ def _score_human(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1, group_split: dict[str, Any],
         cohorts, *, replicate: str,
+        projection_executor: Executor | None = None,
         progress: ProgressCallback | None = None,
         progress_phase: str = "score-human-groups"):
     rows = []
@@ -128,7 +132,8 @@ def _score_human(
             rows.append(score_v2_round(
                 round_key=round_digest, source_kind="human",
                 split="calibration", trump_rank=trump_rank,
-                decisions=decisions, cohorts=cohorts))
+                decisions=decisions, cohorts=cohorts,
+                projection_executor=projection_executor))
         if progress is not None:
             progress(unit_index + 1, len(digests), progress_phase)
     return tuple(sorted(rows, key=lambda row: row.round_key))

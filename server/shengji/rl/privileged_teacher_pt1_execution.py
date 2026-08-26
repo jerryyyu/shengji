@@ -29,7 +29,7 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 from .privileged_teacher_pt1 import (
     AUTHORITY as PT1_AUTHORITY, PT1Record, evaluate_state_batch, verify_record)
 from .privileged_teacher_pt1_capacity import (
-    CAPACITY_AUTHORITIES, CapacityDesign, PT1CapacityError,
+    CAPACITY_AUTHORITIES, CAPACITY_STATE_COUNT, CapacityDesign, PT1CapacityError,
     verify_capacity_report, verify_manifest)
 from .privileged_teacher_pt1_natural import (
     NATURAL_PT1_STATE_SCHEMA, TARGET_STATE_COUNT, NaturalPT1Design,
@@ -42,12 +42,12 @@ from .privileged_teacher_pt1_statistics import (
 
 
 EXECUTION_SCHEMA = "privileged-teacher-pt1-execution-v1"
-FREEZE_SCHEMA = "privileged-teacher-pt1-freeze-v2"
+FREEZE_SCHEMA = "privileged-teacher-pt1-freeze-v3"
 GROUP_SCHEMA = "privileged-teacher-pt1-execution-group-v1"
 PROGRESS_SCHEMA = "privileged-teacher-pt1-execution-progress-v1"
 MANIFEST_SCHEMA = "privileged-teacher-pt1-execution-manifest-v1"
 POPULATION_MANIFEST_SCHEMA = "privileged-teacher-pt1-population-manifest-v1"
-FAILURE_SCHEMA = "privileged-teacher-pt1-execution-failure-v1"
+FAILURE_SCHEMA = "privileged-teacher-pt1-execution-failure-v2"
 REVIEW_MARKER_SCHEMA = "privileged-teacher-pt1-execution-review-v2"
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
 REVIEWER_NAME = "Claude"
@@ -518,10 +518,12 @@ def freeze_execution(
     manifest_bytes = canonical_json_bytes(manifest)
     report_payload = report.payload()
     if (report_payload.get("status") != "COMPLETE"
-            or report_payload.get("record_count") != 16
-            or report_payload.get("total_record_count") != 16
+            or report_payload.get("record_count") != CAPACITY_STATE_COUNT
+            or report_payload.get("total_record_count") != CAPACITY_STATE_COUNT
             or report_payload.get("truncated_by_deadline") is not False):
-        raise PT1ExecutionError("capacity receipt must be complete 16/16")
+        raise PT1ExecutionError(
+            f"capacity receipt must be complete {CAPACITY_STATE_COUNT}/"
+            f"{CAPACITY_STATE_COUNT}")
     if report_payload.get("parallel_workers") != worker_count:
         raise PT1ExecutionError("capacity worker count does not match freeze")
     caps = report_payload.get("caps")
@@ -1016,6 +1018,48 @@ def _resource_totals(groups: Sequence[Mapping[str, object]],
     }
 
 
+def _resource_cap_overages(
+        resources: Mapping[str, int], caps: Mapping[str, int]) \
+        -> tuple[dict[str, int | str], ...]:
+    """Return the exact score-free resource dimensions above their caps."""
+    if set(resources) != SCIENTIFIC_CAP_KEYS or set(caps) != SCIENTIFIC_CAP_KEYS:
+        raise PT1ExecutionError("execution scientific cap population drift")
+    rows = []
+    for name in sorted(SCIENTIFIC_CAP_KEYS):
+        observed, cap = resources[name], caps[name]
+        if (type(observed) is not int or observed < 0
+                or type(cap) is not int or cap < 0):
+            raise PT1ExecutionError("execution scientific cap value drift")
+        if observed > cap:
+            rows.append({"name": name, "observed": observed, "cap": cap,
+                         "excess": observed - cap})
+    return tuple(rows)
+
+
+def _validate_resource_overages(value: object) \
+        -> tuple[dict[str, int | str], ...]:
+    if not isinstance(value, (tuple, list)):
+        raise PT1ExecutionError("execution failure resource detail drift")
+    rows = []
+    names = set()
+    for row in value:
+        if (type(row) is not dict
+                or set(row) != {"name", "observed", "cap", "excess"}
+                or row.get("name") not in SCIENTIFIC_CAP_KEYS
+                or row["name"] in names
+                or type(row.get("observed")) is not int
+                or type(row.get("cap")) is not int
+                or type(row.get("excess")) is not int
+                or row["cap"] < 0 or row["observed"] <= row["cap"]
+                or row["excess"] != row["observed"] - row["cap"]):
+            raise PT1ExecutionError("execution failure resource detail drift")
+        names.add(row["name"])
+        rows.append(dict(row))
+    if [row["name"] for row in rows] != sorted(names):
+        raise PT1ExecutionError("execution failure resource detail drift")
+    return tuple(rows)
+
+
 def _validate_group_population(design: NaturalPT1Design,
                                groups: Sequence[Mapping[str, object]],
                                population_manifest: Mapping[str, object] | None = None) \
@@ -1060,7 +1104,8 @@ def _progress_payload(freeze: PT1ExecutionFreeze, completed: int,
 def record_execution_failure(
         freeze: PT1ExecutionFreeze, root: str | os.PathLike[str], *,
         code: str, completed: int | None = None,
-        wave_start: int | None = None, wave_stop: int | None = None) \
+        wave_start: int | None = None, wave_stop: int | None = None,
+        resource_overages: Sequence[Mapping[str, object]] = ()) \
         -> dict[str, object]:
     """Durably record a score-free terminal failure without child details."""
     typed = verify_freeze(freeze)
@@ -1077,11 +1122,16 @@ def record_execution_failure(
         value = _canonical_load(
             _immutable_bytes(path, "execution failure receipt"),
             "execution failure receipt")
-        if (not isinstance(value, dict) or value.get("schema") != FAILURE_SCHEMA
+        if (not isinstance(value, dict) or set(value) != {
+                "schema", "freeze_sha256", "failure_code", "completed_units",
+                "total_units", "wave_start", "wave_stop", "resource_overages",
+                "score_or_action_bytes_persisted", "retry_authorized", "authority"}
+                or value.get("schema") != FAILURE_SCHEMA
                 or value.get("freeze_sha256")
                 != _hash_bytes(typed.canonical_bytes())
                 or value.get("authority") != AUTHORITIES):
             raise PT1ExecutionError("execution failure receipt drift")
+        _validate_resource_overages(value.get("resource_overages"))
         _write_progress(evidence / PROGRESS_NAME, _progress_payload(
             typed, int(value["completed_units"]), "FAILED", 0))
         return value
@@ -1093,18 +1143,23 @@ def record_execution_failure(
                      if isinstance(progress, dict) else 0)
     if (type(completed) is not int or not 0 <= completed <= TARGET_STATE_COUNT
             or type(code) is not str
-            or code not in {"worker_failure", "cli_failure"}
+            or code not in {"worker_failure", "cli_failure",
+                            "resource_cap_exceeded"}
             or (wave_start is not None and
                 (type(wave_start) is not int or wave_start < 0))
             or (wave_stop is not None and
                 (type(wave_stop) is not int or wave_stop < 0))):
         raise PT1ExecutionError("execution failure receipt values drift")
+    overages = _validate_resource_overages(resource_overages)
+    if (code == "resource_cap_exceeded") is not bool(overages):
+        raise PT1ExecutionError("execution failure resource detail drift")
     value = {
         "schema": FAILURE_SCHEMA,
         "freeze_sha256": _hash_bytes(typed.canonical_bytes()),
         "failure_code": code, "completed_units": completed,
         "total_units": TARGET_STATE_COUNT,
         "wave_start": wave_start, "wave_stop": wave_stop,
+        "resource_overages": list(overages),
         "score_or_action_bytes_persisted": False,
         "retry_authorized": False, "authority": dict(AUTHORITIES),
     }
@@ -1259,11 +1314,6 @@ def run_execution(
                 supplied_states[key] if supplied_states is not None else None,
                 key=key)
             _require_population_identity(value, _population_record(typed, index))
-            if (value["parallel_wave_peak_rss_bytes"]
-                    > typed.capacity_caps["peak_rss_bytes"]
-                    or value["exact_nodes"]
-                    > typed.capacity_caps["exact_nodes_per_state"]):
-                raise PT1ExecutionError("execution capacity cap exceeded")
             existing.append(value)
         else:
             break
@@ -1272,8 +1322,11 @@ def run_execution(
     completed = len(existing)
     execution_started = time.perf_counter_ns()
     resources = _resource_totals(existing, typed.worker_count)
-    if any(resources[name] > typed.capacity_caps[name]
-           for name in SCIENTIFIC_CAP_KEYS):
+    overages = _resource_cap_overages(resources, typed.capacity_caps)
+    if overages:
+        record_execution_failure(
+            typed, root, code="resource_cap_exceeded", completed=completed,
+            resource_overages=overages)
         raise PT1ExecutionError("execution scientific cap exceeded")
     if deadline is not None:
         raise PT1ExecutionError("caller deadline cannot override frozen deadline")
@@ -1341,8 +1394,14 @@ def run_execution(
                 new_groups.append(group)
             candidate_resources = _resource_totals(
                 (*existing, *new_groups), typed.worker_count)
-            if any(candidate_resources[name] > typed.capacity_caps[name]
-                   for name in SCIENTIFIC_CAP_KEYS):
+            overages = _resource_cap_overages(
+                candidate_resources, typed.capacity_caps)
+            if overages:
+                record_execution_failure(
+                    typed, root, code="resource_cap_exceeded",
+                    completed=completed, wave_start=batch[0][0],
+                    wave_stop=batch[-1][0] + 1,
+                    resource_overages=overages)
                 raise PT1ExecutionError("execution scientific cap exceeded")
             for group in new_groups:
                 _write_once(

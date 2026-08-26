@@ -18,9 +18,12 @@ re-scores them through the repaired executable.
 
 from __future__ import annotations
 
+from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import json
+import multiprocessing
 import os
+import resource
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -99,6 +102,7 @@ COMPLETION_CONSUMPTION_SCHEMA = (
     "belief-v1-v2-r4-completion-consumption-tombstone-v1")
 COMPLETION_REVIEW_PREFIX = (
     "BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW ")
+R4_PROJECTION_WORKERS = 16
 SOURCE_SPEC_PATH = (
     Path(__file__).resolve().parents[2]
     / "scripts" / "belief_v2_r4_completion.v1.json")
@@ -147,6 +151,40 @@ class BeliefV2R4CompletionError(ValueError):
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _process_tree_cpu_time_ns() -> int:
+    usages = (resource.getrusage(resource.RUSAGE_SELF),
+              resource.getrusage(resource.RUSAGE_CHILDREN))
+    return int(sum(row.ru_utime + row.ru_stime for row in usages)
+               * 1_000_000_000)
+
+
+def _projection_worker_probe(_: int) -> int:
+    return os.getpid()
+
+
+def _projection_pool() -> ProcessPoolExecutor:
+    if "forkserver" not in multiprocessing.get_all_start_methods():
+        raise BeliefV2R4CompletionError(
+            "R4 projection worker start method is unavailable")
+    return ProcessPoolExecutor(
+        max_workers=R4_PROJECTION_WORKERS,
+        mp_context=multiprocessing.get_context("forkserver"))
+
+
+def _warm_projection_pool(executor: ProcessPoolExecutor) -> None:
+    try:
+        pids = tuple(executor.map(
+            _projection_worker_probe, range(R4_PROJECTION_WORKERS),
+            chunksize=1))
+    except (OSError, RuntimeError) as exc:
+        raise BeliefV2R4CompletionError(
+            "R4 projection worker startup refused") from exc
+    if len(pids) != R4_PROJECTION_WORKERS \
+            or any(type(pid) is not int or pid <= 0 for pid in pids):
+        raise BeliefV2R4CompletionError(
+            "R4 projection worker startup population drift")
 
 
 def _is_sha256(value: Any) -> bool:
@@ -740,34 +778,52 @@ def run_r4_completion_calibration(
             "R4 completion training population refused") from exc
     cohort_ids = tuple(row.cohort_id for row in cohorts)
     started = time.monotonic_ns()
-    cpu_started = time.process_time_ns()
+    cpu_started = _process_tree_cpu_time_ns()
     if progress is not None:
         progress(0, 6, "score-r4-calibration-populations")
+    with _projection_pool() as projection_executor:
+        _warm_projection_pool(projection_executor)
+        try:
+            synthetic_0 = _score_synthetic(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, cohorts,
+                replicate="calibration-replicate-0",
+                projection_executor=projection_executor,
+                progress=progress,
+                progress_phase="score-r4-synthetic-ref0-rounds")
+            if progress is not None:
+                progress(1, 6, "score-r4-calibration-populations")
+            synthetic_1 = _score_synthetic(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, cohorts,
+                replicate="calibration-replicate-1",
+                projection_executor=projection_executor,
+                progress=progress,
+                progress_phase="score-r4-synthetic-ref1-rounds")
+            if progress is not None:
+                progress(2, 6, "score-r4-calibration-populations")
+            human_0 = _score_human(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, source.group_split, cohorts,
+                replicate="calibration-replicate-0",
+                projection_executor=projection_executor,
+                progress=progress,
+                progress_phase="score-r4-human-ref0-groups")
+            if progress is not None:
+                progress(3, 6, "score-r4-calibration-populations")
+            human_1 = _score_human(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, source.group_split, cohorts,
+                replicate="calibration-replicate-1",
+                projection_executor=projection_executor,
+                progress=progress,
+                progress_phase="score-r4-human-ref1-groups")
+            if progress is not None:
+                progress(4, 6, "score-r4-calibration-populations")
+        except ValueError as exc:
+            raise BeliefV2R4CompletionError(
+                "R4 completion calibration scoring refused") from exc
     try:
-        synthetic_0 = _score_synthetic(
-            source.spec.source_evidence_root, source.freeze,
-            source.admission, cohorts,
-            replicate="calibration-replicate-0")
-        if progress is not None:
-            progress(1, 6, "score-r4-calibration-populations")
-        synthetic_1 = _score_synthetic(
-            source.spec.source_evidence_root, source.freeze,
-            source.admission, cohorts,
-            replicate="calibration-replicate-1")
-        if progress is not None:
-            progress(2, 6, "score-r4-calibration-populations")
-        human_0 = _score_human(
-            source.spec.source_evidence_root, source.freeze,
-            source.admission, source.group_split, cohorts,
-            replicate="calibration-replicate-0")
-        if progress is not None:
-            progress(3, 6, "score-r4-calibration-populations")
-        human_1 = _score_human(
-            source.spec.source_evidence_root, source.freeze,
-            source.admission, source.group_split, cohorts,
-            replicate="calibration-replicate-1")
-        if progress is not None:
-            progress(4, 6, "score-r4-calibration-populations")
         expected_synthetic = _expected_synthetic_rounds()
         expected_human = tuple((row.round_key, row.trump_rank)
                                for row in human_0)
@@ -789,7 +845,7 @@ def run_r4_completion_calibration(
             scale_fractions=_scale_fractions(source.freeze))
     except ValueError as exc:
         raise BeliefV2R4CompletionError(
-            "R4 completion calibration scoring/statistic refused") from exc
+            "R4 completion calibration statistic refused") from exc
     if progress is not None:
         progress(5, 6, "derive-r4-calibration-statistics")
     stable = synthetic_stable and human_stable
@@ -813,7 +869,7 @@ def run_r4_completion_calibration(
     finished = time.monotonic_ns()
     resources = _resource_row(
         started=started, finished=finished,
-        cpu_nanoseconds=time.process_time_ns() - cpu_started,
+        cpu_nanoseconds=_process_tree_cpu_time_ns() - cpu_started,
         artifact_bytes=sum(len(raw) for raw in files.values()))
     if resources["wall_nanoseconds"] \
             > completion_freeze.resource_caps.training_wall_seconds \
@@ -1013,9 +1069,12 @@ def run_r4_completion_terminal(
                     source.spec.source_tensor_cache_manifest_sha256)))
         if progress is not None:
             progress(2, 6, "r4-test-inputs-reopened")
-        synthetic, human = _score_test_populations(
-            source.spec.source_evidence_root, source.freeze,
-            source.admission, source.group_split, cohorts)
+        with _projection_pool() as projection_executor:
+            _warm_projection_pool(projection_executor)
+            synthetic, human = _score_test_populations(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, source.group_split, cohorts,
+                projection_executor=projection_executor)
         if progress is not None:
             progress(3, 6, "r4-test-populations-scored")
         cohort_ids = tuple(row.cohort_id for row in cohorts)
@@ -1074,10 +1133,13 @@ def run_r4_completion_terminal(
         partial / "manifest.json", canonical_json_bytes(inner_manifest))
     os.rename(partial, final)
     _fsync_directory(root)
-    reopened = reopen_v2_terminal(
-        final, freeze=source.freeze, admission=source.admission,
-        inventory=source.inventory, group_split=source.group_split,
-        calibration_directory=(root / "calibration" / "selection"))
+    with _projection_pool() as projection_executor:
+        _warm_projection_pool(projection_executor)
+        reopened = reopen_v2_terminal(
+            final, freeze=source.freeze, admission=source.admission,
+            inventory=source.inventory, group_split=source.group_split,
+            calibration_directory=(root / "calibration" / "selection"),
+            projection_executor=projection_executor)
     if reopened != inner_manifest:
         raise BeliefV2R4CompletionError(
             "R4 completion terminal post-publish reconstruction drift")
@@ -1124,11 +1186,14 @@ def reopen_r4_completion_terminal(
             or canonical_json_bytes(attempt) != attempt_raw:
         raise BeliefV2R4CompletionError(
             "R4 completion test attempt reconstruction drift")
-    inner = reopen_v2_terminal(
-        root / "terminal", freeze=source.freeze,
-        admission=source.admission, inventory=source.inventory,
-        group_split=source.group_split, progress=progress,
-        calibration_directory=(root / "calibration" / "selection"))
+    with _projection_pool() as projection_executor:
+        _warm_projection_pool(projection_executor)
+        inner = reopen_v2_terminal(
+            root / "terminal", freeze=source.freeze,
+            admission=source.admission, inventory=source.inventory,
+            group_split=source.group_split, progress=progress,
+            calibration_directory=(root / "calibration" / "selection"),
+            projection_executor=projection_executor)
     expected_outer = _terminal_outer_manifest(
         completion_freeze=completion_freeze,
         completion_admission=completion_admission, source=source,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Executor
 import hashlib
 import json
 import os
@@ -138,7 +139,8 @@ def _expected_test_human_rounds(
 def _score_test_populations(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        group_split: dict[str, Any], cohorts):
+        group_split: dict[str, Any], cohorts, *,
+        projection_executor: Executor | None = None):
     synthetic = []
     for coordinate in v2_round_coordinates():
         if coordinate.split != "test":
@@ -151,7 +153,8 @@ def _score_test_populations(
             round_key=synthetic_round_key(coordinate.round_seed),
             source_kind="synthetic", split="test",
             trump_rank=coordinate.trump_rank,
-            decisions=decisions, cohorts=cohorts))
+            decisions=decisions, cohorts=cohorts,
+            projection_executor=projection_executor))
     human = []
     for digest in _human_group_digests(group_split, "test"):
         rounds = reopen_human_scoring_rounds(
@@ -162,7 +165,8 @@ def _score_test_populations(
             human.append(score_v2_round(
                 round_key=round_digest, source_kind="human", split="test",
                 trump_rank=trump_rank, decisions=decisions,
-                cohorts=cohorts))
+                cohorts=cohorts,
+                projection_executor=projection_executor))
     if not synthetic or not human:
         raise BeliefV2TerminalControllerError(
             "V2 terminal test score population is empty")
@@ -570,6 +574,7 @@ def reopen_v2_terminal(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         inventory: dict[str, Any], group_split: dict[str, Any],
+        projection_executor: Executor | None = None,
         progress: ProgressCallback | None = None,
         calibration_directory: Path | None = None) \
         -> dict[str, Any]:
@@ -640,7 +645,7 @@ def reopen_v2_terminal(
             label="human_test")
         synthetic, human = _score_test_populations(
             Path(freeze.evidence_root), freeze, admission, group_split,
-            cohorts)
+            cohorts, projection_executor=projection_executor)
         if v2_round_population_bytes(
                 recorded_synthetic, cohort_ids=cohort_ids,
                 label="synthetic_test") != v2_round_population_bytes(

@@ -661,12 +661,33 @@ def test_r4_completion_calibration_writes_only_fresh_namespace(
         R4_COMPLETION, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (
             cohorts, plan, qualification, training_hashes))
+    projection_token = object()
+    warmed = []
+
+    class Pool:
+        def __enter__(self):
+            return projection_token
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(R4_COMPLETION, "_projection_pool", Pool)
     monkeypatch.setattr(
-        R4_COMPLETION, "_score_synthetic",
-        lambda *args, **kwargs: synthetic_rows)
+        R4_COMPLETION, "_warm_projection_pool",
+        lambda executor: warmed.append(executor))
+
+    def synthetic_score(*args, **kwargs):
+        assert kwargs["projection_executor"] is projection_token
+        return synthetic_rows
+
+    def human_score(*args, **kwargs):
+        assert kwargs["projection_executor"] is projection_token
+        return human_rows
+
     monkeypatch.setattr(
-        R4_COMPLETION, "_score_human",
-        lambda *args, **kwargs: human_rows)
+        R4_COMPLETION, "_score_synthetic", synthetic_score)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_score_human", human_score)
     monkeypatch.setattr(
         R4_COMPLETION, "_expected_synthetic_rounds",
         lambda: ((synthetic_rows[0].round_key, "2"),))
@@ -701,6 +722,7 @@ def test_r4_completion_calibration_writes_only_fresh_namespace(
     assert not tuple(source_root.iterdir())
     assert (root / "calibration" / "selection" / "manifest.json").is_file()
     assert not (root / "r4-completion-test-attempt.json").exists()
+    assert warmed == [projection_token]
     inner, reopened_source = R4_COMPLETION.reopen_r4_completion_calibration(
         root, completion_freeze, completion_admission,
         repo=Path("/unused"), review_marker=b"review")
@@ -878,9 +900,27 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
         R4_COMPLETION, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (
             cohorts, plan, qualification, training_hashes))
+    projection_token = object()
+    warmed = []
+
+    class Pool:
+        def __enter__(self):
+            return projection_token
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(R4_COMPLETION, "_projection_pool", Pool)
     monkeypatch.setattr(
-        R4_COMPLETION, "_score_test_populations",
-        lambda *args, **kwargs: (synthetic_rows, human_rows))
+        R4_COMPLETION, "_warm_projection_pool",
+        lambda executor: warmed.append(executor))
+
+    def score_test(*args, **kwargs):
+        assert kwargs["projection_executor"] is projection_token
+        return synthetic_rows, human_rows
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "_score_test_populations", score_test)
     monkeypatch.setattr(
         R4_COMPLETION, "_expected_test_synthetic_rounds",
         lambda: ((synthetic_rows[0].round_key, "2"),))
@@ -906,6 +946,7 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
     inner_manifests = []
 
     def reopen_inner(directory, **kwargs):
+        assert kwargs["projection_executor"] is projection_token
         raw = (directory / "manifest.json").read_bytes()
         manifest = json.loads(raw)
         assert canonical_json_bytes(manifest) == raw
@@ -926,6 +967,8 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
         root, completion_freeze, completion_admission,
         repo=Path("/unused"), review_marker=b"review") == outer
     assert len(inner_manifests) == 2
+    assert warmed == [projection_token, projection_token,
+                      projection_token]
 
     outer_path = root / "r4-completion-terminal.json"
     forged = json.loads(outer_path.read_bytes())

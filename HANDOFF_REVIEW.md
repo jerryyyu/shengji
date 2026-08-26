@@ -4490,3 +4490,47 @@ Reviewed once at exact repaired head `ee90fd34538f33689ef7dd8f886d75b5b8f2d0be`,
 Non-blocking observation, out of scope for this delta: `privileged_teacher_full_ab.py:584` still carries the same idiom, `tuple(arms) != ARMS`. It survives reopen only by the accident that PT-Full's `ARMS = ("A", "A0", "B")` is already in sorted order; any future arm name that breaks that accident would reintroduce this exact failure in the parent validator. Worth converting to an exact-key-set check on the next touch of that file, with a round-trip witness like the one added here.
 
 This PASS authorizes only formal interpretation and ledgering of the already-completed open-DEV C0 result. It does not authorize another run, a rerun, a merge, training, gameplay, a strength claim, promotion or deployment, and it appends no new machine marker or authority. This review ran read-only against the live artifacts: it launched, stopped, restarted and initialized nothing, opened no test split, mutated no live evidence root, left the R4 and R5 lanes untouched, and preserved the dirty root checkout. — Claude (session `868630fb`)
+
+## 2026-08-26 — PT/C0 open-DEV mechanism result: complete, independently reproduced, **SELECT NONE**
+
+The immutable report
+`/Users/jerryyu/Projects/shengji-ptc0-2391bc4-r1.json` (external SHA-256
+`aada4737574925984129d824aa847704ceeb84a7d4fabb74011efa7fc8d60eda`,
+internal report SHA-256
+`b77e3fdeffb2ceddd0ee6f351d8f907d28804368259b2ff3fc0cf72691bdf8a3`)
+reopens and re-emits byte-identically under the reviewed repair `ee90fd3`.
+The population is complete: 26 distinct roots spanning all 13 trump ranks,
+52 balanced banker/attacker role records, and 156 played rounds. All authority
+flags remain false. No run was repeated.
+
+Independent reduction from the 52 sealed record rows reproduces every headline
+contrast. Against public production A and the exact-world unchanged-policy B:
+
+| treatment | vs A | vs B |
+|---|---:|---:|
+| C0-P: exact world, production ballot, deterministic signed-level rollout | `-7/13` | `-25/52` |
+| C0-H: widened ballot, heuristic continuation | `-23/52` | `-5/13` |
+| C0-S: widened ballot, SmartBot continuation | `-3/13` | `-9/52` |
+
+The incremental comparisons are C0-H minus C0-P `+5/52` and C0-S minus C0-H
+`+11/52`. C0-S is therefore the least-bad consumer and continuation quality
+does matter, but **no arm has positive mean against both A and B**, so none
+meets the preregistered condition for a fresh 128-root confirmation.
+
+The player-reported bare-point symptom is real but not sufficient. C0-P/H/S
+changed 548/589/521 contested choices and recorded 14/17/5 exact-positive
+bare-point avoidances versus only 2/3/1 introductions. C0-H also selected 32
+actions outside the production ballot and C0-S selected 27. Yet the corresponding
+whole-round contrasts stayed negative. This separates a local human-legibility
+improvement from strength: exact hidden information can identify locally better
+alternatives, including avoiding a bare point, but this rollout family does not
+reliably convert those changes into stronger partnership outcomes.
+
+**Decision:** close the current C0 recipe ladder as `SELECT NONE`; do not confirm,
+integrate into BELIEF gameplay, or add a hard-coded “never lead a 10” rule. If
+the privileged-teacher direction resumes, its smallest meaningfully different
+axis is bounded-depth partnership-aware search or a learned full-information
+action-value policy. It must first show positive full-round value under exact
+state; a larger belief model cannot repair a consumer that fails at that
+ceiling. This is open-DEV mechanism evidence, not a strength, gameplay,
+promotion or deployment claim. — Codex

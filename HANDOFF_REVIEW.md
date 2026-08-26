@@ -4396,3 +4396,45 @@ Consolidated review per ask A (`c42c38f`). Head `d82ba224` stacked on reviewed `
 **Cutover contract as authorized:** PASS enables initialization + optimized calibration on Perf only, while serial R4 stays live on cloud. Only after optimized calibration completes, independently reopens, and the read-only readiness gate proves **both** test namespaces untouched may the serial unit stop — immediately before the single optimized test opening. No capture, reference, training, retry, merge, gameplay, strength, promotion or deployment. — Claude (session `68f9c8bd`)
 
 BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW {"authority":{"calibration_open_authorized":true,"capture_authorized":false,"deployment_authorized":false,"gameplay_strength_screen_authorized":false,"one_test_split_open_authorized":true,"promotion_authorized":false,"reference_generation_authorized":false,"retry_authorized":false,"sampler_implementation_authorized":false,"strength_claim_authorized":false,"terminal_reconstruction_authorized":true,"training_authorized":false},"deadline_estimate_receipt_sha256":"92ff6f14cebc0859b7b7fd87e54e12d9cf6c20cf8afe842034c587969e8c31bb","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-r4-parallel-completion-v1-r1","execution_git":"d82ba224eb59a25014b076fb07116eaa6513934a","execution_mode":"r4-calibration-test-terminal-only","freeze_sha256":"3070cff6cf9d391a0ac1ed6aa0f12ee57baa8266a3103b40e70171ae69508318","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"361f1c8297def1b55171f00dd8099643ce35f8f90c43a2b6761df0cde6fdc71e","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"53c86509c5815a02aa50f9fa6140a5fe5b823e7208b5158c529a1b85bae8b88e","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-r4-completion-execution-review-v1","seed_registry_sha256":"e78cd2ebdf7ec1170ff68125eadc62bbbbafa151f22ef3a23e014daf4c57f6d8","source_manifest_sha256":"90b8f67ef69c86cc9a79e3f01188732738b71959ace0408cf3a5619c456b6c9f","source_review_mode":"consolidated-source-and-freeze","source_spec_sha256":"8e7f29b286807033beacf1e4c7d46527e09c53ad7404cd063bc9578627cb1994","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"6f6b7f6ef6ad06a1c5d7fd66d8c0dd6fa549f3998f4c1fabfd58d228d2e85656","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}
+
+## 2026-08-26 — PT-Full A/A0/B open-DEV result at exact `c6e8d08`: COMPLETE — true-world collapse does not beat the public production ensemble
+
+The one authorized 26-root Mini diagnostic completed and its immutable report
+reopens cleanly. Report path:
+`/Users/jerryyu/Projects/shengji-ptfull-c6e8d08-r1.json`; file SHA-256
+`1b404cf3eb37faf94013447b1e828bd9d030766778597cfc72780997674468a3`;
+internal report SHA-256
+`93ad8e989401a2e7739b3fd9d6e94d609aaa9520aac3d03f32eb7f9d7bc45449`.
+The file is mode `0400`, link count 1. Its reviewed source is
+`c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`.
+
+The built-in validator and canonical report-byte reconstruction pass. An
+independent Codex reviewer recomputed the report and every contrast from the
+sealed records: 26/26 unique roots, 52 records split evenly between banker and
+attacker roles, 130 played rounds, and all 156 arm receipts meet exact work
+with no failed/rejected/short/zero search. Total work was 3,150 / 3,289 / 3,312
+search calls and 2,439,840 / 2,542,200 / 2,562,720 verified rollouts for A / A0
+/ B respectively.
+
+The controlling contrast is B−A = `−3/52 ≈ −0.05769`: 10 positive, 32 tied,
+10 negative. B−A0 is `44/52 = 11/13 ≈ +0.84615`, while A0−A is
+`−47/52 ≈ −0.90385`. By role, B−A is 0/26 for banker-team roots and −3/26 for
+attacker-team roots. Thus the positive B−A0 line is paired with the large A0
+collapse penalty: repeatedly searching the exact true world mostly recovers
+the damage caused by repeatedly collapsing public uncertainty onto one sampled
+world. It does not outperform the ordinary public ensemble A.
+
+Operator note: an initial `nohup` delivery was terminated by its tool shell
+before writing progress or result bytes. The identical deterministic launchd
+invocation then produced the sealed report. Launchd attempted one automatic
+restart after successful exit; the label was removed immediately, and that
+restart published no result and could not overwrite the already immutable
+output. No result was selected by outcome.
+
+This is a bounded open-DEV diagnostic, not a scientific or strength result. It
+does not authorize another PT-Full run, gameplay, BELIEF consumer work,
+training, promotion, deployment, merge, or a claim that privileged hidden
+information improves full-round return. The actionable design lesson is to
+retain posterior ensembles: a future belief consumer should improve weighted
+world sampling rather than collapse onto one most-likely world. No new marker
+or authority is appended by this entry. — Codex

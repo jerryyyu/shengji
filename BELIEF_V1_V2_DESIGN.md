@@ -1,8 +1,9 @@
 # BELIEF-V1 V2: diverse population, replayed reference, and scale design
 
 Status: conditional design plus locally complete execution-source candidate.
-The source still requires one consolidated exact-head review, and the later
-host-specific freeze requires its own exact PASS. This document authorizes no
+The final exact source and its host-specific immutable freeze require one
+consolidated PASS, not a source PASS followed by a second freeze review. This
+document authorizes no
 corpus access, capture, training, cloud use, test opening, sampler execution,
 gameplay, strength claim, promotion, or deployment. The immutable V1 B2
 pipeline at source `959c05de3b1ac379a6f9595b516608427486243d` remains
@@ -1025,7 +1026,12 @@ refuses.
 To avoid repeated source/design/admission round trips while still binding the
 private population and host-specific cap evidence:
 
-1. one consolidated exact-head source/design review binds the rank factory,
+1. exact-head score-free preparation produces the H0 inventory/split, complete
+   seed registry, host/runtime/native/boot identity, capacity/deadline receipts,
+   resource caps and canonical immutable freeze without opening capture,
+   training, calibration or test populations;
+2. one consolidated exact-head **source plus execution-freeze review** binds
+   all prepared receipts and the rank factory,
    PR #116 successor, H0 identity/privacy boundary, model arms, exact synthetic
    population, profiling protocol, sparse-cache/source-index separation,
    exact cache and epoch recovery, graceful deadline truncation,
@@ -1033,13 +1039,10 @@ private population and host-specific cap evidence:
    calibration-readiness proof, the exact ten-stage supervisor,
    outcome-blind progress telemetry, mandatory 104-round full-DAG rehearsal,
    metrics, and automatic routing. The
-   reviewer returns one PASS or one HOLD containing every blocker found in
-   that pass; these are not split into subsystem review requests. It may
-   authorize only the real score-free H0 inventory and out-of-population
-   capacity/profile probes;
-2. one exact execution-freeze review binds the resulting private source-group
-   population, human-mixture fraction, host/runtime/native identities, caps,
-   V1 routing receipt, and complete immutable packet. Only that PASS may
+   population, human-mixture fraction, V1 routing receipt and complete packet.
+   The reviewer returns one PASS or one HOLD containing every blocker found in
+   that pass; these are not split into subsystem review requests. Only that
+   single PASS may
    authorize bounded capture, the parallel training/reference DAG, and one
    test opening; and
 3. one terminal review independently reopens the result and routes B3 or
@@ -1086,20 +1089,20 @@ The following run-specific inputs still gate an exact freeze:
    V2 head. This route is not a V1 PASS or SELECT_NONE, cannot use V1 partial
    models, and grants no execution authority by itself. Every other V1
    `REFUSE_*` remains blocking;
-2. one consolidated external source/design PASS on the final V2 execution
-   head, including the worker, freeze builder, GPU qualification, calibration,
-   terminal, and adversarial tests;
-3. a fresh complete seed scan/registry and fresh H0 inventory/split generated
-   from that exact execution head;
-4. the final host-specific runtime/native/boot identity, named training
+2. a fresh complete seed scan/registry and fresh H0 inventory/split generated
+   from the final exact execution head;
+3. the final host-specific runtime/native/boot identity, named training
    candidate (explicit CPU only when no supported accelerator exists), measured
-   next-unit/epoch deadline receipt, and reviewed resource
+   next-unit/epoch deadline receipt, and derived resource
    caps. The receipt must include the sparse-cache bytes-per-decision projection,
    exact free disk, the complete primary/control-overlay/human/scale/calibration
    population estimate, and a training-artifact cap with conservative margin
    (64 GiB for the current measured projection). `freeze-design` binds these
    together with the existing multi-rank preflight receipt; and
-5. one external exact-freeze PASS on the canonical immutable JSON.
+4. one consolidated external exact-head source+freeze PASS covering the final
+   worker, freeze builder, GPU qualification, calibration, terminal,
+   adversarial tests, every score-free receipt above, and the canonical
+   immutable JSON.
 
 The actual CPU-versus-candidate qualification result is deliberately not a
 freeze input: its 32 batches do not exist until capture seals the realized

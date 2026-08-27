@@ -4362,3 +4362,446 @@ One note on reading the prose: I initially compared the B−A and C−A means ag
 **What has not moved in six hours: every byte of output.** `syscw` is frozen at exactly **1,078** — not one write in an hour. RSS is byte-identical. The evidence root is byte-identical. `phase=calibrating 1/4, 25%`, `updated_utc 01:32:48Z`, now **6 h 00 m 24 s** with `ActiveState=active`, `NRestarts=0`, `RuntimeMaxUSec=infinity`, and a fourth consecutive hourly sample at **exactly 1.00 cores**.
 
 **Net: the livelock hypothesis is weaker; the observability gap is unchanged.** A slow damped-retry solve remains the most plausible reading and I lean toward it more than I did an hour ago. But the ask in `3582dc6` stands untouched — a per-state calibration progress record would convert six hours of inference into one line of fact, and it is the only stage in this pipeline that does not emit one. Nothing here justifies touching the run. — Claude (session `68f9c8bd`)
+
+## 2026-08-26 — PT-Full A/A0/B diagnostic (PR #151) at exact `ee1c27e` — ⛔ HOLD: the N=30 exact-work proof has no failing-direction witness at either layer. One two-line test fix; everything else clean
+
+Reviewed once at the pinned head per the queued ask. Note on heads: the PR branch was rebased to `2b874075`; the four review files are **byte-identical** between `ee1c27e` and the PR head (the rebase differs only in branch-local handoff-file copies, which are inert off-main) — no source drift, reviewable as pinned.
+
+**What verified clean, self-run:** four new files only, exactly as claimed; CI green both jobs; **125 passed / 2 skipped pure and 125 passed strict compiled** on the focused PT selection at exact head. Witness inventory covers the ask's surfaces by name, and my mutations confirmed the ones I probed: neutralizing the seed-commitment gate (`hashlib.sha256(seed_secret) != commitment`) turns `test_seed_secret_commitment_is_required_before_any_root` red with the right message ("root opened before commitment refusal"); the report-redaction, semantic-tamper/cross-role-rehash, hidden-twin-invariance, once-per-root and deterministic-progress witnesses are present and green. The seed input is 32-byte/0600 with only the commitment and root hashes leaving the runner; the hostname pin and all-false authority are enforced in `__post_init__`.
+
+**The blocker.** Ask item 2 says "every contested decision must prove `N=30` … any short/zero path refuses." The code carries that check twice in `_verify_decision_work` — per-decision (`any(value != 30 for value in n_by)`) and record-level (`n_determinizations != 30`) — and **neither has a witness**: neutralizing either one individually leaves all 9 tests green (full file battery, restored green after each). Reading `test_exact_work_wiring_passes_and_each_failure_direction_refuses` shows its five failure directions tamper `short`, `report_rollouts`, zeroed budgets, `report_fold.complete` and the sampler counters — never the N fields. Since the diagnostic's entire design holds work fixed at N=30/R=300 so A/A0/B deltas measure *information* and not *work*, a silent N regression would quietly change the question the experiment answers. Both layers unwitnessed on a named ask item = HOLD under the standing masked-witness bar.
+
+**Re-entry (two lines, no design change):** extend the existing failure-direction tuple with (a) `row.update(n_determinizations=29)` and (b) `row["alloc"].update(n_by_candidate=[30, 29])`, each expecting the same `contested decision exact work drift` refusal. Both must go red under my exact source mutations (record-level check → `or False`; per-decision predicate → `or False`) and green unmutated. On a head containing exactly that test change plus otherwise byte-identical four files, this HOLD converts to PASS on a narrow re-check; all other findings above carry over.
+
+No authority granted; the bounded 26-root open-DEV Mini run stays unauthorized until the PASS. — Claude (session `68f9c8bd`)
+
+## 2026-08-26 — PT-Full narrow re-check at repaired head `c6e8d08` — ✅ PASS — one bounded 26-root open-DEV Mini run authorized
+
+The `74d6064` HOLD is discharged exactly as specified. The repaired head `c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5` differs from the reviewed bytes by precisely the two prescribed failure directions (+2/−0 in the one test; production/design/runner files byte-identical to the reviewed head). Re-entry executed with my exact source mutations: neutralizing the record-level `n_determinizations != 30` guard → `test_exact_work_wiring_passes_and_each_failure_direction_refuses` red (`DID NOT RAISE`); restored; neutralizing the per-candidate `n_by` predicate → same witness red; restored green. Full privileged-teacher battery self-run at the repaired head: **125 passed / 2 skipped pure, 125 passed strict compiled**. All other findings from `74d6064` carry forward unchanged (seed-commitment gate red under mutation, redaction/twin-invariance/once-per-root/semantic-tamper/progress witnesses green, 0600 seed with commitment-only egress, hostname pin, all-false authority).
+
+This PASS authorizes only the one bounded 26-root / 52-record / 130-round open-DEV PT-Full run on Mini at exact head `c6e8d08`. No scientific, gameplay, strength, promotion, deployment, merge or training authority follows. — Claude (session `68f9c8bd`)
+
+## 2026-08-26 — PR #152 R4 parallel completion + Perf freeze at exact `d82ba22` — ✅ PASS — marker appended below; two-phase cutover authorized
+
+Consolidated review per ask A (`c42c38f`). Head `d82ba224` stacked on reviewed `e10cb3d` (verified ancestor; Git parent is intermediate `d02ff7c`); the nine-file delta matches the ask. CI green.
+
+**The parallel core, mutation-proven byte-safe.** Only target-blind exact projection is parallelized (16 forkserver workers, `executor.map` with deterministic task construction and ordered reduction); neural inference and quantization stay serial and canonical. My M1 (feed the ordered map a reversed task list) turns `test_process_parallel_projection_is_byte_identical` red — misassignment cannot survive the parity witness. M2 (neutralize the pretest consumed-slot refusal) turns `test_r4_pretest_readiness_reopens_calibration_and_refuses_consumed_slot` red. Both restored; focused strict batteries 25/25 and 38/38, wider belief selection 98/98 strict, all self-run at exact head. (The ask's "75/75 strict selections" is Codex's selection; my selections superset it. I did not separately mutate the `r4-verify-calibration` CLI wiring beyond its witnesses — noted.)
+
+**Perf packet, all byte-verified:** freeze `3070cff6…`, packet `25caad7e…`, marker `414163234…` — and the marker **machine-generates byte-identically** via `expected_r4_completion_review_marker` on the exact clean tree `/opt/belief-r4-parallel-eval-d82ba22` (HEAD = `d82ba224`). Same narrow completion authority: calibration + one test opening + terminal reconstruction only; `execution_mode: r4-calibration-test-terminal-only`; packet adds `test_open_only_after_readiness_and_serial_cutover: true`.
+
+**The 53GB artifact transfer is sound**: 53,055,512,691 bytes / 59,495 files / 317 directories cloud→perf, zero symlinks, `test_population_parsed: false`, metadata-population SHA `95d14f9a…`, and all seven embedded manifest SHAs equal the known R4 cohort/index/tensor-cache manifests from the prior audits (`dfd992fe…`, `49a2490e…`, `59016957…`, `af4d0287…`, `046a8708…`, `50ef00a0…`, device-qualification `14b73e51…`). Benchmark receipt: 32 tasks, 16 workers, serial 27.941738982 s vs parallel 3.211734231 s = `speedup_ppm 8699891`, `byte_identical: true`, no evidence root or test split opened. Fresh capacity (6m33s wall / 1h39m54s CPU / 2.4 GiB) and deadline (3m55s / 16m49s / 3.2 GiB) receipts; caps stay 48h wall / 24 GiB.
+
+**Disclosed fail-closed preparation honored, not hidden:** the duplicate native shadow (rejected tree preserved as `…-build-shadow-rejected-20260826`), the stale seed registry, and the stale local `origin/main` were each refused pre-freeze with before/after receipts retained (`*.before-shadow-cleanup.json`, `deadline-run-summary.shadow-refusal.txt`, `canonical-ref-refresh-receipt.json`); the score-free review-helper attribute error occurred post-publication with both script versions preserved. Destination root `/opt/belief-r4-parallel-completion-v1-r1` and its tombstone are absent on both hosts.
+
+**Cutover contract as authorized:** PASS enables initialization + optimized calibration on Perf only, while serial R4 stays live on cloud. Only after optimized calibration completes, independently reopens, and the read-only readiness gate proves **both** test namespaces untouched may the serial unit stop — immediately before the single optimized test opening. No capture, reference, training, retry, merge, gameplay, strength, promotion or deployment. — Claude (session `68f9c8bd`)
+
+BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW {"authority":{"calibration_open_authorized":true,"capture_authorized":false,"deployment_authorized":false,"gameplay_strength_screen_authorized":false,"one_test_split_open_authorized":true,"promotion_authorized":false,"reference_generation_authorized":false,"retry_authorized":false,"sampler_implementation_authorized":false,"strength_claim_authorized":false,"terminal_reconstruction_authorized":true,"training_authorized":false},"deadline_estimate_receipt_sha256":"92ff6f14cebc0859b7b7fd87e54e12d9cf6c20cf8afe842034c587969e8c31bb","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-r4-parallel-completion-v1-r1","execution_git":"d82ba224eb59a25014b076fb07116eaa6513934a","execution_mode":"r4-calibration-test-terminal-only","freeze_sha256":"3070cff6cf9d391a0ac1ed6aa0f12ee57baa8266a3103b40e70171ae69508318","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"361f1c8297def1b55171f00dd8099643ce35f8f90c43a2b6761df0cde6fdc71e","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"53c86509c5815a02aa50f9fa6140a5fe5b823e7208b5158c529a1b85bae8b88e","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-r4-completion-execution-review-v1","seed_registry_sha256":"e78cd2ebdf7ec1170ff68125eadc62bbbbafa151f22ef3a23e014daf4c57f6d8","source_manifest_sha256":"90b8f67ef69c86cc9a79e3f01188732738b71959ace0408cf3a5619c456b6c9f","source_review_mode":"consolidated-source-and-freeze","source_spec_sha256":"8e7f29b286807033beacf1e4c7d46527e09c53ad7404cd063bc9578627cb1994","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"6f6b7f6ef6ad06a1c5d7fd66d8c0dd6fa549f3998f4c1fabfd58d228d2e85656","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}
+
+## 2026-08-26 — PT-Full A/A0/B open-DEV result at exact `c6e8d08`: COMPLETE — true-world collapse does not beat the public production ensemble
+
+The one authorized 26-root Mini diagnostic completed and its immutable report
+reopens cleanly. Report path:
+`/Users/jerryyu/Projects/shengji-ptfull-c6e8d08-r1.json`; file SHA-256
+`1b404cf3eb37faf94013447b1e828bd9d030766778597cfc72780997674468a3`;
+internal report SHA-256
+`93ad8e989401a2e7739b3fd9d6e94d609aaa9520aac3d03f32eb7f9d7bc45449`.
+The file is mode `0400`, link count 1. Its reviewed source is
+`c6e8d08cf9f03d341c61192e8cef3c9dcfa117d5`.
+
+The built-in validator and canonical report-byte reconstruction pass. An
+independent Codex reviewer recomputed the report and every contrast from the
+sealed records: 26/26 unique roots, 52 records split evenly between banker and
+attacker roles, 130 played rounds, and all 156 arm receipts meet exact work
+with no failed/rejected/short/zero search. Total work was 3,150 / 3,289 / 3,312
+search calls and 2,439,840 / 2,542,200 / 2,562,720 verified rollouts for A / A0
+/ B respectively.
+
+The controlling contrast is B−A = `−3/52 ≈ −0.05769`: 10 positive, 32 tied,
+10 negative. B−A0 is `44/52 = 11/13 ≈ +0.84615`, while A0−A is
+`−47/52 ≈ −0.90385`. By role, B−A is 0/26 for banker-team roots and −3/26 for
+attacker-team roots. Thus the positive B−A0 line is paired with the large A0
+collapse penalty: repeatedly searching the exact true world mostly recovers
+the damage caused by repeatedly collapsing public uncertainty onto one sampled
+world. It does not outperform the ordinary public ensemble A.
+
+Operator note: an initial `nohup` delivery was terminated by its tool shell
+before writing progress or result bytes. The identical deterministic launchd
+invocation then produced the sealed report. Launchd attempted one automatic
+restart after successful exit; the label was removed immediately, and that
+restart published no result and could not overwrite the already immutable
+output. No result was selected by outcome.
+
+This is a bounded open-DEV diagnostic, not a scientific or strength result. It
+does not authorize another PT-Full run, gameplay, BELIEF consumer work,
+training, promotion, deployment, merge, or a claim that privileged hidden
+information improves full-round return. The actionable design lesson is to
+retain posterior ensembles: a future belief consumer should improve weighted
+world sampling rather than collapse onto one most-likely world. No new marker
+or authority is appended by this entry. — Codex
+
+## 2026-08-26 — PR #154 R4 two-lane cutover receipt at exact `c123285` — ✅ PASS — marker appended below; one serial stop + one receipt run authorized after optimized calibration seals
+
+Reviewed once at exact PR head `c1232854a193b34c3e7f6d3117780ec518a3b167` against the already-reviewed R4 parallel source/freeze head `d82ba224eb59a25014b076fb07116eaa6513934a` (verified ancestor). The delta is exactly the two claimed files — `server/scripts/belief_r4_cutover_receipt.py` (+517) and `server/tests/test_belief_r4_cutover_receipt.py` (+173) — with zero deletions and nothing else touched. `git diff --check` clean; both required CI jobs pass at this exact head (run `32996089004`, `headSha = c1232854…`). File SHA-256: controller `74e69293…945e37`, test `fde49a5a…d909208e`. The 13:49 `a1f4c6d` PASS does **not** cover this head; this is a single fresh pass over `c123285` only, and I did not relitigate `d82ba22`.
+
+**The marker is machine-generated and byte-exact.** `expected_review_marker("c1232854…")`, run on my own clean detached worktree at the exact head, reproduces a 1,982-byte marker whose SHA-256 is `fea2ba89a943183aa3568ba005d0fde09587e96173c1008cacaa1cbd98a8be7f` — identical to the ask's independently generated expectation. That exact line is appended below and is the only line in this ledger beginning with `BELIEF_V1_V2_R4_CUTOVER_RECEIPT_V1_REVIEW `.
+
+**Marker authentication verified by measurement, not by reading its own assertions.** `authenticate_review()` ships with no test coverage, so I exercised it against eleven throwaway Git repositories with a real `origin` remote. The honest append-only Claude commit is ACCEPTED; all ten adversarial directions REFUSE — wrong author/committer identity, missing `Claude-Session` trailer, a second file changed in the same commit, earlier ledger bytes rewritten (non-append), the marker duplicated, the marker already present in the parent ledger, the marker indented off column 1, a marker generated for a different `execution_git`, a single authority bit flipped inside the marker, and no marker at all.
+
+**Both lanes bind, and the gate correctly refuses today.** I ran the controller's own read-only `probe_lane()` against both live hosts at 19:48 UTC. Perf (`ubuntu-32gb-hel1-2`) and Cloud (`ubuntu-32gb-hel1-1`) each match all pinned bindings exactly: checkout `source_git` `d82ba224…` / `e10cb3d3…`, clean trees, and the `freeze` / `admission` / `review` (plus Cloud `launch`) SHA-256 constants. All four forbidden test/terminal paths are absent under **both** evidence roots — the serial sibling `/opt/belief-r4-completion-v1-r3` that the 12:48 HOLD called unbound is now genuinely probed, which is the substance of this repair. Both units are `active/running` with 18 and 1 matching `belief_v2_worker.py` PIDs respectively, so `_validate_lane` REFUSED **both** lanes: the gate cannot pass prematurely. Optimized `calibration/completion.json` is still absent, consistent with calibration in flight.
+
+**Refusal boundaries measured, not assumed.** Beyond the seven shipped can-fail parametrisations I fed `build_receipt()` twelve hand-built drift states: Perf rebooted between the pre- and post-reopen probes; Cloud rebooted; calibration completion bytes changed during the reopen; calibration selection manifest changed during the reopen; either checkout at a different commit; serial checkout dirty; a probe that omits one forbidden name entirely; serial `calibration/selection.partial` present; optimized unit restarted; optimized calibration exited non-zero; serial evidence root a symlink. All twelve refuse and the honest state accepts. Exact-source mutations independently turn the shipped witnesses red for worker quiescence, forbidden-path presence, unit active/sub-state/MainPID, the readiness↔observed calibration-manifest binding, `calibration_independently_reopened`, `source_test_split_decision_open_count`, the evidence-hash bindings, the review-marker binding, the exclusive-publication guard, and the all-false authority block.
+
+**Focused validation self-run at the exact head:** 31/31 pure and 31/31 strict compiled (`SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`, `_fast` built inside my own isolated worktree), matching the ask's counts exactly.
+
+**Two non-blocking coverage findings.** Neither is load-bearing — the code is correct and I measured each direction refusing above — but each named failure direction should carry a witness: (1) no test exercises pre/post probe drift, because every shipped parametrisation mutates before deep-copying, so `_validate_probe_stability`'s `stable_fields` comparison can be neutralised with all 31 still green; the guarantees unique to it are "no reboot inside the reopen window" and "calibration bytes unchanged across the reopen". (2) neutralising the `source_git` / `source_clean` lane binding also leaves all 31 green. `set(forbidden) != set(FORBIDDEN)` is unwitnessed too but is redundant with the `any(...)` check given the probe's hard-coded names. Please land witnesses for (1) and (2) on the next touch of this file. Observation only: `unit_load_state` is collected but never asserted, so a `systemctl` that failed outright would surface the default `inactive`/`dead`; `MainPID == 0` and the empty worker scan still bound that state.
+
+The controller can neither stop a service nor open test bytes. Its only write is the single `O_EXCL | O_NOFOLLOW` mode-`0400` receipt at `--out`, and the remote probe only reads `/proc`, `systemctl show`, `git rev-parse` / `status`, and file digests.
+
+This PASS authorizes exactly one sequence, and only after optimized calibration seals and the marker below is live on canonical `main`: stop the serial unit once, then run this receipt once on Mini. The receipt does not itself open the test split — existing PR #152 authority remains the sole authority for the subsequent single optimized test opening. No retry, merge, gameplay, strength, training, promotion or deployment authority follows. This review launched, stopped, restarted and initialized nothing, opened no test split, mutated no live evidence root, and preserved the dirty root checkout. — Claude (session `6825873c`)
+
+BELIEF_V1_V2_R4_CUTOVER_RECEIPT_V1_REVIEW {"authority":{"deployment_authorized":false,"gameplay_strength_screen_authorized":false,"merge_authorized":false,"retry_authorized":false,"sampler_implementation_authorized":false,"serial_resume_authorized":false,"strength_claim_authorized":false,"test_opening_executed":false,"training_authorized":false},"execution_git":"c1232854a193b34c3e7f6d3117780ec518a3b167","optimized_lane":{"admission_sha256":"77d8d7f8c194f9f29e1ba8d6c3715d86e4c95e353534b403f169e0e6a387a374","alias":"shengji-perf","checkout":"/opt/belief-r4-parallel-eval-d82ba22","freeze_sha256":"3070cff6cf9d391a0ac1ed6aa0f12ee57baa8266a3103b40e70171ae69508318","hostname":"ubuntu-32gb-hel1-2","launch_path":null,"launch_sha256":null,"review_sha256":"414163234de2eb5aa9b4ca7a5a079790c51fb09553dfe927192efe1efd88c24e","root":"/opt/belief-r4-parallel-completion-v1-r1","source_git":"d82ba224eb59a25014b076fb07116eaa6513934a","unit":"belief-r4-parallel-completion-d82ba22-r1.service"},"receipt_only":true,"required_observations":{"both_services_inactive_and_workerless":true,"both_test_namespaces_absent":true,"optimized_calibration_complete":true,"optimized_pretest_independently_reopened":true,"serial_stopped_before_receipt":true},"schema":"belief-v1-v2-r4-cutover-receipt-review-v1","serial_lane":{"admission_sha256":"6e17fa33b8e6ac2efdd753d5fd285b5f0fbe8a8e59593077504c56de5e16358a","alias":"shengji-cloud","checkout":"/opt/belief-r4-completion-e10cb3d","freeze_sha256":"59c747be56bdd20c792608ed09be307b9661c8aff6ad7e0e720cd8156de7fea4","hostname":"ubuntu-32gb-hel1-1","launch_path":"/opt/belief-r4-completion-e10cb3d-review-support-r3/launch-r4-completion.sh","launch_sha256":"a5008eb0846138748aa4be882515b4ac90bc29a1c5d22ea7028d620e03d2f3e7","review_sha256":"d4bd42f70bf4e545d7aa0cc7f547402fcffdad3d5fbb25925354dbe53b5c0709","root":"/opt/belief-r4-completion-v1-r3","source_git":"e10cb3d3426d758f2d757d41462aba6a06bc60c8","unit":"belief-r4-completion-e10cb3d-r3.service"}}
+
+## 2026-08-26 — PR #153 PT/C0 repaired delta at exact `2391bc4` — ✅ PASS — the 14:47 native-parent HOLD is closed; one 26-root open-DEV Mini run authorized
+
+Reviewed once at exact repaired head `2391bc469a8995e5b71e734f05aaa55f0a51436c`, restricted to the two-file delta over the externally reviewed `3183a498343b48257a745521b50d28f32074b492` (verified ancestor; `c6e8d08` PT-Full parent also a verified ancestor). The delta is exactly `server/shengji/rl/privileged_teacher_c0.py` (+1) and `server/tests/test_privileged_teacher_c0.py` (+15/−1) — one load-bearing equality and its failing-direction witness, nothing else. `git diff --check` clean; both CI jobs green at this exact head (run `33002123275`, `headSha = 2391bc46…`). I did not reopen the parent canonical-byte/root, arm, sentinel, privacy or runner findings; the delta does not materially change them.
+
+**The blocker is closed at source, and the closure is load-bearing rather than cosmetic.** `validate_parent()` now requires `parent_design.native_sha256 == design.native_sha256`. That single equality is what makes the runner's already-computed hash binding: `run_privileged_teacher_c0.py` calls `fast.activate()`, then builds `C0Design(native_sha256=sha256(Path(fast._fast.__file__).read_bytes()))` **before** `run_dev()`, and `run_dev()` calls `validate_parent()` at its top — before `_parent_records()`, before any `_run_root`, before any `_play_arm`. So the bytes of the engine that is actually activated must now equal the sealed PT-Full parent's recorded engine, or no arm can play. `validate_report()` enforces the same equality on reopen, so a report generated under a different engine cannot be re-validated either.
+
+**Witness verified by mutation and by direct measurement.** Neutralising the new equality line in exact source turns `test_c0_design_reuses_parent_population_and_authorizes_nothing` red (`DID NOT RAISE PrivilegedTeacherC0Error`); restored green. The witness is non-degenerate: the fixture parent's `native_sha256` is `b`×64 and the mismatched design is `d`×64, and the repaired fixture now derives the honest design's native identity from `_parent_design()` rather than the previously unrelated `d`×64 constant. Driving it directly, a design carrying a mismatched compiled-native identity refuses with the exact `parent report identity drift` error from **both** `validate_parent()` and `run_dev()`, strictly earlier than parent-root reconstruction, i.e. with zero arm plays. The one-axis isolation of the neighbouring `wrong_external` witness is preserved (it reuses the honest native identity). Focused suite self-run at the exact head: **8/8 pure and 8/8 strict compiled** for `test_privileged_teacher_c0.py` (11/11 including the runner file, in both modes), with `_fast` built inside my own isolated worktree.
+
+**The equality is satisfiable in reality — I checked the real bytes.** The prelaunch worktree `/private/tmp/shengji-ptc0-run-2391bc4` is at exact head `2391bc46…` with a clean tree including untracked files, and its built `_fast.cpython-314-darwin.so` hashes to `a6caf8fe9b7e4e73c16cb1c02d44cacbd39d0272c67a614ceba955c528901bf2`. The sealed PT-Full report `/Users/jerryyu/Projects/shengji-ptfull-c6e8d08-r1.json` is mode `0400` with external SHA-256 `1b404cf3eb37faf94013447b1e828bd9d030766778597cfc72780997674468a3`, internal `report_sha256` `93ad8e989401a2e7739b3fd9d6e94d609aaa9520aac3d03f32eb7f9d7bc45449`, `design.execution_git` `c6e8d08c…`, `design.hostname` `Jerrys-Mac-mini.local`, `design.seed_commitment_sha256` `94261b3473d9ca2664bc649c64b0f2071365d1b8b2be76d12e2a1d85bcfe0949`, and `design.native_sha256` **exactly** `a6caf8fe…01bf2`. The child's live engine is therefore byte-identical to the parent's, as it must be for an engine-unchanged child (the `c6e8d08..2391bc4` range touches no `shengji/engine` file). No C0 output exists and no C0 launchd label is loaded.
+
+Observation only, not a blocker and unchanged from the reviewed parent: the runner digests the file at `fast._fast.__file__` rather than the mapped image, so a swap between `activate()` and the digest is theoretically possible. The parent recorded its hash the same way, so the comparison is like-for-like, and the surrounding clean-tree, hostname, ancestry and `SHENGJI_FAST`/`SHENGJI_REQUIRE_VOIDS` gates bound the window.
+
+This PASS authorizes exactly one 26-root **open-DEV** Mini run at this exact head, reusing the sealed PT-Full roots. No rehearsal, no second source review, no merge, no scientific confirmation, no training, no belief integration, no gameplay, strength, promotion or deployment authority follows. This review launched, stopped, restarted and initialized nothing, opened no test split, mutated no live evidence root, and preserved the dirty root checkout. — Claude (session `6825873c`)
+
+## 2026-08-26 — PR #153 C0 canonical-report reopen repair at exact `ee90fd3` — ✅ PASS — the immutable DEV report now reopens byte-identically; interpretation of the existing report only
+
+Reviewed once at exact repaired head `ee90fd34538f33689ef7dd8f886d75b5b8f2d0be`, restricted to the delta over the already-PASSed and already-run source `2391bc469a8995e5b71e734f05aaa55f0a51436c` (verified ancestor; PT-Full `c6e8d08c…` also a verified ancestor). Scope is exactly the two claimed files and nothing else — `server/shengji/rl/privileged_teacher_c0.py` (+2/−2, SHA-256 `a996807a28c4a3f97f297470b5bd957efd44c20e20211f5fad808e14d8f7af6d`) and `server/tests/test_privileged_teacher_c0.py` (+7/−1, SHA-256 `bec105f3bedb61a96f23387efd0f960dd7ea60053fd6659e5252666a1a300dd1`); zero files touched under `shengji/engine`. `git diff --check` clean; both CI jobs green at this exact head (run `33009094989`, `head_sha = ee90fd34…`). I did not repeat the reviewed parent, source, or completed run, did not rerun C0, and did not touch the R4 or R5 lanes.
+
+**The defect was real, and I reproduced it on the actual immutable artifact rather than on a fixture.** Canonical JSON sorts object keys, so the published report stores `arms` as `["C0-H","C0-P","C0-S"]` and `telemetry` starting `["bare_point_avoidance","bare_point_introduction","candidate_count_sum"]`, while `ARMS` is declared `("C0-P","C0-H","C0-S")` and `TELEMETRY_FIELDS` starts at `"treatment_decisions"`. Driving the pre-repair source `2391bc4` over `/Users/jerryyu/Projects/shengji-ptc0-2391bc4-r1.json` in my own isolated worktree, `validate_report()` refuses with exactly `C0 arm population drift`; repairing only the `arms` check and leaving the ordered `telemetry` check in place moves the refusal to exactly `C0 telemetry shape drift`. Both repaired lines are therefore load-bearing on the real report, not just on the fixture — neither alone is sufficient.
+
+**Both mutations have teeth in the shipped witness, and the parent suite was blind to the defect.** Independently restoring `tuple(arms) != ARMS` in exact source turns exactly one test red — `test_report_roundtrip_tamper_and_privacy_boundaries`, with `C0 arm population drift` — and the other seven stay green; independently restoring `tuple(telemetry) != TELEMETRY_FIELDS` turns the same single test red with `C0 telemetry shape drift`. Blind control: with **both** ordered checks restored and the test file reverted to its `2391bc4` state, all 8/8 pass — the pre-repair suite could not see this at all, which is precisely the coverage the new serialize → reopen → `validate_report` → re-serialize → byte-identity assertion adds. Focused validation self-run at the exact head: **11/11 pure and 11/11 strict compiled** (`SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`, `_fast` built inside my own worktree), matching the ask; the wider privileged-teacher selection is 145/145 strict compiled.
+
+**Canonical reopen of the immutable report verified at the repaired head.** The report is mode `0400`, `nlink 1`, 162,798 bytes, external SHA-256 `aada4737574925984129d824aa847704ceeb84a7d4fabb74011efa7fc8d60eda`, internal `report_sha256` `b77e3fdeffb2ceddd0ee6f351d8f907d28804368259b2ff3fc0cf72691bdf8a3` — unchanged before and after my read-only review. Reopened from bytes at exact `ee90fd3`: the file is exactly its own canonical encoding, `design.payload()` reconstructs the stored design byte-for-byte, `validate_report()` ACCEPTS, and `report_bytes()` re-emits the identical 162,798 bytes. Content: `status COMPLETE`, `completed_roots` 26 over 26 distinct root hashes, `record_count` 52, `played_round_count` 156, `design.execution_git` `2391bc46…` (the run source, correctly not this head), `design.seed_commitment_sha256` `94261b34…fe0949`, parent external `1b404cf3…468a3` / internal `93ad8e98…c45449`, all seven authority flags false, and none of `hands`/`buried`/`deck`/`seed`/`rng_state` present anywhere. `validate_parent()` and the full PT-Full `validate_report()` both ran inside that reopen, so the parent binding is re-proved on real bytes, not assumed.
+
+**The repair loses no teeth.** `ARMS` and `TELEMETRY_FIELDS` each contain unique elements and dict keys are unique, so `set(d) == set(FIELDS)` is an exact-key-set check: a missing, extra or renamed key still refuses, and only key *order* — which canonical serialization deliberately destroys — stops being asserted. The surrounding value-level checks are untouched and unaffected by order: `set(row) != {...}` per arm, `row["arm"] != arm`, `set(row["work"]) != set(_WORK_FIELDS)`, the telemetry accounting inequalities, and the whole-record `record != expected_record` reconstruction (dict equality, order-insensitive). The producer-side ordering invariant `tuple(row.arm for row in outcomes) != ARMS` at `_record_payload` still applies to an in-memory sequence and keeps its teeth. No gameplay, root, seed, arm, statistic, receipt or report byte changes — confirmed by the report re-emitting identical bytes.
+
+Non-blocking observation, out of scope for this delta: `privileged_teacher_full_ab.py:584` still carries the same idiom, `tuple(arms) != ARMS`. It survives reopen only by the accident that PT-Full's `ARMS = ("A", "A0", "B")` is already in sorted order; any future arm name that breaks that accident would reintroduce this exact failure in the parent validator. Worth converting to an exact-key-set check on the next touch of that file, with a round-trip witness like the one added here.
+
+This PASS authorizes only formal interpretation and ledgering of the already-completed open-DEV C0 result. It does not authorize another run, a rerun, a merge, training, gameplay, a strength claim, promotion or deployment, and it appends no new machine marker or authority. This review ran read-only against the live artifacts: it launched, stopped, restarted and initialized nothing, opened no test split, mutated no live evidence root, left the R4 and R5 lanes untouched, and preserved the dirty root checkout. — Claude (session `868630fb`)
+
+## 2026-08-26 — PT/C0 open-DEV mechanism result: complete, independently reproduced, **SELECT NONE**
+
+The immutable report
+`/Users/jerryyu/Projects/shengji-ptc0-2391bc4-r1.json` (external SHA-256
+`aada4737574925984129d824aa847704ceeb84a7d4fabb74011efa7fc8d60eda`,
+internal report SHA-256
+`b77e3fdeffb2ceddd0ee6f351d8f907d28804368259b2ff3fc0cf72691bdf8a3`)
+reopens and re-emits byte-identically under the reviewed repair `ee90fd3`.
+The population is complete: 26 distinct roots spanning all 13 trump ranks,
+52 balanced banker/attacker role records, and 156 played rounds. All authority
+flags remain false. No run was repeated.
+
+Independent reduction from the 52 sealed record rows reproduces every headline
+contrast. Against public production A and the exact-world unchanged-policy B:
+
+| treatment | vs A | vs B |
+|---|---:|---:|
+| C0-P: exact world, production ballot, deterministic signed-level rollout | `-7/13` | `-25/52` |
+| C0-H: widened ballot, heuristic continuation | `-23/52` | `-5/13` |
+| C0-S: widened ballot, SmartBot continuation | `-3/13` | `-9/52` |
+
+The incremental comparisons are C0-H minus C0-P `+5/52` and C0-S minus C0-H
+`+11/52`. C0-S is therefore the least-bad consumer and continuation quality
+does matter, but **no arm has positive mean against both A and B**, so none
+meets the preregistered condition for a fresh 128-root confirmation.
+
+The player-reported bare-point symptom is real but not sufficient. C0-P/H/S
+changed 548/589/521 contested choices and recorded 14/17/5 exact-positive
+bare-point avoidances versus only 2/3/1 introductions. C0-H also selected 32
+actions outside the production ballot and C0-S selected 27. Yet the corresponding
+whole-round contrasts stayed negative. This separates a local human-legibility
+improvement from strength: exact hidden information can identify locally better
+alternatives, including avoiding a bare point, but this rollout family does not
+reliably convert those changes into stronger partnership outcomes.
+
+**Decision:** close the current C0 recipe ladder as `SELECT NONE`; do not confirm,
+integrate into BELIEF gameplay, or add a hard-coded “never lead a 10” rule. If
+the privileged-teacher direction resumes, its smallest meaningfully different
+axis is bounded-depth partnership-aware search or a learned full-information
+action-value policy. It must first show positive full-round value under exact
+state; a larger belief model cannot repair a consumer that fails at that
+ceiling. This is open-DEV mechanism evidence, not a strength, gameplay,
+promotion or deployment claim. — Codex
+
+## 2026-08-27 00:40 EDT — PT-Sol0 consolidated source + launch review at exact `db43da99` — ⛔ HOLD: the command this PASS would authorize does not exist anywhere. Source itself is clean
+
+Reviewed once at the pinned head as asked. **The source is in good shape and I found no defect in it** — the blocker is that the ask asks me to authorize "exactly one open-DEV Mini run at this head/**command**", and there is no command to review.
+
+**What verified clean, self-run at exact head.** Head `db43da99e13e46c703c7d2eee7b5a7b43ae439ef` with parent exactly the claimed base `ee90fd34538f33689ef7dd8f886d75b5b8f2d0be`; **eight files, +2653/−0**; `git diff --check` clean. Focused suites **15 passed** and the complete PT surface **151 passed**, both matching the claimed 15/15 and 151/151. Authority is coherent: the report module holds a single `AUTHORITY` constant and enforces `report["authority"] != AUTHORITY` and `record["authority"] != AUTHORITY` equality at every level, and the runner sets `scientific_execution_authorized` and `strength_claim_authorized` false.
+
+**The isolation surfaces are genuinely well built, which is what an external-agent packet needs.** File creation refuses on `path.exists() or path.is_symlink()` before every write, opens use `O_NOFOLLOW`, the workspace is `0o700` and payloads `0o600` with the mode re-checked on reopen (`stat.S_IMODE(before.st_mode) != 0o600`), directory children are rejected unless `is_file()` and not a symlink, and the mailbox itself is refused unless it is a real directory. The refusal vocabulary covers the agent's whole action space: `play candidate outside ballot`, `rollout candidate outside ballot`, `rollout requested outside contested decision`, `planner requested outside treatment turn`, and per-call, per-decision and per-round rollout budgets.
+
+**Two of those guards are mutation-proven load-bearing:**
+
+> **M1** — neutralize the play-candidate ballot bound (`self._candidates is None or index >= len(self._candidates) or self._production_ballot is None or self.rnd.turn is None` → `False`): `test_play_is_bound_to_observation_and_exact_ballot` goes red (1 failed / 14 passed).
+> **M2** — neutralize the per-decision rollout call budget (`self._decision_rollout_calls >= MAX_ROLLOUT_CALLS_PER_DECISION` → `False`): `test_rollout_deduplicates_exact_candidate_continuation_pairs` fails with **`DID NOT RAISE PrivilegedTeacherSol0RequestError`** (1 failed / 14 passed).
+
+Both restored, 0 source files modified. The private/public partition is also the right shape: the Sol transcript is written under `private_root` and only its `private_evidence_sha256` enters the public report.
+
+**The blocker, stated exactly.** The ask says to review "the exact command in the top override of `HANDOFF_ACTIVE.md`" and to authorize one run "at this head/command". There is no such command:
+
+- `HANDOFF_ACTIVE.md` on `origin/main` contains **no `sol0` reference at all**, and its top reads "The review queue is **empty**."
+- `HANDOFF_ACTIVE.md` at the PR head `db43da99` also contains no `sol0` reference, and still says the one active ask is PR #151.
+- `HANDOFF_ACTIVE.md` is **not part of the eight-file delta**.
+- `PRIVILEGED_TEACHER_SOL0_DESIGN.md` names no invocation either.
+
+This is not a formality. `scripts/run_privileged_teacher_sol0.py` takes **thirteen required arguments**, four of which — `--expected-c0-external-sha256`, `--expected-c0-report-sha256`, `--expected-full-external-sha256`, `--expected-full-report-sha256`, plus `--expected-c0-git` and `--expected-full-git` — *are* the parent-binding enforcement the ask lists as a review surface, alongside `--seed-secret`, `--private-root` and `--out`. Appending a PASS now would authorize an external `gpt-5.6-sol` session to run against unspecified parent bindings, an unspecified seed secret and an unspecified private root. The code enforces whatever it is given; the command is what decides what it is given, and I cannot review bytes that do not exist.
+
+**Unblocking is cheap and I can turn this around in one pass, since the source review is done:** publish the exact command — ideally in the packet itself rather than as a handoff override, so it is pinned to the reviewed head — with the six `--expected-*` values, `--private-root`, `--seed-secret`, `--out` and `--workers` filled in. I will then verify those bindings against the sealed C0 report (`aada4737…` external / `b77e3fde…` internal) and PT-Full report (`1b404cf3…` external / `93ad8e98…` internal), confirm the private root is absent, and PASS.
+
+**Coverage limits, honestly.** This is +2653 lines across eight files and I did not audit it line by line. I went deep on mailbox/filesystem isolation, the ballot and budget enforcement, the authority constants and the private/public partition, and I ran both claimed suites. I did **not** independently verify the frozen design SHA `ffe4667d…`, the runtime/native/Codex binary SHAs, the 608.977-second engineering-proof round, or the report/progress reconstruction paths.
+
+No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+
+
+## 2026-08-27 04:36 EDT — ⛔ R4 optimized lane cannot finish inside its own `RuntimeMaxUSec=2d`: it is 53.6 h short, and the cap was never sized against a calibration measurement
+
+**Time-critical.** This finding expires at **2026-08-28 15:38:04Z**, when systemd terminates
+`belief-r4-parallel-completion-d82ba22-r1.service` on Perf. Filed under the MAIN-FREEZE
+exception for findings that stop being useful once a run seals — or, here, once it is killed.
+No authority is granted or withdrawn.
+
+### The arithmetic, from the run's own telemetry
+
+The progress records #152 added are what make this provable, so this is also the close-out of
+the `3582dc6` ask: `r4-calibrate` now emits `BELIEF_V2_PROGRESS`, `outcome_blind:true`,
+`evidence_artifact:false`, on both hosts. That ask is answered.
+
+Perf optimized, read at **2026-08-27T08:36:22Z**:
+
+- `ExecMainStartTimestamp=Wed 2026-08-26 15:38:04 UTC`, `ActiveState=active`, `NRestarts=0`,
+  `RuntimeMaxUSec=2d`, `MemoryMax=25769803776` (24.0 GiB), `MemoryCurrent=15936036864` (14.84 GiB),
+  `CPUUsageNSec=189704927741000`.
+- Elapsed **16 h 58 m 18 s**; mean occupancy **3.10 cores of 16**.
+- Progress, phase `score-r4-calibration-populations`:
+  `completed_units 1 / total_units 6`, `elapsed_nanoseconds 60915813391611`
+  (**16 h 55 m 15.8 s**), `estimated_remaining_nanoseconds 304579066958055` (**84 h 36 m 19 s**).
+
+Six populations at the measured 16.921 h each is **101.53 h = 4 d 05 h 32 m** of calibration.
+The cap allows **48 h**. From the reading, **31 h 01 m 42 s** of allowance remain against
+**84 h 36 m** of projected work: a **53.58 h deficit**. The unit reaches the cap at **47.3 %**
+of calibration — **2.84 of 6 populations** — and is terminated there. The test phase is not
+in that 6 at all.
+
+The extrapolation is linear from population 1, so here is its corroboration. Population 2
+(`score-r4-synthetic-ref1-rounds`) is running now at **43.6 s/round** (records at
+`completed_units` 1→4) against population 1's **45.9 s/round** over its full 1,326 rounds. The
+second population is not faster. For the run to fit, populations 2–6 would have to average
+**2.73× faster** than the one measured; and once population 2 completes on its current rate,
+populations 3–6 would have to average **4.80× faster** in the 14.1 h that would remain.
+
+### Nothing seals if it is killed
+
+`server/scripts/belief_v2_worker.py` uses `.partial` only for the initialization publish —
+`freeze.json`, `review.md`, `admission.json`, `inventory.json`, `group-split.json`, then
+`os.rename(partial, root)` at lines 249–265. There is no signal handler in the worker and no
+calibration resume; same-admission process recovery is #148's R5 feature, which is explicitly
+held and unlaunched. Both evidence roots confirm it: Perf `/opt/belief-r4-parallel-completion-v1-r1`
+is **60,076 B**, Cloud `/opt/belief-r4-completion-v1-r3` is **60,057 B**, each five files, each
+byte-identical to launch. **Zero output bytes exist on either host.**
+
+So termination at the cap discards 48 h having sealed nothing. That is the sixth failure class —
+deadline expiry-cannot-seal — which already cost R3 ~38 h. This time it is not a surprise: it is
+predictable 31 h in advance, from the run's own records.
+
+### The cap has no measured basis
+
+`/opt/belief-r4-parallel-d82ba22-freeze-inputs-r1/deadline-estimate.json` (bound into the freeze
+as `capacity.deadline_estimate_receipt_sha256 = 92ff6f14…`) contains
+`capture_p95_wall_nanoseconds`, `reference_p95_wall_nanoseconds`,
+`training_epoch_p95_wall_nanoseconds` and `safety_reserve_nanoseconds`. It contains **no
+calibration or scoring wall estimate of any kind.** `deadline-run-summary.json` records
+`capture_sample_count 416`, `reference_sample_count 32`, `training_epoch_sample_count 2` — and
+no calibration sample.
+
+`RuntimeMaxUSec=2d` is **172,800 s**, which is exactly `resource_caps.training_wall_seconds`
+in the freeze. A *training* wall cap was applied to a unit that runs *calibration*. The cap
+was not derived from any measurement of the work this unit actually does, because no such
+measurement exists in the freeze.
+
+**My coverage limit, stated plainly.** I passed #152's consolidated source+freeze at `394354f`.
+I verified exact-output projection parity, the population guards, and the read-only pre-test
+readiness gate. I did **not** check whether `RuntimeMaxUSec` was sized against a measured
+calibration wall projection, and the freeze contains no such projection to have checked it
+against. That is a gap in my review, not in the source.
+
+### The measured value of the parallel cutover is 1.19×
+
+Both lanes have now completed exactly one population, which makes the first honest end-to-end
+comparison possible. Cloud serial `belief-r4-completion-e10cb3d-r3.service`, read at
+**2026-08-27T08:36:25Z**: started `Wed 2026-08-26 01:32:30 UTC`, `RuntimeMaxUSec=infinity`,
+`NRestarts=0`, `CPUUsageNSec=193254886051000` over **31 h 03 m 55 s** (**1.73 cores of 16**),
+populations `1 / 6` at `elapsed_nanoseconds 72267454243108` (**20 h 04 m 27 s**),
+`estimated_remaining_nanoseconds 361337271215540` (**100 h 22 m 17 s**).
+
+- Per population: optimized **16.921 h** vs serial **20.074 h** → **1.186×**.
+- Projected seals if neither were capped: optimized **2026-08-30 21:10Z**, serial
+  **2026-08-31 02:00Z** — the optimized lane arrives **4 h 50 m** earlier, because it launched
+  **14 h 05 m 34 s** later.
+
+This is not a defect in #152 and I am not reporting it as one. The packet says plainly that
+neural inference and quantization stay serial and that only target-blind exact projection is
+parallelized, so a modest end-to-end gain is the designed outcome. *Inferred, not measured:*
+under ideal 16-worker scaling a 1.186× end-to-end speedup implies projection was ≈16.7 % of
+serial calibration wall, which is consistent with the ~8.7× I measured on the projection
+sub-phase alone. The point is only that **1.19× is the number the cap has to be sized against**,
+and 2 d was chosen as if the number were much larger.
+
+### Suggested, and none of it touches the running service
+
+The cheapest moment to act is now: intervening costs the 17 h already spent, intervening at the
+cap costs 48 h. Concretely — (1) decide whether `RuntimeMaxUSec` can be lifted in place on a
+running unit without restarting it; I have **not** tested this, because testing it would mutate
+a live Codex-owned unit, and it determines whether the 17 h is recoverable at all. (2) If it
+cannot, the choice is between relaunching now with a cap sized from the measured 101.5 h plus
+the test phase, and accepting that Cloud's uncapped serial lane is the only survivor — it is
+unaffected by this finding and still projects a seal around 2026-08-31 02:00Z. (3) Whichever
+path, add a calibration wall estimate to the deadline receipt, so the next `RuntimeMaxUSec` is
+bound to a measurement of the stage the unit runs rather than to the training cap.
+
+### Secondary, low severity: the phase ETA is computed off the stage clock
+
+`V2ProgressReporter._started` is fixed at construction (`belief_v2_progress.py:35`) and
+`elapsed = observed - self._started`, so for any phase whose reporter was constructed before the
+phase began, `estimated_remaining_nanoseconds` is inflated by `stage_elapsed / phase_elapsed`.
+Measured, and the formula reproduces the emitted bytes exactly: population 2 at
+`completed_units 1` reported `80768703700601425` ns — **934 days** — which is
+`60957.512226869 s × 1325 / 1` to the nanosecond; at `completed_units 4` it reported
+`20190291572584648` ns, which is `61090.140915536 × 1322 / 4` to the nanosecond.
+
+It is masked on the first phase, where the two clocks coincide, and it does **not** affect the
+`score-r4-calibration-populations` record above — that reporter's start *is* the stage start, so
+its 84 h 36 m is correct, which is why the finding above stands on it. Telemetry only; nothing
+outcome-bearing depends on it. Worth a fix when the file is next touched, not on its own.
+
+Read-only throughout: no unit signalled, restarted or reconfigured; no calibration or test bytes
+opened; both evidence roots measured by size only. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 05:32 EDT — correction to `1e20021`: population 2 *is* faster (39.31 s/round). The deficit is 42.3 h, not 53.6 h. The conclusion is unchanged.
+
+In `1e20021` I wrote "population 2 is already running at **43.6 s/round** … so it is not faster."
+That came from its first four rounds. With 90 rounds measured it is **39.31 s/round**, which is
+**14.4 % less time per round** than population 1. My statement was wrong in direction, and I am
+correcting it before Codex has to.
+
+From the same reporter, phase `score-r4-synthetic-ref1-rounds`: `completed_units 0` at
+`elapsed_nanoseconds 60915813813508`, `completed_units 90` at `64453371051768` — a phase elapsed
+of **3,537.557238260 s** over 90 rounds = **39.3062 s/round**, against population 1's
+60,915.813391611 s / 1,326 = **45.9395 s/round**.
+
+Re-running the projection at the better rate, read at **2026-08-27T09:32:46Z** (`active`,
+`NRestarts=0`, `RuntimeMaxUSec=2d` still, `MemoryCurrent=16073154560`,
+`CPUUsageNSec=196069299496000`, elapsed **17 h 54 m 42 s**, mean **3.04 cores**, **1.88 cores**
+instantaneous over the last 3,384 s):
+
+- population 2 projects to **14.478 h**;
+- populations 2–6 at that rate need **72.39 h** against **30 h 05 m 18 s** of remaining
+  allowance — a **42.30 h deficit**, requiring a **2.41×** average speedup rather than 2.73×;
+- the unit reaches the cap at **3.15 of 6** populations rather than 2.84.
+
+So the correction moves the number and not the finding: even if every remaining population ran
+at the *best* rate yet observed, the run overruns `RuntimeMaxUSec=2d` by a factor of 2.4 and is
+terminated on **2026-08-28 15:38:04Z** having sealed nothing. Everything else in `1e20021`
+stands — no resume path, no calibration wall estimate in the deadline receipt, and 172,800 s
+still equal to `resource_caps.training_wall_seconds`.
+
+Both evidence roots remain byte-identical to launch: Perf **60,076 B**, Cloud **60,057 B**.
+Cloud serial is unchanged at exactly **1.000 core** instantaneous over the same interval,
+still `RuntimeMaxUSec=infinity`, still population **1 / 6**.
+
+Read-only; nothing signalled or reconfigured. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 05:40 EDT — the `1e20021` 53.6 h shortfall is CORRECT, independently reproduced. Separately: the per-phase ETA is broken and reports 258 h, which would misdirect the fix
+
+**Corroborating, not contesting.** I measured the same live Perf unit independently and reach the same conclusion: `belief-r4-parallel-completion-d82ba22-r1.service` cannot finish calibration inside its own `RuntimeMaxUSec=2d`. Read at **2026-08-27T09:34:22Z**: `ExecMainStartTimestamp=2026-08-26 15:38:04 UTC`, elapsed **17.94 h**, allowance remaining **30.06 h**, deadline **2026-08-28T15:38:04Z**. The outer counter `score-r4-calibration-populations` reads `1/6` with phase elapsed 16.92 h, so six populations project to **101.5 h** against a 48 h cap — **53.5 h short**, matching `1e20021` to within rounding.
+
+**Also worth recording: my #152 launcher condition was honoured.** That entry's non-blocking condition asked the optimized launcher to set the guards the serial `r3` lane lacks. This unit has `MemoryMax=25769803776` (24.0 GiB), `MemorySwapMax=0` and `RuntimeMaxUSec=2d`, and memory is comfortable at `MemoryPeak` 14.97 GiB. The memory guards are working exactly as intended. The wall cap is the one that binds — and it binds because it was never sized against a calibration measurement, which is `1e20021`'s point.
+
+**The new finding: the per-phase ETA is computed from the wrong elapsed baseline.** Three progress streams are live at once, and read at the same instant they disagree by 2.5×:
+
+| phase | units | phase elapsed reported | est. remaining | projected total |
+|---|---|---|---|---|
+| `score-r4-calibration-populations` | 1 / 6 | 16.92 h | 84.6 h | **101.5 h** |
+| `score-r4-synthetic-ref0-rounds` | 1326 / 1326 | 16.92 h | 0 h | 16.9 h |
+| `score-r4-synthetic-ref1-rounds` | 92 / 1326 | **17.93 h** | **240.4 h** | **258.4 h** |
+
+`ref1` began when `ref0` finished at 16.92 h, so its true phase elapsed at my read was **1.01 h**, not 17.93 h — the record is carrying whole-run elapsed into a phase-local field. Its 92 completed rounds in 1.01 h give **39.5 s/round**, against `ref0`'s measured **45.9 s/round**; `ref1` is therefore projecting to about **14.6 h**, slightly faster than `ref0`, not 240 h. The 240.4 h figure is `17.93 h / 92 × 1234`: total-run elapsed divided by phase-local units.
+
+**Why this matters beyond tidiness, and it is time-critical.** A reader taking the inner record at face value concludes the run needs ~258 h and is ~210 h over cap — I did exactly that on first read, before comparing the streams — and would conclude the approach needs rethinking rather than a resized cap. The outer counter and the measured per-round rates both say ~101.5 h, i.e. the remedy is a correctly sized wall cap (plus the parallel speedup already merged), not a redesign. Getting that wrong in either direction is expensive with 30 h left on the clock.
+
+This is the same family as `2ed8d1c` (write-once status artifact) but a distinct defect: there the progress signal did not advance; here it advances but its ETA arithmetic is wrong for every phase after the first. Suggested fix, off the critical path: stamp a phase-start monotonic value into each record and derive `estimated_remaining_nanoseconds` from `now − phase_start`, not from run elapsed. The `1e20021` conclusion and its deadline stand unchanged.
+
+No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+
+
+## 2026-08-27 06:33 EDT — the two deficit numbers now in this ledger are not a disagreement: they are the ends of a rate bracket. Calibration projects to **88.8–101.5 h** against a 48 h cap
+
+**Read this as one finding, not three confirmations.** `1e20021`, `6bc678a` and `489cdde` are
+three entries from two Claude sessions on the same live unit. `489cdde` was written a minute
+after `6bc678a` landed and could not have seen it. Nothing in them conflicts, but the
+arithmetic needs reconciling before anyone sizes a replacement cap from it, and there are
+**29 h** left to do that.
+
+Population 2 has now run 184 rounds and its rate has stabilized, so the bracket closes:
+
+- population 1 (`score-r4-synthetic-ref0-rounds`), all 1,326 rounds: **45.9395 s/round**
+- population 2 (`score-r4-synthetic-ref1-rounds`), 184 rounds: **39.0310 s/round**
+  (`elapsed_nanoseconds` 60915813813508 → 68097511109598); over its last 94 rounds,
+  **38.7674 s/round** — flat, not still improving
+
+That gives calibration a two-sided projection rather than a point estimate:
+
+| if populations 3–6 run at | calibration total | vs 48 h cap | over by |
+|---|---|---|---|
+| population 2's rate (39.03 s) | **88.80 h** | 1.85× | **40.80 h** |
+| population 1's rate (45.94 s) | **101.53 h** | 2.12× | **53.53 h** |
+
+So `1e20021`'s 53.6 h and `489cdde`'s 53.5 h are the pessimistic end, and `6bc678a`'s figure is
+the optimistic end. My `6bc678a` put the latter at 42.30 h; the correct value is **40.80 h** —
+I counted population 2's already-elapsed 0.99 h in both the remaining work and the remaining
+allowance. It changes no decision (the overrun is 2.4× either way) and I am not filing a
+separate correction for it, but the number to use is 40.8 h.
+
+**What a replacement cap has to be sized from**, stated once so nobody has to re-derive it:
+**88.8–101.5 h of calibration**, measured over 1,510 of 7,956 rounds (19.0 %), **plus the test
+phase, which is not in the 6 populations and which I have not measured and will not** — reading
+it means opening test data. Any new `RuntimeMaxUSec` that covers only calibration reproduces
+this failure at the next boundary.
+
+Live state at **2026-08-27T10:33:28Z**, unchanged in every respect that matters: `active`,
+`NRestarts=0`, **`RuntimeMaxUSec=2d`** — not lifted — elapsed **18 h 55 m 24 s**, allowance
+**29 h 04 m 36 s**, remaining work **69.89 h**, ratio **2.40×**. `MemoryCurrent` 15.05 GiB of
+24.0 GiB, so memory is not the binding constraint and `489cdde` is right that those guards are
+working. Instantaneous occupancy **1.872 cores** on Perf and **0.99998 cores** on Cloud over the
+same 3,642 s window. Evidence roots still **60,076 B** and **60,057 B** — no output byte on
+either host.
+
+Read-only; nothing signalled or reconfigured. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 — PT-Sol0 repaired head `e73f970` — ✅ PASS — one 26-root / 52-role open-DEV Mini run authorized (two roots concurrent)
+
+Narrow re-check per Jerry's routing, discharging the `63e356e` HOLD. Head `e73f970ec6831847c99c68aa0e08648994a3858b`, Git parent = the HOLDed `db43da99` exactly; the delta is confined to the launch binding: +27/−7 in `run_privileged_teacher_sol0.py` and one new runner witness. The HOLD's blocker — "the command this PASS would authorize does not exist" — is resolved *more strongly than a published command string*: the runner itself now authenticates every input of its own invocation and refuses before any external execution.
+
+**The launch binding, mutation-proven.** `--expected-design-sha256` is required; `_run_with_frozen_design` recomputes the canonical design payload hash and refuses on `PT-Sol0 frozen runtime design drift` before the GPT-5.6 session is ever invoked. M-A (neutralize the drift raise) turns `test_frozen_design_drift_refuses_before_external_execution` red (`DID NOT RAISE`); the witness also proves the external callable is never entered on either refusal direction. The design binds: seed commitment, execution git, native SHA, Mini hostname, both parent reports (external + internal SHAs + gits, ancestry-verified via `merge-base --is-ancestor`), codex binary SHA + version, python binary SHA + version, and the tool-script SHA — so any drifted component refuses at launch, with no reliance on a hand-maintained command in HANDOFF_ACTIVE.
+
+**Sibling guards re-proven at this head:** M-B (rollout request shape/ballot-membership guard cluster → `if False`) trips `test_rollout_per_call_cap_can_fail_before_any_evaluation` red; M-C (per-decision rollout budget `>= MAX_ROLLOUT_CALLS_PER_DECISION` → `False`) trips `test_rollout_deduplicates_exact_candidate_continuation_pairs` red with the exact `DID NOT RAISE PrivilegedTeacherSol0RequestError` the `63e356e` review recorded. All restored green. The sol0 module itself is byte-unchanged since that review's clean source verdict.
+
+**Suites, self-run at exact head:** 152 passed / 2 skipped pure and 152 passed strict compiled on the privileged-teacher battery (the PR body's 151/151 predates the runner witness; +1 exactly). Focused sol0 surface 16/16 (PR's 15 + the new witness). CI green on both jobs at this head.
+
+**Authority granted:** exactly one open-DEV Mini run of `scripts/run_privileged_teacher_sol0.py` at head `e73f970`, over the 26 already-open PT-Full roots / 52 role records, two roots concurrent, fresh mode-0700 private root, fresh 32-byte seed secret, with parents pinned to C0 (`external aada4737…`, internal `b77e3fde…`, git `2391bc4`) and PT-Full (`external 1b404cf3…`, internal `93ad8e98…`, git `c6e8d08`). Engine owns Round, ballot, rollouts, budgets and the completion token; the two earlier failed handshakes and the one synthetic engineering round remain non-scientific. No production, belief, training, gameplay, strength, promotion, deployment or merge authority. — Claude (session `68f9c8bd`)
+
+## 2026-08-27 — Corrigendum to the R4 optimized-lane deficit entries (`1e20021`, `6bc678a`, `489cdde`, `e2c56da`): the 88–101.5 h projection assumed six homogeneous populations; the counter is heterogeneous and the lane very likely fits its cap
+
+The deficit arithmetic extrapolated `score-r4-calibration-populations: 1/6` as six equal 1,326-round synthetic passes. The #152 calibration-controller delta itself names the six milestones — `score-synthetic-ref0-rounds`, `score-synthetic-ref1-rounds`, `score-human-ref0-groups`, `score-human-ref1-groups`, then statistic derivation and publication — so only the two synthetic passes are 1,326 rounds each; the human passes are far smaller (30 groups per the sealed capture inventory) and the final two milestones are derivation/publication. Measured at 2026-08-27 08:52 EDT (PR #157's snapshot, process confirmed active/zero-restart by me now): synthetic REF0 complete, REF1 397/1,326 at ~39–40 s/round → roughly 10–11 h to finish REF1, plus the small human passes and finalization — comfortably inside `RuntimeMaxUSec=2d`. The earlier entries' *observability* points stand (the per-phase ETA field mixes run-total elapsed; the cap was still never sized against a measured calibration projection — that remains a real freeze-sizing gap even though the cap happens to be sufficient). The "optimized lane is a write-off / serial is the only path" conclusion is withdrawn; the reviewed two-lane cutover proceeds as designed. No authority is granted or withdrawn. — Claude (session `68f9c8bd`)

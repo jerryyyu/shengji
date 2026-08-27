@@ -80,32 +80,26 @@ boundary rather than duplicating it. Learned value, Direct-Q, V11 pairwise
 ranking, action allocation and memory-aware rollout policy remain later,
 separately gated consumers.
 
-## Current BELIEF state — 2026-08-23
+## Current BELIEF state — 2026-08-27
 
 - B0 typed actor/target boundaries, ownership schema and source contracts are
-  merged. V1 later failed operationally before test and produced no learning
-  verdict; its partial models remain unusable.
-- R4 repairs the observed operational classes: live stage/epoch deadlines,
-  graceful but explicit truncation, deterministic tensor caching, fail-closed
-  seed classification, reboot/canonical-tip binding, progress receipts and a
-  fully rehearsed terminal path.
-- One immutable R4 packet is live on `shengji-cloud`: source `d2d466f`, freeze
-  `573fcade…fc16`, review commit `10bd1da` and admission `21d9cea8…0961`.
-  All 13,312 synthetic rounds and 30 human groups sealed with zero retries or
-  drops; input indexing, tensor caching, device qualification and references
-  sealed. Stage 7/10 training has 78/85 tasks complete and all four cohort
-  workers remain active. No test outcome is open.
-- The first R5 admission is spent after its tensor cache correctly refused a
-  30.45-GB population under the exact 25.77-GB cap. It produced no model or
-  test result. Draft PR #131 exact `5e3bb6b` keeps that cap, uses a measured
-  `2 x 4` build topology, preserves reusable train/calibration artifacts and
-  orders the label overlay immediately after its primary component. A
-  full-size score-free proof is live on Performance Cloud; no scientific R5
-  namespace exists yet.
-- R4 covers all trump ranks and separately bound synthetic and human domains.
-  Its four eight-member cohorts compare the primary model, a label-permutation
-  negative control, a human-mixture model and a half-scale data model. Human
-  n=51 test evidence is descriptive, not a promotion gate.
+  merged. V1/R3 failed on resources before test and produced no learning
+  verdict; their incidents motivated reusable artifacts, measured scheduling,
+  graceful truncation, and end-to-end rehearsals.
+- R4 training and its reusable capture/reference/cache/checkpoint assets are
+  sealed. Optimized exact source `d82ba224` is scoring calibration on Perf;
+  exact serial source `e10cb3d` remains a fallback on Strength Cloud. Test is
+  unopened. The fallback stops only after optimized calibration seals,
+  independently reopens, and the reviewed readiness/cutover controller says
+  `READY`.
+- R5 exact source `9c5928f2` retains all-rank and player/deal-disjoint human
+  inputs, durable train/calibration artifacts, progress/ETA, exact process
+  recovery and graceful deadline truncation. No R5 process, freeze, or review
+  is active. After R4 releases Perf, one 104-round full-DAG rehearsal on the
+  exact runtime precedes one consolidated source+freeze review and one run.
+- R4/R5 compare fixed multi-seed primary, label-control, human-mixture, and
+  half-scale cohorts against REF-C. Human n=51 test evidence is descriptive,
+  not a promotion gate.
 - Nothing in R4 samples belief-weighted worlds or changes gameplay. A reviewed
   B2 calibration PASS is only permission to propose B3 sampler mechanics.
 
@@ -122,14 +116,14 @@ separately gated consumers.
 
 ### Immediate execution sequence
 
-1. **Now:** leave the live R4 DAG unchanged and monitor only outcome-blind
-   progress. In parallel, complete PR #131's score-free full-size cache proof
-   on Performance Cloud without opening a scientific namespace.
-2. **R5 freeze:** if the proof reopens byte-exactly under the hard cap, create
-   fresh all-rank capacity and deadline receipts, seal one immutable host
-   freeze and request one consolidated source-plus-freeze review. Launch once
-   only after that exact PASS; no rehearsal/review ladder or same-admission
-   retry.
+1. **R4 terminal:** leave both live lanes unchanged until optimized calibration
+   seals and reopens. Execute the reviewed readiness, serial-stop, cutover,
+   one-test-open, and independent-terminal sequence without another review if
+   exact identities remain unchanged.
+2. **R5 freeze:** after R4 releases Perf, run one exact-host 104-round full-DAG
+   rehearsal, create fresh capacity/deadline/runtime receipts, seal one
+   immutable freeze, and request one consolidated source-plus-freeze review.
+   Launch once only after that exact PASS.
 3. **Terminal:** run each reviewed reopener, then obtain one consolidated
    terminal/reproducibility review and one exact route: mechanics/resource
    refusal, no-learning closeout, valid truncation, or B3 design permission.
@@ -215,6 +209,8 @@ partnership Sheng Ji.
 |---|---|
 | [AlphaGo/AlphaZero](https://arxiv.org/abs/1712.01815) | Separate proposal, value and search roles. Search may teach later models, but each consumer needs its own gate. |
 | [Libratus](https://noambrown.github.io/papers/17-Science-Superhuman.pdf), [Pluribus](https://noambrown.github.io/papers/19-Science-Superhuman.pdf), [ReBeL](https://papers.nips.cc/paper/2020/hash/c61f571dbd2fb949d3fe5ae1608dd48b-Abstract.html) | Hidden-information search needs public history plus ranges/beliefs and named continuation strategies. A private observation has no universal strategy-independent scalar value. |
+| [DeepStack](https://arxiv.org/abs/1701.01724), [bridge belief Monte Carlo search](https://www.ieee-jas.com/article/doi/10.1109/JAS.2024.124488) | The closest BELIEF precedent is privileged true-deal supervision with actor-visible inference, calibrated ranges, complete compatible-world sampling, and search as final authority. Offline calibration is not strength. |
+| [Bayesian Action Decoder](https://arxiv.org/abs/1811.01458) | Public actions can update beliefs about private state. Shengji feeding, withholding, joker use, failed throws, and declaration timing remain probabilistic behavioral evidence and require chronology/policy-shift controls. |
 | [Suphx](https://arxiv.org/abs/2003.13590) | Privileged hands may shape a training curriculum, never leak into runtime inference. Decision-type specialization and controlled adaptation deserve separate tests. |
 | [DouZero](https://proceedings.mlr.press/v139/zha21a.html) | Direct return learning is a distinct role-conditioned/action-conditioned algorithm. Earlier residual/value experiments do not reject it wholesale. |
 | [Student of Games](https://arxiv.org/abs/2112.03178) and cooperative partially observed search | Teammates interpret public actions through a shared policy; preserve actor perspective and continuation identity. |
@@ -268,6 +264,13 @@ mixture, then reduces its action values to
 never a public target. BELIEF may improve the compatible-world distribution,
 but it does not substitute for proving that the continuation policy itself is
 strong.
+
+Current evidence sharpens that requirement: PT0 found only small late-endgame
+headroom, PT1 was a clean negative, PT-Full showed that one true-world collapse
+is harmful, and C0's fixed full-information consumers all selected none.
+PT-Sol0 is the current open-DEV test of a materially different adaptive
+reasoning consumer. A perfect hidden-state predictor still cannot repair a bad
+objective, partnership model, continuation, ballot, or planning procedure.
 
 ## Data and evaluation contract
 

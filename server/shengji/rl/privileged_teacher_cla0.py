@@ -25,11 +25,18 @@ import sys
 from pathlib import Path
 from shutil import which
 
+from dataclasses import dataclass
+
 from .privileged_teacher_sol0 import (
+    MAX_EVALUATIONS_PER_DECISION,
+    MAX_EVALUATIONS_PER_ROUND,
+    MAX_NEW_EVALUATIONS_PER_CALL,
     MAX_SESSION_WALL_SECONDS,
     PrivilegedTeacherSol0Error,
 )
+from .privileged_teacher_sol0_report import Sol0Design
 
+CLA0_DESIGN_SCHEMA = "privileged-teacher-cla0-design-v1"
 CLAUDE_MODEL = "claude-fable-5"
 # One run pins exactly one model; each model produces a distinct frozen
 # design SHA because the model tag is part of the bound identity string.
@@ -39,11 +46,20 @@ ALLOWED_CLAUDE_MODELS = (
     "claude-sonnet-5",
 )
 
-# Every tool except the engine mailbox command is denied.  The Bash allowlist
-# prefix must equal the exact tool invocation the planner prompt advertises.
+# Every tool except the engine mailbox command is denied.  ``--tools Bash``
+# removes every other built-in; the Bash allowlist prefix must equal the exact
+# tool invocation the planner prompt advertises; the isolation flags exclude
+# hooks, plugins, LSP, user/project settings, MCP servers and session
+# persistence from the full-information session.
 DENIED_TOOLS = (
     "Agent", "Edit", "NotebookEdit", "Task", "TodoWrite",
     "WebFetch", "WebSearch", "Write",
+)
+ISOLATION_FLAGS = (
+    "--safe-mode",
+    "--bare",
+    "--strict-mcp-config",
+    "--no-session-persistence",
 )
 MAX_PLANNER_TURNS = 600
 
@@ -66,16 +82,20 @@ def resolve_claude_binary(claude_binary: Path | None = None) -> Path:
     return claude_binary
 
 
-def claude_version(claude_binary: Path,
-                   model: str = CLAUDE_MODEL) -> str:
-    """Return the planner identity string bound into the frozen design."""
-    require_claude_model(model)
+def claude_version(claude_binary: Path) -> str:
+    """Return the raw ``--version`` output, byte-equal to the live gate.
+
+    ``run_dev``'s inherited binding gate reruns ``<binary> --version`` and
+    requires the raw output to equal ``design.codex_version``, so this value
+    must never be decorated.  The planner model is bound separately in the
+    ``Cla0Design`` payload.
+    """
     version = subprocess.run(
         (str(claude_binary), "--version"), check=True, capture_output=True,
         text=True).stdout.strip()
-    if not version or len(version) > 96:
+    if not version or len(version) > 96 or "[" in version:
         raise PrivilegedTeacherSol0Error("Claude version drift")
-    return f"{version} [{model}]"
+    return version
 
 
 def claude_planner_command(
@@ -87,10 +107,49 @@ def claude_planner_command(
         str(claude_binary), "-p",
         "--model", model,
         "--output-format", "json",
+        *ISOLATION_FLAGS,
+        "--tools", "Bash",
         "--allowedTools", f"Bash({tool_command}:*)",
         "--disallowedTools", ",".join(DENIED_TOOLS),
         "--max-turns", str(MAX_PLANNER_TURNS),
     )
+
+
+@dataclass(frozen=True)
+class Cla0Design(Sol0Design):
+    """Sol0-shaped frozen design that honestly identifies the Claude planner.
+
+    The payload overrides exactly the treatment-identity values: its own
+    schema, the pinned Claude model, and a Cla0 planner config carrying the
+    real command identity (planner, model, effort source, turn cap and
+    isolation flags) while keeping the Sol0 evaluation budgets byte-equal for
+    cross-planner comparability.  ``codex_version`` stays the raw Claude CLI
+    ``--version`` output so the inherited live binding gate passes.
+    """
+
+    claude_model: str = CLAUDE_MODEL
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        require_claude_model(self.claude_model)
+
+    def payload(self) -> dict[str, object]:
+        payload = super().payload()
+        payload["schema"] = CLA0_DESIGN_SCHEMA
+        payload["model"] = self.claude_model
+        payload["planner_config"] = {
+            "planner": "claude-cli",
+            "model": self.claude_model,
+            "reasoning_effort": "cli-default",
+            "max_planner_turns": MAX_PLANNER_TURNS,
+            "isolation_flags": list(ISOLATION_FLAGS),
+            "tools": ["Bash"],
+            "max_new_evaluations_per_call": MAX_NEW_EVALUATIONS_PER_CALL,
+            "max_evaluations_per_decision": MAX_EVALUATIONS_PER_DECISION,
+            "max_evaluations_per_round": MAX_EVALUATIONS_PER_ROUND,
+            "max_session_wall_seconds": MAX_SESSION_WALL_SECONDS,
+        }
+        return payload
 
 
 def extract_final_response(stdout: bytes) -> bytes | None:

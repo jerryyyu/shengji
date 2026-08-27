@@ -23,25 +23,25 @@ def _load_script(name: str):
     return module
 
 
-def test_claude_command_pins_model_allowlist_and_headless_shape(tmp_path):
+def test_claude_command_is_exactly_the_reviewed_isolated_shape(tmp_path):
     command = cla0.claude_planner_command(
         claude_binary=tmp_path / "claude",
         tool_command="/py -P -B /tool.py --mailbox /mb")
-    assert command[0] == str(tmp_path / "claude")
-    assert "-p" in command
-    model_index = command.index("--model")
-    assert command[model_index + 1] == cla0.CLAUDE_MODEL
-    output_index = command.index("--output-format")
-    assert command[output_index + 1] == "json"
-    allowed_index = command.index("--allowedTools")
-    assert command[allowed_index + 1] == \
-        "Bash(/py -P -B /tool.py --mailbox /mb:*)"
-    denied_index = command.index("--disallowedTools")
-    denied = command[denied_index + 1].split(",")
-    for tool in ("Write", "Edit", "WebFetch", "WebSearch", "Agent"):
-        assert tool in denied
-    turns_index = command.index("--max-turns")
-    assert command[turns_index + 1] == str(cla0.MAX_PLANNER_TURNS)
+    assert command == (
+        str(tmp_path / "claude"), "-p",
+        "--model", cla0.CLAUDE_MODEL,
+        "--output-format", "json",
+        "--safe-mode",
+        "--bare",
+        "--strict-mcp-config",
+        "--no-session-persistence",
+        "--tools", "Bash",
+        "--allowedTools", "Bash(/py -P -B /tool.py --mailbox /mb:*)",
+        "--disallowedTools", ",".join(cla0.DENIED_TOOLS),
+        "--max-turns", str(cla0.MAX_PLANNER_TURNS),
+    )
+    for flag in cla0.ISOLATION_FLAGS:
+        assert flag in command
 
 
 def test_planner_process_scrubs_env_bounds_wall_and_writes_final(
@@ -118,23 +118,70 @@ def test_claude_binary_resolution_refuses_absent(monkeypatch, tmp_path):
         cla0.resolve_claude_binary(tmp_path / "missing")
 
 
-def test_claude_version_binds_model_tag_and_refuses_empty(monkeypatch,
-                                                          tmp_path):
-    def fake_run(command, **kwargs):
-        return subprocess.CompletedProcess(command, 0,
-                                           stdout="9.9.9 (Claude Code)\n")
+def test_claude_version_is_raw_binary_output_at_gate_altitude(tmp_path):
+    fake = tmp_path / "claude"
+    fake.write_text("#!/bin/sh\necho '9.9.9 (Claude Code)'\n")
+    fake.chmod(0o755)
+    version = cla0.claude_version(fake)
+    live = subprocess.run(
+        (str(fake), "--version"), check=True, capture_output=True,
+        text=True).stdout.strip()
+    assert version == live == "9.9.9 (Claude Code)"
+    assert "[" not in version
 
-    monkeypatch.setattr(cla0.subprocess, "run", fake_run)
-    version = cla0.claude_version(tmp_path / "claude")
-    assert version == f"9.9.9 (Claude Code) [{cla0.CLAUDE_MODEL}]"
-
-    def empty_run(command, **kwargs):
-        return subprocess.CompletedProcess(command, 0, stdout="\n")
-
-    monkeypatch.setattr(cla0.subprocess, "run", empty_run)
+    empty = tmp_path / "empty"
+    empty.write_text("#!/bin/sh\necho ''\n")
+    empty.chmod(0o755)
     with pytest.raises(cla0.PrivilegedTeacherSol0Error,
                        match="Claude version drift"):
-        cla0.claude_version(tmp_path / "claude")
+        cla0.claude_version(empty)
+
+    tagged = tmp_path / "tagged"
+    tagged.write_text(
+        "#!/bin/sh\necho '9.9.9 (Claude Code) [claude-fable-5]'\n")
+    tagged.chmod(0o755)
+    with pytest.raises(cla0.PrivilegedTeacherSol0Error,
+                       match="Claude version drift"):
+        cla0.claude_version(tagged)
+
+
+def _design(**overrides):
+    fields = dict(
+        seed_commitment_sha256="a" * 64, execution_git="b" * 40,
+        native_sha256="c" * 64, hostname="Jerrys-Mac-mini.local",
+        c0_external_sha256="d" * 64, c0_report_sha256="e" * 64,
+        c0_execution_git="f" * 40, full_external_sha256="0" * 64,
+        full_report_sha256="1" * 64, full_execution_git="2" * 40,
+        codex_binary_sha256="3" * 64, codex_version="9.9.9 (Claude Code)",
+        python_binary_sha256="4" * 64, python_version="3.14.3 test",
+        tool_script_sha256="5" * 64)
+    fields.update(overrides)
+    return cla0.Cla0Design(**fields)
+
+
+def test_design_payload_identifies_claude_and_matches_command(tmp_path):
+    design = _design()
+    payload = design.payload()
+    assert payload["schema"] == cla0.CLA0_DESIGN_SCHEMA
+    assert payload["model"] == cla0.CLAUDE_MODEL
+    config = payload["planner_config"]
+    assert config["planner"] == "claude-cli"
+    assert config["isolation_flags"] == list(cla0.ISOLATION_FLAGS)
+    assert config["tools"] == ["Bash"]
+    assert config["max_planner_turns"] == cla0.MAX_PLANNER_TURNS
+    command = cla0.claude_planner_command(
+        claude_binary=tmp_path / "claude", tool_command="/t",
+        model=payload["model"])
+    assert command[command.index("--model") + 1] == payload["model"]
+    assert payload["codex_version"] == "9.9.9 (Claude Code)"
+    from shengji.rl.privileged_teacher_sol0 import (
+        MAX_EVALUATIONS_PER_DECISION, MAX_EVALUATIONS_PER_ROUND)
+    assert config["max_evaluations_per_decision"] == \
+        MAX_EVALUATIONS_PER_DECISION
+    assert config["max_evaluations_per_round"] == MAX_EVALUATIONS_PER_ROUND
+    with pytest.raises(cla0.PrivilegedTeacherSol0Error,
+                       match="Claude model identity drift"):
+        _design(claude_model="gpt-5.6-sol")
 
 
 def test_model_allowlist_refuses_unknown_and_pins_per_model_command(

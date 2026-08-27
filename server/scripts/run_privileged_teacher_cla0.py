@@ -78,13 +78,13 @@ def main() -> int:
         raise ValueError("PT-Cla0 runner requires active native engine")
     from shengji.rl.privileged_teacher_cla0 import (
         CLAUDE_MODEL,
+        Cla0Design,
         claude_version,
         make_claude_planner_process,
         require_claude_model,
         resolve_claude_binary,
     )
     from shengji.rl.privileged_teacher_sol0_report import (
-        Sol0Design,
         report_bytes,
         run_dev,
     )
@@ -112,14 +112,14 @@ def main() -> int:
         raise ValueError("PT-Cla0 seed secret identity drift")
     model = require_claude_model(args.claude_model or CLAUDE_MODEL)
     claude_path = resolve_claude_binary()
-    planner_version = claude_version(claude_path, model)
+    planner_version = claude_version(claude_path)
     python_path = Path(sys.executable).resolve()
     tool_script = (repo / "server" / "scripts" /
                    "privileged_teacher_sol0_tool.py").resolve()
     if (args.private_root.exists() or args.private_root.is_symlink()
             or not tool_script.is_file()):
         raise ValueError("PT-Cla0 private root or tool identity drift")
-    design = Sol0Design(
+    design = Cla0Design(
         seed_commitment_sha256=hashlib.sha256(secret).hexdigest(),
         execution_git=args.expected_git,
         native_sha256=hashlib.sha256(
@@ -139,6 +139,7 @@ def main() -> int:
         python_version=sys.version,
         tool_script_sha256=hashlib.sha256(
             tool_script.read_bytes()).hexdigest(),
+        claude_model=model,
     )
 
     def progress(row: dict[str, object]) -> None:

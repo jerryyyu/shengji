@@ -23,6 +23,7 @@ import shengji.rl.belief_v2_controller as V2_CONTROLLER
 import shengji.rl.belief_v2_input_index_controller as INPUT_INDEX_STAGE
 import shengji.rl.belief_v2_human_reference_controller as HUMAN_REF_STAGE
 import shengji.rl.belief_v2_readiness_controller as READINESS_STAGE
+import shengji.rl.belief_v2_scoring_controller as SCORING_CONTROLLER
 import shengji.rl.belief_v2_tensor_cache_controller as CACHE_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
@@ -2581,6 +2582,68 @@ def test_training_stage_cache_factory_wiring_seals_and_reopens_exactly(
     assert len(fast_reopens) == 1
     assert fast_reopens[0][1]["cache_manifest_sha256"] \
         == cache_manifest_sha256
+
+
+def test_full_curve_scoring_reopen_forwards_exact_cache_identity(
+        tmp_path, monkeypatch):
+    """Prevent the cache-binding omission that stopped R4 reconstruction."""
+    cache_manifest_sha256 = _sha("9")
+    calibration_factory = object()
+    primary = SimpleNamespace(
+        cohort_id="synthetic-primary", kind="synthetic-primary")
+    control = SimpleNamespace(
+        cohort_id="hard-geometry-label-permutation",
+        kind="hard-geometry-label-permutation")
+    realizations = (primary, control)
+    training_inputs = SimpleNamespace(
+        realizations=realizations, common_calibration=object())
+    freeze = SimpleNamespace(cohorts=tuple(SimpleNamespace(
+        cohort_id=row.cohort_id) for row in realizations))
+    qualification_plan = object()
+    qualification_result = object()
+    observed = {}
+
+    monkeypatch.setattr(
+        SCORING_CONTROLLER, "validate_streaming_training_inputs",
+        lambda value: None)
+    monkeypatch.setattr(
+        SCORING_CONTROLLER, "reopen_device_qualification",
+        lambda *args, **kwargs: (
+            {}, qualification_plan, qualification_result))
+    monkeypatch.setattr(
+        SCORING_CONTROLLER, "reopen_training_tensor_cache",
+        lambda *args, **kwargs: (
+            {}, {}, calibration_factory, 17, cache_manifest_sha256))
+
+    def reopen(*args, realization, **kwargs):
+        observed[realization.cohort_id] = kwargs
+        return ({"cohort_id": realization.cohort_id},
+                SimpleNamespace(cohort_id=realization.cohort_id))
+
+    monkeypatch.setattr(
+        SCORING_CONTROLLER, "reopen_training_cohort", reopen)
+    monkeypatch.setattr(
+        SCORING_CONTROLLER, "cohort_models_from_trained",
+        lambda trained: SimpleNamespace(cohort_id=trained.cohort_id))
+
+    cohorts, plan, qualification, manifest_hashes = (
+        SCORING_CONTROLLER.reopen_trained_scoring_cohorts(
+            tmp_path, freeze=freeze, admission=object(),
+            training_inputs=training_inputs))
+
+    assert tuple(row.cohort_id for row in cohorts) \
+        == tuple(row.cohort_id for row in realizations)
+    assert plan is qualification_plan
+    assert qualification is qualification_result
+    assert tuple(row[0] for row in manifest_hashes) \
+        == tuple(row.cohort_id for row in realizations)
+    assert set(observed) == {row.cohort_id for row in realizations}
+    assert all(row["cache_manifest_sha256"] == cache_manifest_sha256
+               for row in observed.values())
+    assert all(row["calibration_batch_factory"] is calibration_factory
+               for row in observed.values())
+    assert observed[primary.cohort_id]["compact_control_dose"] == 0
+    assert observed[control.cohort_id]["compact_control_dose"] == 17
 
 
 def test_training_controller_resumes_only_latest_epoch_and_matches_clean_run(

@@ -1,0 +1,369 @@
+#!/usr/bin/env python3
+"""Initialize, preflight, execute and reconstruct optimized R4 terminal."""
+
+from __future__ import annotations
+
+import sys
+
+if not sys.flags.safe_path or not sys.dont_write_bytecode:
+    raise RuntimeError("R4 terminal parallel runner requires Python -P -B")
+
+import argparse
+import hashlib
+import os
+from pathlib import Path
+
+
+def _refuse_foreign_import_roots() -> None:
+    """Require every import root to belong to Python, this venv, or source.
+
+    A ``.pth`` file can add another experiment's site-packages even when
+    ``-P`` is active and ``PYTHONPATH`` is absent.  The terminal scorer is a
+    one-shot consumer, so refuse that cross-run coupling before importing any
+    project or numerical package.
+    """
+    allowed_roots = (
+        Path(sys.base_prefix).resolve(),
+        Path(sys.prefix).resolve(),
+        Path(__file__).resolve().parents[1],
+    )
+    for entry in sys.path:
+        if type(entry) is not str or not entry:
+            continue
+        resolved = Path(entry).resolve()
+        if not any(resolved.is_relative_to(root) for root in allowed_roots):
+            raise RuntimeError(
+                "R4 terminal parallel runner refuses foreign import roots")
+
+
+_refuse_foreign_import_roots()
+
+from shengji.rl.belief_artifacts import (
+    publish_exclusive_bytes,
+    stable_read_bytes,
+)
+from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.belief_v2_execution_identity import (
+    configure_numerical_runtime,
+    validate_live_execution,
+)
+from shengji.rl.belief_v2_freeze import execution_freeze_from_bytes
+from shengji.rl.belief_v2_progress import V2ProgressReporter
+from shengji.rl.belief_v2_r4_completion import (
+    build_r4_completion_admission,
+    r4_completion_admission_from_bytes,
+    r4_completion_consumption_tombstone_bytes,
+    reauthenticate_r4_completion_admission,
+    validate_r4_completion_consumption_tombstone,
+)
+from shengji.rl.belief_v2_r4_terminal_parallel import (
+    build_r4_terminal_calibration_import,
+    build_r4_terminal_parallel_freeze,
+    load_calibration_import,
+    load_terminal_source_spec,
+    r4_terminal_parallel_capacity,
+    r4_terminal_parallel_readiness,
+    recover_r4_terminal_parallel,
+    reopen_r4_terminal_parallel_capacity,
+    reopen_r4_terminal_parallel,
+    run_r4_terminal_parallel,
+)
+
+
+REPO = Path(__file__).resolve().parents[2]
+ROOT_POPULATION = {
+    "freeze.json", "review.md", "admission.json", "inventory.json",
+    "group-split.json", "capacity.json",
+}
+TERMINAL_POPULATION = {
+    "r4-completion-test-attempt.json", "terminal.partial", "terminal",
+    "r4-completion-terminal.json",
+}
+
+
+def _sha256(raw: bytes) -> str:
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _fsync_parent(path: Path) -> None:
+    descriptor = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _output(payload: dict) -> None:
+    print(canonical_json_bytes(payload).decode("ascii"), end="")
+
+
+def _progress(stage: str):
+    return V2ProgressReporter(stage=stage, worker="all-cohorts").update
+
+
+def _validate_private_inputs(raw_inventory: bytes, raw_split: bytes, freeze) \
+        -> None:
+    if _sha256(raw_inventory) != freeze.h0_inventory_sha256 \
+            or _sha256(raw_split) != freeze.human_group_split_sha256:
+        raise ValueError("R4 terminal private input identity drift")
+
+
+def _load_root(root: Path):
+    terminal_spec = load_terminal_source_spec()
+    load_calibration_import()
+    names = {path.name for path in root.iterdir()}
+    if not root.is_absolute() or root.is_symlink() or not root.is_dir() \
+            or root != terminal_spec.destination_evidence_root \
+            or not ROOT_POPULATION.issubset(names) \
+            or not names.issubset(ROOT_POPULATION | TERMINAL_POPULATION):
+        raise ValueError("R4 terminal evidence root shape drift")
+    freeze_raw = stable_read_bytes(root / "freeze.json")
+    marker = stable_read_bytes(root / "review.md")
+    admission_raw = stable_read_bytes(root / "admission.json")
+    inventory_raw = stable_read_bytes(root / "inventory.json")
+    split_raw = stable_read_bytes(root / "group-split.json")
+    capacity_raw = stable_read_bytes(root / "capacity.json")
+    freeze = execution_freeze_from_bytes(freeze_raw)
+    if Path(freeze.evidence_root) != root:
+        raise ValueError("R4 terminal freeze root drift")
+    admission = r4_completion_admission_from_bytes(
+        admission_raw, freeze=freeze, review_marker=marker,
+        spec=terminal_spec)
+    tombstone_raw = stable_read_bytes(
+        root.with_name(root.name + ".consumed.json"))
+    validate_r4_completion_consumption_tombstone(
+        tombstone_raw, admission=admission)
+    _validate_private_inputs(inventory_raw, split_raw, freeze)
+    if _sha256(capacity_raw) != freeze.preflight_result_sha256 \
+            or _sha256(capacity_raw) \
+            != freeze.deadline_estimate_receipt_sha256:
+        raise ValueError("R4 terminal capacity/freeze binding drift")
+    capacity = reopen_r4_terminal_parallel_capacity(
+        capacity_raw, repo=REPO, expected_git=freeze.execution_git)
+    if capacity["runtime_sha256"] != freeze.preflight_runtime_sha256:
+        raise ValueError("R4 terminal capacity runtime binding drift")
+    reauthenticate_r4_completion_admission(
+        freeze, admission, repo=REPO, review_marker=marker,
+        spec=terminal_spec)
+    validate_live_execution(
+        repo=REPO, execution_git=freeze.execution_git,
+        source_bindings=freeze.source_bindings, runtime=freeze.runtime)
+    return freeze, admission, marker
+
+
+def initialize(args: argparse.Namespace) -> None:
+    freeze_path = Path(args.freeze)
+    freeze_raw = stable_read_bytes(freeze_path)
+    if _sha256(freeze_raw) != args.expected_freeze_sha256:
+        raise ValueError("R4 terminal freeze file SHA drift")
+    freeze = execution_freeze_from_bytes(freeze_raw)
+    terminal_spec = load_terminal_source_spec()
+    load_calibration_import()
+    root = Path(freeze.evidence_root)
+    if root != terminal_spec.destination_evidence_root \
+            or freeze_path.parent != root.parent:
+        raise ValueError("R4 terminal initialization destination drift")
+    validate_live_execution(
+        repo=REPO, execution_git=freeze.execution_git,
+        source_bindings=freeze.source_bindings, runtime=freeze.runtime)
+    inventory_raw = stable_read_bytes(Path(args.inventory))
+    split_raw = stable_read_bytes(Path(args.group_split))
+    capacity_raw = stable_read_bytes(Path(args.capacity))
+    _validate_private_inputs(inventory_raw, split_raw, freeze)
+    if _sha256(capacity_raw) != args.expected_capacity_sha256 \
+            or _sha256(capacity_raw) != freeze.preflight_result_sha256 \
+            or _sha256(capacity_raw) \
+            != freeze.deadline_estimate_receipt_sha256:
+        raise ValueError("R4 terminal capacity file SHA drift")
+    capacity = reopen_r4_terminal_parallel_capacity(
+        capacity_raw, repo=REPO, expected_git=freeze.execution_git)
+    if capacity["runtime_sha256"] != freeze.preflight_runtime_sha256:
+        raise ValueError("R4 terminal capacity runtime binding drift")
+    admission, marker = build_r4_completion_admission(
+        freeze, repo=REPO, review_commit=args.review_commit,
+        spec=terminal_spec)
+    tombstone_raw = r4_completion_consumption_tombstone_bytes(admission)
+    partial = root.with_name(root.name + ".partial")
+    tombstone = root.with_name(root.name + ".consumed.json")
+    if root.exists() or root.is_symlink() or partial.exists() \
+            or partial.is_symlink() or tombstone.exists() \
+            or tombstone.is_symlink():
+        raise ValueError("R4 terminal evidence namespace is occupied")
+    publish_exclusive_bytes(tombstone, tombstone_raw)
+    _fsync_parent(tombstone)
+    partial.mkdir(mode=0o700)
+    publish_exclusive_bytes(partial / "freeze.json", freeze_raw)
+    publish_exclusive_bytes(partial / "review.md", marker)
+    publish_exclusive_bytes(
+        partial / "admission.json", admission.canonical_bytes())
+    publish_exclusive_bytes(partial / "inventory.json", inventory_raw)
+    publish_exclusive_bytes(partial / "group-split.json", split_raw)
+    publish_exclusive_bytes(partial / "capacity.json", capacity_raw)
+    os.rename(partial, root)
+    _fsync_parent(root)
+    _load_root(root)
+    _output({
+        "schema": "belief-v1-v2-r4-terminal-parallel-initialized-v1",
+        "evidence_root": str(root),
+        "freeze_sha256": freeze.sha256(),
+        "admission_sha256": admission.sha256(),
+        "review_commit": admission.review_commit,
+        "calibration_generation_authorized": False,
+        "one_test_split_open_authorized": True,
+        "test_opening_executed": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    })
+
+
+def readiness(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker = _load_root(root)
+    _output(r4_terminal_parallel_readiness(
+        root, freeze, admission, repo=REPO, review_marker=marker))
+
+
+def capacity(args: argparse.Namespace) -> None:
+    output = Path(args.out)
+    if not output.is_absolute() or output.exists() or output.is_symlink():
+        raise ValueError("R4 terminal capacity output path drift")
+    receipt = r4_terminal_parallel_capacity(
+        repo=REPO, expected_git=args.expected_git,
+        progress=_progress("r4-terminal-parallel-capacity"))
+    raw = canonical_json_bytes(receipt)
+    digest = publish_exclusive_bytes(output, raw)
+    _fsync_parent(output)
+    _output({
+        "schema": "belief-v1-v2-r4-terminal-capacity-published-v1",
+        "receipt_path": str(output),
+        "receipt_sha256": digest,
+        "exact_serial_parallel_parity": True,
+        "test_opening_executed": False,
+        "execution_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    })
+
+
+def build_calibration_import(args: argparse.Namespace) -> None:
+    output = Path(args.out)
+    if not output.is_absolute() or output.exists() or output.is_symlink():
+        raise ValueError("R4 terminal calibration import output path drift")
+    imported = build_r4_terminal_calibration_import(repo=REPO)
+    digest = publish_exclusive_bytes(output, imported.canonical_bytes())
+    _fsync_parent(output)
+    _output({
+        "schema": "belief-v1-v2-r4-terminal-calibration-import-published-v2",
+        "import_path": str(output),
+        "import_sha256": digest,
+        "sealed_calibration_reconstructed": True,
+        "test_opening_executed": False,
+        "execution_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    })
+
+
+def build_freeze(args: argparse.Namespace) -> None:
+    output = Path(args.out)
+    capacity_raw = stable_read_bytes(Path(args.capacity))
+    if not output.is_absolute() or output.exists() or output.is_symlink() \
+            or _sha256(capacity_raw) != args.expected_capacity_sha256:
+        raise ValueError("R4 terminal freeze output/capacity drift")
+    freeze = build_r4_terminal_parallel_freeze(
+        repo=REPO, expected_git=args.expected_git,
+        source_review_commit=args.source_review_commit,
+        capacity_raw=capacity_raw)
+    if output.parent != Path(freeze.evidence_root).parent:
+        raise ValueError("R4 terminal freeze publication parent drift")
+    digest = publish_exclusive_bytes(output, freeze.canonical_bytes())
+    _fsync_parent(output)
+    _output({
+        "schema": "belief-v1-v2-r4-terminal-freeze-published-v1",
+        "freeze_path": str(output),
+        "freeze_sha256": digest,
+        "capacity_sha256": _sha256(capacity_raw),
+        "source_review_commit": freeze.source_review_commit,
+        "design_freeze_authorized": True,
+        "execution_authorized": False,
+        "test_opening_executed": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    })
+
+
+def open_test(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker = _load_root(root)
+    _output(run_r4_terminal_parallel(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        progress=_progress("r4-terminal-parallel")))
+
+
+def verify_terminal(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker = _load_root(root)
+    _output(reopen_r4_terminal_parallel(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        progress=_progress("r4-terminal-parallel-verification")))
+
+
+def recover_terminal(args: argparse.Namespace) -> None:
+    root = Path(args.root)
+    freeze, admission, marker = _load_root(root)
+    _output(recover_r4_terminal_parallel(
+        root, freeze, admission, repo=REPO, review_marker=marker,
+        progress=_progress("r4-terminal-parallel-recovery")))
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description=__doc__)
+    commands = result.add_subparsers(dest="command", required=True)
+    initialize_command = commands.add_parser("initialize")
+    initialize_command.add_argument("--freeze", required=True)
+    initialize_command.add_argument("--expected-freeze-sha256", required=True)
+    initialize_command.add_argument("--review-commit", required=True)
+    initialize_command.add_argument("--inventory", required=True)
+    initialize_command.add_argument("--group-split", required=True)
+    initialize_command.add_argument("--capacity", required=True)
+    initialize_command.add_argument(
+        "--expected-capacity-sha256", required=True)
+    initialize_command.set_defaults(function=initialize)
+    capacity_command = commands.add_parser("capacity")
+    capacity_command.add_argument("--expected-git", required=True)
+    capacity_command.add_argument("--out", required=True)
+    capacity_command.set_defaults(function=capacity)
+    import_command = commands.add_parser("build-calibration-import")
+    import_command.add_argument("--out", required=True)
+    import_command.set_defaults(function=build_calibration_import)
+    freeze_command = commands.add_parser("build-freeze")
+    freeze_command.add_argument("--expected-git", required=True)
+    freeze_command.add_argument("--source-review-commit", required=True)
+    freeze_command.add_argument("--capacity", required=True)
+    freeze_command.add_argument(
+        "--expected-capacity-sha256", required=True)
+    freeze_command.add_argument("--out", required=True)
+    freeze_command.set_defaults(function=build_freeze)
+    readiness_command = commands.add_parser("pretest-readiness")
+    readiness_command.add_argument("--root", required=True)
+    readiness_command.set_defaults(function=readiness)
+    test_command = commands.add_parser("open-test")
+    test_command.add_argument("--root", required=True)
+    test_command.set_defaults(function=open_test)
+    verify_command = commands.add_parser("verify-terminal")
+    verify_command.add_argument("--root", required=True)
+    verify_command.set_defaults(function=verify_terminal)
+    recover_command = commands.add_parser("recover-terminal-binding")
+    recover_command.add_argument("--root", required=True)
+    recover_command.set_defaults(function=recover_terminal)
+    return result
+
+
+def main() -> None:
+    configure_numerical_runtime()
+    args = parser().parse_args()
+    args.function(args)
+
+
+if __name__ == "__main__":
+    main()

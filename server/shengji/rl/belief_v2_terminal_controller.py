@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Executor
+from concurrent.futures import Executor, ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -49,7 +49,7 @@ from .belief_v2_result import (
     validate_terminal_result,
 )
 from .belief_v2_progress import ProgressCallback
-from .belief_v2_scoring import score_v2_round
+from .belief_v2_scoring import V2DecisionScoringPool, score_v2_round
 from .belief_v2_scoring_controller import (
     reopen_human_scoring_rounds,
     reopen_synthetic_scoring_round,
@@ -92,6 +92,21 @@ class BeliefV2TerminalControllerError(ValueError):
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _run_independent_terminal_statistics(primary_call, control_call,
+                                         human_call):
+    """Evaluate the three independently seeded terminal reports in parallel."""
+    if not all(callable(value) for value in (
+            primary_call, control_call, human_call)):
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal statistic callable population drift")
+    with ThreadPoolExecutor(
+            max_workers=3,
+            thread_name_prefix="belief-v2-terminal-statistic") as executor:
+        futures = tuple(executor.submit(value) for value in (
+            primary_call, control_call, human_call))
+        return tuple(future.result() for future in futures)
 
 
 def _human_group_digests(
@@ -140,11 +155,26 @@ def _score_test_populations(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         group_split: dict[str, Any], cohorts, *,
-        projection_executor: Executor | None = None):
+        projection_executor: Executor | None = None,
+        decision_pool: V2DecisionScoringPool | None = None,
+        progress: ProgressCallback | None = None,
+        progress_phase_prefix: str = "score-test"):
+    if type(progress_phase_prefix) is not str \
+            or not progress_phase_prefix.isascii() \
+            or not progress_phase_prefix \
+            or any(not (char.isalnum() or char in "-_.")
+                   for char in progress_phase_prefix):
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal progress phase identity drift")
+    synthetic_phase = f"{progress_phase_prefix}-synthetic-rounds"
+    human_phase = f"{progress_phase_prefix}-human-groups"
     synthetic = []
-    for coordinate in v2_round_coordinates():
-        if coordinate.split != "test":
-            continue
+    synthetic_coordinates = tuple(
+        coordinate for coordinate in v2_round_coordinates()
+        if coordinate.split == "test")
+    for index, coordinate in enumerate(synthetic_coordinates):
+        if progress is not None:
+            progress(index, len(synthetic_coordinates), synthetic_phase)
         decisions = reopen_synthetic_scoring_round(
             root, freeze=freeze, admission=admission,
             coordinate=coordinate, replicate="test-primary",
@@ -154,9 +184,16 @@ def _score_test_populations(
             source_kind="synthetic", split="test",
             trump_rank=coordinate.trump_rank,
             decisions=decisions, cohorts=cohorts,
-            projection_executor=projection_executor))
+            projection_executor=projection_executor,
+            decision_pool=decision_pool))
+    if progress is not None:
+        progress(len(synthetic_coordinates), len(synthetic_coordinates),
+                 synthetic_phase)
     human = []
-    for digest in _human_group_digests(group_split, "test"):
+    human_groups = _human_group_digests(group_split, "test")
+    for index, digest in enumerate(human_groups):
+        if progress is not None:
+            progress(index, len(human_groups), human_phase)
         rounds = reopen_human_scoring_rounds(
             root, freeze=freeze, admission=admission,
             group_digest=digest, replicate="test-primary",
@@ -166,7 +203,10 @@ def _score_test_populations(
                 round_key=round_digest, source_kind="human", split="test",
                 trump_rank=trump_rank, decisions=decisions,
                 cohorts=cohorts,
-                projection_executor=projection_executor))
+                projection_executor=projection_executor,
+                decision_pool=decision_pool))
+    if progress is not None:
+        progress(len(human_groups), len(human_groups), human_phase)
     if not synthetic or not human:
         raise BeliefV2TerminalControllerError(
             "V2 terminal test score population is empty")
@@ -499,23 +539,30 @@ def run_v2_terminal(
         if progress is not None:
             progress(2, 5, "test-inputs-reopened")
         synthetic, human = _score_test_populations(
-            root, freeze, admission, group_split, cohorts)
+            root, freeze, admission, group_split, cohorts,
+            progress=progress)
         if progress is not None:
             progress(3, 5, "test-populations-scored")
         cohort_ids = tuple(row.cohort_id for row in cohorts)
         expected_synthetic = _expected_test_synthetic_rounds()
         expected_human = _expected_test_human_rounds(
             root, freeze, admission, group_split)
-        primary = evaluate_primary_test(
-            synthetic, selected_cohort_id=calibration["selected_cohort_id"],
-            expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids)
-        control = evaluate_label_control_test(
-            synthetic, expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids)
-        human_transfer = evaluate_human_transfer_test(
-            human, selected_cohort_id=calibration["selected_cohort_id"],
-            expected_human_rounds=expected_human, cohort_ids=cohort_ids)
+        primary, control, human_transfer = (
+            _run_independent_terminal_statistics(
+                lambda: evaluate_primary_test(
+                    synthetic,
+                    selected_cohort_id=calibration["selected_cohort_id"],
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_label_control_test(
+                    synthetic,
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_human_transfer_test(
+                    human,
+                    selected_cohort_id=calibration["selected_cohort_id"],
+                    expected_human_rounds=expected_human,
+                    cohort_ids=cohort_ids)))
         receipt = _derive_integrity_receipt(
             root, freeze, admission, group_split, plan=plan,
             qualification=qualification,
@@ -575,10 +622,17 @@ def reopen_v2_terminal(
         admission: V2PipelineAdmissionV1,
         inventory: dict[str, Any], group_split: dict[str, Any],
         projection_executor: Executor | None = None,
+        decision_pool: V2DecisionScoringPool | None = None,
+        parallel_decisions: bool = False,
         progress: ProgressCallback | None = None,
         calibration_directory: Path | None = None) \
         -> dict[str, Any]:
     """Reopen raw score populations and rederive every terminal byte."""
+    if type(parallel_decisions) is not bool \
+            or parallel_decisions and (
+                projection_executor is not None or decision_pool is not None):
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal scoring mode drift")
     if progress is not None:
         progress(0, 5, "verify-terminal-controls")
     expected_names = {
@@ -643,9 +697,20 @@ def reopen_v2_terminal(
         recorded_human = reopen_v2_round_population(
             files["human_test"], cohort_ids=cohort_ids,
             label="human_test")
-        synthetic, human = _score_test_populations(
-            Path(freeze.evidence_root), freeze, admission, group_split,
-            cohorts, projection_executor=projection_executor)
+        if parallel_decisions:
+            with V2DecisionScoringPool(cohorts) as local_pool:
+                local_pool.warm()
+                synthetic, human = _score_test_populations(
+                    Path(freeze.evidence_root), freeze, admission,
+                    group_split, cohorts, decision_pool=local_pool,
+                    progress=progress,
+                    progress_phase_prefix="reconstruct-test")
+        else:
+            synthetic, human = _score_test_populations(
+                Path(freeze.evidence_root), freeze, admission, group_split,
+                cohorts, projection_executor=projection_executor,
+                decision_pool=decision_pool, progress=progress,
+                progress_phase_prefix="reconstruct-test")
         if v2_round_population_bytes(
                 recorded_synthetic, cohort_ids=cohort_ids,
                 label="synthetic_test") != v2_round_population_bytes(
@@ -662,16 +727,22 @@ def reopen_v2_terminal(
         expected_synthetic = _expected_test_synthetic_rounds()
         expected_human = _expected_test_human_rounds(
             Path(freeze.evidence_root), freeze, admission, group_split)
-        primary = evaluate_primary_test(
-            synthetic, selected_cohort_id=calibration["selected_cohort_id"],
-            expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids)
-        control = evaluate_label_control_test(
-            synthetic, expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids)
-        human_transfer = evaluate_human_transfer_test(
-            human, selected_cohort_id=calibration["selected_cohort_id"],
-            expected_human_rounds=expected_human, cohort_ids=cohort_ids)
+        primary, control, human_transfer = (
+            _run_independent_terminal_statistics(
+                lambda: evaluate_primary_test(
+                    synthetic,
+                    selected_cohort_id=calibration["selected_cohort_id"],
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_label_control_test(
+                    synthetic,
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_human_transfer_test(
+                    human,
+                    selected_cohort_id=calibration["selected_cohort_id"],
+                    expected_human_rounds=expected_human,
+                    cohort_ids=cohort_ids)))
         receipt = _derive_integrity_receipt(
             Path(freeze.evidence_root), freeze, admission, group_split,
             plan=plan, qualification=qualification,

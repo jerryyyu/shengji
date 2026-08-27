@@ -16,7 +16,7 @@ from concurrent.futures import Executor, ProcessPoolExecutor
 from dataclasses import dataclass, replace
 import multiprocessing
 import os
-import time
+from threading import BrokenBarrierError
 from typing import Any
 
 import torch.multiprocessing as torch_multiprocessing
@@ -87,6 +87,8 @@ class _ScoredDecisionV1:
 _DECISION_WORKER_COHORTS: tuple[V2CohortModelsV1, ...] | None = None
 _DECISION_WORKER_IDENTITY: tuple[
     tuple[str, tuple[str, ...]], ...] | None = None
+_DECISION_WORKER_STARTUP_BARRIER: Any | None = None
+DECISION_WORKER_STARTUP_TIMEOUT_SECONDS = 60
 
 
 def _is_sha256(value: Any) -> bool:
@@ -213,7 +215,7 @@ def _cohort_identity(cohorts: tuple[V2CohortModelsV1, ...]) \
 
 
 def _initialize_decision_worker(
-        cohorts: tuple[V2CohortModelsV1, ...]) -> None:
+        cohorts: tuple[V2CohortModelsV1, ...], startup_barrier: Any) -> None:
     from .belief_v2_execution_identity import configure_numerical_runtime
     configure_numerical_runtime()
     if type(cohorts) is not tuple or not cohorts:
@@ -222,20 +224,30 @@ def _initialize_decision_worker(
     for cohort in cohorts:
         validate_v2_cohort_models(cohort)
     global _DECISION_WORKER_COHORTS, _DECISION_WORKER_IDENTITY
+    global _DECISION_WORKER_STARTUP_BARRIER
     _DECISION_WORKER_COHORTS = cohorts
     _DECISION_WORKER_IDENTITY = _cohort_identity(cohorts)
+    _DECISION_WORKER_STARTUP_BARRIER = startup_barrier
 
 
 def _decision_worker_probe(
         expected: tuple[tuple[str, tuple[str, ...]], ...]) \
         -> tuple[int, tuple[tuple[str, tuple[str, ...]], ...]]:
     if _DECISION_WORKER_COHORTS is None \
-            or _DECISION_WORKER_IDENTITY != expected:
+            or _DECISION_WORKER_IDENTITY != expected \
+            or _DECISION_WORKER_STARTUP_BARRIER is None:
         raise BeliefV2ScoringError(
             "V2 decision worker cohort identity drift")
-    # Keep each probe resident briefly so warm-up proves the complete worker
-    # population exists instead of letting one early process consume them all.
-    time.sleep(0.05)
+    # The first task in every newly initialized worker blocks until the whole
+    # frozen worker population has arrived.  A fixed sleep is not sufficient:
+    # workers that finish deserializing the model population early can consume
+    # every queued probe before the slowest worker becomes ready.
+    try:
+        _DECISION_WORKER_STARTUP_BARRIER.wait(
+            timeout=DECISION_WORKER_STARTUP_TIMEOUT_SECONDS)
+    except BrokenBarrierError as exc:
+        raise BeliefV2ScoringError(
+            "V2 decision worker startup barrier refused") from exc
     return os.getpid(), _DECISION_WORKER_IDENTITY
 
 
@@ -270,11 +282,13 @@ class V2DecisionScoringPool:
             if torch_multiprocessing.get_sharing_strategy() != "file_system":
                 raise BeliefV2ScoringError(
                     "V2 decision worker tensor transport drift")
+            context = multiprocessing.get_context("forkserver")
+            self._startup_barrier = context.Barrier(V2_DECISION_WORKERS)
             self._executor = ProcessPoolExecutor(
                 max_workers=V2_DECISION_WORKERS,
-                mp_context=multiprocessing.get_context("forkserver"),
+                mp_context=context,
                 initializer=_initialize_decision_worker,
-                initargs=(cohorts,))
+                initargs=(cohorts, self._startup_barrier))
         except Exception:
             torch_multiprocessing.set_sharing_strategy(
                 self._previous_sharing_strategy)
@@ -298,7 +312,7 @@ class V2DecisionScoringPool:
             observed = tuple(self._executor.map(
                 _decision_worker_probe,
                 (self.cohort_identity
-                 for _ in range(4 * V2_DECISION_WORKERS)),
+                 for _ in range(V2_DECISION_WORKERS)),
                 chunksize=1))
         except BeliefV2ScoringError:
             raise
@@ -306,7 +320,7 @@ class V2DecisionScoringPool:
             raise BeliefV2ScoringError(
                 "V2 decision worker startup refused") from exc
         pids = tuple(pid for pid, _ in observed)
-        if len(observed) != 4 * V2_DECISION_WORKERS \
+        if len(observed) != V2_DECISION_WORKERS \
                 or len(set(pids)) != V2_DECISION_WORKERS \
                 or any(type(pid) is not int or pid <= 0
                        or identity != self.cohort_identity

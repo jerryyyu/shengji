@@ -249,6 +249,7 @@ def test_decision_pool_uses_filename_backed_tensor_transport(monkeypatch):
     pool = SCORING.V2DecisionScoringPool((cohort,))
     assert observed[0][0:2] == ("executor", "file_system")
     assert observed[0][2]["mp_context"].get_start_method() == "forkserver"
+    assert observed[0][2]["initargs"][1] is pool._startup_barrier
     assert SCORING.torch_multiprocessing.get_sharing_strategy() \
         == "file_system"
     pool.close()
@@ -279,6 +280,24 @@ def test_decision_pool_types_forkserver_fd_refusal():
     with pytest.raises(SCORING.BeliefV2ScoringError,
                        match="decision worker startup refused"):
         pool.warm()
+
+
+def test_decision_worker_probe_waits_for_complete_population(monkeypatch):
+    identity = (("cohort", ("a" * 64,) * 8),)
+    waits = []
+
+    class Barrier:
+        def wait(self, *, timeout):
+            waits.append(timeout)
+
+    monkeypatch.setattr(SCORING, "_DECISION_WORKER_COHORTS", (object(),))
+    monkeypatch.setattr(SCORING, "_DECISION_WORKER_IDENTITY", identity)
+    monkeypatch.setattr(
+        SCORING, "_DECISION_WORKER_STARTUP_BARRIER", Barrier())
+    pid, observed = SCORING._decision_worker_probe(identity)
+    assert pid > 0
+    assert observed == identity
+    assert waits == [SCORING.DECISION_WORKER_STARTUP_TIMEOUT_SECONDS]
 
 
 def test_decision_pool_identity_and_result_order_can_refuse(monkeypatch):

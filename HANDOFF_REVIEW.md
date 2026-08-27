@@ -5162,3 +5162,87 @@ nothing signalled. — Claude (session `f4b0ea92`)
 **What that does and does not cost.** The serial precedent proves the failure fires *after* calibration publishes: `calibration/selection/` sealed all seven artifacts before the verifier refused. So the optimized lane should likewise **publish R4's calibration output before dying** — R4 then holds two independently produced published calibrations (serial's is already permanent-never-delete). What dies is the chained verify → test-opening. Nothing needs recomputing.
 
 **Repair shape to prepare NOW so the turnaround is hours, not days:** (1) split the fifteen-clause `or` chain (`belief_v2_tensor_cache_controller.py:1226–1252`) into per-field refusals that name the offending field — `3f6649a`'s diagnostic-form masked-witness point, now load-bearing for the fix itself; (2) reproduce the refusal read-only against serial's sealed root to name the drifting field (prime suspects per the two prior drift incidents: `cache_worker_count` vs `parallel_cache_worker_count(freeze.runtime, …)` — the reopen rebuilds the cache with current builder parameters and compares resources against the original `d2d466f`-era receipt, which was built serially); (3) a narrow completion route that verifies the *published* calibration selection and proceeds to the single test opening without the failing full-cache reconstruction, or with a reconstruction receipt that binds the reopen-time builder identity separately from the original build identity. One consolidated review when the packet exists. The failed serial root and its published calibration are permanent-never-delete. No authority granted or withdrawn. — Claude (session `68f9c8bd`)
+
+## 2026-08-27 14:40 EDT — two additions to `c578c36`'s repair prep: the two lanes may fail on *different* clauses of the same guard, and here is the calibration byte-comparison pre-registered before Perf publishes
+
+`c578c36`'s static diff answers my `3f6649a` question properly and I have no correction to it.
+Two things it does not cover.
+
+### 1. The repair may be validated against the wrong clause
+
+The reopen chain passes **`source.freeze`**, not the run's own freeze:
+`reopen_v2_calibration_selection(…, freeze=source.freeze, admission=source.admission, …)`
+→ `reopen_trained_scoring_cohorts(Path(freeze.evidence_root), freeze=freeze, …)`
+→ `reopen_training_tensor_cache(…, freeze=freeze, …)`.
+
+Cloud's published `calibration/selection/manifest.json` confirms which freeze that is:
+`freeze_sha256 = 573fcade25d985f58c0d179a581a40619b5745fc2152c52f4740e1355ae1fc16` and
+`admission_sha256 = 21d9cea8a1ef2905dd0a8a85308e54141e58362e0764f04f388412bedfff0961` — the
+**d2d466f** source freeze/admission, **not** the r3 run's own (`59c747be…` / `6e17fa33…`).
+
+Measured on that source freeze and on both hosts:
+
+| | value |
+|---|---|
+| d2d466f source freeze `runtime.hostname` | **`ubuntu-32gb-hel1-1`** (Cloud) |
+| d2d466f source freeze `runtime.boot_identity` | **`86cc5b317fc971e0b4d26302a3e18cf7e07d4a9d8bcf08ac4f6abeed0dad0ca6`** |
+| Cloud own freeze `runtime.boot_identity` | **`86cc5b31…`** — the same |
+| Cloud boot session | single, since **2026-08-15 20:21:59** |
+| Perf `runtime.hostname` | `ubuntu-32gb-hel1-2` |
+| Perf own freeze `runtime.boot_identity` | `1f1a7041…` |
+| Perf boot session | `fe8e3e37…`, since **2026-08-26 12:48:49** (the power cycle) |
+
+*Inferred, and labelled because I over-claimed once already today:* the guard's
+`resources["boot_identity"] != freeze.runtime.boot_identity` clause **passes on Cloud by
+coincidence** — Cloud has not rebooted since 08-15, so the d2d466f source freeze records the very
+boot session in which the reopen ran. On Perf it **cannot** pass: the source freeze records a
+different machine's boot identity, and no Perf boot will ever match it.
+
+If that holds, Cloud failed on some *other* clause (which strengthens `c578c36`'s
+`cache_worker_count` suspicion by eliminating one candidate) while Perf will fail on
+`boot_identity` — **two different defects behind one indistinguishable error string.** A repair
+reproduced only against Cloud's sealed root would then leave Perf failing anyway.
+
+This is cheap to settle and does not need the run: reproduce read-only against Cloud's sealed root
+and print `resources["boot_identity"]` beside `freeze.runtime.boot_identity`. It is the same
+per-field split `c578c36` already proposes — this just says **do it before assuming one fix covers
+both lanes**, and check the boot clause specifically for the cross-host case.
+
+### 2. Pre-registering the calibration byte-comparison, with the acceptance criterion stated first
+
+Perf is at `completed_units 931 / 1326` on `score-r4-synthetic-ref1-rounds`,
+`elapsed_nanoseconds 97014624091985` (**26.95 h**), `NRestarts=0` — roughly **5 h** from
+publishing its own `calibration/selection/`. Per `c578c36` it should publish before the guard
+refuses.
+
+When it does, the single highest-value check is whether the two lanes' artifacts are byte-equal,
+because that is the **end-to-end** test of PR #152's parity claim. I verified parity only on the
+projection sub-phase at `394354f`; nothing has yet tested it across a whole calibration.
+
+Cloud's sealed digests, recorded now, before Perf finishes, and independently recomputed by me —
+each matches the value `manifest.json` records for it:
+
+| artifact | bytes | SHA-256 |
+|---|---|---|
+| `synthetic-calibration-ref-0.json` | 1,390,021 | `1553bebcceb0d4496212d755bb617399abc249cd780af2a8cd7fe0833b78d76a` |
+| `synthetic-calibration-ref-1.json` | 1,390,021 | `26e6e9167fced6a6eef77ddd1c466667d900f1dddb2e28f99727727ab1bbbfce` |
+| `human-calibration-ref-0.json` | 29,496 | `ef5b73f2126d404cfbc716d9a5a529a87f3d4ad077dd7fd8890912d70a2987d0` |
+| `human-calibration-ref-1.json` | 29,496 | `332bf62bd823910d759f5314b897e972434411cf48d7920ed04a443004b17556` |
+| `human-selection.json` | 1,477 | `c46f811342c7d949b925c7767d7acaee1b705c27f7d9d6900ef51579c46e0e86` |
+| `scale-curve.json` | 593 | `be441a0d115220836877240d676b8e70098d75446fd947425aa8d5592d5adc79` |
+| `manifest.json` | 2,699 | `a037dd85f15c3269b43000ac205761cb17586a6c3791f702bd015ac81c42e8a8` |
+
+**Stated in advance, so neither outcome can be rationalised afterwards:**
+
+- The six data artifacts **matching** byte-for-byte is the expected result and the first end-to-end
+  confirmation of #152's exact-output parity across a full calibration.
+- **Any** mismatch in the six is a serious finding that must block the cutover until explained —
+  #152's whole warrant is byte-identical output.
+- `manifest.json` is **excluded from the equality expectation**: it binds resources and
+  provenance that legitimately differ per lane. Its `files.*.sha256` entries must still equal the
+  artifacts they name, on each lane independently.
+
+Cloud's calibration is the only R4 calibration that has ever existed and is permanent-never-delete.
+
+Read-only: digests and metadata fields only; no scores, records or private roots opened; nothing
+signalled. — Claude (session `f4b0ea92`)

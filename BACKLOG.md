@@ -1,179 +1,98 @@
 # Backlog
 
-Last reconciled: 2026-08-23 21:15 EDT. This file is the active execution
-queue. Detailed policy interpretation belongs in `AI_POLICIES.md`, experiment
-design in `RL_PLAN.md`, live compute in `JOBS.md`, and historical queues in
-`docs_archive/backlog-through-2026-08-11.md`.
+Last reconciled: **2026-08-27 08:35 EDT**. This file is the prioritized
+decision queue, not a run log. Live processes and exact operator authority are
+in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
+`HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
+status is in `AI_POLICIES.md`.
 
-## Strength objective
+Historical queues remain in `docs_archive/backlog-through-2026-08-11.md` and
+Git history. Do not append dated progress blocks here.
 
-Beat the live `mc-s0-report-lcb` champion in complete mirrored Shengji rounds,
-then confirm the win on a fresh population before considering production.
-State-level and exact-endgame tests are useful mechanism screens; only
-whole-game utility against the named live champion establishes bot strength.
+## Program objective
 
-## NOW — output ledger ordered by value
+Produce a decision-grade answer on whether public-history belief learning
+improves hidden-hand prediction. Finish R4, run one efficient/recoverable R5,
+independently reproduce its terminal verdict, and decide whether calibrated
+belief should advance into gameplay search. The production strength standard
+remains a fresh mirrored whole-game comparison against
+`mc-s0-report-lcb`; offline prediction or open-DEV teacher evidence cannot
+promote a bot.
 
-| priority / lane | plain-English strategy | progress so far and what is left | next concrete output | gate |
-|---|---|---|---|---|
-| **P0 / BELIEF-V1 R4 calibrated baseline** | Learn an actor-visible distribution over hidden ownership, then prove it improves held-out calibration before changing search. | **The reviewed scientific DAG remains healthy and outcome-blind.** Exact source `d2d466f`, freeze `573fcade…fc16` and admission `21d9cea8…0961` run once on `shengji-cloud`. Capture, human replay, input index, tensor cache, device qualification and all references sealed. Stage 7/10 training is 78/85 tasks complete and 93.88% task-weighted; the four cohorts are about 37%/37%/37%/69% through their frozen schedules, with zero restart and no test or terminal opening. | Seal the best common epoch at convergence or the deadline, open test once, independently reconstruct the terminal, then publish curves/timing | No mutation, retry, merge, competing use of its host or early outcome opening while live. R4 is offline calibration only; B3/gameplay/strength remain unauthorized. |
-| **P0 / BELIEF R5 efficient recoverable successor** | Re-run the same preregistered question with retained train/calibration artifacts, explicit progress, graceful truncation and a cache path that fits the fixed host cap. | **Source repair is CI-green; scientific R5 has not started.** The spent `8d9390e` admission is preserved after its tensor-cache resource refusal and cannot retry. Draft PR #131 exact `5e3bb6b` keeps the 24-GiB cap, selects `8 = 2 x 4` cache workers, records refusal durably, and schedules primary last so its actor pages remain hot for the label overlay. A full-size score-free v5 proof on Performance Cloud is rebuilding all five train/calibration components; at 21:18 EDT it was 24% through 9,128 direct batches, with zero restart and 23.65 GB peak below the 25.77 GB hard cgroup limit. | Finish and independently reopen v5; generate fresh all-rank capacity/deadline receipts; seal one immutable R5 freeze; request one consolidated source+freeze review; launch exactly once after PASS | No scientific namespace, model, test, result or retry exists yet. R5 shares R4's population and is not an independent replication. No source-only PASS may substitute for the exact host freeze review. |
-| **P1 / privileged-teacher policy improvement** | First hill-climb a genuinely stronger full-state teacher, then average its per-action values over public-history-compatible worlds instead of copying one omniscient action. | **Proposal-only lane.** Prior `oracle.py`, DMC2, high-N/v13, Teacher and Suphx O0/O0-v2 did not establish a strong optimized hidden-state policy; they mostly evaluated heuristic continuations, learned scalar/value targets, or ran short privileged curricula. `PRIVILEGED_TEACHER_V1_PROPOSAL.md` separates an omniscient capability league from an information-set teacher and a public runtime student. | Review the proposal; then implement only PT0 exact-endgame/baseline instrumentation and a score-free capacity profile before authorizing self-play | An all-omniscient policy is a capability ceiling, not a deployable Sheng Ji policy. No direct hidden-state argmax may become a public target; no teacher run competes with live R4/R5. |
-| **P1 / PR #130 report-tie point-risk proposal** | When the 300-world report fold cannot distinguish incumbent and challenger, prefer lower immediate point risk while refusing any incremental trump spend. | **Code acceptance PASS at exact head `943bc58`; adoption untested.** The champion flag remains off. A table witness proves equal-trump lower-risk flips remain allowed while `+1` trump is guarded; the killing mutation fails, 34 focused/production-path tests pass, and CI is green. The branch is not literally stacked on PR #127/#129, so integration must reconcile current main ancestry and proposal wording. | Rebase/integrate without semantic change, freeze the round-level utility reducer and required lead/follow/trump telemetry, then decide whether a small paired duel is worth running | PR #127 is an archived diagnosis, not evidence of round-level benefit. PR #130 does not authorize merge-by-default, a run, champion adoption, strength, promotion or deployment. |
-| **CLOSED / pair-aware rollout evidence paths** | Determine whether actor-visible exhausted-pair memory improves complete rounds, not just selected disagreements. | **Neither whole-game path produced evidence.** Air hit its fixed 64.08h timeout with `0/8` terminal shards and no manifest/final. The Performance checkpoint V1 one-shot fail-closed on microshard 3 `treatment work drift`; its host is now off and the admission is spent. | Preserve the diagnosis and require a fresh reviewed recovery design if this family is ever reconsidered | No retry, resume, partial-outcome access, aggregation or strength interpretation. Pair is no longer a live prerequisite for BELIEF-V1. |
-| **DONE / post-null roadmap reset** | Choose the next research milestone from evidence rather than keeping idle hardware busy. | **T4, S4 and combined S6 all selected none; BELIEF-V1 is the chosen materially different representation milestone.** The closeout identified selected-state signal, sparse natural dose, weak same-work attribution and continuation fragility. | Execute BELIEF-V1's calibration → sampler → same-work ladder in order | Before any large scored screen, require natural-dose economics, treatment-vs-champion and treatment-vs-same-work-null evidence, robustness under two continuation/role strata, and detectable whole-game effect. |
-| **CLOSED / T4 mid/late Teacher hybrid** | Use the learned model as a proposal inside Monte Carlo search after trick five. | Terminal `SELECT_NONE`; treatment LCB `-0.00759` versus champion and `-0.03313` versus its work-matched null. The uninformed arm was positive versus champion, but used 14.8% more accepted worlds and 80.9% more searches than champion, so widening and compute are confounded. | Implement the separately reviewed three-arm attribution design; do not retry T4 | No confirmation, retry, promotion or deployment for the learned recipe. Any widening claim must distinguish champion-work from original-null-work arms. |
-| **CLOSED / S4 point banking** | Make simulated winners bank point cards. | Clean two-look, 16,384-cluster confirmation terminally selected none at review `15e8dbb`; natural incidence was only about 0.7% of decisions. | Preserve diagnostic states only | No retry, pooling, promotion or deployment. |
-| **CLOSED / combined S6 sourcing** | Spend extra search on late full-hand boss/near throws across bury and lead sources. | Result `de1c4f33…d0bc` terminally selected none for fresh-screen design. Bury source passed all criteria; lead source failed three. | Preserve the bury-side asymmetry as hypothesis-only | No fresh screen, retry, REPORT, strength or deployment from this evidence. |
-| **PARKED / attacker-gated pair-cap successor** | Keep the broader opponent-pair rule only when an attacker leads, because the broad replay's two helpful changes had attacker dose while its harmful reversion was defender-only. | Action semantics and a three-arm capacity design were reviewed, but both Pair whole-game evidence paths later closed without a terminal result. This diagnostic cannot justify a third execution by itself. | None unless a fresh causal diagnosis materially changes the estimand and earns a new design | Diagnostic action agreement is not strength. No retry, recovery, capacity packet or scored run is queued. |
-| **PARKED / pair ballot retention** | Keep a legal pair from being crowded out before search can price it. | The foundation and PR #100/#101 design-only successors are merged, but both Pair whole-game attempts later closed without evidence. Neither design contains executable census/controller code, and BELIEF-V1 now owns the active representation milestone. | Preserve the designs; require a materially new causal case before implementation | REPORT remains sealed. No implementation, census, packet, run, evidence access, scoring, retry, strength, training, promotion or deployment is queued or authorized. |
-| **P1 / engine and MC performance — independent enabler** | Make every rollout and round cheaper without changing its move, RNG stream or game result. This lowers production latency and lets fixed fleet-hours test more strength ideas; speed alone is not evidence that a policy is stronger. | **Two exact stacks cleared preregistered x86 gates and merged.** PR #98's immutable six-pair N=30/R=300 batch measured **29.3203% lower wall** with 27.8619% one-sided paired lower bound and exact normalized gameplay/work/RNG/sampler bytes. PR #103 then retained a separate **3.4074%** increment with +1.0299% lower bound, exact semantics, and zero mismatch across 12 million differential rounds; reviewed head `3044a2f` merged at `e3af8c3`. Do not add the percentages across baselines. | Profile the merged stack only when a powered-on host has a separately reviewed next candidate; no benchmark is queued now | Performance-only work, not bot strength or deployment. Never benchmark beside sealed strength runs; do not change frozen historical constants or substitute optimized code into running experiments. |
-| **P1 / point-flow census and feed anticipation** | Compare human and rollout choices only where each side actually had a legal point-card opportunity, then test narrowly named continuation rules instead of inferring policy from aggregate card counts. | **PR #99 exact `0ee28a0` passed external descriptive-tooling review and repairs the PR #95 denominator/provenance boundary.** On 165 private opened rounds, literal legal-opportunity rates are human 164/204 and rollout 14,664/14,666; inferred-strict rates are 32/46 and 302/989. Exact 150-row binding found 20 policy flips, only three toward the human action. The former 70%-versus-23% headline is withdrawn. **Left:** choose a separately designed consumer, if any. | Reviewed descriptive census and a separately designed cheapest honest follow-up | Private opened logs are not sealed strength evidence. The census grants no scored run, training, strength, promotion or deployment authority. |
-| **P1 / documentation and repository hygiene** | Keep one clear source of current truth so compute and review time go to hypotheses rather than reconstructing history. | PR #114's compact current-state documents and PR #115's append-only merge guard are merged. Current summaries now track the live R4 packet and post-terminal decision path. Exact BELIEF and Suphx contracts remain at their root paths because historical/live reopeners bind those bytes. | Routine exact updates at terminal, incident, review and launch transitions | `HANDOFF_REVIEW.md` remains append-only. Rotate it only after an acknowledged cutoff and hash-bound archive manifest; never move a source-bound contract merely to shorten the root. |
+## Now — ordered by decision value
 
-## T4 milestone — stronger learned-search composition
+| priority | lane | current state | next decision-bearing output | gate |
+|---:|---|---|---|---|
+| **P0** | **BELIEF R4 interpretation** | Optimized calibration is live on Perf at exact reviewed source `d82ba224`; the slower Strength-Cloud lane remains a reviewed fallback. Training, reusable cache/index artifacts, and test population are already sealed; test is unopened. | Independently reopened calibration, reviewed two-lane cutover, one test opening, independently reproduced terminal verdict. | Do not stop the fallback or open test until optimized calibration seals and the existing readiness/cutover controller says `READY`. No retry or partial-outcome inference. |
+| **P0** | **PT-Sol0 policy-use diagnostic** | One reviewed 26-root / 52-role Mini run is live at `e73f970e`. Fresh ephemeral `gpt-5.6-sol` agents receive exact hidden state only through a bounded engine-owned observe/rollout/play interface. | Reopened complete report comparing Sol with PT-Full A/B and C0-S; one honest conclusion on whether general reasoning can use perfect information better than the fixed consumers. | Open-DEV mechanism evidence only. No merge, BELIEF integration, strength claim, retry, promotion, or deployment. |
+| **P0** | **BELIEF R5** | Source is clean and locally validated at `9c5928f2`; host-independent all-rank/human inputs are sealed. No R5 process or review is active. | One exact-Perf 104-round full-DAG rehearsal, host receipts, immutable freeze, one consolidated source+freeze PASS, then a recoverable run and independently reproduced terminal verdict. | R4 releases Perf first. Rehearsal, freeze, and execution must share exact Git/source/runtime/device identity. Preserve train/calibration artifacts, curves, graceful deadline truncation, and zero test leakage. |
+| **P1** | **Belief-to-search consumer** | Design only. No offline result yet authorizes a sampler or gameplay change. PT-Full/C0 show that collapsing onto one true/likely world is not a sufficient consumer. | If R4/R5 is positive, implement the smallest belief-weighted complete-world sampler and measure post-projection calibration plus final-action flip dose before a whole-game screen. | Search stays final authority. Compare equal work against REF-C/current sampling; never expose a hidden label or use one MAP world as truth. |
+| **P1** | **Privileged/full-information teacher successor** | PT0 found small late-endgame headroom over weak baselines but not production; PT1 was a clean negative; PT-Full and C0 selected none. PT-Sol0 is the current meaningfully different probe. | After PT-Sol0, choose one axis only: bounded-depth partnership search, learned full-information Q/policy, or stop. | A perfect-information consumer must first beat public production under exact state before it can justify distillation or BELIEF use. |
+| **P1** | **Search-capacity confirmation** | The historical T4 uninformed widening arm was positive against champion but used 14.8% more accepted worlds and 80.9% more searches, so “same-work widening won” is not established. | Three-arm design: champion, widening at champion work, widening at original-null work. | Keep this separate from BELIEF and PT. It is a strength hypothesis, not a way to keep an idle host busy. |
+| **P1** | **Performance engineering** | Native rollout work and R5 cache/projection parallelism materially reduce wall time with byte-identical results. Calibration projection on Perf uses 16 workers; training/cache artifacts are reusable. | Retain exact parity while profiling the next actual bottleneck; use all cores when the operation is safely parallel. | Performance is an enabler, not strength evidence. Never benchmark beside or modify a live sealed run. |
+| **P2** | **Production-policy quality gaps** | User reports around bare points, weak fallback leads, and point-insensitive play are real diagnosis surfaces. C0 avoided some local symptoms but still lost whole rounds. | Replay current production decisions, classify legality/ballot/search/continuation/value cause, then test one causal treatment with a matched null. | Do not ship a blanket “never play a 10” rule or infer that BELIEF alone fixes policy/value defects. |
 
-T4 is complete only when all of the following are true:
+## Immediate sequence
 
-1. the admitted 2,048-cluster screen finishes without retry or evidence leak;
-2. an independent reviewer passes the score-free supervisor final;
-3. the aggregate is created exactly once and independently reproduced;
-4. the terminal result says either:
-   - **PASS:** the hybrid beats both literal live and same-work random proposal
-     with positive lower bounds, opening a fresh confirmation design; or
-   - **SELECT NONE:** this exact composition closes honestly; and
-5. `AI_POLICIES.md`, `RL_PLAN.md`, `BACKLOG.md`, `JOBS.md`, handoff and the
-   daily log agree on the verdict and what it does—and does not—authorize.
+1. Monitor PT-Sol0 and R4 without interference.
+2. When optimized R4 calibration seals, run the already-reviewed readiness,
+   serial-stop, cutover-receipt, one-test-open, and terminal-reopen sequence.
+3. Record the R4 prediction verdict and whether any calibration/mechanics gate
+   failed.
+4. Release Perf to the exact R5 rehearsal and freeze; request one review only.
+5. Run R5, reproduce its terminal result, and make the BELIEF gameplay-search
+   advance/stop decision.
+6. Interpret PT-Sol0 separately and use it to choose or close the next
+   full-information teacher axis.
 
-Plain English: T4 tests whether a learned model can make the existing search
-stronger, not whether a bare neural network can replace Monte Carlo.
+## Entry criteria for new scientific lanes
 
-All five conditions are now satisfied. Canonical terminal review `a165274`
-verified the recursively reconstructed `SELECT_NONE`. The treatment-work-
-matched uninformed proposal beat champion on this population, but used 14.8%
-more accepted worlds and 80.9% more searches than champion. The learned
-proposal did not beat that control; no T4 continuation is authorized, and
-widening requires a separate three-arm work-controlled confirmation.
+A proposed lane enters the review queue only when it names:
 
-## Parallel-lane exit criteria
+1. the exact decision or prediction it changes;
+2. natural dose and the smallest effect worth detecting;
+3. candidate, literal parent, and behavior/work-matched null;
+4. one frozen population/split and one terminal rule;
+5. source/runtime/artifact identities plus recoverability behavior; and
+6. one consolidated review surface.
 
-| lane | result this goal must reach |
+Run a cheap score-free census or rehearsal first when dose, runtime, or
+candidate geometry is unknown. Rehearsals prove mechanics, not efficacy, and
+must never be used to choose scientific seeds or thresholds.
+
+## Operating constraints
+
+- No test opening before a durable pre-test readiness artifact proves that
+  training, calibration, curves, and exact identities independently reopen.
+- Expiry yields a sealed, explicitly truncated result at the best complete
+  common epoch when the design permits it; it must not erase healthy learning
+  or masquerade as convergence.
+- Preserve reusable capture, reference, index, cache, checkpoint, and
+  calibration artifacts when their contracts permit exact reuse.
+- Progress must expose completed/total units, percent, elapsed time, ETA, stage,
+  worker identity, and deadline headroom without exposing outcomes.
+- Use diverse trump ranks and player/deal-disjoint human data. Human moves are
+  behavior/proposal evidence, not strength labels.
+- Keep facts, actor-private observations, probabilistic beliefs, and privileged
+  labels typed and separate. Actor-visible runtime bytes must be invariant to
+  hidden-world twins.
+- Negative and refused results remain evidence. Never delete them, retry a
+  spent namespace, or convert a mechanism PASS into deployment authority.
+- Exact raw markers and chronology belong only in `HANDOFF_REVIEW.md`; current
+  review asks belong only in `HANDOFF_ACTIVE.md`.
+
+## Durable conclusions shaping the queue
+
+| result | conclusion |
 |---|---|
-| **S4** | **Done:** clean two-look terminal `SELECT_NONE`; exact recipe closed. |
-| **S6** | **Done:** 64-record scored-DEV terminal `SELECT_NONE_FOR_FRESH_SCREEN_DESIGN`; exact combined recipe closed. |
-| **Pair-aware** | **Done without evidence:** Air terminally timed out at `0/8`; the Performance checkpoint attempt fail-closed and is spent. No retry or partial interpretation. |
+| **RLCB confirmed and deployed** | Two-stage Monte Carlo remains the only confirmed production strength gain and the named parent for challengers. |
+| **S4, S6, T4 learned proposals, pair-aware, global learned rankers** | Rigorous mechanism work did not establish another whole-game winner. Reopen only with a materially different axis, not a larger retry. |
+| **T4 widening control** | Positive but compute-confounded; requires the three-arm confirmation above before claiming widening itself won. |
+| **BELIEF V1/R3 resource failures** | They provide no learning verdict. They motivated reusable artifacts, measured scheduling, graceful truncation, progress telemetry, and the R4/R5 recovery path. |
+| **PT0** | Small privileged endgame edge over heuristic/smart; inconclusive versus production MC. |
+| **PT1** | Clean negative: exact teacher changed many actions but produced only `1/208` mean C−B and one positive state, missing all efficacy gates. |
+| **PT-Full** | Repeated true-world search recovered a bad single-world collapse but did not beat the public ensemble. Preserve posterior ensembles. |
+| **C0** | All fixed perfect-information consumer arms were negative versus both required parents; local bare-point improvements did not transport. |
 
-## Admission economics for large runs
-
-Before reserving more than one host-day, the packet must state six numbers or
-decisions in plain English. This is a spend gate, not another evidence layer:
-
-| required field | question it answers |
-|---|---|
-| natural dose | How often does the mechanism actually fire in complete champion rounds? |
-| conditional effect | How much did it help on the affected states that motivated the lane? |
-| implied whole-game effect | After accounting for natural dose and interactions, what gain could plausibly remain? |
-| minimum detectable effect | Is the proposed run precise enough to see that implied gain? |
-| maximum fleet-hours | What is the largest cost before an automatic stop or next look? |
-| decision unlocked | Will the result close the recipe, open confirmation, choose a narrower gate, or authorize composition? |
-
-Do not spend a sealed population when the run cannot detect the effect that
-motivated it. Small exploration may reuse DEV/CALIB and retain partial rows;
-deployment-grade evidence still uses fresh sealed populations.
-
-## Mechanism-family routing
-
-| family | current branches | how the next spend is chosen |
-|---|---|---|
-| **Pair understanding** | Pair-aware continuation; attacker-gated pair-cap; pair-ballot retention | Both whole-game continuation attempts closed without evidence. Do not retry them. Re-enter only through a fresh diagnosis/design that isolates a useful role effect or demonstrates champion-natural dose large enough for a detectable whole-game result; do not launch coded pair screens merely because compute is idle. |
-| **Point-flow realism** | S4 banks points while winning; S5 protects points when losing after the partner acted; a future feed rule targets inferred-boss states rather than increasing the aggregate feed rate | PR #99 shows the prior aggregate headline compared unlike legal-opportunity denominators: literal rollout almost always spends a point when one is legally available, while inferred-follow behavior differs by surface. Review that descriptive boundary first, then test each named rule separately. Endgame conservation also needs remaining-point reserve pricing, not the old `POINTS_DRY` zero check. If at least two mechanisms survive, compare a small named portfolio rather than combining them prematurely. |
-
-The old adaptive-search result rearranged work **within one decision's ballot**
-and did not win. A separate open hypothesis is **decision-type allocation**:
-spend more search on high-consequence buries, leads and short endgames, and less
-on forced follows. It needs a fixed-state cost/utility screen before a
-whole-game budget change.
-
-## Next mechanism queue — cheap exploration before full ceremony
-
-These do not outrank the four active lanes, but they are valid work when all
-active lanes wait on compute or review.
-
-| rank | hypothesis | why it may improve strength | cheapest honest next test |
-|---:|---|---|---|
-| 1 | **S5 defensive point protection** | The old “bots feed double” headline was a normalization artifact, but a narrower defect can remain: after the partner has acted and cannot rescue the trick, the rollout may preserve rank/structure by donating a 5/10/K even though a lower-point legal action exists. | **Execution remains closed after INC-18.** PR #99 passed exact-head review and gives the broader census a like-for-like legal-opportunity denominator with exact counterfactual binding; it is descriptive only. PR #70 retains the reusable ten-witness diagnostic source. PR #74's request template spent its admission without a result, so any treatment still needs a separately designed recovery, explicit retry authority and a fresh namespace. |
-| 2 | **MC hand-shape bury search: voids + shuai-pai** | The current heuristic mostly ranks individual cards. The strategic choice is the hand left behind: creating a void enables ruffs, while preserving pairs/tractors and legal shuai-pai can create future control. Points may identify some weak states, but should not define the ballot or objective. | **Opened-DEV capacity code PASSed external review; no run exists.** PRs #51/#52/#54 externally fixed hidden-kitty refusal, the deterministic 32 shape + 32 anchor journal, and actor-visible non-recursive continuations. PR #78 exact head `8ab5db2` PASSed with its no-strength authority pinned. It performs one outcome-blind 512-state census, selects that exact 64-state slice, and times baseline/`all_boss`/boss-or-near on one accepted common world for the widest state. It emits only work, timing, sampler and dose telemetry. **Left:** separately authorize the reusable DEV diagnostic when the performance host is free, then size—not guess—the next exploration pass. |
-| 3 | **Structured point/void bury gate** | S3a, the expanded Teacher exam and the `structured_point_void` stratum all point toward a narrow kitty surface where the current heuristic is too reluctant to create a useful shape when doing so buries points. | Gate only on the proven public stratum and compare it with the broader MC hand-shape search; do not assume point-bearing buries are the causal mechanism. |
-| 4 | **Decision-type search allocation** | The old adaptive allocator only shuffled work among candidates in the same decision. Bury, leads and short endgames may deserve more total search than forced follows because one mistake can swing many points. | Reusable fixed-state DEV screen with equal total work: allocate by decision type versus uniform work, reporting utility, dose and cost separately. |
-| 5 | **Two-card exact endgame curriculum** | Endgames have shorter horizons and less hidden information, making exact search and distillation tractable before expanding outward, similar to solving a smaller game first. | Generate roots with at least two legal alternatives, solve sampled worlds under a node cap, and require nonzero exact regret before training. |
-| 6 | **Teacher outcome/value inside search** | Teacher models predicted outcomes better than they ranked direct moves. A calibrated value or common-world advantage estimate may help terminate or allocate continuation search without asking a bare model to override the champion. | Reusable DEV comparison against full fresh search on fixed public states, with calibration and decision-regret gates; only then a matched whole-game screen. |
-| 7 | **Human H0 repair** | Human moves remain useful for finding tactics and weak states even when they do not directly beat the teacher. The prior all-or-nothing run discarded 555 completed rows because two legal seven-card throws violated a false analyzer-cardinality assumption. | **Score-free geometry repair PR #82 exact head `bf72dff` PASSed and merged.** It reproduces the real mismatch—production offered 12 legal choices while the generic analyzer exposed only three—replaces the count assumption with direct legality and pins the complete false authority map. **Left:** separately authorize any opened-DEV geometry prevalidation; a scored successor still needs a fresh population and design. |
-
-## Research reserve — learned-policy successors
-
-These remain legitimate research directions, but they are not runnable backlog
-jobs today. The completed implementations selected none; re-entry requires a
-materially different learning contract rather than more compute on the same
-recipe.
-
-| direction | plain-English reason to preserve it | concrete re-entry condition |
-|---|---|---|
-| **Direct-Q / DouZero-style return learning** | Learning directly from complete-game returns could eventually escape imitation of the current Monte Carlo teacher. The repaired run had a positive gameplay tail, but one seed and both pooled roles failed the held-out learning gate. | Freeze a new recipe with explicit acting-role perspective, shorter-horizon or decision-surface credit assignment, and multi-seed held-out success before any whole-game compute. Do not extend the spent 144M recipe. |
-| **Privileged teacher / information-set distillation** | Full-state search or self-play may produce a stronger teacher than the public heuristic continuations used by earlier labels. Belief can then weight the teacher's action values over compatible worlds. | Follow `PRIVILEGED_TEACHER_V1_PROPOSAL.md`: first prove teacher improvement against frozen baselines and a policy pool, then prove public-twin-safe world aggregation. O0/O0-v2 cannot be extended as though they had established that teacher. |
-
-## Compute and evidence rules
-
-- `shengji-cloud` is reserved by the one reviewed BELIEF R4 offline DAG.
-  Performance Cloud currently owns only PR #131's score-free full-size cache
-  proof; it may not open a fresh scientific R5 namespace before the exact
-  source+freeze PASS. Mini and Air are not part of either packet. Do not launch
-  a competing scored or teacher job merely for utilization.
-- T4, S4, S6, broad Pair, and Pair checkpoint namespaces are terminal or spent.
-  Keep their artifacts closed; no ad hoc reopening, retry, extension, resume,
-  pooling, or partial-result interpretation is authorized.
-- V1 marker `209407f` remains spent with no terminal or calibration result.
-  Never resume or inspect its partial models. R4 admission `21d9cea8…0961` is
-  consumed once; monitor it outcome-blind and preserve artifacts on any refusal.
-  It may not recover or borrow from spent V1 or Pair invocations.
-- Never put a public server address in the repository or copy authority from
-  one host, design, namespace, or evidence chain to another.
-- Exploration sets may be reused with explicit correction and diagnostic
-  labels. Deployment claims use fresh, sealed, adequately powered populations.
-- Before spending a sealed population, show that its minimum detectable effect
-  is no larger than the effect that motivated the test.
-- Use two-tier rigor: fast mutation-tested exploration for mechanism breadth;
-  full one-shot review machinery only for strength/deployment evidence.
-- Performance is a parallel engineering lane, not a substitute for mechanism
-  search. Code, parity and isolated throughput measurements belong on the
-  dedicated performance host while Mini, Air and strength Cloud stay sealed.
-- Positive point estimates are not discarded as “nothing,” but they do not
-  become claims without a predeclared accumulation rule.
-- A negative screen closes its exact promotion claim, not all learning. Keep
-  predeclared conditional effects, role/phase splits, natural dose, tail
-  failures and disagreement states as clearly labelled exploration inputs.
-- Exploratory drivers should journal completed clusters durably; a late crash
-  may refuse a confirmatory aggregate without erasing already-earned
-  diagnostic learning.
-- Never deploy, restart production, wipe rooms, retry a spent population,
-  inspect sealed outcomes or alter a running packet without explicit authority.
-- A zero-row process filter is not proof that compute is idle. Before replacing
-  any fleet job, reconcile its exact PID set, broad process inventory,
-  heartbeat/log mtimes and terminal artifacts; see incident INC-12.
-- Reviewer code must be unable to start gameplay by construction. Never call a
-  gameplay-capable `launch()` behind a monkeypatch; use `validate-runtime` or a
-  construction-only fixture, and let Codex own any separately authorized
-  execution smoke. See incident INC-15.
-
-## Closed results that shape the queue
-
-| result | plain-English learning |
-|---|---|
-| **`mc-s0-report-lcb` confirmed and deployed** | Fresh report worlds plus a conservative override rule produced the first rigorously confirmed improvement over MC. Search remains the live foundation. |
-| **Direct V11 protected anchor selected none** | V11 remains a bounded proposal/diagnostic source; a bare learned override did not transfer out of sample. |
-| **Teacher direct-play REPORTs selected none** | Models improved some labels and outcome prediction, but direct proposal/ranking gains did not reliably compose. The mid/late model-inside-search T4 lane is the materially different test. |
-| **S3a structured bury `+0.046`, LCB `-0.004`** | Directionally useful and convergent with other bury evidence, but the broad full-game recipe did not clear its bar. Pursue a narrow trigger gate, not a blind retry. |
-| **S4 `+0.087` then `+0.049`, second LCB `-0.007`** | The mechanism stayed positive with zero drift. The miss exposed an evidence-accumulation design gap; the fresh two-look successor addresses that prospectively. |
-| **Suphx-style O0 and Direct-Q selected none** | Correct public/full-information coupling alone did not make the learner use the oracle robustly. A successor needs changed targets, credit assignment or adaptation—not more hardening of the same recipe. |
-
-Historical exact hashes and terminal packet details remain in `AI_POLICIES.md`,
-`RL_PLAN.md`, `JOBS.md`, the daily logs and archived handoff ledgers.
+Exact numbers, packet identities, incidents, and reviewer findings remain in
+`HANDOFF_REVIEW.md`, `incidents/`, and the dated archives.

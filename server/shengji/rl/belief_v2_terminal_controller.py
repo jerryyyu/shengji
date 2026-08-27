@@ -218,13 +218,16 @@ def _calibration_statistics(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
         inventory: dict[str, Any], group_split: dict[str, Any], *,
-        calibration_directory: Path | None = None):
+        calibration_directory: Path | None = None,
+        legacy_tensor_cache_manifest_sha256: str | None = None):
     directory = (root / "calibration" / "selection"
                  if calibration_directory is None
                  else calibration_directory)
     manifest = reopen_v2_calibration_selection(
         directory, freeze=freeze,
-        admission=admission, inventory=inventory, group_split=group_split)
+        admission=admission, inventory=inventory, group_split=group_split,
+        legacy_tensor_cache_manifest_sha256=(
+            legacy_tensor_cache_manifest_sha256))
     if manifest["calibration_passed"] is not True \
             or manifest["selected_cohort_id"] not in {
                 PRIMARY_COHORT_ID, HUMAN_COHORT_ID}:
@@ -276,7 +279,8 @@ def _derive_integrity_receipt(
         group_split: dict[str, Any], *, plan, qualification,
         input_index_manifest: dict[str, Any],
         training_hashes: tuple[tuple[str, str], ...],
-        synthetic_test_count: int, human_test_decision_count: int):
+        synthetic_test_count: int, human_test_decision_count: int,
+        legacy_tensor_cache_manifest_sha256: str | None = None):
     expected_training_ids = tuple(row.cohort_id for row in freeze.cohorts)
     if type(training_hashes) is not tuple \
             or tuple(key for key, _ in training_hashes) \
@@ -334,7 +338,8 @@ def _derive_integrity_receipt(
     try:
         cache_manifest, _, _, _, _ = reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result",
-            freeze=freeze, admission=admission)
+            freeze=freeze, admission=admission,
+            legacy_manifest_sha256=legacy_tensor_cache_manifest_sha256)
     except ValueError as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal tensor cache refused") from exc
@@ -624,6 +629,7 @@ def reopen_v2_terminal(
         projection_executor: Executor | None = None,
         decision_pool: V2DecisionScoringPool | None = None,
         parallel_decisions: bool = False,
+        legacy_tensor_cache_manifest_sha256: str | None = None,
         progress: ProgressCallback | None = None,
         calibration_directory: Path | None = None) \
         -> dict[str, Any]:
@@ -653,7 +659,9 @@ def reopen_v2_terminal(
             "V2 terminal control artifact is not JSON") from exc
     calibration, human_selection, scale_curve = _calibration_statistics(
         Path(freeze.evidence_root), freeze, admission, inventory, group_split,
-        calibration_directory=calibration_directory)
+        calibration_directory=calibration_directory,
+        legacy_tensor_cache_manifest_sha256=(
+            legacy_tensor_cache_manifest_sha256))
     if attempt != _attempt(freeze, admission, calibration) \
             or canonical_json_bytes(attempt) != attempt_raw:
         raise BeliefV2TerminalControllerError(
@@ -687,7 +695,9 @@ def reopen_v2_terminal(
         cohorts, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 Path(freeze.evidence_root), freeze=freeze,
-                admission=admission, training_inputs=training_inputs))
+                admission=admission, training_inputs=training_inputs,
+                legacy_tensor_cache_manifest_sha256=(
+                    legacy_tensor_cache_manifest_sha256)))
         cohort_ids = tuple(row.cohort_id for row in cohorts)
         if progress is not None:
             progress(3, 5, "verify-terminal-cohorts")
@@ -749,7 +759,9 @@ def reopen_v2_terminal(
             input_index_manifest=input_index_manifest,
             training_hashes=training_hashes,
             synthetic_test_count=len(synthetic),
-            human_test_decision_count=sum(row.decision_count for row in human))
+            human_test_decision_count=sum(row.decision_count for row in human),
+            legacy_tensor_cache_manifest_sha256=(
+                legacy_tensor_cache_manifest_sha256))
         result = derive_terminal_result(
             freeze, plan, qualification, receipt, human_selection,
             scale_curve, primary, control, human_transfer)

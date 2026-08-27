@@ -1091,7 +1091,9 @@ def _run_r4_completion_terminal_reopened(
             _calibration_statistics(
                 source.spec.source_evidence_root, source.freeze,
                 source.admission, source.inventory, source.group_split,
-                calibration_directory=calibration_directory))
+                calibration_directory=calibration_directory,
+                legacy_tensor_cache_manifest_sha256=(
+                    source.spec.source_tensor_cache_manifest_sha256)))
     except ValueError as exc:
         raise BeliefV2R4CompletionError(
             "R4 completion calibration is not eligible for test opening") \
@@ -1190,7 +1192,9 @@ def _run_r4_completion_terminal_reopened(
             training_hashes=training_hashes,
             synthetic_test_count=len(synthetic),
             human_test_decision_count=sum(
-                row.decision_count for row in human))
+                row.decision_count for row in human),
+            legacy_tensor_cache_manifest_sha256=(
+                source.spec.source_tensor_cache_manifest_sha256))
         result = derive_terminal_result(
             source.freeze, plan, qualification, receipt,
             human_selection, scale_curve, primary, control, human_transfer)
@@ -1231,6 +1235,8 @@ def _run_r4_completion_terminal_reopened(
         final, freeze=source.freeze, admission=source.admission,
         inventory=source.inventory, group_split=source.group_split,
         calibration_directory=calibration_directory,
+        legacy_tensor_cache_manifest_sha256=(
+            source.spec.source_tensor_cache_manifest_sha256),
         parallel_decisions=True, progress=progress)
     if reopened != inner_manifest:
         raise BeliefV2R4CompletionError(
@@ -1331,6 +1337,8 @@ def _recover_r4_completion_terminal_reopened(
         final, freeze=source.freeze, admission=source.admission,
         inventory=source.inventory, group_split=source.group_split,
         progress=progress, calibration_directory=calibration_directory,
+        legacy_tensor_cache_manifest_sha256=(
+            source.spec.source_tensor_cache_manifest_sha256),
         parallel_decisions=True)
     # Re-read controls after the expensive reconstruction so a concurrent
     # replacement can never be bound into the newly published outer manifest.
@@ -1380,6 +1388,8 @@ def _reopen_r4_completion_terminal_reopened(
         admission=source.admission, inventory=source.inventory,
         group_split=source.group_split, progress=progress,
         calibration_directory=calibration_directory,
+        legacy_tensor_cache_manifest_sha256=(
+            source.spec.source_tensor_cache_manifest_sha256),
         parallel_decisions=True)
     expected_outer = _terminal_outer_manifest(
         completion_freeze=completion_freeze,

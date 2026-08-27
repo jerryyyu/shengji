@@ -47,6 +47,7 @@ from shengji.rl.belief_v2_freeze import (
     V2ExecutionFreezeV1,
     V2PipelineAdmissionV1,
     V2ResourceCapsV1,
+    expected_execution_review_claim,
 )
 from shengji.rl.belief_v2_protocol import (
     V2_RANKS,
@@ -884,9 +885,13 @@ def test_r4_terminal_readiness_warms_workers_without_test_open(
     monkeypatch.setattr(
         R4_PARALLEL, "reopen_training_input_index",
         lambda *args, **kwargs: ({}, SimpleNamespace()))
+    def reopen_cohorts(*args, **kwargs):
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
+        return cohorts, None, None, ()
+
     monkeypatch.setattr(
-        R4_PARALLEL, "reopen_trained_scoring_cohorts",
-        lambda *args, **kwargs: (cohorts, None, None, ()))
+        R4_PARALLEL, "reopen_trained_scoring_cohorts", reopen_cohorts)
     warmed = []
 
     class Pool:
@@ -1072,10 +1077,13 @@ def test_r4_terminal_freeze_builder_binds_live_source_capacity_and_root(
 
     freeze = R4_PARALLEL.build_r4_terminal_parallel_freeze(
         repo=tmp_path.resolve(), expected_git="a" * 40,
-        source_review_commit="c" * 40, capacity_raw=capacity_raw)
+        source_review_commit="a" * 40, capacity_raw=capacity_raw)
 
     assert freeze.execution_git == "a" * 40
-    assert freeze.source_review_commit == "c" * 40
+    assert freeze.source_review_commit == freeze.execution_git
+    assert expected_execution_review_claim(
+        freeze)["source_review_mode"] == \
+        "consolidated-source-and-freeze"
     assert freeze.evidence_root == str(
         context.terminal_spec.destination_evidence_root)
     assert freeze.preflight_result_sha256 == _sha_bytes(capacity_raw)
@@ -1792,12 +1800,20 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
     monkeypatch.setattr(
         R4_COMPLETION, "evaluate_human_transfer_test",
         lambda *args, **kwargs: human)
+    def derive_receipt(*args, **kwargs):
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
+        return receipt
+
     monkeypatch.setattr(
-        R4_COMPLETION, "_derive_integrity_receipt",
-        lambda *args, **kwargs: receipt)
+        R4_COMPLETION, "_derive_integrity_receipt", derive_receipt)
+    def calibration_statistics(*args, **kwargs):
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
+        return calibration, human_selection, scale
+
     monkeypatch.setattr(
-        R4_COMPLETION, "_calibration_statistics",
-        lambda *args, **kwargs: (calibration, human_selection, scale))
+        R4_COMPLETION, "_calibration_statistics", calibration_statistics)
 
     inner_manifests = []
     progress_events = []
@@ -1807,6 +1823,8 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
 
     def reopen_inner(directory, **kwargs):
         assert kwargs["parallel_decisions"] is True
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
         assert kwargs["progress"] is (
             progress if len(inner_manifests) < 2 else None)
         raw = (directory / "manifest.json").read_bytes()
@@ -1896,9 +1914,32 @@ def test_terminal_round_trip_and_coordinated_result_rehash_refuse(
     assert '"phase":"reconstruct-test-synthetic-rounds"' \
         in progress_output
     directory = root / "terminal"
+    original_calibration_statistics = TERMINAL_STAGE._calibration_statistics
+    original_cohort_reopener = (
+        TERMINAL_STAGE.reopen_trained_scoring_cohorts)
+    legacy_calls = {"calibration": [], "cohorts": []}
+
+    def calibration_statistics(*args, **kwargs):
+        legacy_calls["calibration"].append(
+            kwargs["legacy_tensor_cache_manifest_sha256"])
+        return original_calibration_statistics(*args, **kwargs)
+
+    def reopen_cohorts(*args, **kwargs):
+        legacy_calls["cohorts"].append(
+            kwargs["legacy_tensor_cache_manifest_sha256"])
+        return original_cohort_reopener(*args, **kwargs)
+
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_calibration_statistics", calibration_statistics)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_trained_scoring_cohorts", reopen_cohorts)
+    legacy_digest = "f" * 64
     assert TERMINAL_STAGE.reopen_v2_terminal(
         directory, freeze=freeze, admission=admission,
-        inventory={}, group_split={}) == result
+        inventory={}, group_split={},
+        legacy_tensor_cache_manifest_sha256=legacy_digest) == result
+    assert legacy_calls == {
+        "calibration": [legacy_digest], "cohorts": [legacy_digest]}
 
     warmed = []
 
@@ -2058,11 +2099,15 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     cache_resources = resource(
         480, 490, artifact=30, training=True,
         host_peak=1_401, device_peak=0)
+    cache_legacy_calls = []
+
+    def reopen_tensor_cache(*args, **kwargs):
+        cache_legacy_calls.append(kwargs["legacy_manifest_sha256"])
+        return ({"resources": cache_resources}, {}, lambda: iter(()), 1,
+                _sha("tensor-cache"))
+
     monkeypatch.setattr(
-        TERMINAL_STAGE, "reopen_training_tensor_cache",
-        lambda *args, **kwargs: (
-            {"resources": cache_resources}, {}, lambda: iter(()), 1,
-            _sha("tensor-cache")))
+        TERMINAL_STAGE, "reopen_training_tensor_cache", reopen_tensor_cache)
 
     training_hashes = []
     for index, cohort in enumerate(freeze.cohorts):
@@ -2083,7 +2128,9 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
         qualification=qualification,
         input_index_manifest=input_index_manifest,
         training_hashes=tuple(training_hashes),
-        synthetic_test_count=1_339, human_test_decision_count=174)
+        synthetic_test_count=1_339, human_test_decision_count=174,
+        legacy_tensor_cache_manifest_sha256="f" * 64)
+    assert cache_legacy_calls == ["f" * 64]
     qualification_work = sum(
         row.wall_nanoseconds for row in qualification.arms)
     assert receipt.capture_reopened_round_count == V2_ROUND_COUNT
@@ -2121,4 +2168,5 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
             qualification=qualification,
             input_index_manifest=input_index_manifest,
             training_hashes=corrupted_hashes,
-            synthetic_test_count=1_339, human_test_decision_count=174)
+            synthetic_test_count=1_339, human_test_decision_count=174,
+            legacy_tensor_cache_manifest_sha256="f" * 64)

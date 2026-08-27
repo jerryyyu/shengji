@@ -4534,3 +4534,34 @@ action-value policy. It must first show positive full-round value under exact
 state; a larger belief model cannot repair a consumer that fails at that
 ceiling. This is open-DEV mechanism evidence, not a strength, gameplay,
 promotion or deployment claim. — Codex
+
+## 2026-08-27 00:40 EDT — PT-Sol0 consolidated source + launch review at exact `db43da99` — ⛔ HOLD: the command this PASS would authorize does not exist anywhere. Source itself is clean
+
+Reviewed once at the pinned head as asked. **The source is in good shape and I found no defect in it** — the blocker is that the ask asks me to authorize "exactly one open-DEV Mini run at this head/**command**", and there is no command to review.
+
+**What verified clean, self-run at exact head.** Head `db43da99e13e46c703c7d2eee7b5a7b43ae439ef` with parent exactly the claimed base `ee90fd34538f33689ef7dd8f886d75b5b8f2d0be`; **eight files, +2653/−0**; `git diff --check` clean. Focused suites **15 passed** and the complete PT surface **151 passed**, both matching the claimed 15/15 and 151/151. Authority is coherent: the report module holds a single `AUTHORITY` constant and enforces `report["authority"] != AUTHORITY` and `record["authority"] != AUTHORITY` equality at every level, and the runner sets `scientific_execution_authorized` and `strength_claim_authorized` false.
+
+**The isolation surfaces are genuinely well built, which is what an external-agent packet needs.** File creation refuses on `path.exists() or path.is_symlink()` before every write, opens use `O_NOFOLLOW`, the workspace is `0o700` and payloads `0o600` with the mode re-checked on reopen (`stat.S_IMODE(before.st_mode) != 0o600`), directory children are rejected unless `is_file()` and not a symlink, and the mailbox itself is refused unless it is a real directory. The refusal vocabulary covers the agent's whole action space: `play candidate outside ballot`, `rollout candidate outside ballot`, `rollout requested outside contested decision`, `planner requested outside treatment turn`, and per-call, per-decision and per-round rollout budgets.
+
+**Two of those guards are mutation-proven load-bearing:**
+
+> **M1** — neutralize the play-candidate ballot bound (`self._candidates is None or index >= len(self._candidates) or self._production_ballot is None or self.rnd.turn is None` → `False`): `test_play_is_bound_to_observation_and_exact_ballot` goes red (1 failed / 14 passed).
+> **M2** — neutralize the per-decision rollout call budget (`self._decision_rollout_calls >= MAX_ROLLOUT_CALLS_PER_DECISION` → `False`): `test_rollout_deduplicates_exact_candidate_continuation_pairs` fails with **`DID NOT RAISE PrivilegedTeacherSol0RequestError`** (1 failed / 14 passed).
+
+Both restored, 0 source files modified. The private/public partition is also the right shape: the Sol transcript is written under `private_root` and only its `private_evidence_sha256` enters the public report.
+
+**The blocker, stated exactly.** The ask says to review "the exact command in the top override of `HANDOFF_ACTIVE.md`" and to authorize one run "at this head/command". There is no such command:
+
+- `HANDOFF_ACTIVE.md` on `origin/main` contains **no `sol0` reference at all**, and its top reads "The review queue is **empty**."
+- `HANDOFF_ACTIVE.md` at the PR head `db43da99` also contains no `sol0` reference, and still says the one active ask is PR #151.
+- `HANDOFF_ACTIVE.md` is **not part of the eight-file delta**.
+- `PRIVILEGED_TEACHER_SOL0_DESIGN.md` names no invocation either.
+
+This is not a formality. `scripts/run_privileged_teacher_sol0.py` takes **thirteen required arguments**, four of which — `--expected-c0-external-sha256`, `--expected-c0-report-sha256`, `--expected-full-external-sha256`, `--expected-full-report-sha256`, plus `--expected-c0-git` and `--expected-full-git` — *are* the parent-binding enforcement the ask lists as a review surface, alongside `--seed-secret`, `--private-root` and `--out`. Appending a PASS now would authorize an external `gpt-5.6-sol` session to run against unspecified parent bindings, an unspecified seed secret and an unspecified private root. The code enforces whatever it is given; the command is what decides what it is given, and I cannot review bytes that do not exist.
+
+**Unblocking is cheap and I can turn this around in one pass, since the source review is done:** publish the exact command — ideally in the packet itself rather than as a handoff override, so it is pinned to the reviewed head — with the six `--expected-*` values, `--private-root`, `--seed-secret`, `--out` and `--workers` filled in. I will then verify those bindings against the sealed C0 report (`aada4737…` external / `b77e3fde…` internal) and PT-Full report (`1b404cf3…` external / `93ad8e98…` internal), confirm the private root is absent, and PASS.
+
+**Coverage limits, honestly.** This is +2653 lines across eight files and I did not audit it line by line. I went deep on mailbox/filesystem isolation, the ballot and budget enforcement, the authority constants and the private/public partition, and I ran both claimed suites. I did **not** independently verify the frozen design SHA `ffe4667d…`, the runtime/native/Codex binary SHAs, the 608.977-second engineering-proof round, or the report/progress reconstruction paths.
+
+No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+

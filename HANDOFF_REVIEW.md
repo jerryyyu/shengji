@@ -4996,3 +4996,100 @@ I cannot stop, signal or reconfigure anything, and I have not.
 
 Measured read-only at **2026-08-27T15:35–15:42Z**; no unit signalled, stopped or reconfigured; no
 calibration or test bytes opened — directory names and sizes only. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 13:40 EDT — SEVENTH belief failure: the serial lane died in calibration's own reopen, 38.4 h discarded. The optimized lane runs the identical step in ~6 h with byte-identical caps
+
+### First, my previous entry is moot and I am saying so plainly
+
+`1512e65` warned that the serial launcher would auto-fire `r4-open-test` the instant
+`r4-calibrate` returned. **It never returned.** `r4-calibrate` raised, `set -euo pipefail` took
+the ERR path, and the test was never opened — the evidence root still holds only
+`admission.json`, `calibration`, `freeze.json`, `group-split.json`, `inventory.json`, `review.md`.
+
+Two corrections to that entry while I am here. The hazard was **cloud-only**: Perf's unit invokes
+`belief_v2_worker.py r4-calibrate --root …` directly, with no launcher and no chained test step,
+so it was never exposed. And I claimed the window was "minutes"; it was, but it closed by failure
+rather than by anyone acting. The structural point — an irreversible one-shot chained behind a
+multi-day stage with the gate living in the plan and not the machine — stands as a design note for
+whatever runs next, and nothing more.
+
+### What actually happened
+
+Unit `belief-r4-completion-e10cb3d-r3.service` is `inactive/dead`, status file
+`phase=failed completed=0 percent=0.00 updated_utc=2026-08-27T15:56:02Z`. Systemd's accounting:
+**1 d 14 h 23 min 32.801 s wall, 2 d 13 h 23.680 s CPU, 23.2 G memory peak**. `Result=success` is
+the usual systemd default and means nothing here; `status=1/FAILURE` is in the journal.
+
+Calibration had **completed and published** — `calibration/selection/` holds
+`synthetic-calibration-ref-0.json` and `-ref-1.json` (1,390,021 B each),
+`human-calibration-ref-0.json` and `-ref-1.json` (29,496 B each), `human-selection.json`,
+`scale-curve.json`, `manifest.json`. The failure is in the step *after* publication, where
+calibration reopens its own output to verify it:
+
+```
+run_r4_completion_calibration            belief_v2_r4_completion.py:843
+  reopen_v2_calibration_selection        belief_v2_calibration_controller.py:433/437
+    reopen_trained_scoring_cohorts       belief_v2_scoring_controller.py:111/117
+      reopen_training_tensor_cache       belief_v2_tensor_cache_controller.py:1252
+BeliefV2TensorCacheControllerError: "V2 tensor cache resource reconstruction drift"
+  → BeliefV2ScoringControllerError: "V2 scoring tensor cache refused"
+  → BeliefV2CalibrationControllerError: "V2 calibration training reopener refused"
+```
+
+This is the **third instance of the resource-cap drift family**, after parallel input-index and
+parallel tensor-cache drift. Two days of CPU, and the thing that refused was the verifier
+re-deriving the resources of a cache it had to rebuild from scratch — `training-tensor-cache` is
+absent from the evidence root, so the reopen reconstructs it.
+
+### The optimized lane is ~6 h from the identical step, and nothing distinguishes it
+
+Perf's last record: `completed_units 841 / 1326` on `score-r4-synthetic-ref1-rounds`,
+`elapsed_nanoseconds 93519719136612` (**25.98 h**), `NRestarts=0`, `MemoryPeak=16456458240`.
+At the measured 38.99 s/round that is **~5.25 h** left on synthetic-1, plus ~0.63 h of human
+passes and the derivation — then the same `reopen_v2_calibration_selection`.
+
+The two lanes are byte-identical everywhere the guard looks:
+
+| | Cloud | Perf |
+|---|---|---|
+| `resource_caps.training_host_memory_bytes` | 25,769,803,776 | **25,769,803,776** |
+| `resource_caps.training_bytes` | 68,719,476,736 | **68,719,476,736** |
+| `runtime.cpu_count` | 16 | **16** |
+| `training-tensor-cache` present | no | **no** |
+| external cache / import spec | none | none |
+
+Only `boot_identity` differs, which is expected and host-local.
+
+*Inferred, not measured — and I am labelling it because I got this wrong once today:* I expect
+Perf to fail the same way. The one reason it might not is that PR #152's scope explicitly includes
+**reconstruction** ("exact-output parallel projection for calibration/test/**reconstruction**"), so
+that path is not identical between the lanes. I have not diffed it, and that diff is the cheapest
+thing anyone can do in the next six hours.
+
+### The guard cannot say which clause fired, and that is its own defect
+
+`belief_v2_tensor_cache_controller.py:1226–1252` is a single `or` chain of roughly fifteen
+conditions — schema, `boot_identity`, wall/CPU arithmetic, `artifact_bytes` vs
+`caps.training_bytes`, `peak_host_memory_bytes` vs `caps.training_host_memory_bytes`,
+`cache_worker_count` vs `parallel_cache_worker_count(freeze.runtime, …)`, `retry_count`,
+`drop_count`, `external_cache_reused`, and two type checks — all raising the one string
+`"V2 tensor cache resource reconstruction drift"`.
+
+**After 38.4 hours, the run cannot tell anyone which of the fifteen it was.** I cannot determine it
+from the traceback either, and I am not going to guess: on the evidence available, `cache_worker_count`
+(the shape of the two prior drift failures), `peak_host_memory_bytes` against the 24 GiB cap, and
+`boot_identity` are all live candidates. Reporting the offending field name costs one dict
+comparison and would have made this hour's diagnosis immediate instead of open.
+
+### Suggested, none of which I can do
+
+1. Diff `reopen_training_tensor_cache` and the cache-build resource receipt between `e10cb3d` and
+   `d82ba22` **now**, while Perf still has ~6 h. If the path is shared, Perf will discard ~32 h to
+   the same guard and the two-lane cutover yields nothing.
+2. Split that `or` chain into per-field checks that name the field. This is the masked-witness
+   shape I keep filing, in its diagnostic form: the guard is correct and unusable.
+3. The failed calibration output is on disk and is permanent-never-delete — it is the only
+   R4 calibration bytes that have ever existed.
+
+Read-only throughout: nothing signalled, stopped or reconfigured; artifact names and sizes only,
+no calibration or test bytes opened. — Claude (session `f4b0ea92`)

@@ -4805,3 +4805,69 @@ Narrow re-check per Jerry's routing, discharging the `63e356e` HOLD. Head `e73f9
 ## 2026-08-27 — Corrigendum to the R4 optimized-lane deficit entries (`1e20021`, `6bc678a`, `489cdde`, `e2c56da`): the 88–101.5 h projection assumed six homogeneous populations; the counter is heterogeneous and the lane very likely fits its cap
 
 The deficit arithmetic extrapolated `score-r4-calibration-populations: 1/6` as six equal 1,326-round synthetic passes. The #152 calibration-controller delta itself names the six milestones — `score-synthetic-ref0-rounds`, `score-synthetic-ref1-rounds`, `score-human-ref0-groups`, `score-human-ref1-groups`, then statistic derivation and publication — so only the two synthetic passes are 1,326 rounds each; the human passes are far smaller (30 groups per the sealed capture inventory) and the final two milestones are derivation/publication. Measured at 2026-08-27 08:52 EDT (PR #157's snapshot, process confirmed active/zero-restart by me now): synthetic REF0 complete, REF1 397/1,326 at ~39–40 s/round → roughly 10–11 h to finish REF1, plus the small human passes and finalization — comfortably inside `RuntimeMaxUSec=2d`. The earlier entries' *observability* points stand (the per-phase ETA field mixes run-total elapsed; the cap was still never sized against a measured calibration projection — that remains a real freeze-sizing gap even though the cap happens to be sufficient). The "optimized lane is a write-off / serial is the only path" conclusion is withdrawn; the reviewed two-lane cutover proceeds as designed. No authority is granted or withdrawn. — Claude (session `68f9c8bd`)
+
+## 2026-08-27 09:25 EDT — WITHDRAWN: my R4 deadline finding (`1e20021`, `6bc678a`, `e2c56da`) was wrong. The lane fits its cap with ~16 h to spare. `8dcf2bd` is correct.
+
+**I am withdrawing the central claim, not softening it.** I said the optimized lane could not
+finish calibration inside `RuntimeMaxUSec=2d` and would be terminated having sealed nothing. That
+is false. I verified `8dcf2bd`'s refutation against the running source rather than accepting it,
+and it holds.
+
+**What the counter actually counts.** `/opt/belief-r4-parallel-eval-d82ba22/server/shengji/rl/belief_v2_r4_completion.py`
+lines 785–855 emit `progress(n, 6, "score-r4-calibration-populations")` around six
+**heterogeneous** milestones, not six equal populations:
+
+| n | milestone | size |
+|---|---|---|
+| 0→1 | `_score_synthetic` replicate-0 | 1,326 rounds |
+| 1→2 | `_score_synthetic` replicate-1 | 1,326 rounds |
+| 2→3 | `_score_human` replicate-0 | **4 groups / 29 rounds** |
+| 3→4 | `_score_human` replicate-1 | **4 groups / 29 rounds** |
+| 4→5 | `derive-r4-calibration-statistics` | derivation |
+| 5→6 | publication | `publish_exclusive_bytes` |
+
+The human sizes are from the run's own `group-split.json`: `calibration.group_count = 4`,
+`complete_rounds = 29`, `human_play_decisions = 456`. Each human pass is **2.2 %** of a synthetic
+pass. Only two of the six milestones are the 1,326-round work I measured.
+
+**Corrected projection**, read at **2026-08-27T13:25:12Z** (`active`, `NRestarts=0`, elapsed
+**21 h 47 m 08 s**): synthetic-1 is `448 / 1326` with phase elapsed 17,467.88 s = **38.9908
+s/round**, so it totals **14.36 h** and has **9.51 h** left. Both human passes at that per-round
+rate are **0.63 h** combined (their true cost I have not measured). Calibration therefore projects
+to about **31.9 h** plus finalization, against a 48 h cap — finishing near **2026-08-27 23:33Z**,
+roughly **16 h inside** the 15:38:04Z deadline. I claimed 101.5 h, then 88.8 h. **I was over by
+2.8–3.2×.**
+
+**How I got it wrong, stated exactly, because the mechanism is the reusable part.** I read the
+phase names `score-r4-synthetic-ref0-rounds` and `…-ref1-rounds` off the journal, saw
+`populations 1/6`, and assumed the remaining four were more of the same. I never opened the
+controller that emits the counter — 30 seconds of `grep` on a host I was already reading. Then I
+compounded it: three entries, each with *more* precise arithmetic on the same unexamined model,
+and precision reads as confidence. Measuring the per-round rate to four significant figures did
+nothing to test the assumption that mattered.
+
+**The one thing that made it feel confirmed was not independent.** The record's own
+`estimated_remaining_nanoseconds` said **84.6 h** at `populations 1/6`, and I treated the
+agreement as corroboration. It is not: `V2ProgressReporter.update` computes
+`elapsed * (total - completed) // completed`, which is the *same* linear-homogeneous assumption I
+had made. The estimator and I were wrong for one reason, twice. Its 84.6 h against an actual
+~15 h is off by **5.6×** — and that is a real defect worth fixing on its own terms, because it is
+the headline number an operator reads. But it is an explanation of my error, not an excuse for it:
+I had the source and did not look.
+
+**What still stands from those entries**, unchanged:
+
+- The deadline receipt binds `capture_p95_wall_nanoseconds`, `reference_p95_wall_nanoseconds`,
+  `training_epoch_p95_wall_nanoseconds` and `safety_reserve_nanoseconds`, and **no calibration
+  wall estimate**; `RuntimeMaxUSec=2d` is exactly `resource_caps.training_wall_seconds`. The cap
+  turns out to be sufficient by a comfortable margin, but nothing in the freeze demonstrates that.
+  It is a real freeze-sizing gap and the fix is cheap: record a calibration projection.
+- The per-phase ETA baseline defect in `belief_v2_progress.py`, plus the milestone-counter defect
+  above — linear extrapolation across milestones of unequal cost. Both telemetry-only.
+
+**No harm done, verified:** `NRestarts=0` and `RuntimeMaxUSec=2d` unchanged across every sample;
+nothing was restarted, resized or signalled on the strength of my error. The two-lane cutover
+proceeds as designed and needs nothing from me. I have posted the withdrawal on PR #152 as well,
+where the same claim appeared three times.
+
+No authority is granted or withdrawn by this entry. — Claude (session `f4b0ea92`)

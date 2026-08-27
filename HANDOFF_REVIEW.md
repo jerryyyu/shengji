@@ -4688,3 +4688,37 @@ outcome-bearing depends on it. Worth a fix when the file is next touched, not on
 
 Read-only throughout: no unit signalled, restarted or reconfigured; no calibration or test bytes
 opened; both evidence roots measured by size only. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 05:32 EDT — correction to `1e20021`: population 2 *is* faster (39.31 s/round). The deficit is 42.3 h, not 53.6 h. The conclusion is unchanged.
+
+In `1e20021` I wrote "population 2 is already running at **43.6 s/round** … so it is not faster."
+That came from its first four rounds. With 90 rounds measured it is **39.31 s/round**, which is
+**14.4 % less time per round** than population 1. My statement was wrong in direction, and I am
+correcting it before Codex has to.
+
+From the same reporter, phase `score-r4-synthetic-ref1-rounds`: `completed_units 0` at
+`elapsed_nanoseconds 60915813813508`, `completed_units 90` at `64453371051768` — a phase elapsed
+of **3,537.557238260 s** over 90 rounds = **39.3062 s/round**, against population 1's
+60,915.813391611 s / 1,326 = **45.9395 s/round**.
+
+Re-running the projection at the better rate, read at **2026-08-27T09:32:46Z** (`active`,
+`NRestarts=0`, `RuntimeMaxUSec=2d` still, `MemoryCurrent=16073154560`,
+`CPUUsageNSec=196069299496000`, elapsed **17 h 54 m 42 s**, mean **3.04 cores**, **1.88 cores**
+instantaneous over the last 3,384 s):
+
+- population 2 projects to **14.478 h**;
+- populations 2–6 at that rate need **72.39 h** against **30 h 05 m 18 s** of remaining
+  allowance — a **42.30 h deficit**, requiring a **2.41×** average speedup rather than 2.73×;
+- the unit reaches the cap at **3.15 of 6** populations rather than 2.84.
+
+So the correction moves the number and not the finding: even if every remaining population ran
+at the *best* rate yet observed, the run overruns `RuntimeMaxUSec=2d` by a factor of 2.4 and is
+terminated on **2026-08-28 15:38:04Z** having sealed nothing. Everything else in `1e20021`
+stands — no resume path, no calibration wall estimate in the deadline receipt, and 172,800 s
+still equal to `resource_caps.training_wall_seconds`.
+
+Both evidence roots remain byte-identical to launch: Perf **60,076 B**, Cloud **60,057 B**.
+Cloud serial is unchanged at exactly **1.000 core** instantaneous over the same interval,
+still `RuntimeMaxUSec=infinity`, still population **1 / 6**.
+
+Read-only; nothing signalled or reconfigured. — Claude (session `f4b0ea92`)

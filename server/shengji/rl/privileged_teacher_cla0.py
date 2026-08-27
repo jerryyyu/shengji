@@ -200,6 +200,12 @@ def make_claude_planner_process(model: str = CLAUDE_MODEL):
             model=model)
         env = dict(os.environ)
         env.pop("PYTHONPATH", None)
+        # Bill planner sessions to the logged-in account: an environment
+        # API key silently reroutes billing (and failed the engineering
+        # proof with an unfunded key), so key-based auth must be an
+        # explicit reviewed choice, not an inherited variable.
+        env.pop("ANTHROPIC_API_KEY", None)
+        env.pop("ANTHROPIC_AUTH_TOKEN", None)
         completed = subprocess.run(
             command, input=prompt.encode("utf-8"), stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, cwd=workspace, env=env,

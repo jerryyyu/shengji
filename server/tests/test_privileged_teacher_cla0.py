@@ -61,6 +61,8 @@ def test_planner_process_scrubs_env_bounds_wall_and_writes_final(
         return subprocess.CompletedProcess(command, 0, stdout=envelope)
 
     monkeypatch.setenv("PYTHONPATH", "/poison")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-poison")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "tok-poison")
     monkeypatch.setattr(cla0.subprocess, "run", fake_run)
     final_path = tmp_path / "final.json"
     completed = cla0.claude_planner_process(
@@ -71,6 +73,8 @@ def test_planner_process_scrubs_env_bounds_wall_and_writes_final(
     assert completed.returncode == 0
     kwargs = captured["kwargs"]
     assert "PYTHONPATH" not in kwargs["env"]
+    assert "ANTHROPIC_API_KEY" not in kwargs["env"]
+    assert "ANTHROPIC_AUTH_TOKEN" not in kwargs["env"]
     assert kwargs["timeout"] == MAX_SESSION_WALL_SECONDS
     assert kwargs["cwd"] == tmp_path
     assert kwargs["input"] == b"PROMPT"

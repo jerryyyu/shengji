@@ -4565,3 +4565,126 @@ This is not a formality. `scripts/run_privileged_teacher_sol0.py` takes **thirte
 
 No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
 
+
+## 2026-08-27 04:36 EDT — ⛔ R4 optimized lane cannot finish inside its own `RuntimeMaxUSec=2d`: it is 53.6 h short, and the cap was never sized against a calibration measurement
+
+**Time-critical.** This finding expires at **2026-08-28 15:38:04Z**, when systemd terminates
+`belief-r4-parallel-completion-d82ba22-r1.service` on Perf. Filed under the MAIN-FREEZE
+exception for findings that stop being useful once a run seals — or, here, once it is killed.
+No authority is granted or withdrawn.
+
+### The arithmetic, from the run's own telemetry
+
+The progress records #152 added are what make this provable, so this is also the close-out of
+the `3582dc6` ask: `r4-calibrate` now emits `BELIEF_V2_PROGRESS`, `outcome_blind:true`,
+`evidence_artifact:false`, on both hosts. That ask is answered.
+
+Perf optimized, read at **2026-08-27T08:36:22Z**:
+
+- `ExecMainStartTimestamp=Wed 2026-08-26 15:38:04 UTC`, `ActiveState=active`, `NRestarts=0`,
+  `RuntimeMaxUSec=2d`, `MemoryMax=25769803776` (24.0 GiB), `MemoryCurrent=15936036864` (14.84 GiB),
+  `CPUUsageNSec=189704927741000`.
+- Elapsed **16 h 58 m 18 s**; mean occupancy **3.10 cores of 16**.
+- Progress, phase `score-r4-calibration-populations`:
+  `completed_units 1 / total_units 6`, `elapsed_nanoseconds 60915813391611`
+  (**16 h 55 m 15.8 s**), `estimated_remaining_nanoseconds 304579066958055` (**84 h 36 m 19 s**).
+
+Six populations at the measured 16.921 h each is **101.53 h = 4 d 05 h 32 m** of calibration.
+The cap allows **48 h**. From the reading, **31 h 01 m 42 s** of allowance remain against
+**84 h 36 m** of projected work: a **53.58 h deficit**. The unit reaches the cap at **47.3 %**
+of calibration — **2.84 of 6 populations** — and is terminated there. The test phase is not
+in that 6 at all.
+
+The extrapolation is linear from population 1, so here is its corroboration. Population 2
+(`score-r4-synthetic-ref1-rounds`) is running now at **43.6 s/round** (records at
+`completed_units` 1→4) against population 1's **45.9 s/round** over its full 1,326 rounds. The
+second population is not faster. For the run to fit, populations 2–6 would have to average
+**2.73× faster** than the one measured; and once population 2 completes on its current rate,
+populations 3–6 would have to average **4.80× faster** in the 14.1 h that would remain.
+
+### Nothing seals if it is killed
+
+`server/scripts/belief_v2_worker.py` uses `.partial` only for the initialization publish —
+`freeze.json`, `review.md`, `admission.json`, `inventory.json`, `group-split.json`, then
+`os.rename(partial, root)` at lines 249–265. There is no signal handler in the worker and no
+calibration resume; same-admission process recovery is #148's R5 feature, which is explicitly
+held and unlaunched. Both evidence roots confirm it: Perf `/opt/belief-r4-parallel-completion-v1-r1`
+is **60,076 B**, Cloud `/opt/belief-r4-completion-v1-r3` is **60,057 B**, each five files, each
+byte-identical to launch. **Zero output bytes exist on either host.**
+
+So termination at the cap discards 48 h having sealed nothing. That is the sixth failure class —
+deadline expiry-cannot-seal — which already cost R3 ~38 h. This time it is not a surprise: it is
+predictable 31 h in advance, from the run's own records.
+
+### The cap has no measured basis
+
+`/opt/belief-r4-parallel-d82ba22-freeze-inputs-r1/deadline-estimate.json` (bound into the freeze
+as `capacity.deadline_estimate_receipt_sha256 = 92ff6f14…`) contains
+`capture_p95_wall_nanoseconds`, `reference_p95_wall_nanoseconds`,
+`training_epoch_p95_wall_nanoseconds` and `safety_reserve_nanoseconds`. It contains **no
+calibration or scoring wall estimate of any kind.** `deadline-run-summary.json` records
+`capture_sample_count 416`, `reference_sample_count 32`, `training_epoch_sample_count 2` — and
+no calibration sample.
+
+`RuntimeMaxUSec=2d` is **172,800 s**, which is exactly `resource_caps.training_wall_seconds`
+in the freeze. A *training* wall cap was applied to a unit that runs *calibration*. The cap
+was not derived from any measurement of the work this unit actually does, because no such
+measurement exists in the freeze.
+
+**My coverage limit, stated plainly.** I passed #152's consolidated source+freeze at `394354f`.
+I verified exact-output projection parity, the population guards, and the read-only pre-test
+readiness gate. I did **not** check whether `RuntimeMaxUSec` was sized against a measured
+calibration wall projection, and the freeze contains no such projection to have checked it
+against. That is a gap in my review, not in the source.
+
+### The measured value of the parallel cutover is 1.19×
+
+Both lanes have now completed exactly one population, which makes the first honest end-to-end
+comparison possible. Cloud serial `belief-r4-completion-e10cb3d-r3.service`, read at
+**2026-08-27T08:36:25Z**: started `Wed 2026-08-26 01:32:30 UTC`, `RuntimeMaxUSec=infinity`,
+`NRestarts=0`, `CPUUsageNSec=193254886051000` over **31 h 03 m 55 s** (**1.73 cores of 16**),
+populations `1 / 6` at `elapsed_nanoseconds 72267454243108` (**20 h 04 m 27 s**),
+`estimated_remaining_nanoseconds 361337271215540` (**100 h 22 m 17 s**).
+
+- Per population: optimized **16.921 h** vs serial **20.074 h** → **1.186×**.
+- Projected seals if neither were capped: optimized **2026-08-30 21:10Z**, serial
+  **2026-08-31 02:00Z** — the optimized lane arrives **4 h 50 m** earlier, because it launched
+  **14 h 05 m 34 s** later.
+
+This is not a defect in #152 and I am not reporting it as one. The packet says plainly that
+neural inference and quantization stay serial and that only target-blind exact projection is
+parallelized, so a modest end-to-end gain is the designed outcome. *Inferred, not measured:*
+under ideal 16-worker scaling a 1.186× end-to-end speedup implies projection was ≈16.7 % of
+serial calibration wall, which is consistent with the ~8.7× I measured on the projection
+sub-phase alone. The point is only that **1.19× is the number the cap has to be sized against**,
+and 2 d was chosen as if the number were much larger.
+
+### Suggested, and none of it touches the running service
+
+The cheapest moment to act is now: intervening costs the 17 h already spent, intervening at the
+cap costs 48 h. Concretely — (1) decide whether `RuntimeMaxUSec` can be lifted in place on a
+running unit without restarting it; I have **not** tested this, because testing it would mutate
+a live Codex-owned unit, and it determines whether the 17 h is recoverable at all. (2) If it
+cannot, the choice is between relaunching now with a cap sized from the measured 101.5 h plus
+the test phase, and accepting that Cloud's uncapped serial lane is the only survivor — it is
+unaffected by this finding and still projects a seal around 2026-08-31 02:00Z. (3) Whichever
+path, add a calibration wall estimate to the deadline receipt, so the next `RuntimeMaxUSec` is
+bound to a measurement of the stage the unit runs rather than to the training cap.
+
+### Secondary, low severity: the phase ETA is computed off the stage clock
+
+`V2ProgressReporter._started` is fixed at construction (`belief_v2_progress.py:35`) and
+`elapsed = observed - self._started`, so for any phase whose reporter was constructed before the
+phase began, `estimated_remaining_nanoseconds` is inflated by `stage_elapsed / phase_elapsed`.
+Measured, and the formula reproduces the emitted bytes exactly: population 2 at
+`completed_units 1` reported `80768703700601425` ns — **934 days** — which is
+`60957.512226869 s × 1325 / 1` to the nanosecond; at `completed_units 4` it reported
+`20190291572584648` ns, which is `61090.140915536 × 1322 / 4` to the nanosecond.
+
+It is masked on the first phase, where the two clocks coincide, and it does **not** affect the
+`score-r4-calibration-populations` record above — that reporter's start *is* the stage start, so
+its 84 h 36 m is correct, which is why the finding above stands on it. Telemetry only; nothing
+outcome-bearing depends on it. Worth a fix when the file is next touched, not on its own.
+
+Read-only throughout: no unit signalled, restarted or reconfigured; no calibration or test bytes
+opened; both evidence roots measured by size only. — Claude (session `f4b0ea92`)

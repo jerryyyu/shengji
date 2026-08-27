@@ -5093,3 +5093,64 @@ comparison and would have made this hour's diagnosis immediate instead of open.
 
 Read-only throughout: nothing signalled, stopped or reconfigured; artifact names and sizes only,
 no calibration or test bytes opened. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 13:55 EDT — PT-Cla0 terminated **INCOMPLETE** (15 of 52 records) while its progress log read **100.00%**. It is not a comparator for PT-Sol0.
+
+The run's own sealed report is honest. The progress telemetry is not, and the progress telemetry
+is what anyone monitoring the run sees.
+
+### The two artifacts disagree
+
+| | PT-Sol0 `e73f970` | PT-Cla0 `a82adb9` |
+|---|---|---|
+| report `status` | **`COMPLETE`** | **`INCOMPLETE`** |
+| `completed_record_count` | **52** | **15** |
+| `incomplete_record_count` | **0** | **37** |
+| report `elapsed_seconds` | 16,684.81 (4.63 h) | 3,566.14 (0.99 h) |
+| report bytes | 118,497 | 77,338 |
+| last progress record | `52/52 = 100.00%` | **`52/52 = 100.00%`** |
+
+`PT_CLA0_PROGRESS.completed_records` counts records **emitted**, not records **completed**, so it
+reached `52/52` on a run that completed 15. Sol0's log is not misleading only because Sol0 really
+did complete all 52 — the defect is latent there too and surfaces only when a run degrades, which
+is precisely when a progress signal has to be trustworthy. Both reports carry every authority flag
+false, and neither is a strength, gameplay, merge or deployment claim.
+
+### The degradation is visible from outside, in timing alone
+
+Per-record wall deltas from the progress log, no outcome bytes involved:
+
+- **PT-Cla0 records 1–14:** 3,176.1 s total = **226.9 s/record** — normal, and comparable to Sol0.
+- **PT-Cla0 records 15–52 (38 records):** 390.0 s total = **10.3 s/record**.
+- **36 of 52** PT-Cla0 deltas are under **5 s**; the tail runs `0.3, 1.3, 0.0, 1.4, 0.2, 1.6, 0.1 …`
+- **PT-Sol0, same 52 roles, same shared seed:** median **356.3 s**, **minimum 21.7 s**, only 2 of
+  52 under 30 s.
+
+A planner role cannot complete in 0.1–1.5 s. *Inferred, not measured, and I did not open the
+records to check:* from about record 18 the run stopped doing planner work and recorded
+non-completions at machine speed. The contiguous-tail structure is the tell — it is a state
+change, not a property of those particular roles. **I am not claiming what the failure mode was**
+(session exhaustion, refusal, credential expiry, an envelope-layer error); the report knows and I
+have not looked.
+
+### Operational note
+
+PT-Sol0 ran under launchd as `org.shengji.ptsol0-e73f970-r1`. **PT-Cla0 ran as a bare `ppid=1`
+process with no launchd job**, so nothing supervised it, recorded a non-zero exit, or noticed the
+degradation. Combined with a progress log reading 100 %, the run looks successful from every angle
+except opening the report.
+
+### What this means for the queue
+
+Whoever interprets these two must not compare them: PT-Sol0 is 52/52 `COMPLETE`, PT-Cla0 is 15/52
+`INCOMPLETE`, and 37 missing records are not missing at random — they are the tail. Any Cla0-vs-Sol0
+or Cla0-vs-arm-A statement drawn from this pair would be a comparison against a run that stopped
+a third of the way in.
+
+Cheap fixes, both off the critical path: rename or re-derive `completed_records` so it counts
+completions and not emissions, and give PT-Cla0 the same launchd supervision PT-Sol0 has before any
+rerun.
+
+Read-only: timing fields from the progress logs, and `status` / `*_record_count` / `authority`
+structure from the two terminal sealed reports. No record contents, scores or private roots opened;
+nothing signalled. — Claude (session `f4b0ea92`)

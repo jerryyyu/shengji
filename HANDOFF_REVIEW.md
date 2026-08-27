@@ -5266,3 +5266,87 @@ Perf's `manifest.json` `files.*.sha256`+`byte_count` entries each match the arti
 **What this settles.** PR #152's whole warrant was byte-identical output, previously proven only on the projection sub-phase (`394354f`). A ~30h parallel execution has now reproduced the serial lane's entire calibration output to the byte, through different scheduling, different host, different boot. Consequences: (1) the parallel lane is output-interchangeable with serial — R4 holds two published, byte-identical calibrations, both permanent; (2) the eventual repaired route from published calibration → single test opening may bind to either lane's selection without a scientific difference; (3) the reopen refusal, when it fires (expected imminently, boot-identity clause per `81487c9`), is a verifier defect only — the calibration computation itself is now cross-validated.
 
 Read-only throughout: digests, byte counts, manifest metadata; no scores opened; nothing signalled to the run. Guard outcome will be recorded when it lands. No authority granted or widened. — Claude (session `68f9c8bd`)
+
+## 2026-08-27 19:40 EDT — the guard fired on Perf (eighth belief failure); #152's end-to-end speedup is **1.227×**; and the parallel lane's own CPU receipt under-counts by **~2×**. Also walking back my own boot-identity guess
+
+`76d2737` recorded the parity result before the guard landed and said the outcome would be logged
+when it did. It has. Three additions, and one correction to something of mine that entry repeated.
+
+### The guard fired, at the same line
+
+`belief-r4-parallel-completion-d82ba22-r1.service` exited `status=1/FAILURE` after publishing,
+consuming **3 d 8 h 14 min 0.825 s CPU over 1 d 7 h 56 min 45.383 s wall, 24 G memory peak**:
+
+```
+belief_v2_r4_completion.py:901  → belief_v2_calibration_controller.py:438/442
+  → belief_v2_scoring_controller.py:111/117
+    → belief_v2_tensor_cache_controller.py:1252
+BeliefV2TensorCacheControllerError: "V2 tensor cache resource reconstruction drift"
+```
+
+`belief_v2_tensor_cache_controller.py:**1252**` is the same line Cloud died on, as `c578c36`
+predicted from the byte-identical diff. Eighth belief-lane failure. Both lanes are now down,
+both published, both refused by the same verifier.
+
+### Correcting my own hypothesis before it hardens
+
+`76d2737` attributes the refusal to "the boot-identity clause per `81487c9`". **That is my
+inference and it is not established — it should not be repeated as if it were.** I labelled it
+inferred when I filed it, and the new evidence does not settle it: the guard is a single `or`
+chain, so it **short-circuits at the first true clause and reports only one string**. Both lanes
+failing is equally consistent with (a) the same clause firing on both, and (b) Cloud failing on
+some other clause while Perf fails on `boot_identity`. Nothing observable distinguishes them.
+
+What the parity result *does* narrow: since the two lanes produced byte-identical selection output
+from byte-identical caps on different hosts, no clause that depends on the *calibration output*
+can be responsible. The live candidates remain `cache_worker_count` vs
+`parallel_cache_worker_count(freeze.runtime, …)`, `peak_host_memory_bytes` vs
+`caps.training_host_memory_bytes`, and `boot_identity`. **Splitting the chain is still the only
+way to know**, and it is now blocking two dead lanes rather than one.
+
+### The manifests agree on everything except the clocks
+
+Field-level diff of the two `manifest.json` files, 53 leaf fields each: **49 identical, 4
+differing, and all 4 are timing** — `cpu_nanoseconds`, `wall_nanoseconds`,
+`started_monotonic_nanoseconds`, `finished_monotonic_nanoseconds`. Every digest, count, stability
+flag and provenance field matches. That is a stronger statement than "the manifest differs as
+expected": the provenance record itself is identical apart from the two clocks that must differ.
+
+### #152's definitive end-to-end number: 1.227×
+
+From the manifests' own resource blocks, on identical work producing byte-identical output:
+
+| | Cloud (serial) | Perf (16-worker) |
+|---|---|---|
+| calibration `wall_nanoseconds` | 126,860.32 s (**35.24 h**) | 103,407.99 s (**28.72 h**) |
+| calibration `cpu_nanoseconds` | 126,846.84 s | 98,864.42 s |
+
+**Wall speedup 1.2268×.** This supersedes my earlier 1.186× per-population estimate — that was
+one population; this is the whole stage, byte-verified.
+
+### New, and it matters because resource receipts are what these guards check
+
+Cloud's receipt records `cpu_nanoseconds / wall_nanoseconds = 0.9999` — exactly the 1.00 core
+measured on every sample of the serial lane. Correct.
+
+Perf's records **0.9561 cores** mean across calibration. But systemd measured the unit at
+**1.8872 cores** sustained *inside* calibration (`CPUUsageNSec` 257,024.761679 s at
+`2026-08-27T18:35:16Z` → 284,205.702071 s at `22:35:19Z`, both before calibration ended at
+`22:56:46Z`). At that rate the stage consumed ≈195,152 s of CPU against the receipt's 98,864 s —
+a **ratio of 1.974**.
+
+*Inferred, labelled, and consistent with the design:* `resources.cpu_nanoseconds` counts the
+parent process only and misses the forkserver projection workers. The parent runs inference and
+quantization serially at ≈0.96 cores, which is exactly what the receipt reports; the workers
+supply the other ≈0.93 and are invisible to it. On the serial lane there are no workers, so the
+field is right — the error appears precisely where #152 added parallelism.
+
+Why this is not cosmetic: `resource_caps` carries `capture_core_hours`, `reference_core_hours`
+and `training_device_hours`, and the guard family that has now refused three times is
+resource-cap validation. A CPU field that under-reports by 2× on the parallel path silently
+doubles any budget enforced against it. Cheap check: confirm what `_process_tree_cpu_time_ns()`
+sees when the projection pool is a forkserver rather than a child fork.
+
+Read-only: systemd counters, journal text, manifest metadata and digests; no scores or records
+opened; nothing signalled. Both published calibrations and both failed roots are
+permanent-never-delete. — Claude (session `f4b0ea92`)

@@ -285,7 +285,8 @@ def _run_role(
         coordinate: tuple[str, int, int], role: str, root,
         private_root: Path, tool_script: Path, codex_binary: Path,
         planner_process: PlannerProcess | None,
-        session_factory=Sol0GameSession) -> dict[str, object]:
+        session_factory=Sol0GameSession,
+        session_runner=run_sol_session) -> dict[str, object]:
     rank, banker, replicate = coordinate
     treatment_team = banker % 2 if role == "banker-team" \
         else 1 - banker % 2
@@ -297,7 +298,7 @@ def _run_role(
     outcome: Sol0Outcome | None = None
     failure_sha256: str | None = None
     try:
-        outcome = run_sol_session(
+        outcome = session_runner(
             session, private_output=private_path, tool_script=tool_script,
             planner_process=planner_process, codex_binary=codex_binary)
     except PrivilegedTeacherSol0Error as exc:
@@ -321,7 +322,8 @@ def _run_root(
         private_root: Path, tool_script: Path, codex_binary: Path,
         planner_process: PlannerProcess | None,
         role_completed: Callable[[], object] | None = None,
-        session_factory=Sol0GameSession) \
+        session_factory=Sol0GameSession,
+        session_runner=run_sol_session) \
         -> tuple[dict[str, object], ...]:
     rank, banker, replicate = coordinate
     root = full._build_root(full_design, seed_secret, *coordinate)
@@ -340,7 +342,8 @@ def _run_root(
             private_root=private_root, tool_script=tool_script,
             codex_binary=codex_binary,
             planner_process=planner_process,
-            session_factory=session_factory))
+            session_factory=session_factory,
+            session_runner=session_runner))
         if role_completed is not None:
             role_completed()
     return tuple(records)
@@ -399,6 +402,7 @@ def run_dev(
         full_external_sha256: str, seed_secret: bytes,
         private_root: Path, tool_script: Path, workers: int = 2,
         session_factory=Sol0GameSession,
+        session_runner=run_sol_session,
         codex_binary: Path,
         planner_process: PlannerProcess | None = None,
         progress_sink: Callable[[dict[str, object]], object] | None = None) \
@@ -463,7 +467,7 @@ def run_dev(
         "private_root": private_root, "tool_script": tool_script,
         "codex_binary": codex_binary,
         "planner_process": planner_process, "role_completed": publish_role,
-        "session_factory": session_factory,
+        "session_factory": session_factory, "session_runner": session_runner,
     }
     if workers == 1:
         for coordinate in coordinates:

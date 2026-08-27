@@ -5,8 +5,9 @@ Same launch discipline as the Sol0/Cla0 runners (whose hardened helpers are
 imported verbatim, never forked), with two additions: ``--planner`` selects
 the external agent (``codex`` = GPT-5.6 Sol via the Sol0 process, ``claude``
 via the Cla0 adapter), and the session factory is the public-information
-``Pub0GameSession`` so every planner sees acting-seat public state only and
-rollouts average production-sampled worlds.
+``Pub0GameSession`` plus its fixed-seat dual-process runner, so each planner
+sees only its own acting-seat state and rollouts compare candidates on one
+common bank of production-sampled worlds.
 """
 
 from __future__ import annotations
@@ -90,6 +91,7 @@ def main() -> int:
     from shengji.rl.privileged_teacher_pub0 import (
         Pub0Design,
         Pub0GameSession,
+        run_pub0_session,
     )
     from shengji.rl.privileged_teacher_sol0_report import (
         report_bytes,
@@ -180,7 +182,8 @@ def main() -> int:
             tool_script=tool_script, codex_binary=planner_binary,
             workers=args.workers, progress_sink=progress,
             planner_process=planner_process,
-            session_factory=Pub0GameSession)
+            session_factory=Pub0GameSession,
+            session_runner=run_pub0_session)
 
     report = _run_with_frozen_design(
         design, args.expected_design_sha256, execute_bound_design)

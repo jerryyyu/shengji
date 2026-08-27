@@ -255,6 +255,31 @@ def test_decision_pool_identity_and_result_order_can_refuse(monkeypatch):
         pool.score((first, second))
 
 
+def test_decision_pool_submission_batches_are_bounded_and_ordered(
+        monkeypatch):
+    monkeypatch.setattr(SCORING, "V2_DECISION_WORKERS", 2)
+    pool = object.__new__(SCORING.V2DecisionScoringPool)
+    pool.cohort_identity = (("cohort", ("a" * 64,) * 8),)
+    decisions = tuple(SimpleNamespace(
+        decision_key=hashlib.sha256(
+            f"bounded-decision-{index}".encode("ascii")).hexdigest())
+        for index in range(5))
+    batch_sizes = []
+
+    def mapped(_function, tasks, *, chunksize):
+        tasks = tuple(tasks)
+        assert chunksize == 1
+        batch_sizes.append(len(tasks))
+        return tuple(SCORING._ScoredDecisionV1(
+            task.decision.decision_key, ()) for task in tasks)
+
+    pool._executor = SimpleNamespace(map=mapped)
+    rows = pool.score(decisions)
+    assert batch_sizes == [4, 1]
+    assert tuple(row.decision_key for row in rows) \
+        == tuple(row.decision_key for row in decisions)
+
+
 def test_member_projection_failure_reports_exact_scoring_context(monkeypatch):
     """Witness the public identifiers needed to diagnose a failed member."""
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")

@@ -8,6 +8,7 @@ and replicate-stability checks are sealed before any test target is opened.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -71,6 +72,22 @@ class BeliefV2CalibrationControllerError(ValueError):
 
 def _sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _run_independent_calibration_statistics(
+        synthetic_stability_call, human_stability_call,
+        human_selection_call, scale_curve_call):
+    """Evaluate four independently seeded calibration reports in parallel."""
+    calls = (synthetic_stability_call, human_stability_call,
+             human_selection_call, scale_curve_call)
+    if not all(callable(value) for value in calls):
+        raise BeliefV2CalibrationControllerError(
+            "V2 calibration statistic callable population drift")
+    with ThreadPoolExecutor(
+            max_workers=4,
+            thread_name_prefix="belief-v2-calibration-statistic") as executor:
+        futures = tuple(executor.submit(value) for value in calls)
+        return tuple(future.result() for future in futures)
 
 
 def _process_tree_cpu_time_ns() -> int:
@@ -279,21 +296,26 @@ def run_v2_calibration_selection(
     expected_human = tuple((row.round_key, row.trump_rank)
                            for row in human_0)
     try:
-        synthetic_stable = v2_reference_replicates_are_stable(
-            synthetic_0, synthetic_1, cohort_ids=cohort_ids,
-            expected_rounds=expected_synthetic, source_kind="synthetic")
-        human_stable = v2_reference_replicates_are_stable(
-            human_0, human_1, cohort_ids=cohort_ids,
-            expected_rounds=expected_human, source_kind="human")
-        human_selection = evaluate_human_mixture_selection(
-            synthetic_0, human_0,
-            expected_synthetic_rounds=expected_synthetic,
-            expected_human_rounds=expected_human,
-            cohort_ids=cohort_ids)
-        scale_curve = evaluate_scale_curve(
-            synthetic_0, expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids,
-            scale_fractions=_scale_fractions(freeze))
+        (synthetic_stable, human_stable, human_selection, scale_curve) = (
+            _run_independent_calibration_statistics(
+                lambda: v2_reference_replicates_are_stable(
+                    synthetic_0, synthetic_1, cohort_ids=cohort_ids,
+                    expected_rounds=expected_synthetic,
+                    source_kind="synthetic"),
+                lambda: v2_reference_replicates_are_stable(
+                    human_0, human_1, cohort_ids=cohort_ids,
+                    expected_rounds=expected_human,
+                    source_kind="human"),
+                lambda: evaluate_human_mixture_selection(
+                    synthetic_0, human_0,
+                    expected_synthetic_rounds=expected_synthetic,
+                    expected_human_rounds=expected_human,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_scale_curve(
+                    synthetic_0,
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids,
+                    scale_fractions=_scale_fractions(freeze))))
         if progress is not None:
             progress(5, 6, "derive-calibration-statistics")
     except ValueError as exc:
@@ -507,23 +529,28 @@ def _reopen_v2_calibration_selection(
     expected_human = _expected_human_rounds_from_references(
         Path(freeze.evidence_root), freeze, admission, group_split)
     try:
-        synthetic_stable = v2_reference_replicates_are_stable(
-            populations["synthetic_ref0"],
-            populations["synthetic_ref1"], cohort_ids=cohort_ids,
-            expected_rounds=expected_synthetic, source_kind="synthetic")
-        human_stable = v2_reference_replicates_are_stable(
-            populations["human_ref0"], populations["human_ref1"],
-            cohort_ids=cohort_ids, expected_rounds=expected_human,
-            source_kind="human")
-        human_selection = evaluate_human_mixture_selection(
-            populations["synthetic_ref0"], populations["human_ref0"],
-            expected_synthetic_rounds=expected_synthetic,
-            expected_human_rounds=expected_human, cohort_ids=cohort_ids)
-        scale_curve = evaluate_scale_curve(
-            populations["synthetic_ref0"],
-            expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids,
-            scale_fractions=_scale_fractions(freeze))
+        (synthetic_stable, human_stable, human_selection, scale_curve) = (
+            _run_independent_calibration_statistics(
+                lambda: v2_reference_replicates_are_stable(
+                    populations["synthetic_ref0"],
+                    populations["synthetic_ref1"], cohort_ids=cohort_ids,
+                    expected_rounds=expected_synthetic,
+                    source_kind="synthetic"),
+                lambda: v2_reference_replicates_are_stable(
+                    populations["human_ref0"], populations["human_ref1"],
+                    cohort_ids=cohort_ids, expected_rounds=expected_human,
+                    source_kind="human"),
+                lambda: evaluate_human_mixture_selection(
+                    populations["synthetic_ref0"],
+                    populations["human_ref0"],
+                    expected_synthetic_rounds=expected_synthetic,
+                    expected_human_rounds=expected_human,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_scale_curve(
+                    populations["synthetic_ref0"],
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids,
+                    scale_fractions=_scale_fractions(freeze))))
     except ValueError as exc:
         raise BeliefV2CalibrationControllerError(
             "V2 calibration reconstruction statistic refused") from exc

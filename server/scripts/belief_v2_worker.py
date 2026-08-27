@@ -22,6 +22,21 @@ SERVER = SCRIPT.parents[1]
 REPO = SERVER.parent
 
 
+def _refuse_foreign_import_roots() -> None:
+    """Refuse .pth-injected roots from another experiment environment."""
+    allowed_roots = (
+        Path(sys.base_prefix).resolve(),
+        Path(sys.prefix).resolve(),
+        SERVER,
+    )
+    for entry in sys.path:
+        if type(entry) is not str or not entry:
+            continue
+        resolved = Path(entry).resolve()
+        if not any(resolved.is_relative_to(root) for root in allowed_roots):
+            raise RuntimeError("BELIEF-V1 V2 refuses foreign import roots")
+
+
 def _refuse_import_shadows() -> None:
     if os.environ.get("PYTHONPATH"):
         raise RuntimeError("BELIEF-V1 V2 refuses PYTHONPATH")
@@ -54,6 +69,7 @@ def _refuse_import_shadows() -> None:
         raise RuntimeError("BELIEF-V1 V2 native extension population drift")
 
 
+_refuse_foreign_import_roots()
 _refuse_import_shadows()
 if sys.argv[1:] == ["--bootstrap-check-only"]:
     print("BELIEF_V1_V2_BOOTSTRAP_PASS")

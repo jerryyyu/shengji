@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 from dataclasses import replace
 from pathlib import Path
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -42,6 +44,7 @@ from shengji.rl.belief_v2_freeze import (
     V2ResourceCapsV1,
 )
 from shengji.rl.belief_v2_protocol import V2_RANKS, V2_ROUND_COUNT
+from shengji.rl.belief_v2_progress import V2ProgressReporter
 from shengji.rl.belief_v2_controller import reference_lane_jobs
 from shengji.rl.belief_v2_result import (
     PASS_B3,
@@ -469,8 +472,15 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
             {"schema": "test-readiness"}, calibration, {},
             SimpleNamespace(), cohorts, plan, qualification,
             tuple((value, _sha(value)) for value in cohort_ids)))
-    def score_test(*args, **kwargs):
+
+    def score_test(*args, progress=None,
+                   progress_phase_prefix="score-test", **kwargs):
         decision_pools.append(kwargs.get("decision_pool"))
+        if progress is not None:
+            progress(0, 1, f"{progress_phase_prefix}-synthetic-rounds")
+            progress(1, 1, f"{progress_phase_prefix}-synthetic-rounds")
+            progress(0, 1, f"{progress_phase_prefix}-human-groups")
+            progress(1, 1, f"{progress_phase_prefix}-human-groups")
         return synthetic_rows, human_rows
 
     monkeypatch.setattr(
@@ -494,6 +504,67 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         TERMINAL_STAGE, "_derive_integrity_receipt",
         lambda *args, **kwargs: receipt)
     return calibration, decision_pools
+
+
+def test_test_scorer_reports_exact_outcome_blind_population_progress(
+        monkeypatch):
+    coordinates = (
+        SimpleNamespace(split="train", round_seed=1, trump_rank="2"),
+        SimpleNamespace(split="test", round_seed=2, trump_rank="3"),
+        SimpleNamespace(split="test", round_seed=3, trump_rank="4"),
+    )
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "v2_round_coordinates", lambda: coordinates)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_synthetic_scoring_round",
+        lambda *args, **kwargs: ("decision",))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_human_group_digests",
+        lambda *args, **kwargs: ("group-a", "group-b"))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_human_scoring_rounds",
+        lambda *args, group_digest, **kwargs: ((
+            f"round-{group_digest}", "5", ("decision",)),))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "score_v2_round",
+        lambda **kwargs: SimpleNamespace(round_key=kwargs["round_key"]))
+    progress = []
+
+    synthetic, human = TERMINAL_STAGE._score_test_populations(
+        Path("/unused"), object(), object(), {}, (object(),),
+        progress=lambda completed, total, phase: progress.append(
+            (completed, total, phase)))
+
+    assert len(synthetic) == 2
+    assert len(human) == 2
+    assert progress == [
+        (0, 2, "score-test-synthetic-rounds"),
+        (1, 2, "score-test-synthetic-rounds"),
+        (2, 2, "score-test-synthetic-rounds"),
+        (0, 2, "score-test-human-groups"),
+        (1, 2, "score-test-human-groups"),
+        (2, 2, "score-test-human-groups"),
+    ]
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="progress phase identity drift"):
+        TERMINAL_STAGE._score_test_populations(
+            Path("/unused"), object(), object(), {}, (object(),),
+            progress_phase_prefix="not a token")
+
+
+def test_terminal_statistics_use_independent_parallel_workers():
+    barrier = threading.Barrier(3)
+
+    def result(value):
+        barrier.wait(timeout=2)
+        return value
+
+    assert TERMINAL_STAGE._run_independent_terminal_statistics(
+        lambda: result("primary"),
+        lambda: result("control"),
+        lambda: result("human"),
+    ) == ("primary", "control", "human")
 
 
 def test_terminal_attempt_is_durable_before_test_scorer_failure(
@@ -535,14 +606,22 @@ def test_terminal_round_trip_and_coordinated_result_rehash_refuse(
     _, decision_pools = _stub_terminal_dependencies(
         monkeypatch, freeze)
     decision_token = object()
+    progress_stream = io.StringIO()
+    progress = V2ProgressReporter(
+        stage="terminal-round-trip-test", worker="all-cohorts",
+        stream=progress_stream)
     result = TERMINAL_STAGE.run_v2_terminal(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review", inventory={}, group_split={},
-        decision_pool=decision_token)
+        decision_pool=decision_token, progress=progress.update)
     assert result["terminal_route"] == PASS_B3
     assert result["test_split_decision_open_count"] == 1
     assert result["deployment_authorized"] is False
     assert decision_pools == [decision_token, decision_token]
+    progress_output = progress_stream.getvalue()
+    assert '"phase":"score-test-synthetic-rounds"' in progress_output
+    assert '"phase":"reconstruct-test-synthetic-rounds"' \
+        in progress_output
     directory = root / "terminal"
     assert TERMINAL_STAGE.reopen_v2_terminal(
         directory, freeze=freeze, admission=admission,

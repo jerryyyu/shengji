@@ -175,6 +175,29 @@ def test_worker_bootstrap_requires_safe_flags_and_has_closed_command_surface():
     assert "requires Python -P -B safe flags" in unsafe.stderr
 
 
+def test_worker_bootstrap_refuses_foreign_import_root(tmp_path):
+    repo = Path(__file__).resolve().parents[2]
+    worker = repo / "server" / "scripts" / "belief_v2_worker.py"
+    foreign = tmp_path / "another-experiment" / "site-packages"
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    environment.update({
+        "PYTHONDONTWRITEBYTECODE": "1", "PYTHONHASHSEED": "0",
+        "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"})
+    program = (
+        "import runpy,sys;"
+        "worker=sys.argv[1];foreign=sys.argv[2];"
+        "sys.path.append(foreign);"
+        "sys.argv=[worker,'--bootstrap-check-only'];"
+        "runpy.run_path(worker,run_name='__main__')")
+    refused = subprocess.run(
+        (sys.executable, "-P", "-B", "-c", program,
+         str(worker), str(foreign)),
+        cwd=repo, env=environment, capture_output=True, text=True)
+    assert refused.returncode != 0
+    assert "refuses foreign import roots" in refused.stderr
+
+
 def test_cache_capacity_preflight_bootstraps_under_safe_flags():
     """The reviewed host preflight must at least parse and close its CLI."""
     repo = Path(__file__).resolve().parents[2]

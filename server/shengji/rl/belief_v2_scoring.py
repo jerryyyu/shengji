@@ -292,6 +292,9 @@ class V2DecisionScoringPool:
         return self
 
     def __exit__(self, *_args: object) -> None:
+        self.close()
+
+    def close(self) -> None:
         self._executor.shutdown(wait=True, cancel_futures=True)
 
     def warm(self) -> None:
@@ -322,12 +325,20 @@ class V2DecisionScoringPool:
             decision=decision, cohort_identity=self.cohort_identity)
             for decision in decisions)
         try:
-            rows = tuple(self._executor.map(
-                _score_decision_task, tasks, chunksize=1,
-                buffersize=2 * V2_DECISION_WORKERS))
+            rows_list = []
+            # ``Executor.map(buffersize=...)`` is Python 3.14-only while the
+            # project supports Python 3.11+ and CI runs Python 3.12. Fixed
+            # batches retain the same bounded 2x-worker in-flight population
+            # without eagerly queueing a complete round.
+            batch_size = 2 * V2_DECISION_WORKERS
+            for start in range(0, len(tasks), batch_size):
+                rows_list.extend(self._executor.map(
+                    _score_decision_task,
+                    tasks[start:start + batch_size], chunksize=1))
+            rows = tuple(rows_list)
         except BeliefV2ScoringError:
             raise
-        except (OSError, RuntimeError) as exc:
+        except Exception as exc:
             raise BeliefV2ScoringError(
                 "V2 decision worker execution refused") from exc
         if len(rows) != len(decisions) \

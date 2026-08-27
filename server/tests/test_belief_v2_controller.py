@@ -8,6 +8,7 @@ import json
 import os
 import random
 import shutil
+import threading
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -2994,6 +2995,27 @@ def _stub_calibration_dependencies(monkeypatch, freeze, *, stable=True):
     return human_selection, scale_curve, warmed, readiness
 
 
+def test_calibration_statistics_use_four_independent_parallel_workers():
+    barrier = threading.Barrier(4)
+
+    def result(value):
+        barrier.wait(timeout=2)
+        return value
+
+    assert CALIBRATION_STAGE._run_independent_calibration_statistics(
+        lambda: result("synthetic-stability"),
+        lambda: result("human-stability"),
+        lambda: result("human-selection"),
+        lambda: result("scale-curve"),
+    ) == ("synthetic-stability", "human-stability",
+          "human-selection", "scale-curve")
+    with pytest.raises(
+            CALIBRATION_STAGE.BeliefV2CalibrationControllerError,
+            match="statistic callable population drift"):
+        CALIBRATION_STAGE._run_independent_calibration_statistics(
+            lambda: True, lambda: True, lambda: True, object())
+
+
 def test_calibration_scoring_reports_progress_inside_each_population(
         tmp_path, monkeypatch):
     """A long calibration pass must advance before its whole arm completes."""
@@ -3044,6 +3066,17 @@ def test_calibration_selection_wires_stability_and_selected_cohort(
     admission = _admission(freeze)
     _, _, warmed, readiness = _stub_calibration_dependencies(
         monkeypatch, freeze)
+    real_statistics = (
+        CALIBRATION_STAGE._run_independent_calibration_statistics)
+    statistics_calls = []
+
+    def observed_statistics(*calls):
+        statistics_calls.append(len(calls))
+        return real_statistics(*calls)
+
+    monkeypatch.setattr(
+        CALIBRATION_STAGE, "_run_independent_calibration_statistics",
+        observed_statistics)
     result = CALIBRATION_STAGE.run_v2_calibration_selection(
         root, freeze, admission, repo=Path("/unused"),
         review_marker=b"review", inventory={}, group_split={})
@@ -3060,6 +3093,7 @@ def test_calibration_selection_wires_stability_and_selected_cohort(
     assert CALIBRATION_STAGE.reopen_v2_calibration_selection(
         root / "calibration" / "selection", freeze=freeze,
         admission=admission, inventory={}, group_split={}) == result
+    assert statistics_calls == [4, 4]
 
 
 def test_calibration_selection_refuses_instability_and_coordinated_rehash(

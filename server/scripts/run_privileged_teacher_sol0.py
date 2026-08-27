@@ -86,11 +86,27 @@ def _git(repo: Path, *args: str) -> str:
         text=True).stdout.strip()
 
 
+def _run_with_frozen_design(
+        design: object, expected_design_sha256: str, execute):
+    """Invoke the external treatment only under the reviewed design bytes."""
+    from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
+    if (len(expected_design_sha256) != 64
+            or any(char not in "0123456789abcdef"
+                   for char in expected_design_sha256)):
+        raise ValueError("PT-Sol0 expected design SHA-256 is invalid")
+    payload = design.payload()
+    actual = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+    if actual != expected_design_sha256:
+        raise ValueError("PT-Sol0 frozen runtime design drift")
+    return execute()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--private-root", type=Path, required=True)
     parser.add_argument("--expected-git", required=True)
+    parser.add_argument("--expected-design-sha256", required=True)
     parser.add_argument("--c0-report", type=Path, required=True)
     parser.add_argument("--expected-c0-external-sha256", required=True)
     parser.add_argument("--expected-c0-report-sha256", required=True)
@@ -161,7 +177,6 @@ def main() -> int:
     if (args.private_root.exists() or args.private_root.is_symlink()
             or not tool_script.is_file()):
         raise ValueError("PT-Sol0 private root or tool identity drift")
-    args.private_root.mkdir(mode=0o700)
     design = Sol0Design(
         seed_commitment_sha256=hashlib.sha256(secret).hexdigest(),
         execution_git=args.expected_git,
@@ -187,12 +202,17 @@ def main() -> int:
         print("PT_SOL0_PROGRESS " + json.dumps(
             row, sort_keys=True, separators=(",", ":")), flush=True)
 
-    report = run_dev(
-        design, c0_report=c0_report, c0_external_sha256=c0_external,
-        full_report=full_report, full_external_sha256=full_external,
-        seed_secret=secret, private_root=args.private_root,
-        tool_script=tool_script, codex_binary=codex_path,
-        workers=args.workers, progress_sink=progress)
+    def execute_bound_design():
+        args.private_root.mkdir(mode=0o700)
+        return run_dev(
+            design, c0_report=c0_report, c0_external_sha256=c0_external,
+            full_report=full_report, full_external_sha256=full_external,
+            seed_secret=secret, private_root=args.private_root,
+            tool_script=tool_script, codex_binary=codex_path,
+            workers=args.workers, progress_sink=progress)
+
+    report = _run_with_frozen_design(
+        design, args.expected_design_sha256, execute_bound_design)
     raw = report_bytes(
         report, design, c0_report=c0_report,
         c0_external_sha256=c0_external, full_report=full_report,

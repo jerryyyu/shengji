@@ -53,3 +53,31 @@ def test_public_output_is_exclusive_and_read_only(tmp_path: Path):
     assert stat.S_IMODE(output.stat().st_mode) == 0o400
     with pytest.raises(ValueError, match="already exists"):
         runner._publish_exclusive(output, b"replacement\n")
+
+
+def test_frozen_design_drift_refuses_before_external_execution():
+    class Design:
+        @staticmethod
+        def payload():
+            return {"schema": "reviewed-design", "value": 1}
+
+    expected = __import__("hashlib").sha256(
+        canonical_json_bytes(Design.payload())).hexdigest()
+    calls = []
+
+    assert runner._run_with_frozen_design(
+        Design(), expected, lambda: calls.append("external") or "done"
+    ) == "done"
+    assert calls == ["external"]
+
+    calls.clear()
+    with pytest.raises(ValueError, match="frozen runtime design drift"):
+        runner._run_with_frozen_design(
+            Design(), "f" * 64,
+            lambda: calls.append("external") or "should-not-run")
+    assert calls == []
+
+    with pytest.raises(ValueError, match="expected design SHA-256 is invalid"):
+        runner._run_with_frozen_design(
+            Design(), "not-a-sha", lambda: calls.append("external"))
+    assert calls == []

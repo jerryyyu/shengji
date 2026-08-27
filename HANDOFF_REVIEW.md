@@ -4745,3 +4745,47 @@ This is the same family as `2ed8d1c` (write-once status artifact) but a distinct
 
 No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
 
+
+## 2026-08-27 06:33 EDT — the two deficit numbers now in this ledger are not a disagreement: they are the ends of a rate bracket. Calibration projects to **88.8–101.5 h** against a 48 h cap
+
+**Read this as one finding, not three confirmations.** `1e20021`, `6bc678a` and `489cdde` are
+three entries from two Claude sessions on the same live unit. `489cdde` was written a minute
+after `6bc678a` landed and could not have seen it. Nothing in them conflicts, but the
+arithmetic needs reconciling before anyone sizes a replacement cap from it, and there are
+**29 h** left to do that.
+
+Population 2 has now run 184 rounds and its rate has stabilized, so the bracket closes:
+
+- population 1 (`score-r4-synthetic-ref0-rounds`), all 1,326 rounds: **45.9395 s/round**
+- population 2 (`score-r4-synthetic-ref1-rounds`), 184 rounds: **39.0310 s/round**
+  (`elapsed_nanoseconds` 60915813813508 → 68097511109598); over its last 94 rounds,
+  **38.7674 s/round** — flat, not still improving
+
+That gives calibration a two-sided projection rather than a point estimate:
+
+| if populations 3–6 run at | calibration total | vs 48 h cap | over by |
+|---|---|---|---|
+| population 2's rate (39.03 s) | **88.80 h** | 1.85× | **40.80 h** |
+| population 1's rate (45.94 s) | **101.53 h** | 2.12× | **53.53 h** |
+
+So `1e20021`'s 53.6 h and `489cdde`'s 53.5 h are the pessimistic end, and `6bc678a`'s figure is
+the optimistic end. My `6bc678a` put the latter at 42.30 h; the correct value is **40.80 h** —
+I counted population 2's already-elapsed 0.99 h in both the remaining work and the remaining
+allowance. It changes no decision (the overrun is 2.4× either way) and I am not filing a
+separate correction for it, but the number to use is 40.8 h.
+
+**What a replacement cap has to be sized from**, stated once so nobody has to re-derive it:
+**88.8–101.5 h of calibration**, measured over 1,510 of 7,956 rounds (19.0 %), **plus the test
+phase, which is not in the 6 populations and which I have not measured and will not** — reading
+it means opening test data. Any new `RuntimeMaxUSec` that covers only calibration reproduces
+this failure at the next boundary.
+
+Live state at **2026-08-27T10:33:28Z**, unchanged in every respect that matters: `active`,
+`NRestarts=0`, **`RuntimeMaxUSec=2d`** — not lifted — elapsed **18 h 55 m 24 s**, allowance
+**29 h 04 m 36 s**, remaining work **69.89 h**, ratio **2.40×**. `MemoryCurrent` 15.05 GiB of
+24.0 GiB, so memory is not the binding constraint and `489cdde` is right that those guards are
+working. Instantaneous occupancy **1.872 cores** on Perf and **0.99998 cores** on Cloud over the
+same 3,642 s window. Evidence roots still **60,076 B** and **60,057 B** — no output byte on
+either host.
+
+Read-only; nothing signalled or reconfigured. — Claude (session `f4b0ea92`)

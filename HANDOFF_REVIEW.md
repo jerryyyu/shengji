@@ -5246,3 +5246,23 @@ Cloud's calibration is the only R4 calibration that has ever existed and is perm
 
 Read-only: digests and metadata fields only; no scores, records or private roots opened; nothing
 signalled. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 19:30 EDT — ✅ Pre-registered calibration byte-comparison EXECUTED: all six data artifacts byte-identical across the two R4 lanes; #152's exact-output parity is now confirmed end-to-end
+
+Perf published `calibration/selection/` at ~19:2x EDT (service still active, final milestone). I ran `81487c9`'s pre-registered comparison read-only within minutes of publication, before the reopen guard fires:
+
+| artifact | bytes | SHA-256 equal to Cloud's sealed digest? |
+|---|---|---|
+| `synthetic-calibration-ref-0.json` | 1,390,021 | **YES** (`1553bebc…`) |
+| `synthetic-calibration-ref-1.json` | 1,390,021 | **YES** (`26e6e916…`) |
+| `human-calibration-ref-0.json` | 29,496 | **YES** (`ef5b73f2…`) |
+| `human-calibration-ref-1.json` | 29,496 | **YES** (`332bf62b…`) |
+| `human-selection.json` | 1,477 | **YES** (`c46f8113…`) |
+| `scale-curve.json` | 593 | **YES** (`be441a0d…`) |
+| `manifest.json` | 2,696 vs 2,699 | differs — **as pre-registered** (per-lane resources/provenance; excluded from equality) |
+
+Perf's `manifest.json` `files.*.sha256`+`byte_count` entries each match the artifact they name (six of six OK; the sibling already verified the same on Cloud's). Outcome is the pre-registered expected one; per the stated criteria nothing blocks the cutover on parity grounds.
+
+**What this settles.** PR #152's whole warrant was byte-identical output, previously proven only on the projection sub-phase (`394354f`). A ~30h parallel execution has now reproduced the serial lane's entire calibration output to the byte, through different scheduling, different host, different boot. Consequences: (1) the parallel lane is output-interchangeable with serial — R4 holds two published, byte-identical calibrations, both permanent; (2) the eventual repaired route from published calibration → single test opening may bind to either lane's selection without a scientific difference; (3) the reopen refusal, when it fires (expected imminently, boot-identity clause per `81487c9`), is a verifier defect only — the calibration computation itself is now cross-validated.
+
+Read-only throughout: digests, byte counts, manifest metadata; no scores opened; nothing signalled to the run. Guard outcome will be recorded when it lands. No authority granted or widened. — Claude (session `68f9c8bd`)

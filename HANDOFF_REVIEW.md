@@ -4894,3 +4894,105 @@ No authority is granted or withdrawn by this entry. — Claude (session `68f9c8b
 One 26-root / 52-role open-DEV run of the Claude planner swap (PR #156, branch `claude/pt-cla0`) launched on Mini at exact head `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`, two workers, model `claude-fable-5` at `--effort high`, alongside the live PT-Sol0 run per Codex's capacity assessment. Launch-time design SHA `b409aef407623132229ed5e7079b87737ba2293feef4776325110f90d86b6092`; shared parent seed `shengji-ptfull-c6e8d08-r1.seed` (commitment `94261b34…` verified against both parents); native byte-equal to the parents' `a6caf8fe…` (copied from the live Sol0 run tree; engine sources verified identical between `c6e8d08` and `a82adb9`); parents pinned C0 `aada4737…`/`2391bc4` and PT-Full `1b404cf3…`/`c6e8d08`. Output `/Users/jerryyu/Projects/shengji-ptcla0-a82adb9-r1.json`; private root `…-r1-private`; first `PT_CLA0_PROGRESS` record sealed (1/52 at 453.9 s).
 
 **Review provenance, stated honestly:** the source was authored by Claude (this reviewer), so review authority is role-swapped to Codex, whose ✅ APPROVE is at head `1b8f1ab` (relayed by Jerry, posted on the PR). Three commits landed after that head — `a01aec6` (strip API-key env), `ffe9261` (drop `--bare`; blocks credential loading), `a82adb9` (trailing-JSON final extraction) — all environment/envelope-layer, all born from the live engineering-proof debugging, each with a witness; Codex's narrow delta re-review of those three is REQUESTED and PENDING on the PR. The sealed non-scientific proof round at this exact head (492.7 s, 84 decisions, 36 contested, 28 rollout calls / 364 unique evaluations, 0 rejected tool calls, completion token accepted) exercised all three changes live. The eventual Cla0 interpretation review must confirm the delta re-review closed before treating the report as clean. A launch-refusal at first attempt (`Sol0 parent identity drift`, fresh secret) was the identity system working; the empty failed-attempt private root was removed before relaunch. Two failed engineering-proof attempts (unfunded API key; `--bare` login block) remain non-scientific. No merge, BELIEF integration, gameplay, strength, promotion, deployment or training authority follows. — Claude (session `68f9c8bd`)
+
+## 2026-08-27 11:40 EDT — ⛔ TIME-CRITICAL, MINUTES: the serial fallback lane is about to auto-open the one-shot test split, ~15 h before the optimized lane, and nothing gates it
+
+**This is not the withdrawn deadline finding.** That one I got wrong and retracted at `29a1717`.
+This is a different, measured claim about the cloud launcher, and I checked the emitting code
+first this time.
+
+### The sequence, verbatim from the launcher
+
+`/opt/belief-r4-completion-e10cb3d-review-support-r3/launch-r4-completion.sh`, running under
+`set -euo pipefail`, lines 78–85:
+
+```
+publish_status calibrating 1
+"$python" -P -B "$worker" r4-calibrate --root "$root"
+
+publish_status opening-test 2
+"$python" -P -B "$worker" r4-open-test --root "$root"
+```
+
+There is nothing between them. The instant `r4-calibrate` returns 0, `r4-open-test` runs.
+
+### Cloud calibration is essentially finished
+
+Its own last progress record: `phase=derive-r4-calibration-statistics`,
+`completed_units 5 / total_units 6`, `status running`,
+`elapsed_nanoseconds 136010761563989` (**37.78 h**). Milestone 6 is publication.
+
+The sealed outputs are already on disk in `/opt/belief-r4-completion-v1-r3/calibration/selection/`:
+`synthetic-calibration-ref-0.json` and `-ref-1.json` (**1,390,021 B** each),
+`human-calibration-ref-0.json` and `-ref-1.json` (**29,496 B** each), plus `human-selection.json`,
+`scale-curve.json` and `manifest.json`. All four scoring passes and the derivation are done.
+No test directory exists yet. *Inferred, not measured:* minutes to low hours remain — I have not
+measured how long publication takes.
+
+**The status file cannot warn anyone.** `/opt/belief-r4-completion-e10cb3d-r3.status` still reads
+`phase=calibrating completed=1 percent=25.00 updated_utc=2026-08-26T01:32:48Z`, frozen at launch —
+the `2ed8d1c` write-once defect. It will not show the transition to `opening-test`.
+
+### Nothing gates the opening
+
+`r4_open_test` (`belief_v2_worker.py:522`) takes no authorization argument; it calls
+`run_r4_completion_terminal(root, freeze, admission, repo, review_marker, progress)`. Every
+refusal inside that function is a **within-root idempotence check** —
+`completion_attempt_path.exists()`, `final.exists()`, `partial.exists()`, `outer_path.exists()`,
+plus reopen-equality on the calibration and inner manifest. There is **no cross-lane check, no
+authorization flag, and no operator confirmation**, and there cannot be: the two lanes are on
+different hosts with different evidence roots and no shared state.
+
+### Both lanes hold the identical test partition
+
+- `group-split.json` SHA-256 **`f29dea82f4497ffe6ad0fea9ed1c143c4d4c9864bd8890e664cceb49ca3b72fd`**
+  on Cloud **and** on Perf.
+- `inventory.json` SHA-256 **`f1ddcd617dc9743d9d1357f09440c40fbf2eef29fc75ff7a8f00b41143a62071`**
+  on both.
+
+So the two lanes would open the same held-out data, which is what "one-shot" exists to prevent.
+
+### Why the reviewed plan cannot hold as written
+
+`HANDOFF_ACTIVE.md` says the serial worker "remains a fallback only. It stays live until the
+optimized path has completed calibration, independently reopened it, passed the read-only
+pre-test readiness gate, and proved **both test namespaces untouched**", and that the operator
+should "stop the serial service immediately **before** the one optimized `r4-open-test`."
+
+That ordering is inverted by the launch times, and the arithmetic is not close. Serial started
+`2026-08-26 01:32:30 UTC`; optimized started `2026-08-26 15:38:04 UTC`, **14 h 05 m 34 s** later,
+and is only **1.186×** faster per population (16.921 h vs 20.074 h on the one population both have
+completed). Optimized is currently at `score-r4-synthetic-ref1-rounds 650/1326` — **milestone 2 of
+6**, roughly **15 h** from its own test opening.
+
+So the fallback reaches the irreversible step first, its launcher fires it unattended, and
+"both test namespaces untouched" becomes false — which by the plan's own predicate blocks the
+optimized lane from ever opening the test.
+
+### What I am *not* claiming
+
+I am not claiming the science is destroyed. If #152's byte-identical parity holds on the terminal
+path as it did on calibration projection, both lanes would compute the same answer and this is one
+look computed twice rather than two independent looks. I have not verified parity on the terminal
+path — only on projection, at `394354f`. I am also not claiming a defect in reviewed source: the
+launcher predates the two-lane cutover, and each piece is correct alone. The gap is in the
+**interaction** — a plan that requires a manual stop, and an unattended launcher that does not
+wait for one.
+
+That shape is familiar: the gate exists in the document and not in the machine. It is the same
+family as the wall-cap class, and the cost here is an irreversible one-shot rather than a restart.
+
+### What I suggest, none of which I can do
+
+I cannot stop, signal or reconfigure anything, and I have not.
+
+1. If the optimized lane is meant to own the terminal result, the serial service has to be stopped
+   **before its calibrate returns**, and that window is closing now.
+2. If the serial lane owning it is acceptable, say so explicitly and retire the optimized lane's
+   test step — but as a decision, not as a consequence of which launcher returned first.
+3. Either way: a launcher that chains an irreversible one-shot behind a multi-day stage should
+   require an explicit authorization artifact between them, so the plan's gate exists in the
+   machine too.
+
+Measured read-only at **2026-08-27T15:35–15:42Z**; no unit signalled, stopped or reconfigured; no
+calibration or test bytes opened — directory names and sizes only. — Claude (session `f4b0ea92`)

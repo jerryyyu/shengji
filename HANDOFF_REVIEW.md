@@ -4722,3 +4722,26 @@ Cloud serial is unchanged at exactly **1.000 core** instantaneous over the same 
 still `RuntimeMaxUSec=infinity`, still population **1 / 6**.
 
 Read-only; nothing signalled or reconfigured. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 05:40 EDT — the `1e20021` 53.6 h shortfall is CORRECT, independently reproduced. Separately: the per-phase ETA is broken and reports 258 h, which would misdirect the fix
+
+**Corroborating, not contesting.** I measured the same live Perf unit independently and reach the same conclusion: `belief-r4-parallel-completion-d82ba22-r1.service` cannot finish calibration inside its own `RuntimeMaxUSec=2d`. Read at **2026-08-27T09:34:22Z**: `ExecMainStartTimestamp=2026-08-26 15:38:04 UTC`, elapsed **17.94 h**, allowance remaining **30.06 h**, deadline **2026-08-28T15:38:04Z**. The outer counter `score-r4-calibration-populations` reads `1/6` with phase elapsed 16.92 h, so six populations project to **101.5 h** against a 48 h cap — **53.5 h short**, matching `1e20021` to within rounding.
+
+**Also worth recording: my #152 launcher condition was honoured.** That entry's non-blocking condition asked the optimized launcher to set the guards the serial `r3` lane lacks. This unit has `MemoryMax=25769803776` (24.0 GiB), `MemorySwapMax=0` and `RuntimeMaxUSec=2d`, and memory is comfortable at `MemoryPeak` 14.97 GiB. The memory guards are working exactly as intended. The wall cap is the one that binds — and it binds because it was never sized against a calibration measurement, which is `1e20021`'s point.
+
+**The new finding: the per-phase ETA is computed from the wrong elapsed baseline.** Three progress streams are live at once, and read at the same instant they disagree by 2.5×:
+
+| phase | units | phase elapsed reported | est. remaining | projected total |
+|---|---|---|---|---|
+| `score-r4-calibration-populations` | 1 / 6 | 16.92 h | 84.6 h | **101.5 h** |
+| `score-r4-synthetic-ref0-rounds` | 1326 / 1326 | 16.92 h | 0 h | 16.9 h |
+| `score-r4-synthetic-ref1-rounds` | 92 / 1326 | **17.93 h** | **240.4 h** | **258.4 h** |
+
+`ref1` began when `ref0` finished at 16.92 h, so its true phase elapsed at my read was **1.01 h**, not 17.93 h — the record is carrying whole-run elapsed into a phase-local field. Its 92 completed rounds in 1.01 h give **39.5 s/round**, against `ref0`'s measured **45.9 s/round**; `ref1` is therefore projecting to about **14.6 h**, slightly faster than `ref0`, not 240 h. The 240.4 h figure is `17.93 h / 92 × 1234`: total-run elapsed divided by phase-local units.
+
+**Why this matters beyond tidiness, and it is time-critical.** A reader taking the inner record at face value concludes the run needs ~258 h and is ~210 h over cap — I did exactly that on first read, before comparing the streams — and would conclude the approach needs rethinking rather than a resized cap. The outer counter and the measured per-round rates both say ~101.5 h, i.e. the remedy is a correctly sized wall cap (plus the parallel speedup already merged), not a redesign. Getting that wrong in either direction is expensive with 30 h left on the clock.
+
+This is the same family as `2ed8d1c` (write-once status artifact) but a distinct defect: there the progress signal did not advance; here it advances but its ETA arithmetic is wrong for every phase after the first. Suggested fix, off the critical path: stamp a phase-start monotonic value into each record and derive `estimated_remaining_nanoseconds` from `now − phase_start`, not from run elapsed. The `1e20021` conclusion and its deadline stand unchanged.
+
+No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+

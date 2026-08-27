@@ -179,7 +179,27 @@ def extract_final_response(stdout: bytes) -> bytes | None:
         text = text[3:-3].strip()
         if text.startswith("json"):
             text = text[4:].strip()
-    return text.encode("utf-8")
+    try:
+        json.loads(text)
+        return text.encode("utf-8")
+    except json.JSONDecodeError:
+        pass
+    # Claude commonly prefixes a prose recap before the required JSON
+    # object (observed live 2026-08-27: 53-turn completed round with the
+    # exact final JSON on the last line).  Take the trailing line that
+    # parses as a JSON object; the session still validates schema, status
+    # and the engine-issued completion token strictly, so this leniency is
+    # envelope-shaped only and cannot launder a forged final.
+    for line in reversed(text.splitlines()):
+        candidate = line.strip()
+        if not candidate.startswith("{"):
+            continue
+        try:
+            if type(json.loads(candidate)) is dict:
+                return candidate.encode("utf-8")
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 def make_claude_planner_process(model: str = CLAUDE_MODEL):

@@ -91,6 +91,13 @@ def test_final_envelope_extraction_is_strict_with_single_fence_leniency():
         {"result": f"```json\n{inner}\n```"}).encode("utf-8")
     assert json.loads(cla0.extract_final_response(fenced)) == \
         json.loads(inner)
+    prosed = json.dumps({"result": (
+        "I dumped 20 points on the HK-HK-HA throw and drained trumps.\n"
+        + inner)}).encode("utf-8")
+    assert json.loads(cla0.extract_final_response(prosed)) == \
+        json.loads(inner)
+    prose_only = json.dumps({"result": "no json here at all"}).encode()
+    assert cla0.extract_final_response(prose_only) is None
     assert cla0.extract_final_response(b"not json") is None
     assert cla0.extract_final_response(json.dumps(
         {"result": 7}).encode("utf-8")) is None

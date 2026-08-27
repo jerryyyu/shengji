@@ -965,7 +965,9 @@ def run_sol_session(
         os.chmod(workspace, 0o700)
         mailbox_path = workspace / "controller-mailbox"
         final_path = workspace / "final.json"
-        prompt = planner_prompt(
+        prompt_builder = getattr(
+            session, "planner_prompt_builder", None) or planner_prompt
+        prompt = prompt_builder(
             mailbox_path=mailbox_path, tool_script=tool_script,
             python=Path(sys.executable))
         completed: subprocess.CompletedProcess[bytes] | None = None

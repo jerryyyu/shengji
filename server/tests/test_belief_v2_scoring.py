@@ -221,6 +221,66 @@ def test_process_parallel_decisions_are_byte_identical(monkeypatch):
     assert parallel == serial
 
 
+def test_decision_pool_uses_filename_backed_tensor_transport(monkeypatch):
+    """The complete model population must not consume one FD per storage."""
+    cohort = _cohort()
+    observed = []
+    sharing_strategy = ["file_descriptor"]
+
+    class Executor:
+        def __init__(self, **kwargs):
+            observed.append((
+                "executor", SCORING.torch_multiprocessing
+                .get_sharing_strategy(), kwargs))
+
+        def shutdown(self, **kwargs):
+            observed.append(("shutdown", kwargs))
+
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "get_all_sharing_strategies",
+        lambda: {"file_descriptor", "file_system"})
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "get_sharing_strategy",
+        lambda: sharing_strategy[0])
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "set_sharing_strategy",
+        lambda value: sharing_strategy.__setitem__(0, value))
+    monkeypatch.setattr(SCORING, "ProcessPoolExecutor", Executor)
+    pool = SCORING.V2DecisionScoringPool((cohort,))
+    assert observed[0][0:2] == ("executor", "file_system")
+    assert observed[0][2]["mp_context"].get_start_method() == "forkserver"
+    assert SCORING.torch_multiprocessing.get_sharing_strategy() \
+        == "file_system"
+    pool.close()
+    assert SCORING.torch_multiprocessing.get_sharing_strategy() \
+        == "file_descriptor"
+    assert observed[-1] == (
+        "shutdown", {"wait": True, "cancel_futures": True})
+
+
+def test_decision_pool_refuses_missing_filename_transport(monkeypatch):
+    cohort = _cohort()
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "get_all_sharing_strategies",
+        lambda: {"file_descriptor"})
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="tensor transport is unavailable"):
+        SCORING.V2DecisionScoringPool((cohort,))
+
+
+def test_decision_pool_types_forkserver_fd_refusal():
+    pool = object.__new__(SCORING.V2DecisionScoringPool)
+    pool.cohort_identity = (("cohort", ("a" * 64,) * 8),)
+
+    def refuse(*_args, **_kwargs):
+        raise ValueError("too many fds")
+
+    pool._executor = SimpleNamespace(map=refuse)
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="decision worker startup refused"):
+        pool.warm()
+
+
 def test_decision_pool_identity_and_result_order_can_refuse(monkeypatch):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     cohort = _cohort()

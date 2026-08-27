@@ -19,6 +19,8 @@ import os
 import time
 from typing import Any
 
+import torch.multiprocessing as torch_multiprocessing
+
 from .belief_cohort import COHORT_SEEDS, ensemble_ownership
 from .belief_artifacts import reopen_checkpoint_bundle
 from .belief_checkpoint import reopen_model_checkpoint
@@ -250,11 +252,33 @@ class V2DecisionScoringPool:
         if "forkserver" not in multiprocessing.get_all_start_methods():
             raise BeliefV2ScoringError(
                 "V2 decision worker start method is unavailable")
-        self._executor = ProcessPoolExecutor(
-            max_workers=V2_DECISION_WORKERS,
-            mp_context=multiprocessing.get_context("forkserver"),
-            initializer=_initialize_decision_worker,
-            initargs=(cohorts,))
+        strategies = torch_multiprocessing.get_all_sharing_strategies()
+        if "file_system" not in strategies:
+            raise BeliefV2ScoringError(
+                "V2 decision worker tensor transport is unavailable")
+        self._previous_sharing_strategy = (
+            torch_multiprocessing.get_sharing_strategy())
+        try:
+            # ``forkserver`` pickles the initializer arguments.  PyTorch's
+            # default Linux transport consumes one descriptor per tensor
+            # storage; the complete 16-member population exceeds the
+            # forkserver's descriptor-message ceiling before a worker can
+            # start.  Filename-backed shared storage preserves one parent
+            # model population across all workers without rebuilding models
+            # or weakening the exact checkpoint identity.
+            torch_multiprocessing.set_sharing_strategy("file_system")
+            if torch_multiprocessing.get_sharing_strategy() != "file_system":
+                raise BeliefV2ScoringError(
+                    "V2 decision worker tensor transport drift")
+            self._executor = ProcessPoolExecutor(
+                max_workers=V2_DECISION_WORKERS,
+                mp_context=multiprocessing.get_context("forkserver"),
+                initializer=_initialize_decision_worker,
+                initargs=(cohorts,))
+        except Exception:
+            torch_multiprocessing.set_sharing_strategy(
+                self._previous_sharing_strategy)
+            raise
 
     def __enter__(self) -> V2DecisionScoringPool:
         return self
@@ -263,7 +287,11 @@ class V2DecisionScoringPool:
         self.close()
 
     def close(self) -> None:
-        self._executor.shutdown(wait=True, cancel_futures=True)
+        try:
+            self._executor.shutdown(wait=True, cancel_futures=True)
+        finally:
+            torch_multiprocessing.set_sharing_strategy(
+                self._previous_sharing_strategy)
 
     def warm(self) -> None:
         try:
@@ -274,7 +302,7 @@ class V2DecisionScoringPool:
                 chunksize=1))
         except BeliefV2ScoringError:
             raise
-        except (OSError, RuntimeError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             raise BeliefV2ScoringError(
                 "V2 decision worker startup refused") from exc
         pids = tuple(pid for pid, _ in observed)

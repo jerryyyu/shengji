@@ -37,6 +37,7 @@ from .privileged_teacher_sol0 import (
 from .privileged_teacher_sol0_report import Sol0Design
 
 CLA0_DESIGN_SCHEMA = "privileged-teacher-cla0-design-v1"
+REASONING_EFFORT = "high"
 CLAUDE_MODEL = "claude-fable-5"
 # One run pins exactly one model; each model produces a distinct frozen
 # design SHA because the model tag is part of the bound identity string.
@@ -106,6 +107,7 @@ def claude_planner_command(
     return (
         str(claude_binary), "-p",
         "--model", model,
+        "--effort", REASONING_EFFORT,
         "--output-format", "json",
         *ISOLATION_FLAGS,
         "--tools", "Bash",
@@ -140,7 +142,7 @@ class Cla0Design(Sol0Design):
         payload["planner_config"] = {
             "planner": "claude-cli",
             "model": self.claude_model,
-            "reasoning_effort": "cli-default",
+            "reasoning_effort": REASONING_EFFORT,
             "max_planner_turns": MAX_PLANNER_TURNS,
             "isolation_flags": list(ISOLATION_FLAGS),
             "tools": ["Bash"],

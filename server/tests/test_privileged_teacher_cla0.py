@@ -30,6 +30,7 @@ def test_claude_command_is_exactly_the_reviewed_isolated_shape(tmp_path):
     assert command == (
         str(tmp_path / "claude"), "-p",
         "--model", cla0.CLAUDE_MODEL,
+        "--effort", cla0.REASONING_EFFORT,
         "--output-format", "json",
         "--safe-mode",
         "--bare",
@@ -187,6 +188,7 @@ def test_design_payload_identifies_claude_and_matches_command(tmp_path):
     assert payload["model"] == cla0.CLAUDE_MODEL
     config = payload["planner_config"]
     assert config["planner"] == "claude-cli"
+    assert config["reasoning_effort"] == cla0.REASONING_EFFORT == "high"
     assert config["isolation_flags"] == list(cla0.ISOLATION_FLAGS)
     assert config["tools"] == ["Bash"]
     assert config["max_planner_turns"] == cla0.MAX_PLANNER_TURNS
@@ -194,6 +196,8 @@ def test_design_payload_identifies_claude_and_matches_command(tmp_path):
         claude_binary=tmp_path / "claude", tool_command="/t",
         model=payload["model"])
     assert command[command.index("--model") + 1] == payload["model"]
+    assert command[command.index("--effort") + 1] == \
+        config["reasoning_effort"]
     assert payload["codex_version"] == "9.9.9 (Claude Code)"
     from shengji.rl.privileged_teacher_sol0 import (
         MAX_EVALUATIONS_PER_DECISION, MAX_EVALUATIONS_PER_ROUND)

@@ -10,6 +10,7 @@ if not sys.flags.safe_path or not sys.dont_write_bytecode:
 
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -57,6 +58,11 @@ from shengji.rl.belief_v2_r4_completion import (
     validate_r4_completion_consumption_tombstone,
 )
 from shengji.rl.belief_v2_r4_terminal_parallel import (
+    CAPACITY_FIELDS,
+    CAPACITY_MEASUREMENT_ORDER,
+    CAPACITY_SCHEMA,
+    MAXIMUM_SYNTHETIC_DECISIONS_PER_ROUND,
+    V2_DECISION_WORKERS,
     build_r4_terminal_calibration_import,
     build_r4_terminal_parallel_freeze,
     load_calibration_import,
@@ -64,9 +70,14 @@ from shengji.rl.belief_v2_r4_terminal_parallel import (
     r4_terminal_parallel_capacity,
     r4_terminal_parallel_readiness,
     recover_r4_terminal_parallel,
-    reopen_r4_terminal_parallel_capacity,
     reopen_r4_terminal_parallel,
     run_r4_terminal_parallel,
+    synthetic_round_key,
+)
+from shengji.rl.belief_v2_protocol import (
+    V2_RANKS,
+    V2_SPLIT_COUNTS,
+    v2_round_coordinates,
 )
 
 
@@ -108,9 +119,115 @@ def _validate_private_inputs(raw_inventory: bytes, raw_split: bytes, freeze) \
         raise ValueError("R4 terminal private input identity drift")
 
 
+def _reopen_frozen_capacity_binding(
+        raw: bytes, *, freeze, terminal_spec, calibration_import) -> dict:
+    """Reopen a capacity receipt already deep-verified into the freeze.
+
+    The capacity command and freeze builder independently reconstruct the
+    imported calibration and trained cohorts.  Once the reviewed freeze binds
+    those exact receipt bytes, later stage gates must authenticate the binding,
+    runtime and authority surface without replaying that multi-hour verifier on
+    every command.
+    """
+    try:
+        payload = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("R4 terminal frozen capacity is not JSON") from exc
+    coordinate_population = v2_round_coordinates()
+    matches_by_rank = tuple(tuple(
+        row for row in coordinate_population
+        if row.trump_rank == rank and row.split == "calibration")
+        for rank in V2_RANKS)
+    if any(len(matches) == 0 for matches in matches_by_rank):
+        raise ValueError("R4 terminal frozen capacity rank drift")
+    coordinates = tuple(matches[0] for matches in matches_by_rank)
+    positive_fields = (
+        "rank_count", "decision_count", "serial_wall_nanoseconds",
+        "parallel_wall_nanoseconds", "serial_cpu_nanoseconds",
+        "parallel_cpu_nanoseconds", "speedup_ppb",
+        "aggregate_peak_host_memory_upper_bound_bytes",
+        "host_memory_cap_bytes", "worker_count",
+        "synthetic_test_round_count", "human_test_decision_count",
+        "maximum_synthetic_decisions_per_round",
+        "projected_maximum_test_decision_count",
+        "scientific_unit_scoring_pass_count",
+        "independent_verifier_scoring_pass_count",
+        "control_reopen_wall_nanoseconds",
+        "scientific_unit_control_reopen_count",
+        "independent_verifier_control_reopen_count",
+        "projected_scientific_control_wall_nanoseconds",
+        "projected_independent_verifier_control_wall_nanoseconds",
+        "projected_one_pass_wall_nanoseconds",
+        "projected_scientific_unit_wall_nanoseconds",
+        "projected_independent_verifier_wall_nanoseconds",
+        "terminal_wall_cap_nanoseconds",
+        "deadline_safety_reserve_nanoseconds",
+    )
+    expected_test_rounds = dict(V2_SPLIT_COUNTS)["test"]
+    if type(payload) is not dict or set(payload) != CAPACITY_FIELDS \
+            or canonical_json_bytes(payload) != raw \
+            or any(type(payload[key]) is not int or payload[key] <= 0
+                   for key in positive_fields) \
+            or payload["schema"] != CAPACITY_SCHEMA \
+            or payload["execution_git"] != freeze.execution_git \
+            or payload["source_manifest_sha256"] \
+            != freeze.source_manifest_sha256 \
+            or payload["runtime_sha256"] \
+            != freeze.preflight_runtime_sha256 \
+            or payload["terminal_source_spec_sha256"] \
+            != terminal_spec.sha256() \
+            or payload["calibration_import_sha256"] \
+            != calibration_import.sha256() \
+            or payload["calibration_manifest_sha256"] \
+            != calibration_import.calibration_selection_manifest_sha256 \
+            or payload["hostname"] != freeze.runtime.hostname \
+            or payload["machine"] != freeze.runtime.machine \
+            or payload["rank_count"] != len(V2_RANKS) \
+            or payload["trump_ranks"] != list(V2_RANKS) \
+            or payload["round_keys"] != [
+                synthetic_round_key(row.round_seed) for row in coordinates] \
+            or payload["measurement_order"] != CAPACITY_MEASUREMENT_ORDER \
+            or payload["parallel_wall_nanoseconds"] \
+            >= payload["serial_wall_nanoseconds"] \
+            or payload["speedup_ppb"] != (
+                payload["serial_wall_nanoseconds"] * 1_000_000_000
+                // payload["parallel_wall_nanoseconds"]) \
+            or payload["host_memory_cap_bytes"] \
+            != freeze.resource_caps.training_host_memory_bytes \
+            or payload["aggregate_peak_host_memory_upper_bound_bytes"] \
+            > payload["host_memory_cap_bytes"] \
+            or payload["host_memory_within_cap"] is not True \
+            or payload["worker_count"] != V2_DECISION_WORKERS \
+            or payload["synthetic_test_round_count"] \
+            != expected_test_rounds \
+            or payload["human_test_decision_count"] \
+            != freeze.human_test_eligible_decision_count \
+            or payload["maximum_synthetic_decisions_per_round"] \
+            != MAXIMUM_SYNTHETIC_DECISIONS_PER_ROUND \
+            or payload["terminal_wall_cap_nanoseconds"] \
+            != freeze.resource_caps.training_wall_seconds * 1_000_000_000 \
+            or payload["deadline_safety_reserve_nanoseconds"] \
+            != freeze.resource_caps.deadline_safety_reserve_nanoseconds \
+            or payload["projected_scientific_unit_wall_nanoseconds"] \
+            + payload["deadline_safety_reserve_nanoseconds"] \
+            >= payload["terminal_wall_cap_nanoseconds"] \
+            or payload["projected_independent_verifier_wall_nanoseconds"] \
+            + payload["deadline_safety_reserve_nanoseconds"] \
+            >= payload["terminal_wall_cap_nanoseconds"] \
+            or payload["exact_serial_parallel_parity"] is not True \
+            or payload["projected_within_wall_cap"] is not True \
+            or payload["test_split_decision_open_count"] != 0 \
+            or payload["test_opening_executed"] is not False \
+            or payload["execution_authorized"] is not False \
+            or payload["strength_claim_authorized"] is not False \
+            or payload["deployment_authorized"] is not False:
+        raise ValueError("R4 terminal frozen capacity binding drift")
+    return payload
+
+
 def _load_root(root: Path):
     terminal_spec = load_terminal_source_spec()
-    load_calibration_import()
+    calibration_import = load_calibration_import()
     names = {path.name for path in root.iterdir()}
     if not root.is_absolute() or root.is_symlink() or not root.is_dir() \
             or root != terminal_spec.destination_evidence_root \
@@ -138,8 +255,9 @@ def _load_root(root: Path):
             or _sha256(capacity_raw) \
             != freeze.deadline_estimate_receipt_sha256:
         raise ValueError("R4 terminal capacity/freeze binding drift")
-    capacity = reopen_r4_terminal_parallel_capacity(
-        capacity_raw, repo=REPO, expected_git=freeze.execution_git)
+    capacity = _reopen_frozen_capacity_binding(
+        capacity_raw, freeze=freeze, terminal_spec=terminal_spec,
+        calibration_import=calibration_import)
     if capacity["runtime_sha256"] != freeze.preflight_runtime_sha256:
         raise ValueError("R4 terminal capacity runtime binding drift")
     reauthenticate_r4_completion_admission(
@@ -158,7 +276,7 @@ def initialize(args: argparse.Namespace) -> None:
         raise ValueError("R4 terminal freeze file SHA drift")
     freeze = execution_freeze_from_bytes(freeze_raw)
     terminal_spec = load_terminal_source_spec()
-    load_calibration_import()
+    calibration_import = load_calibration_import()
     root = Path(freeze.evidence_root)
     if root != terminal_spec.destination_evidence_root \
             or freeze_path.parent != root.parent:
@@ -175,8 +293,9 @@ def initialize(args: argparse.Namespace) -> None:
             or _sha256(capacity_raw) \
             != freeze.deadline_estimate_receipt_sha256:
         raise ValueError("R4 terminal capacity file SHA drift")
-    capacity = reopen_r4_terminal_parallel_capacity(
-        capacity_raw, repo=REPO, expected_git=freeze.execution_git)
+    capacity = _reopen_frozen_capacity_binding(
+        capacity_raw, freeze=freeze, terminal_spec=terminal_spec,
+        calibration_import=calibration_import)
     if capacity["runtime_sha256"] != freeze.preflight_runtime_sha256:
         raise ValueError("R4 terminal capacity runtime binding drift")
     admission, marker = build_r4_completion_admission(

@@ -214,20 +214,12 @@ def _score_test_populations(
             tuple(sorted(human, key=lambda row: row.round_key)))
 
 
-def _calibration_statistics(
+def _calibration_statistics_from_manifest(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        inventory: dict[str, Any], group_split: dict[str, Any], *,
-        calibration_directory: Path | None = None,
-        legacy_tensor_cache_manifest_sha256: str | None = None):
-    directory = (root / "calibration" / "selection"
-                 if calibration_directory is None
-                 else calibration_directory)
-    manifest = reopen_v2_calibration_selection(
-        directory, freeze=freeze,
-        admission=admission, inventory=inventory, group_split=group_split,
-        legacy_tensor_cache_manifest_sha256=(
-            legacy_tensor_cache_manifest_sha256))
+        group_split: dict[str, Any], *, directory: Path,
+        manifest: dict[str, Any]):
+    """Recompute selected statistics from an already authenticated manifest."""
     if manifest["calibration_passed"] is not True \
             or manifest["selected_cohort_id"] not in {
                 PRIMARY_COHORT_ID, HUMAN_COHORT_ID}:
@@ -263,6 +255,25 @@ def _calibration_statistics(
         raise BeliefV2TerminalControllerError(
             "V2 terminal calibration selection drift")
     return manifest, human_selection, scale_curve
+
+
+def _calibration_statistics(
+        root: Path, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1,
+        inventory: dict[str, Any], group_split: dict[str, Any], *,
+        calibration_directory: Path | None = None,
+        legacy_tensor_cache_manifest_sha256: str | None = None):
+    directory = (root / "calibration" / "selection"
+                 if calibration_directory is None
+                 else calibration_directory)
+    manifest = reopen_v2_calibration_selection(
+        directory, freeze=freeze,
+        admission=admission, inventory=inventory, group_split=group_split,
+        legacy_tensor_cache_manifest_sha256=(
+            legacy_tensor_cache_manifest_sha256))
+    return _calibration_statistics_from_manifest(
+        root, freeze, admission, group_split,
+        directory=directory, manifest=manifest)
 
 
 def _parallel_span(resources: tuple[dict[str, Any], ...]) -> int:
@@ -631,7 +642,8 @@ def reopen_v2_terminal(
         parallel_decisions: bool = False,
         legacy_tensor_cache_manifest_sha256: str | None = None,
         progress: ProgressCallback | None = None,
-        calibration_directory: Path | None = None) \
+        calibration_directory: Path | None = None,
+        bound_calibration_manifest: dict[str, Any] | None = None) \
         -> dict[str, Any]:
     """Reopen raw score populations and rederive every terminal byte."""
     if type(parallel_decisions) is not bool \
@@ -657,11 +669,22 @@ def reopen_v2_terminal(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal control artifact is not JSON") from exc
-    calibration, human_selection, scale_curve = _calibration_statistics(
-        Path(freeze.evidence_root), freeze, admission, inventory, group_split,
-        calibration_directory=calibration_directory,
-        legacy_tensor_cache_manifest_sha256=(
-            legacy_tensor_cache_manifest_sha256))
+    calibration_root = Path(freeze.evidence_root)
+    selected_directory = (
+        calibration_root / "calibration" / "selection"
+        if calibration_directory is None else calibration_directory)
+    if bound_calibration_manifest is None:
+        calibration, human_selection, scale_curve = _calibration_statistics(
+            calibration_root, freeze, admission, inventory, group_split,
+            calibration_directory=selected_directory,
+            legacy_tensor_cache_manifest_sha256=(
+                legacy_tensor_cache_manifest_sha256))
+    else:
+        calibration, human_selection, scale_curve = (
+            _calibration_statistics_from_manifest(
+                calibration_root, freeze, admission, group_split,
+                directory=selected_directory,
+                manifest=bound_calibration_manifest))
     if attempt != _attempt(freeze, admission, calibration) \
             or canonical_json_bytes(attempt) != attempt_raw:
         raise BeliefV2TerminalControllerError(

@@ -22,6 +22,7 @@ from .belief_artifacts import stable_read_bytes
 from .belief_contract import canonical_json_bytes
 from .belief_v2_freeze import (
     V2ExecutionFreezeV1,
+    V2PipelineAdmissionV1,
     execution_freeze_from_bytes,
     validate_execution_freeze,
 )
@@ -55,6 +56,9 @@ from .belief_v2_r4_completion import (
     validate_r4_completion_consumption_tombstone,
 )
 from .belief_v2_calibration_controller import (
+    CALIBRATION_STAGE_SCHEMA,
+    POPULATION_FILES as CALIBRATION_POPULATION_FILES,
+    RESULT_FILES as CALIBRATION_RESULT_FILES,
     reopen_v2_calibration_selection,
 )
 from .belief_v2_scoring import (
@@ -315,8 +319,79 @@ def load_calibration_import(
     return result
 
 
+def _reopen_bound_calibration_selection(
+        directory: Path, *, freeze: V2ExecutionFreezeV1,
+        admission: V2PipelineAdmissionV1) -> dict[str, Any]:
+    """Reopen exact selection bytes after their deep import was committed.
+
+    This does not re-score epoch curves.  The import builder does that once;
+    this path proves that every immutable byte consumed later is the same byte
+    population that the deep reconstruction certified.
+    """
+    filenames = {
+        **CALIBRATION_POPULATION_FILES, **CALIBRATION_RESULT_FILES}
+    expected_names = {"manifest.json", *filenames.values()}
+    if not isinstance(directory, Path) or directory.is_symlink() \
+            or not directory.is_dir() \
+            or {path.name for path in directory.iterdir()} != expected_names:
+        raise BeliefV2R4TerminalParallelError(
+            "R4 bound calibration directory population drift")
+    manifest_raw = stable_read_bytes(directory / "manifest.json")
+    try:
+        payload = json.loads(manifest_raw)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise BeliefV2R4TerminalParallelError(
+            "R4 bound calibration manifest is not JSON") from exc
+    expected_keys = {
+        "schema", "freeze_sha256", "admission_sha256",
+        "training_input_sha256", "qualification_plan_sha256",
+        "qualification_result_sha256", "training_manifest_sha256s",
+        "cohort_ids", "files",
+        "synthetic_reference_replicates_stable",
+        "human_reference_replicates_stable", "calibration_passed",
+        "human_mixture_retained", "selected_cohort_id", "resources",
+        "selection_completed_before_test_open", "test_split_opened",
+        "test_open_authorized_by_this_artifact",
+        "sampler_implementation_authorized",
+        "gameplay_strength_screen_authorized", "strength_claim_authorized",
+        "deployment_authorized",
+    }
+    cohort_ids = [row.cohort_id for row in freeze.cohorts]
+    if type(payload) is not dict or set(payload) != expected_keys \
+            or canonical_json_bytes(payload) != manifest_raw \
+            or payload["schema"] != CALIBRATION_STAGE_SCHEMA \
+            or payload["freeze_sha256"] != freeze.sha256() \
+            or payload["admission_sha256"] != admission.sha256() \
+            or payload["cohort_ids"] != cohort_ids \
+            or type(payload["files"]) is not dict \
+            or set(payload["files"]) != set(filenames) \
+            or payload["calibration_passed"] is not True \
+            or payload["selected_cohort_id"] not in cohort_ids \
+            or payload["selection_completed_before_test_open"] is not True \
+            or payload["test_split_opened"] is not False \
+            or any(payload[key] is not False for key in (
+                "test_open_authorized_by_this_artifact",
+                "sampler_implementation_authorized",
+                "gameplay_strength_screen_authorized",
+                "strength_claim_authorized", "deployment_authorized")):
+        raise BeliefV2R4TerminalParallelError(
+            "R4 bound calibration manifest identity/authority drift")
+    for key, filename in filenames.items():
+        raw = stable_read_bytes(directory / filename)
+        row = payload["files"].get(key)
+        if type(row) is not dict or set(row) != {
+                "filename", "byte_count", "sha256"} \
+                or row["filename"] != filename \
+                or row["byte_count"] != len(raw) \
+                or row["sha256"] != _sha256(raw):
+            raise BeliefV2R4TerminalParallelError(
+                "R4 bound calibration file byte binding drift")
+    return payload
+
+
 def _reopen_sealed_calibration_source(
-        terminal_spec: R4CompletionSourceSpecV1, *, repo: Path) -> tuple[
+        terminal_spec: R4CompletionSourceSpecV1, *, repo: Path,
+        rederive_selection: bool = True) -> tuple[
             dict[str, Any], R4CompletionSourceV1, Path,
             R4CompletionSourceSpecV1, V2ExecutionFreezeV1,
             R4CompletionAdmissionV1, dict[str, bytes]]:
@@ -353,12 +428,18 @@ def _reopen_sealed_calibration_source(
             old_freeze, old_admission, repo=repo, review_marker=marker,
             spec=old_spec)
         source = reopen_r4_completion_source(old_spec, repo=repo)
-        calibration = reopen_v2_calibration_selection(
-            root / "calibration" / "selection", freeze=source.freeze,
-            admission=source.admission, inventory=source.inventory,
-            group_split=source.group_split,
-            legacy_tensor_cache_manifest_sha256=(
-                source.spec.source_tensor_cache_manifest_sha256))
+        selection = root / "calibration" / "selection"
+        calibration = (
+            reopen_v2_calibration_selection(
+                selection, freeze=source.freeze,
+                admission=source.admission, inventory=source.inventory,
+                group_split=source.group_split,
+                legacy_tensor_cache_manifest_sha256=(
+                    source.spec.source_tensor_cache_manifest_sha256))
+            if rederive_selection else
+            _reopen_bound_calibration_selection(
+                selection, freeze=source.freeze,
+                admission=source.admission))
     except (ValueError, json.JSONDecodeError) as exc:
         raise BeliefV2R4TerminalParallelError(
             "R4 imported calibration reopen refused") from exc
@@ -437,6 +518,37 @@ def reopen_imported_calibration(
     return calibration, source, selection
 
 
+def reopen_bound_imported_calibration(
+        terminal_spec: R4CompletionSourceSpecV1,
+        calibration_import: R4TerminalCalibrationImportV1, *, repo: Path) \
+        -> tuple[dict[str, Any], R4CompletionSourceV1, Path]:
+    """Authenticate imported bytes without repeating their deep derivation."""
+    calibration, source, selection, old_spec, old_freeze, _, raw = (
+        _reopen_sealed_calibration_source(
+            terminal_spec, repo=repo, rederive_selection=False))
+    expected = {
+        "freeze": calibration_import.calibration_freeze_sha256,
+        "admission": calibration_import.calibration_admission_sha256,
+        "review": calibration_import.calibration_review_marker_sha256,
+        "consumption": (
+            calibration_import.calibration_consumption_tombstone_sha256),
+        "source_spec": calibration_import.calibration_source_spec_sha256,
+        "selection": calibration_import.calibration_selection_manifest_sha256,
+        "reconstructed_outer": (
+            calibration_import.calibration_reconstructed_outer_sha256),
+    }
+    if any(_sha256(raw[key]) != digest for key, digest in expected.items()):
+        raise BeliefV2R4TerminalParallelError(
+            "R4 bound calibration byte binding drift")
+    if old_freeze.execution_git \
+            != calibration_import.calibration_execution_git \
+            or old_spec.destination_evidence_root \
+            != calibration_import.calibration_evidence_root:
+        raise BeliefV2R4TerminalParallelError(
+            "R4 bound calibration reconstructed outer binding drift")
+    return calibration, source, selection
+
+
 def _parity_coordinates():
     rows = []
     for rank in V2_RANKS:
@@ -458,7 +570,7 @@ def _capacity_context(*, repo: Path, expected_git: str) -> _CapacityContext:
     calibration_import = load_calibration_import()
     bindings = build_source_bindings(repo, expected_git=expected_git)
     runtime = build_runtime_profile()
-    calibration, source, _ = reopen_imported_calibration(
+    calibration, source, _ = reopen_bound_imported_calibration(
         terminal_spec, calibration_import, repo=repo)
     coordinates = _parity_coordinates()
     try:
@@ -914,7 +1026,7 @@ def r4_terminal_parallel_readiness(
         raise BeliefV2R4TerminalParallelError(
             "R4 terminal pretest namespace is occupied")
     calibration, source, calibration_directory = (
-        reopen_imported_calibration(
+        reopen_bound_imported_calibration(
             terminal_spec, calibration_import, repo=repo))
     try:
         _, training_inputs = reopen_training_input_index(
@@ -961,11 +1073,12 @@ def run_r4_terminal_parallel(
     terminal_spec, calibration_import = _stage(
         root, freeze, admission, repo=repo, review_marker=review_marker)
     calibration, source, calibration_directory = (
-        reopen_imported_calibration(
+        reopen_bound_imported_calibration(
             terminal_spec, calibration_import, repo=repo))
     return _run_r4_completion_terminal_reopened(
         root, freeze, admission, calibration=calibration, source=source,
-        calibration_directory=calibration_directory, progress=progress)
+        calibration_directory=calibration_directory,
+        bound_calibration_manifest=calibration, progress=progress)
 
 
 def reopen_r4_terminal_parallel(
@@ -976,11 +1089,12 @@ def reopen_r4_terminal_parallel(
     terminal_spec, calibration_import = _stage(
         root, freeze, admission, repo=repo, review_marker=review_marker)
     calibration, source, calibration_directory = (
-        reopen_imported_calibration(
+        reopen_bound_imported_calibration(
             terminal_spec, calibration_import, repo=repo))
     return _reopen_r4_completion_terminal_reopened(
         root, freeze, admission, calibration=calibration, source=source,
-        calibration_directory=calibration_directory, progress=progress)
+        calibration_directory=calibration_directory,
+        bound_calibration_manifest=calibration, progress=progress)
 
 
 def recover_r4_terminal_parallel(
@@ -992,11 +1106,12 @@ def recover_r4_terminal_parallel(
     terminal_spec, calibration_import = _stage(
         root, freeze, admission, repo=repo, review_marker=review_marker)
     calibration, source, calibration_directory = (
-        reopen_imported_calibration(
+        reopen_bound_imported_calibration(
             terminal_spec, calibration_import, repo=repo))
     return _recover_r4_completion_terminal_reopened(
         root, freeze, admission, calibration=calibration, source=source,
-        calibration_directory=calibration_directory, progress=progress)
+        calibration_directory=calibration_directory,
+        bound_calibration_manifest=calibration, progress=progress)
 
 
 __all__ = [
@@ -1005,7 +1120,8 @@ __all__ = [
     "build_r4_terminal_parallel_freeze",
     "load_calibration_import", "load_terminal_source_spec",
     "r4_terminal_parallel_capacity", "reopen_r4_terminal_parallel_capacity",
-    "r4_terminal_parallel_readiness", "reopen_imported_calibration",
+    "r4_terminal_parallel_readiness", "reopen_bound_imported_calibration",
+    "reopen_imported_calibration",
     "recover_r4_terminal_parallel", "reopen_r4_terminal_parallel",
     "run_r4_terminal_parallel",
 ]

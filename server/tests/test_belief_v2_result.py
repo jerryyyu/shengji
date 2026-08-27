@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 import shengji.rl.belief_v2_controller as PIPELINE_STAGE
+import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 import shengji.rl.belief_v2_r4_completion as R4_COMPLETION
@@ -502,7 +503,9 @@ def _terminal_capacity_context(tmp_path: Path):
         destination_evidence_root=destination,
         sha256=lambda: _sha("terminal-source-spec"))
     calibration_import = SimpleNamespace(
-        sha256=lambda: _sha("calibration-import"))
+        sha256=lambda: _sha("calibration-import"),
+        calibration_selection_manifest_sha256=_sha_bytes(
+            canonical_json_bytes({"schema": "sealed-calibration"})))
     return R4_PARALLEL._CapacityContext(
         terminal_spec=terminal_spec,
         calibration_import=calibration_import,
@@ -729,6 +732,21 @@ def test_r4_terminal_calibration_import_is_canonical_and_narrow(tmp_path):
             canonical_json_bytes(forged))
 
 
+def test_r4_terminal_production_import_is_exact_deep_reconstruction():
+    raw = R4_PARALLEL.CALIBRATION_IMPORT_PATH.read_bytes()
+    imported = R4_PARALLEL.load_calibration_import(raw)
+    assert _sha_bytes(raw) \
+        == "61d62ddb2229c8d6f6acd7eb4b630a96063b009248091be31def4790b29ac48e"
+    assert imported.canonical_bytes() == raw
+    assert imported.calibration_execution_git \
+        == "e10cb3d3426d758f2d757d41462aba6a06bc60c8"
+    assert imported.calibration_selection_manifest_sha256 \
+        == "a037dd85f15c3269b43000ac205761cb17586a6c3791f702bd015ac81c42e8a8"
+    assert imported.to_dict()["calibration_completion_outer_absent"] is True
+    assert imported.to_dict()["authority"][
+        "one_test_split_open_authorized"] is False
+
+
 def test_r4_terminal_builds_import_only_from_reopened_sealed_selection(
         tmp_path, monkeypatch):
     old_root = (tmp_path / "old-completion").resolve()
@@ -858,6 +876,54 @@ def test_r4_terminal_import_refuses_consumed_prior_test_namespace(
             terminal_spec, imported, repo=tmp_path.resolve())
 
 
+def test_r4_terminal_bound_calibration_reopens_exact_deep_import_bytes(
+        tmp_path):
+    """The fast post-import path still binds every selected artifact byte."""
+    directory = tmp_path / "selection"
+    directory.mkdir()
+    freeze = _freeze()
+    admission = _admission(freeze)
+    files = {
+        key: f"{key}\n".encode("ascii")
+        for key in {
+            *CALIBRATION_STAGE.POPULATION_FILES,
+            *CALIBRATION_STAGE.RESULT_FILES}}
+    manifest = CALIBRATION_STAGE._manifest(
+        freeze, admission,
+        training_input_sha256=_sha("training-input"),
+        qualification_plan_sha256=_sha("qualification-plan"),
+        qualification_result_sha256=_sha("qualification-result"),
+        training_manifest_sha256s=tuple(
+            (row.cohort_id, _sha(row.cohort_id)) for row in freeze.cohorts),
+        files=files, synthetic_stable=True, human_stable=True,
+        human_retained=False,
+        selected_cohort_id=freeze.cohorts[0].cohort_id,
+        resources={"schema": "bound-resource-witness"})
+    filenames = {
+        **CALIBRATION_STAGE.POPULATION_FILES,
+        **CALIBRATION_STAGE.RESULT_FILES}
+    for key, filename in filenames.items():
+        path = directory / filename
+        path.write_bytes(files[key])
+        path.chmod(0o400)
+    manifest_path = directory / "manifest.json"
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    manifest_path.chmod(0o400)
+
+    assert R4_PARALLEL._reopen_bound_calibration_selection(
+        directory, freeze=freeze, admission=admission) == manifest
+
+    changed = directory / filenames["scale_curve"]
+    changed.chmod(0o600)
+    changed.write_bytes(b"changed\n")
+    changed.chmod(0o400)
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="file byte binding drift"):
+        R4_PARALLEL._reopen_bound_calibration_selection(
+            directory, freeze=freeze, admission=admission)
+
+
 def test_r4_terminal_readiness_warms_workers_without_test_open(
         tmp_path, monkeypatch):
     root = (tmp_path / "terminal").resolve()
@@ -879,7 +945,7 @@ def test_r4_terminal_readiness_warms_workers_without_test_open(
         R4_PARALLEL, "_stage", lambda *args, **kwargs: (
             terminal_spec, imported))
     monkeypatch.setattr(
-        R4_PARALLEL, "reopen_imported_calibration",
+        R4_PARALLEL, "reopen_bound_imported_calibration",
         lambda *args, **kwargs: (
             calibration, source, calibration_root / "selection"))
     monkeypatch.setattr(
@@ -927,6 +993,59 @@ def test_r4_terminal_readiness_warms_workers_without_test_open(
             root, freeze, admission, repo=tmp_path.resolve(),
             review_marker=b"review")
     assert warmed == [True]
+
+
+def test_r4_terminal_wrappers_forward_bound_calibration_to_every_replay(
+        tmp_path, monkeypatch):
+    """Scientific, immediate and recovery paths share the authenticated row."""
+    root = (tmp_path / "terminal").resolve()
+    root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    terminal_spec = object()
+    imported = object()
+    calibration = {"schema": "bound-calibration"}
+    source = object()
+    selection = tmp_path / "selection"
+    monkeypatch.setattr(
+        R4_PARALLEL, "_stage", lambda *args, **kwargs: (
+            terminal_spec, imported))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_bound_imported_calibration",
+        lambda *args, **kwargs: (calibration, source, selection))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_imported_calibration",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("deep calibration replay must not run")))
+    calls = []
+
+    def record(label):
+        def wrapped(*args, **kwargs):
+            calls.append((label, args, kwargs))
+            return {"label": label}
+        return wrapped
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "_run_r4_completion_terminal_reopened", record("run"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_reopen_r4_completion_terminal_reopened",
+        record("reopen"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_recover_r4_completion_terminal_reopened",
+        record("recover"))
+
+    common = dict(repo=tmp_path.resolve(), review_marker=b"review")
+    assert R4_PARALLEL.run_r4_terminal_parallel(
+        root, freeze, admission, **common) == {"label": "run"}
+    assert R4_PARALLEL.reopen_r4_terminal_parallel(
+        root, freeze, admission, **common) == {"label": "reopen"}
+    assert R4_PARALLEL.recover_r4_terminal_parallel(
+        root, freeze, admission, **common) == {"label": "recover"}
+    assert [label for label, _, _ in calls] == ["run", "reopen", "recover"]
+    for _, _, kwargs in calls:
+        assert kwargs["calibration"] is calibration
+        assert kwargs["bound_calibration_manifest"] is calibration
+        assert kwargs["calibration_directory"] == selection
 
 
 def test_r4_terminal_parity_coordinates_cover_every_rank_without_test():
@@ -1065,6 +1184,118 @@ def test_r4_terminal_capacity_receipt_binds_parity_deadline_and_authority(
                 expected_git="a" * 40)
 
 
+def test_r4_terminal_runner_reopens_reviewed_capacity_without_deep_replay(
+        tmp_path):
+    """Post-freeze stage gates bind the receipt without replaying training."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_frozen_capacity_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    context = _terminal_capacity_context(tmp_path)
+    receipt = _terminal_capacity_receipt(context)
+    freeze = replace(
+        context.source.freeze,
+        execution_git="a" * 40,
+        source_manifest_sha256=receipt["source_manifest_sha256"],
+        runtime=context.runtime,
+        preflight_runtime_sha256=receipt["runtime_sha256"])
+    raw = canonical_json_bytes(receipt)
+    assert runner._reopen_frozen_capacity_binding(
+        raw, freeze=freeze, terminal_spec=context.terminal_spec,
+        calibration_import=context.calibration_import) == receipt
+
+    forged = dict(receipt)
+    forged["test_opening_executed"] = True
+    with pytest.raises(ValueError, match="frozen capacity binding drift"):
+        runner._reopen_frozen_capacity_binding(
+            canonical_json_bytes(forged), freeze=freeze,
+            terminal_spec=context.terminal_spec,
+            calibration_import=context.calibration_import)
+
+
+def test_r4_terminal_initialize_wires_frozen_capacity_not_deep_replay(
+        tmp_path, monkeypatch):
+    """Initialization consumes the reviewed receipt without replaying it."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_initialize_capacity_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    root = (tmp_path / "terminal").resolve()
+    freeze_path = (tmp_path / "freeze.json").resolve()
+    inventory_path = (tmp_path / "inventory.json").resolve()
+    split_path = (tmp_path / "group-split.json").resolve()
+    capacity_path = (tmp_path / "capacity.json").resolve()
+    inventory_raw = b"inventory\n"
+    split_raw = b"split\n"
+    capacity_raw = b"capacity\n"
+    freeze = replace(
+        _freeze(), evidence_root=str(root), execution_git="a" * 40,
+        h0_inventory_sha256=_sha_bytes(inventory_raw),
+        human_group_split_sha256=_sha_bytes(split_raw),
+        preflight_result_sha256=_sha_bytes(capacity_raw),
+        deadline_estimate_receipt_sha256=_sha_bytes(capacity_raw),
+        preflight_runtime_sha256=_sha("runtime"))
+    freeze_path.write_bytes(freeze.canonical_bytes())
+    inventory_path.write_bytes(inventory_raw)
+    split_path.write_bytes(split_raw)
+    capacity_path.write_bytes(capacity_raw)
+    for path in (freeze_path, inventory_path, split_path, capacity_path):
+        path.chmod(0o400)
+    terminal_spec = SimpleNamespace(destination_evidence_root=root)
+    calibration_import = object()
+    admission = SimpleNamespace(
+        canonical_bytes=lambda: b"admission\n",
+        sha256=lambda: _sha("admission"), review_commit="b" * 40)
+    monkeypatch.setattr(
+        runner, "load_terminal_source_spec", lambda: terminal_spec)
+    monkeypatch.setattr(
+        runner, "load_calibration_import", lambda: calibration_import)
+    monkeypatch.setattr(
+        runner, "execution_freeze_from_bytes", lambda raw: freeze)
+    monkeypatch.setattr(
+        runner, "validate_live_execution", lambda **kwargs: None)
+    capacity_calls = []
+
+    def reopen_capacity(raw, **kwargs):
+        capacity_calls.append((raw, kwargs))
+        return {"runtime_sha256": freeze.preflight_runtime_sha256}
+
+    monkeypatch.setattr(
+        runner, "_reopen_frozen_capacity_binding", reopen_capacity)
+    monkeypatch.setattr(
+        runner, "build_r4_completion_admission",
+        lambda *args, **kwargs: (admission, b"review\n"))
+    monkeypatch.setattr(
+        runner, "r4_completion_consumption_tombstone_bytes",
+        lambda value: b"consumed\n")
+    loaded = []
+    monkeypatch.setattr(runner, "_load_root", lambda value: loaded.append(value))
+    outputs = []
+    monkeypatch.setattr(runner, "_output", outputs.append)
+
+    runner.initialize(SimpleNamespace(
+        freeze=str(freeze_path),
+        expected_freeze_sha256=_sha_bytes(freeze.canonical_bytes()),
+        review_commit="b" * 40, inventory=str(inventory_path),
+        group_split=str(split_path), capacity=str(capacity_path),
+        expected_capacity_sha256=_sha_bytes(capacity_raw)))
+
+    assert capacity_calls == [(capacity_raw, {
+        "freeze": freeze, "terminal_spec": terminal_spec,
+        "calibration_import": calibration_import})]
+    assert loaded == [root]
+    assert outputs[0]["test_opening_executed"] is False
+    assert not hasattr(runner, "reopen_r4_terminal_parallel_capacity")
+
+
 def test_r4_terminal_freeze_builder_binds_live_source_capacity_and_root(
         tmp_path, monkeypatch):
     context = _terminal_capacity_context(tmp_path)
@@ -1146,9 +1377,9 @@ def test_r4_terminal_runner_refuses_foreign_import_root(
         runner._refuse_foreign_import_roots()
 
 
-def test_r4_terminal_runner_reopens_capacity_at_stage_gate(
+def test_r4_terminal_runner_reopens_frozen_capacity_at_stage_gate(
         tmp_path, monkeypatch):
-    """Witness the capacity verifier wiring, not only its pure helper."""
+    """Witness the post-freeze binding wiring, not only its pure helper."""
     script = Path(__file__).parents[1] / "scripts" / (
         "belief_v2_r4_terminal_parallel.py")
     spec = importlib.util.spec_from_file_location(
@@ -1194,7 +1425,7 @@ def test_r4_terminal_runner_reopens_capacity_at_stage_gate(
     monkeypatch.setattr(
         runner, "validate_live_execution", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        runner, "reopen_r4_terminal_parallel_capacity",
+        runner, "_reopen_frozen_capacity_binding",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             ValueError("capacity verifier wiring witness")))
 
@@ -1229,7 +1460,7 @@ def test_r4_terminal_runner_wires_sealed_result_recovery(tmp_path, monkeypatch):
         R4_PARALLEL, "_stage",
         lambda *args, **kwargs: (terminal_spec, imported))
     monkeypatch.setattr(
-        R4_PARALLEL, "reopen_imported_calibration",
+        R4_PARALLEL, "reopen_bound_imported_calibration",
         lambda *args, **kwargs: (calibration, source, selection))
     calls = []
 

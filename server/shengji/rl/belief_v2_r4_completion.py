@@ -82,6 +82,7 @@ from .belief_v2_terminal_controller import (
     TEST_POPULATION_FILES,
     _attempt as source_terminal_attempt,
     _calibration_statistics,
+    _calibration_statistics_from_manifest,
     _derive_integrity_receipt,
     _expected_test_human_rounds,
     _expected_test_synthetic_rounds,
@@ -1073,6 +1074,7 @@ def _run_r4_completion_terminal_reopened(
         completion_admission: R4CompletionAdmissionV1, *,
         calibration: dict[str, Any], source: R4CompletionSourceV1,
         calibration_directory: Path,
+        bound_calibration_manifest: dict[str, Any] | None = None,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Consume test only after a caller authenticates calibration inputs."""
     completion_attempt_path = root / "r4-completion-test-attempt.json"
@@ -1093,7 +1095,13 @@ def _run_r4_completion_terminal_reopened(
                 source.admission, source.inventory, source.group_split,
                 calibration_directory=calibration_directory,
                 legacy_tensor_cache_manifest_sha256=(
-                    source.spec.source_tensor_cache_manifest_sha256)))
+                    source.spec.source_tensor_cache_manifest_sha256))
+            if bound_calibration_manifest is None else
+            _calibration_statistics_from_manifest(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, source.group_split,
+                directory=calibration_directory,
+                manifest=bound_calibration_manifest))
     except ValueError as exc:
         raise BeliefV2R4CompletionError(
             "R4 completion calibration is not eligible for test opening") \
@@ -1237,7 +1245,8 @@ def _run_r4_completion_terminal_reopened(
         calibration_directory=calibration_directory,
         legacy_tensor_cache_manifest_sha256=(
             source.spec.source_tensor_cache_manifest_sha256),
-        parallel_decisions=True, progress=progress)
+        parallel_decisions=True, progress=progress,
+        bound_calibration_manifest=bound_calibration_manifest)
     if reopened != inner_manifest:
         raise BeliefV2R4CompletionError(
             "R4 completion terminal post-publish reconstruction drift")
@@ -1306,6 +1315,7 @@ def _recover_r4_completion_terminal_reopened(
         completion_admission: R4CompletionAdmissionV1, *,
         calibration: dict[str, Any], source: R4CompletionSourceV1,
         calibration_directory: Path,
+        bound_calibration_manifest: dict[str, Any] | None = None,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Recover an outer manifest without changing the sealed inner result."""
     attempt_path = root / "r4-completion-test-attempt.json"
@@ -1339,7 +1349,8 @@ def _recover_r4_completion_terminal_reopened(
         progress=progress, calibration_directory=calibration_directory,
         legacy_tensor_cache_manifest_sha256=(
             source.spec.source_tensor_cache_manifest_sha256),
-        parallel_decisions=True)
+        parallel_decisions=True,
+        bound_calibration_manifest=bound_calibration_manifest)
     # Re-read controls after the expensive reconstruction so a concurrent
     # replacement can never be bound into the newly published outer manifest.
     if stable_read_bytes(attempt_path) != attempt_raw \
@@ -1364,6 +1375,7 @@ def _reopen_r4_completion_terminal_reopened(
         completion_admission: R4CompletionAdmissionV1, *,
         calibration: dict[str, Any], source: R4CompletionSourceV1,
         calibration_directory: Path,
+        bound_calibration_manifest: dict[str, Any] | None = None,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Reconstruct terminal after a caller authenticates calibration inputs."""
     try:
@@ -1390,7 +1402,8 @@ def _reopen_r4_completion_terminal_reopened(
         calibration_directory=calibration_directory,
         legacy_tensor_cache_manifest_sha256=(
             source.spec.source_tensor_cache_manifest_sha256),
-        parallel_decisions=True)
+        parallel_decisions=True,
+        bound_calibration_manifest=bound_calibration_manifest)
     expected_outer = _terminal_outer_manifest(
         completion_freeze=completion_freeze,
         completion_admission=completion_admission, source=source,

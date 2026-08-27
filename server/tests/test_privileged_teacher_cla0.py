@@ -145,6 +145,27 @@ def test_claude_version_is_raw_binary_output_at_gate_altitude(tmp_path):
         cla0.claude_version(tagged)
 
 
+def test_inherited_run_dev_gate_expression_passes_with_cla0_design(tmp_path):
+    """Replicates run_dev's exact binding comparison with a Cla0 design.
+
+    The gate reruns ``<binary> --version`` and requires the raw stripped
+    output to equal ``design.codex_version`` (privileged_teacher_sol0_report
+    lines 415-425).  With ``claude_version()`` feeding the design, that
+    expression must hold; with the previously-tagged form it must not.
+    """
+    fake = tmp_path / "claude"
+    fake.write_text("#!/bin/sh\necho '9.9.9 (Claude Code)'\n")
+    fake.chmod(0o755)
+    design = _design(codex_version=cla0.claude_version(fake))
+    live = subprocess.run(
+        (str(fake.resolve()), "--version"), check=True,
+        capture_output=True, text=True).stdout.strip()
+    assert live == design.codex_version
+    tagged_design = _design(
+        codex_version="9.9.9 (Claude Code) [claude-fable-5]")
+    assert live != tagged_design.codex_version
+
+
 def _design(**overrides):
     fields = dict(
         seed_commitment_sha256="a" * 64, execution_git="b" * 40,

@@ -56,9 +56,12 @@ DENIED_TOOLS = (
     "Agent", "Edit", "NotebookEdit", "Task", "TodoWrite",
     "WebFetch", "WebSearch", "Write",
 )
+# --bare is deliberately absent: it also skips credential loading, so the
+# spawned session cannot authenticate (measured 2026-08-27). --safe-mode
+# already starts with all customizations (hooks, plugins, settings)
+# disabled, which is the isolation the review requires.
 ISOLATION_FLAGS = (
     "--safe-mode",
-    "--bare",
     "--strict-mcp-config",
     "--no-session-persistence",
 )

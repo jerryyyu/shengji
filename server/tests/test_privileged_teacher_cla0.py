@@ -33,7 +33,6 @@ def test_claude_command_is_exactly_the_reviewed_isolated_shape(tmp_path):
         "--effort", cla0.REASONING_EFFORT,
         "--output-format", "json",
         "--safe-mode",
-        "--bare",
         "--strict-mcp-config",
         "--no-session-persistence",
         "--tools", "Bash",
@@ -43,6 +42,7 @@ def test_claude_command_is_exactly_the_reviewed_isolated_shape(tmp_path):
     )
     for flag in cla0.ISOLATION_FLAGS:
         assert flag in command
+    assert "--bare" not in command  # --bare blocks credential loading
 
 
 def test_planner_process_scrubs_env_bounds_wall_and_writes_final(

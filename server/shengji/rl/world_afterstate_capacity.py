@@ -56,7 +56,8 @@ REQUIRED_ENVIRONMENT = {
 }
 AUTHORITY = {
     "population_freeze_authorized": False,
-    "continuation_authorized": False,
+    "continuation_dataset_generation_authorized": False,
+    "continuation_result_retention_authorized": False,
     "training_authorized": False,
     "test_opening_authorized": False,
     "gameplay_authorized": False,

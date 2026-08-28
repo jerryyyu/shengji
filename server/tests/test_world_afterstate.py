@@ -8,7 +8,8 @@ import pytest
 import torch
 
 from shengji.ai.registry import make_bot
-from shengji.engine.game import Game
+from shengji.engine.cards import RANKS
+from shengji.engine.round import Round
 from shengji.rl.world_afterstate import (
     OUTCOME_CLASSES,
     WorldAfterstateError,
@@ -18,6 +19,8 @@ from shengji.rl.world_afterstate import (
     build_outcome,
     category_signed_level,
     reopen_afterstate_audit,
+    replay_root_state,
+    root_replay,
     signed_level_category,
     validate_outcome,
 )
@@ -28,12 +31,11 @@ from shengji.rl.world_afterstate_model import (
     new_world_afterstate_model,
     proper_score_rows,
 )
-from shengji.teacher_v1 import (EXPERIMENT, STATE_SCHEMA, phase_for_trick,
-                                replay_state, split_for_deal)
 
 
-def _state(seed: int = 771_450_021, plays: int | None = 0):
-    rnd = Game(random.Random(seed)).start_round()
+def _state(seed: int = 771_450_021, plays: int | None = 0, *,
+           trump_rank: str = "2", initial_banker: int | None = None):
+    rnd = Round(trump_rank, initial_banker, random.Random(seed))
     bots = [make_bot("smart", seed=seed + 1000 + seat)
             for seat in range(4)]
     declarations = []
@@ -57,19 +59,6 @@ def _state(seed: int = 771_450_021, plays: int | None = 0):
     rnd.finalize_declare()
     assert rnd.banker is not None
     burial = bots[rnd.banker].decide_bury(rnd, rnd.banker)
-    final = None if rnd.declaration is None else {
-        "seat": rnd.declaration["seat"],
-        "cards": list(rnd.declaration["cards"]),
-        "strength": rnd.declaration["strength"],
-    }
-    setup = {
-        "deck": list(rnd.deck), "initial_banker": None,
-        "trump_rank": rnd.trump_rank, "banker": rnd.banker,
-        "trump_suit": rnd.trump_suit,
-        "trump_is_nt": rnd.trump_is_nt,
-        "declarations": declarations, "final_declaration": final,
-        "buried": list(burial),
-    }
     rnd.bury(rnd.banker, burial)
     played = []
     while True:
@@ -85,17 +74,10 @@ def _state(seed: int = 771_450_021, plays: int | None = 0):
         rnd.play(seat, action)
         played.append({"seat": seat, "cards": list(action)})
     assert rnd.turn is not None
-    row = {
-        "schema": STATE_SCHEMA, "experiment_id": EXPERIMENT,
-        "seed": seed, "seat": rnd.turn, "ply": len(played),
-        "trick": len(rnd.history), "phase": phase_for_trick(len(rnd.history)),
-        "decision": "lead" if not rnd.trick.plays else "follow",
-        "role": "attacker" if rnd.is_attacker(rnd.turn) else "defender",
-        "split": split_for_deal(EXPERIMENT, seed),
-        "selector_pool": "test", "kind": "test",
-        "selection_probability": 1.0, "setup": setup, "plays": played,
-    }
-    row["state_id"] = f"{seed}:{len(played)}:{rnd.turn}"
+    row = root_replay(
+        deal_seed=seed, initial_banker=initial_banker,
+        trump_rank=trump_rank, declarations=declarations, buried=burial,
+        plays=played, root_seat=rnd.turn)
     action = bots[rnd.turn].decide_play(rnd, rnd.turn)
     hands = {seat: list(rnd.hands[seat]) for seat in range(4)}
     return row, hands, list(rnd.buried), action
@@ -133,7 +115,7 @@ def test_successor_reconstruction_guard_refuses_coordinated_visible_drift():
 
 def test_root_action_is_replayed_by_engine_and_cannot_be_substituted():
     record = _record()
-    rnd = replay_state(record["source_state"])
+    rnd = replay_root_state(record["source_state"])
     root = record["root_seat"]
     replacement = next([card] for card in rnd.hands[root]
                        if [card] != record["attempted_action"])
@@ -144,16 +126,27 @@ def test_root_action_is_replayed_by_engine_and_cannot_be_substituted():
         reopen_afterstate_audit(forged)
 
 
+@pytest.mark.parametrize("trump_rank", RANKS)
+def test_root_replay_supports_every_trump_rank(trump_rank):
+    row, hands, buried, action = _state(
+        seed=771_451_000 + RANKS.index(trump_rank), plays=2,
+        trump_rank=trump_rank, initial_banker=2)
+    rnd = replay_root_state(row)
+    assert rnd.trump_rank == trump_rank
+    record = build_afterstate_audit(row, hands, buried, action)
+    assert reopen_afterstate_audit(record).trump_rank == trump_rank
+
+
 def test_complete_world_conservation_and_root_hand_are_load_bearing():
     row, hands, buried, action = _state()
-    root = row["seat"]
+    root = row["root_seat"]
     other = (root + 1) % 4
     hands[other][0] = hands[other][1]
     with pytest.raises(WorldAfterstateError,
                        match="physical deck conservation"):
         build_afterstate_audit(row, hands, buried, action)
     row, hands, buried, action = _state()
-    root = row["seat"]
+    root = row["root_seat"]
     hands[root][0] = hands[(root + 1) % 4][0]
     with pytest.raises(WorldAfterstateError, match="root actor hand"):
         build_afterstate_audit(row, hands, buried, action)
@@ -161,7 +154,7 @@ def test_complete_world_conservation_and_root_hand_are_load_bearing():
 
 def test_public_successor_is_hidden_twin_invariant_but_world_tensor_is_not():
     row, hands, buried, action = _state(plays=1)
-    root = row["seat"]
+    root = row["root_seat"]
     others = [seat for seat in range(4) if seat != root]
     left, right = others[:2]
     left_index = right_index = None

@@ -16,21 +16,23 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import random
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..engine.cards import make_deck
+from ..engine.cards import RANKS, make_deck
 from ..engine.round import Round, Trick
-from ..teacher_v1 import attacker_level_utility, replay_state
+from ..teacher_v1 import attacker_level_utility
 from .belief_contract import canonical_json_bytes
 from .douzero_micro import (HISTORY_EVENT_DIM, encode_public_history)
 from .encode import CARD_INDEX, N_CARDS, OBS_DIM, encode_obs
 
 
 AUDIT_SCHEMA = "world-afterstate-audit-v0"
+ROOT_REPLAY_SCHEMA = "world-afterstate-root-replay-v0"
 SUCCESSOR_SCHEMA = "world-afterstate-successor-v0"
 OUTCOME_SCHEMA = "world-afterstate-outcome-v0"
 TENSOR_SCHEMA = "world-afterstate-tensors-v0"
@@ -140,6 +142,118 @@ def materialize_complete_world(
     return clone
 
 
+def root_replay(
+        *, deal_seed: int, initial_banker: int | None, trump_rank: str,
+        declarations: Sequence[Mapping[str, Any]], buried: Sequence[str],
+        plays: Sequence[Mapping[str, Any]], root_seat: int) \
+        -> dict[str, Any]:
+    """Canonical engine-event recipe for any rank and prior banker identity."""
+    if isinstance(deal_seed, bool) or not isinstance(deal_seed, int) \
+            or not 0 <= deal_seed < 2**63:
+        raise WorldAfterstateError("root replay deal seed drift")
+    if initial_banker is not None:
+        initial_banker = _seat(initial_banker, "initial banker")
+    if type(trump_rank) is not str or trump_rank not in RANKS:
+        raise WorldAfterstateError("root replay trump rank drift")
+    root_seat = _seat(root_seat, "root seat")
+    if type(declarations) not in (list, tuple) \
+            or type(plays) not in (list, tuple):
+        raise WorldAfterstateError("root replay event sequence drift")
+    declaration_rows = []
+    for value in declarations:
+        if type(value) is not dict or set(value) != {
+                "stage", "deal_pos", "seat", "cards"} \
+                or value["stage"] not in ("deal", "final") \
+                or isinstance(value["deal_pos"], bool) \
+                or not isinstance(value["deal_pos"], int) \
+                or not 0 <= value["deal_pos"] <= 100:
+            raise WorldAfterstateError("root replay declaration event drift")
+        declaration_rows.append({
+            "stage": value["stage"], "deal_pos": value["deal_pos"],
+            "seat": _seat(value["seat"], "declaration seat"),
+            "cards": _cards(value["cards"], "declaration cards"),
+        })
+    play_rows = []
+    for value in plays:
+        if type(value) is not dict or set(value) != {"seat", "cards"}:
+            raise WorldAfterstateError("root replay play event drift")
+        play_rows.append({
+            "seat": _seat(value["seat"], "play seat"),
+            "cards": _cards(value["cards"], "play cards"),
+        })
+    return {
+        "schema": ROOT_REPLAY_SCHEMA,
+        "deal_seed": deal_seed,
+        "initial_banker": initial_banker,
+        "trump_rank": trump_rank,
+        "declarations": declaration_rows,
+        "buried": _cards(buried, "root replay burial"),
+        "plays": play_rows,
+        "root_seat": root_seat,
+    }
+
+
+def replay_root_state(value: Mapping[str, Any]) -> Round:
+    """Rebuild the exact play decision without assuming rank 2/first game."""
+    if type(value) is not dict or set(value) != {
+        "schema", "deal_seed", "initial_banker", "trump_rank",
+        "declarations", "buried", "plays", "root_seat",
+    } or value.get("schema") != ROOT_REPLAY_SCHEMA:
+        raise WorldAfterstateError("root replay schema drift")
+    recipe = root_replay(
+        deal_seed=value["deal_seed"],
+        initial_banker=value["initial_banker"],
+        trump_rank=value["trump_rank"], declarations=value["declarations"],
+        buried=value["buried"], plays=value["plays"],
+        root_seat=value["root_seat"])
+    if canonical_json_bytes(recipe) != canonical_json_bytes(value):
+        raise WorldAfterstateError("root replay canonical derivation drift")
+    rnd = Round(
+        recipe["trump_rank"], recipe["initial_banker"],
+        random.Random(recipe["deal_seed"]))
+    events = recipe["declarations"]
+    event_index = 0
+    try:
+        while rnd.phase == "deal":
+            rnd.deal_next()
+            while event_index < len(events) \
+                    and events[event_index]["stage"] == "deal":
+                event = events[event_index]
+                if event["deal_pos"] < rnd._deal_pos:
+                    raise WorldAfterstateError(
+                        "root replay declaration order drift")
+                if event["deal_pos"] != rnd._deal_pos:
+                    break
+                rnd.declare(event["seat"], list(event["cards"]))
+                event_index += 1
+        if event_index < len(events) \
+                and events[event_index]["stage"] == "deal":
+            raise WorldAfterstateError(
+                "root replay declaration lies beyond deal")
+        while event_index < len(events):
+            event = events[event_index]
+            if event["stage"] != "final" \
+                    or event["deal_pos"] != rnd._deal_pos:
+                raise WorldAfterstateError(
+                    "root replay final declaration drift")
+            rnd.declare(event["seat"], list(event["cards"]))
+            event_index += 1
+        rnd.finalize_declare()
+        if rnd.banker is None:
+            raise WorldAfterstateError("root replay did not determine banker")
+        rnd.bury(rnd.banker, list(recipe["buried"]))
+        for play in recipe["plays"]:
+            rnd.play(play["seat"], list(play["cards"]))
+    except WorldAfterstateError:
+        raise
+    except Exception as exc:
+        raise WorldAfterstateError("root replay engine event failed") from exc
+    if rnd.phase != "play" or rnd.trick is None \
+            or rnd.turn != recipe["root_seat"]:
+        raise WorldAfterstateError("root replay did not land at root decision")
+    return rnd
+
+
 def canonical_successor(rnd: Round, root_seat: int) -> dict[str, Any]:
     """Canonical model-relevant complete state in root-actor perspective."""
     root_seat = _seat(root_seat, "root seat")
@@ -199,11 +313,8 @@ def build_afterstate_audit(
     if type(source_state) is not dict:
         raise WorldAfterstateError("source state must be an exact object")
     source_copy = copy.deepcopy(source_state)
-    try:
-        rnd = replay_state(source_copy)
-    except Exception as exc:
-        raise WorldAfterstateError("source state replay failed") from exc
-    root_seat = _seat(source_copy.get("seat"), "root seat")
+    rnd = replay_root_state(source_copy)
+    root_seat = _seat(source_copy.get("root_seat"), "root seat")
     world = materialize_complete_world(rnd, root_seat, hands, buried)
     prestate = canonical_successor(world, root_seat)
     attempted_action = _cards(action, "root action")
@@ -250,10 +361,7 @@ def reopen_afterstate_audit(record: Mapping[str, Any]) -> Round:
             or type(world_payload["hands"]) is not dict \
             or set(world_payload["hands"]) != {"0", "1", "2", "3"}:
         raise WorldAfterstateError("complete pre-action world schema drift")
-    try:
-        rnd = replay_state(copy.deepcopy(record["source_state"]))
-    except Exception as exc:
-        raise WorldAfterstateError("source state replay failed") from exc
+    rnd = replay_root_state(copy.deepcopy(record["source_state"]))
     if rnd.turn != root_seat:
         raise WorldAfterstateError("source state root-seat binding drift")
     hands = {seat: world_payload["hands"][str(seat)] for seat in range(4)}

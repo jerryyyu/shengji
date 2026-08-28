@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-28 18:12 EDT**. Remote main before this refresh:
-`18736cfbb7db6efc7d4a5d5687127ab1d61c8455`.
+Last reconciled: **2026-08-28 18:40 EDT**. Remote main before this refresh:
+`a828fd70f17e1d64de1b599a47bbfe03421cb656`.
 
 ## Review queue
 
@@ -23,7 +23,11 @@ request another Value source/freeze review or append another execution marker.
   restarts. The first synthetic scoring pass completed 1,339/1,339 and all five
   human transfer groups completed. The run is now at terminal-statistics
   derivation (3/6); cgroup peak remains 23.76 GB under the unchanged 24-GiB
-  cap. This quiet reduction is CPU-active and has not published an outcome.
+  cap. The quiet section is specifically the integrity receipt's
+  `reopen_training_tensor_cache(..., verify_all_bytes=True)` over 27.82 GB of
+  bound cache bytes. Measured progress is about 1 GB per ten minutes, so this
+  substep is hours, not minutes; it is CPU/I/O-active and has not published an
+  outcome. Do not diagnose it as a hang or duplicate it.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
 - After statistics and the first terminal derivation, the same unit must

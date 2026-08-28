@@ -6733,3 +6733,62 @@ runtime/env binding, schedule bounds and the launch command, and mutation-tested
 did not line-audit the label/continuation mechanics inherited from #162, which remains **open and
 unreviewed by me** — this HOLD therefore says nothing about that base. Per the request I did not
 re-review R4 or PT-Luna0. No authority granted. — Claude (session `68f9c8bd`)
+
+## 2026-08-28 — ✅ PASS: PR #163 repaired head `e7310db5`. The three witnesses I demanded now exist, and I re-ran my own three mutations against them — each turns exactly one named test red, for the right reason. Marker below authorizes one score-free census and nothing else
+
+Closes the HOLD at `4f44457`. Delta re-review only, per the request.
+
+### The repair is exactly what was claimed
+
+Head `e7310db5d2d89599d89b8f18718dfffc06a971db`, parent **`30eca22783c3b64d3e412427d3fe6725f819d957`**
+(`git log --format=%P`), delta is **one test file, +48/−0**, and
+`git diff --name-only 30eca227 e7310db5 -- server/shengji server/scripts` returns **0 files** — the
+"no production-source or design change" claim holds. `git diff --check` clean.
+
+Battery reproduced by me at the exact head, both modes, compiled native rebuilt, `-P -B`, cleared
+`__pycache__`: **158 passed strict** (`SHENGJI_FAST=1`) and **158 passed pure** (`SHENGJI_FAST=0`) —
+both matching the stated counts exactly.
+
+### I re-ran my own mutations rather than trusting the new tests
+
+| my mutation | result at repaired head |
+|---|---|
+| A — vocabulary scan → `if False` | **1 failed**, `test_capacity_receipt_outcome_vocabulary_exclusion_is_load_bearing`, `DID NOT RAISE` |
+| B — `aggregate_memory["method"]` equality removed | **1 failed** |
+| C — `runtime["compiled_engine_active"]` requirement removed | **1 failed** |
+
+Each mutation kills exactly one named test and the rest stay green, which is the signature of a
+witness that binds its own clause rather than an incidental collision. The vocabulary witness also
+injects through **`runtime.native_path`** — the loosely-typed field — so it reaches the scan instead
+of being refused earlier by the schedule validator, which was the specific trap I flagged in
+`4f44457`. Source restored after every run; `git status --porcelain` = 0.
+
+### Launch preconditions, verified on Perf read-only
+
+`/opt/value-afterstate-v0-capacity-e7310db` is at **`e7310db5…`** with a clean porcelain; the output
+`/opt/value-afterstate-v0-capacity-receipt-e7310db-r1.json` is **absent**; the unit
+`value-afterstate-v0-capacity-e7310db-r1.service` is **absent**; the reviewed venv is present;
+16 CPUs; ~30 GiB RAM, no swap. Command parameters re-checked against the code's own bounds at this
+head: fixture-count 26 ∈ 13..256, workers 1 2 4 8 16 ∈ 1..16 unique, repetitions 2 ∈ 1..64,
+batch-sizes 16 64 ∈ 1..4096, model-steps 8 ∈ 1..1000, `--device auto` → cuda/mps/cpu; env matches
+`REQUIRED_ENVIRONMENT` exactly.
+
+**The authorized command is bound by hash**, so no variant is covered:
+SHA-256 **`87f75f8b3e74dc15534d0e3fe5a132bfb57eda60cdc1ac365fb63de5fe46b970`** over the exact
+`systemd-run …` text in the 19:04Z PR comment.
+
+### Carried forward, unresolved and deliberately not blocking
+
+`MemoryMax=30G` with `MemorySwapMax=0` on a ~30 GiB host is effectively the whole machine, so the
+cap offers little protection, and the authority is **non-retry** — an OOM spends it for nothing. The
+census is what would establish the real peak, so I am not blocking on an unmeasured number; but if
+it dies that way, the next request should carry a measured `finish_peak_bytes` and a smaller
+ceiling. Also unchanged: **#162 remains open and unreviewed by me**, so this marker says nothing
+about the label/continuation mechanics it inherits; and `HANDOFF_ACTIVE.md` still carries no entry
+for this lane, so the authorized command is the PR-comment text hashed above.
+
+Coverage limits: this is a delta review of +48 test lines on top of the source I reviewed at
+`4f44457`; I did not re-audit the +1,614-line base beyond re-running its full battery and my three
+mutations.
+
+VALUE_AFTERSTATE_V0_CAPACITY_SOURCE_LAUNCH_V1_REVIEW {"authority":{"continuation_label_generation_authorized":false,"deployment_authorized":false,"e3_e4_packet_preparation_from_this_receipt_authorized":true,"gameplay_authorized":false,"merge_authorized":false,"one_non_retry_score_free_capacity_census_authorized":true,"promotion_authorized":false,"r5_authorized":false,"retry_authorized":false,"scientific_training_authorized":false,"strength_claim_authorized":false,"test_split_open_authorized":false},"authorized_command_sha256":"87f75f8b3e74dc15534d0e3fe5a132bfb57eda60cdc1ac365fb63de5fe46b970","authorized_output":"/opt/value-afterstate-v0-capacity-receipt-e7310db-r1.json","authorized_unit":"value-afterstate-v0-capacity-e7310db-r1.service","battery_pure_passed":158,"battery_strict_passed":158,"exact_head":"e7310db5d2d89599d89b8f18718dfffc06a971db","exact_parent":"30eca22783c3b64d3e412427d3fe6725f819d957","host":"ubuntu-32gb-hel1-2","mutation_witnesses_confirmed":["outcome_vocabulary_exclusion","aggregate_memory_method","compiled_engine_active"],"production_files_changed_in_delta":0,"review_mode":"consolidated-source-and-launch","schema":"value-afterstate-v0-capacity-source-launch-review-v1","source_checkout":"/opt/value-afterstate-v0-capacity-e7310db","supersedes_hold":"4f4445762ad50010dd2c4dfd33151b33d34603c2","verdict":"PASS"}

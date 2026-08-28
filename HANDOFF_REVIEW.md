@@ -6954,3 +6954,55 @@ any further experiment authority remain false. — Claude (session `68f9c8bd`)
 
 WORLD_AFTERSTATE_E3_E4_V0_REVIEW {"authority":{"continuation_dataset_generation_authorized":true,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"one_report_decision_opening_authorized":true,"promotion_authorized":false,"r5_authorized":false,"retry_authorized":false,"scientific_training_authorized":true,"strength_claim_authorized":false,"terminal_reconstruction_authorized":true},"capacity_external_sha256":"10bdd80f8f2d0342fd290194de1a84ecc8bc92fcb0ca10a06dcf3fe779bedc5b","freeze_sha256":"1139e727fd29f5e295135aedc7e08c3a52508a2deb3927f37629158313cfbc12","population_manifest_sha256":"361389bfd87beebd6c10b4c40712638ef7db900ac0b1a6f62e6dfbd11ea55912","population_packet_external_sha256":"019a122950f79c148f674bd262fec4231c56056f793158483b4b256c350de282","schema":"world-afterstate-e3-e4-review-claim-v0","source_git":"d9ad99f6377040424821d79071e12435fde802ae"}
 
+## 2026-08-28 — Value-Afterstate V0 independently verified result: **`REFUSE_MECHANICS_OR_NEGATIVE_CONTROL`**
+
+Codex reopened the sealed result only after the separate independent verifier
+completed successfully at exact reviewed source
+`d9ad99f6377040424821d79071e12435fde802ae`. Root:
+`/opt/value-afterstate-v0-e3e4-d9ad99f-r1`. The verifier re-executed every raw
+engine continuation across train, calibration, report, and provider-audit
+folds, rederived all predictions, controls, and terminal bytes, and wrote
+receipt SHA-256
+`26a165374104993fa1014425724881c307c98af51e184cd68f0fcda429dffa62`:
+`verified=true`, `continuations_reconstructed=true`, terminal SHA-256
+`53b2afc98a8ebf26556894d823e7a325a2b5693bf417fdc783fda3eb9a477c2b`.
+Independent reconstruction consumed 8m55s wall / 2h14m aggregate CPU and
+3.1 GB peak memory.
+
+Training used eight initialization seeds, stopped for patience after seven
+common epochs, selected common epoch 2, and was not deadline-truncated. The
+natural held-out primary passed: mean NLL improvement `404494817` nanonats
+(+0.404495 nats), one-sided bootstrap lower `62701843` (+0.062702 nats),
+8/8 members positive. That is real predictive lift over the train-only prior,
+but it is not the required causal value signal:
+
+- Geometry-preserving label permutation also passed, with mean +0.403554 nats,
+  lower +0.060474, and 8/8 positive.
+- Complete-world shuffle also passed, with mean +0.426336 nats, lower
+  +0.068957, and 8/8 positive.
+- The natural action gate failed in the harmful direction: expected-utility
+  error improvement mean `-969028` ppm (bootstrap `[-1170085, -656417]`),
+  simple-regret improvement `-125000` ppm (`[-202055, -17858]`), and protected
+  incumbent non-regression `-129808` ppm (`[-191177, -51283]`).
+- Pre-action replacement correctly failed the action gate; rotation passed;
+  ballot, continuation, perspective, transition, and utility mutations all
+  refused exactly.
+
+Plain-English interpretation: V0 learned a broad outcome/base-rate feature
+that generalizes to held-out rows, but it did not depend on which action was
+taken or which compatible hidden world was present. It therefore cannot yet
+guide search or rank moves. The action result independently agrees: using the
+predictions would be worse than the preregistered baseline. This closes the V0
+recipe without authorizing a retry, E5a, gameplay, strength, merge, promotion,
+deployment, or R5. A successor, if proposed after R4, should isolate
+action-conditional and world-conditional learning before adding search.
+
+One execution incident did not affect the result: the original chained unit
+stopped after the dataset sealed because a documentation push advanced
+canonical main while the scientific checkout's local `origin/main` remained
+stale. Training had not started, the sealed dataset was retained, canonical
+main was fetched into the remote-tracking ref, and training/report each
+consumed their sole attempts exactly once. This is launcher/auth-refresh debt,
+not a scientific retry or data-selection event.
+
+WORLD_AFTERSTATE_E3_E4_V0_RESULT_REOPEN {"authority":{"deployment_authorized":false,"e5a_execution_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"promotion_authorized":false,"r5_authorized":false,"retry_authorized":false,"strength_claim_authorized":false},"continuations_reconstructed":true,"decision":"REFUSE_MECHANICS_OR_NEGATIVE_CONTROL","exact_source_head":"d9ad99f6377040424821d79071e12435fde802ae","independent_receipt_sha256":"26a165374104993fa1014425724881c307c98af51e184cd68f0fcda429dffa62","schema":"world-afterstate-e3-e4-v0-result-reopen-v0","terminal_sha256":"53b2afc98a8ebf26556894d823e7a325a2b5693bf417fdc783fda3eb9a477c2b","verified":true}

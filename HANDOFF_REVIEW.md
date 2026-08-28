@@ -5433,3 +5433,31 @@ as drift. Two notes for whoever picks up the packet:
 
 Read-only: git objects, systemd unit listings, journal text. Nothing signalled, no evidence root
 touched, no scores opened. — Claude (session `f4b0ea92`)
+
+## 2026-08-28 — PR #159 pre-review at exact `34ab86cd`: source is sound, but the **`test_split_opened` safety clause has no witness anywhere in the belief suite**. One test closes it
+
+Answering the latency-hiding pre-review request. No marker requested and none appended; this is the source half only, retained for the later consolidated source+import+capacity+freeze review.
+
+**Structure verified.** Head `34ab86cde4479534775e5168fccc7ae2d1d54400`, base `d82ba224…` — the exact #152 head I PASSed at `394354f`, so this stacks on reviewed ground. Delta is **exactly 11 files, +3607/−152**, matching the ask and GitHub's own count; `git diff --check` clean. (My first pass diffed against main's merge-base and got 78 files — that was my error: #159 targets `codex/belief-r4-parallel-eval`, not main.)
+
+**The design is the right shape.** `belief_v2_r4_terminal_parallel.py` is a terminal-only successor that *imports* one sealed calibration via `reopen_v2_calibration_selection` rather than recomputing it — which is what makes the ~30 h of published calibration reusable after the reopen guard fired. Its binding check is genuinely thorough: exact key-set equality (`set(payload) != expected_keys`, so unknown fields refuse), byte-exact `canonical_json_bytes(payload) != manifest_raw`, freeze/admission/cohort-id binding, `calibration_passed is not True`, and five authority flags forced false.
+
+**The finding.** Two clauses in that chain carry the scientific-integrity property that the imported calibration was sealed *before* any test opening:
+
+```python
+or payload["selection_completed_before_test_open"] is not True \
+or payload["test_split_opened"] is not False \
+```
+
+I neutralised the second one (`or payload["test_split_opened"] is not False` → `or False`) and **nothing went red**: 27/27 on the focused `terminal or parallel or calibration` selection, and **512 passed / 4 skipped on the full `-k belief` suite**. I ran the full suite specifically to adjudicate rather than claim "no witness" from a focused selection. Restored to 0 source files modified.
+
+So the guard that prevents importing a calibration whose held-out test split was already opened can be deleted silently. That is the masked-witness shape — now the eleventh instance in this lane — and it sits on the one property that protects R4's single test opening from being spent twice. Nothing suggests the current sealed calibration violates it; the defect is that a regression here would land unnoticed.
+
+**The fix is one test**, in the style already used elsewhere in this file: build the bound manifest, set `test_split_opened: True` (and separately `selection_completed_before_test_open: False`), re-canonicalise so `canonical_json_bytes(payload) == manifest_raw` still holds, and assert `BeliefV2R4TerminalParallelError` with `match="R4 bound calibration manifest identity/authority drift"`. Re-canonicalising matters — otherwise the byte-comparison clause fires first and the test witnesses the wrong guard, which is how several of the earlier masked witnesses in this lane came about.
+
+**Second, smaller point.** That check is a single fifteen-clause `or` chain raising one generic message. `c578c36` recommended splitting exactly this pattern into per-field refusals after the monolithic chain in `belief_v2_tensor_cache_controller.py:1226–1252` made the eighth failure hard to name — and the new module reproduces the pattern. Splitting it here while the code is fresh is cheaper than diagnosing it under time pressure later.
+
+**Coverage limits, stated honestly.** +3607 lines across 11 files; I did not audit line by line. I went deep on the sealed-calibration import/authentication path, its key-set and authority binding, and the test-split protection, and I mutation-tested the clause above against the full belief suite. I did **not** verify the claimed `306 passed / 5 skipped` count (my selection was `-k belief`, which is a different set), the import/source JSON manifests, the capacity receipt or auto-freeze bindings — those are still running per the ask and belong to the later consolidated review, along with re-verifying this finding is closed.
+
+No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
+

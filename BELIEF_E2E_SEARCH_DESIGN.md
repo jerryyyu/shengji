@@ -85,6 +85,7 @@ end to end in one run.
 | V11Pair beat SmartBot but its corrected direct policy was `-0.141 +/- 0.070` versus live. | Relative pairwise scores may propose or rank; they are not a universal leaf value or final policy. |
 | V13abs improved offline error while failing to improve online play. | Bind ballot, ply/surface, continuation, perspective, and deployment use to the training estimand. |
 | Direct-Q had a positive gameplay tail but failed seed/held-out learning gates. | Q remains promising, but requires stable multi-seed learning before search integration. |
+| Teacher-v1/T1 found cheap and N=30 choices close to the production continuation on ordinary states (`0.0354` and `0.0439` regret upper bounds) but missed its frozen boundary-8 bar (`0.1421`). | Reuse its common-world ballot tensors, deterministic folds, receipts and strict scorer mechanics; do not treat its old labels as a uniformly strong oracle. |
 | T4's uninformed widening arm was positive but used more worlds and searches than champion. | Candidate diversity and compute must be separated with work-matched controls. |
 | S4, S6, pair-aware, and other local mechanisms did not transport to a whole-game winner. | Measure natural decision dose and fresh whole-game utility; local plausibility is insufficient. |
 | PT-Full and C0 showed that a true-world collapse can lose to a public ensemble. | Preserve uncertainty across compatible worlds; never substitute one MAP or literal true world for a public posterior. |
@@ -379,6 +380,16 @@ The current PT-Sol0 private transcripts are design evidence, not automatically
 training data. A reviewed extractor must prove which engine-returned outcomes
 are complete, how repeated requests aggregate, and that no private prompt,
 model text, completion token, or hidden-world identity enters a public row.
+
+This extractor does not start from zero. Historical `teacher_v1_label.py`
+already provides deterministic common worlds, candidate-by-world signed-level
+tensors, disjoint selection/report folds, strict counters, source bindings and
+atomic publication. Reuse those audited mechanics where their contracts still
+match. Its published artifacts retain world digests rather than the complete
+world input needed by `Q_world`, and they bind older ballots/continuations, so
+neither the old rows nor their checkpoints are silently promoted into this
+dataset. The new exporter versions the full-world input and the actor-visible
+post-root continuation while preserving the useful mechanics.
 
 Before a large packet, require:
 

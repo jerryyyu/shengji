@@ -508,7 +508,8 @@ before generating a large packet:
 - the engine-only arm spends a fixed candidate-world budget uniformly under
   the registered actor-visible continuation;
 - the PT arm receives the same legal ballot, complete world and total engine
-  evaluation budget, and may only change proposal/order/adaptive allocation;
+  evaluation budget, and may only change the adaptive allocation of repeated
+  continuation samples after a common minimum sample for every action;
 - both arms publish a value estimate for every in-scope action, an explicit
   missing-action/refusal status and exact work;
 - a disjoint, higher-work engine report fold supplies the comparison target
@@ -516,6 +517,14 @@ before generating a large packet:
 - the selected provider must improve held-out distributional proper score or
   action regret at equal engine work, remain repeatable, and preserve ballot
   coverage.  Winning full games or selecting a good argmax alone cannot pass.
+
+The first provider gate is allocation-only. PT may not add actions, change the
+canonical ballot, change the continuation or spend extra engine work in that
+comparison. A later proposal experiment is a separate axis: freeze the
+canonical union of production and PT proposals, give both value providers that
+same union and measure proposal dose and value independently. This prevents a
+larger ballot, better allocation and better numeric estimation from being
+credited to one opaque "teacher" treatment.
 
 PT-Sol and PT-Luna are separate candidate provider recipes.  Their result
 files may size cost and establish teacher candidacy, but their rows are never
@@ -559,11 +568,113 @@ Recommended first target:
 - label: `Q_world` signed-level distribution under the reviewed, post-root
   actor-visible continuation contract;
 - secondary label: best-action probability under repeated
-  teacher/continuation outcomes;
+  teacher/continuation outcomes, derived from the same logits rather than a
+  second model head;
 - loss: proper distributional outcome loss plus a bounded pairwise ranking
   term against the protected production action; and
 - selection: a preregistered multi-seed stability gate on held-out deals,
   roles, and surfaces.
+
+The stored primitive is the complete multiset of per-replicate terminal
+`attacker_points` returned by the engine, plus the mechanically derived
+acting-team `signed_level_utility`. The first distributional head has a closed
+204-category support: the half-integers `-101.5, -100.5, ..., -0.5, +0.5,
+..., +100.5, +101.5`. The bound follows from the pinned two-deck engine: 200
+total points, at most 80 points in the eight-card burial, a 25-card maximum
+last lead and the house `2 * lead_card_count` kitty multiplier, giving at most
+`120 + 80 * 2 * 25 = 4,120` attacker points. Reopening rederives every
+category from the raw points; a producer may not publish free-form floating
+labels.
+
+### First E3/E4 implementation packet
+
+The first packet is intentionally a frozen supervised compression experiment,
+not self-play and not PUCT. It makes the following choices before any label
+population is generated.
+
+**Population and ballot**
+
+- Use simulator decisions selected by a hash of the actor-visible decision
+  identity before any continuation outcome exists. Deal-level grouping is the
+  split unit, so two states from one deal cannot cross train, calibration,
+  report or provider-audit folds.
+- The census must separately report early/mid/late play, acting attacker versus
+  defender team, lead/follow, all thirteen trump ranks, each declared suit and
+  no-trump.
+  Sparse cells remain visible; they are not pooled into an unsupported claim.
+- V0 uses the exact canonical production root ballot plus its protected
+  incumbent. It does not claim complete legal-action coverage. Ballot
+  generation source, ordered action hashes and candidate counts are part of
+  every row. PT proposals wait for the separate proposal experiment above.
+- Repeated compatible worlds are retained with replacement. Each world row
+  carries the full remaining hands and burial in acting-seat-relative form,
+  but never the simulator seed or a world-generating identifier.
+
+**Numeric label owner**
+
+- Force one root action in one complete world, then let the pinned
+  actor-visible `mc-strong` continuation play every later seat. The same
+  continuation recipe, utility, random-stream derivation and minimum sample
+  count apply to every action.
+- The engine owns each raw terminal outcome. PT-Sol or PT-Luna may win the
+  allocation-only provider gate and decide where additional repetitions are
+  spent, but its prose, selected move and self-reported value are not labels.
+- A disjoint higher-work engine fold is the provider-audit truth. At equal
+  engine work, PT allocation must improve held-out distributional proper score
+  or simple action regret over uniform allocation, retain complete ballot
+  coverage and reproduce. Otherwise V0 uses uniform engine allocation and is
+  named an engine-rollout Q accelerator, not PT distillation.
+
+**One fresh learner**
+
+- Public branch: the pinned 531-value actor observation plus the ordered
+  engine-public play-event sequence, encoded by a one-layer GRU.
+- World branch: a `5 x 54` count tensor for the four remaining hands and
+  burial, relative to the actor, validated against the actor observation and
+  physical deck conservation.
+- Action branch: the pinned 60-value canonical action encoding.
+- Concatenate the three branches and emit only the 204 signed-level logits.
+  V0 has no policy, belief, scalar value, uncertainty or allocation head, no
+  checkpoint warm start and no inference input derived from labels.
+- Train eight fixed initialization seeds. Select one common epoch from the
+  calibration fold; per-member best epochs and seed dropping are forbidden.
+
+The exact widths, optimizer and batch size are selected once from a bounded
+capacity receipt and then frozen for every member. That receipt may compare
+mechanics throughput and memory only; it may not publish continuation outcomes
+or choose a recipe by report-fold prediction quality.
+
+**Learning and use gates**
+
+- Primary learning: paired held-out categorical proper-score improvement over
+  a train-only role/surface/trump/points prior. Both forecasts are scored
+  directly against the disjoint raw report-fold outcomes, not against a noisy
+  empirical probability estimate. Require a strictly positive deal-bootstrap
+  lower bound and at least six of eight individual seeds positive.
+- Action usefulness: lower expected-utility error and lower simple regret
+  against the disjoint higher-work engine fold; no material regression in
+  protected-incumbent ranking.
+- Controls: geometry-preserving label permutation must fail; removing the
+  action input must lose action ranking; removing or shuffling the complete
+  world must lose hidden-world-sensitive strata; actor-relative rotation must
+  preserve bytes and predictions; ballot, continuation, perspective and
+  utility mutations must refuse reopening.
+- E4 PASS authorizes only a frozen E5a known-world mechanism screen. E5a must
+  show that exactly one named use of the model improves equal-work search. It
+  grants no REF-C, BELIEF, public-policy, whole-game or deployment authority.
+
+**Perf capacity packet**
+
+Before freezing population size, one out-of-namespace, score-free Perf run may
+measure: state reconstruction and ballot throughput; candidate-count and
+world-row byte distributions; strict world-materialization rate; one complete
+continuation wall/CPU profile with outcomes discarded; tensor-build and model
+batch throughput; peak memory; and scaling at `1, 2, 4, 8, 16` workers. Its
+only output is a resource receipt and derived feasible population/cap table.
+It cannot train, compare providers, open any later split, or authorize the E3
+packet. The subsequent immutable E3/E4 design must bind its source head,
+runtime, host, receipt bytes, population derivation, caps and all-false
+authority map in one consolidated review.
 
 Between-world disagreement is computed later when the frozen `Q_world` model
 is evaluated over an ensemble. The model is evaluated on literal true hidden
@@ -767,10 +878,9 @@ PT result and exact E3/E4 design are reviewed.
 The following are deliberately not frozen by this document:
 
 - GRU versus transformer/set/graph belief encoder;
-- the architecture of the first `Q_world` student and whether a later separate
-  public-Q student is ever warranted;
-- the exact distributional loss and bounded pairwise auxiliary term for the
-  first `Q_world` head;
+- whether a later separate public-Q student is ever warranted;
+- the exact weight of the categorical proper loss and bounded pairwise
+  auxiliary term for the first `Q_world` head;
 - model width/depth, optimizer, or warm start;
 - teacher model identity and rollout budget;
 - population size and fleet allocation; and

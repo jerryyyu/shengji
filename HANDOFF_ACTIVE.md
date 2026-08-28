@@ -28,8 +28,11 @@ request another Value source/freeze review or append another execution marker.
   outcome bytes, or touch the namespace.
 - After statistics and the first terminal derivation, the same unit must
   perform immediate full terminal reconstruction; watcher
-  `belief-r4-terminal-verifier-watch-56bd35f-r1.service` launches the separate
-  independent verifier only after a successful seal.
+  `belief-r4-terminal-verifier-watch-56bd35f-r2.service` launches the separate
+  independent verifier only after a successful seal. The watcher refreshes
+  canonical `origin/main` immediately before authentication; this closes the
+  stale-remote-ref handoff failure observed during Value V0 without touching
+  the scientific process or evidence.
 - R5 remains paused until the independently reproduced R4 verdict and curves
   are interpreted.
 

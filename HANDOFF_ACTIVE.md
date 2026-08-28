@@ -11,21 +11,42 @@
 > not review authority. If this snapshot conflicts with an exact marker on
 > remote main, the latest authentic exact-head marker controls.
 
-Last reconciled: **2026-08-28 02:45 EDT**. Remote main:
-`ddfde5de9a3924830aefe6d051352ab28db137f3`.
+Last reconciled: **2026-08-28 05:15 EDT**. Remote main before this refresh:
+`8032bdf51e6e0256a013583145cfd625e569a5e5`.
 
 ## Review queue
 
-**R4's final review is not yet actionable. Do not stop, restart, replace, or
-signal the current freeze builder.** PR #159 exact repaired head
-`56bd35f0c45080121d094f6906ab8d1053ca9e6b` preserves the 24-GiB cap,
-measures the complete Linux service through cgroup-v2 `memory.peak`, binds that
-method in the receipt, and closes Claude's two imported-test-state witnesses.
-The fresh exact-head capacity receipt has published on Strength; its independent
-freeze reconstruction remains active. Do **not** append a PASS marker or
-authorize initialization until the freeze publishes. Then perform one
-consolidated repaired-head source + import + capacity + freeze review, not
-another sequence of partial rounds.
+**Top priority — R4's final consolidated review is actionable now. Do not
+split it into another source round and freeze round.** Review PR #159 exact
+execution head `56bd35f0c45080121d094f6906ab8d1053ca9e6b`, authenticated
+import record SHA
+`61d62ddb2229c8d6f6acd7eb4b630a96063b009248091be31def4790b29ac48e`,
+the capacity receipt below, and the freshly published freeze:
+
+- `/opt/belief-r4-terminal-parallel-freeze-56bd35f-r1.json`
+- 39,048 canonical bytes, mode `0400`, one link
+- external/internal SHA-256
+  `0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951`
+- runner-generated expected marker SHA-256
+  `0ba6917cb475f2ebcf1ac26549a9040332a5ebb4df7db3be7568b092ee4a7312`
+- exact live source/runtime/native/boot reopen: PASS
+- destination root `/opt/belief-r4-terminal-parallel-v1-r1`: absent
+- old test-attempt/terminal/partial namespaces: absent; old authenticated
+  admission-consumption tombstone exists at
+  `/opt/belief-r4-completion-v1-r3.consumed.json`, SHA-256
+  `37327ce322413ad01163c8f601dda366d75fb149574729ae808da2c2d9239b9f`
+
+If clean, append exactly one canonical marker beginning
+`BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW` to canonical
+`HANDOFF_REVIEW.md`. Approve in the same marker only this ordered envelope:
+initialize once; run score-free pretest readiness in its own unit; only a
+canonical readiness PASS may launch the sole scientific test opening with
+immediate reconstruction; only scientific success may launch the independent
+terminal verifier. All long units remain exact-head/runtime, `Restart=no`,
+`KillMode=control-group`, `Type=exec`, `RuntimeMaxSec=48h`,
+`MemoryMax=25769803776`, `MemorySwapMax=0`, `UMask=0077`, and sanitized
+`PYTHONPATH`. No retry, training, merge, gameplay, strength, promotion, or
+deployment authority.
 
 Capacity receipt:
 `/opt/belief-r4-terminal-capacity-56bd35f-r1.json`, 5,444 canonical bytes,
@@ -38,28 +59,27 @@ cap, and a 1.727x measured scoring speedup. Conservative projections are
 17.17 hours for the independent verifier, both plus reserve below 48 hours.
 Codex independently reproduced the canonical bytes and all projection
 arithmetic without re-opening the expensive model population. Test-opening
-count is zero and every authority flag is false. Freeze watcher
-`belief-r4-terminal-freeze-watcher-56bd35f-r1` is active under current
-systemd invocation `333e15d12bc647d29d65588618b24717`, PID `776698`,
-`Restart=no`, and `NRestarts=0`; the freeze and every terminal/test namespace
-remain absent.
+count is zero and every authority flag is false. The replacement freeze
+watcher completed successfully at `09:09:33Z` under systemd invocation
+`333e15d12bc647d29d65588618b24717`, `Restart=no`, `NRestarts=0`, and
+published the sole freeze above. Every new terminal/test namespace remains
+absent.
 
 The original watcher invocation was externally stopped at `06:29:42Z` after
 about 1h26m of active freeze construction and relaunched one second later with
 the byte-identical command, inputs, capacity digest, output path, clean head,
 runtime, host, and boot. It produced no freeze or partial scientific artifact.
-The replacement is healthy and consuming CPU. The source does not emit
-progress during `build-freeze`, so silence is expected and is not evidence of
-a stall. The only local processes watching it are read-only `systemctl`/file
-monitors. Do not infer `Result=success` from the abandoned invocation as a
-completed freeze, and do not make another blind restart. The exact restart
+The replacement completed from the same clean head/runtime/boot and is the
+sole artifact producer. The source does not bind systemd invocation identity
+or emit `build-freeze` progress; adjudicate those disclosed future-schema gaps
+in this same review rather than creating a new round. The exact first-stop
 cause is not established; preserve the journal as the abandonment evidence.
 
 Claude's `c0eef66` and `ddfde5d` findings correctly identify two future-schema
 improvements: bind systemd invocation identity/abandonment and emit freeze
 progress. They do not show changed scientific bytes, opened test data, or an
 ambiguous published freeze: attempt 1 published nothing and attempt 2 is the
-sole producer of the eventual artifact. Disclose both findings in the one
+sole producer of freeze `0af5dc75…d4951`. Disclose both findings in the one
 consolidated review. Do not move `56bd35f0`, invalidate the completed capacity
 receipt, and repeat this multi-hour cycle merely to add retrospective
 telemetry unless that review demonstrates a load-bearing interpretability
@@ -130,13 +150,11 @@ attempted 24/52 records at 02:02 EDT. It needs no review while running and must
 seal its own complete or incomplete result without borrowing r2 rows. R5 is
 paused until R4's verdict and curves are interpreted and is not reviewable now.
 
-Codex has repaired the replacement R4 terminal resource boundary and the
-all-rank capacity receipt has published. Review the final packet only after
-its exact import, clean repaired head, capacity receipt, and deterministic
-freeze are present together.
-The freeze uses `source_review_commit == execution_git`, activating the
-existing `consolidated-source-and-freeze` marker mode, so one external marker
-covers the whole packet with no intermediate source review or user round trip.
+The exact import, clean repaired head, capacity receipt, and deterministic
+freeze are now present together. The freeze uses
+`source_review_commit == execution_git`, activating the existing
+`consolidated-source-and-freeze` marker mode, so one external marker covers
+the whole packet with no intermediate source review or user round trip.
 
 Claude's `c578c36` prognosis is correct for the unchanged old Perf lane: it
 would publish calibration and then hit the same old reopener failure. It is
@@ -150,10 +168,9 @@ for the scoring-pool lifetime and a 16-party startup barrier, closing the real
 Linux file-descriptor and partial-worker-start failures without changing score
 semantics. Do not start a second diagnostic or alternate repair.
 
-The two legitimate review requests are: (1) PR #160 repaired head `2394140`'s
-consolidated Luna0 source + launch packet now, and (2) the consolidated R4 terminal
-source + import + capacity + freeze packet only after its two artifacts
-publish. There is no current R5 or PT-Claude review request.
+The review order is: **(1) R4's now-actionable consolidated final packet
+above**, then (2) PR #160 repaired head `2394140`'s consolidated Luna0 source
+and launch packet. There is no current R5 or PT-Claude review request.
 
 Do not create an intermediate R5 review. Do not treat a progress update as a
 review request.
@@ -164,7 +181,7 @@ review request.
 |---|---|---|---|---|
 | Mini | PT-Claude Opus r3 active; PT-Luna0 pending repaired-head review | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Opus r3 has attempted 24/52 records; no public result exists. Luna's valid model-wiring HOLD is repaired and mutation-proven; exact runtime/parents remain unchanged and design is `939c6441…a422d`. Launch awaits only one consolidated repaired-head PASS. | Claude monitor only; after PASS, Luna may run concurrently in its separate output/private namespaces; never pool attempts or infer efficacy until each seals and independently reopens |
 | Perf Cloud | R5 paused; prior R4 calibration sealed/inactive | preserved source `0ff18349c76b13e9f594e6d84fe9b34b04a91f04` | the disposable resumed diagnostic crossed the old FD ceiling and published calibration-selection artifacts, then was operator-stopped without a receipt on 2026-08-27 after the user requested a design pause. All prior rehearsal artifacts remain preserved; no R5 process is active. | no R5 design, source, rehearsal, freeze, review, or scientific action until R4 is complete and the design is discussed with the user |
-| Strength Cloud | sealed serial R4 calibration + repaired terminal freeze reconstruction | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | cgroup-v2 capacity receipt `df51a8f…a6051e` published successfully: exact 13-rank/924-decision parity, 16 workers, 1.727x, 19.61 GiB under 24 GiB, both terminal projections under 48h. The first silent build invocation was externally stopped before publication; byte-identical replacement invocation `333e15d1…` is healthy with `Restart=no`/`NRestarts=0`. Freeze and all terminal/test paths remain absent. | do not stop or restart; finish the sole published freeze, disclose the abandoned no-artifact invocation, then request exactly one consolidated source+import+capacity+freeze review; test remains unopened |
+| Strength Cloud | sealed R4 calibration + final optimized terminal review | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | capacity `df51a8f…a6051e` and freeze `0af5dc75…d4951` published and independently reopened; exact 13-rank/924-decision parity, 16 workers, 1.727x, 19.61 GiB under 24 GiB, both terminal projections under 48h. New execution root and test namespace remain absent. | one consolidated final review now; after canonical PASS, initialize → readiness → sole test+immediate reconstruction → independent verification, with each transition gated by the prior canonical success |
 | Air | none | — | idle | none |
 
 No R5 process is running. Preserve its existing artifacts, but do not resume,

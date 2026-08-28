@@ -11,8 +11,8 @@
 > not review authority. If this snapshot conflicts with an exact marker on
 > remote main, the latest authentic exact-head marker controls.
 
-Last reconciled: **2026-08-28 08:43 EDT**. Remote main before this refresh:
-`10884285ccbe5780fb7e6000cf8ffcde5fa632f4`.
+Last reconciled: **2026-08-28 08:51 EDT**. Remote main before this refresh:
+`d593827005c98c53a2c5c8719f3fbf0ec757b859`.
 
 ## Review queue
 
@@ -102,7 +102,10 @@ that run started on Mini at 08:41:19 EDT as PID `70327`, exact design SHA
 `939c6441b35530b469486b43f1fb34f7ad6d34eac16f84a6bbc5d7b21e4a422d`,
 with two live `gpt-5.6-luna` / `high` planner children. Its exclusive private
 root now exists, its public output is absent, and no result may be inferred
-until the canonical report seals. A first `nohup` transport PID (`70211`) was
+until the canonical report seals. The first role completed cleanly in 522.94
+seconds at 08:50 EDT: 1/52 records (1.92%), measured ETA about 7.4 hours; the
+freed worker immediately started the next role while the other initial role
+remained active. A first `nohup` transport PID (`70211`) was
 already absent at its first check with a zero-byte log and no private/public
 namespace; it never crossed the runner's durable scientific boundary.
 `launchctl submit` was then found to keep failed jobs alive, so exact-PID exit
@@ -145,7 +148,7 @@ review request.
 
 | host | job | exact source | current state | authority |
 |---|---|---|---|---|
-| Mini | PT-Luna0 live; PT-Claude Opus r3 sealed incomplete | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Luna PID `70327` started 08:41:19 EDT with two exact `gpt-5.6-luna/high` children; private root exists, public report absent, exit guard PID `70802`; Opus r3 remains sealed `INCOMPLETE` 3/52 | single reviewed non-retryable Luna0 DEV execution only; do not duplicate, pool Opus rows, or infer efficacy before the Luna report seals |
+| Mini | PT-Luna0 live; PT-Claude Opus r3 sealed incomplete | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Luna PID `70327`: 1/52 complete at 08:50 EDT, first role 522.94 s, ETA ~7.4 h, two exact `gpt-5.6-luna/high` workers active; public report absent, exit guard PID `70802`; Opus r3 remains sealed `INCOMPLETE` 3/52 | single reviewed non-retryable Luna0 DEV execution only; do not duplicate, pool Opus rows, or infer efficacy before the Luna report seals |
 | Perf Cloud | R5 paused; prior R4 calibration sealed/inactive | preserved source `0ff18349c76b13e9f594e6d84fe9b34b04a91f04` | the disposable resumed diagnostic crossed the old FD ceiling and published calibration-selection artifacts, then was operator-stopped without a receipt on 2026-08-27 after the user requested a design pause. All prior rehearsal artifacts remain preserved; no R5 process is active. | no R5 design, source, rehearsal, freeze, review, or scientific action until R4 is complete and the design is discussed with the user |
 | Strength Cloud | R4 sole scientific test + immediate reconstruction | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | readiness passed and was independently matched to 4 cohorts / 32 members; scientific invocation `f8069d7e…98d` started `12:23:19Z`, `Restart=no` | no duplicate/retry; only scientific success may launch the reviewed independent verifier |
 | Air | none | — | idle | none |

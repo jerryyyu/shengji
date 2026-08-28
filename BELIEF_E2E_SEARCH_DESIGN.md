@@ -224,6 +224,23 @@ For the live public information set:
 Q_public(o, a; pi) = E[w ~ P(w | o)] Q_world(w, o, a; pi)
 ```
 
+That expectation is a deployable public action value only when `pi` is
+information-set legal: after the root action, every simulated actor receives
+only that actor's observation at that future decision, not the literal hidden
+allocation `w`. A continuation that chooses every later action with perfect
+information defines an **oracle diagnostic**, not `Q_public`; averaging its
+per-world optima would introduce strategy fusion by granting mutually
+incompatible future choices in different worlds.
+
+The first target therefore freezes one actor-visible continuation for every
+post-root decision. The privileged teacher may inspect `w` to reason about the
+root action, request or allocate engine rollouts, and estimate counterfactuals,
+but the outcome rollouts that define the public-compatible label use the same
+frozen actor-visible continuation for every action and world. A later
+full-information-continuation target, if useful, receives a separate schema and
+may advance only through perfect-information diagnostics; it is never silently
+averaged and called a public Q value.
+
 The artifact retains more than the mean:
 
 - probability of each signed level outcome;
@@ -353,6 +370,10 @@ merely impressive chosen actions?
 Use a reviewed PT successor to score a complete named ballot on common exact
 worlds. The teacher may adaptively request engine rollouts, but every action's
 label must be comparable under the same continuation and work contract.
+For the first public-compatible packet, all post-root engine decisions use one
+frozen actor-visible continuation. The teacher's access to the exact world may
+change its root reasoning and rollout allocation, not the information supplied
+to future simulated actors.
 
 The current PT-Sol0 private transcripts are design evidence, not automatically
 training data. A reviewed extractor must prove which engine-returned outcomes
@@ -380,8 +401,8 @@ Recommended first target:
 
 - input: one complete engine world, its actor/public history, and one legal
   action;
-- label: `Q_world` signed-level distribution under the reviewed continuation
-  contract;
+- label: `Q_world` signed-level distribution under the reviewed, post-root
+  actor-visible continuation contract;
 - secondary label: best-action probability under repeated
   teacher/continuation outcomes;
 - loss: proper distributional outcome loss plus a bounded pairwise ranking

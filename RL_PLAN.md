@@ -270,7 +270,11 @@ mixture, then reduces its action values to
 `E[Q(h, world, action) | actor-visible h]`. A true-world omniscient argmax is
 never a public target. BELIEF may improve the compatible-world distribution,
 but it does not substitute for proving that the continuation policy itself is
-strong.
+strong. That expectation has public-policy meaning only when post-root
+continuations are information-set legal: each future actor receives its own
+observation, not the literal hidden allocation. Full-information continuation
+values remain separately named oracle diagnostics because averaging per-world
+omniscient choices would introduce strategy fusion.
 
 Current evidence sharpens that requirement: PT0 found only small late-endgame
 headroom, PT1 was a clean negative, PT-Full showed that one true-world collapse

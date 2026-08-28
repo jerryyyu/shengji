@@ -269,6 +269,82 @@ aggregation of that same model over REF-C worlds. Training a separate public-Q
 student is deferred until this factorized path has evidence; otherwise learner
 error, posterior error, and aggregation error would be introduced together.
 
+## Mapping to MCTS, PUCT and policy training
+
+The destination resembles AlphaZero's search-improvement loop, but the current
+system is not yet MCTS. Production Shengji search enumerates a root ballot,
+samples compatible worlds, rolls each root action forward and applies a
+conservative report guard. It does not retain a recursively expanded tree,
+select edges by PUCT or train a policy from tree visits.
+
+The exact component crosswalk is:
+
+| Search component | AlphaZero role | Shengji status and next boundary |
+|---|---|---|
+| State | Fully observed board | Actor observation plus a distribution over compatible hidden worlds. REF-C exists; R4 tests learned ownership, and E1 must still turn passing marginals into legal correlated worlds. |
+| Legal actions | Complete legal moves | The engine is authoritative, but the production ballot is a bounded search surface. Any PUCT packet must prove canonical action identity and either complete coverage or an explicit proposal-plus-exploration floor. |
+| Policy prior `P(I,a)` | Guides which edges PUCT explores first | Not part of the first Q experiment. A later actor-visible head learns from public-search visit targets; old direct-policy checkpoints are not silently reused. |
+| Leaf evaluator | Network value `V(s)` | E4 first learns `Q_world(w,I,a)`. E5 tests whether its frozen aggregation helps search before deriving or training a public leaf value. |
+| Tree edge value | Backed-up `Q(s,a)` | Not the raw Q network output. A future tree backs up simulated/leaf outcomes; `Q_world` may order expansion or supply a leaf estimate but never overwrites search accounting. |
+| Search controller | PUCT recursively selects, expands, evaluates and backs up | Not implemented. E5 remains a root-level mechanism test. Recursive search is admitted only after the evaluator transfers through REF-C. |
+| Improved policy | Normalized root visit counts | Future `pi_search(a|I)` is computed only after aggregating across the actor-visible public belief state. True-world PT actions are not public targets. |
+| Training loop | Self-play -> search targets -> retrain -> repeat | Deferred. The first loop is one frozen relabel/training iteration with held-out and same-work gates, not an open-ended flywheel. |
+
+At a future public information state `I`, PUCT would select an edge using a
+form such as:
+
+```text
+a = argmax_a [Q_tree(I,a)
+              + c_puct * P_theta(a|I)
+                * sqrt(sum_b N(I,b)) / (1 + N(I,a))]
+```
+
+`Q_tree` is the value accumulated by that search. `P_theta` is the learned
+actor-visible prior. BELIEF supplies the compatible-world distribution used by
+chance/leaf evaluation; `Q_world` helps evaluate a fully specified sampled
+world. At the root their public value is still:
+
+```text
+Q_public(I,a) = E[w ~ P(w|I)] Q_world(w,I,a)
+```
+
+The search-improved policy target is the normalized root visit population:
+
+```text
+pi_search(a|I) = N(I,a)^(1/tau) / sum_b N(I,b)^(1/tau)
+```
+
+Every natural self-play state receives this policy target, including states in
+games that later lose. The terminal signed-level outcome separately trains the
+value target. Iteratively collecting the states reached by the current policy,
+querying stronger search there and aggregating the relabelled rows is
+DAgger-like distribution repair; it is not literal DAgger because the teacher
+is search built partly from the current learner and the target is a soft visit
+distribution rather than one fixed expert action.
+
+Hidden information adds a non-negotiable target rule. All worlds compatible
+with the same actor observation must be aggregated before publishing
+`pi_search(a|I)`. Relabelling identical public observations with separate
+true-world PT argmaxes would train strategy fusion, not a deployable policy.
+A perfect-information visit target may train a separately named `P_world`
+diagnostic for E5a, but it cannot become `P_theta(a|I)` without the public
+aggregation gate.
+
+The low-risk bridge is therefore sequential:
+
+1. prove `Q_world` learns and helps known-world search (E4/E5a);
+2. prove the same frozen evaluator helps across REF-C worlds (E5b);
+3. only then implement one shallow public-belief PUCT controller with the
+   incumbent policy prior and exact-work null;
+4. use its root visits for one actor-visible policy-relabel training turn; and
+5. repeat only if the new prior improves fresh search at equal work.
+
+This keeps recursive search, policy learning and learned BELIEF from entering
+in one unidentifiable change. A future sound public-belief tree may require
+game-theoretic information-set backups beyond ordinary two-player PUCT; a
+per-determinization tree averaged only at the root is recorded as a bounded
+heuristic, not mislabeled as sound imperfect-information MCTS.
+
 ## Staged program
 
 The dependency graph has two branches and one deliberately short path:

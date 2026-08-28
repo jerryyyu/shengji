@@ -248,7 +248,11 @@ falsifiable paths: BELIEF changes only the sampled-world distribution, while a
 PT-supervised `Q_world` student first learns and is tested with complete worlds
 before it is aggregated over today's REF-C sampler. BELIEF+Q composition is a
 later one-axis substitution, not the first experiment. The document is a
-research design only and grants no execution or policy authority.
+research design only and grants no execution or policy authority. Its MCTS
+crosswalk also makes the remaining gap explicit: current production is
+root-level Monte Carlo, not a recursive PUCT tree. Only after Q transfers
+through REF-C may one shallow public-belief search produce actor-visible visit
+targets for a DAgger-like policy-training turn.
 
 | component | current role | next admissible test |
 |---|---|---|

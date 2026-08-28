@@ -80,6 +80,35 @@ def _parent(role: str = "banker-team") -> dict[str, object]:
     }
 
 
+def _design(**kwargs) -> report.Sol0Design:
+    values = {
+        "seed_commitment_sha256": "1" * 64,
+        "execution_git": "2" * 40,
+        "native_sha256": "3" * 64,
+        "hostname": full.MINI_HOSTNAME,
+        "c0_external_sha256": "4" * 64,
+        "c0_report_sha256": "5" * 64,
+        "c0_execution_git": "6" * 40,
+        "full_external_sha256": "7" * 64,
+        "full_report_sha256": "8" * 64,
+        "full_execution_git": "9" * 40,
+        "codex_binary_sha256": "a" * 64,
+        "codex_version": "codex-test",
+        "python_binary_sha256": "b" * 64,
+        "python_version": "python-test",
+        "tool_script_sha256": "c" * 64,
+    }
+    values.update(kwargs)
+    return report.Sol0Design(**values)
+
+
+def test_design_binds_luna_without_changing_the_sol_default():
+    sol_design = _design()
+    assert sol_design.payload()["model"] == sol0.MODEL
+    assert sol_design.payload()["planner_config"]["model"] == sol0.MODEL
+    assert "planner_model" not in report.Sol0Design.__dataclass_fields__
+
+
 def test_public_record_contains_hashes_and_aggregates_not_private_state():
     row = report._record_payload(
         coordinate=("2", 0, 0), role="banker-team", parent=_parent(),

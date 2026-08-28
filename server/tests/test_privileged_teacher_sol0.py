@@ -8,6 +8,7 @@ from pathlib import Path
 import stat
 import subprocess
 import tempfile
+from types import SimpleNamespace
 
 import pytest
 
@@ -46,6 +47,34 @@ def _play_request(observation: dict[str, object], index: int = 0) \
         "candidate_index": index,
         "confidence": "low",
     }
+
+
+def test_planner_process_binds_the_configured_model_and_effort(monkeypatch,
+                                                               tmp_path):
+    observed = []
+
+    def run(command, **kwargs):
+        observed.append((command, kwargs))
+        return subprocess.CompletedProcess(
+            args=command, returncode=0, stdout=b"")
+
+    monkeypatch.setattr(sol0.subprocess, "run", run)
+    config = sol0.Sol0PlannerConfig(
+        model=sol0.MODEL, reasoning_effort=sol0.REASONING_EFFORT)
+    session = SimpleNamespace(config=config)
+    sol0._default_planner_process(
+        session, workspace=tmp_path, mailbox_path=tmp_path / "mailbox",
+        tool_script=Path(__file__), codex_binary=Path("/bin/codex"),
+        prompt="planner", final_output_path=tmp_path / "final.json")
+    command, kwargs = observed[0]
+    assert command[command.index("-m") + 1] == sol0.MODEL
+    assert command[command.index("-c") + 1] == \
+        'model_reasoning_effort="high"'
+    assert kwargs["timeout"] == sol0.MAX_SESSION_WALL_SECONDS
+
+    with pytest.raises(sol0.PrivilegedTeacherSol0Error,
+                       match="planner model identity drift"):
+        sol0.Sol0PlannerConfig(model="gpt-5.6-terra")
 
 
 def test_observe_exposes_exact_world_but_public_outcome_schema_does_not():

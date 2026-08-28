@@ -923,12 +923,14 @@ def _default_planner_process(
         session: Sol0GameSession, *, workspace: Path, mailbox_path: Path,
         tool_script: Path, codex_binary: Path, prompt: str,
         final_output_path: Path) -> subprocess.CompletedProcess[bytes]:
-    del session, mailbox_path, tool_script
+    del mailbox_path, tool_script
     command = (
         str(codex_binary), "exec", "--ephemeral", "--ignore-user-config",
         "--ignore-rules", "--skip-git-repo-check", "--sandbox",
-        "workspace-write", "-C", str(workspace), "-m", MODEL,
-        "-c", f'model_reasoning_effort="{REASONING_EFFORT}"',
+        "workspace-write", "-C", str(workspace), "-m",
+        session.config.model,
+        "-c", (f'model_reasoning_effort='
+               f'"{session.config.reasoning_effort}"'),
         "--output-last-message", str(final_output_path), "-",
     )
     env = dict(os.environ)
@@ -936,7 +938,7 @@ def _default_planner_process(
     return subprocess.run(
         command, input=prompt.encode("utf-8"), stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, cwd=workspace, env=env,
-        timeout=MAX_SESSION_WALL_SECONDS, check=False)
+        timeout=session.config.max_session_wall_seconds, check=False)
 
 
 def run_sol_session(

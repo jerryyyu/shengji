@@ -37,6 +37,7 @@ from .world_afterstate_model import (CAPACITY_SHAPES,
 
 CAPACITY_SCHEMA = "world-afterstate-capacity-receipt-v0"
 CAPACITY_FIXTURE_SCHEMA = "world-afterstate-capacity-fixture-v0"
+CAPACITY_SCHEDULE_SCHEMA = "world-afterstate-capacity-schedule-v0"
 CAPACITY_SEED_START = 883_700_000
 AUTHORITY = {
     "population_freeze_authorized": False,
@@ -310,6 +311,15 @@ def run_capacity(
             or not 1 <= model_steps <= 1000:
         raise WorldAfterstateCapacityError("capacity repetition schedule drift")
     device = _device(device_name)
+    schedule = {
+        "schema": CAPACITY_SCHEDULE_SCHEMA,
+        "fixture_count": fixture_count,
+        "worker_counts": list(worker_counts),
+        "worker_repetitions": worker_repetitions,
+        "batch_sizes": list(batch_sizes),
+        "model_steps": model_steps,
+        "requested_device": device_name,
+    }
     fixtures_started = time.perf_counter_ns()
     audits = build_capacity_fixtures(fixture_count)
     fixture_elapsed = time.perf_counter_ns() - fixtures_started
@@ -363,6 +373,7 @@ def run_capacity(
         "source_sha256s": {
             name: _sha256_file(path) for name, path in source_files.items()
         },
+        "schedule": schedule,
         "fixtures": {
             "schema": CAPACITY_FIXTURE_SCHEMA,
             "seed_start": CAPACITY_SEED_START,
@@ -385,7 +396,7 @@ def validate_capacity_receipt(value: Mapping[str, Any]) -> None:
         raise WorldAfterstateCapacityError("capacity receipt schema drift")
     required = {
         "schema", "git", "outcome_blind", "evidence_artifact", "runtime",
-        "source_sha256s", "fixtures", "tensor_worker_scaling",
+        "source_sha256s", "schedule", "fixtures", "tensor_worker_scaling",
         "model_measurements", "authority",
     }
     if set(value) != required:
@@ -417,6 +428,38 @@ def validate_capacity_receipt(value: Mapping[str, Any]) -> None:
                 or runtime[key] <= 0:
             raise WorldAfterstateCapacityError(
                 "capacity runtime resource drift")
+    schedule = value["schedule"]
+    if type(schedule) is not dict or set(schedule) != {
+            "schema", "fixture_count", "worker_counts",
+            "worker_repetitions", "batch_sizes", "model_steps",
+            "requested_device"} \
+            or schedule.get("schema") != CAPACITY_SCHEDULE_SCHEMA \
+            or isinstance(schedule.get("fixture_count"), bool) \
+            or not isinstance(schedule.get("fixture_count"), int) \
+            or not 13 <= schedule["fixture_count"] <= 256 \
+            or type(schedule.get("worker_counts")) is not list \
+            or not schedule["worker_counts"] \
+            or any(isinstance(item, bool) or not isinstance(item, int)
+                   or not 1 <= item <= 16
+                   for item in schedule["worker_counts"]) \
+            or len(set(schedule["worker_counts"])) \
+            != len(schedule["worker_counts"]) \
+            or isinstance(schedule.get("worker_repetitions"), bool) \
+            or not isinstance(schedule.get("worker_repetitions"), int) \
+            or not 1 <= schedule["worker_repetitions"] <= 64 \
+            or type(schedule.get("batch_sizes")) is not list \
+            or not schedule["batch_sizes"] \
+            or any(isinstance(item, bool) or not isinstance(item, int)
+                   or not 1 <= item <= 4096
+                   for item in schedule["batch_sizes"]) \
+            or len(set(schedule["batch_sizes"])) \
+            != len(schedule["batch_sizes"]) \
+            or isinstance(schedule.get("model_steps"), bool) \
+            or not isinstance(schedule.get("model_steps"), int) \
+            or not 1 <= schedule["model_steps"] <= 1000 \
+            or schedule.get("requested_device") \
+            not in ("auto", "cpu", "cuda", "mps"):
+        raise WorldAfterstateCapacityError("capacity schedule drift")
     fixtures = value["fixtures"]
     if type(fixtures) is not dict \
             or set(fixtures) != {
@@ -429,7 +472,9 @@ def validate_capacity_receipt(value: Mapping[str, Any]) -> None:
             or any(fixtures["trump_rank_counts"][rank] <= 0 for rank in RANKS):
         raise WorldAfterstateCapacityError(
             "capacity receipt trump-rank coverage drift")
-    if sum(fixtures["trump_rank_counts"].values()) != fixtures["count"] \
+    if fixtures["count"] != schedule["fixture_count"] \
+            or sum(fixtures["trump_rank_counts"].values()) \
+            != fixtures["count"] \
             or fixtures["seed_start"] != CAPACITY_SEED_START \
             or any(isinstance(fixtures[key], bool)
                    or not isinstance(fixtures[key], int)
@@ -457,8 +502,13 @@ def validate_capacity_receipt(value: Mapping[str, Any]) -> None:
                 or type(row["output_population_sha256"]) is not str \
                 or len(row["output_population_sha256"]) != 64:
             raise WorldAfterstateCapacityError("capacity worker receipt drift")
-    if len({row["workers"] for row in workers}) != len(workers):
-        raise WorldAfterstateCapacityError("capacity worker identities duplicate")
+    if [row["workers"] for row in workers] != schedule["worker_counts"] \
+            or any(row["tasks"] != schedule["fixture_count"]
+                   * schedule["worker_repetitions"] for row in workers):
+        raise WorldAfterstateCapacityError("capacity worker schedule drift")
+    if len({row["output_population_sha256"] for row in workers}) != 1:
+        raise WorldAfterstateCapacityError(
+            "capacity parallel tensor output drift")
     measurements = value["model_measurements"]
     if type(measurements) is not list or not measurements:
         raise WorldAfterstateCapacityError("capacity model receipt drift")
@@ -479,6 +529,24 @@ def validate_capacity_receipt(value: Mapping[str, Any]) -> None:
                                    "elapsed_nanoseconds",
                                    "examples_per_second_ppm")):
             raise WorldAfterstateCapacityError("capacity model receipt drift")
+    expected_model_schedule = [
+        (shape, batch_size)
+        for shape in CAPACITY_SHAPES
+        for batch_size in schedule["batch_sizes"]
+    ]
+    if [(row["shape"], row["batch_size"]) for row in measurements] \
+            != expected_model_schedule \
+            or any(row["steps"] != schedule["model_steps"]
+                   for row in measurements) \
+            or any(row["shape_values"] != {
+                "public_hidden": CAPACITY_SHAPES[row["shape"]].public_hidden,
+                "history_hidden": CAPACITY_SHAPES[row["shape"]].history_hidden,
+                "world_hidden": CAPACITY_SHAPES[row["shape"]].world_hidden,
+                "perspective_hidden":
+                    CAPACITY_SHAPES[row["shape"]].perspective_hidden,
+                "head_hidden": CAPACITY_SHAPES[row["shape"]].head_hidden,
+            } for row in measurements):
+        raise WorldAfterstateCapacityError("capacity model schedule drift")
     forbidden_tokens = ("attacker_points", "signed_level_category", "label",
                         "logit", "prediction", "proper_score")
     raw = canonical_json_bytes(dict(value)).decode("ascii")

@@ -57,3 +57,37 @@ def test_capacity_receipt_authority_and_rank_coverage_are_load_bearing(
     with pytest.raises(WorldAfterstateCapacityError,
                        match="trump-rank coverage drift"):
         validate_capacity_receipt(forged)
+
+
+def test_capacity_receipt_binds_worker_and_model_schedule(monkeypatch):
+    import shengji.rl.world_afterstate_capacity as capacity
+    monkeypatch.setattr(capacity, "_git", lambda _repo, *args:
+                        "c" * 40 if args == ("rev-parse", "HEAD") else "")
+    receipt = run_capacity(
+        repo=Path.cwd(), expected_git="c" * 40, fixture_count=13,
+        worker_counts=[1, 2], worker_repetitions=1, batch_sizes=[1, 2],
+        model_steps=1, device_name="cpu")
+
+    forged = copy.deepcopy(receipt)
+    forged["tensor_worker_scaling"].pop()
+    with pytest.raises(WorldAfterstateCapacityError,
+                       match="worker schedule drift"):
+        validate_capacity_receipt(forged)
+
+    forged = copy.deepcopy(receipt)
+    forged["tensor_worker_scaling"][-1]["output_population_sha256"] = "0" * 64
+    with pytest.raises(WorldAfterstateCapacityError,
+                       match="parallel tensor output drift"):
+        validate_capacity_receipt(forged)
+
+    forged = copy.deepcopy(receipt)
+    forged["model_measurements"].pop()
+    with pytest.raises(WorldAfterstateCapacityError,
+                       match="model schedule drift"):
+        validate_capacity_receipt(forged)
+
+    forged = copy.deepcopy(receipt)
+    forged["schedule"]["fixture_count"] += 1
+    with pytest.raises(WorldAfterstateCapacityError,
+                       match="fixture accounting drift"):
+        validate_capacity_receipt(forged)

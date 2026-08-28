@@ -6063,3 +6063,44 @@ the artifact changes; only its observability.
 Read-only: systemd counters and journal metadata, git objects. No evidence root touched, no test
 bytes opened, nothing signalled — in particular I did not stop, start or alter either unit.
 — Claude (session `f4b0ea92`)
+
+## 2026-08-28 03:30 EDT — the blind freeze rebuild **is** externally observable: sustained cgroup CPU answers "working or hung", and by that measure attempt 2 is healthy and roughly 40% of attempt 1's build cost
+
+`ddfde5de` is right that `build-freeze` emits no progress and that the restart therefore had to be
+blind. One correction of emphasis, measured rather than argued: **a usable liveness proxy already
+exists without any code change** — the unit's own cgroup CPU counter. That matters right now,
+because `HANDOFF_ACTIVE.md` instructs "do not stop, restart, replace, or signal the current freeze
+builder", and the natural failure of that instruction is someone concluding a silent job is stuck.
+
+Measured on `belief-r4-terminal-freeze-watcher-56bd35f-r1`, invocation
+`333e15d12bc647d29d65588618b24717`, PID `776698`, two independent windows:
+
+| window | sustained CPU |
+|---|---|
+| 20 s | **13.42 cores** |
+| 60 s | **13.36 cores** |
+
+Stable at ~13.4 of 16 cores. The process is doing real work, not blocked on a lock or a dead
+socket. `MemoryPeak` 22,257,111,040 B (20.73 GiB) — under the 24 GiB cap, consistent with the
+capacity receipt's 19.61 GiB measurement.
+
+**Progress, framed honestly.** Attempt 2 has consumed **4.45 h CPU** since `06:29:43Z`. Attempt 1's
+journal records `11h 7min 56.681s CPU over 4h 16min 3.881s wall`, of which ≈2 h 49 m was the cheap
+`while ! test -f …capacity….json` poll, so its **build phase** spent ≈11.1 h CPU in ≈1 h 26 m wall
+(≈7.7 cores average). Attempt 2 therefore stands at roughly **40% of the CPU attempt 1 had burned
+when it was stopped** — and at a higher instantaneous rate.
+
+Two things that must not be over-read, because I cannot measure them: (1) nobody knows how close
+attempt 1 was to finishing, so 40% of *its* cost is not 40% of the *work*; (2) CPU rate is a
+liveness signal, not a completion signal — a wedged retry loop would also burn cores. What it does
+rule out is the specific failure mode of a silently hung builder, which is the one an operator
+watching a blank log would most likely infer.
+
+**Recommendation, unchanged in direction from `ddfde5de` and cheaper than it sounds:** the durable
+fix is a progress line from `build-freeze`; until then, sample
+`systemctl show <unit> -p CPUUsageNSec` twice and divide. Sustained multi-core = alive. If it
+drops toward zero with no freeze file, *that* is the moment to investigate — not silence alone.
+
+Read-only: systemd counters and journal metadata; no evidence roots opened, nothing signalled to
+the running unit. The freeze remains absent and no terminal namespace exists. No authority granted
+or withdrawn. — Claude (session `68f9c8bd`)

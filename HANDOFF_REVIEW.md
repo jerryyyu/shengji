@@ -5934,3 +5934,70 @@ only, not as the stage's cost.
 Read-only: the published capacity receipt (terminal, outcome-blind — `execution_authorized: false`,
 `test_opening_executed: false`), systemd counters, journal text and git objects. Nothing signalled,
 no test bytes opened. — Claude (session `f4b0ea92`)
+
+## 2026-08-28 02:35 EDT — the R4 terminal freeze watcher was stopped mid-`build-freeze` and relaunched byte-identically; **nothing anywhere records that the first execution happened**, because this lane binds no execution identity
+
+Separate from `69bc6de` (that entry is about the capacity receipt's CPU fields; this is about the
+freeze step now running against it). No marker requested, none appended.
+
+### What happened, from the unit's own journal
+
+```
+06:29:42 Stopping belief-r4-terminal-freeze-watcher-56bd35f-r1.service
+06:29:43 Deactivated successfully.
+06:29:43 Consumed 11h 7min 56.681s CPU time over 4h 16min 3.881s wall clock time, 22.3G memory peak.
+06:29:43 Started belief-r4-terminal-freeze-watcher-56bd35f-r1.service
+```
+
+`Restart=no`, `NRestarts=0` — systemd did not do this; the unit was stopped externally and a new one
+started under the **same name** one second later. Of that 4 h 16 m wall, roughly 2 h 49 m was the
+cheap `while ! test -f …capacity….json` poll (the capacity receipt published at 05:03), so the
+CPU-consuming `build-freeze` phase ran ≈ **05:03 → 06:29:42, about 1 h 26 m**, and produced nothing:
+`/opt/belief-r4-terminal-parallel-freeze-56bd35f-r1.json` does not exist.
+
+The replacement invocation is `333e15d12bc647d29d65588618b24717`, `ActiveEnterTimestamp`
+`06:29:43 UTC`, `MainPID 776698`, running a **byte-identical** command — same
+`--expected-git 56bd35f0c45080121d094f6906ab8d1053ca9e6b`, same `--expected-capacity-sha256
+df51a8f9704298b3a7958d0daa8ee9b1cf220cb3cc140f682910072f07a6051e`, same `--out`. Same inputs, same
+code, so attempt 2 is a replay of attempt 1.
+
+**An operator stopping a job is not a defect and I am not calling it one.** I do not know why it was
+stopped. The reviewable part is what follows.
+
+### The finding: this lane cannot tell the two executions apart, and never recorded the first
+
+- `Result=success` and `ExecMainStatus=0` on that unit describe the **clean stop**, not the work. A
+  later reader sees a successful unit with a 06:29:43 start time.
+- **No failure or abandonment receipt was written.** ~1 h 26 m wall / 11 h CPU / 22.3 G peak exists
+  only as one journal line, which is not in any evidence root and rotates.
+- **No execution identity is bound anywhere in this lane.** At `56bd35f0`,
+  `git grep -niE "invocationid|invocation_id" -- server/shengji server/scripts` matches **only the
+  ballot lane** — `pair_ballot_affected_capacity_preflight.py:1098,1121` captures
+  `systemd_invocation_id` after `require_systemd_scope()`, and
+  `pair_ballot_affected_capacity_result_review.py:407` validates it as 32 hex. There are **zero**
+  matches in `belief_v2_r4_terminal_parallel.py`, which also carries no boot identity (PT1 has
+  `_boot_identity_bytes()` for exactly this) and binds `hostname` and nothing else about the host.
+- **No keeper covers these units.** `belief-r4-systemd-evidence-keeper-d2d466f-r1.service` watches
+  `belief-v2-r4-d2d466f-r1.service` — a different, older unit — and
+  `grep -rl "freeze-watcher-56bd35f" /opt` returns **nothing**. The R5 v8 lineage did capture
+  `InvocationID`, `Result`, `NRestarts` and the journal into a closed evidence root (see `3417`);
+  the R4 terminal capacity/freeze steps have no equivalent.
+
+So the freeze this seals will carry `hostname` and its input digests but no answer to "which
+execution produced this, and were there others?" — and the consolidated marker is about to attest it.
+
+### Fix, both cheap
+
+1. Capture `INVOCATION_ID` into the capacity and freeze records the way the ballot lane already
+   does, with the same 32-hex validation on reopen. `hostname` alone does not distinguish two runs
+   one second apart on the same box.
+2. Make an unpublished `build-freeze` exit leave an abandonment receipt naming its invocation,
+   wall/CPU consumed and the phase reached. "Permanent-never-delete: every failure receipt" cannot
+   hold for a failure that never wrote one.
+
+### Coverage limits
+
+Measured from systemd properties, the unit journal, `/opt` listings and source at `56bd35f0`. I did
+not inspect the running process's internals and did not read any partial or live outcome.
+
+— Claude (session `cc2565ac`)

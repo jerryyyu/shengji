@@ -6250,3 +6250,87 @@ verifier. All long units exact-head/runtime, `Restart=no`, `KillMode=control-gro
 
 BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW {"authority":{"calibration_open_authorized":true,"capture_authorized":false,"deployment_authorized":false,"gameplay_strength_screen_authorized":false,"one_test_split_open_authorized":true,"promotion_authorized":false,"reference_generation_authorized":false,"retry_authorized":false,"sampler_implementation_authorized":false,"strength_claim_authorized":false,"terminal_reconstruction_authorized":true,"training_authorized":false},"deadline_estimate_receipt_sha256":"df51a8f9704298b3a7958d0daa8ee9b1cf220cb3cc140f682910072f07a6051e","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-r4-terminal-parallel-v1-r1","execution_git":"56bd35f0c45080121d094f6906ab8d1053ca9e6b","execution_mode":"r4-calibration-test-terminal-only","freeze_sha256":"0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"7e59aa6cb8b199947963d9d2af9ff6d7060b1ab4c71c8d4528d0e71e0becc420","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"4b4029d0605fbcada3d71371b04f4acf4f982506cbbde374f10838c6b18a5b38","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-r4-completion-execution-review-v1","seed_registry_sha256":"eb86b594c85489f3614ea7b95ff7c30660f8b04adce5a027c27ab4cd238840ec","source_manifest_sha256":"75482f5e472595baddeee87f4d7ff4ab175696b83f9ef524686c7dd8767fd56a","source_review_mode":"consolidated-source-and-freeze","source_spec_sha256":"c0bd3f5b2431de10f2863699e744ba44fb75f73fee794428c03fa02879a7d4a0","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"2f7edb58c08d831ccc390f8ff77bb4b73a19f57e2f940977d9563c952ab673e0","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}
 
+
+## 2026-08-28 — ⚠️ TIME-CRITICAL: the terminal resource gate **projects wall but only measures memory**, and the live readiness stage already exceeds the memory number the gate used. The next stage is the one-shot test opening.
+
+The envelope caveat I attached to the R4 PASS is discharged — every element verifies on the live
+unit. But checking it surfaced something else on the memory dimension, and readiness is running
+now with the test opening next.
+
+### First: the envelope is genuinely applied. My caveat is closed by measurement.
+
+I noted that the marker binds `resource_caps_sha256` but not the systemd properties that enforce
+it, so the envelope had to be checked at launch. It has been, on
+`belief-r4-terminal-readiness-56bd35f-r1`, and every element holds:
+
+`Type=exec`, `Restart=no`, `NRestarts=0`, `KillMode=control-group`, `RuntimeMaxUSec=2d`,
+`MemoryMax=25769803776`, `MemorySwapMax=0`, `UMask=0077`; `ExecStart` runs
+`/usr/bin/env -u PYTHONPATH … -P -B` against the exact runtime
+`/opt/belief-r4-terminal-runtime-e099d14/bin/python`, and the live process environment
+(`/proc/828094/environ`) contains **no `PYTHONPATH`** — only
+`PYTHONDONTWRITEBYTECODE=1`, `PYTHONHASHSEED=0`, `SHENGJI_FAST=1`, `SHENGJI_REQUIRE_VOIDS=1`.
+Nothing to flag; recording it so the caveat does not sit open.
+
+### The asymmetry, from the gate's own source
+
+`belief_v2_r4_terminal_parallel.py:757–767`:
+
+```
+aggregate_peak_host_memory = _aggregate_peak_host_memory_bytes(V2_DECISION_WORKERS)
+if projected_scientific_wall + reserve >= wall_cap \
+        or projected_verifier_wall + reserve >= wall_cap \
+        or aggregate_peak_host_memory > caps.training_host_memory_bytes:
+    raise BeliefV2R4TerminalParallelError(
+        "R4 terminal projected scorer exceeds frozen resource cap")
+```
+
+The two wall arms compare **projections** scaled to the scientific unit. The memory arm compares a
+**measurement of the capacity sample** against the same cap. The receipt confirms the asymmetry:
+all seven `projected_*` fields are `_wall_nanoseconds` (plus
+`projected_maximum_test_decision_count`), and the only memory fields are
+`aggregate_peak_host_memory_bytes`, its measurement method, the cap and a boolean. **No memory
+projection for any downstream stage exists.**
+
+The scale gap is not small: the sample the memory number came from is **924 decisions**;
+`projected_maximum_test_decision_count = 171,443` — **185×**.
+
+### Live evidence that the gate's memory input is not an upper bound
+
+The readiness stage — lighter than the scientific test, and score-free — has already recorded
+`MemoryPeak = 23,898,419,200` (**22.26 GiB**) against `MemoryMax = 25,769,803,776` (**24.0 GiB**):
+
+- **92.75 % of the cap**, leaving **1.74 GiB** of headroom;
+- **13.5 % above** the `aggregate_peak_host_memory_bytes = 21,056,126,976` (19.61 GiB) that the
+  gate compared against;
+- with `MemorySwapMax=0` and `KillMode=control-group`, so an overrun is a hard kill, not a swap.
+
+`MemoryCurrent` is now 17.48 GiB, so the peak was a spike rather than a plateau — but it is a spike
+the gate's input did not predict, at a stage that does less work than the one it is gating.
+
+### What I am and am not claiming
+
+**Not claiming this will OOM.** Peak memory here is plausibly dominated by the 16 workers' model
+footprint rather than by decision count, in which case 171,443 decisions cost no more than 924.
+That may well be true — but **nothing in the receipt or the gate asserts it**, and the one
+observation available points the other way.
+
+*Inferred, mechanistically grounded, not measured:* a killed test opening probably **consumes the
+one-shot**. The capacity path already refuses on
+`"R4 terminal capacity observed a consumed test namespace"` when any `TERMINAL_NAMESPACE` entry
+exists, so a partially written test namespace from an OOM-killed stage would block a retry rather
+than allow one.
+
+### The ask, small and before the gate passes
+
+State the expected peak host memory for the scientific terminal unit — a projection the way wall
+already has one, or an explicit argument that peak memory is independent of decision count, or one
+measurement. If it is decision-independent, the receipt should say so and the gate's memory arm is
+fine as-is. If it is not, 1.74 GiB of headroom with swap disabled is thin in front of an
+irreversible step.
+
+This is the same shape as the wall-estimate gap I raised at `1e20021` and kept after withdrawing
+the rest of that entry — which this receipt **fixed for wall**. Only the memory half is outstanding.
+
+Read-only: systemd properties, `/proc/<pid>/environ` of a unit I did not touch, the published
+capacity receipt, and git objects. Nothing signalled, no test bytes opened, no evidence root
+modified. — Claude (session `f4b0ea92`)

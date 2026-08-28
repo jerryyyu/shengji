@@ -5783,3 +5783,76 @@ I verified the two `expected` dicts in `reopen_imported_calibration` and
 apart from my own scratch copies.
 
 — Claude (session `cc2565ac`)
+
+## 2026-08-28 — ⛔ PR #160 (PT-Luna0) source review at exact head `5877956`: **the Luna arm's model is not witnessed end-to-end — deleting one line makes it silently run `gpt-5.6-sol` while the report still says `gpt-5.6-luna`.** Everything else the PR claims reproduces exactly
+
+Reviewed at Jerry's direct request. No marker template was requested and none is appended.
+
+### What reproduces exactly
+
+Head `58779569523ee1b6659ad21bf352a2af37907793`, **one commit**, parent
+`e73f970ec6831847c99c68aa0e08648994a3858b` (verified by `git log --format=%P`) — the exact head
+that produced the sealed COMPLETE 52/52 Sol0 report, so this stacks on reviewed ground.
+`git diff --check` clean. Focused suites, run by me at that head: **26 passed pure, 26 passed
+strict native** — the PR's claimed counts, exactly. `AUTHORITY` is nine flags, all `False`.
+
+Two boundary claims falsified against the real artifacts rather than fixtures:
+- *"Existing Sol0 fixture payload remains byte-identical."* I rebuilt the **sealed** Sol0 design
+  through `_sol_design()` under the modified `privileged_teacher_sol0.py` and compared
+  `canonical_json_bytes`: **identical**. The config refactor does not disturb the sealed parent.
+- *"Makes no token-efficiency claim."* True and structurally enforced: the sealed Sol0 outcome
+  carries no `model_reported_tokens` (`None`), so `ratio` stays `None` and `token_comparison` is
+  the hardcoded `UNAVAILABLE_PUBLIC_SOL0_ARTIFACT`.
+
+The model allowlist is properly witnessed: neutralising `"planner model identity drift"` turns
+`test_planner_process_binds_the_configured_model_and_effort` red (`DID NOT RAISE`).
+
+### Blocker: the arm's identity survives only by an unwitnessed default
+
+The refactor makes the planner model *data* (`session.config.model`) instead of the module
+constant, and threads it `run_dev → _run_root → _run_role → Sol0GameSession(config=…)`. The
+shared `_run_root` signature ends with:
+
+```python
+planner_config: Sol0PlannerConfig | None = None
+...
+planner_config=planner_config or Sol0PlannerConfig()
+```
+
+I deleted the single line `"planner_config": Luna0PlannerConfig(),` from Luna's `run_dev` kwargs
+and reran everything: **26 passed, nothing red.** With that line gone the fallback engages and
+`Sol0PlannerConfig().model` is **`gpt-5.6-sol`**, while `Luna0Design` still pins and publishes
+`planner_model = "gpt-5.6-luna"`. The run would seal 52 records labelled Luna that were played by
+Sol — the treatment contrast the whole PR exists to measure would be **null, and nothing in the
+artifact would say so.**
+
+The shipped witness cannot catch this: `test_luna_subprocess_witness_binds_luna_model_and_effort`
+calls `sol0._default_planner_process` **directly** with a `Luna0PlannerConfig()`, so it proves the
+command is built correctly from a config it was handed, and never exercises the path that decides
+*which* config arrives. This is the same masked-witness shape as `4fa3018`/`a9be442` on #159 —
+reachable is not covered — but here it sits on arm identity, which is the one property a
+benchmark cannot get wrong.
+
+**Fix, two parts.** (1) One end-to-end witness: drive `run_dev` with a stub `planner_process` that
+records `session.config.model` and assert `gpt-5.6-luna`. (2) Better, delete the
+`or Sol0PlannerConfig()` fallback and make `planner_config` required — on an identity-bearing
+surface a defaulted parameter converts "caller forgot" into "silently the other arm". A
+`TypeError` at call time is the honest failure.
+
+### Second, smaller: the wall-time ratio is confounded by concurrency
+
+`efficiency.wall_milliseconds.luna_to_sol_ratio` **is** computed (the sealed parent does carry
+`model_wall_milliseconds`, e.g. 573,234 on the first record). Sol0's walls were measured under
+whatever load Mini carried then; Luna's will be measured under whatever it carries at run time —
+and Mini is currently running a two-worker PT-Cla0 Opus arm. A ratio that moves with co-tenancy is
+a scheduling artifact, not a model property. The PR is admirably careful about the *token* claim;
+the wall ratio deserves the same treatment — require exclusive Mini, or record concurrent-load
+context in the receipt, or label the field confounded.
+
+*Note on even-handedness:* Luna0 reuses the already-revealed Sol0 population. That is acceptable
+for a descriptive benchmark with all-false authority, and my own Cla0 arm shares the property —
+it is a family-level caveat for interpretation, not a Luna defect.
+
+Coverage limits: source only; +1561/−8 across 9 files, and I went deep on the config threading,
+the parent-binding and token/wall summaries, and the design payload. No run exists to review. No
+authority granted or withdrawn. — Claude (session `68f9c8bd`)

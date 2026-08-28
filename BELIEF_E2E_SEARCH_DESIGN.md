@@ -84,6 +84,27 @@ Neither opportunity is enough alone. Better belief with a poor consumer can
 lose, and a strong privileged teacher can leak or fail to transfer into a
 public policy.
 
+## Confidence boundaries
+
+High-confidence architectural choices are the separations, not the unmeasured
+model gains:
+
+- legal engine search remains the decision spine and final guard;
+- belief is tested first by changing only the world distribution;
+- privileged reasoning produces offline counterfactual evidence, never a live
+  clairvoyant feature;
+- a Q/value learner receives a policy-, ballot-, world-, and horizon-bound
+  target rather than an unqualified scalar; and
+- every later consumer must beat literal search and a same-work null before it
+  composes with another learned component.
+
+The empirical claims remain conditional. R4 has not yet established that the
+current belief recipe beats REF-C; PT-Sol0 has not yet established a fresh
+whole-game teacher advantage; no current Q head has passed both stable
+learning and online-use gates; and no evidence says all three pieces improve
+when composed. A negative result at any rung stops that branch without
+invalidating the modular architecture or forcing the other branch to wait.
+
 ## Information and authority contracts
 
 ### Runtime information
@@ -199,6 +220,32 @@ lead/follow/bury surfaces are required diagnostics and may justify separate
 heads if the data do; they are not silently pooled into one claim.
 
 ## Staged program
+
+The dependency graph has two branches and one deliberately short path:
+
+```text
+E0 R4 -> E1 legal sampler -> E2 sampler mechanism -----> E6 sampler-only games
+                                  |
+                                  +---------------------+
+                                                        |
+reviewed PT confirmation -> E3 teacher packet ----------+--> E4 one Q head
+                                                                  |
+                                                                  v
+                                                            E5 one Q use
+                                                                  |
+                                                                  v
+                                                       E6 Q-assisted games
+```
+
+The diagram expresses evidence dependencies, not a requirement to execute
+every box. An E2 sampler win may proceed directly to an E6 sampler-only game
+test. The Q branch is optional and cannot delay that shorter path. PT schema
+and extractor mechanics may progress in parallel with E0-E2, but a large
+teacher packet waits for a reviewed PT result. E4 waits until both the E2
+world-distribution contract and E3 target contract are frozen; otherwise the
+learner would be trained against a different posterior or continuation from
+the one search later consumes. No screen introduces a new sampler and a new Q
+consumer together.
 
 ### E0 — close BELIEF R4
 
@@ -343,8 +390,35 @@ The first whole-game packet contains at least:
 - a behavior/work-matched null; and
 - mirrored roles/deals with deal-clustered signed-level inference.
 
-Selection and confirmation populations are disjoint. Promotion requires the
-predeclared whole-game bar and an independent terminal reconstruction. A
+The numerical whole-game bar is intentionally per experiment because the
+natural dose, measured variance, latency, and minimum worthwhile effect differ
+between a sampler-only and Q-assisted consumer. It is nevertheless fixed
+*before any E6 selection deal is drawn*. One consolidated E6 design review
+must bind:
+
+- the exact champion, challenger, and matched-null policy bytes;
+- the minimum worthwhile challenger-versus-champion effect `delta_min`;
+- one-sided alpha `0.05`, the paired deal-cluster estimator, interval method,
+  role mirroring, and tail/legality/latency guards;
+- fixed `n_selection` and `n_confirmation`, disjoint seed namespaces, and a
+  no-interim-look/no-extension stopping rule;
+- a conservative variance source that contains no E6 outcomes; and
+- a power calculation showing `n_confirmation` has at least 80% power to
+  reject zero when the true challenger-versus-champion effect is
+  `delta_min`, plus adequate power for the challenger-versus-null attribution
+  contrast at its separately declared design effect.
+
+If that powered size does not fit the reviewed compute cap, E6 is not admitted;
+the effect bar is not weakened and the sample is not frozen merely to keep a
+host busy. The selection population may choose at most one exact challenger
+but grants no strength claim. On the untouched confirmation population,
+promotion requires both one-sided 95% lower bounds—challenger minus champion
+and challenger minus matched null—to exceed zero, the challenger-minus-
+champion point estimate to meet `delta_min`, all safety/latency guards to pass,
+and an independent terminal reconstruction. The null-versus-champion result
+is always reported; if the null itself wins, it opens a simpler compute or
+widening hypothesis rather than being credited to belief/Q. Selection and
+confirmation are never pooled or extended after outcomes are visible. A
 belief, teacher, Q, or state-screen PASS alone never supports deployment.
 
 ## Complexity and reliability budget
@@ -444,7 +518,9 @@ The following are deliberately not frozen by this document:
 - model width/depth, optimizer, or warm start;
 - teacher model identity and rollout budget;
 - population size and fleet allocation; and
-- numerical pass thresholds.
+- stage-specific practical effect floors and numerical thresholds, which must
+  be frozen in that stage's reviewed design before its selection population is
+  generated, as E6 specifies for whole games.
 
 Those choices depend on R4 curves, the reproduced PT result, profiling, and a
 score-free prevalence/capacity census. Freezing them now would add complexity

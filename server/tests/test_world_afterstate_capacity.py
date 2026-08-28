@@ -218,6 +218,54 @@ def test_capacity_composed_and_memory_boundaries_are_load_bearing(monkeypatch):
         validate_capacity_receipt(forged)
 
 
+def test_capacity_receipt_outcome_vocabulary_exclusion_is_load_bearing(
+        monkeypatch):
+    import shengji.rl.world_afterstate_capacity as capacity
+    _prepare_run(monkeypatch, capacity, "6" * 40)
+    receipt = run_capacity(
+        repo=Path.cwd(), expected_git="6" * 40, fixture_count=13,
+        worker_counts=[1], worker_repetitions=1, batch_sizes=[1],
+        model_steps=1, device_name="cpu")
+
+    forged = copy.deepcopy(receipt)
+    forged["runtime"]["native_path"] = "/runtime/label_fast.so"
+    with pytest.raises(
+            WorldAfterstateCapacityError,
+            match="capacity receipt contains outcome-bearing vocabulary"):
+        validate_capacity_receipt(forged)
+
+
+def test_capacity_receipt_compiled_engine_flag_is_load_bearing(monkeypatch):
+    import shengji.rl.world_afterstate_capacity as capacity
+    _prepare_run(monkeypatch, capacity, "7" * 40)
+    receipt = run_capacity(
+        repo=Path.cwd(), expected_git="7" * 40, fixture_count=13,
+        worker_counts=[1], worker_repetitions=1, batch_sizes=[1],
+        model_steps=1, device_name="cpu")
+
+    forged = copy.deepcopy(receipt)
+    forged["runtime"]["compiled_engine_active"] = False
+    with pytest.raises(WorldAfterstateCapacityError,
+                       match="capacity strict runtime identity drift"):
+        validate_capacity_receipt(forged)
+
+
+def test_capacity_receipt_aggregate_memory_method_is_load_bearing(
+        monkeypatch):
+    import shengji.rl.world_afterstate_capacity as capacity
+    _prepare_run(monkeypatch, capacity, "8" * 40)
+    receipt = run_capacity(
+        repo=Path.cwd(), expected_git="8" * 40, fixture_count=13,
+        worker_counts=[1], worker_repetitions=1, batch_sizes=[1],
+        model_steps=1, device_name="cpu")
+
+    forged = copy.deepcopy(receipt)
+    forged["aggregate_memory"]["method"] = "parent-rss"
+    with pytest.raises(WorldAfterstateCapacityError,
+                       match="capacity aggregate memory receipt drift"):
+        validate_capacity_receipt(forged)
+
+
 def test_capacity_memory_snapshot_reads_the_process_cgroup_and_can_fail(
         tmp_path):
     import shengji.rl.world_afterstate_capacity as capacity

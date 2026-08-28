@@ -589,6 +589,17 @@ R3 32 GiB cap. Qualification and production training both consume the reviewed
 cache path. Streaming remains a test oracle and recovery comparison, not an
 automatic runtime fallback that could change the measured path after review.
 
+The final R4 terminal scorer uses filename-backed read-only model storage
+shared across one parent and 16 decision workers. Its Linux host-capacity
+receipt therefore measures the whole systemd service cgroup through cgroup-v2
+`memory.peak`; it does not add the parent's RSS to 16 copies of
+`RUSAGE_CHILDREN.ru_maxrss`. That RSS expression is not a simultaneous
+aggregate measurement and double-counts the shared model pages. The receipt
+binds the exact measurement method and the unchanged 24-GiB cap. A missing,
+malformed, non-Linux, or over-cap cgroup measurement refuses before freeze or
+test opening, and the production aggregation-site test must prove the
+over-cap direction can fail.
+
 The remaining performance order is one independent worker per model member,
 followed by an ensemble-batched/vmapped implementation only if it preserves
 the exact independent AdamW/member semantics and is faster than the simpler

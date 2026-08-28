@@ -61,6 +61,7 @@ from shengji.rl.belief_v2_r4_terminal_parallel import (
     CAPACITY_FIELDS,
     CAPACITY_MEASUREMENT_ORDER,
     CAPACITY_SCHEMA,
+    HOST_MEMORY_MEASUREMENT,
     MAXIMUM_SYNTHETIC_DECISIONS_PER_ROUND,
     V2_DECISION_WORKERS,
     build_r4_terminal_calibration_import,
@@ -145,7 +146,7 @@ def _reopen_frozen_capacity_binding(
         "rank_count", "decision_count", "serial_wall_nanoseconds",
         "parallel_wall_nanoseconds", "serial_cpu_nanoseconds",
         "parallel_cpu_nanoseconds", "speedup_ppb",
-        "aggregate_peak_host_memory_upper_bound_bytes",
+        "aggregate_peak_host_memory_bytes",
         "host_memory_cap_bytes", "worker_count",
         "synthetic_test_round_count", "human_test_decision_count",
         "maximum_synthetic_decisions_per_round",
@@ -194,7 +195,9 @@ def _reopen_frozen_capacity_binding(
                 // payload["parallel_wall_nanoseconds"]) \
             or payload["host_memory_cap_bytes"] \
             != freeze.resource_caps.training_host_memory_bytes \
-            or payload["aggregate_peak_host_memory_upper_bound_bytes"] \
+            or payload["aggregate_peak_host_memory_measurement"] \
+            != HOST_MEMORY_MEASUREMENT \
+            or payload["aggregate_peak_host_memory_bytes"] \
             > payload["host_memory_cap_bytes"] \
             or payload["host_memory_within_cap"] is not True \
             or payload["worker_count"] != V2_DECISION_WORKERS \

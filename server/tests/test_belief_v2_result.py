@@ -557,7 +557,9 @@ def _terminal_capacity_receipt(context):
         "serial_cpu_nanoseconds": 1_900_000_000,
         "parallel_cpu_nanoseconds": 15_000_000_000,
         "speedup_ppb": serial_wall * 1_000_000_000 // parallel_wall,
-        "aggregate_peak_host_memory_upper_bound_bytes": 8 * 1024**3,
+        "aggregate_peak_host_memory_bytes": 8 * 1024**3,
+        "aggregate_peak_host_memory_measurement": (
+            R4_PARALLEL.HOST_MEMORY_MEASUREMENT),
         "host_memory_cap_bytes": caps.training_host_memory_bytes,
         "host_memory_within_cap": True,
         "worker_count": R4_PARALLEL.V2_DECISION_WORKERS,
@@ -913,6 +915,25 @@ def test_r4_terminal_bound_calibration_reopens_exact_deep_import_bytes(
     assert R4_PARALLEL._reopen_bound_calibration_selection(
         directory, freeze=freeze, admission=admission) == manifest
 
+    for key, value in (
+            ("test_split_opened", True),
+            ("selection_completed_before_test_open", False)):
+        forged = dict(manifest)
+        forged[key] = value
+        manifest_path.chmod(0o600)
+        manifest_path.write_bytes(canonical_json_bytes(forged))
+        manifest_path.chmod(0o400)
+        with pytest.raises(
+                R4_PARALLEL.BeliefV2R4TerminalParallelError,
+                match=(
+                    "R4 bound calibration manifest "
+                    "identity/authority drift")):
+            R4_PARALLEL._reopen_bound_calibration_selection(
+                directory, freeze=freeze, admission=admission)
+    manifest_path.chmod(0o600)
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    manifest_path.chmod(0o400)
+
     changed = directory / filenames["scale_curve"]
     changed.chmod(0o600)
     changed.write_bytes(b"changed\n")
@@ -1055,6 +1076,33 @@ def test_r4_terminal_parity_coordinates_cover_every_rank_without_test():
     assert len({row.round_seed for row in coordinates}) == len(V2_RANKS)
 
 
+def test_r4_terminal_memory_uses_whole_cgroup_peak_not_rss_sum(
+        tmp_path, monkeypatch):
+    membership = tmp_path / "self.cgroup"
+    root = tmp_path / "cgroup"
+    service = root / "system.slice" / "belief-r4.service"
+    service.mkdir(parents=True)
+    membership.write_text(
+        "0::/system.slice/belief-r4.service\n", encoding="ascii")
+    (service / "memory.peak").write_text(
+        str(23 * 1024**3) + "\n", encoding="ascii")
+    monkeypatch.setattr(R4_PARALLEL.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        R4_PARALLEL, "PROC_SELF_CGROUP_PATH", membership)
+    monkeypatch.setattr(R4_PARALLEL, "CGROUP_V2_ROOT", root)
+    assert not hasattr(R4_PARALLEL, "host_peak_memory_bytes")
+    assert not hasattr(R4_PARALLEL, "_usage_memory_bytes")
+
+    assert R4_PARALLEL._aggregate_peak_host_memory_bytes(16) \
+        == 23 * 1024**3
+
+    (service / "memory.peak").write_text("max\n", encoding="ascii")
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="memory peak drift"):
+        R4_PARALLEL._aggregate_peak_host_memory_bytes(16)
+
+
 def test_r4_terminal_capacity_runs_candidate_cold_before_warm_control(
         tmp_path, monkeypatch):
     context = _terminal_capacity_context(tmp_path)
@@ -1153,6 +1201,22 @@ def test_r4_terminal_capacity_runs_candidate_cold_before_warm_control(
         2 * len(V2_RANKS), 2 * len(V2_RANKS),
         "measure-terminal-capacity-ranks")
 
+    # Witness the production aggregation site, not only the measurement
+    # helper: an observed whole-cgroup peak above the unchanged cap must make
+    # the terminal capacity command itself refuse.
+    times = iter((1, 101, 201, 301, 401, 601))
+    cpu_times = iter((10, 50, 100, 150))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_aggregate_peak_host_memory_bytes",
+        lambda workers: (
+            context.source.freeze.resource_caps.training_host_memory_bytes
+            + 1))
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="projected scorer exceeds frozen resource cap"):
+        R4_PARALLEL.r4_terminal_parallel_capacity(
+            repo=tmp_path.resolve(), expected_git="a" * 40)
+
 
 def test_r4_terminal_capacity_receipt_binds_parity_deadline_and_authority(
         tmp_path):
@@ -1169,8 +1233,9 @@ def test_r4_terminal_capacity_receipt_binds_parity_deadline_and_authority(
         ("decision_count", 0),
         ("exact_serial_parallel_parity", False),
         ("measurement_order", "serial-cold-then-parallel-warm"),
-        ("aggregate_peak_host_memory_upper_bound_bytes",
+        ("aggregate_peak_host_memory_bytes",
          context.source.freeze.resource_caps.training_host_memory_bytes + 1),
+        ("aggregate_peak_host_memory_measurement", "process-rss-sum"),
         ("execution_authorized", True),
     )
     for key, value in mutations:

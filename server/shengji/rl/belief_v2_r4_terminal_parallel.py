@@ -14,7 +14,6 @@ import hashlib
 import json
 import platform
 from pathlib import Path
-import resource
 import time
 from typing import Any
 
@@ -34,7 +33,6 @@ from .belief_v2_execution_identity import (
 )
 from .belief_v2_accelerator import build_training_device_profile
 from .belief_v2_device_qualification import qualification_protocol_sha256
-from .belief_v2_device_runner import host_peak_memory_bytes
 from .belief_v2_input_index_controller import reopen_training_input_index
 from .belief_v2_progress import ProgressCallback
 from .belief_v2_r4_completion import (
@@ -82,8 +80,11 @@ from .belief_v2_statistics import v2_round_population_bytes
 IMPORT_SCHEMA = (
     "belief-v1-v2-r4-terminal-sealed-calibration-import-v2")
 READINESS_SCHEMA = "belief-v1-v2-r4-terminal-parallel-readiness-v1"
-CAPACITY_SCHEMA = "belief-v1-v2-r4-terminal-parallel-capacity-v1"
+CAPACITY_SCHEMA = "belief-v1-v2-r4-terminal-parallel-capacity-v2"
 CAPACITY_MEASUREMENT_ORDER = "parallel-cold-then-serial-warm"
+HOST_MEMORY_MEASUREMENT = "linux-cgroup-v2-memory.peak"
+PROC_SELF_CGROUP_PATH = Path("/proc/self/cgroup")
+CGROUP_V2_ROOT = Path("/sys/fs/cgroup")
 MAXIMUM_SYNTHETIC_DECISIONS_PER_ROUND = 128
 SCIENTIFIC_UNIT_SCORING_PASSES = 2
 INDEPENDENT_VERIFIER_SCORING_PASSES = 1
@@ -98,7 +99,8 @@ CAPACITY_FIELDS = {
     "serial_wall_nanoseconds",
     "parallel_wall_nanoseconds", "serial_cpu_nanoseconds",
     "parallel_cpu_nanoseconds", "speedup_ppb",
-    "aggregate_peak_host_memory_upper_bound_bytes", "host_memory_cap_bytes",
+    "aggregate_peak_host_memory_bytes",
+    "aggregate_peak_host_memory_measurement", "host_memory_cap_bytes",
     "host_memory_within_cap", "worker_count",
     "worker_cohort_identity", "synthetic_test_round_count",
     "human_test_decision_count", "maximum_synthetic_decisions_per_round",
@@ -173,22 +175,54 @@ def _ceiling_ratio(numerator: int, denominator: int) -> int:
     return (numerator + denominator - 1) // denominator
 
 
-def _usage_memory_bytes(who: int) -> int:
-    value = resource.getrusage(who).ru_maxrss
-    if type(value) not in {int, float} or value < 0:
-        raise BeliefV2R4TerminalParallelError(
-            "R4 terminal host memory measurement drift")
-    return int(value) if platform.system() == "Darwin" else int(value) * 1024
-
-
 def _aggregate_peak_host_memory_bytes(worker_count: int) -> int:
+    """Return the exact service-cgroup peak across parent and all workers.
+
+    Summing per-process RSS is not an aggregate-memory measurement for the
+    filename-backed scoring pool: the model pages are shared, and Linux's
+    RUSAGE_CHILDREN.ru_maxrss is already the maximum child rather than one
+    simultaneous-pool sample.  The reviewed R4 terminal host is Linux cgroup
+    v2, whose memory.peak counter observes the complete service exactly once.
+    """
     if type(worker_count) is not int or worker_count <= 0:
         raise BeliefV2R4TerminalParallelError(
             "R4 terminal worker memory population drift")
-    parent = max(
-        host_peak_memory_bytes(), _usage_memory_bytes(resource.RUSAGE_SELF))
-    child = _usage_memory_bytes(resource.RUSAGE_CHILDREN)
-    return max(parent, parent + child * worker_count if child else parent)
+    if platform.system() != "Linux":
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal cgroup-v2 memory measurement is unavailable")
+    try:
+        membership_raw = PROC_SELF_CGROUP_PATH.read_text(encoding="ascii")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal cgroup-v2 membership cannot be read") from exc
+    memberships = []
+    for line in membership_raw.splitlines():
+        fields = line.split(":", 2)
+        if len(fields) == 3 and fields[0] == "0" and fields[1] == "":
+            memberships.append(fields[2])
+    if len(memberships) != 1 or not memberships[0].startswith("/"):
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal cgroup-v2 membership drift")
+    relative_parts = tuple(
+        part for part in memberships[0].split("/") if part)
+    if any(part in {".", ".."} for part in relative_parts):
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal cgroup-v2 membership drift")
+    peak_path = CGROUP_V2_ROOT.joinpath(*relative_parts, "memory.peak")
+    try:
+        peak_raw = peak_path.read_text(encoding="ascii")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal cgroup-v2 memory peak cannot be read") from exc
+    stripped = peak_raw.strip()
+    if not stripped or not stripped.isascii() or not stripped.isdigit():
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal cgroup-v2 memory peak drift")
+    peak = int(stripped)
+    if peak <= 0:
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal cgroup-v2 memory peak drift")
+    return peak
 
 
 @dataclass(frozen=True)
@@ -756,8 +790,8 @@ def r4_terminal_parallel_capacity(
         "serial_cpu_nanoseconds": serial_cpu,
         "parallel_cpu_nanoseconds": parallel_cpu,
         "speedup_ppb": (serial_wall * 1_000_000_000 // parallel_wall),
-        "aggregate_peak_host_memory_upper_bound_bytes": (
-            aggregate_peak_host_memory),
+        "aggregate_peak_host_memory_bytes": aggregate_peak_host_memory,
+        "aggregate_peak_host_memory_measurement": HOST_MEMORY_MEASUREMENT,
         "host_memory_cap_bytes": caps.training_host_memory_bytes,
         "host_memory_within_cap": True,
         "worker_count": V2_DECISION_WORKERS,
@@ -829,7 +863,7 @@ def _validate_capacity_receipt(
         "rank_count", "decision_count", "serial_wall_nanoseconds",
         "parallel_wall_nanoseconds", "serial_cpu_nanoseconds",
         "parallel_cpu_nanoseconds", "speedup_ppb",
-        "aggregate_peak_host_memory_upper_bound_bytes",
+        "aggregate_peak_host_memory_bytes",
         "host_memory_cap_bytes", "worker_count",
         "synthetic_test_round_count", "human_test_decision_count",
         "maximum_synthetic_decisions_per_round",
@@ -898,7 +932,9 @@ def _validate_capacity_receipt(
             or payload["speedup_ppb"] <= 1_000_000_000 \
             or payload["host_memory_cap_bytes"] \
             != caps.training_host_memory_bytes \
-            or payload["aggregate_peak_host_memory_upper_bound_bytes"] \
+            or payload["aggregate_peak_host_memory_measurement"] \
+            != HOST_MEMORY_MEASUREMENT \
+            or payload["aggregate_peak_host_memory_bytes"] \
             > payload["host_memory_cap_bytes"] \
             or payload["host_memory_within_cap"] is not True \
             or payload["worker_count"] != V2_DECISION_WORKERS \

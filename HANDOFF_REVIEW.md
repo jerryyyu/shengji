@@ -6873,3 +6873,84 @@ gameplay, promotion, deployment, test opening, or strength authority is
 created by this reopen.
 
 PT_LUNA0_RESULT_REOPEN_V1 {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"promotion_authorized":false,"retry_authorized":false,"scientific_execution_authorized":false,"strength_claim_authorized":false,"test_opening_authorized":false,"training_authorized":false},"completed_record_count":52,"exact_source_head":"2394140bcdaebf72d81912a55ac18f5051848fe5","external_sha256":"fea40a5622efe2ce832483aebffbae8be25ca99bba11b60c8bfd0df666c27926","incomplete_record_count":0,"internal_report_sha256":"7f16972d76fc1dfa88d73b1edd87e9544bf0da8df55a538706505e11296b20b6","refusal_count":0,"schema":"pt-luna0-result-reopen-v1","status":"COMPLETE","verdict":"REOPENED_DESCRIPTIVE"}
+
+## 2026-08-28 — ✅ PASS: PR #164 consolidated source+capacity+population+freeze at exact head `d9ad99f6`. Marker below is machine-generated from the freeze. **The request stated no expected marker SHA — it is `f656200b…`, and future requests in this lane should state it, because the authority map it grants is unpinned by any test**
+
+One consolidated review, not split, as asked.
+
+### Every stated digest recomputed by me — externals and internals both
+
+| artifact | external SHA-256 | internal field |
+|---|---|---|
+| freeze `/opt/value-afterstate-v0-freeze-d9ad99f-r1.json` (11,746 B) | `735b367e…b43a0` ✔ | `1139e727…` ✔ |
+| population `packet.json` (2,283 B, `0400`, 1 link) | `019a1229…de282` ✔ | `9d3261b8…` ✔ |
+| `population.json` (1,270,360 B) | `48155bb5…64f581` ✔ | `361389bf…` ✔ |
+| `audit-manifest.json` (831,340 B) | `67fba564…0a53c75` ✔ | `daf451da…` ✔ |
+| capacity receipt | `10bdd80f…bedc5b` ✔ (independently accepted at `2354ee2`) | — |
+
+Head `d9ad99f6377040424821d79071e12435fde802ae`, parent **`e7310db5…`** — the #163 head I passed at
+`9fe8460`, so this stacks on reviewed ground; `git diff --check` clean; Perf's scientific checkout
+`/opt/value-afterstate-v0-scientific-d9ad99f` is at the exact head with clean porcelain. The freeze
+independently binds `source_git = d9ad99f6…`, the capacity receipt's external digest, and the
+population packet's external and manifest digests — I checked each rather than reading the prose.
+
+Suites at the exact head, native rebuilt, `-P -B`, cleared `__pycache__`: **96 passed strict**
+(`SHENGJI_FAST=1`) and **96 passed pure** (`SHENGJI_FAST=0`) — both matching the claim.
+
+### The population is what it says it is
+
+`group_count` **520** = train 364 / calibration 52 / report 52 / provider-audit 52; sources
+production-policy **312**, reviewed-pt-sol0 **156**, mechanics-hard **52**, human-complete-provenance
+0; **13 distinct trump ranks**; `world_occurrences_per_state_group` **1**; 2,787 candidates.
+`outcome_opened: false`, `selection_outcome_blind: true`, and **zero true flags** in both the packet
+and freeze authority maps.
+
+The estimand discipline is bound in the artifact, not just asserted in prose: the packet's
+`pt_sol0` block carries `state_source_only: true` and `numeric_label_authority: false`, with
+`execution_git e73f970…` and `report_sha256 db4934cf…` — the latter matching the sealed PT-Sol0
+report I verified during the #160 review. PT-Sol supplies where to look; the engine owns the numbers.
+
+### Two unwitnessed guards, disclosed — and why signing is still safe
+
+1. **`outcome_opened is not False` is removable.** Deleting that clause from the packet validator
+   leaves **96 passed**. It is the guard behind the experiment's central integrity property, that the
+   population was selected without opening outcomes. Verified directly instead of trusted: the real
+   packet reads `outcome_opened: false`, `selection_outcome_blind: true`.
+2. **The admission authority map is pinned by nothing.** `tests/test_world_afterstate_admission.py`
+   builds its expectations *from* `ADMISSION_AUTHORITY` (`"authority": dict(ADMISSION_AUTHORITY)`,
+   `{**ADMISSION_AUTHORITY, …}`), so it compares the code with itself. Flipping
+   `retry_authorized` to `True` leaves **96 passed** while changing the generated marker from
+   `f656200b…` to `de72a633…` and putting `retry_authorized: true` into the claim I would sign.
+
+   **Why this does not block:** I read the live map — only
+   `continuation_dataset_generation`, `scientific_training`, `one_report_decision_opening`,
+   `terminal_reconstruction` are true; retry, gameplay, strength, merge, promotion, deployment and
+   R5 are false, exactly the requested envelope. And once appended, the marker *text* pins that
+   authority: a later widening regenerates a different marker and the admission refuses on mismatch.
+   The exposure was only ever "already wrong at this head", and it is not.
+
+   **The process gap is the real lesson.** The R4 lane states its expected marker SHA in the request,
+   which is how I caught my own wrong-generator error there. This request states none, so nothing
+   external cross-checks what I sign. Stated here for that purpose:
+   **`f656200bb944…`** — precisely
+   `f656200b944f3fdb618df53ea3931b7afc7df646527f79913c26eadbb999c224`, 900 bytes. Future requests in
+   this lane should quote it.
+
+### Coverage limits, stated honestly
+
++11,369/−11 across 38 files; I did **not** line-audit it. I went deep on artifact identity and the
+freeze/packet/manifest binding graph, population composition and fold structure, the estimand flags,
+marker generation, and mutation-tested the two guards above (plus the three capacity guards at
+`4f44457`/`9fe8460`). I did **not** verify the gate implementations — held-out NLL versus a
+train-only prior, the ≥6/8 positive-member rule, provider-audit expected-utility error, simple
+regret, protected-incumbent non-regression, or the named negative controls — beyond confirming they
+are specified; those become load-bearing at the *result* review, and I will owe them there. No run
+exists to review; this authorizes one.
+
+Authorized: one initialization and one non-retry scientific execution on Perf consisting only of
+dataset labeling, eight-seed training, one report opening, mandatory immediate reconstruction, and
+one independent full verification. Merge, retry, gameplay, strength, promotion, deployment, R5 and
+any further experiment authority remain false. — Claude (session `68f9c8bd`)
+
+WORLD_AFTERSTATE_E3_E4_V0_REVIEW {"authority":{"continuation_dataset_generation_authorized":true,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"one_report_decision_opening_authorized":true,"promotion_authorized":false,"r5_authorized":false,"retry_authorized":false,"scientific_training_authorized":true,"strength_claim_authorized":false,"terminal_reconstruction_authorized":true},"capacity_external_sha256":"10bdd80f8f2d0342fd290194de1a84ecc8bc92fcb0ca10a06dcf3fe779bedc5b","freeze_sha256":"1139e727fd29f5e295135aedc7e08c3a52508a2deb3927f37629158313cfbc12","population_manifest_sha256":"361389bfd87beebd6c10b4c40712638ef7db900ac0b1a6f62e6dfbd11ea55912","population_packet_external_sha256":"019a122950f79c148f674bd262fec4231c56056f793158483b4b256c350de282","schema":"world-afterstate-e3-e4-review-claim-v0","source_git":"d9ad99f6377040424821d79071e12435fde802ae"}
+

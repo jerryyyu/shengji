@@ -11,8 +11,8 @@
 > not review authority. If this snapshot conflicts with an exact marker on
 > remote main, the latest authentic exact-head marker controls.
 
-Last reconciled: **2026-08-28 08:25 EDT**. Remote main before this refresh:
-`90cf5ec0cf65b5de4e1e0f6bddc1d4eb93555db1`.
+Last reconciled: **2026-08-28 08:43 EDT**. Remote main before this refresh:
+`10884285ccbe5780fb7e6000cf8ffcde5fa632f4`.
 
 ## Review queue
 
@@ -36,6 +36,9 @@ invocation `f8069d7e5aeb4683b5a77908816a798d`, `Restart=no`. **Do not launch a
 duplicate scientific unit or the independent verifier:** scientific success,
 including immediate reconstruction, is the sole gate for the verifier. No
 retry, training, merge, gameplay, strength, promotion, or deployment authority.
+At 08:43 EDT the unit remained active as PID `853477`, with zero restarts and
+no test-attempt, test-result, terminal, or verifier artifact yet; it is still
+inside the reviewed non-test reopen/worker-warmup boundary.
 
 Capacity receipt:
 `/opt/belief-r4-terminal-capacity-56bd35f-r1.json`, 5,444 canonical bytes,
@@ -95,9 +98,18 @@ final receipt/freeze authentication.
 `2394140bcdaebf72d81912a55ac18f5051848fe5` is canonical in
 `HANDOFF_REVIEW.md` (2026-08-28 06:35 EDT). It authorizes only the single
 non-retryable PT-Luna0 DEV run against the already-open PT-Sol0 population;
-that run has not launched and its frozen public/private outputs remain absent.
-The prior watcher waiting for this PASS is stale and may be closed. PT-Sol0's
-result review is already complete and must not be repeated.
+that run started on Mini at 08:41:19 EDT as PID `70327`, exact design SHA
+`939c6441b35530b469486b43f1fb34f7ad6d34eac16f84a6bbc5d7b21e4a422d`,
+with two live `gpt-5.6-luna` / `high` planner children. Its exclusive private
+root now exists, its public output is absent, and no result may be inferred
+until the canonical report seals. A first `nohup` transport PID (`70211`) was
+already absent at its first check with a zero-byte log and no private/public
+namespace; it never crossed the runner's durable scientific boundary.
+`launchctl submit` was then found to keep failed jobs alive, so exact-PID exit
+guard `70802` removes the launch label as soon as PID `70327` exits, before a
+failure restart; the exclusive private root is a second fail-closed guard.
+Do not stop, duplicate, or relaunch this run. PT-Sol0's result review is already
+complete and must not be repeated.
 
 PT-Claude Opus r3 has sealed `INCOMPLETE` at 3/52 complete and 49/52
 per-session timeouts, report SHA `a28dfbd…37e3b`. Preserve it as a budget
@@ -122,9 +134,9 @@ for the scoring-pool lifetime and a 16-party startup barrier, closing the real
 Linux file-descriptor and partial-worker-start failures without changing score
 semantics. Do not start a second diagnostic or alternate repair.
 
-There is no current R4, R5, PT-Luna, or PT-Claude review request. The Luna0
-PASS authorizes its one isolated DEV run but does not require launching it
-while R4 is on the scientific critical path.
+There is no current R4, R5, PT-Luna, or PT-Claude review request. The one
+reviewed Luna0 DEV execution is live and isolated on Mini; wait for its sealed
+report rather than requesting another source/launch review.
 
 Do not create an intermediate R5 review. Do not treat a progress update as a
 review request.
@@ -133,7 +145,7 @@ review request.
 
 | host | job | exact source | current state | authority |
 |---|---|---|---|---|
-| Mini | idle for reviewed PT-Luna0; PT-Claude Opus r3 sealed incomplete | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Opus r3 sealed `INCOMPLETE` 3/52; Luna source+launch PASS is canonical, but its public/private outputs remain absent and no Luna process is active | one isolated, non-retryable Luna0 DEV launch is authorized; do not pool Opus rows or infer efficacy from the incomplete report |
+| Mini | PT-Luna0 live; PT-Claude Opus r3 sealed incomplete | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Luna PID `70327` started 08:41:19 EDT with two exact `gpt-5.6-luna/high` children; private root exists, public report absent, exit guard PID `70802`; Opus r3 remains sealed `INCOMPLETE` 3/52 | single reviewed non-retryable Luna0 DEV execution only; do not duplicate, pool Opus rows, or infer efficacy before the Luna report seals |
 | Perf Cloud | R5 paused; prior R4 calibration sealed/inactive | preserved source `0ff18349c76b13e9f594e6d84fe9b34b04a91f04` | the disposable resumed diagnostic crossed the old FD ceiling and published calibration-selection artifacts, then was operator-stopped without a receipt on 2026-08-27 after the user requested a design pause. All prior rehearsal artifacts remain preserved; no R5 process is active. | no R5 design, source, rehearsal, freeze, review, or scientific action until R4 is complete and the design is discussed with the user |
 | Strength Cloud | R4 sole scientific test + immediate reconstruction | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | readiness passed and was independently matched to 4 cohorts / 32 members; scientific invocation `f8069d7e…98d` started `12:23:19Z`, `Restart=no` | no duplicate/retry; only scientific success may launch the reviewed independent verifier |
 | Air | none | — | idle | none |
@@ -151,11 +163,10 @@ usage-limit message. This is an external quota stop, not a harness/game verdict.
 The 15 completed rows are partial diagnostics only and must not be selected,
 pooled, or promoted as a PT-Claude estimate.
 
-The distinct Opus r3 attempt runs as PID `84270` with two workers and writes
-only to `/Users/jerryyu/Projects/shengji-ptcla0-a82adb9-r3-opus*`. It is not a
-retry or continuation of r2, and no r3 public result exists until all attempted
-records are sealed. It had attempted 24/52 role records at 02:02 EDT; this is
-operational telemetry, not completion or efficacy evidence.
+The distinct Opus r3 attempt is no longer live. It sealed `INCOMPLETE` at 3/52
+complete and 49/52 per-session timeouts under
+`/Users/jerryyu/Projects/shengji-ptcla0-a82adb9-r3-opus*`; preserve it as a
+budget diagnostic only, with no retry, pooling, or efficacy interpretation.
 
 ## PT-Sol0 — complete and independently reviewed
 
@@ -389,5 +400,5 @@ one-shot step, or infer an R4 answer from calibration output.
    do not launch a duplicate, retry, or alternate scorer.
 2. On scientific success only, launch the already-reviewed independent
    verifier and compare exact terminal bytes and verdict.
-3. Keep R5 paused. PT-Luna0 is reviewed and runnable on idle Mini, but it must
-   remain isolated and must not distract from R4 terminal interpretation.
+3. Monitor the one live PT-Luna0 execution on Mini without stopping or
+   duplicating it; interpret only a sealed canonical report. Keep R5 paused.

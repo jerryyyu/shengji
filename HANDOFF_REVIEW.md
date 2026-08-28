@@ -6001,3 +6001,65 @@ Measured from systemd properties, the unit journal, `/opt` listings and source a
 not inspect the running process's internals and did not read any partial or live outcome.
 
 — Claude (session `cc2565ac`)
+
+## 2026-08-28 — `build-freeze` is the only R4 terminal stage with no progress reporter, and the gap just cost 11.1 CPU-hours to a blind restart
+
+`c0eef66` covers the same restart from a different angle — no `INVOCATION_ID` bound and no
+abandonment receipt — and mentions progress telemetry nowhere. This is the complementary half: the
+stage is *structurally incapable* of reporting, which is why the restart had to be decided blind.
+
+### What happened, measured
+
+The freeze watcher `belief-r4-terminal-freeze-watcher-56bd35f-r1` was **deliberately stopped** at
+`06:29:42Z` (`Stopping…` → `Deactivated successfully` → `Stopped`, `NRestarts=0`, `Result=success`
+— an operator action, not a systemd restart) and **relaunched one second later** at `06:29:43Z`
+with a byte-identical command line. Its first instance consumed
+**11 h 7 min 56.681 s CPU over 4 h 16 min 3.881 s wall, 22.3 G peak**.
+
+Almost all of that CPU is the freeze build, not the wait. The watcher's wait is a
+`while ! test -f …; do sleep 30; done` loop costing essentially nothing, and the capacity receipt
+published at `05:03`. So `build-freeze` ran `05:03 → 06:29:42` = **1 h 26 m 42 s wall at 7.70 cores
+mean = 11.13 CPU-hours** — which reconciles with the unit's recorded 40,076 s to within 0.1 %.
+
+**It emitted nothing.** Zero `BELIEF_V2_PROGRESS` records across the whole 4 h 16 m. No freeze file
+exists, so that work is discarded; the relaunched instance is starting over (`CPUUsageNSec`
+338,699,481,000 over 5 m 38 s ≈ 1.00 core at the `06:35:21Z` reading).
+
+### Why it emitted nothing — checked in source, not inferred
+
+`scripts/belief_v2_r4_terminal_parallel.py` wires a progress reporter into **every** subcommand
+except this one:
+
+| line | subcommand | reporter |
+|---|---|---|
+| 354 | capacity | `_progress("r4-terminal-parallel-capacity")` |
+| 422 | run | `_progress("r4-terminal-parallel")` |
+| 430 | verification | `_progress("r4-terminal-parallel-verification")` |
+| 438 | recovery | `_progress("r4-terminal-parallel-recovery")` |
+| **389–398** | **`build_freeze`** | **none — `build_r4_terminal_parallel_freeze(repo=, expected_git=, source_review_commit=, capacity_raw=)` takes no `progress=`** |
+
+So `build-freeze` is structurally incapable of reporting progress. It is the last silent stage in
+this lane, and this is the same shape as the `3582dc6` calibrate gap that was closed — except that
+gap took hours of argument to establish, and here the fix is one argument matching four existing
+call sites.
+
+### Why it matters, stated at its actual size
+
+I am **not** claiming the restart was wrong — I do not know why it was made, and an 11.1 CPU-hour
+build with no heartbeat is exactly the situation where a restart is a reasonable guess. That is the
+point: **the decision had to be a guess.** From outside the process there was no way to distinguish
+"progressing normally through a long parallel build" from "stuck", which is precisely the
+distinguishability problem this lane has hit repeatedly. With a reporter, the same decision would
+have been a reading.
+
+This also matters more than a typical telemetry gap because the freeze is the **gating artifact**:
+five Claude pre-reviews and the consolidated marker are all waiting on it, and each silent restart
+adds ~1.5 h wall and ~11 CPU-hours with no way to tell whether it is converging.
+
+**Fix:** add `progress=_progress("r4-terminal-parallel-freeze")` to the `build_freeze` call and
+thread it into `build_r4_terminal_parallel_freeze`, matching lines 354/422/430/438. Nothing about
+the artifact changes; only its observability.
+
+Read-only: systemd counters and journal metadata, git objects. No evidence root touched, no test
+bytes opened, nothing signalled — in particular I did not stop, start or alter either unit.
+— Claude (session `f4b0ea92`)

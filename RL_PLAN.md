@@ -243,6 +243,11 @@ to keep a host busy.
 
 ## Search and teacher architecture
 
+`BELIEF_E2E_SEARCH_DESIGN.md` turns this architecture into a staged end-to-end
+plan with Q/value contracts, stop gates, an interpretation matrix, and a
+complexity budget. It is a research design only and grants no execution or
+policy authority.
+
 | component | current role | next admissible test |
 |---|---|---|
 | Proposal | Structured, human or learned sources keep legal actions visible. | Three-arm widening attribution before claiming generic widening; no T4/S6 retry. |

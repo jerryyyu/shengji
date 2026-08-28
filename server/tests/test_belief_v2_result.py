@@ -808,6 +808,9 @@ def test_r4_terminal_builds_import_only_from_reopened_sealed_selection(
     monkeypatch.setattr(
         R4_PARALLEL, "reopen_v2_calibration_selection", reopen_selection)
     monkeypatch.setattr(
+        R4_PARALLEL, "_reopen_bound_calibration_selection",
+        lambda *args, **kwargs: calibration)
+    monkeypatch.setattr(
         R4_PARALLEL, "_calibration_outer_manifest",
         lambda **kwargs: {"schema": "reconstructed-outer"})
     monkeypatch.setattr(
@@ -833,6 +836,18 @@ def test_r4_terminal_builds_import_only_from_reopened_sealed_selection(
         old_spec.source_tensor_cache_manifest_sha256,
         old_spec.source_tensor_cache_manifest_sha256,
     ]
+
+    forged = replace(
+        imported, calibration_freeze_sha256=_sha("forged-freeze"))
+    for reopener, message in (
+            (R4_PARALLEL.reopen_imported_calibration,
+             "R4 imported calibration byte binding drift"),
+            (R4_PARALLEL.reopen_bound_imported_calibration,
+             "R4 bound calibration byte binding drift")):
+        with pytest.raises(
+                R4_PARALLEL.BeliefV2R4TerminalParallelError,
+                match=f"^{message}$"):
+            reopener(terminal_spec, forged, repo=tmp_path.resolve())
 
 
 def test_r4_terminal_source_spec_is_exact_fresh_destination_successor():

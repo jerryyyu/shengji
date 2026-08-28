@@ -243,10 +243,12 @@ to keep a host busy.
 
 ## Search and teacher architecture
 
-`BELIEF_E2E_SEARCH_DESIGN.md` turns this architecture into a staged end-to-end
-plan with Q/value contracts, stop gates, an interpretation matrix, and a
-complexity budget. It is a research design only and grants no execution or
-policy authority.
+`BELIEF_E2E_SEARCH_DESIGN.md` turns this architecture into two independently
+falsifiable paths: BELIEF changes only the sampled-world distribution, while a
+PT-supervised `Q_world` student first learns and is tested with complete worlds
+before it is aggregated over today's REF-C sampler. BELIEF+Q composition is a
+later one-axis substitution, not the first experiment. The document is a
+research design only and grants no execution or policy authority.
 
 | component | current role | next admissible test |
 |---|---|---|

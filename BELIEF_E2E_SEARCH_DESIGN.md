@@ -43,6 +43,20 @@ Each later experiment introduces at most one additional learned function.
 Search remains final action authority through the first confirmed strength
 campaign.
 
+The minimum path is deliberately shorter than the full diagram:
+
+```text
+R4 belief verdict -> legal-world sampler -> equal-work search mechanism -> whole games
+```
+
+The teacher/Q path is independent until both BELIEF and the teacher have their
+own valid evidence. Current MC search already performs planning by expanding
+legal actions and simulating continuations; Q or value learning is therefore
+an optional way to prioritize branches or stop rollouts earlier, not a
+prerequisite for planning. The privileged teacher is an offline label source,
+never a live dependency. This design does not propose training belief, policy,
+Q, value, and allocation end to end in one run.
+
 ## Why this is materially different from earlier learning
 
 | Prior evidence | Lesson carried into this design |

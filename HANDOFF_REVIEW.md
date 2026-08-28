@@ -5461,3 +5461,110 @@ So the guard that prevents importing a calibration whose held-out test split was
 
 No authority is granted or withdrawn by this entry. — Claude (session `68f9c8bd`)
 
+
+## 2026-08-28 — PR #159 source pre-review at exact head `34ab86c`: **sound, no blockers**, forwarding fix mutation-proven at both call sites. No marker requested, none appended.
+
+Answering the latency-hiding pre-review request on PR #159. This reviews **source only**; the
+capacity receipt and freeze are still building and are explicitly out of scope. **No authority is
+granted, and no marker is issued.**
+
+`47cd988` landed a pre-review of the same head while I was running suites. It is complementary,
+not duplicated: it found a **masked witness on the `test_split_opened` clause** — a real defect I
+did not find, and the more important of the two entries. Independent corroboration worth noting:
+its `-k belief` run and mine agree exactly at **512 passed / 4 skipped**, from separate worktrees
+and separate venvs. Everything below — identity, the size correction, the mutation proof of the
+forwarding fix, the authority surface and the import binding — is additional ground it did not
+cover.
+
+### Identity, verified byte-for-byte
+
+- exact head **`34ab86cde4479534775e5168fccc7ae2d1d54400`** — exists, is a commit;
+- `git log --format=%P` → single parent **`2292c0cb433b185dd9415d5b405635a67b4e0777`**
+  ("Use filename-backed R4 worker transport"); not a merge;
+- PR base is **`codex/belief-r4-parallel-eval` @ `d82ba224eb59`** — the optimized head I passed at
+  `394354f` and that failed on Perf.
+
+**This corrects my own framing in `ce6128c`.** I told Jerry the review was "90 files, +20,755 /
+−4,660", which is the *branch against main*. The PR is based on the already-reviewed `d82ba22`, so
+the actual review surface is **11 files, +3,607 / −152** across five commits. That is a normal
+packet, not a large one, and I withdraw the "note the large one for Jerry" flag.
+
+### Suites, self-run at the exact head
+
+I could **not** identify the selection that yields the claimed 306 passed / 5 skipped, so I cannot
+confirm that number as stated. What I ran instead, in a venv built inside the review worktree
+(`uv sync --frozen --group dev --group rl`, native extension rebuilt, `__pycache__` cleared,
+`python -P -B`, `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`):
+
+- `pytest tests/ -k belief` → **512 passed, 4 skipped, 0 failed** (358.38 s);
+- the two changed test files alone → **52 passed, 0 failed**.
+
+**A false alarm of mine, recorded because the mechanism is instructive.** My first run showed six
+failures, all `RuntimeError: R4 terminal parallel runner refuses foreign import roots`. That was my
+environment, not the code: I used the main repo's venv, whose
+`_editable_impl_shengji.pth` puts `/Users/jerryyu/Projects/shengji/server` on `sys.path`, which is
+neither the venv nor the worktree's `server/`. `_refuse_foreign_import_roots()`
+(`scripts/belief_v2_r4_terminal_parallel.py:18–37`) refused exactly the cross-checkout coupling its
+docstring describes. **That is an unplanned liveness demonstration of a new guard against a real
+foreign root** — better evidence than a test, and it is working.
+
+### The forwarding fix is mutation-proven at both call sites
+
+This is the repair for the defect that killed both lanes (`ce6128c`). I verified the failure mode
+the fix could still have: a defaulted parameter no caller passes.
+
+- **M1** — drop `legacy_tensor_cache_manifest_sha256=(source.spec.source_tensor_cache_manifest_sha256)`
+  from the post-publish reopen (`belief_v2_r4_completion.py:904`), restoring the `d82ba22`
+  behaviour: `test_r4_completion_calibration_writes_only_fresh_namespace` **FAILS**,
+  `KeyError: 'legacy_tensor_cache_manifest_sha256'` (1 failed / 39 passed).
+- **M2** — same removal at the recovery reopen (line 938): the same witness **FAILS** identically.
+
+Both mutations live and killed; source restored; **0 tracked files modified**. The regression that
+cost ~141 core-hours now has a witness that fails in the failing direction at both sites.
+
+### Authority surface
+
+No widening beyond the lane's declared purpose. The new import spec carries
+`one_test_split_open_authorized: false`, `calibration_generation_authorized: false`,
+`calibration_import_authorized: true`, `terminal_reconstruction_authorized: true`. The terminal
+source spec carries `one_test_split_open_authorized: true` with a **fresh** destination root
+`/opt/belief-r4-terminal-parallel-v1-r1` — neither spent root is reused. Both spent roots are
+confirmed to contain **no test namespace**: Cloud and Perf each list only `admission.json`,
+`calibration`, `freeze.json`, `group-split.json`, `inventory.json`, `review.md`. The claim that
+test remains unopened holds.
+
+**The import binds Cloud's calibration, and I can confirm the binding independently:**
+`calibration_selection_manifest_sha256 = a037dd85f15c3269b43000ac205761cb17586a6c3791f702bd015ac81c42e8a8`,
+which is exactly the digest I recorded for Cloud's `manifest.json` in `81487c9` before Perf
+published. `calibration_evidence_root`, `calibration_execution_git` (`e10cb3d`) and
+`calibration_freeze_sha256` (`59c747be`) are Cloud's throughout, and
+`calibration_completion_outer_absent: true` correctly records that the outer completion was never
+written.
+
+### The one thing the consolidated marker must turn on
+
+Cloud's calibration was **published but never verified** — its own reopen is precisely what
+refused. This lane imports those bytes. So the decisive question for the eventual marker is not
+the source delta, which is sound, but: **does the import path itself perform the verification the
+original run never completed?** `terminal_reconstruction_authorized: true` and
+`calibration_reconstructed_outer_sha256: c48aa71e…` suggest it reconstructs and re-verifies, and
+the parity result (`76d2737`, `45711fd`) means the bytes are cross-validated between two
+independent executions — but re-verification is a property of the import code, not of the parity,
+and I have not yet traced it end to end. I will do that against the final receipt and freeze.
+
+### Coverage limits, honestly
+
+I reviewed the forwarding fix, the import/source specs, the import-root guard and the authority
+surface, and ran the belief suite. I did **not** line-by-line audit the 1,127-line
+`belief_v2_r4_terminal_parallel.py` or the 488-line runner script; I did not run the terminal
+reconstruction path end to end; and I did not reproduce the claimed 306/5 selection. Those, plus
+the receipt/freeze bindings, remain for the consolidated review.
+
+**Retained for that review, per the request.** On my own surfaces I found **no blockers**: the
+identity, the forwarding repair, the authority binding and the import digests all hold. That is not
+a clean bill for the delta as a whole — `47cd988`'s missing `test_split_opened` witness is
+outstanding and should be closed before the consolidated marker, and I would not sign one until it
+is. No merge, initialize, test-open, retry, deployment or strength authority is implied here.
+
+Read-only on all evidence; mutations confined to a scratch worktree under
+`/Users/jerryyu/.claude/jobs/f4b0ea92/tmp` and reverted. — Claude (session `f4b0ea92`)

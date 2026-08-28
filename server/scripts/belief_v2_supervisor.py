@@ -27,9 +27,10 @@ SCRIPT = Path(__file__).resolve()
 REPO = SCRIPT.parents[2]
 SOURCE_ROOT = REPO / "server" / "shengji"
 PROGRESS_PREFIX = "BELIEF_V2_PROGRESS "
-STATUS_SCHEMA = "belief-v1-v2-ops-status-v3"
-START_SCHEMA = "belief-v1-v2-ops-start-v3"
-RESUME_SCHEMA = "belief-v1-v2-ops-resume-v1"
+STATUS_SCHEMA = "belief-v1-v2-ops-status-v4"
+START_SCHEMA = "belief-v1-v2-ops-start-v4"
+RESUME_SCHEMA = "belief-v1-v2-ops-resume-v2"
+NS_PER_SECOND = 1_000_000_000
 
 
 def _refuse_import_shadows() -> None:
@@ -41,12 +42,24 @@ def _refuse_import_shadows() -> None:
 
 _refuse_import_shadows()
 
+from shengji.rl.belief_artifacts import stable_read_bytes  # noqa: E402
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
+from shengji.rl.belief_v2_execution_identity import (  # noqa: E402
+    _boot_identity,
+)
+from shengji.rl.belief_v2_freeze import (  # noqa: E402
+    execution_freeze_from_bytes,
+)
 from shengji.rl.belief_v2_supervisor_plan import (  # noqa: E402
+    SUPERVISOR_WALL_CAP_SECONDS,
     V2SupervisorPlanV1,
     V2SupervisorTaskV1,
     build_supervisor_plan,
 )
+
+
+SUPERVISOR_WALL_CAP_NANOSECONDS = (
+    SUPERVISOR_WALL_CAP_SECONDS * NS_PER_SECOND)
 
 
 class BeliefV2SupervisorError(RuntimeError):
@@ -56,7 +69,15 @@ class BeliefV2SupervisorError(RuntimeError):
 class Supervisor:
     def __init__(
             self, *, plan: V2SupervisorPlanV1, root: Path, ops: Path,
-            python: Path, worker: Path, resume: bool = False) -> None:
+            python: Path, worker: Path, boot_identity: str,
+            resume: bool = False,
+            monotonic_ns=time.monotonic_ns) -> None:
+        if type(boot_identity) is not str or len(boot_identity) != 64 \
+                or any(char not in "0123456789abcdef"
+                       for char in boot_identity) \
+                or not callable(monotonic_ns):
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor runtime contract drift")
         self.plan = plan
         self.root = root
         self.ops = ops
@@ -71,6 +92,10 @@ class Supervisor:
         self.stderr_files: dict[str, Any] = {}
         self.stop_requested = False
         self.recover_existing = resume
+        self.boot_identity = boot_identity
+        self.monotonic_ns = monotonic_ns
+        self.started_monotonic_nanoseconds: int | None = None
+        self.hard_deadline_monotonic_nanoseconds: int | None = None
         self.resume_count = 0
         self.lock_descriptor: int | None = None
         self.lock = threading.RLock()
@@ -93,6 +118,10 @@ class Supervisor:
             "resume_authorized": True,
             "resume_count": 0,
             "resume_mode": False,
+            "boot_identity": boot_identity,
+            "supervisor_wall_cap_nanoseconds": (
+                SUPERVISOR_WALL_CAP_NANOSECONDS),
+            "hard_deadline_monotonic_nanoseconds": None,
             "strength_claim_authorized": False,
             "deployment_authorized": False,
         }
@@ -105,6 +134,33 @@ class Supervisor:
             "VIRTUAL_ENV": str(python.parent.parent),
         }
         self.environment.pop("PYTHONPATH", None)
+
+    def _bind_supervisor_deadline(self, started: int) -> None:
+        if type(started) is not int or started <= 0:
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor deadline identity drift")
+        self.started_monotonic_nanoseconds = started
+        self.hard_deadline_monotonic_nanoseconds = (
+            started + SUPERVISOR_WALL_CAP_NANOSECONDS)
+        self.state.update({
+            "boot_identity": self.boot_identity,
+            "supervisor_wall_cap_nanoseconds": (
+                SUPERVISOR_WALL_CAP_NANOSECONDS),
+            "hard_deadline_monotonic_nanoseconds": (
+                self.hard_deadline_monotonic_nanoseconds),
+        })
+
+    def _check_supervisor_deadline(self) -> None:
+        started = self.started_monotonic_nanoseconds
+        hard = self.hard_deadline_monotonic_nanoseconds
+        observed = self.monotonic_ns()
+        if type(observed) is not int or started is None or hard is None \
+                or observed < started:
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor monotonic deadline drift")
+        if observed >= hard:
+            raise BeliefV2SupervisorError(
+                "BELIEF V2 supervisor absolute deadline exhausted")
 
     def _atomic_json(self, path: Path, value: dict[str, Any]) -> None:
         partial = path.with_name(
@@ -165,6 +221,7 @@ class Supervisor:
                 *recovery, *completed]
 
     def _start_task(self, task: V2SupervisorTaskV1) -> None:
+        self._check_supervisor_deadline()
         suffix = ("" if self.resume_count == 0
                   else f".resume-{self.resume_count:02d}")
         self._update_status(launching_task=task.name)
@@ -272,16 +329,27 @@ class Supervisor:
                 "schema", "started_unix_seconds",
                 "started_monotonic_nanoseconds", "pid",
                 "plan_summary_sha256", "execution_plan_sha256",
+                "boot_identity", "supervisor_wall_cap_nanoseconds",
+                "hard_deadline_monotonic_nanoseconds",
                 "retry_authorized", "resume_authorized"} \
                 or started["schema"] != START_SCHEMA \
                 or started["plan_summary_sha256"] != expected_summary \
                 or started["execution_plan_sha256"] != expected_execution \
+                or started["boot_identity"] != self.boot_identity \
+                or started["supervisor_wall_cap_nanoseconds"] \
+                != SUPERVISOR_WALL_CAP_NANOSECONDS \
                 or started["retry_authorized"] is not False \
                 or started["resume_authorized"] is not True \
                 or type(started["started_monotonic_nanoseconds"]) is not int \
-                or started["started_monotonic_nanoseconds"] < 0:
+                or started["started_monotonic_nanoseconds"] <= 0 \
+                or started["hard_deadline_monotonic_nanoseconds"] \
+                != started["started_monotonic_nanoseconds"] \
+                + SUPERVISOR_WALL_CAP_NANOSECONDS:
             raise BeliefV2SupervisorError(
                 "BELIEF V2 supervisor recovery start binding drift")
+        self._bind_supervisor_deadline(
+            started["started_monotonic_nanoseconds"])
+        self._check_supervisor_deadline()
         all_names = {
             task.name for stage in self.plan.stages for task in stage.tasks}
         completed = prior.get("completed_task_names")
@@ -293,6 +361,11 @@ class Supervisor:
                 or prior.get("outcome_blind") is not True \
                 or prior.get("retry_authorized") is not False \
                 or prior.get("resume_authorized") is not True \
+                or prior.get("boot_identity") != self.boot_identity \
+                or prior.get("supervisor_wall_cap_nanoseconds") \
+                != SUPERVISOR_WALL_CAP_NANOSECONDS \
+                or prior.get("hard_deadline_monotonic_nanoseconds") \
+                != self.hard_deadline_monotonic_nanoseconds \
                 or prior.get("strength_claim_authorized") is not False \
                 or prior.get("deployment_authorized") is not False \
                 or type(prior.get("resume_count")) is not int \
@@ -338,6 +411,11 @@ class Supervisor:
             "execution_plan_sha256": expected_execution,
             "original_started_monotonic_nanoseconds": (
                 started["started_monotonic_nanoseconds"]),
+            "boot_identity": self.boot_identity,
+            "supervisor_wall_cap_nanoseconds": (
+                SUPERVISOR_WALL_CAP_NANOSECONDS),
+            "hard_deadline_monotonic_nanoseconds": (
+                self.hard_deadline_monotonic_nanoseconds),
             "completed_task_names_before_recovery": sorted(completed),
             "test_split_open_authorized": False,
             "retry_authorized": False,
@@ -380,6 +458,7 @@ class Supervisor:
         self._update_status()
 
     def _run_stage(self, stage_index: int) -> None:
+        self._check_supervisor_deadline()
         stage = self.plan.stages[stage_index - 1]
         pending = list(stage.tasks)
         completed = 0
@@ -388,6 +467,7 @@ class Supervisor:
             stage_index=stage_index, stage_total_tasks=len(stage.tasks),
             stage_completed_tasks=0, running_tasks=[])
         while pending or self.active:
+            self._check_supervisor_deadline()
             if self.stop_requested:
                 raise BeliefV2SupervisorError("BELIEF V2 supervisor stopped")
             while pending and len(self.active) < stage.concurrency:
@@ -440,20 +520,29 @@ class Supervisor:
                 self.ops.mkdir(mode=0o700, parents=True)
                 self.logs.mkdir(mode=0o700)
                 self._acquire_lock()
+                started_monotonic = self.monotonic_ns()
+                self._bind_supervisor_deadline(started_monotonic)
+                self._check_supervisor_deadline()
                 self._atomic_json(self.started_path, {
                     "schema": START_SCHEMA,
                     "started_unix_seconds": int(time.time()),
-                    "started_monotonic_nanoseconds": time.monotonic_ns(),
+                    "started_monotonic_nanoseconds": started_monotonic,
                     "pid": os.getpid(),
                     "plan_summary_sha256": hashlib.sha256(
                         self.plan.canonical_summary_bytes()).hexdigest(),
                     "execution_plan_sha256": self.plan.execution_sha256(),
+                    "boot_identity": self.boot_identity,
+                    "supervisor_wall_cap_nanoseconds": (
+                        SUPERVISOR_WALL_CAP_NANOSECONDS),
+                    "hard_deadline_monotonic_nanoseconds": (
+                        self.hard_deadline_monotonic_nanoseconds),
                     "retry_authorized": False,
                     "resume_authorized": True,
                 })
                 self._update_status()
             for stage_index in range(1, len(self.plan.stages) + 1):
                 self._run_stage(stage_index)
+            self._check_supervisor_deadline()
             self._update_status(
                 state="complete", current_stage="complete",
                 stage_index=len(self.plan.stages), running_tasks=[],
@@ -482,6 +571,21 @@ def _strict_json(path: Path) -> dict[str, Any]:
         raise BeliefV2SupervisorError(
             "BELIEF V2 supervisor input is not canonical JSON")
     return value
+
+
+def _supervisor_boot_identity(root: Path) -> str:
+    """Bind the wrapper clock to the reviewed freeze's live boot."""
+    try:
+        freeze = execution_freeze_from_bytes(stable_read_bytes(
+            root / "freeze.json"))
+        live = _boot_identity()
+    except (OSError, ValueError) as exc:
+        raise BeliefV2SupervisorError(
+            "BELIEF V2 supervisor freeze runtime refused") from exc
+    if live != freeze.runtime.boot_identity:
+        raise BeliefV2SupervisorError(
+            "BELIEF V2 supervisor live boot identity drift")
+    return live
 
 
 def _absolute_python_path(path: Path) -> Path:
@@ -535,7 +639,7 @@ def main() -> None:
         return
     supervisor = Supervisor(
         plan=plan, root=root, ops=ops, python=python, worker=worker,
-        resume=args.resume)
+        boot_identity=_supervisor_boot_identity(root), resume=args.resume)
     signal.signal(signal.SIGTERM,
                   lambda signum, _frame: supervisor.request_stop(signum))
     signal.signal(signal.SIGINT,

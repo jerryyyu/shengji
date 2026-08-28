@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import replace
 
 import pytest
@@ -16,6 +17,7 @@ from shengji.rl.belief_v2_human_inventory import (
 )
 from shengji.rl.belief_v2_supervisor_plan import (
     BeliefV2SupervisorPlanError,
+    SUPERVISOR_WALL_CAP_SECONDS,
     V2SupervisorStageV1,
     build_supervisor_plan,
     validate_supervisor_plan,
@@ -77,6 +79,11 @@ def test_r4_plan_has_exact_cache_stage_and_non_cartesian_references(tmp_path):
     }
     assert summary["human_source_records_parsed"] is False
     assert summary["outcome_fields_opened"] is False
+    assert summary["supervisor_wall_cap_seconds"] \
+        == SUPERVISOR_WALL_CAP_SECONDS == 72 * 60 * 60
+    execution = json.loads(plan.execution_bytes())
+    assert execution["supervisor_wall_cap_seconds"] \
+        == SUPERVISOR_WALL_CAP_SECONDS
     assert summary["same_admission_process_resume_authorized"] is True
     assert summary["retry_authorized"] is False
     assert summary["test_split_open_authorized"] is False

@@ -776,6 +776,17 @@ terminal for verification, but may never create a second test opening. Every
 resume writes a hash-bound receipt and new log suffix; it grants no outcome
 selection, model retry, gameplay, strength, promotion or deployment authority.
 
+The supervisor plan source-binds one 72-hour absolute wall cap for the entire
+admission. Its durable start and status records bind the live freeze boot
+identity, original monotonic start, cap and hard deadline. Every resume must
+reopen those exact values and compare the freeze's boot identity with the live
+host before it can publish a recovery receipt. The parent checks the same hard
+deadline before every stage, before each worker launch/poll cycle and before
+publishing completion; expiry terminates live children, writes an exact failed
+status and cannot advance to calibration/test or masquerade as completion.
+Neither a process restart nor a fresh external service wrapper resets this
+deadline, and a changed boot or regressed monotonic clock refuses.
+
 ## Preliminary capacity projection and host allocation
 
 V1's preflight measured approximately 7.096 seconds per champion round and

@@ -6840,3 +6840,36 @@ Nothing here authorizes anything further: label generation, training, test openi
 promotion, deployment, retry and R5 all remain unauthorized, and **#162 is still open and unreviewed
 by me**. Read-only throughout: receipt bytes, systemd counters, no evidence namespace opened.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-28 — PT-Luna0 final result independently reopened: **COMPLETE 52/52**; Luna beats A/B/C0-S descriptively, while PT-Sol0 remains stronger
+
+Codex independently reopened the sealed public report at exact source head
+`2394140bcdaebf72d81912a55ac18f5051848fe5` using the production
+`validate_report` path and all three byte-exact parent reports. The report is
+canonical JSON, mode `0400`, one link, 137,355 bytes, external SHA-256
+`fea40a5622efe2ce832483aebffbae8be25ca99bba11b60c8bfd0df666c27926`,
+and internal report SHA-256
+`7f16972d76fc1dfa88d73b1edd87e9544bf0da8df55a538706505e11296b20b6`.
+Validation rederived every record, parent binding, summary, and authority row:
+52 complete, zero incomplete, zero refusals.
+
+Mean signed-level contrasts over the 52 paired full-game role records:
+
+| contrast | exact mean | positive / negative / tied |
+|---|---:|---:|
+| Luna0 − A | `5/13` (`+0.384615`) | 17 / 7 / 28 |
+| Luna0 − B | `23/52` (`+0.442308`) | 18 / 8 / 26 |
+| Luna0 − C0-S | `8/13` (`+0.615385`) | 23 / 10 / 19 |
+| Luna0 − Sol0 | `-7/26` (`-0.269231`) | 5 / 14 / 33 |
+
+Interpretation: the less expensive Luna planner still beats all three fixed
+baselines on this reviewed paired DEV population, which strengthens the claim
+that planning quality—not merely hidden information—has real value. It does
+not displace PT-Sol0: Sol remains the stronger reviewed full-game privileged
+teacher and the preferred state-distribution source for Value V0. This is
+descriptive DEV evidence, not a production-strength or deployment claim.
+Every authority bit in the report remains false; no retry, training, merge,
+gameplay, promotion, deployment, test opening, or strength authority is
+created by this reopen.
+
+PT_LUNA0_RESULT_REOPEN_V1 {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"promotion_authorized":false,"retry_authorized":false,"scientific_execution_authorized":false,"strength_claim_authorized":false,"test_opening_authorized":false,"training_authorized":false},"completed_record_count":52,"exact_source_head":"2394140bcdaebf72d81912a55ac18f5051848fe5","external_sha256":"fea40a5622efe2ce832483aebffbae8be25ca99bba11b60c8bfd0df666c27926","incomplete_record_count":0,"internal_report_sha256":"7f16972d76fc1dfa88d73b1edd87e9544bf0da8df55a538706505e11296b20b6","refusal_count":0,"schema":"pt-luna0-result-reopen-v1","status":"COMPLETE","verdict":"REOPENED_DESCRIPTIVE"}

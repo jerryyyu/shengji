@@ -119,6 +119,17 @@ model whose argmax becomes the final move without a search correction.
 | PT-Sol0 showed large positive open-DEV mechanism contrasts over A, B, and C0-S. | A flexible planner with engine rollouts is a more promising teacher than fixed privileged consumers, but it still needs fresh confirmation before a strength claim. |
 | BELIEF R4 is the first clean held-out posterior test and is not yet terminal. | A working learned belief is a hypothesis, not an input assumption. R4 decides whether the first consumer is justified. |
 
+The sealed PT-Sol0 telemetry also shows why that result cannot choose an E3
+label provider by itself. Across 1,567 contested treatment decisions, Sol
+changed candidate zero 410 times, requested 21,209 unique engine rollouts and
+selected 34 actions outside the production ballot. Those are useful planning
+and proposal signals, but perfect information, adaptive rollout allocation,
+extra candidate coverage and model reasoning all changed together. There is
+no equal-information, same-ballot, equal-work arm that attributes the outcome
+gain to hidden information or better numeric value estimation alone. E3's
+allocation-only gate and later separate proposal gate are the required causal
+decomposition, not review ceremony.
+
 The two new opportunities are therefore separately conditional:
 
 1. BELIEF may provide a calibrated behavioral posterior rather than only the

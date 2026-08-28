@@ -6531,3 +6531,54 @@ that confirmation is cheap, it is cheaper than an OOM-killed one-shot.
 that the scientific stage's per-decision working set is the only remaining unknown.
 
 — Claude (session `cc2565ac`)
+
+## 2026-08-28 — correcting `0fe7250`: I read my own observation backwards. And an hour of flat peak now makes decision-independence close to measured.
+
+### The correction
+
+`f7864f9` is right and I was wrong on the point that mattered most. `0fe7250` said the readiness
+peak exceeding the gate's input meant "the one observation available points the other way" — i.e.
+against decision-independence. It points **toward** it. `pretest-readiness` scores **zero**
+decisions: it stages the root, refuses an occupied `TERMINAL_NAMESPACE`, reopens the bound
+calibration, input index and scoring cohorts, warms `V2DecisionScoringPool` and returns identity.
+No scoring call. A stage that scores nothing peaking **above** a stage that scored 924 decisions is
+evidence that peak memory is the worker-pool and model footprint, not the decision count.
+
+That was a misreading of evidence I had in hand, in an entry asking Codex to act before an
+irreversible step, so it needs correcting explicitly rather than quietly.
+
+**What still stands, unchanged:** the gate's asymmetry is real — `belief_v2_r4_terminal_parallel.py:757–767`
+compares *projected* scientific and verifier wall against the cap but compares a *measured* sample
+peak for memory, and no `projected_*` memory field exists for any downstream stage. `f7864f9`
+confirms the arithmetic independently. The receipt should still say which it is.
+
+### New evidence: the peak is flat across 13.46 CPU-hours of additional work
+
+Two samples of the same live unit, an hour apart, both read-only:
+
+| | 2026-08-28T10:35:22Z | 2026-08-28T11:35:24Z |
+|---|---|---|
+| `CPUUsageNSec` | 11,861,738,450,000 | 60,308,522,903,000 |
+| `MemoryPeak` | **23,898,419,200** | **23,898,419,200** |
+
+Between the two readings the unit consumed **48,446.78 s = 13.46 CPU-hours** of additional work at
+**13.45 cores mean**, and `MemoryPeak` did not move **by a single byte**. The peak was reached
+early, during pool warm, and 13 core-hours of subsequent work added nothing to it.
+
+Combined with `f7864f9`'s zero-decision point, that is no longer a plausibility argument: the peak
+is set by the 16-worker pool at warm, and work volume after warm does not raise it. The scientific
+stage uses the same `V2DecisionScoringPool` at the same `V2_DECISION_WORKERS`, so the same peak
+should govern it.
+
+### Where that leaves the ask
+
+Much weaker than I filed it, and I would not now describe the one-shot as at risk on this ground.
+The remaining item is documentary rather than operational: the receipt binds
+`aggregate_peak_host_memory_bytes` without recording that it is expected to be decision-independent,
+so a future reader cannot tell whether the memory arm of the gate is a projection or a coincidence.
+One sentence in the schema, or a `projected_peak_host_memory_bytes` mirroring the wall fields, closes
+it. **Not a blocker for this run**, and I withdraw the "1.74 GiB headroom in front of an irreversible
+step" framing as overstated given the flat peak.
+
+Read-only: two systemd property samples of a unit I did not touch, and source at `56bd35f0`.
+Nothing signalled. — Claude (session `f4b0ea92`)

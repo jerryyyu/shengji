@@ -5856,3 +5856,81 @@ it is a family-level caveat for interpretation, not a Luna defect.
 Coverage limits: source only; +1561/−8 across 9 files, and I went deep on the config threading,
 the parent-binding and token/wall summaries, and the design payload. No run exists to review. No
 authority granted or withdrawn. — Claude (session `68f9c8bd`)
+
+## 2026-08-28 — capacity receipt `df51a8f9` PASSED its caps and fixes the wall-estimate gap. But `parallel_cpu_nanoseconds` in that same receipt is measured with the helper I showed under-counts by ~2×, and it is being frozen now.
+
+The freeze watcher is building against this receipt as I write, so this is worth reading before it
+seals.
+
+### First, two things this receipt gets right, and one of them closes an old gap of mine
+
+`belief-r4-terminal-capacity-56bd35f-r1` completed successfully at **05:03**:
+`Deactivated successfully`, **1 d 2 h 1 min 36.570 s CPU over 2 h 49 min 52.358 s wall**,
+receipt `/opt/belief-r4-terminal-capacity-56bd35f-r1.json`, 5,444 B, SHA-256
+**`df51a8f9704298b3a7958d0daa8ee9b1cf220cb3cc140f682910072f07a6051e`** (I recomputed it; it matches
+the published summary line).
+
+- **The cgroup-v2 memory fix works and passed with real margin.**
+  `aggregate_peak_host_memory_bytes = 21,056,126,976` (19.61 GiB) against
+  `host_memory_cap_bytes = 25,769,803,776` (24.0 GiB) → `host_memory_within_cap: True`, **4.39 GiB /
+  18.3 % headroom**, with `aggregate_peak_host_memory_measurement = linux-cgroup-v2-memory.peak`
+  bound into the receipt and *validated* at line 936. The work was the same as the failed attempt
+  (2 h 49 m 52 s vs 2 h 51 m 13 s wall; 1 d 2 h 1 m vs 1 d 2 h 8 m CPU) — only the measurement
+  changed. That confirms `77d696f`: the earlier refusal was measurement error, not a real breach.
+- **It closes the freeze-sizing gap I raised at `1e20021` and kept after withdrawing the rest of
+  that entry.** The receipt now binds `terminal_wall_cap_nanoseconds = 172,800,000,000,000` (48 h)
+  and a measured projection `projected_scientific_unit_wall_nanoseconds = 114,049,832,572,691`
+  (**31.68 h**) → `projected_within_wall_cap: True`, **16.3 h headroom**. A wall cap sized against a
+  measurement of the stage it governs is exactly what `deadline-estimate.json` never had. Good.
+- Also `exact_serial_parallel_parity: True`, `execution_authorized: false`,
+  `test_opening_executed: false`, `strength_claim_authorized: false`, `worker_count: 16`.
+
+### The miss: CPU is still measured at process scope, in this receipt
+
+`77d696f` recommended a sweep rather than a spot fix, on the argument that the memory over-count and
+my CPU under-count share one root cause. The memory half was done. **The CPU half was not, and the
+evidence is in the receipt's own numbers:**
+
+| field | value |
+|---|---|
+| `serial_cpu_nanoseconds` | 385,939,820,000 (**385.94 s**) |
+| `parallel_cpu_nanoseconds` | 191,264,832,000 (**191.26 s**) |
+| ratio | **2.018×** |
+
+**The 16-worker parallel path reports using half the CPU of the serial path for byte-identical
+output.** That cannot be true of the work — parallelism does not halve total CPU — and the factor
+matches, to within 2 %, the **1.974×** under-count I measured independently on the calibration lane
+at `45711fd` (receipt 0.9561 cores vs systemd's 1.8872 sustained).
+
+The mechanism is confirmed in source, not inferred: `belief_v2_r4_terminal_parallel.py` lines 671,
+691, 694 and 713 take both samples with **`_process_tree_cpu_time_ns()`** — imported at line 44,
+the same helper — which does not see the forkserver pool. And unlike memory, **there is no
+`*_cpu_measurement` field**: the module defines only `HOST_MEMORY_MEASUREMENT` (line 85), binds only
+that (794), and validates only that (936). `serial_cpu_nanoseconds` and `parallel_cpu_nanoseconds`
+appear in the positive-integer validator at line 862ff, which passes happily on a wrong number.
+
+### Severity, stated honestly rather than inflated
+
+**No gate in this receipt depends on the CPU fields.** `projected_within_wall_cap` is wall-derived,
+`speedup_ppb` is `serial_wall * 1e9 // parallel_wall` (wall-derived: **1.727×** on the parity
+sample), and `host_memory_within_cap` is the fixed cgroup measurement. So this does **not** invalidate
+the receipt's verdicts and I am not asking for the run to stop.
+
+What it does mean: an immutable freeze is about to bind two numbers that misrepresent the parallel
+path's cost by ~2×, in the one artifact anybody would later cite for what R4's terminal stage costs,
+with no recorded indication of how they were measured. `resource_caps` elsewhere carries
+`capture_core_hours`, `reference_core_hours` and `training_device_hours`; any future budget checked
+against a process-scope CPU number is silently doubled.
+
+**Cheap fix, exactly parallel to the one already made:** measure CPU at cgroup scope
+(`cpu.stat`'s `usage_usec` for the service cgroup), add a `*_cpu_measurement` constant, bind it into
+the receipt and validate it as line 936 already does for memory. The same treatment is owed to
+`belief-v1-v2-calibration-resource-v1`, which has the identical defect and no measurement field.
+
+If the freeze seals first, this is not a reason to redo it — the fields are not load-bearing — but
+the next receipt schema should carry it, and the frozen values should be read as parent-process CPU
+only, not as the stage's cost.
+
+Read-only: the published capacity receipt (terminal, outcome-blind — `execution_authorized: false`,
+`test_opening_executed: false`), systemd counters, journal text and git objects. Nothing signalled,
+no test bytes opened. — Claude (session `f4b0ea92`)

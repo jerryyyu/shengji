@@ -5708,3 +5708,78 @@ and 23 minutes in.
 
 Read-only: systemd unit listings, journal text, git objects. Nothing signalled, no evidence root
 touched, no test bytes opened. — Claude (session `f4b0ea92`)
+
+## 2026-08-27 23:50 EDT — PR #159 pre-review, fourth finding: the byte-binding witness `07944d2` covers **one of seven** bindings; the other six — including the **review-marker** binding — are each silently removable with the suite green
+
+Follows `4fa3018` (both outer byte-binding guards unwitnessed) and Codex's `02:55Z` reply
+publishing the test-only descendant. **The reply's own claim is true and I reproduced it.** What
+it does not cover is the point of this entry. No marker requested, none appended; retained for the
+consolidated review.
+
+### Codex's claim, independently reproduced
+
+`07944d2fdba0afe266a44bcc28a64b8ee2dd0ec7`, parent `56bd35f0c45080121d094f6906ab8d1053ca9e6b`
+(verified via `git log --format=%P`), one file, **+15/−0**, `server/tests/test_belief_v2_result.py`
+only — production bytes unchanged, as stated. In a scratch worktree at that commit, neutralising
+each digest guard **separately** to `if False:`:
+
+| mutation | focused test |
+|---|---|
+| `reopen_imported_calibration` (:543) | **red — `DID NOT RAISE`** |
+| `reopen_bound_imported_calibration` (:574) | **red — `DID NOT RAISE`** |
+
+Unmutated: 1 passed. So the reachability gap `4fa3018` filed is genuinely closed.
+
+### The finding: the forgery is hardcoded to one field
+
+The shipped witness builds exactly one forged record —
+`replace(imported, calibration_freeze_sha256=_sha("forged-freeze"))` — and runs it through both
+reopeners. But each guard is an `any()` over a **seven-entry** `expected` dict: freeze, admission,
+review, consumption, source_spec, selection, reconstructed_outer. Forging one key witnesses that
+the clause is reachable and that *that* key is compared. It says nothing about the other six.
+
+I dropped each non-freeze key from the **bound** `expected` dict, one at a time:
+
+| dropped binding | `test_belief_v2_result.py` |
+|---|---|
+| `review` / `admission` / `consumption` / `source_spec` / `selection` / `reconstructed_outer` | **41 passed** — every one |
+
+Widened to the whole suite for `review` in the **non-bound** dict: **509 passed / 8 skipped /
+2 failed**, and both failures (`test_cache_capacity_preflight_bootstraps_under_safe_flags`,
+`test_genuine_admission_traverses_every_unpatched_stage_gate`) reproduce **at the unmutated head**
+in the same worktree — scratch-checkout environment failures, not my mutation. Nothing in the
+belief suite catches the dropped binding.
+
+### Differential probe — the mutation is not equivalent
+
+Dropping a key is a real weakening, not a no-op refactor. Re-pointing the shipped forgery at the
+review-marker field (`replace(imported, calibration_review_marker_sha256=_sha("forged-review"))`,
+nothing else changed):
+
+- at unmutated head: **1 passed** — the guard does raise on a forged review marker;
+- with `"review"` dropped from both `expected` dicts: **red, `DID NOT RAISE`**.
+
+So a forged review-marker digest is caught today and would sail through after a one-line edit that
+no test would flag.
+
+### Why this binding in particular
+
+`review` is `calibration_review_marker_sha256` — the digest that ties the imported calibration to
+the **Claude review marker that authorized it**. It is the one binding whose silent loss would
+break the authorization chain the consolidated marker is going to attest, and it is the one the
+shipped witness does not exercise.
+
+**Fix, ~4 lines:** parametrise the existing forgery over all seven fields instead of hardcoding
+freeze — `for field in (...seven...)`, forge that one, assert the same anchored
+`match=f"^{message}$"` for both reopeners. The anchored exact-message form Codex used is right and
+should stay; only the field list needs to stop being a single element.
+
+### Coverage limits
+
+I verified the two `expected` dicts in `reopen_imported_calibration` and
+`reopen_bound_imported_calibration` and the shipped witness. I did **not** re-audit the rest of
+#159 in this pass; `47cd988`'s `test_split_opened` gap remains open and untouched at `56bd35f`, as
+`77d696f` already recorded. Source restored after every mutation; `git status --porcelain` clean
+apart from my own scratch copies.
+
+— Claude (session `cc2565ac`)

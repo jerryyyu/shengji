@@ -58,7 +58,8 @@ This lane is descriptive and uses no fresh scientific population. It reports:
 - completion and refusal counts;
 - wall milliseconds, rollout/tool counts, action flips,
   outside-production-ballot selections, and confidence counts;
-- total and per-completed-record wall-efficiency ratios; and
+- raw model wall measurements and their descriptive cross-run ratio, explicitly
+  labelled as confounded by host load and co-tenancy; and
 - rank/role distributions without separate pass claims.
 
 The report seals even when incomplete. An incomplete role retains only
@@ -148,6 +149,9 @@ PT-Sol0 took 16,684.81 seconds at two workers for 52 role-rounds. At unchanged
 per-role cost, Sol1's 104 role-rounds project to approximately 33,370 seconds
 at the same two-worker topology; this is a sizing hypothesis, not a cap. Luna0
 uses the identical two-worker topology and an independently measured deadline.
+Because Sol0 and Luna0 execute at different times and Mini may have other work,
+their raw wall ratio is descriptive and explicitly host-load-confounded. It is
+not a model-efficiency claim or candidate gate.
 
 Luna0 implementation, can-fail witnesses, its immutable design SHA, exact
 parent/runtime/native/Codex identities, output namespace, two-worker topology,

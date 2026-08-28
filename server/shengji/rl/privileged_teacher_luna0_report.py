@@ -41,6 +41,7 @@ CONTRASTS = ("luna0_minus_sol0", "luna0_minus_a", "luna0_minus_b",
 MODEL = "gpt-5.6-luna"
 LUNA_MODEL = MODEL
 TOKEN_COMPARISON_STATUS = "UNAVAILABLE_PUBLIC_SOL0_ARTIFACT"
+WALL_COMPARISON_STATUS = "DESCRIPTIVE_CROSS_RUN_HOST_LOAD_CONFOUNDED"
 AUTHORITY = {
     **full.AUTHORITY,
     "test_opening_authorized": False,
@@ -189,6 +190,7 @@ class Luna0Design:
             "banker_seats": list(full.BANKER_SEATS),
             "authority": dict(AUTHORITY),
             "token_comparison": TOKEN_COMPARISON_STATUS,
+            "wall_comparison": WALL_COMPARISON_STATUS,
         }
 
 
@@ -420,6 +422,7 @@ def _summaries(records: list[dict[str, object]]) -> dict[str, object]:
             "wall_milliseconds": {
                 "luna": luna_wall, "sol": sol_wall,
                 "luna_to_sol_ratio": wall_ratio,
+                "comparison": WALL_COMPARISON_STATUS,
             },
         },
     }
@@ -748,6 +751,7 @@ def report_bytes(report: dict[str, object], design: Luna0Design, *,
 
 __all__ = ["AUTHORITY", "CONTRASTS", "DESIGN_SCHEMA", "DEV_NAMESPACE",
            "LUNA_MODEL", "MODEL", "TOKEN_COMPARISON_STATUS",
+           "WALL_COMPARISON_STATUS",
            "Luna0Design", "Luna0PlannerConfig", "PrivilegedTeacherLuna0Error",
            "report_bytes",
            "run_dev", "validate_report", "validate_sol_report"]

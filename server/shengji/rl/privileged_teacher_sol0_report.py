@@ -320,7 +320,7 @@ def _run_root(
         seed_secret: bytes, coordinate: tuple[str, int, int],
         private_root: Path, tool_script: Path, codex_binary: Path,
         planner_process: PlannerProcess | None,
-        planner_config: Sol0PlannerConfig | None = None,
+        planner_config: Sol0PlannerConfig,
         role_completed: Callable[[], object] | None = None) \
         -> tuple[dict[str, object], ...]:
     rank, banker, replicate = coordinate
@@ -340,7 +340,7 @@ def _run_root(
             private_root=private_root, tool_script=tool_script,
             codex_binary=codex_binary,
             planner_process=planner_process,
-            planner_config=planner_config or Sol0PlannerConfig()))
+            planner_config=planner_config))
         if role_completed is not None:
             role_completed()
     return tuple(records)

@@ -163,6 +163,7 @@ def test_both_role_roots_are_bound_before_any_external_play(monkeypatch,
             seed_secret=_SECRET, coordinate=coordinate,
             private_root=tmp_path, tool_script=Path(__file__),
             codex_binary=Path(__file__), planner_process=None,
+            planner_config=report.Sol0PlannerConfig(),
             role_completed=None)
     assert calls["count"] == 0
 

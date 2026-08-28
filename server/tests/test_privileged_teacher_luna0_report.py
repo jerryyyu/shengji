@@ -75,6 +75,8 @@ def test_luna_design_is_dedicated_and_model_pinned():
     assert _design().payload()["model"] == report.MODEL
     assert _design().payload()["token_comparison"] == \
         report.TOKEN_COMPARISON_STATUS
+    assert _design().payload()["wall_comparison"] == \
+        report.WALL_COMPARISON_STATUS
     with pytest.raises(report.PrivilegedTeacherLuna0Error, match="model identity"):
         _design(planner_model=sol0.MODEL)
 
@@ -95,6 +97,65 @@ def test_luna_subprocess_witness_binds_luna_model_and_effort(monkeypatch, tmp_pa
     assert kwargs["timeout"] == report.Luna0PlannerConfig().max_session_wall_seconds
 
 
+def test_luna_run_dev_threads_luna_identity_to_every_planner(monkeypatch,
+                                                             tmp_path):
+    design, _public, parents = _full_report_fixture()
+    c0_records, _sol_records = parents
+    observed = []
+
+    def planner_process(session, **_kwargs):
+        observed.append((session.config.model,
+                         session.config.reasoning_effort))
+        return subprocess.CompletedProcess(("codex",), 0, stdout=b"")
+
+    def fake_run_root(*, coordinate, planner_process, planner_config,
+                      role_completed, **_kwargs):
+        rows = []
+        for role in full.ROLES:
+            planner_process(SimpleNamespace(config=planner_config))
+            role_completed()
+            rows.append({
+                "trump_rank": coordinate[0], "banker": coordinate[1],
+                "replicate": coordinate[2], "role": role,
+                "status": "COMPLETE", "sol0": _outcome(),
+                "private_evidence_sha256": "e" * 64,
+                "failure_sha256": None,
+            })
+        return tuple(rows)
+
+    monkeypatch.setattr(report, "validate_sol_report", lambda *a, **k: None)
+    monkeypatch.setattr(report, "_parent_maps", lambda *a, **k: parents)
+    monkeypatch.setattr(report, "_sol_design", lambda _payload: object())
+    monkeypatch.setattr(report.sol_report, "validate_parents",
+                        lambda *a, **k: object())
+    monkeypatch.setattr(report.sol_report, "_run_root", fake_run_root)
+    monkeypatch.setattr(report, "_sha_bytes", lambda _raw: "1" * 64)
+    monkeypatch.setattr(report.platform, "node", lambda: design.hostname)
+    monkeypatch.setattr(report.subprocess, "run", lambda *a, **k:
+                        SimpleNamespace(stdout="codex-test"))
+    design = _design(seed_commitment_sha256="1" * 64,
+                     codex_binary_sha256="1" * 64,
+                     python_binary_sha256="1" * 64,
+                     tool_script_sha256="1" * 64,
+                     python_version=__import__("sys").version)
+    (tmp_path / "tool").write_bytes(b"tool")
+    (tmp_path / "codex").write_bytes(b"codex")
+    private_root = tmp_path / "private"
+    private_root.mkdir()
+    private_root.chmod(0o700)
+
+    result = report.run_dev(
+        design, c0_report={}, c0_external_sha256="4" * 64,
+        full_report={}, full_external_sha256="7" * 64,
+        sol0_report={"design": {}}, sol0_external_sha256="d" * 64,
+        seed_secret=b"s" * 32, private_root=private_root,
+        tool_script=tmp_path / "tool", codex_binary=tmp_path / "codex",
+        workers=2, planner_process=planner_process)
+
+    assert result["status"] == "COMPLETE"
+    assert observed == [(report.MODEL, sol0.REASONING_EFFORT)] * 52
+
+
 def test_paired_record_has_four_utility_contrasts_and_no_hidden_state():
     row = report._record_payload(
         coordinate=("2", 0, 0), role="banker-team", parent=_parent(),
@@ -105,6 +166,8 @@ def test_paired_record_has_four_utility_contrasts_and_no_hidden_state():
                                       "prompt", "model_output"})
     report._validate_outcome(row["luna0"], banker=0, treatment_team=0)
     assert report._summaries([row])["efficiency"]["candidate"] is None
+    assert report._summaries([row])["efficiency"]["wall_milliseconds"][
+        "comparison"] == report.WALL_COMPARISON_STATUS
 
 
 def test_incomplete_record_is_retained_and_cannot_gain_contrasts(monkeypatch):

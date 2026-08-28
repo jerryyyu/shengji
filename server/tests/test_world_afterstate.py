@@ -31,6 +31,13 @@ from shengji.rl.world_afterstate_model import (
     new_world_afterstate_model,
     proper_score_rows,
 )
+from shengji.rl.world_afterstate_label import (
+    WorldAfterstateLabelError,
+    continuation_identity,
+    derive_continuation_seed,
+    reopen_afterstate_continuation,
+    run_afterstate_continuation,
+)
 
 
 def _state(seed: int = 771_450_021, plays: int | None = 0, *,
@@ -295,3 +302,58 @@ def test_model_training_and_proper_score_mechanics_are_executable():
     assert nll.shape == brier.shape == utility_error.shape == (2,)
     assert bool(torch.all(torch.isfinite(nll)))
     assert bool(torch.all((brier >= 0) & (brier <= 2)))
+
+
+def _smart_continuation(_name, *, seed):
+    return make_bot("smart", seed=seed)
+
+
+def test_actor_visible_continuation_reopens_engine_outcome_exactly(monkeypatch):
+    import shengji.rl.world_afterstate_label as label
+    monkeypatch.setattr(label, "make_bot", _smart_continuation)
+    record = _record(plays=2)
+    identity = continuation_identity(
+        experiment_id="value-v0-test", state_group_id="group-a",
+        fold="mechanics", world_occurrence=0, replicate=0)
+    result = run_afterstate_continuation(record, identity)
+    assert result["continuation_policy"] == "mc-strong"
+    assert result["continuation_decisions"] == len(result["trace"])
+    assert result["terminal_state"]["public"]["terminal"] is True
+    assert result["outcome"]["attacker_points"] \
+        == result["terminal_state"]["public"]["attacker_points"]
+    assert set(result["authority"].values()) == {False}
+    assert reopen_afterstate_continuation(record, result) == result
+
+
+def test_continuation_record_refuses_terminal_and_trace_rehash(monkeypatch):
+    import shengji.rl.world_afterstate_label as label
+    monkeypatch.setattr(label, "make_bot", _smart_continuation)
+    record = _record(plays=None)
+    identity = continuation_identity(
+        experiment_id="value-v0-test", state_group_id="group-b",
+        fold="mechanics", world_occurrence=0, replicate=1)
+    result = run_afterstate_continuation(record, identity)
+    assert result["continuation_decisions"] == 0
+    forged = copy.deepcopy(result)
+    forged["outcome"]["attacker_points"] += 1
+    with pytest.raises(WorldAfterstateError):
+        reopen_afterstate_continuation(record, forged)
+    forged = copy.deepcopy(result)
+    forged["trace_sha256"] = "0" * 64
+    with pytest.raises(WorldAfterstateLabelError,
+                       match="label reconstruction drift"):
+        reopen_afterstate_continuation(record, forged)
+
+
+def test_continuation_seed_is_common_across_sibling_root_actions():
+    identity = continuation_identity(
+        experiment_id="value-v0-test", state_group_id="same-public-root",
+        fold="report", world_occurrence=7, replicate=3)
+    first = derive_continuation_seed(identity, decision=4, seat=2)
+    second = derive_continuation_seed(copy.deepcopy(identity),
+                                      decision=4, seat=2)
+    assert first == second
+    changed = continuation_identity(
+        experiment_id="value-v0-test", state_group_id="same-public-root",
+        fold="report", world_occurrence=7, replicate=4)
+    assert derive_continuation_seed(changed, decision=4, seat=2) != first

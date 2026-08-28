@@ -6,6 +6,7 @@ from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import multiprocessing
 import random
+from types import SimpleNamespace
 
 import pytest
 
@@ -190,6 +191,172 @@ def test_process_parallel_projection_is_byte_identical(monkeypatch):
         parallel = score_v2_round(
             **kwargs, projection_executor=executor)
     assert parallel == serial
+
+
+def test_process_parallel_decisions_are_byte_identical(monkeypatch):
+    """Each worker runs unchanged serial scoring on a distinct decision."""
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    monkeypatch.setattr(SCORING, "V2_DECISION_WORKERS", 2)
+    rnd, transcript, partition = _state(15005)
+    reference = capture_ref_c_worlds(
+        rnd, rnd.turn, transcript, sampler_seed=17005)
+    common = build_common_surface_tensors(
+        partition.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS)
+    decisions = tuple(V2ScoringDecisionV1(
+        decision_key=hashlib.sha256(
+            f"decision-parallel-{index}".encode("ascii")).hexdigest(),
+        source_actor=partition.actor, target=partition.targets,
+        common=common, reference=reference) for index in range(4))
+    cohort = _cohort()
+    kwargs = {
+        "round_key": hashlib.sha256(b"decision-parallel-round").hexdigest(),
+        "source_kind": "synthetic", "split": "calibration",
+        "trump_rank": rnd.trump_rank, "decisions": decisions,
+        "cohorts": (cohort,),
+    }
+    serial = score_v2_round(**kwargs)
+    with SCORING.V2DecisionScoringPool((cohort,)) as pool:
+        pool.warm()
+        parallel = score_v2_round(**kwargs, decision_pool=pool)
+    assert parallel == serial
+
+
+def test_decision_pool_uses_filename_backed_tensor_transport(monkeypatch):
+    """The complete model population must not consume one FD per storage."""
+    cohort = _cohort()
+    observed = []
+    sharing_strategy = ["file_descriptor"]
+
+    class Executor:
+        def __init__(self, **kwargs):
+            observed.append((
+                "executor", SCORING.torch_multiprocessing
+                .get_sharing_strategy(), kwargs))
+
+        def shutdown(self, **kwargs):
+            observed.append(("shutdown", kwargs))
+
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "get_all_sharing_strategies",
+        lambda: {"file_descriptor", "file_system"})
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "get_sharing_strategy",
+        lambda: sharing_strategy[0])
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "set_sharing_strategy",
+        lambda value: sharing_strategy.__setitem__(0, value))
+    monkeypatch.setattr(SCORING, "ProcessPoolExecutor", Executor)
+    pool = SCORING.V2DecisionScoringPool((cohort,))
+    assert observed[0][0:2] == ("executor", "file_system")
+    assert observed[0][2]["mp_context"].get_start_method() == "forkserver"
+    assert observed[0][2]["initargs"][1] is pool._startup_barrier
+    assert SCORING.torch_multiprocessing.get_sharing_strategy() \
+        == "file_system"
+    pool.close()
+    assert SCORING.torch_multiprocessing.get_sharing_strategy() \
+        == "file_descriptor"
+    assert observed[-1] == (
+        "shutdown", {"wait": True, "cancel_futures": True})
+
+
+def test_decision_pool_refuses_missing_filename_transport(monkeypatch):
+    cohort = _cohort()
+    monkeypatch.setattr(
+        SCORING.torch_multiprocessing, "get_all_sharing_strategies",
+        lambda: {"file_descriptor"})
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="tensor transport is unavailable"):
+        SCORING.V2DecisionScoringPool((cohort,))
+
+
+def test_decision_pool_types_forkserver_fd_refusal():
+    pool = object.__new__(SCORING.V2DecisionScoringPool)
+    pool.cohort_identity = (("cohort", ("a" * 64,) * 8),)
+
+    def refuse(*_args, **_kwargs):
+        raise ValueError("too many fds")
+
+    pool._executor = SimpleNamespace(map=refuse)
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="decision worker startup refused"):
+        pool.warm()
+
+
+def test_decision_worker_probe_waits_for_complete_population(monkeypatch):
+    identity = (("cohort", ("a" * 64,) * 8),)
+    waits = []
+
+    class Barrier:
+        def wait(self, *, timeout):
+            waits.append(timeout)
+
+    monkeypatch.setattr(SCORING, "_DECISION_WORKER_COHORTS", (object(),))
+    monkeypatch.setattr(SCORING, "_DECISION_WORKER_IDENTITY", identity)
+    monkeypatch.setattr(
+        SCORING, "_DECISION_WORKER_STARTUP_BARRIER", Barrier())
+    pid, observed = SCORING._decision_worker_probe(identity)
+    assert pid > 0
+    assert observed == identity
+    assert waits == [SCORING.DECISION_WORKER_STARTUP_TIMEOUT_SECONDS]
+
+
+def test_decision_pool_identity_and_result_order_can_refuse(monkeypatch):
+    monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
+    cohort = _cohort()
+    wrong = SCORING.V2CohortModelsV1(
+        cohort_id="wrong-cohort", models=cohort.models,
+        model_sha256s=cohort.model_sha256s)
+    pool = object.__new__(SCORING.V2DecisionScoringPool)
+    pool.cohort_identity = SCORING._cohort_identity((cohort,))
+    rnd, transcript, partition = _state(15007)
+    reference = capture_ref_c_worlds(
+        rnd, rnd.turn, transcript, sampler_seed=17007)
+    decision = V2ScoringDecisionV1(
+        decision_key=hashlib.sha256(b"wrong-pool-decision").hexdigest(),
+        source_actor=partition.actor, target=partition.targets,
+        common=build_common_surface_tensors(
+            partition.actor, behavior_policy_ids=UNIVERSAL_POLICY_IDS),
+        reference=reference)
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="decision pool identity"):
+        score_v2_round(
+            round_key=hashlib.sha256(b"wrong-pool").hexdigest(),
+            source_kind="synthetic", split="calibration", trump_rank="2",
+            decisions=(decision,), cohorts=(wrong,), decision_pool=pool)
+
+    first = SimpleNamespace(decision_key="a" * 64)
+    second = SimpleNamespace(decision_key="b" * 64)
+    pool._executor = SimpleNamespace(map=lambda *args, **kwargs: (
+        SCORING._ScoredDecisionV1(second.decision_key, ()),
+        SCORING._ScoredDecisionV1(first.decision_key, ())))
+    with pytest.raises(SCORING.BeliefV2ScoringError,
+                       match="result order drift"):
+        pool.score((first, second))
+
+
+def test_decision_pool_submission_batches_are_bounded_and_ordered(
+        monkeypatch):
+    monkeypatch.setattr(SCORING, "V2_DECISION_WORKERS", 2)
+    pool = object.__new__(SCORING.V2DecisionScoringPool)
+    pool.cohort_identity = (("cohort", ("a" * 64,) * 8),)
+    decisions = tuple(SimpleNamespace(
+        decision_key=hashlib.sha256(
+            f"bounded-decision-{index}".encode("ascii")).hexdigest())
+        for index in range(5))
+    batch_sizes = []
+
+    def mapped(_function, tasks, *, chunksize):
+        tasks = tuple(tasks)
+        assert chunksize == 1
+        batch_sizes.append(len(tasks))
+        return tuple(SCORING._ScoredDecisionV1(
+            task.decision.decision_key, ()) for task in tasks)
+
+    pool._executor = SimpleNamespace(map=mapped)
+    rows = pool.score(decisions)
+    assert batch_sizes == [4, 1]
+    assert tuple(row.decision_key for row in rows) \
+        == tuple(row.decision_key for row in decisions)
 
 
 def test_member_projection_failure_reports_exact_scoring_context(monkeypatch):

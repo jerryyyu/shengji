@@ -379,7 +379,8 @@ def _expected_human_rounds_from_references(
 def reopen_v2_calibration_selection(
         directory: Path, *, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
-        inventory: dict[str, Any], group_split: dict[str, Any]) \
+        inventory: dict[str, Any], group_split: dict[str, Any],
+        legacy_tensor_cache_manifest_sha256: str | None = None) \
         -> dict[str, Any]:
     """Reopen raw score populations and independently rederive selection."""
     if not isinstance(directory, Path) or directory.is_symlink() \
@@ -437,7 +438,9 @@ def reopen_v2_calibration_selection(
         _, plan, qualification, training_hashes = (
             reopen_trained_scoring_cohorts(
                 Path(freeze.evidence_root), freeze=freeze,
-                admission=admission, training_inputs=training_inputs))
+                admission=admission, training_inputs=training_inputs,
+                legacy_tensor_cache_manifest_sha256=(
+                    legacy_tensor_cache_manifest_sha256)))
     except ValueError as exc:
         raise BeliefV2CalibrationControllerError(
             "V2 calibration training reopener refused") from exc

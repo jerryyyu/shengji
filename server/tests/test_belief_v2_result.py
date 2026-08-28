@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
+import io
 import json
 from dataclasses import replace
 from pathlib import Path
+import threading
 from types import SimpleNamespace
 
 import pytest
 
 import shengji.rl.belief_v2_controller as PIPELINE_STAGE
+import shengji.rl.belief_v2_calibration_controller as CALIBRATION_STAGE
 import shengji.rl.belief_v2_terminal_controller as TERMINAL_STAGE
 import shengji.rl.belief_v2_training_controller as TRAINING_STAGE
 import shengji.rl.belief_v2_r4_completion as R4_COMPLETION
+import shengji.rl.belief_v2_r4_terminal_parallel as R4_PARALLEL
 
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_v2_device_qualification import (
@@ -43,8 +48,14 @@ from shengji.rl.belief_v2_freeze import (
     V2ExecutionFreezeV1,
     V2PipelineAdmissionV1,
     V2ResourceCapsV1,
+    expected_execution_review_claim,
 )
-from shengji.rl.belief_v2_protocol import V2_RANKS, V2_ROUND_COUNT
+from shengji.rl.belief_v2_protocol import (
+    V2_RANKS,
+    V2_ROUND_COUNT,
+    V2_SPLIT_COUNTS,
+)
+from shengji.rl.belief_v2_progress import V2ProgressReporter
 from shengji.rl.belief_v2_controller import reference_lane_jobs
 from shengji.rl.belief_v2_result import (
     PASS_B3,
@@ -446,6 +457,157 @@ def _completion_admission(freeze):
         evidence_root=freeze.evidence_root)
 
 
+def _completion_source_spec(destination: Path, source: Path):
+    return R4_COMPLETION.R4CompletionSourceSpecV1(
+        destination_evidence_root=destination,
+        source_evidence_root=source,
+        source_execution_git="a" * 40,
+        source_freeze_sha256=_sha("source-freeze"),
+        source_admission_sha256=_sha("source-admission"),
+        source_review_marker_sha256=_sha("source-review"),
+        source_consumption_tombstone_sha256=_sha("source-consumption"),
+        source_inventory_sha256=_sha("source-inventory"),
+        source_group_split_sha256=_sha("source-split"),
+        source_input_index_manifest_sha256=_sha("source-index"),
+        source_tensor_cache_manifest_sha256=_sha("source-cache"),
+        source_device_qualification_manifest_sha256=_sha("source-device"),
+        source_training_manifest_sha256s=tuple(
+            (cohort_id, _sha(cohort_id))
+            for cohort_id in R4_COMPLETION.SOURCE_COHORT_IDS))
+
+
+def _calibration_import(root: Path, source_spec):
+    return R4_PARALLEL.R4TerminalCalibrationImportV1(
+        calibration_evidence_root=root,
+        calibration_execution_git="b" * 40,
+        calibration_freeze_sha256=_sha("calibration-freeze"),
+        calibration_admission_sha256=_sha("calibration-admission"),
+        calibration_review_marker_sha256=_sha("calibration-review"),
+        calibration_consumption_tombstone_sha256=_sha(
+            "calibration-consumption"),
+        calibration_source_spec_sha256=source_spec.sha256(),
+        calibration_reconstructed_outer_sha256=_sha("calibration-outer"),
+        calibration_selection_manifest_sha256=_sha(
+            "calibration-selection"))
+
+
+def _terminal_capacity_context(tmp_path: Path):
+    destination = (tmp_path / "terminal").resolve()
+    source_freeze = _freeze()
+    cohorts = tuple(SimpleNamespace(
+        cohort_id=row.cohort_id,
+        model_sha256s=tuple(
+            _sha(f"{row.cohort_id}-model-{index}") for index in range(8)))
+        for row in source_freeze.cohorts)
+    terminal_spec = SimpleNamespace(
+        destination_evidence_root=destination,
+        sha256=lambda: _sha("terminal-source-spec"))
+    calibration_import = SimpleNamespace(
+        sha256=lambda: _sha("calibration-import"),
+        calibration_selection_manifest_sha256=_sha_bytes(
+            canonical_json_bytes({"schema": "sealed-calibration"})))
+    return R4_PARALLEL._CapacityContext(
+        terminal_spec=terminal_spec,
+        calibration_import=calibration_import,
+        calibration={"schema": "sealed-calibration"},
+        source=SimpleNamespace(freeze=source_freeze),
+        source_bindings=_bindings(), runtime=_runtime(), cohorts=cohorts,
+        coordinates=R4_PARALLEL._parity_coordinates(),
+        decision_counts=tuple(4 for _ in V2_RANKS))
+
+
+def _terminal_capacity_receipt(context):
+    expected_git = "a" * 40
+    serial_wall = 2_000_000_000
+    parallel_wall = 1_000_000_000
+    control_reopen_wall = 3_000_000_000
+    decision_count = sum(context.decision_counts)
+    test_rounds = dict(V2_SPLIT_COUNTS)["test"]
+    human_test = context.source.freeze.human_test_eligible_decision_count
+    maximum_test_decisions = (
+        test_rounds * R4_PARALLEL.MAXIMUM_SYNTHETIC_DECISIONS_PER_ROUND
+        + human_test)
+    one_pass = (
+        parallel_wall * maximum_test_decisions + decision_count - 1
+    ) // decision_count
+    caps = context.source.freeze.resource_caps
+    return {
+        "schema": R4_PARALLEL.CAPACITY_SCHEMA,
+        "execution_git": expected_git,
+        "source_manifest_sha256": source_manifest_sha256(
+            expected_git, context.source_bindings),
+        "runtime_sha256": _sha_bytes(canonical_json_bytes(
+            context.runtime.to_dict())),
+        "terminal_source_spec_sha256": context.terminal_spec.sha256(),
+        "calibration_import_sha256": context.calibration_import.sha256(),
+        "calibration_manifest_sha256": _sha_bytes(canonical_json_bytes(
+            context.calibration)),
+        "hostname": context.runtime.hostname,
+        "machine": context.runtime.machine,
+        "rank_count": len(V2_RANKS),
+        "trump_ranks": [row.trump_rank for row in context.coordinates],
+        "round_keys": [R4_PARALLEL.synthetic_round_key(row.round_seed)
+                       for row in context.coordinates],
+        "decision_count": decision_count,
+        "population_sha256": _sha("capacity-population"),
+        "exact_serial_parallel_parity": True,
+        "measurement_order": R4_PARALLEL.CAPACITY_MEASUREMENT_ORDER,
+        "serial_wall_nanoseconds": serial_wall,
+        "parallel_wall_nanoseconds": parallel_wall,
+        "serial_cpu_nanoseconds": 1_900_000_000,
+        "parallel_cpu_nanoseconds": 15_000_000_000,
+        "speedup_ppb": serial_wall * 1_000_000_000 // parallel_wall,
+        "aggregate_peak_host_memory_bytes": 8 * 1024**3,
+        "aggregate_peak_host_memory_measurement": (
+            R4_PARALLEL.HOST_MEMORY_MEASUREMENT),
+        "host_memory_cap_bytes": caps.training_host_memory_bytes,
+        "host_memory_within_cap": True,
+        "worker_count": R4_PARALLEL.V2_DECISION_WORKERS,
+        "worker_cohort_identity": [[
+            row.cohort_id, list(row.model_sha256s)]
+            for row in context.cohorts],
+        "synthetic_test_round_count": test_rounds,
+        "human_test_decision_count": human_test,
+        "maximum_synthetic_decisions_per_round": (
+            R4_PARALLEL.MAXIMUM_SYNTHETIC_DECISIONS_PER_ROUND),
+        "projected_maximum_test_decision_count": maximum_test_decisions,
+        "scientific_unit_scoring_pass_count": (
+            R4_PARALLEL.SCIENTIFIC_UNIT_SCORING_PASSES),
+        "independent_verifier_scoring_pass_count": (
+            R4_PARALLEL.INDEPENDENT_VERIFIER_SCORING_PASSES),
+        "control_reopen_wall_nanoseconds": control_reopen_wall,
+        "scientific_unit_control_reopen_count": (
+            R4_PARALLEL.SCIENTIFIC_UNIT_CONTROL_REOPENS),
+        "independent_verifier_control_reopen_count": (
+            R4_PARALLEL.INDEPENDENT_VERIFIER_CONTROL_REOPENS),
+        "projected_scientific_control_wall_nanoseconds": (
+            control_reopen_wall
+            * R4_PARALLEL.SCIENTIFIC_UNIT_CONTROL_REOPENS),
+        "projected_independent_verifier_control_wall_nanoseconds": (
+            control_reopen_wall
+            * R4_PARALLEL.INDEPENDENT_VERIFIER_CONTROL_REOPENS),
+        "projected_one_pass_wall_nanoseconds": one_pass,
+        "projected_scientific_unit_wall_nanoseconds": (
+            one_pass * R4_PARALLEL.SCIENTIFIC_UNIT_SCORING_PASSES
+            + control_reopen_wall
+            * R4_PARALLEL.SCIENTIFIC_UNIT_CONTROL_REOPENS),
+        "projected_independent_verifier_wall_nanoseconds": (
+            one_pass * R4_PARALLEL.INDEPENDENT_VERIFIER_SCORING_PASSES
+            + control_reopen_wall
+            * R4_PARALLEL.INDEPENDENT_VERIFIER_CONTROL_REOPENS),
+        "terminal_wall_cap_nanoseconds": (
+            caps.training_wall_seconds * 1_000_000_000),
+        "deadline_safety_reserve_nanoseconds": (
+            caps.deadline_safety_reserve_nanoseconds),
+        "projected_within_wall_cap": True,
+        "test_split_decision_open_count": 0,
+        "test_opening_executed": False,
+        "execution_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+
+
 def _terminal_score(source: str, cohort_ids: tuple[str, ...]):
     return V2RoundScoreV1(
         round_key=_sha(f"{source}-test-round"), source_kind=source,
@@ -484,9 +646,18 @@ def _stub_terminal_dependencies(monkeypatch, freeze):
         lambda *args, **kwargs: (
             cohorts, plan, qualification,
             tuple((value, _sha(value)) for value in cohort_ids)))
+    def score_test_populations(*args, progress=None,
+                               progress_phase_prefix="score-test", **kwargs):
+        if progress is not None:
+            progress(0, 1, f"{progress_phase_prefix}-synthetic-rounds")
+            progress(1, 1, f"{progress_phase_prefix}-synthetic-rounds")
+            progress(0, 1, f"{progress_phase_prefix}-human-groups")
+            progress(1, 1, f"{progress_phase_prefix}-human-groups")
+        return synthetic_rows, human_rows
+
     monkeypatch.setattr(
         TERMINAL_STAGE, "_score_test_populations",
-        lambda *args, **kwargs: (synthetic_rows, human_rows))
+        score_test_populations)
     monkeypatch.setattr(
         TERMINAL_STAGE, "_expected_test_synthetic_rounds",
         lambda: ((synthetic_rows[0].round_key, "2"),))
@@ -535,6 +706,910 @@ def test_r4_completion_source_spec_is_canonical_and_authorizes_no_retry():
             match="field/authority drift"):
         R4_COMPLETION.load_r4_completion_source_spec(
             canonical_json_bytes(forged))
+
+
+def test_r4_terminal_calibration_import_is_canonical_and_narrow(tmp_path):
+    source_spec = _completion_source_spec(
+        (tmp_path / "old-completion").resolve(),
+        (tmp_path / "source").resolve())
+    value = _calibration_import(
+        source_spec.destination_evidence_root, source_spec)
+    raw = value.canonical_bytes()
+    assert R4_PARALLEL.load_calibration_import(raw) == value
+    assert value.to_dict()["authority"] == {
+        "calibration_generation_authorized": False,
+        "calibration_import_authorized": True,
+        "one_test_split_open_authorized": False,
+        "terminal_reconstruction_authorized": True,
+        "retry_authorized": False,
+        "strength_claim_authorized": False,
+        "deployment_authorized": False,
+    }
+    forged = json.loads(raw)
+    forged["authority"]["one_test_split_open_authorized"] = True
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="field drift"):
+        R4_PARALLEL.load_calibration_import(
+            canonical_json_bytes(forged))
+
+
+def test_r4_terminal_production_import_is_exact_deep_reconstruction():
+    raw = R4_PARALLEL.CALIBRATION_IMPORT_PATH.read_bytes()
+    imported = R4_PARALLEL.load_calibration_import(raw)
+    assert _sha_bytes(raw) \
+        == "61d62ddb2229c8d6f6acd7eb4b630a96063b009248091be31def4790b29ac48e"
+    assert imported.canonical_bytes() == raw
+    assert imported.calibration_execution_git \
+        == "e10cb3d3426d758f2d757d41462aba6a06bc60c8"
+    assert imported.calibration_selection_manifest_sha256 \
+        == "a037dd85f15c3269b43000ac205761cb17586a6c3791f702bd015ac81c42e8a8"
+    assert imported.to_dict()["calibration_completion_outer_absent"] is True
+    assert imported.to_dict()["authority"][
+        "one_test_split_open_authorized"] is False
+
+
+def test_r4_terminal_builds_import_only_from_reopened_sealed_selection(
+        tmp_path, monkeypatch):
+    old_root = (tmp_path / "old-completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    destination = (tmp_path / "terminal").resolve()
+    old_root.mkdir()
+    source_root.mkdir()
+    destination.mkdir()
+    old_spec = _completion_source_spec(old_root, source_root)
+    terminal_spec = _completion_source_spec(destination, source_root)
+    spec_path = tmp_path / "old-spec.json"
+    spec_path.write_bytes(old_spec.canonical_bytes())
+    spec_path.chmod(0o400)
+    monkeypatch.setattr(
+        R4_PARALLEL, "ORIGINAL_COMPLETION_SOURCE_SPEC_PATH", spec_path)
+    for name in R4_PARALLEL.CALIBRATION_ROOT_POPULATION:
+        path = old_root / name
+        if name == "calibration":
+            (path / "selection").mkdir(parents=True)
+            (path / "selection" / "manifest.json").write_bytes(
+                b"sealed-selection\n")
+            (path / "selection" / "manifest.json").chmod(0o400)
+        else:
+            path.write_bytes(f"{name}\n".encode("ascii"))
+            path.chmod(0o400)
+    tombstone = old_root.with_name(old_root.name + ".consumed.json")
+    tombstone.write_bytes(b"consumed\n")
+    tombstone.chmod(0o400)
+    old_freeze = SimpleNamespace(execution_git="e" * 40)
+    old_admission = object()
+    source = SimpleNamespace(
+        spec=old_spec, freeze=object(), admission=object(),
+        review_marker=b"source-review", inventory={}, group_split={})
+    calibration = {"schema": "sealed-calibration"}
+    monkeypatch.setattr(
+        R4_PARALLEL, "execution_freeze_from_bytes",
+        lambda raw: old_freeze)
+    monkeypatch.setattr(
+        R4_PARALLEL, "r4_completion_admission_from_bytes",
+        lambda *args, **kwargs: old_admission)
+    monkeypatch.setattr(
+        R4_PARALLEL, "validate_r4_completion_consumption_tombstone",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        R4_PARALLEL, "reauthenticate_r4_completion_admission",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_r4_completion_source",
+        lambda *args, **kwargs: source)
+    legacy_calls = []
+
+    def reopen_selection(directory, **kwargs):
+        assert directory == old_root / "calibration" / "selection"
+        legacy_calls.append(kwargs["legacy_tensor_cache_manifest_sha256"])
+        return calibration
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_v2_calibration_selection", reopen_selection)
+    monkeypatch.setattr(
+        R4_PARALLEL, "_calibration_outer_manifest",
+        lambda **kwargs: {"schema": "reconstructed-outer"})
+    monkeypatch.setattr(
+        R4_PARALLEL, "load_terminal_source_spec", lambda: terminal_spec)
+
+    imported = R4_PARALLEL.build_r4_terminal_calibration_import(
+        repo=tmp_path.resolve())
+    assert imported.calibration_evidence_root == old_root
+    assert imported.calibration_execution_git == "e" * 40
+    assert imported.calibration_source_spec_sha256 == old_spec.sha256()
+    assert imported.calibration_reconstructed_outer_sha256 == _sha_bytes(
+        canonical_json_bytes({"schema": "reconstructed-outer"}))
+    assert legacy_calls == [old_spec.source_tensor_cache_manifest_sha256]
+    assert R4_PARALLEL.load_calibration_import(
+        imported.canonical_bytes()) == imported
+
+    reopened, rebound, selection = R4_PARALLEL.reopen_imported_calibration(
+        terminal_spec, imported, repo=tmp_path.resolve())
+    assert reopened is calibration
+    assert rebound.spec is terminal_spec
+    assert selection == old_root / "calibration" / "selection"
+    assert legacy_calls == [
+        old_spec.source_tensor_cache_manifest_sha256,
+        old_spec.source_tensor_cache_manifest_sha256,
+    ]
+
+
+def test_r4_terminal_source_spec_is_exact_fresh_destination_successor():
+    terminal = R4_PARALLEL.load_terminal_source_spec()
+    original = R4_COMPLETION.load_r4_completion_source_spec()
+
+    assert terminal.destination_evidence_root == Path(
+        "/opt/belief-r4-terminal-parallel-v1-r1")
+    assert terminal.destination_evidence_root \
+        != original.destination_evidence_root
+    assert replace(
+        terminal,
+        destination_evidence_root=original.destination_evidence_root,
+    ) == original
+
+
+def test_r4_terminal_import_refuses_consumed_prior_test_namespace(
+        tmp_path, monkeypatch):
+    old_root = (tmp_path / "old-completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    destination = (tmp_path / "terminal").resolve()
+    old_root.mkdir()
+    source_root.mkdir()
+    for name in R4_PARALLEL.CALIBRATION_ROOT_POPULATION:
+        path = old_root / name
+        if "." in name:
+            path.write_bytes(b"placeholder\n")
+        else:
+            path.mkdir()
+    (old_root / "terminal").mkdir()
+    old_spec = _completion_source_spec(old_root, source_root)
+    spec_path = tmp_path / "old-spec.json"
+    spec_path.write_bytes(old_spec.canonical_bytes())
+    spec_path.chmod(0o400)
+    monkeypatch.setattr(
+        R4_PARALLEL, "ORIGINAL_COMPLETION_SOURCE_SPEC_PATH", spec_path)
+    terminal_spec = _completion_source_spec(destination, source_root)
+    imported = _calibration_import(old_root, old_spec)
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="namespace drift"):
+        R4_PARALLEL.reopen_imported_calibration(
+            terminal_spec, imported, repo=tmp_path.resolve())
+
+
+def test_r4_terminal_bound_calibration_reopens_exact_deep_import_bytes(
+        tmp_path):
+    """The fast post-import path still binds every selected artifact byte."""
+    directory = tmp_path / "selection"
+    directory.mkdir()
+    freeze = _freeze()
+    admission = _admission(freeze)
+    files = {
+        key: f"{key}\n".encode("ascii")
+        for key in {
+            *CALIBRATION_STAGE.POPULATION_FILES,
+            *CALIBRATION_STAGE.RESULT_FILES}}
+    manifest = CALIBRATION_STAGE._manifest(
+        freeze, admission,
+        training_input_sha256=_sha("training-input"),
+        qualification_plan_sha256=_sha("qualification-plan"),
+        qualification_result_sha256=_sha("qualification-result"),
+        training_manifest_sha256s=tuple(
+            (row.cohort_id, _sha(row.cohort_id)) for row in freeze.cohorts),
+        files=files, synthetic_stable=True, human_stable=True,
+        human_retained=False,
+        selected_cohort_id=freeze.cohorts[0].cohort_id,
+        resources={"schema": "bound-resource-witness"})
+    filenames = {
+        **CALIBRATION_STAGE.POPULATION_FILES,
+        **CALIBRATION_STAGE.RESULT_FILES}
+    for key, filename in filenames.items():
+        path = directory / filename
+        path.write_bytes(files[key])
+        path.chmod(0o400)
+    manifest_path = directory / "manifest.json"
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    manifest_path.chmod(0o400)
+
+    assert R4_PARALLEL._reopen_bound_calibration_selection(
+        directory, freeze=freeze, admission=admission) == manifest
+
+    for key, value in (
+            ("test_split_opened", True),
+            ("selection_completed_before_test_open", False)):
+        forged = dict(manifest)
+        forged[key] = value
+        manifest_path.chmod(0o600)
+        manifest_path.write_bytes(canonical_json_bytes(forged))
+        manifest_path.chmod(0o400)
+        with pytest.raises(
+                R4_PARALLEL.BeliefV2R4TerminalParallelError,
+                match=(
+                    "R4 bound calibration manifest "
+                    "identity/authority drift")):
+            R4_PARALLEL._reopen_bound_calibration_selection(
+                directory, freeze=freeze, admission=admission)
+    manifest_path.chmod(0o600)
+    manifest_path.write_bytes(canonical_json_bytes(manifest))
+    manifest_path.chmod(0o400)
+
+    changed = directory / filenames["scale_curve"]
+    changed.chmod(0o600)
+    changed.write_bytes(b"changed\n")
+    changed.chmod(0o400)
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="file byte binding drift"):
+        R4_PARALLEL._reopen_bound_calibration_selection(
+            directory, freeze=freeze, admission=admission)
+
+
+def test_r4_terminal_readiness_warms_workers_without_test_open(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "terminal").resolve()
+    source_root = (tmp_path / "source").resolve()
+    calibration_root = (tmp_path / "calibration").resolve()
+    root.mkdir()
+    source_root.mkdir()
+    calibration_root.mkdir()
+    terminal_spec = _completion_source_spec(root, source_root)
+    imported = _calibration_import(calibration_root, terminal_spec)
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    calibration = {"schema": "sealed-calibration"}
+    cohorts = (SimpleNamespace(cohort_id="cohort"),)
+    source = SimpleNamespace(
+        spec=terminal_spec, freeze=freeze, admission=_admission(freeze),
+        inventory={}, group_split={})
+    monkeypatch.setattr(
+        R4_PARALLEL, "_stage", lambda *args, **kwargs: (
+            terminal_spec, imported))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_bound_imported_calibration",
+        lambda *args, **kwargs: (
+            calibration, source, calibration_root / "selection"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_training_input_index",
+        lambda *args, **kwargs: ({}, SimpleNamespace()))
+    def reopen_cohorts(*args, **kwargs):
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
+        return cohorts, None, None, ()
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_trained_scoring_cohorts", reopen_cohorts)
+    warmed = []
+
+    class Pool:
+        cohort_identity = (("cohort", (_sha("model"),)),)
+
+        def __init__(self, population):
+            assert population == cohorts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def warm(self):
+            warmed.append(True)
+
+    monkeypatch.setattr(R4_PARALLEL, "V2DecisionScoringPool", Pool)
+    readiness = R4_PARALLEL.r4_terminal_parallel_readiness(
+        root, freeze, admission, repo=tmp_path.resolve(),
+        review_marker=b"review")
+    assert readiness["worker_startup_passed"] is True
+    assert readiness["test_attempt_absent"] is True
+    assert readiness["test_opening_executed"] is False
+    assert warmed == [True]
+    assert set(root.iterdir()) == set()
+
+    (root / "r4-completion-test-attempt.json").write_bytes(b"spent\n")
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="namespace is occupied"):
+        R4_PARALLEL.r4_terminal_parallel_readiness(
+            root, freeze, admission, repo=tmp_path.resolve(),
+            review_marker=b"review")
+    assert warmed == [True]
+
+
+def test_r4_terminal_wrappers_forward_bound_calibration_to_every_replay(
+        tmp_path, monkeypatch):
+    """Scientific, immediate and recovery paths share the authenticated row."""
+    root = (tmp_path / "terminal").resolve()
+    root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    terminal_spec = object()
+    imported = object()
+    calibration = {"schema": "bound-calibration"}
+    source = object()
+    selection = tmp_path / "selection"
+    monkeypatch.setattr(
+        R4_PARALLEL, "_stage", lambda *args, **kwargs: (
+            terminal_spec, imported))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_bound_imported_calibration",
+        lambda *args, **kwargs: (calibration, source, selection))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_imported_calibration",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("deep calibration replay must not run")))
+    calls = []
+
+    def record(label):
+        def wrapped(*args, **kwargs):
+            calls.append((label, args, kwargs))
+            return {"label": label}
+        return wrapped
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "_run_r4_completion_terminal_reopened", record("run"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_reopen_r4_completion_terminal_reopened",
+        record("reopen"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_recover_r4_completion_terminal_reopened",
+        record("recover"))
+
+    common = dict(repo=tmp_path.resolve(), review_marker=b"review")
+    assert R4_PARALLEL.run_r4_terminal_parallel(
+        root, freeze, admission, **common) == {"label": "run"}
+    assert R4_PARALLEL.reopen_r4_terminal_parallel(
+        root, freeze, admission, **common) == {"label": "reopen"}
+    assert R4_PARALLEL.recover_r4_terminal_parallel(
+        root, freeze, admission, **common) == {"label": "recover"}
+    assert [label for label, _, _ in calls] == ["run", "reopen", "recover"]
+    for _, _, kwargs in calls:
+        assert kwargs["calibration"] is calibration
+        assert kwargs["bound_calibration_manifest"] is calibration
+        assert kwargs["calibration_directory"] == selection
+
+
+def test_r4_terminal_parity_coordinates_cover_every_rank_without_test():
+    coordinates = R4_PARALLEL._parity_coordinates()
+    assert tuple(row.trump_rank for row in coordinates) == V2_RANKS
+    assert all(row.split == "calibration" for row in coordinates)
+    assert len({row.round_seed for row in coordinates}) == len(V2_RANKS)
+
+
+def test_r4_terminal_memory_uses_whole_cgroup_peak_not_rss_sum(
+        tmp_path, monkeypatch):
+    membership = tmp_path / "self.cgroup"
+    root = tmp_path / "cgroup"
+    service = root / "system.slice" / "belief-r4.service"
+    service.mkdir(parents=True)
+    membership.write_text(
+        "0::/system.slice/belief-r4.service\n", encoding="ascii")
+    (service / "memory.peak").write_text(
+        str(23 * 1024**3) + "\n", encoding="ascii")
+    monkeypatch.setattr(R4_PARALLEL.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        R4_PARALLEL, "PROC_SELF_CGROUP_PATH", membership)
+    monkeypatch.setattr(R4_PARALLEL, "CGROUP_V2_ROOT", root)
+    assert not hasattr(R4_PARALLEL, "host_peak_memory_bytes")
+    assert not hasattr(R4_PARALLEL, "_usage_memory_bytes")
+
+    assert R4_PARALLEL._aggregate_peak_host_memory_bytes(16) \
+        == 23 * 1024**3
+
+    (service / "memory.peak").write_text("max\n", encoding="ascii")
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="memory peak drift"):
+        R4_PARALLEL._aggregate_peak_host_memory_bytes(16)
+
+
+def test_r4_terminal_capacity_runs_candidate_cold_before_warm_control(
+        tmp_path, monkeypatch):
+    context = _terminal_capacity_context(tmp_path)
+    context.source.spec = SimpleNamespace(
+        source_evidence_root=(tmp_path / "source").resolve())
+    context.source.admission = object()
+    context.calibration_import.calibration_evidence_root = (
+        tmp_path / "calibration").resolve()
+    context.calibration_import.calibration_evidence_root.mkdir()
+    monkeypatch.setattr(
+        R4_PARALLEL, "_capacity_context", lambda **kwargs: context)
+
+    events = []
+    identity = tuple((row.cohort_id, row.model_sha256s)
+                     for row in context.cohorts)
+
+    class DecisionPool:
+        cohort_identity = identity
+
+        def __init__(self, cohorts):
+            assert cohorts == context.cohorts
+
+        def __enter__(self):
+            events.append("parallel-enter")
+            return self
+
+        def __exit__(self, *args):
+            events.append("parallel-exit")
+            return False
+
+        def warm(self):
+            events.append("parallel-warm")
+
+    class ProjectionPool:
+        def __enter__(self):
+            events.append("serial-enter")
+            return self
+
+        def __exit__(self, *args):
+            events.append("serial-exit")
+            return False
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "V2DecisionScoringPool", DecisionPool)
+    monkeypatch.setattr(
+        R4_PARALLEL, "_projection_pool", ProjectionPool)
+    monkeypatch.setattr(
+        R4_PARALLEL, "_warm_projection_pool",
+        lambda pool: events.append("serial-warm"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_synthetic_scoring_round",
+        lambda *args, **kwargs: ("decision",) * 4)
+
+    def score(**kwargs):
+        mode = "parallel" if kwargs.get("decision_pool") is not None \
+            else "serial"
+        events.append(mode)
+        return SimpleNamespace(decision_count=len(kwargs["decisions"]))
+
+    monkeypatch.setattr(R4_PARALLEL, "score_v2_round", score)
+    monkeypatch.setattr(
+        R4_PARALLEL, "v2_round_population_bytes",
+        lambda *args, **kwargs: b"byte-identical-population\n")
+    times = iter((1, 101, 201, 301, 401, 601))
+    cpu_times = iter((10, 50, 100, 150))
+    monkeypatch.setattr(
+        R4_PARALLEL.time, "monotonic_ns", lambda: next(times))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_process_tree_cpu_time_ns",
+        lambda: next(cpu_times))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_aggregate_peak_host_memory_bytes",
+        lambda workers: 1024**3)
+
+    progress_events = []
+    receipt = R4_PARALLEL.r4_terminal_parallel_capacity(
+        repo=tmp_path.resolve(), expected_git="a" * 40,
+        progress=lambda completed, total, phase: progress_events.append(
+            (completed, total, phase)))
+
+    assert events[:3] == [
+        "parallel-enter", "parallel-warm", "parallel"]
+    assert events.index("parallel-exit") < events.index("serial-enter")
+    assert receipt["exact_serial_parallel_parity"] is True
+    assert receipt["measurement_order"] \
+        == "parallel-cold-then-serial-warm"
+    assert receipt["parallel_wall_nanoseconds"] == 100
+    assert receipt["serial_wall_nanoseconds"] == 200
+    assert receipt["control_reopen_wall_nanoseconds"] == 100
+    assert receipt["projected_scientific_control_wall_nanoseconds"] \
+        == 100 * R4_PARALLEL.SCIENTIFIC_UNIT_CONTROL_REOPENS
+    assert receipt["test_opening_executed"] is False
+    assert progress_events[0] == (
+        0, 2 * len(V2_RANKS), "measure-terminal-capacity-ranks")
+    assert progress_events[-1] == (
+        2 * len(V2_RANKS), 2 * len(V2_RANKS),
+        "measure-terminal-capacity-ranks")
+
+    # Witness the production aggregation site, not only the measurement
+    # helper: an observed whole-cgroup peak above the unchanged cap must make
+    # the terminal capacity command itself refuse.
+    times = iter((1, 101, 201, 301, 401, 601))
+    cpu_times = iter((10, 50, 100, 150))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_aggregate_peak_host_memory_bytes",
+        lambda workers: (
+            context.source.freeze.resource_caps.training_host_memory_bytes
+            + 1))
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="projected scorer exceeds frozen resource cap"):
+        R4_PARALLEL.r4_terminal_parallel_capacity(
+            repo=tmp_path.resolve(), expected_git="a" * 40)
+
+
+def test_r4_terminal_capacity_receipt_binds_parity_deadline_and_authority(
+        tmp_path):
+    context = _terminal_capacity_context(tmp_path)
+    receipt = _terminal_capacity_receipt(context)
+    raw = canonical_json_bytes(receipt)
+    assert R4_PARALLEL._validate_capacity_receipt(
+        raw, context=context, expected_git="a" * 40) == receipt
+
+    mutations = (
+        ("projected_scientific_unit_wall_nanoseconds", 0),
+        ("scientific_unit_control_reopen_count", 1),
+        ("projected_scientific_control_wall_nanoseconds", 1),
+        ("decision_count", 0),
+        ("exact_serial_parallel_parity", False),
+        ("measurement_order", "serial-cold-then-parallel-warm"),
+        ("aggregate_peak_host_memory_bytes",
+         context.source.freeze.resource_caps.training_host_memory_bytes + 1),
+        ("aggregate_peak_host_memory_measurement", "process-rss-sum"),
+        ("execution_authorized", True),
+    )
+    for key, value in mutations:
+        forged = dict(receipt)
+        forged[key] = value
+        with pytest.raises(
+                R4_PARALLEL.BeliefV2R4TerminalParallelError,
+                match="reconstruction drift"):
+            R4_PARALLEL._validate_capacity_receipt(
+                canonical_json_bytes(forged), context=context,
+                expected_git="a" * 40)
+
+
+def test_r4_terminal_runner_reopens_reviewed_capacity_without_deep_replay(
+        tmp_path):
+    """Post-freeze stage gates bind the receipt without replaying training."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_frozen_capacity_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    context = _terminal_capacity_context(tmp_path)
+    receipt = _terminal_capacity_receipt(context)
+    freeze = replace(
+        context.source.freeze,
+        execution_git="a" * 40,
+        source_manifest_sha256=receipt["source_manifest_sha256"],
+        runtime=context.runtime,
+        preflight_runtime_sha256=receipt["runtime_sha256"])
+    raw = canonical_json_bytes(receipt)
+    assert runner._reopen_frozen_capacity_binding(
+        raw, freeze=freeze, terminal_spec=context.terminal_spec,
+        calibration_import=context.calibration_import) == receipt
+
+    forged = dict(receipt)
+    forged["test_opening_executed"] = True
+    with pytest.raises(ValueError, match="frozen capacity binding drift"):
+        runner._reopen_frozen_capacity_binding(
+            canonical_json_bytes(forged), freeze=freeze,
+            terminal_spec=context.terminal_spec,
+            calibration_import=context.calibration_import)
+
+
+def test_r4_terminal_initialize_wires_frozen_capacity_not_deep_replay(
+        tmp_path, monkeypatch):
+    """Initialization consumes the reviewed receipt without replaying it."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_initialize_capacity_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    root = (tmp_path / "terminal").resolve()
+    freeze_path = (tmp_path / "freeze.json").resolve()
+    inventory_path = (tmp_path / "inventory.json").resolve()
+    split_path = (tmp_path / "group-split.json").resolve()
+    capacity_path = (tmp_path / "capacity.json").resolve()
+    inventory_raw = b"inventory\n"
+    split_raw = b"split\n"
+    capacity_raw = b"capacity\n"
+    freeze = replace(
+        _freeze(), evidence_root=str(root), execution_git="a" * 40,
+        h0_inventory_sha256=_sha_bytes(inventory_raw),
+        human_group_split_sha256=_sha_bytes(split_raw),
+        preflight_result_sha256=_sha_bytes(capacity_raw),
+        deadline_estimate_receipt_sha256=_sha_bytes(capacity_raw),
+        preflight_runtime_sha256=_sha("runtime"))
+    freeze_path.write_bytes(freeze.canonical_bytes())
+    inventory_path.write_bytes(inventory_raw)
+    split_path.write_bytes(split_raw)
+    capacity_path.write_bytes(capacity_raw)
+    for path in (freeze_path, inventory_path, split_path, capacity_path):
+        path.chmod(0o400)
+    terminal_spec = SimpleNamespace(destination_evidence_root=root)
+    calibration_import = object()
+    admission = SimpleNamespace(
+        canonical_bytes=lambda: b"admission\n",
+        sha256=lambda: _sha("admission"), review_commit="b" * 40)
+    monkeypatch.setattr(
+        runner, "load_terminal_source_spec", lambda: terminal_spec)
+    monkeypatch.setattr(
+        runner, "load_calibration_import", lambda: calibration_import)
+    monkeypatch.setattr(
+        runner, "execution_freeze_from_bytes", lambda raw: freeze)
+    monkeypatch.setattr(
+        runner, "validate_live_execution", lambda **kwargs: None)
+    capacity_calls = []
+
+    def reopen_capacity(raw, **kwargs):
+        capacity_calls.append((raw, kwargs))
+        return {"runtime_sha256": freeze.preflight_runtime_sha256}
+
+    monkeypatch.setattr(
+        runner, "_reopen_frozen_capacity_binding", reopen_capacity)
+    monkeypatch.setattr(
+        runner, "build_r4_completion_admission",
+        lambda *args, **kwargs: (admission, b"review\n"))
+    monkeypatch.setattr(
+        runner, "r4_completion_consumption_tombstone_bytes",
+        lambda value: b"consumed\n")
+    loaded = []
+    monkeypatch.setattr(runner, "_load_root", lambda value: loaded.append(value))
+    outputs = []
+    monkeypatch.setattr(runner, "_output", outputs.append)
+
+    runner.initialize(SimpleNamespace(
+        freeze=str(freeze_path),
+        expected_freeze_sha256=_sha_bytes(freeze.canonical_bytes()),
+        review_commit="b" * 40, inventory=str(inventory_path),
+        group_split=str(split_path), capacity=str(capacity_path),
+        expected_capacity_sha256=_sha_bytes(capacity_raw)))
+
+    assert capacity_calls == [(capacity_raw, {
+        "freeze": freeze, "terminal_spec": terminal_spec,
+        "calibration_import": calibration_import})]
+    assert loaded == [root]
+    assert outputs[0]["test_opening_executed"] is False
+    assert not hasattr(runner, "reopen_r4_terminal_parallel_capacity")
+
+
+def test_r4_terminal_freeze_builder_binds_live_source_capacity_and_root(
+        tmp_path, monkeypatch):
+    context = _terminal_capacity_context(tmp_path)
+    capacity_raw = canonical_json_bytes(_terminal_capacity_receipt(context))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_capacity_context", lambda **kwargs: context)
+    monkeypatch.setattr(
+        R4_PARALLEL, "build_training_device_profile",
+        lambda candidate: _device_profile())
+
+    freeze = R4_PARALLEL.build_r4_terminal_parallel_freeze(
+        repo=tmp_path.resolve(), expected_git="a" * 40,
+        source_review_commit="a" * 40, capacity_raw=capacity_raw)
+
+    assert freeze.execution_git == "a" * 40
+    assert freeze.source_review_commit == freeze.execution_git
+    assert expected_execution_review_claim(
+        freeze)["source_review_mode"] == \
+        "consolidated-source-and-freeze"
+    assert freeze.evidence_root == str(
+        context.terminal_spec.destination_evidence_root)
+    assert freeze.preflight_result_sha256 == _sha_bytes(capacity_raw)
+    assert freeze.deadline_estimate_receipt_sha256 == _sha_bytes(capacity_raw)
+    assert freeze.preflight_runtime_sha256 == _sha_bytes(
+        canonical_json_bytes(context.runtime.to_dict()))
+    assert freeze.h0_inventory_sha256 \
+        == context.source.freeze.h0_inventory_sha256
+    assert freeze.cohorts == context.source.freeze.cohorts
+    assert freeze.resource_caps == context.source.freeze.resource_caps
+
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="source review commit drift"):
+        R4_PARALLEL.build_r4_terminal_parallel_freeze(
+            repo=tmp_path.resolve(), expected_git="a" * 40,
+            source_review_commit="not-a-commit", capacity_raw=capacity_raw)
+
+
+def test_r4_terminal_runner_refuses_unexpected_root_entry_before_read(
+        tmp_path, monkeypatch):
+    """The fresh terminal root is a closed population, not a subset gate."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_runner_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    root = (tmp_path / "terminal").resolve()
+    root.mkdir()
+    for name in runner.ROOT_POPULATION:
+        (root / name).write_bytes(b"placeholder\n")
+    (root / "smuggled.json").write_bytes(b"{}\n")
+    monkeypatch.setattr(
+        runner, "load_terminal_source_spec",
+        lambda: SimpleNamespace(destination_evidence_root=root))
+    monkeypatch.setattr(runner, "load_calibration_import", lambda: object())
+
+    with pytest.raises(ValueError, match="evidence root shape drift"):
+        runner._load_root(root)
+
+
+def test_r4_terminal_runner_refuses_foreign_import_root(
+        tmp_path, monkeypatch):
+    """A foreign venv injected by .pth must fail before scientific imports."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_package_root_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    foreign = tmp_path / "foreign-venv" / "lib" / "python3.14" / (
+        "site-packages")
+    monkeypatch.setattr(runner.sys, "path", [*runner.sys.path, str(foreign)])
+    with pytest.raises(RuntimeError, match="refuses foreign import roots"):
+        runner._refuse_foreign_import_roots()
+
+
+def test_r4_terminal_runner_reopens_frozen_capacity_at_stage_gate(
+        tmp_path, monkeypatch):
+    """Witness the post-freeze binding wiring, not only its pure helper."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_capacity_gate_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    root = (tmp_path / "terminal").resolve()
+    root.mkdir()
+    capacity_raw = canonical_json_bytes({"schema": "capacity-witness"})
+    capacity_sha = _sha_bytes(capacity_raw)
+    for name in runner.ROOT_POPULATION:
+        path = root / name
+        path.write_bytes(
+            capacity_raw if name == "capacity.json" else b"placeholder\n")
+        path.chmod(0o400)
+    tombstone = root.with_name(root.name + ".consumed.json")
+    tombstone.write_bytes(b"spent\n")
+    tombstone.chmod(0o400)
+    freeze = SimpleNamespace(
+        evidence_root=str(root), preflight_result_sha256=capacity_sha,
+        deadline_estimate_receipt_sha256=capacity_sha,
+        preflight_runtime_sha256=_sha("runtime"), execution_git="a" * 40,
+        source_bindings=(), runtime=object())
+    monkeypatch.setattr(
+        runner, "load_terminal_source_spec",
+        lambda: SimpleNamespace(destination_evidence_root=root))
+    monkeypatch.setattr(runner, "load_calibration_import", lambda: object())
+    monkeypatch.setattr(
+        runner, "execution_freeze_from_bytes", lambda raw: freeze)
+    monkeypatch.setattr(
+        runner, "r4_completion_admission_from_bytes",
+        lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        runner, "validate_r4_completion_consumption_tombstone",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner, "_validate_private_inputs", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner, "reauthenticate_r4_completion_admission",
+        lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner, "validate_live_execution", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner, "_reopen_frozen_capacity_binding",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ValueError("capacity verifier wiring witness")))
+
+    with pytest.raises(ValueError, match="capacity verifier wiring witness"):
+        runner._load_root(root)
+
+
+def test_r4_terminal_runner_wires_sealed_result_recovery(tmp_path, monkeypatch):
+    """The actual command reaches recovery, not scientific test scoring."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_recovery_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    root = (tmp_path / "terminal").resolve()
+    root.mkdir()
+    freeze = object()
+    admission = object()
+    marker = b"review"
+    terminal_spec = object()
+    imported = object()
+    calibration = {"schema": "sealed-calibration"}
+    source = object()
+    selection = (tmp_path / "calibration" / "selection").resolve()
+    monkeypatch.setattr(
+        runner, "_load_root",
+        lambda candidate: (freeze, admission, marker))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_stage",
+        lambda *args, **kwargs: (terminal_spec, imported))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_bound_imported_calibration",
+        lambda *args, **kwargs: (calibration, source, selection))
+    calls = []
+
+    def recover(*args, **kwargs):
+        calls.append((args, kwargs))
+        return {"schema": "recovered-outer"}
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "_recover_r4_completion_terminal_reopened", recover)
+    outputs = []
+    monkeypatch.setattr(runner, "_output", outputs.append)
+    parsed = runner.parser().parse_args([
+        "recover-terminal-binding", "--root", str(root)])
+    assert parsed.function is runner.recover_terminal
+    parsed.function(parsed)
+
+    assert outputs == [{"schema": "recovered-outer"}]
+    assert len(calls) == 1
+    assert calls[0][0] == (root, freeze, admission)
+    assert calls[0][1]["calibration"] is calibration
+    assert calls[0][1]["source"] is source
+    assert calls[0][1]["calibration_directory"] == selection
+    assert callable(calls[0][1]["progress"])
+
+
+def test_test_scorer_reports_exact_outcome_blind_population_progress(
+        monkeypatch):
+    coordinates = (
+        SimpleNamespace(split="train", round_seed=1, trump_rank="2"),
+        SimpleNamespace(split="test", round_seed=2, trump_rank="3"),
+        SimpleNamespace(split="test", round_seed=3, trump_rank="4"),
+    )
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "v2_round_coordinates", lambda: coordinates)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_synthetic_scoring_round",
+        lambda *args, **kwargs: ("decision",))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_human_group_digests",
+        lambda *args, **kwargs: ("group-a", "group-b"))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_human_scoring_rounds",
+        lambda *args, group_digest, **kwargs: ((
+            f"round-{group_digest}", "5", ("decision",)),))
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "score_v2_round",
+        lambda **kwargs: SimpleNamespace(round_key=kwargs["round_key"]))
+    progress = []
+
+    synthetic, human = TERMINAL_STAGE._score_test_populations(
+        Path("/unused"), object(), object(), {}, (object(),),
+        progress=lambda completed, total, phase: progress.append(
+            (completed, total, phase)))
+
+    assert len(synthetic) == 2
+    assert len(human) == 2
+    assert progress == [
+        (0, 2, "score-test-synthetic-rounds"),
+        (1, 2, "score-test-synthetic-rounds"),
+        (2, 2, "score-test-synthetic-rounds"),
+        (0, 2, "score-test-human-groups"),
+        (1, 2, "score-test-human-groups"),
+        (2, 2, "score-test-human-groups"),
+    ]
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="progress phase identity drift"):
+        TERMINAL_STAGE._score_test_populations(
+            Path("/unused"), object(), object(), {}, (object(),),
+            progress_phase_prefix="not a token")
+
+
+def test_terminal_statistics_use_independent_parallel_workers():
+    barrier = threading.Barrier(3)
+
+    def result(value):
+        barrier.wait(timeout=2)
+        return value
+
+    assert TERMINAL_STAGE._run_independent_terminal_statistics(
+        lambda: result("primary"),
+        lambda: result("control"),
+        lambda: result("human"),
+    ) == ("primary", "control", "human")
 
 
 def test_r4_completion_admission_is_narrow_and_round_trips():
@@ -704,6 +1779,8 @@ def test_r4_completion_calibration_writes_only_fresh_namespace(
     reopened_manifests = []
 
     def reopen_selection(directory, **kwargs):
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] \
+            == spec.source_tensor_cache_manifest_sha256
         raw = (directory / "manifest.json").read_bytes()
         value = json.loads(raw)
         assert canonical_json_bytes(value) == raw
@@ -840,6 +1917,25 @@ def test_r4_completion_attempt_is_durable_before_original_test_read(
         R4_COMPLETION, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: ((), None, None, ()))
 
+    class DecisionPool:
+        def __init__(self, cohort_population):
+            assert cohort_population == ()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def warm(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "V2DecisionScoringPool", DecisionPool)
+
     test_reads = 0
 
     def test_read_sentinel(*args, **kwargs):
@@ -865,6 +1961,22 @@ def test_r4_completion_attempt_is_durable_before_original_test_read(
     monkeypatch.setattr(
         R4_COMPLETION, "_calibration_statistics",
         lambda *args, **kwargs: (calibration, None, None))
+
+    def fail_pool_startup(_cohorts):
+        raise ValueError("injected worker startup failure")
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "V2DecisionScoringPool", fail_pool_startup)
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="preflight refused before test attempt"):
+        R4_COMPLETION.run_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review")
+    assert not (root / "r4-completion-test-attempt.json").exists()
+    assert not (root / "terminal.partial").exists()
+    monkeypatch.setattr(
+        R4_COMPLETION, "V2DecisionScoringPool", DecisionPool)
 
     calls = 0
 
@@ -941,23 +2053,30 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
         R4_COMPLETION, "reopen_trained_scoring_cohorts",
         lambda *args, **kwargs: (
             cohorts, plan, qualification, training_hashes))
-    projection_token = object()
+    decision_token = object()
     warmed = []
 
-    class Pool:
+    class DecisionPool:
+        def __init__(self, cohort_population):
+            assert cohort_population == cohorts
+
         def __enter__(self):
-            return projection_token
+            return self
 
         def __exit__(self, *args):
             return False
 
-    monkeypatch.setattr(R4_COMPLETION, "_projection_pool", Pool)
+        def warm(self):
+            warmed.append(decision_token)
+
+        def close(self):
+            pass
+
     monkeypatch.setattr(
-        R4_COMPLETION, "_warm_projection_pool",
-        lambda executor: warmed.append(executor))
+        R4_COMPLETION, "V2DecisionScoringPool", DecisionPool)
 
     def score_test(*args, **kwargs):
-        assert kwargs["projection_executor"] is projection_token
+        assert isinstance(kwargs["decision_pool"], DecisionPool)
         return synthetic_rows, human_rows
 
     monkeypatch.setattr(
@@ -977,28 +2096,61 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
     monkeypatch.setattr(
         R4_COMPLETION, "evaluate_human_transfer_test",
         lambda *args, **kwargs: human)
+    def derive_receipt(*args, **kwargs):
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
+        return receipt
+
     monkeypatch.setattr(
-        R4_COMPLETION, "_derive_integrity_receipt",
-        lambda *args, **kwargs: receipt)
+        R4_COMPLETION, "_derive_integrity_receipt", derive_receipt)
+    def calibration_statistics(*args, **kwargs):
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
+        return calibration, human_selection, scale
+
     monkeypatch.setattr(
-        R4_COMPLETION, "_calibration_statistics",
-        lambda *args, **kwargs: (calibration, human_selection, scale))
+        R4_COMPLETION, "_calibration_statistics", calibration_statistics)
 
     inner_manifests = []
+    progress_events = []
+
+    def progress(completed, total, phase):
+        progress_events.append((completed, total, phase))
 
     def reopen_inner(directory, **kwargs):
-        assert kwargs["projection_executor"] is projection_token
+        assert kwargs["parallel_decisions"] is True
+        assert kwargs["legacy_tensor_cache_manifest_sha256"] == \
+            source.spec.source_tensor_cache_manifest_sha256
+        assert kwargs["progress"] is (
+            progress if len(inner_manifests) < 2 else None)
         raw = (directory / "manifest.json").read_bytes()
         manifest = json.loads(raw)
         assert canonical_json_bytes(manifest) == raw
         inner_manifests.append(manifest)
+        if len(inner_manifests) == 1:
+            raise RuntimeError("injected immediate reconstruction failure")
         return manifest
 
     monkeypatch.setattr(
         R4_COMPLETION, "reopen_v2_terminal", reopen_inner)
-    outer = R4_COMPLETION.run_r4_completion_terminal(
+    with pytest.raises(
+            RuntimeError, match="injected immediate reconstruction failure"):
+        R4_COMPLETION.run_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review", progress=progress)
+    assert (root / "r4-completion-test-attempt.json").is_file()
+    assert (root / "terminal").is_dir()
+    assert not (root / "terminal.partial").exists()
+    assert not (root / "r4-completion-terminal.json").exists()
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="namespace is already occupied"):
+        R4_COMPLETION.run_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review")
+    outer = R4_COMPLETION.recover_r4_completion_terminal(
         root, completion_freeze, completion_admission,
-        repo=Path("/unused"), review_marker=b"review")
+        repo=Path("/unused"), review_marker=b"review", progress=progress)
     assert outer["terminal_route"] == PASS_B3
     assert outer["source_test_split_decision_open_count"] == 1
     assert outer["retry_count"] == 0
@@ -1007,9 +2159,19 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
     assert R4_COMPLETION.reopen_r4_completion_terminal(
         root, completion_freeze, completion_admission,
         repo=Path("/unused"), review_marker=b"review") == outer
-    assert len(inner_manifests) == 2
-    assert warmed == [projection_token, projection_token,
-                      projection_token]
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="not recovery-eligible"):
+        R4_COMPLETION.recover_r4_completion_terminal(
+            root, completion_freeze, completion_admission,
+            repo=Path("/unused"), review_marker=b"review")
+    assert len(inner_manifests) == 3
+    assert warmed == [decision_token]
+    assert (5, 6, "r4-terminal-immediate-reconstruction") \
+        in progress_events
+    assert (0, 1, "r4-terminal-recovery-reconstruction") \
+        in progress_events
+    assert progress_events[-1] == (1, 1, "r4-terminal-recovery-complete")
 
     outer_path = root / "r4-completion-terminal.json"
     forged = json.loads(outer_path.read_bytes())
@@ -1032,16 +2194,77 @@ def test_terminal_round_trip_and_coordinated_result_rehash_refuse(
     freeze = replace(_freeze(), evidence_root=str(root))
     admission = _admission(freeze)
     _stub_terminal_dependencies(monkeypatch, freeze)
+    progress_stream = io.StringIO()
+    progress = V2ProgressReporter(
+        stage="terminal-round-trip-test", worker="all-cohorts",
+        stream=progress_stream)
     result = TERMINAL_STAGE.run_v2_terminal(
         root, freeze, admission, repo=Path("/unused"),
-        review_marker=b"review", inventory={}, group_split={})
+        review_marker=b"review", inventory={}, group_split={},
+        progress=progress.update)
     assert result["terminal_route"] == PASS_B3
     assert result["test_split_decision_open_count"] == 1
     assert result["deployment_authorized"] is False
+    progress_output = progress_stream.getvalue()
+    assert '"phase":"score-test-synthetic-rounds"' in progress_output
+    assert '"phase":"reconstruct-test-synthetic-rounds"' \
+        in progress_output
     directory = root / "terminal"
+    original_calibration_statistics = TERMINAL_STAGE._calibration_statistics
+    original_cohort_reopener = (
+        TERMINAL_STAGE.reopen_trained_scoring_cohorts)
+    legacy_calls = {"calibration": [], "cohorts": []}
+
+    def calibration_statistics(*args, **kwargs):
+        legacy_calls["calibration"].append(
+            kwargs["legacy_tensor_cache_manifest_sha256"])
+        return original_calibration_statistics(*args, **kwargs)
+
+    def reopen_cohorts(*args, **kwargs):
+        legacy_calls["cohorts"].append(
+            kwargs["legacy_tensor_cache_manifest_sha256"])
+        return original_cohort_reopener(*args, **kwargs)
+
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "_calibration_statistics", calibration_statistics)
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "reopen_trained_scoring_cohorts", reopen_cohorts)
+    legacy_digest = "f" * 64
     assert TERMINAL_STAGE.reopen_v2_terminal(
         directory, freeze=freeze, admission=admission,
-        inventory={}, group_split={}) == result
+        inventory={}, group_split={},
+        legacy_tensor_cache_manifest_sha256=legacy_digest) == result
+    assert legacy_calls == {
+        "calibration": [legacy_digest], "cohorts": [legacy_digest]}
+
+    warmed = []
+
+    class DecisionPool:
+        def __init__(self, cohorts):
+            assert cohorts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def warm(self):
+            warmed.append(True)
+
+    monkeypatch.setattr(
+        TERMINAL_STAGE, "V2DecisionScoringPool", DecisionPool)
+    parallel_stream = io.StringIO()
+    parallel_progress = V2ProgressReporter(
+        stage="parallel-terminal-reopen-test", worker="all-cohorts",
+        stream=parallel_stream)
+    assert TERMINAL_STAGE.reopen_v2_terminal(
+        directory, freeze=freeze, admission=admission,
+        inventory={}, group_split={}, parallel_decisions=True,
+        progress=parallel_progress.update) == result
+    assert warmed == [True]
+    assert '"phase":"reconstruct-test-synthetic-rounds"' \
+        in parallel_stream.getvalue()
 
     result_path = directory / "result.json"
     forged = json.loads(result_path.read_bytes())
@@ -1172,11 +2395,15 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
     cache_resources = resource(
         480, 490, artifact=30, training=True,
         host_peak=1_401, device_peak=0)
+    cache_legacy_calls = []
+
+    def reopen_tensor_cache(*args, **kwargs):
+        cache_legacy_calls.append(kwargs["legacy_manifest_sha256"])
+        return ({"resources": cache_resources}, {}, lambda: iter(()), 1,
+                _sha("tensor-cache"))
+
     monkeypatch.setattr(
-        TERMINAL_STAGE, "reopen_training_tensor_cache",
-        lambda *args, **kwargs: (
-            {"resources": cache_resources}, {}, lambda: iter(()), 1,
-            _sha("tensor-cache")))
+        TERMINAL_STAGE, "reopen_training_tensor_cache", reopen_tensor_cache)
 
     training_hashes = []
     for index, cohort in enumerate(freeze.cohorts):
@@ -1197,7 +2424,9 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
         qualification=qualification,
         input_index_manifest=input_index_manifest,
         training_hashes=tuple(training_hashes),
-        synthetic_test_count=1_339, human_test_decision_count=174)
+        synthetic_test_count=1_339, human_test_decision_count=174,
+        legacy_tensor_cache_manifest_sha256="f" * 64)
+    assert cache_legacy_calls == ["f" * 64]
     qualification_work = sum(
         row.wall_nanoseconds for row in qualification.arms)
     assert receipt.capture_reopened_round_count == V2_ROUND_COUNT
@@ -1235,4 +2464,5 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
             qualification=qualification,
             input_index_manifest=input_index_manifest,
             training_hashes=corrupted_hashes,
-            synthetic_test_count=1_339, human_test_decision_count=174)
+            synthetic_test_count=1_339, human_test_decision_count=174,
+            legacy_tensor_cache_manifest_sha256="f" * 64)

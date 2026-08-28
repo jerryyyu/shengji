@@ -76,14 +76,17 @@ from .belief_v2_statistics import (
     v2_round_population_bytes,
 )
 from .belief_v2_result import derive_terminal_result
+from .belief_v2_scoring import V2DecisionScoringPool
 from .belief_v2_terminal_controller import (
     STATISTIC_FILES,
     TEST_POPULATION_FILES,
     _attempt as source_terminal_attempt,
     _calibration_statistics,
+    _calibration_statistics_from_manifest,
     _derive_integrity_receipt,
     _expected_test_human_rounds,
     _expected_test_synthetic_rounds,
+    _run_independent_terminal_statistics,
     _score_test_populations,
     _stage_manifest as source_terminal_manifest,
     reopen_v2_terminal,
@@ -900,7 +903,9 @@ def run_r4_completion_calibration(
     _fsync_directory(parent)
     reopened = reopen_v2_calibration_selection(
         final, freeze=source.freeze, admission=source.admission,
-        inventory=source.inventory, group_split=source.group_split)
+        inventory=source.inventory, group_split=source.group_split,
+        legacy_tensor_cache_manifest_sha256=(
+            source.spec.source_tensor_cache_manifest_sha256))
     if reopened != inner:
         raise BeliefV2R4CompletionError(
             "R4 completion calibration post-publish drift")
@@ -933,7 +938,9 @@ def reopen_r4_completion_calibration(
         inner = reopen_v2_calibration_selection(
             root / "calibration" / "selection",
             freeze=source.freeze, admission=source.admission,
-            inventory=source.inventory, group_split=source.group_split)
+            inventory=source.inventory, group_split=source.group_split,
+            legacy_tensor_cache_manifest_sha256=(
+                source.spec.source_tensor_cache_manifest_sha256))
     except (ValueError, json.JSONDecodeError) as exc:
         raise BeliefV2R4CompletionError(
             "R4 completion calibration reopen refused") from exc
@@ -1055,26 +1062,21 @@ def run_r4_completion_terminal(
     calibration, source = reopen_r4_completion_calibration(
         root, completion_freeze, completion_admission, repo=repo,
         review_marker=review_marker)
-    try:
-        calibration_reopened, human_selection, scale_curve = (
-            _calibration_statistics(
-                source.spec.source_evidence_root, source.freeze,
-                source.admission, source.inventory, source.group_split,
-                calibration_directory=(
-                    root / "calibration" / "selection")))
-    except ValueError as exc:
-        raise BeliefV2R4CompletionError(
-            "R4 completion calibration is not eligible for test opening") \
-            from exc
-    if calibration_reopened != calibration:
-        raise BeliefV2R4CompletionError(
-            "R4 completion calibration changed before test opening")
-    if progress is not None:
-        progress(0, 6, "prepare-r4-test-opening")
-    completion_attempt = _completion_test_attempt(
-        completion_freeze=completion_freeze,
-        completion_admission=completion_admission, source=source,
-        source_calibration_manifest=calibration)
+    return _run_r4_completion_terminal_reopened(
+        root, completion_freeze, completion_admission,
+        calibration=calibration, source=source,
+        calibration_directory=(root / "calibration" / "selection"),
+        progress=progress)
+
+
+def _run_r4_completion_terminal_reopened(
+        root: Path, completion_freeze: V2ExecutionFreezeV1,
+        completion_admission: R4CompletionAdmissionV1, *,
+        calibration: dict[str, Any], source: R4CompletionSourceV1,
+        calibration_directory: Path,
+        bound_calibration_manifest: dict[str, Any] | None = None,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
+    """Consume test only after a caller authenticates calibration inputs."""
     completion_attempt_path = root / "r4-completion-test-attempt.json"
     partial = root / "terminal.partial"
     final = root / "terminal"
@@ -1084,6 +1086,63 @@ def run_r4_completion_terminal(
             or final.exists() or final.is_symlink() \
             or partial.exists() or partial.is_symlink() \
             or outer_path.exists() or outer_path.is_symlink():
+        raise BeliefV2R4CompletionError(
+            "R4 completion terminal namespace is already occupied")
+    try:
+        calibration_reopened, human_selection, scale_curve = (
+            _calibration_statistics(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, source.inventory, source.group_split,
+                calibration_directory=calibration_directory,
+                legacy_tensor_cache_manifest_sha256=(
+                    source.spec.source_tensor_cache_manifest_sha256))
+            if bound_calibration_manifest is None else
+            _calibration_statistics_from_manifest(
+                source.spec.source_evidence_root, source.freeze,
+                source.admission, source.group_split,
+                directory=calibration_directory,
+                manifest=bound_calibration_manifest))
+    except ValueError as exc:
+        raise BeliefV2R4CompletionError(
+            "R4 completion calibration is not eligible for test opening") \
+            from exc
+    if calibration_reopened != calibration:
+        raise BeliefV2R4CompletionError(
+            "R4 completion calibration changed before test opening")
+    # Reopen every non-test input and prove the complete worker population is
+    # resident before consuming the one-shot test namespace.  Only the test
+    # population itself remains unopened after this point.
+    decision_pool = None
+    try:
+        input_index_manifest, training_inputs = reopen_training_input_index(
+            source.spec.source_evidence_root / "training-input-index" /
+            "result", freeze=source.freeze, admission=source.admission)
+        cohorts, plan, qualification, training_hashes = (
+            reopen_trained_scoring_cohorts(
+                source.spec.source_evidence_root, freeze=source.freeze,
+                admission=source.admission, training_inputs=training_inputs,
+                legacy_tensor_cache_manifest_sha256=(
+                    source.spec.source_tensor_cache_manifest_sha256)))
+        decision_pool = V2DecisionScoringPool(cohorts)
+        decision_pool.warm()
+    except Exception as exc:
+        if decision_pool is not None:
+            decision_pool.close()
+        raise BeliefV2R4CompletionError(
+            "R4 completion terminal preflight refused before test attempt") \
+            from exc
+    if progress is not None:
+        progress(0, 6, "prepare-r4-test-opening")
+    completion_attempt = _completion_test_attempt(
+        completion_freeze=completion_freeze,
+        completion_admission=completion_admission, source=source,
+        source_calibration_manifest=calibration)
+    if completion_attempt_path.exists() \
+            or completion_attempt_path.is_symlink() \
+            or final.exists() or final.is_symlink() \
+            or partial.exists() or partial.is_symlink() \
+            or outer_path.exists() or outer_path.is_symlink():
+        decision_pool.close()
         raise BeliefV2R4CompletionError(
             "R4 completion terminal namespace is already occupied")
     publish_exclusive_bytes(
@@ -1102,23 +1161,14 @@ def run_r4_completion_terminal(
         partial / "attempt.json", canonical_json_bytes(inner_attempt))
     _fsync_directory(root)
     try:
-        input_index_manifest, training_inputs = reopen_training_input_index(
-            source.spec.source_evidence_root / "training-input-index" /
-            "result", freeze=source.freeze, admission=source.admission)
-        cohorts, plan, qualification, training_hashes = (
-            reopen_trained_scoring_cohorts(
-                source.spec.source_evidence_root, freeze=source.freeze,
-                admission=source.admission, training_inputs=training_inputs,
-                legacy_tensor_cache_manifest_sha256=(
-                    source.spec.source_tensor_cache_manifest_sha256)))
         if progress is not None:
             progress(2, 6, "r4-test-inputs-reopened")
-        with _projection_pool() as projection_executor:
-            _warm_projection_pool(projection_executor)
-            synthetic, human = _score_test_populations(
-                source.spec.source_evidence_root, source.freeze,
-                source.admission, source.group_split, cohorts,
-                projection_executor=projection_executor)
+        synthetic, human = _score_test_populations(
+            source.spec.source_evidence_root, source.freeze,
+            source.admission, source.group_split, cohorts,
+            decision_pool=decision_pool, progress=progress)
+        decision_pool.close()
+        decision_pool = None
         if progress is not None:
             progress(3, 6, "r4-test-populations-scored")
         cohort_ids = tuple(row.cohort_id for row in cohorts)
@@ -1126,16 +1176,22 @@ def run_r4_completion_terminal(
         expected_human = _expected_test_human_rounds(
             source.spec.source_evidence_root, source.freeze,
             source.admission, source.group_split)
-        primary = evaluate_primary_test(
-            synthetic, selected_cohort_id=calibration["selected_cohort_id"],
-            expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids)
-        control = evaluate_label_control_test(
-            synthetic, expected_synthetic_rounds=expected_synthetic,
-            cohort_ids=cohort_ids)
-        human_transfer = evaluate_human_transfer_test(
-            human, selected_cohort_id=calibration["selected_cohort_id"],
-            expected_human_rounds=expected_human, cohort_ids=cohort_ids)
+        primary, control, human_transfer = (
+            _run_independent_terminal_statistics(
+                lambda: evaluate_primary_test(
+                    synthetic,
+                    selected_cohort_id=calibration["selected_cohort_id"],
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_label_control_test(
+                    synthetic,
+                    expected_synthetic_rounds=expected_synthetic,
+                    cohort_ids=cohort_ids),
+                lambda: evaluate_human_transfer_test(
+                    human,
+                    selected_cohort_id=calibration["selected_cohort_id"],
+                    expected_human_rounds=expected_human,
+                    cohort_ids=cohort_ids)))
         receipt = _derive_integrity_receipt(
             source.spec.source_evidence_root, source.freeze,
             source.admission, source.group_split, plan=plan,
@@ -1144,13 +1200,17 @@ def run_r4_completion_terminal(
             training_hashes=training_hashes,
             synthetic_test_count=len(synthetic),
             human_test_decision_count=sum(
-                row.decision_count for row in human))
+                row.decision_count for row in human),
+            legacy_tensor_cache_manifest_sha256=(
+                source.spec.source_tensor_cache_manifest_sha256))
         result = derive_terminal_result(
             source.freeze, plan, qualification, receipt,
             human_selection, scale_curve, primary, control, human_transfer)
         if progress is not None:
             progress(4, 6, "r4-terminal-statistics-derived")
     except ValueError as exc:
+        if decision_pool is not None:
+            decision_pool.close()
         raise BeliefV2R4CompletionError(
             "R4 completion test derivation refused after durable attempt") \
             from exc
@@ -1177,13 +1237,16 @@ def run_r4_completion_terminal(
         partial / "manifest.json", canonical_json_bytes(inner_manifest))
     os.rename(partial, final)
     _fsync_directory(root)
-    with _projection_pool() as projection_executor:
-        _warm_projection_pool(projection_executor)
-        reopened = reopen_v2_terminal(
-            final, freeze=source.freeze, admission=source.admission,
-            inventory=source.inventory, group_split=source.group_split,
-            calibration_directory=(root / "calibration" / "selection"),
-            projection_executor=projection_executor)
+    if progress is not None:
+        progress(5, 6, "r4-terminal-immediate-reconstruction")
+    reopened = reopen_v2_terminal(
+        final, freeze=source.freeze, admission=source.admission,
+        inventory=source.inventory, group_split=source.group_split,
+        calibration_directory=calibration_directory,
+        legacy_tensor_cache_manifest_sha256=(
+            source.spec.source_tensor_cache_manifest_sha256),
+        parallel_decisions=True, progress=progress,
+        bound_calibration_manifest=bound_calibration_manifest)
     if reopened != inner_manifest:
         raise BeliefV2R4CompletionError(
             "R4 completion terminal post-publish reconstruction drift")
@@ -1213,6 +1276,108 @@ def reopen_r4_completion_terminal(
     calibration, source = reopen_r4_completion_calibration(
         root, completion_freeze, completion_admission, repo=repo,
         review_marker=review_marker)
+    return _reopen_r4_completion_terminal_reopened(
+        root, completion_freeze, completion_admission,
+        calibration=calibration, source=source,
+        calibration_directory=(root / "calibration" / "selection"),
+        progress=progress)
+
+
+def recover_r4_completion_terminal(
+        root: Path, completion_freeze: V2ExecutionFreezeV1,
+        completion_admission: R4CompletionAdmissionV1, *, repo: Path,
+        review_marker: bytes,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
+    """Publish only the missing outer binding for a sealed inner terminal.
+
+    This is not a second scientific test decision. It is available only after
+    the one-shot attempt and complete inner terminal are durably published,
+    and derives the outer bytes exclusively from an independent reconstruction
+    of those sealed artifacts. It can neither replace the inner result nor run
+    when an outer result already exists.
+    """
+    spec = load_r4_completion_source_spec()
+    _completion_stage_gate(
+        root, completion_freeze, completion_admission, repo=repo,
+        review_marker=review_marker, spec=spec)
+    calibration, source = reopen_r4_completion_calibration(
+        root, completion_freeze, completion_admission, repo=repo,
+        review_marker=review_marker)
+    return _recover_r4_completion_terminal_reopened(
+        root, completion_freeze, completion_admission,
+        calibration=calibration, source=source,
+        calibration_directory=(root / "calibration" / "selection"),
+        progress=progress)
+
+
+def _recover_r4_completion_terminal_reopened(
+        root: Path, completion_freeze: V2ExecutionFreezeV1,
+        completion_admission: R4CompletionAdmissionV1, *,
+        calibration: dict[str, Any], source: R4CompletionSourceV1,
+        calibration_directory: Path,
+        bound_calibration_manifest: dict[str, Any] | None = None,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
+    """Recover an outer manifest without changing the sealed inner result."""
+    attempt_path = root / "r4-completion-test-attempt.json"
+    partial = root / "terminal.partial"
+    final = root / "terminal"
+    outer_path = root / "r4-completion-terminal.json"
+    if partial.exists() or partial.is_symlink() \
+            or not final.is_dir() or final.is_symlink() \
+            or outer_path.exists() or outer_path.is_symlink():
+        raise BeliefV2R4CompletionError(
+            "R4 completion terminal is not recovery-eligible")
+    try:
+        attempt_raw = stable_read_bytes(attempt_path)
+        attempt = json.loads(attempt_raw)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise BeliefV2R4CompletionError(
+            "R4 completion terminal recovery control refused") from exc
+    expected_attempt = _completion_test_attempt(
+        completion_freeze=completion_freeze,
+        completion_admission=completion_admission, source=source,
+        source_calibration_manifest=calibration)
+    if attempt != expected_attempt \
+            or canonical_json_bytes(attempt) != attempt_raw:
+        raise BeliefV2R4CompletionError(
+            "R4 completion test attempt reconstruction drift")
+    if progress is not None:
+        progress(0, 1, "r4-terminal-recovery-reconstruction")
+    inner = reopen_v2_terminal(
+        final, freeze=source.freeze, admission=source.admission,
+        inventory=source.inventory, group_split=source.group_split,
+        progress=progress, calibration_directory=calibration_directory,
+        legacy_tensor_cache_manifest_sha256=(
+            source.spec.source_tensor_cache_manifest_sha256),
+        parallel_decisions=True,
+        bound_calibration_manifest=bound_calibration_manifest)
+    # Re-read controls after the expensive reconstruction so a concurrent
+    # replacement can never be bound into the newly published outer manifest.
+    if stable_read_bytes(attempt_path) != attempt_raw \
+            or outer_path.exists() or outer_path.is_symlink() \
+            or partial.exists() or partial.is_symlink():
+        raise BeliefV2R4CompletionError(
+            "R4 completion terminal recovery namespace drift")
+    outer = _terminal_outer_manifest(
+        completion_freeze=completion_freeze,
+        completion_admission=completion_admission, source=source,
+        source_calibration_manifest=calibration,
+        completion_attempt=attempt, source_terminal_manifest=inner)
+    publish_exclusive_bytes(outer_path, canonical_json_bytes(outer))
+    _fsync_directory(root)
+    if progress is not None:
+        progress(1, 1, "r4-terminal-recovery-complete")
+    return outer
+
+
+def _reopen_r4_completion_terminal_reopened(
+        root: Path, completion_freeze: V2ExecutionFreezeV1,
+        completion_admission: R4CompletionAdmissionV1, *,
+        calibration: dict[str, Any], source: R4CompletionSourceV1,
+        calibration_directory: Path,
+        bound_calibration_manifest: dict[str, Any] | None = None,
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
+    """Reconstruct terminal after a caller authenticates calibration inputs."""
     try:
         attempt_raw = stable_read_bytes(
             root / "r4-completion-test-attempt.json")
@@ -1230,14 +1395,15 @@ def reopen_r4_completion_terminal(
             or canonical_json_bytes(attempt) != attempt_raw:
         raise BeliefV2R4CompletionError(
             "R4 completion test attempt reconstruction drift")
-    with _projection_pool() as projection_executor:
-        _warm_projection_pool(projection_executor)
-        inner = reopen_v2_terminal(
-            root / "terminal", freeze=source.freeze,
-            admission=source.admission, inventory=source.inventory,
-            group_split=source.group_split, progress=progress,
-            calibration_directory=(root / "calibration" / "selection"),
-            projection_executor=projection_executor)
+    inner = reopen_v2_terminal(
+        root / "terminal", freeze=source.freeze,
+        admission=source.admission, inventory=source.inventory,
+        group_split=source.group_split, progress=progress,
+        calibration_directory=calibration_directory,
+        legacy_tensor_cache_manifest_sha256=(
+            source.spec.source_tensor_cache_manifest_sha256),
+        parallel_decisions=True,
+        bound_calibration_manifest=bound_calibration_manifest)
     expected_outer = _terminal_outer_manifest(
         completion_freeze=completion_freeze,
         completion_admission=completion_admission, source=source,
@@ -1252,6 +1418,7 @@ def reopen_r4_completion_terminal(
 __all__ = [
     "BeliefV2R4CompletionError", "R4CompletionSourceSpecV1",
     "R4CompletionSourceV1", "load_r4_completion_source_spec",
+    "recover_r4_completion_terminal",
     "r4_completion_pretest_readiness",
     "reopen_r4_completion_calibration", "reopen_r4_completion_source",
     "reopen_r4_completion_terminal", "run_r4_completion_calibration",

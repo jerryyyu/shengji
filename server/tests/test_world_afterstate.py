@@ -137,6 +137,44 @@ def test_root_replay_supports_every_trump_rank(trump_rank):
     assert reopen_afterstate_audit(record).trump_rank == trump_rank
 
 
+def test_root_replay_supports_no_trump_declarations():
+    seed = None
+    rnd = None
+    declarer = None
+    joker = None
+    for candidate_seed in range(771_452_000, 771_453_000):
+        candidate = Round("7", 0, random.Random(candidate_seed))
+        while candidate.phase == "deal":
+            candidate.deal_next()
+        found = next((
+            (seat, code) for seat in range(4) for code in ("LJ", "BJ")
+            if candidate.hands[seat].count(code) == 2), None)
+        if found is not None:
+            seed, rnd, (declarer, joker) = candidate_seed, candidate, found
+            break
+    assert seed is not None and rnd is not None
+    declarations = [{
+        "stage": "final", "deal_pos": rnd._deal_pos,
+        "seat": declarer, "cards": [joker, joker],
+    }]
+    rnd.declare(declarer, [joker, joker])
+    rnd.finalize_declare()
+    assert rnd.trump_is_nt is True
+    bot = make_bot("smart", seed=seed + 99)
+    burial = bot.decide_bury(rnd, rnd.banker)
+    rnd.bury(rnd.banker, burial)
+    source = root_replay(
+        deal_seed=seed, initial_banker=0, trump_rank="7",
+        declarations=declarations, buried=burial, plays=[],
+        root_seat=rnd.turn)
+    action = bot.decide_play(rnd, rnd.turn)
+    hands = {seat: list(rnd.hands[seat]) for seat in range(4)}
+    record = build_afterstate_audit(source, hands, rnd.buried, action)
+    reopened = reopen_afterstate_audit(record)
+    assert reopened.trump_is_nt is True
+    assert reopened.trump_suit is None
+
+
 def test_complete_world_conservation_and_root_hand_are_load_bearing():
     row, hands, buried, action = _state()
     root = row["root_seat"]

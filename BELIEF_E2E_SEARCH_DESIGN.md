@@ -567,9 +567,10 @@ Recommended first target:
   action;
 - label: `Q_world` signed-level distribution under the reviewed, post-root
   actor-visible continuation contract;
-- secondary label: best-action probability under repeated
-  teacher/continuation outcomes, derived from the same logits rather than a
-  second model head;
+- secondary artifact diagnostic: best-action frequency under paired repeated
+  teacher/continuation outcomes. This is not a model target because one
+  marginal distribution per action does not identify cross-action outcome
+  correlation;
 - loss: proper distributional outcome loss plus a bounded pairwise ranking
   term against the protected production action; and
 - selection: a preregistered multi-seed stability gate on held-out deals,

@@ -11,8 +11,8 @@
 > not review authority. If this snapshot conflicts with an exact marker on
 > remote main, the latest authentic exact-head marker controls.
 
-Last reconciled: **2026-08-28 06:00 EDT**. Remote main before this refresh:
-`f95b30619db06b59ca28af90b01b9abaca57aea4`.
+Last reconciled: **2026-08-28 08:25 EDT**. Remote main before this refresh:
+`90cf5ec0cf65b5de4e1e0f6bddc1d4eb93555db1`.
 
 ## Review queue
 
@@ -23,13 +23,19 @@ execution head `56bd35f0…ca9e6b`. Initialization succeeded once at `09:43:33Z`
 admission SHA `f2f3c94fe29ed7da934e844c617bb35cbebca96aab2355efe1c923890078828a`,
 new consumption tombstone `f9f27795…b576ea`, and all test/terminal paths
 absent. Score-free readiness unit
-`belief-r4-terminal-readiness-56bd35f-r1` is active under invocation
-`853d147cba084e75a7f40d1fc7f0dd78`, `Restart=no`, `NRestarts=0`. It is
-reopening the sealed 53-GB state and warming 16 workers. **Do not launch the
-scientific unit from the review PASS alone:** only the readiness unit's
-canonical JSON PASS may authorize the sole test opening. Then scientific
-success alone may launch the independent verifier. No retry, training, merge,
-gameplay, strength, promotion, or deployment authority.
+`belief-r4-terminal-readiness-56bd35f-r1` completed successfully at
+`12:22:11Z` under invocation `853d147cba084e75a7f40d1fc7f0dd78`, with zero
+restarts, 2h38m wall, 26h06m CPU, and a 22.2-GiB cgroup peak. Its canonical
+receipt binds the exact freeze/admission/import, all 4 cohorts / 32 checkpoint
+digests, `worker_startup_passed=true`, test/terminal absent, test unopened, and
+all-false execution/strength/deployment authority. Codex independently matched
+the cohort population to the frozen capacity receipt and rechecked that all
+protected paths were absent. The reviewed sole scientific unit
+`belief-r4-terminal-scientific-56bd35f-r1` then started at `12:23:19Z` under
+invocation `f8069d7e5aeb4683b5a77908816a798d`, `Restart=no`. **Do not launch a
+duplicate scientific unit or the independent verifier:** scientific success,
+including immediate reconstruction, is the sole gate for the verifier. No
+retry, training, merge, gameplay, strength, promotion, or deployment authority.
 
 Capacity receipt:
 `/opt/belief-r4-terminal-capacity-56bd35f-r1.json`, 5,444 canonical bytes,
@@ -85,52 +91,17 @@ reconstruction, and recovery all pass. This is latency-hiding evidence for the
 single consolidated review, not an execution marker or substitute for Claude's
 final receipt/freeze authentication.
 
-**One parallel PT re-review is actionable and must not delay R4:** Claude's
-valid `205c9f0` HOLD found that dropping Luna's top-level planner-config
-handoff could run Sol while sealing a Luna-labelled report. PR #160 is repaired
-at exact head `2394140bcdaebf72d81912a55ac18f5051848fe5`. The shared root
-runner now requires an explicit planner config; a run-level witness drives all
-52 planner invocations and asserts `gpt-5.6-luna` at high effort. Deleting the
-handoff turns that witness red. The focused family passes 48/48 in both pure
-and strict-native modes. Review the repaired head as the same one consolidated
-PT-Luna0 source + launch packet. The fresh design SHA is
-`939c6441b35530b469486b43f1fb34f7ad6d34eac16f84a6bbc5d7b21e4a422d`.
-It reuses the exact already-open PT-Sol0 26-root/52-role population and changes
-only the planner from Sol to `gpt-5.6-luna` at high effort. The parent runtime
-is reconstructed exactly: Codex CLI `0.149.0`, Codex script SHA
-`134063e1...59f1477`, native SHA `a6caf8fe...8901bf2`, Python SHA
-`14a816f4...a6f403`, two workers. The launch PATH begins with the preserved
-absolute runtime
-`/private/tmp/pt-luna-codex-0.149.0/node_modules/.bin`; that executable exists,
-resolves before the global `0.150.1` install, reports `codex-cli 0.149.0`, and
-its resolved script SHA-256 is the frozen
-`134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477`.
-The 00:49/01:47 HOLD inspected the global PATH and therefore does not describe
-the reviewed launch envelope. A fresh live score-free probe through the exact
-launch PATH returned `READY` from `gpt-5.6-luna` at high effort under CLI
-`0.149.0` at 02:01 EDT. Re-review the existing exact source/design/launch
-packet; do not refreeze to `0.150.1` and do not add a source round. There is no
-extra capacity run: each role has a hard 1,200-second deadline and 26 two-worker waves bound
-the model wall at 31,200 seconds; incomplete rows seal and cannot be retried.
-Review source, parent identities, public/private partition, exact 52-role
-population, failure retention, Sol-schema preservation, wall summaries,
-runtime reconstruction, output namespace, and all-false authority in one
-round. The cross-run wall ratio is now explicitly labelled
-`DESCRIPTIVE_CROSS_RUN_HOST_LOAD_CONFOUNDED`, not an efficiency claim or gate.
-Frozen outputs are
-`/Users/jerryyu/Projects/shengji-ptluna0-2394140-r1.json` and
-`/Users/jerryyu/Projects/shengji-ptluna0-2394140-r1-private`, both absent. If
-clean, append one exact-head source+launch PASS authorizing only the
-single non-retryable Luna0 DEV execution. Sol1, merge, training, gameplay,
-strength, promotion, and deployment remain unauthorized.
+**No PT review is pending.** Claude's consolidated PASS for PR #160 exact head
+`2394140bcdaebf72d81912a55ac18f5051848fe5` is canonical in
+`HANDOFF_REVIEW.md` (2026-08-28 06:35 EDT). It authorizes only the single
+non-retryable PT-Luna0 DEV run against the already-open PT-Sol0 population;
+that run has not launched and its frozen public/private outputs remain absent.
+The prior watcher waiting for this PASS is stale and may be closed. PT-Sol0's
+result review is already complete and must not be repeated.
 
-PT-Sol0's exact-source result review is already complete in
-`HANDOFF_REVIEW.md` (2026-08-27 13:48 EDT); do not repeat PR #152, #153, #154,
-or #155 source/result reviews. Preserve the earlier PT-Claude r2 report as an
-honest quota-limited `INCOMPLETE`; do not retry or interpret its partial rows.
-A separately named two-worker Opus r3 attempt is active on Mini and had
-attempted 24/52 records at 02:02 EDT. It needs no review while running and must
-seal its own complete or incomplete result without borrowing r2 rows. R5 is
+PT-Claude Opus r3 has sealed `INCOMPLETE` at 3/52 complete and 49/52
+per-session timeouts, report SHA `a28dfbd…37e3b`. Preserve it as a budget
+diagnostic; do not retry, pool its rows, or infer gameplay efficacy. R5 remains
 paused until R4's verdict and curves are interpreted and is not reviewable now.
 
 The exact import, clean repaired head, capacity receipt, and deterministic
@@ -151,9 +122,9 @@ for the scoring-pool lifetime and a 16-party startup barrier, closing the real
 Linux file-descriptor and partial-worker-start failures without changing score
 semantics. Do not start a second diagnostic or alternate repair.
 
-The only remaining actionable review is PR #160 repaired head `2394140`'s
-consolidated Luna0 source and launch packet; it must not disturb R4 readiness.
-There is no current R4, R5, or PT-Claude review request.
+There is no current R4, R5, PT-Luna, or PT-Claude review request. The Luna0
+PASS authorizes its one isolated DEV run but does not require launching it
+while R4 is on the scientific critical path.
 
 Do not create an intermediate R5 review. Do not treat a progress update as a
 review request.
@@ -162,9 +133,9 @@ review request.
 
 | host | job | exact source | current state | authority |
 |---|---|---|---|---|
-| Mini | PT-Claude Opus r3 active; PT-Luna0 pending repaired-head review | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Opus r3 has attempted 24/52 records; no public result exists. Luna's valid model-wiring HOLD is repaired and mutation-proven; exact runtime/parents remain unchanged and design is `939c6441…a422d`. Launch awaits only one consolidated repaired-head PASS. | Claude monitor only; after PASS, Luna may run concurrently in its separate output/private namespaces; never pool attempts or infer efficacy until each seals and independently reopens |
+| Mini | idle for reviewed PT-Luna0; PT-Claude Opus r3 sealed incomplete | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Opus r3 sealed `INCOMPLETE` 3/52; Luna source+launch PASS is canonical, but its public/private outputs remain absent and no Luna process is active | one isolated, non-retryable Luna0 DEV launch is authorized; do not pool Opus rows or infer efficacy from the incomplete report |
 | Perf Cloud | R5 paused; prior R4 calibration sealed/inactive | preserved source `0ff18349c76b13e9f594e6d84fe9b34b04a91f04` | the disposable resumed diagnostic crossed the old FD ceiling and published calibration-selection artifacts, then was operator-stopped without a receipt on 2026-08-27 after the user requested a design pause. All prior rehearsal artifacts remain preserved; no R5 process is active. | no R5 design, source, rehearsal, freeze, review, or scientific action until R4 is complete and the design is discussed with the user |
-| Strength Cloud | R4 score-free readiness | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | consolidated PASS `f95b306` authenticated; root initialized once; readiness invocation `853d147c…dd78` active with test/terminal paths absent | wait for canonical readiness PASS; then launch sole test+immediate reconstruction; only scientific success launches independent verification |
+| Strength Cloud | R4 sole scientific test + immediate reconstruction | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | readiness passed and was independently matched to 4 cohorts / 32 members; scientific invocation `f8069d7e…98d` started `12:23:19Z`, `Restart=no` | no duplicate/retry; only scientific success may launch the reviewed independent verifier |
 | Air | none | — | idle | none |
 
 No R5 process is running. Preserve its existing artifacts, but do not resume,
@@ -296,15 +267,13 @@ actual whole-cgroup peak of 21,056,126,976 bytes (19.61 GiB) under 24 GiB.
 Its conservative projections are 11.86 hours per scoring pass, 31.68 hours for
 the scientific unit, and 17.17 hours for the independent verifier; both plus
 reserve fit the immutable 48-hour cap. Canonical-byte and projection arithmetic
-were independently reproduced. The freeze watcher is now independently
-re-opening the bound inputs at zero restarts. No final review is requested
-until its exact freeze publishes; all terminal/test paths remain absent.
+were independently reproduced. Freeze, consolidated review, initialization,
+and score-free readiness are complete. The sole scientific unit is active; no
+new review is requested before its result.
 
-At 19:01 EDT the older Perf lane had sealed all seven calibration-selection
-artifacts mode 0400 and remained active at zero restarts in its predicted
-post-publication reconstruction. It is now a redundant fallback, not the
-critical path, but must remain alive until the replacement terminal passes
-reviewed pre-test readiness. Its test namespace remains unopened.
+The older Perf lane is inactive and preserved only as superseded diagnostic
+evidence. It is not a fallback execution path and must not be resumed while
+the repaired Strength scientific unit runs.
 
 **Counter interpretation:** `score-r4-calibration-populations: 1/6` is a
 heterogeneous milestone counter: synthetic REF0, synthetic REF1, human REF0,
@@ -315,24 +284,15 @@ unmeasured; preserve the live lane and use actual phase telemetry.
 
 ### Replacement operator sequence
 
-1. **Complete:** bind the authenticated calibration import into final clean
-   source `56bd35f`; full belief validation passes 511/511 (+6 skips), and the
-   strict changed surfaces pass 53/53.
-2. **Active:** remeasure the all-13-rank parity/timing/memory boundary at the
-   repaired exact head and automatically publish one exact-head capacity
-   receipt plus freeze without opening test.
-3. Build the freeze with `source_review_commit == execution_git`, then request
-   one consolidated review of exact source, import, receipt, and freeze. The
-   review claim must say `source_review_mode: consolidated-source-and-freeze`.
-   Do not create an intermediate source review.
-4. Initialize the fresh terminal namespace and run score-free pre-test
-   readiness. Readiness must independently reopen the sealed calibration,
-   reauthenticate all source/model/cache identities, warm all 16 workers, and
-   prove both test namespaces remain unopened.
-5. Only after reviewed readiness, stop the redundant Perf calibration and run
-   the single optimized test scorer on Strength. It immediately reconstructs
-   its sealed result; then run a separate independent reconstruction and
-   compare exact terminal bytes and verdict.
+1. **Complete:** exact repaired source, imported calibration, 13-rank capacity
+   receipt, freeze, consolidated PASS, initialization, and score-free
+   readiness.
+2. **Active:** the one reviewed scientific unit opens the sole test population,
+   scores it, seals the terminal, and immediately reconstructs it. Never launch
+   a duplicate or retry.
+3. **Pending only on scientific success:** run the separate reviewed verifier,
+   compare exact terminal bytes/verdict, and then interpret the result in plain
+   English. A scientific failure permits diagnosis only, not a second opening.
 
 The prior PR #152 cutover sequence is superseded for execution by this fresh
 packet; its test authority must not be reused. Do not open test early, retry a
@@ -425,10 +385,9 @@ one-shot step, or infer an R4 answer from calibration output.
 
 ## Immediate operator priorities
 
-1. Finish the replacement R4 import/source/capacity/freeze and request its one
-   consolidated review marker.
-2. Preserve the redundant Perf calibration until reviewed R4 pre-test
-   readiness passes, then stop it before the one Strength test opening.
-3. In parallel, complete PR #160's one Luna0 source+launch review and launch
-   its isolated two-worker Mini DEV run on PASS. This must not touch or delay
-   R4. Keep R5 paused behind the reproduced R4 verdict.
+1. Monitor the active R4 scientific unit and its explicit progress telemetry;
+   do not launch a duplicate, retry, or alternate scorer.
+2. On scientific success only, launch the already-reviewed independent
+   verifier and compare exact terminal bytes and verdict.
+3. Keep R5 paused. PT-Luna0 is reviewed and runnable on idle Mini, but it must
+   remain isolated and must not distract from R4 terminal interpretation.

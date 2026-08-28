@@ -75,6 +75,33 @@ The privileged teacher is an offline label source, never a live dependency.
 This design does not propose training belief, policy, Q, value, and allocation
 end to end in one run.
 
+### Label ownership and the anti-cascade rule
+
+PUCT is a search-improvement teacher for an **action policy**.  It does not
+create the truth labels for BELIEF, and it is not the first teacher for
+`Q_world`.  Each learner has one separately auditable label owner:
+
+| Learner | Input available to that learner | Label owner | Label it may consume | Label it must not consume |
+|---|---|---|---|---|
+| BELIEF ownership | Actor-visible observation and public history | Simulator/reopened deal truth | True hidden receiver counts behind that observation | PUCT visits, Q predictions, PT reasoning text or any actor-invisible feature |
+| `Q_world` | One explicit complete world, public observation and legal action | Reviewed counterfactual engine/teacher continuation | Signed-level outcome distribution for that exact world/action under one frozen continuation | A learned BELIEF forecast, a public-policy visit target or an unqualified teacher argmax |
+| Public action policy | Actor-visible public information state | Public-belief search | One root visit distribution aggregated across every compatible world before publication | Separate true-world PT argmaxes or visits that let identical observations receive incompatible clairvoyant labels |
+| Optional public value | Actor-visible public information state | Registered self-play/search contract | Terminal signed-level outcome or a separately specified public-search value target | Raw `Q_world` for the literal hidden deal or a value produced by omniscient future play |
+
+In the first iteration, PUCT contributes only policy targets and the
+learner-induced state distribution.  It does not retrain BELIEF, and it does
+not silently rewrite `Q_world` labels.  Later data refreshes may add public
+histories reached by the current policy, but each row is relabelled by its own
+owner and must pass the same actor-visibility and held-out gates.  Thus a
+failed policy prior cannot corrupt the posterior certificate, and a failed
+BELIEF candidate cannot invalidate a `Q_world` result obtained through REF-C.
+
+The policy head is therefore an **amortized search prior**, not a replacement
+for search.  It remembers recurring allocation lessons so PUCT can spend more
+visits on promising legal edges; PUCT's exploration term and engine rollouts
+remain able to overrule it.  This is materially different from a direct action
+model whose argmax becomes the final move without a search correction.
+
 ## Why this is materially different from earlier learning
 
 | Prior evidence | Lesson carried into this design |

@@ -5350,3 +5350,86 @@ sees when the projection pool is a forkserver rather than a child fork.
 Read-only: systemd counters, journal text, manifest metadata and digests; no scores or records
 opened; nothing signalled. Both published calibrations and both failed roots are
 permanent-never-delete. — Claude (session `f4b0ea92`)
+
+## 2026-08-28 — the eighth failure is a **dropped keyword argument**. Named exactly, repair verified wired and witnessed, and my `boot_identity` hypothesis is refuted
+
+Three entries (`3f6649a`, `c578c36`, `81487c9`) left "which of the fifteen clauses fired" open and
+offered guesses. It is answerable, and the answer was sitting in Codex's repair branch.
+
+### The defect
+
+At the failing heads (`e10cb3d` serial, `d82ba22` optimized):
+
+- `reopen_trained_scoring_cohorts` **already accepted**
+  `legacy_tensor_cache_manifest_sha256: str | None = None`.
+- `reopen_v2_calibration_selection` neither accepted nor forwarded it.
+- `run_r4_completion_calibration` called that reopen at **lines 901 and 933** with only
+  `freeze`, `admission`, `inventory`, `group_split`.
+- Meanwhile the **forward build** path passed
+  `legacy_tensor_cache_manifest_sha256=(source.spec.source_tensor_cache_manifest_sha256)`.
+
+So the build knew the training tensor cache was an **imported legacy cache**; the verifier did not.
+Reconstructing with `import_spec = None`, the reopen recomputed
+`cache_worker_count = parallel_cache_worker_count(freeze.runtime, …)` instead of `0`, and
+`external_cache_reused = False` instead of `True`, tripping exactly these two clauses of the chain
+at `belief_v2_tensor_cache_controller.py:1226–1252`:
+
+```
+or resources["cache_worker_count"]
+   != (0 if import_spec is not None else parallel_cache_worker_count(...))
+or resources["external_cache_reused"] is not (import_spec is not None)
+```
+
+**One un-forwarded keyword argument. Two lanes, both published, both refused; 2 d 13 h + 3 d 8 h of
+CPU — about 141 core-hours — and the eighth belief-lane failure.** It also explains why both hosts
+failed identically: nothing host-specific was involved.
+
+### I was wrong, and the record should say so plainly
+
+`81487c9` proposed `boot_identity`, reasoning that the source freeze binds Cloud's boot session so
+Perf could never match. **That is refuted.** The clause never fired on either lane; the drift was
+`cache_worker_count` / `external_cache_reused`, and it fires on any host. `c578c36`'s
+`cache_worker_count` suspicion was the closer guess, though neither entry named the mechanism —
+which is what actually makes it fixable. I had already down-graded the hypothesis to "not
+established" in `45711fd`; it is now simply wrong, and I would rather retire it than leave it
+in the ledger as a live candidate.
+
+### The repair exists, is wired at both call sites, and is witnessed
+
+`34ab86c` (branch `codex/belief-r4-terminal-parallel`, tip 2026-08-27 18:42 EDT) adds the parameter
+to `reopen_v2_calibration_selection` and forwards it at **both** call sites — lines 904 and 938 —
+with `source.spec.source_tensor_cache_manifest_sha256`. I checked the thing that usually goes
+wrong: a defaulted parameter that no caller passes. Both callers pass it.
+
+It is also witnessed rather than asserted. The test delta carries
+`legacy_calls.append(kwargs["legacy_tensor_cache_manifest_sha256"])` and
+`assert kwargs["legacy_tensor_cache_manifest_sha256"] == …` in
+`test_r4_terminal_builds_import_only_from_reopened_sealed_selection` and
+`test_r4_terminal_bound_calibration_reopens_exact_deep_import_bytes`. I have not run them; that
+belongs in the packet review.
+
+### What is *not* repaired
+
+`belief_v2_tensor_cache_controller.py` is **byte-identical between `d82ba22` and `34ab86c`** — zero
+lines changed. The fifteen-clause `or` chain still raises one undifferentiated string. So the
+diagnostic defect survives its own casualty: this failure was diagnosed by reading a repair branch,
+not by reading an error message, and the next resource drift will be exactly as opaque. Splitting
+that chain remains cheap and is now the only outstanding item from `3f6649a`.
+
+### Context, not a complaint
+
+Cloud is running `belief-r4-terminal-capacity-34ab86c-r1` with a watcher that auto-builds the freeze
+on completion (load 15.00 of 16). That is score-free capacity plus one immutable freeze — the
+envelope PR #122 already authorizes — and no execution follows from it, so I am **not** flagging it
+as drift. Two notes for whoever picks up the packet:
+
+1. **Branch `codex/belief-r4-terminal-parallel` has no open PR**, and its delta against main is
+   **90 files, +20,755 / −4,660**. Per the standing rule I am noting the large review for Jerry
+   rather than implying anyone can audit it line by line; the load-bearing surfaces are the terminal
+   parallel runner, the import/source specs, and the forwarding fix above.
+2. The freeze will be built at a source that has had **no review of any kind** yet. That is normal
+   for this pattern — freezes are reviewed before execution, not before construction — but the
+   packet review must verify the source, not only the freeze.
+
+Read-only: git objects, systemd unit listings, journal text. Nothing signalled, no evidence root
+touched, no scores opened. — Claude (session `f4b0ea92`)

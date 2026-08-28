@@ -6646,3 +6646,90 @@ testable: at 2.93 GiB the pool has not been built. The number to watch is the pe
 starts, against the 24.0 GiB cap with swap disabled.
 
 — Claude (session `cc2565ac`)
+
+## 2026-08-28 — ⛔ HOLD: PR #163 consolidated source+launch review at exact head `30eca22`. The source is sound and the launch command is well-formed, but **three receipt-validator clauses the PR states are witnessed can each be deleted with the whole 154-test battery green** — including the outcome-blindness scan, which is this lane's central safety property
+
+No marker appended. One consolidated HOLD, as requested, with every blocker I found.
+
+### What verifies cleanly
+
+Head `30eca22783c3b64d3e412427d3fe6725f819d957`; review delta `a229b6d..30eca22` is exactly the two
+commits the request names; `#162 5d3f7a4` and `#161 56fca49` both confirmed ancestors by
+`git merge-base --is-ancestor`; `git diff --check` clean. Battery reproduced at the exact head with
+the compiled engine active, `-P -B`, cleared `__pycache__`, `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`:
+**154 passed** (the comment says 155; the one-test gap is my file selection, not a discrepancy I can
+attribute to the packet).
+
+The **launch command is well-formed against the code's own validators**, which I checked parameter
+by parameter rather than by eye: `--fixture-count 26` inside the enforced `13..256`; `--workers
+1 2 4 8 16` inside `1..16` and unique; `--worker-repetitions 2` inside `1..64`; `--batch-sizes
+16 64` inside `1..4096`; `--model-steps 8` inside `1..1000`; `--device auto` resolves through
+`cuda → mps → cpu`. Every flag exists in the runner's argparse surface. The env block
+(`-u PYTHONPATH`, `SHENGJI_FAST=1`, `SHENGJI_REQUIRE_VOIDS=1`, `-P -B`, `PYTHONDONTWRITEBYTECODE=1`)
+matches `REQUIRED_ENVIRONMENT` exactly. Twelve genuine can-fail witnesses do exist — worker
+schedule, trump-rank coverage, world materialization, runtime sentinel/identity, compiled
+environment, tensor output, model schedule, memory counters, fixture accounting, authority,
+aggregate-memory receipt — so the packet is not careless; it is specifically over-claimed.
+
+### Blocker 1 — the outcome-blindness scan has no witness, and the PR states it does
+
+The comment says can-fail witnesses cover "*outcome-vocabulary exclusion*". They do not. Replacing
+
+```python
+if any(token in raw for token in forbidden_tokens):
+    raise WorldAfterstateCapacityError("capacity receipt contains outcome-bearing vocabulary")
+```
+
+with `if False:` leaves **154 passed**. This is the guard behind the PR's headline safety claim that
+capacity receipts carry "no continuation outcome, label, logit, prediction, or proper-score data",
+and it is the one property that makes a *score-free* census score-free.
+
+**The guard itself is correct** — I proved it rather than assuming: injecting each of `label`,
+`attacker_points`, `logit`, `proper_score` into a real receipt produced by `run_capacity` and
+revalidating gives `capacity receipt contains outcome-bearing vocabulary` for all four. Note the
+trap I hit first: injecting into `schedule.continuation_policy` is refused by the *schedule*
+validator ("capacity schedule drift") before the scan is reached, so a witness written that way
+would pass while witnessing the wrong guard. Inject through a loosely-typed field —
+`runtime.native_path` works — or the test is theatre.
+
+### Blockers 2 and 3 — two more validator clauses with no witness
+
+| deleted clause | battery |
+|---|---|
+| `aggregate_memory["method"] != "linux-cgroup-v2-memory.peak"` | **154 passed** |
+| `runtime["compiled_engine_active"] is not True` | **154 passed** |
+
+The comment claims "aggregate memory parsing+wiring" and "inactive routing" are witnessed. Both
+categories *are* covered elsewhere (`memory counters drifted`, `aggregate memory receipt drift`,
+`strict compiled environment`, `strict runtime sentinel`) — but those exercise the counters and the
+runner-side sentinel, not these receipt-validator clauses. So the method string that distinguishes a
+true cgroup-v2 aggregate measurement from parent-only RSS — the exact distinction `77d696f` and
+`69bc6de` spent two entries on in the R4 lane — can be dropped silently, as can the requirement that
+the receipt attest an active compiled engine.
+
+### Fix, and why this is cheap rather than pedantic
+
+Three tests, each a `copy.deepcopy` + forge + `pytest.raises`, identical in shape to the twelve
+already present: forge `runtime.native_path` to contain `label` and expect the vocabulary refusal;
+forge `aggregate_memory.method` to `"parent-rss"` and expect the memory refusal; forge
+`runtime.compiled_engine_active` to `False` and expect the runtime refusal. Minutes of work, and
+they close the exact gap between what the PR comment asserts and what the suite enforces.
+
+### One launch note, not a blocker
+
+`MemoryMax=30G` with `MemorySwapMax=0` on a 32.85 GB host, with no prior measurement of this
+workload's peak — the census is precisely what would establish it. Because the requested authority
+is explicitly **non-retry**, an OOM kill spends the authorization on nothing. Either accept that
+risk knowingly, or drop `--fixture-count`/worker ceiling for a first census and raise it once the
+receipt reports a real `finish_peak_bytes`.
+
+### Scope discipline
+
+`HANDOFF_ACTIVE.md` at main tip `d3b7f21` contains **no** mention of this lane or of `30eca22`, so
+the "exact command in HANDOFF_ACTIVE.md" the request points at is not there yet; I reviewed the
+command from the final PR comment instead and record that substitution here. Coverage limits:
++1614/−0 across 5 files; I went deep on the receipt validator, the blindness scan, the strict
+runtime/env binding, schedule bounds and the launch command, and mutation-tested three clauses. I
+did not line-audit the label/continuation mechanics inherited from #162, which remains **open and
+unreviewed by me** — this HOLD therefore says nothing about that base. Per the request I did not
+re-review R4 or PT-Luna0. No authority granted. — Claude (session `68f9c8bd`)

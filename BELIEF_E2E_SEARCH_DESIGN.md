@@ -673,11 +673,16 @@ population is generated.
   incumbent. It does not claim complete legal-action coverage. Ballot
   generation source, ordered action hashes and candidate counts are part of
   every row. PT proposals wait for the separate proposal experiment above.
-- Repeated compatible worlds are retained with replacement. Each audit row
-  carries the complete prestate and action; each model row carries the full
-  post-action remaining hands, burial, trick/score/history state and terminal
-  flag in root-actor-relative form, but never the simulator seed or a
-  world-generating identifier.
+- E3/E4 retains exactly the complete world from each selected reviewed
+  trajectory. It does not sample REF-C or learned BELIEF worlds: the first
+  experiment isolates whether a perfect-information successor evaluator can
+  learn before introducing posterior error. Repeated continuation outcomes
+  from that world are retained with replacement. Each audit row carries the
+  complete prestate and action; each model row carries the full post-action
+  remaining hands, burial, trick/score/history state and terminal flag in
+  root-actor-relative form, but never the simulator seed or a world-generating
+  identifier. Compatible-world aggregation remains the separately gated E5b
+  consumer.
 
 **Numeric label owner**
 

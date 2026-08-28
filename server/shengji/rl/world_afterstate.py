@@ -23,7 +23,7 @@ from typing import Any, Mapping, Sequence
 
 import numpy as np
 
-from ..engine.cards import RANKS, make_deck
+from ..engine.cards import RANKS, Ordering, make_deck
 from ..engine.round import Round, Trick
 from ..teacher_v1 import attacker_level_utility
 from .belief_contract import canonical_json_bytes
@@ -36,6 +36,7 @@ ROOT_REPLAY_SCHEMA = "world-afterstate-root-replay-v0"
 SUCCESSOR_SCHEMA = "world-afterstate-successor-v0"
 OUTCOME_SCHEMA = "world-afterstate-outcome-v0"
 TENSOR_SCHEMA = "world-afterstate-tensors-v0"
+ACTOR_DECISION_SCHEMA = "world-afterstate-actor-decision-v0"
 PUBLIC_DIM = OBS_DIM + 1  # actor-visible observation plus terminal flag
 WORLD_RECEIVERS = 5      # root-relative hands 0..3, then hidden burial
 PERSPECTIVE_DIM = 2      # attacker-root, defender-root
@@ -99,6 +100,49 @@ def _played_cards(rnd: Round) -> list[str]:
         for play in rnd.trick.plays:
             played.extend(play.cards)
     return played
+
+
+def actor_visible_root_identity(
+        rnd: Round, root_seat: int,
+        ordered_candidates: Sequence[Sequence[str]]) -> dict[str, Any]:
+    """Hash only information visible to the actor before any outcome.
+
+    This identity is selection metadata, never a model feature. Other hands,
+    a non-banker-visible burial, engine seeds, and continuation results cannot
+    affect its bytes.
+    """
+    root_seat = _seat(root_seat, "root seat")
+    if type(rnd) is not Round or rnd.phase != "play" or rnd.trick is None \
+            or rnd.turn != root_seat \
+            or type(ordered_candidates) not in (list, tuple) \
+            or not ordered_candidates:
+        raise WorldAfterstateError(
+            "actor-visible root identity requires a play decision")
+    candidates = [
+        _cards(candidate, "actor-visible candidate")
+        for candidate in ordered_candidates
+    ]
+    candidate_keys = [tuple(sorted(candidate)) for candidate in candidates]
+    if len(candidate_keys) != len(set(candidate_keys)):
+        raise WorldAfterstateError(
+            "actor-visible candidate population contains duplicates")
+    actor_cards = Counter(rnd.hands[root_seat])
+    if any(not Counter(candidate) <= actor_cards for candidate in candidates):
+        raise WorldAfterstateError(
+            "actor-visible candidate is absent from the actor hand")
+    public = np.asarray(encode_obs(rnd, root_seat), dtype="<f4")
+    history = np.asarray(encode_public_history(rnd, root_seat), dtype="<f4")
+    body = {
+        "schema": ACTOR_DECISION_SCHEMA,
+        "root_role": "attacker" if rnd.is_attacker(root_seat) else "defender",
+        "public_shape": list(public.shape),
+        "public_sha256": hashlib.sha256(public.tobytes(order="C")).hexdigest(),
+        "history_shape": list(history.shape),
+        "history_sha256":
+            hashlib.sha256(history.tobytes(order="C")).hexdigest(),
+        "ordered_candidates": [list(candidate) for candidate in candidates],
+    }
+    return {**body, "decision_sha256": _sha256(body)}
 
 
 def _validate_complete_world(
@@ -306,6 +350,261 @@ def canonical_successor(rnd: Round, root_seat: int) -> dict[str, Any]:
     return payload
 
 
+def replay_canonical_successor(value: Mapping[str, Any]) -> Round:
+    """Rebuild a complete canonical snapshot through legal engine plays.
+
+    This is the seed-free ingestion path for reviewed teacher transcripts.
+    Remaining hands plus the public play history reconstruct each player's
+    25-card post-burial hand.  Every recorded play is then applied through
+    :meth:`Round.play`; the final canonical bytes must match the input.  The
+    snapshot therefore cannot assert its own winner, points, turn, hand sizes,
+    or terminal result.
+
+    Seats in ``value`` are already root-relative, so the rebuilt actor is
+    always seat 0.  Declaration metadata and the last engine message do not
+    affect play mechanics or V0 tensors; they remain byte-bound public
+    metadata and are restored only after the mechanical replay succeeds.
+    """
+    if type(value) is not dict or set(value) != {
+            "schema", "root_role", "public", "complete_world"} \
+            or value.get("schema") != SUCCESSOR_SCHEMA:
+        raise WorldAfterstateError("canonical snapshot schema drift")
+    if value["root_role"] not in ("attacker", "defender"):
+        raise WorldAfterstateError("canonical snapshot root role drift")
+    public = value["public"]
+    complete = value["complete_world"]
+    public_keys = {
+        "phase", "terminal", "turn", "banker", "first_round",
+        "trump_rank", "trump_suit", "trump_is_nt", "declaration",
+        "attacker_points", "kitty_bonus", "last_trick_winner",
+        "completed_tricks", "current_trick", "message", "hand_sizes",
+    }
+    if type(public) is not dict or set(public) != public_keys \
+            or type(complete) is not dict \
+            or set(complete) != {"hands", "buried"}:
+        raise WorldAfterstateError("canonical snapshot field population drift")
+    phase = public["phase"]
+    if phase not in ("play", "round_end") \
+            or type(public["terminal"]) is not bool \
+            or public["terminal"] is not (phase == "round_end"):
+        raise WorldAfterstateError("canonical snapshot phase drift")
+    banker = _seat(public["banker"], "snapshot banker")
+    turn = public["turn"]
+    if turn is not None:
+        turn = _seat(turn, "snapshot turn")
+    if (phase == "play" and turn is None) \
+            or (phase == "round_end" and turn is not None):
+        raise WorldAfterstateError("canonical snapshot turn drift")
+    rank = public["trump_rank"]
+    suit = public["trump_suit"]
+    if type(rank) is not str or rank not in RANKS \
+            or suit not in ("S", "H", "D", "C", None) \
+            or type(public["trump_is_nt"]) is not bool \
+            or public["trump_is_nt"] is not (suit is None) \
+            or type(public["first_round"]) is not bool:
+        raise WorldAfterstateError("canonical snapshot trump metadata drift")
+    for key in ("attacker_points", "kitty_bonus"):
+        if isinstance(public[key], bool) or not isinstance(public[key], int) \
+                or public[key] < 0:
+            raise WorldAfterstateError(
+                "canonical snapshot score metadata drift")
+    last_winner = public["last_trick_winner"]
+    if last_winner is not None:
+        _seat(last_winner, "snapshot last-trick winner")
+    if public["message"] is not None and type(public["message"]) is not str:
+        raise WorldAfterstateError("canonical snapshot message drift")
+
+    declaration = public["declaration"]
+    normalized_declaration = None
+    if declaration is not None:
+        if type(declaration) is not dict \
+                or set(declaration) != {"seat", "cards", "strength"} \
+                or isinstance(declaration["strength"], bool) \
+                or not isinstance(declaration["strength"], int):
+            raise WorldAfterstateError(
+                "canonical snapshot declaration drift")
+        normalized_declaration = {
+            "seat": _seat(declaration["seat"], "snapshot declaration seat"),
+            "cards": _cards(
+                declaration["cards"], "snapshot declaration cards"),
+            "strength": declaration["strength"],
+        }
+
+    hands_value = complete["hands"]
+    if type(hands_value) not in (list, tuple) or len(hands_value) != 4:
+        raise WorldAfterstateError("canonical snapshot hand population drift")
+    remaining_hands = [
+        _cards(hands_value[seat], f"snapshot hand {seat}")
+        for seat in range(4)
+    ]
+    buried = _cards(complete["buried"], "snapshot burial")
+    hand_sizes = public["hand_sizes"]
+    if type(hand_sizes) not in (list, tuple) or len(hand_sizes) != 4 \
+            or any(isinstance(size, bool) or not isinstance(size, int)
+                   or size < 0 for size in hand_sizes) \
+            or list(hand_sizes) != [len(hand) for hand in remaining_hands]:
+        raise WorldAfterstateError("canonical snapshot hand-size drift")
+    if len(buried) != 8:
+        raise WorldAfterstateError("canonical snapshot burial-size drift")
+
+    def trick_row(raw: object, label: str, *, completed: bool) \
+            -> tuple[int, list[tuple[int, list[str]]]]:
+        if type(raw) is not dict or set(raw) != {
+                "leader", "plays", "winner", "points"}:
+            raise WorldAfterstateError(f"{label} schema drift")
+        leader = _seat(raw["leader"], f"{label} leader")
+        plays = raw["plays"]
+        if type(plays) not in (list, tuple) \
+                or (completed and len(plays) != 4) \
+                or (not completed and not 0 <= len(plays) < 4):
+            raise WorldAfterstateError(f"{label} play population drift")
+        normalized_plays: list[tuple[int, list[str]]] = []
+        for index, play in enumerate(plays):
+            if type(play) is not dict or set(play) != {"seat", "cards"}:
+                raise WorldAfterstateError(f"{label} play schema drift")
+            normalized_plays.append((
+                _seat(play["seat"], f"{label} play seat"),
+                _cards(play["cards"], f"{label} play cards")))
+        if completed:
+            _seat(raw["winner"], f"{label} winner")
+            if isinstance(raw["points"], bool) \
+                    or not isinstance(raw["points"], int) \
+                    or raw["points"] < 0:
+                raise WorldAfterstateError(f"{label} score drift")
+        elif raw["winner"] is not None or raw["points"] != 0:
+            raise WorldAfterstateError(f"{label} unresolved state drift")
+        return leader, normalized_plays
+
+    completed_value = public["completed_tricks"]
+    if type(completed_value) not in (list, tuple):
+        raise WorldAfterstateError(
+            "canonical snapshot completed-trick population drift")
+    completed = [
+        trick_row(raw, f"completed trick {index}", completed=True)
+        for index, raw in enumerate(completed_value)
+    ]
+    current_value = public["current_trick"]
+    if phase == "play":
+        if current_value is None:
+            raise WorldAfterstateError("canonical snapshot current trick drift")
+        current = trick_row(current_value, "current trick", completed=False)
+    else:
+        if current_value is not None:
+            raise WorldAfterstateError("terminal snapshot retained current trick")
+        current = None
+
+    initial_hands = [list(hand) for hand in remaining_hands]
+    for _leader, plays in [*completed, *(() if current is None else (current,))]:
+        for seat, cards in plays:
+            initial_hands[seat].extend(cards)
+    if any(len(hand) != 25 for hand in initial_hands):
+        raise WorldAfterstateError(
+            "canonical snapshot cannot reconstruct 25-card hands")
+    physical = Counter(buried)
+    for hand in initial_hands:
+        physical.update(hand)
+    if physical != Counter(make_deck()):
+        raise WorldAfterstateError(
+            "canonical snapshot violates physical deck conservation")
+
+    rnd = Round(rank, banker, random.Random(0))
+    rnd.deck = make_deck()
+    rnd.kitty = list(buried)
+    rnd._deal_pos = 100
+    rnd.hands = [list(hand) for hand in initial_hands]
+    rnd.banker = banker
+    rnd.first_round = public["first_round"]
+    rnd.phase = "play"
+    rnd.turn = banker
+    rnd.declaration = normalized_declaration
+    if normalized_declaration is not None \
+            and rnd._declaration_strength(normalized_declaration["cards"]) \
+            != normalized_declaration["strength"]:
+        raise WorldAfterstateError(
+            "canonical snapshot declaration strength drift")
+    rnd.passed = set()
+    rnd.ordering = Ordering(suit, rank)
+    rnd.trump_suit = suit
+    rnd.trump_is_nt = public["trump_is_nt"]
+    rnd.buried = list(buried)
+    rnd.trick = Trick(leader=banker)
+    rnd.last_trick = None
+    rnd.history = []
+    rnd.attacker_points = 0
+    rnd.kitty_bonus = 0
+    rnd.last_trick_winner = None
+    rnd.message = None
+    rnd._trusted_rollout = False
+
+    try:
+        for leader, plays in completed:
+            if rnd.phase != "play" or rnd.trick is None \
+                    or rnd.trick.leader != leader:
+                raise WorldAfterstateError(
+                    "canonical snapshot completed-trick leader drift")
+            for seat, cards in plays:
+                rnd.play(seat, list(cards))
+        if current is not None:
+            leader, plays = current
+            if rnd.phase != "play" or rnd.trick is None \
+                    or rnd.trick.leader != leader:
+                raise WorldAfterstateError(
+                    "canonical snapshot current-trick leader drift")
+            for seat, cards in plays:
+                rnd.play(seat, list(cards))
+    except WorldAfterstateError:
+        raise
+    except Exception as exc:
+        raise WorldAfterstateError(
+            "canonical snapshot engine replay failed") from exc
+
+    # A failed-throw message is not recoverable from accepted play cards.
+    # It is actor-visible metadata but not a V0 tensor, so retain it only after
+    # all mechanics have been independently reconstructed.
+    rnd.message = public["message"]
+    reconstructed = canonical_successor(rnd, 0)
+    if canonical_json_bytes(reconstructed) != canonical_json_bytes(value):
+        raise WorldAfterstateError("canonical snapshot reconstruction drift")
+    return rnd
+
+
+def build_afterstate_audit_from_snapshot(
+        prestate: Mapping[str, Any], action: Sequence[str]) -> dict[str, Any]:
+    """Apply one root action to a seed-free complete-world snapshot."""
+    if type(prestate) is not dict:
+        raise WorldAfterstateError("snapshot prestate must be an exact object")
+    source_copy = copy.deepcopy(prestate)
+    world = replay_canonical_successor(source_copy)
+    root_seat = 0
+    if world.phase != "play" or world.trick is None or world.turn != root_seat:
+        raise WorldAfterstateError(
+            "snapshot prestate must be a root play decision")
+    canonical_prestate = canonical_successor(world, root_seat)
+    attempted_action = _cards(action, "root action")
+    if not attempted_action:
+        raise WorldAfterstateError("root action must not be empty")
+    complete_world = {
+        "hands": {str(seat): sorted(world.hands[seat]) for seat in range(4)},
+        "buried": sorted(world.buried),
+    }
+    try:
+        world.play(root_seat, list(attempted_action))
+    except Exception as exc:
+        raise WorldAfterstateError("root action is not engine legal") from exc
+    successor = canonical_successor(world, root_seat)
+    return {
+        "schema": AUDIT_SCHEMA,
+        "source_state": source_copy,
+        "complete_world_pre_action": complete_world,
+        "root_seat": root_seat,
+        "attempted_action": list(attempted_action),
+        "prestate": canonical_prestate,
+        "prestate_sha256": _sha256(canonical_prestate),
+        "successor": successor,
+        "successor_sha256": _sha256(successor),
+    }
+
+
 def build_afterstate_audit(
         source_state: Mapping[str, Any], hands: Mapping[int, Sequence[str]],
         buried: Sequence[str], action: Sequence[str]) -> dict[str, Any]:
@@ -361,7 +660,19 @@ def reopen_afterstate_audit(record: Mapping[str, Any]) -> Round:
             or type(world_payload["hands"]) is not dict \
             or set(world_payload["hands"]) != {"0", "1", "2", "3"}:
         raise WorldAfterstateError("complete pre-action world schema drift")
-    rnd = replay_root_state(copy.deepcopy(record["source_state"]))
+    source_state = copy.deepcopy(record["source_state"])
+    if type(source_state) is not dict:
+        raise WorldAfterstateError("source state must be an exact object")
+    source_schema = source_state.get("schema")
+    if source_schema == ROOT_REPLAY_SCHEMA:
+        rnd = replay_root_state(source_state)
+    elif source_schema == SUCCESSOR_SCHEMA:
+        if root_seat != 0:
+            raise WorldAfterstateError(
+                "canonical snapshot root-seat binding drift")
+        rnd = replay_canonical_successor(source_state)
+    else:
+        raise WorldAfterstateError("source state schema drift")
     if rnd.turn != root_seat:
         raise WorldAfterstateError("source state root-seat binding drift")
     hands = {seat: world_payload["hands"][str(seat)] for seat in range(4)}
@@ -491,11 +802,13 @@ class WorldAfterstateExampleV0:
             raise WorldAfterstateError("example successor SHA-256 is invalid")
 
 
-def build_afterstate_tensors(record: Mapping[str, Any]) \
+def _tensors_from_round(rnd: Round, root_seat: int) \
         -> WorldAfterstateTensorsV0:
-    """Reopen the audit row, then build only successor-state model inputs."""
-    rnd = reopen_afterstate_audit(record)
-    root_seat = _seat(record["root_seat"], "root seat")
+    """Encode one already-reopened complete state from a named perspective."""
+    root_seat = _seat(root_seat, "root seat")
+    if type(rnd) is not Round or rnd.phase not in ("play", "round_end") \
+            or rnd.banker is None or rnd.ordering is None:
+        raise WorldAfterstateError("tensor source round identity drift")
     public = np.asarray(
         [*encode_obs(rnd, root_seat), float(rnd.phase == "round_end")],
         dtype=np.float32)
@@ -518,6 +831,85 @@ def build_afterstate_tensors(record: Mapping[str, Any]) \
     return tensors
 
 
+def build_afterstate_tensors(record: Mapping[str, Any]) \
+        -> WorldAfterstateTensorsV0:
+    """Reopen the audit row, then build only successor-state model inputs."""
+    rnd = reopen_afterstate_audit(record)
+    root_seat = _seat(record["root_seat"], "root seat")
+    return _tensors_from_round(rnd, root_seat)
+
+
+def build_root_rotated_afterstate_tensors(
+        record: Mapping[str, Any], offset: int) -> WorldAfterstateTensorsV0:
+    """Cyclically relabel every absolute seat, then encode from the new root.
+
+    This is the executable rotation witness for E4.  It starts from the
+    engine-reopened successor, rotates the actual ``Round`` graph (hands,
+    banker, turn, declaration, tricks, winners, and plays), and requires the
+    resulting canonical successor to remain byte-identical in root-relative
+    coordinates before tensors are returned.
+    """
+    if isinstance(offset, bool) or not isinstance(offset, int) \
+            or not 1 <= offset <= 3:
+        raise WorldAfterstateError("root rotation offset drift")
+    base = reopen_afterstate_audit(record)
+    root = _seat(record["root_seat"], "root seat")
+    rotated: Round = copy.deepcopy(base)
+
+    def seat(value: int | None) -> int | None:
+        return None if value is None else (value + offset) % 4
+
+    hands = [[] for _ in range(4)]
+    for original, hand in enumerate(rotated.hands):
+        hands[(original + offset) % 4] = hand
+    rotated.hands = hands
+    rotated.banker = seat(rotated.banker)
+    rotated.turn = seat(rotated.turn)
+    rotated.last_trick_winner = seat(rotated.last_trick_winner)
+    rotated.passed = {seat(value) for value in rotated.passed}
+    if rotated.declaration is not None:
+        rotated.declaration["seat"] = seat(rotated.declaration["seat"])
+
+    seen: set[int] = set()
+    for trick in [*rotated.history, rotated.trick, rotated.last_trick]:
+        if trick is None or id(trick) in seen:
+            continue
+        seen.add(id(trick))
+        trick.leader = seat(trick.leader)
+        trick.winner = seat(trick.winner)
+        for play in trick.plays:
+            play.seat = seat(play.seat)
+        # These rollout-only caches are not public identity and cannot be
+        # transported safely across an explicit relabeling.
+        trick.incumbent = None
+        trick.running_points = None
+    rotated_root = (root + offset) % 4
+    if canonical_json_bytes(canonical_successor(base, root)) \
+            != canonical_json_bytes(
+                canonical_successor(rotated, rotated_root)):
+        raise WorldAfterstateError(
+            "root rotation changed canonical successor bytes")
+    return _tensors_from_round(rotated, rotated_root)
+
+
+def build_preaction_tensors(record: Mapping[str, Any]) \
+        -> WorldAfterstateTensorsV0:
+    """Build the frozen action-ablation input from the exact pre-action state.
+
+    Reopening the complete audit first proves that this is not a caller-supplied
+    alternate state.  ``prestate`` is already canonicalized into the root
+    actor's relative seat frame, so its acting seat is exactly zero.
+    """
+    _ = reopen_afterstate_audit(record)
+    prestate = record.get("prestate")
+    if type(prestate) is not dict:
+        raise WorldAfterstateError("pre-action tensor source drift")
+    rnd = replay_canonical_successor(prestate)
+    if rnd.phase != "play" or rnd.turn != 0:
+        raise WorldAfterstateError("pre-action tensor source drift")
+    return _tensors_from_round(rnd, 0)
+
+
 def bind_outcome_to_afterstate(
         record: Mapping[str, Any], outcome: Mapping[str, Any]) \
         -> WorldAfterstateExampleV0:
@@ -532,6 +924,28 @@ def bind_outcome_to_afterstate(
     example = WorldAfterstateExampleV0(
         tensors=build_afterstate_tensors(record),
         signed_level_category=outcome["signed_level_category"],
+        successor_sha256=record["successor_sha256"],
+    )
+    example.validate()
+    return example
+
+
+def bind_outcome_to_preaction(
+        record: Mapping[str, Any], outcome: Mapping[str, Any]) \
+        -> WorldAfterstateExampleV0:
+    """Bind the true successor outcome to the reviewed pre-action ablation."""
+    rnd = reopen_afterstate_audit(record)
+    validate_outcome(outcome)
+    if outcome["successor_sha256"] != record["successor_sha256"]:
+        raise WorldAfterstateError("outcome successor binding drift")
+    root_seat = _seat(record["root_seat"], "root seat")
+    if outcome["root_is_attacker"] is not rnd.is_attacker(root_seat):
+        raise WorldAfterstateError("outcome root perspective binding drift")
+    example = WorldAfterstateExampleV0(
+        tensors=build_preaction_tensors(record),
+        signed_level_category=outcome["signed_level_category"],
+        # Predictions remain bound to the candidate successor even though the
+        # ablation deliberately withholds that successor from the model.
         successor_sha256=record["successor_sha256"],
     )
     example.validate()

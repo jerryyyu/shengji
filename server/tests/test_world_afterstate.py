@@ -10,15 +10,23 @@ import torch
 from shengji.ai.registry import make_bot
 from shengji.engine.cards import RANKS
 from shengji.engine.round import Round
+from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate import (
     OUTCOME_CLASSES,
     WorldAfterstateError,
+    actor_visible_root_identity,
     bind_outcome_to_afterstate,
+    bind_outcome_to_preaction,
     build_afterstate_audit,
+    build_afterstate_audit_from_snapshot,
     build_afterstate_tensors,
+    build_preaction_tensors,
+    build_root_rotated_afterstate_tensors,
     build_outcome,
+    canonical_successor,
     category_signed_level,
     reopen_afterstate_audit,
+    replay_canonical_successor,
     replay_root_state,
     root_replay,
     signed_level_category,
@@ -105,6 +113,39 @@ def test_engine_transition_reopens_byte_exact_and_model_has_no_action_input():
     assert "action" not in vars(tensors)
 
 
+def test_preaction_control_reopens_the_bound_state_and_withholds_transition():
+    record = _record(plays=1)
+    successor = build_afterstate_tensors(record)
+    preaction = build_preaction_tensors(record)
+    assert not np.array_equal(preaction.public, successor.public) \
+        or not np.array_equal(preaction.history, successor.history) \
+        or not np.array_equal(preaction.world, successor.world)
+    reopened = reopen_afterstate_audit(record)
+    outcome = build_outcome(
+        record["successor_sha256"], 120,
+        reopened.is_attacker(record["root_seat"]))
+    example = bind_outcome_to_preaction(record, outcome)
+    assert example.successor_sha256 == record["successor_sha256"]
+    assert np.array_equal(example.tensors.public, preaction.public)
+
+    forged = copy.deepcopy(record)
+    forged["prestate"]["public"]["attacker_points"] += 10
+    with pytest.raises(WorldAfterstateError,
+                       match="prestate reconstruction drift"):
+        build_preaction_tensors(forged)
+
+
+def test_root_rotation_relabels_the_engine_round_and_preserves_inputs():
+    record = _record(plays=5)
+    base = build_afterstate_tensors(record)
+    for offset in (1, 2, 3):
+        rotated = build_root_rotated_afterstate_tensors(record, offset)
+        for name in ("public", "history", "world", "perspective"):
+            assert np.array_equal(getattr(base, name), getattr(rotated, name))
+    with pytest.raises(WorldAfterstateError, match="rotation offset"):
+        build_root_rotated_afterstate_tensors(record, 0)
+
+
 def test_successor_reconstruction_guard_refuses_coordinated_visible_drift():
     record = _record()
     forged = copy.deepcopy(record)
@@ -118,6 +159,25 @@ def test_successor_reconstruction_guard_refuses_coordinated_visible_drift():
     with pytest.raises(WorldAfterstateError,
                        match="successor reconstruction drift"):
         reopen_afterstate_audit(forged)
+
+
+def test_seed_free_snapshot_replays_history_and_root_action_through_engine():
+    natural = _record(plays=2)
+    replayed_prestate = replay_canonical_successor(natural["prestate"])
+    assert replayed_prestate.turn == 0
+    snapshot = build_afterstate_audit_from_snapshot(
+        natural["prestate"], natural["attempted_action"])
+    assert snapshot["prestate"] == natural["prestate"]
+    assert snapshot["successor"] == natural["successor"]
+    assert canonical_json_bytes(snapshot["successor"]) \
+        == canonical_json_bytes(
+            canonical_successor(reopen_afterstate_audit(snapshot), 0))
+
+    forged = copy.deepcopy(natural["prestate"])
+    forged["public"]["attacker_points"] += 10
+    with pytest.raises(WorldAfterstateError,
+                       match="canonical snapshot reconstruction drift"):
+        replay_canonical_successor(forged)
 
 
 def test_root_action_is_replayed_by_engine_and_cannot_be_substituted():
@@ -224,6 +284,43 @@ def test_public_successor_is_hidden_twin_invariant_but_world_tensor_is_not():
     assert np.array_equal(natural_tensors.perspective,
                           twin_tensors.perspective)
     assert not np.array_equal(natural_tensors.world, twin_tensors.world)
+
+
+def test_actor_visible_selection_identity_ignores_hidden_twins_but_binds_ballot():
+    row, _hands, _buried, _action = _state(plays=1)
+    rnd = replay_root_state(row)
+    root = row["root_seat"]
+    candidates = [[card] for card in dict.fromkeys(rnd.hands[root])][:2]
+    assert len(candidates) == 2
+    natural = actor_visible_root_identity(rnd, root, candidates)
+
+    twin = copy.deepcopy(rnd)
+    hidden = [seat for seat in range(4) if seat != root]
+    left, right = hidden[:2]
+    pair = next((
+        (i, j) for i, left_card in enumerate(twin.hands[left])
+        for j, right_card in enumerate(twin.hands[right])
+        if left_card != right_card), None)
+    assert pair is not None
+    i, j = pair
+    twin.hands[left][i], twin.hands[right][j] = (
+        twin.hands[right][j], twin.hands[left][i])
+    assert actor_visible_root_identity(twin, root, candidates) == natural
+    assert actor_visible_root_identity(
+        rnd, root, list(reversed(candidates))) != natural
+
+
+def test_actor_visible_selection_identity_refuses_forged_candidates():
+    row, _hands, _buried, _action = _state(plays=1)
+    rnd = replay_root_state(row)
+    root = row["root_seat"]
+    candidate = [rnd.hands[root][0]]
+    with pytest.raises(WorldAfterstateError, match="duplicates"):
+        actor_visible_root_identity(rnd, root, [candidate, candidate])
+    absent = next(card for card in ("BJ", "LJ", "CA", "D2")
+                  if card not in rnd.hands[root])
+    with pytest.raises(WorldAfterstateError, match="absent"):
+        actor_visible_root_identity(rnd, root, [[absent]])
 
 
 def test_terminal_afterstate_is_reopenable_and_tensorized():

@@ -5568,3 +5568,64 @@ is. No merge, initialize, test-open, retry, deployment or strength authority is 
 
 Read-only on all evidence; mutations confined to a scratch worktree under
 `/Users/jerryyu/.claude/jobs/f4b0ea92/tmp` and reverted. — Claude (session `f4b0ea92`)
+
+## 2026-08-28 — PR #159 pre-review, third finding: **both import byte-binding guards have no failing-direction witness** — verified at the moved head `56bd35f0`, and a note that the head has drifted off the pinned `34ab86cd`
+
+Adds to `47cd988` (`test_split_opened`) and `54869f5` (forwarding fix). Same class, different guards, and these two are the ones that bind the calibration on disk to the **reviewed** import record. No marker appended; retained for the consolidated review.
+
+### The head moved during the pre-review
+
+The ask pins `34ab86cde4479534775e5168fccc7ae2d1d54400`. The branch tip is now
+`56bd35f0c45080121d094f6906ab8d1053ca9e6b` ("Measure R4 terminal memory at cgroup scope",
+4 files, +139/−24: `BELIEF_V1_V2_DESIGN.md`, the runner, the module, and one new test
+`test_r4_terminal_memory_uses_whole_cgroup_peak_not_rss_sum`). The consolidated marker must be
+issued against whatever head is current then, with this delta reviewed — not carried over from
+`34ab86cd`. Everything below is measured at **`56bd35f0`** for that reason.
+
+### The finding
+
+`reopen_bound_imported_calibration` (line 574) and `reopen_imported_calibration` (line 543) each
+close with the same clause:
+
+```python
+if any(_sha256(raw[key]) != digest for key, digest in expected.items()):
+    raise BeliefV2R4TerminalParallelError("R4 [bound ]imported calibration byte binding drift")
+```
+
+That is what proves the seven sealed inputs on disk — freeze, admission, review marker,
+consumption tombstone, source spec, selection manifest, reconstructed outer — are the exact bytes
+the **reviewed import record** names. I neutralised each to `if False` **separately** and ran the
+full suite each time:
+
+| mutation | result |
+|---|---|
+| bound variant (574) → `if False` | **513 passed / 4 skipped** — nothing red |
+| non-bound variant (543) → `if False` | **513 passed / 4 skipped** — nothing red |
+
+(The same bound mutation at `34ab86cd` gave 512/4 — the count differs only by the new cgroup test.)
+Source restored to 0 modified files after each run; `git status --porcelain` = 0.
+
+**Why nothing catches it:** all three tests that name `reopen_bound_imported_calibration`
+(`test_belief_v2_result.py:948, 1014, 1463`) `monkeypatch.setattr` it away, so its body never
+executes under test. The inner `_reopen_bound_calibration_selection` *is* witnessed in the failing
+direction (`match="file byte binding drift"` at :915-923) — that check is fine. The unwitnessed
+layer is the outer one.
+
+**Residual risk, stated precisely rather than dramatically.** The inner check still validates the
+selection directory against its own manifest, and `_reopen_sealed_calibration_source` still walks
+the admission/tombstone chain, so this is not "any bytes pass". What goes unenforced is
+*which* calibration: a substituted-but-internally-consistent root, or an import record edited
+after review, would flow into readiness, the sole test opening, and reconstruction unnoticed —
+and this is a lane that now holds **two** byte-identical calibrations on two hosts, so
+"internally consistent but not the reviewed one" is a live shape, not a hypothetical.
+
+**Fix, one test per variant:** build the import record, corrupt one of the seven digests (or one
+input file's bytes), assert `BeliefV2R4TerminalParallelError` with `match="byte binding drift"` —
+and pick a field the *outer* clause owns, so the inner check does not fire first and witness the
+wrong guard, which is how several earlier masked witnesses in this lane were born.
+
+Coverage limits: I went deep on the import/authentication path, the legacy-cache forwarding, the
+capacity receipt validator and the decision-pool startup barrier; I did not line-audit the
++3607 delta. Capacity receipt and auto-freeze are still generating on Cloud and remain for the
+consolidated review, along with confirming these three findings are closed. No authority granted
+or withdrawn. — Claude (session `68f9c8bd`)

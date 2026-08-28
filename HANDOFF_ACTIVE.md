@@ -11,42 +11,25 @@
 > not review authority. If this snapshot conflicts with an exact marker on
 > remote main, the latest authentic exact-head marker controls.
 
-Last reconciled: **2026-08-28 05:15 EDT**. Remote main before this refresh:
-`8032bdf51e6e0256a013583145cfd625e569a5e5`.
+Last reconciled: **2026-08-28 06:00 EDT**. Remote main before this refresh:
+`f95b30619db06b59ca28af90b01b9abaca57aea4`.
 
 ## Review queue
 
-**Top priority — R4's final consolidated review is actionable now. Do not
-split it into another source round and freeze round.** Review PR #159 exact
-execution head `56bd35f0c45080121d094f6906ab8d1053ca9e6b`, authenticated
-import record SHA
-`61d62ddb2229c8d6f6acd7eb4b630a96063b009248091be31def4790b29ac48e`,
-the capacity receipt below, and the freshly published freeze:
-
-- `/opt/belief-r4-terminal-parallel-freeze-56bd35f-r1.json`
-- 39,048 canonical bytes, mode `0400`, one link
-- external/internal SHA-256
-  `0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951`
-- runner-generated expected marker SHA-256
-  `0ba6917cb475f2ebcf1ac26549a9040332a5ebb4df7db3be7568b092ee4a7312`
-- exact live source/runtime/native/boot reopen: PASS
-- destination root `/opt/belief-r4-terminal-parallel-v1-r1`: absent
-- old test-attempt/terminal/partial namespaces: absent; old authenticated
-  admission-consumption tombstone exists at
-  `/opt/belief-r4-completion-v1-r3.consumed.json`, SHA-256
-  `37327ce322413ad01163c8f601dda366d75fb149574729ae808da2c2d9239b9f`
-
-If clean, append exactly one canonical marker beginning
-`BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW` to canonical
-`HANDOFF_REVIEW.md`. Approve in the same marker only this ordered envelope:
-initialize once; run score-free pretest readiness in its own unit; only a
-canonical readiness PASS may launch the sole scientific test opening with
-immediate reconstruction; only scientific success may launch the independent
-terminal verifier. All long units remain exact-head/runtime, `Restart=no`,
-`KillMode=control-group`, `Type=exec`, `RuntimeMaxSec=48h`,
-`MemoryMax=25769803776`, `MemorySwapMax=0`, `UMask=0077`, and sanitized
-`PYTHONPATH`. No retry, training, merge, gameplay, strength, promotion, or
-deployment authority.
+**Top priority — no R4 review is pending.** Claude's one consolidated PASS is
+canonical at main commit `f95b30619db06b59ca28af90b01b9abaca57aea4` and its
+machine-generated marker authenticates exact freeze `0af5dc75…d4951` at
+execution head `56bd35f0…ca9e6b`. Initialization succeeded once at `09:43:33Z`:
+admission SHA `f2f3c94fe29ed7da934e844c617bb35cbebca96aab2355efe1c923890078828a`,
+new consumption tombstone `f9f27795…b576ea`, and all test/terminal paths
+absent. Score-free readiness unit
+`belief-r4-terminal-readiness-56bd35f-r1` is active under invocation
+`853d147cba084e75a7f40d1fc7f0dd78`, `Restart=no`, `NRestarts=0`. It is
+reopening the sealed 53-GB state and warming 16 workers. **Do not launch the
+scientific unit from the review PASS alone:** only the readiness unit's
+canonical JSON PASS may authorize the sole test opening. Then scientific
+success alone may launch the independent verifier. No retry, training, merge,
+gameplay, strength, promotion, or deployment authority.
 
 Capacity receipt:
 `/opt/belief-r4-terminal-capacity-56bd35f-r1.json`, 5,444 canonical bytes,
@@ -168,9 +151,9 @@ for the scoring-pool lifetime and a 16-party startup barrier, closing the real
 Linux file-descriptor and partial-worker-start failures without changing score
 semantics. Do not start a second diagnostic or alternate repair.
 
-The review order is: **(1) R4's now-actionable consolidated final packet
-above**, then (2) PR #160 repaired head `2394140`'s consolidated Luna0 source
-and launch packet. There is no current R5 or PT-Claude review request.
+The only remaining actionable review is PR #160 repaired head `2394140`'s
+consolidated Luna0 source and launch packet; it must not disturb R4 readiness.
+There is no current R4, R5, or PT-Claude review request.
 
 Do not create an intermediate R5 review. Do not treat a progress update as a
 review request.
@@ -181,7 +164,7 @@ review request.
 |---|---|---|---|---|
 | Mini | PT-Claude Opus r3 active; PT-Luna0 pending repaired-head review | Claude `a82adb9b7139b0490650ab7a55533e1fccaa3ab7`; Luna `2394140bcdaebf72d81912a55ac18f5051848fe5` | Opus r3 has attempted 24/52 records; no public result exists. Luna's valid model-wiring HOLD is repaired and mutation-proven; exact runtime/parents remain unchanged and design is `939c6441…a422d`. Launch awaits only one consolidated repaired-head PASS. | Claude monitor only; after PASS, Luna may run concurrently in its separate output/private namespaces; never pool attempts or infer efficacy until each seals and independently reopens |
 | Perf Cloud | R5 paused; prior R4 calibration sealed/inactive | preserved source `0ff18349c76b13e9f594e6d84fe9b34b04a91f04` | the disposable resumed diagnostic crossed the old FD ceiling and published calibration-selection artifacts, then was operator-stopped without a receipt on 2026-08-27 after the user requested a design pause. All prior rehearsal artifacts remain preserved; no R5 process is active. | no R5 design, source, rehearsal, freeze, review, or scientific action until R4 is complete and the design is discussed with the user |
-| Strength Cloud | sealed R4 calibration + final optimized terminal review | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | capacity `df51a8f…a6051e` and freeze `0af5dc75…d4951` published and independently reopened; exact 13-rank/924-decision parity, 16 workers, 1.727x, 19.61 GiB under 24 GiB, both terminal projections under 48h. New execution root and test namespace remain absent. | one consolidated final review now; after canonical PASS, initialize → readiness → sole test+immediate reconstruction → independent verification, with each transition gated by the prior canonical success |
+| Strength Cloud | R4 score-free readiness | calibration source `e10cb3d3426d758f2d757d41462aba6a06bc60c8`; repaired terminal `56bd35f0c45080121d094f6906ab8d1053ca9e6b` | consolidated PASS `f95b306` authenticated; root initialized once; readiness invocation `853d147c…dd78` active with test/terminal paths absent | wait for canonical readiness PASS; then launch sole test+immediate reconstruction; only scientific success launches independent verification |
 | Air | none | — | idle | none |
 
 No R5 process is running. Preserve its existing artifacts, but do not resume,

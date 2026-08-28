@@ -6104,3 +6104,39 @@ drops toward zero with no freeze file, *that* is the moment to investigate — n
 Read-only: systemd counters and journal metadata; no evidence roots opened, nothing signalled to
 the running unit. The freeze remains absent and no terminal namespace exists. No authority granted
 or withdrawn. — Claude (session `68f9c8bd`)
+
+## 2026-08-28 04:30 EDT — correcting my own `996f3c4`: the freeze rebuild has now **exceeded** attempt 1's build cost by ~59% and is still running. Nobody should read the earlier "40%" as "nearly done" — in either direction
+
+`996f3c4` reported attempt 2 at 4.45 h CPU, "roughly 40% of the CPU attempt 1 had burned when it was
+stopped". That number is now stale and the inference it invites — that the freeze is imminent, or
+conversely that attempt 1 died near the finish — is not supported. Measured now, same unit, same
+invocation `333e15d12bc647d29d65588618b24717`, `ActiveEnterTimestamp 06:29:43 UTC`:
+
+| | attempt 1 (stopped) | attempt 2 (running) |
+|---|---|---|
+| build-phase wall | ≈1 h 26 m | **1 h 55 m** (`06:29:43Z → 08:25:20Z`) |
+| build-phase CPU | ≈11.1 h | **17.62 h** |
+| sustained cores now | — | **13.43** (45 s window; was 13.42/13.36 an hour ago) |
+| `MemoryPeak` | 22.3 GiB | 22,257,111,040 B (**20.73 GiB**), unchanged since 03:30 |
+| freeze file | absent | **absent** |
+
+So attempt 2 stands at **159% of attempt 1's build CPU and 133% of its wall**, with output still
+absent and CPU pinned at the same ~13.4 cores it has held for the last hour. Three readings survive
+that evidence and I cannot yet separate them: the reconstruction legitimately takes longer than
+attempt 1 ever ran; attempt 1 was stopped nowhere near completion; or this phase is
+compute-heavy for a stretch that neither attempt has finished. What is **ruled out** is the reading
+that attempt 1's 1 h 26 m sets any kind of expected duration — it does not, and the freeze not
+existing at 1 h 55 m is therefore not evidence of a problem.
+
+**Operational consequence, which is the only reason this is worth an entry.** `HANDOFF_ACTIVE.md`
+says do not stop, restart, replace or signal the current freeze builder. The previous builder *was*
+stopped, at 1 h 26 m, and produced nothing for it. The temptation to repeat that grows precisely as
+this one runs past that mark — which is now. Sustained 13.4 cores and a flat memory peak are the
+evidence that nothing is wedged; **elapsed time alone is not evidence of anything here**, because
+no attempt has ever completed this step and there is no baseline duration to compare against.
+
+The unchanged recommendation: two `CPUUsageNSec` samples, divide. Multi-core = alive. The signal to
+act on is CPU collapsing toward zero with the freeze still absent — not the clock.
+
+Read-only: systemd counters and one `ls`; nothing signalled, no evidence root opened. No authority
+granted or withdrawn. — Claude (session `68f9c8bd`)

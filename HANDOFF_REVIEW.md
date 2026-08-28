@@ -6582,3 +6582,67 @@ step" framing as overstated given the flat peak.
 
 Read-only: two systemd property samples of a unit I did not touch, and source at `56bd35f0`.
 Nothing signalled. — Claude (session `f4b0ea92`)
+
+## 2026-08-28 08:35 EDT — the one-shot is consumed at **phase 1 of 6**, before any scoring: verified from source, not inferred. The live scientific unit has a progress reporter and has not yet reached that point
+
+`0fe7250` labelled this "*inferred, mechanistically grounded, not measured*": that a killed test
+opening probably consumes the one-shot. It is now verified from the exact head, and it is more
+precise than "probably" — there is a specific instruction where the run becomes irreversible, and it
+announces itself.
+
+### The sequence at `56bd35f0`, `belief_v2_r4_completion.py:1140–1170`
+
+```python
+if completion_attempt_path.exists() or ... or partial.exists() ...:
+    decision_pool.close()
+    raise BeliefV2R4CompletionError("R4 completion terminal namespace is already occupied")
+publish_exclusive_bytes(completion_attempt_path, canonical_json_bytes(completion_attempt))
+_fsync_directory(root)
+progress(1, 6, "r4-test-opening-recorded")
+...
+partial.mkdir(mode=0o700)
+publish_exclusive_bytes(partial / "attempt.json", ...)
+_fsync_directory(root)
+...
+    synthetic, human = _score_test_populations(...)      # <- all the expensive work is AFTER
+```
+
+`r4-completion-test-attempt.json` and `terminal.partial` are both members of
+`TERMINAL_NAMESPACE = {"r4-completion-test-attempt.json", "terminal.partial", "terminal",
+"r4-completion-terminal.json"}`. Every path that could re-enter refuses on their presence —
+readiness with `"R4 terminal pretest namespace is occupied"`, this function with
+`"R4 completion terminal namespace is already occupied"`. The source says so in its own comment:
+*"The fresh outer attempt above binds the repaired executable and prevents any second opening under
+this recovery."*
+
+So: the attempt marker is published **and fsynced before a single decision is scored**. Any
+interruption after that instruction — OOM, deadline expiry, or an operator stop like the one at
+`06:29:42Z` on the freeze watcher — permanently spends R4's single test opening. **This is correct
+design, not a defect**: durable-first is exactly what stops a held-out split being re-rolled
+quietly. I am recording it because the stakes of the live unit are now a measured fact rather than
+a guess.
+
+### Operationally: phase 1/6 is observable, and it has not fired
+
+Unlike `build-freeze` (`ddfde5d`: no reporter at all) and `pretest-readiness` (emitted none), the
+scientific stage **does** have a six-phase reporter — `1/6 r4-test-opening-recorded`,
+`2/6 r4-test-inputs-reopened`, `3/6 r4-test-populations-scored`, and so on.
+
+Measured on `belief-r4-terminal-scientific-56bd35f-r1` at `12:32:51Z`:
+`ActiveEnterTimestamp 12:23:19Z` → **9 m 32 s elapsed**, `CPUUsageNSec 573,643,781,000`
+(**9 m 34 s CPU**, ≈1.0 core), `MemoryPeak 3,144,290,304` (2.93 GiB) against
+`MemoryMax 25,769,803,776`, `MemorySwapMax=0`, `NRestarts=0`, `RuntimeMaxUSec=2d`,
+invocation `f8069d7e5aeb4683b5a77908816a798d`, and **zero `BELIEF_V2_PROGRESS` records**.
+
+One core and 2.93 GiB means it is still in the single-threaded reopen, before the 16-worker pool.
+Readiness needed **2 h 38 m** for the equivalent reopen-and-warm, so the first progress record is
+not due for roughly that long. **Until `r4-test-opening-recorded` appears in the journal, the test
+split is still unopened and the run is still abandonable at zero scientific cost. After it appears,
+it is not.** That is the cleanest available signal for anyone deciding whether to touch this unit,
+and it costs one `journalctl | grep`.
+
+The memory question from `0fe7250`/`90cf5ec`/`f7864f9` stays open on the evidence but is not yet
+testable: at 2.93 GiB the pool has not been built. The number to watch is the peak once phase 2
+starts, against the 24.0 GiB cap with swap disabled.
+
+— Claude (session `cc2565ac`)

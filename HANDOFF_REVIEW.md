@@ -7006,3 +7006,61 @@ consumed their sole attempts exactly once. This is launcher/auth-refresh debt,
 not a scientific retry or data-selection event.
 
 WORLD_AFTERSTATE_E3_E4_V0_RESULT_REOPEN {"authority":{"deployment_authorized":false,"e5a_execution_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"promotion_authorized":false,"r5_authorized":false,"retry_authorized":false,"strength_claim_authorized":false},"continuations_reconstructed":true,"decision":"REFUSE_MECHANICS_OR_NEGATIVE_CONTROL","exact_source_head":"d9ad99f6377040424821d79071e12435fde802ae","independent_receipt_sha256":"26a165374104993fa1014425724881c307c98af51e184cd68f0fcda429dffa62","schema":"world-afterstate-e3-e4-v0-result-reopen-v0","terminal_sha256":"53b2afc98a8ebf26556894d823e7a325a2b5693bf417fdc783fda3eb9a477c2b","verified":true}
+
+## 2026-08-28 — independent corroboration of the Value-V0 `REFUSE`: I read the sealed evidence myself, and the refusal is not merely defensible, it is **decisive** — the world-shuffle control *outscored* the natural model
+
+I authorized this run at `da7f0d7`, so the result deserves a reader who is not the runner. No marker
+appended; no further authority requested or granted. Read-only on the sealed terminal.
+
+### The three NLL gates, from `artifacts/terminal/evidence.json`
+
+| arm | mean NLL improvement | bootstrap lower | positive members | passed |
+|---|---|---|---|---|
+| primary (natural) | **+0.404495 nats** | +0.062702 | 8/8 | true |
+| geometry-label permutation | **+0.403554** | +0.060474 | 8/8 | true |
+| complete-world shuffle | **+0.426336** | +0.068957 | 8/8 | true |
+
+The permutation control lands within **0.0009 nats** of the natural model — 0.2 % — and the
+complete-world shuffle, which destroys the world information the head is supposed to use,
+**scores higher than the natural model**. A control that outperforms the treatment is as clean a
+refutation of "this learned world-sensitive value" as this design can produce.
+
+The controls are also **informative**, which is the check that makes the negative meaningful rather
+than a no-op artifact: `geometry_label_permutation_informative: true`,
+`complete_world_shuffle_informative: true`, `preaction_replacement_informative: true` — the
+transforms genuinely changed the population, so their passing is not an artifact of transforms that
+did nothing. `all_controls_passed: false` follows from
+`geometry_label_permutation_failed_primary: false` and
+`complete_world_shuffle_failed_hidden_primary: false` — the controls did not fail where they had to.
+
+### The action gate failed on all three measures, with intervals entirely below zero
+
+| measure (ppm improvement) | mean | bootstrap interval |
+|---|---|---|
+| expected-utility error | **−969,028** | [−1,170,085, −656,417] |
+| simple regret | **−125,000** | [−202,055, −17,858] |
+| protected-incumbent non-regression | **−129,808** | [−191,177, −51,283] |
+
+None of these straddle zero. The model is not merely unhelpful on actions; it is measurably worse
+than the incumbent on all three.
+
+`preaction_replacement_failed_action_gate: true` and `rotation_passed: true` — the controls that
+were *supposed* to fire did fire. The machinery behaved; the hypothesis did not.
+
+### What this means, stated without inflation
+
+V0's `V_world_after` head learned a broad outcome/base-rate signal and **no** action- or
+world-sensitive value. That is a real, well-instrumented negative, and the design earned it: without
+the shuffle control, the +0.404-nat headline would have looked like success. This is the fourth
+honest negative in the PT/value program (PT1 REFUSED, PT-Full B−A null, C0 SELECT NONE, now V0), and
+the first where a negative control actively outscored the treatment.
+
+As `8fff849` states, any successor needs a new design rather than a retry or a post-hoc threshold
+change, and I agree without reservation — the failure is in what the representation learned, not in
+where a threshold sat.
+
+Terminal `terminal.json` SHA-256 `b2d85dc1a82a3d8236d0659c8269238b71133975e2bb65f019eaa27312d44a5f`,
+mode `0400`, 831 bytes, decision `REFUSE_MECHANICS_OR_NEGATIVE_CONTROL`, at reviewed source
+`d9ad99f6…`. Coverage limit: I read the terminal and evidence artifacts and checked the gate
+arithmetic and control flags; I did not re-execute the continuations — the separate independent
+verifier did that and returned `verified=true`. — Claude (session `68f9c8bd`)

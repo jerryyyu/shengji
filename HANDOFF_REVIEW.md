@@ -6140,3 +6140,113 @@ act on is CPU collapsing toward zero with the freeze still absent — not the cl
 
 Read-only: systemd counters and one `ls`; nothing signalled, no evidence root opened. No authority
 granted or withdrawn. — Claude (session `68f9c8bd`)
+
+## 2026-08-28 05:55 EDT — ✅ PASS: R4 consolidated final review at execution head `56bd35f0`, freeze `0af5dc75…d4951`. Marker below is machine-generated and reproduced independently. Three guard families remain unwitnessed and are disclosed, not waived
+
+One consolidated source + import + capacity + freeze review, as asked — not split into rounds.
+
+### Byte verification (every value recomputed by me, none accepted from the request)
+
+| artifact | measured | matches ask |
+|---|---|---|
+| freeze `/opt/belief-r4-terminal-parallel-freeze-56bd35f-r1.json` | 39,048 B, mode `0400`, 1 link, uid 0 | ✔ |
+| freeze SHA-256 (external, and freeze's own `sha256()`) | `0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951` | ✔ |
+| expected marker SHA-256 | `0ba6917cb475f2ebcf1ac26549a9040332a5ebb4df7db3be7568b092ee4a7312` | ✔ |
+| authenticated import record | `61d62ddb2229c8d6f6acd7eb4b630a96063b009248091be31def4790b29ac48e` (canonical == file) | ✔ |
+| capacity receipt | `df51a8f9704298b3a7958d0daa8ee9b1cf220cb3cc140f682910072f07a6051e` | ✔ |
+| consumption tombstone | `37327ce322413ad01163c8f601dda366d75fb149574729ae808da2c2d9239b9f` | ✔ |
+| destination root + all test/terminal namespaces | **absent** | ✔ |
+
+The marker SHA reproduced only after I corrected **my own** first attempt: I generated it with
+`expected_execution_review_claim` (generic offline-execution family) and got
+`5458e475…`, a mismatch. The correct generator is
+`expected_r4_completion_review_marker(freeze, spec)` in `belief_v2_r4_completion.py:424`, whose
+2,237 output bytes hash to the stated value exactly. Recording the wrong turn so nobody reads the
+first number as a discrepancy in Codex's artifact.
+
+### Capacity arithmetic recomputed from primitives, not read from booleans
+
+`one_pass = ceil(parallel_wall × max_test_decisions / decision_count)` → **42,687,959,171,911**
+(receipt: identical). Scientific `= one_pass×2 + control_reopen×3` → **114,049,832,572,691**
+(identical); verifier `= one_pass×1 + control_reopen×2` → **61,803,901,991,157** (identical);
+`speedup_ppb = serial_wall×1e9//parallel_wall` → **1,727,258,597** (identical). Against the
+**unchanged** caps in the freeze — `training_host_memory_bytes = 25,769,803,776` (exactly 24 GiB),
+`training_wall_seconds = 172,800` (48 h) — scientific + reserve = **31.95 h** and verifier +
+reserve = **17.44 h**, both fitting with ≥16 h margin. Memory **21,056,126,976 B (19.61 GiB)**
+under cap, 4.39 GiB headroom, measured `linux-cgroup-v2-memory.peak`. 13 ranks / 924 decisions /
+16 workers / `exact_serial_parallel_parity: True`.
+
+### Live binding
+
+`source_review_commit == execution_git == 56bd35f0…`, which is what legitimately activates
+`consolidated-source-and-freeze` mode. Cloud's live `/proc/sys/kernel/random/boot_id` is
+`cab55f68-…`, whose SHA-256 is **`86cc5b317fc971e0…`** — byte-equal to the freeze's
+`runtime.boot_identity`; `uptime -s` = `2026-08-15 20:21:59`, so no reboot has intervened. Full
+BELIEF suite at the exact head: **513 passed / 4 skipped**, strict native, `-P -B`, cleared
+`__pycache__`, native rebuilt.
+
+### The properties I refused to take on trust
+
+This marker grants `one_test_split_open_authorized: true` — the irreversible, unrepeatable step,
+with `retry_authorized: false`. Three guard families that protect it have **no failing-direction
+witness** at this head, so I verified the properties themselves, directly on the sealed artifacts:
+
+- `/opt/belief-r4-completion-v1-r3/calibration/selection/manifest.json`: `test_split_opened =
+  False`, `selection_completed_before_test_open = True`, `calibration_passed = True`,
+  `test_open_authorized_by_this_artifact = False`, selected cohort `synthetic-primary`.
+- That root's `calibration/` contains **only** `selection`; `r4-completion-test-attempt.json`,
+  `terminal`, `terminal.partial`, `r4-completion-terminal.json` all absent.
+
+**The test has never been opened, measured rather than inferred.** That is why this is a PASS: the
+missing witnesses are a regression risk to future edits, and cannot make correct frozen code behave
+incorrectly on an execution whose every input I have now measured.
+
+### Disclosed, and owed before the next freeze
+
+1. **New finding, mine.** The marker-authentication chain is unwitnessed at *two* enforcement
+   points. Deleting `or review_marker != expected_marker`
+   (`belief_v2_r4_completion.py:451`) → **513 passed**. Replacing the marker in
+   `authenticate_r4_completion_review` (:471) with a forged literal → **513 passed**. The guard that
+   makes *this very marker* load-bearing can be removed silently. Two tests close it.
+2. `47cd988`'s `test_split_opened` / `selection_completed_before_test_open` masked witness is
+   **still open** at this head.
+3. The witness commits that closed `4fa3018` and `a9be442` (`07944d2`, `a48c7f0`) are
+   **descendants** of `56bd35f0`, so the frozen head's own suite does not contain them. Test-only,
+   zero production bytes, so execution identity is unaffected — but the freeze does not carry that
+   coverage, and a future reader should not assume it does.
+4. `69bc6de`'s CPU finding stands: `serial_cpu_nanoseconds` / `parallel_cpu_nanoseconds` in the
+   frozen receipt are process-scope and under-count the pool by ~2×. **No gate depends on them**
+   (wall-cap and speedup are wall-derived, memory uses the cgroup measurement). Read them as
+   parent-process CPU only; the next schema should carry a `*_cpu_measurement` field as memory now
+   does.
+
+### Adjudicating the two gaps the request asked me to settle here
+
+**Neither blocks.** (a) *No systemd invocation identity in the source*: the freeze binds git,
+runtime, native and boot identity, and I confirmed the boot binding against the live host — an
+invocation ID would add operator forensics, not execution identity. Owed to a future schema.
+(b) *No `build-freeze` progress reporting*: real, and it already cost one externally-stopped
+builder; but as measured in `996f3c4`/`8032bdf` a working liveness proxy exists today (two
+`CPUUsageNSec` samples; the rebuild held 13.4 cores throughout). Progress output is owed; its
+absence does not impugn this freeze, which completed successfully at `09:09:33Z` from the same
+clean head, runtime and boot as its predecessor and is the sole artifact producer.
+
+### Coverage limits, stated honestly
+
+I verified deeply: artifact identity, the import/authentication chain, capacity arithmetic from
+primitives, caps, live boot binding, namespace absence, and the calibration manifest's test-split
+properties; and I mutation-tested four load-bearing guards (two byte-bindings previously, two
+marker-authentication points now). I did **not** line-audit the +3,607-line source delta, did not
+re-derive the sealed calibration, and did not execute anything. No run exists to review; this
+authorizes one, nothing more.
+
+Approved envelope, in order, each transition gated by the prior canonical success: initialize once →
+score-free pretest readiness in its own unit → on canonical readiness PASS, the sole scientific test
+opening with immediate reconstruction → on scientific success only, the independent terminal
+verifier. All long units exact-head/runtime, `Restart=no`, `KillMode=control-group`, `Type=exec`,
+`RuntimeMaxSec=48h`, `MemoryMax=25769803776`, `MemorySwapMax=0`, `UMask=0077`, sanitized
+`PYTHONPATH`. No retry, training, merge, gameplay, strength, promotion or deployment authority.
+— Claude (session `68f9c8bd`)
+
+BELIEF_V1_V2_R4_COMPLETION_EXECUTION_V1_REVIEW {"authority":{"calibration_open_authorized":true,"capture_authorized":false,"deployment_authorized":false,"gameplay_strength_screen_authorized":false,"one_test_split_open_authorized":true,"promotion_authorized":false,"reference_generation_authorized":false,"retry_authorized":false,"sampler_implementation_authorized":false,"strength_claim_authorized":false,"terminal_reconstruction_authorized":true,"training_authorized":false},"deadline_estimate_receipt_sha256":"df51a8f9704298b3a7958d0daa8ee9b1cf220cb3cc140f682910072f07a6051e","deployment_authorized":false,"device_qualification_protocol_sha256":"79ec7e55b690294e082ea90e9edbe3f81168cb2a7d1bd03b27e8dca1078de2d0","evidence_root":"/opt/belief-r4-terminal-parallel-v1-r1","execution_git":"56bd35f0c45080121d094f6906ab8d1053ca9e6b","execution_mode":"r4-calibration-test-terminal-only","freeze_sha256":"0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951","gameplay_strength_screen_authorized":false,"promotion_authorized":false,"protocol_sha256":"a45903a79a9302c61201b428b01a97b7e9bf34d2c5b5478618331e1ce1a13b03","resource_caps_sha256":"7e59aa6cb8b199947963d9d2af9ff6d7060b1ab4c71c8d4528d0e71e0becc420","retry_authorized":false,"run_id":"belief-v1-v2-all-ranks-human-offline-v1","runtime_profile_sha256":"4b4029d0605fbcada3d71371b04f4acf4f982506cbbde374f10838c6b18a5b38","sampler_implementation_authorized":false,"schedule_sha256":"eea7d9581ce32cbce2c138977c4d1acd21f987c2076820f32ab9ca5d470ee4b6","schema":"belief-v1-v2-r4-completion-execution-review-v1","seed_registry_sha256":"eb86b594c85489f3614ea7b95ff7c30660f8b04adce5a027c27ab4cd238840ec","source_manifest_sha256":"75482f5e472595baddeee87f4d7ff4ab175696b83f9ef524686c7dd8767fd56a","source_review_mode":"consolidated-source-and-freeze","source_spec_sha256":"c0bd3f5b2431de10f2863699e744ba44fb75f73fee794428c03fa02879a7d4a0","strength_claim_authorized":false,"training_candidate_device":"cpu","training_device_profile_sha256":"2f7edb58c08d831ccc390f8ff77bb4b73a19f57e2f940977d9563c952ab673e0","v1_resource_failure_receipt_sha256":"257fce06ed612a0acda356b5a55395b64a4402dc95f7461ead364c48dfa6b4a3","v1_terminal_route":"RESOURCE_FAILURE_REPAIRED_FOR_NEW_V2_FREEZE_REVIEW"}
+

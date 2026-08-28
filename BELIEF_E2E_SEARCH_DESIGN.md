@@ -304,6 +304,23 @@ samples compatible worlds, rolls each root action forward and applies a
 conservative report guard. It does not retain a recursively expanded tree,
 select edges by PUCT or train a policy from tree visits.
 
+AlphaGo Zero also does **not** train a direct neural `Q(s,a)` head.  Its
+network predicts a policy and state value `(p,v)`; MCTS constructs each edge's
+`Q_tree = W/N` online from backed-up leaf values.  Self-play then trains the
+policy toward root visits `pi` and the value toward the terminal result `z`.
+Our first `Q_world(w,I,a)` learner is therefore a transitional, Shengji-specific
+search accelerator rather than an assertion that AlphaGo used the same label.
+It asks whether expensive counterfactual action evaluation can be amortized
+before a trustworthy public policy/value flywheel exists.
+
+If the later public-belief PUCT rung is admitted, its `Q_tree` must likewise be
+the backed-up search statistic, never an alias for raw `Q_world`.  The sampled-
+world model may order edges or evaluate a frozen leaf/action boundary.  The
+eventual AlphaZero-like training rows are separately `(I, pi_search, z)`, where
+`pi_search` is aggregated across compatible worlds and `z` is Shengji's signed
+level outcome.  Passing `Q_world` is a bridge to that loop, not a permanent
+requirement that every future policy/value update depend on a direct Q head.
+
 The exact component crosswalk is:
 
 | Search component | AlphaZero role | Shengji status and next boundary |
@@ -483,6 +500,30 @@ The current PT-Sol0 private transcripts are design evidence, not automatically
 training data. A reviewed extractor must prove which engine-returned outcomes
 are complete, how repeated requests aggregate, and that no private prompt,
 model text, completion token, or hidden-world identity enters a public row.
+
+Chosen-action strength is not sufficient evidence that PT supplies accurate
+numeric Q labels.  E3 therefore freezes a **label-provider selection gate**
+before generating a large packet:
+
+- the engine-only arm spends a fixed candidate-world budget uniformly under
+  the registered actor-visible continuation;
+- the PT arm receives the same legal ballot, complete world and total engine
+  evaluation budget, and may only change proposal/order/adaptive allocation;
+- both arms publish a value estimate for every in-scope action, an explicit
+  missing-action/refusal status and exact work;
+- a disjoint, higher-work engine report fold supplies the comparison target
+  under the identical continuation and utility; and
+- the selected provider must improve held-out distributional proper score or
+  action regret at equal engine work, remain repeatable, and preserve ballot
+  coverage.  Winning full games or selecting a good argmax alone cannot pass.
+
+PT-Sol and PT-Luna are separate candidate provider recipes.  Their result
+files may size cost and establish teacher candidacy, but their rows are never
+pooled and neither recipe enters a training packet without passing this gate.
+If neither PT recipe beats the engine-only estimator, E3 may still authorize a
+separately named **engine-rollout Q accelerator** packet; it must not be called
+PT distillation.  This route tests whether amortizing literal search buys more
+effective depth or breadth, without pretending the teacher added information.
 
 This extractor does not start from zero. Historical `teacher_v1_label.py`
 already provides deterministic common worlds, candidate-by-world signed-level

@@ -6792,3 +6792,51 @@ Coverage limits: this is a delta review of +48 test lines on top of the source I
 mutations.
 
 VALUE_AFTERSTATE_V0_CAPACITY_SOURCE_LAUNCH_V1_REVIEW {"authority":{"continuation_label_generation_authorized":false,"deployment_authorized":false,"e3_e4_packet_preparation_from_this_receipt_authorized":true,"gameplay_authorized":false,"merge_authorized":false,"one_non_retry_score_free_capacity_census_authorized":true,"promotion_authorized":false,"r5_authorized":false,"retry_authorized":false,"scientific_training_authorized":false,"strength_claim_authorized":false,"test_split_open_authorized":false},"authorized_command_sha256":"87f75f8b3e74dc15534d0e3fe5a132bfb57eda60cdc1ac365fb63de5fe46b970","authorized_output":"/opt/value-afterstate-v0-capacity-receipt-e7310db-r1.json","authorized_unit":"value-afterstate-v0-capacity-e7310db-r1.service","battery_pure_passed":158,"battery_strict_passed":158,"exact_head":"e7310db5d2d89599d89b8f18718dfffc06a971db","exact_parent":"30eca22783c3b64d3e412427d3fe6725f819d957","host":"ubuntu-32gb-hel1-2","mutation_witnesses_confirmed":["outcome_vocabulary_exclusion","aggregate_memory_method","compiled_engine_active"],"production_files_changed_in_delta":0,"review_mode":"consolidated-source-and-launch","schema":"value-afterstate-v0-capacity-source-launch-review-v1","source_checkout":"/opt/value-afterstate-v0-capacity-e7310db","supersedes_hold":"4f4445762ad50010dd2c4dfd33151b33d34603c2","verdict":"PASS"}
+
+## 2026-08-28 — the authorized capacity census ran and its receipt is **genuinely outcome-blind, verified by my own scan** rather than by its validator. My `MemoryMax` caveat is retired with a measured number: peak was **0.69 GiB against a 30 GiB cap**
+
+Follow-up to the PASS marker at `9fe8460`, which authorized exactly one non-retry score-free census.
+Codex ran it; the unit is gone (transient) with `Result=success`, `ExecMainStatus=0`.
+
+### The census stayed inside the authorized envelope
+
+Receipt `/opt/value-afterstate-v0-capacity-receipt-e7310db-r1.json`: **7,181 bytes, mode `0400`,
+1 link**, SHA-256 `10bdd80f8f2d0342fd290194de1a84ecc8bc92fcb0ca10a06dcf3fe779bedc5b` — recomputed
+identically from my own fetched copy. `git` field is **`e7310db5…`**, the exact head I passed.
+`validate_capacity_receipt` **ACCEPTS** it when run from that head. Every schedule parameter equals
+the command I hash-bound (`87f75f8b…`):
+
+| field | receipt | authorized |
+|---|---|---|
+| `fixture_count` | 26 | 26 |
+| `worker_counts` | `[1,2,4,8,16]` | `[1,2,4,8,16]` |
+| `worker_repetitions` | 2 | 2 |
+| `batch_sizes` | `[16,64]` | `[16,64]` |
+| `model_steps` | 8 | 8 |
+| `requested_device` | `auto` | `auto` |
+
+`outcome_blind: true`, `evidence_artifact: false`, all twelve authority flags false,
+`compiled_engine_active: true`, host `ubuntu-32gb-hel1-2`, five tensor-scaling rows (1/2/4/8/16) and
+six model rows.
+
+### Blindness verified independently, not delegated to the guard
+
+The whole point of the HOLD at `4f44457` was that the vocabulary scan had no witness. It has one
+now, but a witness proves the guard fires — not that *this* artifact is clean. So I scanned the
+receipt bytes myself for the full forbidden vocabulary (`attacker_points`, `signed_level_category`,
+`label`, `logit`, `prediction`, `proper_score`): **zero occurrences**, and no float-valued field
+anywhere in the top level. The receipt carries timings, distributions, population digests and
+identity — no outcomes. The score-free property holds on the real artifact.
+
+### Retiring my own caveat with a measurement
+
+I flagged `MemoryMax=30G` with `MemorySwapMax=0` on a ~30 GiB host as offering little protection
+under non-retry authority. Measured: `aggregate_memory.method = linux-cgroup-v2-memory.peak`,
+`finish_peak_bytes` = **0.69 GiB** — roughly **1/43rd** of the cap. The concern was reasonable in
+advance and is now empirically moot; a future request can size the ceiling from this number instead
+of guessing. The 4 h `RuntimeMaxSec` was likewise far from binding.
+
+Nothing here authorizes anything further: label generation, training, test opening, gameplay, merge,
+promotion, deployment, retry and R5 all remain unauthorized, and **#162 is still open and unreviewed
+by me**. Read-only throughout: receipt bytes, systemd counters, no evidence namespace opened.
+— Claude (session `68f9c8bd`)

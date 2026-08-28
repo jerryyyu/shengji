@@ -24,9 +24,8 @@ correlated, physically legal complete-world samples
         v
 engine-owned legal expansion and transitions
         |
-        +---- policy/proposal score orders branches       [optional learner]
-        +---- Q score ranks actions inside sampled worlds [optional learner]
-        +---- value score truncates selected rollouts      [optional learner]
+        +---- policy/proposal score orders branches          [optional learner]
+        +---- successor-value score evaluates reached states [optional learner]
         +---- uncertainty allocates more search            [optional learner]
         |
         v
@@ -39,8 +38,10 @@ final engine-legal action
 This is a modular destination, not one model or one run. The BELIEF branch's
 first consumer contains no learned policy, Q, value, or allocation head:
 BELIEF changes only the distribution of complete worlds seen by the existing
-production search. The independent PT branch introduces only one `Q_world`
-head. Each later experiment introduces at most one additional learned
+production search. The independent PT branch introduces only one
+`V_world_after` head. The engine applies an action first; the head judges the
+resulting complete-world state, and search derives an action value from that
+judgment. Each later experiment introduces at most one additional learned
 function. Search remains final action authority through the first confirmed
 strength campaign.
 
@@ -50,23 +51,28 @@ The BELIEF-only minimum path is deliberately shorter than the full diagram:
 R4 belief verdict -> legal-world sampler -> equal-work search mechanism -> whole games
 ```
 
-The teacher/Q path is independently useful and does **not** wait for a learned
-BELIEF sampler. Its first learner is a perfect-information `Q_world` model:
+The teacher/value path is independently useful and does **not** wait for a
+learned BELIEF sampler. Its first learner is a perfect-information
+successor-state value model:
 
 ```text
 reviewed perfect-information teacher
         -> complete-ballot counterfactual outcomes
-        -> Q_world(complete world, action)
+        -> engine-applied complete-world successor states
+        -> V_world_after(successor state, root team)
+        -> derived Q_world(world, observation, action)
         -> true-world search mechanism test
         -> current REF-C sampled-world search test
 ```
 
-This deliberately learns how to use one fully specified world before asking a
-learner to reason over uncertainty. `Q_world` is not a deployable clairvoyant
-policy: at live play it may inspect only a legal world hypothesized by the
-public sampler, and its outputs are aggregated across the complete frozen world
-ensemble. The first public-information integration uses today's REF-C sampler.
-BELIEF, if R4 and its sampler gates pass, is a later one-axis substitution.
+This deliberately learns how to judge one fully specified reached state before
+asking a learner to reason over uncertainty. `V_world_after` is not a
+deployable clairvoyant policy: at live play it may inspect only a legal world
+hypothesized by the public sampler after the reviewed engine has applied a
+candidate action. Search converts those judgments into `Q_world` values and
+aggregates them across the complete frozen world ensemble. The first
+public-information integration uses today's REF-C sampler. BELIEF, if R4 and
+its sampler gates pass, is a later one-axis substitution.
 
 Current MC search already performs planning by expanding legal actions and
 simulating continuations; Q or value learning is therefore an optional way to
@@ -77,24 +83,27 @@ end to end in one run.
 
 ### Label ownership and the anti-cascade rule
 
-PUCT is a search-improvement teacher for an **action policy**.  It does not
-create the truth labels for BELIEF, and it is not the first teacher for
-`Q_world`.  Each learner has one separately auditable label owner:
+PUCT is a search-improvement teacher for an **action policy**. It does not
+create the truth labels for BELIEF, and it is not the first teacher for the
+world-afterstate evaluator. Each learner has one separately auditable label
+owner:
 
 | Learner | Input available to that learner | Label owner | Label it may consume | Label it must not consume |
 |---|---|---|---|---|
 | BELIEF ownership | Actor-visible observation and public history | Simulator/reopened deal truth | True hidden receiver counts behind that observation | PUCT visits, Q predictions, PT reasoning text or any actor-invisible feature |
-| `Q_world` | One explicit complete world, public observation and legal action | Reviewed counterfactual engine/teacher continuation | Signed-level outcome distribution for that exact world/action under one frozen continuation | A learned BELIEF forecast, a public-policy visit target or an unqualified teacher argmax |
+| `V_world_after` | One canonical complete-world state after the engine applies a legal action, plus the root-team perspective | Reviewed counterfactual engine/teacher continuation | Signed-level outcome distribution from that exact successor under one frozen continuation | A learned BELIEF forecast, a public-policy visit target, an unqualified teacher argmax or teacher prose |
 | Public action policy | Actor-visible public information state | Public-belief search | One root visit distribution aggregated across every compatible world before publication | Separate true-world PT argmaxes or visits that let identical observations receive incompatible clairvoyant labels |
-| Optional public value | Actor-visible public information state | Registered self-play/search contract | Terminal signed-level outcome or a separately specified public-search value target | Raw `Q_world` for the literal hidden deal or a value produced by omniscient future play |
+| Optional public value | Actor-visible public information state | Registered self-play/search contract | Terminal signed-level outcome or a separately specified public-search value target | Raw `V_world_after` for the literal hidden deal or a value produced by omniscient future play |
 
-In the first iteration, PUCT contributes only policy targets and the
-learner-induced state distribution.  It does not retrain BELIEF, and it does
-not silently rewrite `Q_world` labels.  Later data refreshes may add public
+When the first PUCT iteration is eventually admitted, it contributes only
+policy targets and the learner-induced state distribution. It does not retrain
+BELIEF, and it does
+not silently rewrite `V_world_after` labels. Later data refreshes may add public
 histories reached by the current policy, but each row is relabelled by its own
 owner and must pass the same actor-visibility and held-out gates.  Thus a
 failed policy prior cannot corrupt the posterior certificate, and a failed
-BELIEF candidate cannot invalidate a `Q_world` result obtained through REF-C.
+BELIEF candidate cannot invalidate a world-afterstate result obtained through
+REF-C.
 
 The policy head is therefore an **amortized search prior**, not a replacement
 for search.  It remembers recurring allocation lessons so PUCT can spend more
@@ -139,8 +148,9 @@ The two new opportunities are therefore separately conditional:
 
 Neither opportunity is enough alone. Better belief with a poor consumer can
 lose, and a strong privileged teacher can leak or fail to transfer into a
-public policy. Testing `Q_world` first makes that consumer failure observable
-without confounding it with BELIEF calibration or projection.
+public policy. Testing a world-afterstate evaluator first makes that consumer
+failure observable without confounding it with BELIEF calibration or
+projection.
 
 ## Confidence boundaries
 
@@ -160,9 +170,9 @@ model gains:
 
 The empirical claims remain conditional. R4 has not yet established that the
 current belief recipe beats REF-C; PT-Sol0 has not yet established a fresh
-whole-game teacher advantage; no current Q head has passed both stable
-learning and online-use gates; and no evidence says all three pieces improve
-when composed. A negative result at any rung stops that branch without
+whole-game teacher advantage; no current successor-value head has passed both
+stable learning and online-use gates; and no evidence says all three pieces
+improve when composed. A negative result at any rung stops that branch without
 invalidating the modular architecture or forcing the other branch to wait.
 
 ## Information and authority contracts
@@ -187,7 +197,7 @@ actions.
 Offline generation may use true hands and burial for three bounded purposes:
 
 1. ownership labels for BELIEF;
-2. exact-world counterfactual outcomes for teacher/Q targets; and
+2. exact-world counterfactual outcomes for teacher/value targets; and
 3. audit labels that measure whether a behavioral inference was correct.
 
 Actor rows and privileged targets remain separately sealed and hash-bound. A
@@ -229,12 +239,15 @@ objects rather than a monolithic checkpoint:
 4. **`TeacherCounterfactualV1`** — one public observation, complete legal
    ballot, common world set, named continuation policies, action outcome
    distributions, work receipts, and teacher identity.
-5. **`WorldActionValueV1`** — one complete hypothesized world, one legal
-   action, the named continuation contract, and a distributional signed-level
-   target.
+5. **`WorldAfterstateValueV1`** — the canonical complete-world successor
+   produced by applying one legal action through the reviewed engine, the
+   root-team perspective, the named continuation contract, and a
+   distributional signed-level target. Its audit bindings retain the prestate
+   and action even though the first model consumes the successor, not a
+   separate action feature.
 6. **`PublicActionValueV1`** — actor-visible observation/action identity with
    a mechanically aggregated distributional target across a named compatible
-   world ensemble. V1 is derived from `WorldActionValueV1`, not a second
+   world ensemble. V1 is derived from `WorldAfterstateValueV1`, not a second
    independently trained head.
 7. **`SearchDecisionReceiptV1`** — candidate population, work by branch/world,
    proposal/value sources, uncertainty, protected incumbent, final action,
@@ -244,23 +257,35 @@ The names are conceptual until their source contracts receive review. Each
 artifact must have a closed schema, canonical bytes, strict source/runtime
 bindings, failing-direction witnesses, and an all-false authority map.
 
-## Value and Q targets
+## Successor-value and Q targets
 
-Action value is policy-relative. Every label binds the partner policy,
-opponent policies, ballot, continuation portfolio, objective, perspective,
-search budget, and terminal utility.
+Value is policy- and perspective-relative. Every label binds the partner
+policy, opponent policies, ballot, continuation portfolio, objective,
+root-team perspective, search budget, and terminal utility.
 
-For a fully specified world `w`, public observation `o`, and legal action `a`:
+For a fully specified world `w`, public observation `o`, and legal action `a`,
+the reviewed engine first constructs the canonical successor:
 
 ```text
-Q_world(w, o, a; pi) = distribution of signed level outcome
-                        after action a under continuation contract pi
+s_after = T_engine(w, o, a)
 ```
 
-For the live public information set:
+The only first-stage neural target is the value of that reached state for the
+team that owned the root decision:
 
 ```text
-Q_public(o, a; pi) = E[w ~ P(w | o)] Q_world(w, o, a; pi)
+V_world_after(s_after, root_team; pi)
+    = distribution of signed level outcome under continuation contract pi
+```
+
+`Q_world` is then a mechanical composition, not a separately trained head:
+
+```text
+Q_world(w, o, a; pi)
+    = V_world_after(T_engine(w, o, a), root_team; pi)
+
+Q_public(o, a; pi)
+    = E[w ~ P(w | o)] Q_world(w, o, a; pi)
 ```
 
 That expectation is a deployable public action value only when `pi` is
@@ -273,12 +298,21 @@ incompatible future choices in different worlds.
 
 The first target therefore freezes one actor-visible continuation for every
 post-root decision. The privileged teacher may inspect `w` to reason about the
-root action, request or allocate engine rollouts, and estimate counterfactuals,
-but the outcome rollouts that define the public-compatible label use the same
-frozen actor-visible continuation for every action and world. A later
-full-information-continuation target, if useful, receives a separate schema and
-may advance only through perfect-information diagnostics; it is never silently
-averaged and called a public Q value.
+root action, request or allocate engine rollouts, and estimate
+counterfactuals, but the outcome rollouts that define the public-compatible
+label use the same frozen actor-visible continuation for every successor and
+world. A later full-information-continuation target, if useful, receives a
+separate schema and may advance only through perfect-information diagnostics;
+it is never silently averaged and called a public Q value.
+
+The engine transition is a load-bearing boundary. Reopening must reconstruct
+the prestate and legal action, reapply the action with the pinned engine, and
+byte-compare the resulting canonical successor before parsing it for training.
+That successor includes the action's current-trick or completed-trick effects,
+score changes, remaining cards and terminal status. The model receives no
+separate action branch: what the action did is represented by the state it
+actually reached. This makes one evaluator reusable at deeper search leaves
+instead of binding a model to only the original root-action encoding.
 
 The artifact retains more than the mean:
 
@@ -301,11 +335,13 @@ because Shengji promotion utility is not binary. Separate banker/attacker and
 lead/follow/bury surfaces are required diagnostics and may justify separate
 heads if the data do; they are not silently pooled into one claim.
 
-The first student learns `Q_world`, where the hidden allocation is part of the
-explicit offline input. The first `Q_public` is obtained by frozen weighted
-aggregation of that same model over REF-C worlds. Training a separate public-Q
-student is deferred until this factorized path has evidence; otherwise learner
-error, posterior error, and aggregation error would be introduced together.
+The first student learns `V_world_after`, where the complete post-action hidden
+allocation is part of the explicit offline input and the root-team perspective
+is pinned. The first `Q_world` is derived by engine transition, and the first
+`Q_public` is obtained by frozen weighted aggregation over REF-C worlds.
+Training a separate public-Q student is deferred until this factorized path has
+evidence; otherwise transition, learner, posterior and aggregation error would
+be introduced together.
 
 ## Mapping to MCTS, PUCT and policy training
 
@@ -315,22 +351,24 @@ samples compatible worlds, rolls each root action forward and applies a
 conservative report guard. It does not retain a recursively expanded tree,
 select edges by PUCT or train a policy from tree visits.
 
-AlphaGo Zero also does **not** train a direct neural `Q(s,a)` head.  Its
-network predicts a policy and state value `(p,v)`; MCTS constructs each edge's
-`Q_tree = W/N` online from backed-up leaf values.  Self-play then trains the
+AlphaGo Zero also does **not** train a direct neural `Q(s,a)` head. Its network
+predicts a policy and state value `(p,v)`; MCTS constructs each edge's
+`Q_tree = W/N` online from backed-up leaf values. Self-play then trains the
 policy toward root visits `pi` and the value toward the terminal result `z`.
-Our first `Q_world(w,I,a)` learner is therefore a transitional, Shengji-specific
-search accelerator rather than an assertion that AlphaGo used the same label.
-It asks whether expensive counterfactual action evaluation can be amortized
-before a trustworthy public policy/value flywheel exists.
+Our first `V_world_after` learner follows that division of responsibility more
+closely: the engine owns the transition, the network judges a reached state,
+and search owns the edge-Q accounting. It remains a transitional,
+Shengji-specific search accelerator because it is trained under a frozen
+complete-world continuation rather than an AlphaZero self-play flywheel.
 
 If the later public-belief PUCT rung is admitted, its `Q_tree` must likewise be
-the backed-up search statistic, never an alias for raw `Q_world`.  The sampled-
-world model may order edges or evaluate a frozen leaf/action boundary.  The
-eventual AlphaZero-like training rows are separately `(I, pi_search, z)`, where
+the backed-up search statistic, never an alias for raw `V_world_after` or
+derived `Q_world`. The first sampled-world consumer evaluates only a frozen
+successor/leaf boundary. The eventual AlphaZero-like training rows are
+separately `(I, pi_search, z)`, where
 `pi_search` is aggregated across compatible worlds and `z` is Shengji's signed
-level outcome.  Passing `Q_world` is a bridge to that loop, not a permanent
-requirement that every future policy/value update depend on a direct Q head.
+level outcome. Passing the afterstate evaluator is a bridge to that loop, not a
+permanent requirement that every future policy/value update depend on it.
 
 The exact component crosswalk is:
 
@@ -338,9 +376,9 @@ The exact component crosswalk is:
 |---|---|---|
 | State | Fully observed board | Actor observation plus a distribution over compatible hidden worlds. REF-C exists; R4 tests learned ownership, and E1 must still turn passing marginals into legal correlated worlds. |
 | Legal actions | Complete legal moves | The engine is authoritative, but the production ballot is a bounded search surface. Any PUCT packet must prove canonical action identity and either complete coverage or an explicit proposal-plus-exploration floor. |
-| Policy prior `P(I,a)` | Guides which edges PUCT explores first | Not part of the first Q experiment. A later actor-visible head learns from public-search visit targets; old direct-policy checkpoints are not silently reused. |
-| Leaf evaluator | Network value `V(s)` | E4 first learns `Q_world(w,I,a)`. E5 tests whether its frozen aggregation helps search before deriving or training a public leaf value. |
-| Tree edge value | Backed-up `Q(s,a)` | Not the raw Q network output. A future tree backs up simulated/leaf outcomes; `Q_world` may order expansion or supply a leaf estimate but never overwrites search accounting. |
+| Policy prior `P(I,a)` | Guides which edges PUCT explores first | Not part of the first value experiment. A later actor-visible head learns from public-search visit targets; old direct-policy checkpoints are not silently reused. |
+| Leaf evaluator | Network value `V(s)` | E4 first learns `V_world_after` on canonical complete-world successors. E5 tests whether engine-derived action values help search before deriving or training a public leaf value. |
+| Tree edge value | Backed-up `Q(s,a)` | Not a raw network output. A future tree backs up simulated/leaf outcomes; `V_world_after` may evaluate a reached node but never overwrites search accounting. |
 | Search controller | PUCT recursively selects, expands, evaluates and backs up | Not implemented. E5 remains a root-level mechanism test. Recursive search is admitted only after the evaluator transfers through REF-C. |
 | Improved policy | Normalized root visit counts | Future `pi_search(a|I)` is computed only after aggregating across the actor-visible public belief state. True-world PT actions are not public targets. |
 | Training loop | Self-play -> search targets -> retrain -> repeat | Deferred. The first loop is one frozen relabel/training iteration with held-out and same-work gates, not an open-ended flywheel. |
@@ -356,8 +394,8 @@ a = argmax_a [Q_tree(I,a)
 
 `Q_tree` is the value accumulated by that search. `P_theta` is the learned
 actor-visible prior. BELIEF supplies the compatible-world distribution used by
-chance/leaf evaluation; `Q_world` helps evaluate a fully specified sampled
-world. At the root their public value is still:
+chance/leaf evaluation; `V_world_after` judges the states reached inside each
+fully specified sampled world. At the root their public value is still:
 
 ```text
 Q_public(I,a) = E[w ~ P(w|I)] Q_world(w,I,a)
@@ -387,7 +425,8 @@ aggregation gate.
 
 The low-risk bridge is therefore sequential:
 
-1. prove `Q_world` learns and helps known-world search (E4/E5a);
+1. prove `V_world_after` learns and its engine-derived `Q_world` helps
+   known-world search (E4/E5a);
 2. prove the same frozen evaluator helps across REF-C worlds (E5b);
 3. only then implement one shallow public-belief PUCT controller with the
    incumbent policy prior and exact-work null;
@@ -410,7 +449,7 @@ E0 R4 -> E1 legal sampler -> E2 sampler mechanism -------> E6 sampler-only games
                                   |               optional later substitution
                                   +----------------------------+
                                                                |
-reviewed PT -> E3 teacher packet -> E4 Q_world -> E5a true-world mechanism
+reviewed PT -> E3 teacher packet -> E4 V_world_after -> E5a true-world mechanism
                                                    |
                                                    v
                                         E5b REF-C-world mechanism
@@ -418,17 +457,17 @@ reviewed PT -> E3 teacher packet -> E4 Q_world -> E5a true-world mechanism
                                   BELIEF worlds ----+--> E5c composition
                                                    |
                                                    v
-                                         E6 Q-assisted games
+                                      E6 value-assisted games
 ```
 
 The diagram expresses evidence dependencies, not a requirement to execute
 every box. An E2 sampler win may proceed directly to an E6 sampler-only game
-test. The Q branch is optional and cannot delay that shorter path. PT schema,
-extractor mechanics, `Q_world` learning, and its true-world mechanism test may
+test. The value branch is optional and cannot delay that shorter path. PT
+schema, extractor mechanics, `V_world_after` learning, and its true-world mechanism test may
 progress independently of E0-E2, but a large teacher packet waits for a
 reviewed PT result. E5b freezes today's REF-C world-distribution contract. E5c
-waits for both the Q consumer and BELIEF sampler to pass separately; no screen
-introduces a new sampler and a new Q consumer together.
+waits for both the value consumer and BELIEF sampler to pass separately; no
+screen introduces a new sampler and a new value consumer together.
 
 ### E0 — close BELIEF R4
 
@@ -550,10 +589,11 @@ already provides deterministic common worlds, candidate-by-world signed-level
 tensors, disjoint selection/report folds, strict counters, source bindings and
 atomic publication. Reuse those audited mechanics where their contracts still
 match. Its published artifacts retain world digests rather than the complete
-world input needed by `Q_world`, and they bind older ballots/continuations, so
+state needed by `V_world_after`, and they bind older ballots/continuations, so
 neither the old rows nor their checkpoints are silently promoted into this
-dataset. The new exporter versions the full-world input and the actor-visible
-post-root continuation while preserving the useful mechanics.
+dataset. The new exporter versions the complete prestate, legal root action,
+engine-reconstructed complete successor, root-team perspective and
+actor-visible post-root continuation while preserving the useful mechanics.
 
 Before a large packet, require:
 
@@ -564,26 +604,30 @@ Before a large packet, require:
 - state/deal/player-disjoint splits; and
 - a cost/throughput receipt that sizes generation rather than guessing.
 
-### E4 — one perfect-information `Q_world` head
+### E4 — one perfect-information `V_world_after` head
 
-Question: can one model compress the teacher's complete-world action values
-stably, before public uncertainty is introduced?
+Question: can one model learn the continuation value of canonical
+complete-world successor states stably, before public uncertainty is
+introduced?
 
 The first learner is one head only. It does not include a new belief encoder,
 policy prior, leaf value, and allocation head simultaneously.
 
 Recommended first target:
 
-- input: one complete engine world, its actor/public history, and one legal
-  action;
-- label: `Q_world` signed-level distribution under the reviewed, post-root
-  actor-visible continuation contract;
+- audit input: one complete engine prestate, its actor/public history, one
+  legal root action and the byte-exact successor reconstructed by the engine;
+- model input: only that complete successor in root-actor-relative form plus
+  the pinned root-team perspective;
+- label: `V_world_after` signed-level distribution under the reviewed,
+  post-root actor-visible continuation contract;
 - secondary artifact diagnostic: best-action frequency under paired repeated
   teacher/continuation outcomes. This is not a model target because one
   marginal distribution per action does not identify cross-action outcome
   correlation;
-- loss: proper distributional outcome loss plus a bounded pairwise ranking
-  term against the protected production action; and
+- loss: proper distributional outcome loss; a bounded pairwise ranking term
+  between engine-derived action values and the protected production action is
+  allowed only as a separately weighted auxiliary; and
 - selection: a preregistered multi-seed stability gate on held-out deals,
   roles, and surfaces.
 
@@ -610,6 +654,17 @@ population is generated.
   identity before any continuation outcome exists. Deal-level grouping is the
   split unit, so two states from one deal cannot cross train, calibration,
   report or provider-audit folds.
+- Freeze a source mixture rather than training only on production trajectories:
+  named production-policy states preserve deployment relevance; reviewed
+  PT-policy states add stronger or unusual trajectories; complete-provenance
+  human states add behaviors bots rarely emit; and a small mechanics-selected
+  hard-state stratum covers sparse surfaces. Source identity is always
+  reported, and no report outcome may choose the mixture after the fact.
+- PT or human trajectories supply state distribution and candidate diversity,
+  not numeric truth. Every value label is regenerated from reopened complete
+  state by the same engine/continuation contract. Human rows lacking complete
+  hidden truth or actor-visible transcript provenance remain proposal or
+  diagnostic data and cannot enter the value target population.
 - The census must separately report early/mid/late play, acting attacker versus
   defender team, lead/follow, all thirteen trump ranks, each declared suit and
   no-trump.
@@ -618,9 +673,11 @@ population is generated.
   incumbent. It does not claim complete legal-action coverage. Ballot
   generation source, ordered action hashes and candidate counts are part of
   every row. PT proposals wait for the separate proposal experiment above.
-- Repeated compatible worlds are retained with replacement. Each world row
-  carries the full remaining hands and burial in acting-seat-relative form,
-  but never the simulator seed or a world-generating identifier.
+- Repeated compatible worlds are retained with replacement. Each audit row
+  carries the complete prestate and action; each model row carries the full
+  post-action remaining hands, burial, trick/score/history state and terminal
+  flag in root-actor-relative form, but never the simulator seed or a
+  world-generating identifier.
 
 **Numeric label owner**
 
@@ -639,15 +696,21 @@ population is generated.
 
 **One fresh learner**
 
-- Public branch: the pinned 531-value actor observation plus the ordered
-  engine-public play-event sequence, encoded by a one-layer GRU.
-- World branch: a `5 x 54` count tensor for the four remaining hands and
-  burial, relative to the actor, validated against the actor observation and
-  physical deck conservation.
-- Action branch: the pinned 60-value canonical action encoding.
-- Concatenate the three branches and emit only the 204 signed-level logits.
-  V0 has no policy, belief, scalar value, uncertainty or allocation head, no
-  checkpoint warm start and no inference input derived from labels.
+- Public-successor branch: the pinned actor/public state rebuilt after the
+  root action, including ordered play events, current/completed trick state,
+  points, trump, banker, remaining hand sizes and terminal status; its ordered
+  event sequence is encoded by a one-layer GRU.
+- Complete-world successor branch: a `5 x 54` count tensor for the four
+  post-action remaining hands and burial, relative to the root actor,
+  validated against the public successor and physical deck conservation.
+- Perspective input: a closed root-team identifier so identical successor
+  bytes cannot silently receive attacker- and defender-perspective targets.
+- There is no action branch. Reopening replays the legal action through the
+  pinned engine and byte-compares the successor; the action's effect is
+  already present in the reached state.
+- Concatenate the successor branches and emit only the 204 signed-level
+  logits. V0 has no policy, belief, scalar value, uncertainty or allocation
+  head, no checkpoint warm start and no inference input derived from labels.
 - Train eight fixed initialization seeds. Select one common epoch from the
   calibration fold; per-member best epochs and seed dropping are forbidden.
 
@@ -666,10 +729,11 @@ or choose a recipe by report-fold prediction quality.
 - Action usefulness: lower expected-utility error and lower simple regret
   against the disjoint higher-work engine fold; no material regression in
   protected-incumbent ranking.
-- Controls: geometry-preserving label permutation must fail; removing the
-  action input must lose action ranking; removing or shuffling the complete
-  world must lose hidden-world-sensitive strata; actor-relative rotation must
-  preserve bytes and predictions; ballot, continuation, perspective and
+- Controls: geometry-preserving label permutation must fail; replacing every
+  engine successor with its pre-action state must lose action ranking;
+  removing or shuffling the complete post-action world must lose
+  hidden-world-sensitive strata; root-actor-relative rotation must preserve
+  bytes and predictions; transition, ballot, continuation, perspective and
   utility mutations must refuse reopening.
 - E4 PASS authorizes only a frozen E5a known-world mechanism screen. E5a must
   show that exactly one named use of the model improves equal-work search. It
@@ -688,52 +752,64 @@ packet. The subsequent immutable E3/E4 design must bind its source head,
 runtime, host, receipt bytes, population derivation, caps and all-false
 authority map in one consolidated review.
 
-Between-world disagreement is computed later when the frozen `Q_world` model
-is evaluated over an ensemble. The model is evaluated on literal true hidden
-state only in offline perfect-information diagnostics; at live play it sees
-sampled hypotheses, never the true unknown allocation.
+Between-world disagreement is computed later when the frozen
+`V_world_after` model evaluates engine-reached successors over an ensemble.
+The model is evaluated on literal true hidden state only in offline
+perfect-information diagnostics; at live play it sees sampled hypotheses,
+never the true unknown allocation.
 
 Advance only if the model improves held-out value calibration/regret, is
 stable across seeds, and survives ballot/perspective/continuation mutations.
 Offline fit alone grants no policy authority.
 
-### E5 — staged Q-assisted search mechanisms
+### E5 — staged successor-value-assisted search mechanisms
 
 Question: does the learned head improve equal-work search while search remains
 the guard, first without and then with posterior uncertainty?
 
-Choose exactly one Q use for the complete E5 family:
+The first E5 family freezes exactly one use: `V_world_after` supplies the
+continuation estimate at a frozen engine-reached frontier. V0 uses the
+one-action successor as that frontier; a later recursive-search design may
+move it deeper only after V0 passes and held-out depth-stratum calibration
+supports that transfer. The model does not add actions, order the ballot or
+control allocation in this screen.
 
-1. Q orders the existing ballot before rollout allocation;
-2. Q proposes a bounded number of extra legal actions;
-3. Q supplies a leaf estimate at a frozen depth; or
-4. Q uncertainty allocates a bounded extra budget.
-
-Do not combine these in the first screen.
+The treatment remains hybrid rather than all-model. Every candidate receives
+a preregistered minimum of literal terminal rollouts. The model evaluates the
+additional canonical successors, and search combines both evidence sources
+under one frozen weighting and protected-incumbent guard. The primary
+same-wall comparator spends the treatment's measured inference budget on
+additional literal rollouts; a second shuffled-value control executes the same
+model path and work while destroying useful state/value association. Report
+engine simulations, model evaluations, CPU/device work and end-to-end latency
+separately. Neither arm may win by an unreported larger ballot or budget.
 
 **E5a — true-world mechanism.** On fresh opened-development worlds, compare
-literal perfect-information search, Q-assisted perfect-information search, and
-a shuffled-Q/work-matched null. This is a learner/consumer diagnostic, not a
-deployable or public-policy claim. It must improve fresh-state action value or
-utility at equal work before uncertainty is introduced.
+literal perfect-information search, hybrid successor-value-assisted
+perfect-information search, and both controls above. This is a
+learner/consumer diagnostic, not a deployable or public-policy claim. It must
+improve fresh-state action value or utility at equal wall work before
+uncertainty is introduced.
 
 **E5b — REF-C sampled-world mechanism.** Freeze today's public REF-C sampler,
-evaluate the same `Q_world` model inside every sampled world, aggregate the
-outcome distributions, and compare against literal production search and a
-work/behavior-matched null. This is the first runtime-information-compatible
+apply every candidate through the engine inside every sampled world, evaluate
+the successors with the same `V_world_after` model, aggregate the derived
+action-value distributions, and compare against literal production search and
+both matched controls. This is the first runtime-information-compatible
 contract and can proceed even if R4 is negative. It grants no deployment
 authority.
 
 **E5c — BELIEF substitution.** Only if E1/E2 and E5b pass separately, replace
-REF-C worlds with BELIEF worlds while freezing the Q model, Q use, ballot,
-continuations, objective, aggregation, and work. This estimates BELIEF's added
-value without introducing a new consumer simultaneously.
+REF-C worlds with BELIEF worlds while freezing the value model, leaf use,
+literal-rollout floor, ballot, continuations, objective, aggregation and work.
+This estimates BELIEF's added value without introducing a new consumer
+simultaneously.
 
 At every rung report final-action flip dose, protected-incumbent override rate,
-conditional utility, catastrophic tail, and exact work. A positive offline Q
-gate with a null E5a result closes that learner/use. An E5a pass with an E5b
-null diagnoses uncertainty/aggregation transport and does not justify a larger
-whole-game retry.
+conditional utility, catastrophic tail, model/rollout disagreement and exact
+work. A positive offline value gate with a null E5a result closes that
+learner/use. An E5a pass with an E5b null diagnoses uncertainty/aggregation
+transport and does not justify a larger whole-game retry.
 
 ### E6 — whole-game screen and confirmation
 
@@ -745,13 +821,13 @@ whole-game screen.
 The first whole-game packet contains at least:
 
 - literal `mc-s0-report-lcb` champion;
-- the exact BELIEF/Q consumer;
+- the exact BELIEF/value consumer;
 - a behavior/work-matched null; and
 - mirrored roles/deals with deal-clustered signed-level inference.
 
 The numerical whole-game bar is intentionally per experiment because the
 natural dose, measured variance, latency, and minimum worthwhile effect differ
-between a sampler-only and Q-assisted consumer. It is nevertheless fixed
+between a sampler-only and value-assisted consumer. It is nevertheless fixed
 *before any E6 selection deal is drawn*. One consolidated E6 design review
 must bind:
 
@@ -776,9 +852,9 @@ and challenger minus matched null—to exceed zero, the challenger-minus-
 champion point estimate to meet `delta_min`, all safety/latency guards to pass,
 and an independent terminal reconstruction. The null-versus-champion result
 is always reported; if the null itself wins, it opens a simpler compute or
-widening hypothesis rather than being credited to belief/Q. Selection and
+widening hypothesis rather than being credited to belief/value. Selection and
 confirmation are never pooled or extended after outcomes are visible. A
-belief, teacher, Q, or state-screen PASS alone never supports deployment.
+belief, teacher, value, or state-screen PASS alone never supports deployment.
 
 ## Complexity and reliability budget
 
@@ -786,7 +862,8 @@ R4 demonstrated that scientific and operational complexity can erase days of
 valid compute. The following constraints are part of the research design, not
 optional engineering polish:
 
-1. **One new causal axis per screen.** Belief sampler first; one Q use later.
+1. **One new causal axis per screen.** Belief sampler first; one
+   successor-value use later.
 2. **Reuse immutable inputs.** Capture, reference, cache, checkpoint, and
    teacher artifacts are separately reopenable and are not deleted merely
    because a downstream stage refuses.
@@ -843,10 +920,10 @@ counterfactually by the named teacher/search contract.
 | R4 positive, E1 projection poor | Marginals learned, but the joint sampler destroys or cannot realize them. | Fix sampler/projection only; do not retrain belief. |
 | E1 passes, E2 null | Better hidden-card prediction does not improve current search at equal work. | Diagnose consumer/objective/continuation; do not claim belief strength. |
 | PT confirmation negative | Current reasoning teacher is not stable enough to supervise a strength program. | Keep descriptive lessons; do not scale distillation. |
-| PT positive, E4 negative | Teacher is useful but the chosen `Q_world` learner/target cannot compress it. | Change one learner axis; do not weaken the teacher gate. |
-| E4 positive, E5a null | Q predicts labels but does not help search even with a known world. | Close that learner/use before involving belief. |
-| E5a positive, E5b null | The Q consumer works with a known world but not across REF-C uncertainty. | Diagnose aggregation, calibration, and world sensitivity; do not blame BELIEF or scale gameplay. |
-| E5b positive, E5c null | The Q consumer works with REF-C, but BELIEF substitution adds no value. | Preserve the simpler REF-C+Q path and close this BELIEF composition. |
+| PT positive, E4 negative | Teacher is useful but the chosen `V_world_after` learner/target cannot compress its outcomes. | Change one learner axis; do not weaken the teacher gate. |
+| E4 positive, E5a null | Successor value predicts labels but does not help search even with a known world. | Close that learner/use before involving belief. |
+| E5a positive, E5b null | The value consumer works with a known world but not across REF-C uncertainty. | Diagnose aggregation, calibration, and world sensitivity; do not blame BELIEF or scale gameplay. |
+| E5b positive, E5c null | The value consumer works with REF-C, but BELIEF substitution adds no value. | Preserve the simpler REF-C+value path and close this BELIEF composition. |
 | E2/E5b/E5c positive, whole-game null | Mechanism does not transport at natural frequency or scale. | Select none; use dose and role/surface diagnostics for a materially different design only. |
 | Whole-game confirm positive | The public-information search policy is stronger under the named contract. | Begin deployment review; do not infer broader architecture superiority. |
 
@@ -867,7 +944,7 @@ E1/E2 design for a **sampler-only consumer**:
 
 Independently, once a PT result is reviewed as sufficient to justify bounded
 label generation, write one immutable E3/E4 mechanics and learning design for
-a **perfect-information `Q_world` consumer**:
+a **perfect-information `V_world_after` consumer**:
 
 - a state census spanning early/mid/late play, banker/attacker roles, all trump
   ranks, no-trump, and lead/follow/bury surfaces;
@@ -892,7 +969,7 @@ The following are deliberately not frozen by this document:
 - GRU versus transformer/set/graph belief encoder;
 - whether a later separate public-Q student is ever warranted;
 - the exact weight of the categorical proper loss and bounded pairwise
-  auxiliary term for the first `Q_world` head;
+  auxiliary term for the first `V_world_after` head;
 - model width/depth, optimizer, or warm start;
 - teacher model identity and rollout budget;
 - population size and fleet allocation; and
@@ -917,15 +994,15 @@ better held-out belief
   AND positive fresh-state utility
   AND positive confirmed whole-game signed-level utility
 
-Q route:
+successor-value route:
 reviewed teacher counterfactuals
-  AND stable held-out Q_world learning
+  AND stable held-out V_world_after learning
   AND better equal-work true-world search
   AND better equal-work REF-C-world search
   AND meaningful natural final-action dose
   AND positive confirmed whole-game signed-level utility
 ```
 
-BELIEF+Q composition is optional and requires both component chains through
+BELIEF+value composition is optional and requires both component chains through
 their mechanism gates before one frozen sampler substitution. Any missing
 conjunction is a diagnostic milestone, not a strength result.

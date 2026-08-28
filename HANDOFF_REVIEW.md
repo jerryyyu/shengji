@@ -6414,3 +6414,61 @@ training, gameplay, strength, promotion and deployment remain unauthorized. Must
 readiness.
 
 — Claude (session `cc2565ac`)
+
+## 2026-08-28 — PT-Cla0 **Opus** arm sealed INCOMPLETE **3/52**: 49 roles hit the harness's 1,200 s per-session wall. And a correction I owe: I spent the night reporting this run as "clean" from a counter that counts *attempts*
+
+Run `shengji-ptcla0-a82adb9-r3-opus.json`, report SHA
+`a28dfbd60e38e307b07d481e760b01ad4d5c8c8b6f92e3e92d92e8f522037e3b`, 8.64 h, sealed
+`INCOMPLETE 3 complete / 49 incomplete`.
+
+### The failure is a budget mismatch, not a defect
+
+Every one of the 49 private evidence files carries the same
+`process_error`: **`"Sol model process exceeded wall deadline"`**, `process_returncode: None`,
+empty stdout. That deadline is `MAX_SESSION_WALL_SECONDS = 1200` in
+`privileged_teacher_sol0.py:93` — a **frozen design constant**, identical for every arm.
+
+Per-role model wall, measured across the sealed reports:
+
+| arm | n complete | median | max |
+|---|---|---|---|
+| PT-Cla0 fable r2 | 15 | **466 s** | 623 s |
+| PT-Sol0 (gpt-5.6-sol) | 52 | **628 s** | 1,036 s |
+| PT-Cla0 **opus** r3 | 3 | **982 s** | 1,111 s |
+
+Sol0's slowest role finished at 1,036 s — 86% of the budget. Opus's three survivors landed at 942 /
+982 / 1,111 s, and the other 49 ran past 1,200 s and were killed. **Opus at `--effort high` does not
+fit a per-session budget that Sol0 only just fits.** Nothing is broken; the arm is simply too slow
+for the harness's frozen wall.
+
+The 3 survivors are **not** a usable sample, and not merely because n=3: they are exactly the roles
+that were *fast enough to survive*, i.e. selected on the outcome variable. Their contested-decision
+counts (23, 28, 28) sit at the low end. Any contrast computed from them is biased toward short
+rounds by construction. I am not reporting their utilities.
+
+### The design tension this exposes, which matters more than the run
+
+Completing an Opus arm needs one of: raising `MAX_SESSION_WALL_SECONDS` — which changes the frozen
+design and therefore breaks byte-comparability with the sealed Sol0 parent that the whole arm exists
+to be compared against; or lowering reasoning effort — which changes the treatment; or accepting a
+truncated arm. There is no free option. Fable was blocked by a *model quota*, Opus by a *time
+budget*; the two Claude arms fail for unrelated reasons and neither is currently completable as
+specified.
+
+### My own reporting error, stated plainly
+
+`6b25684` (r1) already established that this harness's progress counter increments per role
+*processed*, including failures — it read 52/52 while that report sealed 15/52. I cited that fact to
+Jerry myself. Then I monitored this run with the same counter plus a log grep for
+`limit|Traceback`, and reported "clean", "zero errors", and at 16/52 "**the Opus budget can carry a
+full 52-role arm where Fable structurally could not**". All of that was wrong. By then most roles
+were already timing out: timeouts leave stdout empty, write no traceback, and increment the counter
+exactly like a success. I had the disconfirming fact in hand and monitored the wrong quantity anyway.
+
+**Concrete fix for the next run's monitor:** watch `completed_record_count` from the sealed report,
+or count private-evidence files with `process_returncode == 0` — never the progress counter alone. A
+progress line that cannot distinguish success from failure is not a health signal, and the harness
+should emit `completed` and `attempted` as separate fields.
+
+Read-only on all evidence; the sealed report and both private roots are permanent-never-delete. No
+authority granted or withdrawn; no strength claim rests on any of this. — Claude (session `68f9c8bd`)

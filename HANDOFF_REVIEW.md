@@ -5629,3 +5629,82 @@ capacity receipt validator and the decision-pool startup barrier; I did not line
 +3607 delta. Capacity receipt and auto-freeze are still generating on Cloud and remain for the
 consolidated review, along with confirming these three findings are closed. No authority granted
 or withdrawn. — Claude (session `68f9c8bd`)
+
+## 2026-08-28 — PR #159 is pinned to a superseded head; the capacity refusal was a **measurement** defect fixed correctly; and it is the memory mirror of my own CPU finding
+
+### 1. The pinned head moved mid-review — now caught up, but #159 still points at the old one
+
+`47cd988` and `54869f5` both reviewed exact head `34ab86c`; `4fa3018` has since re-reviewed at
+`56bd35f` and found both import byte-binding guards unwitnessed, so review coverage has caught up
+and I am not re-filing that gap. The live lane moved to **`56bd35f`**
+("Measure R4 terminal memory at cgroup scope", 2026-08-27 22:12:35 EDT) and is running
+`belief-r4-terminal-capacity-56bd35f-r1.service` (`active`, started `2026-08-28 02:13:39 UTC`).
+Codex's `02:18:40Z` comment on #159 discusses timing but does not mention the head change, and the
+PR still points at `34ab86c`.
+
+Nothing was wasted — the delta is one commit, 4 files, **+139 / −24** — but the consolidated
+marker must be issued at the final head, and **#159's own body and comments still name `34ab86c`**
+while three ledger entries now straddle two heads. Cheap fix: repoint or annotate the PR, so the
+marker request and the reviews agree on which commit is under review.
+
+**`47cd988`'s masked witness survives.** I checked directly: `56bd35f` does not touch the
+`test_split_opened` / `selection_completed_before_test_open` clause or its error string. That
+finding is still open and still needs its one test.
+
+### 2. The capacity refusal was correct behaviour on a wrong number
+
+`belief-r4-terminal-capacity-34ab86c-r1` ran `2026-08-27 22:53:53Z → 2026-08-28 01:45:06Z`
+(**2 h 51 m 13.121 s wall, 1 d 2 h 8 min 8.144 s CPU, 21.9 G peak**), completed all 26 measurement
+units (`measure-terminal-capacity-ranks 26/26, status complete`), then refused:
+`BeliefV2R4TerminalParallelError: "R4 terminal projected scorer exceeds frozen resource cap"`
+(`belief_v2_r4_terminal_parallel.py:732`). The watcher exited 1 at `01:45:27Z`, correctly declining
+to seal a freeze — the chained-step hazard I raised in `1512e65` behaved properly here.
+
+**The cap was not widened.** I checked for exactly that: no `training_host_memory_bytes`,
+`training_bytes`, `*_core_hours`, `*_wall_seconds` or cap constant changes anywhere in
+`34ab86c..56bd35f`; the one cap reference added *reads* the frozen
+`context.source.freeze.resource_caps.training_host_memory_bytes`. The response was to fix the
+measurement, which is the right direction and worth saying out loud given that wall-cap sizing is
+failure class #1 in this lane.
+
+The fix, in the source's own words: *"Summing per-process RSS is not an aggregate-memory
+measurement for the simultaneous-pool sample. The reviewed R4 terminal host is Linux cgroup v2,
+whose `memory.peak` counter observes the complete service exactly once."* It adds
+`HOST_MEMORY_MEASUREMENT = "linux-cgroup-v2-memory.peak"`, bumps `CAPACITY_SCHEMA` to
+`belief-v1-v2-r4-terminal-parallel-capacity-**v2**`, and binds
+`aggregate_peak_host_memory_bytes`, `aggregate_peak_host_memory_measurement` and
+`host_memory_cap_bytes` into the receipt — so the receipt now pins *how* memory was measured, not
+only the value. It refuses closed if cgroup v2 is unavailable or unreadable. Witnessed by
+`test_r4_terminal_memory_uses_whole_cgroup_peak_not_rss_sum`.
+
+So the 21.9 G "breach" was forked workers' shared pages counted once per process. The scorer
+probably never exceeded the cap.
+
+### 3. This is the same defect as my CPU finding, in the other direction
+
+At `45711fd` I reported that Perf's calibration receipt recorded **0.9561 cores** while systemd
+measured **1.8872** sustained inside the stage — a ~1.974× **under**-count, inferred to be
+`_process_tree_cpu_time_ns()` missing the forkserver workers. Codex has now independently hit the
+memory analogue: summed RSS **over**-counting the same pool.
+
+**Both are one root cause: process-scope accounting applied to a multi-process pool**, and both
+land in resource receipts that resource-cap guards then evaluate. That is a stronger statement than
+either observation alone, and it makes my CPU finding worth closing rather than leaving as a note:
+the memory path now measures at cgroup scope and binds the method; **`cpu_nanoseconds` still does
+not.** The same treatment — measure at cgroup scope, bind the measurement method in the receipt —
+applies directly, and `belief-v1-v2-calibration-resource-v1` would need the same schema bump.
+
+Worth a sweep rather than a spot fix: any other per-process resource measurement feeding a cap
+guard in the R4/R5 receipts is suspect by the same argument.
+
+### 4. Credit where it is due: the preflight ladder is working
+
+The capacity attempts on this lane did not each cost hours. Measured:
+`e099d14-r2` and `-r3` failed in **6.6 s** each on runtime identity; `-r4` in **11.0 s** on the
+imported calibration; only the genuine capacity measurement at `34ab86c-r1` cost 2 h 51 m. That is
+fail-fast working as designed, and it is a sharp contrast with the calibration lane, where the
+equivalent defect surfaced only after 30+ hours. The current attempt at `56bd35f` is ~1.05 cores
+and 23 minutes in.
+
+Read-only: systemd unit listings, journal text, git objects. Nothing signalled, no evidence root
+touched, no test bytes opened. — Claude (session `f4b0ea92`)

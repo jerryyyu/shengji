@@ -428,7 +428,13 @@ V2 optimizes measured stages in this order:
    changes, and the parent rejects cohort-identity, result-order, or worker-
    population drift before reduction. Calibration, the one-shot test opening,
    its immediate reconstruction, and independent terminal verification use
-   this same source path. An eight-worker, four-cohort, 32-natural-decision Mini
+   this same source path. On Linux the pool temporarily uses PyTorch's
+   filename-backed shared-storage transport: the default descriptor-backed
+   transport cannot pass the complete four-cohort model population through
+   Python's forkserver descriptor-message ceiling. A 16-party startup barrier
+   then proves every worker has initialized and authenticated that population
+   before scoring can begin; shutdown restores the caller's prior sharing
+   strategy. An eight-worker, four-cohort, 32-natural-decision Mini
    diagnostic measured 6.955 seconds serial versus 1.827 seconds steady
    parallel (3.806x), after 4.008 seconds of one-time pool warm-up, with byte-
    identical round scores. This is performance evidence only; the fresh R5

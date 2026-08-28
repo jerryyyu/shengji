@@ -6334,3 +6334,83 @@ the rest of that entry — which this receipt **fixed for wall**. Only the memor
 Read-only: systemd properties, `/proc/<pid>/environ` of a unit I did not touch, the published
 capacity receipt, and git objects. Nothing signalled, no test bytes opened, no evidence root
 modified. — Claude (session `f4b0ea92`)
+
+## 2026-08-28 06:35 EDT — ✅ PASS: PT-Luna0 consolidated source + launch at exact head `2394140b`. My `205c9f0` HOLD is discharged — the defect is caught in **both** its deletion and its substitution form. Authorizes only the single non-retryable Luna0 DEV execution
+
+Head `2394140bcdaebf72d81912a55ac18f5051848fe5`, Git parent `5877956` — exactly the head I
+HOLDed, verified with `git log --format=%P`. Repair delta **5 files, +75/−3**.
+
+### The HOLD is discharged, and I probed the harder direction
+
+`205c9f0` found that dropping Luna's top-level planner-config handoff would run Sol while sealing a
+Luna-labelled report. The repair makes `_run_root`'s `planner_config` a **required** parameter
+(`Sol0PlannerConfig | None = None` → `Sol0PlannerConfig`) and adds a run-level witness that records
+`(model, reasoning_effort)` for every planner invocation and asserts
+`observed == [("gpt-5.6-luna", "high")] * 52`.
+
+Codex's claim is that deleting the handoff turns the witness red. That is true, but deletion is the
+*easy* direction — it is a `TypeError`. The failure mode I actually described was a **silently valid
+substitution**, so I ran that too:
+
+| mutation at the handoff site | result |
+|---|---|
+| delete `"planner_config": Luna0PlannerConfig(),` | **red** — `TypeError` from the required parameter |
+| swap to `sol0.Sol0PlannerConfig()` (type-valid, no TypeError) | **red** — `AssertionError: assert [('gpt-5.6-so…', 'high'), …] == [('gpt-5.6-lu…', …)]` |
+
+The second is the one that matters: a config that type-checks and runs still fails, because the
+witness verifies model identity threaded to all 52 invocations rather than merely the presence of an
+argument. Source restored after each run.
+
+### Independently measured
+
+- **Launch runtime, verified by me, not taken on report.**
+  `/private/tmp/pt-luna-codex-0.149.0/node_modules/.bin/codex` exists, is a symlink to
+  `../@openai/codex/bin/codex.js`, reports **`codex-cli 0.149.0`**, and its resolved script SHA-256
+  is **`134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477`** — byte-exact to the
+  frozen value. The global install is `0.150.1` at `/opt/homebrew/bin/codex`, which is why the
+  00:49/01:47 HOLD that inspected the global PATH described a different envelope. That correction
+  holds.
+- **Population and deadline arithmetic.** `ROLES` = 2, `BANKER_SEATS` = (0, 1); 26 roots × 2 =
+  **52 roles**. `Luna0PlannerConfig.max_session_wall_seconds = 1200`, and 26 two-worker waves ×
+  1,200 s = **31,200 s** exactly as stated.
+- **Authority is all-false, nine flags:** `scientific_execution_authorized`,
+  `test_opening_authorized`, `training_authorized`, `retry_authorized`, `merge_authorized`,
+  `gameplay_authorized`, `strength_claim_authorized`, `promotion_authorized`,
+  `deployment_authorized`.
+- **Frozen outputs absent:** neither `shengji-ptluna0-2394140-r1.json` nor
+  `shengji-ptluna0-2394140-r1-private` exists.
+- `WALL_COMPARISON_STATUS = "DESCRIPTIVE_CROSS_RUN_HOST_LOAD_CONFOUNDED"` is carried in both the
+  design payload and the `efficiency.wall_milliseconds.comparison` field, so the cross-run ratio
+  cannot be read as an efficiency gate. `DEV_NAMESPACE` is distinct from Sol's.
+- Focused family at the exact head: **44 passed** strict-native (`SHENGJI_FAST=1
+  SHENGJI_REQUIRE_VOIDS=1`, `_fast` built in my worktree), **44 passed / 2 skipped** pure.
+
+### Coverage limits, stated plainly
+
+1. **I could not reproduce design SHA `939c6441…a422d`.** It binds
+   `seed_commitment_sha256 = sha256(secret)` for an operator-held secret. What I verified instead is
+   structural: `model` and `reasoning_effort` are validated against module constants
+   (`_design(planner_model=sol0.MODEL)` raises `model identity`), so **no design that validates at
+   all can carry Sol's planner**, whatever its hash; and `_run_with_frozen_design` refuses unless the
+   constructed design hashes to the supplied `--expected-design-sha256`.
+2. **This lane has no marker-authentication machinery.** There is no review-marker prefix in
+   `privileged_teacher_luna0_report.py`, `privileged_teacher_sol0_report.py`, or
+   `run_privileged_teacher_luna0.py`, and nothing reads `HANDOFF_REVIEW.md`. Unlike R4 and PT1, this
+   PASS is a **recorded authorization, not a mechanical gate**. The launch is gated only by
+   `--expected-design-sha256` on the command line, and the sole published copy of that expected value
+   is a line in `HANDOFF_ACTIVE.md` — it appears nowhere in PR #160's body or in the repo. A
+   mistyped or substituted expected value would bind whatever design matches it. I am not holding on
+   this, because it is the same posture PT-Sol0 launched under and this packet changes only the
+   planner; I am recording it because it is the weakest link in this lane's chain.
+3. **I could not reconcile the claimed "48/48."** Every natural selector I tried gives 44 passed
+   (`-k "luna or sol"`), 31 passed / 2 skipped (`-k "luna0 or sol0"`), or 28 (the four files
+   directly). Not a defect claim — an unreconciled count.
+4. I reviewed the **repair delta** deeply. The branch's full body vs its merge-base
+   `b92a0c68` is 44 files / +17,878, largely the already-reviewed PT-Sol0 lineage; I did **not**
+   re-audit that line by line and this PASS should not be read as implying otherwise.
+
+Authorizes only the single non-retryable Luna0 DEV execution at this exact head. Sol1, merge,
+training, gameplay, strength, promotion and deployment remain unauthorized. Must not disturb R4
+readiness.
+
+— Claude (session `cc2565ac`)

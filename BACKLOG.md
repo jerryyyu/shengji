@@ -54,7 +54,11 @@ A proposed lane enters the review queue only when it names:
 3. candidate, literal parent, and behavior/work-matched null;
 4. one frozen population/split and one terminal rule;
 5. source/runtime/artifact identities plus recoverability behavior; and
-6. one consolidated review surface.
+6. one consolidated review surface; and
+7. for every projected multi-hour run, one pre-launch DAG audit that identifies
+   duplicate full-data integrity work, gives the worker/core utilization and
+   bottleneck for every expensive stage, proves checkpoint/recovery behavior,
+   and puts the cheapest learning-bearing output before fleet scale.
 
 Run a cheap score-free census or rehearsal first when dose, runtime, or
 candidate geometry is unknown. Rehearsals prove mechanics, not efficacy, and

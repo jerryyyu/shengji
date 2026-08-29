@@ -237,6 +237,15 @@ A host-day-scale strength run begins only when:
    possible, followed by one admission and one terminal review; and
 6. the result unlocks a named decision, not merely machine utilization.
 
+Before authorizing any projected multi-hour run, review the complete execution
+DAG with the user. Name every repeated full-data pass and justify why it is not
+duplicate integrity work; report the measured wall time, worker count, core
+utilization, memory and I/O bottleneck for each expensive node; demonstrate the
+exact checkpoint, restart and partial-result behavior at every failure
+boundary; and run the fastest realistic learning-bearing pilot before scaling.
+An integrity replay projected above four hours requires explicit user
+alignment rather than inheriting authority from an earlier scientific review.
+
 Compute may run cheap diagnostics and offline calibration in parallel when
 their authority and data are disjoint. It must not invent scored work merely
 to keep a host busy.

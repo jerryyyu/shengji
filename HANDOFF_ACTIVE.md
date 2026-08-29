@@ -4,49 +4,62 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 10:15 EDT**. Remote main before this refresh:
-`62d85079beebf5ba362d47585f2c9515e0d6bba2`.
+Last reconciled: **2026-08-29 09:53 EDT**. Remote main at this refresh:
+`6692243c04c868e773220dc743ada117110950bf`.
 
-## OPEN — one consolidated Value V1 capacity source+launch review
+## ACTIVE — Value V1 train-only P0/capacity at reviewed `bd400a68`
 
-Review **PR #166 at repaired exact head
-`bd400a6855b83de263838cabdee1f07de6839ba2`**. The already-reviewed
-`34409006ed9ecafdddd41e060936c2e3a8421aee` capacity command was consumed and
-failed after 2.093 s wall / 3.357 s CPU, before any training-row read or output
-publication, with `capacity review marker introduction drift`. Do not
-authorize that spent old head again.
+Claude independently reviewed PR #166 at exact head
+`bd400a6855b83de263838cabdee1f07de6839ba2`; canonical main `6692243`
+contains the exact machine-generated marker. Its authority is one fresh,
+non-retry, train-only Perf P0/capacity packet. Calibration, report,
+provider-audit, scientific P1, gameplay, strength, merge, deployment and R5
+remain false.
 
-Review only
-`34409006ed9ecafdddd41e060936c2e3a8421aee..bd400a6855b83de263838cabdee1f07de6839ba2`
-(two files, 11 insertions / 2 deletions). The source defect was that review
-authentication required the current ledger to contain exactly one marker with
-this prefix and the parent to contain none. Because the prior `aa0595c` review
-uses the same prefix, every honest repaired-head review was formally
-unusable. The repair requires the current prefix-matched sequence to equal all
-parent matches followed by exactly one new marker, and refuses if that exact
-new marker already existed in the parent. The permanent witness includes a
-real prior same-prefix marker, accepts one append and refuses both a missing
-append and a duplicated append. Reverting only the production guard to the old
-logic makes that named test fail; restored source passes it. Full V1 batteries
-pass **80/80 pure and 80/80 strict compiled/void**; `git diff --check` is
-clean. This is one source-interaction repair, not a new scientific design.
+### Pre-launch DAG audit
 
-If this narrow delta passes, append one fresh exact-head marker and authorize
-exactly one fresh, non-retry, train-only, score-free Perf capacity execution at
-this repaired head, after a
-clean exact-head checkout and local/real canonical-ref equality check. It must
-use the existing immutable V0 population/dataset/freeze, corrected dataset
-root (not `rows/`), a new output namespace, strict native/void `-P -B`, the
-composed two-hour internal deadline, cgroup-v2 resource envelope and the
-existing outcome-blind progress contract. Authority ends after publishing and
-independently reopening the capacity receipt. Calibration/report rows,
-scientific P1 training, PR #167 freeze authority, gameplay, strength, merge,
-deployment and R5 all remain false.
+The reviewed command has one composed two-hour internal deadline, a 30-GiB
+cgroup-v2 memory limit and a 16-logical-CPU host requirement. Its full
+learning-bearing and integrity DAG is:
 
-PR #167 remains deliberately **not** reviewable until that receipt exists and
-its freeze binds all three spent attempts plus this repaired-head capacity
-lineage. It then gets the one remaining consolidated source+freeze review. R4
-and PT-Luna0 need no repeated review while in their current states.
+1. authenticate exact Git/runtime/native/review and the immutable V0 input
+   hashes before opening a training row;
+2. reopen the same 3,906 already-open V0 train rows at 1/2/4/8/16 workers,
+   requiring byte-identical populations — five intentional full passes used
+   only to measure the fastest safe row-reader configuration;
+3. derive P0 in memory and stop immediately with
+   `STOP_NO_REPRODUCIBLE_ACTION_LABEL` if the two matched continuation
+   replicates do not support stable action selection;
+4. only after P0 passes, train four one-epoch eight-member capacity cohorts at
+   1/2/4/8 member workers, each receiving only the positive remainder of the
+   same packet deadline — four intentional repeats used only to select
+   throughput; and
+5. atomically seal and independently reopen the small receipt/artifact packet,
+   with no engine-continuation replay and no held-out-data pass.
+
+Rows are streamed under each measured worker count; cohort configurations use
+`torch_threads = max(1, 16 // member_workers)`, so every scheduled measurement
+targets all 16 logical CPUs without oversubscribing the intended worker/thread
+product. The receipt records wall, CPU utilization, peak cgroup memory and
+throughput for each configuration rather than assuming scaling.
+
+Recovery is deliberately narrow: there is no mid-packet checkpoint or retry;
+an expiry or process failure publishes no receipt and consumes this capacity
+admission. That is accepted for this bounded diagnostic because P0 is the
+first output, before model training, and the total packet cannot exceed two
+hours. It is not acceptable as the later scientific-run pattern: PR #167 must
+retain durable per-cohort stage boundaries, graceful best-common-epoch
+truncation and an independently reconstructible terminal before its one
+source+freeze review.
+
+The exact staged source is
+`/opt/value-afterstate-v1-capacity-bd400a6-r1-src`; the new output is
+`/opt/value-afterstate-v1-capacity-bd400a6-r1`. Immediately before launch,
+refetch canonical GitHub main, require local/real equality, recheck the clean
+source/native/runtime/input hashes and require both the unit and output to be
+absent. Authority ends after publishing and independently reopening the
+receipt. PR #167 is not reviewable until that receipt exists and the freeze
+binds every prior spent capacity incident plus this exact result.
 
 ## Live work
 
@@ -141,18 +154,20 @@ and PT-Luna0 need no repeated review while in their current states.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
-### Value-Afterstate V1 — repaired capacity review pending
+### Value-Afterstate V1 — repaired capacity launch authorized
 
-- Capacity PR #166 is now at repaired exact head
-  `34409006ed9ecafdddd41e060936c2e3a8421aee`. The old-head `-r1` and `-r2`
+- Capacity PR #166 is reviewed at repaired exact head
+  `bd400a6855b83de263838cabdee1f07de6839ba2`. The old-head `-r1` and `-r2`
   invocations failed before data opening on operator-path guards; `-r3` then
   reached the train population and correctly exposed the missing singleton
   eligibility projection before publishing a receipt. All three old-head
   outputs are absent and none is an ML/capacity result.
 - The new manifest-bound selector proves the entire declared candidate and
-  replicate population before excluding only singleton ballots. Pure and
-  strict compiled/void batteries pass 80/80 each. Await the one consolidated
-  repaired-head review above; do not launch another `aa0595c` command.
+  replicate population before excluding only singleton ballots. The repaired
+  review authenticator accepts the append-only exact-head marker after the old
+  same-prefix marker. Pure and strict compiled/void batteries pass 80/80 each.
+  The pre-launch audit above is the active instruction; never launch another
+  command at an old source head.
 - Scientific PR #167 exact staged head
   `917176f33ede097f5c8328ac22b6c317789e8376` passes 195/195 pure and strict
   compiled tests. Its test-only final delta witnesses the CLI wiring that
@@ -175,7 +190,7 @@ and PT-Luna0 need no repeated review while in their current states.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Idle; immutable V0 inputs preserved; repaired PR #166 capacity awaits one consolidated source+launch review |
+| Perf Cloud | Immutable V0 inputs preserved; reviewed PR #166 train-only P0/capacity packet is the sole authorized launch |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.

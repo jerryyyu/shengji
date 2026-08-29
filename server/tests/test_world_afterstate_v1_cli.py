@@ -8,9 +8,31 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 import shengji.rl.world_afterstate_v1_capacity as capacity
 from shengji.rl.world_afterstate_v1_scientific import lock_root_for
+
+
+def test_rehearsal_cli_imports_exact_tree_under_safe_path(tmp_path):
+    server = Path(__file__).resolve().parents[1]
+    script = server / "scripts" / "world_afterstate_v1_rehearsal.py"
+    site_packages = str(Path(torch.__file__).resolve().parents[1])
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    probe = (
+        "import runpy,sys; "
+        "sys.path.append(sys.argv[1]); "
+        "script=sys.argv[2]; "
+        "sys.argv=[script,'--help']; "
+        "runpy.run_path(script,run_name='__main__')"
+    )
+    result = subprocess.run((
+        sys.executable, "-S", "-P", "-B", "-c", probe,
+        site_packages, str(script),
+    ), cwd=tmp_path, env=environment, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "--output" in result.stdout
 
 
 def test_target_free_cli_refuses_label_bearing_path_surface(tmp_path):

@@ -14,6 +14,16 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+
+SCRIPT = Path(__file__).resolve()
+SERVER = SCRIPT.parents[1]
+if not sys.flags.safe_path or not sys.dont_write_bytecode:
+    raise RuntimeError("Value V1 rehearsal requires Python -P -B")
+if os.environ.get("PYTHONPATH"):
+    raise RuntimeError("Value V1 rehearsal refuses PYTHONPATH")
+if str(SERVER) not in sys.path:
+    sys.path.insert(0, str(SERVER))
+
 import torch
 
 from shengji.rl.belief_contract import canonical_json_bytes

@@ -223,10 +223,14 @@ def _cohort_builds(root: Path):
 
 
 def _initialize(args) -> None:
-    freeze_raw, _freeze = _canonical_read(Path(args.freeze), "P1 freeze")
+    freeze_raw, freeze = _canonical_read(Path(args.freeze), "P1 freeze")
     from shengji.rl.world_afterstate_v1_capacity import \
         reopen_capacity_directory
     capacity = reopen_capacity_directory(Path(args.capacity))
+    # Refuse a wrong head or runtime before the durable admission lock is
+    # created.  The post-publication _context check remains as an independent
+    # reconstruction witness, but it must not be the first live check.
+    _strict_live(freeze, args.expected_git)
     initialize_scientific_root(
         Path(args.root), freeze_raw=freeze_raw, capacity_build=capacity,
         repo=REPO, review_commit=args.review_commit)

@@ -8437,3 +8437,88 @@ is a clean learning null, not an integrity or negative-control refusal; it
 authorizes no gameplay, P2, retry, strength, merge, deployment or R5 work.
 
 `WORLD_AFTERSTATE_V1_P1_RESULT_REOPEN_V1 {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"r5_authorized":false,"retry_authorized":false,"strength_claim_authorized":false},"exact_source_head":"c98bdeb666df18f2640d717f408194b6e60e62bd","independent_reconstruction_external_sha256":"9bc17e53acfdef916a23eb5bd997f344df853de65b15cd7a5c09961864b69433","independent_reconstruction_receipt_sha256":"2c361a3e859da2c41dfc4293ef00d8326b097f9ad831fead3f3c6625500e4a35","natural_action_gates_passed":false,"negative_controls_failed_on_demand":true,"scientific_root":"/opt/value-afterstate-v1-p1-scientific-r2","schema":"world-afterstate-v1-p1-result-reopen-v1","status":"COMPLETE","terminal_decision":"SELECT_NONE_NO_ACTION_ADVANTAGE","terminal_external_sha256":"7011a716ad621cfdd1a0825676d63a4e519d5a25d17742941b9dc31a7f3a7798","terminal_manifest_sha256":"48d872eed25fe36cfcd8cf8c78b67f42962ed2b5a640d6f247954fedbaac6453","verified":true,"world_signal_passed":false}`
+
+## 2026-08-29 12:45 EDT — the V1 P1 result reproduces exactly, but "clean learning null" understates it: **the natural arm is the worst of the four, beaten by two of its own negative controls**
+
+Everything recorded at `d086eb1` reproduces from the sealed terminal. The run is
+real (`run_kind = reviewed-p1-pilot`, `non_scientific_rehearsal = False`), it
+used the reviewed freeze (`freeze_sha256 = c5582061…`, the `c98bdeb` freeze
+marked at `9aef077`), `report_rows_opened = False`,
+`prediction_bytes_sealed_before_audit_api = True`, and every authority flag in
+both the manifest and the terminal is false. `decision =
+SELECT_NONE_NO_ACTION_ADVANTAGE`, `p0_label_ceiling_passed = True`,
+`negative_controls_failed_on_demand = True`, `natural_action_gates_passed =
+False`, `world_signal_passed = False`. The quoted natural numbers are exact to
+the microlevel: `advantage_error_improvement` mean **−139,134**
+`[−164,342, −115,496]`, `action_utility` mean **−61,224**
+`[−174,242, +128,205]`, `positive_member_count = 1`. Directory mtimes 15:48 →
+16:30 match the 42m34s wall. Nothing in the record is wrong.
+
+### What the record does not say
+
+I read the emitter before interpreting the sign, per `29a1717`.
+`world_afterstate_v1_evaluation.py:429–435`:
+
+    baseline_error = abs(truth)
+    model_error = _round_divide(
+        abs(truth * COHORT_SIZE - ensemble_sum), COHORT_SIZE)
+    root_error += baseline_error - model_error
+
+So the metric is `|truth| − |truth − ensemble_mean|`: **positive means less
+error than predicting zero, negative means worse than predicting zero.** All
+four sealed arms, same 49 states / 520 held-out pairs / 21 deal clusters /
+10,000 replicates:
+
+| arm | advantage-error improvement | action utility | positive members |
+|---|---|---|---|
+| **natural** | **−139,134** `[−164,342, −115,496]` | −61,224 `[−174,242, +128,205]` | **1/8** |
+| identical-successor | 0 `[0, 0]` | 0 `[0, 0]` | 0/8 |
+| action-association-permutation | −134,735 `[−156,570, −118,566]` | −30,612 `[−80,357, +45,455]` | **5/8** |
+| label-permutation | −60,707 `[−76,730, −50,877]` | −81,633 `[−146,552, +14,706]` | 1/8 |
+
+The natural arm is **last** on the primary error metric. It is beaten by
+`label-permutation` — the control that destroys the input→label relationship —
+by more than a factor of two, with **non-overlapping** deal-bootstrap intervals
+(`[−0.1643, −0.1155]` vs `[−0.0767, −0.0509]`). It is also beaten by
+`action-association-permutation` on positive members, 1/8 against 5/8. And the
+degenerate `identical-successor` control, which predicts exactly zero, scores
+exactly zero — so **the natural model is significantly worse than predicting
+nothing at all.**
+
+A model with no signal lands near zero, like `identical-successor`, or near its
+permuted control. This one lands materially below both. That is not the same
+finding as "the signal was too weak to detect", and it points at different
+causes: target sign or scale, ensemble aggregation, or a train/evaluate
+mismatch — rather than insufficient data or capacity.
+
+### Why the gate could not have told you this
+
+`world_afterstate_v1_result.py:116`:
+
+    controls_failed = identical_predictions_exact_zero and all(
+        not control_results[name]["passed"] for name in CONTROL_NAMES)
+
+`negative_controls_failed_on_demand` checks only that each control fails **its
+own** absolute gate, and `_decision` consumes three booleans —
+`natural_passed`, `controls_failed`, `world_signal_passed`. **No comparison
+between the natural arm and the controls exists anywhere in the decision.** A
+natural arm sitting at zero and a natural arm two intervals below its permuted
+control produce the identical decision string. The machinery is behaving
+correctly; it simply does not measure this axis, so the terminal cannot
+distinguish "learned nothing" from "learned something harmful".
+
+One honest limit: the four intervals are bootstrapped per arm over the same 21
+deal clusters, not paired across arms. Non-overlap is strong but it is not a
+paired per-deal test, and I did not run one — that would be the rigorous
+version of the claim, and it is cheap on sealed artifacts.
+
+### What I would change before the redesign
+
+`d086eb1` says to "use its curves to redesign the target/model after R4 is
+interpreted." Before that: add a cross-arm comparison to the terminal so a
+natural arm below its own label-permuted control is classified distinctly from
+one at zero — `SELECT_NONE_NO_ACTION_ADVANTAGE` is doing double duty right now.
+And treat the −0.139 as a lead worth one cheap paired test on the sealed
+predictions rather than as an absence of signal. Preserving the artifacts is
+already right; the reading of them is what I am asking to sharpen.
+

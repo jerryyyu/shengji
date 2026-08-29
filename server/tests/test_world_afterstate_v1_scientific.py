@@ -18,9 +18,11 @@ from test_world_afterstate_v1_experiment import _inputs
 
 def _fixture(monkeypatch, tmp_path):
     capacity, runtime, sources, reentry, reentry_v2 = _inputs()
+    root = tmp_path / "scientific"
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
         source_sha256s=sources, experiment_runtime=runtime,
+        scientific_root=str(root.resolve()),
         capacity_operator_reentry=reentry,
         capacity_operator_reentry_v2=reentry_v2)
     admission = {
@@ -42,7 +44,6 @@ def _fixture(monkeypatch, tmp_path):
     monkeypatch.setattr(
         scientific, "validate_admission",
         lambda _value, *, freeze, review_marker: None)
-    root = tmp_path / "scientific"
     return root, capacity, freeze, admission
 
 
@@ -61,6 +62,20 @@ def test_scientific_root_seals_exact_capacity_and_reopens(monkeypatch,
     assert reopened_manifest == manifest
     assert (root / "outputs").is_dir()
     assert lock_root_for(root).is_dir()
+
+
+def test_reviewed_admission_cannot_be_reused_under_another_root(
+        monkeypatch, tmp_path):
+    root, capacity, freeze, _admission = _fixture(monkeypatch, tmp_path)
+    wrong_root = tmp_path / "scientific-second"
+    with pytest.raises(WorldAfterstateV1ScientificError,
+                       match="differs from reviewed freeze"):
+        initialize_scientific_root(
+            wrong_root, freeze_raw=canonical_json_bytes(freeze),
+            capacity_build=capacity, repo=Path.cwd().parent.resolve(),
+            review_commit="b" * 40)
+    assert not wrong_root.exists()
+    assert not lock_root_for(wrong_root).exists()
 
 
 def test_stage_attempt_is_durable_one_shot_and_root_deletion_cannot_retry(

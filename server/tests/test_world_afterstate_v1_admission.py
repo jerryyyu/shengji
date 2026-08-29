@@ -27,6 +27,7 @@ def _freeze():
     return build_experiment_freeze(
         capacity, source_git="a" * 40,
         source_sha256s=sources, experiment_runtime=runtime,
+        scientific_root="/opt/value-afterstate-v1-p1-scientific-test",
         capacity_operator_reentry=reentry,
         capacity_operator_reentry_v2=reentry_v2)
 
@@ -105,6 +106,8 @@ def test_scientific_review_appends_after_prior_marker_and_grants_only_p1(
         "git", "fetch", "--quiet", admission.CANONICAL_REMOTE_URL,
         f"{admission.CANONICAL_REMOTE_REF}:refs/remotes/origin/main")
     assert value["authority"] == ADMISSION_AUTHORITY
+    assert expected_review_claim(freeze)["scientific_root"] \
+        == freeze["scientific_root"]
     assert value["authority"]["scientific_p1_training_authorized"] is True
     assert value["authority"][
         "v0_calibration_label_opening_authorized"] is True
@@ -155,10 +158,14 @@ def test_capacity_operator_reentry_is_exact_external_command_authority(
     review = "1" * 40
     parent = "2" * 40
     remote = "3" * 40
-    previous = b"# ledger\n"
     claim = expected_capacity_operator_reentry_claim()
     marker = admission.CAPACITY_REENTRY_PREFIX.encode("ascii") \
         + canonical_json_bytes(claim)
+    prior_claim = copy.deepcopy(claim)
+    prior_claim["failed_service"] = "prior-capacity-attempt.service"
+    prior_marker = admission.CAPACITY_REENTRY_PREFIX.encode("ascii") \
+        + canonical_json_bytes(prior_claim)
+    previous = b"# ledger\n" + prior_marker
     current = previous + marker
     monkeypatch.setattr(
         admission, "_canonical_remote_tip", lambda _repo: remote)

@@ -179,6 +179,9 @@ def initialize_scientific_root(
     manifest = _root_manifest(inputs, freeze, admission)
 
     resolved = root.resolve()
+    if str(resolved) != freeze.get("scientific_root"):
+        raise WorldAfterstateV1ScientificError(
+            "scientific root differs from reviewed freeze")
     parent = resolved.parent
     partial = parent / f".{resolved.name}.partial"
     lock = lock_root_for(resolved)
@@ -260,6 +263,9 @@ def reopen_scientific_root(root: Path, *, repo: Path):
         raise WorldAfterstateV1ScientificError(
             "scientific root file population drift")
     freeze = _canonical(raw_by_path["freeze.json"], "scientific freeze")
+    if str(root.resolve()) != freeze.get("scientific_root"):
+        raise WorldAfterstateV1ScientificError(
+            "scientific root differs from reviewed freeze")
     admission = _canonical(
         raw_by_path["admission.json"], "scientific admission")
     receipt = _canonical(

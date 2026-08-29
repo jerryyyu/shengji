@@ -26,6 +26,9 @@ from shengji.rl.world_afterstate_v1_training_controller import (
 from test_world_afterstate_v1_capacity import _build as _capacity_build
 
 
+SCIENTIFIC_ROOT = "/opt/value-afterstate-v1-p1-scientific-test"
+
+
 def _inputs():
     capacity = _capacity_build()
     runtime = copy.deepcopy(capacity.receipt["runtime"])
@@ -62,6 +65,7 @@ def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
         source_sha256s=sources, experiment_runtime=runtime,
+        scientific_root=SCIENTIFIC_ROOT,
         capacity_operator_reentry=reentry,
         capacity_operator_reentry_v2=reentry_v2)
     validate_experiment_freeze(freeze, capacity)
@@ -120,6 +124,7 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
         source_sha256s=sources, experiment_runtime=runtime,
+        scientific_root=SCIENTIFIC_ROOT,
         capacity_operator_reentry=reentry,
         capacity_operator_reentry_v2=reentry_v2)
 
@@ -128,6 +133,15 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
     with pytest.raises(WorldAfterstateV1ExperimentError,
                        match="freeze reconstruction drift"):
         validate_experiment_freeze(forged, capacity)
+
+    with pytest.raises(WorldAfterstateV1ExperimentError,
+                       match="scientific root drift"):
+        build_experiment_freeze(
+            capacity, source_git="a" * 40,
+            source_sha256s=sources, experiment_runtime=runtime,
+            scientific_root="relative/root",
+            capacity_operator_reentry=reentry,
+            capacity_operator_reentry_v2=reentry_v2)
 
     forged = copy.deepcopy(freeze)
     forged["capacity_attempt_lineage"]["failed_attempts"][2][
@@ -142,6 +156,7 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
         build_experiment_freeze(
             capacity, source_git="a" * 40,
             source_sha256s=sources, experiment_runtime=runtime,
+            scientific_root=SCIENTIFIC_ROOT,
             capacity_operator_reentry=reentry,
             capacity_operator_reentry_v2=reentry_v2)
 
@@ -153,6 +168,7 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
             capacity, source_git="a" * 40,
             source_sha256s=sources, experiment_runtime=copy.deepcopy(
                 capacity.receipt["runtime"]),
+            scientific_root=SCIENTIFIC_ROOT,
             capacity_operator_reentry=forged,
             capacity_operator_reentry_v2=reentry_v2)
 
@@ -164,5 +180,6 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
             capacity, source_git="a" * 40,
             source_sha256s=sources, experiment_runtime=copy.deepcopy(
                 capacity.receipt["runtime"]),
+            scientific_root=SCIENTIFIC_ROOT,
             capacity_operator_reentry=reentry,
             capacity_operator_reentry_v2=forged_v2)

@@ -413,6 +413,11 @@ admission; it may only reproduce the sealed decision and cannot extend the
 population, retrain, retry, or select among results. Both reads are counted
 separately. Report and provider-audit rows never open in P1.
 
+The immutable freeze also binds the absolute scientific evidence root. The
+external-review claim includes that path, and initialization refuses before
+publishing an attempt if the operator supplies any other root. Therefore one
+review marker cannot be reused under a second path to obtain an implicit retry.
+
 No all-or-nothing multi-day run is allowed before P0 and a miniature full-path
 rehearsal pass. The rehearsal uses synthetic or train-only rows, proves every
 stage and refusal path, publishes no learning conclusion, and may not choose

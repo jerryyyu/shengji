@@ -149,6 +149,7 @@ def expected_review_claim(freeze: Mapping[str, Any]) -> dict[str, Any]:
         "schema": CLAIM_SCHEMA,
         "source_git": source_git,
         "freeze_sha256": freeze_sha,
+        "scientific_root": freeze.get("scientific_root"),
         "capacity_receipt_external_sha256": _digest(
             capacity.get("receipt_external_sha256"),
             "review capacity receipt external SHA-256"),
@@ -174,6 +175,13 @@ def expected_review_claim(freeze: Mapping[str, Any]) -> dict[str, Any]:
                 or claim[key] <= 0:
             raise WorldAfterstateV1AdmissionError(
                 "review resource binding drift")
+    scientific_root = claim["scientific_root"]
+    if type(scientific_root) is not str or not scientific_root \
+            or not Path(scientific_root).is_absolute() \
+            or str(Path(scientific_root).resolve(strict=False)) \
+            != scientific_root:
+        raise WorldAfterstateV1AdmissionError(
+            "review scientific root drift")
     return claim
 
 
@@ -325,7 +333,8 @@ def _authenticate_capacity_operator_reentry(
                        if line.startswith(prefix)]
     previous_matches = [line for line in previous.splitlines(keepends=True)
                         if line.startswith(prefix)]
-    if current_matches != [marker] or previous_matches:
+    if current_matches != [*previous_matches, marker] \
+            or marker in previous_matches:
         raise WorldAfterstateV1AdmissionError(
             f"{label} marker introduction drift")
     body = {

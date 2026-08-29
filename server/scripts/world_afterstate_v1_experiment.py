@@ -136,6 +136,7 @@ def _derive(args):
     freeze = build_experiment_freeze(
         capacity, source_git=args.expected_git,
         source_sha256s=sources, experiment_runtime=runtime,
+        scientific_root=str(args.scientific_root),
         capacity_operator_reentry=capacity_operator_reentry,
         capacity_operator_reentry_v2=capacity_operator_reentry_v2)
     validate_experiment_freeze(freeze, capacity)
@@ -169,6 +170,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--capacity-operator-reentry-commit", required=True)
     value.add_argument("--capacity-operator-reentry-v2-commit", required=True)
     value.add_argument("--expected-git", required=True)
+    value.add_argument("--scientific-root", type=Path, required=True)
     value.add_argument("--out", type=Path, required=True)
     return value
 

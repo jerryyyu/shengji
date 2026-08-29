@@ -9,6 +9,7 @@ external source+freeze review admits one execution.
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import Any, Mapping
 
 from .belief_contract import canonical_json_bytes
@@ -217,6 +218,7 @@ def build_experiment_freeze(
         capacity_build: CapacityBuildV1, *, source_git: str,
         source_sha256s: Mapping[str, str],
         experiment_runtime: Mapping[str, Any],
+        scientific_root: str,
         capacity_operator_reentry: Mapping[str, Any],
         capacity_operator_reentry_v2: Mapping[str, Any]) -> dict[str, Any]:
     """Derive one outcome-blind P1 freeze from exact capacity mechanics."""
@@ -238,6 +240,12 @@ def build_experiment_freeze(
         raise WorldAfterstateV1ExperimentError(
             "experiment requires a passing P0 capacity packet")
     _digest(source_git, "experiment source Git", length=40)
+    if type(scientific_root) is not str or not scientific_root \
+            or not Path(scientific_root).is_absolute() \
+            or str(Path(scientific_root).resolve(strict=False)) \
+            != scientific_root:
+        raise WorldAfterstateV1ExperimentError(
+            "experiment scientific root drift")
     if type(source_sha256s) is not dict \
             or set(source_sha256s) != set(SOURCE_KEYS):
         raise WorldAfterstateV1ExperimentError(
@@ -278,6 +286,7 @@ def build_experiment_freeze(
     body = {
         "schema": FREEZE_SCHEMA,
         "namespace": NAMESPACE,
+        "scientific_root": scientific_root,
         "source_git": source_git,
         "source_sha256s": dict(sorted(source_sha256s.items())),
         "runtime": dict(experiment_runtime),
@@ -388,7 +397,8 @@ def validate_experiment_freeze(
         value: Mapping[str, Any], capacity_build: CapacityBuildV1) -> None:
     """Rebuild the full freeze from its only immutable variable input."""
     if type(value) is not dict or set(value) != {
-            "schema", "namespace", "source_git", "source_sha256s",
+            "schema", "namespace", "scientific_root", "source_git",
+            "source_sha256s",
             "runtime", "capacity_operator_reentry",
             "capacity_operator_reentry_v2", "capacity_attempt_lineage",
             "capacity", "v0_inputs",
@@ -403,6 +413,7 @@ def validate_experiment_freeze(
         capacity_build, source_git=value.get("source_git"),
         source_sha256s=value.get("source_sha256s"),
         experiment_runtime=value.get("runtime"),
+        scientific_root=value.get("scientific_root"),
         capacity_operator_reentry=value.get("capacity_operator_reentry"),
         capacity_operator_reentry_v2=value.get(
             "capacity_operator_reentry_v2"))

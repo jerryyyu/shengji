@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 08:58 EDT**. Remote main before this refresh:
-`89f278d27a51b8249f87cec7d1392350cc566bbe`.
+Last reconciled: **2026-08-29 09:27 EDT**. Remote main before this refresh:
+`03e83c0a7b5490db2fa4208010bc8fadb3cdeb1f`.
 
 ## OPEN — one consolidated Value V1 capacity source+launch review
 
@@ -90,6 +90,16 @@ and PT-Luna0 need no repeated review while in their current states.
   canonical `origin/main` immediately before authentication; this closes the
   stale-remote-ref handoff failure observed during Value V0 without touching
   the scientific process or evidence.
+- Fail-safe watcher
+  `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is also active with a
+  64-MiB envelope and has launched neither recovery nor verification. It waits
+  until the scientific unit stops. A normal outer seal makes it exit without
+  action; an unsealed `terminal.partial/` also makes it refuse without action.
+  Only the already-reviewed inner-only state (`terminal/` present, partial and
+  outer absent) can launch exact-head `recover-terminal-binding`; after that
+  succeeds it launches verifier `belief-r4-terminal-independent-verifier-
+  56bd35f-r2`. This closes the operator-attention gap without signalling,
+  duplicating or modifying the live scientific process.
 - R5 remains paused until the independently reproduced R4 verdict and curves
   are interpreted.
 

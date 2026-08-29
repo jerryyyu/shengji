@@ -37,7 +37,8 @@ from .world_afterstate_v1_dataset import (
     select_manifest_eligible_advantage_rows)
 from .world_afterstate_v1_evaluation import inference_population_sha256
 from .world_afterstate_v1_experiment import (
-    CALIBRATION_AUDIT_COUNT, CALIBRATION_GROUP_COUNT,
+    CALIBRATION_ACTION_GROUP_COUNT, CALIBRATION_AUDIT_COUNT,
+    CALIBRATION_GROUP_COUNT,
     CALIBRATION_LABEL_PAIR_COUNT, CALIBRATION_LABEL_ROW_COUNT,
     CALIBRATION_PAIR_COUNT, FREEZE_SCHEMA)
 from .world_afterstate_v1_inference import (
@@ -601,8 +602,14 @@ def reopen_calibration_labels(
             reconstruction_workers=freeze["learner"]["row_workers"],
             deadline_monotonic_ns=deadline_monotonic_ns,
             progress=progress)
-        joined = tuple(join_advantage_examples(
-            [reopened for _binding, reopened in rows]))
+        eligible_rows = select_manifest_eligible_advantage_rows(
+            [reopened for _binding, reopened in rows],
+            candidate_counts_by_state_group={
+                group["state_group_id"]: group["candidate_count"]
+                for group in population["groups"]
+                if group["fold"] == "calibration"
+            })
+        joined = tuple(join_advantage_examples(eligible_rows))
     except ValueError as exc:
         raise WorldAfterstateV1ExecutionError(
             "calibration label reconstruction drift") from exc
@@ -610,9 +617,10 @@ def reopen_calibration_labels(
     expected = freeze["population"]
     if len(rows) != CALIBRATION_LABEL_ROW_COUNT \
             or len(joined) != CALIBRATION_LABEL_PAIR_COUNT \
-            or len(states) != CALIBRATION_GROUP_COUNT \
+            or len(states) != CALIBRATION_ACTION_GROUP_COUNT \
             or len(rows) != expected["calibration_label_row_count"] \
-            or len(joined) != expected["calibration_label_pair_count"]:
+            or len(joined) != expected["calibration_label_pair_count"] \
+            or len(states) != expected["calibration_action_group_count"]:
         raise WorldAfterstateV1ExecutionError(
             "calibration label population binding drift")
     return joined

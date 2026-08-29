@@ -15,7 +15,8 @@ from shengji.rl.world_afterstate_v1_execution import (
     publish_target_free_prediction_build,
     reopen_calibration_labels, reopen_target_free_prediction_build,
     reopen_target_free_prediction_directory, reopen_training_values)
-from shengji.rl.world_afterstate_v1_experiment import FREEZE_SCHEMA
+from shengji.rl.world_afterstate_v1_experiment import (
+    CALIBRATION_ACTION_GROUP_COUNT, FREEZE_SCHEMA)
 from shengji.rl.world_afterstate_v1_rehearsal import (
     build_non_scientific_rehearsal)
 from shengji.rl.world_afterstate_v1_training_controller import (
@@ -121,11 +122,18 @@ def test_scientific_row_readers_pin_train_and_calibration_folds(monkeypatch):
     calls = []
     population = {
         "manifest_sha256": "a" * 64,
-        "groups": [{
-            "state_group_id": "0" * 64,
-            "fold": "train",
-            "candidate_count": 2,
-        }],
+        "groups": [
+            {
+                "state_group_id": "0" * 64,
+                "fold": "train",
+                "candidate_count": 2,
+            },
+            {
+                "state_group_id": "1" * 64,
+                "fold": "calibration",
+                "candidate_count": 3,
+            },
+        ],
     }
     dataset = {"manifest_sha256": "b" * 64}
     monkeypatch.setattr(
@@ -157,13 +165,16 @@ def test_scientific_row_readers_pin_train_and_calibration_folds(monkeypatch):
 
     def select(rows, *, candidate_counts_by_state_group):
         selector_calls.append((tuple(rows), candidate_counts_by_state_group))
-        return ("eligible-only",)
+        if candidate_counts_by_state_group == {"0" * 64: 2}:
+            return ("train-eligible-only",)
+        assert candidate_counts_by_state_group == {"1" * 64: 3}
+        return ("calibration-eligible-only",)
 
     monkeypatch.setattr(
         execution, "select_manifest_eligible_advantage_rows", select)
 
     def join_train(rows):
-        assert rows == ("eligible-only",)
+        assert rows == ("train-eligible-only",)
         return train_values
 
     monkeypatch.setattr(execution, "join_advantage_examples", join_train)
@@ -186,6 +197,8 @@ def test_scientific_row_readers_pin_train_and_calibration_folds(monkeypatch):
             "train_row_population_sha256": "d" * 64,
             "calibration_label_row_count": 624,
             "calibration_label_pair_count": 520,
+            "calibration_action_group_count":
+                CALIBRATION_ACTION_GROUP_COUNT,
         },
     }
     assert reopen_training_values(
@@ -199,15 +212,23 @@ def test_scientific_row_readers_pin_train_and_calibration_folds(monkeypatch):
 
     class Pair:
         def __init__(self, index):
-            self.state_group_id = f"{index % 52:064x}"
+            self.state_group_id = (
+                f"{index % CALIBRATION_ACTION_GROUP_COUNT:064x}")
 
     calibration_values = tuple(
         type("Joined", (), {"pair": Pair(index)})()
         for index in range(520))
-    monkeypatch.setattr(execution, "join_advantage_examples",
-                        lambda rows: calibration_values)
+    def join_calibration(rows):
+        assert rows == ("calibration-eligible-only",)
+        return calibration_values
+
+    monkeypatch.setattr(
+        execution, "join_advantage_examples", join_calibration)
     assert reopen_calibration_labels(
         freeze=freeze, population_path=Path(__file__),
         dataset_manifest_path=Path(__file__), row_root=Path(__file__),
         deadline_monotonic_ns=10**30) == calibration_values
     assert calls == [("train",), ("calibration",)]
+    assert len(selector_calls) == 2
+    assert len(selector_calls[1][0]) == 624
+    assert selector_calls[1][1] == {"1" * 64: 3}

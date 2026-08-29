@@ -15,7 +15,8 @@ from shengji.rl.world_afterstate_v1_admission import (
 from shengji.rl.world_afterstate_v1_capacity import (
     CAPACITY_MEMORY_LIMIT_BYTES)
 from shengji.rl.world_afterstate_v1_experiment import (
-    AUTHORITY, CAPACITY_FAILED_ATTEMPTS, CALIBRATION_AUDIT_COUNT,
+    AUTHORITY, CAPACITY_FAILED_ATTEMPTS, CALIBRATION_ACTION_GROUP_COUNT,
+    CALIBRATION_AUDIT_COUNT,
     CALIBRATION_GROUP_COUNT,
     CALIBRATION_LABEL_PAIR_COUNT, CALIBRATION_LABEL_ROW_COUNT,
     CALIBRATION_PAIR_COUNT, SCIENTIFIC_FAILED_ATTEMPTS, SOURCE_KEYS,
@@ -113,6 +114,8 @@ def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
     assert freeze["learner"]["cohorts"] == list(TRAINING_COHORTS)
     assert freeze["population"]["calibration_group_count"] \
         == CALIBRATION_GROUP_COUNT
+    assert freeze["population"]["calibration_action_group_count"] \
+        == CALIBRATION_ACTION_GROUP_COUNT
     assert freeze["population"]["calibration_audit_count"] \
         == CALIBRATION_AUDIT_COUNT
     assert freeze["population"]["calibration_pair_count"] \

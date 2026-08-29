@@ -34,6 +34,7 @@ V0_AUDIT_MANIFEST_EXTERNAL_SHA256 = (
 V0_AUDIT_MANIFEST_SHA256 = (
     "daf451dab7a0736d43f8374e9eede9e504084609214526dc25f22a7ba5e314ce")
 CALIBRATION_GROUP_COUNT = 52
+CALIBRATION_ACTION_GROUP_COUNT = 49
 CALIBRATION_AUDIT_COUNT = 312
 CALIBRATION_PAIR_COUNT = 260
 CALIBRATION_LABEL_ROW_COUNT = 624
@@ -356,6 +357,8 @@ def build_experiment_freeze(
                 train["label_ceiling_result_sha256"],
             "calibration_fold": "original-v0-calibration-only",
             "calibration_group_count": CALIBRATION_GROUP_COUNT,
+            "calibration_action_group_count":
+                CALIBRATION_ACTION_GROUP_COUNT,
             "calibration_audit_count": CALIBRATION_AUDIT_COUNT,
             "calibration_pair_count": CALIBRATION_PAIR_COUNT,
             "calibration_label_row_count": CALIBRATION_LABEL_ROW_COUNT,
@@ -453,7 +456,8 @@ def validate_experiment_freeze(
 
 
 __all__ = [
-    "AUTHORITY", "CAPACITY_FAILED_ATTEMPTS", "CALIBRATION_AUDIT_COUNT",
+    "AUTHORITY", "CAPACITY_FAILED_ATTEMPTS",
+    "CALIBRATION_ACTION_GROUP_COUNT", "CALIBRATION_AUDIT_COUNT",
     "CALIBRATION_GROUP_COUNT",
     "CALIBRATION_LABEL_PAIR_COUNT", "CALIBRATION_LABEL_ROW_COUNT",
     "CALIBRATION_PAIR_COUNT", "FREEZE_SCHEMA", "NAMESPACE", "SOURCE_KEYS",

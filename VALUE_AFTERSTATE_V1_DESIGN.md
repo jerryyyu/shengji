@@ -430,6 +430,15 @@ root, failure boundary, and zero-held-out-opening record as structured lineage;
 it names a new root and still requires a fresh exact-head source+freeze review.
 The spent admission is never retried.
 
+The same outcome-blind manifest census applies at the held-out boundary. The
+52 calibration roots contain three singleton ballots. They remain part of the
+sealed audit/prediction inventory but cannot define an action comparison; the
+action-value gates therefore contain 49 comparable roots and 520 replicated
+candidate-minus-incumbent pairs. Calibration label reopening proves the full
+624-row manifest first and then applies the identical candidate-count
+projection before pairing. Singleton roots are neither relabeled nor silently
+repaired, and no label byte is needed to determine their exclusion.
+
 No all-or-nothing multi-day run is allowed before P0 and a miniature full-path
 rehearsal pass. The rehearsal uses synthetic or train-only rows, proves every
 stage and refusal path, publishes no learning conclusion, and may not choose

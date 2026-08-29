@@ -8415,3 +8415,25 @@ single `member_workers=4` cohort measurement from the capacity receipt, with
 deadline is the same one-sample arm I flagged at `ceaca8a`, where the four arms
 differed by 3.5× in achieved cores.
 
+## 2026-08-29 12:31 EDT — Value-Afterstate V1 P1 `r2` independently reconstructed: `SELECT_NONE_NO_ACTION_ADVANTAGE`
+
+The reviewed exact-head run at
+`c98bdeb666df18f2640d717f408194b6e60e62bd` completed successfully on Perf
+with zero restarts. Unit
+`value-afterstate-v1-p1-scientific-c98bdeb-r2.service`, invocation
+`7ffbb2af8de84873a41ee3c555479123`, used 42m33.801s wall / 8h27m25.313s CPU
+and 2.1 GB peak memory. All four cohorts stopped for frozen patience, all
+target-free predictions sealed before the single calibration opening, and the
+independent reconstruction replayed all 624 calibration rows with
+`verified=true`.
+
+P0's action-label ceiling remained positive (+0.084112 signed levels,
+[+0.036050, +0.134259]), and all three negative controls failed on demand.
+The natural model nevertheless failed the held-out action gate:
+advantage-error improvement -0.139134 [-0.164342, -0.115496], action/simple-
+regret utility -0.061224 [-0.174242, +0.128205], positive members 1/8, and
+world-shuffle separation failed. The terminal therefore selected none. This
+is a clean learning null, not an integrity or negative-control refusal; it
+authorizes no gameplay, P2, retry, strength, merge, deployment or R5 work.
+
+`WORLD_AFTERSTATE_V1_P1_RESULT_REOPEN_V1 {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"r5_authorized":false,"retry_authorized":false,"strength_claim_authorized":false},"exact_source_head":"c98bdeb666df18f2640d717f408194b6e60e62bd","independent_reconstruction_external_sha256":"9bc17e53acfdef916a23eb5bd997f344df853de65b15cd7a5c09961864b69433","independent_reconstruction_receipt_sha256":"2c361a3e859da2c41dfc4293ef00d8326b097f9ad831fead3f3c6625500e4a35","natural_action_gates_passed":false,"negative_controls_failed_on_demand":true,"scientific_root":"/opt/value-afterstate-v1-p1-scientific-r2","schema":"world-afterstate-v1-p1-result-reopen-v1","status":"COMPLETE","terminal_decision":"SELECT_NONE_NO_ACTION_ADVANTAGE","terminal_external_sha256":"7011a716ad621cfdd1a0825676d63a4e519d5a25d17742941b9dc31a7f3a7798","terminal_manifest_sha256":"48d872eed25fe36cfcd8cf8c78b67f42962ed2b5a640d6f247954fedbaac6453","verified":true,"world_signal_passed":false}`

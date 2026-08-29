@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 12:05 EDT**. Remote main before this update:
-`c2ec1f4`.
+Last reconciled: **2026-08-29 12:31 EDT**. Remote main before this update:
+`ad7ad17`.
 
 ## Review queue
 
@@ -102,7 +102,7 @@ run is live.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
-### Value-Afterstate V1 — P0 passed; repaired P1 scientific run live
+### Value-Afterstate V1 — P0 passed; P1 selected none and is verified
 
 - Capacity PR #166 is reviewed at repaired exact head
   `bd400a6855b83de263838cabdee1f07de6839ba2`. The old-head `-r1` and `-r2`
@@ -128,20 +128,25 @@ run is live.
   head `c98bdeb` applies the selector to both train and calibration action
   populations, reproduces the capacity manifest on the real train population,
   and freezes that spent-attempt lineage under a new `r2` root.
-- Claude's final exact-head PASS is `9aef077`. The single authorized run is
-  live on Perf as `value-afterstate-v1-p1-scientific-c98bdeb-r2.service`,
-  invocation `7ffbb2af8de84873a41ee3c555479123`, since 15:47:56 UTC. It cleared
-  admission and the repaired full train-population reopen. Natural and
-  identical-successor each stopped normally after five epochs under the
-  frozen patience rule and sealed their manifests plus eight checkpoints
-  immutable `0400`/one-link. At 16:05 UTC the unit advanced into the
-  action-association-permutation control. The old failure happened before
-  these boundaries. Current peak is about 2.28 GB with zero restarts and
-  roughly 14.9 effective CPU cores; no held-out calibration label has opened.
-  The unit sequentially runs natural plus three
-  controls, then seals target-free predictions, opens calibration once, seals
-  the terminal and immediately reconstructs it. Its hard 12-hour deadline is
-  03:47:56 UTC on August 30.
+- Claude's final exact-head PASS is `9aef077`. The single authorized Perf run,
+  `value-afterstate-v1-p1-scientific-c98bdeb-r2.service` at invocation
+  `7ffbb2af8de84873a41ee3c555479123`, completed successfully with zero restarts
+  at 16:30:30 UTC. It consumed 42m34s wall / 8h27m CPU (about 11.9 effective
+  cores), peaked at 2.1 GB, sealed all four early-stopped cohorts and target-free
+  predictions before opening calibration exactly once, then independently
+  reconstructed all 624 held-out rows. Every evidence file is immutable
+  `0400`/one-link; reconstruction receipt is `2c361a3e...e4a35` and
+  `verified=true`.
+- Terminal decision: `SELECT_NONE_NO_ACTION_ADVANTAGE`. P0's label ceiling
+  remained real, and all three negative controls failed on demand, but the
+  natural model failed the action gate: advantage-error improvement was
+  -0.139134 signed levels with interval [-0.164342, -0.115496], action/simple-
+  regret utility was -0.061224 with interval [-0.174242, +0.128205], and only
+  1/8 members was positive. World-shuffle separation also failed. This is a
+  clean learning null, not a mechanics/control refusal.
+- All gameplay, strength, merge, retry, P2, deployment and R5 authority remains
+  false. Do not scale this recipe; preserve the verified result and use its
+  curves to redesign the target/model only after R4 is interpreted.
 - This is a 520-root mechanism pilot, not a final-quality model claim. Eight
   seeds test optimization stability, not data sufficiency; any later scaling
   adds independent roots/replicates only after P0/P1 establish real action
@@ -152,12 +157,12 @@ run is live.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Value P1 repaired r2 scientific run live; no held-out label open yet |
+| Perf Cloud | free; Value P1 r2 completed and independently reconstructed |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
-- Do not stop, duplicate, retry, inspect unavailable outcomes, merge, deploy,
-  resume R5, or launch additional scientific Value work while r2 is live.
+- Do not stop, duplicate, retry, merge, deploy, resume R5, or launch additional
+  scientific Value work. R4 interpretation remains the critical path.
 - Report percentages, ETA, utilization, and failures plainly. Use all cores
   for materially parallel workloads; do not add risky concurrency merely to
   make a short deterministic prep step look busy.

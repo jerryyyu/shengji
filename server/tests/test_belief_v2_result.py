@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future
 import hashlib
 import importlib.util
 import io
@@ -51,6 +52,7 @@ from shengji.rl.belief_v2_freeze import (
     expected_execution_review_claim,
 )
 from shengji.rl.belief_v2_protocol import (
+    V2_CAPTURE_LANES,
     V2_RANKS,
     V2_ROUND_COUNT,
     V2_SPLIT_COUNTS,
@@ -1067,6 +1069,11 @@ def test_r4_terminal_wrappers_forward_bound_calibration_to_every_replay(
         assert kwargs["calibration"] is calibration
         assert kwargs["bound_calibration_manifest"] is calibration
         assert kwargs["calibration_directory"] == selection
+    assert "parallel_integrity_workers" not in calls[0][2]
+    assert calls[1][2]["parallel_integrity_workers"] \
+        == R4_PARALLEL.INDEPENDENT_VERIFIER_INTEGRITY_WORKERS
+    assert calls[2][2]["parallel_integrity_workers"] \
+        == R4_PARALLEL.INDEPENDENT_VERIFIER_INTEGRITY_WORKERS
 
 
 def test_r4_terminal_parity_coordinates_cover_every_rank_without_test():
@@ -2330,6 +2337,51 @@ def test_terminal_source_replay_refuses_self_consistent_score_substitution(
             inventory={}, group_split={})
 
 
+@pytest.mark.parametrize("worker_count", (True, 1, V2_CAPTURE_LANES + 1))
+def test_terminal_integrity_worker_configuration_refuses_before_open(
+        worker_count):
+    freeze = _freeze()
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="integrity mode drift"):
+        TERMINAL_STAGE.reopen_v2_terminal(
+            Path("/must-not-open"), freeze=freeze,
+            admission=_admission(freeze), inventory={}, group_split={},
+            parallel_integrity_workers=worker_count)
+
+
+def test_terminal_integrity_executor_and_local_pool_are_mutually_exclusive():
+    freeze = _freeze()
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="integrity mode drift"):
+        TERMINAL_STAGE.reopen_v2_terminal(
+            Path("/must-not-open"), freeze=freeze,
+            admission=_admission(freeze), inventory={}, group_split={},
+            integrity_executor=object(), parallel_integrity_workers=2)
+
+
+def test_terminal_integrity_worker_failure_is_typed_before_other_reads():
+    freeze = _freeze()
+
+    class FailedExecutor:
+        def submit(self, function, row):
+            future = Future()
+            future.set_exception(RuntimeError("worker died"))
+            return future
+
+    with pytest.raises(
+            TERMINAL_STAGE.BeliefV2TerminalControllerError,
+            match="integrity worker refused"):
+        TERMINAL_STAGE._derive_integrity_receipt(
+            Path("/must-not-open"), freeze, _admission(freeze), {},
+            plan=None, qualification=None, input_index_manifest={},
+            training_hashes=tuple(
+                (row.cohort_id, "a" * 64) for row in freeze.cohorts),
+            synthetic_test_count=0, human_test_decision_count=0,
+            integrity_executor=FailedExecutor())
+
+
 def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
         tmp_path, monkeypatch):
     root = (tmp_path / "evidence").resolve()
@@ -2375,6 +2427,15 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
         lambda *args, lane, **kwargs: {
             "job_count": len(reference_lane_jobs(lane)),
             "resources": resource(300 + lane, 400 + lane)})
+    executor_calls = []
+
+    class OrderedExecutor:
+        def submit(self, function, row):
+            executor_calls.append(row)
+            future = Future()
+            future.set_result(function(row))
+            return future
+
     digests = {
         "train": _sha("human-train"),
         "calibration": _sha("human-calibration"),
@@ -2419,13 +2480,32 @@ def test_terminal_resource_receipt_wires_parallel_spans_and_gpu_work(
         manifest_path.chmod(0o400)
         training_hashes.append((cohort.cohort_id, _sha_bytes(raw)))
 
+    progress = []
     receipt = TERMINAL_STAGE._derive_integrity_receipt(
         root, freeze, admission, {}, plan=plan,
         qualification=qualification,
         input_index_manifest=input_index_manifest,
         training_hashes=tuple(training_hashes),
         synthetic_test_count=1_339, human_test_decision_count=174,
-        legacy_tensor_cache_manifest_sha256="f" * 64)
+        legacy_tensor_cache_manifest_sha256="f" * 64,
+        integrity_executor=OrderedExecutor(),
+        progress=lambda current, total, phase: progress.append(
+            (current, total, phase)))
+    assert tuple(row[3] for row in executor_calls) \
+        == tuple(range(V2_CAPTURE_LANES))
+    assert progress == [
+        *[(index, V2_CAPTURE_LANES, "verify-integrity-synthetic-lanes")
+          for index in range(1, V2_CAPTURE_LANES + 1)],
+        *[(index, 3, "verify-integrity-human-capture")
+          for index in range(1, 4)],
+        *[(index, 3, "verify-integrity-human-reference")
+          for index in range(1, 4)],
+        *[(index, len(freeze.cohorts),
+           "verify-integrity-training-manifests")
+          for index in range(1, len(freeze.cohorts) + 1)],
+        (0, 1, "verify-integrity-tensor-cache"),
+        (1, 1, "verify-integrity-tensor-cache"),
+    ]
     assert cache_legacy_calls == ["f" * 64]
     qualification_work = sum(
         row.wall_nanoseconds for row in qualification.arms)

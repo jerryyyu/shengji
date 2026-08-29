@@ -90,6 +90,7 @@ SCIENTIFIC_UNIT_SCORING_PASSES = 2
 INDEPENDENT_VERIFIER_SCORING_PASSES = 1
 SCIENTIFIC_UNIT_CONTROL_REOPENS = 3
 INDEPENDENT_VERIFIER_CONTROL_REOPENS = 2
+INDEPENDENT_VERIFIER_INTEGRITY_WORKERS = 4
 CAPACITY_FIELDS = {
     "schema", "execution_git", "source_manifest_sha256", "runtime_sha256",
     "terminal_source_spec_sha256", "calibration_import_sha256",
@@ -1130,7 +1131,10 @@ def reopen_r4_terminal_parallel(
     return _reopen_r4_completion_terminal_reopened(
         root, freeze, admission, calibration=calibration, source=source,
         calibration_directory=calibration_directory,
-        bound_calibration_manifest=calibration, progress=progress)
+        bound_calibration_manifest=calibration,
+        parallel_integrity_workers=(
+            INDEPENDENT_VERIFIER_INTEGRITY_WORKERS),
+        progress=progress)
 
 
 def recover_r4_terminal_parallel(
@@ -1147,7 +1151,10 @@ def recover_r4_terminal_parallel(
     return _recover_r4_completion_terminal_reopened(
         root, freeze, admission, calibration=calibration, source=source,
         calibration_directory=calibration_directory,
-        bound_calibration_manifest=calibration, progress=progress)
+        bound_calibration_manifest=calibration,
+        parallel_integrity_workers=(
+            INDEPENDENT_VERIFIER_INTEGRITY_WORKERS),
+        progress=progress)
 
 
 __all__ = [

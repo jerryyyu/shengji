@@ -1316,6 +1316,7 @@ def _recover_r4_completion_terminal_reopened(
         calibration: dict[str, Any], source: R4CompletionSourceV1,
         calibration_directory: Path,
         bound_calibration_manifest: dict[str, Any] | None = None,
+        parallel_integrity_workers: int | None = None,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Recover an outer manifest without changing the sealed inner result."""
     attempt_path = root / "r4-completion-test-attempt.json"
@@ -1350,7 +1351,8 @@ def _recover_r4_completion_terminal_reopened(
         legacy_tensor_cache_manifest_sha256=(
             source.spec.source_tensor_cache_manifest_sha256),
         parallel_decisions=True,
-        bound_calibration_manifest=bound_calibration_manifest)
+        bound_calibration_manifest=bound_calibration_manifest,
+        parallel_integrity_workers=parallel_integrity_workers)
     # Re-read controls after the expensive reconstruction so a concurrent
     # replacement can never be bound into the newly published outer manifest.
     if stable_read_bytes(attempt_path) != attempt_raw \
@@ -1376,6 +1378,7 @@ def _reopen_r4_completion_terminal_reopened(
         calibration: dict[str, Any], source: R4CompletionSourceV1,
         calibration_directory: Path,
         bound_calibration_manifest: dict[str, Any] | None = None,
+        parallel_integrity_workers: int | None = None,
         progress: ProgressCallback | None = None) -> dict[str, Any]:
     """Reconstruct terminal after a caller authenticates calibration inputs."""
     try:
@@ -1403,7 +1406,8 @@ def _reopen_r4_completion_terminal_reopened(
         legacy_tensor_cache_manifest_sha256=(
             source.spec.source_tensor_cache_manifest_sha256),
         parallel_decisions=True,
-        bound_calibration_manifest=bound_calibration_manifest)
+        bound_calibration_manifest=bound_calibration_manifest,
+        parallel_integrity_workers=parallel_integrity_workers)
     expected_outer = _terminal_outer_manifest(
         completion_freeze=completion_freeze,
         completion_admission=completion_admission, source=source,

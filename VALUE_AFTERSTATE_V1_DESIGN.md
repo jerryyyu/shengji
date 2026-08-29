@@ -249,14 +249,19 @@ not a V1 gate and cannot rescue a failed action result.
 1. **Root-only / identical-successor:** replace the candidate successor with
    the incumbent successor. Predicted advantage must be byte-exact zero and
    the action gates must fail.
-2. **Action-association permutation:** rotate candidate-successor bindings
-   across outcome-blind matched geometry buckets while retaining root-state
-   and label marginals. The transform must change at least 90% of eligible
-   non-incumbent pairs, and the control cohort must fail the primary action
-   gates.
-3. **Label permutation:** independently rotate paired advantages across the
-   same matched buckets. A full fixed-seed control cohort must fail the primary
-   action gates.
+2. **Action-association permutation:** rotate incumbent/candidate successor
+   bindings within each root while retaining that root's natural labels. The
+   transform must change at least 90% of eligible non-incumbent bindings, and
+   the control cohort must fail the primary action gates.
+3. **Label permutation:** independently rotate paired advantages within the
+   outcome-blind `(source, play_phase, lead/follow position, replicate)`
+   bucket. Candidate index is not a geometry field: it is arbitrary ballot
+   order. The frozen V0 train census has 34 such buckets, minimum size 3;
+   donor bindings change at full dose while numeric target changes are reported
+   separately (45.6% in the preflight because 71.0% of natural advantages are
+   zero). Structural dose must be at least 90% and numeric-label dose at least
+   40%; an all-zero or metadata-only rotation is a mechanics refusal. A full
+   fixed-seed control cohort must fail the primary action gates.
 4. **Complete-world shuffle:** at inference, rotate only the complete-world
    tensors while keeping public successor/action pairs fixed. Report the
    paired natural-minus-shuffled advantage error and action utility, clustered
@@ -269,8 +274,9 @@ not a V1 gate and cannot rescue a failed action result.
    utility, pair binding, fold and tensor-hash mutations must refuse before
    parsing or prediction as applicable.
 
-Every control publishes actual changed-row counts and hashes. A named control
-with zero dose is a mechanics refusal, never a passing negative result.
+Every control publishes structural donor/binding dose, effective tensor or
+numeric-payload dose, and exact hashes. A named control with zero structural
+dose is a mechanics refusal, never a passing negative result.
 
 ## 7. Terminal routes
 
@@ -300,14 +306,16 @@ P0/P1 is intentionally cheaper than V0:
 - create a small pair manifest rather than duplicate successor tensors;
 - collate incumbent tensors once per root batch and broadcast them across
   sibling candidates;
-- run the eight natural members and the fixed control cohort in bounded
-  parallel worker slots chosen by a score-free memory/throughput receipt; and
+- run the eight natural members and each fixed training-control cohort in
+  bounded parallel member slots chosen by a score-free memory/throughput
+  receipt; and
 - independently reopen pair manifests and predictions without rerunning engine
   continuations unless a sampled can-fail audit detects drift.
 
-The capacity receipt must measure 1/2/4/8/16-worker scaling where the host
-supports it, choose the fastest configuration below the memory limit, and
-state CPU utilization rather than assuming all-core scaling. Scientific
+The capacity receipt must measure static row reopening at 1/2/4/8/16 workers
+where the host supports it and eight-member cohort training at 1/2/4/8 member
+workers. It chooses the fastest configurations below the memory limit and
+states CPU utilization rather than assuming all-core scaling. Scientific
 execution reports percent, completed/total units, throughput, rolling ETA,
 CPU/device utilization and peak memory for pair construction, every epoch,
 each control, audit scoring and reconstruction.

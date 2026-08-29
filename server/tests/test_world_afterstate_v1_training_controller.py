@@ -40,7 +40,7 @@ def _population():
 
 
 def _run(*, cohort_name="natural", controlled=False, max_epochs=1,
-         wall=10**12, progress=None):
+         wall=10**12, progress=None, member_workers=1):
     joined, manifest = _population()
     values = joined
     if controlled:
@@ -50,7 +50,8 @@ def _run(*, cohort_name="natural", controlled=False, max_epochs=1,
         subsplit_manifest=manifest, freeze_sha256="f" * 64,
         shape_name="small", initialization_seeds=tuple(range(801, 809)),
         config=_config(max_epochs), pair_cap=24, schedule_seed=61,
-        wall_budget_nanoseconds=wall, progress=progress)
+        wall_budget_nanoseconds=wall, member_workers=member_workers,
+        progress=progress)
 
 
 def _rehash_manifest(value):
@@ -130,6 +131,20 @@ def test_checkpoint_shape_remains_the_frozen_small_capacity():
     build = _run()
     models, _manifest = reopen_cohort_build(build)
     assert all(model.shape == CAPACITY_SHAPES["small"] for model in models)
+
+
+def test_parallel_members_reproduce_serial_training_bytes():
+    serial = _run(member_workers=1)
+    parallel = _run(member_workers=4)
+    serial_states = [
+        row["selected_model_state_sha256"] for row in serial.manifest["members"]]
+    parallel_states = [
+        row["selected_model_state_sha256"]
+        for row in parallel.manifest["members"]]
+    assert serial_states == parallel_states
+    assert serial.selected_checkpoint_raws == parallel.selected_checkpoint_raws
+    assert serial.manifest["member_workers"] == 1
+    assert parallel.manifest["member_workers"] == 4
 
 
 def test_cohort_directory_is_immutable_exact_and_single_publication(tmp_path):

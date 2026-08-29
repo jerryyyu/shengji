@@ -468,6 +468,12 @@ def _reopen_row_task(arguments):
         row, group=group, allowed_folds=allowed_folds)
 
 
+def _reopen_row_static_task(arguments):
+    row, group, allowed_folds = arguments
+    return reopen_dataset_row_static(
+        row, group=group, allowed_folds=allowed_folds)
+
+
 def reopen_dataset_manifest(
         value: Mapping[str, Any], *, population_manifest: Mapping[str, Any],
         row_root: Path, allowed_folds: Sequence[str],
@@ -516,7 +522,7 @@ def reopen_dataset_manifest(
         return binding, row, groups[binding["state_group_id"]]
 
     total = len(selected)
-    if not reconstruct_continuations or reconstruction_workers == 1:
+    if reconstruction_workers == 1:
         result = []
         for index in range(total):
             binding, row, group = load(index)
@@ -530,6 +536,8 @@ def reopen_dataset_manifest(
         return tuple(result)
 
     rows_by_index = {}
+    task = (_reopen_row_task if reconstruct_continuations
+            else _reopen_row_static_task)
     executor = ProcessPoolExecutor(max_workers=reconstruction_workers)
     pending = {}
     next_index = 0
@@ -537,7 +545,7 @@ def reopen_dataset_manifest(
         while next_index < min(reconstruction_workers, total):
             binding, row, group = load(next_index)
             future = executor.submit(
-                _reopen_row_task, (row, group, tuple(allowed_folds)))
+                task, (row, group, tuple(allowed_folds)))
             pending[future] = (next_index, binding)
             next_index += 1
         while pending:
@@ -561,7 +569,7 @@ def reopen_dataset_manifest(
                 if next_index < total:
                     next_binding, row, group = load(next_index)
                     replacement = executor.submit(
-                        _reopen_row_task,
+                        task,
                         (row, group, tuple(allowed_folds)))
                     pending[replacement] = (next_index, next_binding)
                     next_index += 1

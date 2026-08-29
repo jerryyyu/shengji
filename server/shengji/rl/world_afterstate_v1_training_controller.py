@@ -15,6 +15,7 @@ import json
 import os
 import stat
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -182,6 +183,7 @@ def train_named_cohort(
         shape_name: str, initialization_seeds: Sequence[int],
         config: AdvantageTrainingConfigV1, pair_cap: int,
         schedule_seed: int, wall_budget_nanoseconds: int,
+        member_workers: int = 1,
         progress: Callable[[dict[str, Any]], None] | None = None) \
         -> CohortTrainingBuildV1:
     """Train and seal one complete natural/control cohort in memory."""
@@ -202,7 +204,10 @@ def train_named_cohort(
             or not 0 <= schedule_seed < 2**63 \
             or isinstance(wall_budget_nanoseconds, bool) \
             or not isinstance(wall_budget_nanoseconds, int) \
-            or wall_budget_nanoseconds <= 0:
+            or wall_budget_nanoseconds <= 0 \
+            or isinstance(member_workers, bool) \
+            or not isinstance(member_workers, int) \
+            or not 1 <= member_workers <= COHORT_SIZE:
         raise WorldAfterstateV1TrainingControllerError(
             "cohort request drift")
     expected_type = (JoinedAdvantageV1 if cohort_name == "natural"
@@ -238,14 +243,26 @@ def train_named_cohort(
             epoch=epoch)
         _validated_schedule(fit_schedule, "fit")
         fit_schedules.append(fit_schedule)
-        for member, (model, optimizer) in enumerate(zip(
-                models, optimizers, strict=True)):
+        def run_member(member):
+            model = models[member]
             receipt = train_epoch(
-                model, optimizer, fit_batches, epoch=epoch, config=config)
-            receipts[member].append(receipt.payload())
-            losses[member].append(evaluate_selection_loss_nano(
-                model, select_batches))
-            snapshots[member].append(copy.deepcopy(model.state_dict()))
+                model, optimizers[member], fit_batches,
+                epoch=epoch, config=config)
+            loss = evaluate_selection_loss_nano(model, select_batches)
+            return receipt.payload(), loss, copy.deepcopy(model.state_dict())
+
+        if member_workers == 1:
+            member_results = [run_member(member)
+                              for member in range(COHORT_SIZE)]
+        else:
+            with ThreadPoolExecutor(max_workers=member_workers) as executor:
+                futures = [executor.submit(run_member, member)
+                           for member in range(COHORT_SIZE)]
+                member_results = [future.result() for future in futures]
+        for member, (receipt, loss, snapshot) in enumerate(member_results):
+            receipts[member].append(receipt)
+            losses[member].append(loss)
+            snapshots[member].append(snapshot)
         common = select_common_epoch(
             tuple(tuple(row) for row in losses), config=config)
         last_now = time.monotonic_ns()
@@ -317,6 +334,7 @@ def train_named_cohort(
         "shape_name": shape_name, "config": config.payload(),
         "config_sha256": config.sha256(),
         "initialization_seeds": list(seeds), "member_count": COHORT_SIZE,
+        "member_workers": member_workers,
         "pair_cap": pair_cap, "schedule_seed": schedule_seed,
         "epoch_count": common.stop_epoch,
         "fit_schedule_receipts": fit_schedules,
@@ -342,6 +360,7 @@ def validate_cohort_manifest(value: object) -> None:
         "schema", "cohort_name", "control_population", "freeze_sha256",
         "subsplit_manifest_sha256", "shape_name", "config",
         "config_sha256", "initialization_seeds", "member_count",
+        "member_workers",
         "pair_cap", "schedule_seed", "epoch_count",
         "fit_schedule_receipts", "select_schedule_receipt",
         "training_population_sha256", "wall_budget_nanoseconds",
@@ -357,6 +376,9 @@ def validate_cohort_manifest(value: object) -> None:
             is not (value.get("cohort_name") != "natural") \
             or value.get("shape_name") not in CAPACITY_SHAPES \
             or value.get("member_count") != COHORT_SIZE \
+            or isinstance(value.get("member_workers"), bool) \
+            or not isinstance(value.get("member_workers"), int) \
+            or not 1 <= value["member_workers"] <= COHORT_SIZE \
             or value.get("audit_rows_opened") is not False \
             or value.get("report_rows_opened") is not False \
             or value.get("authority") != AUTHORITY:

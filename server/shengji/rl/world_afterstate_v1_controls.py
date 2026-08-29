@@ -35,6 +35,7 @@ CONTROL_NAMES = (
     "label-permutation", "complete-world-shuffle",
 )
 MINIMUM_PERMUTATION_DOSE_PPM = 900_000
+MINIMUM_LABEL_EFFECTIVE_DOSE_PPM = 400_000
 AUTHORITY = {
     "dataset_opening_authorized": False,
     "training_execution_authorized": False,
@@ -174,30 +175,56 @@ def _controlled(
 def _evidence(
         name: str, natural: Sequence[JoinedAdvantageV1],
         controlled: Sequence[ControlledAdvantageV1], *,
-        changed_count: int, required_minimum_dose_ppm: int) -> dict[str, Any]:
+        changed_count: int, required_minimum_dose_ppm: int,
+        effective_changed_count: int | None = None,
+        required_minimum_effective_dose_ppm: int | None = None) \
+        -> dict[str, Any]:
     if name not in CONTROL_NAMES or type(natural) not in (list, tuple) \
             or type(controlled) not in (list, tuple) or not natural \
             or len(natural) != len(controlled) \
             or isinstance(changed_count, bool) \
             or not isinstance(changed_count, int) \
             or not 0 <= changed_count <= len(natural) \
+            or effective_changed_count is not None and (
+                isinstance(effective_changed_count, bool)
+                or not isinstance(effective_changed_count, int)
+                or not 0 <= effective_changed_count <= len(natural)) \
             or isinstance(required_minimum_dose_ppm, bool) \
             or not isinstance(required_minimum_dose_ppm, int) \
-            or not 0 <= required_minimum_dose_ppm <= 1_000_000:
+            or not 0 <= required_minimum_dose_ppm <= 1_000_000 \
+            or required_minimum_effective_dose_ppm is not None and (
+                isinstance(required_minimum_effective_dose_ppm, bool)
+                or not isinstance(
+                    required_minimum_effective_dose_ppm, int)
+                or not 0 <= required_minimum_effective_dose_ppm
+                <= 1_000_000):
         raise WorldAfterstateV1ControlError("control evidence request drift")
     natural_rows = [_natural_binding(value) for value in natural]
     controlled_rows = [value.binding() for value in controlled]
     dose = changed_count * 1_000_000 // len(natural)
+    effective = (changed_count if effective_changed_count is None
+                 else effective_changed_count)
+    effective_dose = effective * 1_000_000 // len(natural)
+    required_effective = (
+        required_minimum_dose_ppm
+        if required_minimum_effective_dose_ppm is None
+        else required_minimum_effective_dose_ppm)
     if dose < required_minimum_dose_ppm:
         raise WorldAfterstateV1ControlError(
             "control transform is below its minimum dose")
+    if effective_dose < required_effective:
+        raise WorldAfterstateV1ControlError(
+            "control transform is below its minimum effective dose")
     body = {
         "schema": CONTROL_EVIDENCE_SCHEMA,
         "name": name,
         "row_count": len(natural),
         "changed_count": changed_count,
         "dose_ppm": dose,
+        "effective_changed_count": effective,
+        "effective_dose_ppm": effective_dose,
         "required_minimum_dose_ppm": required_minimum_dose_ppm,
+        "required_minimum_effective_dose_ppm": required_effective,
         "input_population_sha256": _sha(natural_rows),
         "output_population_sha256": _sha(controlled_rows),
         "authority": dict(AUTHORITY),
@@ -303,7 +330,14 @@ def action_association_permutation(
 def label_permutation(
         natural: Sequence[JoinedAdvantageV1]) \
         -> tuple[tuple[ControlledAdvantageV1, ...], dict[str, Any]]:
-    """Rotate labels only within outcome-blind geometry/replicate buckets."""
+    """Rotate labels within populated outcome-blind geometry buckets.
+
+    Candidate index is deliberately absent: it is an arbitrary ballot-order
+    position, not a comparable action class across roots.  Exact trump, role,
+    and point buckets made 2,158 of the frozen V0 train buckets singletons.
+    Source, phase, lead/follow position, and replicate retain the important
+    collection/noise geometry while keeping every frozen bucket populated.
+    """
     if type(natural) not in (list, tuple) or not natural:
         raise WorldAfterstateV1ControlError("label control population drift")
     buckets: dict[tuple[Any, ...], list[JoinedAdvantageV1]] = defaultdict(list)
@@ -311,9 +345,7 @@ def label_permutation(
         value.validate()
         pair = value.pair
         bucket = (
-            pair.source, pair.root_role, pair.play_phase, pair.position,
-            pair.trump_rank, pair.trump_mode, pair.points_bucket,
-            pair.candidate_index, pair.replicate,
+            pair.source, pair.play_phase, pair.position, pair.replicate,
         )
         buckets[bucket].append(value)
     target_by_key = {}
@@ -339,15 +371,18 @@ def label_permutation(
             target_levels=target_by_key[key],
             incumbent_donor_key=f"{key[0]}:0",
             candidate_donor_key=donor_by_key[key]))
+    ordered_natural = sorted(natural, key=lambda value: value.key())
     changed = sum(row.target_levels != value.pair.advantage_levels
                   for value, row in zip(
-                      sorted(natural, key=lambda value: value.key()),
-                      controls, strict=True))
+                      ordered_natural, controls, strict=True))
     evidence = _evidence(
         "label-permutation",
-        sorted(natural, key=lambda value: value.key()), controls,
-        changed_count=changed,
-        required_minimum_dose_ppm=MINIMUM_PERMUTATION_DOSE_PPM)
+        ordered_natural, controls,
+        changed_count=len(controls),
+        effective_changed_count=changed,
+        required_minimum_dose_ppm=MINIMUM_PERMUTATION_DOSE_PPM,
+        required_minimum_effective_dose_ppm=
+            MINIMUM_LABEL_EFFECTIVE_DOSE_PPM)
     return tuple(controls), evidence
 
 
@@ -471,7 +506,9 @@ def complete_world_shuffle(
         "schema": CONTROL_EVIDENCE_SCHEMA,
         "name": "complete-world-shuffle",
         "row_count": len(unique), "changed_count": changed,
-        "dose_ppm": dose, "required_minimum_dose_ppm": 1,
+        "dose_ppm": dose, "effective_changed_count": changed,
+        "effective_dose_ppm": dose, "required_minimum_dose_ppm": 1,
+        "required_minimum_effective_dose_ppm": 1,
         "input_population_sha256": _sha(input_bindings),
         "output_population_sha256": _sha(output_bindings),
         "authority": dict(AUTHORITY),
@@ -482,7 +519,9 @@ def complete_world_shuffle(
 def validate_control_evidence(value: object) -> None:
     required = {
         "schema", "name", "row_count", "changed_count", "dose_ppm",
-        "required_minimum_dose_ppm", "input_population_sha256",
+        "effective_changed_count", "effective_dose_ppm",
+        "required_minimum_dose_ppm",
+        "required_minimum_effective_dose_ppm", "input_population_sha256",
         "output_population_sha256", "authority", "evidence_sha256",
     }
     if type(value) is not dict or set(value) != required \
@@ -492,7 +531,9 @@ def validate_control_evidence(value: object) -> None:
         raise WorldAfterstateV1ControlError("control evidence schema drift")
     integers = (
         "row_count", "changed_count", "dose_ppm",
+        "effective_changed_count", "effective_dose_ppm",
         "required_minimum_dose_ppm",
+        "required_minimum_effective_dose_ppm",
     )
     if any(isinstance(value.get(key), bool)
            or not isinstance(value.get(key), int) for key in integers) \
@@ -500,8 +541,17 @@ def validate_control_evidence(value: object) -> None:
             or not 0 <= value["changed_count"] <= value["row_count"] \
             or value["dose_ppm"] \
             != value["changed_count"] * 1_000_000 // value["row_count"] \
+            or not 0 <= value["effective_changed_count"] \
+            <= value["row_count"] \
+            or value["effective_dose_ppm"] \
+            != value["effective_changed_count"] * 1_000_000 \
+            // value["row_count"] \
             or not 0 <= value["required_minimum_dose_ppm"] <= 1_000_000 \
-            or value["dose_ppm"] < value["required_minimum_dose_ppm"]:
+            or not 0 <= value["required_minimum_effective_dose_ppm"] \
+            <= 1_000_000 \
+            or value["dose_ppm"] < value["required_minimum_dose_ppm"] \
+            or value["effective_dose_ppm"] \
+            < value["required_minimum_effective_dose_ppm"]:
         raise WorldAfterstateV1ControlError(
             "control evidence dose reconstruction drift")
     input_sha = _digest(

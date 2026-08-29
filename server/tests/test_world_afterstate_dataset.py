@@ -166,6 +166,19 @@ def test_manifest_requires_every_candidate_and_replicate(
         "shengji.rl.world_afterstate_dataset.reopen_dataset_row",
         lambda row, *, group, allowed_folds: type(
             "Reopened", (), {"row_sha256": row["row_sha256"]})())
+    monkeypatch.setattr(
+        "shengji.rl.world_afterstate_dataset.reopen_dataset_row_static",
+        lambda row, *, group, allowed_folds: type(
+            "Reopened", (), {"row_sha256": row["row_sha256"]})())
+    static_progress = []
+    parallel_static = reopen_dataset_manifest(
+        result, population_manifest=manifest, row_root=tmp_path,
+        allowed_folds=("train",), reconstruct_continuations=False,
+        reconstruction_workers=2, deadline_monotonic_ns=10**30,
+        progress=lambda completed, total:
+            static_progress.append((completed, total)))
+    assert len(parallel_static) == len(selected)
+    assert static_progress[-1] == (len(selected), len(selected))
     parallel_progress = []
     parallel = reopen_dataset_manifest(
         result, population_manifest=manifest, row_root=tmp_path,

@@ -59,6 +59,7 @@ def test_label_permutation_preserves_inputs_and_requires_real_dose():
     natural = list(join_advantage_examples(rows))
     controlled, evidence = label_permutation(natural)
     assert evidence["dose_ppm"] == 1_000_000
+    assert 0 < evidence["effective_dose_ppm"] <= 1_000_000
     assert sorted(row.target_levels for row in controlled) \
         == sorted(value.pair.advantage_levels for value in natural)
     assert all(row.incumbent_tensor_sha256
@@ -67,9 +68,29 @@ def test_label_permutation_preserves_inputs_and_requires_real_dose():
                == successor_tensor_sha256(row.natural.example.candidate.tensors)
                for row in controlled)
 
+    singleton_rows = []
+    for state_index, state in enumerate(("singleton-a", "singleton-b")):
+        for candidate in range(2):
+            for replicate in range(2):
+                row = _row(
+                    state, candidate, replicate,
+                    100 + replicate + candidate * (state_index + 1))
+                object.__setattr__(
+                    row.evaluation_outcome, "source", f"source-{state}")
+                singleton_rows.append(row)
     with pytest.raises(WorldAfterstateV1ControlError,
-                       match="below its minimum dose"):
-        label_permutation(_joined())
+                       match="geometry bucket is a singleton"):
+        label_permutation(list(join_advantage_examples(singleton_rows)))
+
+    all_zero_rows = [
+        _row(state, candidate, replicate, 100 + replicate)
+        for state in ("zero-a", "zero-b", "zero-c", "zero-d")
+        for candidate in range(3)
+        for replicate in range(2)
+    ]
+    with pytest.raises(WorldAfterstateV1ControlError,
+                       match="minimum effective dose"):
+        label_permutation(list(join_advantage_examples(all_zero_rows)))
 
 
 def test_complete_world_shuffle_changes_only_world_channel():
@@ -105,6 +126,16 @@ def test_control_row_tensor_binding_has_teeth():
     with pytest.raises(WorldAfterstateV1ControlError,
                        match="dose reconstruction drift"):
         validate_control_evidence(forged_evidence)
+    forged_effective = copy.deepcopy(evidence)
+    forged_effective["effective_changed_count"] -= 1
+    with pytest.raises(WorldAfterstateV1ControlError,
+                       match="dose reconstruction drift"):
+        validate_control_evidence(forged_effective)
+    forged_required = copy.deepcopy(evidence)
+    forged_required["required_minimum_effective_dose_ppm"] = 1_000_001
+    with pytest.raises(WorldAfterstateV1ControlError,
+                       match="dose reconstruction drift"):
+        validate_control_evidence(forged_required)
 
 
 def test_named_controls_reach_optimizer_as_distinct_bound_populations():

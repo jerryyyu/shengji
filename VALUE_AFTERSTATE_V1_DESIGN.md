@@ -133,6 +133,13 @@ If P0 passes, derive an outcome-blind sub-split of the original V0 train fold:
 - `select`: one common epoch for all members; and
 - the original V0 `calibration` fold: a single untouched P1 audit.
 
+The train sub-split is deal-grouped and fixed as SHA-256 over canonical
+`{namespace: world-afterstate-v1-p1-subsplit, deal_group_sha256}` bytes,
+first unsigned 64 bits modulo 5: residue 0 is `select`, residues 1–4 are
+`fit`. All roots from one deal remain together. The builder accepts only the
+three outcome-blind fields `deal_group_sha256`, `state_group_id`, and `fold`;
+an outcome or advantage field is a mechanics refusal.
+
 Whole deal groups remain indivisible. The exact sub-split counts and hashes are
 frozen before training. P1 must never open V0 report/provider-audit bytes.
 

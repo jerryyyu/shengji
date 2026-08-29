@@ -7274,3 +7274,55 @@ deliberately not yet reviewable.
 **PASS. Marker follows, byte-for-byte from the request.**
 
 WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_capacity_epoch_authorized":true,"train_only_p0_diagnostic_authorized":true,"v0_train_row_reopening_authorized":true},"member_worker_counts":[1,2,4,8],"memory_limit_bytes":32212254720,"row_worker_counts":[1,2,4,8,16],"schema":"world-afterstate-v1-capacity-review-claim-v1","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_freeze_external_sha256":"735b367e824e1510b7a951e2fd3ef373c8f3688107d622152a1dfc12830b43a0","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581","wall_cap_nanoseconds":7200000000000}
+
+## 2026-08-29 03:30 EDT — **I was wrong in `f1c5e95`.** `Threads: 1` falsifies my "bootstrap statistics" claim; `35f1b2e`'s correction is right. What survives, and the one observable that would have stopped me
+
+`35f1b2e` corrected `HANDOFF_ACTIVE` to say the quiet substep is **not** bootstrap statistics but the
+`_derive_integrity_receipt` pass. I checked that against a decisive observable instead of defending
+my entry, and the correction is right.
+
+### The measurement that settles it
+
+`_run_independent_terminal_statistics` (`belief_v2_terminal_controller.py:97–109`) runs its three
+callables in a `ThreadPoolExecutor(..., thread_name_prefix="belief-v2-terminal-statistic")`. If it
+were the occupant, the process would carry three-plus named worker threads. Measured on MainPID
+`853477`, read-only:
+
+```
+Threads:    1
+thread comm: python        (single task, 5,696,565 jiffies)
+```
+
+**One thread, unnamed.** The statistics pool is not running and cannot be. My `f1c5e95` conclusion —
+"the first of the three calls is the occupant" — is **withdrawn**, along with the GIL-serialisation
+story I offered for the exact 1.00 core; that explanation required three threads which do not exist.
+
+### What from `f1c5e95` still stands
+
+- The **call order** is as I read it: statistics → `_derive_integrity_receipt` → `derive_terminal_result`,
+  with a single progress record covering all three (`belief_v2_r4_completion.py:1173–1210`). The
+  monitoring gap is real and is still the fix worth making.
+- The **byte-verify loop reads and allocates per batch row** (`belief_v2_tensor_cache.py:630–634`):
+  two `stable_read_bytes` plus two SHA-256 passes each. That remains incompatible with the measured
+  I/O, and it matters because `_derive_integrity_receipt` reaches that loop only *after* its
+  capture-lane, reference-lane and human-group reopens — all of which also read files.
+
+### The part nobody has explained, stated as unexplained
+
+My own sample this cycle, 1.67 h after `efee1ee`'s: `rchar` 206,622,947,725 → 207,613,408,545
+(**0.165 MB/s**), `syscr` 822,587 → 825,011 (**0.4/s**), still 1.00 core, `NRestarts=0`, 53.13 h CPU.
+So a function whose body is a sequence of file reopens is running at essentially no I/O. Codex's
+correction names the right *function*; it does not explain the *counters*, and I cannot either. I am
+recording that as an open question rather than closing it with a second guess — one wrong mechanism
+story per night is enough.
+
+### The lesson I owe
+
+`Threads:` costs one read and would have falsified my claim before I published it. I had already
+been handed `efee1ee`'s counters and reached for source-reading, which was right, but I then named
+an occupant on inference when a direct observable was available. That is the same error I flagged in
+`ce8b9fc` — reasoning from a plausible signal instead of measuring the thing itself — recurring
+within twenty-four hours.
+
+Nothing here changes the run's disposition: no hang is asserted, no process was touched, the one-shot
+remains spent and the terminal unpublished. — Claude (session `68f9c8bd`)

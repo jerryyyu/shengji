@@ -156,13 +156,13 @@ trump_rank          = [2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K, A]
 trump_mode          = [spades, hearts, diamonds, clubs, no-trump]
 ```
 
-Natural/diverse/select/audit slot `i` receives
-`phase_position_role[i mod 12]`; mechanics-fit slot `i` instead receives
-`mechanics_surface[i mod 3]`. Every slot also receives
-`trump_rank[i mod 13]` and `trump_mode[i mod 5]`. Thus, for every dimension
-of size `k`, every cell receives `floor(n / k)` slots and exactly the first
-`n mod k` literal-order cells receive one extra. This also fixes the joint
-assignment rather than balancing each marginal through separate discretion.
+Natural/diverse/audit slot `i` receives `phase_position_role[i mod 12]`;
+mechanics-fit slot `i` instead receives `mechanics_surface[i mod 3]`. Every
+non-select slot also receives `trump_rank[i mod 13]` and
+`trump_mode[i mod 5]`. Thus, for every dimension of size `k`, every cell
+receives `floor(n / k)` slots and exactly the first `n mod k` literal-order
+cells receive one extra. This also fixes the joint assignment rather than
+balancing each marginal through separate discretion.
 Natural attempted deal identities are then derived from the domain-separated
 `tier | split | slot_id | attempt_index` hash schedule. Eligible sealed
 external-source game identities are ordered by a separately domain-separated
@@ -172,6 +172,18 @@ source, or stratum boundary. Replacement, when a preregistered outcome-free
 eligibility reason fires, advances only to the next preassigned identity for
 that slot and remains inside its frozen attempted ceiling. The builder API
 does not receive or persist terminal outcomes while assigning slots.
+
+Select slots use a paired construction before play. For pair ordinal
+`j = 0..(select_count / 2)-1`, create two distinct deal slots with the same
+`phase_position_role[j mod 12]`, `trump_rank[j mod 13]`, and
+`trump_mode[j mod 5]`. Pair member 0 is `epoch-select`; pair member 1 is
+`precision-select`. The distinct slot id yields a distinct attempted-deal hash
+schedule, so the two halves contain independent deals while having byte-exact
+matching phase/position/role, rank, and mode census rows. The frozen
+D256/D512/D1024 counts produce exact 24/24, 32/32, and 64/64 halves, which the
+builder must rederive or refuse. Only epoch-select may choose a common epoch.
+Precision-select labels remain unopened until the common checkpoints and all
+precision-select predictions seal.
 
 Mechanics-hard deals are selected without outcomes in equal thirds across
 multi-card action, wide-ballot, and late/high-point surfaces, with a
@@ -284,8 +296,10 @@ replica half, breaking every tie to the incumbent. On the other half, score
 `chosen outcome - equal-weight candidate-mean outcome`, then reverse. This
 tests whether independent replicas support a reproducible ordering without
 requiring any candidate to beat the strong production incumbent. Also report
-chosen-minus-incumbent utility separately as a non-gating diagnostic. Cluster
-inference by deal.
+chosen-minus-incumbent utility separately. It does not enter label-
+reproducibility gates 1--3; its combined point estimate is the worthwhile-
+effect gate below, while its variance is diagnostic only. Cluster inference
+by deal.
 
 P0 advances only if:
 
@@ -294,7 +308,7 @@ P0 advances only if:
 3. at least 5% of sibling pairs have the same nonzero advantage sign in both
    replica halves, and the two half-sample sibling-advantage vectors have a
    strictly positive deal-bootstrap correlation lower bound; and
-4. the combined two-direction chosen-minus-candidate-mean point estimate is
+4. the combined two-direction chosen-minus-incumbent point estimate is
    at least `+0.10` signed levels; and
 5. transition, continuation, perspective, and symmetry checks pass.
 
@@ -307,19 +321,11 @@ silently promoted into a full spend. A P0 gate-5 mechanics or integrity
 failure instead routes to `REFUSE_MECHANICS_OR_CONTROL`. The unlabeled
 remainder is 160 deals for D256, 416 for D512, or 928 for D1024.
 
-P0 also freezes the pre-audit power calculation. Let `s` be the Bessel-
-corrected standard deviation across the 96 deal-level, two-direction-averaged
-chosen-minus-candidate-mean cross-fit utilities. For a one-sided alpha of
-0.05, power 0.80, and minimum worthwhile effect `delta = +0.10`, compute:
-
-```text
-n_required = ceil(((1.644854 + 0.841621) * s / delta)^2)
-```
-
-If `n_required` exceeds the chosen tier's audit-deal count, publish
-`STOP_UNDERPOWERED` before model training or audit opening. This approximation
-is a frozen admission check; final inference still uses the preregistered deal
-bootstrap.
+P0 publishes the Bessel-corrected standard deviation of its incumbent-
+relative cross-fit utility as a label-selector diagnostic only. It is not a
+power calculation for the trained model's action-selection rule and cannot
+route `STOP_UNDERPOWERED`. The matched model-selector power calculation occurs
+on untouched precision-select deals in Section 9.
 
 ## 8. Structured absolute-value model
 
@@ -376,8 +382,9 @@ present.
 
 Loss is averaged first within root across replicas and candidates, then across
 deals. The primary ensemble trains four fixed seeds for at most 20 epochs with
-patience 3 and one common selected epoch. There is no warm start, member-
-specific selection, retry, seed dropping, or audit-driven extension.
+patience 3 and one common epoch selected from epoch-select only. There is no
+warm start, member-specific selection, retry, seed dropping, or audit-driven
+extension.
 
 The natural-versus-complete-world-shuffle claim has two independent, frozen
 four-seed training blocks. Block 1 is the primary natural ensemble and its
@@ -389,7 +396,7 @@ at least 3/4 paired members in each block must have positive natural-minus-
 shuffle mean differences for both metrics. This is training-seed replication,
 not eight members presented as one ensemble. Every block and its full cost is
 included in the capacity projection, and each four-member cohort follows the
-same common-epoch selection rule.
+same epoch-select-only common-epoch selection rule.
 
 ### Pre-audit recipe diagnosis
 
@@ -409,20 +416,38 @@ full training or audit opening, publish this ordered diagnostic ladder:
    Failure publishes `REFUSE_TRAINING_RECIPE` before full training.
 3. **Nested data curve:** train the identical primary recipe and fixed seed on
    source/stratum-preserving canonical deal-hash prefixes containing 25%, 50%,
-   and 100% of fit deals. Evaluate all three on the untouched select fold. The
+   and 100% of fit deals. Evaluate all three on epoch-select only. The
    25%/50% models cannot become ensemble members; the 100% model is member 0
    only when its checkpoints byte-match the primary schedule. Publish absolute
    RPS/error, paired-error, train-select gap, and fit/select slopes versus log
    independent-deal count.
-4. **Primary stability:** publish all four members' per-epoch fit and select
-   curves, gradient norms, parameter/update norms, prediction entropy, paired
-   target error, and common-epoch dispersion. No member may be dropped.
-5. **Pre-audit learning admission:** on select deals, the common-epoch
-   ensemble must have strictly positive one-sided deal-bootstrap lower bounds
-   for RPS improvement over the natural-fit prior and paired-advantage error
-   improvement over zero, with at least 3/4 members positive on mean RPS
+4. **Primary stability:** publish all four members' per-epoch fit and epoch-
+   select curves, gradient norms, parameter/update norms, prediction entropy,
+   paired target error, and common-epoch dispersion. No member may be dropped.
+5. **Pre-audit learning admission:** after the common checkpoints and target-
+   free precision-select predictions seal, open precision-select labels once.
+   The ensemble must have strictly positive one-sided deal-bootstrap lower
+   bounds for RPS improvement over the natural-fit prior and paired-advantage
+   error improvement over zero, with at least 3/4 members positive on mean RPS
    improvement. Failure publishes `SELECT_NONE_PREAUDIT_LEARNING` and leaves
    every audit label unopened.
+6. **Matched model-selector power:** on each precision-select deal, let `u_d`
+   be the equal-weight eight-replica outcome of the action selected by the
+   sealed primary ensemble minus the equal-weight outcome of the production
+   incumbent, using the identical tie-to-incumbent rule as audit. Let
+   `s_model` be the Bessel-corrected standard deviation across those deal-level
+   utilities. For one-sided alpha `0.05`, power `0.80`, and minimum worthwhile
+   effect `delta = +0.10`, compute:
+
+   ```text
+   n_required = ceil(((1.644854 + 0.841621) * s_model / delta)^2)
+   ```
+
+   If `n_required` exceeds the frozen audit-deal count, publish
+   `STOP_UNDERPOWERED` before audit opening. This calculation now matches the
+   model-selection rule, incumbent baseline, continuation averaging, and
+   deal-level statistic used by production-action usefulness gate 1. Final
+   inference still uses the preregistered deal bootstrap.
 
 Interpretation is preregistered rather than reconstructed after audit:
 
@@ -502,8 +527,10 @@ utilities, is a mandatory diagnostic with its bootstrap interval, not an
 underpowered gate.
 
 The smallest worthwhile mechanism effect is `+0.10` signed levels per audited
-decision. P0 must project that the chosen tier's audit can resolve this floor.
-If it cannot, V2 publishes `STOP_UNDERPOWERED` before audit opening and does
+decision. P0 must first show an independently cross-fit label-selector ceiling
+at least that large. Precision-select then determines whether the frozen audit
+count can resolve the same floor under the trained model's actual selection
+rule. If not, V2 publishes `STOP_UNDERPOWERED` before audit opening and does
 not enlarge the population in place.
 
 Required positive/integrity controls that must pass are identical-successor
@@ -679,10 +706,11 @@ Terminal precedence is frozen and first-match-wins:
    `STOP_NO_REPRODUCIBLE_VALUE_LABEL`;
 4. P0 gate 4 below the minimum worthwhile `+0.10` point estimate ->
    `STOP_BELOW_WORTHWHILE_VALUE_FLOOR`;
-5. P0 `n_required` above the chosen audit count -> `STOP_UNDERPOWERED`;
-6. failed optimizer/wiring canary -> `REFUSE_TRAINING_RECIPE`;
-7. failed select-fold learning admission ->
+5. failed optimizer/wiring canary -> `REFUSE_TRAINING_RECIPE`;
+6. failed precision-select learning admission ->
    `SELECT_NONE_PREAUDIT_LEARNING`;
+7. precision-select `n_required` above the frozen audit count ->
+   `STOP_UNDERPOWERED`;
 8. after the complete audit opens, the association- or label-permutation
    component of derived learning-control gate 6 fails ->
    `REFUSE_MECHANICS_OR_CONTROL`;

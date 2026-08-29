@@ -257,7 +257,7 @@ to keep a host busy.
 | Proposal | Structured, human or learned sources keep legal actions visible. | Three-arm widening attribution before claiming generic widening; no T4/S6 retry. |
 | Belief sampler | Generates legal worlds consistent with actor-visible history. | BELIEF B2 offline calibration, then B3 projection/usefulness if B2 passes. |
 | Continuation | Plays worlds to terminal or a named horizon. | Memory-aware/MCSmartRoll only after dose × edge and equal-wall economics are frozen. |
-| Value/allocation | Truncates or allocates search. | Existing outcome/LEVEL_OBJECTIVE assets require a separate fixed-work gate. |
+| Value/allocation | Truncates or allocates search. Value V1 found a real paired-label ceiling but its oversized flat successor model overfit and harmed held-out action choice. | `VALUE_AFTERSTATE_V2_ABSOLUTE_LEAF_DESIGN.md`: first prove one depth-independent absolute `V(s)` on an outcome-blind 256/512/1,024 independent-deal tier, with fresh PT/human states relabeled under one frozen engine continuation, then test one-trick-plus-V against literal MC at equal wall. |
 | Report guard | Protects production from noisy overrides. | Remains the final authority until a challenger beats it fresh. |
 
 Better belief-aware search is also the intended future teacher: it can produce

@@ -996,6 +996,8 @@ def reopen_reference_lane(
                 "strength_claim_authorized", "deployment_authorized")):
         raise BeliefV2ControllerError("V2 reference manifest identity drift")
     rows = []
+    actor_input_round_seed = None
+    input_actor = None
     for (coordinate, replicate), row in zip(
             jobs, payload["jobs"], strict=True):
         if type(row) is not dict or set(row) != _REFERENCE_ROW_KEYS \
@@ -1017,19 +1019,25 @@ def reopen_reference_lane(
             raise BeliefV2ControllerError(
                 "V2 reference typed reopen refused") from exc
         capture_row = capture_rows[coordinate.round_seed]
-        actor_raw = stable_read_bytes(
-            capture_directory / "actor-only"
-            / capture_row["actor_filename"])
-        if len(actor_raw) != capture_row["actor_byte_count"] \
-                or _sha256(actor_raw) != capture_row["actor_bundle_sha256"]:
+        if actor_input_round_seed != coordinate.round_seed:
+            actor_raw = stable_read_bytes(
+                capture_directory / "actor-only"
+                / capture_row["actor_filename"])
+            if len(actor_raw) != capture_row["actor_byte_count"] \
+                    or _sha256(actor_raw) \
+                    != capture_row["actor_bundle_sha256"]:
+                raise BeliefV2ControllerError(
+                    "V2 reference input actor byte binding drift")
+            try:
+                input_actor = reopen_captured_actor_round_artifacts(
+                    reopen_actor_capture_bundle(actor_raw))
+            except ValueError as exc:
+                raise BeliefV2ControllerError(
+                    "V2 reference input actor reopen refused") from exc
+            actor_input_round_seed = coordinate.round_seed
+        if input_actor is None:
             raise BeliefV2ControllerError(
-                "V2 reference input actor byte binding drift")
-        try:
-            input_actor = reopen_captured_actor_round_artifacts(
-                reopen_actor_capture_bundle(actor_raw))
-        except ValueError as exc:
-            raise BeliefV2ControllerError(
-                "V2 reference input actor reopen refused") from exc
+                "V2 reference input actor population drift")
         actor = result.captured
         manifest = result.manifest_dict()
         expected = {

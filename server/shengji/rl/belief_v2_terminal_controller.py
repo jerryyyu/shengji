@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Executor, ThreadPoolExecutor
+from concurrent.futures import (
+    Executor,
+    ProcessPoolExecutor,
+    ThreadPoolExecutor,
+    as_completed,
+)
+import gc
 import hashlib
 import json
+import multiprocessing
 import os
 from pathlib import Path
 from typing import Any
@@ -284,6 +291,30 @@ def _parallel_span(resources: tuple[dict[str, Any], ...]) -> int:
             - min(row["started_monotonic_nanoseconds"] for row in resources))
 
 
+def _reopen_synthetic_integrity_lane(args):
+    """Reopen one independent capture/reference lane in a worker."""
+    root, freeze, admission, lane = args
+    capture = reopen_capture_lane(
+        root / "capture" / f"lane-{lane:02d}", freeze=freeze,
+        admission=admission, lane=lane)
+    reference = reopen_reference_lane(
+        root / "reference" / f"lane-{lane:02d}",
+        capture_directory=root / "capture" / f"lane-{lane:02d}",
+        freeze=freeze, admission=admission, lane=lane)
+    return lane, capture, reference
+
+
+def _integrity_pool(worker_count: int) -> ProcessPoolExecutor:
+    if type(worker_count) is not int or not 2 <= worker_count \
+            <= V2_CAPTURE_LANES \
+            or "forkserver" not in multiprocessing.get_all_start_methods():
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal integrity worker configuration drift")
+    return ProcessPoolExecutor(
+        max_workers=worker_count,
+        mp_context=multiprocessing.get_context("forkserver"))
+
+
 def _derive_integrity_receipt(
         root: Path, freeze: V2ExecutionFreezeV1,
         admission: V2PipelineAdmissionV1,
@@ -291,7 +322,9 @@ def _derive_integrity_receipt(
         input_index_manifest: dict[str, Any],
         training_hashes: tuple[tuple[str, str], ...],
         synthetic_test_count: int, human_test_decision_count: int,
-        legacy_tensor_cache_manifest_sha256: str | None = None):
+        legacy_tensor_cache_manifest_sha256: str | None = None,
+        integrity_executor: Executor | None = None,
+        progress: ProgressCallback | None = None):
     expected_training_ids = tuple(row.cohort_id for row in freeze.cohorts)
     if type(training_hashes) is not tuple \
             or tuple(key for key, _ in training_hashes) \
@@ -301,35 +334,88 @@ def _derive_integrity_receipt(
                    for _, value in training_hashes):
         raise BeliefV2TerminalControllerError(
             "V2 terminal training manifest population drift")
-    capture_manifests = tuple(reopen_capture_lane(
-        root / "capture" / f"lane-{lane:02d}", freeze=freeze,
-        admission=admission, lane=lane) for lane in range(V2_CAPTURE_LANES))
-    reference_manifests = tuple(reopen_reference_lane(
-        root / "reference" / f"lane-{lane:02d}",
-        capture_directory=root / "capture" / f"lane-{lane:02d}",
-        freeze=freeze, admission=admission, lane=lane)
-        for lane in range(V2_CAPTURE_LANES))
+    if integrity_executor is None:
+        capture_rows = []
+        for lane in range(V2_CAPTURE_LANES):
+            capture_rows.append(reopen_capture_lane(
+                root / "capture" / f"lane-{lane:02d}", freeze=freeze,
+                admission=admission, lane=lane))
+            if progress is not None:
+                progress(lane + 1, V2_CAPTURE_LANES,
+                         "verify-integrity-capture-lanes")
+        capture_manifests = tuple(capture_rows)
+        reference_rows = []
+        for lane in range(V2_CAPTURE_LANES):
+            reference_rows.append(reopen_reference_lane(
+                root / "reference" / f"lane-{lane:02d}",
+                capture_directory=root / "capture" / f"lane-{lane:02d}",
+                freeze=freeze, admission=admission, lane=lane))
+            if progress is not None:
+                progress(lane + 1, V2_CAPTURE_LANES,
+                         "verify-integrity-reference-lanes")
+        reference_manifests = tuple(reference_rows)
+    else:
+        try:
+            futures = tuple(integrity_executor.submit(
+                _reopen_synthetic_integrity_lane,
+                (root, freeze, admission, lane))
+                for lane in range(V2_CAPTURE_LANES))
+            lane_results_by_lane = {}
+            for index, future in enumerate(as_completed(futures)):
+                lane, capture, reference = future.result()
+                if lane in lane_results_by_lane:
+                    raise BeliefV2TerminalControllerError(
+                        "V2 terminal integrity lane population drift")
+                lane_results_by_lane[lane] = (capture, reference)
+                if progress is not None:
+                    progress(index + 1, V2_CAPTURE_LANES,
+                             "verify-integrity-synthetic-lanes")
+        except BeliefV2TerminalControllerError:
+            raise
+        except Exception as exc:
+            raise BeliefV2TerminalControllerError(
+                "V2 terminal integrity worker refused") from exc
+        if set(lane_results_by_lane) != set(range(V2_CAPTURE_LANES)):
+            raise BeliefV2TerminalControllerError(
+                "V2 terminal integrity lane population drift")
+        lane_results = tuple(
+            lane_results_by_lane[lane]
+            for lane in range(V2_CAPTURE_LANES))
+        capture_manifests = tuple(row[0] for row in lane_results)
+        reference_manifests = tuple(row[1] for row in lane_results)
     all_human = tuple(
         digest for split in ("train", "calibration", "test")
         for digest in _human_group_digests(group_split, split))
     if len(set(all_human)) != len(all_human):
         raise BeliefV2TerminalControllerError(
             "V2 terminal human group split overlap")
-    human_capture = tuple(reopen_human_group_manifest(
-        root / "human-capture" / f"group-{digest}",
-        freeze=freeze, admission=admission) for digest in all_human)
-    human_reference = []
-    for split, replicates in (
+    human_capture_rows = []
+    for index, digest in enumerate(all_human):
+        human_capture_rows.append(reopen_human_group_manifest(
+            root / "human-capture" / f"group-{digest}",
+            freeze=freeze, admission=admission))
+        if progress is not None:
+            progress(index + 1, len(all_human),
+                     "verify-integrity-human-capture")
+    human_capture = tuple(human_capture_rows)
+    human_reference_jobs = tuple(
+        (digest, replicate)
+        for split, replicates in (
             ("calibration", ("calibration-replicate-0",
                              "calibration-replicate-1")),
-            ("test", ("test-primary",))):
-        for digest in _human_group_digests(group_split, split):
-            for replicate in replicates:
-                human_reference.append(reopen_human_reference_group(
-                    root / "human-reference" / f"group-{digest}"
-                    / replicate, freeze=freeze, admission=admission))
+            ("test", ("test-primary",)))
+        for digest in _human_group_digests(group_split, split)
+        for replicate in replicates)
+    human_reference = []
+    for index, (digest, replicate) in enumerate(human_reference_jobs):
+        human_reference.append(reopen_human_reference_group(
+            root / "human-reference" / f"group-{digest}"
+            / replicate, freeze=freeze, admission=admission))
+        if progress is not None:
+            progress(index + 1, len(human_reference_jobs),
+                     "verify-integrity-human-reference")
     training_manifests = []
-    for cohort_id, expected_sha in training_hashes:
+    for index, (cohort_id, expected_sha) in enumerate(training_hashes):
         raw = stable_read_bytes(
             root / "training" / cohort_id / "manifest.json")
         if _sha256(raw) != expected_sha:
@@ -340,6 +426,9 @@ def _derive_integrity_receipt(
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise BeliefV2TerminalControllerError(
                 "V2 terminal training manifest is not JSON") from exc
+        if progress is not None:
+            progress(index + 1, len(training_hashes),
+                     "verify-integrity-training-manifests")
     capture_resources = tuple(row["resources"] for row in (
         *capture_manifests, *human_capture))
     reference_resources = tuple(row["resources"] for row in (
@@ -347,6 +436,8 @@ def _derive_integrity_receipt(
     training_resources = tuple(row["resources"] for row in training_manifests)
     input_index_resources = input_index_manifest["resources"]
     try:
+        if progress is not None:
+            progress(0, 1, "verify-integrity-tensor-cache")
         cache_manifest, _, _, _, _ = reopen_training_tensor_cache(
             root / "training-tensor-cache" / "result",
             freeze=freeze, admission=admission,
@@ -354,6 +445,8 @@ def _derive_integrity_receipt(
     except ValueError as exc:
         raise BeliefV2TerminalControllerError(
             "V2 terminal tensor cache refused") from exc
+    if progress is not None:
+        progress(1, 1, "verify-integrity-tensor-cache")
     cache_resources = cache_manifest["resources"]
     try:
         qualification_process_count, qualification_host_memory = (
@@ -643,7 +736,9 @@ def reopen_v2_terminal(
         legacy_tensor_cache_manifest_sha256: str | None = None,
         progress: ProgressCallback | None = None,
         calibration_directory: Path | None = None,
-        bound_calibration_manifest: dict[str, Any] | None = None) \
+        bound_calibration_manifest: dict[str, Any] | None = None,
+        integrity_executor: Executor | None = None,
+        parallel_integrity_workers: int | None = None) \
         -> dict[str, Any]:
     """Reopen raw score populations and rederive every terminal byte."""
     if type(parallel_decisions) is not bool \
@@ -651,6 +746,14 @@ def reopen_v2_terminal(
                 projection_executor is not None or decision_pool is not None):
         raise BeliefV2TerminalControllerError(
             "V2 terminal scoring mode drift")
+    if (integrity_executor is not None
+            and parallel_integrity_workers is not None) \
+            or (parallel_integrity_workers is not None
+                and (type(parallel_integrity_workers) is not int
+                     or not 2 <= parallel_integrity_workers
+                     <= V2_CAPTURE_LANES)):
+        raise BeliefV2TerminalControllerError(
+            "V2 terminal integrity mode drift")
     if progress is not None:
         progress(0, 5, "verify-terminal-controls")
     expected_names = {
@@ -776,15 +879,35 @@ def reopen_v2_terminal(
                     selected_cohort_id=calibration["selected_cohort_id"],
                     expected_human_rounds=expected_human,
                     cohort_ids=cohort_ids)))
-        receipt = _derive_integrity_receipt(
-            Path(freeze.evidence_root), freeze, admission, group_split,
-            plan=plan, qualification=qualification,
-            input_index_manifest=input_index_manifest,
-            training_hashes=training_hashes,
-            synthetic_test_count=len(synthetic),
-            human_test_decision_count=sum(row.decision_count for row in human),
-            legacy_tensor_cache_manifest_sha256=(
-                legacy_tensor_cache_manifest_sha256))
+        synthetic_test_count = len(synthetic)
+        human_test_decision_count = sum(
+            row.decision_count for row in human)
+        del cohorts, training_inputs, cohort_ids
+        del recorded_synthetic, recorded_human, synthetic, human
+        gc.collect()
+        if progress is not None:
+            progress(1, 1, "verify-integrity-memory-released")
+        integrity_args = {
+            "plan": plan,
+            "qualification": qualification,
+            "input_index_manifest": input_index_manifest,
+            "training_hashes": training_hashes,
+            "synthetic_test_count": synthetic_test_count,
+            "human_test_decision_count": human_test_decision_count,
+            "legacy_tensor_cache_manifest_sha256": (
+                legacy_tensor_cache_manifest_sha256),
+        }
+        if parallel_integrity_workers is None:
+            receipt = _derive_integrity_receipt(
+                Path(freeze.evidence_root), freeze, admission, group_split,
+                **integrity_args, integrity_executor=integrity_executor,
+                progress=progress)
+        else:
+            with _integrity_pool(parallel_integrity_workers) as local_executor:
+                receipt = _derive_integrity_receipt(
+                    Path(freeze.evidence_root), freeze, admission,
+                    group_split, **integrity_args,
+                    integrity_executor=local_executor, progress=progress)
         result = derive_terminal_result(
             freeze, plan, qualification, receipt, human_selection,
             scale_curve, primary, control, human_transfer)

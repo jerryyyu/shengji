@@ -647,6 +647,35 @@ def test_reference_opens_no_private_capture_bundle(tmp_path, monkeypatch):
         freeze=freeze, admission=admission, lane=coordinate.lane) == result
 
 
+def test_reference_reopen_reads_each_actor_bundle_once_across_replicates(
+        tmp_path, monkeypatch):
+    root, freeze, admission, coordinate = _prepare(
+        monkeypatch, tmp_path)
+    capture = run_capture_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
+        review_marker=b"review")
+    result = run_reference_lane(
+        root, freeze, admission, repo=Path("/unused"), lane=coordinate.lane,
+        review_marker=b"review")
+    import shengji.rl.belief_v2_controller as controller
+    real_read = controller.stable_read_bytes
+    actor_reads = []
+
+    def count_actor_reads(path):
+        if path.parent.name == "actor-only":
+            actor_reads.append(path)
+        return real_read(path)
+
+    monkeypatch.setattr(controller, "stable_read_bytes", count_actor_reads)
+    assert reopen_reference_lane(
+        root / "reference" / f"lane-{coordinate.lane:02d}",
+        capture_directory=(
+            root / "capture" / f"lane-{coordinate.lane:02d}"),
+        freeze=freeze, admission=admission, lane=coordinate.lane) == result
+    assert tuple(path.name for path in actor_reads) == (
+        capture["rounds"][0]["actor_filename"],)
+
+
 def test_public_reference_manifest_never_opens_world_bundle(
         tmp_path, monkeypatch):
     root, freeze, admission, coordinate = _prepare(

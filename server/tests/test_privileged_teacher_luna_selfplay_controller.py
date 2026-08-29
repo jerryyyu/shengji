@@ -479,30 +479,9 @@ def test_candidate_freeze_and_direct_controller_omission_cannot_admit(tmp_path,
         controller.CapacityReceipt.reopen(relabelled_payload)
 
 
-def test_review_binding_includes_the_executing_game_policy(tmp_path, monkeypatch):
-    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
-    census = _tiny_census(design)
-    capacity = _verified_capacity_fixture(one_arm=True)
-    freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
-                                             monkeypatch)
-    foreign_core = tmp_path / "privileged_teacher_luna_selfplay.py"
-    foreign_core.write_bytes(b"# altered executing game policy\n")
-    monkeypatch.setattr(luna, "__file__", str(foreign_core))
-    with pytest.raises(controller.ControllerError, match="freeze binding"):
-        controller.authenticate_source_review(
-            freeze=freeze, design=design, census=census, capacity=capacity,
-            output_root=tmp_path, tool_script=TOOL,
-            review_commit=review_commit, repo_root=tmp_path)
-
-
-@pytest.mark.parametrize("relative", (
-    "shengji/rl/privileged_teacher_c0.py",
-    "shengji/rl/privileged_teacher_full_ab.py",
-    "scripts/privileged_teacher_luna_selfplay.py",
-))
-def test_review_binding_closes_transitive_policy_and_cli_source(tmp_path,
-                                                                monkeypatch,
-                                                                relative):
+@pytest.mark.parametrize("relative", controller.SOURCE_CLOSURE)
+def test_review_binding_closes_complete_source_before_admission(
+        tmp_path, monkeypatch, relative):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)
     capacity = _verified_capacity_fixture(one_arm=True)
@@ -513,14 +492,27 @@ def test_review_binding_closes_transitive_policy_and_cli_source(tmp_path,
 
     def altered(path):
         raw = original(path)
-        return raw + b"\n# transitive source mutation\n" if path == target else raw
+        return raw + b"\n# source-closure mutation\n" if path == target else raw
 
     monkeypatch.setattr(Path, "read_bytes", altered)
+    calls = []
     with pytest.raises(controller.ControllerError, match="freeze binding"):
-        controller.authenticate_source_review(
-            freeze=freeze, design=design, census=census, capacity=capacity,
-            output_root=tmp_path, tool_script=TOOL,
-            review_commit=review_commit, repo_root=tmp_path)
+        controller.run_source_population(
+            design=design, seed_secret=SECRET, census=census,
+            capacity=capacity, evidence_root=tmp_path,
+            game_runner=lambda *_args: calls.append(1), worker_count=1,
+            candidate_freeze=freeze, review_commit=review_commit,
+            repo_root=tmp_path, tool_script=TOOL)
+    assert calls == []
+    assert not (tmp_path / "population-admission.json").exists()
+
+
+def test_source_review_refuses_unbound_fast_runtime(monkeypatch):
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    with pytest.raises(controller.ControllerError, match="pure Python engine"):
+        controller._source_sha256()
+
+
 def test_population_preseal_failure_publishes_missing_terminal_report(tmp_path, monkeypatch):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)

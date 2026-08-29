@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import threading
 import tempfile
 import time
@@ -50,6 +51,48 @@ CAPACITY_EXECUTION_SYNTHETIC = "synthetic-injected-capacity"
 CAPACITY_EXECUTION_VERIFIED = "verified-runtime-capacity"
 CAPACITY_PROVENANCE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-provenance-v1"
 _REVIEW_AUTHENTICATION = object()
+
+# Complete static local-Python import closure rooted at the collection CLI,
+# controller, execution adapter, and game implementation.  Keep this explicit:
+# an added local dependency is a reviewed source-boundary change, not something
+# a runtime import walk may silently admit after the marker was written.
+SOURCE_CLOSURE = (
+    "scripts/privileged_teacher_luna_selfplay.py",
+    "shengji/__init__.py",
+    "shengji/ai/__init__.py",
+    "shengji/ai/bury.py",
+    "shengji/ai/endgame.py",
+    "shengji/ai/heuristic.py",
+    "shengji/ai/legacy_b3f8f61/__init__.py",
+    "shengji/ai/legacy_b3f8f61/mcbot.py",
+    "shengji/ai/legacy_b3f8f61/memory.py",
+    "shengji/ai/mcbot.py",
+    "shengji/ai/memory.py",
+    "shengji/ai/registry.py",
+    "shengji/ai/smart.py",
+    "shengji/engine/__init__.py",
+    "shengji/engine/ballot.py",
+    "shengji/engine/cards.py",
+    "shengji/engine/combos.py",
+    "shengji/engine/fast.py",
+    "shengji/engine/legal.py",
+    "shengji/engine/round.py",
+    "shengji/rl/__init__.py",
+    "shengji/rl/actions.py",
+    "shengji/rl/encode.py",
+    "shengji/rl/model.py",
+    "shengji/rl/npnet.py",
+    "shengji/rl/privileged_teacher_c0.py",
+    "shengji/rl/privileged_teacher_full_ab.py",
+    "shengji/rl/privileged_teacher_luna_selfplay.py",
+    "shengji/rl/privileged_teacher_luna_selfplay_controller.py",
+    "shengji/rl/privileged_teacher_luna_selfplay_execution.py",
+    "shengji/rl/privileged_teacher_pt0.py",
+    "shengji/rl/privileged_teacher_pt1.py",
+    "shengji/rl/privileged_teacher_sol0.py",
+    "shengji/rl/provenance.py",
+    "shengji/rl/torch_policy.py",
+)
 
 
 class ControllerError(ValueError):
@@ -89,24 +132,31 @@ class _AuthenticatedSourceReview:
         raise KeyError(key)
 
 
-def _source_sha256() -> str:
-    """Hash the source boundary, not mutable local Git refs/configuration."""
-    # The controller is not the whole executing policy.  Bind the game/session
-    # implementation and the shared privileged-teacher helpers as well as the
-    # process and orchestration boundaries.  The externally reviewed mailbox
-    # tool is bound separately in the freeze and review claim.
+def _require_pure_python_runtime() -> None:
+    """PT-Luna V1 deliberately refuses the unbound compiled fast path."""
+    fast = sys.modules.get("shengji.engine.fast")
+    if os.environ.get("SHENGJI_FAST") == "1" \
+            or (fast is not None and bool(getattr(fast, "_saved", {}))):
+        raise ControllerError("PT-Luna source review requires pure Python engine")
+
+
+def _source_manifest() -> dict[str, str]:
+    """Return the exact reviewed local source closure and refuse drift."""
+    _require_pure_python_runtime()
     root = Path(__file__).resolve().parents[2]
-    paths = {
-        "game": Path(luna.__file__),
-        "sol0": Path(execution.sol0.__file__),
-        "execution": Path(execution.__file__),
-        "controller": Path(__file__),
-        "c0": root / "shengji" / "rl" / "privileged_teacher_c0.py",
-        "full_ab": root / "shengji" / "rl" / "privileged_teacher_full_ab.py",
-        "cli": root / "scripts" / "privileged_teacher_luna_selfplay.py",
-    }
-    return _sha({name: _sha_bytes(path.read_bytes())
-                 for name, path in paths.items()})
+    paths = tuple(root / relative for relative in SOURCE_CLOSURE)
+    if len(set(SOURCE_CLOSURE)) != len(SOURCE_CLOSURE) or any(
+            not path.is_file() or path.is_symlink() for path in paths):
+        raise ControllerError("PT-Luna source closure drift")
+    return {relative: _sha_bytes(path.read_bytes())
+            for relative, path in zip(SOURCE_CLOSURE, paths, strict=True)}
+
+
+def _source_sha256() -> str:
+    """Hash the complete local source boundary, not mutable Git refs."""
+    # The externally reviewed mailbox tool is bound separately in the freeze
+    # and review claim because it is an executable artifact, not an import.
+    return _sha(_source_manifest())
 
 
 def _sha(value: object) -> str:

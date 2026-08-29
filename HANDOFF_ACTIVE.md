@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 03:23 EDT**. Remote main before this refresh:
-`35f1b2e8d4ea0b80962b25b89cfe4c4fde5edf36`.
+Last reconciled: **2026-08-29 03:27 EDT**. Remote main before this refresh:
+`79b3a5b68808fd66c9e6c3f3e1f95992ad4f8e6c`.
 
 ## Review queue
 
@@ -58,6 +58,16 @@ PT-Luna0 need no repeated review while in their current states.
   observable and it has no progress counter or trustworthy ETA. Cgroup peak
   remains 23.76 GB under the unchanged 24-GiB cap; it remains CPU-active and
   has not published an outcome. Do not diagnose it as a hang or duplicate it.
+- The frozen 31.68-hour scientific projection is not a reliable deadline
+  bound for this substep. Its measured `control_reopen_wall_nanoseconds`
+  executes `_capacity_context` (calibration import, input index, trained
+  cohorts and 13 calibration rounds), but never calls
+  `_derive_integrity_receipt`; it therefore omits the full capture/reference
+  reconstruction above. The systemd unit has a hard two-day limit ending
+  **2026-08-30 12:23 UTC** (08:23 EDT), about 29 hours after this update, and
+  immediate reconstruction repeats scoring plus integrity. Treat deadline
+  exhaustion as a real open risk, not a predicted failure or permission to
+  interrupt the only valid attempt.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
 - After statistics and the first terminal derivation, the same unit must

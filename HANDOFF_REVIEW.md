@@ -8251,3 +8251,61 @@ set, exact authority constant, self-consistent internal hash and matching
 external hash. I did not line-audit the 29,711-line cumulative PR.
 
 WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"immediate_independent_reconstruction_authorized":true,"merge_authorized":false,"p1_calibration_audit_opening_authorized":true,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":true,"strength_claim_authorized":false,"v0_calibration_label_opening_authorized":true,"v0_train_row_reopening_authorized":true},"capacity_receipt_external_sha256":"d4dd34e69f3ffb344766ed98012dbd82ea744e8c477d948a9443045384d81cb3","capacity_receipt_sha256":"31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0","freeze_sha256":"02eb83f7eebd3819ee680437c6040db073244097c5d9709b6749b96bd8530080","memory_limit_bytes":32212254720,"schema":"world-afterstate-v1-p1-scientific-review-claim-v1","scientific_root":"/opt/value-afterstate-v1-p1-scientific-r1","source_git":"3534fe095875826f8fa6296cb6004c28f0b7359e","training_wall_cap_nanoseconds":28800000000000,"v0_audit_manifest_external_sha256":"67fba564ab19941c19051a350a931f116d8154b9ce5757af9fe638c8d0a53c75","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581"}
+
+## 2026-08-29 — ✅ PASS: PR #167 repaired head `c98bdeb6`, delta review `3534fe0..c98bdeb` plus fresh freeze. The r1 failure's fix is itself witnessed — reverting the repair turns the wiring test red — and the freeze binds the spent attempt honestly. Marker appended for the r2 root
+
+### Delta and stacking
+
+Head `c98bdeb666df18f2640d717f408194b6e60e62bd`, parent `e632e411…` with **`3534fe09` a true
+ancestor** (unlike the previous round's false stacking claim — this one is clean). Delta **5 files,
++155/−20**; `git diff --check` clean. Battery at the exact head, native rebuilt, `-P -B`, cleared
+`__pycache__`: **202 passed strict** and **202 passed pure** — both matching the claim.
+
+### The repair is the same selector capacity uses, and reverting it goes red
+
+The r1 failure (`scientific-training-missed-eligibility-projection`) was the scientific reader
+omitting the eligibility projection capacity applies. The fix routes both train and calibration
+folds through `select_manifest_eligible_advantage_rows` — the **same function I mutation-tested at
+`be129b6`**, with completeness proven before exclusion — not a reimplementation. My decisive
+mutation: reverting the train-fold projection to exactly r1's behavior turns
+`test_scientific_row_readers_pin_train_and_calibration_folds` red (population mismatch), 4 others
+green. The repair cannot silently regress. Source restored; porcelain 0.
+
+### Spent-attempt facts, verified on Perf against the freeze's own lineage record
+
+| lineage claim | measured |
+|---|---|
+| service `value-afterstate-v1-p1-scientific-3534fe0-r1.service` | ✔ `Result=exit-code`, `ExecMainStatus=1` |
+| invocation `9bd5215a32ed4481a6229b7bd508be12` | ✔ exact |
+| ~29.9 s failure | ✔ journal: `29.953s` wall, 1.9 G peak |
+| spent root `/opt/value-afterstate-v1-p1-scientific-r1` | ✔ present |
+| new root `/opt/value-afterstate-v1-p1-scientific-r2` | ✔ absent |
+| `prior_admission_retry_authorized` | **false** in the freeze lineage |
+
+Train rows opened in r1; nothing downstream published — a source-path refusal, not a model result,
+exactly as stated.
+
+### Artifacts and marker
+
+Freeze `/opt/value-afterstate-v1-freeze-c98bdeb-r2.json`: **16,597 B, `0400`, 1 link**, external
+`b8709317…490032` ✔, internal `c5582061…` ✔. Source checkout
+`/opt/value-afterstate-v1-scientific-c98bdeb-r2-src` clean at the exact head ✔. Marker regenerated
+with `world_afterstate_v1_admission.expected_review_claim`: claim `02648615…` ✔, marker
+`2ee594de…` ✔, **1,432 bytes** ✔ — all three stated values matched. True flags are the same five as
+the prior round (train-row reopening, P1 training, calibration-audit opening, calibration-label
+opening, immediate reconstruction); report/provider rows, P2, gameplay, strength, merge, promotion,
+deployment, retry, R5 all false. Main holds two spent markers of this prefix; the repaired
+authenticator admits exactly one append on top of them, which this is.
+
+### Calibration singleton note, and coverage limits
+
+The three singleton audit roots stay in the sealed 312-audit prediction inventory but define no
+action comparison (49 action-comparable roots / 260 unreplicated / 520 replicated pairs after
+proving all 624 declared rows) — the freeze names audit-root and action-root counts separately,
+which is the honest split. I verified the counts appear in the freeze as stated; I did **not**
+re-derive them from the sealed population, nor re-audit the base I reviewed at `864463e`/the sibling
+at `f289e02`. This marker authorizes attempt 2 under the r2 root and its immediate independent
+reconstruction, nothing else. — Claude (session `68f9c8bd`)
+
+WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"immediate_independent_reconstruction_authorized":true,"merge_authorized":false,"p1_calibration_audit_opening_authorized":true,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":true,"strength_claim_authorized":false,"v0_calibration_label_opening_authorized":true,"v0_train_row_reopening_authorized":true},"capacity_receipt_external_sha256":"d4dd34e69f3ffb344766ed98012dbd82ea744e8c477d948a9443045384d81cb3","capacity_receipt_sha256":"31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0","freeze_sha256":"c5582061e117f5692cc8edaf0a92f85aec1cb938f9470f644e6f398a17a1699a","memory_limit_bytes":32212254720,"schema":"world-afterstate-v1-p1-scientific-review-claim-v1","scientific_root":"/opt/value-afterstate-v1-p1-scientific-r2","source_git":"c98bdeb666df18f2640d717f408194b6e60e62bd","training_wall_cap_nanoseconds":28800000000000,"v0_audit_manifest_external_sha256":"67fba564ab19941c19051a350a931f116d8154b9ce5757af9fe638c8d0a53c75","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581"}
+

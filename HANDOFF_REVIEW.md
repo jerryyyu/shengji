@@ -7699,3 +7699,69 @@ until the receipt exists, as stated. Read-only throughout; nothing signalled; R4
 still pre-rename. — Claude (session `68f9c8bd`)
 
 WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V2 {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_beyond_second_corrected_execution_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_second_corrected_capacity_execution_authorized":true},"canonical_remote_tip_at_failure":"32cc41391a4c40c406161b14f6d91385123ba08c","corrected_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset","failed_invocation_id":"638870aef3b44e84a2297b9a1cf1bbf7","failed_output_absent":true,"failed_service":"value-afterstate-v1-capacity-aa0595c-r2.service","failure_message":"capacity review local main differs from real remote","local_origin_main_at_failure":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","prelaunch_canonical_ref_refresh_required":true,"prior_operator_reentry_commit":"32cc41391a4c40c406161b14f6d91385123ba08c","prior_review_commit":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","progress_records_emitted":0,"schema":"world-afterstate-v1-capacity-operator-reentry-v2","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","target_output":"/opt/value-afterstate-v1-capacity-aa0595c-r3","train_row_bytes_opened":false}
+
+## 2026-08-29 — **`-r3` is not another operator-path failure.** It reached `join_advantage_examples` and refused on data semantics after 8 CPU-minutes and 1.8 GB. Do not adjudicate the next re-entry with the r1/r2 template.
+
+No review was requested for `-r3` yet. Filing ahead of the request because the two prior
+adjudications established a template that would be **wrong on every count** if applied here, and the
+next request is the natural moment for that to happen.
+
+### Authorization is clean — I checked that first
+
+The `…REENTRY_V2` marker in the ledger carries
+`target_output = /opt/value-afterstate-v1-capacity-aa0595c-**r3**`, and its authority is the single
+flag `train_only_second_corrected_capacity_execution_authorized`. That marker landed in `11786eb` at
+`12:24:27Z`; `-r3` started at `12:24:53Z`, **26 seconds later**, and exited at `12:27:58Z`. Correct
+ordering, correct target, one execution. Nothing to flag on authority.
+
+### The three failures are not the same class
+
+| run | invocation | wall / CPU / peak | error |
+|---|---|---|---|
+| `-r1` | `40a4c998…` | 5.405 s / 6.638 s / 403.9 M | `WorldAfterstateDatasetError: dataset row cannot be read` — the doubled `rows/rows` path |
+| `-r2` | `638870ae…` | 2.126 s / 3.318 s / 303.6 M | `WorldAfterstateV1CapacityError: capacity review local main differs from real remote` — stale checkout ref |
+| **`-r3`** | `bf7e9e3d…` | **3 min 4.387 s / 8 min 20.696 s / 1.8 G** | `WorldAfterstateV1DatasetError: V1 advantage pair construction refused`, from `WorldAfterstateV1Error: **advantage sibling candidate population drift**` |
+
+`-r1` and `-r2` died in seconds, before opening anything, on a path and a ref. `-r3` burned **8 min
+20.696 s of CPU across ~2.7 cores and peaked at 1.8 GB — 4.5× r1's peak** — and failed here:
+
+```
+run_capacity            world_afterstate_v1_capacity.py:1012
+  join_advantage_examples   world_afterstate_v1_dataset.py:144
+    → WorldAfterstateV1Error: advantage sibling candidate population drift
+```
+
+That is a **domain guard on the content of the data**, downstream of authentication, input opening
+and dataset load — not an operator mistake in the invocation.
+
+### Why the template would be wrong
+
+The r1 and r2 markers both asserted `train_row_bytes_opened: false` and both entries concluded
+"operator-path failure, no source, model, or data result." For `-r3` all three parts fail:
+
+1. **Not an operator path issue.** Nothing about the command was malformed; it got past every
+   precondition the previous two tripped on.
+2. **Rows were opened.** *Inferred, not directly measured, and I did not read any row bytes:*
+   `join_advantage_examples` cannot construct advantage pairs from unread examples, and the
+   resource profile — 8 CPU-minutes, 1.8 GB, ~2.7 cores — is not compatible with a run that opened
+   nothing. Compare r1/r2 at 3–7 CPU-seconds and ~0.3–0.4 GB.
+3. **It does carry a data implication.** "Advantage sibling candidate population drift" is a
+   statement about whether the V0 rows form the sibling populations V1 expects. That is exactly the
+   kind of refusal that should be interpreted, not waved through as an invocation slip.
+
+What *is* the same: **0 progress records emitted, and no output** — `…-r3` and `…-r3.json` are both
+absent, so nothing was published and no receipt exists.
+
+### The ask
+
+When the `-r3` re-entry request arrives, it needs a **source/data adjudication, not a command-only
+one**. Specifically: what does `advantage sibling candidate population drift` check, is the
+condition a property of the V0 dataset that was already sealed and reviewed, and does it invalidate
+anything in the V0 lane — or is it a V1-side expectation that needs changing? A marker asserting
+`train_row_bytes_opened: false` for this run would not be supportable on the evidence above.
+
+Three authorized executions have now been spent without a capacity receipt. That is worth noticing
+on its own, separately from whether each individual failure was reasonable.
+
+Read-only on Perf: systemd properties, journal traceback frames, and directory existence. No row
+bytes, outputs, or evidence namespaces opened; nothing signalled. — Claude (session `f4b0ea92`)

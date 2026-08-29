@@ -126,12 +126,32 @@ def _capacity(*, one_arm: bool = False) -> controller.CapacityReceipt:
         physical_memory_bytes=8_000_000_000, game_runner=runner)
 
 
-def _verified_capacity(*, one_arm: bool = False) -> controller.CapacityReceipt:
-    """Typed external receipt fixture; fake capacity remains synthetic by default."""
-    synthetic = _capacity(one_arm=one_arm)
-    body = dict(synthetic.body)
-    body["execution_kind"] = controller.CAPACITY_EXECUTION_VERIFIED
-    body["scientific_admissible"] = True
+def _verified_capacity_fixture(*, one_arm: bool = False) -> controller.CapacityReceipt:
+    """Typed external receipt fixture; no synthetic receipt is relabelled."""
+    source = _capacity(one_arm=one_arm).body
+    body = {
+        "schema": controller.CAPACITY_SCHEMA,
+        "deadline_nanoseconds": source["deadline_nanoseconds"],
+        "physical_memory_bytes": source["physical_memory_bytes"],
+        "cumulative_wall_budget_nanoseconds": source[
+            "cumulative_wall_budget_nanoseconds"],
+        "cumulative_token_budget": source["cumulative_token_budget"],
+        "arms": source["arms"],
+        "selected_workers": source["selected_workers"],
+        "stop_reason": source["stop_reason"],
+        "route": source["route"],
+        "authority": source["authority"],
+        "execution_kind": controller.CAPACITY_EXECUTION_VERIFIED,
+        "scientific_admissible": True,
+    }
+    body["provenance"] = {
+        "schema": controller.CAPACITY_PROVENANCE_SCHEMA,
+        "execution_kind": controller.CAPACITY_EXECUTION_VERIFIED,
+        "scientific_admissible": True,
+        "runtime_sha256": "a" * 64,
+        "evidence_sha256": "b" * 64,
+        "tool_script_sha256": hashlib.sha256(TOOL.read_bytes()).hexdigest(),
+    }
     return controller.CapacityReceipt(body, controller._sha(body))
 
 
@@ -316,6 +336,7 @@ def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
         "runtime": {"codex": "fixture"}, "process_error": None,
         "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
         "actual_subprocess": True, "synthetic": False})
+    evidence.sha256 = controller._sha(evidence.body)
     monkeypatch.setattr(execution, "reopen_attempt", lambda _path:
                         SimpleNamespace(status="complete",
                                         evidence=(evidence, evidence),
@@ -381,7 +402,7 @@ def test_candidate_freeze_and_direct_controller_omission_cannot_admit(tmp_path,
                                                                        monkeypatch):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)
-    capacity = _verified_capacity(one_arm=True)
+    capacity = _verified_capacity_fixture(one_arm=True)
     freeze = controller.launch_freeze_payload(
         design=design, census=census, capacity=capacity, worker_count=1,
         output_root=tmp_path, tool_script=TOOL)
@@ -394,27 +415,20 @@ def test_candidate_freeze_and_direct_controller_omission_cannot_admit(tmp_path,
             game_runner=lambda *_: None, worker_count=1)
 
     relabelled = _capacity(one_arm=True)
-    relabelled_body = dict(relabelled.body)
-    relabelled_body["execution_kind"] = controller.CAPACITY_EXECUTION_VERIFIED
-    relabelled_body["scientific_admissible"] = True
-    relabelled = controller.CapacityReceipt(
-        relabelled_body, controller._sha(relabelled_body))
-    candidate = controller.launch_freeze_payload(
-        design=design, census=census, capacity=relabelled, worker_count=1,
-        output_root=tmp_path, tool_script=TOOL)
-    monkeypatch.setattr(controller, "CANONICAL_REMOTE_URL",
-                        str(tmp_path / "not-a-remote"))
-    with pytest.raises(controller.ControllerError, match="remote"):
-        controller.authenticate_source_review(
-            freeze=candidate, design=design, census=census,
-            capacity=relabelled, output_root=tmp_path, tool_script=TOOL,
-            review_commit="a" * 40, repo_root=tmp_path)
+    relabelled_payload = relabelled.serialized()
+    relabelled_payload["execution_kind"] = controller.CAPACITY_EXECUTION_VERIFIED
+    relabelled_payload["scientific_admissible"] = True
+    relabelled_body = {key: value for key, value in relabelled_payload.items()
+                       if key != "receipt_sha256"}
+    relabelled_payload["receipt_sha256"] = controller._sha(relabelled_body)
+    with pytest.raises(controller.ControllerError, match="provenance"):
+        controller.CapacityReceipt.reopen(relabelled_payload)
 
 
 def test_review_binding_includes_the_executing_game_policy(tmp_path, monkeypatch):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)
-    capacity = _verified_capacity(one_arm=True)
+    capacity = _verified_capacity_fixture(one_arm=True)
     freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
                                              monkeypatch)
     foreign_core = tmp_path / "privileged_teacher_luna_selfplay.py"
@@ -425,10 +439,38 @@ def test_review_binding_includes_the_executing_game_policy(tmp_path, monkeypatch
             freeze=freeze, design=design, census=census, capacity=capacity,
             output_root=tmp_path, tool_script=TOOL,
             review_commit=review_commit, repo_root=tmp_path)
+
+
+@pytest.mark.parametrize("relative", (
+    "shengji/rl/privileged_teacher_c0.py",
+    "shengji/rl/privileged_teacher_full_ab.py",
+    "scripts/privileged_teacher_luna_selfplay.py",
+))
+def test_review_binding_closes_transitive_policy_and_cli_source(tmp_path,
+                                                                monkeypatch,
+                                                                relative):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity_fixture(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
+                                             monkeypatch)
+    target = Path(__file__).parents[1] / relative
+    original = Path.read_bytes
+
+    def altered(path):
+        raw = original(path)
+        return raw + b"\n# transitive source mutation\n" if path == target else raw
+
+    monkeypatch.setattr(Path, "read_bytes", altered)
+    with pytest.raises(controller.ControllerError, match="freeze binding"):
+        controller.authenticate_source_review(
+            freeze=freeze, design=design, census=census, capacity=capacity,
+            output_root=tmp_path, tool_script=TOOL,
+            review_commit=review_commit, repo_root=tmp_path)
 def test_population_preseal_failure_publishes_missing_terminal_report(tmp_path, monkeypatch):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)
-    capacity = _verified_capacity(one_arm=True)
+    capacity = _verified_capacity_fixture(one_arm=True)
     freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
                                              monkeypatch)
     updates = []
@@ -455,7 +497,7 @@ def test_population_uses_execution_adapter_and_reopens_complete_attempt(tmp_path
                                                                          monkeypatch):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)
-    capacity = _verified_capacity(one_arm=True)
+    capacity = _verified_capacity_fixture(one_arm=True)
     freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
                                              monkeypatch)
     calls = []
@@ -478,7 +520,7 @@ def test_incomplete_attempt_keeps_real_manifest_identity_and_is_not_retried(tmp_
                                                                             monkeypatch):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)
-    capacity = _verified_capacity(one_arm=True)
+    capacity = _verified_capacity_fixture(one_arm=True)
     freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
                                              monkeypatch)
     calls = []
@@ -515,7 +557,7 @@ def test_controller_death_before_manifest_is_hash_bound_and_never_retried(tmp_pa
                                                                           monkeypatch):
     design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
     census = _tiny_census(design)
-    capacity = _verified_capacity(one_arm=True)
+    capacity = _verified_capacity_fixture(one_arm=True)
     freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
                                              monkeypatch)
     attempt = tmp_path / "attempts" / "2-0-0-mirror-0"

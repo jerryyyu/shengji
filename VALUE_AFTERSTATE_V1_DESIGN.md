@@ -418,6 +418,18 @@ external-review claim includes that path, and initialization refuses before
 publishing an attempt if the operator supplies any other root. Therefore one
 review marker cannot be reused under a second path to obtain an implicit retry.
 
+The first admitted P1 invocation spent that bound root and admission, reopened
+the train population, and refused before training because the scientific
+reader omitted the capacity packet's outcome-blind eligibility projection.
+It published no cohort, prediction, calibration-attempt, calibration-label,
+reconstruction, report, or provider-audit artifact. The repaired reader now
+applies the same manifest-derived candidate-count filter as capacity, and its
+wiring witness plus a real-data reconstruction reproduce the capacity
+advantage manifest exactly. A successor freeze carries this spent invocation,
+root, failure boundary, and zero-held-out-opening record as structured lineage;
+it names a new root and still requires a fresh exact-head source+freeze review.
+The spent admission is never retried.
+
 No all-or-nothing multi-day run is allowed before P0 and a miniature full-path
 rehearsal pass. The rehearsal uses synthetic or train-only rows, proves every
 stage and refusal path, publishes no learning conclusion, and may not choose

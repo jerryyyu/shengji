@@ -155,6 +155,28 @@ CAPACITY_FAILED_ATTEMPTS = (
             "6692243c04c868e773220dc743ada117110950bf",
     },
 )
+SCIENTIFIC_FAILED_ATTEMPTS = (
+    {
+        "ordinal": 1,
+        "source_git": "3534fe095875826f8fa6296cb6004c28f0b7359e",
+        "service":
+            "value-afterstate-v1-p1-scientific-3534fe0-r1.service",
+        "invocation_id": "9bd5215a32ed4481a6229b7bd508be12",
+        "scientific_root": "/opt/value-afterstate-v1-p1-scientific-r1",
+        "failure_class":
+            "scientific-training-missed-eligibility-projection",
+        "failure_stage": "natural-cohort-train-population-reopen",
+        "admission_spent": True,
+        "train_population_opened": True,
+        "cohort_output_published": False,
+        "predictions_published": False,
+        "calibration_attempt_published": False,
+        "calibration_labels_opened": False,
+        "reconstruction_attempt_published": False,
+        "report_rows_opened": False,
+        "provider_audit_rows_opened": False,
+    },
+)
 
 
 class WorldAfterstateV1ExperimentError(ValueError):
@@ -303,6 +325,14 @@ def build_experiment_freeze(
             "successful_receipt_sha256": receipt["receipt_sha256"],
             "successful_terminal_route": receipt["terminal_route"],
         },
+        "scientific_attempt_lineage": {
+            "failed_attempt_count": len(SCIENTIFIC_FAILED_ATTEMPTS),
+            "failed_attempts": [dict(row)
+                                for row in SCIENTIFIC_FAILED_ATTEMPTS],
+            "next_attempt_ordinal": len(SCIENTIFIC_FAILED_ATTEMPTS) + 1,
+            "fresh_exact_head_freeze_review_required": True,
+            "prior_admission_retry_authorized": False,
+        },
         "capacity": _capacity_directory_binding(capacity_build),
         "v0_inputs": {
             **dict(receipt["v0_inputs"]),
@@ -401,7 +431,7 @@ def validate_experiment_freeze(
             "source_sha256s",
             "runtime", "capacity_operator_reentry",
             "capacity_operator_reentry_v2", "capacity_attempt_lineage",
-            "capacity", "v0_inputs",
+            "scientific_attempt_lineage", "capacity", "v0_inputs",
             "population", "learner", "resources", "gates", "stage_order",
             "terminal_authority_if_pass", "authority", "freeze_sha256"} \
             or value.get("schema") != FREEZE_SCHEMA \
@@ -427,7 +457,7 @@ __all__ = [
     "CALIBRATION_GROUP_COUNT",
     "CALIBRATION_LABEL_PAIR_COUNT", "CALIBRATION_LABEL_ROW_COUNT",
     "CALIBRATION_PAIR_COUNT", "FREEZE_SCHEMA", "NAMESPACE", "SOURCE_KEYS",
-    "SOURCE_PATHS",
+    "SCIENTIFIC_FAILED_ATTEMPTS", "SOURCE_PATHS",
     "V0_AUDIT_MANIFEST_EXTERNAL_SHA256", "V0_AUDIT_MANIFEST_SHA256",
     "WorldAfterstateV1ExperimentError", "build_experiment_freeze",
     "validate_experiment_freeze",

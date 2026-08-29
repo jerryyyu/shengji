@@ -18,7 +18,8 @@ from shengji.rl.world_afterstate_v1_experiment import (
     AUTHORITY, CAPACITY_FAILED_ATTEMPTS, CALIBRATION_AUDIT_COUNT,
     CALIBRATION_GROUP_COUNT,
     CALIBRATION_LABEL_PAIR_COUNT, CALIBRATION_LABEL_ROW_COUNT,
-    CALIBRATION_PAIR_COUNT, SOURCE_KEYS, SOURCE_PATHS,
+    CALIBRATION_PAIR_COUNT, SCIENTIFIC_FAILED_ATTEMPTS, SOURCE_KEYS,
+    SOURCE_PATHS,
     WorldAfterstateV1ExperimentError,
     build_experiment_freeze, validate_experiment_freeze)
 from shengji.rl.world_afterstate_v1_training_controller import (
@@ -92,6 +93,17 @@ def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
     assert lineage["successful_receipt_sha256"] \
         == capacity.receipt["receipt_sha256"]
     assert lineage["successful_terminal_route"] == "PASS_TO_P1_CAPACITY"
+    scientific_lineage = freeze["scientific_attempt_lineage"]
+    assert scientific_lineage == {
+        "failed_attempt_count": 1,
+        "failed_attempts": [dict(row)
+                            for row in SCIENTIFIC_FAILED_ATTEMPTS],
+        "next_attempt_ordinal": 2,
+        "fresh_exact_head_freeze_review_required": True,
+        "prior_admission_retry_authorized": False,
+    }
+    assert scientific_lineage["failed_attempts"][0][
+        "calibration_labels_opened"] is False
     assert freeze["population"]["pair_count"] \
         == capacity.receipt["train_population"]["pair_count"]
     assert freeze["learner"]["member_workers"] \
@@ -146,6 +158,13 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
     forged = copy.deepcopy(freeze)
     forged["capacity_attempt_lineage"]["failed_attempts"][2][
         "train_population_opened"] = False
+    with pytest.raises(WorldAfterstateV1ExperimentError,
+                       match="freeze reconstruction drift"):
+        validate_experiment_freeze(forged, capacity)
+
+    forged = copy.deepcopy(freeze)
+    forged["scientific_attempt_lineage"]["failed_attempts"][0][
+        "calibration_labels_opened"] = True
     with pytest.raises(WorldAfterstateV1ExperimentError,
                        match="freeze reconstruction drift"):
         validate_experiment_freeze(forged, capacity)

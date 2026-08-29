@@ -27,7 +27,7 @@ from .world_afterstate_v2_model import (
     absolute_cross_entropy_rows, collate_world_afterstate_tensors,
     expected_signed_utility,
 )
-from .world_afterstate_v2_protocol import STATE_SOURCES
+from .world_afterstate_v2_protocol import STATE_SOURCES, TRUMP_MODES
 
 
 BATCH_SCHEMA = "world-afterstate-v2-absolute-training-batch-v1"
@@ -82,6 +82,8 @@ class WorldAfterstateV2TrainingExample:
     role: str
     phase: str
     position: str
+    trump_rank: str
+    trump_mode: str
     tensors: WorldAfterstateTensorsV0
     signed_level_category: int
     cohort: str = "primary"
@@ -100,7 +102,9 @@ class WorldAfterstateV2TrainingExample:
                 or self.cohort not in COHORTS \
                 or self.role not in ("attacker", "defender") \
                 or self.phase not in ("early", "middle", "late") \
-                or self.position not in ("lead", "follow"):
+                or self.position not in ("lead", "follow") \
+                or self.trump_rank not in tuple("23456789TJQKA") \
+                or self.trump_mode not in TRUMP_MODES:
             raise WorldAfterstateV2TrainingError("V2 training row identity drift")
         if self.split not in TRAINING_SPLITS:
             raise WorldAfterstateV2TrainingError("V2 training split refused")
@@ -205,6 +209,12 @@ class WorldAfterstateV2TrainingBatch:
     candidate_set_sha256s: tuple[str, ...]
     successor_sha256s: tuple[str, ...]
     continuation_sha256s: tuple[str, ...]
+    sources: tuple[str, ...]
+    roles: tuple[str, ...]
+    phases: tuple[str, ...]
+    positions: tuple[str, ...]
+    trump_ranks: tuple[str, ...]
+    trump_modes: tuple[str, ...]
     target_categories: torch.Tensor
     split: str
     cohort: str
@@ -216,7 +226,9 @@ class WorldAfterstateV2TrainingBatch:
         fields = (self.root_ids, self.candidate_indexes, self.replicates,
                   self.deal_sha256s, self.slot_sha256s, self.state_sha256s,
                   self.candidate_set_sha256s, self.successor_sha256s,
-                  self.continuation_sha256s)
+                  self.continuation_sha256s, self.sources, self.roles,
+                  self.phases, self.positions, self.trump_ranks,
+                  self.trump_modes)
         if self.schema != BATCH_SCHEMA or count < 1 \
                 or type(self.example_keys) is not tuple \
                 or len(set(self.example_keys)) != count \
@@ -254,8 +266,19 @@ class WorldAfterstateV2TrainingBatch:
             _strict_int(self.candidate_indexes[index], "batch candidate index")
             if self.replicates[index] not in REPLICATES:
                 raise WorldAfterstateV2TrainingError("V2 training replica drift")
+            if self.sources[index] not in STATE_SOURCES \
+                    or self.roles[index] not in ("attacker", "defender") \
+                    or self.phases[index] not in ("early", "middle", "late") \
+                    or self.positions[index] not in ("lead", "follow") \
+                    or self.trump_ranks[index] not in tuple("23456789TJQKA") \
+                    or self.trump_modes[index] not in TRUMP_MODES:
+                raise WorldAfterstateV2TrainingError(
+                    "V2 batch public stratum drift")
             identity = (self.deal_sha256s[index], self.slot_sha256s[index],
                         self.state_sha256s[index], self.candidate_set_sha256s[index],
+                        self.sources[index], self.roles[index],
+                        self.phases[index], self.positions[index],
+                        self.trump_ranks[index], self.trump_modes[index],
                         self.split, self.cohort)
             prior = metadata.setdefault(root, identity)
             if prior != identity:
@@ -356,6 +379,12 @@ def collate_training_examples(
         candidate_set_sha256s=tuple(value.candidate_set_sha256 for value in rows),
         successor_sha256s=tuple(value.successor_sha256 for value in rows),
         continuation_sha256s=tuple(value.continuation_sha256 for value in rows),
+        sources=tuple(value.source for value in rows),
+        roles=tuple(value.role for value in rows),
+        phases=tuple(value.phase for value in rows),
+        positions=tuple(value.position for value in rows),
+        trump_ranks=tuple(value.trump_rank for value in rows),
+        trump_modes=tuple(value.trump_mode for value in rows),
         target_categories=torch.as_tensor(
             [value.signed_level_category for value in rows], dtype=torch.long),
         split=split, cohort=cohort, tensors=tensors)

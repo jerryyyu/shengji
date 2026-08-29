@@ -179,6 +179,7 @@ def build_training_examples_v2(
                 continuation_sha256=row.continuation_sha256,
                 replica=replica, source=row.source, split=row.split,
                 role=row.role, phase=row.phase, position=row.position,
+                trump_rank=state.trump_rank, trump_mode=state.trump_mode,
                 tensors=tensors[index],
                 signed_level_category=row.signed_level_category))
     result_tuple = tuple(result)
@@ -204,6 +205,8 @@ class DatasetManifestRowV2:
     role: str
     phase: str
     position: str
+    trump_rank: str
+    trump_mode: str
     candidate_count: int
     replica_count: int
     example_count: int
@@ -226,6 +229,7 @@ class DatasetManifestRowV2:
             "candidate_set_sha256": self.candidate_set_sha256,
             "source": self.source, "split": self.split, "role": self.role,
             "phase": self.phase, "position": self.position,
+            "trump_rank": self.trump_rank, "trump_mode": self.trump_mode,
             "candidate_count": self.candidate_count,
             "replica_count": self.replica_count,
             "example_count": self.example_count,
@@ -249,7 +253,9 @@ class DatasetManifestRowV2:
         if self.source not in STATE_SOURCES or self.split != "fit" \
                 or self.role not in ("attacker", "defender") \
                 or self.phase not in ("early", "middle", "late") \
-                or self.position not in ("lead", "follow"):
+                or self.position not in ("lead", "follow") \
+                or self.trump_rank not in tuple("23456789TJQKA") \
+                or self.trump_mode not in ("S", "H", "D", "C", "NT"):
             raise WorldAfterstateV2DatasetError("manifest identity drift")
         if (self.candidate_count < 2 or self.replica_count != 8
                 or self.example_count != self.candidate_count * 8
@@ -302,6 +308,8 @@ def build_dataset_manifest_row_v2(
         "source": material.state.source, "split": material.state.split,
         "role": material.state.role, "phase": material.state.phase,
         "position": material.state.position,
+        "trump_rank": material.state.trump_rank,
+        "trump_mode": material.state.trump_mode,
         "candidate_count": candidate_count, "replica_count": 8,
         "example_count": candidate_count * 8,
         "successor_sha256s": list(successors),
@@ -318,7 +326,10 @@ def build_dataset_manifest_row_v2(
         candidate_set_sha256=material.candidate_set_sha256,
         source=material.state.source, split=material.state.split,
         role=material.state.role, phase=material.state.phase,
-        position=material.state.position, candidate_count=candidate_count,
+        position=material.state.position,
+        trump_rank=material.state.trump_rank,
+        trump_mode=material.state.trump_mode,
+        candidate_count=candidate_count,
         replica_count=8, example_count=candidate_count * 8,
         successor_sha256s=successors, continuation_sha256s=continuation_hashes,
         audit_sha256s=audit_hashes,

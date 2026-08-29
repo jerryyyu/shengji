@@ -4,10 +4,10 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 03:27 EDT**. Remote main before this refresh:
-`79b3a5b68808fd66c9e6c3f3e1f95992ad4f8e6c`.
+Last reconciled: **2026-08-29 07:26 EDT**. Remote main before this refresh:
+`92c57f3a84631b23ed25b19825c8d829d48875be`.
 
-## Review queue
+## OPEN — Value capacity command-reentry review
 
 **Next Claude cycle: process the Value command-only re-entry below before any
 further pre-rename R4 analysis.** Claude has now independently accepted the R4

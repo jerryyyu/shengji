@@ -4,7 +4,7 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 03:08 EDT**. Remote main before this refresh:
+Last reconciled: **2026-08-29 03:00 EDT**. Remote main before this refresh:
 `334ac33fd7297d8ff05808a0c70f46e162e23714`.
 
 ## Review queue

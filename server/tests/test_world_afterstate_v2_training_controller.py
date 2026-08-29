@@ -126,6 +126,7 @@ def test_control_reuses_natural_root_schedule():
 
 def test_optimizer_canary_is_diagnostics_only_and_reopened():
     canary = OptimizerCanaryReceiptV2(
+        source_p0_population_sha256=hashlib.sha256(b"p0").hexdigest(),
         root_population_sha256=hashlib.sha256(b"roots").hexdigest(),
         model_seed=7, root_count=16, optimizer_steps=500,
         early_stopping_used=False, gradients_finite=True,
@@ -139,6 +140,7 @@ def test_optimizer_canary_is_diagnostics_only_and_reopened():
 
 def test_failed_optimizer_canary_and_bool_worker_count_are_refused():
     failed = OptimizerCanaryReceiptV2(
+        source_p0_population_sha256=hashlib.sha256(b"p0").hexdigest(),
         root_population_sha256=hashlib.sha256(b"roots").hexdigest(),
         model_seed=7, root_count=16, optimizer_steps=500,
         early_stopping_used=False, gradients_finite=True,

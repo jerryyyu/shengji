@@ -182,6 +182,15 @@ def test_result_rejects_rehashed_gate_and_deal_mean_drift():
             learning_gates_1_to_4=tuple(
                 not value for value in result.learning_gates_1_to_4),
         ).validate()
+    forged_metric = dataclasses.replace(
+        result.rps_improvement,
+        metric_name="natural|block-2|rps-improvement",
+        bootstrap=dataclasses.replace(
+            result.rps_improvement.bootstrap,
+            metric_name="natural|block-2|rps-improvement"))
+    with pytest.raises(WorldAfterstateV2EvaluationError,
+                       match="metric identity"):
+        dataclasses.replace(result, rps_improvement=forged_metric).validate()
 
 
 def test_action_gate_bootstraps_ensemble_choice_not_mean_member_choices():

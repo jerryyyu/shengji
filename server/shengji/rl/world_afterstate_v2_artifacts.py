@@ -278,6 +278,11 @@ class CheckpointShardV2:
     sha256: str
     checkpoint_sha256: str
     model_state_sha256: str
+    freeze_sha256: str
+    config_sha256: str
+    population_sha256: str
+    schedule_sha256: str
+    common_epoch_sha256: str
     schema: str = CHECKPOINT_SCHEMA
 
     @property
@@ -296,6 +301,11 @@ class CheckpointShardV2:
             "sha256": self.sha256,
             "checkpoint_sha256": self.checkpoint_sha256,
             "model_state_sha256": self.model_state_sha256,
+            "freeze_sha256": self.freeze_sha256,
+            "config_sha256": self.config_sha256,
+            "population_sha256": self.population_sha256,
+            "schedule_sha256": self.schedule_sha256,
+            "common_epoch_sha256": self.common_epoch_sha256,
         }
 
 
@@ -588,7 +598,12 @@ def publish_checkpoint_shard(
         seed_block=seed_block, member_index=member_index, epoch=epoch,
         byte_count=len(raw), sha256=digest,
         checkpoint_sha256=metadata["checkpoint_sha256"],
-        model_state_sha256=metadata["model_state_sha256"])
+        model_state_sha256=metadata["model_state_sha256"],
+        freeze_sha256=metadata["freeze_sha256"],
+        config_sha256=metadata["config_sha256"],
+        population_sha256=metadata["population_sha256"],
+        schedule_sha256=metadata["schedule_sha256"],
+        common_epoch_sha256=metadata["common_epoch_sha256"])
 
 
 def reopen_checkpoint_shard(
@@ -632,6 +647,14 @@ def publish_checkpoint_manifest(
            or (shard.cohort, shard.seed_block, shard.epoch) !=
            (first.cohort, first.seed_block, first.epoch) for shard in shards):
         raise WorldAfterstateV2ArtifactError("checkpoint cohort/epoch mixing")
+    shared_identity = (first.freeze_sha256, first.config_sha256,
+                       first.population_sha256,
+                       first.common_epoch_sha256)
+    if any((shard.freeze_sha256, shard.config_sha256,
+            shard.population_sha256, shard.common_epoch_sha256)
+           != shared_identity for shard in shards):
+        raise WorldAfterstateV2ArtifactError(
+            "checkpoint immutable identity mixing")
     member_population = tuple(shard.member_index for shard in shards)
     if member_population != tuple(range(MEMBERS_PER_BLOCK)):
         raise WorldAfterstateV2ArtifactError(
@@ -662,10 +685,15 @@ def publish_checkpoint_manifest(
                 "checkpoint manifest source reopen refused") from exc
         if (metadata["control_name"], metadata["seed_block"],
                 metadata["member_index"], metadata["selected_epoch"],
-                metadata["checkpoint_sha256"], metadata["model_state_sha256"]) != (
+                metadata["checkpoint_sha256"], metadata["model_state_sha256"],
+                metadata["freeze_sha256"], metadata["config_sha256"],
+                metadata["population_sha256"], metadata["schedule_sha256"],
+                metadata["common_epoch_sha256"]) != (
                     shard.cohort, shard.seed_block, shard.member_index,
                     shard.epoch, shard.checkpoint_sha256,
-                    shard.model_state_sha256):
+                    shard.model_state_sha256, shard.freeze_sha256,
+                    shard.config_sha256, shard.population_sha256,
+                    shard.schedule_sha256, shard.common_epoch_sha256):
             raise WorldAfterstateV2ArtifactError("checkpoint shard record drift")
         rows.append(shard.row())
     raw = _publish_manifest(
@@ -676,8 +704,9 @@ def publish_checkpoint_manifest(
 
 
 def reopen_checkpoint_manifest(
-        root: Path, *, cohort: str, seed_block: int, epoch: int,
-        members: Sequence[int] | None = None) -> tuple[tuple[Any, dict[str, Any]], ...]:
+        root: Path, *, cohort: str, seed_block: int,
+        epoch: int, members: Sequence[int] | None = None) \
+        -> tuple[tuple[Any, dict[str, Any]], ...]:
     """Reopen every exact member named by a common-epoch manifest."""
     cohort = _cohort(cohort)
     seed_block = _index(seed_block, "checkpoint seed block")
@@ -690,19 +719,18 @@ def reopen_checkpoint_manifest(
     except ValueError as exc:
         raise WorldAfterstateV2ArtifactError(
             "checkpoint aggregate manifest refused") from exc
-    # Every Value V2 cohort has four members in one seed block.  A caller may
-    # supply a smaller reviewed subset only when that exact population is
-    # explicitly named; omission must never turn a dropped row into success.
-    expected_members = (tuple(members) if members is not None
-                        else tuple(range(MEMBERS_PER_BLOCK)))
-    if type(expected_members) is not tuple or not expected_members \
-            or len(set(expected_members)) != len(expected_members) \
-            or tuple(sorted(expected_members)) != expected_members:
-        raise WorldAfterstateV2ArtifactError("checkpoint member population drift")
+    # Every scientific cohort is exactly four members.  This is not a caller
+    # option: permitting a named subset lets a coordinated manifest rehash
+    # turn a dropped cohort member into a valid aggregate.
+    if members is not None:
+        raise WorldAfterstateV2ArtifactError(
+            "checkpoint member population is not caller-selectable")
+    expected_members = tuple(range(MEMBERS_PER_BLOCK))
     required = {
         "schema", "relative_path", "cohort", "seed_block", "member_index",
         "epoch", "byte_count", "sha256", "checkpoint_sha256",
-        "model_state_sha256",
+        "model_state_sha256", "freeze_sha256", "config_sha256",
+        "population_sha256", "schedule_sha256", "common_epoch_sha256",
     }
     if len(rows) != len(expected_members):
         raise WorldAfterstateV2ArtifactError("checkpoint member drop/extra")
@@ -734,12 +762,25 @@ def reopen_checkpoint_manifest(
                 "checkpoint manifest typed reopen refused") from exc
         if (metadata["control_name"], metadata["seed_block"],
                 metadata["member_index"], metadata["selected_epoch"],
-                metadata["checkpoint_sha256"], metadata["model_state_sha256"]) != (
+                metadata["checkpoint_sha256"], metadata["model_state_sha256"],
+                metadata["freeze_sha256"], metadata["config_sha256"],
+                metadata["population_sha256"], metadata["schedule_sha256"],
+                metadata["common_epoch_sha256"]) != (
                     cohort, seed_block, member, epoch,
-                    row["checkpoint_sha256"], row["model_state_sha256"]):
+                    row["checkpoint_sha256"], row["model_state_sha256"],
+                    row["freeze_sha256"], row["config_sha256"],
+                    row["population_sha256"], row["schedule_sha256"],
+                    row["common_epoch_sha256"]):
             raise WorldAfterstateV2ArtifactError(
                 "checkpoint manifest semantic drift")
         result.append((_model, metadata))
+    shared = {(metadata["freeze_sha256"], metadata["config_sha256"],
+               metadata["population_sha256"],
+               metadata["common_epoch_sha256"])
+              for _, metadata in result}
+    if len(shared) != 1:
+        raise WorldAfterstateV2ArtifactError(
+            "checkpoint immutable identity mixing")
     if seen != set(expected_members) or {
             path.name for path in directory.iterdir()} != expected_names:
         raise WorldAfterstateV2ArtifactError("checkpoint file population drift")

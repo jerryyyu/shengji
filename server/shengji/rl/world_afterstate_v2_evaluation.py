@@ -147,6 +147,15 @@ class ControlComparisonV2:
                 raise WorldAfterstateV2EvaluationError(
                     "control comparison metric type drift")
             value.validate()
+        if tuple(value.metric_name for value in (
+                self.rps_improvement, self.absolute_error_improvement,
+                self.paired_error_improvement, self.action_utility)) != (
+                    "natural-minus-control|rps",
+                    "natural-minus-control|absolute",
+                    "natural-minus-control|paired",
+                    "natural-minus-control|action"):
+            raise WorldAfterstateV2EvaluationError(
+                "control comparison metric identity drift")
         population = self.rps_improvement.bootstrap.population_sha256
         if any(value.bootstrap.population_sha256 != population
                for value in (self.absolute_error_improvement,
@@ -224,6 +233,19 @@ class EvaluationResultV2:
                 raise WorldAfterstateV2EvaluationError(
                     "evaluation metric type drift")
             value.validate()
+        expected_metric_names = (
+            f"{self.control_name}|block-{self.seed_block}|rps-improvement",
+            f"{self.control_name}|block-{self.seed_block}|absolute-error-improvement",
+            f"{self.control_name}|block-{self.seed_block}|paired-error-improvement",
+            f"{self.control_name}|block-{self.seed_block}|action-utility",
+            f"{self.control_name}|block-{self.seed_block}|cvar10-selected-utility",
+        )
+        if tuple(value.metric_name for value in (
+                self.rps_improvement, self.absolute_error_improvement,
+                self.paired_error_improvement, self.selected_action_utility,
+                self.cvar10_selected_utility)) != expected_metric_names:
+            raise WorldAfterstateV2EvaluationError(
+                "evaluation metric identity drift")
         if any(value.bootstrap.population_sha256 != self.population_sha256
                for value in (self.rps_improvement, self.absolute_error_improvement,
                              self.paired_error_improvement,

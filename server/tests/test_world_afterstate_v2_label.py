@@ -9,7 +9,8 @@ import pytest
 from shengji.rl.world_afterstate_v2_label import (
     AUTHORITY, FLOOR_STOP, MECHANICS_STOP, P0_CELLS, STATISTICAL_STOP,
     ContinuationOutcomeV2, WorldAfterstateV2LabelError,
-    _candidate_set_sha256, evaluate_precision_label, validate_precision_label,
+    _candidate_set_sha256, build_p0_mechanics_evidence,
+    evaluate_precision_label, validate_precision_label,
 )
 from shengji.rl.world_afterstate_v2_protocol import (
     TIER_SPECS, PopulationSlotV2, StateCandidateV2,
@@ -87,9 +88,20 @@ def _selected_population() -> tuple[StateCandidateV2, ...]:
 
 
 def _evaluate(rows: list[ContinuationOutcomeV2], **kwargs):
+    mechanics_passed = kwargs.pop("mechanics_passed", True)
+    good = _sha("mechanics-match")
+    checks = {surface: ((good, good),) for surface in (
+        "transition", "continuation", "perspective", "symmetry")}
+    if not mechanics_passed:
+        checks["transition"] = ((_sha("observed"), _sha("expected")),)
+    evidence = build_p0_mechanics_evidence(
+        rows, required_slots=_required_slots(),
+        natural_fit_population=_natural_population(), tier=TIER_SPECS[0],
+        checks=checks)
     return evaluate_precision_label(
         rows, required_slots=_required_slots(),
         natural_fit_population=_natural_population(), tier=TIER_SPECS[0],
+        mechanics_evidence=evidence,
         **kwargs)
 
 

@@ -155,6 +155,39 @@ def test_checkpoint_manifest_requires_canonical_complete_member_population(
                 / "epoch-3" / "manifest.json").exists()
 
 
+def test_checkpoint_manifest_refuses_mixed_freeze_and_caller_subset(
+        tmp_path: Path, checkpoint_raws):
+    foreign = list(checkpoint_raws)
+    model, metadata = reopen_checkpoint(foreign[-1])
+    foreign[-1] = checkpoint_bytes(
+        model, seed_block=metadata["seed_block"],
+        member_index=metadata["member_index"],
+        control_name=metadata["control_name"], init_seed=metadata["init_seed"],
+        selected_epoch=metadata["selected_epoch"],
+        freeze_sha256=_hash("foreign-freeze"),
+        config_sha256=metadata["config_sha256"],
+        population_sha256=metadata["population_sha256"],
+        schedule_sha256=metadata["schedule_sha256"],
+        common_epoch_sha256=metadata["common_epoch_sha256"])
+    shards = _checkpoint_shards(tmp_path, tuple(foreign))
+    with pytest.raises(WorldAfterstateV2ArtifactError,
+                       match="immutable identity mixing"):
+        publish_checkpoint_manifest(tmp_path, shards)
+    assert not (tmp_path / "checkpoints" / "natural" / "block-1"
+                / "epoch-3" / "manifest.json").exists()
+
+    # Restore a valid aggregate, then prove the reopener cannot bless a
+    # caller-selected one-member subset.
+    valid_root = tmp_path / "valid"
+    valid_root.mkdir()
+    _publish_cohort(valid_root, checkpoint_raws)
+    with pytest.raises(WorldAfterstateV2ArtifactError,
+                       match="not caller-selectable"):
+        reopen_checkpoint_manifest(
+            valid_root, cohort="natural", seed_block=1, epoch=3,
+            members=(0,))
+
+
 def test_continuation_shard_and_manifest_round_trip(
         tmp_path: Path, continuation_pair):
     material, bundle = continuation_pair

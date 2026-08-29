@@ -27,6 +27,9 @@ from .world_afterstate_v2_protocol import (
 
 LABEL_SCHEMA = "world-afterstate-v2-p0-precision-label-v0"
 OUTCOME_SCHEMA = "world-afterstate-v2-continuation-outcome-v1"
+MECHANICS_EVIDENCE_SCHEMA = "world-afterstate-v2-p0-mechanics-evidence-v1"
+MECHANICS_SURFACES = (
+    "transition", "continuation", "perspective", "symmetry")
 BOOTSTRAP_REPLICATES = 10_000
 REPLICATES = tuple(range(8))
 HALVES = ((0, 1, 2, 3), (4, 5, 6, 7))
@@ -75,6 +78,89 @@ def _candidate_set_sha256(
     return _sha({"schema": "world-afterstate-v2-candidate-set-v1",
                  "state_sha256": state_sha256,
                  "successor_sha256s": list(successors)})
+
+
+def _validate_mechanics_evidence(
+        value: object, *, population_sha256: str) -> bool:
+    required = {"schema", "population_sha256", "checks", "authority",
+                "evidence_sha256"}
+    if type(value) is not dict or set(value) != required \
+            or value.get("schema") != MECHANICS_EVIDENCE_SCHEMA \
+            or value.get("authority") != AUTHORITY \
+            or value.get("population_sha256") != population_sha256:
+        raise WorldAfterstateV2LabelError("P0 mechanics evidence binding drift")
+    _digest(value["population_sha256"], "P0 mechanics population SHA-256")
+    checks = value["checks"]
+    if type(checks) is not list:
+        raise WorldAfterstateV2LabelError("P0 mechanics check population drift")
+    required_row = {"surface", "case_sha256", "observed_sha256",
+                    "expected_sha256"}
+    keys = []
+    surfaces = []
+    for row in checks:
+        if type(row) is not dict or set(row) != required_row \
+                or row["surface"] not in MECHANICS_SURFACES:
+            raise WorldAfterstateV2LabelError("P0 mechanics check row drift")
+        for key in ("case_sha256", "observed_sha256", "expected_sha256"):
+            _digest(row[key], f"P0 mechanics {key}")
+        key = (row["surface"], row["case_sha256"])
+        if key in keys:
+            raise WorldAfterstateV2LabelError(
+                "P0 mechanics duplicate check")
+        keys.append(key)
+        surfaces.append(row["surface"])
+    if keys != sorted(keys) or set(surfaces) != set(MECHANICS_SURFACES) \
+            or any(surfaces.count(surface) < 1 for surface in MECHANICS_SURFACES):
+        raise WorldAfterstateV2LabelError(
+            "P0 mechanics check population drift")
+    body = {key: item for key, item in value.items()
+            if key != "evidence_sha256"}
+    _digest(value["evidence_sha256"], "P0 mechanics evidence SHA-256")
+    if value["evidence_sha256"] != _sha(body):
+        raise WorldAfterstateV2LabelError(
+            "P0 mechanics evidence reconstruction drift")
+    return all(row["observed_sha256"] == row["expected_sha256"]
+               for row in checks)
+
+
+def build_p0_mechanics_evidence(
+        outcomes: Sequence[ContinuationOutcomeV2], *,
+        required_slots: Mapping[str, PopulationSlotV2],
+        natural_fit_population: Sequence[Any], tier: TierSpecV2,
+        checks: Mapping[str, Sequence[tuple[str, str]]]) -> dict[str, Any]:
+    """Bind raw expected/observed mechanics witnesses to the exact P0 rows."""
+    _groups, population_sha256 = _validate_population(
+        outcomes, required_slots=required_slots,
+        natural_fit_population=natural_fit_population, tier=tier)
+    if type(checks) is not dict or set(checks) != set(MECHANICS_SURFACES):
+        raise WorldAfterstateV2LabelError("P0 mechanics request drift")
+    rows = []
+    for surface in MECHANICS_SURFACES:
+        values = checks[surface]
+        if type(values) not in (tuple, list) or not values:
+            raise WorldAfterstateV2LabelError(
+                "P0 mechanics request population drift")
+        for index, pair in enumerate(values):
+            if type(pair) is not tuple or len(pair) != 2:
+                raise WorldAfterstateV2LabelError("P0 mechanics request row drift")
+            observed, expected = pair
+            _digest(observed, "P0 observed mechanics SHA-256")
+            _digest(expected, "P0 expected mechanics SHA-256")
+            rows.append({
+                "surface": surface,
+                "case_sha256": _sha({"surface": surface, "index": index,
+                                      "observed": observed,
+                                      "expected": expected}),
+                "observed_sha256": observed,
+                "expected_sha256": expected,
+            })
+    rows.sort(key=lambda row: (row["surface"], row["case_sha256"]))
+    body = {"schema": MECHANICS_EVIDENCE_SCHEMA,
+            "population_sha256": population_sha256, "checks": rows,
+            "authority": dict(AUTHORITY)}
+    result = {**body, "evidence_sha256": _sha(body)}
+    _validate_mechanics_evidence(result, population_sha256=population_sha256)
+    return result
 
 
 @dataclass(frozen=True)
@@ -429,13 +515,13 @@ def evaluate_precision_label(
         natural_fit_population: Sequence[Any] | None = None,
         tier: TierSpecV2 | None = None,
         bootstrap_replicates: int = BOOTSTRAP_REPLICATES,
-        mechanics_passed: bool = True) -> dict[str, Any]:
+        mechanics_evidence: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Evaluate the frozen P0 precision gates and return a closed report."""
     groups, population_sha = _validate_population(
         outcomes, required_slots=required_slots,
         natural_fit_population=natural_fit_population, tier=tier)
-    if type(mechanics_passed) is not bool:
-        raise WorldAfterstateV2LabelError("precision mechanics request drift")
+    mechanics_passed = _validate_mechanics_evidence(
+        mechanics_evidence, population_sha256=population_sha)
     direction_values = {"0-to-1": [], "1-to-0": []}
     deal_values: dict[str, Fraction] = {}
     pair_halves: list[tuple[Fraction, Fraction, str]] = []
@@ -568,6 +654,8 @@ def evaluate_precision_label(
         "r8": _curve(groups, 8),
         "combined_chosen_minus_incumbent_microlevels": _micro(incumbent_mean),
         "incumbent_relative_bessel_s_microlevels": sd_micro,
+        "mechanics_evidence": dict(mechanics_evidence),
+        "mechanics_evidence_sha256": mechanics_evidence["evidence_sha256"],
         "mechanics_passed": mechanics_passed,
         "statistical_gates_passed": stats_passed,
         "worthwhile_floor_passed": floor_passed,
@@ -591,7 +679,8 @@ def validate_precision_label(value: Mapping[str, Any]) -> None:
         "chosen_minus_incumbent_microlevels", "gate_fractions",
         "bootstrap_replicates", "r2",
         "r4", "r8", "combined_chosen_minus_incumbent_microlevels",
-        "incumbent_relative_bessel_s_microlevels", "mechanics_passed",
+        "incumbent_relative_bessel_s_microlevels", "mechanics_evidence",
+        "mechanics_evidence_sha256", "mechanics_passed",
         "statistical_gates_passed", "worthwhile_floor_passed", "decision",
         "authority", "result_sha256",
     }
@@ -600,6 +689,14 @@ def validate_precision_label(value: Mapping[str, Any]) -> None:
             or value.get("authority") != AUTHORITY:
         raise WorldAfterstateV2LabelError("precision result schema drift")
     _digest(value["population_sha256"], "precision population SHA-256")
+    expected_mechanics = _validate_mechanics_evidence(
+        value["mechanics_evidence"],
+        population_sha256=value["population_sha256"])
+    if value["mechanics_evidence_sha256"] \
+            != value["mechanics_evidence"]["evidence_sha256"] \
+            or value["mechanics_passed"] is not expected_mechanics:
+        raise WorldAfterstateV2LabelError(
+            "precision mechanics evidence derivation drift")
     if value["deal_count"] != P0_DEALS or value["state_count"] != P0_DEALS \
             or value["raw_outcome_count"] <= 0 or value["replica_count"] != 8 \
             or type(value["mechanics_passed"]) is not bool \
@@ -690,8 +787,10 @@ def validate_precision_label(value: Mapping[str, Any]) -> None:
 
 __all__ = [
     "AUTHORITY", "BOOTSTRAP_REPLICATES", "HALVES", "LABEL_SCHEMA",
-    "MECHANICS_STOP", "OUTCOME_SCHEMA", "P0_CELLS", "P0_DEALS",
+    "MECHANICS_EVIDENCE_SCHEMA", "MECHANICS_SURFACES", "MECHANICS_STOP",
+    "OUTCOME_SCHEMA", "P0_CELLS", "P0_DEALS",
     "P0_PER_CELL", "REPLICATES", "STATISTICAL_STOP", "FLOOR_STOP",
     "ContinuationOutcomeV2", "WorldAfterstateV2LabelError",
-    "evaluate_precision_label", "validate_precision_label",
+    "build_p0_mechanics_evidence", "evaluate_precision_label",
+    "validate_precision_label",
 ]

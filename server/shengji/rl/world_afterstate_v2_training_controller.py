@@ -470,7 +470,8 @@ def validate_cohort_manifest(value: object) -> None:
             from .world_afterstate_v2_diagnostics import OptimizerCanaryReceiptV2
             canary = OptimizerCanaryReceiptV2(**{
                 key: value["optimizer_canary"][key]
-                for key in ("root_population_sha256", "model_seed", "root_count",
+                for key in ("source_p0_population_sha256",
+                            "root_population_sha256", "model_seed", "root_count",
                             "optimizer_steps", "early_stopping_used", "gradients_finite",
                             "weights_finite", "initial_loss_nano", "empirical_loss_nano",
                             "final_loss_nano", "normalized_progress_ppm", "passed",

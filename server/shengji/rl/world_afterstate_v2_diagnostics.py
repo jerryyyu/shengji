@@ -85,6 +85,7 @@ def _authority(value: object) -> None:
 
 @dataclass(frozen=True)
 class OptimizerCanaryReceiptV2:
+    source_p0_population_sha256: str
     root_population_sha256: str
     model_seed: int
     root_count: int
@@ -108,6 +109,8 @@ class OptimizerCanaryReceiptV2:
                 or type(self.weights_finite) is not bool \
                 or type(self.passed) is not bool:
             raise WorldAfterstateV2DiagnosticsError("optimizer canary identity drift")
+        _digest(self.source_p0_population_sha256,
+                "canary source P0 population SHA-256")
         _digest(self.root_population_sha256, "canary root population SHA-256")
         _int(self.model_seed, "canary model seed")
         if self.model_seed >= 2**63:
@@ -136,7 +139,9 @@ class OptimizerCanaryReceiptV2:
 
     def payload(self) -> dict[str, Any]:
         self.validate()
-        return {"schema": self.schema, "root_population_sha256": self.root_population_sha256,
+        return {"schema": self.schema,
+                "source_p0_population_sha256": self.source_p0_population_sha256,
+                "root_population_sha256": self.root_population_sha256,
                 "model_seed": self.model_seed, "root_count": self.root_count,
                 "optimizer_steps": self.optimizer_steps,
                 "early_stopping_used": self.early_stopping_used,

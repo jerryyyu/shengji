@@ -17,7 +17,8 @@ def _sha(value):
 
 
 def _canary(**changes):
-    body = dict(root_population_sha256=_sha("p0"), model_seed=7,
+    body = dict(source_p0_population_sha256=_sha("p0-source"),
+                root_population_sha256=_sha("p0-roots"), model_seed=7,
                 root_count=16, optimizer_steps=500,
                 early_stopping_used=False, gradients_finite=True,
                 weights_finite=True, initial_loss_nano=1_000,

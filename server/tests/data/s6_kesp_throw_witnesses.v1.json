@@ -1,0 +1,114 @@
+{
+  "schema": "s6-kesp-throw-witnesses-v1",
+  "source": {
+    "room": "KESP",
+    "captured_log_sha256": "df946364ccd871b8ba902ff1b667ed534ecbb4de4c93f765a5179eb6774376a6"
+  },
+  "rounds": [
+    {
+      "round": 4,
+      "events": [
+        {
+          "e": "round_start",
+          "round": 4,
+          "deck": ["DJ", "S9", "C8", "H6", "DA", "HA", "S8", "C9", "DQ", "H7", "D6", "S10", "LJ", "D3", "DA", "D2", "H8", "SQ", "HJ", "SK", "S5", "BJ", "H7", "H5", "H2", "S4", "H9", "CA", "D9", "H6", "C6", "D9", "SK", "S10", "CK", "C5", "DQ", "C7", "HJ", "DK", "C3", "C10", "C5", "C10", "C4", "H2", "CK", "S6", "C2", "HK", "C9", "CJ", "C6", "HQ", "DK", "H10", "S7", "H4", "S3", "D4", "SJ", "H3", "D3", "HA", "D10", "CJ", "HK", "S5", "H4", "H9", "H5", "D10", "C3", "D7", "SJ", "S8", "S3", "C4", "CQ", "H3", "D2", "D8", "BJ", "SA", "C8", "S4", "D5", "S2", "D8", "S7", "LJ", "C7", "D5", "C2", "D7", "SA", "CA", "HQ", "CQ", "D4", "SQ", "S6", "DJ", "H10", "S9", "H8", "S2", "D6"],
+          "banker": 0,
+          "trump_rank": "3"
+        },
+        {"e": "declare", "round": 4, "seat": 1, "cards": ["H3"]},
+        {"e": "declare", "round": 4, "seat": 0, "cards": ["C3", "C3"]},
+        {"e": "trump", "round": 4, "banker": 0},
+        {"e": "bury", "round": 4, "seat": 0, "cards": ["S2", "S6", "S7", "S9", "SJ", "H2", "H4", "H10"]},
+        {"e": "play", "round": 4, "seat": 0, "cards": ["DJ", "DJ", "DQ", "DQ", "DA"], "bot": false}
+      ],
+      "witnesses": [
+        {
+          "id": "KESP:r4:jerry:partial-near-boss",
+          "seat": 0,
+          "human_action": ["DJ", "DJ", "DQ", "DQ", "DA"],
+          "expected_live_ballot": [["DJ", "DJ", "DQ", "DQ"], ["SK"], ["H8", "H8"], ["H8"], ["DQ", "DQ"], ["DJ", "DJ"], ["DA"], ["C3", "C3"], ["LJ"], ["SQ"], ["D2"], ["C2"]],
+          "expected_source": "boss_or_near_boss_component_bundle",
+          "expected_ruff_risk": false
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "events": [
+        {
+          "e": "round_start",
+          "round": 5,
+          "deck": ["H4", "S4", "C7", "D4", "DJ", "D5", "S6", "SJ", "HJ", "D3", "H9", "D6", "D10", "H9", "S2", "D5", "HA", "HK", "C8", "S5", "HQ", "H6", "H3", "H10", "SK", "D7", "D10", "H5", "CA", "S8", "D8", "H2", "CQ", "D9", "S6", "S7", "C4", "D9", "SA", "DJ", "S10", "H5", "C3", "C5", "DA", "D2", "CJ", "S4", "H4", "S9", "SQ", "H8", "S8", "BJ", "C10", "HA", "DK", "H7", "C9", "D7", "CK", "S5", "LJ", "CQ", "H7", "S9", "S2", "H6", "C8", "HQ", "D3", "C3", "C7", "D8", "S7", "DA", "SK", "H2", "HJ", "BJ", "C2", "D4", "C9", "SA", "LJ", "C4", "C6", "CJ", "S10", "S3", "CA", "C10", "C6", "D2", "H8", "DQ", "CK", "C5", "HK", "DQ", "C2", "D6", "H10", "SQ", "H3", "SJ", "S3", "DK"],
+          "banker": 2,
+          "trump_rank": "5"
+        },
+        {"e": "declare", "round": 5, "seat": 1, "cards": ["D5"]},
+        {"e": "trump", "round": 5, "banker": 2},
+        {"e": "bury", "round": 5, "seat": 2, "cards": ["H8", "C2", "C3", "C6", "C7", "C8", "C10", "CJ"]},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["CA"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["C3"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["CK"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["C4"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["SQ", "SQ"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["S4", "S7"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["S10", "S10"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["S9", "S9"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["SA"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["SJ"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["SK"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["S3"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["S2", "S2"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["SA", "CJ"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["S8", "SK"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["S4", "S8"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["C9", "C9"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["CQ", "C10"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["C2", "C4"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["D2", "D2"], "bot": true},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["HQ"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["H9"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["H2"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["HA"], "bot": false},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["CQ", "CK", "CA"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["D3", "D4", "D7"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["D8", "D10", "DK"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["BJ", "C5", "D6"], "bot": true},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["DQ", "DQ"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["DJ", "DA"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["D9", "D9"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["D3", "D6"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["HA"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["H7"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["HK"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["HJ"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["H8"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["HQ"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["H2"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["H10"], "bot": false},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["H4", "H4"], "bot": false},
+        {"e": "play", "round": 5, "seat": 1, "cards": ["H6", "H7"], "bot": true},
+        {"e": "play", "round": 5, "seat": 2, "cards": ["H3", "H3"], "bot": false},
+        {"e": "play", "round": 5, "seat": 3, "cards": ["H6", "H10"], "bot": true},
+        {"e": "play", "round": 5, "seat": 0, "cards": ["C6", "C7", "C8"], "bot": false}
+      ],
+      "witnesses": [
+        {
+          "id": "KESP:r5:jerry:boss-bundle-under-ruff-risk",
+          "seat": 0,
+          "human_action": ["CQ", "CK", "CA"],
+          "expected_live_ballot": [["HQ"], ["H4", "H4"], ["CA"], ["LJ"], ["H4"], ["C6"], ["DJ"]],
+          "expected_source": "boss_or_near_boss_component_bundle",
+          "expected_ruff_risk": true
+        },
+        {
+          "id": "KESP:r5:jerry:whole-suit-evacuation",
+          "seat": 0,
+          "human_action": ["C6", "C7", "C8"],
+          "expected_live_ballot": [["HJ"], ["C8"], ["LJ"], ["C6"]],
+          "expected_source": "whole_plain_suit_evacuation",
+          "expected_ruff_risk": true
+        }
+      ]
+    }
+  ]
+}

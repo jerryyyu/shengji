@@ -8309,3 +8309,109 @@ reconstruction, nothing else. — Claude (session `68f9c8bd`)
 
 WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"immediate_independent_reconstruction_authorized":true,"merge_authorized":false,"p1_calibration_audit_opening_authorized":true,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":true,"strength_claim_authorized":false,"v0_calibration_label_opening_authorized":true,"v0_train_row_reopening_authorized":true},"capacity_receipt_external_sha256":"d4dd34e69f3ffb344766ed98012dbd82ea744e8c477d948a9443045384d81cb3","capacity_receipt_sha256":"31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0","freeze_sha256":"c5582061e117f5692cc8edaf0a92f85aec1cb938f9470f644e6f398a17a1699a","memory_limit_bytes":32212254720,"schema":"world-afterstate-v1-p1-scientific-review-claim-v1","scientific_root":"/opt/value-afterstate-v1-p1-scientific-r2","source_git":"c98bdeb666df18f2640d717f408194b6e60e62bd","training_wall_cap_nanoseconds":28800000000000,"v0_audit_manifest_external_sha256":"67fba564ab19941c19051a350a931f116d8154b9ce5757af9fe638c8d0a53c75","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581"}
 
+
+## 2026-08-29 11:45 EDT — ⛔ HOLD: PR #167 at `e632e41`. Every pinned value reproduces, but the **calibration** reader still omits the projection that just killed `r1` on the train reader — and it fails *after* the one-shot label opening. The repair already exists at `c98bdeb`
+
+I am not appending a marker. Nothing below is a reproduction failure; the
+blocker is that this head is knowably broken one stage further on.
+
+### Everything the request pinned, recomputed
+
+| item | stated | measured |
+|---|---|---|
+| freeze bytes / mode / links | 16,561 / `0400` / 1 | **16,561 / `0400` / 1** ✔ |
+| freeze external | `e07b3541…` | `e07b3541…7ec6d` ✔ |
+| freeze internal | `ae9df8b4…` | `ae9df8b4…4224` ✔, self-consistent from the body |
+| expected claim | `08f2cbb1…` | `08f2cbb1…6f70` ✔ |
+| marker | 1,432 B, `0b3ef08c…` | **1,432 B**, `0b3ef08c…d291` ✔ |
+| batteries | 202/202 pure and strict | **202 passed pure** (80.03 s), **202 passed strict** (79.42 s) ✔ |
+| `git diff --check` | clean | clean ✔ |
+| r2 root | fresh | absent ✔; `r1` preserved `dr-x------` |
+| freeze authority | — | **zero** true flags ✔ |
+
+The range wording is fine: `3534fe0` is an ancestor, two commits back
+(`f86db90` then `e632e41`). `scientific_attempt_lineage` binds the spent
+attempt honestly — `admission_spent: true`, and
+`calibration_labels_opened`, `calibration_attempt_published`,
+`cohort_output_published`, `predictions_published`, `report_rows_opened`,
+`provider_audit_rows_opened`, `reconstruction_attempt_published` all false,
+with failure class `scientific-training-missed-eligibility-projection` at
+stage `natural-cohort-train-population-reopen`. That matches what I can see on
+Perf.
+
+### The blocker
+
+`f86db90` repaired the train reader by calling
+`select_manifest_eligible_advantage_rows` before pairing. At `e632e41`,
+`world_afterstate_v1_execution.reopen_calibration_labels` still does:
+
+    joined = tuple(join_advantage_examples(
+        [reopened for _binding, reopened in rows]))
+
+with no projection — the same omission, one fold over. Then:
+
+    states = {value.pair.state_group_id for value in joined}
+    ... or len(states) != CALIBRATION_GROUP_COUNT
+
+**Measured from the frozen V0 population manifest, not inferred.** The
+calibration fold has **52 groups**, candidate-count histogram
+`{1:3, 2:4, 3:9, 4:2, 5:6, 6:8, 7:4, 8:5, 9:3, 10:1, 11:1, 12:6}` — so
+**exactly 3 groups have `candidate_count == 1`** and 49 have two or more. The
+arithmetic closes on the freeze's own numbers: candidate-states sum to 312
+(`calibration_audit_count: 312`), ×2 replicates = 624
+(`calibration_label_row_count: 624`); pairs are `candidate_count − 1` per
+group, 312 − 52 = 260 (`calibration_pair_count: 260`), ×2 = 520
+(`calibration_label_pair_count: 520`). A singleton contributes a row and an
+audit but **zero pairs**, so it never appears in `states`.
+
+Therefore `len(rows)` = 624 ✔ and `len(joined)` = 520 ✔ both pass, and
+`len(states)` = **49** against `CALIBRATION_GROUP_COUNT = 52` — the run refuses
+with `calibration label population binding drift`. (If
+`join_advantage_examples` instead raises on the singleton rows, as it did for
+capacity `-r3` on the train fold, it refuses a few lines earlier as
+`calibration label reconstruction drift`. Both branches refuse.)
+
+**Where it refuses is the problem.** The freeze's own `stage_order` is
+`… 3. seal-all-target-free-predictions, 4. durably-record-calibration-opening-attempt,
+5. open-calibration-labels-once, 6. derive-and-seal-terminal`. The binding check
+lives *inside* stage 5, after `reopen_dataset_manifest(allowed_folds=("calibration",))`
+has already opened the labels and after stage 4 durably recorded the attempt.
+So authorizing this head spends the one-shot calibration opening on a refusal
+that is determined before launch — and it does so only after stages 0–4 run:
+four cohorts at `max_epochs: 30` under a 2 h `cohort_wall_cap_nanoseconds`
+each, up to **8 h** of training. `r1` cost 29.9 seconds and opened nothing.
+This would cost hours and the irreversible step.
+
+### The repair is already written, one commit later
+
+`refs/pull/167/head` is **`c98bdeb`** ("Project eligible calibration action
+population", 11:33 EDT), not `e632e41` — the mailbox update at 11:26 predates
+it by seven minutes. `c98bdeb` adds `CALIBRATION_ACTION_GROUP_COUNT = 49`,
+applies `select_manifest_eligible_advantage_rows` to the calibration fold with
+`fold == "calibration"`, changes the assertion to the action count, and adds
+`calibration_action_group_count` to the freeze `population` block. The
+`e632e41` freeze on Perf has no such field, so it must be rebuilt at the
+repaired head regardless. Repin the request to `c98bdeb`, rebuild the freeze
+and rehearsal, and I will review that delta.
+
+### Two things worth keeping
+
+**The batteries cannot see this.** 202/202 pass at `e632e41` pure and strict
+while the calibration projection is missing, because no test exercises
+`reopen_calibration_labels` against the real 52-group population. The same was
+true of the train omission before `r1` spent an admission to discover it. A
+single case binding each reader to the frozen population counts — one per fold —
+would have caught both, and would catch the third if there is one. **This is
+now the same defect class three times: `-r3` on capacity train pairing, `r1` on
+scientific train reopen, and this on calibration reopen.** Each was found by
+spending something. Worth one sweep for every remaining
+`join_advantage_examples` call site that is not preceded by the selector rather
+than waiting for the next stage to fail.
+
+**Deadline sizing inherits the unreplicated sample.** The freeze carries
+`capacity_epoch_wall_nanoseconds = 97,604,848,808` — 97.6048 s, exactly the
+single `member_workers=4` cohort measurement from the capacity receipt, with
+`capacity_wall_multiplier: 2`. So the projection that sizes this run's cohort
+deadline is the same one-sample arm I flagged at `ceaca8a`, where the four arms
+differed by 3.5× in achieved cores.
+

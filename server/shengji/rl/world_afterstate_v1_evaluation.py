@@ -25,7 +25,7 @@ from .world_afterstate import WorldAfterstateTensorsV0
 from .world_afterstate_v1_dataset import JoinedAdvantageV1
 from .world_afterstate_v1_model import (
     SuccessorBatchV1, WorldAfterstateAdvantageV1,
-    collate_successor_tensors)
+    collate_successor_tensors, successor_tensor_sha256)
 from .world_afterstate_v1_training import COHORT_SIZE, model_state_sha256
 
 
@@ -186,6 +186,75 @@ class AdvantagePredictionV1:
         self.validate()
         return (self.state_group_id, self.candidate_index,
                 self.member_index)
+
+    def payload(self) -> dict[str, Any]:
+        self.validate()
+        return {
+            "schema": self.schema,
+            "state_group_id": self.state_group_id,
+            "candidate_index": self.candidate_index,
+            "incumbent_successor_sha256": self.incumbent_successor_sha256,
+            "candidate_successor_sha256": self.candidate_successor_sha256,
+            "member_index": self.member_index,
+            "model_state_sha256": self.model_state_sha256,
+            "advantage_microlevels": self.advantage_microlevels,
+        }
+
+
+def _batch_tensor(
+        batch: SuccessorBatchV1, index: int) -> WorldAfterstateTensorsV0:
+    length = int(batch.history_lengths[index])
+    return WorldAfterstateTensorsV0(
+        public=batch.public[index].detach().cpu().numpy().copy(),
+        history=batch.history[index, :length].detach().cpu().numpy().copy(),
+        world=batch.world[index].detach().cpu().numpy().copy(),
+        perspective=batch.perspective[index].detach().cpu().numpy().copy())
+
+
+def inference_population_sha256(value: AdvantageInferenceBatchV1) -> str:
+    """Bind every identity and exact target-free tensor row."""
+    if type(value) is not AdvantageInferenceBatchV1:
+        raise WorldAfterstateV1EvaluationError(
+            "advantage inference population type drift")
+    value.validate()
+    rows = []
+    for index, (state, candidate, incumbent_sha, candidate_sha) in enumerate(
+            zip(value.state_group_ids, value.candidate_indexes,
+                value.incumbent_successor_sha256s,
+                value.candidate_successor_sha256s, strict=True)):
+        rows.append({
+            "state_group_id": state, "candidate_index": candidate,
+            "incumbent_successor_sha256": incumbent_sha,
+            "candidate_successor_sha256": candidate_sha,
+            "incumbent_tensor_sha256": successor_tensor_sha256(
+                _batch_tensor(value.incumbent, index)),
+            "candidate_tensor_sha256": successor_tensor_sha256(
+                _batch_tensor(value.candidate, index)),
+        })
+    return _sha({
+        "schema": "world-afterstate-advantage-inference-population-v1",
+        "rows": rows,
+    })
+
+
+def prediction_population_sha256(
+        values: Sequence[AdvantagePredictionV1]) -> str:
+    if type(values) not in (list, tuple) or not values \
+            or any(type(value) is not AdvantagePredictionV1
+                   for value in values):
+        raise WorldAfterstateV1EvaluationError(
+            "advantage prediction population drift")
+    rows = sorted((value.payload() for value in values), key=lambda row: (
+        row["state_group_id"], row["candidate_index"], row["member_index"]))
+    keys = [(row["state_group_id"], row["candidate_index"],
+             row["member_index"]) for row in rows]
+    if len(keys) != len(set(keys)):
+        raise WorldAfterstateV1EvaluationError(
+            "duplicate advantage prediction")
+    return _sha({
+        "schema": "world-afterstate-advantage-prediction-population-v1",
+        "rows": rows,
+    })
 
 
 def predict_advantages(
@@ -505,5 +574,6 @@ __all__ = [
     "AUTHORITY", "BOOTSTRAP_REPLICATES", "AdvantageInferenceBatchV1",
     "AdvantagePredictionV1", "WorldAfterstateV1EvaluationError",
     "collate_inference_pairs", "evaluate_advantage_audit",
-    "predict_advantages", "validate_advantage_audit_result",
+    "inference_population_sha256", "predict_advantages",
+    "prediction_population_sha256", "validate_advantage_audit_result",
 ]

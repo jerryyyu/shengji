@@ -9,6 +9,7 @@ from shengji.rl.world_afterstate_v1_dataset import join_advantage_examples
 from shengji.rl.world_afterstate_v1_evaluation import (
     AUTHORITY, AdvantagePredictionV1, WorldAfterstateV1EvaluationError,
     collate_inference_pairs, evaluate_advantage_audit, predict_advantages,
+    inference_population_sha256, prediction_population_sha256,
     validate_advantage_audit_result)
 from shengji.rl.world_afterstate_v1_model import (
     new_world_afterstate_advantage_model)
@@ -65,6 +66,13 @@ def test_target_free_prediction_has_no_label_surface_and_is_nonmutating():
     rows = predict_advantages(model, batch, member_index=0)
     assert len(rows) == len(unique)
     assert model.training is True
+    assert len(inference_population_sha256(batch)) == 64
+    assert len(prediction_population_sha256(rows)) == 64
+    mutated = copy.deepcopy(batch)
+    mutated.candidate.world[0, 0, 0] = (
+        0.0 if mutated.candidate.world[0, 0, 0] != 0.0 else 1.0)
+    assert inference_population_sha256(mutated) \
+        != inference_population_sha256(batch)
 
 
 def test_positive_action_signal_passes_all_nonredundant_gates():

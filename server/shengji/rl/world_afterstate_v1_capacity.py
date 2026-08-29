@@ -324,7 +324,8 @@ def authenticate_review_commit(
                        if line.startswith(prefix)]
     previous_matches = [line for line in previous.splitlines(keepends=True)
                         if line.startswith(prefix)]
-    if current_matches != [marker] or previous_matches:
+    if current_matches != [*previous_matches, marker] \
+            or marker in previous_matches:
         raise WorldAfterstateV1CapacityError(
             "capacity review marker introduction drift")
     return {

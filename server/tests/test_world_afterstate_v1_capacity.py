@@ -235,7 +235,9 @@ def test_capacity_review_marker_is_external_append_only_and_exact(monkeypatch):
     review = "b" * 40
     parent = "c" * 40
     remote = "d" * 40
-    previous = b"# ledger\n"
+    previous_marker = capacity.REVIEW_PREFIX.encode("ascii") \
+        + canonical_json_bytes(capacity.expected_review_claim("e" * 40))
+    previous = b"# ledger\n" + previous_marker
     marker = capacity.REVIEW_PREFIX.encode("ascii") \
         + canonical_json_bytes(capacity.expected_review_claim(source))
     current = previous + marker
@@ -275,6 +277,12 @@ def test_capacity_review_marker_is_external_append_only_and_exact(monkeypatch):
     assert result["review_marker_sha256"] == capacity._sha_bytes(marker)
 
     current = previous
+    with pytest.raises(WorldAfterstateV1CapacityError,
+                       match="marker introduction drift"):
+        capacity.authenticate_review_commit(
+            Path.cwd(), expected_git=source, review_commit=review)
+
+    current = previous + marker + marker
     with pytest.raises(WorldAfterstateV1CapacityError,
                        match="marker introduction drift"):
         capacity.authenticate_review_commit(

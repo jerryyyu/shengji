@@ -8908,3 +8908,94 @@ long task and the process caught it only after the fact. No execution consequenc
 PASS grants no authority), but the record was incoherent for ~35 minutes.
 
 — Claude (session `68f9c8bd`)
+
+## 2026-08-29 15:45 EDT — ✅ PASS (design only): PR #169 `a9be72d2..b2eb02bc`. My `df210b1` power-statistic blocker is closed properly — the calculation moved to the statistic that gates, rather than the gate moving to the statistic that was measured
+
+Delta `a9be72d2..b2eb02bc2108ca07aca738b8e0cb9b3f0fb0d065`, two commits
+(`bc84f7a` hardening, `b2eb02b` power), **1 file, +138/−52**, Markdown only;
+`--is-ancestor` returns 0. Superseding request timestamped 18:52:56Z replaces
+the 18:45:33Z `bc84f7a3` ask. Design-only authority, unchanged. I did not
+re-review the two passed prefixes (`59800c2`, `d42deef`).
+
+### The blocker I filed is closed, and closed the right way
+
+At `df210b1` I held because §7 computed `s` from `chosen − candidate-mean`
+while the `+0.10` floor and usefulness gate 1 were both `chosen − incumbent`,
+so `STOP_UNDERPOWERED` bounded a statistic nothing gated on. The repair deletes
+that calculation outright. P0's incumbent-relative SD is now explicitly "a
+label-selector diagnostic only… not a power calculation for the trained
+model's action-selection rule and cannot route `STOP_UNDERPOWERED`", and a new
+ladder step 6 computes `u_d` as the equal-weight eight-replica outcome of the
+action selected by the **sealed primary ensemble** minus the production
+incumbent, "using the identical tie-to-incumbent rule as audit", with the text
+naming the alignment: model-selection rule, incumbent baseline, continuation
+averaging, and deal-level statistic all matched to usefulness gate 1. That is
+the fix I asked for, and it is the harder of the two available directions.
+
+### The five asks, each verified
+
+1. **Slots fixed before play, outcome-free.** The freeze builds an exact slot
+   ledger before any deal is played, with literal orders given in the document
+   and `i mod k` placement such that every cell gets `floor(n/k)` and the first
+   `n mod k` literal-order cells get one extra — joint, not per-marginal.
+   Replacement "advances only to the next preassigned identity for that slot"
+   on a preregistered outcome-free reason, inside the frozen ceiling, and "the
+   builder API does not receive or persist terminal outcomes while assigning
+   slots." This closes the deal-to-split gap filed at `dd7fd71`.
+2. **`+0.10` gates in both places.** New P0 gate 4 requires the combined
+   two-direction chosen-minus-incumbent **point estimate** ≥ +0.10, else
+   `STOP_BELOW_WORTHWHILE_VALUE_FLOOR` (precedence item 4); usefulness gate 1
+   is raised from "positive lower bound" to "**deal-bootstrap lower bound of
+   at least `+0.10`**".
+3. **Natural-only priors.** "computed from **natural fit rows only**", with the
+   empty-bucket fallback also natural-only.
+4. **Two disjoint seed blocks.** Block 2 uses fresh initialization/data-order
+   seeds and "never contribute[s] to primary value or action predictions";
+   each block must independently satisfy both gate-5 lower bounds with ≥3/4
+   seed-paired member means positive; "every block and its full cost is
+   included in the capacity projection"; a truncated member in either block
+   routes to `REFUSE_RESOURCE_INCOMPLETE` and "a forensic checkpoint cannot
+   satisfy gate 5". Gate 5 and precedence item 11 are updated consistently.
+5. **Census-matched halves, and the right power statistic.** Both members of
+   pair `j` take the same `j mod 12`, `j mod 13`, `j mod 5` cells, so census
+   rows match by construction, while distinct slot ids give distinct
+   attempted-deal hash schedules and therefore independent deals. I checked the
+   halving against the unchanged tier table: select is **48 / 64 / 128** for
+   D256 / D512 / D1024, giving exactly the stated **24/24, 32/32, 64/64**, and
+   the builder "must rederive or refuse."
+
+Terminal precedence is complete with no orphans: `STOP_UNDERPOWERED` sits at
+item 7, after precision-select learning admission and before any audit label
+opens, and every new route (`STOP_BELOW_WORTHWHILE_VALUE_FLOOR`,
+`REFUSE_TRAINING_RECIPE`, `SELECT_NONE_PREAUDIT_LEARNING`) appears in both the
+route list and the precedence chain.
+
+### One observation, not a blocker
+
+`s_model` is a **point** standard deviation from 24 deals at D256 (32, 64 at
+the larger tiers), and `n_required` scales with `s²`. Everywhere else this
+design demands a bound — bootstrap lower bounds on every gate, an upper bound
+on nothing. Here the single quantity deciding whether the audit can detect
+anything is a point estimate from the smallest sample in the design.
+
+It is worth quantifying because the gate binds. With
+`n_required = ceil(618.26 * s_model^2)` and a frozen D256 audit count of 48,
+admission requires `s_model <= 0.2786` signed levels — a real constraint, not
+a formality. Under normal theory a one-sided 95% upper bound on sigma from
+n = 24 is about **1.33x** the point estimate, which raises `n_required` by
+about **76%**. So a run whose true dispersion sits near the boundary has close
+to even odds of being admitted to an audit it cannot resolve — the exact
+failure `STOP_UNDERPOWERED` exists to prevent. Using a one-sided upper
+confidence bound on `s_model` instead would make the check conservative and
+consistent with the document's own convention. I flag the normal-theory factor
+as an approximation; these utilities need not be normal, and I did not measure
+their shape.
+
+### Coverage
+
+Design document only — no code, artifacts, SHAs or tests exist at this head to
+reproduce, so this is a reading for internal consistency, outcome-blindness and
+authority, not an execution review. I verified the delta's arithmetic against
+the unchanged tier table where the delta depends on it, and otherwise did not
+re-read passed baseline text. PASS authorizes implementation planning only.
+

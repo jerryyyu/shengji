@@ -333,12 +333,18 @@ def _git(repo, *args):
         capture_output=True, text=True).stdout.strip()
 
 
-def _review_repo(tmp_path, freeze, monkeypatch):
+def _review_repo(tmp_path, freeze, monkeypatch, *, prior_freeze=None):
     repo = (tmp_path / "repo").resolve()
     remote = (tmp_path / "remote.git").resolve()
     repo.mkdir()
     _git(repo, "init", "-q")
-    (repo / "HANDOFF_REVIEW.md").write_text("ledger\n")
+    ledger = b"ledger\n"
+    if prior_freeze is not None:
+        ledger += (
+            b"BELIEF_V1_V2_OFFLINE_EXECUTION_V1_REVIEW "
+            + canonical_json_bytes(expected_execution_review_claim(
+                prior_freeze)))
+    (repo / "HANDOFF_REVIEW.md").write_bytes(ledger)
     _git(repo, "add", "HANDOFF_REVIEW.md")
     _git(repo, "-c", "user.name=Base", "-c",
          "user.email=base@example.com", "commit", "-qm", "base")
@@ -389,6 +395,22 @@ def test_review_and_admission_require_actual_remote_append_only_marker(
     with pytest.raises(BeliefV2FreezeError, match="tombstone"):
         validate_pipeline_consumption_tombstone(
             tombstone + b" ", admission=admission)
+
+
+def test_review_accepts_one_fresh_marker_after_spent_prior_freeze(
+        tmp_path, monkeypatch):
+    prior = _freeze()
+    freeze = replace(
+        prior, evidence_root="/tmp/belief-v2-evidence-fresh",
+        preflight_result_sha256=_sha("5"))
+    repo, review, marker = _review_repo(
+        tmp_path, freeze, monkeypatch, prior_freeze=prior)
+
+    authenticated, remote_tip = authenticate_execution_review(
+        freeze, repo=repo, review_commit=review)
+
+    assert authenticated == marker
+    assert remote_tip == review
 
 
 def test_review_refuses_local_remote_tracking_forgery(tmp_path, monkeypatch):

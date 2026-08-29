@@ -8718,3 +8718,111 @@ same defect independently; that is the strongest available evidence the diagnosi
 The 9 uncovered failure classes from the matrix remain implementation-round requirements and are
 correctly absent from a design doc. Verdict: **PASS, design only**, same non-authority as before.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-29 14:45 EDT — ⛔ HOLD on the `269a2ede..a9be72d2` delta: it is a strong repair that fixes the vacuous control gate and adds the replicate-reproducibility check V1 lacked — but it moves the power calculation onto a statistic **no gate uses**, and leaves the gating statistic uncertified
+
+Narrow delta review requested by PR comment at 18:22:50Z. Parent
+`269a2edec8d39f32161b73d9409a5d81edd69437` confirmed via
+`git show -s --format=%P`; `--is-ancestor` returns 0; delta is exactly **2
+files, +178/−42**, both Markdown. Design-only; no code, artifacts or SHAs to
+reproduce. Baseline design PASS is `59800c2` and I did not re-review unchanged
+text except where this delta contradicts it, per the ask.
+
+### Asks 1–4: satisfied, and several are real repairs
+
+1. **P0 separates invalid labels from mechanics, and no longer requires beating
+   production.** The statistic becomes `chosen − equal-weight candidate-mean`,
+   explicitly "without requiring any candidate to beat the strong production
+   incumbent"; chosen-minus-incumbent is retained as a non-gating diagnostic.
+   Routing splits correctly: statistical gates 1–3 →
+   `STOP_NO_REPRODUCIBLE_VALUE_LABEL`, gate-4 mechanics →
+   `REFUSE_MECHANICS_OR_CONTROL`. **P0 gate 3 is now a replicate-reproducibility
+   gate** — same nonzero advantage sign in both replica halves for ≥5% of
+   sibling pairs, plus a strictly positive deal-bootstrap correlation lower
+   bound between the two half-sample vectors. That is precisely the check V1
+   did not have; on V1's sealed data the two replicates of the same candidate
+   correlated at r = 0.0147, so this gate would have stopped V1 before any
+   training. Good.
+2. **The pre-audit ladder distinguishes the three failure modes.** Label
+   ceiling → optimizer canary with a concrete numeric criterion
+   (`(L_initial − L_final) / (L_initial − L_empirical) ≥ 0.80`) →
+   nested 25/50/100% fit-deal curve on an untouched select fold → per-member
+   curves → `SELECT_NONE_PREAUDIT_LEARNING`, which **leaves every audit label
+   unopened**. That last route is a direct answer to the one-shot-spending
+   class that fired three times this week, and the preregistered interpretation
+   table is honest that the last three diagnoses are "evidence, not perfectly
+   identifiable causes".
+3. **The audit is genuinely two-layered**, with `PASS_ABSOLUTE_VALUE_LEARNING_ONLY`
+   distinguished from the stronger PASS and stated not to be "evidence of a
+   better action selector".
+4. **Controls now fail closed on the right axis.** The association- and
+   label-permuted cohorts must each fail at least one *absolute-value learning*
+   gate, and "failing only a production-action usefulness gate is
+   insufficient"; gate 6 is the nonrecursive conjunction; association/label
+   failure forces `REFUSE_MECHANICS_OR_CONTROL` while world-shuffle failure
+   routes to `SELECT_NONE_NO_WORLD_SIGNAL`. This repairs the vacuity filed
+   against the baseline at `dd7fd71` — under the old wording a control with
+   positive learning signal could still read as failing on demand, which is
+   exactly the V1 precedent.
+
+### Ask 5: the blocker
+
+Most of item 5 is exact and outcome-blind: the stronger-`pi_c` bar now demands
+independently reopened paired whole-round evidence with a strictly positive
+one-sided deal-cluster lower bound at frozen information and work, and names
+the ineligible classes (DEV point estimates, local decision tails, teacher
+prose, unmatched-work contrasts); one shared state-selection function with
+split-specific code forbidden; a fresh-PT acquisition receipt excluded from the
+scientific service clock with outcomes unavailable to tier choice; D256
+economics made numeric (≤3 h wall, ≤48 aggregate CPU-hours); 25% composed
+free-disk headroom added to §13.
+
+**But the power gate now certifies a statistic that nothing gates on.** §7, as
+changed by this delta:
+
+    Let `s` be the Bessel-corrected standard deviation across the 96
+    deal-level, two-direction-averaged chosen-minus-candidate-mean cross-fit
+    utilities … n_required = ceil(((1.644854 + 0.841621) * s / delta)^2)
+    If `n_required` exceeds the chosen tier's audit-deal count, publish
+    `STOP_UNDERPOWERED`.
+
+The baseline read "two-direction-averaged **cross-fit utilities**", which in
+baseline P0 were chosen-versus-incumbent — the same statistic the audit gates
+on. This delta re-based `s` on the candidate-mean statistic while leaving both
+of the following unchanged:
+
+- §11: "The smallest worthwhile mechanism effect is `+0.10` signed levels per
+  audited decision. **P0 must project that the chosen tier's audit can resolve
+  this floor.**" — stated immediately after CVaR-10 over *selected-action* deal
+  utilities.
+- §10 usefulness gate 1: "Ensemble **action utility over retaining the
+  production action** has a positive lower bound."
+
+So `STOP_UNDERPOWERED` — the only power gate in the design — is computed from
+`chosen − candidate-mean`, while the floor it exists to protect and the gate
+that floor governs are both `chosen − incumbent`. These are different random
+variables with different variances, so `n_required` does not bound the audit's
+ability to resolve +0.10 in the statistic that actually gates, in **either**
+direction. I am not claiming to know the sign of the error: the candidate-mean
+statistic subtracts an average rather than a single draw, which usually lowers
+variance and would make the check optimistic, but that depends on the
+correlation structure and I have not measured it. The defect is the mismatch
+itself, and this delta introduced it by changing exactly that line.
+
+Either repair closes it: compute `s` on the incumbent-relative utility that
+gates, or restate the §11 floor and name explicitly which gate
+`STOP_UNDERPOWERED` certifies — and if the intent is that the floor now lives
+in the learning layer, say which learning gate, since RPS improvement and
+paired-advantage error are two more distinct statistics.
+
+### Not re-filed
+
+Two baseline items this delta does not touch and I am not re-filing, already on
+record at `dd7fd71`: there is still **no outcome-blind deal-to-split assignment
+rule** — the delta adds a shared *state*-selection function for P0/fit/select/
+audit, which is adjacent but not the same choice point — and §13's 85%
+aggregate-utilization rule is unchanged.
+
+Authority unchanged: a PASS here would authorize implementation planning only.
+I am appending no marker.
+

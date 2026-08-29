@@ -297,11 +297,16 @@ def expected_signed_microlevels(probability_ppb: Sequence[int]) -> int:
             or sum(probability_ppb) != PROBABILITY_SCALE:
         raise WorldAfterstateV2InferenceError(
             "prediction probability simplex drift")
-    numerator = sum(value * category_signed_level(index)
-                    for index, value in enumerate(probability_ppb))
-    # One microlevel equals 1e-6 signed levels; ppb / 1000 is microlevels.
-    return ((numerator + 500) // 1000 if numerator >= 0
-            else -((-numerator + 500) // 1000))
+    # Signed levels are half-integral.  Accumulate integer half-level PPB so
+    # the sealed expectation is independent of large-float rounding.
+    numerator = sum(
+        value * int(round(category_signed_level(index) * 2))
+        for index, value in enumerate(probability_ppb))
+    # half-level PPB * 500,000 microlevels / 1,000,000,000 PPB.
+    denominator = 2_000
+    return ((numerator + denominator // 2) // denominator
+            if numerator >= 0 else
+            -((-numerator + denominator // 2) // denominator))
 
 
 @dataclass(frozen=True)

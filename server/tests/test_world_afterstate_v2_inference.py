@@ -63,6 +63,13 @@ def test_prediction_is_target_free_normalized_and_does_not_mutate_model():
     assert all(torch.equal(before[name], model.state_dict()[name]) for name in before)
 
 
+def test_expected_signed_microlevels_is_exact_for_half_level_mixture():
+    probabilities = [0] * OUTCOME_CLASSES
+    probabilities[100] = inference.PROBABILITY_SCALE // 2
+    probabilities[101] = inference.PROBABILITY_SCALE // 2
+    assert inference.expected_signed_microlevels(tuple(probabilities)) == -1_000_000
+
+
 def test_confirmatory_or_control_prediction_cannot_select_actions():
     root = _root()
     model = new_world_afterstate_v2_model(102)

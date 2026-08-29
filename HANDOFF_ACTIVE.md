@@ -4,14 +4,28 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-28 18:40 EDT**. Remote main before this refresh:
-`a828fd70f17e1d64de1b599a47bbfe03421cb656`.
+Last reconciled: **2026-08-29 02:29 EDT**. Remote main before this refresh:
+`f1c5e95337e22c524f200692123a5e1c43fbe1b0`.
 
 ## Review queue
 
-No review is currently required. Value V0 completed its one-shot run and
-independent reconstruction; BELIEF R4 remains live and outcome-blind. Do not
-request another Value source/freeze review or append another execution marker.
+Exactly one review is actionable: **PR #166 repaired train-only capacity at
+exact head `aa0595cce9b626941c9cc4fd64062b4e06d10cf1`**. Review only the
+three-file post-HOLD repair
+`4ab255795a974f7de3549480728be07c5a81887c..aa0595cce9b626941c9cc4fd64062b4e06d10cf1`:
+every cohort receives the positive remainder of one composed two-hour packet
+deadline, and an exact caller witness plus expiry witness prove the boundary
+can fail. Pure and strict compiled families pass 175/175; CI is green. The
+exact marker and authority map are in PR comment
+`https://github.com/jerryyyu/shengji/pull/166#issuecomment-5460769983`.
+
+A PASS authorizes one non-retry train-only Perf P0/capacity census. It opens
+only the already-opened 3,906 V0 train rows and grants no calibration, report,
+provider-audit, scientific P1, gameplay, strength, merge, deployment or R5
+authority. PR #167 is source-staged but deliberately **not** reviewable until
+that capacity receipt exists and its immutable freeze is generated; the pair
+then gets the one remaining consolidated source+freeze review. R4 and PT-Luna0
+need no repeated review while in their current states.
 
 ## Live work
 
@@ -23,11 +37,11 @@ request another Value source/freeze review or append another execution marker.
   restarts. The first synthetic scoring pass completed 1,339/1,339 and all five
   human transfer groups completed. The run is now at terminal-statistics
   derivation (3/6); cgroup peak remains 23.76 GB under the unchanged 24-GiB
-  cap. The quiet section is specifically the integrity receipt's
-  `reopen_training_tensor_cache(..., verify_all_bytes=True)` over 27.82 GB of
-  bound cache bytes. Measured progress is about 1 GB per ten minutes, so this
-  substep is hours, not minutes; it is CPU/I/O-active and has not published an
-  outcome. Do not diagnose it as a hang or duplicate it.
+  cap. Source inspection at the executing head proves the quiet substep is the
+  first of three sequential calls: in-memory bootstrap statistics. The 27.82
+  GB integrity-byte verification follows it and has not started. This phase
+  has no trustworthy item counter or ETA, remains CPU-active, and has not
+  published an outcome. Do not diagnose it as a hang or duplicate it.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
 - After statistics and the first terminal derivation, the same unit must
@@ -72,17 +86,31 @@ request another Value source/freeze review or append another execution marker.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
+### Value-Afterstate V1 — capacity review pending
+
+- Capacity PR #166 exact head `aa0595cce9b626941c9cc4fd64062b4e06d10cf1`
+  is green and staged on idle Perf, but no run has started and no row reopened.
+- Scientific PR #167 exact staged head
+  `a8673c79c4f3a02ec13513938258b984884188ce` passes 192/192 pure and strict
+  compiled tests plus CI. Initialization now checks exact live source/runtime
+  before spending the durable admission. Do not review it before the capacity
+  receipt and freeze exist.
+- This is a 520-root mechanism pilot, not a final-quality model claim. Eight
+  seeds test optimization stability, not data sufficiency; any later scaling
+  adds independent roots/replicates only after P0/P1 establish real action
+  signal.
+
 ## Fleet and boundaries
 
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Value V0 complete; artifacts preserved; host otherwise free |
+| Perf Cloud | Idle; exact PR #166/#167 checkouts prepared; capacity awaits PASS |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
-- Do not merge, deploy, resume R5, or launch any additional Value work without
-  a new reviewed design.
+- Do not merge, deploy, resume R5, or launch Value capacity/scientific work
+  without the exact review authority described above.
 - Report percentages, ETA, utilization, and failures plainly. Use all cores
   for materially parallel workloads; do not add risky concurrency merely to
   make a short deterministic prep step look busy.

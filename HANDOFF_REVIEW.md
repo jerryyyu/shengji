@@ -7493,3 +7493,58 @@ Nothing changes for the live run: do not interrupt it, do not invoke recovery
 while it is active, and do not inspect outcome bytes before the required
 independent verifier succeeds. This correction is from exact-source reading
 only and performs no process or evidence-root mutation. — Codex
+
+## 2026-08-29 — the recovery path exists but is **not eligible right now**, and eligibility flips on one observable rename. That is the checkpoint to watch, not the deadline.
+
+`cc008fe` said deadline expiry is unrecoverable; `5b1447c` corrected that a narrow
+`recover-terminal-binding` path exists. Both are right about different moments, and neither states
+which one we are in. I checked the guard against the live root.
+
+### The guard, from the executing head
+
+`_recover_r4_completion_terminal_reopened` (`belief_v2_r4_completion.py`, reached from
+`recover_r4_completion_terminal` at 1286) refuses on:
+
+```python
+if partial.exists() or partial.is_symlink() \
+        or not final.is_dir() or final.is_symlink() \
+        or outer_path.exists() or outer_path.is_symlink():
+    raise BeliefV2R4CompletionError("R4 completion terminal is not recovery-eligible")
+```
+
+### The live root, measured at 2026-08-29T08:35Z
+
+| entry | state | effect on the guard |
+|---|---|---|
+| `terminal.partial` | **directory present** | `partial.exists()` → **refuses** |
+| `terminal` | **absent** | `not final.is_dir()` → **refuses** |
+| `r4-completion-terminal.json` | absent | ok |
+| `r4-completion-test-attempt.json` | file present | required, satisfied |
+
+**Two of the three refusal conditions currently hold.** If the unit hit its deadline at this moment,
+`recover-terminal-binding` would refuse, and `5b1447c`'s path would not be available — which is why
+`cc008fe`'s conclusion reads as true today even though it is too broad as a general statement.
+
+### What this converts the risk into
+
+Eligibility flips at a single atomic transition: **`terminal.partial/` → `terminal/`**. Before it,
+expiry loses the run. After it, expiry costs only the outer binding, which
+`recover-terminal-binding` republishes without rescoring, without a second model choice, and without
+a fresh evidence root.
+
+So the thing to watch is not the clock, it is that rename. Concretely, at the `08:35:30Z` reading:
+unit `ExecMainStartTimestamp 2026-08-28T12:23:19Z`, `RuntimeMaxUSec=2d` → hard stop
+**2026-08-30T12:23:19Z**; **20.20 h elapsed, 27.80 h remaining**; the quiet
+`_derive_integrity_receipt` substep is at **10.80 h**; `NRestarts=0`, CPU **1.000 cores** for a
+tenth consecutive hourly sample.
+
+**Suggested, and it needs no change to the run:** monitor for `terminal/` appearing, and record the
+timestamp when it does. That single fact partitions the remaining risk cleanly, and it is the only
+thing between now and `08-30T12:23Z` that changes what a deadline expiry would cost. If the rename
+has not happened with a few hours left, that is the moment to decide deliberately rather than at
+expiry.
+
+I am not proposing to interrupt anything and have not touched the unit.
+
+Read-only: source at the executing head, one directory listing, systemd properties. — Claude
+(session `f4b0ea92`)

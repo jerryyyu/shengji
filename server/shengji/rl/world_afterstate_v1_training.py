@@ -20,11 +20,12 @@ from typing import Any, Sequence
 import torch
 
 from .belief_contract import canonical_json_bytes
+from .world_afterstate import WorldAfterstateTensorsV0
 from .world_afterstate_v1_dataset import JoinedAdvantageV1
 from .world_afterstate_v1_model import (
-    AdvantageBatchV1, WorldAfterstateAdvantageV1,
+    AdvantageBatchV1, SuccessorBatchV1, WorldAfterstateAdvantageV1,
     WorldAfterstateV1ModelError, advantage_loss_rows,
-    collate_advantage_examples)
+    collate_advantage_examples, successor_tensor_sha256)
 
 
 BATCH_SCHEMA = "world-afterstate-advantage-training-batch-v1"
@@ -122,6 +123,9 @@ class AdvantageTrainingBatchV1:
     replicates: tuple[int, ...]
     incumbent_row_sha256s: tuple[str, ...]
     candidate_row_sha256s: tuple[str, ...]
+    incumbent_tensor_sha256s: tuple[str, ...]
+    candidate_tensor_sha256s: tuple[str, ...]
+    target_levels: tuple[int, ...]
     split: str
     tensors: AdvantageBatchV1
     schema: str = BATCH_SCHEMA
@@ -131,6 +135,8 @@ class AdvantageTrainingBatchV1:
         fields = (
             self.state_group_ids, self.candidate_indexes, self.replicates,
             self.incumbent_row_sha256s, self.candidate_row_sha256s,
+            self.incumbent_tensor_sha256s, self.candidate_tensor_sha256s,
+            self.target_levels,
         )
         if self.schema != BATCH_SCHEMA or count <= 0 \
                 or type(self.pair_keys) is not tuple \
@@ -151,14 +157,33 @@ class AdvantageTrainingBatchV1:
             raise WorldAfterstateV1TrainingError(
                 "advantage training batch device/tensor drift")
         for digest in (*self.state_group_ids, *self.incumbent_row_sha256s,
-                       *self.candidate_row_sha256s):
+                       *self.candidate_row_sha256s,
+                       *self.incumbent_tensor_sha256s,
+                       *self.candidate_tensor_sha256s):
             _digest(digest, "advantage training batch digest")
         if any(isinstance(index, bool) or not isinstance(index, int)
                or index < 1 for index in self.candidate_indexes) \
                 or any(isinstance(value, bool) or not isinstance(value, int)
-                       or value not in (0, 1) for value in self.replicates):
+                       or value not in (0, 1) for value in self.replicates) \
+                or any(isinstance(value, bool) or not isinstance(value, int)
+                       or not -203 <= value <= 203
+                       for value in self.target_levels) \
+                or not bool(torch.all(
+                    self.tensors.targets == self.tensors.targets.round())) \
+                or self.target_levels != tuple(
+                    int(value) for value in self.tensors.targets.tolist()):
             raise WorldAfterstateV1TrainingError(
                 "advantage training batch sibling identity drift")
+        measured_incumbent = tuple(
+            _batch_tensor_sha256(self.tensors.incumbent, index)
+            for index in range(count))
+        measured_candidate = tuple(
+            _batch_tensor_sha256(self.tensors.candidate, index)
+            for index in range(count))
+        if measured_incumbent != self.incumbent_tensor_sha256s \
+                or measured_candidate != self.candidate_tensor_sha256s:
+            raise WorldAfterstateV1TrainingError(
+                "advantage training batch tensor binding drift")
         groups: dict[str, list[tuple[int, int]]] = defaultdict(list)
         seen_after = set()
         previous_state = None
@@ -221,12 +246,20 @@ def collate_training_pairs(
         incumbent_rows.append(value.incumbent_row_sha256)
         candidate_rows.append(value.candidate_row_sha256)
         examples.append(value.example)
+    tensors = collate_advantage_examples(examples)
     result = AdvantageTrainingBatchV1(
         pair_keys=tuple(keys), state_group_ids=tuple(states),
         candidate_indexes=tuple(candidates), replicates=tuple(replicates),
         incumbent_row_sha256s=tuple(incumbent_rows),
-        candidate_row_sha256s=tuple(candidate_rows), split=split,
-        tensors=collate_advantage_examples(examples))
+        candidate_row_sha256s=tuple(candidate_rows),
+        incumbent_tensor_sha256s=tuple(
+            _batch_tensor_sha256(tensors.incumbent, index)
+            for index in range(len(examples))),
+        candidate_tensor_sha256s=tuple(
+            _batch_tensor_sha256(tensors.candidate, index)
+            for index in range(len(examples))),
+        target_levels=tuple(value.pair.advantage_levels for value in values),
+        split=split, tensors=tensors)
     result.validate()
     return result
 
@@ -254,6 +287,19 @@ def model_state_sha256(model: WorldAfterstateAdvantageV1) -> str:
         digest.update(len(raw).to_bytes(8, "big"))
         digest.update(raw)
     return digest.hexdigest()
+
+
+def _batch_tensor_sha256(batch: SuccessorBatchV1, index: int) -> str:
+    """Bind the exact unpadded target-free row presented to the scorer."""
+    if not 0 <= index < batch.size:
+        raise WorldAfterstateV1TrainingError(
+            "advantage tensor-binding index drift")
+    length = int(batch.history_lengths[index])
+    return successor_tensor_sha256(WorldAfterstateTensorsV0(
+        public=batch.public[index].detach().cpu().numpy(),
+        history=batch.history[index, :length].detach().cpu().numpy(),
+        world=batch.world[index].detach().cpu().numpy(),
+        perspective=batch.perspective[index].detach().cpu().numpy()))
 
 
 def new_optimizer(
@@ -312,9 +358,15 @@ def _batch_bindings(
             "pair_key": key,
             "incumbent_row_sha256": incumbent,
             "candidate_row_sha256": candidate,
-        } for key, incumbent, candidate in zip(
+            "incumbent_tensor_sha256": incumbent_tensor,
+            "candidate_tensor_sha256": candidate_tensor,
+            "target_levels": target,
+        } for key, incumbent, candidate, incumbent_tensor, candidate_tensor,
+            target in zip(
             batch.pair_keys, batch.incumbent_row_sha256s,
-            batch.candidate_row_sha256s, strict=True))
+            batch.candidate_row_sha256s, batch.incumbent_tensor_sha256s,
+            batch.candidate_tensor_sha256s, batch.target_levels,
+            strict=True))
         schedule.append(list(batch.pair_keys))
     if len(pair_keys) != len(set(pair_keys)):
         raise WorldAfterstateV1TrainingError(

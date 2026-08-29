@@ -160,6 +160,28 @@ def test_config_batch_and_receipt_fields_are_load_bearing():
     with pytest.raises(WorldAfterstateV1TrainingError,
                        match="sibling binding drift"):
         forged_key.validate()
+    forged_tensor = copy.copy(batch)
+    object.__setattr__(forged_tensor, "candidate_tensor_sha256s",
+                       batch.incumbent_tensor_sha256s)
+    with pytest.raises(WorldAfterstateV1TrainingError,
+                       match="tensor binding drift"):
+        forged_tensor.validate()
+    forged_target = copy.copy(batch)
+    object.__setattr__(forged_target, "target_levels",
+                       (0,) * len(batch.target_levels))
+    with pytest.raises(WorldAfterstateV1TrainingError,
+                       match="sibling identity drift"):
+        forged_target.validate()
+    mutated_tensor = _batch()
+    mutated_tensor.tensors.candidate.public[0, 0] += 1.0
+    with pytest.raises(WorldAfterstateV1TrainingError,
+                       match="tensor binding drift"):
+        mutated_tensor.validate()
+    mutated_target = _batch()
+    mutated_target.tensors.targets[0] += 0.5
+    with pytest.raises(WorldAfterstateV1TrainingError,
+                       match="sibling identity drift"):
+        mutated_target.validate()
 
     config = _config()
     model = new_world_afterstate_advantage_model(

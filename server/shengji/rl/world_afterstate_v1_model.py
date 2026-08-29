@@ -12,6 +12,7 @@ authority.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -19,6 +20,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from .belief_contract import canonical_json_bytes
 from .douzero_micro import HISTORY_EVENT_DIM
 from .encode import N_CARDS
 from .world_afterstate import (
@@ -182,6 +184,27 @@ def collate_successor_tensors(
             dtype=torch.float32))
     result.validate()
     return result
+
+
+def successor_tensor_sha256(value: WorldAfterstateTensorsV0) -> str:
+    """Hash one exact target-free input in a platform-stable encoding."""
+    if type(value) is not WorldAfterstateTensorsV0:
+        raise WorldAfterstateV1ModelError("successor tensor binding type drift")
+    value.validate()
+    digest = hashlib.sha256(canonical_json_bytes({
+        "schema": "world-afterstate-advantage-input-binding-v1",
+        "arrays": ["public", "history", "world", "perspective"],
+    }))
+    for name in ("public", "history", "world", "perspective"):
+        array = np.asarray(getattr(value, name), dtype="<f4")
+        header = canonical_json_bytes({
+            "name": name, "shape": list(array.shape),
+            "dtype": "little-endian-float32", "byte_count": array.nbytes,
+        })
+        digest.update(len(header).to_bytes(8, "big"))
+        digest.update(header)
+        digest.update(array.tobytes(order="C"))
+    return digest.hexdigest()
 
 
 def collate_advantage_examples(

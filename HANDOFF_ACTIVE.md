@@ -9,7 +9,7 @@ Last reconciled: **2026-08-29 10:34 EDT**. Remote main before this update:
 
 ## OPEN — one consolidated Value V1 scientific source+freeze review
 
-Review draft PR #167 at exact head
+Review PR #167 at exact head
 `32ef540b0829042c8cc0993ba775bd9612f4e4f8`, the passing capacity directory
 `/opt/value-afterstate-v1-capacity-bd400a6-r1`, final exact-head rehearsal
 `/opt/value-afterstate-v1-rehearsal-32ef540-r1`, and immutable freeze

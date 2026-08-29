@@ -8658,3 +8658,63 @@ Workflow cost, honestly: 10 agents, **716k tokens** against my 350–500k estima
 the two derivation agents and the three lenses running deeper than planned. Zero agent errors; the
 derivation-disagreement abort gate was armed but not needed. No authority granted or changed by any
 of this. — Claude (session `68f9c8bd`)
+
+## 2026-08-29 — ✅ PASS (design only): PR #169 amendment `a9be72d2` ("Separate value learning from action usefulness"). Written before the workflow findings landed, it independently converges on the target-noise diagnosis — and its new P0 gate 3 is precisely the guard that would have refused V1. Four one-line gaps remain for the next revision
+
+Delta reviewed: `269a2ede..a9be72d2`, **+178/−42** on the design doc plus one BACKLOG line. Same
+authority as the base PASS at `59800c2`: design only, nothing else.
+
+### The convergence worth recording
+
+The amendment predates my workflow comment by minutes, yet its central move — a P0 replicate-
+reliability gate requiring ≥5% same-nonzero-sign sibling pairs across replica halves **and a
+strictly positive deal-bootstrap correlation lower bound between the two half-sample advantage
+vectors** — is exactly the test V1 never ran. Against the sealed V1 data (half-replicate correlation
+**r = 0.0147**, 71.7% zero rows) this gate fails decisively and routes to
+`STOP_NO_REPRODUCIBLE_VALUE_LABEL` before a single non-P0 deal is labeled. The two lanes reached the
+same defect independently; that is the strongest available evidence the diagnosis is right.
+
+### What the amendment fully addresses
+
+- **All four notes from my base review**: economics is now numeric (D256 label stage ≤3 h wall and
+  ≤48 aggregate CPU-hours); fresh PT collection is a separate score-free acquisition stage with its
+  own capacity/budget receipt including **token caps**, sealed before the population freezes, outcomes
+  unavailable to tier choice; teacher evidence classes are named (independently reopened paired
+  whole-round evidence with a positive deal-cluster LCB at frozen information and work — DEV point
+  estimates, decision tails, teacher prose all ineligible); the 25% storage headroom now binds the
+  composed projection with temporaries and finals coexisting.
+- **S3 (vacuous gate 8)**: the control conjunction now demands *named* failures — association/label-
+  permutation cohorts must fail specific learning gates scored as candidate cohorts, world-shuffle
+  must be rejected by both gate-5 bounds, with distinct terminal routing for each; failing only a
+  usefulness gate is explicitly insufficient.
+- **S8 in substance**: frozen first-match-wins terminal precedence sends any missing/unsealed
+  required evidence or exceeded cap to `REFUSE_RESOURCE_INCOMPLETE`, which forbids audit opening —
+  a truncated control cohort can no longer confound the comparison gates.
+- **Much of B3**: the pre-audit diagnostic ladder (label ceiling → optimizer/wiring canary with an
+  exact 0.80 loss-recovery criterion → nested 25/50/100% data curve → member stability → pre-audit
+  learning admission on the select fold) moves most refusal-capable checks *before* the one-shot
+  opening, with three new terminal routes (`REFUSE_TRAINING_RECIPE`,
+  `SELECT_NONE_PREAUDIT_LEARNING`, `PASS_ABSOLUTE_VALUE_LEARNING_ONLY`) and a preregistered
+  interpretation table so diagnosis cannot be reconstructed after the fact.
+- **The two-layer split itself** (absolute-value learning vs production-action usefulness) is the
+  right epistemic repair: V1 could not distinguish "learned value" from "beats production", and
+  `PASS_ABSOLUTE_VALUE_LEARNING_ONLY` now names the middle outcome without granting it anything.
+
+### Still open — none of it a fault of the amendment, all of it now workflow-informed
+
+1. **B2, the cheapest and most important**: deal-to-split assignment remains the one choice point
+   without a canonical hash rule, and it executes with outcomes computable. One frozen sentence
+   (assign by canonical deal-hash remainder at generation time, before play, with a remainder rule
+   for non-divisible cells) closes it.
+2. **S2**: `+0.10` still powers the audit but never gates it — and after the target-noise diagnosis
+   this is the most consequential remaining gap, since the floor is one of only two levers aimed at
+   the actual defect. Gate on LB ≥ floor, and STOP at P0 when the point estimate is below it.
+3. **S4**: the gates-1/2 prior still trains on all fit rows — up to a third non-natural at
+   D512/D1024. One word ("natural") removes a handicapped-baseline inflation of two load-bearing
+   gates.
+4. **B1**: the natural-minus-shuffle contrast is still n=1 at the training-run level; either
+   replicate it across fresh seeds or downgrade what a gate-5 PASS claims.
+
+The 9 uncovered failure classes from the matrix remain implementation-round requirements and are
+correctly absent from a design doc. Verdict: **PASS, design only**, same non-authority as before.
+— Claude (session `68f9c8bd`)

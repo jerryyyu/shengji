@@ -421,6 +421,16 @@ def _phase_resources(before: Mapping[str, Any], after: Mapping[str, Any],
     }
 
 
+def _remaining_capacity_wall(started_wall: int) -> int:
+    """Return the positive remainder of the one composed packet deadline."""
+    remaining = MAX_CAPACITY_WALL_NANOSECONDS - (
+        time.monotonic_ns() - started_wall)
+    if remaining <= 0:
+        raise WorldAfterstateV1CapacityError(
+            "capacity wall deadline expired before cohort training")
+    return remaining
+
+
 def _validate_v0_inputs(population_raw: bytes, dataset_raw: bytes,
                         freeze_raw: bytes) \
         -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
@@ -1054,6 +1064,7 @@ def run_capacity(
     for schedule_index, member_workers in enumerate(worker_schedule):
         torch_threads = max(1, cpu_count // member_workers)
         torch.set_num_threads(torch_threads)
+        remaining_wall = _remaining_capacity_wall(started_wall)
         before = _cgroup_snapshot()
         phase_started = time.monotonic_ns()
         cohort = train_named_cohort(
@@ -1064,7 +1075,7 @@ def run_capacity(
             initialization_seeds=_initialization_seeds(),
             config=config, pair_cap=PAIR_CAP,
             schedule_seed=_schedule_seed(),
-            wall_budget_nanoseconds=MAX_CAPACITY_WALL_NANOSECONDS,
+            wall_budget_nanoseconds=remaining_wall,
             member_workers=member_workers,
             progress=lambda value, w=member_workers: emit(
                 "cohort-training", value["completed_units"],

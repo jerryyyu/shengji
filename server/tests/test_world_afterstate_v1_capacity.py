@@ -346,7 +346,14 @@ def test_capacity_run_wires_train_only_reader_through_every_measurement(
 
     monkeypatch.setattr(capacity, "reopen_dataset_manifest", reopen)
 
+    remaining_budgets = iter((401, 307, 211, 103))
+    monkeypatch.setattr(
+        capacity, "_remaining_capacity_wall",
+        lambda _started_wall: next(remaining_budgets))
+    received_budgets = []
+
     def train(**kwargs):
+        received_budgets.append(kwargs["wall_budget_nanoseconds"])
         return SimpleNamespace(manifest={
             "members": [{"selected_model_state_sha256": f"{index:x}" * 64}
                         for index in range(8)]})
@@ -364,8 +371,21 @@ def test_capacity_run_wires_train_only_reader_through_every_measurement(
         *reversed(capacity.ROW_WORKER_COUNTS),
         result.receipt["selection"]["row_workers"],
     ]
+    assert received_budgets == [401, 307, 211, 103]
     assert result.receipt["train_population"][
         "calibration_row_bytes_opened"] is False
+
+
+def test_capacity_composed_deadline_refuses_before_cohort_training(
+        monkeypatch):
+    started = 17
+    monkeypatch.setattr(
+        capacity.time, "monotonic_ns",
+        lambda: started + capacity.MAX_CAPACITY_WALL_NANOSECONDS)
+    with pytest.raises(
+            WorldAfterstateV1CapacityError,
+            match="^capacity wall deadline expired before cohort training$"):
+        capacity._remaining_capacity_wall(started)
 
 
 def test_failed_p0_still_reopens_as_a_complete_stop_packet():

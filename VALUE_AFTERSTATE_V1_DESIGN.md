@@ -327,8 +327,11 @@ only the 3,906 train-row bytes. It publishes P0 and the exact pair/sub-split
 manifests even when P0 selects
 `STOP_NO_REPRODUCIBLE_ACTION_LABEL`; in that route it does not construct
 training controls or run a capacity epoch. Only a passing P0 permits the four
-one-epoch throughput measurements. No calibration, report, or provider-audit
-row byte is opened by this packet.
+one-epoch throughput measurements. Every permitted cohort receives only the
+positive remainder of that same two-hour packet deadline; no cohort receives
+a fresh wall budget, and expiry after train-row preparation refuses before
+the first cohort call. No calibration, report, or provider-audit row byte is
+opened by this packet.
 
 Before any train-row byte opens, the capacity entry point must authenticate
 one exact-head external-review marker introduced by a single-parent,

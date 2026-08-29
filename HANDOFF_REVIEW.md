@@ -7647,3 +7647,55 @@ Read-only on Perf throughout: systemd properties, journal accounting lines, dire
 the dataset manifest's path fields. Nothing signalled, no row bytes opened.
 
 WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V1 {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_beyond_corrected_execution_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_corrected_capacity_execution_authorized":true},"corrected_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset","failed_invocation_id":"40a4c998a71e4b74befb46feddd2dd52","failed_output_absent":true,"failed_service":"value-afterstate-v1-capacity-aa0595c-r1.service","prior_review_commit":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","schema":"world-afterstate-v1-capacity-operator-reentry-v1","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","target_output":"/opt/value-afterstate-v1-capacity-aa0595c-r2","train_row_bytes_opened":false,"wrong_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset/rows"}
+
+## 2026-08-29 08:30 EDT — ✅ Value V1 capacity second command re-entry: every stated fact verified on Perf, including the two that were not directly observable. Marker appended
+
+Processing the `OPEN` ask ahead of further pre-rename R4 analysis, as requested.
+
+### Verified, read-only on Perf
+
+| stated fact | measured |
+|---|---|
+| service `value-afterstate-v1-capacity-aa0595c-r2.service` | ✔ |
+| invocation `638870aef3b44e84a2297b9a1cf1bbf7` | ✔ |
+| `ExecMainStatus=1`, `NRestarts=0`, `Result=exit-code` | ✔ |
+| ~2.126 s wall | ✔ journal: `2.126s` |
+| 3.319 s CPU | ✔ `CPUUsageNSec` 3,318,883,000 ns = 3.3189 s |
+| 318,435,328-byte peak | ✔ `MemoryPeak` exactly; journal's `303.6M` is the same number |
+| target `/opt/value-afterstate-v1-capacity-aa0595c-r2` absent | ✔ (and `-r3` absent) |
+| failure `capacity review local main differs from real remote` | ✔ verbatim in the traceback |
+
+### The two claims that needed more than a status read
+
+**`local_origin_main_at_failure = cad30be4…`** cannot be read directly — the checkout's
+`refs/remotes/origin/main` now points at `73e63877`. I recovered it from
+`git reflog show origin/main`: `@{1}` is **`cad30be4`**, fast-forwarded to `73e63877` at `@{0}`.
+The ordering settles it: the failure ran `11:39:17–11:39:19Z`, `32cc413` was committed `11:37Z`
+and `73e6387` at `11:42Z`, so at failure time the local ref was `cad30be4` while canonical main was
+`32cc413`. Both stated values are confirmed, by history rather than by current state.
+
+**`progress_records_emitted: 0`** — my first grep of the journal returned one hit for `progress`,
+which looked like a contradiction. It is the traceback's own source line `progress=progress)`, not
+an emitted record. Zero confirmed, and worth writing down because the naive count says otherwise.
+
+**`train_row_bytes_opened: false`** — verified in source at the exact head rather than accepted:
+`run_capacity` (`world_afterstate_v1_capacity.py:907`) calls `authenticate_review_commit` at :921
+and reaches its first `_sealed_read(population_path, …)` only at :929. The refusal is raised inside
+that authentication (:286). Authentication strictly precedes every sealed read, so no population,
+dataset or freeze byte was opened. This is the claim that actually matters — it is why the incident
+costs nothing scientifically — and it is now checked, not asserted.
+
+### What the marker grants
+
+Exactly one flag true: `train_only_second_corrected_capacity_execution_authorized`. Calibration,
+report and provider-audit row opening, P1 training, P2, R5, retry beyond this execution, merge,
+gameplay, strength, promotion and deployment all remain false. The re-entry requires fetching
+canonical main into the capacity checkout and asserting local/real equality immediately before
+launch — which is precisely the defect that produced this failure, so the fix addresses its own
+cause.
+
+Operator-path defect, no data result, no source or model consequence. PR #167 stays unreviewable
+until the receipt exists, as stated. Read-only throughout; nothing signalled; R4 untouched and
+still pre-rename. — Claude (session `68f9c8bd`)
+
+WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V2 {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_beyond_second_corrected_execution_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_second_corrected_capacity_execution_authorized":true},"canonical_remote_tip_at_failure":"32cc41391a4c40c406161b14f6d91385123ba08c","corrected_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset","failed_invocation_id":"638870aef3b44e84a2297b9a1cf1bbf7","failed_output_absent":true,"failed_service":"value-afterstate-v1-capacity-aa0595c-r2.service","failure_message":"capacity review local main differs from real remote","local_origin_main_at_failure":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","prelaunch_canonical_ref_refresh_required":true,"prior_operator_reentry_commit":"32cc41391a4c40c406161b14f6d91385123ba08c","prior_review_commit":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","progress_records_emitted":0,"schema":"world-afterstate-v1-capacity-operator-reentry-v2","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","target_output":"/opt/value-afterstate-v1-capacity-aa0595c-r3","train_row_bytes_opened":false}

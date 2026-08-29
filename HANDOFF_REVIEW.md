@@ -8060,3 +8060,106 @@ meaning; they become load-bearing only at a result review. — Claude (session `
 
 WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"immediate_independent_reconstruction_authorized":true,"merge_authorized":false,"p1_calibration_audit_opening_authorized":true,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":true,"strength_claim_authorized":false,"v0_calibration_label_opening_authorized":true,"v0_train_row_reopening_authorized":true},"capacity_receipt_external_sha256":"d4dd34e69f3ffb344766ed98012dbd82ea744e8c477d948a9443045384d81cb3","capacity_receipt_sha256":"31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0","freeze_sha256":"5555c56bdebd8faf5b630aaa961b7ba51fe5e3fa40012364605e4a612a0ba2bc","memory_limit_bytes":32212254720,"schema":"world-afterstate-v1-p1-scientific-review-claim-v1","source_git":"32ef540b0829042c8cc0993ba775bd9612f4e4f8","training_wall_cap_nanoseconds":28800000000000,"v0_audit_manifest_external_sha256":"67fba564ab19941c19051a350a931f116d8154b9ce5757af9fe638c8d0a53c75","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581"}
 
+
+## 2026-08-29 11:05 EDT — #167's freeze pins the P1 run's **floating-point environment** to the winner of four unreplicated samples. Confirming `68f9c8bd`'s PASS independently; **no second marker** — the byte-identical one is already on main
+
+I reviewed #167 at `32ef540b` on the same request and reached the same verdict.
+Every stated value reproduced for me too: freeze external
+`d3d28798…` and internal `5555c56b…` (which I recomputed from the freeze body
+with `canonical_json_bytes` — self-consistent), claim
+`be7a7d3f…`, marker `f4d9846d…` at **1,370 bytes** from the module's own
+generator, rehearsal receipt `08660ee2…` (self-consistent, binding manifest
+`c83b0817…`/`d88949eb…`, 50 files, 12 authority flags false), and
+**201 passed pure / 201 passed strict** at the exact head with the native
+extension rebuilt. The four-attempt lineage is faithful: classes
+`doubled-dataset-row-root`, `stale-canonical-remote-ref`,
+`singleton-candidate-eligibility-projection`,
+`same-prefix-review-marker-introduction`, with `train_population_opened` true
+for `-r3` **only** and `heldout_rows_opened` false throughout — matching what I
+established on Perf earlier this week from the units themselves.
+
+I also independently confirm `68f9c8bd`'s Finding 1: `git merge-base bd400a68
+32ef540b` is `aa0595cc`, `--is-ancestor` returns 1, and the diff of
+`world_afterstate_v1_capacity.py` and `world_afterstate_v1_dataset.py` between
+the two heads is empty. The ancestry sentence is wrong and the artifact is
+right.
+
+**I appended nothing.** The marker at ledger line 8061 is byte-identical to the
+one I generated. Under the repaired `authenticate_review_commit` at `:425`, a
+second copy would satisfy `current_matches == [*previous_matches, marker]` and
+then be refused by `marker in previous_matches` — the anti-replay clause I
+reported this morning at `6692243` as reachable and load-bearing. It would have
+fired on me. One head, one marker.
+
+### The finding neither of us filed: the cohort arm is unreplicated, and it chooses more than throughput
+
+Inside the same `bd400a6-r1` receipt the two measurement arms are held to
+different standards. The row arm runs each worker count **twice**, ascending
+then descending, and the validator refuses unless every pass agrees to the byte:
+
+    or len({row["output_population_sha256"] for row in row_measurements}) != 1
+
+The cohort arm runs each `member_workers` **once**, in fixed ascending order,
+and its validator checks `schedule_index`, `member_workers`, `torch_threads`,
+`member_count` and `pair_count` — but never compares
+`output_population_sha256`. Measured:
+
+| member_workers | torch_threads | wall | cores | output hash |
+|---|---|---|---|---|
+| 1 | 16 | 104.37 s | 15.39 | `2cadb2ef…` |
+| 2 | 8 | 180.31 s | 4.40 | `857d0f8f…` |
+| **4** | **4** | **97.60 s** | **12.80** | `406868…` ← selected |
+| 8 | 2 | 191.19 s | 9.33 | `857d0f8f…` |
+
+**Three distinct trained-model outputs across four configurations**, under
+`torch_deterministic_algorithms = True`. The row arm: one, enforced.
+
+Selection is `max(member_pairs_per_second_ppm, -member_workers)`, and because
+`pair_count` (3,178) and `member_count` (8) are constant across cohorts that
+expression is monotone in `1/elapsed` — the criterion is exactly minimum wall.
+The winner beat `member_workers=1` by `(104.37 − 97.60) / 104.37 = **6.5 %**`
+on one sample per arm, while two configurations with the identical nominal
+16-way worker×thread product differ by **3.5×** in achieved cores (15.39 vs
+4.40). The spread between arms is much larger than the margin separating them.
+
+This is not confined to throughput, and that is why it matters here rather than
+in the capacity review. The freeze carries the winner into `learner`
+(`member_workers = 4`, `torch_threads = 4`, `row_workers = 8`), and
+`scripts/world_afterstate_v1_run.py:141` executes:
+
+    torch.set_num_threads(freeze["learner"]["torch_threads"])
+
+So the P1 scientific run will enter with four intra-op threads **because an
+unreplicated 6.5 % wall win selected it**, and by this receipt's own three
+distinct hashes the intra-op thread count changes the trained bytes. A
+throughput probe is fixing the numerical environment of the scientific result.
+`world_afterstate_v1_experiment.py:198` then binds
+`experiment_runtime.torch_threads_at_entry` to `selection.torch_threads`, so the
+choice is reproducible — but reproducible is not the same as chosen on purpose.
+
+Two hypotheses I tested and discarded before writing this, both of which would
+have made it a wronger claim:
+
+- *The shrinking per-cohort deadline truncated the later arms.* No.
+  `_training_config()` sets `max_epochs = 1` and every cohort finished in
+  ≤ 191 s against roughly 6,800 s of remaining packet deadline.
+- *`torch_threads` is unpinned downstream, so P1 is irreproducible.* No — that
+  is the `:198` clause above, and `RUNTIME_MATCH_KEYS` pointedly omits
+  `torch_threads_at_entry` while including `torch_interop_threads`, so the two
+  constraints do not contradict and the gate is satisfiable. Deliberate design;
+  concern withdrawn.
+
+**Cheapest repairs, any one of which closes it.** Give the cohort arm a second
+descending repetition and require the winner to be stable across both — four
+extra one-epoch cohorts cost about 9.6 minutes against a two-hour packet. Or
+refuse with a named error when the top two arms are separated by less than the
+measured spread, so a coin flip never silently fixes the FP environment. Or
+decouple the two knobs and pin `torch_threads` on its own grounds. Independent
+of the choice, cohort `output_population_sha256` is currently written by the
+builder and read by no validator — either compare it or drop it; an unconsumed
+hash in a sealed receipt reads as a guarantee that nothing is checking.
+
+None of this blocks the authorized P1 execution: the configuration is pinned,
+reproducible, and scientifically legitimate. It matters because this freeze is
+spent once, and re-selecting later means another capacity run.
+

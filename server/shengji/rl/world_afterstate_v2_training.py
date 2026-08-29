@@ -27,7 +27,9 @@ from .world_afterstate_v2_model import (
     absolute_cross_entropy_rows, collate_world_afterstate_tensors,
     expected_signed_utility,
 )
-from .world_afterstate_v2_protocol import STATE_SOURCES, TRUMP_MODES
+from .world_afterstate_v2_protocol import (
+    PRIOR_POINTS_BUCKETS, STATE_SOURCES, TRUMP_MODES,
+)
 
 
 BATCH_SCHEMA = "world-afterstate-v2-absolute-training-batch-v1"
@@ -84,6 +86,7 @@ class WorldAfterstateV2TrainingExample:
     position: str
     trump_rank: str
     trump_mode: str
+    points_bucket: str
     tensors: WorldAfterstateTensorsV0
     signed_level_category: int
     cohort: str = "primary"
@@ -104,7 +107,8 @@ class WorldAfterstateV2TrainingExample:
                 or self.phase not in ("early", "middle", "late") \
                 or self.position not in ("lead", "follow") \
                 or self.trump_rank not in tuple("23456789TJQKA") \
-                or self.trump_mode not in TRUMP_MODES:
+                or self.trump_mode not in TRUMP_MODES \
+                or self.points_bucket not in PRIOR_POINTS_BUCKETS:
             raise WorldAfterstateV2TrainingError("V2 training row identity drift")
         if self.split not in TRAINING_SPLITS:
             raise WorldAfterstateV2TrainingError("V2 training split refused")
@@ -215,6 +219,7 @@ class WorldAfterstateV2TrainingBatch:
     positions: tuple[str, ...]
     trump_ranks: tuple[str, ...]
     trump_modes: tuple[str, ...]
+    points_buckets: tuple[str, ...]
     target_categories: torch.Tensor
     split: str
     cohort: str
@@ -228,7 +233,7 @@ class WorldAfterstateV2TrainingBatch:
                   self.candidate_set_sha256s, self.successor_sha256s,
                   self.continuation_sha256s, self.sources, self.roles,
                   self.phases, self.positions, self.trump_ranks,
-                  self.trump_modes)
+                  self.trump_modes, self.points_buckets)
         if self.schema != BATCH_SCHEMA or count < 1 \
                 or type(self.example_keys) is not tuple \
                 or len(set(self.example_keys)) != count \
@@ -271,7 +276,8 @@ class WorldAfterstateV2TrainingBatch:
                     or self.phases[index] not in ("early", "middle", "late") \
                     or self.positions[index] not in ("lead", "follow") \
                     or self.trump_ranks[index] not in tuple("23456789TJQKA") \
-                    or self.trump_modes[index] not in TRUMP_MODES:
+                    or self.trump_modes[index] not in TRUMP_MODES \
+                    or self.points_buckets[index] not in PRIOR_POINTS_BUCKETS:
                 raise WorldAfterstateV2TrainingError(
                     "V2 batch public stratum drift")
             identity = (self.deal_sha256s[index], self.slot_sha256s[index],
@@ -279,6 +285,7 @@ class WorldAfterstateV2TrainingBatch:
                         self.sources[index], self.roles[index],
                         self.phases[index], self.positions[index],
                         self.trump_ranks[index], self.trump_modes[index],
+                        self.points_buckets[index],
                         self.split, self.cohort)
             prior = metadata.setdefault(root, identity)
             if prior != identity:
@@ -385,6 +392,7 @@ def collate_training_examples(
         positions=tuple(value.position for value in rows),
         trump_ranks=tuple(value.trump_rank for value in rows),
         trump_modes=tuple(value.trump_mode for value in rows),
+        points_buckets=tuple(value.points_bucket for value in rows),
         target_categories=torch.as_tensor(
             [value.signed_level_category for value in rows], dtype=torch.long),
         split=split, cohort=cohort, tensors=tensors)

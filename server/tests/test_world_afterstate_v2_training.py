@@ -50,7 +50,8 @@ def _rows(root, candidates=2, *, cohort="primary", source="natural"):
             result.append(WorldAfterstateV2TrainingExample(
                 deal, slot, state, cset, candidate, candidate == 0,
                 successor, _hex(f"{root}:continuation:{replica}"), replica,
-                source, "fit", "attacker", "early", "lead", "2", "S", _tensor(
+                source, "fit", "attacker", "early", "lead", "2", "S",
+                "0-39", _tensor(
                     candidate), (candidate + replica) % 204, cohort))
     return result
 

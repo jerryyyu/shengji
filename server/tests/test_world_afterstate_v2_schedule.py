@@ -45,7 +45,7 @@ def _rows(name, deals=4, candidates=2, cohort="primary"):
                     deal, slot, state, cset, candidate, candidate == 0,
                     successor, _hex(root + f":continuation:{replica}"), replica,
                         "natural", "fit", "attacker", "early", "lead",
-                        "2", "S",
+                        "2", "S", "0-39",
                         WorldAfterstateTensorsV0(
                         public, np.zeros((0, HISTORY_EVENT_DIM), dtype=np.float32),
                         world, np.array([1.0, 0.0], dtype=np.float32)),

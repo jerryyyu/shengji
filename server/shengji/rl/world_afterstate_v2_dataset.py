@@ -24,7 +24,9 @@ from .world_afterstate_v2_continuation import (
     ContinuationBundleV2,
 )
 from .world_afterstate_v2_population import PopulationMaterialV2
-from .world_afterstate_v2_protocol import STATE_SOURCES
+from .world_afterstate_v2_protocol import (
+    PRIOR_POINTS_BUCKETS, STATE_SOURCES, prior_points_bucket,
+)
 from .world_afterstate_v2_training import WorldAfterstateV2TrainingExample
 
 
@@ -158,6 +160,8 @@ def build_training_examples_v2(
     """Build complete fit examples from an already-reopened source bundle."""
     rows, audits = _static_bind(material, bundle)
     state = material.state
+    points_bucket = prior_points_bucket(
+        material.prestate.get("public", {}).get("attacker_points"))
     tensors: dict[int, WorldAfterstateTensorsV0] = {}
     for index, audit in audits.items():
         try:
@@ -180,6 +184,7 @@ def build_training_examples_v2(
                 replica=replica, source=row.source, split=row.split,
                 role=row.role, phase=row.phase, position=row.position,
                 trump_rank=state.trump_rank, trump_mode=state.trump_mode,
+                points_bucket=points_bucket,
                 tensors=tensors[index],
                 signed_level_category=row.signed_level_category))
     result_tuple = tuple(result)
@@ -207,6 +212,7 @@ class DatasetManifestRowV2:
     position: str
     trump_rank: str
     trump_mode: str
+    points_bucket: str
     candidate_count: int
     replica_count: int
     example_count: int
@@ -230,6 +236,7 @@ class DatasetManifestRowV2:
             "source": self.source, "split": self.split, "role": self.role,
             "phase": self.phase, "position": self.position,
             "trump_rank": self.trump_rank, "trump_mode": self.trump_mode,
+            "points_bucket": self.points_bucket,
             "candidate_count": self.candidate_count,
             "replica_count": self.replica_count,
             "example_count": self.example_count,
@@ -255,7 +262,8 @@ class DatasetManifestRowV2:
                 or self.phase not in ("early", "middle", "late") \
                 or self.position not in ("lead", "follow") \
                 or self.trump_rank not in tuple("23456789TJQKA") \
-                or self.trump_mode not in ("S", "H", "D", "C", "NT"):
+                or self.trump_mode not in ("S", "H", "D", "C", "NT") \
+                or self.points_bucket not in PRIOR_POINTS_BUCKETS:
             raise WorldAfterstateV2DatasetError("manifest identity drift")
         if (self.candidate_count < 2 or self.replica_count != 8
                 or self.example_count != self.candidate_count * 8
@@ -310,6 +318,8 @@ def build_dataset_manifest_row_v2(
         "position": material.state.position,
         "trump_rank": material.state.trump_rank,
         "trump_mode": material.state.trump_mode,
+        "points_bucket": prior_points_bucket(
+            material.prestate.get("public", {}).get("attacker_points")),
         "candidate_count": candidate_count, "replica_count": 8,
         "example_count": candidate_count * 8,
         "successor_sha256s": list(successors),
@@ -329,6 +339,7 @@ def build_dataset_manifest_row_v2(
         position=material.state.position,
         trump_rank=material.state.trump_rank,
         trump_mode=material.state.trump_mode,
+        points_bucket=row_body["points_bucket"],
         candidate_count=candidate_count,
         replica_count=8, example_count=candidate_count * 8,
         successor_sha256s=successors, continuation_sha256s=continuation_hashes,

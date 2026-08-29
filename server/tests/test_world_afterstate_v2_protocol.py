@@ -8,7 +8,8 @@ from shengji.rl.world_afterstate_v2_protocol import (
     AUTHORITY, P0_CELLS, SELECT_SUBFOLDS, TIER_SPECS, TRUMP_MODES,
     CapacityTierReceiptV2, PopulationSlotV2, StateCandidateV2,
     WorldAfterstateV2ProtocolError, attempted_deal_identity,
-    build_population_slot_ledger, choose_capacity_tier, protocol_payload,
+    build_population_slot_ledger, choose_capacity_tier, prior_points_bucket,
+    protocol_payload,
     select_one_state_per_deal, select_p0_population, validate_p0_population,
     validate_population_slot_ledger,
 )
@@ -63,6 +64,11 @@ def test_tier_arithmetic_and_protocol_authority_are_exact() -> None:
     assert payload["trump_modes"] == list(TRUMP_MODES)
     assert set(payload["population_slot_ledger_sha256s"]) == {
         tier.name for tier in TIER_SPECS}
+    assert [prior_points_bucket(points) for points in (0, 39, 40, 79, 80, 200)] \
+        == ["0-39", "0-39", "40-79", "40-79", "80+", "80+"]
+    with pytest.raises(WorldAfterstateV2ProtocolError,
+                       match="public attacker points"):
+        prior_points_bucket(True)
 
 
 def test_preplay_slot_ledgers_have_exact_groups_and_paired_select_census() \

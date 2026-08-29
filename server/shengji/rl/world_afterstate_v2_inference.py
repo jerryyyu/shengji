@@ -33,7 +33,9 @@ from .world_afterstate_v2_model import (
 )
 from .world_afterstate_v2_controls import CONTROL_NAMES as TRAINING_CONTROL_NAMES
 from .world_afterstate_v2_population import PopulationMaterialV2
-from .world_afterstate_v2_protocol import STATE_SOURCES
+from .world_afterstate_v2_protocol import (
+    PRIOR_POINTS_BUCKETS, STATE_SOURCES, prior_points_bucket,
+)
 from .world_afterstate_v2_training import model_state_sha256
 
 
@@ -132,6 +134,7 @@ class ValueInferenceRootV2:
     position: str
     trump_rank: str
     trump_mode: str
+    points_bucket: str
     successor_sha256s: tuple[str, ...]
     tensor_sha256s: tuple[str, ...]
     tensors: WorldAfterstateV2Batch
@@ -145,6 +148,7 @@ class ValueInferenceRootV2:
                 or self.position not in ("lead", "follow") \
                 or self.trump_rank not in tuple("23456789TJQKA") \
                 or self.trump_mode not in ("S", "H", "D", "C", "NT") \
+                or self.points_bucket not in PRIOR_POINTS_BUCKETS \
                 or self.source not in STATE_SOURCES:
             raise WorldAfterstateV2InferenceError(
                 "inference root identity drift")
@@ -197,6 +201,7 @@ class ValueInferenceRootV2:
             "position": self.position,
             "trump_rank": self.trump_rank,
             "trump_mode": self.trump_mode,
+            "points_bucket": self.points_bucket,
             "successor_sha256s": list(self.successor_sha256s),
             "tensor_sha256s": list(self.tensor_sha256s),
         }
@@ -242,6 +247,8 @@ def build_inference_root_v2(material: PopulationMaterialV2) \
         position=material.state.position,
         trump_rank=material.state.trump_rank,
         trump_mode=material.state.trump_mode,
+        points_bucket=prior_points_bucket(
+            material.prestate.get("public", {}).get("attacker_points")),
         successor_sha256s=tuple(
             candidate.successor_sha256 for candidate in material.candidates),
         tensor_sha256s=tuple(_tensor_sha256(value) for value in values),
@@ -537,7 +544,8 @@ def validate_prediction_population_manifest_v2(value: Mapping[str, Any]) -> None
     root_keys = {
         "schema", "deal_sha256", "slot_sha256", "state_sha256",
         "candidate_set_sha256", "split", "source", "role", "phase",
-        "position", "trump_rank", "trump_mode", "successor_sha256s",
+        "position", "trump_rank", "trump_mode", "points_bucket",
+        "successor_sha256s",
         "tensor_sha256s", "root_sha256",
     }
     for binding in bindings:
@@ -548,7 +556,8 @@ def validate_prediction_population_manifest_v2(value: Mapping[str, Any]) -> None
                 or binding.get("phase") not in ("early", "middle", "late") \
                 or binding.get("position") not in ("lead", "follow") \
                 or binding.get("trump_rank") not in tuple("23456789TJQKA") \
-                or binding.get("trump_mode") not in ("S", "H", "D", "C", "NT"):
+                or binding.get("trump_mode") not in ("S", "H", "D", "C", "NT") \
+                or binding.get("points_bucket") not in PRIOR_POINTS_BUCKETS:
             raise WorldAfterstateV2InferenceError(
                 "prediction root binding drift")
         for name in ("deal_sha256", "slot_sha256", "state_sha256",

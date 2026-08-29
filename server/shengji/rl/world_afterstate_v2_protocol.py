@@ -42,6 +42,7 @@ TRUMP_MODES = ("S", "H", "D", "C", "NT")
 MECHANICS_SURFACES = ("multi-card", "wide-ballot", "late/high-point")
 SELECT_SUBFOLDS = ("epoch-select", "precision-select")
 STATE_SOURCES = ("natural", "pt-sol", "pt-luna", "human", "mechanics")
+PRIOR_POINTS_BUCKETS = ("0-39", "40-79", "80+")
 
 AUTHORITY = {
     "data_collection_authorized": False,
@@ -72,6 +73,12 @@ def _strict_int(value: object, label: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise WorldAfterstateV2ProtocolError(f"{label} drift")
     return value
+
+
+def prior_points_bucket(attacker_points: object) -> str:
+    """Return the reviewed natural-fit-prior bucket from public points."""
+    points = _strict_int(attacker_points, "public attacker points")
+    return "0-39" if points < 40 else ("40-79" if points < 80 else "80+")
 
 
 @dataclass(frozen=True)
@@ -646,6 +653,7 @@ def protocol_payload() -> dict[str, object]:
         "trump_modes": list(TRUMP_MODES),
         "mechanics_surfaces": list(MECHANICS_SURFACES),
         "select_subfolds": list(SELECT_SUBFOLDS),
+        "prior_points_buckets": list(PRIOR_POINTS_BUCKETS),
         "population_slot_ledger_sha256s": slot_ledger_sha256s,
         "capacity_host_logical_cpus": CAPACITY_HOST_LOGICAL_CPUS,
         "label_wall_seconds_max": LABEL_WALL_SECONDS_MAX,
@@ -663,11 +671,13 @@ def protocol_payload() -> dict[str, object]:
 __all__ = [
     "ATTEMPT_SCHEMA", "AUTHORITY", "CAPACITY_HOST_LOGICAL_CPUS",
     "CapacityTierReceiptV2", "MECHANICS_SURFACES", "P0_CELLS", "P0_DEALS",
-    "P0_PER_CELL", "P0_SUBSET_SCHEMA", "PopulationSlotV2", "SELECT_SUBFOLDS", "SLOT_SCHEMA",
+    "P0_PER_CELL", "P0_SUBSET_SCHEMA", "PRIOR_POINTS_BUCKETS",
+    "PopulationSlotV2", "SELECT_SUBFOLDS", "SLOT_SCHEMA",
     "STATE_SCHEMA", "STATE_SOURCES", "TIER_SPECS", "TRUMP_MODES",
     "StateCandidateV2", "TierSpecV2", "WorldAfterstateV2ProtocolError",
     "attempted_deal_identity", "build_population_slot_ledger",
     "choose_capacity_tier", "protocol_payload", "select_one_state_per_deal",
+    "prior_points_bucket",
     "select_p0_population",
     "select_canonical_p0_subset", "validate_canonical_p0_subset",
     "validate_p0_population", "validate_population_slot_ledger",

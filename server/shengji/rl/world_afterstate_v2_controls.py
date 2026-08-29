@@ -124,6 +124,12 @@ def _roots(values: Sequence[WorldAfterstateV2TrainingExample]) \
             raise WorldAfterstateV2ControlError("control incomplete root")
         if len({row.successor_sha256 for row in rows}) != len(candidates):
             raise WorldAfterstateV2ControlError("control duplicate successor")
+        try:
+            collate_training_examples(
+                rows, split=rows[0].split, cohort=rows[0].cohort).validate()
+        except WorldAfterstateV2TrainingError as exc:
+            raise WorldAfterstateV2ControlError(
+                "control source root mechanics drift") from exc
         # This also detects a root whose nominal identity has been forged.
         first = rows[0]
         for row in rows[1:]:
@@ -133,7 +139,7 @@ def _roots(values: Sequence[WorldAfterstateV2TrainingExample]) \
                     first.deal_sha256, first.slot_sha256, first.state_sha256,
                     first.candidate_set_sha256, first.source, first.split,
                     first.role, first.phase, first.position, first.trump_rank,
-                    first.trump_mode):
+                    first.trump_mode) or row.points_bucket != first.points_bucket:
                 raise WorldAfterstateV2ControlError("control root identity drift")
     return result
 
@@ -150,9 +156,9 @@ def _order(keys: Sequence[str], *, seed: int, namespace: str) -> list[str]:
 
 
 def _stratum(row: WorldAfterstateV2TrainingExample, candidate_count: int) \
-        -> tuple[str, str, str, str, str, str, int]:
+        -> tuple[str, str, str, str, str, str, str, int]:
     return (row.source, row.trump_rank, row.trump_mode, row.phase,
-            row.position, row.role, candidate_count)
+            row.position, row.role, row.points_bucket, candidate_count)
 
 
 @dataclass(frozen=True)
@@ -163,6 +169,7 @@ class ControlledWorldAfterstateV2Example:
     control_name: str
     tensors: WorldAfterstateTensorsV0
     successor_sha256: str
+    donor_successor_sha256: str
     target_category: int
     donor_key: str
     schema: str = CONTROL_ROW_SCHEMA
@@ -215,8 +222,21 @@ class ControlledWorldAfterstateV2Example:
         self.natural.validate()
         self.tensors.validate()
         _digest(self.successor_sha256, "control successor SHA-256")
+        _digest(self.donor_successor_sha256,
+                "control donor successor SHA-256")
         if self.natural.split != "fit":
             raise WorldAfterstateV2ControlError("control row split refused")
+        if self.successor_sha256 != self.natural.successor_sha256:
+            raise WorldAfterstateV2ControlError(
+                "control changed protected successor identity")
+        if self.control_name == "action-association-permutation" \
+                and self.donor_successor_sha256 == self.successor_sha256:
+            raise WorldAfterstateV2ControlError(
+                "association donor was not deranged")
+        if self.control_name != "action-association-permutation" \
+                and self.donor_successor_sha256 != self.successor_sha256:
+            raise WorldAfterstateV2ControlError(
+                "non-association donor successor drift")
 
     def binding(self) -> dict[str, Any]:
         self.validate()
@@ -225,9 +245,29 @@ class ControlledWorldAfterstateV2Example:
             "control_name": self.control_name,
             "candidate_index": self.candidate_index, "replica": self.replica,
             "successor_sha256": self.successor_sha256,
+            "donor_successor_sha256": self.donor_successor_sha256,
             "tensor_sha256": _tensor_sha256(self.tensors),
             "target_category": self.target_category,
             "donor_key": self.donor_key,
+            "natural_identity": {
+                "deal_sha256": self.natural.deal_sha256,
+                "slot_sha256": self.natural.slot_sha256,
+                "state_sha256": self.natural.state_sha256,
+                "candidate_set_sha256": self.natural.candidate_set_sha256,
+                "candidate_index": self.natural.candidate_index,
+                "protected_incumbent": self.natural.protected_incumbent,
+                "continuation_sha256": self.natural.continuation_sha256,
+                "replica": self.natural.replica,
+                "source": self.natural.source,
+                "split": self.natural.split,
+                "role": self.natural.role,
+                "phase": self.natural.phase,
+                "position": self.natural.position,
+                "trump_rank": self.natural.trump_rank,
+                "trump_mode": self.natural.trump_mode,
+                "points_bucket": self.natural.points_bucket,
+                "target_category": self.natural.signed_level_category,
+            },
         }
 
     @property
@@ -240,11 +280,14 @@ class ControlledWorldAfterstateV2Example:
 
 
 def _row(natural: WorldAfterstateV2TrainingExample, name: str,
-         tensors: WorldAfterstateTensorsV0, successor: str, target: int,
-         donor: str) -> ControlledWorldAfterstateV2Example:
+         tensors: WorldAfterstateTensorsV0, successor: str,
+         donor_successor: str, target: int, donor: str) \
+        -> ControlledWorldAfterstateV2Example:
     result = ControlledWorldAfterstateV2Example(
         natural=natural, control_name=name, tensors=_clone(tensors),
-        successor_sha256=successor, target_category=target, donor_key=donor)
+        successor_sha256=successor,
+        donor_successor_sha256=donor_successor,
+        target_category=target, donor_key=donor)
     result.validate()
     return result
 
@@ -265,6 +308,7 @@ def _population_binding(values: Sequence[WorldAfterstateV2TrainingExample]) -> l
                 "source": row.source, "split": row.split, "role": row.role,
                 "phase": row.phase, "position": row.position,
                 "trump_rank": row.trump_rank, "trump_mode": row.trump_mode,
+                "points_bucket": row.points_bucket,
                 "tensor_sha256": _tensor_sha256(row.tensors),
                 "target_category": row.signed_level_category,
             })
@@ -349,19 +393,22 @@ def action_association_permutation(
             source = representative[donor[row.candidate_index]]
             controls.append(_row(
                 row, "action-association-permutation", source.tensors,
-                row.successor_sha256, row.signed_level_category,
+                row.successor_sha256, source.successor_sha256,
+                row.signed_level_category,
                 _family_key(root, donor[row.candidate_index])))
     controls.sort(key=lambda value: (value.root_key, value.candidate_index, value.replica))
     ordered = sorted(natural, key=lambda value: (value.root_key,
                                                   value.candidate_index,
                                                   value.replica))
-    changed = sum(row.donor_key != _family_key(
-                      natural_row.root_key, natural_row.candidate_index)
-                  and _tensor_sha256(row.tensors)
-                  != _tensor_sha256(natural_row.tensors)
-                  for row, natural_row in zip(controls, ordered, strict=True))
+    changed_bindings = sum(
+        row.donor_successor_sha256 != natural_row.successor_sha256
+        for row, natural_row in zip(controls, ordered, strict=True))
+    changed_tensors = sum(
+        _tensor_sha256(row.tensors) != _tensor_sha256(natural_row.tensors)
+        for row, natural_row in zip(controls, ordered, strict=True))
     evidence = _evidence("action-association-permutation", seed, ordered, controls,
-                         changed_rows=changed, changed_cells=changed)
+                         changed_rows=changed_bindings,
+                         changed_cells=changed_tensors)
     return tuple(controls), evidence
 
 
@@ -405,7 +452,7 @@ def label_permutation(
             donor_row = donor_by_replica[row.replica]
             controls.append(_row(
                 row, "label-permutation", row.tensors, row.successor_sha256,
-                donor_row.signed_level_category,
+                row.successor_sha256, donor_row.signed_level_category,
                 _family_key(donor_root, donor_candidate)))
     controls.sort(key=lambda value: (value.root_key, value.candidate_index, value.replica))
     ordered = sorted(natural, key=lambda value: (value.root_key,
@@ -457,7 +504,8 @@ def complete_world_shuffle(
         for row in roots[root]:
             if donor_root is None:
                 controls.append(_row(row, "complete-world-shuffle", row.tensors,
-                                     row.successor_sha256, row.signed_level_category,
+                                     row.successor_sha256, row.successor_sha256,
+                                     row.signed_level_category,
                                      root))
                 continue
             donor = donor_by_candidate[row.candidate_index]
@@ -469,7 +517,7 @@ def complete_world_shuffle(
             tensors.validate()
             controls.append(_row(
                 row, "complete-world-shuffle", tensors, row.successor_sha256,
-                row.signed_level_category, donor_root))
+                row.successor_sha256, row.signed_level_category, donor_root))
     controls.sort(key=lambda value: (value.root_key, value.candidate_index, value.replica))
     ordered = sorted(natural, key=lambda value: (value.root_key,
                                                   value.candidate_index,
@@ -488,10 +536,11 @@ def complete_world_shuffle(
     return tuple(controls), evidence
 
 
-def collate_control_training_examples(
+def control_training_examples(
         values: Sequence[ControlledWorldAfterstateV2Example], *,
-        split: str = "fit", cohort: str = "control"):
-    """Bind one homogeneous control population to the normal training batch."""
+        split: str = "fit", cohort: str = "control") \
+        -> tuple[WorldAfterstateV2TrainingExample, ...]:
+    """Build transformed rows while preserving immutable natural root keys."""
     if type(values) not in (list, tuple) or not values or split != "fit":
         raise WorldAfterstateV2ControlError("control batch population drift")
     if any(type(value) is not ControlledWorldAfterstateV2Example for value in values):
@@ -523,8 +572,22 @@ def collate_control_training_examples(
                 replica=source.replica, source=source.source, split=split,
                 role=source.role, phase=source.phase, position=source.position,
                 trump_rank=source.trump_rank, trump_mode=source.trump_mode,
+                points_bucket=source.points_bucket,
                 tensors=_clone(value.tensors),
                 signed_level_category=value.target_category, cohort=cohort))
+    result = tuple(rows)
+    try:
+        collate_training_examples(result, split=split, cohort=cohort).validate()
+    except WorldAfterstateV2TrainingError as exc:
+        raise WorldAfterstateV2ControlError("control batch binding drift") from exc
+    return result
+
+
+def collate_control_training_examples(
+        values: Sequence[ControlledWorldAfterstateV2Example], *,
+        split: str = "fit", cohort: str = "control"):
+    """Bind one homogeneous control population to the normal training batch."""
+    rows = control_training_examples(values, split=split, cohort=cohort)
     try:
         return collate_training_examples(rows, split=split, cohort=cohort)
     except WorldAfterstateV2TrainingError as exc:
@@ -615,5 +678,6 @@ __all__ = [
     "MINIMUM_LABEL_EFFECTIVE_DOSE_PPM", "MINIMUM_PERMUTATION_DOSE_PPM",
     "WorldAfterstateV2ControlError", "action_association_permutation",
     "complete_world_shuffle", "collate_control_training_examples",
+    "control_training_examples",
     "label_permutation", "mix_control_populations", "validate_control_evidence",
 ]

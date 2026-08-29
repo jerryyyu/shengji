@@ -103,6 +103,7 @@ def test_bridge_emits_complete_candidate_replica_examples_without_runner(
     assert rows[0].protected_incumbent is True
     assert rows[8].protected_incumbent is False
     assert all(row.split == "fit" for row in rows)
+    assert all(row.points_bucket == "40-79" for row in rows)
 
 
 def test_manifest_is_target_free_and_hash_bound(source_fixture):
@@ -114,6 +115,7 @@ def test_manifest_is_target_free_and_hash_bound(source_fixture):
         "signed_level", "attacker_points", "outcome", "terminal",
         "tensor_data", "audit_data", "label_bytes"))
     assert manifest.row_sha256 == dataset.manifest_row_sha256(manifest)
+    assert manifest.points_bucket == "40-79"
 
 
 @pytest.mark.parametrize("mutation", [

@@ -162,7 +162,8 @@ def _identity(value: WorldAfterstateV2TrainingExample) -> dict[str, Any]:
             "replica": value.replica, "source": value.source,
             "split": value.split, "role": value.role, "phase": value.phase,
             "position": value.position, "trump_rank": value.trump_rank,
-            "trump_mode": value.trump_mode, "cohort": value.cohort}
+            "trump_mode": value.trump_mode,
+            "points_bucket": value.points_bucket, "cohort": value.cohort}
 
 
 def _population_sha(rows: Sequence[WorldAfterstateV2TrainingExample]) -> str:
@@ -194,7 +195,7 @@ def _validate_rows(values: Sequence[WorldAfterstateV2TrainingExample], *,
                 "protected_incumbent", "successor_sha256",
                 "continuation_sha256", "replica", "source", "split",
                 "role", "phase", "position", "trump_rank", "trump_mode",
-                "tensors",
+                "points_bucket", "tensors",
                 "signed_level_category", "cohort", "schema"}:
             raise WorldAfterstateV2ScheduleError("audit field injection")
         try:
@@ -559,10 +560,10 @@ def canonical_deal_hash_prefix(
             or not math.isfinite(fraction) or not 0 < fraction <= 1:
         raise WorldAfterstateV2ScheduleError("prefix fraction drift")
     _validate_rows(examples, allow_source_mix=True)
-    groups: dict[tuple[str, str, str, str, str, str, str], dict[str, list[WorldAfterstateV2TrainingExample]]] = {}
+    groups: dict[tuple[str, str, str, str, str, str, str, str], dict[str, list[WorldAfterstateV2TrainingExample]]] = {}
     for row in examples:
         key = (row.split, row.source, row.phase, row.position, row.role,
-               row.trump_rank, row.trump_mode)
+               row.trump_rank, row.trump_mode, row.points_bucket)
         groups.setdefault(key, {}).setdefault(row.deal_sha256, []).append(row)
     selected: list[WorldAfterstateV2TrainingExample] = []
     for key in sorted(groups):

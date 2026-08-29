@@ -7,7 +7,8 @@ import pytest
 from shengji.rl.world_afterstate_v2_controls import (
     AUTHORITY, WorldAfterstateV2ControlError,
     action_association_permutation, complete_world_shuffle,
-    collate_control_training_examples, label_permutation, mix_control_populations,
+    collate_control_training_examples, control_training_examples,
+    label_permutation, mix_control_populations,
     validate_control_evidence,
 )
 
@@ -41,6 +42,8 @@ def test_association_deranges_bindings_but_keeps_labels_and_metadata():
                == (row.candidate_index == 0)
                for row in controlled)
     assert all(row.successor_sha256 == row.natural.successor_sha256
+               for row in controlled)
+    assert all(row.donor_successor_sha256 != row.successor_sha256
                for row in controlled)
     validate_control_evidence(evidence, natural=natural, controlled=controlled)
 
@@ -99,7 +102,8 @@ def test_controls_refuse_stratum_crossing_protected_leaks_and_mixed_controls():
     natural = _population("a", "b", "c", "d")
     bad = list(natural)
     bad[-1] = dataclasses.replace(bad[-1], trump_mode="H")
-    with pytest.raises(WorldAfterstateV2ControlError, match="root identity"):
+    with pytest.raises(WorldAfterstateV2ControlError,
+                       match="root mechanics|root identity"):
         action_association_permutation(bad)
     association, _ = action_association_permutation(natural)
     labels, _ = label_permutation(natural)
@@ -131,19 +135,24 @@ def test_real_controls_reuse_the_exact_natural_root_schedule():
     for transform in (action_association_permutation, label_permutation,
                       complete_world_shuffle):
         controlled, receipt = transform(natural)
-        batch = collate_control_training_examples(controlled)
-        # Reconstruct the individual control rows from the validated batch so
-        # this drives the real transformed root identity through the scheduler.
-        by_key = {row.example_key: row for row in controlled}
-        transformed = []
-        for index, key in enumerate(batch.example_keys):
-            source = by_key[key].natural
-            transformed.append(dataclasses.replace(
-                source, candidate_set_sha256=batch.candidate_set_sha256s[index],
-                successor_sha256=batch.successor_sha256s[index],
-                tensors=by_key[key].tensors,
-                signed_level_category=int(batch.target_categories[index]),
-                cohort="control"))
+        transformed = control_training_examples(controlled)
         control_schedule, _ = reuse_schedule_for_control(
             natural_schedule, transformed, control_name=receipt["control_name"])
         validate_control_schedule_match(natural_schedule, control_schedule)
+
+
+def test_control_source_mechanics_and_protected_binding_refuse_when_mutated():
+    natural = _population("a", "b", "c", "d")
+    bad_crn = list(natural)
+    bad_crn[-1] = dataclasses.replace(
+        bad_crn[-1], continuation_sha256="0" * 64)
+    with pytest.raises(WorldAfterstateV2ControlError, match="root mechanics"):
+        action_association_permutation(bad_crn)
+
+    controlled, receipt = action_association_permutation(natural)
+    forged = list(controlled)
+    forged[0] = dataclasses.replace(
+        forged[0], natural=dataclasses.replace(
+            forged[0].natural, role="defender"))
+    with pytest.raises(WorldAfterstateV2ControlError):
+        validate_control_evidence(receipt, natural=natural, controlled=forged)

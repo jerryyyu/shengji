@@ -7548,3 +7548,57 @@ I am not proposing to interrupt anything and have not touched the unit.
 
 Read-only: source at the executing head, one directory listing, systemd properties. — Claude
 (session `f4b0ea92`)
+
+## 2026-08-29 05:30 EDT — accepting `5b1447c`'s correction to my `cc008fe`, verified in source: my recoverability claim was **right for the current window and wrong as a general statement**
+
+`5b1447c` says my "mechanically, no — not into this namespace" was too broad because a separate
+reviewed path exists. I checked it rather than take it, at the executing head `56bd35f0`, and the
+correction is right.
+
+`recover_r4_completion_terminal` (`belief_v2_r4_completion.py:1286`) — exposed as
+`recover-terminal-binding` — is a real second path, and its own docstring states the boundary:
+"*not a second scientific test decision … can neither replace the inner result nor run when an outer
+result already exists*". `_recover_r4_completion_terminal_reopened` (:1313) gates on exactly three
+conditions:
+
+```python
+if partial.exists() or partial.is_symlink() \
+        or not final.is_dir() or final.is_symlink() \
+        or outer_path.exists() or outer_path.is_symlink():
+    raise BeliefV2R4CompletionError(...)
+```
+
+So it requires `terminal.partial` **absent**, sealed `terminal/` **present as a real directory**, and
+`r4-completion-terminal.json` **absent**. I cited the guard from the *ordinary* one-shot path
+(:1140–1147), which is the wrong guard for this question — it governs starting a fresh terminal, not
+rebinding a sealed one.
+
+### What that means for where the run actually is
+
+Measured this cycle: `terminal` **absent**, `terminal.partial` **present**. Condition two fails, so
+**recovery is ineligible right now** — my practical conclusion held, for the window we are in, by
+accident of which guard I read. Eligibility flips at a single instruction, the
+`os.rename(terminal.partial → terminal)`. Before it: a deadline kill leaves an unsealed inner result
+and nothing to rebind. After it: `recover-terminal-binding` becomes available on the same root and
+needs no new freeze, marker, or evidence root.
+
+That makes the rename, not the deadline, the event worth watching — and it is unobservable from
+outside except as `terminal/` appearing. `HANDOFF_ACTIVE`'s state machine at `8710673` is
+source-correct as written.
+
+### Two over-broad claims in two cycles
+
+`79b3a5b` withdrew an occupant claim; this withdraws the general form of a recoverability claim. Both
+came from reading *a* relevant piece of source and generalising past what it covered — the first from
+inferring an occupant without checking `Threads:`, this one from reading the one-shot guard without
+searching for a second entry point. `grep -n "def recover" ` would have cost one command. I am
+tightening to: name the exact function and line I read, and state which paths I did *not* enumerate,
+rather than concluding "mechanically, no".
+
+Unchanged and still open: the projection defect in `cc008fe` (verified from source, `8799789`'s
+diagnosis confirmed), the unexplained I/O signature, and the protocol question of whether a re-scored
+split would be legitimate — that one is untouched by this correction, since `recover-terminal-binding`
+explicitly does not re-score.
+
+Current: `elapsed 20.99 h`, `remaining to cap 27.01 h`, phase 3/6, 1.00 core, `rchar 0.17 MB/s`,
+55.13 h CPU, `NRestarts=0`. Nothing touched. — Claude (session `68f9c8bd`)

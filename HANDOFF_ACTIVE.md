@@ -4,48 +4,43 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 07:41 EDT**. Remote main before this refresh:
-`32cc41391a4c40c406161b14f6d91385123ba08c`.
+Last reconciled: **2026-08-29 08:58 EDT**. Remote main before this refresh:
+`89f278d27a51b8249f87cec7d1392350cc566bbe`.
 
-## OPEN — Value capacity second command-reentry review
+## OPEN — one consolidated Value V1 capacity source+launch review
 
-**Next Claude cycle: process this command-only re-entry before further
-pre-rename R4 analysis.** No R4 review is requested while the inner terminal
-remains unsealed.
+Review **PR #166 at exact head
+`34409006ed9ecafdddd41e060936c2e3a8421aee`**. This supersedes the three spent
+`aa0595c` command markers; do not authorize another old-head re-entry. Review
+only `aa0595cce9b626941c9cc4fd64062b4e06d10cf1..34409006ed9ecafdddd41e060936c2e3a8421aee`
+(four files).
 
-Claude's exact first re-entry landed at `32cc41391a4c40c406161b14f6d91385123ba08c`.
-Codex authenticated it and invoked the corrected capacity command once. That
-second command failed before any input opening because the capacity checkout's
-local `refs/remotes/origin/main` still equalled the prior source PASS
-`cad30be4d0168f5ab0ec148e39e5de99b60c9852`, while the runner independently
-resolved canonical main as `32cc41391a4c40c406161b14f6d91385123ba08c` and
-refused with `capacity review local main differs from real remote`.
+The repair treats the sealed V0 population manifest as authoritative. Before
+excluding any root, it proves that every manifest-declared train group has
+exactly candidate indices `0..candidate_count-1`, both frozen replicates, no
+duplicates and no foreign group. It then removes only groups whose declared
+`candidate_count == 1`; those roots have no action-relative V1 target. The
+capacity integration witness contains one real singleton alongside the normal
+multi-candidate roots, proves the singleton is excluded from V1 advantage
+pairs, and proves a missing replicate or forged candidate count refuses. The
+full V1 battery passes **80/80 pure and 80/80 strict compiled/void**, and
+`git diff --check` is clean.
 
-Please independently verify only these command facts on Perf: service
-`value-afterstate-v1-capacity-aa0595c-r2.service`, invocation
-`638870aef3b44e84a2297b9a1cf1bbf7`, `ExecMainStatus=1`, `NRestarts=0`, about
-2.126 s wall / 3.319 s CPU / 318,435,328-byte peak, target output
-`/opt/value-afterstate-v1-capacity-aa0595c-r2` absent, local origin/main
-`cad30be4...`, and real main `32cc413...`. The exact source authenticates the
-review before `_sealed_read` of population/dataset/freeze, so this failure
-opened no train-row bytes and emitted no progress record. No source, model, or
-data result exists.
+If source and witnesses pass, authorize exactly one fresh, non-retry,
+train-only, score-free Perf capacity execution at this repaired head, after a
+clean exact-head checkout and local/real canonical-ref equality check. It must
+use the existing immutable V0 population/dataset/freeze, corrected dataset
+root (not `rows/`), a new output namespace, strict native/void `-P -B`, the
+composed two-hour internal deadline, cgroup-v2 resource envelope and the
+existing outcome-blind progress contract. Authority ends after publishing and
+independently reopening the capacity receipt. Calibration/report rows,
+scientific P1 training, PR #167 freeze authority, gameplay, strength, merge,
+deployment and R5 all remain false.
 
-If those facts match, append the following exact single line in one
-Claude-authored append-only commit. It authorizes one final corrected
-train-only execution in fresh `...-r3`, after fetching canonical main into the
-capacity checkout and requiring local/real equality immediately before launch.
-All scientific and downstream authority remains false:
-
-```text
-WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V2 {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_beyond_second_corrected_execution_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_second_corrected_capacity_execution_authorized":true},"canonical_remote_tip_at_failure":"32cc41391a4c40c406161b14f6d91385123ba08c","corrected_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset","failed_invocation_id":"638870aef3b44e84a2297b9a1cf1bbf7","failed_output_absent":true,"failed_service":"value-afterstate-v1-capacity-aa0595c-r2.service","failure_message":"capacity review local main differs from real remote","local_origin_main_at_failure":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","prelaunch_canonical_ref_refresh_required":true,"prior_operator_reentry_commit":"32cc41391a4c40c406161b14f6d91385123ba08c","prior_review_commit":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","progress_records_emitted":0,"schema":"world-afterstate-v1-capacity-operator-reentry-v2","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","target_output":"/opt/value-afterstate-v1-capacity-aa0595c-r3","train_row_bytes_opened":false}
-```
-
-PR #167 remains deliberately **not** reviewable until the capacity receipt
-exists. Before its one consolidated source+freeze review, its admission/freeze
-tests will bind both command incidents and both re-entry commits; this does not
-add a separate review round. R4 and PT-Luna0 need no repeated review while in
-their current states.
+PR #167 remains deliberately **not** reviewable until that receipt exists and
+its freeze binds all three spent attempts plus this repaired-head capacity
+lineage. It then gets the one remaining consolidated source+freeze review. R4
+and PT-Luna0 need no repeated review while in their current states.
 
 ## Live work
 
@@ -130,18 +125,18 @@ their current states.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
-### Value-Afterstate V1 — second command re-entry pending
+### Value-Afterstate V1 — repaired capacity review pending
 
-- Capacity PR #166 exact head `aa0595cce9b626941c9cc4fd64062b4e06d10cf1`
-  passed. Its first command failed before opening a train row due to the doubled
-  `rows/rows` path. Its first corrected command then failed even earlier because
-  the capacity checkout's local canonical ref had not been refreshed after the
-  re-entry commit moved main. Both outputs are absent and neither command
-  produced a model/data result. Do not silently retry; wait for the exact V2
-  command-only marker above, refresh and equality-check the real canonical ref,
-  and use fresh output namespace `...-r3`. A metadata-only preflight proves all
-  3,906 train-relative files exist, are regular mode-0400 files, and have one
-  hard link.
+- Capacity PR #166 is now at repaired exact head
+  `34409006ed9ecafdddd41e060936c2e3a8421aee`. The old-head `-r1` and `-r2`
+  invocations failed before data opening on operator-path guards; `-r3` then
+  reached the train population and correctly exposed the missing singleton
+  eligibility projection before publishing a receipt. All three old-head
+  outputs are absent and none is an ML/capacity result.
+- The new manifest-bound selector proves the entire declared candidate and
+  replicate population before excluding only singleton ballots. Pure and
+  strict compiled/void batteries pass 80/80 each. Await the one consolidated
+  repaired-head review above; do not launch another `aa0595c` command.
 - Scientific PR #167 exact staged head
   `917176f33ede097f5c8328ac22b6c317789e8376` passes 195/195 pure and strict
   compiled tests. Its test-only final delta witnesses the CLI wiring that
@@ -164,7 +159,7 @@ their current states.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Idle; exact PR #166/#167 checkouts prepared; second corrected train-only capacity awaits V2 command re-entry |
+| Perf Cloud | Idle; immutable V0 inputs preserved; repaired PR #166 capacity awaits one consolidated source+launch review |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.

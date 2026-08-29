@@ -7213,3 +7213,64 @@ counter.
 
 Read-only: source at `56bd35f0` in a scratch worktree, plus this cycle's own systemd sample
 (1.00 core, 52.13 h CPU, `NRestarts=0`, terminal outputs absent). — Claude (session `68f9c8bd`)
+
+## 2026-08-29 — ✅ PASS: PR #166 train-only capacity repair at exact head `aa0595cc`. Both claimed witnesses are mutation-proven; the pre-repair bug gave every cohort a fresh 7,200 s.
+
+Reviewing only the three-file post-HOLD repair as asked, `4ab2557..aa0595cc`.
+
+**Identity, byte-verified.** Head `aa0595cce9b626941c9cc4fd64062b4e06d10cf1` is a commit;
+`git log --format=%P` gives the single parent `4ab255795a974f7de3549480728be07c5a81887c`, exactly the
+claimed base; PR #166's head matches. Delta is **3 files, +37 / -3** — the claimed three-file repair.
+
+**The repair does what it says.** `run_capacity` previously passed
+`wall_budget_nanoseconds=MAX_CAPACITY_WALL_NANOSECONDS` to every cohort, so each of the four
+`MEMBER_WORKER_COUNTS` got its own fresh two-hour budget. It now passes
+`_remaining_capacity_wall(started_wall)`, which returns
+`MAX_CAPACITY_WALL_NANOSECONDS - (time.monotonic_ns() - started_wall)` and raises
+`"capacity wall deadline expired before cohort training"` on `remaining <= 0`. `started_wall` is set
+once at line 919, before the loop at 1064 — so it is genuinely one composed packet deadline, not a
+per-cohort one.
+
+**Both witnesses kill, and the first reproduces the exact pre-repair bug.**
+
+- **M1** — revert the call site to `wall_budget_nanoseconds=MAX_CAPACITY_WALL_NANOSECONDS`:
+  `test_capacity_run_wires_train_only_reader_through_every_measurement` **FAILS** with
+  `assert [7200000000000, …] == [401, 307, 211, 103]`. The observed `7200000000000` is the two-hour
+  constant arriving at all four cohorts — the defect the HOLD was about, caught at the call site
+  rather than only in the helper.
+- **M2** — weaken the boundary `remaining <= 0` → `remaining < 0`:
+  `test_capacity_composed_deadline_refuses_before_cohort_training` **FAILS** with
+  `DID NOT RAISE WorldAfterstateV1CapacityError`. The expiry witness pins exactly zero.
+
+Both mutations live, both killed, source restored, **0 tracked files modified**.
+
+**Suites, self-run at the exact head** in a worktree venv (`uv sync --frozen --group dev --group rl`,
+extension rebuilt, `__pycache__` cleared, `python -P -B`): `-k "world_afterstate or value_afterstate"`
+→ **175 passed**, matching the claimed 175/175.
+
+**Marker fields cross-checked against source constants, not accepted:**
+`wall_cap_nanoseconds 7200000000000` = `MAX_CAPACITY_WALL_NANOSECONDS = 2*60*60*10**9` (2.0 h);
+`memory_limit_bytes 32212254720` = `CAPACITY_MEMORY_LIMIT_BYTES = 30*1024**3` (30.0 GiB);
+`member_worker_counts [1,2,4,8]` = `MEMBER_WORKER_COUNTS`; `row_worker_counts [1,2,4,8,16]` =
+`ROW_WORKER_COUNTS`; `source_git` = the reviewed head. Authority is **3 true / 12 false** — only
+train-only capacity epoch, train-only P0 diagnostic and V0 train-row reopening; no calibration,
+report, provider-audit, scientific P1, P2, gameplay, strength, merge, promotion, deployment, retry
+or R5.
+
+**V0 input bindings.** I located and hashed two of the three: population
+`48155bb5…` at `/opt/value-afterstate-v0-population-d9ad99f-r1/population.json` and freeze
+`735b367e…` at `/opt/value-afterstate-v0-freeze-d9ad99f-r1.json`. I could **not** locate a file
+matching `v0_dataset_external_sha256 = ee9c925d…` with bounded scans of `/opt` on Perf, and it is not
+bound inside the V0 freeze, packet, capacity or admission records I checked. That is not a defect:
+the value is the source constant `V0_DATASET_EXTERNAL_SHA256`, and `_validate_v0_inputs` refuses with
+`"capacity V0 external input binding drift"` unless the dataset bytes hash to it at execution, with
+manifest and freeze cross-bindings besides. I record it as a limit of my search, not a gap.
+
+**Coverage limits.** I reviewed the three-file repair, its two witnesses, the marker's field bindings
+and the V0 input-validation guard. I did **not** audit the rest of `world_afterstate_v1_capacity.py`,
+did not exercise the capacity path end to end, and did not review PR #167, which the mailbox says is
+deliberately not yet reviewable.
+
+**PASS. Marker follows, byte-for-byte from the request.**
+
+WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_capacity_epoch_authorized":true,"train_only_p0_diagnostic_authorized":true,"v0_train_row_reopening_authorized":true},"member_worker_counts":[1,2,4,8],"memory_limit_bytes":32212254720,"row_worker_counts":[1,2,4,8,16],"schema":"world-afterstate-v1-capacity-review-claim-v1","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_freeze_external_sha256":"735b367e824e1510b7a951e2fd3ef373c8f3688107d622152a1dfc12830b43a0","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581","wall_cap_nanoseconds":7200000000000}

@@ -49,6 +49,7 @@ DEFAULT_TOKEN_BUDGET = 1 << 62
 CAPACITY_EXECUTION_SYNTHETIC = "synthetic-injected-capacity"
 CAPACITY_EXECUTION_VERIFIED = "verified-runtime-capacity"
 CAPACITY_PROVENANCE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-provenance-v1"
+_REVIEW_AUTHENTICATION = object()
 
 
 class ControllerError(ValueError):
@@ -57,6 +58,35 @@ class ControllerError(ValueError):
 
 class SourceAdmissionError(ControllerError):
     """A structurally valid attempt is not admissible scientific evidence."""
+
+
+@dataclass(frozen=True)
+class _AuthenticatedSourceReview:
+    """Process-local authority transition produced by external review.
+
+    The marker and its claim remain serialized for audit, but this object is
+    deliberately not JSON serializable and can only be minted by
+    ``authenticate_source_review``.  A receipt/freeze copied from disk thus
+    cannot carry scientific admission authority by itself.
+    """
+
+    review_commit: str
+    review_marker_sha256: str
+    review_claim: Mapping[str, object]
+    _token: object
+
+    def __post_init__(self) -> None:
+        if self._token is not _REVIEW_AUTHENTICATION:
+            raise ControllerError("source review authentication token drift")
+
+    def __getitem__(self, key: str) -> object:
+        if key == "review_commit":
+            return self.review_commit
+        if key == "review_marker_sha256":
+            return self.review_marker_sha256
+        if key == "review_claim":
+            return self.review_claim
+        raise KeyError(key)
 
 
 def _source_sha256() -> str:
@@ -171,7 +201,8 @@ def _validate_capacity_provenance(value: object,
                                   scientific_admissible: bool) -> None:
     if type(value) is not dict or set(value) != {
             "schema", "execution_kind", "scientific_admissible",
-            "runtime_sha256", "evidence_sha256", "tool_script_sha256"}:
+            "runtime_sha256", "evidence_sha256", "tool_script_sha256",
+            "games"}:
         raise ControllerError("capacity provenance schema drift")
     if value["schema"] != CAPACITY_PROVENANCE_SCHEMA \
             or value["execution_kind"] != execution_kind \
@@ -180,11 +211,32 @@ def _validate_capacity_provenance(value: object,
     if execution_kind == CAPACITY_EXECUTION_SYNTHETIC:
         if value["runtime_sha256"] is not None \
                 or value["evidence_sha256"] is not None \
-                or value["tool_script_sha256"] is not None:
+                or value["tool_script_sha256"] is not None \
+                or value["games"] != []:
             raise ControllerError("synthetic capacity provenance drift")
     else:
         for key in ("runtime_sha256", "evidence_sha256", "tool_script_sha256"):
             _strict_sha(value[key], f"capacity provenance {key}")
+        games = value["games"]
+        if type(games) is not list or not games:
+            raise ControllerError("verified capacity evidence absent")
+        game_keys = {"workers", "worker", "game", "runtime_sha256",
+                     "evidence_sha256", "tool_script_sha256"}
+        for game in games:
+            if type(game) is not dict or set(game) != game_keys:
+                raise ControllerError("verified capacity evidence schema drift")
+            _positive_int(game["workers"], "capacity evidence workers")
+            _nonnegative_int(game["worker"], "capacity evidence worker")
+            _nonnegative_int(game["game"], "capacity evidence game")
+            for key in ("runtime_sha256", "evidence_sha256", "tool_script_sha256"):
+                _strict_sha(game[key], f"capacity evidence {key}")
+        if value["runtime_sha256"] != _sha(
+                [game["runtime_sha256"] for game in games]) \
+                or value["evidence_sha256"] != _sha(
+                    [game["evidence_sha256"] for game in games]) \
+                or any(game["tool_script_sha256"] != value["tool_script_sha256"]
+                       for game in games):
+            raise ControllerError("verified capacity evidence binding drift")
 
 
 @dataclass(frozen=True)
@@ -406,9 +458,7 @@ def validate_capacity_receipt(receipt: CapacityReceipt | Mapping[str, object]) -
         raise ControllerError("capacity receipt identity drift")
     if (body["execution_kind"] not in (CAPACITY_EXECUTION_SYNTHETIC,
                                         CAPACITY_EXECUTION_VERIFIED)
-            or type(body["scientific_admissible"]) is not bool
-            or body["scientific_admissible"] != (
-                body["execution_kind"] == CAPACITY_EXECUTION_VERIFIED)):
+            or body["scientific_admissible"] is not False):
         raise ControllerError("capacity execution provenance drift")
     _validate_capacity_provenance(
         body["provenance"], execution_kind=body["execution_kind"],
@@ -460,6 +510,19 @@ def validate_capacity_receipt(receipt: CapacityReceipt | Mapping[str, object]) -
         else:
             saw_failure = True
         previous = arm
+    if body["execution_kind"] == CAPACITY_EXECUTION_VERIFIED:
+        expected_games = [
+            (arm["workers"], worker, game)
+            for arm in arms
+            for worker in range(arm["workers"])
+            for game in range(2)
+        ]
+        observed_games = [
+            (game["workers"], game["worker"], game["game"])
+            for game in body["provenance"]["games"]
+        ]
+        if observed_games != expected_games:
+            raise ControllerError("verified capacity evidence population drift")
     selected = body["selected_workers"]
     expected_selected = (max(
         passing,
@@ -486,11 +549,11 @@ def validate_capacity_receipt(receipt: CapacityReceipt | Mapping[str, object]) -
         raise ControllerError("capacity receipt hash drift")
 
 
-def run_capacity(*, deadline_nanoseconds: int, physical_memory_bytes: int,
+def _run_capacity_core(*, deadline_nanoseconds: int, physical_memory_bytes: int,
                  cumulative_wall_budget_nanoseconds: int = DEFAULT_WALL_BUDGET_NANOSECONDS,
                  cumulative_token_budget: int = DEFAULT_TOKEN_BUDGET,
                  game_runner: Callable[[int, int, int], Mapping[str, object]],
-                 synthetic: bool = True,
+                 synthetic: bool,
                  provenance: Mapping[str, object] | None = None,
                  provenance_factory: Callable[[], Mapping[str, object]] | None = None,
                  progress_sink: Callable[[dict[str, object]], object] | None = None
@@ -508,14 +571,9 @@ def run_capacity(*, deadline_nanoseconds: int, physical_memory_bytes: int,
         raise ControllerError("synthetic capacity provenance factory refused")
     if not synthetic and provenance_factory is None:
         raise ControllerError("verified capacity provenance factory absent")
-    if provenance is None and synthetic:
-        provenance = {"schema": CAPACITY_PROVENANCE_SCHEMA,
-                      "execution_kind": CAPACITY_EXECUTION_SYNTHETIC,
-                      "scientific_admissible": False,
-                      "runtime_sha256": None, "evidence_sha256": None,
-                      "tool_script_sha256": None}
     if synthetic:
-        assert provenance is not None
+        if provenance is None:
+            raise ControllerError("synthetic capacity provenance absent")
         _validate_capacity_provenance(
             dict(provenance), execution_kind=CAPACITY_EXECUTION_SYNTHETIC,
             scientific_admissible=False)
@@ -599,8 +657,7 @@ def run_capacity(*, deadline_nanoseconds: int, physical_memory_bytes: int,
         provenance = provenance_factory()
         _validate_capacity_provenance(
             dict(provenance), execution_kind=CAPACITY_EXECUTION_VERIFIED,
-            scientific_admissible=True)
-    assert provenance is not None
+            scientific_admissible=False)
     body = {"schema": CAPACITY_SCHEMA, "deadline_nanoseconds": deadline_nanoseconds,
             "physical_memory_bytes": physical_memory_bytes,
             "cumulative_wall_budget_nanoseconds": cumulative_wall_budget_nanoseconds,
@@ -613,11 +670,37 @@ def run_capacity(*, deadline_nanoseconds: int, physical_memory_bytes: int,
             "authority": dict(luna.AUTHORITY),
             "execution_kind": (CAPACITY_EXECUTION_SYNTHETIC if synthetic
                                 else CAPACITY_EXECUTION_VERIFIED),
-            "scientific_admissible": not synthetic}
+            "scientific_admissible": False}
     body["provenance"] = dict(provenance)
     receipt = CapacityReceipt(body, _sha(body))
     validate_capacity_receipt(receipt)
     return receipt
+
+
+def run_capacity(*, deadline_nanoseconds: int, physical_memory_bytes: int,
+                 cumulative_wall_budget_nanoseconds: int = DEFAULT_WALL_BUDGET_NANOSECONDS,
+                 cumulative_token_budget: int = DEFAULT_TOKEN_BUDGET,
+                 game_runner: Callable[[int, int, int], Mapping[str, object]],
+                 progress_sink: Callable[[dict[str, object]], object] | None = None
+                 ) -> CapacityReceipt:
+    """Run the explicitly synthetic, score-free capacity test seam.
+
+    Runtime-verified capacity is intentionally unavailable through this API;
+    only ``run_real_capacity`` can mint that candidate from reopened process
+    evidence.
+    """
+    return _run_capacity_core(
+        deadline_nanoseconds=deadline_nanoseconds,
+        physical_memory_bytes=physical_memory_bytes,
+        cumulative_wall_budget_nanoseconds=cumulative_wall_budget_nanoseconds,
+        cumulative_token_budget=cumulative_token_budget,
+        game_runner=game_runner, synthetic=True,
+        provenance={"schema": CAPACITY_PROVENANCE_SCHEMA,
+                    "execution_kind": CAPACITY_EXECUTION_SYNTHETIC,
+                    "scientific_admissible": False,
+                    "runtime_sha256": None, "evidence_sha256": None,
+                    "tool_script_sha256": None, "games": []},
+        progress_sink=progress_sink)
 
 
 def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
@@ -680,13 +763,19 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
                     "capacity requires verified subprocess evidence")
             provenance = {"schema": CAPACITY_PROVENANCE_SCHEMA,
                           "execution_kind": CAPACITY_EXECUTION_VERIFIED,
-                          "scientific_admissible": True,
+                          "scientific_admissible": False,
                           "runtime_sha256": _sha([item.body["runtime"]
                                                    for item in reopened.evidence]),
                           "evidence_sha256": _sha([item.sha256
                                                     for item in reopened.evidence]),
                           "tool_script_sha256": _sha_bytes(
-                              Path(tool_script).read_bytes())}
+                              Path(tool_script).read_bytes()),
+                          "games": []}
+            provenance["games"].append({
+                "workers": workers, "worker": worker, "game": game_index,
+                "runtime_sha256": provenance["runtime_sha256"],
+                "evidence_sha256": provenance["evidence_sha256"],
+                "tool_script_sha256": provenance["tool_script_sha256"]})
             provenance_box.append(((workers, worker, game_index), provenance))
             finished = time.monotonic_ns()
             elapsed = max(1, finished - started)
@@ -734,7 +823,7 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
                 provider_capacity_rate_milli=provider_capacity_rate_milli,
                 mechanics_sha256=mechanics)
 
-    return run_capacity(
+    return _run_capacity_core(
         deadline_nanoseconds=deadline_nanoseconds,
         physical_memory_bytes=physical_memory_bytes,
         cumulative_wall_budget_nanoseconds=cumulative_wall_budget_nanoseconds,
@@ -743,12 +832,18 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
         provenance_factory=lambda: {
             "schema": CAPACITY_PROVENANCE_SCHEMA,
             "execution_kind": CAPACITY_EXECUTION_VERIFIED,
-            "scientific_admissible": True,
+            "scientific_admissible": False,
             "runtime_sha256": _sha([
                 item[1]["runtime_sha256"] for item in sorted(provenance_box)]),
             "evidence_sha256": _sha([
                 item[1]["evidence_sha256"] for item in sorted(provenance_box)]),
             "tool_script_sha256": _sha_bytes(Path(tool_script).read_bytes()),
+            "games": [
+                {"workers": item[0][0], "worker": item[0][1], "game": item[0][2],
+                 "runtime_sha256": item[1]["runtime_sha256"],
+                 "evidence_sha256": item[1]["evidence_sha256"],
+                 "tool_script_sha256": item[1]["tool_script_sha256"]}
+                for item in sorted(provenance_box)],
         },)
 
 
@@ -780,8 +875,10 @@ def launch_freeze_payload(*, design: luna.LunaDesign,
                           worker_count: int, output_root: Path,
                           tool_script: Path) -> dict[str, object]:
     """Build the exact externally reviewed, immutable collection admission."""
-    if capacity.body.get("scientific_admissible") is not True:
-        raise ControllerError("launch freeze requires verified capacity")
+    if (capacity.body.get("route") != CAPACITY_ROUTE
+            or capacity.body.get("execution_kind") != CAPACITY_EXECUTION_VERIFIED
+            or capacity.body.get("scientific_admissible") is not False):
+        raise ControllerError("launch freeze requires verified capacity candidate")
     luna.validate_game_workers(worker_count)
     if not Path(tool_script).is_file():
         raise ControllerError("launch freeze tool script absent")
@@ -857,7 +954,7 @@ def authenticate_source_review(*, freeze: Mapping[str, object],
                                capacity: CapacityReceipt,
                                output_root: Path, tool_script: Path,
                                review_commit: str,
-                               repo_root: Path | None = None) -> dict[str, object]:
+                               repo_root: Path | None = None) -> _AuthenticatedSourceReview:
     """Authenticate an exact external review marker from fetched GitHub main."""
     validate_launch_freeze(freeze, design=design, census=census,
                            capacity=capacity, output_root=output_root,
@@ -918,15 +1015,17 @@ def authenticate_source_review(*, freeze: Mapping[str, object],
             or not review_bytes.startswith(previous_bytes)
             or review_bytes[len(previous_bytes):] != lines[0]):
         raise ControllerError("review marker commit drift")
-    return {"review_commit": review_commit,
-            "review_marker_sha256": _sha_bytes(lines[0]),
-            "review_claim": marker_payload}
+    return _AuthenticatedSourceReview(
+        review_commit=review_commit,
+        review_marker_sha256=_sha_bytes(lines[0]),
+        review_claim=marker_payload,
+        _token=_REVIEW_AUTHENTICATION)
 
 
 def _admission_body(*, design: luna.LunaDesign, census: luna.RootCensus,
                     capacity: CapacityReceipt, worker_count: int,
                     evidence_root: Path, freeze_sha256: str,
-                    review: Mapping[str, object]) -> dict[str, object]:
+                    review: _AuthenticatedSourceReview) -> dict[str, object]:
     return {"schema": POPULATION_ADMISSION_SCHEMA,
             "design": design.payload(), "census_sha256": census.census_sha256,
             "capacity_receipt_sha256": capacity.receipt_sha256,
@@ -942,7 +1041,8 @@ def _admission_body(*, design: luna.LunaDesign, census: luna.RootCensus,
 def _validate_admission(payload: Mapping[str, object], *, design: luna.LunaDesign,
                         census: luna.RootCensus, capacity: CapacityReceipt,
                         worker_count: int, evidence_root: Path,
-                        freeze: Mapping[str, object], review: Mapping[str, object]) -> None:
+                        freeze: Mapping[str, object],
+                        review: _AuthenticatedSourceReview) -> None:
     if type(payload) is not dict or set(payload) != {
             "schema", "design", "census_sha256", "capacity_receipt_sha256",
             "schedule_sha256", "worker_count", "output_root", "freeze_sha256",
@@ -958,8 +1058,10 @@ def _validate_admission(payload: Mapping[str, object], *, design: luna.LunaDesig
                                freeze_sha256=freeze["freeze_sha256"], review=review)
     if body != expected:
         raise ControllerError("population admission binding drift")
-    if capacity.body.get("scientific_admissible") is not True:
-        raise ControllerError("synthetic capacity cannot admit source population")
+    if (capacity.body.get("execution_kind") != CAPACITY_EXECUTION_VERIFIED
+            or capacity.body.get("scientific_admissible") is not False
+            or not isinstance(review, _AuthenticatedSourceReview)):
+        raise ControllerError("authenticated capacity review required")
 
 
 def _missing_row(coordinate: tuple[str, int, int], mirror: int,
@@ -1083,7 +1185,8 @@ def run_source_population(*, design: luna.LunaDesign, seed_secret: bytes,
                     else CapacityReceipt.reopen(capacity))
     validate_capacity_receipt(capacity_obj)
     if (capacity_obj.body["route"] != CAPACITY_ROUTE
-            or capacity_obj.body["scientific_admissible"] is not True):
+            or capacity_obj.body["execution_kind"] != CAPACITY_EXECUTION_VERIFIED
+            or capacity_obj.body["scientific_admissible"] is not False):
         raise ControllerError("capacity admission refused")
     selected = capacity_obj.body["selected_workers"]
     if worker_count is None:

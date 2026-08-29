@@ -142,15 +142,26 @@ def _verified_capacity_fixture(*, one_arm: bool = False) -> controller.CapacityR
         "route": source["route"],
         "authority": source["authority"],
         "execution_kind": controller.CAPACITY_EXECUTION_VERIFIED,
-        "scientific_admissible": True,
+        "scientific_admissible": False,
     }
+    tool_sha = hashlib.sha256(TOOL.read_bytes()).hexdigest()
+    games = [{"workers": arm["workers"], "worker": worker, "game": game,
+              "runtime_sha256": "a" * 64,
+              "evidence_sha256": "b" * 64,
+              "tool_script_sha256": tool_sha}
+             for arm in source["arms"]
+             for worker in range(arm["workers"])
+             for game in range(2)]
     body["provenance"] = {
         "schema": controller.CAPACITY_PROVENANCE_SCHEMA,
         "execution_kind": controller.CAPACITY_EXECUTION_VERIFIED,
-        "scientific_admissible": True,
-        "runtime_sha256": "a" * 64,
-        "evidence_sha256": "b" * 64,
-        "tool_script_sha256": hashlib.sha256(TOOL.read_bytes()).hexdigest(),
+        "scientific_admissible": False,
+        "runtime_sha256": controller._sha(
+            [game["runtime_sha256"] for game in games]),
+        "evidence_sha256": controller._sha(
+            [game["evidence_sha256"] for game in games]),
+        "tool_script_sha256": tool_sha,
+        "games": games,
     }
     return controller.CapacityReceipt(body, controller._sha(body))
 
@@ -347,6 +358,8 @@ def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
         physical_memory_bytes=8_000_000_000,
         provider_capacity_rate_milli=1 << 60)
     assert receipt.body["selected_workers"] == 1
+    assert receipt.body["execution_kind"] == controller.CAPACITY_EXECUTION_VERIFIED
+    assert receipt.body["scientific_admissible"] is False
     assert len(issued) == 2 and issued == meters
     assert receipt.body["arms"][0]["aggregate_busy_cpu_nanoseconds"] == 200
 
@@ -364,6 +377,39 @@ def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
             deadline_nanoseconds=1200 * 1_000_000_000,
             physical_memory_bytes=8_000_000_000,
             provider_capacity_rate_milli=1 << 60)
+
+
+def test_public_capacity_api_cannot_issue_verified_runtime_or_science():
+    with pytest.raises(TypeError):
+        controller.run_capacity(
+            deadline_nanoseconds=1200 * 1_000_000_000,
+            physical_memory_bytes=8_000_000_000, game_runner=_metric,
+            synthetic=False)
+    with pytest.raises(TypeError):
+        controller.run_capacity(
+            deadline_nanoseconds=1200 * 1_000_000_000,
+            physical_memory_bytes=8_000_000_000, game_runner=_metric,
+            provenance_factory=lambda: {})
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000, game_runner=_metric)
+    assert receipt.body["execution_kind"] == controller.CAPACITY_EXECUTION_SYNTHETIC
+    assert receipt.body["scientific_admissible"] is False
+
+
+def test_verified_capacity_requires_one_provenance_row_per_measured_game():
+    payload = _verified_capacity_fixture(one_arm=True).serialized()
+    payload["provenance"]["games"].pop()
+    games = payload["provenance"]["games"]
+    payload["provenance"]["runtime_sha256"] = controller._sha(
+        [game["runtime_sha256"] for game in games])
+    payload["provenance"]["evidence_sha256"] = controller._sha(
+        [game["evidence_sha256"] for game in games])
+    body = {key: value for key, value in payload.items()
+            if key != "receipt_sha256"}
+    payload["receipt_sha256"] = controller._sha(body)
+    with pytest.raises(controller.ControllerError, match="evidence population"):
+        controller.CapacityReceipt.reopen(payload)
 
 
 def test_population_admission_requires_capacity_and_census_before_runner(tmp_path):
@@ -418,6 +464,14 @@ def test_candidate_freeze_and_direct_controller_omission_cannot_admit(tmp_path,
     relabelled_payload = relabelled.serialized()
     relabelled_payload["execution_kind"] = controller.CAPACITY_EXECUTION_VERIFIED
     relabelled_payload["scientific_admissible"] = True
+    relabelled_payload["provenance"] = {
+        "schema": controller.CAPACITY_PROVENANCE_SCHEMA,
+        "execution_kind": controller.CAPACITY_EXECUTION_VERIFIED,
+        "scientific_admissible": True,
+        "runtime_sha256": "c" * 64,
+        "evidence_sha256": "d" * 64,
+        "tool_script_sha256": "e" * 64,
+    }
     relabelled_body = {key: value for key, value in relabelled_payload.items()
                        if key != "receipt_sha256"}
     relabelled_payload["receipt_sha256"] = controller._sha(relabelled_body)

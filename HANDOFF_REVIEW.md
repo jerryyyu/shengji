@@ -7830,3 +7830,106 @@ unreviewable until the receipt exists. R4 untouched, still pre-rename. — Claud
 
 WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_capacity_epoch_authorized":true,"train_only_p0_diagnostic_authorized":true,"v0_train_row_reopening_authorized":true},"member_worker_counts":[1,2,4,8],"memory_limit_bytes":32212254720,"row_worker_counts":[1,2,4,8,16],"schema":"world-afterstate-v1-capacity-review-claim-v1","source_git":"34409006ed9ecafdddd41e060936c2e3a8421aee","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_freeze_external_sha256":"735b367e824e1510b7a951e2fd3ef373c8f3688107d622152a1dfc12830b43a0","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581","wall_cap_nanoseconds":7200000000000}
 
+
+## 2026-08-29 09:55 EDT — ✅ PASS: PR #166 repaired head `bd400a68`. I reached the same repair independently from the failed unit before reading the request; both `or` clauses probed, and **one of them has no witness**
+
+Scope reviewed: `34409006ed9ecafdddd41e060936c2e3a8421aee..bd400a6855b83de263838cabdee1f07de6839ba2`,
+parent confirmed via `git show -s --format=%P` = `34409006`, **2 files, 11
+insertions / 2 deletions**, `git diff --check` clean. Batteries reproduced at
+the exact head in a fresh worktree venv with the native extension rebuilt:
+**80 passed pure** (37.05 s) and **80 passed strict** `SHENGJI_FAST=1
+SHENGJI_REQUIRE_VOIDS=1` (31.76 s), both `-P -B` with `__pycache__` cleared.
+Recorded counts match byte-for-byte.
+
+**I did not take the diagnosis on trust — I had already derived it.** At 13:39Z
+I read the `3440900-r1` unit failing in 2.093 s with `capacity review marker
+introduction drift` and worked back from `authenticate_review_commit` before
+the request existed. Measured, not inferred: the prefix
+`WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW` matched **2** lines in the ledger
+at `be129b6` and **1** at its parent `f9a924a`, so `current_matches != [marker]`
+and `previous_matches` both fired. Walking every commit that touched the
+ledger, the family's count went `0 -> 1` at `cad30be` (the review the three
+`aa0595c` attempts consumed) and `1 -> 2` at `be129b6`. The old predicate was
+therefore satisfiable exactly once per prefix, for all time. This matters
+because it is the second thing I have authorized in this lane that could not
+succeed: my `be129b6` PASS granted "exactly one fresh execution at this
+repaired head" without checking that the marker I was appending could be
+consumed. The reviewed delta did not touch this function, but the
+authorization I issued depended on it. That is `de1725c` — the acceptance
+witness is the one always missing — applied to a review rather than to code.
+
+**Clause 1 is witnessed; clause 2 is not.** Mutation in a scratch worktree,
+production guard only:
+
+- Reverting to `current_matches != [marker] or previous_matches` fails exactly
+  `test_capacity_review_marker_is_external_append_only_and_exact`
+  (**1 failed, 79 passed**). The repair's acceptance witness is real, and the
+  test now carries a genuine prior same-prefix marker rather than `b"# ledger\n"`.
+- Deleting `or marker in previous_matches` — the anti-replay clause — leaves
+  **80 passed**, and the capacity file alone still gives 7 passed. Nothing in
+  the suite distinguishes its presence from its absence.
+
+That clause is reachable and load-bearing: with `previous_matches == [marker]`
+and a commit re-appending the identical marker, `current_matches` equals
+`[*previous_matches, marker]`, clause 1 passes, and only clause 2 stops the
+same spent head being re-authorized by duplicate append. The added third case
+(`previous + marker + marker`) exercises clause 1, not clause 2. One more case
+— `previous` already containing `marker` itself — closes it.
+
+**Pre-registered acceptance probe against the real ledger, not a fixture.**
+Before pushing I simulated the shipped predicate over the actual
+1,044,265-byte ledger and my own pending append, and over history:
+
+| case | review commit | current | proposed |
+|---|---|---|---|
+| first review, must not regress | `cad30be` | accept | accept |
+| second review at repaired head | `be129b6` | **refuse** | accept |
+| replay a spent `aa0595c` marker | `be129b6` | refuse | refuse |
+| marker absent from review commit | `f9a924a` | refuse | refuse |
+| forged marker, wall cap +1 ns | `be129b6` | refuse | refuse |
+
+**The repair is correct and is being applied one module at a time.** The
+identical predicate `current_matches != [marker] or previous_matches` still
+stands at seven other sites: `belief_b2_execution.py:652`,
+`belief_v2_freeze.py:963`, `world_afterstate_admission.py:162`,
+`world_afterstate_v1_admission.py:328` and `:425`, and
+`pair_ballot_affected_capacity_preflight.py:247` /
+`pair_ballot_affected_scored_packet_design.py:530`. Two consequences worth
+acting on before they cost another launch:
+
+1. `belief_v2_freeze.authenticate_execution_review` gates
+   `build_pipeline_admission`, and its family already carries **13** markers in
+   the ledger. Any path through that function is unsatisfiable now.
+2. `world_afterstate_v1_admission.REVIEW_PREFIX`
+   (`WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW`) currently matches **0** ledger
+   lines. It will authenticate its first P1 scientific review and refuse every
+   repaired-head re-review after it — the same wall, one stage further down
+   this same lane.
+
+That the file already defines `CAPACITY_REENTRY_PREFIX` *and*
+`CAPACITY_REENTRY_V2_PREFIX` suggests minting a fresh prefix constant has been
+the de-facto workaround. The rotation record in
+`pair_ballot_affected_scored_packet_design.py` is not an escape either: no
+module under `server/shengji/rl` references it, and these authenticators also
+require `current.startswith(previous)`.
+
+**Authority.** One fresh, non-retry, train-only, score-free Perf capacity
+execution at `bd400a68` on the immutable V0 population/dataset/freeze, corrected
+dataset root, a new output namespace, strict native/void `-P -B`, the composed
+two-hour internal deadline and the existing outcome-blind progress contract.
+Everything else stays false: calibration/report rows, scientific P1 training,
+PR #167 freeze authority, gameplay, strength, merge, deployment, R5.
+
+**One process note, since `62d8507` landed 22 seconds after my last ledger
+push.** `BACKLOG.md` item 7 and `RL_PLAN.md` now require a pre-launch DAG audit
+for every projected multi-hour run. This capacity execution carries a two-hour
+internal deadline and so is in scope; its DAG, worker counts and recovery
+behavior have been reviewed across the r1/r2/r3 receipts, but no audit has been
+recorded under the new heading. Worth attaching one to the launch rather than
+inheriting authority from this marker.
+
+Marker below is machine-generated from the module's own `expected_review_claim`
+at `bd400a68`: **1,118 bytes**, SHA-256
+`6720d62ccbb9ab9dc63c3248de935c3b8dbe3a9e38536b90c13a8196110a33cc`.
+
+WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_capacity_epoch_authorized":true,"train_only_p0_diagnostic_authorized":true,"v0_train_row_reopening_authorized":true},"member_worker_counts":[1,2,4,8],"memory_limit_bytes":32212254720,"row_worker_counts":[1,2,4,8,16],"schema":"world-afterstate-v1-capacity-review-claim-v1","source_git":"bd400a6855b83de263838cabdee1f07de6839ba2","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_freeze_external_sha256":"735b367e824e1510b7a951e2fd3ef373c8f3688107d622152a1dfc12830b43a0","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581","wall_cap_nanoseconds":7200000000000}

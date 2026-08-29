@@ -16,12 +16,16 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Sequence
 
+import torch
+
 from .belief_contract import canonical_json_bytes
 from .world_afterstate import WorldAfterstateTensorsV0
 from .world_afterstate_v1_dataset import JoinedAdvantageV1
 from .world_afterstate_v1_evaluation import (
     AdvantageInferenceBatchV1, collate_inference_pairs)
-from .world_afterstate_v1_model import successor_tensor_sha256
+from .world_afterstate_v1_model import (
+    AdvantageBatchV1, collate_successor_tensors, successor_tensor_sha256)
+from .world_afterstate_v1_training import AdvantageTrainingBatchV1
 
 
 CONTROL_ROW_SCHEMA = "world-afterstate-advantage-control-row-v1"
@@ -347,6 +351,52 @@ def label_permutation(
     return tuple(controls), evidence
 
 
+def collate_control_training_pairs(
+        values: Sequence[ControlledAdvantageV1], *,
+        split: str) -> AdvantageTrainingBatchV1:
+    """Bind one named control population to the real optimizer batch type."""
+    if type(values) not in (list, tuple) or not values \
+            or split not in ("fit", "select") \
+            or any(type(value) is not ControlledAdvantageV1
+                   for value in values):
+        raise WorldAfterstateV1ControlError(
+            "control training population drift")
+    for value in values:
+        value.validate()
+    names = {value.control_name for value in values}
+    if len(names) != 1 \
+            or any(value.natural.pair.fold != "train" for value in values):
+        raise WorldAfterstateV1ControlError(
+            "control training cohort binding drift")
+    tensors = AdvantageBatchV1(
+        incumbent=collate_successor_tensors(
+            [value.incumbent for value in values]),
+        candidate=collate_successor_tensors(
+            [value.candidate for value in values]),
+        targets=torch.as_tensor(
+            [value.target_levels for value in values], dtype=torch.float32))
+    tensors.validate()
+    keys = [value.key() for value in values]
+    result = AdvantageTrainingBatchV1(
+        pair_keys=tuple(f"{state}:{candidate}:{replicate}"
+                        for state, candidate, replicate in keys),
+        state_group_ids=tuple(state for state, _, _ in keys),
+        candidate_indexes=tuple(candidate for _, candidate, _ in keys),
+        replicates=tuple(replicate for _, _, replicate in keys),
+        incumbent_row_sha256s=tuple(
+            value.natural.incumbent_row_sha256 for value in values),
+        candidate_row_sha256s=tuple(
+            value.natural.candidate_row_sha256 for value in values),
+        incumbent_tensor_sha256s=tuple(
+            value.incumbent_tensor_sha256 for value in values),
+        candidate_tensor_sha256s=tuple(
+            value.candidate_tensor_sha256 for value in values),
+        target_levels=tuple(value.target_levels for value in values),
+        split=split, tensors=tensors)
+    result.validate()
+    return result
+
+
 def _batch_tensor(batch, index: int) -> WorldAfterstateTensorsV0:
     length = int(batch.history_lengths[index])
     return WorldAfterstateTensorsV0(
@@ -471,6 +521,7 @@ def validate_control_evidence(value: object) -> None:
 __all__ = [
     "AUTHORITY", "ControlledAdvantageV1", "WorldAfterstateV1ControlError",
     "action_association_permutation", "complete_world_shuffle",
-    "identical_successor_control", "label_permutation",
+    "collate_control_training_pairs", "identical_successor_control",
+    "label_permutation",
     "validate_control_evidence",
 ]

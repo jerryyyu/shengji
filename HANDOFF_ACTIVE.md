@@ -4,30 +4,36 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 09:27 EDT**. Remote main before this refresh:
-`03e83c0a7b5490db2fa4208010bc8fadb3cdeb1f`.
+Last reconciled: **2026-08-29 10:15 EDT**. Remote main before this refresh:
+`62d85079beebf5ba362d47585f2c9515e0d6bba2`.
 
 ## OPEN — one consolidated Value V1 capacity source+launch review
 
-Review **PR #166 at exact head
-`34409006ed9ecafdddd41e060936c2e3a8421aee`**. This supersedes the three spent
-`aa0595c` command markers; do not authorize another old-head re-entry. Review
-only `aa0595cce9b626941c9cc4fd64062b4e06d10cf1..34409006ed9ecafdddd41e060936c2e3a8421aee`
-(four files).
+Review **PR #166 at repaired exact head
+`bd400a6855b83de263838cabdee1f07de6839ba2`**. The already-reviewed
+`34409006ed9ecafdddd41e060936c2e3a8421aee` capacity command was consumed and
+failed after 2.093 s wall / 3.357 s CPU, before any training-row read or output
+publication, with `capacity review marker introduction drift`. Do not
+authorize that spent old head again.
 
-The repair treats the sealed V0 population manifest as authoritative. Before
-excluding any root, it proves that every manifest-declared train group has
-exactly candidate indices `0..candidate_count-1`, both frozen replicates, no
-duplicates and no foreign group. It then removes only groups whose declared
-`candidate_count == 1`; those roots have no action-relative V1 target. The
-capacity integration witness contains one real singleton alongside the normal
-multi-candidate roots, proves the singleton is excluded from V1 advantage
-pairs, and proves a missing replicate or forged candidate count refuses. The
-full V1 battery passes **80/80 pure and 80/80 strict compiled/void**, and
-`git diff --check` is clean.
+Review only
+`34409006ed9ecafdddd41e060936c2e3a8421aee..bd400a6855b83de263838cabdee1f07de6839ba2`
+(two files, 11 insertions / 2 deletions). The source defect was that review
+authentication required the current ledger to contain exactly one marker with
+this prefix and the parent to contain none. Because the prior `aa0595c` review
+uses the same prefix, every honest repaired-head review was formally
+unusable. The repair requires the current prefix-matched sequence to equal all
+parent matches followed by exactly one new marker, and refuses if that exact
+new marker already existed in the parent. The permanent witness includes a
+real prior same-prefix marker, accepts one append and refuses both a missing
+append and a duplicated append. Reverting only the production guard to the old
+logic makes that named test fail; restored source passes it. Full V1 batteries
+pass **80/80 pure and 80/80 strict compiled/void**; `git diff --check` is
+clean. This is one source-interaction repair, not a new scientific design.
 
-If source and witnesses pass, authorize exactly one fresh, non-retry,
-train-only, score-free Perf capacity execution at this repaired head, after a
+If this narrow delta passes, append one fresh exact-head marker and authorize
+exactly one fresh, non-retry, train-only, score-free Perf capacity execution at
+this repaired head, after a
 clean exact-head checkout and local/real canonical-ref equality check. It must
 use the existing immutable V0 population/dataset/freeze, corrected dataset
 root (not `rows/`), a new output namespace, strict native/void `-P -B`, the

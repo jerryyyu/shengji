@@ -687,9 +687,9 @@ def reopen_prediction_population_manifest_v2(
     return result
 
 
-def select_primary_actions_v2(
+def _select_primary_rows_v2(
         predictions: Sequence[CandidatePredictionV2]) -> dict[str, int]:
-    """Select from block-1 natural ensemble, breaking every tie to incumbent."""
+    """Select from already manifest-reopened block-1 natural rows."""
     if type(predictions) not in (list, tuple) or not predictions:
         raise WorldAfterstateV2InferenceError(
             "primary selection population drift")
@@ -723,6 +723,26 @@ def select_primary_actions_v2(
                    if sums[candidate] == best]
         selected[root] = 0 if 0 in winners else min(winners)
     return selected
+
+
+def select_primary_actions_v2(
+        prediction_manifest: Mapping[str, Any]) -> dict[str, int]:
+    """Select only from a complete, sealed block-1 natural manifest.
+
+    Accepting detached rows here would bypass the root bindings and the four-
+    distinct-model population enforced by the prediction manifest.  The
+    public boundary therefore always reopens the full manifest first.
+    """
+    if type(prediction_manifest) is not dict:
+        raise WorldAfterstateV2InferenceError(
+            "primary selection manifest required")
+    predictions = reopen_prediction_population_manifest_v2(
+        prediction_manifest)
+    if prediction_manifest["control_name"] != "natural" \
+            or prediction_manifest["seed_block"] != 1:
+        raise WorldAfterstateV2InferenceError(
+            "non-primary prediction cannot select actions")
+    return _select_primary_rows_v2(predictions)
 
 
 __all__ = [

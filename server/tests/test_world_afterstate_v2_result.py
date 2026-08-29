@@ -25,6 +25,13 @@ from shengji.rl.world_afterstate_v2_evaluation import (
 from shengji.rl.world_afterstate_v2_metrics import (
     deal_cluster_bootstrap_interval,
 )
+from shengji.rl.world_afterstate_v2_terminal_provenance import (
+    COHORT_LABELS as PROVENANCE_COHORT_LABELS,
+    COMPARISON_LABELS as PROVENANCE_COMPARISON_LABELS,
+    DOSE_LABELS as PROVENANCE_DOSE_LABELS,
+    UPSTREAM_RECEIPT_LABELS as PROVENANCE_UPSTREAM_LABELS,
+    AuditProvenanceV2,
+)
 from shengji.rl.world_afterstate_v2_result import (
     ASSOCIATION_CONTROL, AUTHORITY, LABEL_CONTROL, WORLD_CONTROL,
     PASS_ABSOLUTE_VALUE_AND_ACTION_EDGE_TO_CONSUMER_DESIGN,
@@ -260,15 +267,63 @@ def _complete_evidence(*, natural1=None, natural2=None,
             (WORLD_CONTROL, 1, natural1),
             (WORLD_CONTROL, 2, natural2)))
     precision = _evaluation(population=select_population, block=1)
+    p0 = _p0()
+    canary = _canary()
+    power = _power(select_population)
+    doses = {name: _dose(name) for name in (
+        ASSOCIATION_CONTROL, LABEL_CONTROL, WORLD_CONTROL)}
+    evaluations = {
+        "natural:block-1": natural1,
+        "action-association-permutation:block-1": association,
+        "label-permutation:block-1": label,
+        "complete-world-shuffle:block-1": world1,
+        "natural:block-2": natural2,
+        "complete-world-shuffle:block-2": world2,
+    }
+    comparison_values = dict(zip(PROVENANCE_COMPARISON_LABELS,
+                                 comparisons, strict=True))
+    provenance = None
+    if audit_opened_count == 1:
+        provenance = AuditProvenanceV2(
+            freeze_sha256=_sha("freeze"), admission_sha256=_sha("admission"),
+            audit_attempt_sha256=_sha("attempt"),
+            audit_opened_count=audit_opened_count,
+            continuation_manifest_sha256=_sha("continuations"),
+            prediction_manifest_sha256s=tuple(
+                (name, _sha(f"prediction:{name}"))
+                for name in PROVENANCE_COHORT_LABELS),
+            checkpoint_manifest_sha256s=tuple(
+                (name, _sha(f"checkpoint:{name}"))
+                for name in PROVENANCE_COHORT_LABELS),
+            cohort_manifest_sha256s=tuple(
+                (name, _sha(f"cohort:{name}"))
+                for name in PROVENANCE_COHORT_LABELS),
+            evaluation_result_sha256s=tuple(
+                (name, evaluations[name].sha256())
+                for name in PROVENANCE_COHORT_LABELS),
+            upstream_receipt_sha256s=tuple((name, {
+                "p0": p0["result_sha256"],
+                "optimizer_canary": canary.sha256(),
+                "precision_select": precision.sha256(),
+                "model_selector_power": power.sha256(),
+            }[name]) for name in PROVENANCE_UPSTREAM_LABELS),
+            comparison_sha256s=tuple(
+                (name, comparison_values[name].sha256())
+                for name in PROVENANCE_COMPARISON_LABELS),
+            dose_sha256s=tuple((name, _sha({
+                "association": doses[ASSOCIATION_CONTROL],
+                "label": doses[LABEL_CONTROL],
+                "world": doses[WORLD_CONTROL],
+            }[name])) for name in PROVENANCE_DOSE_LABELS),
+        )
     return WorldAfterstateV2TerminalEvidence(
-        p0_report=_p0(), optimizer_canary=_canary(),
+        p0_report=p0, optimizer_canary=canary,
         precision_select_result=precision,
-        model_selector_power=_power(select_population),
+        model_selector_power=power,
         audit_natural_results={1: natural1, 2: natural2},
         audit_control_results=controls,
         control_comparisons=comparisons,
-        control_dose_evidence={name: _dose(name) for name in (
-            ASSOCIATION_CONTROL, LABEL_CONTROL, WORLD_CONTROL)},
+        control_dose_evidence=doses, audit_provenance=provenance,
         audit_opened_count=audit_opened_count,
         mechanics_failure=mechanics_failure,
         mechanics_stage=mechanics_stage,
@@ -326,8 +381,29 @@ def test_complete_audit_reaches_strong_pass_and_reconstructs_every_control():
         PASS_ABSOLUTE_VALUE_AND_ACTION_EDGE_TO_CONSUMER_DESIGN
     assert result.stage_reached == "audit"
     assert result.audit_opened_count == 1
-    assert len(result.input_receipt_hashes) == 18
+    assert len(result.input_receipt_hashes) == 19
+    assert ("audit_provenance", evidence.audit_provenance.sha256()) in \
+        result.input_receipt_hashes
     validate_terminal_result(evidence, result)
+
+
+def test_complete_audit_requires_typed_provenance_receipt():
+    evidence = dataclasses.replace(_complete_evidence(), audit_provenance=None)
+    assert derive_terminal_result(evidence).decision == REFUSE_RESOURCE_INCOMPLETE
+
+
+@pytest.mark.parametrize("field", (
+    "upstream_receipt_sha256s", "evaluation_result_sha256s",
+    "comparison_sha256s", "dose_sha256s",
+))
+def test_terminal_crossbinds_every_visible_provenance_population(field):
+    evidence = _complete_evidence()
+    rows = list(getattr(evidence.audit_provenance, field))
+    rows[0] = (rows[0][0], _sha(f"foreign:{field}"))
+    forged_provenance = dataclasses.replace(
+        evidence.audit_provenance, **{field: tuple(rows)})
+    forged = dataclasses.replace(evidence, audit_provenance=forged_provenance)
+    assert derive_terminal_result(forged).decision == REFUSE_MECHANICS_OR_CONTROL
 
 
 def test_world_signal_precedes_action_usefulness_in_frozen_route_order():

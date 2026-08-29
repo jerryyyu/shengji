@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_label import (
     AUTHORITY, FLOOR_STOP, MECHANICS_STOP, P0_CELLS, STATISTICAL_STOP,
     ContinuationOutcomeV2, WorldAfterstateV2LabelError,
@@ -172,6 +173,19 @@ def test_mechanics_failure_is_separate_and_has_precedence():
     assert result["mechanics_passed"] is False
     assert result["statistical_gates_passed"] is True
     assert result["decision"] == MECHANICS_STOP
+
+    # A coordinated report rehash cannot flip the caller-facing boolean while
+    # leaving the sealed per-surface witnesses successful.
+    forged = copy.deepcopy(_evaluate(_population(), bootstrap_replicates=100))
+    forged["mechanics_passed"] = False
+    forged["decision"] = MECHANICS_STOP
+    body = {key: item for key, item in forged.items()
+            if key != "result_sha256"}
+    forged["result_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    with pytest.raises(WorldAfterstateV2LabelError,
+                       match="mechanics evidence derivation"):
+        validate_precision_label(forged)
 
 
 def test_exact_worthwhile_floor_is_a_separate_route_from_statistical_gates():

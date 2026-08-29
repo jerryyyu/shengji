@@ -705,12 +705,33 @@ def publish_checkpoint_manifest(
 
 def reopen_checkpoint_manifest(
         root: Path, *, cohort: str, seed_block: int,
-        epoch: int, members: Sequence[int] | None = None) \
+        epoch: int, expected_freeze_sha256: str,
+        expected_config_sha256: str, expected_population_sha256: str,
+        expected_schedule_sha256s: Sequence[str],
+        expected_common_epoch_sha256: str,
+        members: Sequence[int] | None = None) \
         -> tuple[tuple[Any, dict[str, Any]], ...]:
     """Reopen every exact member named by a common-epoch manifest."""
     cohort = _cohort(cohort)
     seed_block = _index(seed_block, "checkpoint seed block")
     epoch = _index(epoch, "checkpoint epoch", minimum=1)
+    expected_freeze_sha256 = _digest(
+        expected_freeze_sha256, "expected checkpoint freeze SHA-256")
+    expected_config_sha256 = _digest(
+        expected_config_sha256, "expected checkpoint config SHA-256")
+    expected_population_sha256 = _digest(
+        expected_population_sha256,
+        "expected checkpoint population SHA-256")
+    expected_common_epoch_sha256 = _digest(
+        expected_common_epoch_sha256,
+        "expected checkpoint common-epoch SHA-256")
+    if type(expected_schedule_sha256s) not in (tuple, list) \
+            or len(expected_schedule_sha256s) != MEMBERS_PER_BLOCK:
+        raise WorldAfterstateV2ArtifactError(
+            "expected checkpoint schedule population drift")
+    expected_schedules = tuple(_digest(
+        value, "expected checkpoint schedule SHA-256")
+        for value in expected_schedule_sha256s)
     manifest = checkpoint_manifest_path(root, cohort, seed_block, epoch)
     directory = _parent_directory(root, manifest.parent)
     try:
@@ -773,6 +794,14 @@ def reopen_checkpoint_manifest(
                     row["common_epoch_sha256"]):
             raise WorldAfterstateV2ArtifactError(
                 "checkpoint manifest semantic drift")
+        if (metadata["freeze_sha256"], metadata["config_sha256"],
+                metadata["population_sha256"], metadata["schedule_sha256"],
+                metadata["common_epoch_sha256"]) != (
+                    expected_freeze_sha256, expected_config_sha256,
+                    expected_population_sha256, expected_schedules[member],
+                    expected_common_epoch_sha256):
+            raise WorldAfterstateV2ArtifactError(
+                "checkpoint manifest external identity drift")
         result.append((_model, metadata))
     shared = {(metadata["freeze_sha256"], metadata["config_sha256"],
                metadata["population_sha256"],

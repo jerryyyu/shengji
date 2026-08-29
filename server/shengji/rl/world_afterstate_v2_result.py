@@ -24,6 +24,13 @@ from .world_afterstate_v2_evaluation import (
 from .world_afterstate_v2_label import validate_precision_label
 from .world_afterstate_v2_controls import validate_control_evidence
 from .world_afterstate_v2_training_controller import validate_cohort_manifest
+from .world_afterstate_v2_terminal_provenance import (
+    COHORT_LABELS as PROVENANCE_COHORT_LABELS,
+    COMPARISON_LABELS as PROVENANCE_COMPARISON_LABELS,
+    DOSE_LABELS as PROVENANCE_DOSE_LABELS,
+    UPSTREAM_RECEIPT_LABELS as PROVENANCE_UPSTREAM_LABELS,
+    AuditProvenanceV2, validate_audit_provenance_v2,
+)
 
 
 SCHEMA = "world-afterstate-v2-terminal-result-v1"
@@ -269,6 +276,7 @@ class WorldAfterstateV2TerminalEvidence:
     audit_control_results: Mapping[str, Any] | None = None
     control_comparisons: Mapping[Any, ControlComparisonV2] | Sequence[ControlComparisonV2] | None = None
     control_dose_evidence: Mapping[str, Mapping[str, Any]] | None = None
+    audit_provenance: AuditProvenanceV2 | None = None
     # A manifest is optional because the training controller publishes a dict;
     # when supplied, truncation is rederived from its source fields.
     cohort_manifests: Sequence[Mapping[str, Any]] = ()
@@ -304,6 +312,12 @@ class WorldAfterstateV2TerminalEvidence:
             except Exception as exc:
                 raise WorldAfterstateV2ResultError(
                     "cohort manifest refused") from exc
+        if self.audit_provenance is not None:
+            try:
+                validate_audit_provenance_v2(self.audit_provenance)
+            except Exception as exc:
+                raise WorldAfterstateV2ResultError(
+                    "audit provenance refused") from exc
         if self.resource_stage is not None and not (
                 self.resource_incomplete or self.resource_cap_exceeded
                 or self.cohort_truncated or any(
@@ -379,7 +393,8 @@ def _resource_stage(evidence: WorldAfterstateV2TerminalEvidence) -> str | None:
 def _audit_evidence_present(evidence: WorldAfterstateV2TerminalEvidence) -> bool:
     return evidence.audit_opened_count != 0 or any(value is not None for value in (
         evidence.audit_natural_results, evidence.audit_control_results,
-        evidence.control_comparisons, evidence.control_dose_evidence))
+        evidence.control_comparisons, evidence.control_dose_evidence,
+        evidence.audit_provenance))
 
 
 def _reject_after_stop(evidence: WorldAfterstateV2TerminalEvidence, stage: str) -> None:
@@ -434,9 +449,100 @@ def _input_hashes(e: WorldAfterstateV2TerminalEvidence) -> tuple[tuple[str, str]
     if e.control_dose_evidence is not None:
         for name, value in sorted(e.control_dose_evidence.items()):
             rows.append((f"control_dose_{name}", _receipt_sha(value)))
+    if e.audit_provenance is not None:
+        rows.append(("audit_provenance", e.audit_provenance.sha256()))
     for index, manifest in enumerate(e.cohort_manifests):
         rows.append((f"cohort_manifest_{index}", _sha(manifest)))
     return tuple(rows)
+
+
+def _provenance_rows(value: Sequence[tuple[str, str]]) -> dict[str, str]:
+    return {label: digest for label, digest in value}
+
+
+def _validate_audit_provenance_bindings(
+        evidence: WorldAfterstateV2TerminalEvidence,
+        natural: Mapping[int, EvaluationResultV2],
+        controls: Mapping[str, Mapping[int, EvaluationResultV2]],
+        comparisons: Mapping[tuple[str, int], ControlComparisonV2]) -> None:
+    """Cross-bind every terminal-visible audit input to sealed provenance.
+
+    Prediction, checkpoint, cohort, and continuation manifests are opened and
+    bound by the I/O supervisor before it constructs ``AuditProvenanceV2``.
+    This pure boundary independently binds all evidence it can see, so a
+    detached or coordinated-rehashed metric population cannot reach a route.
+    """
+    provenance = evidence.audit_provenance
+    if type(provenance) is not AuditProvenanceV2:
+        raise WorldAfterstateV2ResultError("audit provenance absent")
+    try:
+        validate_audit_provenance_v2(provenance)
+    except Exception as exc:
+        raise WorldAfterstateV2ResultError("audit provenance refused") from exc
+    if provenance.audit_opened_count != evidence.audit_opened_count:
+        raise WorldAfterstateV2ResultError("audit provenance opening drift")
+
+    upstream = _provenance_rows(provenance.upstream_receipt_sha256s)
+    expected_upstream = {
+        "p0": _receipt_sha(evidence.p0_report),
+        "optimizer_canary": _receipt_sha(evidence.optimizer_canary),
+        "precision_select": _receipt_sha(evidence.precision_select_result),
+        "model_selector_power": _receipt_sha(evidence.model_selector_power),
+    }
+    if tuple(upstream) != PROVENANCE_UPSTREAM_LABELS \
+            or upstream != expected_upstream:
+        raise WorldAfterstateV2ResultError(
+            "audit provenance upstream binding drift")
+
+    evaluations = _provenance_rows(provenance.evaluation_result_sha256s)
+    expected_evaluations = {
+        "natural:block-1": _receipt_sha(natural[1]),
+        "action-association-permutation:block-1": _receipt_sha(
+            controls[ASSOCIATION_CONTROL][1]),
+        "label-permutation:block-1": _receipt_sha(controls[LABEL_CONTROL][1]),
+        "complete-world-shuffle:block-1": _receipt_sha(controls[WORLD_CONTROL][1]),
+        "natural:block-2": _receipt_sha(natural[2]),
+        "complete-world-shuffle:block-2": _receipt_sha(controls[WORLD_CONTROL][2]),
+    }
+    if tuple(evaluations) != PROVENANCE_COHORT_LABELS \
+            or evaluations != expected_evaluations:
+        raise WorldAfterstateV2ResultError(
+            "audit provenance evaluation binding drift")
+
+    comparison_rows = _provenance_rows(provenance.comparison_sha256s)
+    expected_comparisons = {
+        "association:b1": _receipt_sha(comparisons[(ASSOCIATION_CONTROL, 1)]),
+        "label:b1": _receipt_sha(comparisons[(LABEL_CONTROL, 1)]),
+        "world:b1": _receipt_sha(comparisons[(WORLD_CONTROL, 1)]),
+        "world:b2": _receipt_sha(comparisons[(WORLD_CONTROL, 2)]),
+    }
+    if tuple(comparison_rows) != PROVENANCE_COMPARISON_LABELS \
+            or comparison_rows != expected_comparisons:
+        raise WorldAfterstateV2ResultError(
+            "audit provenance comparison binding drift")
+
+    doses = _provenance_rows(provenance.dose_sha256s)
+    expected_doses = {
+        "association": _receipt_sha(
+            evidence.control_dose_evidence[ASSOCIATION_CONTROL]),
+        "label": _receipt_sha(evidence.control_dose_evidence[LABEL_CONTROL]),
+        "world": _receipt_sha(evidence.control_dose_evidence[WORLD_CONTROL]),
+    }
+    if tuple(doses) != PROVENANCE_DOSE_LABELS or doses != expected_doses:
+        raise WorldAfterstateV2ResultError("audit provenance dose binding drift")
+
+    if evidence.cohort_manifests:
+        cohort_rows = _provenance_rows(provenance.cohort_manifest_sha256s)
+        actual: dict[str, str] = {}
+        for manifest in evidence.cohort_manifests:
+            label = f"{manifest['cohort_name']}:block-{manifest['seed_block']}"
+            if label in actual:
+                raise WorldAfterstateV2ResultError(
+                    "audit provenance duplicate cohort manifest")
+            actual[label] = _sha(manifest)
+        if tuple(cohort_rows) != PROVENANCE_COHORT_LABELS or cohort_rows != actual:
+            raise WorldAfterstateV2ResultError(
+                "audit provenance cohort binding drift")
 
 
 def _validate_p0_and_route(e: WorldAfterstateV2TerminalEvidence) -> tuple[str | None, str]:
@@ -577,7 +683,8 @@ def derive_terminal_result(evidence: WorldAfterstateV2TerminalEvidence) -> World
     if evidence.audit_natural_results is None \
             or evidence.audit_control_results is None \
             or evidence.control_comparisons is None \
-            or evidence.control_dose_evidence is None:
+            or evidence.control_dose_evidence is None \
+            or evidence.audit_provenance is None:
         return _seal(WorldAfterstateV2TerminalResult(
             "audit", evidence.audit_opened_count, _input_hashes(evidence),
             "REFUSE_RESOURCE_INCOMPLETE"))
@@ -624,6 +731,13 @@ def derive_terminal_result(evidence: WorldAfterstateV2TerminalEvidence) -> World
         return _seal(WorldAfterstateV2TerminalResult(
             "audit", evidence.audit_opened_count, _input_hashes(evidence),
             "REFUSE_RESOURCE_INCOMPLETE"))
+    try:
+        _validate_audit_provenance_bindings(
+            evidence, natural, controls, comparisons)
+    except WorldAfterstateV2ResultError:
+        return _seal(WorldAfterstateV2TerminalResult(
+            "audit", evidence.audit_opened_count, _input_hashes(evidence),
+            "REFUSE_MECHANICS_OR_CONTROL"))
     if any(controls[name][block].population_sha256 != natural[block].population_sha256
            for name in CONTROL_NAMES for block in REQUIRED_CONTROL_BLOCKS[name]) \
             or any(comparisons[(name, block)].rps_improvement.population_sha256

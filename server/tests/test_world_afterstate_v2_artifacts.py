@@ -16,7 +16,7 @@ from shengji.rl.world_afterstate_v2_artifacts import (
     publish_checkpoint_shard,
     publish_continuation_manifest,
     publish_continuation_shard,
-    reopen_checkpoint_manifest,
+    reopen_checkpoint_manifest as _reopen_checkpoint_manifest,
     reopen_checkpoint_shard,
     reopen_continuation_manifest,
 )
@@ -34,6 +34,17 @@ from shengji.rl import world_afterstate_v2_continuation as continuation
 
 def _hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+def reopen_checkpoint_manifest(
+        root, *, cohort, seed_block, epoch, members=None):
+    return _reopen_checkpoint_manifest(
+        root, cohort=cohort, seed_block=seed_block, epoch=epoch,
+        expected_freeze_sha256=_hash("freeze"),
+        expected_config_sha256=_hash("config"),
+        expected_population_sha256=_hash("population"),
+        expected_schedule_sha256s=(_hash("schedule"),) * 4,
+        expected_common_epoch_sha256=_hash("common"), members=members)
 
 
 @pytest.fixture(scope="module")
@@ -186,6 +197,31 @@ def test_checkpoint_manifest_refuses_mixed_freeze_and_caller_subset(
         reopen_checkpoint_manifest(
             valid_root, cohort="natural", seed_block=1, epoch=3,
             members=(0,))
+
+
+def test_checkpoint_reopen_binds_the_external_freeze_not_only_its_own_rows(
+        tmp_path: Path, checkpoint_raws):
+    foreign_root = tmp_path / "foreign"
+    foreign_root.mkdir()
+    foreign = []
+    for raw in checkpoint_raws:
+        model, metadata = reopen_checkpoint(raw)
+        foreign.append(checkpoint_bytes(
+            model, seed_block=metadata["seed_block"],
+            member_index=metadata["member_index"],
+            control_name=metadata["control_name"],
+            init_seed=metadata["init_seed"],
+            selected_epoch=metadata["selected_epoch"],
+            freeze_sha256=_hash("foreign-freeze"),
+            config_sha256=metadata["config_sha256"],
+            population_sha256=metadata["population_sha256"],
+            schedule_sha256=metadata["schedule_sha256"],
+            common_epoch_sha256=metadata["common_epoch_sha256"]))
+    _publish_cohort(foreign_root, tuple(foreign))
+    with pytest.raises(WorldAfterstateV2ArtifactError,
+                       match="external identity"):
+        reopen_checkpoint_manifest(
+            foreign_root, cohort="natural", seed_block=1, epoch=3)
 
 
 def test_continuation_shard_and_manifest_round_trip(

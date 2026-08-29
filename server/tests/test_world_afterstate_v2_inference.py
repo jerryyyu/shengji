@@ -77,7 +77,7 @@ def test_confirmatory_or_control_prediction_cannot_select_actions():
         model, root, seed_block=2, member_index=0)
     assert all(not row.consumer_eligible for row in rows)
     with pytest.raises(inference.WorldAfterstateV2InferenceError,
-                       match="non-primary"):
+                       match="manifest required"):
         inference.select_primary_actions_v2(rows)
     for control_name in inference.CONTROL_NAMES[1:]:
         controlled = inference.predict_root_v2(
@@ -98,7 +98,7 @@ def test_complete_prediction_population_reopens_and_drop_refuses():
     manifest = inference.prediction_population_manifest_v2(
         [root], rows, split="audit", control_name="natural", seed_block=1)
     inference.validate_prediction_population_manifest_v2(manifest)
-    assert inference.select_primary_actions_v2(rows)[root.root_sha256] in (0, 1)
+    assert inference.select_primary_actions_v2(manifest)[root.root_sha256] in (0, 1)
     with pytest.raises(inference.WorldAfterstateV2InferenceError, match="drop"):
         inference.prediction_population_manifest_v2(
             [root], rows[:-1], split="audit", control_name="natural",
@@ -132,4 +132,35 @@ def test_ensemble_tie_breaks_to_protected_incumbent():
                 member_index=member, control_name="natural",
                 model_state_sha256=model_sha, probability_ppb=probabilities,
                 expected_signed_microlevels=expected, consumer_eligible=True))
-    assert inference.select_primary_actions_v2(rows)[root.root_sha256] == 0
+    manifest = inference.prediction_population_manifest_v2(
+        [root], rows, split="audit", control_name="natural", seed_block=1)
+    assert inference.select_primary_actions_v2(manifest)[root.root_sha256] == 0
+
+
+def test_primary_selection_refuses_foreign_root_and_collapsed_models():
+    root = _root()
+    rows = tuple(
+        row for member in range(4)
+        for row in inference.predict_root_v2(
+            new_world_afterstate_v2_model(400 + member), root,
+            seed_block=1, member_index=member))
+    manifest = inference.prediction_population_manifest_v2(
+        [root], rows, split="audit", control_name="natural", seed_block=1)
+
+    foreign = copy.deepcopy(manifest)
+    foreign["predictions"][4]["state_sha256"] = _sha("foreign-state")
+    body = {key: value for key, value in foreign.items()
+            if key != "manifest_sha256"}
+    foreign["manifest_sha256"] = _sha(body)
+    with pytest.raises(inference.WorldAfterstateV2InferenceError):
+        inference.select_primary_actions_v2(foreign)
+
+    collapsed = copy.deepcopy(manifest)
+    first_model = collapsed["predictions"][0]["model_state_sha256"]
+    for row in collapsed["predictions"]:
+        row["model_state_sha256"] = first_model
+    body = {key: value for key, value in collapsed.items()
+            if key != "manifest_sha256"}
+    collapsed["manifest_sha256"] = _sha(body)
+    with pytest.raises(inference.WorldAfterstateV2InferenceError):
+        inference.select_primary_actions_v2(collapsed)

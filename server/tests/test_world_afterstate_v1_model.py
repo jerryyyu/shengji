@@ -12,7 +12,8 @@ from shengji.rl.world_afterstate import (
 from shengji.rl.world_afterstate_model import CAPACITY_SHAPES
 from shengji.rl.world_afterstate_v1_model import (
     AdvantageExampleV1, WorldAfterstateV1ModelError, advantage_loss,
-    collate_advantage_examples, new_world_afterstate_advantage_model)
+    collate_advantage_examples, collate_successor_tensors,
+    new_world_afterstate_advantage_model)
 
 
 def _digest(value: str) -> str:
@@ -56,6 +57,19 @@ def test_collation_derives_exact_action_relative_targets():
     assert batch.targets.tolist() == [2.0, 2.0, 2.0]
     assert batch.incumbent.size == 3
     assert batch.candidate.size == 3
+
+
+def test_target_free_successor_collation_matches_training_inputs():
+    pairs = _pairs(3)
+    training = collate_advantage_examples(pairs)
+    target_free = collate_successor_tensors(
+        [pair.candidate.tensors for pair in pairs])
+    assert torch.equal(target_free.public, training.candidate.public)
+    assert torch.equal(target_free.history, training.candidate.history)
+    assert torch.equal(target_free.world, training.candidate.world)
+    assert torch.equal(target_free.perspective,
+                       training.candidate.perspective)
+    assert not hasattr(target_free, "targets")
 
 
 def test_shared_scorer_is_exactly_zero_for_identical_successors():

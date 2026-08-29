@@ -15,6 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -22,9 +23,10 @@ from .douzero_micro import HISTORY_EVENT_DIM
 from .encode import N_CARDS
 from .world_afterstate import (
     MAX_SIGNED_LEVEL_UTILITY, PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS,
-    WorldAfterstateExampleV0, WorldAfterstateError)
+    WorldAfterstateExampleV0, WorldAfterstateError,
+    WorldAfterstateTensorsV0)
 from .world_afterstate_model import (
-    INIT_SCALE, WorldAfterstateShapeV0, collate_world_afterstates)
+    INIT_SCALE, WorldAfterstateShapeV0)
 
 
 MODEL_SCHEMA = "world-afterstate-advantage-v1"
@@ -136,11 +138,48 @@ class AdvantageBatchV1:
 
 def _successor_batch(
         examples: Sequence[WorldAfterstateExampleV0]) -> SuccessorBatchV1:
-    public, history, history_lengths, world, perspective, _ = \
-        collate_world_afterstates(examples)
+    # Training examples are already target-bound.  Drop their labels before
+    # calling the same target-free tensor collation used for audit inference.
+    if type(examples) not in (list, tuple) or not examples \
+            or any(type(example) is not WorldAfterstateExampleV0
+                   for example in examples):
+        raise WorldAfterstateV1ModelError(
+            "successor example population drift")
+    for example in examples:
+        example.validate()
+    return collate_successor_tensors([example.tensors for example in examples])
+
+
+def collate_successor_tensors(
+        values: Sequence[WorldAfterstateTensorsV0]) -> SuccessorBatchV1:
+    """Collate model input without constructing or receiving any target."""
+    if type(values) not in (list, tuple) or not values \
+            or any(type(value) is not WorldAfterstateTensorsV0
+                   for value in values):
+        raise WorldAfterstateV1ModelError(
+            "successor tensor population drift")
+    for value in values:
+        value.validate()
+    max_events = max(len(value.history) for value in values)
+    history = torch.zeros(
+        (len(values), max_events, HISTORY_EVENT_DIM), dtype=torch.float32)
+    for index, value in enumerate(values):
+        if len(value.history):
+            history[index, :len(value.history)] = torch.from_numpy(
+                value.history)
     result = SuccessorBatchV1(
-        public=public, history=history, history_lengths=history_lengths,
-        world=world, perspective=perspective)
+        public=torch.as_tensor(
+            np.stack([value.public for value in values]),
+            dtype=torch.float32),
+        history=history,
+        history_lengths=torch.as_tensor(
+            [len(value.history) for value in values], dtype=torch.long),
+        world=torch.as_tensor(
+            np.stack([value.world for value in values]),
+            dtype=torch.float32),
+        perspective=torch.as_tensor(
+            np.stack([value.perspective for value in values]),
+            dtype=torch.float32))
     result.validate()
     return result
 

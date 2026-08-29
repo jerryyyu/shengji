@@ -210,14 +210,24 @@ outcome.
 On the untouched P1 audit fold, freeze predictions before opening paired
 outcomes and require all of:
 
+The ordering is literal. Reopen the outcome-blind V0 population audits, build
+target-free incumbent/candidate tensors, publish the eight-member prediction
+manifest, and only then open the separately sealed V0 calibration
+continuations. The co-located V0 dataset rows are not a valid prediction
+input, because they already contain terminal labels. P1 training may reuse
+their train rows; P1 audit inference may not.
+
 1. **Advantage error:** ensemble absolute-error improvement over the exact
    zero-advantage baseline has a strictly positive one-sided bootstrap lower
    bound.
 2. **Action utility:** choose the maximum predicted advantage, including the
    incumbent at exactly zero and breaking ties to it. Realized utility over
    always keeping the incumbent has a strictly positive lower bound.
-3. **Simple regret:** model-choice regret improves over incumbent-choice regret
-   with a strictly positive lower bound.
+3. **Regret identity diagnostic:** when the comparator is always the
+   incumbent, incumbent-regret minus model-regret is algebraically identical
+   to the model choice's realized advantage. Publish the simple-regret view
+   from the same per-deal rows and require byte-exact agreement with action
+   utility; do not count it as independent evidence or a second gate.
 4. **Seed stability:** at least six of eight individual members have positive
    mean realized utility improvement over the incumbent.
 5. **Dose:** the ensemble selects a non-incumbent on at least 5% of eligible

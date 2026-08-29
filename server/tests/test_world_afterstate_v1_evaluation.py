@@ -8,9 +8,10 @@ from shengji.rl.world_afterstate_model import CAPACITY_SHAPES
 from shengji.rl.world_afterstate_v1_dataset import join_advantage_examples
 from shengji.rl.world_afterstate_v1_evaluation import (
     AUTHORITY, AdvantagePredictionV1, WorldAfterstateV1EvaluationError,
-    collate_inference_pairs, evaluate_advantage_audit, predict_advantages,
+    collate_inference_pairs, evaluate_advantage_audit,
+    evaluate_world_shuffle_delta, predict_advantages,
     inference_population_sha256, prediction_population_sha256,
-    validate_advantage_audit_result)
+    validate_advantage_audit_result, validate_world_shuffle_delta)
 from shengji.rl.world_afterstate_v1_model import (
     new_world_afterstate_advantage_model)
 
@@ -149,3 +150,38 @@ def test_result_identity_and_gate_fields_have_teeth():
     with pytest.raises(WorldAfterstateV1EvaluationError,
                        match="reconstruction drift"):
         validate_advantage_audit_result(forged)
+
+
+def test_world_shuffle_delta_is_paired_by_deal_and_requires_both_edges():
+    joined = _calibration()
+    result = evaluate_world_shuffle_delta(
+        joined, _predictions(joined),
+        _predictions(joined, positive=False),
+        bootstrap_replicates=10_000)
+    validate_world_shuffle_delta(result)
+    assert result["passed"] is True
+    assert result[
+        "natural_minus_shuffled_advantage_error_microlevels"][
+            "bootstrap_lower"] > 0
+    assert result[
+        "natural_minus_shuffled_action_utility_microlevels"][
+            "bootstrap_lower"] > 0
+
+    same_choice_weaker_values = [copy.copy(row)
+                                 for row in _predictions(joined)]
+    for row in same_choice_weaker_values:
+        object.__setattr__(
+            row, "advantage_microlevels", row.advantage_microlevels // 2)
+    error_only = evaluate_world_shuffle_delta(
+        joined, _predictions(joined), same_choice_weaker_values,
+        bootstrap_replicates=200)
+    assert error_only[
+        "natural_minus_shuffled_advantage_error_microlevels"]["mean"] > 0
+    assert error_only[
+        "natural_minus_shuffled_action_utility_microlevels"]["mean"] == 0
+    assert error_only["passed"] is False
+
+    reversed_result = evaluate_world_shuffle_delta(
+        joined, _predictions(joined, positive=False),
+        _predictions(joined), bootstrap_replicates=200)
+    assert reversed_result["passed"] is False

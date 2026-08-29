@@ -32,6 +32,8 @@ from .world_afterstate_v1_training import COHORT_SIZE, model_state_sha256
 INFERENCE_BATCH_SCHEMA = "world-afterstate-advantage-inference-batch-v1"
 PREDICTION_SCHEMA = "world-afterstate-advantage-prediction-v1"
 RESULT_SCHEMA = "world-afterstate-advantage-audit-result-v1"
+WORLD_SHUFFLE_RESULT_SCHEMA = (
+    "world-afterstate-advantage-world-shuffle-result-v1")
 MICRO_LEVEL = 1_000_000
 BOOTSTRAP_REPLICATES = 10_000
 MINIMUM_SELECTION_DOSE_PPM = 50_000
@@ -570,10 +572,205 @@ def validate_advantage_audit_result(value: object) -> None:
             "advantage audit result reconstruction drift")
 
 
+def evaluate_world_shuffle_delta(
+        joined: Sequence[JoinedAdvantageV1],
+        natural_predictions: Sequence[AdvantagePredictionV1],
+        shuffled_predictions: Sequence[AdvantagePredictionV1], *,
+        bootstrap_replicates: int = BOOTSTRAP_REPLICATES) -> dict[str, Any]:
+    """Compare natural and world-shuffled forecasts on the same deal roots."""
+    if type(joined) not in (list, tuple) or not joined:
+        raise WorldAfterstateV1EvaluationError(
+            "world-shuffle audit population drift")
+
+    def prediction_map(values, label):
+        if type(values) not in (list, tuple) or not values:
+            raise WorldAfterstateV1EvaluationError(
+                f"world-shuffle {label} prediction population drift")
+        result = {}
+        model_states: dict[int, set[str]] = defaultdict(set)
+        for row in values:
+            if type(row) is not AdvantagePredictionV1:
+                raise WorldAfterstateV1EvaluationError(
+                    f"world-shuffle {label} prediction type drift")
+            key = row.key()
+            if key in result:
+                raise WorldAfterstateV1EvaluationError(
+                    f"duplicate world-shuffle {label} prediction")
+            result[key] = row
+            model_states[row.member_index].add(row.model_state_sha256)
+        if set(model_states) != set(range(COHORT_SIZE)) \
+                or any(len(value) != 1 for value in model_states.values()) \
+                or len({next(iter(value)) for value in model_states.values()}) \
+                != COHORT_SIZE:
+            raise WorldAfterstateV1EvaluationError(
+                f"world-shuffle {label} model cohort drift")
+        return result, tuple(
+            next(iter(model_states[member]))
+            for member in range(COHORT_SIZE))
+
+    natural_map, natural_models = prediction_map(
+        natural_predictions, "natural")
+    shuffled_map, shuffled_models = prediction_map(
+        shuffled_predictions, "shuffled")
+    if set(natural_map) != set(shuffled_map) \
+            or natural_models != shuffled_models:
+        raise WorldAfterstateV1EvaluationError(
+            "world-shuffle paired prediction binding drift")
+    states: dict[str, list[JoinedAdvantageV1]] = defaultdict(list)
+    seen = set()
+    for value in joined:
+        if type(value) is not JoinedAdvantageV1:
+            raise WorldAfterstateV1EvaluationError(
+                "world-shuffle joined-row type drift")
+        value.validate()
+        if value.pair.fold != "calibration" or value.key() in seen:
+            raise WorldAfterstateV1EvaluationError(
+                "world-shuffle audit split/pair drift")
+        seen.add(value.key())
+        states[value.pair.state_group_id].append(value)
+    error_deals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    utility_deals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    used = set()
+    for state_id in sorted(states):
+        rows = sorted(states[state_id], key=lambda value: value.key())
+        candidates = sorted({value.pair.candidate_index for value in rows})
+        if candidates != list(range(1, len(candidates) + 1)) \
+                or [(value.pair.candidate_index, value.pair.replicate)
+                    for value in rows] != [
+                        (candidate, replicate) for candidate in candidates
+                        for replicate in (0, 1)]:
+            raise WorldAfterstateV1EvaluationError(
+                "world-shuffle audit incomplete root")
+        first = rows[0].pair
+        if any(value.pair.deal_group_sha256 != first.deal_group_sha256
+               or value.pair.state_identity() != first.state_identity()
+               for value in rows):
+            raise WorldAfterstateV1EvaluationError(
+                "world-shuffle audit cross-sibling binding drift")
+        truths: dict[int, list[int]] = defaultdict(list)
+        natural_sums = {}
+        shuffled_sums = {}
+        root_error_delta = 0
+        for candidate in candidates:
+            candidate_rows = [value for value in rows
+                              if value.pair.candidate_index == candidate]
+            natural_member = []
+            shuffled_member = []
+            for member in range(COHORT_SIZE):
+                key = (state_id, candidate, member)
+                natural = natural_map.get(key)
+                shuffled = shuffled_map.get(key)
+                if natural is None or shuffled is None \
+                        or natural.incumbent_successor_sha256 \
+                        != candidate_rows[0].pair.incumbent_successor_sha256 \
+                        or natural.candidate_successor_sha256 \
+                        != candidate_rows[0].pair.candidate_successor_sha256 \
+                        or shuffled.incumbent_successor_sha256 \
+                        != natural.incumbent_successor_sha256 \
+                        or shuffled.candidate_successor_sha256 \
+                        != natural.candidate_successor_sha256:
+                    raise WorldAfterstateV1EvaluationError(
+                        "world-shuffle successor prediction binding drift")
+                natural_member.append(natural.advantage_microlevels)
+                shuffled_member.append(shuffled.advantage_microlevels)
+                used.add(key)
+            natural_sum = sum(natural_member)
+            shuffled_sum = sum(shuffled_member)
+            natural_sums[candidate] = natural_sum
+            shuffled_sums[candidate] = shuffled_sum
+            for value in candidate_rows:
+                truth = value.pair.advantage_levels * MICRO_LEVEL
+                truths[candidate].append(truth)
+                natural_error = _round_divide(
+                    abs(truth * COHORT_SIZE - natural_sum), COHORT_SIZE)
+                shuffled_error = _round_divide(
+                    abs(truth * COHORT_SIZE - shuffled_sum), COHORT_SIZE)
+                root_error_delta += shuffled_error - natural_error
+        root_error_delta = _round_divide(root_error_delta, len(rows))
+        error_deals[first.deal_group_sha256][0] += root_error_delta
+        error_deals[first.deal_group_sha256][1] += 1
+        natural_choice = max([0, *candidates], key=lambda candidate: (
+            0 if candidate == 0 else natural_sums[candidate], -candidate))
+        shuffled_choice = max([0, *candidates], key=lambda candidate: (
+            0 if candidate == 0 else shuffled_sums[candidate], -candidate))
+
+        def utility(choice):
+            return 0 if choice == 0 else _round_divide(
+                sum(truths[choice]), len(truths[choice]))
+
+        utility_deals[first.deal_group_sha256][0] += (
+            utility(natural_choice) - utility(shuffled_choice))
+        utility_deals[first.deal_group_sha256][1] += 1
+    if used != set(natural_map):
+        raise WorldAfterstateV1EvaluationError(
+            "unused world-shuffle prediction")
+    error = _bootstrap_interval(
+        {key: tuple(value) for key, value in error_deals.items()},
+        namespace="world-shuffle-advantage-error",
+        replicates=bootstrap_replicates)
+    utility = _bootstrap_interval(
+        {key: tuple(value) for key, value in utility_deals.items()},
+        namespace="world-shuffle-action-utility",
+        replicates=bootstrap_replicates)
+    body = {
+        "schema": WORLD_SHUFFLE_RESULT_SCHEMA,
+        "state_count": len(states), "deal_count": len(error_deals),
+        "natural_minus_shuffled_advantage_error_microlevels":
+            _metric(error),
+        "natural_minus_shuffled_action_utility_microlevels":
+            _metric(utility),
+        "bootstrap_replicates": bootstrap_replicates,
+        "passed": error[1] > 0 and utility[1] > 0,
+        "authority": dict(AUTHORITY),
+    }
+    return {**body, "result_sha256": _sha(body)}
+
+
+def validate_world_shuffle_delta(value: object) -> None:
+    required = {
+        "schema", "state_count", "deal_count",
+        "natural_minus_shuffled_advantage_error_microlevels",
+        "natural_minus_shuffled_action_utility_microlevels",
+        "bootstrap_replicates", "passed", "authority", "result_sha256",
+    }
+    if type(value) is not dict or set(value) != required \
+            or value.get("schema") != WORLD_SHUFFLE_RESULT_SCHEMA \
+            or value.get("authority") != AUTHORITY \
+            or value.get("bootstrap_replicates") != BOOTSTRAP_REPLICATES \
+            or type(value.get("passed")) is not bool \
+            or isinstance(value.get("state_count"), bool) \
+            or not isinstance(value.get("state_count"), int) \
+            or value["state_count"] <= 0 \
+            or isinstance(value.get("deal_count"), bool) \
+            or not isinstance(value.get("deal_count"), int) \
+            or value["deal_count"] <= 0:
+        raise WorldAfterstateV1EvaluationError(
+            "world-shuffle result schema/population drift")
+    metrics = (
+        value.get("natural_minus_shuffled_advantage_error_microlevels"),
+        value.get("natural_minus_shuffled_action_utility_microlevels"),
+    )
+    if any(type(metric) is not dict or set(metric) != {
+            "mean", "bootstrap_lower", "bootstrap_upper"}
+            or any(isinstance(number, bool) or not isinstance(number, int)
+                   for number in metric.values()) for metric in metrics):
+        raise WorldAfterstateV1EvaluationError(
+            "world-shuffle result metric drift")
+    expected = all(metric["bootstrap_lower"] > 0 for metric in metrics)
+    body = {key: item for key, item in value.items()
+            if key != "result_sha256"}
+    if value["passed"] is not expected \
+            or _digest(value.get("result_sha256"),
+                       "world-shuffle result SHA-256") != _sha(body):
+        raise WorldAfterstateV1EvaluationError(
+            "world-shuffle result reconstruction drift")
+
+
 __all__ = [
     "AUTHORITY", "BOOTSTRAP_REPLICATES", "AdvantageInferenceBatchV1",
     "AdvantagePredictionV1", "WorldAfterstateV1EvaluationError",
     "collate_inference_pairs", "evaluate_advantage_audit",
-    "inference_population_sha256", "predict_advantages",
-    "prediction_population_sha256", "validate_advantage_audit_result",
+    "evaluate_world_shuffle_delta", "inference_population_sha256",
+    "predict_advantages", "prediction_population_sha256",
+    "validate_advantage_audit_result", "validate_world_shuffle_delta",
 ]

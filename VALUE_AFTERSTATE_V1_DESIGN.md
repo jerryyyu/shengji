@@ -258,9 +258,10 @@ not a V1 gate and cannot rescue a failed action result.
    action gates.
 4. **Complete-world shuffle:** at inference, rotate only the complete-world
    tensors while keeping public successor/action pairs fixed. Report the
-   natural-minus-shuffled advantage error and action utility. A positive
-   lower bound is required for `PASS_TO_WORLD_TWIN_PACKET_REVIEW`; otherwise a
-   model may at most terminalize `PASS_ACTION_ONLY_NO_WORLD_SIGNAL`.
+   paired natural-minus-shuffled advantage error and action utility, clustered
+   by the same deal roots. Both one-sided lower bounds must be positive for
+   `PASS_TO_WORLD_TWIN_PACKET_REVIEW`; otherwise a model may at most
+   terminalize `PASS_ACTION_ONLY_NO_WORLD_SIGNAL`.
 5. **Symmetry:** swapping candidate and incumbent negates predictions; an
    identical pair is zero; root-actor rotation preserves the paired result.
 6. **Integrity mutations:** transition, ballot, continuation, perspective,

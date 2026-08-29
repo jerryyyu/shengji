@@ -65,6 +65,7 @@ def test_target_free_predictions_seal_before_audit_labels_open():
     assert result["audit_labels_opened"] is True
     assert result["report_rows_opened"] is False
     assert result["world_shuffle_result"] is not None
+    assert result["world_shuffle_delta_result"] is not None
 
 
 def test_prediction_population_and_model_bindings_have_teeth():
@@ -100,3 +101,4 @@ def test_training_control_artifact_cannot_claim_world_shuffle():
     result = evaluate_sealed_predictions(raw, joined)
     validate_sealed_audit_result(result)
     assert result["world_shuffle_result"] is None
+    assert result["world_shuffle_delta_result"] is None

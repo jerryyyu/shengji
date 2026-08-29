@@ -18,9 +18,10 @@ from .world_afterstate_v1_controls import (
 from .world_afterstate_v1_dataset import JoinedAdvantageV1
 from .world_afterstate_v1_evaluation import (
     AdvantageInferenceBatchV1, AdvantagePredictionV1,
-    evaluate_advantage_audit, inference_population_sha256,
-    predict_advantages, prediction_population_sha256,
-    validate_advantage_audit_result)
+    evaluate_advantage_audit, evaluate_world_shuffle_delta,
+    inference_population_sha256, predict_advantages,
+    prediction_population_sha256, validate_advantage_audit_result,
+    validate_world_shuffle_delta)
 from .world_afterstate_v1_model import WorldAfterstateAdvantageV1
 from .world_afterstate_v1_training import COHORT_SIZE, model_state_sha256
 from .world_afterstate_v1_training_controller import (
@@ -269,9 +270,13 @@ def evaluate_sealed_predictions(
     natural_result = evaluate_advantage_audit(audit_pairs, natural)
     validate_advantage_audit_result(natural_result)
     shuffled_result = None
+    world_shuffle_delta = None
     if artifact["world_shuffle_applied"]:
         shuffled_result = evaluate_advantage_audit(audit_pairs, shuffled)
         validate_advantage_audit_result(shuffled_result)
+        world_shuffle_delta = evaluate_world_shuffle_delta(
+            audit_pairs, natural, shuffled)
+        validate_world_shuffle_delta(world_shuffle_delta)
     audit_bindings = []
     for value in audit_pairs:
         if type(value) is not JoinedAdvantageV1:
@@ -291,6 +296,7 @@ def evaluate_sealed_predictions(
         "natural_result": natural_result,
         "world_shuffle_applied": artifact["world_shuffle_applied"],
         "world_shuffle_result": shuffled_result,
+        "world_shuffle_delta_result": world_shuffle_delta,
         "audit_labels_opened": True,
         "report_rows_opened": False,
         "authority": dict(AUTHORITY),
@@ -304,6 +310,7 @@ def validate_sealed_audit_result(value: object) -> None:
         "prediction_artifact_sha256", "cohort_name",
         "audit_population_sha256", "natural_result",
         "world_shuffle_applied", "world_shuffle_result",
+        "world_shuffle_delta_result",
         "audit_labels_opened", "report_rows_opened", "authority",
         "result_sha256",
     }
@@ -324,10 +331,13 @@ def validate_sealed_audit_result(value: object) -> None:
     validate_advantage_audit_result(value.get("natural_result"))
     if value["world_shuffle_applied"]:
         validate_advantage_audit_result(value.get("world_shuffle_result"))
+        validate_world_shuffle_delta(value.get(
+            "world_shuffle_delta_result"))
         if value["cohort_name"] != "natural":
             raise WorldAfterstateV1AuditControllerError(
                 "sealed audit world-shuffle cohort drift")
     elif value["world_shuffle_result"] is not None \
+            or value["world_shuffle_delta_result"] is not None \
             or value["cohort_name"] == "natural":
         raise WorldAfterstateV1AuditControllerError(
             "sealed audit world-shuffle absence drift")

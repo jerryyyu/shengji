@@ -186,6 +186,11 @@ class MCBot(SmartBot):
     # fold (n >= 30; t_29,0.95 = 1.699). This is a frozen decision heuristic,
     # not the full-game promotion interval.
     REPORT_T_CRITICAL = 1.70
+    REPORT_TIE_POINT_SHY = False  # ARM 0 (STRENGTH_STACK_PROPOSAL.md): on a
+    #                               report-fold statistical tie, play the side
+    #                               risking fewer points. Default OFF: policy
+    #                               change; adoption is gated on a duel per
+    #                               the proposal's power-bar decision.
     CONFIDENCE_Z = 1.64           # one-sided 95%
     MARGIN = 5.0  # points/round a candidate must beat SmartBot's pick by;
     #               keeps the heuristic prior unless the search is confident.
@@ -492,6 +497,23 @@ class MCBot(SmartBot):
                 return self._finish_decision(
                     candidates, 0, "report_underfilled", _t0, sampler_before)
             if statistic < self.REPORT_MIN_GAIN:
+                _o = rnd.ordering
+                _tc = (lambda cs: sum(1 for c in cs
+                                      if _o.eff_suit(c) == TRUMP)
+                       if _o is not None else 0)
+                shy = self._report_tie_point_shy_pick(
+                    report["gap"], report["se"], critical,
+                    candidates[0], candidates[challenger],
+                    is_lead=(rnd.trick is None or not rnd.trick.plays),
+                    incumbent_trump=_tc(candidates[0]),
+                    challenger_trump=_tc(candidates[challenger]))
+                if shy is not None:
+                    self.last_decision_record["report_tie_break"] = shy
+                    if shy["pick"] == "challenger":
+                        return self._finish_decision(
+                            candidates, challenger,
+                            "report_tie_point_shy_override",
+                            _t0, sampler_before)
                 return self._finish_decision(
                     candidates, 0, f"report_{self.REPORT_RULE}_below_min_gain",
                     _t0, sampler_before)
@@ -529,6 +551,85 @@ class MCBot(SmartBot):
         return self._finish_decision(
             candidates, best, "search_override" if best != 0 else
             "candidate0_best", _t0, sampler_before)
+
+    def _report_tie_point_shy_pick(self, gap, se, critical, incumbent,
+                                   challenger, is_lead=False,
+                                   incumbent_trump=0, challenger_trump=0):
+        """ARM 0 (STRENGTH_STACK_PROPOSAL.md): report-stage point-shy
+        tie-break.
+
+        Fires only when REPORT_TIE_POINT_SHY is enabled AND the report fold
+        measured a statistical tie (|gap| <= critical*se, critical = 1.70 —
+        smaller windows provably exclude members of the verified 26-case
+        gate-restore class). On a tie, prefer whichever of
+        {incumbent, challenger} risks fewer points; ties on risk keep the
+        incumbent. Returns a record dict (always logged when it fires) or
+        None when disabled / not a tie. Mutates only the tie_shy_* counters.
+
+        Known tilt, carried from the adversarial review: "points at risk"
+        ignores trump-length cost, so results must report drain/cash/junk
+        strata before any adoption question is asked.
+        """
+        if not self.REPORT_TIE_POINT_SHY:
+            return None
+        # Harness-visible aggregation (PR #130 follow-up): per-decision
+        # records are overwritten each decision, so duel screens could not
+        # see firings at all. These counters survive the round.
+        if not hasattr(self, "tie_shy_firings"):
+            self.tie_shy_firings = 0
+            self.tie_shy_flips = 0
+            self.tie_shy_risk_saved = 0
+            self.tie_shy_fire_lead = 0
+            self.tie_shy_flip_lead = 0
+            self.tie_shy_flip_trump = 0
+            self.tie_shy_risk_saved_lead = 0
+            self.tie_shy_trump_guarded = 0
+        if critical is None or se is None:
+            return None
+        if abs(gap) > critical * se:
+            return None
+        from ..engine.cards import points as _pts
+
+        incumbent_risk = sum(_pts(c) for c in incumbent)
+        challenger_risk = sum(_pts(c) for c in challenger)
+        self.tie_shy_firings += 1
+        self.tie_shy_fire_lead += 1 if is_lead else 0
+        if challenger_risk < incumbent_risk \
+                and challenger_trump > incumbent_trump:
+            # ARM II guard pulled forward (pilot: 42% of flips spent trump —
+            # the measured -4pt drain family). A tie never flips INTO trump.
+            self.tie_shy_trump_guarded += 1
+            return {
+                "schema": "report-tie-point-shy-v1", "critical": critical,
+                "gap": gap, "se": se,
+                "incumbent_points_at_risk": incumbent_risk,
+                "challenger_points_at_risk": challenger_risk,
+                "is_lead": bool(is_lead),
+                "incumbent_trump_count": incumbent_trump,
+                "challenger_trump_count": challenger_trump,
+                "pick": "incumbent", "trump_guarded": True,
+            }
+        if challenger_risk < incumbent_risk:
+            self.tie_shy_flips += 1
+            self.tie_shy_risk_saved += incumbent_risk - challenger_risk
+            if is_lead:
+                self.tie_shy_flip_lead += 1
+                self.tie_shy_risk_saved_lead += incumbent_risk - challenger_risk
+            if challenger_trump > 0:
+                self.tie_shy_flip_trump += 1
+        return {
+            "schema": "report-tie-point-shy-v1",
+            "critical": critical,
+            "gap": gap,
+            "se": se,
+            "incumbent_points_at_risk": incumbent_risk,
+            "challenger_points_at_risk": challenger_risk,
+            "is_lead": bool(is_lead),
+            "incumbent_trump_count": incumbent_trump,
+            "challenger_trump_count": challenger_trump,
+            "pick": ("challenger" if challenger_risk < incumbent_risk
+                     else "incumbent"),
+        }
 
     def _pick_index(self, candidates, means, indices):
         """Argmax with the production point-shy tie-break, over `indices`."""

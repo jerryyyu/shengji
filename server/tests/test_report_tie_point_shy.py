@@ -1,0 +1,203 @@
+"""ARM 0 witnesses (STRENGTH_STACK_PROPOSAL.md): report-stage point-shy
+tie-break.
+
+Each test fails against the pre-ARM-0 restore path (verified by removing the
+hook and re-running). The exemplar numbers are the production TZGK round 6
+seat 2 decision record, quoted from logs, not invented.
+"""
+from shengji.ai.registry import REGISTRY, make_bot
+from shengji.ai.mcbot import MCBot
+
+# The production record this whole lane traces to: report fold measured a
+# statistical tie (gap 0.25, se 1.379, critical 1.70) between the incumbent
+# H10 (10 points at risk) and the challenger S3 (0 points at risk); the
+# champion restored H10.
+TZGK_GAP = 0.25
+TZGK_SE = 1.379
+TZGK_CRITICAL = 1.70
+
+
+def _bot(name):
+    return make_bot(name, seed=7)
+
+
+def test_champion_flag_is_off_and_variant_on():
+    """Adoption discipline: the champion is untouched; the arm is a variant."""
+    champion = _bot("mc-s0-report-lcb")
+    assert champion.REPORT_TIE_POINT_SHY is False
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    assert arm.REPORT_TIE_POINT_SHY is True
+    # Work-matched null exists for the duel.
+    assert "mc-s0-report-lcb-pointshy-null" in REGISTRY
+
+
+def test_champion_never_fires_the_tie_break():
+    """Byte-identity half 1: with the flag off the helper returns None even
+    on a perfect tie, so the champion's restore path is unreachable-changed."""
+    champion = _bot("mc-s0-report-lcb")
+    assert champion._report_tie_point_shy_pick(
+        0.0, 1.0, TZGK_CRITICAL, ["H10"], ["S3"]) is None
+
+
+def test_exemplar_tie_flips_to_the_safer_card():
+    """The TZGK r6 s2 exemplar: tie + challenger risks fewer points ->
+    challenger. This is the entire verified 26-case harm class in one row."""
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    shy = arm._report_tie_point_shy_pick(
+        TZGK_GAP, TZGK_SE, TZGK_CRITICAL, ["H10"], ["S3"])
+    assert shy is not None
+    assert shy["incumbent_points_at_risk"] == 10
+    assert shy["challenger_points_at_risk"] == 0
+    assert shy["pick"] == "challenger"
+
+
+def test_off_class_decisions_are_untouched():
+    """Byte-identity half 2: outside the tie window (|gap| > critical*se)
+    the helper declines, so every non-tie restore is exactly the champion's.
+    k = 1.70 exactly: the class is defined by gap < 1.70*se, so any smaller
+    window would exclude class members (review correction #4)."""
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    # Incumbent convincingly better: gap far negative.
+    assert arm._report_tie_point_shy_pick(
+        -5.0, 1.0, TZGK_CRITICAL, ["H10"], ["S3"]) is None
+    # Just outside the window on the positive side.
+    assert arm._report_tie_point_shy_pick(
+        1.71, 1.0, TZGK_CRITICAL, ["H10"], ["S3"]) is None
+    # Exactly on the boundary is INSIDE the class (gap < 1.70*se defines the
+    # restores; |gap| <= critical*se must cover it).
+    assert arm._report_tie_point_shy_pick(
+        1.70, 1.0, TZGK_CRITICAL, ["H10"], ["S3"]) is not None
+
+
+def test_risk_tie_keeps_the_incumbent():
+    """Equal points at risk -> incumbent, so the arm changes nothing it has
+    no opinion about (the 79-equal stratum of the corpus flip table)."""
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    shy = arm._report_tie_point_shy_pick(
+        0.1, 1.0, TZGK_CRITICAL, ["S3"], ["D4"])
+    assert shy is not None and shy["pick"] == "incumbent"
+    # And a *pair* of point cards outweighs a single: 20 > 10 flips.
+    shy = arm._report_tie_point_shy_pick(
+        0.1, 1.0, TZGK_CRITICAL, ["S10", "S10"], ["HK"])
+    assert shy is not None and shy["pick"] == "challenger"
+
+
+def test_incomplete_fold_declines():
+    """No critical/se (incomplete report fold) -> never fires; the
+    report_underfilled path stays exactly the champion's."""
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    assert arm._report_tie_point_shy_pick(
+        0.0, None, None, ["H10"], ["S3"]) is None
+
+
+def test_tie_break_counters_aggregate_and_reach_the_harness():
+    """Telemetry witness: firings must survive into eval counters — the
+    per-decision record is overwritten each decision and screens saw {}."""
+    from shengji.evaluation import counters
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["H10"], ["S3"])   # flip
+    arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["S3"], ["D4"])    # keep
+    shy = arm._report_tie_point_shy_pick(0.1, 1.0, 1.70, ["S10"], ["S3"],
+                                         is_lead=True, challenger_trump=True)
+    # Trump guard: a tie must never flip INTO trump (pilot: 42% of
+    # unguarded flips were trump spends, the measured -4pt drain family).
+    assert shy["pick"] == "incumbent" and shy["trump_guarded"] is True
+    c = counters([arm])
+    assert c["tie_shy_firings"] == 3
+    assert c["tie_shy_fire_lead"] == 1
+    assert c["tie_shy_trump_guarded"] == 1
+    assert c["tie_shy_flip_lead"] == 0
+    assert c["tie_shy_flip_trump"] == 0
+    assert c["tie_shy_flips"] == 1
+    assert c["tie_shy_risk_saved"] == 10
+    # Champion contributes constant zeros, not missing keys.
+    c0 = counters([_bot("mc-s0-report-lcb")])
+    assert (c0["tie_shy_firings"], c0["tie_shy_flips"],
+            c0["tie_shy_risk_saved"]) == (0, 0, 0)
+
+
+def test_trump_guard_is_incremental_not_any_trump():
+    """Codex re-entry tooth: equal-trump point-saving flips must be ALLOWED;
+    only a positive trump delta guards. Killing mutation: reverting the
+    predicate to `challenger_trump > 0` fails the first case."""
+    arm = _bot("mc-s0-report-lcb-pointshy")
+    # Lower risk, equal trump (1 == 1): flip, not guarded.
+    shy = arm._report_tie_point_shy_pick(
+        0.1, 1.0, 1.70, ["S10"], ["S3"],
+        incumbent_trump=1, challenger_trump=1)
+    assert shy["pick"] == "challenger" and "trump_guarded" not in shy
+    # Same cards/context, challenger_trump=2 > 1: guarded, incumbent.
+    shy = arm._report_tie_point_shy_pick(
+        0.1, 1.0, 1.70, ["S10"], ["S3"],
+        incumbent_trump=1, challenger_trump=2)
+    assert shy["pick"] == "incumbent" and shy["trump_guarded"] is True
+    assert arm.tie_shy_trump_guarded == 1
+    assert arm.tie_shy_flips == 1
+    assert arm.tie_shy_risk_saved == 10
+
+
+def test_production_path_wires_context_and_tie_break(monkeypatch):
+    """Codex HOLD repair: kills both wiring mutations. Replays the real
+    incident lead through decide_play with a forced exact tie (gap 0, se 0)
+    and cross-derives is_lead + trump counts from the round itself, so a
+    removed call OR hardcoded context goes red regardless of fixture."""
+    from tests.test_s0_search import incident_state
+    from shengji.ai.registry import S0_REPORT_WORLDS
+    rnd, seat = incident_state()
+    arm = _bot("mc-s0-report-lcb-pointshy")
+
+    def tie_report(*args, seed, **kwargs):
+        # gap 0.4, se 1.0: statistic = 0.4 - 1.70 < 0 (restore branch) AND
+        # |0.4| <= 1.70*1.0 (inside the tie window) -> tie-break must fire.
+        return {"gap": 0.4, "se": 1.0, "worlds": S0_REPORT_WORLDS,
+                "attempts": S0_REPORT_WORLDS, "rejected": 0,
+                "complete": True, "seed": seed}
+
+    monkeypatch.setattr(arm, "_report_fold_gap", tie_report)
+    played = arm.decide_play(rnd, seat)
+    rec = arm.last_decision_record
+    shy = rec.get("report_tie_break")
+    assert shy is not None, "tie-break never invoked on the production path"
+    assert shy["is_lead"] is True
+    o = rnd.ordering
+    from shengji.engine.cards import TRUMP as _T
+    for key, idx in (("incumbent_trump_count", 0),
+                     ("challenger_trump_count", rec["report_candidate_index"])):
+        expect = sum(1 for c in rec["candidates"][idx] if o.eff_suit(c) == _T)
+        assert shy[key] == expect
+    if shy["pick"] == "challenger":
+        assert rec["reason"] == "report_tie_point_shy_override"
+        assert rec["played_index"] == rec["report_candidate_index"]
+        assert arm.tie_shy_flips == 1
+    else:
+        assert rec["played_index"] == 0
+    assert arm.tie_shy_firings == 1 and arm.tie_shy_fire_lead == 1
+    assert played == rec["candidates"][rec["played_index"]]
+
+
+def test_evaluation_margin_fields_present():
+    """Stage 1 harness fields: measurement-only margin/bracket recording.
+    Brackets must match MCBot's LEVEL_OBJECTIVE convention exactly."""
+    import io
+    import json
+    from shengji.evaluation import run_arm
+
+    fh = io.StringIO()
+    recs = run_arm("witness", "smart", "smart", 1, 424242, fh, "t",
+                   progress=False)
+    assert len(recs) == 2
+    for rec in recs:
+        for key in ("attacker_points", "arm_attacking", "attacker_bracket",
+                    "arm_point_margin", "level_change"):
+            assert key in rec, key
+        pts = rec["attacker_points"]
+        expected = (min(3, (pts - 80) // 40) if pts >= 80
+                    else -3 if pts == 0 else -(1 + (79 - pts) // 40))
+        assert rec["attacker_bracket"] == expected
+        sign = 1 if rec["arm_attacking"] else -1
+        assert rec["arm_point_margin"] == (pts - 80) * sign
+        # Binary gate field unchanged and still present.
+        assert rec["won"] in (0, 1)
+    # Round-trips through the JSONL the harness writes.
+    for line in fh.getvalue().splitlines():
+        json.loads(line)

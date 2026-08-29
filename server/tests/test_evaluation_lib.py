@@ -86,6 +86,8 @@ def test_run_arm_gives_every_seat_a_distinct_seed(tmp_path, monkeypatch):
     class FakeLog:
         winner_team = 0
         level_change = 1
+        banker = 0
+        attacker_points = 45
 
     monkeypatch.setattr("shengji.evaluation.make_bot", fake_make_bot)
     monkeypatch.setattr("shengji.evaluation.play_round",
@@ -113,6 +115,8 @@ def test_run_arm_pairs_both_flips_on_the_same_deal(tmp_path, monkeypatch):
     class FakeLog:
         winner_team = 0
         level_change = 1
+        banker = 0
+        attacker_points = 45
 
     def fake_play_round(game, pol):
         dealt.append(game)
@@ -135,6 +139,8 @@ def test_records_are_json_serialisable(tmp_path, monkeypatch):
     class FakeLog:
         winner_team = 1
         level_change = 2
+        banker = 1
+        attacker_points = 100
 
     monkeypatch.setattr("shengji.evaluation.play_round",
                         lambda *a, **k: FakeLog())

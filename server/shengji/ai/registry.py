@@ -151,6 +151,16 @@ REGISTRY.update({
         "REPORT_RULE": "lcb",
         "REPORT_MIN_GAIN": 0.0,
     }),
+    # ARM 0 candidate (STRENGTH_STACK_PROPOSAL.md): champion + report-stage
+    # point-shy tie-break. NOT the champion; exists so the arm can be dueled.
+    "mc-s0-report-lcb-pointshy": type("MCS0ReportLCBPointShy", (MCBot,), {
+        "N_DETERMINIZATIONS": 30,
+        "REQUIRE_EXACT_WORK": True,
+        "REPORT_FOLD_WORLDS": S0_REPORT_WORLDS,
+        "REPORT_RULE": "lcb",
+        "REPORT_MIN_GAIN": 0.0,
+        "REPORT_TIE_POINT_SHY": True,
+    }),
     "mc-s0-adaptive": type("MCS0Adaptive", (MCBot,), {
         "N_DETERMINIZATIONS": 30,
         "REQUIRE_EXACT_WORK": True,
@@ -214,6 +224,8 @@ def _make_policy_null(base_policy: str):
 # `mc-strong-null` remains the SELECT-NONE/current champion control and is not
 # changed because it is part of the already-running direct-v11 protocol.
 REGISTRY["mc-s0-report-lcb-null"] = _make_policy_null("mc-s0-report-lcb")
+REGISTRY["mc-s0-report-lcb-pointshy-null"] = _make_policy_null(
+    "mc-s0-report-lcb-pointshy")
 REGISTRY["mc-s0-adaptive-null"] = _make_policy_null("mc-s0-adaptive")
 
 

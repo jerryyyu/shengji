@@ -4,13 +4,14 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 11:25 EDT**. Remote main before this update:
-`f289e02d18f37a875ab81e4fc63c20a67e615493`.
+Last reconciled: **2026-08-29 11:34 EDT**. Remote main before this update:
+`e80e1cb198560380d783f9f4baea9fbfaacb840f`.
 
 ## OPEN — one consolidated repaired-head Value V1 source+freeze review
 
-PR #167 exact head is now
-`e632e411349d3e5bb52d6a363616031b40eb91d6`. The `f289e02` PASS admitted the
+PR #167 final pre-review head is
+`c98bdeb666df18f2640d717f408194b6e60e62bd`. The intermediate `e632e41`
+packet was never reviewed or initialized and is superseded. The `f289e02` PASS admitted the
 old `3534fe0` root exactly once; that admission/root are spent and must not be
 reused. The invocation failed after 29.9 seconds while reopening natural-cohort
 train data: capacity had filtered manifest-proven ineligible ballots before
@@ -19,22 +20,30 @@ opened, but no epoch, cohort output, prediction, calibration attempt/label,
 reconstruction attempt, report row, or provider-audit row opened or published.
 This is a source-path refusal, not a model result.
 
-Review only `3534fe0..e632e41` plus the fresh freeze. The repair calls the same
+Review only `3534fe0..c98bdeb` plus the fresh freeze. The repair calls the same
 outcome-blind eligibility selector as capacity and witnesses the production
 reader wiring. On all frozen train data it reproduces exactly 3,906 raw rows,
 3,820 eligible rows, 3,178 paired examples, and byte-identical capacity
-advantage manifest `b69febab…`. The successor freeze structurally binds the
+advantage manifest `b69febab…`.
+
+An outcome-blind manifest preflight also found three singleton ballots among
+the 52 calibration audit roots before any label opened. They remain in the
+sealed 312-audit prediction inventory but define no action comparison. The
+same repaired projection now yields 49 action-comparable roots, 260
+unreplicated pairs and 520 replicated label pairs after proving all 624
+declared rows. The freeze names audit-root and action-root counts separately.
+The successor freeze structurally binds the
 spent service/invocation/root, exact failure boundary, and zero-held-out-open
 record; it says the prior admission is not retryable and names attempt 2 under
 a new root. No new capacity census or outcome was selected.
 
-- source: `/opt/value-afterstate-v1-scientific-e632e41-r2-src`, exact clean
-  `e632e411349d3e5bb52d6a363616031b40eb91d6`;
-- freeze: `/opt/value-afterstate-v1-freeze-e632e41-r2.json`, mode/link/bytes
-  `0400` / 1 / 16,561;
-- freeze external/internal: `e07b3541…` / `ae9df8b4…`;
+- source: `/opt/value-afterstate-v1-scientific-c98bdeb-r2-src`, exact clean
+  `c98bdeb666df18f2640d717f408194b6e60e62bd`;
+- freeze: `/opt/value-afterstate-v1-freeze-c98bdeb-r2.json`, mode/link/bytes
+  `0400` / 1 / 16,597;
+- freeze external/internal: `b8709317…` / `c5582061…`;
 - exact new root: `/opt/value-afterstate-v1-p1-scientific-r2`;
-- expected claim `08f2cbb1…`; expected 1,432-byte marker `0b3ef08c…`;
+- expected claim `02648615…`; expected 1,432-byte marker `2ee594de…`;
 - full tests: 202/202 pure and 202/202 strict compiled/void; fresh-process
   freeze reconstruction passed.
 
@@ -154,10 +163,11 @@ only actionable review; do not add a separate incident or rehearsal review.
   admits P1; it is not yet evidence that a model learns or improves play.
 - The first P1 scientific admission at `3534fe0` is spent. It refused before
   training because its reader missed the capacity eligibility projection;
-  no held-out label opened and no learning conclusion exists. PR #167 repaired
-  head `e632e41` applies the selector, reproduces the capacity manifest on the
-  real train population, and freezes that spent-attempt lineage under a new
-  `r2` root. The precise one-review ask is at the top of this file.
+  no held-out label opened and no learning conclusion exists. PR #167 final
+  head `c98bdeb` applies the selector to both train and calibration action
+  populations, reproduces the capacity manifest on the real train population,
+  and freezes that spent-attempt lineage under a new `r2` root. The precise
+  one-review ask is at the top of this file.
 - This is a 520-root mechanism pilot, not a final-quality model claim. Eight
   seeds test optimization stability, not data sufficiency; any later scaling
   adds independent roots/replicates only after P0/P1 establish real action

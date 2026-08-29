@@ -7990,3 +7990,73 @@ operator-path failures.
 
 R4 unchanged this cycle: phase 3/6, `Threads: 1`, 1.00 core, 60.20 h CPU, `terminal.partial`
 present, `terminal` absent, **26.06 h elapsed / 21.94 h to the cap**. — Claude (session `68f9c8bd`)
+
+## 2026-08-29 — ✅ PASS: PR #167 consolidated source+capacity+rehearsal+freeze at exact head `32ef540b`. Both stated SHAs reproduce byte-for-byte. Two findings disclosed, neither blocking — one is the guard that just cost this lane a launch, still unrepaired in a sibling function
+
+### Everything stated, recomputed
+
+| artifact | measured |
+|---|---|
+| freeze `/opt/value-afterstate-v1-freeze-32ef540-r1.json` | **15,646 B, `0400`, 1 link**; external `d3d28798…fce94` ✔; internal `5555c56b…` ✔ |
+| capacity receipt (`…-bd400a6-r1`) | external `d4dd34e6…81cb3` ✔; internal `31835b3e…` ✔; `terminal_route = PASS_TO_P1_CAPACITY` ✔ |
+| rehearsal receipt | 1,922 B, `0400`, 1 link; external `d8a67639…36a12` ✔; internal `08660ee2…` ✔; authority all false |
+| freeze authority | **zero true flags** |
+| battery at exact head | **201 passed pure** and **201 passed strict** (`SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`), `-P -B`, cleared `__pycache__`, native rebuilt |
+| `git diff --check` | clean |
+
+**Marker regenerated with the module's own generator** (`world_afterstate_v1_admission.expected_review_claim` + `WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW `): claim
+`be7a7d3fd4f17b0f7f65012d3f82b63d10f0e11ef45a3f8266efd51797c7ca54` and marker
+`f4d9846dc9bb798367204ec61536b2903fa14f87629dd8140d6c4ca9c637805b`, **1,370 bytes** — all three
+stated values matched exactly. Authority true flags are exactly the five that match the stated
+scope: `v0_train_row_reopening`, `scientific_p1_training`, `p1_calibration_audit_opening`,
+`v0_calibration_label_opening`, `immediate_independent_reconstruction`. Report/provider rows, P2,
+gameplay, strength, merge, promotion, deployment, retry, R5 and test extension all false.
+
+**The anti-replay claim is true and I checked it the way the PR invited.** Removing only
+`or marker in previous_matches` from `authenticate_review_commit` turns
+`test_scientific_review_refuses_missing_duplicate_or_replayed_marker[replay]` red with
+`DID NOT RAISE`, and nothing else. Source restored; `git status --porcelain` = 0.
+
+### Finding 1 — "stacked on reviewed capacity head `bd400a68`" is false as ancestry
+
+`git merge-base bd400a68 32ef540b` is **`aa0595cc`**, the *pre-repair* capacity head;
+`bd400a68` is **not an ancestor**. The singleton-exclusion and append-only-marker repairs were
+re-applied on this branch as different commits (`e6d1b34`, `6448691`).
+
+Why it does not block: `git diff bd400a68 32ef540b -- world_afterstate_v1_capacity.py
+world_afterstate_v1_dataset.py` is **empty** — the modules that produced the capacity receipt are
+byte-identical at this head — and the freeze does not make the sloppy claim the PR body does. It
+records `capacity.source_git = bd400a68…` **separately** from `freeze.source_git = 32ef540b…`, with
+the receipt pinned by both digests. The artifact is precise about lineage even where the prose is
+loose. Worth fixing the sentence so a future reader does not infer ancestry that is not there.
+
+### Finding 2 — the guard that broke `3440900-r1` survives, unrepaired, one function away
+
+`world_afterstate_v1_admission.py:328`, inside `_authenticate_capacity_operator_reentry`, still
+reads:
+
+```python
+if current_matches != [marker] or previous_matches:
+```
+
+That is exactly the form I traced at `a5601e0` as the cause of the `34409006` capacity refusal: it
+admits only the *first* marker of a prefix and structurally refuses every legitimate successor. The
+repair went into `authenticate_review_commit` (:425) and not into its sibling. It is **latent, not
+firing**: on canonical main `WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V2` has exactly one
+marker and `…_REENTRY` has none, so both paths pass today. But the freeze binds
+`capacity_operator_reentry` and `capacity_operator_reentry_v2`, so this is live code for this
+pipeline, and a second re-entry of either prefix — precisely the situation that arose twice this
+week — would refuse. The fix is the two-line change already written at :425.
+
+### Scope of this PASS
+
+Authorizes exactly one fresh P1 train/calibration execution plus its immediate independent
+reconstruction, nothing else. Coverage limits: +4,672/−17 across 22 files; I did not line-audit it.
+I verified artifact identity end-to-end, the freeze's capacity/rehearsal bindings, marker and claim
+regeneration, both batteries, the ancestry question, and mutation-tested the anti-replay clause. I
+did **not** verify the P0 numbers quoted in the PR body (321 eligible states, +0.084112 label edge
+and its interval) — those are train-only diagnostics from the capacity stage and carry no strength
+meaning; they become load-bearing only at a result review. — Claude (session `68f9c8bd`)
+
+WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"immediate_independent_reconstruction_authorized":true,"merge_authorized":false,"p1_calibration_audit_opening_authorized":true,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":true,"strength_claim_authorized":false,"v0_calibration_label_opening_authorized":true,"v0_train_row_reopening_authorized":true},"capacity_receipt_external_sha256":"d4dd34e69f3ffb344766ed98012dbd82ea744e8c477d948a9443045384d81cb3","capacity_receipt_sha256":"31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0","freeze_sha256":"5555c56bdebd8faf5b630aaa961b7ba51fe5e3fa40012364605e4a612a0ba2bc","memory_limit_bytes":32212254720,"schema":"world-afterstate-v1-p1-scientific-review-claim-v1","source_git":"32ef540b0829042c8cc0993ba775bd9612f4e4f8","training_wall_cap_nanoseconds":28800000000000,"v0_audit_manifest_external_sha256":"67fba564ab19941c19051a350a931f116d8154b9ce5757af9fe638c8d0a53c75","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581"}
+

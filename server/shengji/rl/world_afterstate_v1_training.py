@@ -449,6 +449,9 @@ class AdvantageEpochReceiptV1:
             "authority": dict(AUTHORITY),
         }
 
+    def sha256(self) -> str:
+        return _sha(self.payload())
+
 
 def train_epoch(
         model: WorldAfterstateAdvantageV1,
@@ -561,6 +564,9 @@ class AdvantageCommonEpochV1:
             "config_sha256": self.config_sha256,
             "authority": dict(AUTHORITY),
         }
+
+    def sha256(self) -> str:
+        return _sha(self.payload())
 
 
 def select_common_epoch(

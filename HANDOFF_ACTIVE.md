@@ -4,40 +4,35 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 10:34 EDT**. Remote main before this update:
-`0c29da670eccc9ec6514af14a376ccd76fb6b621`.
+Last reconciled: **2026-08-29 11:12 EDT**. Remote main before this update:
+`864463e50c979bdba06b31a6e85273985e3ebafe`.
 
-## OPEN — one consolidated Value V1 scientific source+freeze review
+## OPEN — one narrow repaired-head Value V1 source+freeze review
 
-Review PR #167 at exact head
-`32ef540b0829042c8cc0993ba775bd9612f4e4f8`, the passing capacity directory
-`/opt/value-afterstate-v1-capacity-bd400a6-r1`, final exact-head rehearsal
-`/opt/value-afterstate-v1-rehearsal-32ef540-r1`, and immutable freeze
-`/opt/value-afterstate-v1-freeze-32ef540-r1.json`.
+The broad `32ef540b` review reproduced, but its marker must not launch: the
+freeze did not bind the operator-selected scientific root, so the same PASS
+could initialize a second path. PR #167 now has exact head
+`3534fe095875826f8fa6296cb6004c28f0b7359e`. The eight-file delta freezes and
+reviews exact root `/opt/value-afterstate-v1-p1-scientific-r1`, refuses any
+other root before attempt publication, witnesses that refusal at the caller,
+and applies Claude's two-line same-prefix repair to the sibling capacity
+re-entry authenticator. Both checks were mutation-tested in the failing
+direction.
 
-The freeze independently reconstructs at the clean Perf head. External SHA-256
-is `d3d28798b2caa5ce997666178ec926a9033ef98241614f22bfe6d44bb05fce94`;
-internal freeze SHA-256 is
-`5555c56bdebd8faf5b630aaa961b7ba51fe5e3fa40012364605e4a612a0ba2bc`.
-The exact review claim SHA-256 is
-`be7a7d3fd4f17b0f7f65012d3f82b63d10f0e11ef45a3f8266efd51797c7ca54`;
-the module-generated marker is 1,370 bytes with SHA-256
-`f4d9846dc9bb798367204ec61536b2903fa14f87629dd8140d6c4ca9c637805b`.
+Review the delta from `32ef540b` plus fresh exact-head artifacts only:
 
-Review one packet, not separate phases: source/design, four-attempt capacity
-lineage plus passing receipt, final rehearsal, exact runtime/native/input
-bindings, learner/controls/gates, deadline truncation, held-out ordering,
-terminal reconstruction and authority. Exact-head batteries pass 201/201 pure
-and 201/201 compiled strict/void; CI is green. The rehearsal receipt SHA-256 is
-`08660ee2ac5b2e4ffe7d39d15cf37d1b8ef057e27c913c50441141be6d29e70e`;
-it independently reopens all 50 files and keeps every authority false.
+- rehearsal root `/opt/value-afterstate-v1-rehearsal-3534fe0-r1`, receipt
+  external/internal `2b97a1d6…` / `add5e1c4…`, 13.74 seconds, 51 files;
+- freeze `/opt/value-afterstate-v1-freeze-3534fe0-r1.json`, mode/link/bytes
+  `0400` / 1 / 15,708, external/internal `9c49e198…` / `02eb83f7…`;
+- expected claim `46562c2c…`; expected 1,432-byte marker `6f321b57…`.
 
-If every byte reproduces, append exactly one module-generated
-`WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW` marker to canonical
-`HANDOFF_REVIEW.md`. It may authorize one fresh P1 train/calibration execution
-and immediate reconstruction only. Report/provider rows, P2, gameplay,
-strength, merge, promotion, deployment, retry, R5 and test extension remain
-false. Do not launch scientifically before that marker.
+If those reproduce, append the new module-generated
+`WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW` marker. It supersedes the marker at
+`864463e` and may authorize exactly one execution at the frozen root plus
+immediate reconstruction. Report/provider rows, P2, gameplay, strength, merge,
+promotion, deployment, retry, R5 and test extension remain false. Do not launch
+from the superseded marker. Full details and exact hashes are in PR #167.
 
 ## Live work
 

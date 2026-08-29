@@ -47,6 +47,14 @@ from .world_afterstate_v1_training_controller import train_named_cohort
 
 CAPACITY_SCHEMA = "world-afterstate-advantage-capacity-receipt-v1"
 CAPACITY_BUILD_SCHEMA = "world-afterstate-advantage-capacity-build-v1"
+REVIEW_CLAIM_SCHEMA = "world-afterstate-v1-capacity-review-claim-v1"
+REVIEW_PREFIX = "WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW "
+REVIEW_LEDGER = "HANDOFF_REVIEW.md"
+REVIEWER_NAME = "Claude"
+REVIEWER_EMAIL = "noreply@anthropic.com"
+REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
+CANONICAL_REMOTE_URL = "https://github.com/jerryyyu/shengji.git"
+CANONICAL_REMOTE_REF = "refs/heads/main"
 CAPACITY_MEMORY_LIMIT_BYTES = 30 * 1024**3
 ROW_WORKER_COUNTS = (1, 2, 4, 8, 16)
 MEMBER_WORKER_COUNTS = (1, 2, 4, 8)
@@ -230,6 +238,100 @@ def _source_bindings(repo: Path, expected_git: str) -> list[dict[str, Any]]:
             "sha256": _sha_bytes(raw),
         })
     return rows
+
+
+def expected_review_claim(expected_git: str) -> dict[str, Any]:
+    _digest(expected_git, "capacity review source Git", length=40)
+    return {
+        "schema": REVIEW_CLAIM_SCHEMA,
+        "source_git": expected_git,
+        "v0_population_external_sha256": V0_POPULATION_EXTERNAL_SHA256,
+        "v0_dataset_external_sha256": V0_DATASET_EXTERNAL_SHA256,
+        "v0_freeze_external_sha256": V0_FREEZE_EXTERNAL_SHA256,
+        "row_worker_counts": list(ROW_WORKER_COUNTS),
+        "member_worker_counts": list(MEMBER_WORKER_COUNTS),
+        "wall_cap_nanoseconds": MAX_CAPACITY_WALL_NANOSECONDS,
+        "memory_limit_bytes": CAPACITY_MEMORY_LIMIT_BYTES,
+        "authority": dict(AUTHORITY),
+    }
+
+
+def _canonical_remote_tip(repo: Path) -> str:
+    try:
+        output = subprocess.run(
+            ("git", "ls-remote", "--exit-code", CANONICAL_REMOTE_URL,
+             CANONICAL_REMOTE_REF), cwd=repo, check=True,
+            capture_output=True, text=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise WorldAfterstateV1CapacityError(
+            "capacity review canonical remote lookup failed") from exc
+    fields = output.split()
+    if len(fields) != 2 or fields[1] != CANONICAL_REMOTE_REF:
+        raise WorldAfterstateV1CapacityError(
+            "capacity review canonical remote identity drift")
+    return _digest(fields[0], "capacity review remote tip", length=40)
+
+
+def authenticate_review_commit(
+        repo: Path, *, expected_git: str, review_commit: str) \
+        -> dict[str, str]:
+    """Authenticate one append-only external capacity marker on real main."""
+    claim = expected_review_claim(expected_git)
+    _digest(review_commit, "capacity review commit", length=40)
+    remote_tip = _canonical_remote_tip(repo)
+    try:
+        local_tip = _git(repo, "rev-parse", "origin/main")
+        if local_tip != remote_tip:
+            raise WorldAfterstateV1CapacityError(
+                "capacity review local main differs from real remote")
+        if subprocess.run(
+                ("git", "merge-base", "--is-ancestor", review_commit,
+                 remote_tip), cwd=repo, capture_output=True).returncode != 0:
+            raise WorldAfterstateV1CapacityError(
+                "capacity review is not on canonical remote main")
+        parents = str(_git(
+            repo, "show", "-s", "--format=%P", review_commit)).split()
+        identity = tuple(str(_git(
+            repo, "show", "-s", f"--format={field}", review_commit))
+                         for field in ("%an", "%ae", "%cn", "%ce"))
+        message = str(_git(
+            repo, "show", "-s", "--format=%B", review_commit))
+        changed = str(_git(
+            repo, "diff-tree", "--no-commit-id", "--name-only", "-r",
+            review_commit)).splitlines()
+        if len(parents) != 1 or identity != (
+                REVIEWER_NAME, REVIEWER_EMAIL,
+                REVIEWER_NAME, REVIEWER_EMAIL) \
+                or REVIEWER_SESSION_TRAILER not in message \
+                or changed != [REVIEW_LEDGER]:
+            raise WorldAfterstateV1CapacityError(
+                "capacity review provenance drift")
+        current = _git(
+            repo, "show", f"{review_commit}:{REVIEW_LEDGER}", binary=True)
+        previous = _git(
+            repo, "show", f"{parents[0]}:{REVIEW_LEDGER}", binary=True)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise WorldAfterstateV1CapacityError(
+            "capacity review Git lookup failed") from exc
+    if type(current) is not bytes or type(previous) is not bytes \
+            or not current.startswith(previous):
+        raise WorldAfterstateV1CapacityError(
+            "capacity review ledger is not append-only")
+    marker = REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(claim)
+    prefix = REVIEW_PREFIX.encode("ascii")
+    current_matches = [line for line in current.splitlines(keepends=True)
+                       if line.startswith(prefix)]
+    previous_matches = [line for line in previous.splitlines(keepends=True)
+                        if line.startswith(prefix)]
+    if current_matches != [marker] or previous_matches:
+        raise WorldAfterstateV1CapacityError(
+            "capacity review marker introduction drift")
+    return {
+        "review_commit": review_commit,
+        "canonical_remote_tip_at_admission": remote_tip,
+        "review_marker_sha256": _sha_bytes(marker),
+        "review_claim_sha256": _sha(claim),
+    }
 
 
 def _runtime() -> dict[str, Any]:
@@ -457,7 +559,8 @@ def _validate_measurement(row: object, *, kind: str) -> None:
 def validate_capacity_receipt(value: object) -> None:
     required = {
         "schema", "source_git", "source_tree_clean", "runtime",
-        "source_bindings", "v0_inputs", "schedule", "train_population",
+        "source_bindings", "review", "v0_inputs", "schedule",
+        "train_population",
         "row_reopen_measurements", "cohort_measurements", "selection",
         "terminal_route", "aggregate_resources", "artifacts", "authority",
         "receipt_sha256",
@@ -511,6 +614,21 @@ def validate_capacity_receipt(value: object) -> None:
             raise WorldAfterstateV1CapacityError(
                 "capacity source binding row drift")
         _digest(row.get("sha256"), "capacity source binding SHA-256")
+    review = value.get("review")
+    if type(review) is not dict or set(review) != {
+            "review_commit", "canonical_remote_tip_at_admission",
+            "review_marker_sha256", "review_claim_sha256"}:
+        raise WorldAfterstateV1CapacityError(
+            "capacity review receipt drift")
+    for key, length in (("review_commit", 40),
+                        ("canonical_remote_tip_at_admission", 40),
+                        ("review_marker_sha256", 64),
+                        ("review_claim_sha256", 64)):
+        _digest(review.get(key), f"capacity review {key}", length=length)
+    if review["review_claim_sha256"] \
+            != _sha(expected_review_claim(value["source_git"])):
+        raise WorldAfterstateV1CapacityError(
+            "capacity review claim binding drift")
     expected_v0 = {
         "population_external_sha256": V0_POPULATION_EXTERNAL_SHA256,
         "population_manifest_sha256": V0_POPULATION_MANIFEST_SHA256,
@@ -779,6 +897,7 @@ def reopen_capacity_build(value: CapacityBuildV1) -> CapacityBuildV1:
 def run_capacity(
         *, repo: Path, expected_git: str, population_path: Path,
         dataset_manifest_path: Path, freeze_path: Path, row_root: Path,
+        review_commit: str,
         progress: Callable[[dict[str, Any]], None] | None = None) \
         -> CapacityBuildV1:
     """Run the exact train-only P0 and throughput schedule once."""
@@ -789,6 +908,8 @@ def run_capacity(
             "capacity path request drift")
     started_wall = time.monotonic_ns()
     source_bindings = _source_bindings(repo, expected_git)
+    review = authenticate_review_commit(
+        repo, expected_git=expected_git, review_commit=review_commit)
     torch.use_deterministic_algorithms(True)
     runtime = _runtime()
     cpu_count = runtime["cpu_count"]
@@ -991,6 +1112,7 @@ def run_capacity(
         "source_tree_clean": True,
         "runtime": runtime,
         "source_bindings": source_bindings,
+        "review": review,
         "v0_inputs": {
             "population_external_sha256": V0_POPULATION_EXTERNAL_SHA256,
             "population_manifest_sha256": V0_POPULATION_MANIFEST_SHA256,
@@ -1140,6 +1262,7 @@ def reopen_capacity_directory(root: Path) -> CapacityBuildV1:
 __all__ = [
     "ARTIFACT_PATHS", "AUTHORITY", "CAPACITY_SCHEMA",
     "CapacityBuildV1", "WorldAfterstateV1CapacityError",
+    "authenticate_review_commit", "expected_review_claim",
     "publish_capacity_build", "reopen_capacity_build",
     "reopen_capacity_directory", "run_capacity",
     "validate_capacity_receipt",

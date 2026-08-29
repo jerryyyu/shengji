@@ -330,6 +330,13 @@ training controls or run a capacity epoch. Only a passing P0 permits the four
 one-epoch throughput measurements. No calibration, report, or provider-audit
 row byte is opened by this packet.
 
+Before any train-row byte opens, the capacity entry point must authenticate
+one exact-head external-review marker introduced by a single-parent,
+Claude-authored append-only commit on canonical GitHub `main`. The marker
+binds the source head, V0 input hashes, worker ladders, wall and memory caps,
+and the all-false authority map. Its sole authority is one bounded P0/capacity
+packet; it grants no scientific P1 execution or held-out-data opening.
+
 No all-or-nothing multi-day run is allowed before P0 and a miniature full-path
 rehearsal pass. The rehearsal uses synthetic or train-only rows, proves every
 stage and refusal path, publishes no learning conclusion, and may not choose

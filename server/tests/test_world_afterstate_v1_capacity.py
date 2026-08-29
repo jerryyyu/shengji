@@ -115,6 +115,13 @@ def _build():
         "source_bindings": [{
             "relative_path": path, "byte_count": 1, "sha256": "9" * 64,
         } for path in capacity.SOURCE_PATHS],
+        "review": {
+            "review_commit": "b" * 40,
+            "canonical_remote_tip_at_admission": "c" * 40,
+            "review_marker_sha256": "d" * 64,
+            "review_claim_sha256": capacity._sha(
+                capacity.expected_review_claim("a" * 40)),
+        },
         "v0_inputs": {
             "population_external_sha256":
                 capacity.V0_POPULATION_EXTERNAL_SHA256,
@@ -213,6 +220,66 @@ def test_capacity_artifact_and_selection_cross_bindings_have_teeth():
                        match="throughput-only selection drift"):
         validate_capacity_receipt(forged)
 
+    forged = copy.deepcopy(build.receipt)
+    forged["review"]["review_claim_sha256"] = "0" * 64
+    body = {key: item for key, item in forged.items()
+            if key != "receipt_sha256"}
+    forged["receipt_sha256"] = capacity._sha(body)
+    with pytest.raises(WorldAfterstateV1CapacityError,
+                       match="review claim binding drift"):
+        validate_capacity_receipt(forged)
+
+
+def test_capacity_review_marker_is_external_append_only_and_exact(monkeypatch):
+    source = "a" * 40
+    review = "b" * 40
+    parent = "c" * 40
+    remote = "d" * 40
+    previous = b"# ledger\n"
+    marker = capacity.REVIEW_PREFIX.encode("ascii") \
+        + canonical_json_bytes(capacity.expected_review_claim(source))
+    current = previous + marker
+    monkeypatch.setattr(capacity, "_canonical_remote_tip", lambda _repo: remote)
+
+    def fake_git(_repo, *arguments, binary=False):
+        if arguments == ("rev-parse", "origin/main"):
+            return remote
+        if arguments == ("show", "-s", "--format=%P", review):
+            return parent
+        if arguments[:3] == ("show", "-s", "--format=%an"):
+            return capacity.REVIEWER_NAME
+        if arguments[:3] == ("show", "-s", "--format=%ae"):
+            return capacity.REVIEWER_EMAIL
+        if arguments[:3] == ("show", "-s", "--format=%cn"):
+            return capacity.REVIEWER_NAME
+        if arguments[:3] == ("show", "-s", "--format=%ce"):
+            return capacity.REVIEWER_EMAIL
+        if arguments == ("show", "-s", "--format=%B", review):
+            return capacity.REVIEWER_SESSION_TRAILER + "fixture"
+        if arguments[:5] == (
+                "diff-tree", "--no-commit-id", "--name-only", "-r", review):
+            return capacity.REVIEW_LEDGER
+        if arguments == ("show", f"{review}:{capacity.REVIEW_LEDGER}"):
+            return current
+        if arguments == ("show", f"{parent}:{capacity.REVIEW_LEDGER}"):
+            return previous
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(capacity, "_git", fake_git)
+    monkeypatch.setattr(
+        capacity.subprocess, "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    result = capacity.authenticate_review_commit(
+        Path.cwd(), expected_git=source, review_commit=review)
+    assert result["review_commit"] == review
+    assert result["review_marker_sha256"] == capacity._sha_bytes(marker)
+
+    current = previous
+    with pytest.raises(WorldAfterstateV1CapacityError,
+                       match="marker introduction drift"):
+        capacity.authenticate_review_commit(
+            Path.cwd(), expected_git=source, review_commit=review)
+
 
 def test_capacity_receipt_refuses_any_held_out_opening_claim():
     forged = copy.deepcopy(_build().receipt)
@@ -231,6 +298,10 @@ def test_capacity_run_wires_train_only_reader_through_every_measurement(
     monkeypatch.setattr(
         capacity, "_source_bindings",
         lambda _repo, _git: copy.deepcopy(template["source_bindings"]))
+    monkeypatch.setattr(
+        capacity, "authenticate_review_commit",
+        lambda _repo, *, expected_git, review_commit:
+            copy.deepcopy(template["review"]))
     monkeypatch.setattr(
         capacity, "_runtime", lambda: copy.deepcopy(template["runtime"]))
     monkeypatch.setattr(capacity, "_sealed_read", lambda _path, _label: b"{}\n")
@@ -285,7 +356,8 @@ def test_capacity_run_wires_train_only_reader_through_every_measurement(
         repo=Path.cwd().parent.resolve(), expected_git="a" * 40,
         population_path=tmp_path / "population.json",
         dataset_manifest_path=tmp_path / "dataset.json",
-        freeze_path=tmp_path / "freeze.json", row_root=tmp_path)
+        freeze_path=tmp_path / "freeze.json", row_root=tmp_path,
+        review_commit="b" * 40)
     assert result.receipt["terminal_route"] == "PASS_TO_P1_CAPACITY"
     assert calls == [
         *capacity.ROW_WORKER_COUNTS,

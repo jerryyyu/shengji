@@ -65,6 +65,7 @@ from shengji.rl.world_afterstate_v1_capacity import (  # noqa: E402
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser()
     value.add_argument("--expected-git", required=True)
+    value.add_argument("--review-commit", required=True)
     value.add_argument("--population", type=Path, required=True)
     value.add_argument("--dataset-manifest", type=Path, required=True)
     value.add_argument("--freeze", type=Path, required=True)
@@ -100,6 +101,7 @@ def main() -> None:
         population_path=args.population,
         dataset_manifest_path=args.dataset_manifest,
         freeze_path=args.freeze, row_root=args.row_root,
+        review_commit=args.review_commit,
         progress=progress)
     publish_capacity_build(args.output, build)
     reopened = reopen_capacity_directory(args.output)

@@ -661,6 +661,19 @@ def validate_prediction_population_manifest_v2(value: Mapping[str, Any]) -> None
             "prediction manifest reconstruction drift")
 
 
+def reopen_prediction_population_manifest_v2(
+        value: Mapping[str, Any]) -> tuple[CandidatePredictionV2, ...]:
+    """Reopen the exact prediction rows after full manifest validation."""
+    validate_prediction_population_manifest_v2(value)
+    result = tuple(CandidatePredictionV2(
+        **{key: tuple(item) if key == "probability_ppb" else item
+           for key, item in payload.items()})
+        for payload in value["predictions"])
+    for row in result:
+        row.validate()
+    return result
+
+
 def select_primary_actions_v2(
         predictions: Sequence[CandidatePredictionV2]) -> dict[str, int]:
     """Select from block-1 natural ensemble, breaking every tie to incumbent."""
@@ -705,5 +718,6 @@ __all__ = [
     "WorldAfterstateV2InferenceError", "build_inference_root_v2",
     "expected_signed_microlevels", "predict_root_v2",
     "prediction_population_manifest_v2",
+    "reopen_prediction_population_manifest_v2",
     "select_primary_actions_v2", "validate_prediction_population_manifest_v2",
 ]

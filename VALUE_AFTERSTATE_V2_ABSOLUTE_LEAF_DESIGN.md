@@ -203,6 +203,14 @@ policy diversity. PT actions may enter the candidate ballot as legal
 proposals, but PT prose, confidence, argmax, and mixed-policy final outcomes
 are never scalar value truth. Existing PT-Luna0 is not Luna-vs-Luna self-play.
 
+Fresh PT state-source collection is a separate score-free acquisition stage
+with its own pre-execution capacity and budget receipt. The receipt freezes
+source counts, wall and token caps, worker layout, progress reporting, failure
+semantics, and provider headroom. Collection finishes and its complete deal
+identities are sealed before the V2 population freezes; its time and tokens
+are excluded from the scientific V2 service clock, and its outcomes remain
+unavailable to tier choice and state selection.
+
 Every diverse root is chosen by the same assigned-stratum/canonical-state-hash
 rule as a natural root. The PT or human game's terminal outcome, narration,
 confidence, and retrospective analysis are unavailable to selection and are
@@ -215,12 +223,15 @@ successor is relabeled with the same frozen `pi_c` and seed schedule.
 
 The design review may nominate production `mc-s0-report-lcb` or one stronger,
 fully reproducible engine-only continuation as `pi_c`. A stronger candidate
-must have a named policy/checkpoint/configuration, prior outcome evidence, and
-must pass the exact-32 census for determinism, common-random-number pairing,
-and economics. Sol/Luna API calls are not eligible numeric labelers. The
-choice is frozen before any V2 label or prediction exists and cannot be made
-from V2 outcomes. If no stronger candidate clears those requirements,
-production remains `pi_c`.
+must have a named policy/checkpoint/configuration and independently reopened
+paired whole-round evidence whose one-sided deal-cluster lower bound against
+production is strictly positive at frozen information and work. It must also
+pass the exact-32 census for determinism, common-random-number pairing, and
+economics. DEV point estimates, local decision tails, teacher prose, and
+unmatched-work contrasts are ineligible evidence classes. Sol/Luna API calls
+are not eligible numeric labelers. The choice is frozen before any V2 label or
+prediction exists and cannot be made from V2 outcomes. If no stronger
+candidate clears those requirements, production remains `pi_c`.
 
 The population packet publishes, by split and source: independent deal count,
 root count, candidate-afterstate count, continuation-row count, trump
@@ -233,27 +244,38 @@ P0 is exactly 96 natural fit deals, exactly eight per phase/position/role
 cell, selected by the smallest canonical pre-label deal hashes. It generates
 all eight continuation replicas before any model training.
 
-For each direction, assign the incumbent an exact advantage of zero and choose
-from `{incumbent} union {non-incumbent candidates}` with one replica half,
-breaking every tie to the incumbent. Score that choice with the other half,
-then reverse. Cluster inference by deal.
+One shared state-selection function and source hash implements the assigned-
+stratum/smallest-canonical-state-hash rule for P0, remaining fit, select, and
+audit populations. Split-specific selection code or parameters are forbidden.
+
+For each direction, choose from the complete frozen candidate set with one
+replica half, breaking every tie to the incumbent. On the other half, score
+`chosen outcome - equal-weight candidate-mean outcome`, then reverse. This
+tests whether independent replicas support a reproducible ordering without
+requiring any candidate to beat the strong production incumbent. Also report
+chosen-minus-incumbent utility separately as a non-gating diagnostic. Cluster
+inference by deal.
 
 P0 advances only if:
 
 1. both directional point estimates are positive;
 2. the combined deal-bootstrap lower bound is strictly positive;
-3. non-incumbent selection dose is at least 5%; and
+3. at least 5% of sibling pairs have the same nonzero advantage sign in both
+   replica halves, and the two half-sample sibling-advantage vectors have a
+   strictly positive deal-bootstrap correlation lower bound; and
 4. transition, continuation, perspective, and symmetry checks pass.
 
 Publish R=2/4/8 action agreement, return-mean error, intraclass correlation,
-nonzero-advantage dose, and both directional utilities. If P0 fails, publish
-`STOP_NO_REPRODUCIBLE_VALUE_LABEL`; do not label any non-P0 deal or train. The
-unlabeled remainder is 160 deals for D256, 416 for D512, or 928 for D1024.
+nonzero-advantage dose, and both directional utilities. If P0 statistical
+gate 1, 2, or 3 fails, publish `STOP_NO_REPRODUCIBLE_VALUE_LABEL`; do not label
+any non-P0 deal or train. A P0 gate-4 mechanics or integrity failure instead
+routes to `REFUSE_MECHANICS_OR_CONTROL`. The unlabeled remainder is 160 deals
+for D256, 416 for D512, or 928 for D1024.
 
 P0 also freezes the pre-audit power calculation. Let `s` be the Bessel-
 corrected standard deviation across the 96 deal-level, two-direction-averaged
-cross-fit utilities. For a one-sided alpha of 0.05, power 0.80, and minimum
-worthwhile effect `delta = +0.10`, compute:
+chosen-minus-candidate-mean cross-fit utilities. For a one-sided alpha of
+0.05, power 0.80, and minimum worthwhile effect `delta = +0.10`, compute:
 
 ```text
 n_required = ceil(((1.644854 + 0.841621) * s / delta)^2)
@@ -322,12 +344,64 @@ deals. Train four fixed seeds for at most 20 epochs with patience 3 and one
 common selected epoch. There is no warm start, member-specific selection,
 retry, seed dropping, or audit-driven extension.
 
+### Pre-audit recipe diagnosis
+
+The audit is not the first time the training recipe is allowed to fail. Before
+full training or audit opening, publish this ordered diagnostic ladder:
+
+1. **Label ceiling:** Section 7 cross-fits independent continuation halves.
+   Failure means the leaf comparison/continuation target is too noisy or
+   incorrectly signed; it is not evidence about model data or architecture.
+2. **Optimizer/wiring canary:** use the complete sibling-candidate sets of the
+   16 smallest-hash P0 roots, one fixed model seed, and 500 optimizer steps
+   with no early stopping. Let
+   `L_empirical` be the exact empirical-distribution entropy plus zero paired
+   residual for those eight-replica targets. Require all gradients and weights
+   finite, `L_initial > L_empirical`, and
+   `(L_initial - L_final) / (L_initial - L_empirical) >= 0.80`.
+   Failure publishes `REFUSE_TRAINING_RECIPE` before full training.
+3. **Nested data curve:** train the identical primary recipe and fixed seed on
+   source/stratum-preserving canonical deal-hash prefixes containing 25%, 50%,
+   and 100% of fit deals. Evaluate all three on the untouched select fold. The
+   25%/50% models cannot become ensemble members; the 100% model is member 0
+   only when its checkpoints byte-match the primary schedule. Publish absolute
+   RPS/error, paired-error, train-select gap, and fit/select slopes versus log
+   independent-deal count.
+4. **Primary stability:** publish all four members' per-epoch fit and select
+   curves, gradient norms, parameter/update norms, prediction entropy, paired
+   target error, and common-epoch dispersion. No member may be dropped.
+5. **Pre-audit learning admission:** on select deals, the common-epoch
+   ensemble must have strictly positive one-sided deal-bootstrap lower bounds
+   for RPS improvement over the fit prior and paired-advantage error
+   improvement over zero, with at least 3/4 members positive on mean RPS
+   improvement. Failure publishes `SELECT_NONE_PREAUDIT_LEARNING` and leaves
+   every audit label unopened.
+
+Interpretation is preregistered rather than reconstructed after audit:
+
+| observed before audit | diagnosis |
+|---|---|
+| label ceiling fails | continuation/leaf-comparison recipe is invalid or too noisy |
+| optimizer canary fails | implementation, optimizer, loss scaling, or model expressivity is broken |
+| fit improves, select degrades; larger prefixes reduce the gap | data-limited overfitting |
+| fit remains poor after canary passes and the data curve is flat | representation/capacity or irreducible-target problem |
+| members diverge materially under identical data | optimization/hyperparameter instability |
+| fit and select proper scores improve but action utility does not | valid value learning without evidence of beating the production action |
+
+The last three diagnoses are evidence, not perfectly identifiable causes. A
+flat data curve cannot by itself distinguish architecture from a poorly chosen
+optimizer. Any successor that changes width, optimizer, or data mixture is a
+train/select-only development design and may not reopen V2 audit outcomes.
+
 ## 10. Target-free audit and gates
 
 Predictions for every natural audit deal in the chosen tier and every control
 seal and independently reopen before audit outcomes open once.
 
-V2 passes only if all hold:
+The audit has two layers so production strength is not confused with training
+correctness.
+
+**Absolute-value learning gates:**
 
 1. Ranked-probability-score improvement over a smoothed train-only
    phase/role/points prior has a positive deal-bootstrap lower bound.
@@ -335,13 +409,24 @@ V2 passes only if all hold:
    positive lower bound.
 3. Paired-advantage absolute-error improvement over exact zero has a positive
    lower bound.
-4. Ensemble action utility over retaining the production action has a positive
+4. At least 3/4 members have positive mean ranked-probability-score
+   improvement.
+5. Natural-minus-complete-world-shuffle lower bounds are strictly positive for
+   ranked probability score and paired-advantage error.
+6. Every negative control fails on demand.
+
+**Production-action usefulness gates:**
+
+1. Ensemble action utility over retaining the production action has a positive
    lower bound.
-5. At least 3/4 members have positive mean action utility.
-6. Non-incumbent selection dose is at least 5%.
-7. Natural-minus-complete-world-shuffle lower bounds are both strictly
-   positive for ranked probability score and action utility.
-8. Every negative control fails on demand.
+2. At least 3/4 members have positive mean action utility.
+3. Non-incumbent selection dose is at least 5%.
+4. Natural-minus-complete-world-shuffle action-utility lower bound is strictly
+   positive.
+
+Passing the learning layer but not the usefulness layer proves only that the
+recipe predicts held-out values better than non-action baselines. It does not
+claim better decisions, gameplay strength, or a useful search consumer.
 
 For ordered outcome categories `1..204`, ranked probability score is:
 
@@ -375,9 +460,17 @@ Required positive/integrity controls that must pass are identical-successor
 exact-zero advantage, root-team mirror, hidden-metadata absence, and
 transition/legality/hash/fold mutations that refuse before prediction.
 
-Learning controls that must fail the complete advancement gate are within-root
-action/successor association permutation, label permutation within frozen
-public strata, and complete-world shuffle within compatible public strata.
+Learning controls are within-root action/successor association permutation,
+label permutation within frozen public strata, and complete-world shuffle
+within compatible public strata. The association- and label-permuted cohorts
+must each fail at least one of absolute-value learning gates 1--4 when scored
+as a candidate cohort. World shuffle must be rejected by both gate-5
+natural-minus-shuffle lower bounds. Gate 6 is the nonrecursive conjunction of
+those three demanded failures. Failing only a production-action usefulness
+gate is insufficient. Failure of the association- or label-permutation
+component forces `REFUSE_MECHANICS_OR_CONTROL`, even when the natural model
+would otherwise route to `PASS_ABSOLUTE_VALUE_LEARNING_ONLY`; failure of the
+world-shuffle component instead routes to `SELECT_NONE_NO_WORLD_SIGNAL`.
 Association permutation must change at least 90% of bindings and successor
 tensors. Label permutation must change at least 90% of donor bindings and 40%
 of numeric targets. World shuffle must change at least 90% of eligible world
@@ -427,13 +520,13 @@ deals is a score-free capacity refusal. Measure:
   continuation policy; and
 - whether label shards can seal and reopen independently.
 
-Implementation proceeds only if at least D256's projected label stage is
-economically plausible, stays below 85% of a 30-GiB no-swap memory envelope,
-and has at least 25% storage headroom. The receipt reports every tier and
-teacher candidate without choosing from outcomes. This census clears label
-economics only; it does not authorize or predict the composed scientific DAG.
-A failure changes or closes the design; it does not move a cap to fit the
-projection.
+Implementation proceeds only if at least D256's projected label stage is at
+most three hours wall and 48 aggregate CPU-hours on the 16-core host, stays
+below 85% of a 30-GiB no-swap memory envelope, and has at least 25% storage
+headroom. The receipt reports every tier and teacher candidate without
+choosing from outcomes. This census clears label economics only; it does not
+authorize or predict the composed scientific DAG. A failure changes or closes
+the design; it does not move a cap to fit the projection.
 
 ## 13. Post-implementation score-free capacity gate
 
@@ -455,10 +548,12 @@ choose the largest eligible D256/D512/D1024 tier by the outcome-blind rule in
 Section 5.
 Publish exact model parameters, candidate distribution, per-epoch wall,
 composed peak memory, CPU utilization, and projected P0, label, train, audit,
-and reconstruction walls. The complete composed projection includes natural
-and every learning-control cohort. It must be at most six hours, providing 2x
-measured headroom under the immutable 12-hour scientific service cap. GPU
-support is out of scope.
+and reconstruction walls. The complete composed projection includes the
+optimizer canary, nested 25/50/100% data curve, natural cohort, and every
+learning-control cohort. It must be at most six hours, providing 2x measured
+headroom under the immutable 12-hour scientific service cap. GPU support is
+out of scope. The composed peak artifact projection must retain at least 25%
+free-disk headroom after temporary and final artifacts coexist.
 
 Independent deals, candidate successors, continuation replicas, control
 cohorts, inference batches, and reconstruction shards are the permitted
@@ -496,23 +591,64 @@ continuations whose exact immutable rows already reopen.
 
 - `REFUSE_MECHANICS_OR_CONTROL`
 - `REFUSE_RESOURCE_INCOMPLETE`
+- `REFUSE_TRAINING_RECIPE`
 - `STOP_NO_REPRODUCIBLE_VALUE_LABEL`
 - `STOP_UNDERPOWERED`
+- `SELECT_NONE_PREAUDIT_LEARNING`
 - `SELECT_NONE_NO_ABSOLUTE_VALUE`
 - `SELECT_NONE_NO_ACTION_SENSITIVITY`
 - `SELECT_NONE_NO_WORLD_SIGNAL`
-- `PASS_ABSOLUTE_LEAF_VALUE_TO_CONSUMER_DESIGN`
+- `PASS_ABSOLUTE_VALUE_LEARNING_ONLY`
+- `PASS_ABSOLUTE_VALUE_AND_ACTION_EDGE_TO_CONSUMER_DESIGN`
 
-A PASS authorizes only designing a consumer. It grants no PUCT, rollout,
+`PASS_ABSOLUTE_VALUE_LEARNING_ONLY` means every absolute-value learning gate
+passed but at least one production-action usefulness gate failed. It may
+justify a separately reviewed data-scale, recipe, or consumer design; it is
+not evidence of a better action selector. The stronger PASS means both layers
+passed. Either PASS authorizes design only and grants no PUCT, rollout,
 BELIEF, gameplay, strength, merge, promotion, or deployment authority.
 
 `REFUSE_RESOURCE_INCOMPLETE` preserves every verified population, label shard,
 and complete common-epoch checkpoint, records the exact incomplete stage, and
 forbids audit opening. It grants no retry under the spent admission.
 
+Terminal precedence is frozen and first-match-wins:
+
+1. unexpectedly missing/unsealed evidence required for the currently reached
+   stage, or an exceeded resource/deadline cap ->
+   `REFUSE_RESOURCE_INCOMPLETE`; intentionally absent downstream artifacts
+   after an earlier valid stop do not satisfy this predicate;
+2. any mechanics/integrity failure available at the currently reached stage
+   -> `REFUSE_MECHANICS_OR_CONTROL`;
+3. failed P0 statistical gate 1, 2, or 3 ->
+   `STOP_NO_REPRODUCIBLE_VALUE_LABEL`;
+4. P0 `n_required` above the chosen audit count -> `STOP_UNDERPOWERED`;
+5. failed optimizer/wiring canary -> `REFUSE_TRAINING_RECIPE`;
+6. failed select-fold learning admission ->
+   `SELECT_NONE_PREAUDIT_LEARNING`;
+7. after the complete audit opens, the association- or label-permutation
+   component of derived learning-control gate 6 fails ->
+   `REFUSE_MECHANICS_OR_CONTROL`;
+8. audit learning gates 1, 2, or 4 fail ->
+   `SELECT_NONE_NO_ABSOLUTE_VALUE`;
+9. gates 1, 2, and 4 pass but paired-advantage gate 3 fails ->
+   `SELECT_NONE_NO_ACTION_SENSITIVITY`;
+10. gates 1--4 pass but either natural-minus-world-shuffle gate-5 lower bound
+    fails (and therefore the world-shuffle component of gate 6 fails) ->
+    `SELECT_NONE_NO_WORLD_SIGNAL`;
+11. all absolute-value gates pass and any production-action usefulness gate
+    fails -> `PASS_ABSOLUTE_VALUE_LEARNING_ONLY`;
+12. both complete gate layers pass ->
+    `PASS_ABSOLUTE_VALUE_AND_ACTION_EDGE_TO_CONSUMER_DESIGN`.
+
+Steps 7--12 are evaluated only after a complete single audit opening. Earlier
+stops leave audit labels unopened. A later reason may never replace an earlier
+route after outcomes are visible.
+
 ## 16. Conditional successors
 
-If V2 passes, the next step is a separately reviewed one-trick consumer:
+If either learning PASS occurs, the next step may be a separately reviewed
+one-trick consumer:
 
 ```text
 candidate action

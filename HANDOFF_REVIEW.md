@@ -7765,3 +7765,68 @@ on its own, separately from whether each individual failure was reasonable.
 
 Read-only on Perf: systemd properties, journal traceback frames, and directory existence. No row
 bytes, outputs, or evidence namespaces opened; nothing signalled. — Claude (session `f4b0ea92`)
+
+## 2026-08-29 09:30 EDT — ✅ PASS: PR #166 repaired head `34409006`, one consolidated Value V1 capacity source+launch review. All three exclusion guards mutation-proven, and the V0 pins match digests I verified independently a day earlier
+
+Supersedes the three spent `aa0595c` command markers; no old-head re-entry authorized.
+
+### Delta and batteries, reproduced
+
+Head `34409006ed9ecafdddd41e060936c2e3a8421aee`, parent **`aa0595cce9b626941c9cc4fd64062b4e06d10cf1`**
+(`git log --format=%P`), **4 files, +137/−8** — exactly the stated scope; `git diff --check` clean.
+Batteries run by me at the exact head, native rebuilt, `-P -B`, cleared `__pycache__`:
+**80 passed strict** (`SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`) and **80 passed pure**, both matching
+the claim.
+
+### The repair is the right shape, and I checked the order rather than the prose
+
+`select_manifest_eligible_advantage_rows` proves completeness **before** excluding anything: it
+refuses a foreign group, a duplicate key, any group whose observed candidate indices are not exactly
+`set(range(candidate_count))`, and any candidate missing either frozen replicate — and only then
+keeps rows whose manifest-declared `candidate_count >= 2`. That ordering is what makes "a dropped
+sibling can never be mistaken for an incumbent-only root" true rather than aspirational. The capacity
+module's whole change is to route through it, passing `candidate_count` from the sealed manifest's
+own train-fold groups.
+
+### Mutation battery — all three go red, and for the right reason
+
+| mutation | result |
+|---|---|
+| candidate-index completeness clause → `False` | **1 failed** — `test_manifest_eligible_selector_excludes_only_proven_singletons`, `DID NOT RAISE` |
+| both-replicates requirement removed | **1 failed** |
+| singleton exclusion weakened `>= 2` → `>= 1` | **2 failed** |
+
+Each names a specific test; the completeness mutation fails the test whose name is exactly the
+property at issue. Source restored after every run; `git status --porcelain` = 0.
+
+### Cross-lane check worth recording
+
+The module pins `V0_POPULATION_EXTERNAL_SHA256 = 48155bb5…` and `V0_FREEZE_EXTERNAL_SHA256 =
+735b367e…`. Those are byte-identical to the digests I independently recomputed on Perf during the
+PR #164 review at `da7f0d7`. So V1 is bound to the same sealed V0 artifacts I verified a day ago,
+and the dataset is bound by external **and** manifest digest (`:439`, `:457`) rather than by path —
+which is the structural answer to the `rows/`-versus-`dataset` operator defect that produced the
+earlier failures: a wrong root now fails a digest, not just a convention.
+
+### Marker and authority
+
+Generated with the module's own generator, `expected_review_claim` +
+`REVIEW_PREFIX = "WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW "`: **1,118 bytes**, SHA-256
+`4b76aa1c15f400240d641e7ab342292c910f406b163e0d67121c25a896685f60`. Exactly three authority flags are
+true — `v0_train_row_reopening_authorized`, `train_only_p0_diagnostic_authorized`,
+`train_only_capacity_epoch_authorized` — all train-only. Calibration/report/provider-audit row
+opening, scientific P1 training, PR #167 freeze authority, gameplay, strength, merge, promotion,
+deployment and R5 remain false.
+
+Launch conditions, as required: fresh exact-head checkout with local/real canonical-ref equality
+asserted immediately before launch, existing immutable V0 population/dataset/freeze, a new output
+namespace, strict native/void `-P -B`, the composed two-hour internal deadline, cgroup-v2 envelope,
+outcome-blind progress contract. Authority ends after publishing and independently reopening the
+receipt.
+
+Coverage limits: +137 lines reviewed closely, batteries run in both modes, three guards mutated. I
+did not re-audit the `aa0595c` base beyond running its full V1 battery, and PR #167 stays
+unreviewable until the receipt exists. R4 untouched, still pre-rename. — Claude (session `68f9c8bd`)
+
+WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_capacity_epoch_authorized":true,"train_only_p0_diagnostic_authorized":true,"v0_train_row_reopening_authorized":true},"member_worker_counts":[1,2,4,8],"memory_limit_bytes":32212254720,"row_worker_counts":[1,2,4,8,16],"schema":"world-afterstate-v1-capacity-review-claim-v1","source_git":"34409006ed9ecafdddd41e060936c2e3a8421aee","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_freeze_external_sha256":"735b367e824e1510b7a951e2fd3ef373c8f3688107d622152a1dfc12830b43a0","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581","wall_cap_nanoseconds":7200000000000}
+

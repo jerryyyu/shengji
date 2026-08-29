@@ -68,6 +68,15 @@ PT-Luna0 need no repeated review while in their current states.
   immediate reconstruction repeats scoring plus integrity. Treat deadline
   exhaustion as a real open risk, not a predicted failure or permission to
   interrupt the only valid attempt.
+- Deadline expiry is now pre-adjudicated from the reviewed source. If
+  `terminal.partial/` remains and `terminal/` is absent, no inner decision
+  sealed and `recover-terminal-binding` is ineligible: preserve the namespace
+  and draw no model conclusion. If `terminal/` exists, `terminal.partial/` is
+  absent, and only `r4-completion-terminal.json` is missing, the narrow
+  reviewed recovery may independently reopen that immutable inner terminal and
+  publish only the missing outer binding after the scientific unit stops; it
+  cannot reopen the test or choose a second result. If both inner and outer
+  exist, recovery is forbidden and only the independent verifier remains.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
 - After statistics and the first terminal derivation, the same unit must

@@ -325,6 +325,9 @@ def evaluate_label_ceiling(
     for pair in pairs:
         if type(pair) is not AdvantagePairV1:
             raise WorldAfterstateV1Error("label-ceiling pair type drift")
+        if pair.fold != "train":
+            raise WorldAfterstateV1Error(
+                "label-ceiling must not open calibration pairs")
         key = pair.key()
         if key in seen:
             raise WorldAfterstateV1Error("duplicate label-ceiling pair")

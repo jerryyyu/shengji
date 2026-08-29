@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Any, Mapping
 
 from .belief_contract import canonical_json_bytes
@@ -241,7 +242,28 @@ def validate_terminal_result(value: object) -> None:
             "terminal result reconstruction drift")
 
 
+def terminal_result_bytes(value: Mapping[str, Any]) -> bytes:
+    validate_terminal_result(value)
+    return canonical_json_bytes(value)
+
+
+def reopen_terminal_result_bytes(raw: bytes) -> dict[str, Any]:
+    if type(raw) is not bytes:
+        raise WorldAfterstateV1ResultError("terminal result byte type drift")
+    try:
+        value = json.loads(raw.decode("ascii"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise WorldAfterstateV1ResultError(
+            "terminal result is not canonical JSON") from exc
+    if canonical_json_bytes(value) != raw:
+        raise WorldAfterstateV1ResultError(
+            "terminal result is not canonical JSON")
+    validate_terminal_result(value)
+    return value
+
+
 __all__ = [
     "AUTHORITY", "CONTROL_NAMES", "DECISIONS", "WorldAfterstateV1ResultError",
-    "derive_terminal_result", "validate_terminal_result",
+    "derive_terminal_result", "reopen_terminal_result_bytes",
+    "terminal_result_bytes", "validate_terminal_result",
 ]

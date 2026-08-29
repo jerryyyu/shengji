@@ -44,6 +44,15 @@ def _population(*, contradictory: bool = False):
     return rows
 
 
+def _train_pairs(*, contradictory: bool = False):
+    outcomes = tuple(
+        row for row in _population(contradictory=contradictory)
+        if row.fold == "train")
+    return build_advantage_pairs(
+        outcomes,
+        allowed_folds=("train",))
+
+
 def test_pairs_are_exact_candidate_minus_incumbent_and_order_stable():
     outcomes = _population()
     forward = build_advantage_pairs(outcomes)
@@ -57,7 +66,7 @@ def test_pairs_are_exact_candidate_minus_incumbent_and_order_stable():
 
 def test_label_ceiling_passes_only_for_reproducible_action_signal():
     result = evaluate_label_ceiling(
-        build_advantage_pairs(_population()), bootstrap_replicates=200)
+        _train_pairs(), bootstrap_replicates=200)
     validate_label_ceiling(result)
     assert result["passed"] is True
     assert result["crossfit_direction_mean_microlevels"] == {
@@ -76,8 +85,7 @@ def test_label_ceiling_passes_only_for_reproducible_action_signal():
 
 def test_contradictory_replicates_stop_before_training():
     result = evaluate_label_ceiling(
-        build_advantage_pairs(_population(contradictory=True)),
-        bootstrap_replicates=200)
+        _train_pairs(contradictory=True), bootstrap_replicates=200)
     validate_label_ceiling(result)
     assert result["passed"] is False
     assert result["crossfit_direction_mean_microlevels"] == {
@@ -119,7 +127,7 @@ def test_pair_label_mutation_is_refused_exactly():
 
 
 def test_label_ceiling_refuses_dropped_candidate_row():
-    pairs = list(build_advantage_pairs(_population()))
+    pairs = list(_train_pairs())
     pairs.pop()
     with pytest.raises(
             WorldAfterstateV1Error,
@@ -128,7 +136,7 @@ def test_label_ceiling_refuses_dropped_candidate_row():
 
 
 def test_label_ceiling_refuses_cross_replicate_successor_drift():
-    pairs = list(build_advantage_pairs(_population()))
+    pairs = list(_train_pairs())
     donor = pairs[1]
     pairs[1] = AdvantagePairV1(**{
         **donor.__dict__,
@@ -142,7 +150,7 @@ def test_label_ceiling_refuses_cross_replicate_successor_drift():
 
 def test_result_gate_and_hash_mutations_are_refused():
     result = evaluate_label_ceiling(
-        build_advantage_pairs(_population()), bootstrap_replicates=200)
+        _train_pairs(), bootstrap_replicates=200)
     gate = copy.deepcopy(result)
     gate["passed"] = False
     with pytest.raises(WorldAfterstateV1Error, match="label-ceiling gate drift"):
@@ -158,3 +166,14 @@ def test_result_gate_and_hash_mutations_are_refused():
     with pytest.raises(
             WorldAfterstateV1Error, match="label-ceiling census drift"):
         validate_label_ceiling(census)
+
+
+def test_label_ceiling_refuses_calibration_before_prediction_seal():
+    outcomes = tuple(
+        row for row in _population() if row.fold == "calibration")
+    pairs = build_advantage_pairs(
+        outcomes, allowed_folds=("calibration",))
+    with pytest.raises(
+            WorldAfterstateV1Error,
+            match="must not open calibration pairs"):
+        evaluate_label_ceiling(pairs, bootstrap_replicates=200)

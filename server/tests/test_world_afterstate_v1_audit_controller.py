@@ -10,7 +10,8 @@ from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v1_audit_controller import (
     WorldAfterstateV1AuditControllerError,
     build_prediction_artifact_bytes, evaluate_sealed_predictions,
-    reopen_prediction_artifact_bytes, validate_sealed_audit_result)
+    reopen_prediction_artifact_bytes, reopen_sealed_audit_result_bytes,
+    sealed_audit_result_bytes, validate_sealed_audit_result)
 from shengji.rl.world_afterstate_v1_evaluation import collate_inference_pairs
 from shengji.rl.world_afterstate_v1_training_controller import (
     reopen_cohort_build)
@@ -62,6 +63,8 @@ def test_target_free_predictions_seal_before_audit_labels_open():
 
     result = evaluate_sealed_predictions(raw, joined)
     validate_sealed_audit_result(result)
+    assert reopen_sealed_audit_result_bytes(
+        sealed_audit_result_bytes(result)) == result
     assert result["audit_labels_opened"] is True
     assert result["report_rows_opened"] is False
     assert result["world_shuffle_result"] is not None

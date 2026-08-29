@@ -5,20 +5,21 @@ import copy
 import pytest
 
 from shengji.rl.world_afterstate_v1 import (
-    build_advantage_pairs, evaluate_label_ceiling)
+    evaluate_label_ceiling)
 from shengji.rl.world_afterstate_v1_evaluation import (
     evaluate_advantage_audit, evaluate_world_shuffle_delta)
 from shengji.rl.world_afterstate_v1_result import (
     CONTROL_NAMES, WorldAfterstateV1ResultError, derive_terminal_result,
+    reopen_terminal_result_bytes, terminal_result_bytes,
     validate_terminal_result)
 
-from test_world_afterstate_v1 import _population
+from test_world_afterstate_v1 import _train_pairs
 from test_world_afterstate_v1_evaluation import _calibration, _predictions
 
 
 def _p0(*, passed=True):
     return evaluate_label_ceiling(
-        build_advantage_pairs(_population(contradictory=not passed)),
+        _train_pairs(contradictory=not passed),
         bootstrap_replicates=200)
 
 
@@ -42,6 +43,8 @@ def _components(*, natural_pass=True, control_pass=False, world_pass=True):
 def test_p0_failure_stops_without_constructing_any_p1_evidence():
     result = derive_terminal_result(_p0(passed=False))
     validate_terminal_result(result)
+    assert reopen_terminal_result_bytes(terminal_result_bytes(result)) \
+        == result
     assert result["decision"] == "STOP_NO_REPRODUCIBLE_ACTION_LABEL"
     assert result["natural_result_sha256"] is None
     with pytest.raises(WorldAfterstateV1ResultError,

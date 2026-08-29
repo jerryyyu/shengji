@@ -22,7 +22,7 @@ V0 reconstructed terminal SHA-256:
 This is a successor design, not a retry of V0. It changes the estimand from
 absolute game outcome to the paired advantage of one engine-applied action
 over the protected production incumbent. The first stage reuses only V0
-train/calibration rows and must prove that the continuation labels contain a
+train rows and must prove that the continuation labels contain a
 stable action signal before another report population is generated.
 
 ## 1. Why V0 closed
@@ -102,9 +102,10 @@ engine-reached successors.
 
 ### V1-P0 — paired-label ceiling audit
 
-Before training, reopen only the already-sealed V0 `train` and `calibration`
-rows. Never open or reuse the V0 `report` or `provider-audit` folds for V1
-selection. Reconstruct the paired advantages and publish:
+Before training, reopen only the already-sealed V0 `train` rows. Keep the V0
+`calibration` labels sealed for the later P1 audit, and never open or reuse the
+V0 `report` or `provider-audit` folds for V1 selection. Reconstruct the paired
+advantages and publish:
 
 - eligible root states with at least two candidates;
 - nonzero-advantage and best-action-flip dose;
@@ -122,8 +123,8 @@ held-out non-incumbent selection dose is at least 5% of eligible states. The
 terminalize `STOP_NO_REPRODUCIBLE_ACTION_LABEL`; do not train V1 and do not buy
 more rows for the same continuation recipe.
 
-P0 is diagnostic use of previously opened development data. It grants no new
-scientific claim and cannot tune a future report threshold.
+P0 is diagnostic use of previously opened training data. It grants no new
+scientific claim and cannot tune a future calibration or report threshold.
 
 ### V1-P1 — action-relative train/calibration pilot
 

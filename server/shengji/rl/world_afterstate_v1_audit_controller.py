@@ -348,8 +348,30 @@ def validate_sealed_audit_result(value: object) -> None:
             "sealed audit result reconstruction drift")
 
 
+def sealed_audit_result_bytes(value: Mapping[str, Any]) -> bytes:
+    validate_sealed_audit_result(value)
+    return canonical_json_bytes(value)
+
+
+def reopen_sealed_audit_result_bytes(raw: bytes) -> dict[str, Any]:
+    if type(raw) is not bytes:
+        raise WorldAfterstateV1AuditControllerError(
+            "sealed audit result byte type drift")
+    try:
+        value = json.loads(raw.decode("ascii"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise WorldAfterstateV1AuditControllerError(
+            "sealed audit result is not canonical JSON") from exc
+    if canonical_json_bytes(value) != raw:
+        raise WorldAfterstateV1AuditControllerError(
+            "sealed audit result is not canonical JSON")
+    validate_sealed_audit_result(value)
+    return value
+
+
 __all__ = [
     "AUTHORITY", "WorldAfterstateV1AuditControllerError",
     "build_prediction_artifact_bytes", "evaluate_sealed_predictions",
-    "reopen_prediction_artifact_bytes", "validate_sealed_audit_result",
+    "reopen_prediction_artifact_bytes", "reopen_sealed_audit_result_bytes",
+    "sealed_audit_result_bytes", "validate_sealed_audit_result",
 ]

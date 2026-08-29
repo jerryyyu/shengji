@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 03:00 EDT**. Remote main before this refresh:
-`334ac33fd7297d8ff05808a0c70f46e162e23714`.
+Last reconciled: **2026-08-29 03:10 EDT**. Remote main before this refresh:
+`3758f2b7c32b6308ee67e581d68461746ab50845`.
 
 ## Review queue
 
@@ -46,13 +46,18 @@ PT-Luna0 need no repeated review while in their current states.
   `56bd35f0c45080121d094f6906ab8d1053ca9e6b`.
 - Unit `belief-r4-terminal-scientific-56bd35f-r1.service` is active with zero
   restarts. The first synthetic scoring pass completed 1,339/1,339 and all five
-  human transfer groups completed. The run is now at terminal-statistics
-  derivation (3/6); cgroup peak remains 23.76 GB under the unchanged 24-GiB
-  cap. Source inspection at the executing head proves the quiet substep is the
-  first of three sequential calls: in-memory bootstrap statistics. The 27.82
-  GB integrity-byte verification follows it and has not started. This phase
-  has no trustworthy item counter or ETA, remains CPU-active, and has not
-  published an outcome. Do not diagnose it as a hang or duplicate it.
+  human transfer groups completed. The visible phase remains 3/6, but the
+  quiet substep is **not** bootstrap statistics: the exact source runs those
+  three reports in a three-thread executor, while the live main process has
+  one thread; an exact 1,339-round-shape benchmark completes the whole wrapper
+  in about 0.15 s. R4 is therefore inside the following single-threaded
+  `_derive_integrity_receipt` pass. That pass sequentially reconstructs all
+  13,312 capture rounds (14.55 GB), 3,991 REF-C jobs (6.29 GB), the human
+  artifacts, the 311-MB/778,064-decision input index, and 27.82 GB of tensor
+  cache before phase 4 can publish. Its exact internal item is not externally
+  observable and it has no progress counter or trustworthy ETA. Cgroup peak
+  remains 23.76 GB under the unchanged 24-GiB cap; it remains CPU-active and
+  has not published an outcome. Do not diagnose it as a hang or duplicate it.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
 - After statistics and the first terminal derivation, the same unit must

@@ -4,55 +4,16 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 11:34 EDT**. Remote main before this update:
-`e80e1cb198560380d783f9f4baea9fbfaacb840f`.
+Last reconciled: **2026-08-29 11:49 EDT**. Remote main before this update:
+`2b1438669a3866cc085a86242495c22b42c1f2a7`.
 
-## OPEN — one consolidated repaired-head Value V1 source+freeze review
+## Review queue
 
-PR #167 final pre-review head is
-`c98bdeb666df18f2640d717f408194b6e60e62bd`. The intermediate `e632e41`
-packet was never reviewed or initialized and is superseded. The `f289e02` PASS admitted the
-old `3534fe0` root exactly once; that admission/root are spent and must not be
-reused. The invocation failed after 29.9 seconds while reopening natural-cohort
-train data: capacity had filtered manifest-proven ineligible ballots before
-pairing, but the scientific reader omitted the same projection. Train rows
-opened, but no epoch, cohort output, prediction, calibration attempt/label,
-reconstruction attempt, report row, or provider-audit row opened or published.
-This is a source-path refusal, not a model result.
-
-Review only `3534fe0..c98bdeb` plus the fresh freeze. The repair calls the same
-outcome-blind eligibility selector as capacity and witnesses the production
-reader wiring. On all frozen train data it reproduces exactly 3,906 raw rows,
-3,820 eligible rows, 3,178 paired examples, and byte-identical capacity
-advantage manifest `b69febab…`.
-
-An outcome-blind manifest preflight also found three singleton ballots among
-the 52 calibration audit roots before any label opened. They remain in the
-sealed 312-audit prediction inventory but define no action comparison. The
-same repaired projection now yields 49 action-comparable roots, 260
-unreplicated pairs and 520 replicated label pairs after proving all 624
-declared rows. The freeze names audit-root and action-root counts separately.
-The successor freeze structurally binds the
-spent service/invocation/root, exact failure boundary, and zero-held-out-open
-record; it says the prior admission is not retryable and names attempt 2 under
-a new root. No new capacity census or outcome was selected.
-
-- source: `/opt/value-afterstate-v1-scientific-c98bdeb-r2-src`, exact clean
-  `c98bdeb666df18f2640d717f408194b6e60e62bd`;
-- freeze: `/opt/value-afterstate-v1-freeze-c98bdeb-r2.json`, mode/link/bytes
-  `0400` / 1 / 16,597;
-- freeze external/internal: `b8709317…` / `c5582061…`;
-- exact new root: `/opt/value-afterstate-v1-p1-scientific-r2`;
-- expected claim `02648615…`; expected 1,432-byte marker `2ee594de…`;
-- full tests: 202/202 pure and 202/202 strict compiled/void; fresh-process
-  freeze reconstruction passed.
-
-If those reproduce, append exactly one fresh module-generated
-`WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW` marker authorizing one execution at
-the frozen `r2` root plus immediate reconstruction. Report/provider rows, P2,
-gameplay, strength, merge, promotion, deployment, retry, R5 and test extension
-remain false. Full hashes and the exact boundary are in PR #167. This is the
-only actionable review; do not add a separate incident or rehearsal review.
+No review is currently actionable. Claude's exact `c98bdeb` PASS and
+module-generated `r2` marker are canonical at `9aef077`; the later `2b14386`
+HOLD is explicitly for superseded, never-initialized `e632e41` and does not
+negate the final-head marker. Do not repeat either review while the admitted
+run is live.
 
 ## Live work
 
@@ -141,7 +102,7 @@ only actionable review; do not add a separate incident or rehearsal review.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
-### Value-Afterstate V1 — P0 passed; repaired P1 packet ready for review
+### Value-Afterstate V1 — P0 passed; repaired P1 scientific run live
 
 - Capacity PR #166 is reviewed at repaired exact head
   `bd400a6855b83de263838cabdee1f07de6839ba2`. The old-head `-r1` and `-r2`
@@ -166,8 +127,17 @@ only actionable review; do not add a separate incident or rehearsal review.
   no held-out label opened and no learning conclusion exists. PR #167 final
   head `c98bdeb` applies the selector to both train and calibration action
   populations, reproduces the capacity manifest on the real train population,
-  and freezes that spent-attempt lineage under a new `r2` root. The precise
-  one-review ask is at the top of this file.
+  and freezes that spent-attempt lineage under a new `r2` root.
+- Claude's final exact-head PASS is `9aef077`. The single authorized run is
+  live on Perf as `value-afterstate-v1-p1-scientific-c98bdeb-r2.service`,
+  invocation `7ffbb2af8de84873a41ee3c555479123`, since 15:47:56 UTC. It cleared
+  admission and the repaired full train-population reopen and is inside the
+  natural cohort. The old failure happened before this boundary. Current peak
+  is about 1.95 GB with zero restarts and active parallel CPU; no held-out
+  calibration label has opened. The unit sequentially runs natural plus three
+  controls, then seals target-free predictions, opens calibration once, seals
+  the terminal and immediately reconstructs it. Its hard 12-hour deadline is
+  03:47:56 UTC on August 30.
 - This is a 520-root mechanism pilot, not a final-quality model claim. Eight
   seeds test optimization stability, not data sufficiency; any later scaling
   adds independent roots/replicates only after P0/P1 establish real action
@@ -178,12 +148,12 @@ only actionable review; do not add a separate incident or rehearsal review.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Immutable V0/P0 inputs, spent P1 r1, and repaired r2 freeze preserved; idle pending review |
+| Perf Cloud | Value P1 repaired r2 scientific run live; no held-out label open yet |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
-- Do not merge, deploy, resume R5, or launch scientific Value work without the
-  exact review authority described above.
+- Do not stop, duplicate, retry, inspect unavailable outcomes, merge, deploy,
+  resume R5, or launch additional scientific Value work while r2 is live.
 - Report percentages, ETA, utilization, and failures plainly. Use all cores
   for materially parallel workloads; do not add risky concurrency merely to
   make a short deterministic prep step look busy.

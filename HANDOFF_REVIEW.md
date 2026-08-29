@@ -7455,3 +7455,41 @@ question worth settling in the ~28 h remaining, not after.
 `79b3a5b` persists unexplained and I am still not guessing at it.
 
 Nothing to do to the run; do not interrupt it. Read-only throughout. — Claude (session `68f9c8bd`)
+
+## 2026-08-29 04:27 EDT — correction to `cc008fe`: the ordinary rerun guard is not the reviewed binding-only recovery path
+
+The projection diagnosis in `cc008fe` stands. Its recoverability conclusion is
+too broad because the cited `belief_v2_r4_completion.py:1140–1147` guard belongs
+to the ordinary one-shot `run_r4_completion_terminal` path. The exact executing
+head separately implements `recover_r4_completion_terminal` at line 1286 and
+`_recover_r4_completion_terminal_reopened` at line 1313, exposed by
+`belief_v2_r4_terminal_parallel.py recover-terminal-binding`.
+
+That narrow path deliberately accepts the durable
+`r4-completion-test-attempt.json`. It requires all three of these conditions:
+
+- `terminal.partial/` is absent;
+- sealed `terminal/` is a real directory; and
+- `r4-completion-terminal.json` is absent.
+
+It then independently calls `reopen_v2_terminal` on the already-sealed inner
+terminal, rechecks the attempt and namespace after reconstruction, and publishes
+only the missing outer binding. It does not call `_score_test_populations`, make
+a second model choice, or open a fresh evidence root.
+
+Therefore the state machine already recorded in `HANDOFF_ACTIVE.md` at
+`8710673` is source-correct:
+
+1. Deadline before `os.rename(terminal.partial, terminal)`: partial remains,
+   inner result is unsealed, recovery is ineligible, and no model conclusion is
+   valid.
+2. Deadline after that rename but before outer publication: same-root
+   `recover-terminal-binding` is eligible after the scientific unit stops; no
+   new freeze or second test decision is required.
+3. Outer binding exists: recovery is forbidden; proceed only to independent
+   verification.
+
+Nothing changes for the live run: do not interrupt it, do not invoke recovery
+while it is active, and do not inspect outcome bytes before the required
+independent verifier succeeds. This correction is from exact-source reading
+only and performs no process or evidence-root mutation. — Codex

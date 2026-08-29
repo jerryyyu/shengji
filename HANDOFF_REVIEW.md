@@ -7933,3 +7933,60 @@ at `bd400a68`: **1,118 bytes**, SHA-256
 `6720d62ccbb9ab9dc63c3248de935c3b8dbe3a9e38536b90c13a8196110a33cc`.
 
 WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_capacity_epoch_authorized":true,"train_only_p0_diagnostic_authorized":true,"v0_train_row_reopening_authorized":true},"member_worker_counts":[1,2,4,8],"memory_limit_bytes":32212254720,"row_worker_counts":[1,2,4,8,16],"schema":"world-afterstate-v1-capacity-review-claim-v1","source_git":"bd400a6855b83de263838cabdee1f07de6839ba2","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_freeze_external_sha256":"735b367e824e1510b7a951e2fd3ef373c8f3688107d622152a1dfc12830b43a0","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581","wall_cap_nanoseconds":7200000000000}
+
+## 2026-08-29 10:35 EDT — the `3440900-r1` refusal was **my marker meeting a guard that only ever admitted the first marker of its prefix**. Not my prose — I nearly filed that, and checked first
+
+`6692243` PASSed the repair at `bd400a68` and reported the cause. Since the failing marker was mine
+(`be129b6`), I traced it independently.
+
+### What actually happened, counted the way the guard counts
+
+The guard collects `line.startswith(REVIEW_PREFIX)`, and the old condition was:
+
+```python
+if current_matches != [marker] or previous_matches:
+```
+
+Marker lines beginning with `WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW `:
+
+| ledger commit | count |
+|---|---|
+| `f9a924a` (parent of mine) | **1** — a marker already existed |
+| `be129b6` (mine) | **2** |
+| `origin/main` now | 3 |
+
+So `previous_matches` was already non-empty *before I appended anything*, and `current_matches`
+was `[old, mine]`, not `[mine]`. **Both disjuncts fired.** The old guard could only ever admit the
+very first marker of a prefix; every subsequent legitimate marker was structurally refused. The
+repair — `current_matches != [*previous_matches, marker] or marker in previous_matches` — is the
+right shape: it requires the new marker to be exactly one append on top of the existing set, and
+refuses a replay of an existing marker.
+
+### The claim I did not file
+
+My first reading was that **my own prose** broke it: my `be129b6` entry contains the line
+`` `REVIEW_PREFIX = "WORLD_AFTERSTATE_V1_TRAIN_CAPACITY_REVIEW "` ``, and a naive
+`grep -c` for the prefix returns 3 at my commit versus 1 at its parent — which looks exactly like
+"Claude's prose introduced a false match". I had the entry half-written. It is **wrong**: the guard
+anchors with `startswith`, and that line begins with a backtick, so it never matched. Counted
+correctly, my commit added exactly one matching line — the marker itself.
+
+Two things made this catchable rather than a fourth over-broad claim in three days. First, reading
+how the guard *collects* matches before trusting a `grep` that collects differently. Second, noticing
+that an intermediate count of "0 matches everywhere" was impossible, which turned out to be `git`
+running from a non-repo cwd and returning empty input — the failure mode my own hourly prompt warns
+about, and I still hit it. A silently empty measurement reads as a real zero.
+
+### Standing consequence
+
+Quoting a marker prefix in ledger prose is safe as written today, because matching is anchored. It
+would become unsafe the moment anyone loosens it to a substring test — so if that guard is ever
+relaxed, this file's prose becomes an input to authentication. Worth a comment at the guard.
+
+I am not appending a second marker: `6692243` holds the one for `bd400a68`, and my `be129b6` marker
+is for the superseded head `34409006`. One head, one marker. Nothing scientific was touched by the
+refused launch — it died in 2.093 s before any sealed read, the same harmless class as the earlier
+operator-path failures.
+
+R4 unchanged this cycle: phase 3/6, `Threads: 1`, 1.00 core, 60.20 h CPU, `terminal.partial`
+present, `terminal` absent, **26.06 h elapsed / 21.94 h to the cap**. — Claude (session `68f9c8bd`)

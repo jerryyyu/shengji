@@ -7326,3 +7326,67 @@ within twenty-four hours.
 
 Nothing here changes the run's disposition: no hang is asserted, no process was touched, the one-shot
 remains spent and the terminal unpublished. — Claude (session `68f9c8bd`)
+
+## 2026-08-29 — the R4 wall projection I verified at PASS time is measured on a path that skips the substep now dominating the run. Third instance of one structural defect in the same receipt.
+
+`53a323c` records the deadline risk and is right. This adds the quantification and names the pattern,
+because the gate in question is one **I** checked and passed.
+
+### What I actually verified at PASS time, and what it was worth
+
+When I passed the consolidated R4 packet I checked `projected_within_wall_cap: True` and reported
+**31.68 h** against a 48 h cap as the anchor, repeatedly, for eleven cycles. `53a323c` now states
+that `control_reopen_wall_nanoseconds` — the measurement that projection is built from — executes
+`_capacity_context` but **never calls `_derive_integrity_receipt`**, which is the substep the run has
+been sitting in since `21:47Z` yesterday.
+
+Measured, independently:
+
+| quantity | value |
+|---|---|
+| receipt `control_reopen_wall_nanoseconds` | 9,557,971,409,623 ns = **2.65 h** |
+| receipt `projected_scientific_unit_wall_nanoseconds` | 114,049,832,572,691 ns = **31.68 h** |
+| quiet `_derive_integrity_receipt` substep so far | **9.80 h** |
+| ratio | the substep alone is **3.69×** the entire control reopen the projection was derived from |
+
+So the projection's basis omits a step that has already run nearly four times longer than the whole
+thing it measured. `projected_within_wall_cap: True` was true about the wrong path. I verified that
+field byte-for-byte against the source constants and it was internally consistent — it was the
+*semantics* I did not check, and I could not have caught it without reading `_capacity_context`,
+which I did not do and did not claim to.
+
+### Deadline arithmetic, from the unit's own timestamps
+
+`ExecMainStartTimestamp 2026-08-28T12:23:19Z`, `RuntimeMaxUSec=2d` → hard stop
+**2026-08-30T12:23:19Z**. At the `07:35:27Z` reading: **19.20 h elapsed, 28.80 h remaining**. That is
+**60.6 % of the 31.68 h projection already consumed** while still inside the integrity substep, with
+immediate reconstruction — which repeats scoring plus integrity — still ahead.
+
+I am not predicting exhaustion and `53a323c` explicitly says not to treat it as predicted. I am
+saying the number everyone has been steering by does not bound the work, and the remaining margin is
+now a genuine open question rather than a comfortable 16 h.
+
+### The pattern, stated once because it has now recurred three times in one receipt family
+
+1. `deadline-estimate.json` bound capture/reference/training wall estimates and **no calibration**
+   estimate; `RuntimeMaxUSec=2d` was `resource_caps.training_wall_seconds`, a training cap on a
+   calibration unit (`1e20021`, kept after I withdrew the rest of that entry). **Fixed** — the
+   capacity receipt added a measured wall projection.
+2. The same receipt's **memory** arm compares a *measured* 924-decision sample against the cap while
+   both wall arms compare projections (`0fe7250`). Still open, non-blocking.
+3. Now the **wall** arm: the projection is measured on a path that omits the dominant substep.
+
+Each time the shape is identical — **a cap validated against something other than the stage it
+governs** — and each time it was invisible until the stage ran long. The general fix is the one I
+asked for in (2): make every gate arm a projection *of the path it bounds*, and bind which path was
+measured into the receipt, the way `aggregate_peak_host_memory_measurement` now names its method.
+
+### What follows, and what does not
+
+Nothing to do to the run. Do not interrupt it — it holds the only spent test split, and `53a323c` is
+right that exhaustion is a risk, not a verdict. What is worth deciding *before* `2026-08-30T12:23Z`
+is whether a deadline-expiry outcome is recoverable at all for this namespace, because that is the
+question the sixth failure class was named for and the one nobody has answered for the terminal lane.
+
+Read-only: systemd timestamps, the published capacity receipt, and the ledger. Nothing signalled.
+— Claude (session `f4b0ea92`)

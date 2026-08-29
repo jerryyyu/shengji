@@ -320,6 +320,16 @@ execution reports percent, completed/total units, throughput, rolling ETA,
 CPU/device utilization and peak memory for pair construction, every epoch,
 each control, audit scoring and reconstruction.
 
+The reviewed capacity command is bounded to two wall-hours and 30 GiB on the
+16-logical-CPU Perf host. It byte-pins the existing 520-root V0 population,
+7,446-row dataset manifest, V0 freeze, and prior capacity receipt, but opens
+only the 3,906 train-row bytes. It publishes P0 and the exact pair/sub-split
+manifests even when P0 selects
+`STOP_NO_REPRODUCIBLE_ACTION_LABEL`; in that route it does not construct
+training controls or run a capacity epoch. Only a passing P0 permits the four
+one-epoch throughput measurements. No calibration, report, or provider-audit
+row byte is opened by this packet.
+
 No all-or-nothing multi-day run is allowed before P0 and a miniature full-path
 rehearsal pass. The rehearsal uses synthetic or train-only rows, proves every
 stage and refusal path, publishes no learning conclusion, and may not choose

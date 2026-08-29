@@ -8610,3 +8610,51 @@ Verdict: **PASS, design only.** No implementation, data collection, capacity exe
 audit opening, gameplay, PUCT/BELIEF integration, merge, deployment, retry, promotion, or strength
 claim is authorized. Next review moment per §17 is the single consolidated
 source+population+capacity+rehearsal+freeze packet. — Claude (session `68f9c8bd`)
+
+## 2026-08-29 — V2 learning-extraction workflow complete: **V1's defect is named — TARGET NOISE, not sign/scale/aggregation — proven by byte-exact reproduction of the sealed metric.** Nine uncovered failure classes and three design blockers filed to PR #169 for the implementation round
+
+Full findings: https://github.com/jerryyyu/shengji/pull/169#issuecomment-5464142770 (computed against
+`269a2ede`; the `a9be72d2` amendment postdates the run and is being delta-reviewed next). Method:
+two independent derivations of the V1 pair-join semantics, judged materially identical before any
+computation; the sealed headline (−139,134 µlevels, bootstrap [−164,342, −115,496], 520/49/21
+pair/state/deal counts) reproduced byte-exactly including both seeded bootstrap endpoints before any
+hypothesis was scored. Read-only throughout.
+
+### The diagnosis, compressed
+
+- **SIGN refuted**: flipping every prediction recovers only ~5.7% of the deficit; pred-truth
+  correlations ≈ 0.
+- **SCALE refuted**: predictions are *under*-dispersed (sd ratio 0.416); the scale sweep's optimum
+  is exactly s=0 — the signature of no usable signal, not a gain error.
+- **AGGREGATION refuted**: 0/8 members beat the ensemble.
+- **NOISE supported**: 71.7% of truth rows are exactly zero; the two common-random-number replicates
+  of the *same candidate* correlate at **r = 0.0147** — they disagree like unrelated draws; an
+  oracle predicting the two-replicate mean scores only +70,996 µlevels. "True advantage ≈ 0" vs
+  "unresolvable at 2 replicates" is **not separable from the sealed data**.
+- No train/eval mismatch (training regresses the identical target; file:line cited in the comment).
+
+**Consequence**: the load-bearing V2 lever is label variance (replica budget + the worthwhile-effect
+floor), not architecture — and the floor is currently never enforced as a threshold (S2).
+
+### For the implementation round
+
+- **9 uncovered failure classes** (no V2 design clause prevents recurrence): eligibility-projection
+  binding, pre-open reader verification, row-path preflight, launcher ref-refresh, the
+  marker-prefix guard's sibling copies, projection-path-must-execute-governed-path, cgroup-scoped
+  CPU accounting, cgroup-scoped memory accounting, PT completions-vs-emissions.
+- **3 blockers**: gate 7 has no training-seed variance accounting (n=1 at the run level — the exact
+  gate built to repair V0/V1 can pass or fail on a seed draw); deal-to-split assignment has **no
+  outcome-blind rule** (the only unhashed choice point, and outcomes are in hand when it executes);
+  the one-shot opening is spendable on deterministic post-open refusals (the class that fired three
+  times this week — rehearsal must witness all refusal-capable checks on the real population's
+  shapes before the attempt marker).
+- **9 should-fixes**, headline ones: power calc certifies the wrong statistic and single-gate power;
+  the +0.10 floor never gates anything; gate 8 is vacuously satisfiable (a control with *positive*
+  gate-1–3 signal still reads as failing-on-demand — V1 precedent); the gates-1/2 prior trains on
+  contaminated (non-natural) fit rows; §13's byte-identical/85% rule is provably ill-defined on this
+  host (the sealed bd400a6 receipt has the fastest arm byte-unique at 80.0%).
+
+Workflow cost, honestly: 10 agents, **716k tokens** against my 350–500k estimate — overshoot is on
+the two derivation agents and the three lenses running deeper than planned. Zero agent errors; the
+derivation-disagreement abort gate was armed but not needed. No authority granted or changed by any
+of this. — Claude (session `68f9c8bd`)

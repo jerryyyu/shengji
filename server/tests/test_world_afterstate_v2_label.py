@@ -12,7 +12,8 @@ from shengji.rl.world_afterstate_v2_label import (
     _candidate_set_sha256, evaluate_precision_label, validate_precision_label,
 )
 from shengji.rl.world_afterstate_v2_protocol import (
-    TIER_SPECS, PopulationSlotV2, build_population_slot_ledger,
+    TIER_SPECS, PopulationSlotV2, StateCandidateV2,
+    build_population_slot_ledger, select_p0_population,
 )
 
 
@@ -24,12 +25,12 @@ def _population(*, candidate_count: int = 3, incumbent_tie: bool = False,
                 split: str = "fit") -> list[ContinuationOutcomeV2]:
     required = _required_slots()
     rows = []
-    for deal in range(96):
-        deal_sha = _sha(f"deal-{deal}")
+    for deal, state in enumerate(_selected_population()):
+        deal_sha = state.deal_sha256
         slot = required[deal_sha]
         assert slot.cell is not None
         phase, position, role = slot.cell
-        state_sha = _sha(f"state-{deal}")
+        state_sha = state.state_sha256
         successors = tuple(
             _sha(f"successor-{deal}-{candidate}")
             for candidate in range(candidate_count))
@@ -62,15 +63,33 @@ def _population(*, candidate_count: int = 3, incumbent_tie: bool = False,
 
 
 def _required_slots() -> dict[str, PopulationSlotV2]:
+    return {state.deal_sha256: next(
+        slot for slot in build_population_slot_ledger(TIER_SPECS[0])
+        if slot.slot_sha256 == state.slot_sha256)
+            for state in _selected_population()}
+
+
+def _natural_population() -> list[StateCandidateV2]:
     slots = [slot for slot in build_population_slot_ledger(TIER_SPECS[0])
-             if slot.group == "natural-fit"][:96]
-    return {_sha(f"deal-{index}"): slot
-            for index, slot in enumerate(slots)}
+             if slot.group == "natural-fit"]
+    return [StateCandidateV2(
+        deal_sha256=_sha(f"deal-{index}"), slot_sha256=slot.slot_sha256,
+        state_sha256=_sha(f"state-{index}"), source="natural", split="fit",
+        phase=slot.phase, position=slot.position, role=slot.role,
+        trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+        mechanics_surfaces=(), legal_candidate_count=2)
+            for index, slot in enumerate(slots)]
+
+
+def _selected_population() -> tuple[StateCandidateV2, ...]:
+    return select_p0_population(_natural_population(), tier=TIER_SPECS[0])
 
 
 def _evaluate(rows: list[ContinuationOutcomeV2], **kwargs):
     return evaluate_precision_label(
-        rows, required_slots=_required_slots(), **kwargs)
+        rows, required_slots=_required_slots(),
+        natural_fit_population=_natural_population(), tier=TIER_SPECS[0],
+        **kwargs)
 
 
 def test_p0_crossfit_uses_complete_candidate_mean_and_closed_authority():
@@ -205,9 +224,19 @@ def test_required_slot_population_is_unique_and_exactly_cross_bound():
     deals = sorted(slots)
     slots[deals[1]] = slots[deals[0]]
     with pytest.raises(WorldAfterstateV2LabelError,
-                       match="slot population"):
+                       match="canonical P0 subset"):
         evaluate_precision_label(
-            rows, required_slots=slots, bootstrap_replicates=100)
+            rows, required_slots=slots,
+            natural_fit_population=_natural_population(), tier=TIER_SPECS[0],
+            bootstrap_replicates=100)
+
+
+def test_precision_evaluation_refuses_caller_asserted_96_without_full_population():
+    with pytest.raises(WorldAfterstateV2LabelError,
+                       match="canonical P0 subset"):
+        evaluate_precision_label(
+            _population(), required_slots=_required_slots(),
+            bootstrap_replicates=100)
 
 
 def test_exact_gate_fraction_witness_cannot_drift_from_published_projection():

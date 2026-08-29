@@ -20,7 +20,8 @@ from typing import Any, Mapping, Sequence
 from .belief_contract import canonical_json_bytes
 from .world_afterstate import category_signed_level
 from .world_afterstate_v2_protocol import (
-    P0_CELLS, PopulationSlotV2, STATE_SOURCES,
+    P0_CELLS, PopulationSlotV2, STATE_SOURCES, TierSpecV2,
+    select_p0_population,
 )
 
 
@@ -221,24 +222,39 @@ def _bootstrap_lower(
 
 def _validate_population(
         outcomes: Sequence[ContinuationOutcomeV2], *,
-        required_slots: Mapping[str, PopulationSlotV2]) \
+        required_slots: Mapping[str, PopulationSlotV2],
+        natural_fit_population: Sequence[Any], tier: TierSpecV2) \
         -> tuple[
             dict[str, dict[int, dict[int, ContinuationOutcomeV2]]], str]:
     if type(outcomes) not in (list, tuple) or not outcomes:
         raise WorldAfterstateV2LabelError("precision outcome population drift")
-    if type(required_slots) is not dict or len(required_slots) != P0_DEALS:
+    if type(required_slots) is not dict:
         raise WorldAfterstateV2LabelError("precision slot population drift")
+    try:
+        canonical_states = select_p0_population(
+            natural_fit_population, tier=tier)
+    except Exception as exc:
+        raise WorldAfterstateV2LabelError(
+            "canonical P0 subset population drift") from exc
+    canonical_by_deal = {state.deal_sha256: state for state in canonical_states}
+    if set(required_slots) != set(canonical_by_deal) \
+            or any(type(slot) is not PopulationSlotV2
+                   for slot in required_slots.values()):
+        raise WorldAfterstateV2LabelError("canonical P0 subset mismatch")
     slots: dict[str, PopulationSlotV2] = {}
     for deal, slot in required_slots.items():
         _digest(deal, "precision assigned deal SHA-256")
-        if type(slot) is not PopulationSlotV2:
-            raise WorldAfterstateV2LabelError("precision slot type drift")
         slot.validate()
-        if slot.group != "natural-fit" or slot.source != "natural" \
-                or slot.split != "fit" or slot.cell is None:
-            raise WorldAfterstateV2LabelError("precision slot identity drift")
+        expected_state = canonical_by_deal[deal]
+        if (slot.slot_sha256 != expected_state.slot_sha256
+                or slot.group != "natural-fit" or slot.source != "natural"
+                or slot.split != "fit" or slot.cell != expected_state.cell
+                or slot.trump_rank != expected_state.trump_rank
+                or slot.trump_mode != expected_state.trump_mode):
+            raise WorldAfterstateV2LabelError("canonical P0 subset mismatch")
         slots[deal] = slot
-    if len({slot.slot_sha256 for slot in slots.values()}) != P0_DEALS \
+    if len(slots) != P0_DEALS \
+            or len({slot.slot_sha256 for slot in slots.values()}) != P0_DEALS \
             or len({slot.tier for slot in slots.values()}) != 1:
         raise WorldAfterstateV2LabelError("precision slot population drift")
     slot_cells: dict[tuple[str, str, str], int] = defaultdict(int)
@@ -258,15 +274,16 @@ def _validate_population(
             raise WorldAfterstateV2LabelError(
                 "precision accepts natural fit outcomes only")
         if row.deal_sha256 not in slots:
-            raise WorldAfterstateV2LabelError(
-                "precision outcome entered from unassigned deal")
+            raise WorldAfterstateV2LabelError("canonical P0 subset mismatch")
         slot = slots[row.deal_sha256]
+        state = canonical_by_deal[row.deal_sha256]
         if row.slot_sha256 != slot.slot_sha256 \
-                or (row.phase, row.position, row.role) != slot.cell \
-                or row.trump_rank != slot.trump_rank \
-                or row.trump_mode != slot.trump_mode:
+            or (row.phase, row.position, row.role) != slot.cell \
+            or row.trump_rank != slot.trump_rank \
+            or row.trump_mode != slot.trump_mode \
+            or row.state_sha256 != state.state_sha256:
             raise WorldAfterstateV2LabelError(
-                "precision outcome slot binding drift")
+                "canonical P0 subset state binding drift")
         if row.replica not in REPLICATES:
             raise WorldAfterstateV2LabelError("precision replica population drift")
         prior = deal_for_state.setdefault(row.state_sha256, row.deal_sha256)
@@ -276,11 +293,13 @@ def _validate_population(
         if row.replica in rows:
             raise WorldAfterstateV2LabelError("duplicate precision outcome")
         rows[row.replica] = row
-    if len(groups) != P0_DEALS:
-        raise WorldAfterstateV2LabelError("precision requires exactly 96 states")
-    if len(set(deal_for_state.values())) != P0_DEALS:
+    if len(groups) != P0_DEALS \
+            or set(deal_for_state) != {state.state_sha256
+                                       for state in canonical_states}:
+        raise WorldAfterstateV2LabelError("canonical P0 subset mismatch")
+    if set(deal_for_state.values()) != set(canonical_by_deal):
         raise WorldAfterstateV2LabelError(
-            "precision requires exactly one state per independent deal")
+            "canonical P0 subset mismatch")
     cells: dict[tuple[str, str, str], int] = defaultdict(int)
     for state, candidates in groups.items():
         indexes = sorted(candidates)
@@ -347,6 +366,9 @@ def _validate_population(
                           for replica in REPLICATES
                           for row in (groups[state][index][replica],))
     binding = {
+        "tier": tier.payload(),
+        "canonical_p0_states": [state.__dict__ for state in sorted(
+            canonical_states, key=lambda value: value.deal_sha256)],
         "slots": {deal: slots[deal].payload() for deal in sorted(slots)},
         "outcomes": population,
     }
@@ -404,11 +426,14 @@ def _curve(groups: Mapping[
 def evaluate_precision_label(
         outcomes: Sequence[ContinuationOutcomeV2], *,
         required_slots: Mapping[str, PopulationSlotV2],
+        natural_fit_population: Sequence[Any] | None = None,
+        tier: TierSpecV2 | None = None,
         bootstrap_replicates: int = BOOTSTRAP_REPLICATES,
         mechanics_passed: bool = True) -> dict[str, Any]:
     """Evaluate the frozen P0 precision gates and return a closed report."""
     groups, population_sha = _validate_population(
-        outcomes, required_slots=required_slots)
+        outcomes, required_slots=required_slots,
+        natural_fit_population=natural_fit_population, tier=tier)
     if type(mechanics_passed) is not bool:
         raise WorldAfterstateV2LabelError("precision mechanics request drift")
     direction_values = {"0-to-1": [], "1-to-0": []}

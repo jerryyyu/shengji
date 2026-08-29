@@ -24,6 +24,7 @@ SLOT_SCHEMA = "world-afterstate-v2-population-slot-v1"
 ATTEMPT_SCHEMA = "world-afterstate-v2-attempted-deal-v1"
 P0_DEALS = 96
 P0_PER_CELL = 8
+P0_SUBSET_SCHEMA = "world-afterstate-v2-p0-canonical-subset-v1"
 P0_CELLS = tuple(
     (phase, position, role)
     for phase in ("early", "middle", "late")
@@ -439,25 +440,110 @@ def select_one_state_per_deal(
     return tuple(result)
 
 
-def validate_p0_population(states: Sequence[StateCandidateV2]) -> None:
-    if type(states) not in (list, tuple) or len(states) != P0_DEALS:
-        raise WorldAfterstateV2ProtocolError("P0 deal population drift")
-    deals = set()
-    slots = set()
-    counts = {cell: 0 for cell in P0_CELLS}
-    for state in states:
-        if type(state) is not StateCandidateV2:
-            raise WorldAfterstateV2ProtocolError("P0 state type drift")
+def _state_candidate(value: object) -> StateCandidateV2:
+    """Accept a state row or a validated-material carrier without importing it."""
+    if type(value) is StateCandidateV2:
+        return value
+    state = getattr(value, "state", None)
+    if type(state) is StateCandidateV2:
+        return state
+    raise WorldAfterstateV2ProtocolError(
+        "canonical P0 subset state type drift")
+
+
+def _validate_complete_natural_fit_population(
+        population: Sequence[StateCandidateV2], *, tier: TierSpecV2) \
+        -> dict[str, StateCandidateV2]:
+    """Validate the complete pre-label natural-fit slot population."""
+    if type(tier) is not TierSpecV2:
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset requires exact tier")
+    tier.validate()
+    if type(population) not in (list, tuple) \
+            or len(population) != tier.natural_fit:
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset requires complete natural-fit population")
+    ledger = tuple(slot for slot in build_population_slot_ledger(tier)
+                   if slot.group == "natural-fit")
+    by_slot = {slot.slot_sha256: slot for slot in ledger}
+    if len(by_slot) != tier.natural_fit:
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset natural-fit slot ledger drift")
+    by_deal: dict[str, StateCandidateV2] = {}
+    seen_slots: set[str] = set()
+    for value in population:
+        state = _state_candidate(value)
         state.validate()
-        if state.source != "natural" or state.split != "fit" \
-                or state.deal_sha256 in deals \
-                or state.slot_sha256 in slots:
-            raise WorldAfterstateV2ProtocolError("P0 identity drift")
-        deals.add(state.deal_sha256)
-        slots.add(state.slot_sha256)
-        counts[state.cell] += 1
-    if any(count != P0_PER_CELL for count in counts.values()):
-        raise WorldAfterstateV2ProtocolError("P0 cell balance drift")
+        if state.source != "natural" or state.split != "fit":
+            raise WorldAfterstateV2ProtocolError(
+                "canonical P0 subset requires natural fit states")
+        if state.deal_sha256 in by_deal:
+            raise WorldAfterstateV2ProtocolError(
+                "canonical P0 subset duplicate deal")
+        slot = by_slot.get(state.slot_sha256)
+        if slot is None or state.slot_sha256 in seen_slots:
+            raise WorldAfterstateV2ProtocolError(
+                "canonical P0 subset must cover exact natural-fit slots")
+        if (state.cell != slot.cell or state.trump_rank != slot.trump_rank
+                or state.trump_mode != slot.trump_mode):
+            raise WorldAfterstateV2ProtocolError(
+                "canonical P0 subset slot binding drift")
+        seen_slots.add(state.slot_sha256)
+        by_deal[state.deal_sha256] = state
+    if seen_slots != set(by_slot):
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset must cover exact natural-fit slots")
+    return by_deal
+
+
+def select_p0_population(
+        natural_fit_population: Sequence[StateCandidateV2], *,
+        tier: TierSpecV2) -> tuple[StateCandidateV2, ...]:
+    """Select exactly the eight smallest deal identities in every P0 cell.
+
+    This selector is outcome-blind: it consumes only pre-label state identity
+    and the exact tier's immutable natural-fit slot ledger.
+    """
+    by_deal = _validate_complete_natural_fit_population(
+        natural_fit_population, tier=tier)
+    by_cell: dict[tuple[str, str, str], list[StateCandidateV2]] = {
+        cell: [] for cell in P0_CELLS}
+    for state in by_deal.values():
+        by_cell[state.cell].append(state)
+    if any(len(values) < P0_PER_CELL for values in by_cell.values()):
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset cell lacks eight natural-fit deals")
+    selected = []
+    for cell in P0_CELLS:
+        selected.extend(sorted(by_cell[cell], key=lambda state: state.deal_sha256)
+                        [:P0_PER_CELL])
+    if len(selected) != P0_DEALS or len({s.deal_sha256 for s in selected}) != P0_DEALS:
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset selection drift")
+    return tuple(selected)
+
+
+def validate_p0_population(
+        states: Sequence[StateCandidateV2], *,
+        natural_fit_population: Sequence[StateCandidateV2] | None = None,
+        tier: TierSpecV2 | None = None) -> None:
+    """Validate that ``states`` is the exact canonical pre-label P0 subset."""
+    if natural_fit_population is None or tier is None:
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset requires full population and exact tier")
+    expected = select_p0_population(natural_fit_population, tier=tier)
+    if type(states) not in (list, tuple) or len(states) != P0_DEALS:
+        raise WorldAfterstateV2ProtocolError("canonical P0 subset population drift")
+    if tuple(sorted(states, key=lambda state: state.deal_sha256)) != tuple(
+            sorted(expected, key=lambda state: state.deal_sha256)):
+        raise WorldAfterstateV2ProtocolError(
+            "canonical P0 subset mismatch")
+
+
+# Explicit names for callers that keep the subset operation separate from
+# the legacy P0 validator.
+select_canonical_p0_subset = select_p0_population
+validate_canonical_p0_subset = validate_p0_population
 
 
 @dataclass(frozen=True)
@@ -552,6 +638,7 @@ def protocol_payload() -> dict[str, object]:
         "tiers": [tier.payload() for tier in TIER_SPECS],
         "p0_deals": P0_DEALS,
         "p0_per_cell": P0_PER_CELL,
+        "p0_subset_schema": P0_SUBSET_SCHEMA,
         "p0_cells": [list(cell) for cell in P0_CELLS],
         "slot_schema": SLOT_SCHEMA,
         "attempt_schema": ATTEMPT_SCHEMA,
@@ -576,10 +663,12 @@ def protocol_payload() -> dict[str, object]:
 __all__ = [
     "ATTEMPT_SCHEMA", "AUTHORITY", "CAPACITY_HOST_LOGICAL_CPUS",
     "CapacityTierReceiptV2", "MECHANICS_SURFACES", "P0_CELLS", "P0_DEALS",
-    "P0_PER_CELL", "PopulationSlotV2", "SELECT_SUBFOLDS", "SLOT_SCHEMA",
+    "P0_PER_CELL", "P0_SUBSET_SCHEMA", "PopulationSlotV2", "SELECT_SUBFOLDS", "SLOT_SCHEMA",
     "STATE_SCHEMA", "STATE_SOURCES", "TIER_SPECS", "TRUMP_MODES",
     "StateCandidateV2", "TierSpecV2", "WorldAfterstateV2ProtocolError",
     "attempted_deal_identity", "build_population_slot_ledger",
     "choose_capacity_tier", "protocol_payload", "select_one_state_per_deal",
+    "select_p0_population",
+    "select_canonical_p0_subset", "validate_canonical_p0_subset",
     "validate_p0_population", "validate_population_slot_ledger",
 ]

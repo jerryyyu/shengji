@@ -9,7 +9,7 @@ from shengji.rl.world_afterstate_v2_protocol import (
     CapacityTierReceiptV2, PopulationSlotV2, StateCandidateV2,
     WorldAfterstateV2ProtocolError, attempted_deal_identity,
     build_population_slot_ledger, choose_capacity_tier, protocol_payload,
-    select_one_state_per_deal, validate_p0_population,
+    select_one_state_per_deal, select_p0_population, validate_p0_population,
     validate_population_slot_ledger,
 )
 
@@ -192,18 +192,39 @@ def test_p0_requires_96_independent_deals_and_eight_per_cell() -> None:
     natural_slots = [
         slot for slot in build_population_slot_ledger(TIER_SPECS[0])
         if slot.group == "natural-fit"
-    ][:96]
-    values = [
-        _state(index, slot)
-        for index, slot in enumerate(natural_slots)
     ]
-    validate_p0_population(values)
-    forged = list(values)
-    forged[-1] = _state(
-        95, natural_slots[-1], cell=P0_CELLS[0], state_suffix="moved")
+    values = [_state(index, slot) for index, slot in enumerate(natural_slots)]
+    selected = select_p0_population(values, tier=TIER_SPECS[0])
+    validate_p0_population(
+        selected, natural_fit_population=values, tier=TIER_SPECS[0])
+    forged = list(selected)
+    forged[-1] = _state(999, natural_slots[-1], cell=P0_CELLS[0],
+                         state_suffix="moved")
     with pytest.raises(WorldAfterstateV2ProtocolError,
-                       match="cell balance"):
-        validate_p0_population(forged)
+                       match="canonical P0 subset"):
+        validate_p0_population(forged, natural_fit_population=values,
+                               tier=TIER_SPECS[0])
+
+
+def test_p0_canonical_subset_refuses_balanced_later_deal_alternative() -> None:
+    tier = TIER_SPECS[2]
+    natural_slots = [
+        slot for slot in build_population_slot_ledger(tier)
+        if slot.group == "natural-fit"
+    ]
+    values = [_state(index, slot) for index, slot in enumerate(natural_slots)]
+    selected = select_p0_population(values, tier=tier)
+    by_cell = {cell: [] for cell in P0_CELLS}
+    for state in values:
+        by_cell[state.cell].append(state)
+    alternative = tuple(
+        state for cell in P0_CELLS
+        for state in sorted(by_cell[cell], key=lambda item: item.deal_sha256)[8:16])
+    assert len(alternative) == 96
+    with pytest.raises(WorldAfterstateV2ProtocolError,
+                       match="canonical P0 subset mismatch"):
+        validate_p0_population(
+            alternative, natural_fit_population=values, tier=tier)
 
 
 def test_capacity_selects_largest_eligible_tier_without_outcomes() -> None:

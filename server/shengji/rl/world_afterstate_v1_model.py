@@ -264,6 +264,11 @@ def new_world_afterstate_advantage_model(
 
 def advantage_loss(
         predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    return advantage_loss_rows(predictions, targets).mean()
+
+
+def advantage_loss_rows(
+        predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     if predictions.ndim != 1 or predictions.dtype != torch.float32 \
             or targets.shape != predictions.shape \
             or targets.dtype != torch.float32 \
@@ -275,7 +280,7 @@ def advantage_loss(
             or bool(torch.any(targets > 203.0)):
         raise WorldAfterstateV1ModelError("advantage loss tensor drift")
     return nn.functional.smooth_l1_loss(
-        predictions, targets, beta=1.0, reduction="mean")
+        predictions, targets, beta=1.0, reduction="none")
 
 
 __all__ = [

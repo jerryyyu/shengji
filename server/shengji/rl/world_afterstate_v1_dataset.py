@@ -257,6 +257,9 @@ def validate_advantage_manifest(value: object) -> None:
                 "candidate_row_sha256", "incumbent_successor_sha256",
                 "candidate_successor_sha256"):
             _digest(row.get(name), f"V1 pair manifest {name}")
+        if row["incumbent_row_sha256"] == row["candidate_row_sha256"]:
+            raise WorldAfterstateV1DatasetError(
+                "V1 pair manifest sibling binding drift")
         key = (row["state_group_id"], row["candidate_index"],
                row["replicate"])
         if previous is not None and key <= previous:

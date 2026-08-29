@@ -7602,3 +7602,48 @@ explicitly does not re-score.
 
 Current: `elapsed 20.99 h`, `remaining to cap 27.01 h`, phase 3/6, 1.00 core, `rchar 0.17 MB/s`,
 55.13 h CPU, `NRestarts=0`. Nothing touched. — Claude (session `68f9c8bd`)
+
+## 2026-08-29 — ✅ Value capacity command re-entry confirmed: operator path defect, no source, model or data result. All five claims independently verified on Perf.
+
+Command-only adjudication as requested; **no source re-review performed and none was asked for**.
+The source PASS stands at `cad30be` for head `aa0595cc`.
+
+**Every claim checked against the box, not accepted:**
+
+| claim | measured |
+|---|---|
+| failed service | `value-afterstate-v1-capacity-aa0595c-r1.service`: `ActiveState=failed`, `SubState=failed`, `Result=exit-code`, `ExecMainStatus=1`, `NRestarts=0` |
+| invocation id | **`40a4c998a71e4b74befb46feddd2dd52`** — exact match |
+| duration | **5.405 s wall**, 6.638 s CPU, 403.9 M peak — exact match |
+| capacity output | `/opt/value-afterstate-v1-capacity-aa0595c-r1` and `…-r1.json` both **absent** |
+| progress records | **0** emitted |
+| erroneous tree | `…/artifacts/dataset/rows/rows` **absent** |
+| real rows | `…/artifacts/dataset/rows/` holds `calibration/ provider-audit/ report/ train/`; first train row exists at `…/rows/train/6061f428…/001/000.json` |
+| target output | `/opt/value-afterstate-v1-capacity-aa0595c-r2` **absent** — the corrected path is clean |
+
+**The diagnosis is confirmed at its root, not just its symptom.** I read
+`…/artifacts/dataset/manifest.json` directly: it carries **7,446** path entries and **every one of
+them starts with `rows/`**. So `--row-root …/artifacts/dataset/rows` necessarily resolves to
+`…/dataset/rows/rows/…`, which does not exist. The corrected root is `…/artifacts/dataset`, exactly
+as the marker states.
+
+That also settles the substantive question: because the first attempted path was in a tree that does
+not exist, **no train-row byte could have been opened** — consistent with `train_row_bytes_opened:
+false`, zero progress records, and a 5.4 s exit. This is an operator-path failure and carries no
+source, model, or data implication. The V0 train rows remain unopened by this attempt.
+
+**Marker scope.** It authorizes exactly one corrected Perf execution at `…-r2` and nothing else:
+`train_only_corrected_capacity_execution_authorized: true`, with all twelve other flags false —
+including `retry_beyond_corrected_execution_authorized: false`, so this is not a general retry
+grant. `prior_review_commit` is `cad30be4d0168f5ab0ec148e39e5de99b60c9852`, which is my own PASS,
+and `source_git` is unchanged at `aa0595cce9b626941c9cc4fd64062b4e06d10cf1`.
+
+**Coverage limits.** I verified the failure mode, the absent outputs, the manifest path convention
+and the real row tree. I did **not** re-review the source, did not read any row contents, and did
+not inspect the corrected invocation that will follow — the receipt and its freeze remain for the
+one consolidated review that #167 is waiting on.
+
+Read-only on Perf throughout: systemd properties, journal accounting lines, directory existence, and
+the dataset manifest's path fields. Nothing signalled, no row bytes opened.
+
+WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V1 {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_beyond_corrected_execution_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_corrected_capacity_execution_authorized":true},"corrected_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset","failed_invocation_id":"40a4c998a71e4b74befb46feddd2dd52","failed_output_absent":true,"failed_service":"value-afterstate-v1-capacity-aa0595c-r1.service","prior_review_commit":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","schema":"world-afterstate-v1-capacity-operator-reentry-v1","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","target_output":"/opt/value-afterstate-v1-capacity-aa0595c-r2","train_row_bytes_opened":false,"wrong_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset/rows"}

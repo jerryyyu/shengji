@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 from pathlib import Path
 
 import pytest
 
+from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.world_afterstate_v1_admission import (
+    CAPACITY_REENTRY_AUTHENTICATION_SCHEMA,
+    expected_capacity_operator_reentry_claim)
 from shengji.rl.world_afterstate_v1_capacity import (
     CAPACITY_MEMORY_LIMIT_BYTES)
 from shengji.rl.world_afterstate_v1_experiment import (
@@ -27,18 +32,32 @@ def _inputs():
         key: f"{index + 1:064x}"
         for index, key in enumerate(SOURCE_KEYS)
     }
-    return capacity, runtime, sources
+    claim = expected_capacity_operator_reentry_claim()
+    body = {
+        "schema": CAPACITY_REENTRY_AUTHENTICATION_SCHEMA,
+        "review_commit": "b" * 40,
+        "canonical_remote_tip_at_freeze": "c" * 40,
+        "claim": claim,
+        "review_marker_sha256": "d" * 64,
+        "review_claim_sha256": hashlib.sha256(
+            canonical_json_bytes(claim)).hexdigest(),
+    }
+    reentry = {**body, "authentication_sha256": hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()}
+    return capacity, runtime, sources, reentry
 
 
 def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
-    capacity, runtime, sources = _inputs()
+    capacity, runtime, sources, reentry = _inputs()
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
-        source_sha256s=sources, experiment_runtime=runtime)
+        source_sha256s=sources, experiment_runtime=runtime,
+        capacity_operator_reentry=reentry)
     validate_experiment_freeze(freeze, capacity)
 
     assert freeze["capacity"]["receipt_sha256"] \
         == capacity.receipt["receipt_sha256"]
+    assert freeze["capacity_operator_reentry"] == reentry
     assert freeze["population"]["pair_count"] \
         == capacity.receipt["train_population"]["pair_count"]
     assert freeze["learner"]["member_workers"] \
@@ -67,10 +86,11 @@ def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
 
 
 def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
-    capacity, runtime, sources = _inputs()
+    capacity, runtime, sources, reentry = _inputs()
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
-        source_sha256s=sources, experiment_runtime=runtime)
+        source_sha256s=sources, experiment_runtime=runtime,
+        capacity_operator_reentry=reentry)
 
     forged = copy.deepcopy(freeze)
     forged["resources"]["training_wall_cap_nanoseconds"] += 1
@@ -83,4 +103,15 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
                        match="runtime differs"):
         build_experiment_freeze(
             capacity, source_git="a" * 40,
-            source_sha256s=sources, experiment_runtime=runtime)
+            source_sha256s=sources, experiment_runtime=runtime,
+            capacity_operator_reentry=reentry)
+
+    forged = copy.deepcopy(reentry)
+    forged["claim"]["train_row_bytes_opened"] = True
+    with pytest.raises(WorldAfterstateV1ExperimentError,
+                       match="capacity operator reentry drift"):
+        build_experiment_freeze(
+            capacity, source_git="a" * 40,
+            source_sha256s=sources, experiment_runtime=copy.deepcopy(
+                capacity.receipt["runtime"]),
+            capacity_operator_reentry=forged)

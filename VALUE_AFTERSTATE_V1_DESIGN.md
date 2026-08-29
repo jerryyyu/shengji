@@ -369,6 +369,19 @@ binds the source head, V0 input hashes, worker ladders, wall and memory caps,
 and the all-false authority map. Its sole authority is one bounded P0/capacity
 packet; it grants no scientific P1 execution or held-out-data opening.
 
+The first reviewed operator command failed before its first train-row byte:
+the supplied row root already ended in `rows/`, while manifest-relative paths
+also start with `rows/`. The resulting nonexistent `rows/rows/...` lookup
+emitted no progress and published no output. A second command is forbidden
+unless one separate Claude-authored operator-reentry marker binds that failed
+invocation, the absent output, zero opened train rows, the corrected dataset
+root, and the fresh output namespace. Before that corrected command runs, all
+3,906 train-relative paths must exist as mode-0400, single-link regular files.
+The later P1 freeze authenticates and content-binds the reentry marker so the
+capacity receipt cannot erase or obscure the failed first attempt. This is a
+command-only repair; it grants no held-out, scientific, retry-beyond-one,
+gameplay, strength, merge, deployment, or R5 authority.
+
 If and only if P0 passes, the later immutable P1 freeze derives every
 resource choice from that receipt without reading another row or model score.
 The fixed pilot uses the medium scalar model, eight fresh seeds, 30 maximum

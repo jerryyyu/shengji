@@ -9,7 +9,9 @@ import pytest
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v1_admission import (
     ADMISSION_AUTHORITY, WorldAfterstateV1AdmissionError,
-    build_admission, expected_review_claim, validate_admission)
+    authenticate_capacity_operator_reentry, build_admission,
+    expected_capacity_operator_reentry_claim, expected_review_claim,
+    validate_admission, validate_capacity_operator_reentry)
 from shengji.rl.world_afterstate_v1_experiment import (
     build_experiment_freeze)
 
@@ -18,10 +20,11 @@ from test_world_afterstate_v1_experiment import _inputs
 
 
 def _freeze():
-    capacity, runtime, sources = _inputs()
+    capacity, runtime, sources, reentry = _inputs()
     return build_experiment_freeze(
         capacity, source_git="a" * 40,
-        source_sha256s=sources, experiment_runtime=runtime)
+        source_sha256s=sources, experiment_runtime=runtime,
+        capacity_operator_reentry=reentry)
 
 
 def _git_fixture(monkeypatch, freeze):
@@ -81,7 +84,8 @@ def test_scientific_review_grants_only_p1_train_calibration_and_reconstruct(
         freeze, repo=Path.cwd().parent.resolve(), review_commit=review)
     validate_admission(value, freeze=freeze, review_marker=marker)
     assert subprocess_calls[0] == (
-        "git", "fetch", "--quiet", "origin", "main")
+        "git", "fetch", "--quiet", admission.CANONICAL_REMOTE_URL,
+        f"{admission.CANONICAL_REMOTE_REF}:refs/remotes/origin/main")
     assert value["authority"] == ADMISSION_AUTHORITY
     assert value["authority"]["scientific_p1_training_authorized"] is True
     assert value["authority"][
@@ -114,3 +118,80 @@ def test_scientific_review_marker_and_claim_mutations_refuse(monkeypatch):
     with pytest.raises(WorldAfterstateV1AdmissionError,
                        match="admission identity drift"):
         validate_admission(forged, freeze=freeze, review_marker=marker)
+
+
+def test_capacity_operator_reentry_is_exact_external_command_authority(
+        monkeypatch):
+    review = "1" * 40
+    parent = "2" * 40
+    remote = "3" * 40
+    previous = b"# ledger\n"
+    claim = expected_capacity_operator_reentry_claim()
+    marker = admission.CAPACITY_REENTRY_PREFIX.encode("ascii") \
+        + canonical_json_bytes(claim)
+    current = previous + marker
+    monkeypatch.setattr(
+        admission, "_canonical_remote_tip", lambda _repo: remote)
+
+    def fake_git(_repo, *arguments, binary=False):
+        if arguments == ("rev-parse", "origin/main"):
+            return remote
+        if arguments == ("show", "-s", "--format=%P", review):
+            return parent
+        if arguments[:3] == ("show", "-s", "--format=%an"):
+            return admission.REVIEWER_NAME
+        if arguments[:3] == ("show", "-s", "--format=%ae"):
+            return admission.REVIEWER_EMAIL
+        if arguments[:3] == ("show", "-s", "--format=%cn"):
+            return admission.REVIEWER_NAME
+        if arguments[:3] == ("show", "-s", "--format=%ce"):
+            return admission.REVIEWER_EMAIL
+        if arguments == ("show", "-s", "--format=%B", review):
+            return admission.REVIEWER_SESSION_TRAILER + "fixture"
+        if arguments[:5] == (
+                "diff-tree", "--no-commit-id", "--name-only", "-r",
+                review):
+            return admission.REVIEW_LEDGER
+        if arguments == (
+                "show", f"{review}:{admission.REVIEW_LEDGER}"):
+            return current
+        if arguments == (
+                "show", f"{parent}:{admission.REVIEW_LEDGER}"):
+            return previous
+        raise AssertionError(arguments)
+
+    monkeypatch.setattr(admission, "_git", fake_git)
+    monkeypatch.setattr(
+        admission.subprocess, "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=0))
+    value = authenticate_capacity_operator_reentry(
+        repo=Path.cwd().parent.resolve(), review_commit=review)
+    validate_capacity_operator_reentry(value)
+    assert value["claim"] == claim
+    assert value["claim"]["train_row_bytes_opened"] is False
+    assert value["claim"]["authority"] \
+        ["train_only_corrected_capacity_execution_authorized"] is True
+    assert all(item is False for key, item in value["claim"][
+        "authority"].items()
+               if key != "train_only_corrected_capacity_execution_authorized")
+
+    forged = copy.deepcopy(value)
+    forged["claim"]["train_row_bytes_opened"] = True
+    body = {key: item for key, item in forged.items()
+            if key != "authentication_sha256"}
+    forged["authentication_sha256"] = admission._sha(body)
+    with pytest.raises(WorldAfterstateV1AdmissionError,
+                       match="identity drift"):
+        validate_capacity_operator_reentry(forged)
+
+    def duplicate_git(_repo, *arguments, binary=False):
+        if arguments == (
+                "show", f"{parent}:{admission.REVIEW_LEDGER}"):
+            return previous + marker
+        return fake_git(_repo, *arguments, binary=binary)
+
+    monkeypatch.setattr(admission, "_git", duplicate_git)
+    with pytest.raises(WorldAfterstateV1AdmissionError,
+                       match="marker introduction drift"):
+        authenticate_capacity_operator_reentry(
+            repo=Path.cwd().parent.resolve(), review_commit=review)

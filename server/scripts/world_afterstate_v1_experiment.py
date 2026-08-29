@@ -77,6 +77,8 @@ from shengji.rl import (  # noqa: E402
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
 from shengji.rl.world_afterstate_v1_capacity import (  # noqa: E402
     CapacityBuildV1, _runtime, reopen_capacity_directory)
+from shengji.rl.world_afterstate_v1_admission import (  # noqa: E402
+    authenticate_capacity_operator_reentry)
 from shengji.rl.world_afterstate_v1_experiment import (  # noqa: E402
     SOURCE_KEYS, SOURCE_PATHS, build_experiment_freeze,
     validate_experiment_freeze)
@@ -126,9 +128,12 @@ def _strict_live(expected_git: str, capacity: CapacityBuildV1):
 def _derive(args):
     capacity = reopen_capacity_directory(Path(args.capacity))
     sources, runtime = _strict_live(args.expected_git, capacity)
+    capacity_operator_reentry = authenticate_capacity_operator_reentry(
+        repo=REPO, review_commit=args.capacity_operator_reentry_commit)
     freeze = build_experiment_freeze(
         capacity, source_git=args.expected_git,
-        source_sha256s=sources, experiment_runtime=runtime)
+        source_sha256s=sources, experiment_runtime=runtime,
+        capacity_operator_reentry=capacity_operator_reentry)
     validate_experiment_freeze(freeze, capacity)
     return canonical_json_bytes(freeze), freeze
 
@@ -157,6 +162,7 @@ def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser()
     value.add_argument("mode", choices=("build-freeze", "verify-freeze"))
     value.add_argument("--capacity", type=Path, required=True)
+    value.add_argument("--capacity-operator-reentry-commit", required=True)
     value.add_argument("--expected-git", required=True)
     value.add_argument("--out", type=Path, required=True)
     return value

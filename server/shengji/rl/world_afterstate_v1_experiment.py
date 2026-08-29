@@ -12,6 +12,8 @@ import hashlib
 from typing import Any, Mapping
 
 from .belief_contract import canonical_json_bytes
+from .world_afterstate_v1_admission import (
+    validate_capacity_operator_reentry)
 from .world_afterstate_v1_capacity import (
     CAPACITY_MEMORY_LIMIT_BYTES, CapacityBuildV1, reopen_capacity_build)
 from .world_afterstate_v1_training import AdvantageTrainingConfigV1
@@ -159,13 +161,19 @@ def _capacity_directory_binding(build: CapacityBuildV1) -> dict[str, Any]:
 def build_experiment_freeze(
         capacity_build: CapacityBuildV1, *, source_git: str,
         source_sha256s: Mapping[str, str],
-        experiment_runtime: Mapping[str, Any]) -> dict[str, Any]:
+        experiment_runtime: Mapping[str, Any],
+        capacity_operator_reentry: Mapping[str, Any]) -> dict[str, Any]:
     """Derive one outcome-blind P1 freeze from exact capacity mechanics."""
     try:
         capacity_build = reopen_capacity_build(capacity_build)
     except ValueError as exc:
         raise WorldAfterstateV1ExperimentError(
             "experiment capacity build drift") from exc
+    try:
+        validate_capacity_operator_reentry(capacity_operator_reentry)
+    except ValueError as exc:
+        raise WorldAfterstateV1ExperimentError(
+            "experiment capacity operator reentry drift") from exc
     receipt = capacity_build.receipt
     if receipt["terminal_route"] != "PASS_TO_P1_CAPACITY" \
             or receipt["train_population"]["label_ceiling_passed"] is not True \
@@ -216,6 +224,7 @@ def build_experiment_freeze(
         "source_git": source_git,
         "source_sha256s": dict(sorted(source_sha256s.items())),
         "runtime": dict(experiment_runtime),
+        "capacity_operator_reentry": dict(capacity_operator_reentry),
         "capacity": _capacity_directory_binding(capacity_build),
         "v0_inputs": {
             **dict(receipt["v0_inputs"]),
@@ -311,8 +320,8 @@ def validate_experiment_freeze(
     """Rebuild the full freeze from its only immutable variable input."""
     if type(value) is not dict or set(value) != {
             "schema", "namespace", "source_git", "source_sha256s",
-            "runtime", "capacity", "v0_inputs", "population", "learner",
-            "resources", "gates", "stage_order",
+            "runtime", "capacity_operator_reentry", "capacity", "v0_inputs",
+            "population", "learner", "resources", "gates", "stage_order",
             "terminal_authority_if_pass", "authority", "freeze_sha256"} \
             or value.get("schema") != FREEZE_SCHEMA \
             or value.get("namespace") != NAMESPACE \
@@ -322,7 +331,8 @@ def validate_experiment_freeze(
     expected = build_experiment_freeze(
         capacity_build, source_git=value.get("source_git"),
         source_sha256s=value.get("source_sha256s"),
-        experiment_runtime=value.get("runtime"))
+        experiment_runtime=value.get("runtime"),
+        capacity_operator_reentry=value.get("capacity_operator_reentry"))
     if canonical_json_bytes(dict(value)) != canonical_json_bytes(expected):
         raise WorldAfterstateV1ExperimentError(
             "experiment freeze reconstruction drift")

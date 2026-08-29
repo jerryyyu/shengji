@@ -17,10 +17,11 @@ from test_world_afterstate_v1_experiment import _inputs
 
 
 def _fixture(monkeypatch, tmp_path):
-    capacity, runtime, sources = _inputs()
+    capacity, runtime, sources, reentry = _inputs()
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
-        source_sha256s=sources, experiment_runtime=runtime)
+        source_sha256s=sources, experiment_runtime=runtime,
+        capacity_operator_reentry=reentry)
     admission = {
         "schema": "fixture", "source_git": "a" * 40,
         "freeze_sha256": freeze["freeze_sha256"],

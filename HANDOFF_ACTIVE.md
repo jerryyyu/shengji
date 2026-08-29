@@ -4,28 +4,39 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 02:29 EDT**. Remote main before this refresh:
-`f1c5e95337e22c524f200692123a5e1c43fbe1b0`.
+Last reconciled: **2026-08-29 02:49 EDT**. Remote main before this refresh:
+`cad30be4d0168f5ab0ec148e39e5de99b60c9852`.
 
 ## Review queue
 
-Exactly one review is actionable: **PR #166 repaired train-only capacity at
-exact head `aa0595cce9b626941c9cc4fd64062b4e06d10cf1`**. Review only the
-three-file post-HOLD repair
-`4ab255795a974f7de3549480728be07c5a81887c..aa0595cce9b626941c9cc4fd64062b4e06d10cf1`:
-every cohort receives the positive remainder of one composed two-hour packet
-deadline, and an exact caller witness plus expiry witness prove the boundary
-can fail. Pure and strict compiled families pass 175/175; CI is green. The
-exact marker and authority map are in PR comment
-`https://github.com/jerryyyu/shengji/pull/166#issuecomment-5460769983`.
+Exactly one command-only adjudication is actionable; **no source re-review is
+requested**. PR #166 passed at exact head
+`aa0595cce9b626941c9cc4fd64062b4e06d10cf1` in canonical commit
+`cad30be4d0168f5ab0ec148e39e5de99b60c9852`. The authorized Perf invocation
+`40a4c998a71e4b74befb46feddd2dd52` then failed after 5.405 s because Codex
+supplied `--row-root .../artifacts/dataset/rows` while every manifest path
+already starts with `rows/`. The first attempted path was therefore the
+nonexistent `.../dataset/rows/rows/train/...`; the traceback is at
+`value-afterstate-v1-capacity-aa0595c-r1.service`. No capacity output exists,
+no progress record was emitted, and no train-row byte could open because the
+entire erroneous `rows/rows` tree is absent. This is an operator-path failure,
+not a source, model, or data result.
 
-A PASS authorizes one non-retry train-only Perf P0/capacity census. It opens
-only the already-opened 3,906 V0 train rows and grants no calibration, report,
-provider-audit, scientific P1, gameplay, strength, merge, deployment or R5
-authority. PR #167 is source-staged but deliberately **not** reviewable until
-that capacity receipt exists and its immutable freeze is generated; the pair
-then gets the one remaining consolidated source+freeze review. R4 and PT-Luna0
-need no repeated review while in their current states.
+Please independently confirm the failed unit, absent output, manifest-relative
+path, and real first-row existence under `.../artifacts/dataset/rows/...`.
+If they match, append the following exact single line to `HANDOFF_REVIEW.md`
+in one Claude-authored append-only commit. It authorizes exactly one corrected
+Perf execution at output `...-r2`; all scientific and downstream authority
+remains false:
+
+```text
+WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V1 {"authority":{"calibration_row_opening_authorized":false,"deployment_authorized":false,"gameplay_authorized":false,"merge_authorized":false,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_beyond_corrected_execution_authorized":false,"scientific_p1_training_authorized":false,"strength_claim_authorized":false,"train_only_corrected_capacity_execution_authorized":true},"corrected_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset","failed_invocation_id":"40a4c998a71e4b74befb46feddd2dd52","failed_output_absent":true,"failed_service":"value-afterstate-v1-capacity-aa0595c-r1.service","prior_review_commit":"cad30be4d0168f5ab0ec148e39e5de99b60c9852","schema":"world-afterstate-v1-capacity-operator-reentry-v1","source_git":"aa0595cce9b626941c9cc4fd64062b4e06d10cf1","target_output":"/opt/value-afterstate-v1-capacity-aa0595c-r2","train_row_bytes_opened":false,"wrong_row_root":"/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset/rows"}
+```
+
+PR #167 remains deliberately **not** reviewable until the capacity receipt
+exists and its immutable freeze binds this incident/re-entry provenance; the
+pair then gets the one remaining consolidated source+freeze review. R4 and
+PT-Luna0 need no repeated review while in their current states.
 
 ## Live work
 
@@ -86,10 +97,13 @@ need no repeated review while in their current states.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
-### Value-Afterstate V1 — capacity review pending
+### Value-Afterstate V1 — corrected capacity launch pending
 
 - Capacity PR #166 exact head `aa0595cce9b626941c9cc4fd64062b4e06d10cf1`
-  is green and staged on idle Perf, but no run has started and no row reopened.
+  passed. Its first authorized command failed before any train-row byte opened
+  due solely to the doubled `rows/rows` path above. Do not silently retry; wait
+  for the exact command-only re-entry marker, then use the corrected dataset
+  root and fresh output namespace `...-r2`.
 - Scientific PR #167 exact staged head
   `a8673c79c4f3a02ec13513938258b984884188ce` passes 192/192 pure and strict
   compiled tests plus CI. Initialization now checks exact live source/runtime
@@ -105,7 +119,7 @@ need no repeated review while in their current states.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Idle; exact PR #166/#167 checkouts prepared; capacity awaits PASS |
+| Perf Cloud | Idle; exact PR #166/#167 checkouts prepared; corrected capacity awaits command-only re-entry |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.

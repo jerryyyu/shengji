@@ -16,6 +16,8 @@ from collections import Counter, defaultdict
 from typing import Any, Mapping, Sequence
 
 from .belief_contract import canonical_json_bytes
+from .world_afterstate_v1_controls import (
+    ControlledAdvantageV1, collate_control_training_pairs)
 from .world_afterstate_v1_dataset import JoinedAdvantageV1
 from .world_afterstate_v1_training import (
     AdvantageTrainingBatchV1, collate_training_pairs)
@@ -280,6 +282,46 @@ def build_training_batches(
     return batches, {**body, "schedule_sha256": _sha(body)}
 
 
+def build_control_training_batches(
+        controlled: Sequence[ControlledAdvantageV1], *,
+        subsplit_manifest: Mapping[str, Any], split: str,
+        pair_cap: int, schedule_seed: int, epoch: int) \
+        -> tuple[tuple[AdvantageTrainingBatchV1, ...], dict[str, Any]]:
+    """Apply the exact natural root schedule to one named control cohort."""
+    if type(controlled) not in (list, tuple) or not controlled \
+            or any(type(value) is not ControlledAdvantageV1
+                   for value in controlled):
+        raise WorldAfterstateV1ScheduleError(
+            "control schedule population drift")
+    for value in controlled:
+        value.validate()
+    names = {value.control_name for value in controlled}
+    if len(names) != 1:
+        raise WorldAfterstateV1ScheduleError(
+            "control schedule cohort drift")
+    natural = [value.natural for value in controlled]
+    _natural_batches, receipt = build_training_batches(
+        natural, subsplit_manifest=subsplit_manifest, split=split,
+        pair_cap=pair_cap, schedule_seed=schedule_seed, epoch=epoch)
+    by_key = {
+        f"{state}:{candidate}:{replicate}": value
+        for value in controlled
+        for state, candidate, replicate in (value.key(),)
+    }
+    expected = {key for batch in receipt["batch_pair_keys"] for key in batch}
+    if len(by_key) != len(controlled) or not expected.issubset(by_key):
+        raise WorldAfterstateV1ScheduleError(
+            "control schedule natural binding drift")
+    batches = tuple(collate_control_training_pairs(
+        [by_key[key] for key in keys], split=split)
+        for keys in receipt["batch_pair_keys"])
+    if [list(batch.pair_keys) for batch in batches] \
+            != receipt["batch_pair_keys"]:
+        raise WorldAfterstateV1ScheduleError(
+            "control schedule output drift")
+    return batches, receipt
+
+
 def validate_schedule_receipt(value: object) -> None:
     required = {
         "schema", "subsplit_manifest_sha256", "split", "schedule_seed",
@@ -334,6 +376,6 @@ def validate_schedule_receipt(value: object) -> None:
 
 __all__ = [
     "AUTHORITY", "WorldAfterstateV1ScheduleError", "build_subsplit_manifest",
-    "build_training_batches", "deal_subsplit", "validate_schedule_receipt",
-    "validate_subsplit_manifest",
+    "build_control_training_batches", "build_training_batches",
+    "deal_subsplit", "validate_schedule_receipt", "validate_subsplit_manifest",
 ]

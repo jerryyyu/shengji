@@ -6,10 +6,12 @@ import hashlib
 import pytest
 
 from shengji.rl.world_afterstate_v1_dataset import join_advantage_examples
+from shengji.rl.world_afterstate_v1_controls import (
+    action_association_permutation)
 from shengji.rl.world_afterstate_v1_schedule import (
     AUTHORITY, WorldAfterstateV1ScheduleError, build_subsplit_manifest,
-    build_training_batches, deal_subsplit, validate_schedule_receipt,
-    validate_subsplit_manifest)
+    build_control_training_batches, build_training_batches, deal_subsplit,
+    validate_schedule_receipt, validate_subsplit_manifest)
 
 from test_world_afterstate_v1_dataset import _row
 
@@ -127,3 +129,24 @@ def test_schedule_receipt_split_root_witness_has_teeth():
     with pytest.raises(WorldAfterstateV1ScheduleError,
                        match="split one root"):
         validate_schedule_receipt(forged)
+
+
+def test_control_cohort_uses_exact_natural_schedule_with_changed_tensors():
+    rows, bindings = _fixture()
+    joined = list(join_advantage_examples(rows))
+    controlled, _evidence = action_association_permutation(joined)
+    manifest = build_subsplit_manifest(
+        bindings, v0_population_manifest_sha256="f" * 64)
+    natural_batches, natural_receipt = build_training_batches(
+        joined, subsplit_manifest=manifest, split="fit", pair_cap=12,
+        schedule_seed=53, epoch=2)
+    control_batches, control_receipt = build_control_training_batches(
+        controlled, subsplit_manifest=manifest, split="fit", pair_cap=12,
+        schedule_seed=53, epoch=2)
+    assert control_receipt == natural_receipt
+    assert [batch.pair_keys for batch in control_batches] \
+        == [batch.pair_keys for batch in natural_batches]
+    assert any(control.candidate_tensor_sha256s
+               != natural.candidate_tensor_sha256s
+               for control, natural in zip(
+                   control_batches, natural_batches, strict=True))

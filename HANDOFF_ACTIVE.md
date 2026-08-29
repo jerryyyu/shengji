@@ -4,42 +4,46 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 11:01 EDT**. Remote main before this update:
-`ceaca8a049eb35bedb7a1ad0dc6dbf0224ab866d`.
+Last reconciled: **2026-08-29 11:25 EDT**. Remote main before this update:
+`f289e02d18f37a875ab81e4fc63c20a67e615493`.
 
-## OPEN — one narrow repaired-head Value V1 source+freeze review
+## OPEN — one consolidated repaired-head Value V1 source+freeze review
 
-The broad `32ef540b` review reproduced, but its marker must not launch: the
-freeze did not bind the operator-selected scientific root, so the same PASS
-could initialize a second path. PR #167 now has exact head
-`3534fe095875826f8fa6296cb6004c28f0b7359e`. The eight-file delta freezes and
-reviews exact root `/opt/value-afterstate-v1-p1-scientific-r1`, refuses any
-other root before attempt publication, witnesses that refusal at the caller,
-and applies Claude's two-line same-prefix repair to the sibling capacity
-re-entry authenticator. Both checks were mutation-tested in the failing
-direction.
+PR #167 exact head is now
+`e632e411349d3e5bb52d6a363616031b40eb91d6`. The `f289e02` PASS admitted the
+old `3534fe0` root exactly once; that admission/root are spent and must not be
+reused. The invocation failed after 29.9 seconds while reopening natural-cohort
+train data: capacity had filtered manifest-proven ineligible ballots before
+pairing, but the scientific reader omitted the same projection. Train rows
+opened, but no epoch, cohort output, prediction, calibration attempt/label,
+reconstruction attempt, report row, or provider-audit row opened or published.
+This is a source-path refusal, not a model result.
 
-Review the delta from `32ef540b` plus fresh exact-head artifacts only:
+Review only `3534fe0..e632e41` plus the fresh freeze. The repair calls the same
+outcome-blind eligibility selector as capacity and witnesses the production
+reader wiring. On all frozen train data it reproduces exactly 3,906 raw rows,
+3,820 eligible rows, 3,178 paired examples, and byte-identical capacity
+advantage manifest `b69febab…`. The successor freeze structurally binds the
+spent service/invocation/root, exact failure boundary, and zero-held-out-open
+record; it says the prior admission is not retryable and names attempt 2 under
+a new root. No new capacity census or outcome was selected.
 
-- rehearsal root `/opt/value-afterstate-v1-rehearsal-3534fe0-r1`, receipt
-  external/internal `2b97a1d6…` / `add5e1c4…`, 13.74 seconds, 51 files;
-- freeze `/opt/value-afterstate-v1-freeze-3534fe0-r1.json`, mode/link/bytes
-  `0400` / 1 / 15,708, external/internal `9c49e198…` / `02eb83f7…`;
-- expected claim `46562c2c…`; expected 1,432-byte marker `6f321b57…`.
+- source: `/opt/value-afterstate-v1-scientific-e632e41-r2-src`, exact clean
+  `e632e411349d3e5bb52d6a363616031b40eb91d6`;
+- freeze: `/opt/value-afterstate-v1-freeze-e632e41-r2.json`, mode/link/bytes
+  `0400` / 1 / 16,561;
+- freeze external/internal: `e07b3541…` / `ae9df8b4…`;
+- exact new root: `/opt/value-afterstate-v1-p1-scientific-r2`;
+- expected claim `08f2cbb1…`; expected 1,432-byte marker `0b3ef08c…`;
+- full tests: 202/202 pure and 202/202 strict compiled/void; fresh-process
+  freeze reconstruction passed.
 
-Claude's `ceaca8a` note about unreplicated capacity timing is acknowledged as
-nonblocking for this first P1 pilot. The census was outcome-blind, 4 Torch
-threads are now an exact reproducible environment, and natural plus all three
-controls share it. Interpret P1 conditionally on that environment; add
-replicated thread-count qualification before any successor capacity design.
-Do not reopen P0 or regenerate this freeze for that future refinement.
-
-If those reproduce, append the new module-generated
-`WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW` marker. It supersedes the marker at
-`864463e` and may authorize exactly one execution at the frozen root plus
-immediate reconstruction. Report/provider rows, P2, gameplay, strength, merge,
-promotion, deployment, retry, R5 and test extension remain false. Do not launch
-from the superseded marker. Full details and exact hashes are in PR #167.
+If those reproduce, append exactly one fresh module-generated
+`WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW` marker authorizing one execution at
+the frozen `r2` root plus immediate reconstruction. Report/provider rows, P2,
+gameplay, strength, merge, promotion, deployment, retry, R5 and test extension
+remain false. Full hashes and the exact boundary are in PR #167. This is the
+only actionable review; do not add a separate incident or rehearsal review.
 
 ## Live work
 
@@ -128,7 +132,7 @@ from the superseded marker. Full details and exact hashes are in PR #167.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
-### Value-Afterstate V1 — P0 passed; P1 packet ready for review
+### Value-Afterstate V1 — P0 passed; repaired P1 packet ready for review
 
 - Capacity PR #166 is reviewed at repaired exact head
   `bd400a6855b83de263838cabdee1f07de6839ba2`. The old-head `-r1` and `-r2`
@@ -148,11 +152,12 @@ from the superseded marker. Full details and exact hashes are in PR #167.
   combined mean +0.084112 signed levels, deal-bootstrap interval
   [+0.036050, +0.134259], and 23.3644% non-incumbent selection dose. This
   admits P1; it is not yet evidence that a model learns or improves play.
-- Scientific PR #167 at exact head `32ef540b…` includes the four cohorts,
-  durable per-cohort seals, graceful deadline truncation, prediction-before-
-  label ordering, terminal reconstruction, negative controls, replay-safe
-  review authentication, exact incident lineage and a can-fail exact-source
-  rehearsal CLI. The precise review ask is at the top of this file.
+- The first P1 scientific admission at `3534fe0` is spent. It refused before
+  training because its reader missed the capacity eligibility projection;
+  no held-out label opened and no learning conclusion exists. PR #167 repaired
+  head `e632e41` applies the selector, reproduces the capacity manifest on the
+  real train population, and freezes that spent-attempt lineage under a new
+  `r2` root. The precise one-review ask is at the top of this file.
 - This is a 520-root mechanism pilot, not a final-quality model claim. Eight
   seeds test optimization stability, not data sufficiency; any later scaling
   adds independent roots/replicates only after P0/P1 establish real action
@@ -163,7 +168,7 @@ from the superseded marker. Full details and exact hashes are in PR #167.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Immutable V0/P0 inputs plus final P1 rehearsal/freeze preserved; idle pending review |
+| Perf Cloud | Immutable V0/P0 inputs, spent P1 r1, and repaired r2 freeze preserved; idle pending review |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.

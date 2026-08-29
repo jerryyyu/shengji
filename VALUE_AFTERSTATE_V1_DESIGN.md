@@ -369,18 +369,29 @@ binds the source head, V0 input hashes, worker ladders, wall and memory caps,
 and the all-false authority map. Its sole authority is one bounded P0/capacity
 packet; it grants no scientific P1 execution or held-out-data opening.
 
-The first reviewed operator command failed before its first train-row byte:
-the supplied row root already ended in `rows/`, while manifest-relative paths
-also start with `rows/`. The resulting nonexistent `rows/rows/...` lookup
-emitted no progress and published no output. A second command is forbidden
-unless one separate Claude-authored operator-reentry marker binds that failed
-invocation, the absent output, zero opened train rows, the corrected dataset
-root, and the fresh output namespace. Before that corrected command runs, all
-3,906 train-relative paths must exist as mode-0400, single-link regular files.
-The later P1 freeze authenticates and content-binds the reentry marker so the
-capacity receipt cannot erase or obscure the failed first attempt. This is a
-command-only repair; it grants no held-out, scientific, retry-beyond-one,
-gameplay, strength, merge, deployment, or R5 authority.
+Four bounded capacity attempts were spent before the successful receipt. The
+first used a row root that already ended in `rows/`, so manifest-relative
+`rows/...` paths became nonexistent `rows/rows/...` paths. The second refused
+because its staging checkout held a stale canonical-main ref. Both failed
+before opening a train row. The third reached the train population and exposed
+that singleton ballots cannot form an action-advantage pair; it opened train
+rows but published no P0 result or output. The repaired source then excluded
+only manifest-proven singleton ballots after proving candidate/replicate
+completeness, but its first invocation refused before row opening because the
+review authenticator could not consume a second same-prefix append-only
+marker. Every failed output is absent, none opened held-out rows, and none is a
+model-quality or capacity result.
+
+The P1 freeze therefore carries an exact four-row attempt lineage: source Git,
+service, systemd invocation, failure class, train-population-opening state,
+progress/output state, held-out isolation, and the canonical evidence commit.
+It also binds the one passing repaired-head receipt and terminal route. The
+first two Claude-authored operator-reentry markers remain authenticated as
+structured freeze inputs; the later source+freeze review independently checks
+the full lineage against canonical evidence. This prevents the successful
+receipt from erasing or obscuring any spent attempt without minting additional
+execution authority. No incident grants held-out, scientific, gameplay,
+strength, merge, deployment, retry, or R5 authority.
 
 If and only if P0 passes, the later immutable P1 freeze derives every
 resource choice from that receipt without reading another row or model score.

@@ -15,7 +15,8 @@ from shengji.rl.world_afterstate_v1_admission import (
 from shengji.rl.world_afterstate_v1_capacity import (
     CAPACITY_MEMORY_LIMIT_BYTES)
 from shengji.rl.world_afterstate_v1_experiment import (
-    AUTHORITY, CALIBRATION_AUDIT_COUNT, CALIBRATION_GROUP_COUNT,
+    AUTHORITY, CAPACITY_FAILED_ATTEMPTS, CALIBRATION_AUDIT_COUNT,
+    CALIBRATION_GROUP_COUNT,
     CALIBRATION_LABEL_PAIR_COUNT, CALIBRATION_LABEL_ROW_COUNT,
     CALIBRATION_PAIR_COUNT, SOURCE_KEYS, SOURCE_PATHS,
     WorldAfterstateV1ExperimentError,
@@ -69,6 +70,24 @@ def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
         == capacity.receipt["receipt_sha256"]
     assert freeze["capacity_operator_reentry"] == reentry
     assert freeze["capacity_operator_reentry_v2"] == reentry_v2
+    lineage = freeze["capacity_attempt_lineage"]
+    assert lineage["failed_attempt_count"] == 4
+    assert lineage["failed_attempts"] == [
+        dict(row) for row in CAPACITY_FAILED_ATTEMPTS]
+    assert [row["ordinal"] for row in lineage["failed_attempts"]] \
+        == [1, 2, 3, 4]
+    assert [row["train_population_opened"]
+            for row in lineage["failed_attempts"]] \
+        == [False, False, True, False]
+    assert all(row["output_published"] is False
+               and row["heldout_rows_opened"] is False
+               for row in lineage["failed_attempts"])
+    assert lineage["successful_attempt_count"] == 1
+    assert lineage["successful_source_git"] \
+        == capacity.receipt["source_git"]
+    assert lineage["successful_receipt_sha256"] \
+        == capacity.receipt["receipt_sha256"]
+    assert lineage["successful_terminal_route"] == "PASS_TO_P1_CAPACITY"
     assert freeze["population"]["pair_count"] \
         == capacity.receipt["train_population"]["pair_count"]
     assert freeze["learner"]["member_workers"] \
@@ -106,6 +125,13 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
 
     forged = copy.deepcopy(freeze)
     forged["resources"]["training_wall_cap_nanoseconds"] += 1
+    with pytest.raises(WorldAfterstateV1ExperimentError,
+                       match="freeze reconstruction drift"):
+        validate_experiment_freeze(forged, capacity)
+
+    forged = copy.deepcopy(freeze)
+    forged["capacity_attempt_lineage"]["failed_attempts"][2][
+        "train_population_opened"] = False
     with pytest.raises(WorldAfterstateV1ExperimentError,
                        match="freeze reconstruction drift"):
         validate_experiment_freeze(forged, capacity)

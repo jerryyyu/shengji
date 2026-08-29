@@ -100,6 +100,60 @@ AUTHORITY = {
     "retry_authorized": False,
     "r5_authorized": False,
 }
+CAPACITY_FAILED_ATTEMPTS = (
+    {
+        "ordinal": 1,
+        "source_git": "aa0595cce9b626941c9cc4fd64062b4e06d10cf1",
+        "service": "value-afterstate-v1-capacity-aa0595c-r1.service",
+        "invocation_id": "40a4c998a71e4b74befb46feddd2dd52",
+        "failure_class": "doubled-dataset-row-root",
+        "train_population_opened": False,
+        "progress_records_emitted": 0,
+        "output_published": False,
+        "heldout_rows_opened": False,
+        "canonical_evidence_commit":
+            "32cc41391a4c40c406161b14f6d91385123ba08c",
+    },
+    {
+        "ordinal": 2,
+        "source_git": "aa0595cce9b626941c9cc4fd64062b4e06d10cf1",
+        "service": "value-afterstate-v1-capacity-aa0595c-r2.service",
+        "invocation_id": "638870aef3b44e84a2297b9a1cf1bbf7",
+        "failure_class": "stale-canonical-remote-ref",
+        "train_population_opened": False,
+        "progress_records_emitted": 0,
+        "output_published": False,
+        "heldout_rows_opened": False,
+        "canonical_evidence_commit":
+            "11786ebb81d4d6995f9b6ed1d21be93fccd70a0b",
+    },
+    {
+        "ordinal": 3,
+        "source_git": "aa0595cce9b626941c9cc4fd64062b4e06d10cf1",
+        "service": "value-afterstate-v1-capacity-aa0595c-r3.service",
+        "invocation_id": "bf7e9e3ddc64472eab796d93dfce347c",
+        "failure_class": "singleton-candidate-eligibility-projection",
+        "train_population_opened": True,
+        "progress_records_emitted": 0,
+        "output_published": False,
+        "heldout_rows_opened": False,
+        "canonical_evidence_commit":
+            "89f278d27a51b8249f87cec7d1392350cc566bbe",
+    },
+    {
+        "ordinal": 4,
+        "source_git": "34409006ed9ecafdddd41e060936c2e3a8421aee",
+        "service": "value-afterstate-v1-capacity-3440900-r1.service",
+        "invocation_id": "e04d13f84d41486eb8f6e6acbb8250bc",
+        "failure_class": "same-prefix-review-marker-introduction",
+        "train_population_opened": False,
+        "progress_records_emitted": 0,
+        "output_published": False,
+        "heldout_rows_opened": False,
+        "canonical_evidence_commit":
+            "6692243c04c868e773220dc743ada117110950bf",
+    },
+)
 
 
 class WorldAfterstateV1ExperimentError(ValueError):
@@ -229,6 +283,17 @@ def build_experiment_freeze(
         "runtime": dict(experiment_runtime),
         "capacity_operator_reentry": dict(capacity_operator_reentry),
         "capacity_operator_reentry_v2": dict(capacity_operator_reentry_v2),
+        "capacity_attempt_lineage": {
+            "failed_attempt_count": len(CAPACITY_FAILED_ATTEMPTS),
+            "failed_attempts": [dict(row)
+                                for row in CAPACITY_FAILED_ATTEMPTS],
+            "successful_attempt_count": 1,
+            "successful_source_git": receipt["source_git"],
+            "successful_receipt_external_sha256":
+                _sha_bytes(canonical_json_bytes(receipt)),
+            "successful_receipt_sha256": receipt["receipt_sha256"],
+            "successful_terminal_route": receipt["terminal_route"],
+        },
         "capacity": _capacity_directory_binding(capacity_build),
         "v0_inputs": {
             **dict(receipt["v0_inputs"]),
@@ -325,7 +390,8 @@ def validate_experiment_freeze(
     if type(value) is not dict or set(value) != {
             "schema", "namespace", "source_git", "source_sha256s",
             "runtime", "capacity_operator_reentry",
-            "capacity_operator_reentry_v2", "capacity", "v0_inputs",
+            "capacity_operator_reentry_v2", "capacity_attempt_lineage",
+            "capacity", "v0_inputs",
             "population", "learner", "resources", "gates", "stage_order",
             "terminal_authority_if_pass", "authority", "freeze_sha256"} \
             or value.get("schema") != FREEZE_SCHEMA \
@@ -346,7 +412,8 @@ def validate_experiment_freeze(
 
 
 __all__ = [
-    "AUTHORITY", "CALIBRATION_AUDIT_COUNT", "CALIBRATION_GROUP_COUNT",
+    "AUTHORITY", "CAPACITY_FAILED_ATTEMPTS", "CALIBRATION_AUDIT_COUNT",
+    "CALIBRATION_GROUP_COUNT",
     "CALIBRATION_LABEL_PAIR_COUNT", "CALIBRATION_LABEL_ROW_COUNT",
     "CALIBRATION_PAIR_COUNT", "FREEZE_SCHEMA", "NAMESPACE", "SOURCE_KEYS",
     "SOURCE_PATHS",

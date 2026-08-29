@@ -31,14 +31,28 @@ def _freeze():
         capacity_operator_reentry_v2=reentry_v2)
 
 
-def _git_fixture(monkeypatch, freeze):
+def _git_fixture(monkeypatch, freeze, *, marker_mode="append"):
     review = "b" * 40
     parent = "c" * 40
     remote = "d" * 40
-    previous = b"# ledger\n"
+    prior_claim = copy.deepcopy(expected_review_claim(freeze))
+    prior_claim["source_git"] = "e" * 40
+    prior_marker = admission.REVIEW_PREFIX.encode("ascii") \
+        + canonical_json_bytes(prior_claim)
+    previous = b"# ledger\n" + prior_marker
     marker = admission.REVIEW_PREFIX.encode("ascii") \
         + canonical_json_bytes(expected_review_claim(freeze))
-    current = previous + marker
+    if marker_mode == "append":
+        current = previous + marker
+    elif marker_mode == "missing":
+        current = previous
+    elif marker_mode == "duplicate":
+        current = previous + marker + marker
+    elif marker_mode == "replay":
+        previous += marker
+        current = previous + marker
+    else:
+        raise AssertionError(marker_mode)
     monkeypatch.setattr(
         admission, "_canonical_remote_tip", lambda _repo: remote)
 
@@ -80,7 +94,7 @@ def _git_fixture(monkeypatch, freeze):
     return review, marker, subprocess_calls
 
 
-def test_scientific_review_grants_only_p1_train_calibration_and_reconstruct(
+def test_scientific_review_appends_after_prior_marker_and_grants_only_p1(
         monkeypatch):
     freeze = _freeze()
     review, marker, subprocess_calls = _git_fixture(monkeypatch, freeze)
@@ -101,6 +115,18 @@ def test_scientific_review_grants_only_p1_train_calibration_and_reconstruct(
             "merge_authorized", "promotion_authorized",
             "deployment_authorized", "retry_authorized", "r5_authorized"):
         assert value["authority"][key] is False
+
+
+@pytest.mark.parametrize("marker_mode", ("missing", "duplicate", "replay"))
+def test_scientific_review_refuses_missing_duplicate_or_replayed_marker(
+        monkeypatch, marker_mode):
+    freeze = _freeze()
+    review, _marker, _subprocess_calls = _git_fixture(
+        monkeypatch, freeze, marker_mode=marker_mode)
+    with pytest.raises(WorldAfterstateV1AdmissionError,
+                       match="review marker introduction drift"):
+        build_admission(
+            freeze, repo=Path.cwd().parent.resolve(), review_commit=review)
 
 
 def test_scientific_review_marker_and_claim_mutations_refuse(monkeypatch):

@@ -8826,3 +8826,42 @@ aggregate-utilization rule is unchanged.
 Authority unchanged: a PASS here would authorize implementation planning only.
 I am appending no marker.
 
+
+## 2026-08-29 14:55 EDT — withdrawing the causal half of my `d22315a` V1 entry: sign, scale, aggregation and train/eval mismatch are all refuted. The measurements stand; the inference did not
+
+At `d22315a` I recorded that the V1 natural arm is last of four on advantage
+error, beaten by its own label-permuted control with non-overlapping intervals,
+and wrote that this "points at different causes: target sign or scale, ensemble
+aggregation, or a train/evaluate mismatch — rather than insufficient data or
+capacity." The workflow at `dd7fd71` tested exactly those and refuted **every
+one** of them: flipping every prediction recovers ~5.7% of the deficit and
+pred-truth correlation is ≈ 0 (sign); predictions are *under*-dispersed at sd
+ratio 0.416 with the scale sweep optimum at exactly s = 0 (scale); 0/8 members
+beat the ensemble (aggregation); and training regresses the identical target
+(no mismatch). The supported diagnosis is target noise — 71.7% of truth rows
+exactly zero, and the two common-random-number replicates of the *same*
+candidate correlating at **r = 0.0147**.
+
+So the direction I ruled out is the direction that was right. "Unresolvable at
+two replicates" sits much closer to insufficient data than to a mechanical
+defect, and I named the mechanical causes as the likely ones.
+
+What survives: the arm table itself, which the workflow reproduced byte-exactly
+including both seeded bootstrap endpoints, and the structural point that
+`negative_controls_failed_on_demand` never compares natural to its controls, so
+the terminal cannot distinguish "learned nothing" from "predicted non-zero
+noise". The ordering I flagged is explained without any harmful-learning story:
+predictions uncorrelated with truth but non-zero in magnitude score worse than
+predicting zero, and worse the larger they are — which is why natural trails
+label-permutation and why the exact-zero control scores exactly zero.
+
+**The mechanism I should have used.** I had the ordering and stopped at
+plausible causes instead of the cheap discriminating test. The replicate-
+replicate correlation is computable from the sealed data in one pass and
+separates "no signal in the target" from "signal the model mishandled" in a
+single number. I proposed three mechanisms without running the one measurement
+that would have chosen among them — the same shape as `29a1717`, where I
+extrapolated a counter instead of reading its emitter. A hypothesis list is not
+a finding, and offering three of them reads as thoroughness while testing
+nothing.
+

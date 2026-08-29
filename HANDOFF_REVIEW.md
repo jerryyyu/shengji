@@ -7390,3 +7390,68 @@ question the sixth failure class was named for and the one nobody has answered f
 
 Read-only: systemd timestamps, the published capacity receipt, and the ledger. Nothing signalled.
 — Claude (session `f4b0ea92`)
+
+## 2026-08-29 04:30 EDT — I verified `8799789`'s projection defect **from source** rather than relaying it, and it is worse than stated: `_derive_integrity_receipt` appears **nowhere** in the module that produces the capacity receipt. Also answering the recoverability question, mechanically
+
+`8799789` says plainly it did not read `_capacity_context` and did not claim to; `53a323c` asserted
+the omission. Somebody should check it in the code, since this is the gate **I** signed at `f95b306`.
+I did, at the executing head `56bd35f0`.
+
+### Confirmed, and stronger than the claim
+
+`_capacity_context` (`belief_v2_r4_terminal_parallel.py:599`) calls exactly four reopen paths —
+`reopen_bound_imported_calibration`, `reopen_training_input_index`,
+`reopen_trained_scoring_cohorts`, `reopen_synthetic_scoring_round` — and
+`control_reopen_wall_nanoseconds` is `time.monotonic_ns()` around **that call and nothing else**
+(:648–651). Beyond that:
+
+```
+grep -n "_derive_integrity_receipt" belief_v2_r4_terminal_parallel.py  →  no matches
+```
+
+The substep now dominating the run is not merely skipped by the timed region; **the entire module
+that measures and publishes the capacity receipt never references it at all.** So the projection
+could not have included it under any argument about measurement windows.
+
+### My share of this, stated without hedging
+
+At `f95b306` I recomputed `one_pass`, `scientific`, `verifier` and `speedup_ppb` from the receipt's
+own primitives and reported all four as matching — and they did. What I checked was that the
+arithmetic was internally consistent; what I did not check was whether
+`control_reopen_wall_nanoseconds` measures the path it is used to bound. That is the same class as
+`8799789`'s (2) — a cap validated against something other than the stage it governs — and my
+verification method could not have caught it, because recomputing a formula from its own inputs is
+exactly the operation that cannot detect a wrong input. The lesson is the one my own memory already
+carries: verify preconditions, not outputs. I verified outputs, thoroughly, and called it enough.
+
+### The question `8799789` asked and nobody answered: is deadline expiry recoverable?
+
+Mechanically, **no — not into this namespace.** `belief_v2_r4_completion.py:1140–1147`:
+
+```python
+if completion_attempt_path.exists() or completion_attempt_path.is_symlink() \
+        or final.exists() or ... or partial.exists() or partial.is_symlink() \
+        or outer_path.exists() or outer_path.is_symlink():
+    decision_pool.close()
+    raise BeliefV2R4CompletionError("R4 completion terminal namespace is already occupied")
+```
+
+`r4-completion-test-attempt.json` and `terminal.partial` both exist (verified present since 11:21
+EDT yesterday). A SIGTERM at `2026-08-30T12:23:19Z` leaves both in place, so **any re-execution
+against `/opt/belief-r4-terminal-parallel-v1-r1` refuses at this guard** — correctly, since that is
+the same guard that protects the one-shot. Recovery would require a *new* evidence root, which the
+freeze binds (`evidence_root`), hence a new freeze, a new marker, and a new review round.
+
+The mechanical answer is the easy half. The harder half, which I flag rather than decide: the test
+split has already been **scored**, so a successor run would be re-scoring data whose outcomes exist
+in a partial tree. Whether that is a legitimate second opening or a spent split is a protocol
+question for the design owners, not something a namespace guard can adjudicate — and it is the
+question worth settling in the ~28 h remaining, not after.
+
+### Current measurement, this cycle
+
+`elapsed 19.96 h`, `remaining to cap 28.04 h`, still phase 3/6, `Threads: 1`, **1.00 core**,
+`rchar 0.17 MB/s`, 54.13 h CPU, `NRestarts=0`, terminal absent. The I/O anomaly I logged at
+`79b3a5b` persists unexplained and I am still not guessing at it.
+
+Nothing to do to the run; do not interrupt it. Read-only throughout. — Claude (session `68f9c8bd`)

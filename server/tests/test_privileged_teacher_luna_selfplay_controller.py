@@ -1,0 +1,568 @@
+"""Can-fail tests for PT-Luna admission, capacity, and source collection."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import threading
+import time
+from types import SimpleNamespace
+
+import pytest
+
+from shengji.rl import privileged_teacher_luna_selfplay as luna
+from shengji.rl import privileged_teacher_luna_selfplay_controller as controller
+from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
+from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
+
+
+def _cli_module():
+    spec = importlib.util.spec_from_file_location(
+        "privileged_teacher_luna_selfplay_cli",
+        Path(__file__).parents[1] / "scripts" /
+        "privileged_teacher_luna_selfplay.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+SECRET = b"luna-self-play-secret-material!!"
+TOOL = Path(__file__).parents[1] / "scripts" / "privileged_teacher_luna_selfplay_tool.py"
+MECHANICS = hashlib.sha256(b"fake-mechanics").hexdigest()
+
+
+def _codex_stdout() -> bytes:
+    return (json.dumps({"type": "thread.started", "thread_id": "fake"}) + "\n"
+            + json.dumps({"type": "turn.completed", "usage": {
+                "input_tokens": 10, "cached_input_tokens": 2,
+                "output_tokens": 3}}) + "\n").encode()
+
+
+def _metric(workers: int, worker: int, game: int) -> dict[str, object]:
+    del worker, game
+    return {"complete": True, "wall_nanoseconds": max(1, 8_000_000_000 // workers),
+            "busy_cpu_nanoseconds": 1_000_000_000,
+            "peak_rss_bytes": 1_000_000, "swap_bytes": 0,
+            "provider_refusals": 0, "provider_rate_limits": 0,
+            "provider_errors": 0, "runtime_errors": 0, "tool_calls": 4,
+            "token_count": 10, "token_rate_milli": 10,
+            "provider_capacity_rate_milli": 100,
+            "mechanics_sha256": MECHANICS}
+
+
+def _fake_process(session, *, mailbox_path, final_output_path, **_kwargs):
+    while True:
+        observed = execution.tool_request(mailbox_path, {"op": "observe"})
+        if observed["status"] in ("round_end", "failed"):
+            break
+        if observed["status"] == "waiting":
+            execution.tool_request(mailbox_path, {"op": "wait"})
+        else:
+            execution.tool_request(mailbox_path, {
+                "op": "play", "decision_sha256": observed["decision_sha256"],
+                "candidate_index": 0, "confidence": "low"})
+    final_output_path.write_bytes(canonical_json_bytes({
+        "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete"}))
+    return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+
+
+class TinyDesign(luna.LunaDesign):
+    """A type-safe five-mode fixture; production LunaDesign stays 52 clusters."""
+
+    _coords = (("2", 0, 0), ("3", 0, 0), ("4", 0, 0),
+               ("5", 1, 0), ("6", 1, 0))
+
+    @property
+    def root_coordinates(self):
+        return self._coords
+
+    @property
+    def deal_clusters(self):
+        return self._coords
+
+    @property
+    def mirror_assignments(self):
+        # The controller tests exercise the one-game path; the production
+        # constants and 104-game schedule remain covered by the core tests.
+        return ((self._coords[0], 0),)
+
+    def payload(self):
+        base = super().payload()
+        base.update({"trump_ranks": [row[0] for row in self._coords],
+                     "banker_seats": [0, 1], "replicates": 1,
+                     "deal_cluster_count": len(self._coords),
+                     "game_count": len(self.mirror_assignments),
+                     "mirror_count_per_cluster": 2})
+        return base
+
+
+def _tiny_census(design: TinyDesign) -> luna.RootCensus:
+    rows = []
+    for index, coordinate in enumerate(design.root_coordinates):
+        root = luna.build_root(SECRET, coordinate)
+        root_sha = luna.root_identity(root)
+        rows.append({"coordinate": list(coordinate), "root_sha256": root_sha,
+                     "mode": luna.TRUMP_MODES[index],
+                     "mirror_root_sha256": root_sha})
+    body = {"schema": luna.ROOT_CENSUS_SCHEMA,
+            "seed_commitment_sha256": hashlib.sha256(SECRET).hexdigest(),
+            "coordinates": rows, "coordinate_count": len(rows),
+            "mode_count": len(luna.TRUMP_MODES), "authority": dict(luna.AUTHORITY)}
+    return luna.RootCensus(body, hashlib.sha256(canonical_json_bytes(body)).hexdigest())
+
+
+def _capacity(*, one_arm: bool = False) -> controller.CapacityReceipt:
+    def runner(workers, worker, game):
+        value = _metric(workers, worker, game)
+        if one_arm and workers == 2:
+            value["peak_rss_bytes"] = 8_000_000_000
+        return value
+    return controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000, game_runner=runner)
+
+
+def _verified_capacity(*, one_arm: bool = False) -> controller.CapacityReceipt:
+    """Typed external receipt fixture; fake capacity remains synthetic by default."""
+    synthetic = _capacity(one_arm=one_arm)
+    body = dict(synthetic.body)
+    body["execution_kind"] = controller.CAPACITY_EXECUTION_VERIFIED
+    body["scientific_admissible"] = True
+    return controller.CapacityReceipt(body, controller._sha(body))
+
+
+def _reviewed_inputs(tmp_path, design, census, capacity, monkeypatch):
+    """Create a local bare GitHub-main stand-in with one exact review line."""
+    tool = TOOL
+    output_root = tmp_path
+    freeze = controller.launch_freeze_payload(
+        design=design, census=census, capacity=capacity, worker_count=1,
+        output_root=output_root, tool_script=tool)
+    claim = controller._review_claim(
+        freeze=freeze, design=design, census=census, capacity=capacity,
+        output_root=output_root, tool_script=tool)
+    source = tmp_path / "review-source"
+    remote = tmp_path / "review-remote.git"
+    source.mkdir()
+    subprocess.run(("git", "init", str(source)), check=True,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(("git", "-C", str(source), "config", "user.name", "reviewer"),
+                   check=True)
+    subprocess.run(("git", "-C", str(source), "config", "user.email", "reviewer@example"),
+                   check=True)
+    marker = (controller.REVIEW_MARKER_PREFIX.encode("ascii")
+              + canonical_json_bytes(claim))
+    (source / "HANDOFF_REVIEW.md").write_bytes(b"review baseline\n")
+    subprocess.run(("git", "-C", str(source), "add", "HANDOFF_REVIEW.md"),
+                   check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(("git", "-C", str(source), "commit", "-m", "review"),
+                   check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (source / "HANDOFF_REVIEW.md").write_bytes(b"review baseline\n" + marker)
+    subprocess.run(("git", "-C", str(source), "add", "HANDOFF_REVIEW.md"),
+                   check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(("git", "-C", str(source), "commit", "-m", "external review"),
+                   check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    review_commit = subprocess.check_output(
+        ("git", "-C", str(source), "rev-parse", "HEAD"), text=True).strip()
+    subprocess.run(("git", "init", "--bare", str(remote)), check=True,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run(("git", "-C", str(source), "remote", "add", "origin", str(remote)),
+                   check=True)
+    subprocess.run(("git", "-C", str(source), "push", "origin",
+                    f"HEAD:refs/heads/main"), check=True,
+                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    monkeypatch.setattr(controller, "CANONICAL_REMOTE_URL", str(remote))
+    return freeze, review_commit
+
+
+def test_capacity_stops_on_rss_and_never_reaches_larger_arm():
+    calls = []
+
+    def runner(workers, worker, game):
+        calls.append((workers, worker, game))
+        value = _metric(workers, worker, game)
+        if workers == 2:
+            value["peak_rss_bytes"] = 8_000_000_000
+        return value
+
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000, game_runner=runner)
+    assert [arm["workers"] for arm in receipt.body["arms"]] == [1, 2]
+    assert receipt.body["selected_workers"] == 1
+    assert len(calls) == 2 + 4
+    controller.validate_capacity_receipt(receipt)
+
+
+def test_capacity_stops_on_provider_and_deadline_conditions():
+    for field in ("swap_bytes", "provider_errors", "runtime_errors"):
+        def runner(workers, worker, game, field=field):
+            value = _metric(workers, worker, game)
+            value[field] = 1
+            return value
+        receipt = controller.run_capacity(
+            deadline_nanoseconds=1_000_000_000,
+            physical_memory_bytes=8_000_000_000, game_runner=runner)
+        assert len(receipt.body["arms"]) == 1
+        assert receipt.body["selected_workers"] is None
+    def late(workers, worker, game):
+        value = _metric(workers, worker, game)
+        value["wall_nanoseconds"] = 900_000_000
+        return value
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1_000_000_000,
+        physical_memory_bytes=8_000_000_000, game_runner=late)
+    assert receipt.body["route"] == controller.CAPACITY_REFUSE_ROUTE
+
+
+def test_capacity_stops_on_scaling_and_selects_fastest_passing_arm():
+    def runner(workers, worker, game):
+        value = _metric(workers, worker, game)
+        if workers == 2:
+            time.sleep(0.01)
+        return value
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000, game_runner=runner)
+    assert [arm["workers"] for arm in receipt.body["arms"]] == [1, 2]
+    assert receipt.body["selected_workers"] == 1
+
+
+def test_capacity_arms_are_concurrent_and_provider_headroom_is_aggregate():
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+    barriers = {workers: threading.Barrier(workers)
+                for workers in controller.CAPACITY_WORKERS if workers > 1}
+
+    def runner(workers, worker, game):
+        nonlocal active, peak
+        if workers > 1:
+            barriers[workers].wait(timeout=2)
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        time.sleep(0.002)
+        with lock:
+            active -= 1
+        value = _metric(workers, worker, game)
+        value["provider_capacity_rate_milli"] = 1000
+        return value
+
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000, game_runner=runner)
+    assert peak > 1
+    assert receipt.body["arms"][-1]["workers"] == 8
+    assert receipt.body["arms"][-1]["aggregate_token_rate_milli"] == 80
+    assert receipt.body["arms"][-1]["provider_capacity_rate_milli"] == 1000
+
+    def overloaded(workers, worker, game):
+        value = _metric(workers, worker, game)
+        value["token_rate_milli"] = 10
+        value["provider_capacity_rate_milli"] = 25
+        return value
+    limited = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000, game_runner=overloaded)
+    assert [arm["workers"] for arm in limited.body["arms"]] == [1, 2]
+    assert limited.body["arms"][-1]["provider_headroom_passed"] is False
+
+
+def test_capacity_budget_stops_before_next_arm_and_is_bound_in_receipt():
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000,
+        cumulative_wall_budget_nanoseconds=10_000_000_000,
+        cumulative_token_budget=20, game_runner=_metric)
+    assert [arm["workers"] for arm in receipt.body["arms"]] == [1]
+    assert receipt.body["stop_reason"] == "cumulative_token_budget_before_arm"
+    controller.validate_capacity_receipt(receipt)
+
+
+def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1,))
+    issued = []
+
+    class Meter:
+        def __init__(self):
+            self.value = {"schema": execution.RESOURCE_SCHEMA,
+                          "busy_cpu_nanoseconds": 100,
+                          "peak_rss_bytes": 200, "swap_bytes": 0,
+                          "sample_count": 2}
+        def close(self):
+            return dict(self.value)
+
+    meters = []
+    def meter_factory():
+        meter = Meter()
+        meters.append(meter)
+        return meter
+    monkeypatch.setattr(execution, "ProcessTreeResourceMeter", meter_factory)
+
+    def run(game, *, private_root, resource_meter, **_kwargs):
+        issued.append(resource_meter)
+        return SimpleNamespace(attempt_path=private_root / "sealed")
+    monkeypatch.setattr(execution, "run_luna_game", run)
+    evidence = SimpleNamespace(body={
+        "codex_usage": {"cached_input_tokens": 1, "input_tokens": 2,
+                        "output_tokens": 3},
+        "trace": [{"request": {"op": "observe"}}],
+        "runtime": {"codex": "fixture"}, "process_error": None,
+        "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
+        "actual_subprocess": True, "synthetic": False})
+    monkeypatch.setattr(execution, "reopen_attempt", lambda _path:
+                        SimpleNamespace(status="complete",
+                                        evidence=(evidence, evidence),
+                                        scientific_admissible=True))
+    receipt = controller.run_real_capacity(
+        capacity_secret=SECRET, tool_script=TOOL,
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000,
+        provider_capacity_rate_milli=1 << 60)
+    assert receipt.body["selected_workers"] == 1
+    assert len(issued) == 2 and issued == meters
+    assert receipt.body["arms"][0]["aggregate_busy_cpu_nanoseconds"] == 200
+
+    meters.clear()
+    issued.clear()
+    def zero_meter_factory():
+        meter = Meter()
+        meter.value["peak_rss_bytes"] = 0
+        return meter
+    monkeypatch.setattr(execution, "ProcessTreeResourceMeter",
+                        zero_meter_factory)
+    with pytest.raises(controller.ControllerError, match="process RSS"):
+        controller.run_real_capacity(
+            capacity_secret=SECRET, tool_script=TOOL,
+            deadline_nanoseconds=1200 * 1_000_000_000,
+            physical_memory_bytes=8_000_000_000,
+            provider_capacity_rate_milli=1 << 60)
+
+
+def test_population_admission_requires_capacity_and_census_before_runner(tmp_path):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    calls = []
+    def runner(_game, _root):
+        calls.append(1)
+        raise AssertionError("runner must not be called")
+    with pytest.raises(controller.ControllerError, match="capacity"):
+        controller.run_source_population(
+            design=design, seed_secret=SECRET, census=census,
+            capacity={}, evidence_root=tmp_path, game_runner=runner)
+    assert calls == []
+    forged = census.serialized()
+    forged["coordinates"] = list(forged["coordinates"])
+    forged["coordinates"][0] = dict(forged["coordinates"][0])
+    forged["coordinates"][0]["root_sha256"] = "f" * 64
+    forged_body = {key: value for key, value in forged.items()
+                   if key != "census_sha256"}
+    forged["census_sha256"] = hashlib.sha256(
+        canonical_json_bytes(forged_body)).hexdigest()
+    with pytest.raises(controller.ControllerError, match="census admission"):
+        controller.run_source_population(
+            design=design, seed_secret=SECRET, census=forged,
+            capacity=_capacity(), evidence_root=tmp_path, game_runner=runner)
+    assert calls == []
+    with pytest.raises(controller.ControllerError, match="capacity admission"):
+        controller.run_source_population(
+            design=design, seed_secret=SECRET, census=census,
+            capacity=_capacity(), evidence_root=tmp_path, game_runner=runner)
+    assert calls == []
+
+
+def test_candidate_freeze_and_direct_controller_omission_cannot_admit(tmp_path,
+                                                                       monkeypatch):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity(one_arm=True)
+    freeze = controller.launch_freeze_payload(
+        design=design, census=census, capacity=capacity, worker_count=1,
+        output_root=tmp_path, tool_script=TOOL)
+    assert freeze["authenticated"] is False
+    assert freeze["scientific_execution_authorized"] is False
+    with pytest.raises(controller.ControllerError, match="review admission"):
+        controller.run_source_population(
+            design=design, seed_secret=SECRET, census=census,
+            capacity=capacity, evidence_root=tmp_path,
+            game_runner=lambda *_: None, worker_count=1)
+
+    relabelled = _capacity(one_arm=True)
+    relabelled_body = dict(relabelled.body)
+    relabelled_body["execution_kind"] = controller.CAPACITY_EXECUTION_VERIFIED
+    relabelled_body["scientific_admissible"] = True
+    relabelled = controller.CapacityReceipt(
+        relabelled_body, controller._sha(relabelled_body))
+    candidate = controller.launch_freeze_payload(
+        design=design, census=census, capacity=relabelled, worker_count=1,
+        output_root=tmp_path, tool_script=TOOL)
+    monkeypatch.setattr(controller, "CANONICAL_REMOTE_URL",
+                        str(tmp_path / "not-a-remote"))
+    with pytest.raises(controller.ControllerError, match="remote"):
+        controller.authenticate_source_review(
+            freeze=candidate, design=design, census=census,
+            capacity=relabelled, output_root=tmp_path, tool_script=TOOL,
+            review_commit="a" * 40, repo_root=tmp_path)
+
+
+def test_review_binding_includes_the_executing_game_policy(tmp_path, monkeypatch):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
+                                             monkeypatch)
+    foreign_core = tmp_path / "privileged_teacher_luna_selfplay.py"
+    foreign_core.write_bytes(b"# altered executing game policy\n")
+    monkeypatch.setattr(luna, "__file__", str(foreign_core))
+    with pytest.raises(controller.ControllerError, match="freeze binding"):
+        controller.authenticate_source_review(
+            freeze=freeze, design=design, census=census, capacity=capacity,
+            output_root=tmp_path, tool_script=TOOL,
+            review_commit=review_commit, repo_root=tmp_path)
+def test_population_preseal_failure_publishes_missing_terminal_report(tmp_path, monkeypatch):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
+                                             monkeypatch)
+    updates = []
+    def runner(_game, _root):
+        raise RuntimeError("pre-seal failure")
+    report = controller.run_source_population(
+        design=design, seed_secret=SECRET, census=census, capacity=capacity,
+        evidence_root=tmp_path, game_runner=runner, worker_count=1,
+        progress_sink=updates.append, candidate_freeze=freeze,
+        review_commit=review_commit, repo_root=tmp_path,
+        tool_script=TOOL)
+    assert report["terminal_route"] == luna.INCOMPLETE_ROUTE
+    assert report["rows"][0]["attempt_manifest_sha256"] is None
+    assert report["rows"][0]["error"] == "RuntimeError"
+    assert updates[-1]["completed_games"] == 1
+    assert updates[-1]["sealed_games"] == 0
+    assert updates[-1]["failure_count"] == 1
+    reopened = controller.reopen_population_report(
+        tmp_path / "population-report.json", design=design,
+        capacity=capacity, census=census, candidate_freeze=freeze,
+        review_commit=review_commit, repo_root=tmp_path, tool_script=TOOL)
+    assert reopened["rows"][0]["error"] == "RuntimeError"
+def test_population_uses_execution_adapter_and_reopens_complete_attempt(tmp_path,
+                                                                         monkeypatch):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
+                                             monkeypatch)
+    calls = []
+    def runner(game, private_root):
+        calls.append((game.coordinate, game.mirror))
+        return execution.run_luna_game(
+            game, private_root=private_root, tool_script=TOOL,
+            planner_process=_fake_process)
+    with pytest.raises(controller.SourceAdmissionError, match="synthetic"):
+        controller.run_source_population(
+            design=design, seed_secret=SECRET, census=census, capacity=capacity,
+            evidence_root=tmp_path, game_runner=runner, worker_count=1,
+            candidate_freeze=freeze, review_commit=review_commit,
+            repo_root=tmp_path, tool_script=TOOL)
+    assert len(calls) == 1
+    assert not (tmp_path / "population-report.json").exists()
+
+
+def test_incomplete_attempt_keeps_real_manifest_identity_and_is_not_retried(tmp_path,
+                                                                            monkeypatch):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
+                                             monkeypatch)
+    calls = []
+    def runner(game, private_root):
+        calls.append((game.coordinate, game.mirror))
+        if len(calls) == 1:
+            def fail(session, **_kwargs):
+                game.fail("synthetic failure")
+                return subprocess.CompletedProcess(("fake",), 1, b"")
+            return execution.run_luna_game(game, private_root=private_root,
+                                           tool_script=TOOL, planner_process=fail)
+        return execution.run_luna_game(game, private_root=private_root,
+                                       tool_script=TOOL, planner_process=_fake_process)
+    report = controller.run_source_population(
+        design=design, seed_secret=SECRET, census=census, capacity=capacity,
+        evidence_root=tmp_path, game_runner=runner, worker_count=1,
+        candidate_freeze=freeze, review_commit=review_commit,
+        repo_root=tmp_path, tool_script=TOOL)
+    assert report["terminal_route"] == luna.INCOMPLETE_ROUTE
+    row = report["rows"][0]
+    assert row["status"] == "incomplete"
+    manifest = tmp_path / "attempts" / row["attempt_path"] / "manifest.json"
+    assert row["attempt_manifest_sha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
+    assert len(calls) == 1
+    with pytest.raises(controller.ControllerError, match="occupied"):
+        controller.run_source_population(
+            design=design, seed_secret=SECRET, census=census, capacity=capacity,
+            evidence_root=tmp_path, game_runner=runner, worker_count=1,
+            candidate_freeze=freeze, review_commit=review_commit,
+            repo_root=tmp_path, tool_script=TOOL)
+
+
+def test_controller_death_before_manifest_is_hash_bound_and_never_retried(tmp_path,
+                                                                          monkeypatch):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(tmp_path, design, census, capacity,
+                                             monkeypatch)
+    attempt = tmp_path / "attempts" / "2-0-0-mirror-0"
+    attempt.mkdir(parents=True)
+    (attempt / "partial-output.bin").write_bytes(b"controller died before manifest")
+    calls = []
+
+    def runner(_game, _root):
+        calls.append(1)
+        raise AssertionError("orphaned attempt must not be retried")
+
+    report = controller.run_source_population(
+        design=design, seed_secret=SECRET, census=census, capacity=capacity,
+        evidence_root=tmp_path, game_runner=runner, worker_count=1,
+        candidate_freeze=freeze, review_commit=review_commit,
+        repo_root=tmp_path, tool_script=TOOL)
+    row = report["rows"][0]
+    assert row["status"] == "incomplete"
+    assert row["error"] == "controller-death-before-manifest"
+    manifest = attempt / "manifest.json"
+    assert row["attempt_manifest_sha256"] == hashlib.sha256(
+        manifest.read_bytes()).hexdigest()
+    recovered = execution.reopen_attempt(attempt)
+    assert recovered.status == "incomplete"
+    assert recovered.error == "controller-death-before-manifest"
+    reopened = controller.reopen_population_report(
+        tmp_path / "population-report.json", design=design,
+        capacity=capacity, census=census, candidate_freeze=freeze,
+        review_commit=review_commit, repo_root=tmp_path, tool_script=TOOL)
+    assert reopened["rows"][0]["attempt_manifest_sha256"] == row[
+        "attempt_manifest_sha256"]
+    assert calls == []
+
+
+def test_cli_without_authenticated_freeze_never_launches_and_refuses_occupied_output(
+        tmp_path):
+    cli = _cli_module()
+    output = tmp_path / "capacity.json"
+    output.write_bytes(b"occupied")
+    assert cli.main(["capacity", "--fake", "--output", str(output),
+                     "--physical-memory-bytes", "8000000000"]) == 2
+    assert output.read_bytes() == b"occupied"
+    with pytest.raises(SystemExit):
+        cli.main(["collect", "--design", str(tmp_path / "design.json"),
+                  "--secret-file", str(tmp_path / "secret"),
+                  "--census", str(tmp_path / "census"),
+                  "--capacity", str(tmp_path / "capacity"),
+                  "--output-root", str(tmp_path / "out"),
+                  "--tool-script", str(TOOL)])
+    assert not (tmp_path / "out").exists()

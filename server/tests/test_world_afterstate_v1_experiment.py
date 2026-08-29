@@ -9,7 +9,9 @@ import pytest
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v1_admission import (
     CAPACITY_REENTRY_AUTHENTICATION_SCHEMA,
-    expected_capacity_operator_reentry_claim)
+    CAPACITY_REENTRY_V2_AUTHENTICATION_SCHEMA,
+    expected_capacity_operator_reentry_claim,
+    expected_capacity_operator_reentry_v2_claim)
 from shengji.rl.world_afterstate_v1_capacity import (
     CAPACITY_MEMORY_LIMIT_BYTES)
 from shengji.rl.world_afterstate_v1_experiment import (
@@ -32,32 +34,41 @@ def _inputs():
         key: f"{index + 1:064x}"
         for index, key in enumerate(SOURCE_KEYS)
     }
-    claim = expected_capacity_operator_reentry_claim()
-    body = {
-        "schema": CAPACITY_REENTRY_AUTHENTICATION_SCHEMA,
-        "review_commit": "b" * 40,
-        "canonical_remote_tip_at_freeze": "c" * 40,
-        "claim": claim,
-        "review_marker_sha256": "d" * 64,
-        "review_claim_sha256": hashlib.sha256(
-            canonical_json_bytes(claim)).hexdigest(),
-    }
-    reentry = {**body, "authentication_sha256": hashlib.sha256(
-        canonical_json_bytes(body)).hexdigest()}
-    return capacity, runtime, sources, reentry
+    def authentication(claim, schema, review, marker):
+        body = {
+            "schema": schema,
+            "review_commit": review,
+            "canonical_remote_tip_at_freeze": "c" * 40,
+            "claim": claim,
+            "review_marker_sha256": marker,
+            "review_claim_sha256": hashlib.sha256(
+                canonical_json_bytes(claim)).hexdigest(),
+        }
+        return {**body, "authentication_sha256": hashlib.sha256(
+            canonical_json_bytes(body)).hexdigest()}
+
+    reentry = authentication(
+        expected_capacity_operator_reentry_claim(),
+        CAPACITY_REENTRY_AUTHENTICATION_SCHEMA, "b" * 40, "d" * 64)
+    reentry_v2 = authentication(
+        expected_capacity_operator_reentry_v2_claim(),
+        CAPACITY_REENTRY_V2_AUTHENTICATION_SCHEMA, "e" * 40, "f" * 64)
+    return capacity, runtime, sources, reentry, reentry_v2
 
 
 def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
-    capacity, runtime, sources, reentry = _inputs()
+    capacity, runtime, sources, reentry, reentry_v2 = _inputs()
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
         source_sha256s=sources, experiment_runtime=runtime,
-        capacity_operator_reentry=reentry)
+        capacity_operator_reentry=reentry,
+        capacity_operator_reentry_v2=reentry_v2)
     validate_experiment_freeze(freeze, capacity)
 
     assert freeze["capacity"]["receipt_sha256"] \
         == capacity.receipt["receipt_sha256"]
     assert freeze["capacity_operator_reentry"] == reentry
+    assert freeze["capacity_operator_reentry_v2"] == reentry_v2
     assert freeze["population"]["pair_count"] \
         == capacity.receipt["train_population"]["pair_count"]
     assert freeze["learner"]["member_workers"] \
@@ -86,11 +97,12 @@ def test_experiment_freeze_is_capacity_derived_and_authorizes_nothing():
 
 
 def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
-    capacity, runtime, sources, reentry = _inputs()
+    capacity, runtime, sources, reentry, reentry_v2 = _inputs()
     freeze = build_experiment_freeze(
         capacity, source_git="a" * 40,
         source_sha256s=sources, experiment_runtime=runtime,
-        capacity_operator_reentry=reentry)
+        capacity_operator_reentry=reentry,
+        capacity_operator_reentry_v2=reentry_v2)
 
     forged = copy.deepcopy(freeze)
     forged["resources"]["training_wall_cap_nanoseconds"] += 1
@@ -104,7 +116,8 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
         build_experiment_freeze(
             capacity, source_git="a" * 40,
             source_sha256s=sources, experiment_runtime=runtime,
-            capacity_operator_reentry=reentry)
+            capacity_operator_reentry=reentry,
+            capacity_operator_reentry_v2=reentry_v2)
 
     forged = copy.deepcopy(reentry)
     forged["claim"]["train_row_bytes_opened"] = True
@@ -114,4 +127,16 @@ def test_experiment_freeze_reconstruction_and_runtime_checks_have_teeth():
             capacity, source_git="a" * 40,
             source_sha256s=sources, experiment_runtime=copy.deepcopy(
                 capacity.receipt["runtime"]),
-            capacity_operator_reentry=forged)
+            capacity_operator_reentry=forged,
+            capacity_operator_reentry_v2=reentry_v2)
+
+    forged_v2 = copy.deepcopy(reentry_v2)
+    forged_v2["claim"]["train_row_bytes_opened"] = True
+    with pytest.raises(WorldAfterstateV1ExperimentError,
+                       match="capacity operator reentry drift"):
+        build_experiment_freeze(
+            capacity, source_git="a" * 40,
+            source_sha256s=sources, experiment_runtime=copy.deepcopy(
+                capacity.receipt["runtime"]),
+            capacity_operator_reentry=reentry,
+            capacity_operator_reentry_v2=forged_v2)

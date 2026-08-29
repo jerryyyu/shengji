@@ -13,6 +13,8 @@ from .belief_contract import canonical_json_bytes
 REVIEW_PREFIX = "WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW "
 CAPACITY_REENTRY_PREFIX = (
     "WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V1 ")
+CAPACITY_REENTRY_V2_PREFIX = (
+    "WORLD_AFTERSTATE_V1_CAPACITY_OPERATOR_REENTRY_V2 ")
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
 REVIEWER_NAME = "Claude"
 REVIEWER_EMAIL = "noreply@anthropic.com"
@@ -24,6 +26,8 @@ ADMISSION_SCHEMA = "world-afterstate-v1-p1-scientific-admission-v1"
 SCIENTIFIC_FREEZE_SCHEMA = "world-afterstate-advantage-p1-freeze-v1"
 CAPACITY_REENTRY_AUTHENTICATION_SCHEMA = (
     "world-afterstate-v1-capacity-operator-reentry-authentication-v1")
+CAPACITY_REENTRY_V2_AUTHENTICATION_SCHEMA = (
+    "world-afterstate-v1-capacity-operator-reentry-authentication-v2")
 CAPACITY_REENTRY_CLAIM = {
     "authority": {
         "calibration_row_opening_authorized": False,
@@ -52,6 +56,42 @@ CAPACITY_REENTRY_CLAIM = {
     "train_row_bytes_opened": False,
     "wrong_row_root": (
         "/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset/rows"),
+}
+CAPACITY_REENTRY_V2_CLAIM = {
+    "authority": {
+        "calibration_row_opening_authorized": False,
+        "deployment_authorized": False,
+        "gameplay_authorized": False,
+        "merge_authorized": False,
+        "p2_execution_authorized": False,
+        "promotion_authorized": False,
+        "provider_audit_row_opening_authorized": False,
+        "r5_authorized": False,
+        "report_row_opening_authorized": False,
+        "retry_beyond_second_corrected_execution_authorized": False,
+        "scientific_p1_training_authorized": False,
+        "strength_claim_authorized": False,
+        "train_only_second_corrected_capacity_execution_authorized": True,
+    },
+    "canonical_remote_tip_at_failure": (
+        "32cc41391a4c40c406161b14f6d91385123ba08c"),
+    "corrected_row_root": (
+        "/opt/value-afterstate-v0-e3e4-d9ad99f-r1/artifacts/dataset"),
+    "failed_invocation_id": "638870aef3b44e84a2297b9a1cf1bbf7",
+    "failed_output_absent": True,
+    "failed_service": "value-afterstate-v1-capacity-aa0595c-r2.service",
+    "failure_message": "capacity review local main differs from real remote",
+    "local_origin_main_at_failure": (
+        "cad30be4d0168f5ab0ec148e39e5de99b60c9852"),
+    "prelaunch_canonical_ref_refresh_required": True,
+    "prior_operator_reentry_commit": (
+        "32cc41391a4c40c406161b14f6d91385123ba08c"),
+    "prior_review_commit": "cad30be4d0168f5ab0ec148e39e5de99b60c9852",
+    "progress_records_emitted": 0,
+    "schema": "world-afterstate-v1-capacity-operator-reentry-v2",
+    "source_git": "aa0595cce9b626941c9cc4fd64062b4e06d10cf1",
+    "target_output": "/opt/value-afterstate-v1-capacity-aa0595c-r3",
+    "train_row_bytes_opened": False,
 }
 ADMISSION_AUTHORITY = {
     "v0_train_row_reopening_authorized": True,
@@ -179,9 +219,17 @@ def expected_capacity_operator_reentry_claim() -> dict[str, Any]:
     }
 
 
-def validate_capacity_operator_reentry(
-        value: Mapping[str, Any]) -> None:
-    claim = expected_capacity_operator_reentry_claim()
+def expected_capacity_operator_reentry_v2_claim() -> dict[str, Any]:
+    """Return the exact re-entry after the stale canonical-ref refusal."""
+    return {
+        **CAPACITY_REENTRY_V2_CLAIM,
+        "authority": dict(CAPACITY_REENTRY_V2_CLAIM["authority"]),
+    }
+
+
+def _validate_capacity_operator_reentry(
+        value: Mapping[str, Any], *, claim: Mapping[str, Any],
+        authentication_schema: str, label: str) -> None:
     required = {
         "schema", "review_commit", "canonical_remote_tip_at_freeze",
         "claim", "review_marker_sha256", "review_claim_sha256",
@@ -189,44 +237,60 @@ def validate_capacity_operator_reentry(
     }
     if type(value) is not dict or set(value) != required \
             or value.get("schema") \
-            != CAPACITY_REENTRY_AUTHENTICATION_SCHEMA \
+            != authentication_schema \
             or value.get("claim") != claim \
             or value.get("review_claim_sha256") != _sha(claim):
         raise WorldAfterstateV1AdmissionError(
-            "capacity operator reentry identity drift")
+            f"{label} identity drift")
     for key, length in (
             ("review_commit", 40),
             ("canonical_remote_tip_at_freeze", 40),
             ("review_marker_sha256", 64),
             ("review_claim_sha256", 64),
             ("authentication_sha256", 64)):
-        _digest(value.get(key), f"capacity operator reentry {key}",
-                length=length)
+        _digest(value.get(key), f"{label} {key}", length=length)
     body = {key: item for key, item in value.items()
             if key != "authentication_sha256"}
     if value["authentication_sha256"] != _sha(body):
         raise WorldAfterstateV1AdmissionError(
-            "capacity operator reentry reconstruction drift")
+            f"{label} reconstruction drift")
 
 
-def authenticate_capacity_operator_reentry(
-        *, repo: Path, review_commit: str) -> dict[str, Any]:
-    """Authenticate the exact command-only re-entry on real canonical main."""
+def validate_capacity_operator_reentry(
+        value: Mapping[str, Any]) -> None:
+    _validate_capacity_operator_reentry(
+        value, claim=expected_capacity_operator_reentry_claim(),
+        authentication_schema=CAPACITY_REENTRY_AUTHENTICATION_SCHEMA,
+        label="capacity operator reentry")
+
+
+def validate_capacity_operator_reentry_v2(
+        value: Mapping[str, Any]) -> None:
+    _validate_capacity_operator_reentry(
+        value, claim=expected_capacity_operator_reentry_v2_claim(),
+        authentication_schema=CAPACITY_REENTRY_V2_AUTHENTICATION_SCHEMA,
+        label="capacity operator reentry V2")
+
+
+def _authenticate_capacity_operator_reentry(
+        *, repo: Path, review_commit: str, claim: Mapping[str, Any],
+        prefix_text: str, authentication_schema: str,
+        label: str) -> dict[str, Any]:
     if not isinstance(repo, Path) or not repo.is_absolute():
         raise WorldAfterstateV1AdmissionError(
-            "capacity operator reentry repository drift")
-    _digest(review_commit, "capacity operator reentry commit", length=40)
+            f"{label} repository drift")
+    _digest(review_commit, f"{label} commit", length=40)
     _refresh_canonical_remote_ref(repo)
     remote_tip = _canonical_remote_tip(repo)
     try:
         if _git(repo, "rev-parse", "origin/main") != remote_tip:
             raise WorldAfterstateV1AdmissionError(
-                "capacity operator reentry local main differs from remote")
+                f"{label} local main differs from remote")
         if subprocess.run(
                 ("git", "merge-base", "--is-ancestor", review_commit,
                  remote_tip), cwd=repo, capture_output=True).returncode != 0:
             raise WorldAfterstateV1AdmissionError(
-                "capacity operator reentry is not on canonical main")
+                f"{label} is not on canonical main")
         parents = str(_git(
             repo, "show", "-s", "--format=%P", review_commit)).split()
         identity = tuple(_git(
@@ -243,39 +307,62 @@ def authenticate_capacity_operator_reentry(
                 or REVIEWER_SESSION_TRAILER not in message \
                 or changed != [REVIEW_LEDGER]:
             raise WorldAfterstateV1AdmissionError(
-                "capacity operator reentry provenance drift")
+                f"{label} provenance drift")
         current = _git(
             repo, "show", f"{review_commit}:{REVIEW_LEDGER}", binary=True)
         previous = _git(
             repo, "show", f"{parents[0]}:{REVIEW_LEDGER}", binary=True)
     except (OSError, subprocess.CalledProcessError) as exc:
         raise WorldAfterstateV1AdmissionError(
-            "capacity operator reentry Git lookup failed") from exc
+            f"{label} Git lookup failed") from exc
     if type(current) is not bytes or type(previous) is not bytes \
             or not current.startswith(previous):
         raise WorldAfterstateV1AdmissionError(
-            "capacity operator reentry ledger is not append-only")
-    claim = expected_capacity_operator_reentry_claim()
-    marker = CAPACITY_REENTRY_PREFIX.encode("ascii") \
-        + canonical_json_bytes(claim)
-    prefix = CAPACITY_REENTRY_PREFIX.encode("ascii")
+            f"{label} ledger is not append-only")
+    marker = prefix_text.encode("ascii") + canonical_json_bytes(claim)
+    prefix = prefix_text.encode("ascii")
     current_matches = [line for line in current.splitlines(keepends=True)
                        if line.startswith(prefix)]
     previous_matches = [line for line in previous.splitlines(keepends=True)
                         if line.startswith(prefix)]
     if current_matches != [marker] or previous_matches:
         raise WorldAfterstateV1AdmissionError(
-            "capacity operator reentry marker introduction drift")
+            f"{label} marker introduction drift")
     body = {
-        "schema": CAPACITY_REENTRY_AUTHENTICATION_SCHEMA,
+        "schema": authentication_schema,
         "review_commit": review_commit,
         "canonical_remote_tip_at_freeze": remote_tip,
-        "claim": claim,
+        "claim": dict(claim),
         "review_marker_sha256": _sha_bytes(marker),
         "review_claim_sha256": _sha(claim),
     }
     value = {**body, "authentication_sha256": _sha(body)}
+    return value
+
+
+def authenticate_capacity_operator_reentry(
+        *, repo: Path, review_commit: str) -> dict[str, Any]:
+    """Authenticate the exact first command-only re-entry."""
+    value = _authenticate_capacity_operator_reentry(
+        repo=repo, review_commit=review_commit,
+        claim=expected_capacity_operator_reentry_claim(),
+        prefix_text=CAPACITY_REENTRY_PREFIX,
+        authentication_schema=CAPACITY_REENTRY_AUTHENTICATION_SCHEMA,
+        label="capacity operator reentry")
     validate_capacity_operator_reentry(value)
+    return value
+
+
+def authenticate_capacity_operator_reentry_v2(
+        *, repo: Path, review_commit: str) -> dict[str, Any]:
+    """Authenticate the stale-canonical-ref command-only re-entry."""
+    value = _authenticate_capacity_operator_reentry(
+        repo=repo, review_commit=review_commit,
+        claim=expected_capacity_operator_reentry_v2_claim(),
+        prefix_text=CAPACITY_REENTRY_V2_PREFIX,
+        authentication_schema=CAPACITY_REENTRY_V2_AUTHENTICATION_SCHEMA,
+        label="capacity operator reentry V2")
+    validate_capacity_operator_reentry_v2(value)
     return value
 
 
@@ -416,9 +503,14 @@ def reauthenticate_admission(
 __all__ = [
     "ADMISSION_AUTHORITY", "ADMISSION_SCHEMA",
     "CAPACITY_REENTRY_AUTHENTICATION_SCHEMA", "CAPACITY_REENTRY_PREFIX",
+    "CAPACITY_REENTRY_V2_AUTHENTICATION_SCHEMA",
+    "CAPACITY_REENTRY_V2_PREFIX",
     "REVIEW_PREFIX", "WorldAfterstateV1AdmissionError",
-    "authenticate_capacity_operator_reentry", "authenticate_review_commit",
+    "authenticate_capacity_operator_reentry",
+    "authenticate_capacity_operator_reentry_v2", "authenticate_review_commit",
     "build_admission", "expected_capacity_operator_reentry_claim",
+    "expected_capacity_operator_reentry_v2_claim",
     "expected_review_claim", "reauthenticate_admission",
     "validate_admission", "validate_capacity_operator_reentry",
+    "validate_capacity_operator_reentry_v2",
 ]

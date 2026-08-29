@@ -13,7 +13,8 @@ from typing import Any, Mapping
 
 from .belief_contract import canonical_json_bytes
 from .world_afterstate_v1_admission import (
-    validate_capacity_operator_reentry)
+    validate_capacity_operator_reentry,
+    validate_capacity_operator_reentry_v2)
 from .world_afterstate_v1_capacity import (
     CAPACITY_MEMORY_LIMIT_BYTES, CapacityBuildV1, reopen_capacity_build)
 from .world_afterstate_v1_training import AdvantageTrainingConfigV1
@@ -162,7 +163,8 @@ def build_experiment_freeze(
         capacity_build: CapacityBuildV1, *, source_git: str,
         source_sha256s: Mapping[str, str],
         experiment_runtime: Mapping[str, Any],
-        capacity_operator_reentry: Mapping[str, Any]) -> dict[str, Any]:
+        capacity_operator_reentry: Mapping[str, Any],
+        capacity_operator_reentry_v2: Mapping[str, Any]) -> dict[str, Any]:
     """Derive one outcome-blind P1 freeze from exact capacity mechanics."""
     try:
         capacity_build = reopen_capacity_build(capacity_build)
@@ -171,6 +173,7 @@ def build_experiment_freeze(
             "experiment capacity build drift") from exc
     try:
         validate_capacity_operator_reentry(capacity_operator_reentry)
+        validate_capacity_operator_reentry_v2(capacity_operator_reentry_v2)
     except ValueError as exc:
         raise WorldAfterstateV1ExperimentError(
             "experiment capacity operator reentry drift") from exc
@@ -225,6 +228,7 @@ def build_experiment_freeze(
         "source_sha256s": dict(sorted(source_sha256s.items())),
         "runtime": dict(experiment_runtime),
         "capacity_operator_reentry": dict(capacity_operator_reentry),
+        "capacity_operator_reentry_v2": dict(capacity_operator_reentry_v2),
         "capacity": _capacity_directory_binding(capacity_build),
         "v0_inputs": {
             **dict(receipt["v0_inputs"]),
@@ -320,7 +324,8 @@ def validate_experiment_freeze(
     """Rebuild the full freeze from its only immutable variable input."""
     if type(value) is not dict or set(value) != {
             "schema", "namespace", "source_git", "source_sha256s",
-            "runtime", "capacity_operator_reentry", "capacity", "v0_inputs",
+            "runtime", "capacity_operator_reentry",
+            "capacity_operator_reentry_v2", "capacity", "v0_inputs",
             "population", "learner", "resources", "gates", "stage_order",
             "terminal_authority_if_pass", "authority", "freeze_sha256"} \
             or value.get("schema") != FREEZE_SCHEMA \
@@ -332,7 +337,9 @@ def validate_experiment_freeze(
         capacity_build, source_git=value.get("source_git"),
         source_sha256s=value.get("source_sha256s"),
         experiment_runtime=value.get("runtime"),
-        capacity_operator_reentry=value.get("capacity_operator_reentry"))
+        capacity_operator_reentry=value.get("capacity_operator_reentry"),
+        capacity_operator_reentry_v2=value.get(
+            "capacity_operator_reentry_v2"))
     if canonical_json_bytes(dict(value)) != canonical_json_bytes(expected):
         raise WorldAfterstateV1ExperimentError(
             "experiment freeze reconstruction drift")

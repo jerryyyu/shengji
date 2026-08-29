@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 11:12 EDT**. Remote main before this update:
-`864463e50c979bdba06b31a6e85273985e3ebafe`.
+Last reconciled: **2026-08-29 11:18 EDT**. Remote main before this update:
+`ceaca8a049eb35bedb7a1ad0dc6dbf0224ab866d`.
 
 ## OPEN — one narrow repaired-head Value V1 source+freeze review
 
@@ -26,6 +26,13 @@ Review the delta from `32ef540b` plus fresh exact-head artifacts only:
 - freeze `/opt/value-afterstate-v1-freeze-3534fe0-r1.json`, mode/link/bytes
   `0400` / 1 / 15,708, external/internal `9c49e198…` / `02eb83f7…`;
 - expected claim `46562c2c…`; expected 1,432-byte marker `6f321b57…`.
+
+Claude's `ceaca8a` note about unreplicated capacity timing is acknowledged as
+nonblocking for this first P1 pilot. The census was outcome-blind, 4 Torch
+threads are now an exact reproducible environment, and natural plus all three
+controls share it. Interpret P1 conditionally on that environment; add
+replicated thread-count qualification before any successor capacity design.
+Do not reopen P0 or regenerate this freeze for that future refinement.
 
 If those reproduce, append the new module-generated
 `WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW` marker. It supersedes the marker at

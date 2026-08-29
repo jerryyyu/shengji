@@ -7064,3 +7064,80 @@ mode `0400`, 831 bytes, decision `REFUSE_MECHANICS_OR_NEGATIVE_CONTROL`, at revi
 `d9ad99f6…`. Coverage limit: I read the terminal and evidence artifacts and checked the gate
 arithmetic and control flags; I did not re-execute the continuations — the separate independent
 verifier did that and returned `verified=true`. — Claude (session `68f9c8bd`)
+
+## 2026-08-29 — the R4 quiet phase is **not** doing what `331de55` describes: zero page faults, 0.15 MB/s reads, one pegged core. I cannot tell whether it is working or spinning, and the test data is already spent.
+
+**I am not claiming a hang.** I am claiming the documented explanation for the silence does not match
+the measured behaviour, and that nothing available distinguishes the two readings.
+
+### What `331de55` says
+
+> the integrity receipt's `reopen_training_tensor_cache(..., verify_all_bytes=True)` over 27.82 GB of
+> bound cache bytes. Measured progress is about 1 GB per ten minutes, so this substep is hours, not
+> minutes; it is CPU/I/O-active and has not published an outcome. Do not diagnose it as a hang.
+
+I took that at face value for five cycles and reported it as expected. This cycle I measured it.
+
+### What the kernel counters say, MainPID 853477
+
+All read-only, all on the live unit, sampled 2026-08-29 05:35–05:42Z:
+
+| counter | measurement |
+|---|---|
+| `read_bytes` (disk) | 47,878,320,128 → 47,889,223,680 over 90 s = **0.12 MB/s** |
+| `rchar` (logical, incl. page cache) | 206,614,031,897 → 206,622,947,725 over 60 s = **0.149 MB/s** |
+| `syscr` | 822,567 → 822,587 = **0.3 read syscalls/s** |
+| `minflt` | 7,809,250,621 → 7,809,250,621 = **0 minor faults in 60 s** |
+| `majflt` | 0 → 0 |
+| data-file mmaps in `/proc/…/maps` | **none** — the 267 `/opt/` mappings are all `.so` libraries |
+| `CPUUsageNSec` delta | **1.000 cores**, eighth consecutive hourly sample |
+
+**0.149 MB/s logical is 0.089 GB per ten minutes — about 11× below the documented ~1 GB/10 min**, and
+`rchar` counts page-cache hits, so caching does not explain it. Neither does mmap: there are no data
+mappings and **zero** page faults of either kind. The process is not moving 27.82 GB of bytes at any
+rate resembling the stated one. It is executing a tight CPU-bound loop over memory it already holds,
+touching no new pages at all.
+
+Zero minor faults across a full minute at 100 % CPU is the part I find hardest to reconcile with
+"verifying 27.82 GB": even a cache-resident streaming verify allocates and touches pages.
+
+### Timing
+
+The last progress record was at `stage_elapsed 9.40 h`, i.e. **2026-08-28T21:47Z**. The quiet phase
+has now run **7.9 h** against the ~4.63 h the note implies (27.82 GB ÷ 1 GB/10 min) — **170 %**, and
+the ratio has grown every hour I have sampled it: 125 % → 147 % → 170 %.
+
+### Why this matters more than the previous quiet phases
+
+`r4-completion-test-attempt.json` exists. **The one-shot test split is already spent.** The earlier
+silent stages — the R5 calibrate blind spot (`3582dc6`, `e641526`) and `build-freeze` (`ddfde5d`) —
+were recoverable: a restart cost hours. Here a restart is not obviously available at all, because the
+capacity path refuses when a `TERMINAL_NAMESPACE` entry exists, and `terminal.partial` is present.
+
+So the asymmetry is: if it is working, waiting costs nothing. If it is not, every hour of waiting is
+spent on a run whose input can't be regenerated without a fresh authorization.
+
+### What would settle it, and what I cannot do
+
+A single stack sample would answer it in seconds. `py-spy` is still not installed on Strength Cloud —
+that was the `3582dc6` ask, closed by adding progress records instead, and progress records are
+exactly what this phase does not emit. **I will not attach a debugger, signal, or otherwise touch the
+process.**
+
+Concretely, and none of it requires stopping anything:
+1. `py-spy dump --pid 853477` (or `gdb -p` with `py-bt`) — read-only, one sample, definitive.
+2. Failing that, state which loop `verify_all_bytes=True` enters after the bytes are read, and whether
+   it is expected to run for hours with no allocation. If yes, this is a false alarm and the note
+   should say "CPU-bound comparison, not byte streaming" rather than "1 GB per ten minutes", because
+   the current wording invites exactly the reading I gave it for five hours.
+3. If the phase has a bounded item count, emit one progress record per item. `build-freeze` needed
+   the same fix (`ddfde5d`) and this is the higher-stakes instance.
+
+**Coverage limits.** I have not read the `verify_all_bytes` implementation and cannot say what it does
+after loading; I did not open any outcome bytes; and I explicitly do not assert the run is stuck. If
+`331de55`'s 1 GB/10 min was measured during an earlier, genuinely I/O-bound portion, then all of the
+above is consistent with the run having moved into a different, slower substep — which is worth
+saying in the note either way.
+
+Read-only throughout: systemd properties, `/proc/<pid>/io`, `/proc/<pid>/stat`, `/proc/<pid>/maps`.
+Nothing signalled. — Claude (session `f4b0ea92`)

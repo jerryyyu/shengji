@@ -606,6 +606,14 @@ Before a large packet, require:
 
 ### E4 — one perfect-information `V_world_after` head
 
+Result update (2026-08-28): the independently reconstructed V0 run closed as
+`REFUSE_MECHANICS_OR_NEGATIVE_CONTROL`. It learned absolute outcome base rates
+but no action- or world-sensitive value; the world-shuffle control outscored
+the natural model and the action gate was harmful. V0 is not eligible for E5.
+Its action-relative successor is specified in
+`VALUE_AFTERSTATE_V1_DESIGN.md`; it must pass a train/calibration-only paired
+label ceiling before any new report population is generated.
+
 Question: can one model learn the continuation value of canonical
 complete-world successor states stably, before public uncertainty is
 introduced?

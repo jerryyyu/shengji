@@ -13,7 +13,8 @@ from shengji.rl.world_afterstate_dataset import ReopenedDatasetRowV0
 from shengji.rl.world_afterstate_evaluation import EvaluationOutcomeV0
 from shengji.rl.world_afterstate_v1_dataset import (
     AUTHORITY, WorldAfterstateV1DatasetError, build_advantage_manifest,
-    join_advantage_examples, validate_advantage_manifest)
+    join_advantage_examples, select_manifest_eligible_advantage_rows,
+    validate_advantage_manifest)
 from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
 from shengji.rl.encode import N_CARDS
 
@@ -74,6 +75,34 @@ def test_exact_siblings_join_and_manifest_without_private_tensors():
     assert manifest["pair_count"] == 8
     assert manifest["authority"] == AUTHORITY
     assert "example" not in str(manifest)
+
+
+def test_manifest_eligible_selector_excludes_only_proven_singletons():
+    rows = _population() + [
+        _row("singleton", 0, replicate, 100 + replicate)
+        for replicate in range(2)
+    ]
+    counts = {
+        _digest("a"): 3, _digest("b"): 3,
+        _digest("singleton"): 1,
+    }
+    selected = select_manifest_eligible_advantage_rows(
+        rows, candidate_counts_by_state_group=counts)
+    assert len(selected) == len(_population())
+    assert {row.evaluation_outcome.state_group_id for row in selected} \
+        == {_digest("a"), _digest("b")}
+    assert len(join_advantage_examples(selected)) == 8
+
+    with pytest.raises(WorldAfterstateV1DatasetError,
+                       match="candidate-count population drift"):
+        select_manifest_eligible_advantage_rows(
+            rows[:-1], candidate_counts_by_state_group=counts)
+    forged_counts = dict(counts)
+    forged_counts[_digest("a")] = 4
+    with pytest.raises(WorldAfterstateV1DatasetError,
+                       match="candidate-count population drift"):
+        select_manifest_eligible_advantage_rows(
+            rows, candidate_counts_by_state_group=forged_counts)
 
 
 def test_join_refuses_cross_split_and_duplicate_rows():

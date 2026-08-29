@@ -13,12 +13,14 @@ operation.
 from __future__ import annotations
 
 import hashlib
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from .belief_contract import canonical_json_bytes
 from .world_afterstate_dataset import ReopenedDatasetRowV0
-from .world_afterstate_v1 import AdvantagePairV1, build_advantage_pairs
+from .world_afterstate_v1 import (
+    REPLICATES, AdvantagePairV1, build_advantage_pairs)
 from .world_afterstate_v1_model import AdvantageExampleV1
 
 
@@ -67,6 +69,67 @@ def _validate_reopened(row: ReopenedDatasetRowV0) -> None:
             or row.example.signed_level_category \
             != outcome.signed_level_category:
         raise WorldAfterstateV1DatasetError("reopened V0 row binding drift")
+
+
+def select_manifest_eligible_advantage_rows(
+        rows: Sequence[ReopenedDatasetRowV0], *,
+        candidate_counts_by_state_group: Mapping[str, int]) \
+        -> tuple[ReopenedDatasetRowV0, ...]:
+    """Keep manifest-declared multi-candidate roots and prove completeness.
+
+    V0 legitimately contains roots whose protected incumbent is the only
+    ballot candidate.  Those roots have no action-relative label and are not
+    part of V1's eligible population.  The sealed population manifest remains
+    authoritative: this selector first proves that every declared candidate
+    and replicate is present, so a dropped sibling can never be mistaken for
+    an incumbent-only root.
+    """
+    if type(rows) not in (list, tuple) or not rows \
+            or type(candidate_counts_by_state_group) is not dict \
+            or not candidate_counts_by_state_group \
+            or any(type(state_group_id) is not str
+                   or len(state_group_id) != 64
+                   or any(char not in "0123456789abcdef"
+                          for char in state_group_id)
+                   or isinstance(candidate_count, bool)
+                   or not isinstance(candidate_count, int)
+                   or candidate_count <= 0
+                   for state_group_id, candidate_count
+                   in candidate_counts_by_state_group.items()):
+        raise WorldAfterstateV1DatasetError(
+            "V1 candidate-count population request drift")
+    actual: dict[str, dict[int, set[int]]] = defaultdict(
+        lambda: defaultdict(set))
+    seen = set()
+    for row in rows:
+        _validate_reopened(row)
+        outcome = row.evaluation_outcome
+        key = outcome.key()
+        if outcome.state_group_id not in candidate_counts_by_state_group \
+                or key in seen:
+            raise WorldAfterstateV1DatasetError(
+                "V1 candidate-count population drift")
+        seen.add(key)
+        actual[outcome.state_group_id][outcome.candidate_index].add(
+            outcome.replicate)
+    expected_replicates = set(REPLICATES)
+    if set(actual) != set(candidate_counts_by_state_group) \
+            or any(
+                set(actual[state_group_id]) != set(range(candidate_count))
+                or any(replicates != expected_replicates
+                       for replicates in actual[state_group_id].values())
+                for state_group_id, candidate_count
+                in candidate_counts_by_state_group.items()):
+        raise WorldAfterstateV1DatasetError(
+            "V1 candidate-count population drift")
+    selected = tuple(
+        row for row in rows
+        if candidate_counts_by_state_group[
+            row.evaluation_outcome.state_group_id] >= 2)
+    if not selected:
+        raise WorldAfterstateV1DatasetError(
+            "V1 eligible advantage population is empty")
+    return selected
 
 
 @dataclass(frozen=True)
@@ -281,5 +344,6 @@ def validate_advantage_manifest(value: object) -> None:
 __all__ = [
     "AUTHORITY", "JoinedAdvantageV1", "WorldAfterstateV1DatasetError",
     "build_advantage_manifest", "join_advantage_examples",
+    "select_manifest_eligible_advantage_rows",
     "validate_advantage_manifest",
 ]

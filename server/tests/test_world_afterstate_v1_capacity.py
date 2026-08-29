@@ -305,9 +305,6 @@ def test_capacity_run_wires_train_only_reader_through_every_measurement(
     monkeypatch.setattr(
         capacity, "_runtime", lambda: copy.deepcopy(template["runtime"]))
     monkeypatch.setattr(capacity, "_sealed_read", lambda _path, _label: b"{}\n")
-    monkeypatch.setattr(
-        capacity, "_validate_v0_inputs",
-        lambda _population, _dataset, _freeze: ({}, {}, {}))
     snapshot_index = 0
 
     def snapshot():
@@ -333,6 +330,34 @@ def test_capacity_run_wires_train_only_reader_through_every_measurement(
                     "state_group_id": outcome.state_group_id,
                     "candidate_index": candidate, "replicate": replicate,
                 }, row))
+    singleton_rows = []
+    for replicate in range(2):
+        row = _row(
+            fold="train", state_index=TRAIN_STATE_COUNT,
+            candidate_index=0, replicate=replicate)
+        outcome = row.evaluation_outcome
+        singleton_rows.append(({
+            "state_group_id": outcome.state_group_id,
+            "candidate_index": 0, "replicate": replicate,
+        }, row))
+    reopened.extend(singleton_rows)
+    candidate_counts = {}
+    for _binding, row in reopened:
+        outcome = row.evaluation_outcome
+        candidate_counts[outcome.state_group_id] = max(
+            candidate_counts.get(outcome.state_group_id, 0),
+            outcome.candidate_index + 1)
+    population_manifest = {"groups": [
+        {
+            "state_group_id": state_group_id, "fold": "train",
+            "candidate_count": candidate_count,
+        }
+        for state_group_id, candidate_count in sorted(candidate_counts.items())
+    ]}
+    monkeypatch.setattr(
+        capacity, "_validate_v0_inputs",
+        lambda _population, _dataset, _freeze:
+            (population_manifest, {}, {}))
     calls = []
 
     def reopen(_manifest, *, population_manifest, row_root,
@@ -366,6 +391,10 @@ def test_capacity_run_wires_train_only_reader_through_every_measurement(
         freeze_path=tmp_path / "freeze.json", row_root=tmp_path,
         review_commit="b" * 40)
     assert result.receipt["terminal_route"] == "PASS_TO_P1_CAPACITY"
+    assert result.receipt["train_population"]["train_row_count"] \
+        == len(reopened)
+    assert result.receipt["train_population"]["eligible_state_count"] \
+        == TRAIN_STATE_COUNT
     assert calls == [
         *capacity.ROW_WORKER_COUNTS,
         *reversed(capacity.ROW_WORKER_COUNTS),

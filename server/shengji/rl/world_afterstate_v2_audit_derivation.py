@@ -287,6 +287,12 @@ def _derive(inputs: AuditDerivationInputV2) -> AuditDerivationResultV2:
         for label in COMPARISON_LABELS)
     dose_digests = tuple((label, _sha(inputs.control_dose_evidence[label]))
                          for label in DOSE_LABELS)
+    terminal_doses = {
+        "action-association-permutation":
+            inputs.control_dose_evidence["association"],
+        "label-permutation": inputs.control_dose_evidence["label"],
+        "complete-world-shuffle": inputs.control_dose_evidence["world"],
+    }
     provenance = AuditProvenanceV2(
         freeze_sha256=inputs.freeze_sha256,
         admission_sha256=inputs.admission_sha256,
@@ -316,7 +322,7 @@ def _derive(inputs: AuditDerivationInputV2) -> AuditDerivationResultV2:
                 for name in ("action-association-permutation", "label-permutation",
                              "complete-world-shuffle")},
             control_comparisons=comparisons,
-            control_dose_evidence=inputs.control_dose_evidence,
+            control_dose_evidence=terminal_doses,
             audit_provenance=provenance,
             cohort_manifests=tuple(manifest for _, manifest in inputs.cohort_manifests),
             audit_opened_count=1)

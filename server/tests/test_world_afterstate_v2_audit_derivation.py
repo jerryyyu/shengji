@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 
 import pytest
@@ -9,7 +10,29 @@ from shengji.rl.world_afterstate_v2_audit_derivation import (
     WorldAfterstateV2AuditDerivationError, derive_audit_v2,
 )
 from shengji.rl.world_afterstate_v2_label import ContinuationOutcomeV2
+from shengji.rl.world_afterstate_v2_inference import (
+    expected_signed_microlevels,
+)
+from shengji.rl.world_afterstate_v2_result import (
+    PASS_ABSOLUTE_VALUE_AND_ACTION_EDGE_TO_CONSUMER_DESIGN,
+    derive_terminal_result,
+)
+from shengji.rl.world_afterstate_v2_training import (
+    WorldAfterstateV2TrainingConfig,
+)
+from shengji.rl.world_afterstate_v2_training_controller import (
+    train_named_cohort,
+)
 from shengji.rl.world_afterstate_v2_terminal_provenance import COHORT_LABELS
+from test_world_afterstate_v2_evaluation import (
+    _manifest, _population, _probability,
+)
+from test_world_afterstate_v2_result import (
+    ASSOCIATION_CONTROL, LABEL_CONTROL, WORLD_CONTROL,
+    _canary, _dose, _evaluation, _p0, _power,
+)
+from test_world_afterstate_v2_training import _rows
+from test_world_afterstate_v2_training_controller import _selection_population
 
 
 def _sha(value: str) -> str:
@@ -80,3 +103,76 @@ def test_cohort_labels_are_frozen():
     assert tuple(label for label, _, _ in AUDIT_COHORTS) == COHORT_LABELS
     assert tuple(block for _, _, block in AUDIT_COHORTS) == (1, 1, 1, 1, 2, 2)
 
+
+def test_complete_derivation_reaches_the_strong_terminal_pass():
+    """Witness the actual derivation-to-router wiring, not only its helpers."""
+    freeze = _sha("freeze")
+    natural_values = tuple(_rows("audit-derivation"))
+    control_values = tuple(dataclasses.replace(row, cohort="control")
+                           for row in natural_values)
+    config = WorldAfterstateV2TrainingConfig(
+        learning_rate_ppb=10_000_000, weight_decay_ppb=0,
+        gradient_norm_milli=1_000, max_epochs=1, sigma_pair_squared=1.0)
+    selection = _selection_population()
+    cohort_manifests = []
+    for label, control_name, block in AUDIT_COHORTS:
+        build = train_named_cohort(
+            cohort_name=control_name,
+            values=(natural_values if control_name == "natural"
+                    else control_values),
+            natural_values=(None if control_name == "natural"
+                            else natural_values),
+            freeze_sha256=freeze, config=config,
+            selection_population=selection, seed_block=block,
+            wall_budget_nanoseconds=10**15, torch_threads=1)
+        cohort_manifests.append((label, build.manifest))
+
+    natural_predictions, outcomes, prior, root = _population(
+        root="audit-derivation-evaluation")
+    prediction_manifests = []
+    for label, control_name, block in AUDIT_COHORTS:
+        if control_name == "natural":
+            predictions = tuple(dataclasses.replace(
+                row, seed_block=block,
+                model_state_sha256=_sha(
+                    f"natural:block-{block}:member-{row.member_index}"),
+                consumer_eligible=block == 1)
+                for row in natural_predictions)
+        else:
+            wrong = _probability(0)
+            predictions = tuple(dataclasses.replace(
+                row, seed_block=block, control_name=control_name,
+                model_state_sha256=_sha(
+                    f"{control_name}:block-{block}:member-{row.member_index}"),
+                probability_ppb=wrong,
+                expected_signed_microlevels=expected_signed_microlevels(wrong),
+                consumer_eligible=False)
+                for row in natural_predictions)
+        prediction_manifests.append((
+            label, _manifest((root,), predictions,
+                             control_name=control_name, seed_block=block)))
+
+    select_population = _sha("precision-select")
+    precision = _evaluation(population=select_population, block=1)
+    inputs = AuditDerivationInputV2(
+        freeze_sha256=freeze, admission_sha256=_sha("admission"),
+        audit_attempt_sha256=_sha("attempt"),
+        continuation_manifest_sha256=_sha("continuations"),
+        prediction_manifests=tuple(prediction_manifests),
+        checkpoint_manifest_sha256s=tuple(
+            (label, _sha(f"checkpoint:{label}")) for label in COHORT_LABELS),
+        cohort_manifests=tuple(cohort_manifests), p0_report=_p0(),
+        optimizer_canary=_canary(), precision_select_result=precision,
+        model_selector_power=_power(select_population),
+        audit_outcomes=outcomes, prior=prior,
+        control_dose_evidence={
+            "association": _dose(ASSOCIATION_CONTROL),
+            "label": _dose(LABEL_CONTROL),
+            "world": _dose(WORLD_CONTROL),
+        })
+    derived = derive_audit_v2(inputs)
+    terminal = derive_terminal_result(derived.evidence)
+    assert terminal.decision == \
+        PASS_ABSOLUTE_VALUE_AND_ACTION_EDGE_TO_CONSUMER_DESIGN
+    assert tuple(derived.evidence.control_dose_evidence) == (
+        ASSOCIATION_CONTROL, LABEL_CONTROL, WORLD_CONTROL)

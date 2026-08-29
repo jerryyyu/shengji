@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 02:49 EDT**. Remote main before this refresh:
-`cad30be4d0168f5ab0ec148e39e5de99b60c9852`.
+Last reconciled: **2026-08-29 03:08 EDT**. Remote main before this refresh:
+`334ac33fd7297d8ff05808a0c70f46e162e23714`.
 
 ## Review queue
 
@@ -103,12 +103,17 @@ PT-Luna0 need no repeated review while in their current states.
   passed. Its first authorized command failed before any train-row byte opened
   due solely to the doubled `rows/rows` path above. Do not silently retry; wait
   for the exact command-only re-entry marker, then use the corrected dataset
-  root and fresh output namespace `...-r2`.
+  root and fresh output namespace `...-r2`. A metadata-only preflight now proves
+  all 3,906 train-relative files exist, are regular mode-0400 files, and have
+  exactly one hard link.
 - Scientific PR #167 exact staged head
-  `a8673c79c4f3a02ec13513938258b984884188ce` passes 192/192 pure and strict
-  compiled tests plus CI. Initialization now checks exact live source/runtime
-  before spending the durable admission. Do not review it before the capacity
-  receipt and freeze exist.
+  `253e382e16883e2385bad14b0b8672795ea50dad` passes 193/193 pure and strict
+  compiled tests. Initialization checks exact live source/runtime before
+  spending the durable admission; the freeze builder now authenticates and
+  content-binds the exact failed invocation and re-entry marker, and refreshes
+  canonical main from the real GitHub URL rather than a staging-local origin.
+  It is staged cleanly on Perf. Do not review it before the capacity receipt
+  and freeze exist.
 - This is a 520-root mechanism pilot, not a final-quality model claim. Eight
   seeds test optimization stability, not data sufficiency; any later scaling
   adds independent roots/replicates only after P0/P1 establish real action

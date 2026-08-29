@@ -4,64 +4,40 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 09:53 EDT**. Remote main at this refresh:
-`6692243c04c868e773220dc743ada117110950bf`.
+Last reconciled: **2026-08-29 10:34 EDT**. Remote main before this update:
+`0c29da670eccc9ec6514af14a376ccd76fb6b621`.
 
-## ACTIVE — Value V1 train-only P0/capacity at reviewed `bd400a68`
+## OPEN — one consolidated Value V1 scientific source+freeze review
 
-Claude independently reviewed PR #166 at exact head
-`bd400a6855b83de263838cabdee1f07de6839ba2`; canonical main `6692243`
-contains the exact machine-generated marker. Its authority is one fresh,
-non-retry, train-only Perf P0/capacity packet. Calibration, report,
-provider-audit, scientific P1, gameplay, strength, merge, deployment and R5
-remain false.
+Review draft PR #167 at exact head
+`32ef540b0829042c8cc0993ba775bd9612f4e4f8`, the passing capacity directory
+`/opt/value-afterstate-v1-capacity-bd400a6-r1`, final exact-head rehearsal
+`/opt/value-afterstate-v1-rehearsal-32ef540-r1`, and immutable freeze
+`/opt/value-afterstate-v1-freeze-32ef540-r1.json`.
 
-### Pre-launch DAG audit
+The freeze independently reconstructs at the clean Perf head. External SHA-256
+is `d3d28798b2caa5ce997666178ec926a9033ef98241614f22bfe6d44bb05fce94`;
+internal freeze SHA-256 is
+`5555c56bdebd8faf5b630aaa961b7ba51fe5e3fa40012364605e4a612a0ba2bc`.
+The exact review claim SHA-256 is
+`be7a7d3fd4f17b0f7f65012d3f82b63d10f0e11ef45a3f8266efd51797c7ca54`;
+the module-generated marker is 1,370 bytes with SHA-256
+`f4d9846dc9bb798367204ec61536b2903fa14f87629dd8140d6c4ca9c637805b`.
 
-The reviewed command has one composed two-hour internal deadline, a 30-GiB
-cgroup-v2 memory limit and a 16-logical-CPU host requirement. Its full
-learning-bearing and integrity DAG is:
+Review one packet, not separate phases: source/design, four-attempt capacity
+lineage plus passing receipt, final rehearsal, exact runtime/native/input
+bindings, learner/controls/gates, deadline truncation, held-out ordering,
+terminal reconstruction and authority. Exact-head batteries pass 201/201 pure
+and 201/201 compiled strict/void; CI is green. The rehearsal receipt SHA-256 is
+`08660ee2ac5b2e4ffe7d39d15cf37d1b8ef057e27c913c50441141be6d29e70e`;
+it independently reopens all 50 files and keeps every authority false.
 
-1. authenticate exact Git/runtime/native/review and the immutable V0 input
-   hashes before opening a training row;
-2. reopen the same 3,906 already-open V0 train rows twice at 1/2/4/8/16
-   workers, once in ascending and once in descending order, requiring
-   byte-identical populations — ten intentional full passes used only to
-   measure the fastest safe row-reader configuration — then perform one
-   eleventh full reopen at the selected worker count for P0;
-3. derive P0 in memory and stop immediately with
-   `STOP_NO_REPRODUCIBLE_ACTION_LABEL` if the two matched continuation
-   replicates do not support stable action selection;
-4. only after P0 passes, train four one-epoch eight-member capacity cohorts at
-   1/2/4/8 member workers, each receiving only the positive remainder of the
-   same packet deadline — four intentional repeats used only to select
-   throughput; and
-5. atomically seal and independently reopen the small receipt/artifact packet,
-   with no engine-continuation replay and no held-out-data pass.
-
-Rows are streamed under each measured worker count; cohort configurations use
-`torch_threads = max(1, 16 // member_workers)`, so every scheduled measurement
-targets all 16 logical CPUs without oversubscribing the intended worker/thread
-product. The receipt records wall, CPU utilization, peak cgroup memory and
-throughput for each configuration rather than assuming scaling.
-
-Recovery is deliberately narrow: there is no mid-packet checkpoint or retry;
-an expiry or process failure publishes no receipt and consumes this capacity
-admission. That is accepted for this bounded diagnostic because P0 is the
-first output, before model training, and the total packet cannot exceed two
-hours. It is not acceptable as the later scientific-run pattern: PR #167 must
-retain durable per-cohort stage boundaries, graceful best-common-epoch
-truncation and an independently reconstructible terminal before its one
-source+freeze review.
-
-The exact staged source is
-`/opt/value-afterstate-v1-capacity-bd400a6-r1-src`; the new output is
-`/opt/value-afterstate-v1-capacity-bd400a6-r1`. Immediately before launch,
-refetch canonical GitHub main, require local/real equality, recheck the clean
-source/native/runtime/input hashes and require both the unit and output to be
-absent. Authority ends after publishing and independently reopening the
-receipt. PR #167 is not reviewable until that receipt exists and the freeze
-binds every prior spent capacity incident plus this exact result.
+If every byte reproduces, append exactly one module-generated
+`WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW` marker to canonical
+`HANDOFF_REVIEW.md`. It may authorize one fresh P1 train/calibration execution
+and immediate reconstruction only. Report/provider rows, P2, gameplay,
+strength, merge, promotion, deployment, retry, R5 and test extension remain
+false. Do not launch scientifically before that marker.
 
 ## Live work
 
@@ -81,15 +57,16 @@ binds every prior spent capacity incident plus this exact result.
   artifacts, the 311-MB/778,064-decision input index, and 27.82 GB of tensor
   cache before phase 4 can publish. Its exact internal item is not externally
   observable and it has no progress counter or trustworthy ETA. Cgroup peak
-  remains 23.76 GB under the unchanged 24-GiB cap; it remains CPU-active and
-  has not published an outcome. Do not diagnose it as a hang or duplicate it.
+  remains 23.76 GB under the unchanged 24-GiB cap; at 14:34 UTC it remained
+  CPU-active with zero restarts and had not published an outcome. Do not
+  diagnose it as a hang or duplicate it.
 - The frozen 31.68-hour scientific projection is not a reliable deadline
   bound for this substep. Its measured `control_reopen_wall_nanoseconds`
   executes `_capacity_context` (calibration import, input index, trained
   cohorts and 13 calibration rounds), but never calls
   `_derive_integrity_receipt`; it therefore omits the full capture/reference
   reconstruction above. The systemd unit has a hard two-day limit ending
-  **2026-08-30 12:23 UTC** (08:23 EDT), about 29 hours after this update, and
+  **2026-08-30 12:23 UTC** (08:23 EDT), about 22 hours after this update, and
   immediate reconstruction repeats scoring plus integrity. Treat deadline
   exhaustion as a real open risk, not a predicted failure or permission to
   interrupt the only valid attempt.
@@ -156,32 +133,31 @@ binds every prior spent capacity incident plus this exact result.
   authority exists. Preserve the artifacts; any successor needs a new design,
   not a retry or post-hoc threshold change.
 
-### Value-Afterstate V1 — repaired capacity launch authorized
+### Value-Afterstate V1 — P0 passed; P1 packet ready for review
 
 - Capacity PR #166 is reviewed at repaired exact head
   `bd400a6855b83de263838cabdee1f07de6839ba2`. The old-head `-r1` and `-r2`
   invocations failed before data opening on operator-path guards; `-r3` then
   reached the train population and correctly exposed the missing singleton
-  eligibility projection before publishing a receipt. All three old-head
-  outputs are absent and none is an ML/capacity result.
+  eligibility projection; the first repaired-head invocation exposed the
+  same-prefix review-authenticator defect before row opening. All four failed
+  outputs are absent and none is an ML/capacity result. Their exact lineage is
+  bound into the P1 freeze.
 - The new manifest-bound selector proves the entire declared candidate and
   replicate population before excluding only singleton ballots. The repaired
   review authenticator accepts the append-only exact-head marker after the old
-  same-prefix marker. Pure and strict compiled/void batteries pass 80/80 each.
-  The pre-launch audit above is the active instruction; never launch another
-  command at an old source head.
-- Scientific PR #167 exact staged head
-  `917176f33ede097f5c8328ac22b6c317789e8376` passes 195/195 pure and strict
-  compiled tests. Its test-only final delta witnesses the CLI wiring that
-  durably consumes the calibration and reconstruction attempts before either
-  held-out label reader can run. Initialization checks exact live
-  source/runtime before spending the durable admission; the freeze builder
-  authenticates and content-binds the first failed invocation and re-entry
-  marker, and refreshes canonical main from the real GitHub URL rather than a
-  staging-local origin. Its next delta will bind the second incident/re-entry
-  too, before the same single consolidated source+freeze review. It is staged
-  cleanly on Perf. Do not review it before the capacity receipt and freeze
-  exist.
+  same-prefix marker. The final 13m01s capacity packet independently reopened
+  with route `PASS_TO_P1_CAPACITY`; receipt SHA-256 is
+  `31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0`.
+- P0 found reproducible paired action signal across 321 eligible states:
+  combined mean +0.084112 signed levels, deal-bootstrap interval
+  [+0.036050, +0.134259], and 23.3644% non-incumbent selection dose. This
+  admits P1; it is not yet evidence that a model learns or improves play.
+- Scientific PR #167 at exact head `32ef540b…` includes the four cohorts,
+  durable per-cohort seals, graceful deadline truncation, prediction-before-
+  label ordering, terminal reconstruction, negative controls, replay-safe
+  review authentication, exact incident lineage and a can-fail exact-source
+  rehearsal CLI. The precise review ask is at the top of this file.
 - This is a 520-root mechanism pilot, not a final-quality model claim. Eight
   seeds test optimization stability, not data sufficiency; any later scaling
   adds independent roots/replicates only after P0/P1 establish real action
@@ -192,12 +168,12 @@ binds every prior spent capacity incident plus this exact result.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Immutable V0 inputs preserved; reviewed PR #166 train-only P0/capacity packet is the sole authorized launch |
+| Perf Cloud | Immutable V0/P0 inputs plus final P1 rehearsal/freeze preserved; idle pending review |
 | Mini | free; no goal-critical run |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
-- Do not merge, deploy, resume R5, or launch Value capacity/scientific work
-  without the exact review authority described above.
+- Do not merge, deploy, resume R5, or launch scientific Value work without the
+  exact review authority described above.
 - Report percentages, ETA, utilization, and failures plainly. Use all cores
   for materially parallel workloads; do not add risky concurrency merely to
   make a short deterministic prep step look busy.

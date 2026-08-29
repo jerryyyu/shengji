@@ -38,6 +38,7 @@ from .world_afterstate_v1_controls import (
     label_permutation, validate_control_evidence)
 from .world_afterstate_v1_dataset import (
     build_advantage_manifest, join_advantage_examples,
+    select_manifest_eligible_advantage_rows,
     validate_advantage_manifest)
 from .world_afterstate_v1_schedule import (
     build_subsplit_manifest, validate_subsplit_manifest)
@@ -1009,8 +1010,14 @@ def run_capacity(
     if _population_sha(rows) != expected_population_sha:
         raise WorldAfterstateV1CapacityError(
             "capacity selected row output drift")
-    joined = tuple(join_advantage_examples(
-        [reopened for _binding, reopened in rows]))
+    eligible_rows = select_manifest_eligible_advantage_rows(
+        [reopened for _binding, reopened in rows],
+        candidate_counts_by_state_group={
+            group["state_group_id"]: group["candidate_count"]
+            for group in population_manifest["groups"]
+            if group["fold"] == "train"
+        })
+    joined = tuple(join_advantage_examples(eligible_rows))
     pair_manifest = build_advantage_manifest(
         joined,
         v0_dataset_manifest_sha256=V0_DATASET_MANIFEST_SHA256)

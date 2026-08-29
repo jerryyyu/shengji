@@ -11,8 +11,12 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
+import os
+import stat
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .belief_contract import canonical_json_bytes
@@ -528,8 +532,106 @@ def reopen_cohort_build(value: CohortTrainingBuildV1) \
     return tuple(models), value.manifest
 
 
+def _write_once(path: Path, raw: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as handle:
+        handle.write(raw)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.chmod(path, 0o400)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def publish_cohort_build(target: Path, build: CohortTrainingBuildV1) -> None:
+    """Publish one immutable cohort directory without overwriting a slot."""
+    _models, manifest = reopen_cohort_build(build)
+    if not isinstance(target, Path):
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort publication target drift")
+    parent = target.resolve().parent
+    resolved = parent / target.name
+    partial = parent / f".{target.name}.partial"
+    parent.mkdir(parents=True, exist_ok=True)
+    if resolved.exists() or resolved.is_symlink() \
+            or partial.exists() or partial.is_symlink():
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort publication namespace occupied")
+    partial.mkdir(mode=0o700)
+    for member, raw in enumerate(build.selected_checkpoint_raws):
+        _write_once(partial / "checkpoints" / f"member-{member:02d}.json",
+                    raw)
+    _write_once(partial / "manifest.json", canonical_json_bytes(manifest))
+    for directory in sorted(
+            (path for path in partial.rglob("*") if path.is_dir()),
+            key=lambda path: len(path.parts), reverse=True):
+        os.chmod(directory, 0o500)
+        _fsync_directory(directory)
+    _fsync_directory(partial)
+    os.rename(partial, resolved)
+    os.chmod(resolved, 0o500)
+    _fsync_directory(resolved)
+    _fsync_directory(parent)
+
+
+def _sealed_read(path: Path) -> bytes:
+    if path.is_symlink():
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort artifact path is a symlink")
+    with path.open("rb") as handle:
+        before = os.fstat(handle.fileno())
+        raw = handle.read()
+        after = os.fstat(handle.fileno())
+    identity = lambda value: (
+        value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns,
+        value.st_ctime_ns)
+    if identity(before) != identity(after) or before.st_nlink != 1 \
+            or stat.S_IMODE(before.st_mode) != 0o400 \
+            or before.st_size != len(raw) \
+            or not stat.S_ISREG(before.st_mode):
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort artifact is mutable")
+    return raw
+
+
+def reopen_cohort_directory(root: Path) \
+        -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """Reopen the exact immutable file population and every checkpoint."""
+    if not isinstance(root, Path) or not root.is_dir() or root.is_symlink():
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort root identity drift")
+    manifest_raw = _sealed_read(root / "manifest.json")
+    try:
+        manifest = json.loads(manifest_raw.decode("ascii"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort manifest is not JSON") from exc
+    if canonical_json_bytes(manifest) != manifest_raw:
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort manifest is not canonical JSON")
+    checkpoint_raws = tuple(_sealed_read(
+        root / "checkpoints" / f"member-{member:02d}.json")
+        for member in range(COHORT_SIZE))
+    expected = {root / "manifest.json"} | {
+        root / "checkpoints" / f"member-{member:02d}.json"
+        for member in range(COHORT_SIZE)
+    }
+    if {path for path in root.rglob("*") if path.is_file()} != expected:
+        raise WorldAfterstateV1TrainingControllerError(
+            "cohort file population drift")
+    return reopen_cohort_build(CohortTrainingBuildV1(
+        manifest=manifest, selected_checkpoint_raws=checkpoint_raws))
+
+
 __all__ = [
     "AUTHORITY", "CohortTrainingBuildV1", "TRAINING_COHORTS",
-    "WorldAfterstateV1TrainingControllerError", "reopen_cohort_build",
-    "train_named_cohort", "validate_cohort_manifest",
+    "WorldAfterstateV1TrainingControllerError", "publish_cohort_build",
+    "reopen_cohort_build", "reopen_cohort_directory", "train_named_cohort",
+    "validate_cohort_manifest",
 ]

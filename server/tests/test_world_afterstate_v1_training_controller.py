@@ -15,7 +15,8 @@ from shengji.rl.world_afterstate_v1_training import (
     AdvantageTrainingConfigV1)
 from shengji.rl.world_afterstate_v1_training_controller import (
     AUTHORITY, WorldAfterstateV1TrainingControllerError,
-    reopen_cohort_build, train_named_cohort, validate_cohort_manifest)
+    publish_cohort_build, reopen_cohort_build, reopen_cohort_directory,
+    train_named_cohort, validate_cohort_manifest)
 
 from test_world_afterstate_v1_schedule import _fixture
 
@@ -129,3 +130,28 @@ def test_checkpoint_shape_remains_the_frozen_small_capacity():
     build = _run()
     models, _manifest = reopen_cohort_build(build)
     assert all(model.shape == CAPACITY_SHAPES["small"] for model in models)
+
+
+def test_cohort_directory_is_immutable_exact_and_single_publication(tmp_path):
+    build = _run()
+    target = tmp_path / "cohort"
+    publish_cohort_build(target, build)
+    models, manifest = reopen_cohort_directory(target)
+    assert len(models) == 8
+    assert manifest == build.manifest
+    assert {path.relative_to(target).as_posix()
+            for path in target.rglob("*") if path.is_file()} == {
+        "manifest.json", *(f"checkpoints/member-{index:02d}.json"
+                           for index in range(8)),
+    }
+    with pytest.raises(WorldAfterstateV1TrainingControllerError,
+                       match="namespace occupied"):
+        publish_cohort_build(target, build)
+
+    target.chmod(0o700)
+    extra = target / "extra.json"
+    extra.write_bytes(b"{}\n")
+    extra.chmod(0o400)
+    with pytest.raises(WorldAfterstateV1TrainingControllerError,
+                       match="file population drift"):
+        reopen_cohort_directory(target)

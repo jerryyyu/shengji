@@ -8522,3 +8522,91 @@ And treat the −0.139 as a lead worth one cheap paired test on the sealed
 predictions rather than as an absence of signal. Preserving the artifacts is
 already right; the reading of them is what I am asking to sharpen.
 
+
+## 2026-08-29 — ✅ PASS (design only): PR #169 `VALUE_AFTERSTATE_V2_ABSOLUTE_LEAF_DESIGN.md` at exact head `269a2ede`. The design is the honest successor both refusals demanded, and it encodes this week's failure lessons as gates rather than prose. Four non-blocking notes
+
+Scope: exact head `269a2edec8d39f32161b73d9409a5d81edd69437`; delta from merge-base `d22315a` is
+exactly **3 files, +553/−1** (the design doc plus one-line BACKLOG/RL_PLAN pointers — alignment is
+real and minimal); `git diff --check` clean. Design-only: this PASS authorizes nothing but writing
+the implementation for later review.
+
+### The five assessments
+
+**1. The state-only `V^{pi_c}` contract is valid as a future MCTS/PUCT leaf value.** The interface
+(complete state + fixed root-team perspective → 204-category terminal distribution → expectation) is
+exactly what PUCT consumes, and the invariants make it a *leaf* evaluator rather than an action
+ranker: actions enter only through engine-applied successors, metadata is structurally absent from
+tensors, terminals bypass learning, and the perspective stays fixed through backup. The one
+theoretical caveat is stated by the design itself: this is value under a *named* policy, not optimal
+value — so a PUCT consumer performs policy improvement over `pi_c`, which is the correct first rung
+of that ladder, and §16's consumer test (literal MC vs one-trick-plus-V vs permuted-leaf at equal
+wall) is precisely the right first falsification of it.
+
+**2. The tier rule honestly repairs the independence failure.** One selected root per deal makes
+tier totals equal independent sample counts by construction; candidate/continuation rows are
+explicitly barred from counting; clustering is by deal everywhere including the bootstrap. The
+selection rule is outcome-free ("largest whose supply exists and whose composed projection passes
+§13 with 2× headroom, ties to smaller"), the census must report **every** tier so the choice cannot
+be laundered through selective measurement, sources cannot be silently reassigned, and D256-fails →
+design closes. Fit-deals-per-parameter improves 15–74× over V1's 44/212k. I looked for post-outcome
+discretion and did not find a path to it.
+
+**3. The three-role split preserves one estimand.** State source, proposal source, and numeric
+labeler are separated, and the only labeler is the frozen `pi_c` with a domain-separated seed
+schedule — every candidate successor relabeled identically regardless of provenance. Diverse and
+mechanics deals are fit-only; select/audit are natural-only, so the audited claim attaches to a
+single distribution. PT outcomes/prose/confidence are excluded from inputs and labels; Sol/Luna API
+calls are ineligible as labeler (non-determinism); the stronger-teacher option is frozen before any
+V2 label exists and defaults to production. Mixed-policy targets — V0's original sin — are dead
+here.
+
+**4. Gates are exact and falsifiable.** P0's cross-fit procedure, the four advance conditions, the
+explicit `n_required` formula with stated constants, frozen `sigma_pair²` normalization, the
+Jeffreys-smoothed prior with named buckets and fallback, deterministic bootstrap seeding, nearest-
+rank bounds, and control-informativeness thresholds (90%/40%) are all reproducible from the text.
+Two things deserve naming: **gate 7 (natural-minus-world-shuffle strictly positive) is the direct
+repair of the V1 decision-machinery gap** I and `d22315a` recorded — the axis V1 could not measure
+is now load-bearing; and the power gate gives this design a *real* probability of stopping at
+`STOP_UNDERPOWERED` (audit tiers of 48/64/128 deals against `delta = +0.10` require P0's deal-level
+`s` ≲ 0.28/0.32/0.46 respectively). That is a feature: it stops honestly before spending, exactly
+where V0/V1 could not.
+
+**5. The census/capacity plan encodes the operational lessons as requirements.** The composed
+projection must include natural **and every control cohort** (the R4 projection defect — a cap
+validated against a path that skipped the dominant substep — is structurally excluded); CPU-bound
+stages ≥5% of wall must sustain ≥85% utilization or prove the next arm byte-identical-but-slower
+(the serial 1.00-core integrity stall becomes a design refusal); reconstruction is a measured
+1/4/8/16-worker stage; progress is contractual at 60 s/1% with named fields (the blind
+`build-freeze`/quiet-phase incidents); shards seal independently with resume-verified-only
+semantics; the audit attempt is durably published and fsynced before the first label byte (the
+rename lesson); one audit opening, one reconstruction. Storage headroom (25%) and the 30 GiB/no-swap
+envelope are named at census time with a measured basis to come.
+
+### Hunted and not found
+
+Mixed-policy targets (killed by single-labeler relabeling); correlated rows as independent (killed
+structurally); source-selection leakage (stratum-assigned canonical-hash selection, outcome-blind,
+fresh-cluster-only, no silent reassignment); hidden tier/teacher discretion (rule is outcome-free
+and reported over all tiers; teacher frozen pre-label); serial multi-hour integrity work (utilization
+gate + measured reconstruction arms).
+
+### Four non-blocking notes for the implementation round
+
+1. **Two judgment phrases remain**: "economically plausible" (§12) and "prior outcome evidence" for
+   a stronger `pi_c` (§6). Both default conservatively (D256-fails → close; no candidate →
+   production), so they do not block — but the freeze reviewer inherits ambiguity unless the census
+   states a numeric economics bound and the design names which evidence classes qualify a teacher.
+2. **D512/D1024 depend on *fresh* PT-Sol/Luna collection**, which has its own cost and failure
+   surface this program has measured the hard way (Fable model cap at 15/52; Opus 3/52 on the 1,200 s
+   wall; Sol ~4.6 h/52). Tier ineligibility is the honest fallback, but fresh collection should carry
+   its own budget receipt so slot-filling cannot silently consume quota mid-population.
+3. **Gate 4's audit selection procedure** (choose among incumbent ∪ candidates by model expectation,
+   tie to incumbent) is specified for P0 and implied for audit; the implementation should state it
+   once for both so the utility gate cannot drift from the P0 definition.
+4. §13 restates wall/memory bounds but not the §12 storage-headroom requirement; carry it into the
+   post-implementation gate explicitly.
+
+Verdict: **PASS, design only.** No implementation, data collection, capacity execution, training,
+audit opening, gameplay, PUCT/BELIEF integration, merge, deployment, retry, promotion, or strength
+claim is authorized. Next review moment per §17 is the single consolidated
+source+population+capacity+rehearsal+freeze packet. — Claude (session `68f9c8bd`)

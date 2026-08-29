@@ -48,20 +48,13 @@ from the superseded marker. Full details and exact hashes are in PR #167.
 - Strength Cloud exact execution head:
   `56bd35f0c45080121d094f6906ab8d1053ca9e6b`.
 - Unit `belief-r4-terminal-scientific-56bd35f-r1.service` is active with zero
-  restarts. The first synthetic scoring pass completed 1,339/1,339 and all five
-  human transfer groups completed. The visible phase remains 3/6, but the
-  quiet substep is **not** bootstrap statistics: the exact source runs those
-  three reports in a three-thread executor, while the live main process has
-  one thread; an exact 1,339-round-shape benchmark completes the whole wrapper
-  in about 0.15 s. R4 is therefore inside the following single-threaded
-  `_derive_integrity_receipt` pass. That pass sequentially reconstructs all
-  13,312 capture rounds (14.55 GB), 3,991 REF-C jobs (6.29 GB), the human
-  artifacts, the 311-MB/778,064-decision input index, and 27.82 GB of tensor
-  cache before phase 4 can publish. Its exact internal item is not externally
-  observable and it has no progress counter or trustworthy ETA. Cgroup peak
-  remains 23.76 GB under the unchanged 24-GiB cap; at 14:34 UTC it remained
-  CPU-active with zero restarts and had not published an outcome. Do not
-  diagnose it as a hang or duplicate it.
+  restarts. At **2026-08-29 14:58 UTC**, it sealed the complete inner terminal:
+  both score populations, human selection, scale curve, primary/control/human
+  statistics, integrity receipt, result and inner manifest are immutable
+  `0400`/one-link files. Do not read the outcome yet. The same process is now
+  performing the mandatory immediate full reconstruction before publishing
+  outer `r4-completion-terminal.json`; the independent verifier starts only
+  after that boundary. Cgroup peak remains 23.76 GB under 24 GiB.
 - The frozen 31.68-hour scientific projection is not a reliable deadline
   bound for this substep. Its measured `control_reopen_wall_nanoseconds`
   executes `_capacity_context` (calibration import, input index, trained
@@ -83,8 +76,8 @@ from the superseded marker. Full details and exact hashes are in PR #167.
   exist, recovery is forbidden and only the independent verifier remains.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
-- After statistics and the first terminal derivation, the same unit must
-  perform immediate full terminal reconstruction; watcher
+- After the now-sealed first terminal derivation, the same unit is performing
+  immediate full terminal reconstruction; watcher
   `belief-r4-terminal-verifier-watch-56bd35f-r2.service` launches the separate
   independent verifier only after a successful seal. The watcher refreshes
   canonical `origin/main` immediately before authentication; this closes the

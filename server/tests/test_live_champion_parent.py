@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -143,3 +146,70 @@ def test_parent_payload_copy_cannot_mutate_frozen_constants():
     assert second["source_sha256s"] == LIVE.CHAMPION_SOURCE_SHA256S
     assert second["production_attestation"]["required_health"]["bot"] == \
         LIVE.CHAMPION_POLICY
+
+
+def test_compatible_fast_receipt_replays_exact_histories(
+        tmp_path, monkeypatch):
+    receipt = LIVE.expected_fast_compatibility_receipt()
+    histories = {
+        name: [[seat, [f"C{seat}"]]
+               for seat in range(count)]
+        for name, count in receipt["golden_histories"][
+            "case_play_counts"].items()
+    }
+    receipt_path = tmp_path / "receipt.json"
+    golden_path = tmp_path / "golden.json"
+    binary_path = tmp_path / "_fast.so"
+    receipt_path.write_text(json.dumps(receipt, sort_keys=True))
+    golden_path.write_text(json.dumps(histories, sort_keys=True))
+    binary_path.write_bytes(b"compatible native binary")
+
+    digest = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    monkeypatch.setattr(LIVE, "FAST_COMPATIBILITY_RECEIPT_PATH", receipt_path)
+    monkeypatch.setattr(
+        LIVE, "FAST_COMPATIBILITY_RECEIPT_SHA256", digest(receipt_path))
+    monkeypatch.setattr(LIVE, "GOLDEN_HISTORIES_PATH", golden_path)
+    monkeypatch.setattr(LIVE, "GOLDEN_HISTORIES_SHA256", digest(golden_path))
+    monkeypatch.setattr(
+        LIVE, "COMPATIBLE_FAST_BINARY_SHA256", digest(binary_path))
+    monkeypatch.setattr(LIVE.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(LIVE.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(LIVE.platform, "python_version", lambda: "3.14.4")
+    monkeypatch.setattr(LIVE, "_current_engine_histories", lambda: histories)
+    monkeypatch.setattr(
+        LIVE.C1, "policy_contract", lambda _name: {
+            "ballot": LIVE.COMPATIBLE_BALLOT_IDENTITY,
+            "semantic": "fixed",
+        })
+    monkeypatch.setattr(
+        LIVE.C1, "stable_digest",
+        lambda value: LIVE.POLICY_CONTRACT_WITHOUT_BALLOT_SHA256)
+    monkeypatch.setattr(
+        LIVE.C1, "policy_contract_sha256s", lambda: {
+            LIVE.CHAMPION_POLICY: LIVE.COMPATIBLE_POLICY_CONTRACT_SHA256,
+        })
+    fast = SimpleNamespace(_fast=SimpleNamespace(__file__=str(binary_path)))
+
+    # The expected receipt is built from the patched constants, so preserve it
+    # again after installing the test binary and golden identities.
+    receipt = LIVE.expected_fast_compatibility_receipt()
+    receipt_path.write_text(json.dumps(receipt, sort_keys=True))
+    monkeypatch.setattr(
+        LIVE, "FAST_COMPATIBILITY_RECEIPT_SHA256", digest(receipt_path))
+    assert LIVE._compatible_fast_problems(fast) == []
+
+    broken = copy.deepcopy(receipt)
+    broken["historical_fast_binary_sha256"] = "0" * 64
+    receipt_path.write_text(json.dumps(broken, sort_keys=True))
+    monkeypatch.setattr(
+        LIVE, "FAST_COMPATIBILITY_RECEIPT_SHA256", digest(receipt_path))
+    assert "compatible fast receipt contract drifted" in \
+        LIVE._compatible_fast_problems(fast)
+
+    receipt_path.write_text(json.dumps(receipt, sort_keys=True))
+    monkeypatch.setattr(
+        LIVE, "FAST_COMPATIBILITY_RECEIPT_SHA256", digest(receipt_path))
+    monkeypatch.setattr(
+        LIVE, "_current_engine_histories", lambda: {**histories, "mc-13": []})
+    assert "compatible fast full-round replay drifted" in \
+        LIVE._compatible_fast_problems(fast)

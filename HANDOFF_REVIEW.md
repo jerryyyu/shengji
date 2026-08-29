@@ -8163,3 +8163,91 @@ None of this blocks the authorized P1 execution: the configuration is pinned,
 reproducible, and scientifically legitimate. It matters because this freeze is
 spent once, and re-selecting later means another capacity run.
 
+
+## 2026-08-29 11:25 EDT — ✅ PASS: PR #167 repaired head `3534fe09`, one narrow root-binding review. Every stated hash reproduced; the root refusal is guarded on **two** paths and witnessed on **one**
+
+Scope: `32ef540b0829042c8cc0993ba775bd9612f4e4f8..3534fe095875826f8fa6296cb6004c28f0b7359e`,
+parent confirmed via `git show -s --format=%P`, **8 files, +76/−4**,
+`git diff --check` clean. Every value the request pinned, recomputed:
+
+| artifact | stated | measured |
+|---|---|---|
+| freeze bytes / mode / links | 15,708 / `0400` / 1 | **15,708 / `0400` / 1** ✔ |
+| freeze external | `9c49e198…` | `9c49e198489efa0e1a6ddba4b514b6aa3d67bc38044af4c02af27e0bd8edb5c6` ✔ |
+| freeze internal | `02eb83f7…` | `02eb83f7…0080` ✔, and self-consistent — I recomputed it from the body |
+| rehearsal external | `2b97a1d6…` | `2b97a1d6…437e3` ✔ |
+| rehearsal internal | `add5e1c4…` | `add5e1c4…90a4` ✔, self-consistent |
+| rehearsal wall / files | 13.74 s / 51 | **13.74 s / 51** ✔ |
+| expected claim | `46562c2c…` | `46562c2c…bf71` ✔ |
+| marker | 1,432 B, `6f321b57…` | **1,432 B**, `6f321b57…7039f` ✔ |
+
+Both batteries at the exact head with the native extension rebuilt,
+`__pycache__` cleared, `-P -B`: **202 passed pure** (72.58 s) and **202 passed
+strict** `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1` (74.32 s). That is one more
+than the 201 at `32ef540b`, consistent with the delta's added case.
+
+**The binding is real, not nominal.** `scientific_root` enters the claim at
+`world_afterstate_v1_admission.py:152`, so the marker itself commits to
+`/opt/value-afterstate-v1-p1-scientific-r1` — I confirmed the key is present in
+the generated claim rather than only in the freeze. Both the claim path and
+`build_experiment_freeze` require the value to be a non-empty absolute path
+equal to its own `resolve(strict=False)`, which rejects `..` segments and
+unnormalized forms. `freeze.authority` still has **zero** true flags, and the
+rehearsal receipt's twelve authority flags are all false. The target root is
+correctly **absent** on Perf right now.
+
+### Mutations — three guards, two witnesses
+
+- Reverting the re-entry authenticator at `:333` to
+  `current_matches != [marker] or previous_matches` fails
+  `test_capacity_operator_reentry_is_exact_external_command_authority`. My
+  two-line repair from `6692243` landed in the sibling function, and it is
+  witnessed.
+- Deleting the root check in `initialize_scientific_root` fails
+  `test_reviewed_admission_cannot_be_reused_under_another_root` with
+  `DID NOT RAISE`.
+- **Deleting the root check in `reopen_scientific_root` leaves 202 passing.**
+
+The third guard is present and correct in the shipped source; nothing here is
+wrong. But it is the one that matters on the reconstruction path —
+`scripts/world_afterstate_v1_run.py:148` reaches the scientific root through
+`reopen_scientific_root`, not through `initialize_scientific_root`. Creation is
+pinned to the reviewed path; a root relocated or copied after sealing would be
+reopened without complaint, and no test would notice if that clause were ever
+dropped. The packet's claim that "both checks were mutation-tested in the
+failing direction" is true for the two it names — this is a third clause added
+in the same delta and not counted. One case mirroring the `initialize` test
+against the reopen path closes it.
+
+This is the same shape as `de1725c`: the guard that exists on two paths gets a
+witness on one, and the missing one is on the path that runs later.
+
+### Standing from the superseded head
+
+The `32ef540b` review at `864463e` reproduced independently for me as well, and
+I confirmed its ancestry finding: `git merge-base bd400a68 32ef540b` is
+`aa0595cc`, `--is-ancestor` returns 1, and the two capacity modules are
+byte-identical across those heads. The capacity-cohort finding I filed at
+`ceaca8a` is unaffected by this delta and still stands: `learner.torch_threads
+= 4` is carried into `scripts/world_afterstate_v1_run.py:141` and was selected
+by a 6.5 % wall margin from one sample per configuration, in a receipt whose
+own arms differ by 3.5× in achieved cores and produced three distinct model
+hashes.
+
+### Authority and coverage
+
+Authorizes exactly one execution at the frozen root
+`/opt/value-afterstate-v1-p1-scientific-r1` plus its immediate independent
+reconstruction. Report/provider rows, P2, gameplay, strength, merge, promotion,
+deployment, retry, R5 and test extension remain false. Do not launch from the
+superseded `864463e` marker.
+
+Coverage limit, stated plainly: this is a narrow 8-file review and I verified
+it deeply. I did **not** re-execute `verify-freeze` reconstruction, because
+`build_experiment_freeze` binds Perf's runtime identity (host, native and
+interpreter digests) and I do not execute on evidence hosts; the freeze's
+independent reconstruction is therefore verified by me only as far as exact key
+set, exact authority constant, self-consistent internal hash and matching
+external hash. I did not line-audit the 29,711-line cumulative PR.
+
+WORLD_AFTERSTATE_V1_P1_SCIENTIFIC_REVIEW {"authority":{"deployment_authorized":false,"gameplay_authorized":false,"immediate_independent_reconstruction_authorized":true,"merge_authorized":false,"p1_calibration_audit_opening_authorized":true,"p2_execution_authorized":false,"promotion_authorized":false,"provider_audit_row_opening_authorized":false,"r5_authorized":false,"report_row_opening_authorized":false,"retry_authorized":false,"scientific_p1_training_authorized":true,"strength_claim_authorized":false,"v0_calibration_label_opening_authorized":true,"v0_train_row_reopening_authorized":true},"capacity_receipt_external_sha256":"d4dd34e69f3ffb344766ed98012dbd82ea744e8c477d948a9443045384d81cb3","capacity_receipt_sha256":"31835b3e677239a72328535e63c1d3fd8535d3050308a33e578622b05da579f0","freeze_sha256":"02eb83f7eebd3819ee680437c6040db073244097c5d9709b6749b96bd8530080","memory_limit_bytes":32212254720,"schema":"world-afterstate-v1-p1-scientific-review-claim-v1","scientific_root":"/opt/value-afterstate-v1-p1-scientific-r1","source_git":"3534fe095875826f8fa6296cb6004c28f0b7359e","training_wall_cap_nanoseconds":28800000000000,"v0_audit_manifest_external_sha256":"67fba564ab19941c19051a350a931f116d8154b9ce5757af9fe638c8d0a53c75","v0_dataset_external_sha256":"ee9c925d98eae681de0a72422f3f15ee11b49a750424cc17029bbdbcca3dc60d","v0_population_external_sha256":"48155bb59aae2e524bbf3b407a07b68b78dc4b052909c68d8e84d6df6964f581"}

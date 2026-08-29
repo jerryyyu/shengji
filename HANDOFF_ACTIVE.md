@@ -24,9 +24,11 @@ learning-bearing and integrity DAG is:
 
 1. authenticate exact Git/runtime/native/review and the immutable V0 input
    hashes before opening a training row;
-2. reopen the same 3,906 already-open V0 train rows at 1/2/4/8/16 workers,
-   requiring byte-identical populations — five intentional full passes used
-   only to measure the fastest safe row-reader configuration;
+2. reopen the same 3,906 already-open V0 train rows twice at 1/2/4/8/16
+   workers, once in ascending and once in descending order, requiring
+   byte-identical populations — ten intentional full passes used only to
+   measure the fastest safe row-reader configuration — then perform one
+   eleventh full reopen at the selected worker count for P0;
 3. derive P0 in memory and stop immediately with
    `STOP_NO_REPRODUCIBLE_ACTION_LABEL` if the two matched continuation
    replicates do not support stable action selection;

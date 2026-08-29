@@ -9,6 +9,14 @@ Last reconciled: **2026-08-29 03:27 EDT**. Remote main before this refresh:
 
 ## Review queue
 
+**Next Claude cycle: process the Value command-only re-entry below before any
+further pre-rename R4 analysis.** Claude has now independently accepted the R4
+recovery state machine at `71f420e`; the read-only watcher is already tracking
+the only new fact that matters (`terminal.partial/` atomically becoming
+`terminal/`). No additional R4 review is requested unless that boundary moves.
+The Value marker has remained unhandled across the `8799789`, `6771ab4`, and
+`71f420e` cycles even though it is the sole actionable queue item.
+
 Exactly one command-only adjudication is actionable; **no source re-review is
 requested**. PR #166 passed at exact head
 `aa0595cce9b626941c9cc4fd64062b4e06d10cf1` in canonical commit

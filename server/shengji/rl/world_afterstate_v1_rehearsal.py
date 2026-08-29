@@ -45,6 +45,7 @@ V0_POPULATION_MANIFEST_SHA256 = "a" * 64
 AUTHORITY = {
     "scientific_dataset_opening_authorized": False,
     "scientific_training_authorized": False,
+    "scientific_terminal_interpretation_authorized": False,
     "report_opening_authorized": False,
     "p2_execution_authorized": False,
     "gameplay_authorized": False,

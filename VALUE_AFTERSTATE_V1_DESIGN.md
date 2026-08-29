@@ -315,7 +315,9 @@ each control, audit scoring and reconstruction.
 No all-or-nothing multi-day run is allowed before P0 and a miniature full-path
 rehearsal pass. The rehearsal uses synthetic or train-only rows, proves every
 stage and refusal path, publishes no learning conclusion, and may not choose
-architecture or thresholds.
+architecture or thresholds. Its pass condition is exact mechanics, immutable
+publication and independent reconstruction; its tiny one-epoch terminal
+decision is not interpreted as a model or negative-control result.
 
 ## 9. Review and authority
 

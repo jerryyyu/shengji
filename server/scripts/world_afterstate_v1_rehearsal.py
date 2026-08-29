@@ -114,6 +114,8 @@ def main() -> int:
         "pipeline_manifest_external_sha256": _file_sha256(
             args.output / "manifest.json"),
         "terminal_decision": build.manifest["terminal_decision"],
+        "mechanics_rehearsal_passed": True,
+        "terminal_scientific_interpretation_authorized": False,
         "pipeline_file_count": build.manifest["file_count"] + 1,
         "pipeline_artifact_bytes": artifact_bytes,
         "started_utc": started_utc,

@@ -7141,3 +7141,75 @@ saying in the note either way.
 
 Read-only throughout: systemd properties, `/proc/<pid>/io`, `/proc/<pid>/stat`, `/proc/<pid>/maps`.
 Nothing signalled. — Claude (session `f4b0ea92`)
+
+## 2026-08-29 — closing `efee1ee`'s open question from the source: the process **cannot** be in the byte-verification loop, and every counter it measured matches the step *before* it. `331de55` named the wrong substep
+
+`efee1ee` measured the right things and stated the one limit that mattered: "*I have not read the
+`verify_all_bytes` implementation and cannot say what it does after loading.*" I read it, at the
+executing head `56bd35f0`. No process was touched.
+
+### The documented step is ruled out by its own code
+
+`331de55` explains the silence as `reopen_training_tensor_cache(..., verify_all_bytes=True)`
+streaming 27.82 GB. That path resolves to `_reopen_cache_receipt` → `reopen_tensor_cache`
+(`belief_v2_tensor_cache.py:623`), whose body is:
+
+```python
+for row in manifest["batches"]:
+    actor_raw = stable_read_bytes(directory / row["actor_file"])
+    label_raw = stable_read_bytes(directory / row["privileged_file"])
+    if _sha256(actor_raw) != row["actor_sha256"] or _sha256(label_raw) != row["privileged_sha256"]:
+```
+
+Two file reads and two SHA-256 passes **per batch row**. That loop cannot run without read syscalls
+and without allocating a fresh `bytes` object per file. `efee1ee` measured **0.3 read syscalls/s**
+and **zero minor page faults in 60 s at 100 % CPU**. Those numbers do not merely under-shoot the
+documented 1 GB/10 min — they are structurally impossible for this loop. The process is not in it.
+
+### What it is in, and why the counters fit exactly
+
+Between the last emitted record `progress(3, 6, "r4-test-populations-scored")` and the next one
+`progress(4, 6, "r4-terminal-statistics-derived")`, `belief_v2_r4_completion.py:1173–1210` makes
+**three** unmonitored calls, in this order:
+
+1. `_run_independent_terminal_statistics(primary_call, control_call, human_call)`
+2. `_derive_integrity_receipt(...)`  ← the byte verification `331de55` describes
+3. `derive_terminal_result(...)`
+
+The byte verification is **second**, so it has not started. The first is a `ThreadPoolExecutor` over
+three statistic callables, and those land in `belief_v2_statistics.py:85–94`:
+`np.empty(PRIMARY_BOOTSTRAP_REPLICATES)` once, then a Python-level chunked loop
+`for start in range(0, PRIMARY_BOOTSTRAP_REPLICATES, BOOTSTRAP_CHUNK)`.
+
+That is a precise match for all four measurements: no file reads (in-memory resampling), no data
+mmaps, **zero minor faults** (buffers preallocated by the single `np.empty`), and — *inferred, and
+labelled as such* — the suspiciously exact **1.00 core** across eight consecutive hourly samples is
+what three GIL-bound Python-level chunk loops in a thread pool look like.
+
+### Consequences, including one that cuts against comfort
+
+- **The "170 % over" arithmetic dissolves.** It divided elapsed time by a budget derived from a
+  substep that has not begun. There is no overrun to explain.
+- **But the I/O-heavy step is still ahead, not behind.** Whatever 27.82 GB of verification costs, it
+  is yet to be paid, after statistics finish. Anyone forecasting the terminal from "the slow part is
+  nearly done" has it backwards.
+- `331de55` should be corrected: its wording invites exactly the reading `efee1ee` gave it — and that
+  I gave it too, for five cycles, while reporting the phase as "consistent with the documented serial
+  reduction". I was wrong to call it consistent; I matched a number to a story without reading the
+  code the story named.
+
+### The fix is the same one this lane keeps re-learning
+
+`ddfde5d` asked for progress inside `build-freeze`; this is the same defect one stage later, and
+higher-stakes because `r4-completion-test-attempt.json` exists and the one-shot is spent. **Three
+sequential multi-hour calls share a single progress record.** One `progress()` line before each
+would have made this whole exchange unnecessary — no `py-spy`, no kernel forensics, no two sessions
+spending cycles on it.
+
+I agree with `efee1ee` that nobody should attach a debugger or signal the process, and with its
+refusal to call a hang. My conclusion is narrower and stronger than "probably fine": the documented
+explanation is ruled out by source, and the undocumented step preceding it predicts every observed
+counter.
+
+Read-only: source at `56bd35f0` in a scratch worktree, plus this cycle's own systemd sample
+(1.00 core, 52.13 h CPU, `NRestarts=0`, terminal outputs absent). — Claude (session `68f9c8bd`)

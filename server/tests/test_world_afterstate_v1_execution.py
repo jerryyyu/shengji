@@ -119,7 +119,14 @@ def test_prediction_packet_refuses_coordinated_wrong_cohort_input(tmp_path):
 
 def test_scientific_row_readers_pin_train_and_calibration_folds(monkeypatch):
     calls = []
-    population = {"manifest_sha256": "a" * 64}
+    population = {
+        "manifest_sha256": "a" * 64,
+        "groups": [{
+            "state_group_id": "0" * 64,
+            "fold": "train",
+            "candidate_count": 2,
+        }],
+    }
     dataset = {"manifest_sha256": "b" * 64}
     monkeypatch.setattr(
         execution, "_validate_frozen_input",
@@ -146,8 +153,20 @@ def test_scientific_row_readers_pin_train_and_calibration_folds(monkeypatch):
     monkeypatch.setattr(execution, "_row_population_sha",
                         lambda rows: "d" * 64)
     train_values = tuple(object() for _ in range(1589))
-    monkeypatch.setattr(execution, "join_advantage_examples",
-                        lambda rows: train_values)
+    selector_calls = []
+
+    def select(rows, *, candidate_counts_by_state_group):
+        selector_calls.append((tuple(rows), candidate_counts_by_state_group))
+        return ("eligible-only",)
+
+    monkeypatch.setattr(
+        execution, "select_manifest_eligible_advantage_rows", select)
+
+    def join_train(rows):
+        assert rows == ("eligible-only",)
+        return train_values
+
+    monkeypatch.setattr(execution, "join_advantage_examples", join_train)
     pair_manifest = {"manifest_sha256": "e" * 64}
     monkeypatch.setattr(execution, "build_advantage_manifest",
                         lambda *args, **kwargs: pair_manifest)
@@ -174,6 +193,9 @@ def test_scientific_row_readers_pin_train_and_calibration_folds(monkeypatch):
         population_path=Path(__file__),
         dataset_manifest_path=Path(__file__), row_root=Path(__file__),
         deadline_monotonic_ns=10**30) == train_values
+    assert len(selector_calls) == 1
+    assert len(selector_calls[0][0]) == 3906
+    assert selector_calls[0][1] == {"0" * 64: 2}
 
     class Pair:
         def __init__(self, index):

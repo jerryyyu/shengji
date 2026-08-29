@@ -33,7 +33,8 @@ from .world_afterstate_v1_controls import (
     action_association_permutation, identical_successor_control,
     label_permutation)
 from .world_afterstate_v1_dataset import (
-    build_advantage_manifest, join_advantage_examples)
+    build_advantage_manifest, join_advantage_examples,
+    select_manifest_eligible_advantage_rows)
 from .world_afterstate_v1_evaluation import inference_population_sha256
 from .world_afterstate_v1_experiment import (
     CALIBRATION_AUDIT_COUNT, CALIBRATION_GROUP_COUNT,
@@ -206,8 +207,14 @@ def reopen_training_values(
             reconstruction_workers=freeze["learner"]["row_workers"],
             deadline_monotonic_ns=deadline_monotonic_ns,
             progress=progress)
-        joined = tuple(join_advantage_examples(
-            [reopened for _binding, reopened in rows]))
+        eligible_rows = select_manifest_eligible_advantage_rows(
+            [reopened for _binding, reopened in rows],
+            candidate_counts_by_state_group={
+                group["state_group_id"]: group["candidate_count"]
+                for group in population["groups"]
+                if group["fold"] == "train"
+            })
+        joined = tuple(join_advantage_examples(eligible_rows))
         pair_manifest = build_advantage_manifest(
             joined,
             v0_dataset_manifest_sha256=inputs[

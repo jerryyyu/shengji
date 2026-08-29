@@ -23,6 +23,8 @@ from .world_afterstate_v1_audit_controller import (
     reopen_prediction_artifact_bytes, reopen_sealed_audit_result_bytes,
     sealed_audit_result_bytes)
 from .world_afterstate_v1_controls import validate_control_evidence
+from .world_afterstate_v1_inference import (
+    COHORT_INPUT_NAMES, validate_calibration_inference_manifest)
 from .world_afterstate_v1_result import (
     CONTROL_NAMES, DECISIONS, derive_terminal_result,
     reopen_terminal_result_bytes, terminal_result_bytes)
@@ -112,7 +114,9 @@ def build_pipeline_build(
         cohort_builds: Mapping[str, CohortTrainingBuildV1],
         prediction_artifacts: Mapping[str, bytes],
         audit_results: Mapping[str, Mapping[str, Any]],
-        terminal_result: Mapping[str, Any]) -> PipelineBuildV1:
+        terminal_result: Mapping[str, Any],
+        calibration_inference_manifest: Mapping[str, Any] | None = None) \
+        -> PipelineBuildV1:
     """Bind a complete P1 result and all bytes needed to reconstruct it."""
     if run_kind not in RUN_KINDS:
         raise WorldAfterstateV1PipelineError("pipeline run kind drift")
@@ -151,6 +155,18 @@ def build_pipeline_build(
         "p0/label-ceiling.json": canonical_json_bytes(label_ceiling),
         "p1/subsplit.json": canonical_json_bytes(subsplit_manifest),
     }
+    if run_kind == "reviewed-p1-pilot":
+        try:
+            validate_calibration_inference_manifest(
+                calibration_inference_manifest)
+        except ValueError as exc:
+            raise WorldAfterstateV1PipelineError(
+                "pipeline calibration inference manifest drift") from exc
+        files["p1/calibration-input.json"] = canonical_json_bytes(
+            calibration_inference_manifest)
+    elif calibration_inference_manifest is not None:
+        raise WorldAfterstateV1PipelineError(
+            "rehearsal carries a scientific calibration input")
     manifests = {}
     freeze_shas = set()
     for name in TRAINING_COHORTS:
@@ -179,6 +195,7 @@ def build_pipeline_build(
     freeze_sha256 = next(iter(freeze_shas))
 
     opened_predictions = {}
+    input_population_shas = {}
     for name in TRAINING_COHORTS:
         raw = prediction_artifacts[name]
         try:
@@ -198,7 +215,17 @@ def build_pipeline_build(
             raise WorldAfterstateV1PipelineError(
                 "pipeline prediction/cohort binding drift")
         opened_predictions[name] = (natural, shuffled, artifact)
+        input_population_shas[name] = artifact["input_population_sha256"]
         files[f"p1/predictions/{name}.json"] = raw
+    if run_kind == "reviewed-p1-pilot":
+        expected_input_shas = {
+            name: calibration_inference_manifest[
+                "inference_population_sha256s"][COHORT_INPUT_NAMES[name]]
+            for name in TRAINING_COHORTS
+        }
+        if input_population_shas != expected_input_shas:
+            raise WorldAfterstateV1PipelineError(
+                "pipeline calibration input/prediction binding drift")
 
     opened_audits = {}
     audit_population_shas = set()
@@ -254,6 +281,9 @@ def build_pipeline_build(
         "freeze_sha256": freeze_sha256,
         "label_ceiling_result_sha256": label_ceiling["result_sha256"],
         "subsplit_manifest_sha256": subsplit_manifest["manifest_sha256"],
+        "calibration_inference_manifest_sha256": (
+            calibration_inference_manifest["manifest_sha256"]
+            if calibration_inference_manifest is not None else None),
         "cohort_manifest_sha256s": {
             name: manifests[name]["manifest_sha256"]
             for name in TRAINING_COHORTS
@@ -287,7 +317,9 @@ def validate_pipeline_manifest(value: object) -> None:
     required = {
         "schema", "run_kind", "non_scientific_rehearsal",
         "freeze_sha256", "label_ceiling_result_sha256",
-        "subsplit_manifest_sha256", "cohort_manifest_sha256s",
+        "subsplit_manifest_sha256",
+        "calibration_inference_manifest_sha256",
+        "cohort_manifest_sha256s",
         "prediction_artifact_external_sha256s", "audit_result_sha256s",
         "audit_population_sha256", "terminal_result_sha256",
         "terminal_decision", "prediction_bytes_sealed_before_audit_api",
@@ -298,6 +330,8 @@ def validate_pipeline_manifest(value: object) -> None:
             or value.get("schema") != PIPELINE_MANIFEST_SCHEMA \
             or value.get("run_kind") not in RUN_KINDS \
             or value.get("non_scientific_rehearsal") \
+            is not (value.get("run_kind") == "non-scientific-rehearsal") \
+            or (value.get("calibration_inference_manifest_sha256") is None) \
             is not (value.get("run_kind") == "non-scientific-rehearsal") \
             or value.get("prediction_bytes_sealed_before_audit_api") is not True \
             or value.get("audit_labels_opened") is not True \
@@ -311,6 +345,9 @@ def validate_pipeline_manifest(value: object) -> None:
             "subsplit_manifest_sha256", "audit_population_sha256",
             "terminal_result_sha256", "manifest_sha256"):
         _digest(value.get(name), f"pipeline manifest {name}")
+    if value["calibration_inference_manifest_sha256"] is not None:
+        _digest(value["calibration_inference_manifest_sha256"],
+                "pipeline calibration inference manifest SHA-256")
     for field, names in (
             ("cohort_manifest_sha256s", set(TRAINING_COHORTS)),
             ("prediction_artifact_external_sha256s", set(TRAINING_COHORTS)),
@@ -398,11 +435,17 @@ def reopen_pipeline_build(value: PipelineBuildV1) -> PipelineBuildV1:
         audits[name] = reopen_sealed_audit_result_bytes(
             files[f"p1/audits/{name}.json"])
     terminal = reopen_terminal_result_bytes(files["p1/terminal.json"])
+    calibration_input = None
+    if value.manifest["run_kind"] == "reviewed-p1-pilot":
+        calibration_input = _canonical_object(
+            files["p1/calibration-input.json"],
+            "pipeline calibration input")
     rebuilt = build_pipeline_build(
         run_kind=value.manifest["run_kind"], label_ceiling=p0,
         subsplit_manifest=subsplit, control_evidence=evidence,
         cohort_builds=cohorts, prediction_artifacts=predictions,
-        audit_results=audits, terminal_result=terminal)
+        audit_results=audits, terminal_result=terminal,
+        calibration_inference_manifest=calibration_input)
     if rebuilt.manifest != value.manifest or rebuilt.files != value.files:
         raise WorldAfterstateV1PipelineError(
             "pipeline build reconstruction drift")

@@ -754,6 +754,82 @@ def reopen_population_audit_manifest(
             for key, values in materials.items()}
 
 
+def reopen_population_audit_fold(
+        value: Mapping[str, Any], population_manifest: Mapping[str, Any],
+        audit_root: Path, *, fold: str) -> dict[str, tuple[bytes, ...]]:
+    """Open exactly one outcome-blind fold and no sibling-fold bytes.
+
+    The public audit manifest still proves the complete frozen file inventory,
+    but this reader touches only paths belonging to ``fold``.  It is the
+    calibration-inference boundary for Value V1: report and provider-audit
+    complete worlds remain unopened while target-free predictions are sealed.
+    """
+    validate_population_audit_manifest(value, population_manifest)
+    if fold not in FOLDS or not isinstance(audit_root, Path) \
+            or not audit_root.is_dir() or audit_root.is_symlink():
+        raise WorldAfterstatePopulationError(
+            "population audit fold identity drift")
+    groups = {group["state_group_id"]: group
+              for group in population_manifest["groups"]
+              if group["fold"] == fold}
+    rows = [row for row in value["rows"]
+            if row["state_group_id"] in groups]
+    materials: dict[str, list[bytes | None]] = {
+        key: [None] * group["candidate_count"]
+        for key, group in groups.items()}
+    expected_paths: dict[str, set[Path]] = {
+        key: set() for key in groups}
+    for row in rows:
+        group = groups[row["state_group_id"]]
+        index = row["candidate_index"]
+        path = audit_root / row["relative_path"]
+        expected_paths[row["state_group_id"]].add(path)
+        raw = _stable_audit_read(path)
+        if len(raw) != row["byte_count"] \
+                or hashlib.sha256(raw).hexdigest() != row["audit_sha256"] \
+                or row["audit_sha256"] \
+                != group["candidates"][index]["audit_sha256"]:
+            raise WorldAfterstatePopulationError(
+                "population audit fold byte binding drift")
+        try:
+            audit = json.loads(raw.decode("ascii"))
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise WorldAfterstatePopulationError(
+                "population audit fold file is not canonical JSON") from exc
+        if type(audit) is not dict or canonical_json_bytes(audit) != raw:
+            raise WorldAfterstatePopulationError(
+                "population audit fold file is not canonical JSON")
+        _ = reopen_afterstate_audit(audit)
+        if audit["successor_sha256"] \
+                != group["candidates"][index]["successor_sha256"]:
+            raise WorldAfterstatePopulationError(
+                "population audit fold successor binding drift")
+        materials[row["state_group_id"]][index] = raw
+
+    expected_identities = {
+        (group["state_group_id"], index)
+        for group in groups.values()
+        for index in range(group["candidate_count"])
+    }
+    measured_identities = {
+        (row["state_group_id"], row["candidate_index"])
+        for row in rows
+    }
+    if not groups or measured_identities != expected_identities \
+            or any(raw is None for values in materials.values()
+                   for raw in values):
+        raise WorldAfterstatePopulationError(
+            "population audit fold file population drift")
+    for state, paths in expected_paths.items():
+        directory = audit_root / state
+        if directory.is_symlink() or not directory.is_dir() \
+                or set(directory.iterdir()) != paths:
+            raise WorldAfterstatePopulationError(
+                "population audit fold file population drift")
+    return {key: tuple(raw for raw in values if raw is not None)
+            for key, values in materials.items()}
+
+
 __all__ = [
     "AUDIT_MANIFEST_SCHEMA", "FOLDS", "GROUP_SCHEMA", "MANIFEST_SCHEMA",
     "MECHANICS_HARD_REASONS", "POINT_BUCKETS", "POPULATION_AUTHORITY",
@@ -761,7 +837,8 @@ __all__ = [
     "PLAY_PHASES", "ROOT_ROLES", "SOURCES", "TRUMP_MODES",
     "WorldAfterstatePopulationError", "build_population_group",
     "build_population_audit_manifest", "build_population_manifest",
-    "fold_for_deal_group", "reopen_population_audit_manifest",
-    "select_population_groups", "validate_population_group",
+    "fold_for_deal_group", "reopen_population_audit_fold",
+    "reopen_population_audit_manifest", "select_population_groups",
+    "validate_population_group",
     "validate_population_audit_manifest", "validate_population_manifest",
 ]

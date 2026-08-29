@@ -152,6 +152,16 @@ dropping, retry, or audit-driven extension is allowed.
 P1 is deliberately a development mechanism pilot. It decides whether an
 action-relative model is worth a new dataset, not whether it may enter search.
 
+The frozen 520-root population (364 train roots and 3,906 train action rows)
+is sized for that mechanism decision, not final model quality. Eight
+initialization seeds measure training stability; they do not create eight
+independent datasets. No population is enlarged before P0: if the two
+continuation replicates do not carry reproducible action signal, more copies of
+the same recipe are not a repair. If P0 and P1 pass, a later data-scaling packet
+must add independent full-game roots and continuation replicates in staged
+increments, retain every phase/role/trump/no-trump stratum, and freeze its size
+from the observed held-out learning curve rather than an arbitrary multiplier.
+
 ### V1-P2 — compatible-world interaction packet
 
 P2 is designed only if P1 learns action advantage. It creates multiple
@@ -224,6 +234,23 @@ manifest, and only then open the separately sealed V0 calibration
 continuations. The co-located V0 dataset rows are not a valid prediction
 input, because they already contain terminal labels. P1 training may reuse
 their train rows; P1 audit inference may not.
+
+The calibration reader validates the complete public population and audit
+manifests, then reads only paths whose public fold is `calibration`. It neither
+reads nor traverses report/provider-audit files. Each selected audit is
+byte-bound to its candidate, reopened through the engine, checked against the
+actor-visible decision and complete ballot, and converted to a successor
+tensor. The resulting inference manifest contains hashes and counts only—no
+outcome, signed level, advantage target, or dataset-row payload. It seals two
+target-free input populations before any label opens: the natural candidate
+successors, and an `identical-successor` population that preserves every
+state/candidate identity while replacing each candidate tensor with its
+incumbent tensor. The natural, action-association and label-permutation
+cohorts must bind to the natural input hash; the identical-successor cohort
+must bind to the identical input hash. The latter transform must change every
+eligible natural candidate tensor and must produce byte-exact zero predictions
+through the antisymmetric scorer. A single shared input hash across all four
+cohorts is a mechanics refusal, not a simplification.
 
 1. **Advantage error:** ensemble absolute-error improvement over the exact
    zero-advantage baseline has a strictly positive one-sided bootstrap lower
@@ -302,7 +329,9 @@ or post-result population increase.
 
 P0/P1 is intentionally cheaper than V0:
 
-- reuse only V0 train/calibration continuation and tensor artifacts;
+- reuse V0 train rows for fitting and V0 outcome-blind calibration audits for
+  pre-label inference; never use label-bearing calibration dataset rows as
+  prediction input;
 - create a small pair manifest rather than duplicate successor tensors;
 - collate incumbent tensors once per root batch and broadcast them across
   sibling candidates;
@@ -339,6 +368,26 @@ Claude-authored append-only commit on canonical GitHub `main`. The marker
 binds the source head, V0 input hashes, worker ladders, wall and memory caps,
 and the all-false authority map. Its sole authority is one bounded P0/capacity
 packet; it grants no scientific P1 execution or held-out-data opening.
+
+If and only if P0 passes, the later immutable P1 freeze derives every
+resource choice from that receipt without reading another row or model score.
+The fixed pilot uses the medium scalar model, eight fresh seeds, 30 maximum
+epochs, patience four, and one common epoch. The receipt selects only the
+row-worker and member-worker/thread counts. A conservative two-times measured
+epoch projection must fit both a two-hour cap per cohort and eight hours across
+the natural plus three control cohorts; otherwise the freeze refuses before
+scientific admission. Each admitted cohort may still seal its best complete
+common epoch with `truncated_by_deadline=true`, which is valid evidence but
+never reported as convergence. Memory remains capped at 30 GiB.
+
+The literal P1 order is train-only reopen, four cohort seals, target-free
+calibration tensor reopen, all prediction seals, durable calibration-opening
+attempt, one decision-producing calibration-label opening, terminal
+publication, and immediate independent reconstruction. The reconstruction is
+a second physical read of the exact same calibration bytes under the same
+admission; it may only reproduce the sealed decision and cannot extend the
+population, retrain, retry, or select among results. Both reads are counted
+separately. Report and provider-audit rows never open in P1.
 
 No all-or-nothing multi-day run is allowed before P0 and a miniature full-path
 rehearsal pass. The rehearsal uses synthetic or train-only rows, proves every

@@ -134,6 +134,7 @@ class ValueInferenceRootV2:
     position: str
     trump_rank: str
     trump_mode: str
+    select_subfold: str | None
     points_bucket: str
     successor_sha256s: tuple[str, ...]
     tensor_sha256s: tuple[str, ...]
@@ -148,6 +149,10 @@ class ValueInferenceRootV2:
                 or self.position not in ("lead", "follow") \
                 or self.trump_rank not in tuple("23456789TJQKA") \
                 or self.trump_mode not in ("S", "H", "D", "C", "NT") \
+                or (self.split == "select") != (
+                    self.select_subfold in (
+                        "epoch-select", "precision-select")) \
+                or self.split != "select" and self.select_subfold is not None \
                 or self.points_bucket not in PRIOR_POINTS_BUCKETS \
                 or self.source not in STATE_SOURCES:
             raise WorldAfterstateV2InferenceError(
@@ -201,6 +206,7 @@ class ValueInferenceRootV2:
             "position": self.position,
             "trump_rank": self.trump_rank,
             "trump_mode": self.trump_mode,
+            "select_subfold": self.select_subfold,
             "points_bucket": self.points_bucket,
             "successor_sha256s": list(self.successor_sha256s),
             "tensor_sha256s": list(self.tensor_sha256s),
@@ -247,6 +253,7 @@ def build_inference_root_v2(material: PopulationMaterialV2) \
         position=material.state.position,
         trump_rank=material.state.trump_rank,
         trump_mode=material.state.trump_mode,
+        select_subfold=material.state.select_subfold,
         points_bucket=prior_points_bucket(
             material.prestate.get("public", {}).get("attacker_points")),
         successor_sha256s=tuple(
@@ -549,7 +556,8 @@ def validate_prediction_population_manifest_v2(value: Mapping[str, Any]) -> None
     root_keys = {
         "schema", "deal_sha256", "slot_sha256", "state_sha256",
         "candidate_set_sha256", "split", "source", "role", "phase",
-        "position", "trump_rank", "trump_mode", "points_bucket",
+        "position", "trump_rank", "trump_mode", "select_subfold",
+        "points_bucket",
         "successor_sha256s",
         "tensor_sha256s", "root_sha256",
     }
@@ -562,6 +570,11 @@ def validate_prediction_population_manifest_v2(value: Mapping[str, Any]) -> None
                 or binding.get("position") not in ("lead", "follow") \
                 or binding.get("trump_rank") not in tuple("23456789TJQKA") \
                 or binding.get("trump_mode") not in ("S", "H", "D", "C", "NT") \
+                or (binding.get("split") == "select") != (
+                    binding.get("select_subfold") in (
+                        "epoch-select", "precision-select")) \
+                or binding.get("split") != "select" \
+                and binding.get("select_subfold") is not None \
                 or binding.get("points_bucket") not in PRIOR_POINTS_BUCKETS:
             raise WorldAfterstateV2InferenceError(
                 "prediction root binding drift")

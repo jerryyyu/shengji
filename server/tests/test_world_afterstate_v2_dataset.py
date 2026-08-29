@@ -36,7 +36,8 @@ def _material() -> PopulationMaterialV2:
         deal_sha256=_sha("deal"), slot_sha256=_sha("slot"),
         state_sha256=_sha("state"), source="natural", split="fit",
         phase="early", position="lead", role="attacker", trump_rank="2",
-        trump_mode="S", mechanics_surfaces=(), legal_candidate_count=2)
+        trump_mode="S", select_subfold=None, mechanics_surfaces=(),
+        legal_candidate_count=2)
     candidates = tuple(PopulationCandidateV2(
         candidate_index=i, action_sha256=_sha(("action", i)),
         audit_sha256=hashlib.sha256(f"audit-{i}".encode()).hexdigest(),

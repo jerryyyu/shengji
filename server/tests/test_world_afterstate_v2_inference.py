@@ -43,7 +43,7 @@ def _root() -> inference.ValueInferenceRootV2:
         }),
         split="audit", source="natural", role="attacker", phase="early",
         position="lead", trump_rank="2", trump_mode="S",
-        points_bucket="0-39",
+        select_subfold=None, points_bucket="0-39",
         successor_sha256s=successors,
         tensor_sha256s=(_sha("tensor-0"), _sha("tensor-1")), tensors=batch)
 

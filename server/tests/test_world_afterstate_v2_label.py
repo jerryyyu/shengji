@@ -77,6 +77,7 @@ def _natural_population() -> list[StateCandidateV2]:
         state_sha256=_sha(f"state-{index}"), source="natural", split="fit",
         phase=slot.phase, position=slot.position, role=slot.role,
         trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+        select_subfold=slot.select_subfold,
         mechanics_surfaces=(), legal_candidate_count=2)
             for index, slot in enumerate(slots)]
 

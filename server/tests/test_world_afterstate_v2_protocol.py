@@ -32,6 +32,7 @@ def _state(index: int, slot: PopulationSlotV2, *,
         source=slot.source, split=slot.split, phase=selected_cell[0],
         position=selected_cell[1], role=selected_cell[2],
         trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+        select_subfold=slot.select_subfold,
         mechanics_surfaces=mechanics_surfaces, legal_candidate_count=2)
 
 
@@ -167,7 +168,8 @@ def test_state_selection_refuses_missing_cell_and_non_natural_audit() -> None:
         deal_sha256=deal, slot_sha256=slot.slot_sha256,
         state_sha256=_sha("bad"), source="pt-luna",
         split="audit", phase="early", position="lead", role="attacker",
-        trump_rank="2", trump_mode="S", mechanics_surfaces=(),
+        trump_rank="2", trump_mode="S", select_subfold=None,
+        mechanics_surfaces=(),
         legal_candidate_count=2)
     with pytest.raises(WorldAfterstateV2ProtocolError,
                        match="must be natural"):
@@ -192,6 +194,17 @@ def test_state_selection_refuses_slot_source_rank_and_subfold_drift() -> None:
                        match="slot binding"):
         select_one_state_per_deal(
             [value], required_slots={deal: other_slot})
+    select_slot = next(
+        item for item in build_population_slot_ledger(TIER_SPECS[0])
+        if item.select_subfold == "epoch-select")
+    selected = _state(0, select_slot)
+    wrong_subfold = StateCandidateV2(**{
+        **selected.__dict__, "select_subfold": "precision-select"})
+    with pytest.raises(WorldAfterstateV2ProtocolError,
+                       match="slot binding"):
+        select_one_state_per_deal(
+            [wrong_subfold],
+            required_slots={wrong_subfold.deal_sha256: select_slot})
 
 
 def test_p0_requires_96_independent_deals_and_eight_per_cell() -> None:

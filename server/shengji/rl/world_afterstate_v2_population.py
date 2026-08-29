@@ -377,6 +377,7 @@ def build_population_material_v2(
         deal_sha256=deal, slot_sha256=slot.slot_sha256, state_sha256=state_sha,
         source=slot.source, split=slot.split, phase=phase, position=position,
         role=role, trump_rank=rank, trump_mode=mode,
+        select_subfold=slot.select_subfold,
         mechanics_surfaces=surfaces, legal_candidate_count=len(actions))
     candidate_rows = []
     for index, (action, audit, origin) in enumerate(

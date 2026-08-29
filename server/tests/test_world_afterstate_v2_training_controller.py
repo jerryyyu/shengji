@@ -9,14 +9,16 @@ from shengji.rl.world_afterstate_v2_checkpoint import (
     checkpoint_bytes, reopen_checkpoint)
 from shengji.rl.world_afterstate_v2_diagnostics import OptimizerCanaryReceiptV2
 from shengji.rl.world_afterstate_v2_training import (
-    WorldAfterstateV2TrainingConfig, model_state_sha256,
+    WorldAfterstateV2TrainingConfig,
 )
+from shengji.rl.world_afterstate_v2_selection import EpochSelectPopulationV2
 from shengji.rl.world_afterstate_v2_training_controller import (
-    CohortTrainingBuildV2, EpochSelectScoreV2,
+    CohortTrainingBuildV2,
     WorldAfterstateV2TrainingControllerError,
     reopen_cohort_build, train_named_cohort, validate_cohort_manifest,
 )
 from test_world_afterstate_v2_training import _rows
+from test_world_afterstate_v2_evaluation import _population
 
 
 def _config(max_epochs=1):
@@ -26,30 +28,24 @@ def _config(max_epochs=1):
         sigma_pair_squared=1.0)
 
 
-def _build(*, max_epochs=1, scorer=None, **kwargs):
-    scorer = scorer or _scorer()
+def _selection_population():
+    _predictions, outcomes, _prior, root = _population(
+        root="controller-epoch-select")
+    return EpochSelectPopulationV2(
+        (dataclasses.replace(
+            root, split="select", select_subfold="epoch-select"),),
+        tuple(dataclasses.replace(row, split="select") for row in outcomes))
+
+
+def _build(*, max_epochs=1, selection_population=None, **kwargs):
     options = {"wall_budget_nanoseconds": 10**15, "torch_threads": 1}
     options.update(kwargs)
     return train_named_cohort(
         cohort_name="natural", values=tuple(_rows("controller")),
         freeze_sha256=hashlib.sha256(b"freeze").hexdigest(),
-        config=_config(max_epochs), selection_loss=scorer,
+        config=_config(max_epochs),
+        selection_population=selection_population or _selection_population(),
         **options)
-
-
-def _scorer(*, seed_block=1, control_name="natural", loss=None):
-    def score(model, epoch, member):
-        return EpochSelectScoreV2(
-            epoch=epoch, seed_block=seed_block, member_index=member,
-            control_name=control_name,
-            model_state_sha256=model_state_sha256(model),
-            selection_population_sha256=hashlib.sha256(
-                b"epoch-select-population").hexdigest(),
-            prediction_manifest_sha256=hashlib.sha256(
-                f"prediction:{seed_block}:{control_name}:{epoch}:{member}".encode()
-            ).hexdigest(),
-            loss_nano=(loss(epoch) if loss is not None else epoch))
-    return score
 
 
 def test_happy_path_reopens_four_checkpoints_and_progress():
@@ -65,13 +61,10 @@ def test_happy_path_reopens_four_checkpoints_and_progress():
 
 
 def test_repeat_is_deterministic_and_common_epoch_is_rederived():
-    first = _build(max_epochs=4, scorer=_scorer(loss=lambda epoch: 100 + epoch),
-                   clock=lambda: 0)
-    second = _build(max_epochs=4, scorer=_scorer(loss=lambda epoch: 100 + epoch),
-                    clock=lambda: 0)
+    first = _build(max_epochs=4, clock=lambda: 0)
+    second = _build(max_epochs=4, clock=lambda: 0)
     assert first.manifest == second.manifest
     assert first.selected_checkpoint_raws == second.selected_checkpoint_raws
-    assert first.manifest["common_epoch"]["selected_epoch"] == 1
     assert select_common_epoch(
         tuple(tuple(score["loss_nano"] for score in row["selection_scores"])
               for row in first.manifest["members"])
@@ -110,10 +103,10 @@ def test_truncation_preserves_forensic_build_but_is_not_audit_eligible():
     reopen_cohort_build(build)
 
 
-def test_audit_scorer_injection_and_invalid_concurrency_are_rejected():
+def test_epoch_select_injection_and_invalid_concurrency_are_rejected():
     with pytest.raises(WorldAfterstateV2TrainingControllerError,
-                       match="typed epoch-select"):
-        _build(scorer=lambda _model, _epoch, _member: {"audit": 1})
+                       match="sealed epoch-select population"):
+        _build(selection_population={"audit": 1})
     with pytest.raises(WorldAfterstateV2TrainingControllerError, match="resource request"):
         _build(member_workers=3)
 
@@ -125,7 +118,7 @@ def test_control_reuses_natural_root_schedule():
         cohort_name="complete-world-shuffle", values=control,
         natural_values=natural,
         freeze_sha256=hashlib.sha256(b"freeze").hexdigest(), config=_config(),
-        selection_loss=_scorer(control_name="complete-world-shuffle"),
+        selection_population=_selection_population(),
         wall_budget_nanoseconds=10**15, torch_threads=1)
     assert build.manifest["cohort_name"] == "complete-world-shuffle"
     assert build.manifest["members"][0]["epoch_receipts"]
@@ -160,32 +153,14 @@ def test_failed_optimizer_canary_and_bool_worker_count_are_refused():
         _build(member_workers=True)
 
 
-def test_selection_score_model_and_population_bindings_are_refused():
-    foreign_model = _scorer()
-
-    def wrong_model(model, epoch, member):
-        return dataclasses.replace(
-            foreign_model(model, epoch, member),
-            model_state_sha256=hashlib.sha256(b"foreign-model").hexdigest())
-
+def test_epoch_select_audit_population_is_refused():
+    population = _selection_population()
+    invalid = EpochSelectPopulationV2(
+        (dataclasses.replace(population.roots[0], split="audit"),),
+        population.outcomes)
     with pytest.raises(WorldAfterstateV2TrainingControllerError,
-                       match="score/model binding"):
-        _build(scorer=wrong_model)
-
-    base = _scorer()
-
-    def mixed_population(model, epoch, member):
-        score = base(model, epoch, member)
-        if member == 3:
-            score = dataclasses.replace(
-                score,
-                selection_population_sha256=hashlib.sha256(
-                    b"foreign-select-population").hexdigest())
-        return score
-
-    with pytest.raises(WorldAfterstateV2TrainingControllerError,
-                       match="population mixing"):
-        _build(scorer=mixed_population)
+                       match="epoch-select population refused"):
+        _build(selection_population=invalid)
 
 
 @pytest.mark.parametrize("identity", ("init-seed", "schedule"))

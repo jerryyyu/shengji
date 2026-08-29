@@ -343,6 +343,7 @@ class StateCandidateV2:
     role: str
     trump_rank: str
     trump_mode: str
+    select_subfold: str | None
     mechanics_surfaces: tuple[str, ...]
     legal_candidate_count: int
     schema: str = STATE_SCHEMA
@@ -360,6 +361,11 @@ class StateCandidateV2:
                 or self.trump_rank not in RANKS \
                 or self.trump_mode not in TRUMP_MODES:
             raise WorldAfterstateV2ProtocolError("state stratum drift")
+        if (self.split == "select") != (
+                self.select_subfold in SELECT_SUBFOLDS) \
+                or self.split != "select" and self.select_subfold is not None:
+            raise WorldAfterstateV2ProtocolError(
+                "state select subfold drift")
         if type(self.mechanics_surfaces) is not tuple \
                 or len(set(self.mechanics_surfaces)) \
                 != len(self.mechanics_surfaces) \
@@ -424,6 +430,7 @@ def select_one_state_per_deal(
         if candidate.slot_sha256 != slot.slot_sha256 \
                 or candidate.source != slot.source \
                 or candidate.split != slot.split \
+                or candidate.select_subfold != slot.select_subfold \
                 or candidate.trump_rank != slot.trump_rank \
                 or candidate.trump_mode != slot.trump_mode:
             raise WorldAfterstateV2ProtocolError(

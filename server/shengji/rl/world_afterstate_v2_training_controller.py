@@ -33,11 +33,13 @@ from .world_afterstate_v2_training import (
     WorldAfterstateV2TrainingExample, model_state_sha256, new_optimizer,
     train_epoch,
 )
+from .world_afterstate_v2_selection_contract import (
+    CONTROL_NAMES, EpochSelectScoreV2)
+from .world_afterstate_v2_selection import EpochSelectPopulationV2
 
 
 MANIFEST_SCHEMA = "world-afterstate-v2-training-cohort-manifest-v1"
 PROGRESS_SCHEMA = "world-afterstate-v2-training-progress-v1"
-EPOCH_SELECTION_SCHEMA = "world-afterstate-v2-epoch-select-score-v1"
 AUTHORITY = {
     "data_collection_authorized": False,
     "capacity_execution_authorized": False,
@@ -52,9 +54,6 @@ AUTHORITY = {
     "deployment_authorized": False,
     "retry_authorized": False,
 }
-CONTROL_NAMES = (
-    "natural", "action-association-permutation", "label-permutation",
-    "complete-world-shuffle")
 
 
 class WorldAfterstateV2TrainingControllerError(ValueError):
@@ -65,54 +64,6 @@ class WorldAfterstateV2TrainingControllerError(ValueError):
 class CohortTrainingBuildV2:
     manifest: dict[str, Any]
     selected_checkpoint_raws: tuple[bytes, ...]
-
-
-@dataclass(frozen=True)
-class EpochSelectScoreV2:
-    """One model score from the sealed epoch-select population only."""
-
-    epoch: int
-    seed_block: int
-    member_index: int
-    control_name: str
-    model_state_sha256: str
-    selection_population_sha256: str
-    prediction_manifest_sha256: str
-    loss_nano: int
-    split: str = "select"
-    select_subfold: str = "epoch-select"
-    metric: str = "mean-root-total-loss-nano"
-    audit_rows_opened: bool = False
-    report_rows_opened: bool = False
-    schema: str = EPOCH_SELECTION_SCHEMA
-
-    def validate(self) -> None:
-        if self.schema != EPOCH_SELECTION_SCHEMA \
-                or self.split != "select" \
-                or self.select_subfold != "epoch-select" \
-                or self.metric != "mean-root-total-loss-nano" \
-                or self.seed_block not in (1, 2) \
-                or self.control_name not in CONTROL_NAMES \
-                or self.audit_rows_opened is not False \
-                or self.report_rows_opened is not False:
-            raise WorldAfterstateV2TrainingControllerError(
-                "epoch-select score identity drift")
-        _strict_int(self.epoch, "epoch-select epoch", 1)
-        _strict_int(self.member_index, "epoch-select member")
-        if self.member_index >= 4:
-            raise WorldAfterstateV2TrainingControllerError(
-                "epoch-select member drift")
-        _strict_int(self.loss_nano, "epoch-select loss")
-        for label, value in (
-                ("epoch-select model state", self.model_state_sha256),
-                ("epoch-select population", self.selection_population_sha256),
-                ("epoch-select prediction manifest",
-                 self.prediction_manifest_sha256)):
-            _digest(value, f"{label} SHA-256")
-
-    def payload(self) -> dict[str, Any]:
-        self.validate()
-        return dict(self.__dict__)
 
 
 def _sha(value: object) -> str:
@@ -206,8 +157,7 @@ def train_named_cohort(
         values: Sequence[WorldAfterstateV2TrainingExample],
         freeze_sha256: str,
         config: WorldAfterstateV2TrainingConfig,
-        selection_loss: Callable[
-            [WorldAfterstateValueV2, int, int], EpochSelectScoreV2],
+        selection_population: EpochSelectPopulationV2,
         seed_block: int = 1,
         natural_values: Sequence[WorldAfterstateV2TrainingExample] | None = None,
         member_workers: int = 1, torch_threads: int = 1,
@@ -218,9 +168,9 @@ def train_named_cohort(
         progress: Callable[[dict[str, Any]], None] | None = None) -> CohortTrainingBuildV2:
     """Train exactly one four-member natural or matched-control cohort.
 
-    ``selection_loss`` is the only permitted epoch-select input.  It receives
-    a model, epoch, and member index, and must return a typed score bound to
-    the model state and one shared sealed epoch-select population.
+    ``selection_population`` is the only permitted epoch-select input.  Its
+    exact type refuses callback injection and binds every score to one sealed
+    select-only root/outcome population.
     """
     _digest(freeze_sha256, "freeze SHA-256")
     config.validate()
@@ -231,8 +181,14 @@ def train_named_cohort(
     _validate_rows(values, cohort)
     if cohort == "control":
         _validate_rows(natural_values or (), "primary")
-    if not callable(selection_loss):
-        raise WorldAfterstateV2TrainingControllerError("epoch-select scorer required")
+    if type(selection_population) is not EpochSelectPopulationV2:
+        raise WorldAfterstateV2TrainingControllerError(
+            "sealed epoch-select population required")
+    try:
+        selection_population.validate()
+    except Exception as exc:
+        raise WorldAfterstateV2TrainingControllerError(
+            "epoch-select population refused") from exc
     canary_payload = None
     if optimizer_canary is not None:
         if not callable(optimizer_canary):
@@ -289,10 +245,17 @@ def train_named_cohort(
                     models[member], optimizers[member], member_batches,
                     epoch=epoch, config=config)
                 score = _selection_score(
-                    selection_loss(models[member], epoch, member),
+                    selection_population.score(
+                        models[member], epoch=epoch, seed_block=seed_block,
+                        member_index=member, control_name=cohort_name,
+                        sigma_pair_squared=config.sigma_pair_squared),
                     model=models[member], epoch=epoch,
                     seed_block=seed_block, member_index=member,
                     control_name=cohort_name)
+                if score.selection_population_sha256 != \
+                        selection_population.population_sha256:
+                    raise WorldAfterstateV2TrainingControllerError(
+                        "epoch-select sealed population binding drift")
                 return (member_schedule, receipt, score,
                         copy.deepcopy(models[member].state_dict()))
 

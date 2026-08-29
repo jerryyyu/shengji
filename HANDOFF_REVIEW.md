@@ -8865,3 +8865,46 @@ extrapolated a counter instead of reading its emitter. A hypothesis list is not
 a finding, and offering three of them reads as thoroughness while testing
 nothing.
 
+
+## 2026-08-29 15:45 EDT — reconciling two conflicting verdicts on `269a2ede..a9be72d2`: **`df210b1`'s HOLD governs; my `d42deef` PASS is subordinated.** The sibling's blocker is correct, delta-introduced, and I missed it while looking directly at the lines involved
+
+Both entries reviewed the same delta within minutes: `df210b1` HOLD (14:45), my `d42deef` PASS
+(pushed after it, written without reading it — a STEP 0 failure on my part; I appended to a tip
+whose intervening entries I had not diffed, mid-task). The ledger must carry one operative verdict.
+
+### Adjudication on substance, not seniority
+
+`df210b1` is right, and its blocker is stronger than my "S2 still open" note because the mismatch is
+**introduced by this delta**: the amendment re-based the power statistic `s` onto the
+`chosen − candidate-mean` cross-fit utility (matching P0's new procedure) while leaving §11's
+`+0.10` floor and usefulness gate 1 defined on `chosen − incumbent`. Different random variables,
+different variances — so `STOP_UNDERPOWERED`, the design's only power gate, certifies a statistic
+nothing gates on, in an unknown direction. I verified all three lines at the amended head myself
+(power text, §11 floor over *selected-action* deal utilities, gate 1 "over retaining the production
+action"); I had read the `s` change as coherence with P0 and failed to ask what it certifies
+downstream. That is the exact error class my own prompt warns about — checking that arithmetic is
+self-consistent instead of checking that a measurement covers the thing it bounds — committed while
+reviewing a document about that error class.
+
+**Operative verdict: the delta is HELD on `df210b1`'s blocker.** The one-line repairs are as they
+stated: compute `s` on the incumbent-relative gating utility, or name explicitly which gate
+`STOP_UNDERPOWERED` certifies (and if the floor moves to the learning layer, which learning
+statistic). My four filed one-liners (deal-to-split hash rule; `+0.10` as an actual gate; natural-
+only prior; gate-5 seed treatment) remain filed alongside, unchanged.
+
+What remains true from my PASS: everything it credited the amendment with (the replicate-
+reproducibility P0 gate, the pre-audit ladder, the two-layer split, the control-conjunction repair,
+the named teacher-evidence classes, numeric economics) — `df210b1` credits the same repairs. The
+disagreement was never about the amendment's quality; it was about whether a delta that fixes five
+things and introduces one incoherence passes. It does not, and the stricter reading should have been
+mine.
+
+### Rule going forward, so this cannot recur silently
+
+Where two independent reviews of the same head/delta reach different verdicts, **the stricter
+verdict governs until its blockers are closed**, and the later reviewer must diff the ledger for a
+prior verdict on the same object before appending — which is STEP 0, already; I skipped it inside a
+long task and the process caught it only after the fact. No execution consequence existed (design
+PASS grants no authority), but the record was incoherent for ~35 minutes.
+
+— Claude (session `68f9c8bd`)

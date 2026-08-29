@@ -132,11 +132,6 @@ def collate_world_afterstate_tensors(
     return result
 
 
-# Descriptive aliases keep the target-free contract discoverable to callers.
-collate_v2_tensors = collate_world_afterstate_tensors
-collate_world_afterstates_v2 = collate_world_afterstate_tensors
-
-
 def _card_tables() -> tuple[torch.Tensor, torch.Tensor]:
     rank_ids: list[int] = []
     suit_ids: list[int] = []
@@ -314,13 +309,6 @@ def count_trainable_parameters(model: nn.Module) -> int:
                if parameter.requires_grad)
 
 
-def trainable_parameter_count(model: nn.Module) -> int:
-    return count_trainable_parameters(model)
-
-
-model_parameter_count = count_trainable_parameters
-
-
 def new_world_afterstate_v2_model(seed: int) -> WorldAfterstateValueV2:
     """Create deterministic weights while preserving the global CPU RNG state."""
     if isinstance(seed, bool) or not isinstance(seed, int):
@@ -367,11 +355,6 @@ def absolute_cross_entropy_rows(logits: torch.Tensor,
 
 def absolute_value_loss(logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     return absolute_cross_entropy_rows(logits, labels).mean()
-
-
-normalized_absolute_loss_rows = absolute_cross_entropy_rows
-normalized_absolute_loss = absolute_value_loss
-absolute_loss = absolute_value_loss
 
 
 def expected_signed_utility(logits: torch.Tensor) -> torch.Tensor:
@@ -424,9 +407,6 @@ def paired_expectation_loss(
     return (prediction - target_difference).square().mean() / denominator
 
 
-pair_expectation_loss = paired_expectation_loss
-
-
 def combined_value_loss(
         logits: torch.Tensor, labels: torch.Tensor,
         candidate_logits: torch.Tensor | None = None,
@@ -445,27 +425,13 @@ def combined_value_loss(
         sigma_pair_squared)
 
 
-combined_loss = combined_value_loss
-
-
-SuccessorBatchV2 = WorldAfterstateV2Batch
-WorldAfterstateAbsoluteV2 = WorldAfterstateValueV2
-new_world_afterstate_model_v2 = new_world_afterstate_v2_model
-collate_successor_tensors_v2 = collate_world_afterstate_tensors
-
-
 __all__ = [
     "MODEL_SCHEMA", "CARD_PLANES", "PUBLIC_CARD_DIM", "PUBLIC_TAIL_DIM",
     "OUTCOME_CLASSES",
     "WorldAfterstateV2Batch", "WorldAfterstateV2ModelError",
-    "SuccessorBatchV2", "WorldAfterstateValueV2", "WorldAfterstateAbsoluteV2",
-    "collate_world_afterstate_tensors", "collate_v2_tensors",
-    "collate_world_afterstates_v2", "collate_successor_tensors_v2",
+    "WorldAfterstateValueV2", "collate_world_afterstate_tensors",
     "new_world_afterstate_v2_model", "count_trainable_parameters",
-    "new_world_afterstate_model_v2", "trainable_parameter_count",
-    "model_parameter_count",
-    "absolute_cross_entropy_rows", "normalized_absolute_loss_rows",
-    "absolute_value_loss", "normalized_absolute_loss", "absolute_loss",
+    "absolute_cross_entropy_rows", "absolute_value_loss",
     "expected_signed_utility", "paired_expectation_loss",
-    "pair_expectation_loss", "combined_value_loss", "combined_loss",
+    "combined_value_loss",
 ]

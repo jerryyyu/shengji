@@ -8,16 +8,20 @@ witnessed before the expensive pipeline exists.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import hashlib
 from typing import Mapping, Sequence
 
+from ..engine.cards import RANKS
 from .belief_contract import canonical_json_bytes
 
 
 PROTOCOL_SCHEMA = "world-afterstate-v2-protocol-v1"
 STATE_SCHEMA = "world-afterstate-v2-state-candidate-v1"
 CAPACITY_SCHEMA = "world-afterstate-v2-capacity-tier-v1"
+SLOT_SCHEMA = "world-afterstate-v2-population-slot-v1"
+ATTEMPT_SCHEMA = "world-afterstate-v2-attempted-deal-v1"
 P0_DEALS = 96
 P0_PER_CELL = 8
 P0_CELLS = tuple(
@@ -33,6 +37,10 @@ COMPLETE_DAG_WALL_SECONDS_MAX = 6 * 60 * 60
 SCIENTIFIC_SERVICE_SECONDS = 12 * 60 * 60
 MEMORY_PERCENT_MAX = 85
 DISK_RETAIN_PERCENT_MIN = 25
+TRUMP_MODES = ("S", "H", "D", "C", "NT")
+MECHANICS_SURFACES = ("multi-card", "wide-ballot", "late/high-point")
+SELECT_SUBFOLDS = ("epoch-select", "precision-select")
+STATE_SOURCES = ("natural", "pt-sol", "pt-luna", "human", "mechanics")
 
 AUTHORITY = {
     "data_collection_authorized": False,
@@ -124,28 +132,233 @@ for _tier in TIER_SPECS:
     _tier.validate()
 
 
+def _tier_groups(tier: TierSpecV2) \
+        -> tuple[tuple[str, str, str, int], ...]:
+    """Return the literal split/source slot groups in frozen order."""
+    tier.validate()
+    diverse = {
+        "D256": (),
+        "D512": (
+            ("diverse-fit-sol", "fit", "pt-sol", 32),
+            ("diverse-fit-luna", "fit", "pt-luna", 16),
+            ("diverse-fit-human", "fit", "human", 16),
+        ),
+        "D1024": (
+            ("diverse-fit-sol", "fit", "pt-sol", 64),
+            ("diverse-fit-luna", "fit", "pt-luna", 32),
+            ("diverse-fit-human", "fit", "human", 32),
+        ),
+    }[tier.name]
+    return (
+        ("natural-fit", "fit", "natural", tier.natural_fit),
+        *diverse,
+        ("mechanics-fit", "fit", "mechanics", tier.mechanics_fit),
+        ("natural-select", "select", "natural", tier.select),
+        ("natural-audit", "audit", "natural", tier.audit),
+    )
+
+
+@dataclass(frozen=True)
+class PopulationSlotV2:
+    """One pre-play split/source/stratum slot in the immutable population."""
+
+    tier: str
+    group: str
+    split: str
+    source: str
+    ordinal: int
+    phase: str | None
+    position: str | None
+    role: str | None
+    mechanics_surface: str | None
+    trump_rank: str
+    trump_mode: str
+    select_subfold: str | None
+    schema: str = SLOT_SCHEMA
+
+    def validate(self) -> None:
+        tiers = {tier.name: tier for tier in TIER_SPECS}
+        if self.schema != SLOT_SCHEMA or self.tier not in tiers \
+                or self.split not in ("fit", "select", "audit") \
+                or self.source not in STATE_SOURCES \
+                or self.trump_rank not in RANKS \
+                or self.trump_mode not in TRUMP_MODES:
+            raise WorldAfterstateV2ProtocolError("population slot identity drift")
+        _strict_int(self.ordinal, "population slot ordinal")
+        group_rows = {
+            group: (split, source, count)
+            for group, split, source, count in _tier_groups(tiers[self.tier])
+        }
+        if self.group not in group_rows \
+                or group_rows[self.group][:2] != (self.split, self.source) \
+                or self.ordinal >= group_rows[self.group][2]:
+            raise WorldAfterstateV2ProtocolError(
+                "population slot group drift")
+        if self.source == "mechanics":
+            if (self.group != "mechanics-fit" or self.split != "fit"
+                    or self.mechanics_surface not in MECHANICS_SURFACES
+                    or any(value is not None for value in (
+                        self.phase, self.position, self.role,
+                        self.select_subfold))):
+                raise WorldAfterstateV2ProtocolError(
+                    "mechanics slot stratum drift")
+        else:
+            cell = (self.phase, self.position, self.role)
+            if cell not in P0_CELLS or self.mechanics_surface is not None:
+                raise WorldAfterstateV2ProtocolError(
+                    "population slot cell drift")
+            expected_subfold = self.split == "select"
+            if expected_subfold != (self.select_subfold in SELECT_SUBFOLDS):
+                raise WorldAfterstateV2ProtocolError(
+                    "population select subfold drift")
+        if self.split != "fit" and self.source != "natural":
+            raise WorldAfterstateV2ProtocolError(
+                "select and audit slots must be natural")
+
+    @property
+    def cell(self) -> tuple[str, str, str] | None:
+        self.validate()
+        return (None if self.phase is None else
+                (self.phase, self.position, self.role))  # type: ignore[return-value]
+
+    def payload(self) -> dict[str, object]:
+        self.validate()
+        return {
+            "schema": self.schema, "tier": self.tier, "group": self.group,
+            "split": self.split, "source": self.source,
+            "ordinal": self.ordinal, "phase": self.phase,
+            "position": self.position, "role": self.role,
+            "mechanics_surface": self.mechanics_surface,
+            "trump_rank": self.trump_rank, "trump_mode": self.trump_mode,
+            "select_subfold": self.select_subfold,
+        }
+
+    @property
+    def slot_sha256(self) -> str:
+        return hashlib.sha256(canonical_json_bytes(self.payload())).hexdigest()
+
+
+def _raw_slot_ledger(tier: TierSpecV2) -> tuple[PopulationSlotV2, ...]:
+    result = []
+    for group, split, source, count in _tier_groups(tier):
+        for ordinal in range(count):
+            if split == "select":
+                pair = ordinal // 2
+                cell = P0_CELLS[pair % len(P0_CELLS)]
+                rank = RANKS[pair % len(RANKS)]
+                mode = TRUMP_MODES[pair % len(TRUMP_MODES)]
+                subfold = SELECT_SUBFOLDS[ordinal % 2]
+                surface = None
+            elif source == "mechanics":
+                cell = (None, None, None)
+                rank = RANKS[ordinal % len(RANKS)]
+                mode = TRUMP_MODES[ordinal % len(TRUMP_MODES)]
+                subfold = None
+                surface = MECHANICS_SURFACES[
+                    ordinal % len(MECHANICS_SURFACES)]
+            else:
+                cell = P0_CELLS[ordinal % len(P0_CELLS)]
+                rank = RANKS[ordinal % len(RANKS)]
+                mode = TRUMP_MODES[ordinal % len(TRUMP_MODES)]
+                subfold = None
+                surface = None
+            result.append(PopulationSlotV2(
+                tier=tier.name, group=group, split=split, source=source,
+                ordinal=ordinal, phase=cell[0], position=cell[1], role=cell[2],
+                mechanics_surface=surface, trump_rank=rank, trump_mode=mode,
+                select_subfold=subfold))
+    return tuple(result)
+
+
+def build_population_slot_ledger(tier: TierSpecV2) \
+        -> tuple[PopulationSlotV2, ...]:
+    if type(tier) is not TierSpecV2:
+        raise WorldAfterstateV2ProtocolError("population tier type drift")
+    result = _raw_slot_ledger(tier)
+    validate_population_slot_ledger(result, tier=tier)
+    return result
+
+
+def validate_population_slot_ledger(
+        slots: Sequence[PopulationSlotV2], *, tier: TierSpecV2) -> None:
+    if type(tier) is not TierSpecV2 or type(slots) not in (list, tuple) \
+            or len(slots) != tier.total \
+            or any(type(slot) is not PopulationSlotV2 for slot in slots):
+        raise WorldAfterstateV2ProtocolError("population slot ledger drift")
+    expected = _raw_slot_ledger(tier)
+    for slot in slots:
+        slot.validate()
+    if tuple(slots) != expected \
+            or len({slot.slot_sha256 for slot in slots}) != len(slots):
+        raise WorldAfterstateV2ProtocolError("population slot derivation drift")
+    select = [slot for slot in slots if slot.split == "select"]
+    censuses = {}
+    for subfold in SELECT_SUBFOLDS:
+        censuses[subfold] = Counter(
+            (slot.cell, slot.trump_rank, slot.trump_mode)
+            for slot in select if slot.select_subfold == subfold)
+    if censuses[SELECT_SUBFOLDS[0]] != censuses[SELECT_SUBFOLDS[1]] \
+            or sum(censuses[SELECT_SUBFOLDS[0]].values()) * 2 != tier.select:
+        raise WorldAfterstateV2ProtocolError(
+            "population select census mismatch")
+
+
+def attempted_deal_identity(
+        population_namespace_sha256: str, slot: PopulationSlotV2,
+        attempt_index: int) -> dict[str, object]:
+    """Derive an outcome-blind deal identity inside one immutable slot."""
+    _digest(population_namespace_sha256, "population namespace SHA-256")
+    if type(slot) is not PopulationSlotV2:
+        raise WorldAfterstateV2ProtocolError("attempted deal slot type drift")
+    slot.validate()
+    _strict_int(attempt_index, "attempted deal index")
+    body = {
+        "schema": ATTEMPT_SCHEMA,
+        "population_namespace_sha256": population_namespace_sha256,
+        "slot_sha256": slot.slot_sha256,
+        "attempt_index": attempt_index,
+    }
+    digest = hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+    return {**body, "deal_sha256": digest,
+            "engine_seed": int(digest[:16], 16) & ((1 << 63) - 1)}
+
+
 @dataclass(frozen=True)
 class StateCandidateV2:
     deal_sha256: str
+    slot_sha256: str
     state_sha256: str
     source: str
     split: str
     phase: str
     position: str
     role: str
+    trump_rank: str
+    trump_mode: str
+    mechanics_surfaces: tuple[str, ...]
     legal_candidate_count: int
     schema: str = STATE_SCHEMA
 
     def validate(self) -> None:
         _digest(self.deal_sha256, "state deal SHA-256")
+        _digest(self.slot_sha256, "state slot SHA-256")
         _digest(self.state_sha256, "state SHA-256")
         if self.schema != STATE_SCHEMA \
-                or self.source not in ("natural", "diverse", "mechanics") \
+                or self.source not in STATE_SOURCES \
                 or self.split not in ("fit", "select", "audit") \
                 or self.phase not in ("early", "middle", "late") \
                 or self.position not in ("lead", "follow") \
-                or self.role not in ("attacker", "defender"):
+                or self.role not in ("attacker", "defender") \
+                or self.trump_rank not in RANKS \
+                or self.trump_mode not in TRUMP_MODES:
             raise WorldAfterstateV2ProtocolError("state stratum drift")
+        if type(self.mechanics_surfaces) is not tuple \
+                or len(set(self.mechanics_surfaces)) \
+                != len(self.mechanics_surfaces) \
+                or any(surface not in MECHANICS_SURFACES
+                       for surface in self.mechanics_surfaces):
+            raise WorldAfterstateV2ProtocolError(
+                "state mechanics surface drift")
         if _strict_int(
                 self.legal_candidate_count,
                 "state legal candidate count") < 2:
@@ -163,24 +376,30 @@ class StateCandidateV2:
 
 def select_one_state_per_deal(
         candidates: Sequence[StateCandidateV2], *,
-        required_cells: Mapping[str, tuple[str, str, str]]) \
+        required_slots: Mapping[str, PopulationSlotV2]) \
         -> tuple[StateCandidateV2, ...]:
-    """Choose the smallest state hash in each preassigned deal stratum.
+    """Choose the smallest state hash satisfying each pre-play slot.
 
     The closed input type intentionally has no label, continuation result,
     action utility, model prediction, or terminal-outcome field.
     """
     if type(candidates) not in (list, tuple) or not candidates \
-            or type(required_cells) is not dict or not required_cells:
+            or type(required_slots) is not dict or not required_slots:
         raise WorldAfterstateV2ProtocolError("state selection request drift")
-    normalized_cells: dict[str, tuple[str, str, str]] = {}
-    for deal, cell in required_cells.items():
+    normalized_slots: dict[str, PopulationSlotV2] = {}
+    for deal, slot in required_slots.items():
         _digest(deal, "assigned deal SHA-256")
-        if type(cell) is not tuple or len(cell) != 3 or cell not in P0_CELLS:
-            raise WorldAfterstateV2ProtocolError("assigned state cell drift")
-        normalized_cells[deal] = cell
+        if type(slot) is not PopulationSlotV2:
+            raise WorldAfterstateV2ProtocolError("assigned state slot drift")
+        slot.validate()
+        normalized_slots[deal] = slot
+    if len({slot.slot_sha256 for slot in normalized_slots.values()}) \
+            != len(normalized_slots) \
+            or len({slot.tier for slot in normalized_slots.values()}) != 1:
+        raise WorldAfterstateV2ProtocolError(
+            "assigned state slot population drift")
     by_deal: dict[str, list[StateCandidateV2]] = {
-        deal: [] for deal in normalized_cells}
+        deal: [] for deal in normalized_slots}
     seen_states = set()
     for candidate in candidates:
         if type(candidate) is not StateCandidateV2:
@@ -193,7 +412,20 @@ def select_one_state_per_deal(
         if candidate.deal_sha256 not in by_deal:
             raise WorldAfterstateV2ProtocolError(
                 "unassigned deal entered state selection")
-        if candidate.cell == normalized_cells[candidate.deal_sha256]:
+        slot = normalized_slots[candidate.deal_sha256]
+        if candidate.slot_sha256 != slot.slot_sha256 \
+                or candidate.source != slot.source \
+                or candidate.split != slot.split \
+                or candidate.trump_rank != slot.trump_rank \
+                or candidate.trump_mode != slot.trump_mode:
+            raise WorldAfterstateV2ProtocolError(
+                "state candidate slot binding drift")
+        eligible = (
+            slot.mechanics_surface in candidate.mechanics_surfaces
+            if slot.mechanics_surface is not None
+            else candidate.cell == slot.cell
+        )
+        if eligible:
             by_deal[candidate.deal_sha256].append(candidate)
     result = []
     for deal in sorted(by_deal):
@@ -211,15 +443,18 @@ def validate_p0_population(states: Sequence[StateCandidateV2]) -> None:
     if type(states) not in (list, tuple) or len(states) != P0_DEALS:
         raise WorldAfterstateV2ProtocolError("P0 deal population drift")
     deals = set()
+    slots = set()
     counts = {cell: 0 for cell in P0_CELLS}
     for state in states:
         if type(state) is not StateCandidateV2:
             raise WorldAfterstateV2ProtocolError("P0 state type drift")
         state.validate()
         if state.source != "natural" or state.split != "fit" \
-                or state.deal_sha256 in deals:
+                or state.deal_sha256 in deals \
+                or state.slot_sha256 in slots:
             raise WorldAfterstateV2ProtocolError("P0 identity drift")
         deals.add(state.deal_sha256)
+        slots.add(state.slot_sha256)
         counts[state.cell] += 1
     if any(count != P0_PER_CELL for count in counts.values()):
         raise WorldAfterstateV2ProtocolError("P0 cell balance drift")
@@ -306,12 +541,25 @@ def choose_capacity_tier(
 
 
 def protocol_payload() -> dict[str, object]:
+    slot_ledger_sha256s = {
+        tier.name: hashlib.sha256(canonical_json_bytes([
+            slot.payload() for slot in build_population_slot_ledger(tier)
+        ])).hexdigest()
+        for tier in TIER_SPECS
+    }
     body = {
         "schema": PROTOCOL_SCHEMA,
         "tiers": [tier.payload() for tier in TIER_SPECS],
         "p0_deals": P0_DEALS,
         "p0_per_cell": P0_PER_CELL,
         "p0_cells": [list(cell) for cell in P0_CELLS],
+        "slot_schema": SLOT_SCHEMA,
+        "attempt_schema": ATTEMPT_SCHEMA,
+        "trump_ranks": list(RANKS),
+        "trump_modes": list(TRUMP_MODES),
+        "mechanics_surfaces": list(MECHANICS_SURFACES),
+        "select_subfolds": list(SELECT_SUBFOLDS),
+        "population_slot_ledger_sha256s": slot_ledger_sha256s,
         "capacity_host_logical_cpus": CAPACITY_HOST_LOGICAL_CPUS,
         "label_wall_seconds_max": LABEL_WALL_SECONDS_MAX,
         "label_cpu_seconds_max": LABEL_CPU_SECONDS_MAX,
@@ -326,9 +574,12 @@ def protocol_payload() -> dict[str, object]:
 
 
 __all__ = [
-    "AUTHORITY", "CAPACITY_HOST_LOGICAL_CPUS", "CapacityTierReceiptV2",
-    "P0_CELLS", "P0_DEALS", "P0_PER_CELL", "STATE_SCHEMA", "TIER_SPECS",
+    "ATTEMPT_SCHEMA", "AUTHORITY", "CAPACITY_HOST_LOGICAL_CPUS",
+    "CapacityTierReceiptV2", "MECHANICS_SURFACES", "P0_CELLS", "P0_DEALS",
+    "P0_PER_CELL", "PopulationSlotV2", "SELECT_SUBFOLDS", "SLOT_SCHEMA",
+    "STATE_SCHEMA", "STATE_SOURCES", "TIER_SPECS", "TRUMP_MODES",
     "StateCandidateV2", "TierSpecV2", "WorldAfterstateV2ProtocolError",
+    "attempted_deal_identity", "build_population_slot_ledger",
     "choose_capacity_tier", "protocol_payload", "select_one_state_per_deal",
-    "validate_p0_population",
+    "validate_p0_population", "validate_population_slot_ledger",
 ]

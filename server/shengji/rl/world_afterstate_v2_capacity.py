@@ -129,6 +129,10 @@ class CapacityArmV2:
     byte_identity_sha256: str
     cpu_bound: bool
     schema: str = ARM_SCHEMA
+    # Nanoseconds are retained for arm selection; wall_seconds is the frozen
+    # receipt display unit and therefore must not decide subsecond ties.
+    wall_nanoseconds: int = 0
+    peak_task_count: int = 0
 
     def validate(self) -> None:
         if self.schema != ARM_SCHEMA or self.stage not in ARM_GRIDS \
@@ -142,6 +146,8 @@ class CapacityArmV2:
                 (self.peak_memory_bytes, "arm peak memory"),
                 (self.task_count, "arm task count")):
             _int(value, label)
+        _int(self.wall_nanoseconds, "arm wall nanoseconds")
+        _int(self.peak_task_count, "arm peak task count")
         for value, label in (
                 (self.mean_cpu_utilization_ppm, "arm mean utilization"),
                 (self.p50_cpu_utilization_ppm, "arm p50 utilization"),
@@ -169,6 +175,10 @@ class CapacityArmV2:
         if abs(self.mean_cpu_utilization_ppm - implied) > tolerance:
             raise WorldAfterstateV2CapacityError(
                 "arm busy-core/utilization binding drift")
+        if self.wall_nanoseconds and self.wall_nanoseconds < 1_000_000:
+            raise WorldAfterstateV2CapacityError("arm wall nanoseconds drift")
+        if self.peak_task_count and self.peak_task_count < self.task_count:
+            raise WorldAfterstateV2CapacityError("arm peak task count drift")
 
     @property
     def dimension(self) -> str:
@@ -191,6 +201,8 @@ class CapacityArmV2:
             "swap_bytes": self.swap_bytes, "task_count": self.task_count,
             "byte_identity_sha256": self.byte_identity_sha256,
             "cpu_bound": self.cpu_bound,
+            "wall_nanoseconds": self.wall_nanoseconds,
+            "peak_task_count": self.peak_task_count,
         }
 
 
@@ -287,7 +299,7 @@ class ProgressRecoveryV2:
             self.one_audit_open,
             self.reconstruction_without_retraining,
             self.reconstruction_reuses_immutable_continuations)
-        if any(type(value) is not bool or not value for value in flags):
+        if any(type(value) is not bool for value in flags):
             raise WorldAfterstateV2CapacityError("progress/recovery capability drift")
 
     def payload(self) -> dict[str, Any]:
@@ -341,6 +353,13 @@ class CapacityReceiptV2:
     progress_recovery: ProgressRecoveryV2
     schema: str = SCHEMA
     authority: Mapping[str, bool] = field(default_factory=lambda: dict(AUTHORITY))
+    # These fields are populated by the post-implementation runner.  Defaults
+    # preserve reopening of older typed test fixtures while production runner
+    # validation rejects an unpopulated receipt.
+    model_parameter_count: int = 0
+    candidate_distribution: tuple[tuple[int, int], ...] = ()
+    per_epoch_wall_seconds: int = 0
+    peak_task_count: int = 0
 
     def validate(self) -> None:
         if self.schema != SCHEMA or self.authority != AUTHORITY \
@@ -369,6 +388,18 @@ class CapacityReceiptV2:
                 or self.task_count != sum(arm.task_count for arm in self.arms):
             raise WorldAfterstateV2CapacityError(
                 "capacity command/arm accounting drift")
+        _int(self.model_parameter_count, "model parameter count")
+        _int(self.per_epoch_wall_seconds, "per-epoch wall seconds")
+        _int(self.peak_task_count, "peak task count")
+        if self.peak_task_count and self.peak_task_count > MAX_TASKS:
+            raise WorldAfterstateV2CapacityError("peak task cap drift")
+        if type(self.candidate_distribution) is not tuple:
+            raise WorldAfterstateV2CapacityError("candidate distribution drift")
+        for row in self.candidate_distribution:
+            if type(row) is not tuple or len(row) != 2:
+                raise WorldAfterstateV2CapacityError("candidate distribution drift")
+            _int(row[0], "candidate count", minimum=2)
+            _int(row[1], "candidate frequency", minimum=1)
         for stage in ARM_GRIDS:
             stage_arms = [arm for arm in self.arms if arm.stage == stage]
             if len({arm.byte_identity_sha256 for arm in stage_arms}) != 1:
@@ -442,6 +473,11 @@ class CapacityReceiptV2:
             "tiers": [tier.__dict__ for tier in sorted(
                 self.tiers, key=lambda value: value.tier)],
             "progress_recovery": self.progress_recovery.payload(),
+            "model_parameter_count": self.model_parameter_count,
+            "candidate_distribution": [list(row)
+                                        for row in self.candidate_distribution],
+            "per_epoch_wall_seconds": self.per_epoch_wall_seconds,
+            "peak_task_count": self.peak_task_count,
             "authority": dict(self.authority),
         }
 

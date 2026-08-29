@@ -142,6 +142,37 @@ continuation labels. D256 is the minimum admissible experiment; if it does
 not fit, the design closes. The exact tier, attempted-deal ceilings, member
 counts, and every source identity bind into the immutable freeze.
 
+Deal-to-split assignment is complete before any deal is played. The freeze
+first constructs an exact slot ledger whose rows bind split, source, required
+phase/position/role cell or mechanics surface, trump-rank slot, and trump-mode
+slot. Within each split/source group, slots have ordinal `i = 0..n-1` and use
+these literal orders:
+
+```text
+phase/position/role = lexicographic(
+    [early, middle, late], [lead, follow], [attacker, defender])
+mechanics_surface   = [multi-card, wide-ballot, late/high-point]
+trump_rank          = [2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K, A]
+trump_mode          = [spades, hearts, diamonds, clubs, no-trump]
+```
+
+Natural/diverse/select/audit slot `i` receives
+`phase_position_role[i mod 12]`; mechanics-fit slot `i` instead receives
+`mechanics_surface[i mod 3]`. Every slot also receives
+`trump_rank[i mod 13]` and `trump_mode[i mod 5]`. Thus, for every dimension
+of size `k`, every cell receives `floor(n / k)` slots and exactly the first
+`n mod k` literal-order cells receive one extra. This also fixes the joint
+assignment rather than balancing each marginal through separate discretion.
+Natural attempted deal identities are then derived from the domain-separated
+`tier | split | slot_id | attempt_index` hash schedule. Eligible sealed
+external-source game identities are ordered by a separately domain-separated
+game hash and assigned to their already-source-bound slots before replay.
+An attempt may fill only its assigned slot and may never cross a split,
+source, or stratum boundary. Replacement, when a preregistered outcome-free
+eligibility reason fires, advances only to the next preassigned identity for
+that slot and remains inside its frozen attempted ceiling. The builder API
+does not receive or persist terminal outcomes while assigning slots.
+
 Mechanics-hard deals are selected without outcomes in equal thirds across
 multi-card action, wide-ballot, and late/high-point surfaces, with a
 canonical state-hash remainder rule. They may improve representation coverage
@@ -263,14 +294,18 @@ P0 advances only if:
 3. at least 5% of sibling pairs have the same nonzero advantage sign in both
    replica halves, and the two half-sample sibling-advantage vectors have a
    strictly positive deal-bootstrap correlation lower bound; and
-4. transition, continuation, perspective, and symmetry checks pass.
+4. the combined two-direction chosen-minus-candidate-mean point estimate is
+   at least `+0.10` signed levels; and
+5. transition, continuation, perspective, and symmetry checks pass.
 
 Publish R=2/4/8 action agreement, return-mean error, intraclass correlation,
 nonzero-advantage dose, and both directional utilities. If P0 statistical
 gate 1, 2, or 3 fails, publish `STOP_NO_REPRODUCIBLE_VALUE_LABEL`; do not label
-any non-P0 deal or train. A P0 gate-4 mechanics or integrity failure instead
-routes to `REFUSE_MECHANICS_OR_CONTROL`. The unlabeled remainder is 160 deals
-for D256, 416 for D512, or 928 for D1024.
+any non-P0 deal or train. If gate 4 fails, publish
+`STOP_BELOW_WORTHWHILE_VALUE_FLOOR`; a reproducible but smaller signal is not
+silently promoted into a full spend. A P0 gate-5 mechanics or integrity
+failure instead routes to `REFUSE_MECHANICS_OR_CONTROL`. The unlabeled
+remainder is 160 deals for D256, 416 for D512, or 928 for D1024.
 
 P0 also freezes the pre-audit power calculation. Let `s` be the Bessel-
 corrected standard deviation across the 96 deal-level, two-direction-averaged
@@ -340,9 +375,21 @@ No Smooth-L1, ranking-only, policy, Q, confidence, or abstention loss is
 present.
 
 Loss is averaged first within root across replicas and candidates, then across
-deals. Train four fixed seeds for at most 20 epochs with patience 3 and one
-common selected epoch. There is no warm start, member-specific selection,
-retry, seed dropping, or audit-driven extension.
+deals. The primary ensemble trains four fixed seeds for at most 20 epochs with
+patience 3 and one common selected epoch. There is no warm start, member-
+specific selection, retry, seed dropping, or audit-driven extension.
+
+The natural-versus-complete-world-shuffle claim has two independent, frozen
+four-seed training blocks. Block 1 is the primary natural ensemble and its
+seed-paired shuffle control. Block 2 uses four fresh initialization/data-order
+seeds for a confirmatory natural ensemble and its seed-paired shuffle control;
+block-2 models never contribute to primary value or action predictions. Each
+block must independently satisfy both gate-5 deal-bootstrap lower bounds, and
+at least 3/4 paired members in each block must have positive natural-minus-
+shuffle mean differences for both metrics. This is training-seed replication,
+not eight members presented as one ensemble. Every block and its full cost is
+included in the capacity projection, and each four-member cohort follows the
+same common-epoch selection rule.
 
 ### Pre-audit recipe diagnosis
 
@@ -372,7 +419,7 @@ full training or audit opening, publish this ordered diagnostic ladder:
    target error, and common-epoch dispersion. No member may be dropped.
 5. **Pre-audit learning admission:** on select deals, the common-epoch
    ensemble must have strictly positive one-sided deal-bootstrap lower bounds
-   for RPS improvement over the fit prior and paired-advantage error
+   for RPS improvement over the natural-fit prior and paired-advantage error
    improvement over zero, with at least 3/4 members positive on mean RPS
    improvement. Failure publishes `SELECT_NONE_PREAUDIT_LEARNING` and leaves
    every audit label unopened.
@@ -411,14 +458,16 @@ correctness.
    lower bound.
 4. At least 3/4 members have positive mean ranked-probability-score
    improvement.
-5. Natural-minus-complete-world-shuffle lower bounds are strictly positive for
-   ranked probability score and paired-advantage error.
+5. In each of the two frozen training-seed blocks, natural-minus-complete-
+   world-shuffle lower bounds are strictly positive for ranked probability
+   score and paired-advantage error, and at least 3/4 seed-paired member means
+   are positive for both metrics.
 6. Every negative control fails on demand.
 
 **Production-action usefulness gates:**
 
-1. Ensemble action utility over retaining the production action has a positive
-   lower bound.
+1. Ensemble action utility over retaining the production action has a
+   deal-bootstrap lower bound of at least `+0.10` signed levels.
 2. At least 3/4 members have positive mean action utility.
 3. Non-incumbent selection dose is at least 5%.
 4. Natural-minus-complete-world-shuffle action-utility lower bound is strictly
@@ -435,11 +484,12 @@ RPS(p,y) = (1 / 203) * sum_{k=1}^{203}
            (sum_{j<=k} p_j - 1[y<=k])^2
 ```
 
-The prior is computed from fit rows in the frozen
+The prior is computed from **natural fit rows only** in the frozen
 `early/middle/late x attacker/defender x attacker-points-[0,40)/[40,80)/[80,+inf)`
 bucket. Each of 204 categories receives a Jeffreys `0.5` pseudocount. An empty
-bucket falls back to the identically smoothed global fit prior. Scores average
-first across actions/replicas within a root and then equally across deals.
+bucket falls back to the identically smoothed global natural-fit prior. Scores
+average first across actions/replicas within a root and then equally across
+deals.
 
 For every paired improvement, positive means `baseline loss - model loss` or
 `model utility - baseline utility`. Use 10,000 deterministic deal-bootstrap
@@ -474,8 +524,12 @@ world-shuffle component instead routes to `SELECT_NONE_NO_WORLD_SIGNAL`.
 Association permutation must change at least 90% of bindings and successor
 tensors. Label permutation must change at least 90% of donor bindings and 40%
 of numeric targets. World shuffle must change at least 90% of eligible world
-tensors. Each learning control uses the same four seeds, common-epoch rule,
-and target-free audit order as natural.
+tensors. Association and label controls use the primary four seeds. Complete-
+world shuffle uses both disjoint four-seed blocks and the paired natural block
+defined in Section 8. All cohorts use the common-epoch rule and target-free
+audit order. Any incomplete or deadline-truncated member in either comparison
+block routes to `REFUSE_RESOURCE_INCOMPLETE` before audit opening; a forensic
+checkpoint cannot satisfy gate 5.
 
 History chronology shuffle is diagnostic only. A complete Markov state may
 legitimately make history redundant, so its failure cannot close an otherwise
@@ -593,6 +647,7 @@ continuations whose exact immutable rows already reopen.
 - `REFUSE_RESOURCE_INCOMPLETE`
 - `REFUSE_TRAINING_RECIPE`
 - `STOP_NO_REPRODUCIBLE_VALUE_LABEL`
+- `STOP_BELOW_WORTHWHILE_VALUE_FLOOR`
 - `STOP_UNDERPOWERED`
 - `SELECT_NONE_PREAUDIT_LEARNING`
 - `SELECT_NONE_NO_ABSOLUTE_VALUE`
@@ -622,26 +677,29 @@ Terminal precedence is frozen and first-match-wins:
    -> `REFUSE_MECHANICS_OR_CONTROL`;
 3. failed P0 statistical gate 1, 2, or 3 ->
    `STOP_NO_REPRODUCIBLE_VALUE_LABEL`;
-4. P0 `n_required` above the chosen audit count -> `STOP_UNDERPOWERED`;
-5. failed optimizer/wiring canary -> `REFUSE_TRAINING_RECIPE`;
-6. failed select-fold learning admission ->
+4. P0 gate 4 below the minimum worthwhile `+0.10` point estimate ->
+   `STOP_BELOW_WORTHWHILE_VALUE_FLOOR`;
+5. P0 `n_required` above the chosen audit count -> `STOP_UNDERPOWERED`;
+6. failed optimizer/wiring canary -> `REFUSE_TRAINING_RECIPE`;
+7. failed select-fold learning admission ->
    `SELECT_NONE_PREAUDIT_LEARNING`;
-7. after the complete audit opens, the association- or label-permutation
+8. after the complete audit opens, the association- or label-permutation
    component of derived learning-control gate 6 fails ->
    `REFUSE_MECHANICS_OR_CONTROL`;
-8. audit learning gates 1, 2, or 4 fail ->
+9. audit learning gates 1, 2, or 4 fail ->
    `SELECT_NONE_NO_ABSOLUTE_VALUE`;
-9. gates 1, 2, and 4 pass but paired-advantage gate 3 fails ->
+10. gates 1, 2, and 4 pass but paired-advantage gate 3 fails ->
    `SELECT_NONE_NO_ACTION_SENSITIVITY`;
-10. gates 1--4 pass but either natural-minus-world-shuffle gate-5 lower bound
-    fails (and therefore the world-shuffle component of gate 6 fails) ->
+11. gates 1--4 pass but either seed block's natural-minus-world-shuffle gate-5
+    lower bound or paired-member stability requirement fails (and therefore
+    the world-shuffle component of gate 6 fails) ->
     `SELECT_NONE_NO_WORLD_SIGNAL`;
-11. all absolute-value gates pass and any production-action usefulness gate
+12. all absolute-value gates pass and any production-action usefulness gate
     fails -> `PASS_ABSOLUTE_VALUE_LEARNING_ONLY`;
-12. both complete gate layers pass ->
+13. both complete gate layers pass ->
     `PASS_ABSOLUTE_VALUE_AND_ACTION_EDGE_TO_CONSUMER_DESIGN`.
 
-Steps 7--12 are evaluated only after a complete single audit opening. Earlier
+Steps 8--13 are evaluated only after a complete single audit opening. Earlier
 stops leave audit labels unopened. A later reason may never replace an earlier
 route after outcomes are visible.
 

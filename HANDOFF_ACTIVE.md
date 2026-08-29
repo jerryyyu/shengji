@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 11:58 EDT**. Remote main before this update:
-`4053d16f6089568560488779071364224e234f66`.
+Last reconciled: **2026-08-29 12:05 EDT**. Remote main before this update:
+`c2ec1f4`.
 
 ## Review queue
 
@@ -131,12 +131,13 @@ run is live.
 - Claude's final exact-head PASS is `9aef077`. The single authorized run is
   live on Perf as `value-afterstate-v1-p1-scientific-c98bdeb-r2.service`,
   invocation `7ffbb2af8de84873a41ee3c555479123`, since 15:47:56 UTC. It cleared
-  admission and the repaired full train-population reopen. Natural stopped
-  normally after five epochs under the frozen patience rule and sealed its
-  manifest plus eight checkpoints immutable `0400`/one-link. The unit is now
-  inside identical-successor epoch 1 at 8/240 units. The old failure happened
-  before this boundary. Current peak is about 2.05 GB with zero restarts and
-  roughly 13.7 effective CPU cores; no held-out calibration label has opened.
+  admission and the repaired full train-population reopen. Natural and
+  identical-successor each stopped normally after five epochs under the
+  frozen patience rule and sealed their manifests plus eight checkpoints
+  immutable `0400`/one-link. At 16:05 UTC the unit advanced into the
+  action-association-permutation control. The old failure happened before
+  these boundaries. Current peak is about 2.28 GB with zero restarts and
+  roughly 14.9 effective CPU cores; no held-out calibration label has opened.
   The unit sequentially runs natural plus three
   controls, then seals target-free predictions, opens calibration once, seals
   the terminal and immediately reconstructs it. Its hard 12-hour deadline is

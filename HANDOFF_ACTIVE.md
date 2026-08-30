@@ -4,10 +4,10 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 08:29 EDT**. Remote main before this update:
-`759311f`.
+Last reconciled: **2026-08-30 08:40 EDT**. Remote main before this update:
+`6f361a1`.
 
-## Review queue — three narrow asks; R4 first
+## Review queue — one R4 dynamic ask
 
 Review the exact machine-generated R4 sealed-inner recovery claim first. The
 sole scientific unit reached its frozen hard limit at **12:23:20 UTC** with
@@ -29,64 +29,16 @@ binding followed by one independent verifier; no test reopening, retry, result
 replacement, interpretation, strength claim, promotion, deployment, training
 or second verifier. No recovery process is running while this review is open.
 
-Review PR #171 exact repaired head
-`e271ede7021dc8440896fc3b816e0699579968bc`, parent
-`b243368ca275988811c3e54db9c56b0de86f5fa1`. This is a two-file source delta
-after the authorized `b243368` capacity refusal below localized the failure
-above gameplay: both real Luna subprocesses recorded zero mailbox operations,
-and the initially non-acting peer returned without a terminal witness before
-the acting peer could establish a trace.
-
-The repair leaves the reviewed game, ballot, rollout, utility, Stop-hook,
-peer-sandbox, evidence, population and scheduler contracts unchanged. Both
-private workspaces, mailbox servers and peer-denial profiles still become ready
-first; only the engine's initial acting-team runner may then launch. The peer
-launches only when the engine gives it a turn or round-end requires terminal
-attachment. A can-fail witness holds the initial turn and raises on any eager
-non-acting launch, then requires exact launch order and real actions by both
-fake planners. Validation: **128 / 128** PT-Luna tests and clean diff-check.
-Review request:
-https://github.com/jerryyyu/shengji/pull/171#issuecomment-5468587196.
-
-Requested authority is exactly one fresh non-scientific, score-free
-progressive Mini capacity census; its first one-worker arm is the real launcher
-witness. Do not authorize the 104-game collection, model prose/outcome use,
-gameplay/strength claims, merge, retry beyond that census, training, promotion,
-deployment or Value use. On success, the next review binds only the capacity
-receipt plus immutable 52-deal x two-mirror freeze; unchanged source is not
-reviewed again.
-
-Review PR #170 exact repaired head
-`7c77ca70068d72a8ce3774258107c04ad05efdff`, parent
-`cf115ceac7dbf6f55a177a1de4058d14742a912b`. This is a two-file source delta
-after the authorized `cf115cea` capacity census found 32/32 eligible fixtures
-and then refused at the first state-successor arm because its legitimate
-canonical replay output equaled the fixture input SHA. The repair hashes each
-real operation output under an explicit operation-output schema/domain/stage,
-while retaining the pre-wrap guard that rejects a worker returning the raw
-fixture input identity. Its can-fail witness compares the exact ordered
-32-fixture population. Validation: **434 / 434** V2 wildcard tests,
-**48 / 48** focused capacity tests, both PR checks green and clean diff-check.
-Review request:
-https://github.com/jerryyyu/shengji/pull/170#issuecomment-5468647642.
-
-Requested authority is exactly one replacement non-scientific, score-free
-full-DAG Perf capacity census and, only after capacity success, one bounded
-target-free rehearsal/preflight. Do not authorize scientific training, audit
-opening, labels/outcomes, gameplay, PUCT/BELIEF integration, merge, retry
-beyond those two actions, promotion, deployment or a strength claim. If both
-succeed, the next review binds only their receipts plus the immutable
-scientific freeze; unchanged source is not reviewed again.
-
 Canonical ledger `979885f` PASSed both exact run-unblocking deltas: PR #171
 `b243368ca275988811c3e54db9c56b0de86f5fa1` for one fresh score-free Mini
 capacity census, and PR #170
 `cf115ceac7dbf6f55a177a1de4058d14742a912b` for one replacement score-free
 full-DAG Perf census followed, only on success, by one bounded target-free
-rehearsal. Both censuses have now refused safely in their isolated namespaces
-and consumed those authorities. PT and Value have the two repaired-head review
-asks above. Neither refusal opened scientific data, and no retry is
-pre-authorized.
+rehearsal. Both censuses refused safely in their isolated namespaces and
+consumed those authorities. Canonical `6f361a1` now PASSes repaired PR #171 head `e271ede7`
+for one replacement Mini census and repaired PR #170 head `7c77ca70` for one
+replacement Perf census followed conditionally by one target-free rehearsal.
+Both score-free censuses are now running; neither has scientific authority.
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -148,7 +100,7 @@ that exact claim receives PASS.
   Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
   the stronger reviewed privileged teacher. No promotion or strength claim.
 
-### PT-Luna fresh self-play — repaired capacity refused before gameplay
+### PT-Luna fresh self-play — replacement score-free capacity running
 
 - PR #171 exact head `b12eea0485b944225ed1b99670d99c31dd010d33`
   received three convergent canonical source PASS entries. At **06:09 EDT**
@@ -181,13 +133,17 @@ that exact claim receives PASS.
   authority. Do not spend another review on prompt-only or synthetic evidence.
 - PR #171 repaired head
   `e271ede7021dc8440896fc3b816e0699579968bc` applies the narrow engine-turn
-  launch gate described in the review queue. It is pushed and awaits one delta
-  review; no Mini process is running and no retry is authorized yet.
+  launch gate. Canonical `6f361a1` PASSed exactly one replacement score-free
+  Mini census. It launched at **08:38 EDT** in tmux
+  `pt-luna-cap-e271ede-r1`, root
+  `/private/tmp/shengji-pt-luna-capacity-e271ede-r1`. The first actual Luna
+  subprocess is active; the peer is held until its engine turn. No capacity
+  verdict exists yet and the 104-game collection remains unauthorized.
 - The 104 games remain unauthorized. Their eventual trajectories are only
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
 
-### Value-Afterstate V2 — output-identity repair awaits delta review
+### Value-Afterstate V2 — replacement score-free capacity running
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
   repaired pushed head `cf115ceac7dbf6f55a177a1de4058d14742a912b` is
@@ -240,10 +196,13 @@ that exact claim receives PASS.
   `7c77ca70068d72a8ce3774258107c04ad05efdff` changes only the capacity runner
   and its tests. It domain-separates identities derived from actual operation
   outputs and retains a failing-direction raw-input-identity witness over the
-  exact 32-fixture population. The source is pushed, both PR checks are green,
-  and the exact-head delta review above is the sole blocker to one replacement
-  score-free capacity census. No Perf process is running and no rehearsal or
-  scientific authority exists yet.
+  exact 32-fixture population. Canonical `6f361a1` PASSed one replacement
+  score-free Perf census and a conditional target-free rehearsal. The census
+  launched at **08:39 EDT** as
+  `value-v2-capacity-7c77ca7-r1.service`, root
+  `/root/value-v2-capacity-7c77ca7-output`, under the same 30 GiB/zero-swap,
+  2h05m bound. It is active with zero restarts. The rehearsal remains
+  conditional on capacity success; no scientific authority exists.
 
 ### Value-Afterstate V0 — independently verified refusal
 

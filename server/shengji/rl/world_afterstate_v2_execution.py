@@ -889,12 +889,19 @@ def _production_callable(name: str) -> Callable[..., Any] | None:
         "train_named_cohort": "world_afterstate_v2_training_controller",
         "run_terminal_v2": "world_afterstate_v2_terminal_controller",
         "verify_terminal_artifact_v2": "world_afterstate_v2_terminal_controller",
+        # Early diagnostics are exposed through closed stage adapters.  Keep
+        # the historical controller names in the execution ABI while binding
+        # their producer identity to the reviewed producer functions.
+        "run_optimizer_canary_v2": "world_afterstate_v2_diagnostic_producers",
+        "run_nested_curve_v2": "world_afterstate_v2_diagnostic_producers",
     }
     module_name = modules.get(name)
     if module_name is None:
         return None
     module = __import__(f"shengji.rl.{module_name}", fromlist=[name])
-    value = getattr(module, name, None)
+    aliases = {"run_optimizer_canary_v2": "produce_optimizer_canary_v2",
+               "run_nested_curve_v2": "produce_nested_curve_v2"}
+    value = getattr(module, aliases.get(name, name), None)
     return value if callable(value) else None
 
 
@@ -963,6 +970,19 @@ def bind_production_stage_controller(stage: str, *, freeze: ExecutionFreezeV2 | 
                     continue
                 from .world_afterstate_v2_stage_adapters import population_reopen_adapter
                 operation = population_reopen_adapter(freeze=freeze, repo=repo)
+            elif stage in ("p0-labels-gates", "optimizer-canary", "nested-curve"):
+                if freeze is None or repo is None:
+                    continue
+                from .world_afterstate_v2_stage_adapters import (
+                    p0_labels_gates_adapter, optimizer_canary_adapter,
+                    nested_curve_adapter)
+                factory = {"p0-labels-gates": p0_labels_gates_adapter,
+                           "optimizer-canary": optimizer_canary_adapter,
+                           "nested-curve": nested_curve_adapter}[stage]
+                try:
+                    operation = factory(freeze=freeze, repo=repo)
+                except ValueError:
+                    continue
             result = StageControllerV2(stage, name, operation, production=True)
             try:
                 result.validate()
@@ -990,6 +1010,16 @@ def validate_production_stage_set(*, freeze: ExecutionFreezeV2 | None = None,
                         continue
                     from .world_afterstate_v2_stage_adapters import population_reopen_adapter
                     candidate = population_reopen_adapter(freeze=freeze, repo=repo)
+                elif stage in ("p0-labels-gates", "optimizer-canary", "nested-curve"):
+                    if freeze is None or repo is None:
+                        continue
+                    from .world_afterstate_v2_stage_adapters import (
+                        p0_labels_gates_adapter, optimizer_canary_adapter,
+                        nested_curve_adapter)
+                    factory = {"p0-labels-gates": p0_labels_gates_adapter,
+                               "optimizer-canary": optimizer_canary_adapter,
+                               "nested-curve": nested_curve_adapter}[stage]
+                    candidate = factory(freeze=freeze, repo=repo)
                 StageControllerV2(stage, name, candidate, production=True).validate()
             except (MissingStageError, ValueError):
                 continue

@@ -4,16 +4,36 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 12:31 EDT**. Remote main before this update:
-`ad7ad17`.
+Last reconciled: **2026-08-29 23:45 EDT**. Remote main before this update:
+`968f749`.
 
-## Review queue
+## Review queue — one urgent actionable ask
 
-No review is currently actionable. Claude's exact `c98bdeb` PASS and
-module-generated `r2` marker are canonical at `9aef077`; the later `2b14386`
-HOLD is explicitly for superseded, never-initialized `e632e41` and does not
-negate the final-head marker. Do not repeat either review while the admitted
-run is live.
+### PR #172 R4 sealed-inner timeout recovery
+
+Review from scratch at exact head
+`1d576e4d17baf609976a4369ba58c7083cc27028`, stacked on PR #168 exact head
+`a327abb8d7aa70b2970fa0b7d47001edcb8270a6`.
+
+This is one consolidated source-only review. Verify that the absolute clean
+old checkout authenticates the sealed scientific freeze/admission/runtime,
+that the distinct clean new checkout authenticates the recovery source and
+runtime through an external exact-head marker, and that wrong/dirty/symlinked
+old source or any new-source/runtime/marker drift refuses. Verify the exact
+systemd timeout receipt, outcome-blind sealed-inner binding, dynamic pending
+review claim, route tombstone, single crash-safe verifier, receipt-only final
+reopen, and all-false retry/test/promotion/deployment/strength authority.
+
+Focused recovery tests: 54 passed. Result plus execution-identity/freeze
+battery: 90 passed. Diff-check clean.
+
+Return PASS or HOLD with only load-bearing blockers. PASS authorizes only
+generating the timeout receipt and exact pending recovery claim if the live
+scientific unit ends with `Result=timeout`, `MainPID=0`, a sealed inner
+`terminal/`, and no outer terminal. It does not authorize executing that
+pending recovery before its generated claim receives the separately required
+dynamic exact-artifact review; nor outcome interpretation, a second test
+opening, retry, merge, deployment, promotion, or a strength claim.
 
 ## Live work
 
@@ -57,16 +77,17 @@ run is live.
   canonical `origin/main` immediately before authentication; this closes the
   stale-remote-ref handoff failure observed during Value V0 without touching
   the scientific process or evidence.
-- Fail-safe watcher
+- Legacy fail-safe watcher
   `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is also active with a
   64-MiB envelope and has launched neither recovery nor verification. It waits
   until the scientific unit stops. A normal outer seal makes it exit without
   action; an unsealed `terminal.partial/` also makes it refuse without action.
-  Only the already-reviewed inner-only state (`terminal/` present, partial and
-  outer absent) can launch exact-head `recover-terminal-binding`; after that
-  succeeds it launches verifier `belief-r4-terminal-independent-verifier-
-  56bd35f-r2`. This closes the operator-attention gap without signalling,
-  duplicating or modifying the live scientific process.
+  Only the inner-only state (`terminal/` present, partial and outer absent)
+  can launch exact-head `recover-terminal-binding`; however that path repeats
+  the expensive old reconstruction. PR #172 replaces it with the narrower
+  sealed-inner pending route. Stop only this legacy recovery watcher after PR
+  #172 source PASS and before the scientific deadline; do not stop or modify
+  the scientific unit or its normal success-only independent-verifier watcher.
 - R5 remains paused until the independently reproduced R4 verdict and curves
   are interpreted.
 

@@ -4,10 +4,30 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 08:20 EDT**. Remote main before this update:
-`9364e41`.
+Last reconciled: **2026-08-30 08:29 EDT**. Remote main before this update:
+`759311f`.
 
-## Review queue — two narrow run-unblocking asks
+## Review queue — three narrow asks; R4 first
+
+Review the exact machine-generated R4 sealed-inner recovery claim first. The
+sole scientific unit reached its frozen hard limit at **12:23:20 UTC** with
+`Result=timeout`, status 15 and zero restarts; the success-only verifier watcher
+correctly launched nothing. The reviewed receipt builder then sealed
+`r4-completion-timeout-receipt.json`, SHA-256
+`b089dca4198dd3012b86ace734c9ff7f93fb5e0e57d05e75425a51eefabe1fd6`, with
+`outcome_bytes_opened=false`, `test_split_reopened=false`,
+`recovery_authorized=false` and `retry_authorized=false`. The reviewed pending
+claim builder reproduced the sealed inner manifest/tree and printed the exact
+dynamic claim without opening outcome bytes. Full claim and precise authority:
+https://github.com/jerryyyu/shengji/pull/172#issuecomment-5468692412.
+
+Validate that exact claim against live systemd state, the timeout receipt,
+canonical source-review marker `00c184d`, sealed inner identities and recovery
+source `5a81d89`. On PASS, append the authentic dynamic marker to canonical
+`HANDOFF_REVIEW.md`. It may authorize only the outcome-blind pending outer
+binding followed by one independent verifier; no test reopening, retry, result
+replacement, interpretation, strength claim, promotion, deployment, training
+or second verifier. No recovery process is running while this review is open.
 
 Review PR #171 exact repaired head
 `e271ede7021dc8440896fc3b816e0699579968bc`, parent
@@ -74,16 +94,10 @@ PR #172 is fully source-authenticated. Canonical commit
 `5a81d89cd954a63ac97ca8588926b3367c28c5c1`. Do not repeat this review or
 publish another marker.
 
-The actual capped `build-timeout-receipt` entrypoint authenticated that marker
-against both clean cloud checkouts and reached only the expected live-state
-refusal `R4 terminal systemd observation drift`, because the scientific unit
-is still active. No timeout receipt, route claim, outcome read, or evidence
-mutation occurred. There is no R4 review action until the unit changes state.
-
-If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
-timers below generate a timeout receipt and print the exact pending-recovery
-claim. That generated claim is the next single dynamic review ask. It must be
-reviewed against the live systemd state before any recovery executes.
+The live scientific unit has now timed out and the reviewed receipt/claim
+entrypoints authenticated that marker against both clean cloud checkouts. The
+first queue item is the required dynamic review. No recovery executes before
+that exact claim receives PASS.
 
 ## Live work
 
@@ -91,24 +105,15 @@ reviewed against the live systemd state before any recovery executes.
 
 - Strength Cloud exact execution head:
   `56bd35f0c45080121d094f6906ab8d1053ca9e6b`.
-- Unit `belief-r4-terminal-scientific-56bd35f-r1.service` is active with zero
-  restarts. At **2026-08-29 14:58 UTC**, it sealed the complete inner terminal:
+- Unit `belief-r4-terminal-scientific-56bd35f-r1.service` reached its frozen
+  hard limit at **2026-08-30 12:23:20 UTC** with `Result=timeout`, status 15 and
+  zero restarts. At **2026-08-29 14:58 UTC**, it had sealed the complete inner terminal:
   both score populations, human selection, scale curve, primary/control/human
   statistics, integrity receipt, result and inner manifest are immutable
-  `0400`/one-link files. Do not read the outcome yet. The same process is now
-  performing the mandatory immediate full reconstruction before publishing
-  outer `r4-completion-terminal.json`; the independent verifier starts only
-  after that boundary. Cgroup peak remains 23.76 GB under 24 GiB.
-- The frozen 31.68-hour scientific projection is not a reliable deadline
-  bound for this substep. Its measured `control_reopen_wall_nanoseconds`
-  executes `_capacity_context` (calibration import, input index, trained
-  cohorts and 13 calibration rounds), but never calls
-  `_derive_integrity_receipt`; it therefore omits the full capture/reference
-  reconstruction above. The systemd unit has a hard two-day limit ending
-  **2026-08-30 12:23 UTC** (08:23 EDT), and
-  immediate reconstruction repeats scoring plus integrity. Treat deadline
-  exhaustion as a real open risk, not a predicted failure or permission to
-  interrupt the only valid attempt.
+  `0400`/one-link files. It timed out during mandatory immediate reconstruction
+  before publishing outer `r4-completion-terminal.json`. Do not read the
+  outcome. The success-only independent-verifier watcher exited without
+  launching verification. Cgroup peak remained 23.76 GB under 24 GiB.
 - Deadline expiry is now pre-adjudicated from the reviewed source. If
   `terminal.partial/` remains and `terminal/` is absent, no inner decision
   sealed and `recover-terminal-binding` is ineligible: preserve the namespace
@@ -120,24 +125,17 @@ reviewed against the live systemd state before any recovery executes.
   exist, recovery is forbidden and only the independent verifier remains.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
-- After the now-sealed first terminal derivation, the same unit is performing
-  immediate full terminal reconstruction; watcher
-  `belief-r4-terminal-verifier-watch-56bd35f-r2.service` launches the separate
-  independent verifier only after a successful seal. The watcher refreshes
-  canonical `origin/main` immediately before authentication; this closes the
-  stale-remote-ref handoff failure observed during Value V0 without touching
-  the scientific process or evidence.
+- The reviewed timeout-receipt and pending-claim timers completed successfully.
+  The receipt and exact dynamic claim are bound in the first review-queue item.
+  No recovery has launched. A dynamic exact-claim PASS must precede the
+  outcome-blind pending outer binding and sole independent verifier.
 - The legacy duplicate-reconstruction watcher
   `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is stopped and
   inactive. The old prose-PASS-bound `5a81d89-r1` timers are also stopped and
-  inactive. Four active marker-bound timers replace them: canonical ref
-  refreshes at 12:24:00Z and 12:24:15Z, then
-  `belief-r4-timeout-receipt-00c184d-r2.timer` at 12:25Z and
-  `belief-r4-pending-claim-00c184d-r2.timer` at 12:28Z. They can only publish
-  the exact timeout receipt and print the dynamic review claim. They cannot
-  execute recovery, rescore, interpret outcomes, or launch a verifier. On
-  normal scientific success they fail closed without changing evidence. The
-  scientific service and normal success-only verifier watcher remain active.
+  inactive. The four marker-bound ref-refresh, timeout-receipt and pending-claim
+  timers have now fired and are inactive. They published only the receipt and
+  claim; they did not execute recovery, rescore, interpret outcomes or launch a
+  verifier.
 - R5 remains paused until the independently reproduced R4 verdict and curves
   are interpreted.
 

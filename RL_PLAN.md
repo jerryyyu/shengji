@@ -4,8 +4,9 @@ This file is the compact current research plan. It owns the scientific spine,
 milestones and evidence standards—not the live queue or run chronology.
 
 - Live priority/order: `BACKLOG.md`
-- Fleet state: `JOBS.md`
+- Fleet state: `HANDOFF_ACTIVE.md`
 - Current cross-agent handoff: `HANDOFF_ACTIVE.md`
+- Execution, review and long-run workflow: `AGENTS.md`
 - Callable policies and terminal synthesis: `AI_POLICIES.md`
 - BELIEF contracts: `BELIEF_V1_SPEC.md`, `BELIEF_V1_B2_DESIGN.md`
 - Full pre-compaction plan and model lineage:

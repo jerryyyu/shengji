@@ -28,16 +28,13 @@ telemetry. One T4 control arm was positive, but it used 14.8% more accepted
 worlds and 80.9% more searches than champion, so candidate widening and added
 compute remain confounded rather than established as a same-work win.
 
-The current research milestone is **BELIEF-V1**: a typed actor-visible world
-model that learns calibrated hidden-card ownership before it is allowed to
-change search. Its public/actor/private information contracts and reviewed B2
-offline source are merged through main `959c05d`; a fresh Mini design is frozen
-for external review, but no corpus, training, test-split opening, sampler,
-gameplay, or strength run has started. A separate three-arm
-design will measure ballot widening at champion work and at the original T4
-control work. See [BACKLOG.md](BACKLOG.md) for the executable queue,
-[JOBS.md](JOBS.md) for live fleet state, and [AI_POLICIES.md](AI_POLICIES.md)
-for canonical results.
+Current research separates three claims: BELIEF predicts hidden-card ownership,
+afterstate value estimates continuation quality, and privileged teachers test
+whether stronger planning can exploit better information. Each must first pass
+its own offline or diagnostic gate before it may change production search. See
+[BACKLOG.md](BACKLOG.md) for the executable queue,
+[HANDOFF_ACTIVE.md](HANDOFF_ACTIVE.md) for live fleet state, and
+[AI_POLICIES.md](AI_POLICIES.md) for canonical measured results.
 
 ## Quick start
 
@@ -179,13 +176,15 @@ validation battery.
 | `incidents/` | postmortems (what happened, why detection was slow) |
 | `PERF.md` | profiling, shipped optimisations, ranked gaps |
 | `BACKLOG.md` | current milestone, ordered work, blockers and exit gates |
-| `JOBS.md` | live fleet job plus compact terminal-job index |
+| `AGENTS.md` | automatically loaded execution, review, parallelism and long-run discipline |
+| `CODEX_WORKFLOW.md` | project-scoped Codex setup and exact rollback |
+| `RESEARCH_PRINCIPLES.md` | durable scientific doctrine, estimands and evidence boundaries |
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
-| `HANDOFF_ACTIVE.md` | compact executable Codex/Claude mailbox |
+| `HANDOFF_ACTIVE.md` | current fleet truth and compact executable Codex/Claude mailbox |
 | `HANDOFF_REVIEW.md` | short active exact-review mailbox; completed ledgers are archived |
 | `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
 | `web/README.md` | client architecture, protocol contract, UI invariants |
-| `docs_archive/` | compacted history (RL chronology, resolved backlog, old review rounds) |
+| `docs_archive/` | compacted history (RL chronology, old job snapshots, resolved work/reviews) |
 
 Top-level documents are reserved for current project, operational, or durable
 contract surfaces. A completed one-off experiment spec should be summarized in

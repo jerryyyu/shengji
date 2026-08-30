@@ -4,8 +4,8 @@ This file is the compact, current contract for callable bot policies and the
 research conclusions that affect them. It is not a run log.
 
 - Active order and gates: `BACKLOG.md`
-- Fleet and terminal stubs: `JOBS.md`
-- Current cross-agent handoff: `HANDOFF_ACTIVE.md`
+- Fleet state and current cross-agent handoff: `HANDOFF_ACTIVE.md`
+- Execution, review and long-run workflow: `AGENTS.md`
 - Exact external-review ledger: `HANDOFF_REVIEW.md`
 - Model and research plan: `RL_PLAN.md`
 - Full policy history through this compaction:

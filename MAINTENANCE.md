@@ -136,7 +136,8 @@ Prune and synthesize; do not append another copy of current truth:
   and durable AI conclusions.
 - `BACKLOG.md`: current milestone, ordered work, blockers and exit gates only.
 - `RL_PLAN.md`: model/search/data design rationale; no duplicate live queue.
-- `JOBS.md`: one authoritative running section plus compact terminal stubs.
+- `HANDOFF_ACTIVE.md`: current fleet state and exactly one actionable review ask.
+- `AGENTS.md`: durable execution/review discipline; not current project status.
 - `docs_archive/`: daily chronology and completed experiment bodies.
 
 Put current state at the top with a date. Re-read every “running”, “next”,
@@ -190,7 +191,8 @@ is. Apply these gates whenever compute leaves implementation time available:
   branches and PRs be removed. Never delete the sole copy of ignored evidence.
 - **Documentation:** one fact has one owner. `BACKLOG.md` is the executable
   queue, `AI_POLICIES.md` the terminal policy/result ledger, `RL_PLAN.md` the
-  research rationale, `JOBS.md` live compute, and dated archives chronology.
+  research rationale, `HANDOFF_ACTIVE.md` live compute, and dated archives
+  chronology.
   Rotate append-only ledgers at an acknowledged cutoff and preserve exact raw
   bytes plus a digest. Prefer a short plain-English progress/remaining-work
   column over another protocol paragraph.

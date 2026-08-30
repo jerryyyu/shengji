@@ -14,6 +14,7 @@ the rules these incidents produced; this folder keeps the reasoning.
 
 | id | date | severity | title | detected by |
 |---|---|---|---|---|
+| [INC-19](INC-20260830-19-belief-r4-all-or-nothing-dag.md) | 08-30 | S3 | BELIEF R4 made verification the critical path and discarded useful work | repeated multi-day critical-path and recovery audit |
 | [INC-18](INC-20260813-18-request-template-self-authorized-s5.md) | 08-13 | S3 | PR #74's request template self-authorized a partial S5 one-shot and consumed its admission | unexpected perf-host producer plus exact systemd/admission audit |
 | [INC-17](INC-20260812-17-request-template-looked-like-review-pass.md) | 08-12 | S4 | Codex request template at column one looked like an independent S5 PASS | prefix scan plus author-heading authentication |
 | [INC-16](INC-20260812-16-s4-queue-process-filter-false-positive.md) | 08-12 | S4 | S4 handoff queue would have mistaken the persistent tmux server for a live Pair worker | pre-transition executable-identity audit |

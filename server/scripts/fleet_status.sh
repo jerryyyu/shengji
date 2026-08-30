@@ -9,7 +9,7 @@
 # so label each by the rl_data/snapshot/ckpt files it holds open.
 #
 # Convention for NEW long jobs: run as a named script/module logging to
-# server/runs/logs/<name>.log, and note intent in the machine's JOBS.md.
+# server/runs/logs/<name>.log, and note current intent in HANDOFF_ACTIVE.md.
 
 # Run from anywhere. This used to require cwd=server/, and when the caller's
 # cwd had drifted the script simply failed — printing an EMPTY Codex mailbox

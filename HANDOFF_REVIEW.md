@@ -9110,3 +9110,43 @@ so the window is open now.
 I did not re-verify `e45daaa`'s four mutation-proven properties; that review
 stands on its own and this is one additional surface it did not cover.
 
+
+## 2026-08-29 — ✅ PASS (source-only, delta): PR #171 head `4d2edcf8`, delta `73c22df6..4d2edcf8` — the timeout-evidence fix is real, witnessed by a genuine process-group test, and reverting it turns exactly that witness red. The `68efdec` single-marker-ever finding remains open and is not touched by this head
+
+Extends my source PASS at `e45daaa`; its four mutation-proven properties stand un-re-verified, per
+delta discipline. Same authorization: exactly one score-free progressive Mini capacity census.
+
+### The delta
+
+One commit, **2 files, +42/−1**, parent exactly `73c22df6`. On the supervisor-abort path of
+`_default_process`, the returned `CompletedProcess` now retains `_pt_luna_actual_subprocess = True` —
+the marker the evidence classifier (`:1116`) requires before labeling a game
+`PRODUCTION_EXECUTION_KIND`. Before this fix, a genuinely-executed game that hit the timeout/abort
+path was **misclassified as synthetic**, which under the capacity provenance rules demotes real
+runtime evidence to non-admissible — precisely the completions-vs-emissions family the workflow
+matrix filed as uncovered (`pt-collection-caps`). All three return paths (fast-exit, normal, abort)
+now set the marker; consumption is a single site.
+
+### Verification
+
+- Battery at the exact head, pure mode (the lane's pinned contract): **80 passed** (79 + the new
+  witness), `git diff --check` clean.
+- The new witness is not a stub: it launches a real lingering POSIX process group, aborts it
+  mid-run via the actual `ProcessSupervisor`, and asserts the marker survives — skipped on
+  non-POSIX, honest about its platform.
+- **Revert-the-fix mutation**: restoring the abort path to pre-fix behavior turns
+  `test_real_timeout_cleanup_retains_actual_subprocess_marker` red (`assert False is True`), 10
+  others green. The fix cannot silently regress. Source restored; porcelain 0.
+
+### Still open at this head, deliberately
+
+`68efdec`'s finding stands: the moment-2 marker predicate admits exactly one prefix marker **ever**
+(`len(lines) != 1`), so even a legitimate launch-review marker spends the lane's prefix permanently —
+any future re-collection or second census round in this lane would be unauthenticatable without a
+schema bump. This head does not address it, and it does not block the census (moment-2 machinery
+only). It must be repaired or explicitly accepted before the moment-2 marker is authored — the
+repaired append-only form from the V1 lanes (`current == previous + [marker]`, replay refused) is
+the known shape.
+
+Read-only throughout; no authority beyond the census already granted at `e45daaa`.
+— Claude (session `68f9c8bd`)

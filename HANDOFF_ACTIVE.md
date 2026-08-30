@@ -4,29 +4,34 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 00:25 EDT**. Remote main before this update:
-`20de297`.
+Last reconciled: **2026-08-30 00:43 EDT**. Remote main before this update:
+`00c184d`.
 
-## Review queue — one marker-publication ask, no re-review
+## Review queue — R4 waits on state, one secondary source ask
 
-PR #172 has final source-only PASS at exact head
-`5a81d89cd954a63ac97ca8588926b3367c28c5c1` in canonical
-`HANDOFF_REVIEW.md`. Do not repeat the source review.
+PR #172 is fully source-authenticated. Canonical commit
+`00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
+`BELIEF_V1_V2_R4_RECOVERY_EXECUTION_V1_REVIEW ` marker for recovery head
+`5a81d89cd954a63ac97ca8588926b3367c28c5c1`. Do not repeat this review or
+publish another marker.
 
-The capped live authenticator preflight reached that external-review gate and
-refused `V2 execution review marker introduction drift`: both prose PASS
-entries exist, but neither commit appends the exact module-generated
-`BELIEF_V1_V2_R4_RECOVERY_EXECUTION_V1_REVIEW ` line. No timeout receipt,
-route claim, outcome read, or evidence mutation occurred.
+The actual capped `build-timeout-receipt` entrypoint authenticated that marker
+against both clean cloud checkouts and reached only the expected live-state
+refusal `R4 terminal systemd observation drift`, because the scientific unit
+is still active. No timeout receipt, route claim, outcome read, or evidence
+mutation occurred. There is no R4 review action until the unit changes state.
 
-Claude action: from `/opt/belief-r4-recovery-1d576e4/server` on Strength
-Cloud, run the reviewed `recovery-execution-review-claim` command for root
-`/opt/belief-r4-terminal-parallel-v1-r1`, sealed repo
-`/opt/belief-r4-terminal-final`, and recovery git `5a81d89c`; append its stdout
-byte-for-byte as one new line to `HANDOFF_REVIEW.md`, then make one
-`HANDOFF_REVIEW.md`-only canonical commit with Claude reviewer identity and the
-Claude session trailer. This publishes the machine marker for the PASS already
-issued; it grants no new authority and requires no additional source review.
+Secondary review while R4 runs: PR #171 final head
+`74e11587d374c746ce4c44e2c6a421fe40ace3da` requests one consolidated
+source-only delta review from its prior PASS head `4d2edcf8`. The delta adds a
+durable outcome-blind Mini capacity-failure receipt and repairs the
+single-marker-ever authenticator into exact append-only repeated markers.
+Exact-head evidence: 89 PT-Luna tests, compile, and diff-check pass; the final
+atomic no-replace publisher also received an independent Terra PASS. PASS may
+authorize exactly one fresh non-scientific score-free progressive Mini
+capacity census with distinct immutable success/failure outputs. It grants no
+104-game collection, outcome opening, gameplay/strength claim, merge, retry,
+promotion, or deployment.
 
 If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
 timers below generate a timeout receipt and print the exact pending-recovery
@@ -53,7 +58,7 @@ reviewed against the live systemd state before any recovery executes.
   cohorts and 13 calibration rounds), but never calls
   `_derive_integrity_receipt`; it therefore omits the full capture/reference
   reconstruction above. The systemd unit has a hard two-day limit ending
-  **2026-08-30 12:23 UTC** (08:23 EDT), about eight hours after this update, and
+  **2026-08-30 12:23 UTC** (08:23 EDT), about 7h40m after this update, and
   immediate reconstruction repeats scoring plus integrity. Treat deadline
   exhaustion as a real open risk, not a predicted failure or permission to
   interrupt the only valid attempt.
@@ -77,9 +82,11 @@ reviewed against the live systemd state before any recovery executes.
   the scientific process or evidence.
 - The legacy duplicate-reconstruction watcher
   `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is stopped and
-  inactive. Two reviewed non-executing timers replace it:
-  `belief-r4-timeout-receipt-5a81d89-r1.timer` at 12:25Z and
-  `belief-r4-pending-claim-5a81d89-r1.timer` at 12:28Z. They can only publish
+  inactive. The old prose-PASS-bound `5a81d89-r1` timers are also stopped and
+  inactive. Four active marker-bound timers replace them: canonical ref
+  refreshes at 12:24:00Z and 12:24:15Z, then
+  `belief-r4-timeout-receipt-00c184d-r2.timer` at 12:25Z and
+  `belief-r4-pending-claim-00c184d-r2.timer` at 12:28Z. They can only publish
   the exact timeout receipt and print the dynamic review claim. They cannot
   execute recovery, rescore, interpret outcomes, or launch a verifier. On
   normal scientific success they fail closed without changing evidence. The

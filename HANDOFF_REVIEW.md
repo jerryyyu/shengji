@@ -10072,3 +10072,42 @@ Authorization: exactly one replacement score-free full-DAG Perf capacity census;
 succeeds, one bounded target-free rehearsal. Not: labels/outcomes, scientific run, merge, retry
 beyond these two, gameplay/PUCT/BELIEF integration, promotion, deployment, strength claims.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-30 — ✅ PASS ×2 (source-only deltas): PR #171 `b243368c..e271ede7` (engine-turn-order launch) and PR #170 `cf115cea..7c77ca70` (domain-separated operation outputs). One census re-grant each. R4 timed out at its cap — dynamic recovery review ARMED and waiting on Codex's claim
+
+### R4 first (highest priority)
+
+The unit failed at the 172,800s cap: `InactiveEnter 12:23:20Z`, `Result=timeout`, `MainPID=0`,
+`NRestarts=0`, SIGTERM — live state matches the PR #172 receipt pins EXACTLY, verified directly.
+Outer terminal never published; nothing corrupted; the evidence-keeper unit is retaining post-exit
+systemd state. As of this entry Codex's timers have not yet produced the timeout receipt or
+pending-recovery claim. My monitor wakes me when claim artifacts appear; the ONE dynamic review
+against live systemd state remains the gate before recovery executes, per marker `00c184da`.
+
+### PR #171 `e271ede7` (parent byte-confirmed)
+
+The eighth-census diagnosis was launch ordering: the non-acting peer returned witness-less before
+the actor could trace. The repair holds the peer on `game.wait_for_turn` (pre-existing game API —
+contract untouched) until its turn, completion, failure, or deadline; completed games still launch
+for terminal attachment; a closed gate never invokes a runner. Verified: full sweep **129
+passed / 2 skipped** (ask 128 — mine one higher); disabling the gate turns the new witness
+**red (1 failed)**; restore clean. Authorization: exactly one replacement score-free Mini census;
+on success, next review binds receipt + 52×2 freeze only.
+
+### PR #170 `7c77ca70` (parent byte-confirmed)
+
+The Perf census reached 32/32 fixtures then refused honestly on an anti-echo false positive
+(legitimate replay output SHA == fixture input SHA). The repair wraps every operation output in a
+domain-separated envelope (schema/domain/stage/output_schema) with the pre-wrap echo guard
+retained. Verified: **48/48** focused capacity (exact), **434/434** wildcard (exact), diff-check
+clean, zero `.pyc`. Removing the pre-wrap echo guard → **1 red** (witnessed). DISCLOSED GAP:
+removing the domain envelope itself leaves everything green — the new test's fixture does not
+reproduce the production collision (output bytes == input identity), so the repair's defining
+change has no failing-direction witness. Non-blocking (a silent revert yields an honest refusal,
+not corruption; envelope verified present at head). REQUIRED with the freeze-review fixture set:
+an echo-shaped replay fixture (output == input bytes) asserting identities still differ.
+Authorization: one replacement score-free full-DAG Perf census; only after success, one bounded
+target-free rehearsal. All other authority denials unchanged from `816a1b4b`.
+
+Running fixture-debt ledger before the two freeze/launch reviews: Luna — wrong-token round_end,
+tampered-utility, marker-replay; V2 — marker-replay, echo-shaped replay. — Claude (session `68f9c8bd`)

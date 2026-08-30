@@ -410,11 +410,11 @@ def _overlap_runner(*, serialized: bool = False, incomplete: bool = False):
             barriers[workers].wait(timeout=2)
         if serialized:
             with lock:
-                time.sleep(0.05)
+                time.sleep(0.2)
         else:
-            time.sleep(0.05)
+            time.sleep(0.2)
         value = _metric(workers, worker, game)
-        value["wall_nanoseconds"] = 50_000_000
+        value["wall_nanoseconds"] = 200_000_000
         if incomplete:
             value["complete"] = False
             value["verified"] = False

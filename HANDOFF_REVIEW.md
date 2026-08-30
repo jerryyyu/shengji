@@ -9201,3 +9201,41 @@ this machinery goes unused — the cheapest outcome and still the likelier one.
 Coverage limits: I did not line-audit +2,358 lines; deep on the timeout receipt, marker
 authentication, one-shot verifier, and authority maps. Base PR #168's parallel-integrity delta is
 NOT covered by this review and needs its own. — Claude (session `68f9c8bd`)
+
+## 2026-08-30 — ✅ PASS (source-only, delta): PR #172 final head `5a81d89c`, delta `1d576e4d..5a81d89c`. **The masked witness from my prior PASS is closed — my own surviving mutation now turns exactly the new test red.** Recovery machinery is fully authorized ahead of the 12:23Z cap
+
+Delta discipline per the ask: the unchanged 2,358-line surface PASSed at `8cdc4a8` is not re-reviewed.
+
+### Delta verified
+
+Three commits, **2 files, +89/−5**, `1d576e4d` a confirmed ancestor, `git diff --check` clean.
+Batteries at the exact head, strict native: **91 passed** (wider) matching the claim; focused
+recovery file 55 within it.
+
+**The requested witness exists and bites.** `test_r4_timeout_receipt_refuses_non_timeout_service_result`
+is precisely the one-test fix named in my prior PASS: real receipt args, `service_result="exit-code"`,
+asserting the exact `timeout receipt observation drift` refusal. Re-applying my previously-surviving
+mutation (deleting the `failed`/`timeout` clauses from :1245) now fails **exactly that test** —
+1 failed / 54 passed. The packet's headline condition is no longer silently deletable.
+
+**The runtime-binding delta is the subtle half, and its shape is right.**
+`_prepare_recovery_import_roots` makes the frozen venv execute the **new reviewed Python** checkout
+while importing only the **byte-bound native extension** from the old sealed checkout
+(`/opt/belief-r4-terminal-final/server`): the old Python import root is removed from `sys.path`, the
+reviewed source is prepended, and `shengji.engine` is imported for the native binding with
+`SHENGJI_FAST` temporarily popped so the import cannot recursively activate the old fast path —
+then `validate_live_execution` proves both identities. Protocol JSON now reads from the correct
+clean checkout. This is the exact split the ask describes: old checkout authenticates the sealed
+scientific identity, new checkout carries the reviewed recovery code, native bytes shared by digest.
+
+The stated dry run on Cloud (claim reproduced against sealed git `56bd35f0` + recovery git
+`5a81d89c` without opening result bytes) is consistent with everything I can check from source; I
+did not re-execute it — the pending-recovery review, if ever needed, re-verifies live facts anyway.
+
+### Authorization, unchanged in scope
+
+Generating the timeout receipt and exact pending recovery claim **iff** the live unit ends
+`Result=timeout, MainPID=0`, inner `terminal/` sealed, outer absent. Executing the pending recovery
+still requires its own dynamic exact-artifact review; interpretation, second opening, retry, merge,
+promotion, deployment, strength all remain unauthorized. Base PR #168 remains unreviewed (unchanged
+coverage limit). — Claude (session `68f9c8bd`)

@@ -8,6 +8,7 @@ import threading
 import pytest
 
 from shengji.rl import privileged_teacher_luna_selfplay as luna
+from shengji.rl import privileged_teacher_sol0 as sol0
 
 
 SECRET = b"luna-self-play-secret-material!!"
@@ -48,6 +49,29 @@ def test_fresh_root_and_full_information_observation():
     assert game.root_sha256 == mirror.root_sha256
     assert game.session(0).agent_identity == mirror.session(1).agent_identity
     assert game.session(1).agent_identity == mirror.session(0).agent_identity
+
+
+def test_rollout_exposes_team_relative_utility_and_defender_prefers_fewer_points():
+    root = luna.build_root(SECRET, ("2", 0, 0))
+    game = luna.LunaSelfPlayGame(root, coordinate=("2", 0, 0))
+    team = game.acting_team
+    observed = game.session(team).observe()
+    response = game.session(team).rollout({
+        "op": "rollout", "decision_sha256": observed["decision_sha256"],
+        "candidate_indices": [0], "continuations": ["heuristic-all"]})
+    result = response["results"][0]
+    expected = sol0.signed_level_utility(
+        result["rollout_points"], banker_seat=root.banker,
+        perspective_seat=team)
+    assert result["team_signed_level_utility"] == expected
+    assert sol0.signed_level_utility(
+        20, banker_seat=0, perspective_seat=0) > sol0.signed_level_utility(
+            60, banker_seat=0, perspective_seat=0)
+    assert sol0.signed_level_utility(
+        result["rollout_points"], banker_seat=root.banker,
+        perspective_seat=0) == -sol0.signed_level_utility(
+            result["rollout_points"], banker_seat=root.banker,
+            perspective_seat=1)
 
 
 def test_state_digest_binds_current_points_and_mechanics():

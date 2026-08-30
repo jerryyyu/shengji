@@ -1222,8 +1222,15 @@ class LunaSelfPlayGame:
             if isinstance(points, bool) or not isinstance(points, (int, float)) \
                     or not math.isfinite(points) or not float(points).is_integer():
                 raise PrivilegedTeacherLunaSelfPlayError("rollout result drift")
+            attacker_points = int(points)
+            banker_seat = self.rnd.banker
+            if banker_seat is None:
+                raise PrivilegedTeacherLunaSelfPlayError("engine banker absent")
             return {"candidate_index": index, "continuation": continuation,
-                    "rollout_points": int(points)}
+                    "rollout_points": attacker_points,
+                    "team_signed_level_utility": sol0.signed_level_utility(
+                        attacker_points, banker_seat=banker_seat,
+                        perspective_seat=team)}
 
     def commit(self, team: int, decision_sha256: str, index: int) -> dict[str, object]:
         with self._condition:

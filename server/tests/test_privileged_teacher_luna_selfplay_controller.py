@@ -499,6 +499,14 @@ def test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable():
     assert diagnostic["trace_operation_counts"] == {"observe": 1}
     assert secret not in refusal.canonical_bytes()
 
+    evidence.body["process_error"] = (
+        "Luna terminal mailbox witness absent or malformed")
+    terminal = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=(evidence,))
+    assert terminal.body["evidence_classification"][0]["process_error"] == (
+        "Luna terminal mailbox witness absent or malformed")
+
     evidence.body["process_error"] = "provider leaked: " + secret.decode()
     opaque = controller.CapacityEvidenceRefusal(
         coordinate=("2", 0, 0), workers=1, worker=0, game=0,

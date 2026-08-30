@@ -39,6 +39,20 @@ def test_codex_0150_usage_schema_is_bound_exactly():
     }
 
 
+def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
+    prompt = execution.planner_prompt(
+        mailbox_path=tmp_path / "mailbox", tool_script=TOOL)
+    assert "sole objective is to" in prompt
+    assert "maximize final signed-level utility" in prompt
+    assert "full-information privilege" in prompt
+    assert "Candidate zero is always the production prior" in prompt
+    assert "defender's utility is the exact opposite" in prompt
+    for consideration in ("multi-trick control", "partnership entries",
+                           "point timing", "trump exhaustion",
+                           "banker defense", "attacker thresholds"):
+        assert consideration in prompt
+
+
 @pytest.mark.parametrize("mutation", ("missing", "unknown"))
 def test_codex_usage_schema_drift_refuses(mutation):
     usage = {key: 1 for key in execution.CODEX_USAGE_KEYS}
@@ -198,7 +212,7 @@ def test_forced_actions_are_engine_only_and_artifacts_reopen(tmp_path):
         assert evidence.body["actual_subprocess"] is False
 
 
-def test_generic_or_wrong_completion_response_cannot_seal(tmp_path):
+def test_generic_or_wrong_completion_response_is_diagnostic_only(tmp_path):
     def wrong_final(session, *, mailbox_path, final_output_path, **_kwargs):
         while True:
             observed = execution.tool_request(mailbox_path, {"op": "observe"})
@@ -219,11 +233,64 @@ def test_generic_or_wrong_completion_response_cannot_seal(tmp_path):
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
         planner_process=wrong_final)
-    assert result.status == "incomplete"
+    assert result.status == "complete"
     assert result.scientific_admissible is False
     team0 = json.loads((result.attempt_path / "process-team-0.json").read_text())
-    assert team0["process_error"] == (
-        "Luna model final response absent or malformed")
+    assert team0["process_error"] is None
+    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+
+
+def test_absent_final_after_terminal_trace_is_complete(tmp_path):
+    def absent_final(session, *, mailbox_path, **_kwargs):
+        terminal = None
+        while terminal is None:
+            observed = execution.tool_request(mailbox_path, {"op": "observe"})
+            if observed["status"] in ("round_end", "failed"):
+                terminal = observed
+            elif observed["status"] == "waiting":
+                waited = execution.tool_request(mailbox_path, {"op": "wait"})
+                if waited["status"] in ("round_end", "failed"):
+                    terminal = waited
+            else:
+                execution.tool_request(mailbox_path, {
+                    "op": "play", "decision_sha256": observed["decision_sha256"],
+                    "candidate_index": 0, "confidence": "low"})
+        assert terminal["status"] == "round_end"
+        return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=absent_final)
+    assert result.status == "complete"
+    assert all(item.body["process_error"] is None for item in result.evidence)
+    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+
+
+def test_missing_codex_turn_completed_fails_closed(tmp_path):
+    def missing_completion(session, **kwargs):
+        completed = _fake(session, **kwargs)
+        return subprocess.CompletedProcess(completed.args, 0,
+                                            b'{"type":"thread.started"}\n')
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=missing_completion)
+    assert result.status == "incomplete"
+    assert any("Codex completion telemetry drift" in (item.body["process_error"] or "")
+               for item in result.evidence)
+
+
+def test_early_generic_final_without_terminal_trace_fails_closed(tmp_path):
+    def early(_session, *, final_output_path, **_kwargs):
+        final_output_path.write_text("done")
+        return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=early)
+    assert result.status == "incomplete"
+    assert any("terminal mailbox witness absent" in (item.body["process_error"] or "")
+               for item in result.evidence)
 
 
 def test_coordinated_rehash_cannot_remove_terminal_mailbox_witness(tmp_path):
@@ -343,6 +410,8 @@ def test_process_failure_aborts_game_and_wakes_peer(tmp_path):
     assert result.status == "incomplete"
     assert game.failed is not None
     assert len(result.evidence) == 2
+    assert any("peer-aborted/cascade" in (item.body["process_error"] or "")
+               for item in result.evidence)
     assert execution.reopen_attempt(result.attempt_path).status == "incomplete"
     assert not (result.attempt_path / "terminal-receipt.json").exists()
 

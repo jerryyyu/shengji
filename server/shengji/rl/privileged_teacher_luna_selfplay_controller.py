@@ -69,6 +69,7 @@ _CAPACITY_PROCESS_ERRORS = frozenset({
     "Codex completion telemetry drift",
     "Codex token telemetry drift",
     "Luna model final response absent or malformed",
+    "Luna terminal mailbox witness absent or malformed",
 })
 _CAPACITY_PROCESS_ERROR_OTHER = "other"
 _CAPACITY_OP_OTHER = "other"

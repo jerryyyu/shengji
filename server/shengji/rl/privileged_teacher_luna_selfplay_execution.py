@@ -256,15 +256,26 @@ def planner_prompt(*, mailbox_path: Path, tool_script: Path,
                    python: Path = Path(sys.executable)) -> str:
     tool = f"{python} -P -B {tool_script} --mailbox {mailbox_path}"
     return f"""You are PT-Luna, one team in a bounded full-information Shengji self-play round.
-You control both seats of your assigned partnership. Use only this tool:
+You control both seats of your assigned partnership. Your sole objective is to
+maximize final signed-level utility for that partnership. Utility is
+team-relative: positive means your partnership wins the round, and the
+defender's utility is the exact opposite of the attacker's for the same final
+attacker points. You have full-information privilege: all hands and the
+burial are exposed because this is a bounded teacher diagnostic, not a player
+information set. Use only this tool:
   {tool} observe
   {tool} wait
-  {tool} rollout --decision SHA --candidates 0,1 --continuations heuristic-all
+  {tool} rollout --decision SHA --candidates 0,1 --continuations smart-all,team-smart
   {tool} play --decision SHA --candidate 0 --confidence low
 Call observe before every decision. If it reports waiting, call wait; wait
 wakes when the other team acts, the round ends, or the game fails. You may
 roll out only on your team's decision and may play only one listed candidate.
 Candidate zero is always the production prior and is the bounded fallback.
+Interpret every rollout by your team's signed-level utility, including when
+your team is defending; do not optimize raw attacker points as a substitute.
+Consider multi-trick control, partnership entries, point timing, trump exhaustion,
+banker defense, attacker thresholds, and the risk that a conclusion depends on
+one continuation assumption.
 Continue until round_end.
 The final legal play or subsequent observe/wait returns a one-time
 completion_token. Do not stop early. Your final response must contain only
@@ -539,6 +550,7 @@ class ProcessSupervisor:
         self._processes: dict[int, subprocess.Popen[bytes]] = {}
         self._aborted = threading.Event()
         self.reason: str | None = None
+        self.abort_team: int | None = None
 
     @property
     def aborted(self) -> bool:
@@ -576,10 +588,11 @@ class ProcessSupervisor:
         except ProcessLookupError:
             pass
 
-    def abort(self, reason: str) -> None:
+    def abort(self, reason: str, *, team: int | None = None) -> None:
         with self._lock:
             if not self._aborted.is_set():
                 self.reason = reason
+                self.abort_team = team
                 self._aborted.set()
             processes = list(self._processes.values())
             for process in processes:
@@ -851,7 +864,7 @@ def _attempt_path(private_root: Path, game: luna.LunaSelfPlayGame) -> Path:
 
 
 def _validate_workspace_population(workspace: Path, *, complete: bool) -> None:
-    """Refuse planner-created files outside the two frozen workspace files."""
+    """Refuse planner-created files outside the frozen workspace files."""
     if not workspace.is_dir() or workspace.is_symlink():
         raise LunaExecutionError("planner workspace identity drift")
     names = set()
@@ -860,8 +873,10 @@ def _validate_workspace_population(workspace: Path, *, complete: bool) -> None:
             raise LunaExecutionError("planner workspace file population drift")
         names.add(child.name)
     allowed = {"sandbox.sb", "final.json"}
-    if not names <= allowed or "sandbox.sb" not in names \
-            or (complete and names != allowed):
+    # ``final.json`` is model prose and may be absent or malformed after the
+    # engine has emitted its terminal mailbox witness.  It remains captured
+    # when present, but never gates completion or peer health.
+    if not names <= allowed or "sandbox.sb" not in names:
         raise LunaExecutionError("planner workspace file population drift")
 
 
@@ -880,6 +895,44 @@ def _validate_budget(value: object) -> None:
             or value["used"] > value["decision_limit"]
             or value["round_used"] > value["round_limit"]):
         raise LunaExecutionError("process rollout budget drift")
+
+
+def _terminal_trace_witness(trace: object, *, team: int,
+                            completion_token_sha256: object) -> bool:
+    """Derive a team completion witness solely from its recorded mailbox.
+
+    The final model message is deliberately not consulted here.  A witness
+    must be a canonical, hash-bound ``round_end`` response emitted by this
+    team's server, and its token digest must equal the process receipt.
+    """
+    if (type(trace) is not list or not isinstance(completion_token_sha256, str)
+            or not _valid_completion_token(completion_token_sha256)):
+        return False
+    for event in trace:
+        if type(event) is not dict or set(event) != {
+                "request", "response", "request_sha256", "response_sha256"}:
+            continue
+        request = event["request"]
+        response = event["response"]
+        if (type(request) is not dict or type(response) is not dict
+                or event["request_sha256"] != _sha(request)
+                or event["response_sha256"] != _sha(response)
+                or request.get("op") not in ("observe", "wait", "play")
+                or response.get("status") != "round_end"
+                or response.get("schema") != luna.GAME_SCHEMA):
+            continue
+        op = request["op"]
+        expected = ({"schema", "status", "completion_token"}
+                    if op in ("observe", "wait") else
+                    {"schema", "status", "acting_team", "completion_token"})
+        token = response.get("completion_token")
+        if (set(response) == expected and _valid_completion_token(token)
+                and _sha_bytes(token.encode("ascii"))
+                == completion_token_sha256):
+            if op == "play" and response.get("acting_team") is not None:
+                continue
+            return True
+    return False
 
 
 def _validate_trace_semantics(
@@ -987,12 +1040,25 @@ def _validate_trace_semantics(
             raise LunaExecutionError("process rollout response drift")
         for result, (index, name) in zip(results, keys):
             if (type(result) is not dict or set(result) != {
-                    "candidate_index", "continuation", "rollout_points"}
+                    "candidate_index", "continuation", "rollout_points",
+                    "team_signed_level_utility"}
                     or result.get("candidate_index") != index
                     or result.get("continuation") != name
                     or isinstance(result.get("rollout_points"), bool)
-                    or not isinstance(result.get("rollout_points"), int)):
+                    or not isinstance(result.get("rollout_points"), int)
+                    or result.get("rollout_points") < 0
+                    or isinstance(result.get("team_signed_level_utility"), bool)
+                    or not isinstance(result.get("team_signed_level_utility"), int)):
                 raise LunaExecutionError("process rollout result drift")
+            try:
+                expected_utility = sol0.signed_level_utility(
+                    result["rollout_points"],
+                    banker_seat=trajectory_events[decision]["state_before"]["banker"],
+                    perspective_seat=team)
+            except Exception as exc:
+                raise LunaExecutionError("process rollout utility drift") from exc
+            if result["team_signed_level_utility"] != expected_utility:
+                raise LunaExecutionError("process rollout utility drift")
         _validate_budget(response.get("budget"))
         return
     if (set(request) != {"op", "decision_sha256", "candidate_index",
@@ -1141,20 +1207,25 @@ def run_luna_game(
         except LunaExecutionError as exc:
             usage = {key: 0 for key in sorted(CODEX_USAGE_KEYS)}
             process_error = process_error or str(exc)
-        try:
-            final_obj = json.loads(final_raw.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            final_obj = None
-        expected_final = {"schema": FINAL_RESPONSE_SCHEMA, "status": "complete",
-                          "completion_token": session._completion_token}
-        if final_obj != expected_final:
-            process_error = process_error or "Luna model final response absent or malformed"
-        if not game.complete:
-            process_error = process_error or "Luna model process did not complete engine round"
-        if process_error is not None:
-            game.fail(process_error)
-            supervisor.abort(process_error)
         trace = list(trace_server.trace) if trace_server is not None else []
+        token_sha256 = _sha_bytes(session._completion_token.encode("ascii"))
+        peer_aborted = (supervisor.abort_team is not None
+                        and supervisor.abort_team != team)
+        if peer_aborted:
+            process_error = ("peer-aborted/cascade: "
+                             + (supervisor.reason or "peer process failure"))
+        elif process_error is None and completed is not None \
+                and completed.returncode == 0 and not _terminal_trace_witness(
+                    trace, team=team,
+                    completion_token_sha256=token_sha256):
+            process_error = "Luna terminal mailbox witness absent or malformed"
+        if process_error is None and not game.complete:
+            process_error = game.failed or (
+                "Luna model process did not complete engine round")
+        if process_error is not None:
+            if not peer_aborted:
+                game.fail(process_error)
+                supervisor.abort(process_error, team=team)
         actual_subprocess = bool(
             planner_process is None and completed is not None
             and getattr(completed, "_pt_luna_actual_subprocess", False))
@@ -1170,8 +1241,7 @@ def run_luna_game(
                 "codex_usage": usage,
                 "stdout_base64": base64.b64encode(stdout).decode("ascii"),
                 "final_base64": base64.b64encode(final_raw).decode("ascii"),
-                "completion_token_sha256": _sha_bytes(
-                    session._completion_token.encode("ascii")),
+                "completion_token_sha256": token_sha256,
                 "process_returncode": (completed.returncode if completed else None),
                 "process_error": process_error,
                 "execution_kind": execution_kind,
@@ -1524,8 +1594,9 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                 completion_token_sha256=completion_token_sha256)
         if (body_schema == PRIVATE_TRACE_SCHEMA
                 and manifest["status"] == "complete"
-                and not any(event["response"].get("status") == "round_end"
-                            for event in trace)):
+                and not _terminal_trace_witness(
+                    trace, team=team,
+                    completion_token_sha256=completion_token_sha256)):
             raise LunaExecutionError("process terminal mailbox witness absent")
         try:
             if _codex_jsonl_usage(stdout) != body["codex_usage"]:
@@ -1552,28 +1623,13 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
     if manifest["status"] == "incomplete" and not isinstance(error, str):
         raise LunaExecutionError("incomplete manifest error drift")
     if manifest["status"] == "complete":
+        # Completion is sealed by process status, Codex telemetry, engine
+        # receipt, and the independently rederived mailbox witness above.
+        # ``final_base64`` and ``output_sha256`` are retained as diagnostics;
+        # model-authored final prose is not an authority boundary.
         for item in entries:
-            try:
-                final = json.loads(base64.b64decode(
-                    item.body["final_base64"]).decode("utf-8"))
-            except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise LunaExecutionError(
-                    "complete process evidence drift") from exc
-            is_current = item.body["schema"] == PRIVATE_TRACE_SCHEMA
-            token = final.get("completion_token") if type(final) is dict else None
-            expected_final = ({"schema": FINAL_RESPONSE_SCHEMA,
-                               "status": "complete",
-                               "completion_token": token}
-                              if is_current else {
-                                  "schema": LEGACY_FINAL_RESPONSE_SCHEMA,
-                                  "status": "complete"})
             if (item.body["process_returncode"] != 0
-                    or item.body["process_error"] is not None
-                    or final != expected_final
-                    or is_current and (
-                        not _valid_completion_token(token)
-                        or _sha_bytes(token.encode("ascii"))
-                        != item.body["completion_token_sha256"])):
+                    or item.body["process_error"] is not None):
                 raise LunaExecutionError("complete process evidence drift")
     # Every contested play must have one matching private mailbox request. A
     # forced engine action has no request and is intentionally excluded.

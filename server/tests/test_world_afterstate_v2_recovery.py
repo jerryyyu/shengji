@@ -131,6 +131,11 @@ def test_nested_mutations_and_model_only_resume_refuse():
         _reopen(_rehash(value))
 
     value = json.loads(raw)
+    value["receipt"]["gradient_norm_nano"] += 1
+    with pytest.raises(WorldAfterstateV2RecoveryError):
+        _reopen(_rehash(value))
+
+    value = json.loads(raw)
     state = value["optimizer"]["parameters"][0]["exp_avg"]
     decoded = bytearray(base64.b64decode(state["data_base64"]))
     decoded[0] ^= 1

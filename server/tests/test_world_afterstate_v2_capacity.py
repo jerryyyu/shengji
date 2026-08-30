@@ -198,6 +198,35 @@ def test_composed_dag_disk_and_progress_recovery_bindings():
     with pytest.raises(WorldAfterstateV2CapacityError, match="progress"):
         _receipt(progress_recovery=_progress(
             progress_interval_fraction_ppm=10_001)).validate()
+    with pytest.raises(WorldAfterstateV2CapacityError, match="proven"):
+        _progress(one_audit_open=False).validate()
+
+
+def test_production_command_wall_binds_sequential_arms_plus_dag():
+    arms = _arms()
+    selected = tuple(min((arm for arm in arms if arm.stage == stage),
+                         key=lambda arm: (arm.wall_seconds, arm.variant))
+                    for stage in ARM_GRIDS)
+    measured = tuple((name, 10) for name in (
+        "optimizer-canary", "nested-curve-25", "nested-curve-50",
+        "nested-curve-100", "p0", "label", "block-1-natural",
+        "block-1-action-association-permutation",
+        "block-1-label-permutation", "block-1-complete-world-shuffle",
+        "block-2-natural", "block-2-complete-world-shuffle",
+        "precision-select-inference", "precision-select", "audit",
+        "reconstruction"))
+    composed = _composed(measured_stage_walls_seconds=measured)
+    with pytest.raises(WorldAfterstateV2CapacityError, match="accounting"):
+        _receipt(
+            arms=arms, selected_arms=selected,
+            command_wall_seconds=sum(arm.wall_seconds for arm in arms)
+            + sum(value for _, value in measured) - 1,
+            task_count=1, peak_task_count=1, composed=composed).validate()
+    _receipt(
+        arms=arms, selected_arms=selected,
+        command_wall_seconds=sum(arm.wall_seconds for arm in arms)
+        + sum(value for _, value in measured),
+        task_count=1, peak_task_count=1, composed=composed).validate()
 
 
 def test_tier_selection_is_outcome_blind_and_uses_protocol_thresholds():

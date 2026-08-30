@@ -14,12 +14,42 @@ from .world_afterstate_v2_diagnostics import (
     ModelSelectorPowerReceiptV2, OptimizerCanaryReceiptV2,
     validate_model_selector_power_v2, validate_optimizer_canary_v2)
 from .world_afterstate_v2_evaluation import (
-    EvaluationMetricReceiptV2, EvaluationResultV2)
+    AbsoluteCurveScoreReceiptV2, EvaluationMetricReceiptV2, EvaluationResultV2)
 from .world_afterstate_v2_metrics import BootstrapIntervalV2, JeffreysPriorV2
 
 
 class WorldAfterstateV2ReopenError(ValueError):
     """A serialized V2 terminal input did not exactly reconstruct."""
+
+
+def reopen_absolute_curve_score_v2(
+        value: Mapping[str, Any]) -> AbsoluteCurveScoreReceiptV2:
+    payload = _mapping(value, "absolute curve score")
+    required = {
+        "schema", "population_sha256", "source_binding_sha256", "deal_count",
+        "rps_nano", "paired_target_error_nano", "deal_rps_nano",
+        "deal_paired_target_error_nano",
+    }
+    if set(payload) != required or type(payload["deal_rps_nano"]) is not list \
+            or type(payload["deal_paired_target_error_nano"]) is not list:
+        raise WorldAfterstateV2ReopenError(
+            "absolute curve score field population drift")
+    try:
+        result = AbsoluteCurveScoreReceiptV2(
+            population_sha256=payload["population_sha256"],
+            source_binding_sha256=payload["source_binding_sha256"],
+            deal_count=payload["deal_count"], rps_nano=payload["rps_nano"],
+            paired_target_error_nano=payload["paired_target_error_nano"],
+            deal_rps_nano=tuple(tuple(row) for row in payload["deal_rps_nano"]),
+            deal_paired_target_error_nano=tuple(
+                tuple(row) for row in payload["deal_paired_target_error_nano"]),
+            schema=payload["schema"])
+        result.validate()
+    except Exception as exc:
+        raise WorldAfterstateV2ReopenError(
+            "absolute curve score reconstruction refused") from exc
+    _exact(result, payload, "absolute curve score")
+    return result
 
 
 def _mapping(value: object, label: str) -> dict[str, Any]:
@@ -47,7 +77,8 @@ def reopen_optimizer_canary_v2(
         "model_seed", "root_count", "optimizer_steps",
         "early_stopping_used", "gradients_finite", "weights_finite",
         "initial_loss_nano", "empirical_loss_nano", "final_loss_nano",
-        "normalized_progress_ppm", "passed", "authority",
+        "normalized_progress_ppm", "passed", "empirical_entropy_nano",
+        "empirical_paired_residual_nano", "authority",
     }
     if set(payload) != required:
         raise WorldAfterstateV2ReopenError(
@@ -236,6 +267,7 @@ def reopen_evaluation_result_v2(
 
 __all__ = [
     "WorldAfterstateV2ReopenError", "reopen_evaluation_result_v2",
+    "reopen_absolute_curve_score_v2",
     "reopen_jeffreys_prior_v2", "reopen_model_selector_power_v2",
     "reopen_optimizer_canary_v2",
 ]

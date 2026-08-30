@@ -387,7 +387,10 @@ def reopen_recovery(
             "schema", "epoch", "batch_count", "example_count", "root_count",
             "mean_root_loss_nano", "config_sha256", "population_sha256",
             "schedule_sha256", "model_state_sha256_before",
-            "model_state_sha256_after", "split", "cohort", "authority"} \
+            "model_state_sha256_after", "split", "cohort",
+            "gradient_norm_nano", "update_norm_nano",
+            "prediction_entropy_nano", "paired_target_error_nano",
+            "authority"} \
             or receipt_payload["authority"] != {
                 "training_launch_authorized": False,
                 "audit_opening_authorized": False}:

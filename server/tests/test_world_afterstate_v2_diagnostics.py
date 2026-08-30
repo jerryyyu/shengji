@@ -23,7 +23,9 @@ def _canary(**changes):
                 early_stopping_used=False, gradients_finite=True,
                 weights_finite=True, initial_loss_nano=1_000,
                 empirical_loss_nano=100, final_loss_nano=280,
-                normalized_progress_ppm=800_000, passed=True)
+                normalized_progress_ppm=800_000, passed=True,
+                empirical_entropy_nano=100,
+                empirical_paired_residual_nano=0)
     body.update(changes)
     return OptimizerCanaryReceiptV2(**body)
 
@@ -95,6 +97,7 @@ def test_optimizer_canary_is_exactly_fixed_and_progress_is_rederived():
     assert not any(AUTHORITY.values())
     for changes, match in ((("root_count", 15), "identity"),
                            (("optimizer_steps", 499), "identity"),
+                           (("optimizer_steps", 501), "identity"),
                            (("normalized_progress_ppm", 800_001), "progress"),
                            (("final_loss_nano", 900), "progress")):
         with pytest.raises(WorldAfterstateV2DiagnosticsError, match=match):
@@ -104,6 +107,22 @@ def test_optimizer_canary_is_exactly_fixed_and_progress_is_rederived():
     with pytest.raises(WorldAfterstateV2DiagnosticsError,
                        match="gate reconstruction"):
         dataclasses.replace(failed, passed=True).validate()
+
+
+def test_optimizer_canary_empirical_evidence_is_bound_and_nonzero_pair_fails_gate():
+    with pytest.raises(WorldAfterstateV2DiagnosticsError, match="entropy"):
+        _canary(empirical_entropy_nano=99).validate()
+    with pytest.raises(WorldAfterstateV2DiagnosticsError, match="paired residual"):
+        _canary(empirical_paired_residual_nano=1, passed=False).validate()
+
+
+def test_optimizer_canary_nonfinite_wiring_cannot_pass():
+    for field in ("gradients_finite", "weights_finite"):
+        failed = _canary(**{field: False, "passed": False})
+        failed.validate()
+        with pytest.raises(WorldAfterstateV2DiagnosticsError,
+                           match="gate reconstruction"):
+            dataclasses.replace(failed, passed=True).validate()
 
 
 def test_nested_curve_binds_prefixes_gaps_slopes_and_member_zero_checkpoint():

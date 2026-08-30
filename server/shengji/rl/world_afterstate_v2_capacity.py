@@ -30,6 +30,7 @@ SCHEMA = "world-afterstate-v2-post-implementation-capacity-v1"
 ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v1"
 PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v1"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-recovery-v1"
+MEASUREMENT_SCOPE = "retained-32-material-sample-projection-v1"
 MAX_COMMAND_WALL_SECONDS = 2 * 60 * 60
 MEMORY_LIMIT_BYTES = 30 * 1024**3
 MAX_TASKS = 4_096
@@ -215,6 +216,10 @@ class ComposedProjectionV2:
     peak_memory_bytes: int
     composed_artifact_bytes: int
     free_disk_bytes_before: int
+    # Retain measured and projected units per stage; fixed-cost and split
+    # workloads therefore do not inherit one universal fit/32 multiplier.
+    stage_unit_counts: tuple[tuple[str, int, int], ...] = ()
+    measured_stage_walls_seconds: tuple[tuple[str, int], ...] = ()
     schema: str = PROJECTION_SCHEMA
 
     def validate(self) -> None:
@@ -223,6 +228,29 @@ class ComposedProjectionV2:
         names = [name for name, _ in self.stage_walls_seconds]
         if tuple(names) != COMPOSED_STAGE_NAMES or len(set(names)) != len(names):
             raise WorldAfterstateV2CapacityError("composed stage grid drift")
+        if type(self.stage_unit_counts) is not tuple:
+            raise WorldAfterstateV2CapacityError("composed stage unit population drift")
+        if self.stage_unit_counts:
+            if any(type(row) is not tuple or len(row) != 3
+                   for row in self.stage_unit_counts):
+                raise WorldAfterstateV2CapacityError("composed stage unit counts drift")
+        if type(self.measured_stage_walls_seconds) is not tuple:
+            raise WorldAfterstateV2CapacityError("measured stage wall population drift")
+        if self.measured_stage_walls_seconds:
+            if tuple(row[0] for row in self.measured_stage_walls_seconds) \
+                    != COMPOSED_STAGE_NAMES \
+                    or any(type(row) is not tuple or len(row) != 2
+                           or type(row[1]) is not int or row[1] < 1
+                           for row in self.measured_stage_walls_seconds):
+                raise WorldAfterstateV2CapacityError("measured stage wall grid drift")
+        if self.stage_unit_counts and not self.measured_stage_walls_seconds:
+            raise WorldAfterstateV2CapacityError("measured stage walls missing")
+            if tuple(row[0] for row in self.stage_unit_counts) != COMPOSED_STAGE_NAMES:
+                raise WorldAfterstateV2CapacityError("composed stage unit grid drift")
+            if any(type(row) is not tuple or len(row) != 3
+                   or type(row[1]) is not int or type(row[2]) is not int
+                   or row[1] < 1 or row[2] < 1 for row in self.stage_unit_counts):
+                raise WorldAfterstateV2CapacityError("composed stage unit counts drift")
         for name, value in self.stage_walls_seconds:
             if type(name) is not str:
                 raise WorldAfterstateV2CapacityError("composed stage name drift")
@@ -251,6 +279,9 @@ class ComposedProjectionV2:
             "peak_memory_bytes": self.peak_memory_bytes,
             "composed_artifact_bytes": self.composed_artifact_bytes,
             "free_disk_bytes_before": self.free_disk_bytes_before,
+            "stage_unit_counts": [list(row) for row in self.stage_unit_counts],
+            "measured_stage_walls_seconds": [
+                list(row) for row in self.measured_stage_walls_seconds],
         }
 
 
@@ -301,6 +332,9 @@ class ProgressRecoveryV2:
             self.reconstruction_reuses_immutable_continuations)
         if any(type(value) is not bool for value in flags):
             raise WorldAfterstateV2CapacityError("progress/recovery capability drift")
+        if not all(flags):
+            raise WorldAfterstateV2CapacityError(
+                "progress/recovery capabilities are not all proven")
 
     def payload(self) -> dict[str, Any]:
         self.validate()
@@ -360,6 +394,7 @@ class CapacityReceiptV2:
     candidate_distribution: tuple[tuple[int, int], ...] = ()
     per_epoch_wall_seconds: int = 0
     peak_task_count: int = 0
+    measurement_scope: str = MEASUREMENT_SCOPE
 
     def validate(self) -> None:
         if self.schema != SCHEMA or self.authority != AUTHORITY \
@@ -367,6 +402,8 @@ class CapacityReceiptV2:
                 or self.memory_limit_bytes != MEMORY_LIMIT_BYTES \
                 or self.swap_bytes != ZERO_SWAP_BYTES:
             raise WorldAfterstateV2CapacityError("capacity receipt identity drift")
+        if self.measurement_scope != MEASUREMENT_SCOPE:
+            raise WorldAfterstateV2CapacityError("capacity measurement scope drift")
         _int(self.command_wall_seconds, "command wall", minimum=1)
         _int(self.task_count, "command task count", minimum=1)
         if self.command_wall_seconds > MAX_COMMAND_WALL_SECONDS \
@@ -384,8 +421,24 @@ class CapacityReceiptV2:
         actual_grid = {(arm.stage, arm.variant) for arm in self.arms}
         if actual_grid != expected_grid or len(actual_grid) != len(self.arms):
             raise WorldAfterstateV2CapacityError("capacity arm grid drift")
-        if self.command_wall_seconds < sum(arm.wall_seconds for arm in self.arms) \
-                or self.task_count != sum(arm.task_count for arm in self.arms):
+        arm_peak_tasks = max((arm.peak_task_count or arm.task_count)
+                             for arm in self.arms)
+        # New receipts bind command task_count to simultaneous peak telemetry.
+        # The zero-valued field remains accepted for old typed fixtures, whose
+        # legacy accounting was the sum of sequential arm samples.
+        task_accounting_ok = (
+            self.task_count == self.peak_task_count == arm_peak_tasks
+            if self.peak_task_count else
+            self.task_count == sum(arm.task_count for arm in self.arms))
+        # A production command executes the arm grid sequentially and then
+        # runs the retained-sample DAG.  The six-hour scientific projection
+        # is separate and must not be mistaken for measured command wall.
+        arm_wall = sum(arm.wall_seconds for arm in self.arms)
+        required_command_wall = arm_wall + (
+            sum(value for _, value in self.composed.measured_stage_walls_seconds)
+            if self.peak_task_count else 0)
+        if self.command_wall_seconds < required_command_wall \
+                or not task_accounting_ok:
             raise WorldAfterstateV2CapacityError(
                 "capacity command/arm accounting drift")
         _int(self.model_parameter_count, "model parameter count")
@@ -478,6 +531,7 @@ class CapacityReceiptV2:
                                         for row in self.candidate_distribution],
             "per_epoch_wall_seconds": self.per_epoch_wall_seconds,
             "peak_task_count": self.peak_task_count,
+            "measurement_scope": self.measurement_scope,
             "authority": dict(self.authority),
         }
 
@@ -509,6 +563,6 @@ __all__ = [
     "ARM_GRIDS", "AUTHORITY", "CapacityArmV2", "CapacityReceiptV2",
     "ComposedProjectionV2", "MAX_COMMAND_WALL_SECONDS", "MAX_TASKS",
     "MEMORY_LIMIT_BYTES", "ProgressRecoveryV2", "TierProjectionV2",
-    "WorldAfterstateV2CapacityError", "choose_capacity_tier_v2",
+    "MEASUREMENT_SCOPE", "WorldAfterstateV2CapacityError", "choose_capacity_tier_v2",
     "capacity_receipt_sha256", "validate_capacity_receipt_v2",
 ]

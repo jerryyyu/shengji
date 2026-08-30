@@ -388,6 +388,10 @@ def _epoch_receipt(payload: object) -> WorldAfterstateV2EpochReceipt:
             model_state_sha256_before=payload.get("model_state_sha256_before"),
             model_state_sha256_after=payload.get("model_state_sha256_after"),
             split=payload.get("split"), cohort=payload.get("cohort"),
+            gradient_norm_nano=payload.get("gradient_norm_nano"),
+            update_norm_nano=payload.get("update_norm_nano"),
+            prediction_entropy_nano=payload.get("prediction_entropy_nano"),
+            paired_target_error_nano=payload.get("paired_target_error_nano"),
             schema=payload.get("schema"))
         if result.payload() != payload:
             raise ValueError
@@ -475,6 +479,7 @@ def validate_cohort_manifest(value: object) -> None:
                             "optimizer_steps", "early_stopping_used", "gradients_finite",
                             "weights_finite", "initial_loss_nano", "empirical_loss_nano",
                             "final_loss_nano", "normalized_progress_ppm", "passed",
+                            "empirical_entropy_nano", "empirical_paired_residual_nano",
                             "schema", "authority")})
             validate_optimizer_canary_v2(canary)
             if not canary.passed:

@@ -15,7 +15,7 @@ from typing import Any, Sequence
 from .belief_contract import canonical_json_bytes
 
 
-CANARY_SCHEMA = "world-afterstate-v2-optimizer-canary-receipt-v1"
+CANARY_SCHEMA = "world-afterstate-v2-optimizer-canary-receipt-v2"
 CURVE_SCHEMA = "world-afterstate-v2-nested-curve-receipt-v1"
 POINT_SCHEMA = "world-afterstate-v2-nested-curve-point-v1"
 STABILITY_SCHEMA = "world-afterstate-v2-primary-stability-receipt-v1"
@@ -98,6 +98,8 @@ class OptimizerCanaryReceiptV2:
     final_loss_nano: int
     normalized_progress_ppm: int
     passed: bool
+    empirical_entropy_nano: int
+    empirical_paired_residual_nano: int
     schema: str = CANARY_SCHEMA
     authority: dict[str, bool] = field(default_factory=lambda: dict(AUTHORITY))
 
@@ -122,6 +124,15 @@ class OptimizerCanaryReceiptV2:
                 (self.final_loss_nano, "canary final loss"),
                 (self.normalized_progress_ppm, "canary normalized progress")):
             _int(value, label)
+        _int(self.empirical_entropy_nano, "canary empirical entropy")
+        _int(self.empirical_paired_residual_nano,
+             "canary empirical paired residual")
+        if self.empirical_loss_nano != self.empirical_entropy_nano:
+            raise WorldAfterstateV2DiagnosticsError(
+                "optimizer canary empirical loss/entropy drift")
+        if self.empirical_paired_residual_nano != 0:
+            raise WorldAfterstateV2DiagnosticsError(
+                "optimizer canary empirical paired residual drift")
         denominator = self.initial_loss_nano - self.empirical_loss_nano
         numerator = self.initial_loss_nano - self.final_loss_nano
         expected = (numerator * 1_000_000 // denominator
@@ -152,6 +163,8 @@ class OptimizerCanaryReceiptV2:
                 "final_loss_nano": self.final_loss_nano,
                 "normalized_progress_ppm": self.normalized_progress_ppm,
                 "passed": self.passed,
+                "empirical_entropy_nano": self.empirical_entropy_nano,
+                "empirical_paired_residual_nano": self.empirical_paired_residual_nano,
                 "authority": dict(AUTHORITY)}
 
     def sha256(self) -> str:

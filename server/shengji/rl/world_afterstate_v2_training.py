@@ -517,6 +517,12 @@ class WorldAfterstateV2EpochReceipt:
     model_state_sha256_after: str
     split: str
     cohort: str
+    # Deterministic, epoch-level telemetry in nano-units.  These values are
+    # computed inside train_epoch; callers cannot assert or inject them.
+    gradient_norm_nano: int
+    update_norm_nano: int
+    prediction_entropy_nano: int
+    paired_target_error_nano: int
     schema: str = EPOCH_SCHEMA
 
     def validate(self) -> None:
@@ -534,6 +540,12 @@ class WorldAfterstateV2EpochReceipt:
                       self.schedule_sha256, self.model_state_sha256_before,
                       self.model_state_sha256_after):
             _digest(value, "V2 epoch receipt digest")
+        for value, label in (
+                (self.gradient_norm_nano, "gradient norm"),
+                (self.update_norm_nano, "update norm"),
+                (self.prediction_entropy_nano, "prediction entropy"),
+                (self.paired_target_error_nano, "paired target error")):
+            _strict_int(value, label)
 
     def payload(self) -> dict[str, Any]:
         self.validate()
@@ -547,6 +559,10 @@ class WorldAfterstateV2EpochReceipt:
                 "model_state_sha256_before": self.model_state_sha256_before,
                 "model_state_sha256_after": self.model_state_sha256_after,
                 "split": self.split, "cohort": self.cohort,
+                "gradient_norm_nano": self.gradient_norm_nano,
+                "update_norm_nano": self.update_norm_nano,
+                "prediction_entropy_nano": self.prediction_entropy_nano,
+                "paired_target_error_nano": self.paired_target_error_nano,
                 "authority": {"training_launch_authorized": False,
                                "audit_opening_authorized": False}}
 
@@ -570,6 +586,12 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
     total_loss = 0.0
     total_roots = 0
     total_examples = 0
+    gradient_norm_total = 0.0
+    gradient_root_count = 0
+    entropy_total = 0.0
+    entropy_root_count = 0
+    paired_residual_total = 0.0
+    paired_residual_root_count = 0
     split = batches[0].split
     cohort = batches[0].cohort
     for batch in batches:
@@ -588,18 +610,68 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
                               strict=True))
         schedule.append(list(batch.example_keys))
     before = model_state_sha256(model)
+    epoch_parameters_before = [parameter.detach().clone()
+                               for parameter in model.parameters()]
     model.train(True)
     for batch in batches:
         optimizer.zero_grad(set_to_none=True)
         logits = model(batch.tensors)
+        probabilities = torch.softmax(logits.detach(), dim=1)
+        row_entropy = (-(probabilities *
+                         torch.log(probabilities.clamp_min(1e-30)))
+                       .sum(dim=1))
+        entropy_by_root: dict[str, list[float]] = defaultdict(list)
+        for index, root in enumerate(batch.root_ids):
+            entropy_by_root[root].append(float(row_entropy[index]))
+        entropy_total += sum(sum(rows) / len(rows)
+                             for rows in entropy_by_root.values())
+        entropy_root_count += len(entropy_by_root)
         loss = root_balanced_loss(logits, batch, config.sigma_pair_squared)
         loss.backward()
         norm = torch.nn.utils.clip_grad_norm_(
             model.parameters(), config.gradient_norm_milli / 1000,
             error_if_nonfinite=True)
+        gradient_norm_total += float(norm.detach()) * batch.root_count
+        gradient_root_count += batch.root_count
+        # Pair residual is deliberately unnormalized: sigma belongs only to
+        # the training objective, never to this diagnostic measurement.
+        with torch.no_grad():
+            expected = expected_signed_utility(logits.detach())
+            by_root: dict[str, list[int]] = defaultdict(list)
+            for index, root in enumerate(batch.root_ids):
+                by_root[root].append(index)
+            for indexes in by_root.values():
+                by_pair = {(batch.candidate_indexes[index],
+                            batch.replicates[index]): index
+                           for index in indexes}
+                candidates = sorted({batch.candidate_indexes[index]
+                                     for index in indexes})
+                root_pair_total = 0.0
+                for candidate in candidates:
+                    if candidate == 0:
+                        continue
+                    candidate_indexes = [by_pair[(candidate, replica)]
+                                         for replica in REPLICATES]
+                    incumbent_indexes = [by_pair[(0, replica)]
+                                         for replica in REPLICATES]
+                    target = sum(
+                        category_signed_level(int(batch.target_categories[candidate_index]))
+                        - category_signed_level(int(batch.target_categories[incumbent_index]))
+                        for candidate_index, incumbent_index in zip(
+                            candidate_indexes, incumbent_indexes, strict=True)) / len(REPLICATES)
+                    predicted = float(expected[candidate_indexes].mean()
+                                      - expected[incumbent_indexes].mean())
+                    residual = predicted - target
+                    root_pair_total += residual * residual
+                paired_residual_total += root_pair_total / max(1, len(candidates) - 1)
+                paired_residual_root_count += 1
         if not bool(torch.isfinite(norm)):
             raise WorldAfterstateV2TrainingError("V2 non-finite gradient")
         optimizer.step()
+        if any(not bool(torch.all(torch.isfinite(parameter)))
+               for parameter in model.parameters()):
+            raise WorldAfterstateV2TrainingError(
+                "V2 non-finite parameter after optimizer step")
         if not math.isfinite(float(loss.detach())):
             raise WorldAfterstateV2TrainingError("V2 non-finite loss")
         total_loss += float(loss.detach()) * batch.root_count
@@ -619,7 +691,15 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
                               "batch_example_keys": schedule}),
         model_state_sha256_before=before,
         model_state_sha256_after=model_state_sha256(model),
-        split=split, cohort=cohort)
+        split=split, cohort=cohort,
+        gradient_norm_nano=round(gradient_norm_total / gradient_root_count * LOSS_SCALE),
+        update_norm_nano=round(math.sqrt(sum(
+            float(torch.sum((parameter.detach() - prior) ** 2))
+            for parameter, prior in zip(model.parameters(), epoch_parameters_before,
+                                        strict=True))) * LOSS_SCALE),
+        prediction_entropy_nano=round(entropy_total / entropy_root_count * LOSS_SCALE),
+        paired_target_error_nano=round(
+            paired_residual_total / max(1, paired_residual_root_count) * LOSS_SCALE))
     receipt.validate()
     return receipt
 

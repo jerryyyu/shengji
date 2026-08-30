@@ -140,8 +140,29 @@ def test_paired_crn_binding_and_actual_update_are_deterministic():
     receipt2 = train_epoch(second, new_optimizer(second, config), (batch,),
                             epoch=1, config=config)
     assert receipt1.payload() == receipt2.payload()
+    assert receipt1.gradient_norm_nano > 0
+    assert receipt1.update_norm_nano > 0
+    assert receipt1.prediction_entropy_nano > 0
+    assert receipt1.paired_target_error_nano >= 0
     assert receipt1.model_state_sha256_before != receipt1.model_state_sha256_after
     assert model_state_sha256(first) == model_state_sha256(second)
+
+
+def test_train_epoch_rejects_nonfinite_weights_after_optimizer_step(monkeypatch):
+    batch = collate_training_examples(_rows("nonfinite-step"))
+    config = WorldAfterstateV2TrainingConfig(100_000_000, 0, 1_000, 1, 1.0)
+    model = new_world_afterstate_v2_model(3)
+    optimizer = new_optimizer(model, config)
+    original_step = optimizer.step
+
+    def corrupt_step(*args, **kwargs):
+        result = original_step(*args, **kwargs)
+        next(model.parameters()).data.fill_(float("nan"))
+        return result
+
+    monkeypatch.setattr(optimizer, "step", corrupt_step)
+    with pytest.raises(WorldAfterstateV2TrainingError, match="parameter"):
+        train_epoch(model, optimizer, (batch,), epoch=1, config=config)
 
 
 def test_root_cannot_be_split_across_optimizer_batches():

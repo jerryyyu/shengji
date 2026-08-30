@@ -132,7 +132,8 @@ def test_optimizer_canary_is_diagnostics_only_and_reopened():
         early_stopping_used=False, gradients_finite=True,
         weights_finite=True, initial_loss_nano=200,
         empirical_loss_nano=100, final_loss_nano=120,
-        normalized_progress_ppm=800_000, passed=True)
+        normalized_progress_ppm=800_000, passed=True,
+        empirical_entropy_nano=100, empirical_paired_residual_nano=0)
     build = _build(optimizer_canary=lambda: canary)
     assert build.manifest["optimizer_canary"]["optimizer_steps"] == 500
     reopen_cohort_build(build)
@@ -146,7 +147,8 @@ def test_failed_optimizer_canary_and_bool_worker_count_are_refused():
         early_stopping_used=False, gradients_finite=True,
         weights_finite=True, initial_loss_nano=200,
         empirical_loss_nano=100, final_loss_nano=190,
-        normalized_progress_ppm=100_000, passed=False)
+        normalized_progress_ppm=100_000, passed=False,
+        empirical_entropy_nano=100, empirical_paired_residual_nano=0)
     with pytest.raises(WorldAfterstateV2TrainingControllerError,
                        match="optimizer canary refused"):
         _build(optimizer_canary=lambda: failed)

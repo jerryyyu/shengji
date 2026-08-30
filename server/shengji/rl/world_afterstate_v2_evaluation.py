@@ -44,6 +44,59 @@ class WorldAfterstateV2EvaluationError(ValueError):
     """A sealed V2 prediction/outcome population or score drifted."""
 
 
+@dataclass(frozen=True)
+class AbsoluteCurveScoreReceiptV2:
+    """Absolute (not improvement) scores for one sealed population."""
+
+    population_sha256: str
+    source_binding_sha256: str
+    deal_count: int
+    rps_nano: int
+    paired_target_error_nano: int
+    deal_rps_nano: tuple[tuple[str, int], ...]
+    deal_paired_target_error_nano: tuple[tuple[str, int], ...]
+    schema: str = "world-afterstate-v2-absolute-curve-score-v2"
+
+    def validate(self) -> None:
+        _digest(self.population_sha256, "absolute score population SHA-256")
+        _digest(self.source_binding_sha256,
+                "absolute score source binding SHA-256")
+        if self.schema != "world-afterstate-v2-absolute-curve-score-v2" \
+                or isinstance(self.deal_count, bool) or not isinstance(self.deal_count, int) \
+                or self.deal_count < 2 or len(self.deal_rps_nano) != self.deal_count \
+                or len(self.deal_paired_target_error_nano) != self.deal_count \
+                or self.rps_nano < 0 or self.paired_target_error_nano < 0:
+            raise WorldAfterstateV2EvaluationError("absolute curve score drift")
+        for values in (self.deal_rps_nano, self.deal_paired_target_error_nano):
+            if type(values) is not tuple or any(
+                    type(row) is not tuple or len(row) != 2 or type(row[0]) is not str
+                    or isinstance(row[1], bool) or not isinstance(row[1], int)
+                    or row[1] < 0 for row in values):
+                raise WorldAfterstateV2EvaluationError("absolute score deal population drift")
+            if len({row[0] for row in values}) != self.deal_count:
+                raise WorldAfterstateV2EvaluationError("absolute score deal identity drift")
+        if _mean(tuple(value for _, value in self.deal_rps_nano)) != self.rps_nano \
+                or _mean(tuple(value for _, value in self.deal_paired_target_error_nano)) != self.paired_target_error_nano:
+            raise WorldAfterstateV2EvaluationError("absolute score aggregate drift")
+
+    def payload(self) -> dict[str, Any]:
+        self.validate()
+        return {
+            "schema": self.schema,
+            "population_sha256": self.population_sha256,
+            "source_binding_sha256": self.source_binding_sha256,
+            "deal_count": self.deal_count,
+            "rps_nano": self.rps_nano,
+            "paired_target_error_nano": self.paired_target_error_nano,
+            "deal_rps_nano": [list(row) for row in self.deal_rps_nano],
+            "deal_paired_target_error_nano": [
+                list(row) for row in self.deal_paired_target_error_nano],
+        }
+
+    def sha256(self) -> str:
+        return _sha(self.payload())
+
+
 def _sha(value: object) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 
@@ -469,6 +522,79 @@ def _bind(predictions: Sequence[CandidatePredictionV2],
     return pmap, omap, roots
 
 
+def evaluate_absolute_curve_v2(
+        prediction_manifest: Mapping[str, Any],
+        outcomes: Sequence[ContinuationOutcomeV2],
+        prior: JeffreysPriorV2) -> AbsoluteCurveScoreReceiptV2:
+    """Derive absolute model RPS and paired-target error from sealed rows."""
+    if type(prior) is not JeffreysPriorV2:
+        raise WorldAfterstateV2EvaluationError("absolute score prior type drift")
+    prior.validate()
+    try:
+        validate_prediction_population_manifest_v2(prediction_manifest)
+        predictions = reopen_prediction_population_manifest_v2(prediction_manifest)
+    except Exception as exc:
+        raise WorldAfterstateV2EvaluationError("absolute prediction manifest refused") from exc
+    control_name = prediction_manifest["control_name"]
+    seed_block = prediction_manifest["seed_block"]
+    pmap, _omap, roots = _bind(predictions, outcomes,
+                                control_name=control_name, seed_block=seed_block)
+    deal_rps: dict[str, list[int]] = {}
+    deal_pair: dict[str, list[int]] = {}
+    for state, rows in roots.items():
+        identity = _identity(rows[0])
+        root_sha = next(row.root_sha256 for row in predictions
+                        if row.state_sha256 == state)
+        by_candidate = {candidate: [row for row in rows
+                                    if row.candidate_index == candidate]
+                        for candidate in sorted({row.candidate_index for row in rows})}
+        rps_values: list[int] = []
+        pair_values: list[int] = []
+        for member in MEMBERS:
+            for candidate, truths in by_candidate.items():
+                prediction = pmap[(root_sha, candidate, member)]
+                rps_values.extend(ranked_probability_score_ppb(
+                    prediction.probability_ppb, row.signed_level_category)
+                    for row in truths)
+            by_pair = {(row.candidate_index, row.replica): row for row in rows}
+            for candidate in sorted(by_candidate):
+                if candidate == 0:
+                    continue
+                for replica in REPLICATES:
+                    candidate_row = by_pair[(candidate, replica)]
+                    incumbent_row = by_pair[(0, replica)]
+                    predicted = expected_signed_microlevels(
+                        pmap[(root_sha, candidate, member)].probability_ppb) \
+                        - expected_signed_microlevels(
+                            pmap[(root_sha, 0, member)].probability_ppb)
+                    target = int(round((
+                        category_signed_level(candidate_row.signed_level_category)
+                        - category_signed_level(incumbent_row.signed_level_category))
+                        * MICROLEVELS))
+                    pair_values.append((predicted - target) ** 2)
+        deal_rps[identity[0]] = [_mean(tuple(rps_values))]
+        deal_pair[identity[0]] = [_mean(tuple(pair_values))]
+    rps = tuple(sorted((deal, _mean(values)) for deal, values in deal_rps.items()))
+    pair = tuple(sorted((deal, _mean(values)) for deal, values in deal_pair.items()))
+    result = AbsoluteCurveScoreReceiptV2(
+        population_sha256=prediction_manifest["root_population_sha256"],
+        source_binding_sha256=_sha({
+            "schema": "world-afterstate-v2-absolute-curve-source-v2",
+            "prediction_manifest": _sha(prediction_manifest),
+            "outcomes": [dict(row.__dict__) for row in sorted(
+                outcomes, key=lambda value: (value.deal_sha256,
+                                             value.state_sha256,
+                                             value.candidate_index,
+                                             value.replica))],
+            "prior": prior.payload(),
+        }),
+        deal_count=len(rps), rps_nano=_mean(tuple(value for _, value in rps)),
+        paired_target_error_nano=_mean(tuple(value for _, value in pair)),
+        deal_rps_nano=rps, deal_paired_target_error_nano=pair)
+    result.validate()
+    return result
+
+
 def _receipt(name: str, deal_values: Mapping[str, int], population_sha256: str) \
         -> EvaluationMetricReceiptV2:
     try:
@@ -731,8 +857,8 @@ evaluate_block_v2 = evaluate_v2
 
 
 __all__ = [
-    "AUTHORITY", "ControlComparisonV2", "EvaluationMetricReceiptV2",
-    "EvaluationResultV2", "WorldAfterstateV2EvaluationError", "evaluate_v2",
+    "AUTHORITY", "AbsoluteCurveScoreReceiptV2", "ControlComparisonV2", "EvaluationMetricReceiptV2",
+    "EvaluationResultV2", "WorldAfterstateV2EvaluationError", "evaluate_absolute_curve_v2", "evaluate_v2",
     "evaluate_population_v2", "evaluate_audit_v2", "evaluate_block_v2",
     "evaluate_control_difference",
     "validate_control_comparison", "validate_evaluation_receipt",

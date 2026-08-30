@@ -4,14 +4,14 @@ import pytest
 import subprocess
 import time
 
-from shengji.rl.belief_contract import canonical_json_bytes
-from shengji.rl.world_afterstate_v2_capacity import ARM_GRIDS
+from shengji.rl.world_afterstate_v2_capacity import ARM_GRIDS, COMPOSED_STAGE_NAMES
 from shengji.rl.world_afterstate_v2_capacity_runner import (
     CapacityRunnerError, FixtureV2, HostTelemetryV2, PreflightResultV2,
     RawMeasurementV2, SyntheticMeasurementBackendV2, measure_capacity_v2,
-    reopen_capacity_receipt_v2, reopen_capacity_receipt_v2_bytes,
     build_receipt_v2, _arm_from_raw, _PRODUCTION_PROVENANCE,
     RealMeasurementBackendV2, FullDAGCapacityDependencyBlocked,
+    RepresentativeDAGV2, _batched_tensor_identity, _composed_projection,
+    _run_with_torch_threads, _tiers,
 )
 
 
@@ -90,12 +90,10 @@ def test_receipt_reopens_exactly_and_host_caps_refuse():
             byte_identity_sha256=fixture.fixture_sha256), fixture.fixture_sha256,
         1, synthetic=False)
                   for stage, variants in ARM_GRIDS.items() for variant in variants)
-    receipt = build_receipt_v2(
-        arms, host=HostTelemetryV2(16, free_disk_bytes=10**9), preflight=preflight,
-        _provenance=_PRODUCTION_PROVENANCE)
-    assert reopen_capacity_receipt_v2(receipt.payload()).payload() == receipt.payload()
-    assert reopen_capacity_receipt_v2_bytes(
-        canonical_json_bytes(receipt.payload())).payload() == receipt.payload()
+    with pytest.raises(FullDAGCapacityDependencyBlocked, match="full-DAG"):
+        build_receipt_v2(
+            arms, host=HostTelemetryV2(16, free_disk_bytes=10**9),
+            preflight=preflight, _provenance=_PRODUCTION_PROVENANCE)
     with pytest.raises(CapacityRunnerError, match="16 logical"):
         HostTelemetryV2(8).validate()
     with pytest.raises(CapacityRunnerError, match="zero swap"):
@@ -121,6 +119,48 @@ def test_real_deadline_interrupts_hung_operation():
     with pytest.raises(CapacityRunnerError, match="deadline"):
         backend.measure("state-successor", 1, FixtureV2({"x": 1}),
                         lambda: time.sleep(.2))
+
+
+def test_torch_thread_arm_preserves_output_digest_and_restores_width():
+    import torch
+    before = torch.get_num_threads()
+    assert _run_with_torch_threads(lambda: "a" * 64, 1) == "a" * 64
+    assert torch.get_num_threads() == before
+
+
+def test_inference_output_identity_is_batch_partition_invariant():
+    import torch
+    rows = torch.arange(24, dtype=torch.float32).reshape(6, 4)
+    assert _batched_tensor_identity((rows[:2], rows[2:])) \
+        == _batched_tensor_identity((rows[:1], rows[1:4], rows[4:]))
+
+
+def test_composed_projection_counts_epochs_and_scales_tiers_by_stage():
+    preflight = _preflight()
+    fixture = preflight.accepted_fixtures[0]
+    selected = {}
+    for stage, variants in ARM_GRIDS.items():
+        raw = RawMeasurementV2(
+            elapsed_ns=1_000_000_000, process_cpu_ns=1_000_000_000,
+            peak_rss_bytes=1_000_000, task_count=1,
+            sample_utilization_ppm=(62_500,),
+            byte_identity_sha256=fixture.fixture_sha256)
+        selected[stage] = _arm_from_raw(
+            stage, variants[0], raw, fixture.fixture_sha256, raw.elapsed_ns)
+    dag = RepresentativeDAGV2(
+        1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
+        stage_walls_seconds=tuple((name, 1) for name in COMPOSED_STAGE_NAMES))
+    composed = _composed_projection(selected, 32, 10**9, dag)
+    units = {name: (measured, projected)
+             for name, measured, projected in composed.stage_unit_counts}
+    assert units["optimizer-canary"] == (8_000, 8_000)
+    assert units["nested-curve-25"] == (8, 800)
+    assert units["p0"] == (32, 96)
+    assert units["label"] == (32, 256)
+    assert units["block-1-natural"] == (32, 3_200)
+    tiers = _tiers(composed)
+    assert tiers[1].complete_dag_wall_seconds \
+        > tiers[0].complete_dag_wall_seconds * 2
 
 
 def test_production_refuses_unimplemented_full_dag_dependency():

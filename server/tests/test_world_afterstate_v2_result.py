@@ -133,7 +133,8 @@ def _canary(*, passed=True):
         gradients_finite=passed, weights_finite=passed,
         initial_loss_nano=1_000, empirical_loss_nano=100,
         final_loss_nano=280 if passed else 900,
-        normalized_progress_ppm=800_000 if passed else 111_111, passed=passed)
+        normalized_progress_ppm=800_000 if passed else 111_111, passed=passed,
+        empirical_entropy_nano=100, empirical_paired_residual_nano=0)
 
 
 DEAL = _sha("deal-0")

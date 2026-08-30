@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 08:09 EDT**. Remote main before this update:
-`2ffb15c`.
+Last reconciled: **2026-08-30 08:12 EDT**. Remote main before this update:
+`1de77a5`.
 
 ## Review queue — one narrow run-unblocking ask
 
@@ -41,11 +41,11 @@ Canonical ledger `979885f` PASSed both exact run-unblocking deltas: PR #171
 capacity census, and PR #170
 `cf115ceac7dbf6f55a177a1de4058d14742a912b` for one replacement score-free
 full-DAG Perf census followed, only on success, by one bounded target-free
-rehearsal. The Value census is live in the isolated namespace below. The PT
-census has already refused safely and consumed its authority; it now needs a
-source repair, not another review or retry. Successful Value capacity plus
-rehearsal next needs one receipt-plus-scientific-freeze review. A refusal is
-preserved and interpreted before any new work; no retry is pre-authorized.
+rehearsal. Both censuses have now refused safely in their isolated namespaces
+and consumed those authorities. PT has the single repaired-head review ask
+above; Value's newly localized output-identity repair is still in development
+and has no review ask yet. Neither refusal opened scientific data, and no retry
+is pre-authorized.
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -168,7 +168,7 @@ reviewed against the live systemd state before any recovery executes.
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
 
-### Value-Afterstate V2 — repaired full-DAG capacity running on Perf
+### Value-Afterstate V2 — replacement capacity refused at first arm
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
   repaired pushed head `cf115ceac7dbf6f55a177a1de4058d14742a912b` is
@@ -198,12 +198,25 @@ reviewed against the live systemd state before any recovery executes.
   `cf115ceac7dbf6f55a177a1de4058d14742a912b` launched its single authorized
   replacement capacity census at **07:44 EDT** as Perf systemd unit
   `value-v2-capacity-cf115ce-r1.service`, output root
-  `/root/value-v2-capacity-cf115ce-output`. The unit is active with zero
-  restarts. Its 16-process deterministic preflight is reporting acceptance,
-  rejection distribution, memory, utilization and ETA; it opens no target,
-  label, outcome or audit data. Do not restart it. Capacity success authorizes
-  only the already-reviewed target-free rehearsal; refusal is terminal for
-  this authority.
+  `/root/value-v2-capacity-cf115ce-output`. It found the exact 32/32 eligible
+  score-free fixtures after 186 deterministic attempts, then refused at the
+  first state-successor capacity arm with `capacity arm returned input identity
+  instead of operation output`. No target, label, outcome, audit, rehearsal or
+  later DAG stage opened. The service is failed/inactive with zero restarts;
+  this capacity authority and its conditional rehearsal authority are spent.
+- Root cause is local to the capacity identity guard: state-successor replays
+  the canonical snapshot and hashes the canonical successor, which legitimately
+  equals each fixture input SHA; the ordered output therefore triggers the
+  anti-fake equality guard even though the operation ran. The repair must
+  domain-separate identities derived from actual operation outputs while
+  retaining a can-fail witness against a producer that merely returns fixture
+  input identity. It must not change the V2 science DAG or estimand.
+- The complete public progress log is preserved read-only at
+  `/root/value-v2-capacity-cf115ce-output/capacity.progress.jsonl`, 9,076 bytes,
+  SHA-256
+  `62f4666de63fb14743e8c1f5fd2bbdaa9d956eed3984092246f12f82e8520081`.
+  The runner emitted no structured failure receipt; record that as a later
+  capacity-durability gap, not permission to fabricate one post hoc.
 
 ### Value-Afterstate V0 — independently verified refusal
 
@@ -283,7 +296,7 @@ reviewed against the live systemd state before any recovery executes.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Value V2 exact `cf115ce` replacement full-DAG capacity census; active, hands off |
+| Perf Cloud | free after Value V2 exact `cf115ce` capacity refused before its first arm completed |
 | Mini | free after exact `b243368` PT-Luna capacity refused before gameplay; source diagnosis only |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.

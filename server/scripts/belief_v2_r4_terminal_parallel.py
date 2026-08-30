@@ -17,6 +17,54 @@ import subprocess
 import time
 
 
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
+SEALED_SCIENTIFIC_SOURCE_ROOT = Path(
+    "/opt/belief-r4-terminal-final/server")
+
+
+def _prepare_recovery_import_roots() -> None:
+    """Execute new Python source with the sealed native extension.
+
+    The frozen venv has an editable-path entry for the old scientific source.
+    A recovery checkout must not import its Python modules, but the live
+    runtime identity deliberately binds the already-compiled native extension
+    at that old path.  Put this reviewed source first, remove only the exact
+    old Python import root, then extend the new engine package path solely for
+    the byte-bound native module.  ``validate_live_execution`` later proves
+    both the new Python source and the frozen native/runtime identity.
+    """
+    sealed = SEALED_SCIENTIFIC_SOURCE_ROOT.resolve()
+    source = SOURCE_ROOT.resolve()
+    retained = []
+    for entry in sys.path:
+        if type(entry) is not str or not entry:
+            retained.append(entry)
+            continue
+        try:
+            resolved = Path(entry).resolve()
+        except OSError:
+            retained.append(entry)
+            continue
+        if source != sealed and resolved == sealed:
+            continue
+        retained.append(entry)
+    retained = [entry for entry in retained
+                if type(entry) is not str
+                or not entry
+                or Path(entry).resolve() != source]
+    sys.path[:] = [str(source), *retained]
+    native_root = sealed / "shengji" / "engine"
+    if source != sealed and native_root.is_dir() \
+            and any(native_root.glob("_fast*.so")):
+        __import__("shengji.engine")
+        engine = sys.modules["shengji.engine"]
+        if str(native_root) not in engine.__path__:
+            engine.__path__.append(str(native_root))
+
+
+_prepare_recovery_import_roots()
+
+
 def _refuse_foreign_import_roots() -> None:
     """Require every import root to belong to Python, this venv, or source.
 
@@ -28,7 +76,7 @@ def _refuse_foreign_import_roots() -> None:
     allowed_roots = (
         Path(sys.base_prefix).resolve(),
         Path(sys.prefix).resolve(),
-        Path(__file__).resolve().parents[1],
+        SOURCE_ROOT,
     )
     for entry in sys.path:
         if type(entry) is not str or not entry:

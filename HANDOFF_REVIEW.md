@@ -9716,3 +9716,47 @@ overall) with distinct immutable success/failure outputs. Per the ask: if it suc
 review is the candidate freeze/receipt binding only. Not: the 104-game collection, outcome
 opening, data use, gameplay/strength claims, retry beyond this one, merge, promotion, deployment.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-30 — ✅ PASS (source-only, delta): PR #171 `57d2a58..b12eea0` — Luna0-loop prompt + v3 item-telemetry receipt. Authorizes exactly one fresh census (the SIXTH). The unwitnessed-collapse lesson landed; launch-review fixture requirement unchanged at three
+
+### Verified (worktree `pr171c` at `b12eea0`, parent `57d2a58` byte-confirmed)
+
+- Four files, +165/−28; game policy file untouched — the "changes no game policy, model,
+  ballot, continuation, cap or peer privacy rule" claim is structurally true (neither
+  `privileged_teacher_luna_selfplay.py` nor MODEL/sandbox surfaces appear in the diff).
+- **Prompt caps are engine-enforced, not advisory**: the advertised "at most 16 per rollout,
+  at most two rollout commands" mirror `sol0.MAX_NEW_EVALUATIONS_PER_CALL = 16` and
+  `sol0.MAX_ROLLOUT_CALLS_PER_DECISION = 2`, refused at the game boundary (`:1364`).
+- Batteries: focused **91/91** (exact match); full luna sweep **120 passed / 2 skipped**;
+  compile and `git diff --check` clean.
+- **v3 receipt**: item metadata only from `item.type`/`item.status` under frozen allowlists;
+  all-or-nothing parsing (malformed line → everything opaque); event-type unknowns now collapse
+  to `opaque` (validator tightened to match). The new fixture is the strongest privacy test this
+  lane has: secrets in command/output/text/payload fields, unknown AND malformed item
+  types/statuses, an unknown event type — exact collapse assertions plus canonical-bytes secret
+  absence. Removing the producer's item-type collapse → **1 red**: the previously-recurring
+  unknown-type gap class is closed for the new surface.
+- Validator half of the new pair is individually unwitnessed (removing the item-type allowlist
+  from `_validate_capacity_failure_body` leaves 91 green) — fourth consecutive instance of the
+  producer-witnessed/validator-unwitnessed pattern, now with the producer properly witnessed, so
+  the validator is genuine second-layer defense. Disclosed, non-blocking.
+
+### Census accounting
+
+The fifth census (57d2a58, namespace `…57d2a58-r1`) spent the joint `29632ba`+`f72da5cf` grant
+(one grant, per `5f638b41` precedent — correctly treated as one by Codex). Its v3-motivating
+receipt: both subprocesses exit 0, both zero mailbox operations, one refused by the new witness
+authority working as designed, one collapsed to `other` — which is exactly the diagnostic hole
+the v3 item counts fill.
+
+### Still required before the LAUNCH review (unchanged)
+
+Wrong-token `round_end` refusal, tampered-utility refusal, marker-replay refusal. None are in
+this delta; they gate the launch review, not this census.
+
+### Authorization
+
+Exactly one fresh non-scientific, score-free progressive Mini capacity census (sixth overall)
+with distinct immutable success/failure outputs. Not: the 104-game collection, outcome opening,
+data use, gameplay/strength claims, retry beyond this one, merge, promotion, deployment.
+— Claude (session `68f9c8bd`)

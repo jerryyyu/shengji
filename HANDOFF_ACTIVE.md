@@ -4,10 +4,10 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 04:35 EDT**. Remote main before this update:
-`1e39215`.
+Last reconciled: **2026-08-30 04:43 EDT**. Remote main before this update:
+`29632ba`.
 
-## Review queue — R4 waits on state, one secondary source ask
+## Review queue — no current review ask
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -21,30 +21,18 @@ refusal `R4 terminal systemd observation drift`, because the scientific unit
 is still active. No timeout receipt, route claim, outcome read, or evidence
 mutation occurred. There is no R4 review action until the unit changes state.
 
-Secondary review while R4 runs: review PR #171 once at repaired exact head
-`57d2a58` (parent `1f80b3d`). The capacity census authorized at `1f80b3d` is
-spent: its first arm failed safely and retained no game, action, outcome or
-model prose. The six-file repair addresses the observed failure and one
-behavioral-parity defect together:
+PR #171 exact head `57d2a58` received the source-only PASS at canonical commit
+`29632ba`. That PASS authorizes exactly one replacement non-scientific,
+score-free progressive Mini capacity census. The authorized census is now
+running in tmux session `pt-luna-cap-57d2a58-r1` from a clean detached exact-head
+runtime at `/private/tmp/shengji-pt-luna-capacity-src-57d2a58`, with output root
+`/private/tmp/shengji-pt-luna-capacity-57d2a58-r1`. At 04:43 EDT the first
+one-worker arm had two live Luna team processes and no result/refusal artifact.
 
-- completion authority is now process exit zero + Codex `turn.completed`
-  telemetry + the completed shared engine + a hash-bound per-team terminal
-  mailbox witness carrying the issued token; independent reopening rederives
-  the same witness, while final model prose is diagnostic only;
-- a killed peer is reported as `peer-aborted/cascade`, not as an independent
-  root cause; and
-- the prompt and rollout response now match PT-Luna0's intended teacher
-  behavior: maximize partnership signed-level utility, expose the exact
-  team-relative value (including the defender sign), advertise
-  `smart-all,team-smart`, and retain the same ballot and work bounds.
-
-Primary inspection and the exact three-file changed-surface battery are green
-at **105 / 105**; all six files compile and `git diff --check` is clean. Ask for
-one consolidated repaired-head source PASS authorizing exactly one replacement
-non-scientific, score-free progressive Mini capacity census. If it passes,
-the next review must be only the candidate freeze/receipt binding—not another
-review of unchanged source. This grants no 104-game collection, outcome
-opening, gameplay/strength claim, merge, promotion or deployment.
+Do not request another unchanged-source review. If the capacity run succeeds,
+the next and only PT-Luna ask is the capacity-receipt + candidate-freeze binding
+review. It grants no 104-game collection, outcome opening, gameplay/strength
+claim, merge, promotion or deployment until that separate launch PASS exists.
 
 If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
 timers below generate a timeout receipt and print the exact pending-recovery
@@ -116,13 +104,14 @@ reviewed against the live systemd state before any recovery executes.
   Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
   the stronger reviewed privileged teacher. No promotion or strength claim.
 
-### PT-Luna fresh self-play — repaired source review pending
+### PT-Luna fresh self-play — score-free capacity running
 
-- PR #171 head `57d2a58` is the only current review target. The failed capacity
-  attempt spent the prior grant and retained no scientific/gameplay data.
-- After a consolidated repaired-head source PASS: run one progressive
-  score-free Mini capacity census, derive the candidate worker count and
-  immutable 52-deal × two-mirror freeze, then request one narrow launch review.
+- PR #171 head `57d2a58` has the exact-head source PASS. The one authorized
+  score-free census is live in the tmux/root named above; prior failed attempts
+  retained no scientific/gameplay data.
+- On a successful receipt: derive the candidate worker count and immutable
+  52-deal × two-mirror freeze, then request one narrow receipt/freeze launch
+  review without re-reviewing unchanged source.
 - The 104 games remain unauthorized. Their eventual trajectories are only
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.

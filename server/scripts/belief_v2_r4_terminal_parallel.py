@@ -13,6 +13,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
+import time
 
 
 def _refuse_foreign_import_roots() -> None:
@@ -45,13 +47,19 @@ from shengji.rl.belief_artifacts import (
 )
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.belief_v2_execution_identity import (
+    build_source_bindings,
     configure_numerical_runtime,
+    source_manifest_sha256,
     validate_live_execution,
 )
 from shengji.rl.belief_v2_freeze import execution_freeze_from_bytes
 from shengji.rl.belief_v2_progress import V2ProgressReporter
 from shengji.rl.belief_v2_r4_completion import (
+    PENDING_RECOVERY_REVIEW_PREFIX,
+    RECOVERY_EXECUTION_REVIEW_PREFIX,
+    authenticate_r4_recovery_execution_review,
     build_r4_completion_admission,
+    expected_r4_recovery_execution_review_marker,
     r4_completion_admission_from_bytes,
     r4_completion_consumption_tombstone_bytes,
     reauthenticate_r4_completion_admission,
@@ -69,8 +77,12 @@ from shengji.rl.belief_v2_r4_terminal_parallel import (
     load_calibration_import,
     load_terminal_source_spec,
     r4_terminal_parallel_capacity,
+    r4_terminal_parallel_pending_recovery_review_claim,
     r4_terminal_parallel_readiness,
+    r4_terminal_parallel_timeout_receipt,
+    finalize_r4_terminal_parallel_pending,
     recover_r4_terminal_parallel,
+    recover_r4_terminal_parallel_pending,
     reopen_r4_terminal_parallel,
     run_r4_terminal_parallel,
     synthetic_round_key,
@@ -90,7 +102,16 @@ ROOT_POPULATION = {
 TERMINAL_POPULATION = {
     "r4-completion-test-attempt.json", "terminal.partial", "terminal",
     "r4-completion-terminal.json",
+    "r4-completion-timeout-receipt.json",
+    "r4-completion-terminal.pending.json",
+    "r4-completion-pending-recovery-tombstone.json",
+    "r4-completion-pending-verifier-attempt.json",
+    "r4-completion-pending-verifier-receipt.json",
+    "r4-completion-recovery-route-claim.json",
 }
+R4_SCIENTIFIC_SERVICE = (
+    "belief-r4-terminal-scientific-56bd35f-r1.service")
+R4_SCIENTIFIC_RUNTIME_MAX_MICROSECONDS = 172_800_000_000
 
 
 def _sha256(raw: bytes) -> str:
@@ -228,9 +249,17 @@ def _reopen_frozen_capacity_binding(
     return payload
 
 
-def _load_root(root: Path):
-    terminal_spec = load_terminal_source_spec()
-    calibration_import = load_calibration_import()
+def _repository_protocol_inputs(repo: Path):
+    scripts = repo / "server" / "scripts"
+    terminal_spec = load_terminal_source_spec(stable_read_bytes(
+        scripts / "belief_v2_r4_terminal_parallel_source.v1.json"))
+    calibration_import = load_calibration_import(stable_read_bytes(
+        scripts / "belief_v2_r4_terminal_parallel_import.v1.json"))
+    return terminal_spec, calibration_import
+
+
+def _load_root(root: Path, *, repo: Path = REPO):
+    terminal_spec, calibration_import = _repository_protocol_inputs(repo)
     names = {path.name for path in root.iterdir()}
     if not root.is_absolute() or root.is_symlink() or not root.is_dir() \
             or root != terminal_spec.destination_evidence_root \
@@ -264,12 +293,90 @@ def _load_root(root: Path):
     if capacity["runtime_sha256"] != freeze.preflight_runtime_sha256:
         raise ValueError("R4 terminal capacity runtime binding drift")
     reauthenticate_r4_completion_admission(
-        freeze, admission, repo=REPO, review_marker=marker,
+        freeze, admission, repo=repo, review_marker=marker,
         spec=terminal_spec)
     validate_live_execution(
-        repo=REPO, execution_git=freeze.execution_git,
+        repo=repo, execution_git=freeze.execution_git,
         source_bindings=freeze.source_bindings, runtime=freeze.runtime)
     return freeze, admission, marker
+
+
+def _strict_recovery_repo(path: Path, *, label: str) -> Path:
+    """Refuse an ambiguous checkout before any recovery evidence is opened."""
+    path = Path(path)
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(f"R4 {label} repository absent") from exc
+    if not path.is_absolute() or path.is_symlink() or resolved != path \
+            or not path.is_dir():
+        raise ValueError(f"R4 {label} repository identity drift")
+    return path
+
+
+def _recovery_review_inputs(
+        root: Path, *, sealed_repo: Path, recovery_execution_git: str):
+    """Validate old evidence and new code as two independent identities."""
+    sealed_repo = _strict_recovery_repo(
+        sealed_repo, label="sealed scientific")
+    recovery_repo = _strict_recovery_repo(
+        REPO, label="recovery execution")
+    freeze, admission, marker = _load_root(root, repo=sealed_repo)
+    if sealed_repo == recovery_repo \
+            or recovery_execution_git == freeze.execution_git:
+        raise ValueError("R4 recovery dual execution identity drift")
+    terminal_spec, calibration_import = _repository_protocol_inputs(
+        recovery_repo)
+    capacity_sha256 = _sha256(stable_read_bytes(root / "capacity.json"))
+    bindings = build_source_bindings(
+        recovery_repo, expected_git=recovery_execution_git)
+    recovery_source_manifest_sha256 = source_manifest_sha256(
+        recovery_execution_git, bindings)
+    validate_live_execution(
+        repo=recovery_repo, execution_git=recovery_execution_git,
+        source_bindings=bindings, runtime=freeze.runtime)
+    values = {
+        "freeze": freeze,
+        "admission": admission,
+        "recovery_execution_git": recovery_execution_git,
+        "recovery_source_manifest_sha256": (
+            recovery_source_manifest_sha256),
+        "terminal_source_spec_sha256": terminal_spec.sha256(),
+        "calibration_import_sha256": calibration_import.sha256(),
+        "capacity_sha256": capacity_sha256,
+    }
+    return freeze, admission, marker, sealed_repo, values
+
+
+def _load_recovery_root(args: argparse.Namespace):
+    """Authenticate both checkouts before a timeout-recovery command."""
+    root = Path(args.root)
+    (freeze, admission, marker, sealed_repo,
+     values) = _recovery_review_inputs(
+         root, sealed_repo=Path(args.sealed_repo),
+         recovery_execution_git=args.recovery_execution_git)
+    recovery_execution = authenticate_r4_recovery_execution_review(
+        freeze, admission, repo=REPO,
+        recovery_execution_git=args.recovery_execution_git,
+        review_commit=args.recovery_source_review_commit,
+        terminal_source_spec_sha256=(
+            values["terminal_source_spec_sha256"]),
+        calibration_import_sha256=(
+            values["calibration_import_sha256"]),
+        capacity_sha256=values["capacity_sha256"])
+    return (root, freeze, admission, marker, sealed_repo,
+            recovery_execution)
+
+
+def recovery_execution_review_claim(args: argparse.Namespace) -> None:
+    """Print the exact new-code marker without authenticating it yet."""
+    root = Path(args.root)
+    (_freeze, _admission, _marker, _sealed_repo,
+     values) = _recovery_review_inputs(
+         root, sealed_repo=Path(args.sealed_repo),
+         recovery_execution_git=args.recovery_execution_git)
+    sys.stdout.buffer.write(expected_r4_recovery_execution_review_marker(
+        **values))
 
 
 def initialize(args: argparse.Namespace) -> None:
@@ -430,12 +537,136 @@ def verify_terminal(args: argparse.Namespace) -> None:
         progress=_progress("r4-terminal-parallel-verification")))
 
 
+def _systemd_service_properties() -> dict[str, str]:
+    """Read the immutable live-service properties used by recovery routing."""
+    names = (
+        "ActiveState", "SubState", "Result", "MainPID", "NRestarts",
+        "RuntimeMaxUSec",
+    )
+    completed = subprocess.run(
+        ("systemctl", "show", R4_SCIENTIFIC_SERVICE,
+         *(f"--property={name}" for name in names), "--no-pager"),
+        check=True, capture_output=True, text=True)
+    pairs: dict[str, str] = {}
+    for line in completed.stdout.splitlines():
+        if "=" not in line:
+            raise ValueError("R4 terminal systemd observation shape drift")
+        key, value = line.split("=", 1)
+        if key in pairs:
+            raise ValueError("R4 terminal systemd observation duplicate")
+        pairs[key] = value
+    if set(pairs) != set(names):
+        raise ValueError("R4 terminal systemd observation population drift")
+    return pairs
+
+
 def recover_terminal(args: argparse.Namespace) -> None:
+    service = _systemd_service_properties()
+    if service["ActiveState"] not in {"inactive", "failed"} \
+            or service["MainPID"] != "0":
+        raise ValueError(
+            "R4 terminal recovery requires an inactive scientific service")
+    if service["ActiveState"] == "failed" \
+            and service["Result"] == "timeout":
+        raise ValueError(
+            "R4 timed-out terminal requires reviewed pending recovery")
     root = Path(args.root)
     freeze, admission, marker = _load_root(root)
     _output(recover_r4_terminal_parallel(
         root, freeze, admission, repo=REPO, review_marker=marker,
         progress=_progress("r4-terminal-parallel-recovery")))
+
+
+def _systemd_timeout_observation() -> dict[str, object]:
+    """Read the exact failed service state without opening evidence bytes."""
+    pairs = _systemd_service_properties()
+    if pairs["SubState"] != "failed" \
+            or pairs["RuntimeMaxUSec"] not in {
+                "2d", str(R4_SCIENTIFIC_RUNTIME_MAX_MICROSECONDS)}:
+        raise ValueError("R4 terminal systemd observation drift")
+    try:
+        main_pid = int(pairs["MainPID"])
+        restart_count = int(pairs["NRestarts"])
+    except ValueError as exc:
+        raise ValueError("R4 terminal systemd counter drift") from exc
+    return {
+        "service_unit": R4_SCIENTIFIC_SERVICE,
+        "observed_at_unix_nanoseconds": time.time_ns(),
+        "runtime_max_microseconds": R4_SCIENTIFIC_RUNTIME_MAX_MICROSECONDS,
+        "active_state": pairs["ActiveState"],
+        "service_result": pairs["Result"],
+        "main_pid": main_pid,
+        "restart_count": restart_count,
+    }
+
+
+def build_timeout_receipt(args: argparse.Namespace) -> None:
+    (root, freeze, admission, marker, sealed_repo,
+     _recovery_execution) = _load_recovery_root(args)
+    raw = r4_terminal_parallel_timeout_receipt(
+        root, freeze, admission, repo=sealed_repo, review_marker=marker,
+        **_systemd_timeout_observation())
+    output = root / "r4-completion-timeout-receipt.json"
+    digest = publish_exclusive_bytes(output, raw)
+    _fsync_parent(output)
+    _output({
+        "schema": "belief-v1-v2-r4-timeout-receipt-published-v1",
+        "receipt_path": str(output),
+        "receipt_sha256": digest,
+        "recovery_authorized": False,
+        "outcome_bytes_opened": False,
+        "test_split_reopened": False,
+        "retry_authorized": False,
+    })
+
+
+def pending_recovery_review_claim(args: argparse.Namespace) -> None:
+    (root, freeze, admission, marker, sealed_repo,
+     recovery_execution) = _load_recovery_root(args)
+    claim = r4_terminal_parallel_pending_recovery_review_claim(
+        root, freeze, admission, repo=sealed_repo, review_marker=marker,
+        recovery_execution=recovery_execution)
+    sys.stdout.buffer.write(
+        PENDING_RECOVERY_REVIEW_PREFIX.encode("ascii")
+        + canonical_json_bytes(claim))
+
+
+def recover_pending(args: argparse.Namespace) -> None:
+    (root, freeze, admission, marker, sealed_repo,
+     recovery_execution) = _load_recovery_root(args)
+    _output(recover_r4_terminal_parallel_pending(
+        root, freeze, admission, repo=sealed_repo, review_marker=marker,
+        recovery_review_commit=args.recovery_review_commit,
+        recovery_execution=recovery_execution))
+
+
+def finalize_pending(args: argparse.Namespace) -> None:
+    (root, freeze, admission, marker, sealed_repo,
+     recovery_execution) = _load_recovery_root(args)
+    _output(finalize_r4_terminal_parallel_pending(
+        root, freeze, admission, repo=sealed_repo, review_marker=marker,
+        recovery_review_commit=args.recovery_review_commit,
+        recovery_execution=recovery_execution,
+        progress=_progress("r4-terminal-pending-verifier")))
+
+
+def verify_recovered_terminal(args: argparse.Namespace) -> None:
+    """Receipt-only reopen after the sole pending verifier has completed."""
+    (root, freeze, admission, marker, sealed_repo,
+     _recovery_execution) = _load_recovery_root(args)
+    _output(reopen_r4_terminal_parallel(
+        root, freeze, admission, repo=sealed_repo, review_marker=marker,
+        progress=_progress("r4-terminal-recovered-reopen")))
+
+
+def _add_recovery_identity_arguments(
+        command: argparse.ArgumentParser, *, reviewed: bool) -> None:
+    command.add_argument("--root", required=True)
+    command.add_argument("--sealed-repo", required=True)
+    command.add_argument("--recovery-execution-git", required=True)
+    if reviewed:
+        command.add_argument(
+            "--recovery-source-review-commit", required=True)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -478,6 +709,30 @@ def parser() -> argparse.ArgumentParser:
     recover_command = commands.add_parser("recover-terminal-binding")
     recover_command.add_argument("--root", required=True)
     recover_command.set_defaults(function=recover_terminal)
+    timeout_command = commands.add_parser("build-timeout-receipt")
+    _add_recovery_identity_arguments(timeout_command, reviewed=True)
+    timeout_command.set_defaults(function=build_timeout_receipt)
+    source_claim_command = commands.add_parser(
+        "recovery-execution-review-claim")
+    _add_recovery_identity_arguments(source_claim_command, reviewed=False)
+    source_claim_command.set_defaults(
+        function=recovery_execution_review_claim)
+    claim_command = commands.add_parser("pending-recovery-review-claim")
+    _add_recovery_identity_arguments(claim_command, reviewed=True)
+    claim_command.set_defaults(function=pending_recovery_review_claim)
+    pending_command = commands.add_parser("recover-pending")
+    _add_recovery_identity_arguments(pending_command, reviewed=True)
+    pending_command.add_argument("--recovery-review-commit", required=True)
+    pending_command.set_defaults(function=recover_pending)
+    finalize_command = commands.add_parser("finalize-pending")
+    _add_recovery_identity_arguments(finalize_command, reviewed=True)
+    finalize_command.add_argument("--recovery-review-commit", required=True)
+    finalize_command.set_defaults(function=finalize_pending)
+    verify_recovered_command = commands.add_parser(
+        "verify-recovered-terminal")
+    _add_recovery_identity_arguments(
+        verify_recovered_command, reviewed=True)
+    verify_recovered_command.set_defaults(function=verify_recovered_terminal)
     return result
 
 

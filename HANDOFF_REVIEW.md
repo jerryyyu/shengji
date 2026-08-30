@@ -9953,3 +9953,79 @@ PUCT/BELIEF integration, merge, retry, promotion, deployment, strength claims. O
 agreed, but the launch review keeps the right to targeted source reads of surfaces NEITHER
 reviewer has yet covered — "unchanged" is not the same as "reviewed".
 — Claude (session `68f9c8bd`)
+
+## 2026-08-30 07:45 EDT — ✅ PASS both run-unblocking deltas: PR #171 `b243368c` (Stop hook, fail-closed and witnessed) and PR #170 `cf115cea` (capacity repair). **The one-shot marker predicate I filed an hour ago at `3e98d06` is already fixed**
+
+Two narrow delta reviews on baselines I had already reviewed. Both
+`git diff --check` clean, both `.pyc` scans empty.
+
+### PR #171 at `b243368c` — the Stop hook
+
+Parent `b12eea0` confirmed via `git show -s --format=%P`; **6 files,
++439/−6**. Pure mode, `-P -B`, `__pycache__` cleared: the focused three files
+give **100 passed**, exactly the recorded count. `-k privileged_teacher_luna`
+gives **128 passed / 2 skipped**; the ask says 127/127, which I could not
+reproduce with any selector I tried — a difference of selection, not of
+failures, and I state it rather than round it.
+
+The hook is genuinely fail-closed. It refuses to run outside `-P -B`, blocks on
+malformed stdin, blocks on any exception from `tool_request`, and allows the
+model to stop only when the engine-owned mailbox returns exactly
+`{schema, status, completion_token}` with `GAME_SCHEMA`, `round_end`, and a
+64-hex token. Both guards are witnessed: forcing the observation check to pass
+turns **2 tests red**, and letting malformed Stop input through turns **1
+red**.
+
+One property worth stating because it changes what the token means. When the
+engine has reached `round_end` but the model has not yet emitted the terminal
+JSON, the hook's corrective block reason **contains the exact completion
+token**. That is deliberate and documented in the source. The consequence is
+that the token in a final response is no longer independent evidence that the
+model itself observed the end — the hook will hand it over. That is acceptable
+here only because completion authority already moved off the final response at
+`57d2a58` (exit zero + `turn.completed` + completed shared engine + hash-bound
+terminal mailbox witness, with final prose diagnostic). If anything ever
+re-promotes the final token to an attestation, this hook makes that attestation
+circular.
+
+### PR #170 at `cf115cea` — the capacity repair
+
+Seven files, **+361/−61** from the `ba17ab1e` baseline across two commits (the
+intermediate is `0109d6f1`; the head's literal parent is that commit, not the
+baseline, which the ask's wording implies but does not state). The V2 battery
+is **433 passed**, up from the 428 I reproduced at the baseline and consistent
+with the delta's added tests. Source-tree `.pyc` scan is **0**.
+
+The refusal explanation checks out at the denominator: `PREFLIGHT_ACCEPTED = 32`
+in `world_afterstate_v2_capacity_runner.py:47` is a real constant, so "14 of the
+required 32 eligible fixtures" is measured against a frozen threshold rather
+than a chosen one. I did not independently re-derive the 14 — that would mean
+opening the census refusal evidence, and the constant plus the progress-log
+SHA-256 in the mailbox are what this delta review needs.
+
+**And the finding I filed one hour ago is closed.**
+`world_afterstate_v2_execution.py:562` now reads
+
+    if current_matches != [*previous_matches, marker] \
+            or marker in previous_matches:
+
+replacing the pre-repair `current_matches != [marker] or previous_matches` I
+reported at `3e98d06`. `WORLD_AFTERSTATE_V2_ABSOLUTE_LEAF_REVIEW ` still
+matches **0** ledger lines, so nothing was spent in the interval. That is the
+sixth instance of this defect class and the fastest turnaround yet; recording
+the fix as deliberately as I recorded the defect.
+
+### Authority
+
+#171: exactly one fresh non-scientific, score-free progressive Mini capacity
+census. #170: exactly one non-scientific score-free full-DAG Perf capacity
+census and one bounded rehearsal/preflight. Neither authorizes the 104-game
+collection, outcome opening or use, scientific training, audit opening,
+gameplay or strength claims, PUCT/BELIEF integration, merge, retry beyond the
+named census, promotion or deployment. No markers requested and none appended.
+
+Coverage: both are delta reviews. The unchanged 42-file V2 DAG and the
+unchanged PT-Luna collector rest on the prior PASSes, and the from-scratch
+review of #170's 70,925-line stack remains outstanding work I have flagged for
+Jerry rather than absorbed into an hourly cycle.
+

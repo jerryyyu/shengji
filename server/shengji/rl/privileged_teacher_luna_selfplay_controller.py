@@ -29,8 +29,8 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 
 
 CONTROLLER_SCHEMA = "privileged-teacher-luna-selfplay-controller-v1"
-CAPACITY_SCHEMA = "privileged-teacher-luna-selfplay-capacity-v1"
-CAPACITY_ARM_SCHEMA = "privileged-teacher-luna-selfplay-capacity-arm-v1"
+CAPACITY_SCHEMA = "privileged-teacher-luna-selfplay-capacity-v2"
+CAPACITY_ARM_SCHEMA = "privileged-teacher-luna-selfplay-capacity-arm-v2"
 POPULATION_REPORT_SCHEMA = "privileged-teacher-luna-selfplay-population-report-v1"
 POPULATION_ADMISSION_SCHEMA = "privileged-teacher-luna-selfplay-population-admission-v1"
 LAUNCH_FREEZE_SCHEMA = "privileged-teacher-luna-selfplay-launch-freeze-v1"
@@ -44,7 +44,6 @@ CAPACITY_WORKERS = (1, 2, 4, 6, 8)
 PHYSICAL_RSS_NUM = 85
 SCALING_NUM = 70
 HEADROOM_NUM = 25
-PROVIDER_HEADROOM_NUM = 2
 DEFAULT_WALL_BUDGET_NANOSECONDS = 1 << 62
 DEFAULT_TOKEN_BUDGET = 1 << 62
 CAPACITY_EXECUTION_SYNTHETIC = "synthetic-injected-capacity"
@@ -294,57 +293,49 @@ class CapacityMetric:
     """Only score-free process/resource telemetry is retained."""
 
     complete: bool
+    verified: bool
     wall_nanoseconds: int
     busy_cpu_nanoseconds: int
     peak_rss_bytes: int
     swap_bytes: int
-    provider_refusals: int
-    provider_rate_limits: int
-    provider_errors: int
-    runtime_errors: int
+    process_errors: int
     tool_calls: int
     token_count: int
     token_rate_milli: int
-    provider_capacity_rate_milli: int
     mechanics_sha256: str
 
     def __post_init__(self) -> None:
         if type(self.complete) is not bool:
             raise ControllerError("capacity completion drift")
+        if type(self.verified) is not bool:
+            raise ControllerError("capacity verification drift")
         for name in ("wall_nanoseconds", "busy_cpu_nanoseconds", "peak_rss_bytes",
-                     "swap_bytes", "provider_refusals", "provider_rate_limits",
-                     "provider_errors", "runtime_errors", "tool_calls",
-                     "token_count", "token_rate_milli", "provider_capacity_rate_milli"):
+                     "swap_bytes", "process_errors", "tool_calls",
+                     "token_count", "token_rate_milli"):
             _nonnegative_int(getattr(self, name), f"capacity {name}")
-        if self.wall_nanoseconds <= 0 or self.provider_capacity_rate_milli <= 0:
+        if self.wall_nanoseconds <= 0:
             raise ControllerError("capacity positive metric drift")
         _strict_sha(self.mechanics_sha256, "capacity mechanics SHA")
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> "CapacityMetric":
-        expected = {"complete", "wall_nanoseconds", "busy_cpu_nanoseconds",
-                    "peak_rss_bytes", "swap_bytes", "provider_refusals",
-                    "provider_rate_limits", "provider_errors", "runtime_errors",
-                    "tool_calls", "token_count", "token_rate_milli",
-                    "provider_capacity_rate_milli", "mechanics_sha256"}
+        expected = {"complete", "verified", "wall_nanoseconds", "busy_cpu_nanoseconds",
+                    "peak_rss_bytes", "swap_bytes", "process_errors", "tool_calls",
+                    "token_count", "token_rate_milli", "mechanics_sha256"}
         if type(value) is not dict or set(value) != expected:
             raise ControllerError("capacity metric schema drift")
         return cls(**value)
 
     def payload(self) -> dict[str, object]:
-        return {"complete": self.complete,
+        return {"complete": self.complete, "verified": self.verified,
                 "wall_nanoseconds": self.wall_nanoseconds,
                 "busy_cpu_nanoseconds": self.busy_cpu_nanoseconds,
                 "peak_rss_bytes": self.peak_rss_bytes,
                 "swap_bytes": self.swap_bytes,
-                "provider_refusals": self.provider_refusals,
-                "provider_rate_limits": self.provider_rate_limits,
-                "provider_errors": self.provider_errors,
-                "runtime_errors": self.runtime_errors,
+                "process_errors": self.process_errors,
                 "tool_calls": self.tool_calls,
                 "token_count": self.token_count,
                 "token_rate_milli": self.token_rate_milli,
-                "provider_capacity_rate_milli": self.provider_capacity_rate_milli,
                 "mechanics_sha256": self.mechanics_sha256}
 
 
@@ -379,11 +370,11 @@ def _arm_summary(workers: int, metrics: Sequence[CapacityMetric],
     aggregate_peak_rss = sum(sorted(
         (metric.peak_rss_bytes for metric in metrics), reverse=True)[:workers])
     swaps = sum(metric.swap_bytes for metric in metrics)
-    provider_refusals = sum(metric.provider_refusals for metric in metrics)
-    provider_rate_limits = sum(metric.provider_rate_limits for metric in metrics)
-    provider_errors = sum(metric.provider_errors for metric in metrics)
-    runtime_errors = sum(metric.runtime_errors for metric in metrics)
-    complete = all(metric.complete for metric in metrics)
+    completed_games = sum(metric.complete for metric in metrics)
+    complete = completed_games == workers * 2
+    verified_games = sum(metric.verified for metric in metrics)
+    verified = verified_games == workers * 2
+    process_errors = sum(metric.process_errors for metric in metrics)
     mechanics = {metric.mechanics_sha256 for metric in metrics}
     mechanics_passed = (len(mechanics) == 1
                         and (expected_mechanics_sha256 is None
@@ -391,19 +382,17 @@ def _arm_summary(workers: int, metrics: Sequence[CapacityMetric],
     rss_passed = (aggregate_peak_rss * 100
                   <= physical_memory_bytes * PHYSICAL_RSS_NUM)
     deadline_passed = p95_wall * 100 <= deadline_nanoseconds * (100 - HEADROOM_NUM)
-    # There are two sequential games per worker.  The worst simultaneous
-    # provider demand is therefore the sum of the largest ``workers`` measured
-    # game rates, not max(one game) and not all two waves added together.
+    # There are two games per worker.  Token telemetry remains a bounded
+    # resource gate, but it is not a provider-capacity assertion.
     aggregate_token_rate = sum(sorted(
         (metric.token_rate_milli for metric in metrics), reverse=True)[:workers])
-    provider_capacity = min(metric.provider_capacity_rate_milli for metric in metrics)
-    provider_headroom_passed = provider_capacity >= PROVIDER_HEADROOM_NUM * aggregate_token_rate
-    provider_passed = (provider_refusals == 0 and provider_rate_limits == 0
-                       and provider_errors == 0 and runtime_errors == 0
-                       and provider_headroom_passed)
+    observed_parallelism_milli = (sum(metric.wall_nanoseconds for metric in metrics
+                                       if metric.complete) * 1000 // wall_span)
+    parallelism_passed = (complete and verified and process_errors == 0
+                          and observed_parallelism_milli >= 700 * workers)
     scaling_efficiency_milli: int | None = None
     scaling_passed = True
-    throughput_num = len(metrics) * 1_000_000_000
+    throughput_num = completed_games * 1_000_000_000
     throughput_den = wall_span
     if previous is not None:
         prev_num = int(previous["completed_games"]) * 1_000_000_000
@@ -412,8 +401,9 @@ def _arm_summary(workers: int, metrics: Sequence[CapacityMetric],
         scaling_efficiency_milli = ((throughput_num * prev_den * int(previous["workers"])
                                      * 1000) // (throughput_den * prev_num * workers))
         scaling_passed = scaling_efficiency_milli >= SCALING_NUM * 10
-    passed = (complete and mechanics_passed and swaps == 0 and rss_passed
-              and deadline_passed and provider_passed and scaling_passed
+    passed = (complete and verified and mechanics_passed and swaps == 0 and rss_passed
+              and deadline_passed and process_errors == 0 and parallelism_passed
+              and scaling_passed
               and (cumulative_wall_budget_nanoseconds is None
                    or (cumulative_wall_nanoseconds is not None
                        and cumulative_wall_nanoseconds <= cumulative_wall_budget_nanoseconds))
@@ -421,7 +411,7 @@ def _arm_summary(workers: int, metrics: Sequence[CapacityMetric],
                    or (cumulative_token_count is not None
                        and cumulative_token_count <= cumulative_token_budget)))
     return {"schema": CAPACITY_ARM_SCHEMA, "workers": workers,
-            "completed_games": len(metrics), "metrics": [m.payload() for m in metrics],
+            "completed_games": completed_games, "metrics": [m.payload() for m in metrics],
             "wall_span_nanoseconds": wall_span, "arm_wall_span_nanoseconds": wall_span,
             "cumulative_wall_nanoseconds": cumulative_wall_nanoseconds,
             "cumulative_token_count": cumulative_token_count,
@@ -431,18 +421,19 @@ def _arm_summary(workers: int, metrics: Sequence[CapacityMetric],
             "aggregate_swap_bytes": max(metric.swap_bytes for metric in metrics),
             "aggregate_token_count": sum(metric.token_count for metric in metrics),
             "aggregate_token_rate_milli": aggregate_token_rate,
-            "provider_capacity_rate_milli": provider_capacity,
+            "verified_games": verified_games,
+            "process_errors": process_errors,
+            "observed_parallelism_milli": observed_parallelism_milli,
             "p95_wall_nanoseconds": p95_wall,
             "max_peak_rss_bytes": max_rss, "swap_bytes": swaps,
-            "provider_refusals": provider_refusals,
-            "provider_rate_limits": provider_rate_limits,
-            "provider_errors": provider_errors, "runtime_errors": runtime_errors,
             "mechanics_sha256": next(iter(mechanics)) if mechanics_passed else None,
             "scaling_efficiency_milli": scaling_efficiency_milli,
-            "complete_passed": complete, "mechanics_passed": mechanics_passed,
+            "complete_passed": complete, "verified_passed": verified,
+            "process_passed": process_errors == 0,
+            "parallelism_passed": parallelism_passed,
+            "mechanics_passed": mechanics_passed,
             "rss_passed": rss_passed, "deadline_passed": deadline_passed,
-            "provider_headroom_passed": provider_headroom_passed,
-            "provider_passed": provider_passed, "scaling_passed": scaling_passed,
+            "scaling_passed": scaling_passed,
             "cumulative_wall_budget_passed": (
                 cumulative_wall_budget_nanoseconds is None or
                 (cumulative_wall_nanoseconds is not None and
@@ -526,13 +517,13 @@ def validate_capacity_receipt(receipt: CapacityReceipt | Mapping[str, object]) -
                     "cumulative_wall_nanoseconds", "cumulative_token_count",
                     "aggregate_busy_cpu_nanoseconds", "aggregate_peak_rss_bytes",
                     "aggregate_swap_bytes", "aggregate_token_count",
-                    "aggregate_token_rate_milli", "provider_capacity_rate_milli",
-                    "p95_wall_nanoseconds", "max_peak_rss_bytes", "swap_bytes",
-                    "provider_refusals", "provider_rate_limits", "provider_errors",
-                    "runtime_errors", "mechanics_sha256", "scaling_efficiency_milli",
-                    "complete_passed", "mechanics_passed", "rss_passed",
-                    "deadline_passed", "provider_headroom_passed", "provider_passed",
-                    "scaling_passed", "cumulative_wall_budget_passed",
+                    "aggregate_token_rate_milli", "verified_games", "process_errors",
+                    "observed_parallelism_milli", "p95_wall_nanoseconds",
+                    "max_peak_rss_bytes", "swap_bytes", "mechanics_sha256",
+                    "scaling_efficiency_milli", "complete_passed", "verified_passed",
+                    "process_passed", "parallelism_passed", "mechanics_passed",
+                    "rss_passed", "deadline_passed", "scaling_passed",
+                    "cumulative_wall_budget_passed",
                     "cumulative_token_budget_passed", "passed"}
         if type(arm) is not dict or set(arm) != arm_keys:
             raise ControllerError("capacity arm schema drift")
@@ -574,12 +565,19 @@ def validate_capacity_receipt(receipt: CapacityReceipt | Mapping[str, object]) -
         if observed_games != expected_games:
             raise ControllerError("verified capacity evidence population drift")
     selected = body["selected_workers"]
+    eligible = [workers for workers in passing
+                if any(arm["workers"] > workers
+                       and arm["parallelism_passed"]
+                       and arm["complete_passed"]
+                       and arm["verified_passed"]
+                       and arm["process_passed"]
+                       for arm in arms)]
     expected_selected = (max(
-        passing,
+        eligible,
         key=lambda workers: next(
             arm["completed_games"] * 1_000_000_000 / arm["wall_span_nanoseconds"]
             for arm in arms if arm["workers"] == workers))
-        if passing else None)
+        if eligible else None)
     if selected != expected_selected:
         raise ControllerError("capacity selected arm drift")
     if body["route"] not in (CAPACITY_ROUTE, CAPACITY_REFUSE_ROUTE):
@@ -699,9 +697,16 @@ def _run_capacity_core(*, deadline_nanoseconds: int, physical_memory_bytes: int,
                        else "arm_condition_failed")
         break
     passing = [arm["workers"] for arm in arms if arm["passed"]]
-    selected = (max(passing, key=lambda workers: next(
+    eligible = [workers for workers in passing
+                if any(arm["workers"] > workers
+                       and arm["parallelism_passed"]
+                       and arm["complete_passed"]
+                       and arm["verified_passed"]
+                       and arm["process_passed"]
+                       for arm in arms)]
+    selected = (max(eligible, key=lambda workers: next(
         arm["completed_games"] * 1_000_000_000 / arm["wall_span_nanoseconds"]
-        for arm in arms if arm["workers"] == workers)) if passing else None)
+        for arm in arms if arm["workers"] == workers)) if eligible else None)
     if not synthetic:
         assert provenance_factory is not None
         provenance = provenance_factory()
@@ -756,7 +761,6 @@ def run_capacity(*, deadline_nanoseconds: int, physical_memory_bytes: int,
 def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
                       deadline_nanoseconds: int,
                       physical_memory_bytes: int,
-                      provider_capacity_rate_milli: int,
                       config: execution.LunaPlannerConfig | None = None,
                       cumulative_wall_budget_nanoseconds: int = DEFAULT_WALL_BUDGET_NANOSECONDS,
                       cumulative_token_budget: int = DEFAULT_TOKEN_BUDGET,
@@ -773,7 +777,6 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
         raise ControllerError("capacity secret identity drift")
     if not Path(tool_script).is_file():
         raise ControllerError("capacity tool script absent")
-    _positive_int(provider_capacity_rate_milli, "provider capacity rate")
     planner_config = config or execution.LunaPlannerConfig()
     # Each capacity game has distinct runtime/evidence identities. Keep them
     # keyed by arm coordinate instead of requiring every subprocess to emit
@@ -803,7 +806,8 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
             finally:
                 telemetry = meter.close()
             reopened = execution.reopen_attempt(result.attempt_path)
-            if (not getattr(reopened, "scientific_admissible", False)
+            if (len(reopened.evidence) != len(luna.TEAMS)
+                    or not getattr(reopened, "scientific_admissible", False)
                     or any(item.body.get("execution_kind")
                            != execution.PRODUCTION_EXECUTION_KIND
                            or item.body.get("actual_subprocess") is not True
@@ -843,7 +847,7 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
             swap = _nonnegative_int(telemetry["swap_bytes"], "capacity swap")
             tokens = 0
             tool_calls = 0
-            runtime_errors = 0
+            process_errors = 0
             for evidence in reopened.evidence:
                 body = evidence.body
                 usage = body.get("codex_usage")
@@ -856,21 +860,22 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
                 if type(trace) is not list:
                     raise ControllerError("capacity tool telemetry absent")
                 tool_calls += len(trace)
-                runtime_errors += int(body.get("process_error") is not None)
+                process_errors += int(body.get("process_error") is not None)
             mechanics = _sha({"schema": "pt-luna-capacity-mechanics-v1",
                                "runtime": [item.body.get("runtime")
                                            for item in reopened.evidence],
                                "planner": planner_config.payload()})
             return CapacityMetric(
                 complete=reopened.status == "complete",
+                verified=(reopened.status == "complete"
+                          and all(item.body.get("process_error") is None
+                                  for item in reopened.evidence)),
                 wall_nanoseconds=elapsed,
                 busy_cpu_nanoseconds=busy_cpu,
                 peak_rss_bytes=peak_rss, swap_bytes=swap,
-                provider_refusals=0, provider_rate_limits=0,
-                provider_errors=0, runtime_errors=runtime_errors,
+                process_errors=process_errors,
                 tool_calls=tool_calls, token_count=tokens,
                 token_rate_milli=(tokens * 1_000_000_000_000 // elapsed),
-                provider_capacity_rate_milli=provider_capacity_rate_milli,
                 mechanics_sha256=mechanics)
 
     return _run_capacity_core(

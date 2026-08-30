@@ -89,13 +89,12 @@ def _load_freeze(path: Path) -> dict[str, object]:
 def _fake_metric(workers: int, worker: int, game: int) -> dict[str, object]:
     # This is deliberately an opt-in capacity seam, not a production estimate.
     mechanics = hashlib.sha256(b"pt-luna-fake-mechanics").hexdigest()
-    return {"complete": True, "wall_nanoseconds": 1_000_000_000,
+    return {"complete": True, "verified": True,
+            "wall_nanoseconds": 1_000_000_000,
             "busy_cpu_nanoseconds": 1_000_000_000,
             "peak_rss_bytes": 1_000_000, "swap_bytes": 0,
-            "provider_refusals": 0, "provider_rate_limits": 0,
-            "provider_errors": 0, "runtime_errors": 0, "tool_calls": 1,
+            "process_errors": 0, "tool_calls": 1,
             "token_count": 1, "token_rate_milli": 1,
-            "provider_capacity_rate_milli": 100,
             "mechanics_sha256": mechanics}
 
 
@@ -113,8 +112,6 @@ def main(argv: list[str] | None = None) -> int:
                           help="distinct 32-byte capacity namespace secret")
     capacity.add_argument("--tool-script", type=Path,
                           help="reviewed PT-Luna mailbox tool")
-    capacity.add_argument("--provider-capacity-rate-milli", type=int,
-                          help="frozen measured provider capacity")
     capacity.add_argument("--output", type=Path, required=True)
     capacity.add_argument("--deadline-seconds", type=int, default=1200)
     capacity.add_argument("--physical-memory-bytes", type=int, required=True)
@@ -154,16 +151,14 @@ def main(argv: list[str] | None = None) -> int:
                     cumulative_token_budget=args.token_budget,
                     game_runner=_fake_metric)
             else:
-                if (args.secret_file is None or args.tool_script is None
-                        or args.provider_capacity_rate_milli is None):
+                if args.secret_file is None or args.tool_script is None:
                     raise controller.ControllerError(
-                        "real capacity requires secret, tool, and provider capacity")
+                        "real capacity requires secret and tool")
                 receipt = controller.run_real_capacity(
                     capacity_secret=_secret(args.secret_file),
                     tool_script=args.tool_script,
                     deadline_nanoseconds=args.deadline_seconds * 1_000_000_000,
                     physical_memory_bytes=args.physical_memory_bytes,
-                    provider_capacity_rate_milli=args.provider_capacity_rate_milli,
                     cumulative_wall_budget_nanoseconds=(
                         args.wall_budget_seconds * 1_000_000_000),
                     cumulative_token_budget=args.token_budget)

@@ -123,21 +123,28 @@ ineligible rather than silently selecting a different source.
 Capacity is separate from the 52 scientific source clusters and cannot use
 their namespace. It runs progressive game-worker arms `1, 2, 4, 6, 8`, with
 exactly two complete capture-only games per worker at each reached arm. It
-retains only completion, wall, busy CPU, process-tree peak RSS, swap,
-provider refusal/rate-limit/error counts, tool calls, token-rate telemetry,
-and mechanics hashes. Outcomes, actions, trajectories, and prose are discarded
-and cannot choose the arm.
+retains only completion and verification status, per-game wall time, busy CPU,
+process-tree peak RSS, swap, actual process-error counts, tool calls,
+token-rate telemetry, and mechanics hashes. Outcomes, actions, trajectories,
+prose, and caller-asserted provider capacity are discarded and cannot choose
+the arm.
 
 Stop before a larger arm at the first reached arm with any of:
 
-- swap or provider/runtime error;
+- swap or actual process error;
 - peak process-tree RSS above 85% of Mini physical memory;
 - mechanics or sealed-byte drift;
 - less than 25% deadline headroom at p95 game wall; or
-- less than 70% scaling efficiency relative to the preceding arm.
+- less than 70% scaling efficiency relative to the preceding arm; or
+- measured concurrency below 70% of the requested arm (the receipt computes
+  `observed_parallelism_milli = sum(completed game wall nanoseconds) * 1000 /
+  arm wall nanoseconds`) or any expected subprocess/result is incomplete or
+  unverified.
 
-The capacity receipt must also demonstrate at least 2x provider-rate headroom.
-The scientific worker count is the fastest passing arm, not automatically the
+An arm is selectable only when the next larger tested arm also passes the
+empirical concurrency/completeness rule. The final tested arm is never
+selected: if arm 8 passes, selection can be at most arm 6. The scientific
+worker count is the fastest eligible passing arm, not automatically the
 largest. It is frozen before the 52-cluster namespace opens. Capacity has its
 own hard wall/token budget and may stop early while preserving every reached
 arm.

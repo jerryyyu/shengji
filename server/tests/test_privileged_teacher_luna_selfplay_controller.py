@@ -44,13 +44,12 @@ def _codex_stdout() -> bytes:
 
 def _metric(workers: int, worker: int, game: int) -> dict[str, object]:
     del worker, game
-    return {"complete": True, "wall_nanoseconds": max(1, 8_000_000_000 // workers),
+    return {"complete": True, "verified": True,
+            "wall_nanoseconds": max(1, 8_000_000_000 // workers),
             "busy_cpu_nanoseconds": 1_000_000_000,
             "peak_rss_bytes": 1_000_000, "swap_bytes": 0,
-            "provider_refusals": 0, "provider_rate_limits": 0,
-            "provider_errors": 0, "runtime_errors": 0, "tool_calls": 4,
+            "process_errors": 0, "tool_calls": 4,
             "token_count": 10, "token_rate_milli": 10,
-            "provider_capacity_rate_milli": 100,
             "mechanics_sha256": MECHANICS}
 
 
@@ -229,8 +228,8 @@ def test_capacity_stops_on_rss_and_never_reaches_larger_arm():
     controller.validate_capacity_receipt(receipt)
 
 
-def test_capacity_stops_on_provider_and_deadline_conditions():
-    for field in ("swap_bytes", "provider_errors", "runtime_errors"):
+def test_capacity_stops_on_process_and_deadline_conditions():
+    for field in ("swap_bytes", "process_errors"):
         def runner(workers, worker, game, field=field):
             value = _metric(workers, worker, game)
             value[field] = 1
@@ -260,10 +259,12 @@ def test_capacity_stops_on_scaling_and_selects_fastest_passing_arm():
         deadline_nanoseconds=1200 * 1_000_000_000,
         physical_memory_bytes=8_000_000_000, game_runner=runner)
     assert [arm["workers"] for arm in receipt.body["arms"]] == [1, 2]
+    # The earlier passing arm remains eligible because arm 2 is the larger
+    # tested witness, while the final arm itself is never selectable.
     assert receipt.body["selected_workers"] == 1
 
 
-def test_capacity_arms_are_concurrent_and_provider_headroom_is_aggregate():
+def test_capacity_arms_are_concurrent_and_parallelism_is_empirical():
     active = 0
     peak = 0
     lock = threading.Lock()
@@ -281,7 +282,6 @@ def test_capacity_arms_are_concurrent_and_provider_headroom_is_aggregate():
         with lock:
             active -= 1
         value = _metric(workers, worker, game)
-        value["provider_capacity_rate_milli"] = 1000
         return value
 
     receipt = controller.run_capacity(
@@ -290,18 +290,7 @@ def test_capacity_arms_are_concurrent_and_provider_headroom_is_aggregate():
     assert peak > 1
     assert receipt.body["arms"][-1]["workers"] == 8
     assert receipt.body["arms"][-1]["aggregate_token_rate_milli"] == 80
-    assert receipt.body["arms"][-1]["provider_capacity_rate_milli"] == 1000
-
-    def overloaded(workers, worker, game):
-        value = _metric(workers, worker, game)
-        value["token_rate_milli"] = 10
-        value["provider_capacity_rate_milli"] = 25
-        return value
-    limited = controller.run_capacity(
-        deadline_nanoseconds=1200 * 1_000_000_000,
-        physical_memory_bytes=8_000_000_000, game_runner=overloaded)
-    assert [arm["workers"] for arm in limited.body["arms"]] == [1, 2]
-    assert limited.body["arms"][-1]["provider_headroom_passed"] is False
+    assert receipt.body["arms"][-1]["observed_parallelism_milli"] >= 700 * 8
 
 
 def test_capacity_budget_stops_before_next_arm_and_is_bound_in_receipt():
@@ -355,9 +344,8 @@ def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
     receipt = controller.run_real_capacity(
         capacity_secret=SECRET, tool_script=TOOL,
         deadline_nanoseconds=1200 * 1_000_000_000,
-        physical_memory_bytes=8_000_000_000,
-        provider_capacity_rate_milli=1 << 60)
-    assert receipt.body["selected_workers"] == 1
+        physical_memory_bytes=8_000_000_000)
+    assert receipt.body["selected_workers"] is None
     assert receipt.body["execution_kind"] == controller.CAPACITY_EXECUTION_VERIFIED
     assert receipt.body["scientific_admissible"] is False
     assert len(issued) == 2 and issued == meters
@@ -375,8 +363,7 @@ def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
         controller.run_real_capacity(
             capacity_secret=SECRET, tool_script=TOOL,
             deadline_nanoseconds=1200 * 1_000_000_000,
-            physical_memory_bytes=8_000_000_000,
-            provider_capacity_rate_milli=1 << 60)
+            physical_memory_bytes=8_000_000_000)
 
 
 def test_public_capacity_api_cannot_issue_verified_runtime_or_science():
@@ -395,6 +382,86 @@ def test_public_capacity_api_cannot_issue_verified_runtime_or_science():
         physical_memory_bytes=8_000_000_000, game_runner=_metric)
     assert receipt.body["execution_kind"] == controller.CAPACITY_EXECUTION_SYNTHETIC
     assert receipt.body["scientific_admissible"] is False
+
+
+def test_removed_provider_capacity_argument_and_metric_field_are_rejected():
+    with pytest.raises(TypeError):
+        controller.run_real_capacity(
+            capacity_secret=SECRET, tool_script=TOOL,
+            deadline_nanoseconds=1200 * 1_000_000_000,
+            physical_memory_bytes=8_000_000_000,
+            provider_capacity_rate_milli=1 << 60)
+    forged = _metric(1, 0, 0)
+    forged["provider_capacity_rate_milli"] = 1 << 60
+    with pytest.raises(controller.ControllerError, match="metric schema"):
+        controller.run_capacity(
+            deadline_nanoseconds=1200 * 1_000_000_000,
+            physical_memory_bytes=8_000_000_000,
+            game_runner=lambda *_args: forged)
+
+
+def _overlap_runner(*, serialized: bool = False, incomplete: bool = False):
+    lock = threading.Lock()
+    barriers = {workers: threading.Barrier(workers)
+                for workers in controller.CAPACITY_WORKERS if workers > 1}
+
+    def runner(workers, worker, game):
+        if workers > 1:
+            barriers[workers].wait(timeout=2)
+        if serialized:
+            with lock:
+                time.sleep(0.05)
+        else:
+            time.sleep(0.05)
+        value = _metric(workers, worker, game)
+        value["wall_nanoseconds"] = 50_000_000
+        if incomplete:
+            value["complete"] = False
+            value["verified"] = False
+            value["process_errors"] = 1
+        return value
+    return runner
+
+
+def test_barrier_backed_overlap_passes_empirical_concurrency(monkeypatch):
+    monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1, 2))
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000,
+        game_runner=_overlap_runner())
+    assert receipt.body["arms"][-1]["parallelism_passed"] is True
+    assert receipt.body["selected_workers"] == 1
+
+
+def test_serialized_probe_fails_empirical_concurrency_and_admits_none(monkeypatch):
+    monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1, 2))
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000,
+        game_runner=_overlap_runner(serialized=True))
+    assert receipt.body["arms"][-1]["parallelism_passed"] is False
+    assert receipt.body["selected_workers"] is None
+
+
+def test_process_failure_or_incomplete_probe_fails_and_admits_none(monkeypatch):
+    monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1, 2))
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000,
+        game_runner=_overlap_runner(incomplete=True))
+    assert receipt.body["arms"][0]["complete_passed"] is False
+    assert receipt.body["arms"][0]["process_passed"] is False
+    assert receipt.body["selected_workers"] is None
+
+
+def test_passing_eight_selects_at_most_six(monkeypatch):
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=1200 * 1_000_000_000,
+        physical_memory_bytes=8_000_000_000,
+        game_runner=_overlap_runner())
+    assert receipt.body["arms"][-1]["workers"] == 8
+    assert receipt.body["arms"][-1]["passed"] is True
+    assert receipt.body["selected_workers"] <= 6
 
 
 def test_verified_capacity_requires_one_provenance_row_per_measured_game():

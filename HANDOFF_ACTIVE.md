@@ -29,7 +29,8 @@ only that receipt plus the immutable 52-deal x two-mirror freeze; unchanged
 source must not be re-reviewed.
 
 Review draft PR #170 at exact repaired head
-`0109d6f` (parent `ba17ab1e`). This is one consolidated delta source review;
+`0109d6f189d499c59416a0279d589cad7da0c12a` (parent
+`ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c`). This is one consolidated delta source review;
 the previously reviewed 42-file Value V2 DAG is unchanged outside these five
 files. The first authorized score-free Perf capacity census correctly refused
 before any arm/DAG measurement because the frozen 96 attempts supplied only
@@ -171,7 +172,8 @@ reviewed against the live systemd state before any recovery executes.
 ### Value-Afterstate V2 — first capacity refused; repaired source review pending
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
-  repaired pushed head `0109d6f` is clean; parent `ba17ab1e` remains the exact
+  repaired pushed head `0109d6f189d499c59416a0279d589cad7da0c12a` is
+  clean; parent `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c` remains the exact
   previously reviewed DAG source.
 - The 42-file implementation completes the production path from D256
   population through P0, optimizer canary, labels, six natural/control
@@ -193,7 +195,8 @@ reviewed against the live systemd state before any recovery executes.
   arm, full-DAG, rehearsal, label, outcome, audit, or scientific stage. The
   bounded log is immutable and hash-bound above. The rehearsal authority was
   conditional on capacity success and therefore remains unused but cannot be
-  applied to changed source. Exact repaired head `0109d6f` now awaits the one
+  applied to changed source. Exact repaired head
+  `0109d6f189d499c59416a0279d589cad7da0c12a` now awaits the one
   delta review above; no replacement capacity may launch before PASS.
 
 ### Value-Afterstate V0 — independently verified refusal
@@ -274,7 +277,7 @@ reviewed against the live systemd state before any recovery executes.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | Value V2 score-free capacity at exact `ba17ab1e`; no scientific data |
+| Perf Cloud | free; Value V2 waits for exact `0109d6f` delta PASS before replacement capacity |
 | Mini | free; PT-Luna waits for exact `b243368` source PASS before one fresh census |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.

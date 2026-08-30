@@ -4,30 +4,26 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 08:40 EDT**. Remote main before this update:
-`6f361a1`.
+Last reconciled: **2026-08-30 08:47 EDT**. Remote main before this update:
+`ad37138`.
 
-## Review queue — one R4 dynamic ask
+## Review queue — none; hold canonical main stable for R4 verifier
 
-Review the exact machine-generated R4 sealed-inner recovery claim first. The
-sole scientific unit reached its frozen hard limit at **12:23:20 UTC** with
-`Result=timeout`, status 15 and zero restarts; the success-only verifier watcher
-correctly launched nothing. The reviewed receipt builder then sealed
-`r4-completion-timeout-receipt.json`, SHA-256
-`b089dca4198dd3012b86ace734c9ff7f93fb5e0e57d05e75425a51eefabe1fd6`, with
-`outcome_bytes_opened=false`, `test_split_reopened=false`,
-`recovery_authorized=false` and `retry_authorized=false`. The reviewed pending
-claim builder reproduced the sealed inner manifest/tree and printed the exact
-dynamic claim without opening outcome bytes. Full claim and precise authority:
-https://github.com/jerryyyu/shengji/pull/172#issuecomment-5468692412.
+Canonical `bb7f51e` PASSed the exact machine-generated R4 sealed-inner recovery
+claim after independently verifying the live timeout, receipt and authority.
+The outcome-blind pending binding then published successfully with route
+`INNER_TERMINAL_REOPENED_PENDING_INDEPENDENT_VERIFIER`, without opening outcome
+bytes or recomputing scores. The sole authorized independent verifier is the
+next action; no further review is required before it launches.
 
-Validate that exact claim against live systemd state, the timeout receipt,
-canonical source-review marker `00c184d`, sealed inner identities and recovery
-source `5a81d89`. On PASS, append the authentic dynamic marker to canonical
-`HANDOFF_REVIEW.md`. It may authorize only the outcome-blind pending outer
-binding followed by one independent verifier; no test reopening, retry, result
-replacement, interpretation, strength claim, promotion, deployment, training
-or second verifier. No recovery process is running while this review is open.
+**Do not advance canonical `main` while the R4 verifier runs.** The reviewed
+finalizer authenticates the dynamic marker both before and after the multi-hour
+verifier, and both checks require the recovery checkout's `origin/main` to equal
+the live GitHub tip. A documentation, review, merge or other main commit during
+that interval would make the final seal refuse after doing all verifier work.
+Codex refreshes both reviewed checkouts after this notice and launches the
+verifier only then. PT-Luna/Value capacity may continue, but their follow-up
+review packets wait until R4 verification ends.
 
 Canonical ledger `979885f` PASSed both exact run-unblocking deltas: PR #171
 `b243368ca275988811c3e54db9c56b0de86f5fa1` for one fresh score-free Mini
@@ -40,16 +36,9 @@ for one replacement Mini census and repaired PR #170 head `7c77ca70` for one
 replacement Perf census followed conditionally by one target-free rehearsal.
 Both score-free censuses are now running; neither has scientific authority.
 
-PR #172 is fully source-authenticated. Canonical commit
-`00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
-`BELIEF_V1_V2_R4_RECOVERY_EXECUTION_V1_REVIEW ` marker for recovery head
-`5a81d89cd954a63ac97ca8588926b3367c28c5c1`. Do not repeat this review or
-publish another marker.
-
-The live scientific unit has now timed out and the reviewed receipt/claim
-entrypoints authenticated that marker against both clean cloud checkouts. The
-first queue item is the required dynamic review. No recovery executes before
-that exact claim receives PASS.
+PR #172 source marker remains canonical commit `00c184d`; dynamic marker
+commit `bb7f51e` binds the exact pending recovery. Do not repeat either review
+or publish another marker.
 
 ## Live work
 
@@ -78,9 +67,10 @@ that exact claim receives PASS.
 - The sole test opening is consumed. Never stop, signal, duplicate, inspect
   outcome bytes, or touch the namespace.
 - The reviewed timeout-receipt and pending-claim timers completed successfully.
-  The receipt and exact dynamic claim are bound in the first review-queue item.
-  No recovery has launched. A dynamic exact-claim PASS must precede the
-  outcome-blind pending outer binding and sole independent verifier.
+  Dynamic exact-claim PASS `bb7f51e` is authentic. The outcome-blind pending
+  outer binding published successfully in 29 seconds, with 1.2 GB peak RSS and
+  zero swap; it did not open outcomes or recompute scores. Only the sole
+  independent verifier remains.
 - The legacy duplicate-reconstruction watcher
   `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is stopped and
   inactive. The old prose-PASS-bound `5a81d89-r1` timers are also stopped and

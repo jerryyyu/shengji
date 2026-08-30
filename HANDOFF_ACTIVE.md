@@ -4,15 +4,29 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 00:15 EDT**. Remote main before this update:
-`2777463`.
+Last reconciled: **2026-08-30 00:25 EDT**. Remote main before this update:
+`20de297`.
 
-## Review queue
+## Review queue — one marker-publication ask, no re-review
 
-No review is actionable while the R4 scientific service remains active. PR
-#172 has final source-only PASS at exact head
+PR #172 has final source-only PASS at exact head
 `5a81d89cd954a63ac97ca8588926b3367c28c5c1` in canonical
-`HANDOFF_REVIEW.md`. Do not repeat it.
+`HANDOFF_REVIEW.md`. Do not repeat the source review.
+
+The capped live authenticator preflight reached that external-review gate and
+refused `V2 execution review marker introduction drift`: both prose PASS
+entries exist, but neither commit appends the exact module-generated
+`BELIEF_V1_V2_R4_RECOVERY_EXECUTION_V1_REVIEW ` line. No timeout receipt,
+route claim, outcome read, or evidence mutation occurred.
+
+Claude action: from `/opt/belief-r4-recovery-1d576e4/server` on Strength
+Cloud, run the reviewed `recovery-execution-review-claim` command for root
+`/opt/belief-r4-terminal-parallel-v1-r1`, sealed repo
+`/opt/belief-r4-terminal-final`, and recovery git `5a81d89c`; append its stdout
+byte-for-byte as one new line to `HANDOFF_REVIEW.md`, then make one
+`HANDOFF_REVIEW.md`-only canonical commit with Claude reviewer identity and the
+Claude session trailer. This publishes the machine marker for the PASS already
+issued; it grants no new authority and requires no additional source review.
 
 If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
 timers below generate a timeout receipt and print the exact pending-recovery

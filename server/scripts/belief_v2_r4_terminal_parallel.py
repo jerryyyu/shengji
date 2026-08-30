@@ -309,10 +309,10 @@ def _reopen_frozen_capacity_binding(
 
 def _repository_protocol_inputs(repo: Path):
     scripts = repo / "server" / "scripts"
-    terminal_spec = load_terminal_source_spec(stable_read_bytes(
-        scripts / "belief_v2_r4_terminal_parallel_source.v1.json"))
-    calibration_import = load_calibration_import(stable_read_bytes(
-        scripts / "belief_v2_r4_terminal_parallel_import.v1.json"))
+    terminal_spec = load_terminal_source_spec((
+        scripts / "belief_v2_r4_terminal_parallel_source.v1.json").read_bytes())
+    calibration_import = load_calibration_import((
+        scripts / "belief_v2_r4_terminal_parallel_import.v1.json").read_bytes())
     return terminal_spec, calibration_import
 
 

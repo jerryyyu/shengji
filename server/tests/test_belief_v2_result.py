@@ -1235,6 +1235,32 @@ def test_r4_terminal_timeout_receipt_wrapper_checks_namespace(
     assert len(calls) == 3
 
 
+def test_r4_timeout_receipt_refuses_non_timeout_service_result(tmp_path):
+    root = (tmp_path / "terminal").resolve()
+    source_root = (tmp_path / "source").resolve()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source = SimpleNamespace(
+        spec=_completion_source_spec(root, source_root),
+        freeze=source_freeze, admission=_admission(source_freeze),
+        inventory={}, group_split={})
+    common = dict(
+        completion_freeze=freeze, completion_admission=admission,
+        source=source,
+        service_unit=(
+            "belief-r4-terminal-scientific-56bd35f-r1.service"),
+        observed_at_unix_nanoseconds=1,
+        runtime_max_microseconds=172_800_000_000,
+        active_state="failed", main_pid=0, restart_count=0)
+
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="timeout receipt observation drift"):
+        R4_COMPLETION.build_r4_completion_timeout_receipt_bytes(
+            **common, service_result="exit-code")
+
+
 def test_r4_terminal_parity_coordinates_cover_every_rank_without_test():
     coordinates = R4_PARALLEL._parity_coordinates()
     assert tuple(row.trump_rank for row in coordinates) == V2_RANKS

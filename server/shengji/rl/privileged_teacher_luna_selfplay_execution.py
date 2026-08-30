@@ -1226,7 +1226,7 @@ def run_luna_game(
         config: LunaPlannerConfig | None = None,
         resource_meter: ProcessTreeResourceMeter | None = None) \
         -> LunaExecutionResult:
-    """Launch both planners concurrently, seal one non-retryable game attempt."""
+    """Launch both planners in engine-turn order, sealing one attempt."""
     if type(game) is not luna.LunaSelfPlayGame:
         raise LunaExecutionError("game identity drift")
     if not tool_script.is_file():
@@ -1270,6 +1270,9 @@ def run_luna_game(
         raise LunaExecutionError("resource meter type drift")
     supervisor = ProcessSupervisor(deadline, resource_meter)
     captures: dict[int, dict[str, object]] = {}
+    initial_acting_team = game.acting_team
+    if initial_acting_team not in luna.TEAMS:
+        raise LunaExecutionError("engine initial acting team drift")
 
     def one(team: int) -> None:
         session = game.session(team)
@@ -1305,15 +1308,45 @@ def run_luna_game(
         try:
             with LunaToolServer(mailbox, session) as trace_server:
                 barrier.wait(timeout=10)
-                try:
-                    completed = runner(session, workspace=workspace,
-                                       mailbox_path=mailbox, tool_script=tool_script,
-                                       codex_binary=binary, prompt=prompt,
-                                       final_output_path=final,
-                                       supervisor=supervisor, command=command)
-                except subprocess.TimeoutExpired as exc:
-                    process_error = "Luna model process exceeded wall deadline"
-                    stdout = bytes(exc.stdout or b"")
+                # Both private workspaces, mailbox servers, and peer-denial
+                # profiles are complete before this point.  The first model
+                # must be the engine's initial actor; its peer is held back
+                # until the engine advances to that team's turn (or reaches
+                # round_end, which still requires terminal attachment).
+                if team != initial_acting_team:
+                    while (game.acting_team != team and not game.complete
+                           and game.failed is None
+                           and not supervisor.aborted):
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            game.fail("shared Luna game deadline exceeded")
+                            supervisor.abort(
+                                "shared Luna game deadline exceeded")
+                            break
+                        game.wait_for_turn(team, timeout=min(0.05, remaining))
+                    if game.failed is None and not supervisor.aborted \
+                            and game.acting_team != team and not game.complete:
+                        process_error = ("Luna peer launch gate closed before "
+                                         "engine turn")
+                    else:
+                        process_error = None
+                if process_error is not None:
+                    # Leave this planner attached to its private mailbox long
+                    # enough for the normal trace/evidence sealing path, but
+                    # never invoke a runner after a failed launch gate.
+                    completed = None
+                elif game.failed is None and not supervisor.aborted:
+                    try:
+                        completed = runner(session, workspace=workspace,
+                                           mailbox_path=mailbox,
+                                           tool_script=tool_script,
+                                           codex_binary=binary, prompt=prompt,
+                                           final_output_path=final,
+                                           supervisor=supervisor, command=command)
+                    except subprocess.TimeoutExpired as exc:
+                        process_error = "Luna model process exceeded wall deadline"
+                        stdout = bytes(exc.stdout or b"")
+
                 if completed is not None:
                     stdout = bytes(completed.stdout or b"")
                 if completed is not None and completed.returncode != 0:

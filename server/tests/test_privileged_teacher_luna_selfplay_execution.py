@@ -195,15 +195,26 @@ def _fake(session, *, mailbox_path, final_output_path, **_kwargs):
     return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
 
 
-def test_fake_processes_launch_concurrently_and_share_alternating_engine(tmp_path):
+def test_fake_processes_launch_in_engine_turn_order_and_share_engine(tmp_path):
     game = _game()
+    initial_team = game.acting_team
     starts: list[int] = []
     plays: list[tuple[int, int]] = []
+    eager_nonacting_launches: list[int] = []
     lock = threading.Lock()
 
     def planner(session, **kwargs):
         with lock:
             starts.append(session.team)
+            # This is a can-fail witness: with eager dual launch, the peer is
+            # invoked while the engine still belongs to initial_team.
+            if not game.complete and session.team != game.acting_team:
+                eager_nonacting_launches.append(session.team)
+                raise AssertionError("non-acting planner launched eagerly")
+        if session.team == initial_team:
+            # Keep the engine on its initial turn briefly.  An eager peer
+            # launch therefore deterministically trips the witness above.
+            time.sleep(0.05)
         terminal = None
         while True:
             observed = execution.tool_request(kwargs["mailbox_path"], {"op": "observe"})
@@ -234,7 +245,8 @@ def test_fake_processes_launch_concurrently_and_share_alternating_engine(tmp_pat
     result = execution.run_luna_game(game, private_root=tmp_path, tool_script=TOOL,
                                      planner_process=planner)
     assert result.status == "complete"
-    assert set(starts) == {0, 1}
+    assert eager_nonacting_launches == []
+    assert starts == [initial_team, 1 - initial_team]
     assert {team for team, _ in plays} == {0, 1}
     assert all(seat % 2 == team for team, seat in plays)
     trajectory = json.loads((result.attempt_path / "trajectory.json").read_text())
@@ -447,10 +459,8 @@ def test_current_attempt_cannot_mix_or_downgrade_one_team_to_v1(tmp_path):
 
 def test_process_failure_aborts_game_and_wakes_peer(tmp_path):
     game = _game()
-    barrier = threading.Barrier(2)
 
     def failing(session, **kwargs):
-        barrier.wait()
         if session.team == 1:
             raise RuntimeError("synthetic process failure")
         return _fake(session, **kwargs)
@@ -499,17 +509,24 @@ def test_sandbox_command_binds_peer_denial_or_pins_fallback(tmp_path, monkeypatc
 def test_supervisor_kills_fake_process_groups_on_peer_failure(tmp_path):
     game = _game()
     children: list[subprocess.Popen[bytes]] = []
-    barrier = threading.Barrier(2)
 
-    def planner(session, *, supervisor, final_output_path, **_kwargs):
+    def planner(session, *, supervisor, final_output_path, mailbox_path,
+                **_kwargs):
         child = subprocess.Popen(("sleep", "30"), start_new_session=True)
         children.append(child)
         supervisor.register(session.team, child)
-        barrier.wait()
         if session.team == 1:
             raise RuntimeError("peer failed")
         while not supervisor.aborted:
-            time.sleep(0.01)
+            observed = execution.tool_request(mailbox_path, {"op": "observe"})
+            if observed["status"] == "waiting":
+                execution.tool_request(mailbox_path, {"op": "wait"})
+            elif observed["status"] == "decision":
+                execution.tool_request(mailbox_path, {
+                    "op": "play", "decision_sha256": observed["decision_sha256"],
+                    "candidate_index": 0, "confidence": "low"})
+            else:
+                break
         final_output_path.write_text(json.dumps({
             "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
             "completion_token": session._completion_token}))

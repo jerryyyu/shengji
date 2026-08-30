@@ -9288,3 +9288,53 @@ marker authentication.
 Exactly one fresh non-scientific, score-free progressive Mini capacity census with distinct
 immutable success/failure outputs. Not: the 104-game population, outcomes, gameplay/strength,
 merge, retry, promotion, deployment. — Claude (session `68f9c8bd`)
+
+## 2026-08-30 — ✅ PASS (source-only, delta): PR #171 `2f4fa09d..814e64df` — Codex 0.150.1 five-field usage telemetry binding; authorizes exactly one REPLACEMENT score-free Mini capacity census
+
+### The spent census was spent honestly
+
+The receipt at `/private/tmp/shengji-pt-luna-capacity-2f4fa09-r1/capacity-failure.json` verifies:
+SHA-256 `685c357d…` byte-matches the ask; two `verified-subprocess` evidences, both
+`actual_subprocess: true` with `process_error_present: true`; `opened`/`retained` all false;
+`failure_kind: "evidence"`; every authority flag false. The durable failure-receipt publisher I
+PASSed at `2f4fa09d` worked in production on its first real failure. The refusal was the parent's
+own 3-key exact-set check rejecting genuine 5-key telemetry — fail-closed doing its job.
+
+### Root cause verified at the emitter, not just in the delta's own tests
+
+Installed `codex-cli 0.150.1` (Homebrew, 08-27). Its native binary's serde tables contain a
+`TokenUsageBreakdown` struct whose field pool is **exactly** the five keys the delta binds
+(`input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens,
+reasoning_output_tokens`) — and separately a 7-field persistence `TokenUsage` (adds
+`total_tokens`, `codex_rollout_budget_units`) which is NOT what the delta binds. I could not
+byte-prove which struct feeds `turn.completed.usage` without launching a Codex turn (not done —
+no launches without Jerry); the risk is bounded because the exact-set guard **fails closed**: a
+6/7-key event would refuse loudly into another typed failure receipt, never silently pass.
+
+### Verified on the delta (all self-run, worktree `pr171c` at `814e64df`, parent byte-confirmed)
+
+- One `CODEX_USAGE_KEYS` constant, four consumers (JSONL parse, zero-on-error shape,
+  `reopen_attempt`, controller capacity accounting); nothing else in the diff; `git diff --check`
+  and compile clean.
+- Battery: **92/92** focused; **106 passed / 2 skipped** across all luna-matching tests (ask says
+  105 — mine one higher). Earlier "3 errors" in my first sweep were my own harness dropping `-P`
+  from the runner-guard invocation, not the delta.
+- Four independent mutations, all red: drop `reasoning_output_tokens` from the constant → **6
+  failed**; weaken exact-set to superset-allowed → **1 failed** (unknown-field drift test is
+  load-bearing); revert controller mirror to 3-key literal → **1 failed**; revert zero-on-error
+  shape to 3-key → **2 failed**. Even the failure path's shape is witnessed. Tree restored,
+  porcelain 0.
+
+### Still open from my `c5b7a0bb` PASS (not claimed by this delta)
+
+The anti-replay clause of the review-marker predicate remains unwitnessed; its test must land
+before the moment-2 marker is ever authored.
+
+STEP 0 note: ledger prefix verified intact after the PR #173 merge (`88c8fd5`).
+
+### Authorization
+
+Exactly one **replacement** non-scientific, score-free progressive Mini capacity census with
+distinct immutable success/failure outputs. Not: the 104-game population, outcome opening, data
+use, gameplay/strength claims, merge, retry beyond that replacement census, promotion, deployment.
+— Claude (session `68f9c8bd`)

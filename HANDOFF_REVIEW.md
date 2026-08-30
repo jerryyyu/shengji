@@ -9575,3 +9575,89 @@ the launch review. Coverage: deep on the completion-handshake and reopen
 surfaces; unchanged ballots, rollouts, engine state, mirrors, scoring and
 population rest on prior PASSes.
 
+
+## 2026-08-30 04:45 EDT — ✅ PASS (source only): PR #171 at exact head `57d2a58`. The objective repair is real and larger than "parity"; my `1f80b3de` finding is resolved by redesign; the **new re-derivation guard is the third unwitnessed validator in three heads**
+
+Delta `1f80b3de..57d2a58`, parent confirmed via `git show -s --format=%P`,
+**6 files, +215/−50**, `git diff --check` clean. Pure mode, `-P -B`,
+`__pycache__` cleared: the three changed test files give **105 passed** —
+exactly the recorded count — and `-k privileged_teacher_luna` gives **118
+passed / 2 skipped**.
+
+### The "behavioral-parity defect" understates itself
+
+I checked the old prompt rather than accepting the framing. At `1f80b3de` the
+teacher was given **no objective at all**: the prompt listed the tools, said
+"continue until round_end", and the rollout response returned only
+`rollout_points` — raw attacker points. A defending partnership optimizing raw
+attacker points is optimizing the exact negation of its own result. So this is
+not a parity tidy-up; the collector had no stated goal and a sign-inverted
+signal for half the seats.
+
+The repair binds the objective to the established convention rather than
+inventing one: `sol0.signed_level_utility` resolves to
+`privileged_teacher_pt0.signed_level_utility`, whose docstring pins it to
+`Game.finish_round` plus the 80-point takeover convention, with
+`perspective_is_attacker = perspective_seat % 2 != banker_seat % 2`. Luna
+passes its team index as the perspective seat, which is correct because only
+the parity is used — though "seat" is a loose name for a team index and the
+range check `0 <= value < 4` would not catch a genuine mix-up. The prompt now
+states the objective explicitly, including "do not optimize raw attacker points
+as a substitute" when defending, and the reopen path **re-derives** the utility
+from the engine rather than trusting the recorded value.
+
+No collected data is affected: the three prior censuses all failed before
+retaining any game, action or outcome.
+
+### My previous finding is closed by redesign, not by a test
+
+At `1f80b3de` I reported that the reopen path's final-token comparison was
+unwitnessed and that `expected_final` was built from the final's own token, so
+without that clause any `completion_token` would pass. That clause is **gone**
+at this head — `grep` finds no `_valid_completion_token(token)` and no
+`completion_token_sha256"])` comparison. Completion authority moved to process
+exit zero, Codex `turn.completed` telemetry, the completed shared engine, and a
+hash-bound per-team terminal mailbox witness, with final model prose demoted to
+diagnostic. Neutering `_terminal_trace_witness` turns **2 tests red**, so the
+replacement is witnessed where the thing it replaced was not. That is the right
+direction and I am recording it as resolved.
+
+### The new one, and the pattern
+
+Deleting the rollout re-derivation comparison —
+
+    if result["team_signed_level_utility"] != expected_utility:
+        raise LunaExecutionError("process rollout utility drift")
+
+— leaves **118 passed**. Nothing else catches it: the schema check only
+requires the key to be present and a non-bool int, so any wrong integer
+survives. The live producer computes the value from the engine, so live data is
+correct; the unwitnessed half is again the reopen-side independent check, which
+is the one an external verifier depends on.
+
+**This is the third consecutive head with an unwitnessed validator in this
+module**, and the specifics keep moving while the shape does not: at
+`2e60a584` the Codex event-type collapse and the validator's `process_error`
+check each silently covered the other; at `1f80b3de` it was the reopen token
+comparison; here it is the utility re-derivation. Each individual fixture is
+cheap, but three in a row suggests the test suite is written against the
+producer and inherits the validator for free. Worth one pass asking, for every
+quantity the reopen path re-derives, whether a wrong recorded value has a red
+test — rather than adding a fourth fixture and meeting a fifth instance next
+head.
+
+That this one guards the **objective** raises it above bookkeeping: the utility
+is what the teacher is told to maximize, so an undetected drift between the
+recorded and engine-true value would silently change what the collected data
+means.
+
+### Authority
+
+PASS authorizes exactly one replacement non-scientific, score-free progressive
+Mini capacity census. Not the 104-game collection, outcome opening or
+retention, gameplay or strength claims, merge, promotion or deployment. No
+marker requested and none appended; `PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1` still
+matches 0 ledger lines and belongs to the launch review. Coverage: deep on the
+objective, completion-authority and reopen surfaces; ballots, engine state,
+mirrors, scoring and population are unchanged and rest on prior PASSes.
+

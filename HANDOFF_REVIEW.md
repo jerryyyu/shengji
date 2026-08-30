@@ -9498,3 +9498,80 @@ it for both entries. A further census after that requires a new head review or a
 retry grant. Verdicts and findings are fully convergent (my direct type-channel leak probe and
 the sibling's 15-injection table are complementary evidence of the same boundary); the sibling's
 `SOURCE_REVIEW` → `LAUNCH_REVIEW` rename suggestion is endorsed. — Claude (session `68f9c8bd`)
+
+## 2026-08-30 03:45 EDT — ✅ PASS (source only): PR #171 at exact head `1f80b3de`. The downgrade guard and terminal witness are both real; the **reopen path's token comparison is not witnessed**, and it is circular without it
+
+Delta `2e60a584..1f80b3de`, parent confirmed via `git show -s --format=%P`,
+**5 files, +352/−32**, `git diff --check` clean. Pure mode (`-P -B`,
+`__pycache__` cleared, `SHENGJI_FAST` unset — the lane refuses it):
+`-k privileged_teacher_luna` gives **113 passed / 2 skipped**.
+
+On the recorded count: I could not reproduce "109" with any single selector.
+The three PT-Luna files at this head collect 14 + 19 + 67 = **100**, so 109
+appears to be those plus a nine-test PT-Sol0 focused file. My selection is a
+superset of the 100 and is green; a broader
+`-k "privileged_teacher_luna or privileged_teacher_sol"` run is **131 passed /
+2 skipped**. Nothing fails under any selection I tried, but I am not claiming
+to have reproduced their exact number.
+
+### What the handshake actually buys, verified by mutation
+
+The repair issues a per-team one-time token, withholds it until `round_end`,
+and persists only `completion_token_sha256`. Three new guards, each mutated
+alone against the full battery with the tree restored and verified clean
+between runs:
+
+- **Terminal mailbox witness** — deleting the "complete v2 trace must contain a
+  `round_end` response" check turns **1 test red**. Witnessed.
+- **Downgrade guard** — deleting the `body_schema != expected_private_trace_schema`
+  pin turns **1 test red**. Witnessed, and the design is right: the expected
+  trace schema is derived from the *attempt* schema, and a v2 attempt must
+  additionally carry `private_trace_schema` and `final_response_schema` fields,
+  so a v2 attempt cannot be reopened with a v1 trace and skip the token. The
+  "mixed/downgraded evidence" claim holds.
+- **Token comparison in the reopen path** — deleting
+
+      or is_current and (
+          not _valid_completion_token(token)
+          or _sha_bytes(token.encode("ascii"))
+          != item.body["completion_token_sha256"])
+
+  leaves **113 passed**. Unwitnessed.
+
+That third one matters more than a missing test usually does, because of how
+the surrounding code is written. `expected_final` is built from the final's own
+value — `token = final.get("completion_token")` — so `final != expected_final`
+constrains only the *shape*. The deleted clause is the only thing binding the
+model's returned token to the engine's issued one. Without it, a final response
+of `{"schema": …v2, "status": "complete", "completion_token": "anything"}` is
+accepted by `reopen_attempt`.
+
+The live path is not affected: `run_luna_game` compares against
+`session._completion_token` directly and non-circularly, so a forged token is
+caught while the game runs. The gap is in the independent reopen path — the one
+a verifier uses on already-sealed evidence, and the one that exists precisely so
+the live process is not the only witness. The failure this delta repairs was a
+model returning a malformed generic final response; the reopen-side check that
+would catch its near neighbour is the untested one.
+
+**This is the second time in two heads that this module's producer/validator
+pair has had the validator half unwitnessed** — at `2e60a584` it was the
+`process_error` collapse and the Codex event-type collapse, each silently
+covered by the other layer. The pattern is worth a look as a pattern, not just
+three separate fixtures: when a check exists in both the live path and the
+reopen path, the reopen copy is the one that has no test.
+
+None of this blocks. Every guard is present and correct in the shipped source,
+and the composition is sound at this head.
+
+### Authority
+
+PASS authorizes exactly one replacement non-scientific, score-free progressive
+Mini capacity census. Not the 104-game collection, outcome opening or
+retention, scientific execution, merge, promotion, deployment, or a strength
+claim. No marker requested and none appended —
+`PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1` still matches 0 ledger lines and belongs to
+the launch review. Coverage: deep on the completion-handshake and reopen
+surfaces; unchanged ballots, rollouts, engine state, mirrors, scoring and
+population rest on prior PASSes.
+

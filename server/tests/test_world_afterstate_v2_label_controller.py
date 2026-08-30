@@ -69,7 +69,7 @@ def material_and_bundle(monkeypatch):
     monkeypatch.setattr(
         continuation, "reopen_afterstate_audit", lambda _audit: FakeRound())
     monkeypatch.setattr(continuation, "run_afterstate_continuation",
-        lambda audit, identity: {
+        lambda audit, identity, **_kwargs: {
             "schema": "fixture-label",
             "successor_sha256": audit["successor_sha256"],
             "continuation_identity": dict(identity),

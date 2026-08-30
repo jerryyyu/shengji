@@ -27,7 +27,7 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-SCHEMA = "world-afterstate-v2-post-implementation-capacity-v3"
+SCHEMA = "world-afterstate-v2-post-implementation-capacity-v5"
 FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v1"
 ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v2"
 PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v2"
@@ -677,6 +677,8 @@ class CapacityReceiptV2:
     composed: ComposedProjectionV2
     tiers: tuple[TierProjectionV2, ...]
     progress_recovery: ProgressRecoveryV2
+    source_sha256: str
+    runtime_sha256: str
     schema: str = SCHEMA
     authority: Mapping[str, bool] = field(default_factory=lambda: dict(AUTHORITY))
     # These fields are populated by the post-implementation runner.  Defaults
@@ -693,6 +695,7 @@ class CapacityReceiptV2:
     member_workers: int = 0
     torch_threads: int = 0
     inference_batch: int = 0
+    reconstruction_workers: int = 0
 
     def validate(self) -> None:
         if self.schema != SCHEMA or self.authority != AUTHORITY \
@@ -700,6 +703,8 @@ class CapacityReceiptV2:
                 or self.memory_limit_bytes != MEMORY_LIMIT_BYTES \
                 or self.swap_bytes != ZERO_SWAP_BYTES:
             raise WorldAfterstateV2CapacityError("capacity receipt identity drift")
+        _digest(self.source_sha256, "capacity source SHA-256")
+        _digest(self.runtime_sha256, "capacity runtime SHA-256")
         if self.measurement_scope != MEASUREMENT_SCOPE:
             raise WorldAfterstateV2CapacityError("capacity measurement scope drift")
         _int(self.command_wall_seconds, "command wall", minimum=1)
@@ -784,19 +789,20 @@ class CapacityReceiptV2:
                         for arm in next_arms):
                     raise WorldAfterstateV2CapacityError(
                         "CPU-bound stage utilization/next-arm gate drift")
-        if any((self.member_workers, self.torch_threads, self.inference_batch)):
-            if (self.member_workers not in ARM_GRIDS["member-concurrency"]
-                    or type(self.torch_threads) is not int
-                    or self.torch_threads != PINNED_TORCH_THREADS
-                    or self.inference_batch not in ARM_GRIDS["inference-batch"]):
-                raise WorldAfterstateV2CapacityError("capacity resource layout drift")
-            selected_by_stage = {arm.stage: arm for arm in self.selected_arms}
-            if (selected_by_stage["member-concurrency"].variant != self.member_workers
-                    or selected_by_stage["inference-batch"].variant
-                    != self.inference_batch):
-                raise WorldAfterstateV2CapacityError("capacity resource layout mismatch")
-        elif self.peak_task_count:
-            raise WorldAfterstateV2CapacityError("capacity resource layout missing")
+        if (self.member_workers not in ARM_GRIDS["member-concurrency"]
+                or type(self.torch_threads) is not int
+                or self.torch_threads != PINNED_TORCH_THREADS
+                or self.inference_batch not in ARM_GRIDS["inference-batch"]
+                or self.reconstruction_workers not in ARM_GRIDS[
+                    "reconstruction"]):
+            raise WorldAfterstateV2CapacityError("capacity resource layout drift")
+        selected_by_stage = {arm.stage: arm for arm in self.selected_arms}
+        if (selected_by_stage["member-concurrency"].variant != self.member_workers
+                or selected_by_stage["inference-batch"].variant
+                != self.inference_batch
+                or selected_by_stage["reconstruction"].variant
+                != self.reconstruction_workers):
+            raise WorldAfterstateV2CapacityError("capacity resource layout mismatch")
         if len(self.selected_arms) != len(ARM_GRIDS):
             raise WorldAfterstateV2CapacityError("selected arm population drift")
         self.composed.validate()
@@ -846,6 +852,8 @@ class CapacityReceiptV2:
             "tiers": [tier.__dict__ for tier in sorted(
                 self.tiers, key=lambda value: value.tier)],
             "progress_recovery": self.progress_recovery.payload(),
+            "source_sha256": self.source_sha256,
+            "runtime_sha256": self.runtime_sha256,
             "model_parameter_count": self.model_parameter_count,
             "candidate_distribution": [list(row)
                                         for row in self.candidate_distribution],
@@ -855,6 +863,7 @@ class CapacityReceiptV2:
             "member_workers": self.member_workers,
             "torch_threads": self.torch_threads,
             "inference_batch": self.inference_batch,
+            "reconstruction_workers": self.reconstruction_workers,
             "authority": dict(self.authority),
         }
 

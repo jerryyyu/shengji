@@ -18,12 +18,15 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .belief_contract import canonical_json_bytes
-from .world_afterstate_v2_capacity import choose_capacity_tier_v2
-from .world_afterstate_v2_capacity_runner import reopen_capacity_receipt_v2_bytes
 from .world_afterstate_v2_execution import (
     ExecutionFreezeV2, MAX_DEADLINE_SECONDS, SourceBindingV2,
     FREEZE_SCHEMA, live_runtime_profile, source_manifest_sha256,
     validate_execution_freeze,
+)
+from .world_afterstate_v2_freeze_inputs import (
+    capacity_context, reopen_continuation_policy_v2_bytes,
+    reopen_early_stage_config_v2_bytes, reopen_population_adapter_input_v2_bytes,
+    reopen_protocol_bytes, reopen_seed_registry_v2_bytes, population_namespace,
 )
 
 
@@ -235,6 +238,7 @@ def _source_closure(repo: Path) -> tuple[Path, ...]:
         or (path.startswith("server/scripts/world_afterstate_v2")
             and path.endswith(".py"))
         or path == "server/scripts/build_world_afterstate_v2_freeze.py"
+        or path == "server/scripts/build_world_afterstate_v2_freeze_inputs.py"
     }
     discovered = {repo / name for name in roots}
     # Importing a package executes its initializer as well.  Bind those
@@ -264,6 +268,23 @@ def _source_closure(repo: Path) -> tuple[Path, ...]:
     if not result:
         _fail("Value V2 source closure is empty")
     return result
+
+
+def capacity_source_sha256(repo: Path | str) -> str:
+    """Return the capacity CLI's exact source-closure witness.
+
+    Keep this algorithm byte-for-byte equivalent to
+    ``scripts/world_afterstate_v2_capacity.py``.  The capacity receipt is
+    consequently tied to the same tracked source that the freeze authenticates.
+    """
+    root = Path(repo)
+    rows = []
+    for path in _source_closure(root):
+        raw = _read(path, f"source {path.relative_to(root).as_posix()}")
+        rows.append({"path": path.relative_to(root).as_posix(),
+                     "byte_count": len(raw), "sha256": _sha(raw)})
+    return _object_sha({"schema": "world-afterstate-v2-capacity-source-v2",
+                        "files": rows})
 
 
 def _bindings(repo: Path, source_git: str) -> tuple[SourceBindingV2, ...]:
@@ -305,14 +326,10 @@ def _repo_relative(repo: Path, value: Path | str, label: str) -> tuple[Path, str
 
 
 def _validate_protocol(raw: bytes) -> None:
-    value = _strict_json(raw, "protocol artifact")
     try:
-        from .world_afterstate_v2_protocol import protocol_payload
-        expected = protocol_payload()
+        reopen_protocol_bytes(raw)
     except Exception as exc:
-        _fail("protocol authoritative reopener unavailable", exc)
-    if value != expected:
-        _fail("protocol artifact reopen drift")
+        _fail("protocol artifact reopen drift", exc)
 
 
 @dataclass(frozen=True)
@@ -324,7 +341,9 @@ class _ConfigBinding:
 
 
 def _validate_inputs(repo: Path, paths: tuple[tuple[str, Path | str], ...],
-                     *, evidence_root: Path, deadline_seconds: int
+                     *, source_git: str | None = None,
+                     evidence_root: Path, deadline_seconds: int,
+                     heartbeat_seconds: int, runtime_sha256: str
                      ) -> tuple[tuple[tuple[str, str, str], ...], str]:
     if len(paths) != len(_ARTIFACT_LABELS):
         _fail("freeze artifact input population drift")
@@ -341,42 +360,53 @@ def _validate_inputs(repo: Path, paths: tuple[tuple[str, Path | str], ...],
         _fail("freeze artifact order drift")
     _validate_protocol(raws["protocol"])
     try:
-        capacity = reopen_capacity_receipt_v2_bytes(raws["capacity"])
-        if any(tier.outcomes_opened for tier in capacity.tiers):
-            _fail("capacity receipt contains opened outcomes")
-        selected = choose_capacity_tier_v2(capacity)
-        if selected.name != "D256" or not any(
-                tier.tier == selected.name and tier.exact_source_supply
-                for tier in capacity.tiers):
-            _fail("capacity exact-source tier unavailable")
+        capacity, tier, population_workers, label_workers = capacity_context(
+            raws["capacity"])
+        if capacity.source_sha256 != capacity_source_sha256(repo):
+            _fail("capacity source closure binding drift")
+        if capacity.runtime_sha256 != runtime_sha256:
+            _fail("capacity runtime binding drift")
     except WorldAfterstateV2FreezeBuilderError:
         raise
     except Exception as exc:
         _fail("capacity receipt reopen refused", exc)
-    # The population input and early-stage config have authoritative adapter
-    # readers.  Build a provisional identity solely to exercise those readers.
+    if source_git is None:
+        _fail("source Git binding missing")
+    protocol_sha = _sha(raws["protocol"])
+    capacity_sha = _sha(raws["capacity"])
+    namespace = population_namespace(source_git, protocol_sha, capacity_sha, tier)
     try:
+        reopen_population_adapter_input_v2_bytes(
+            raws["population"], expected_namespace=namespace,
+            expected_workers=population_workers,
+            expected_deadline=deadline_seconds,
+            expected_heartbeat=heartbeat_seconds)
+        reopen_early_stage_config_v2_bytes(
+            raws["config"], expected_namespace=namespace,
+            expected_evidence_root=str(evidence_root), expected_deadline=deadline_seconds,
+            expected_label_workers=label_workers)
+        reopen_seed_registry_v2_bytes(
+            raws["seed"], source_git=source_git, protocol_sha256=protocol_sha,
+            capacity_sha256=capacity_sha, selected_tier=tier)
+        reopen_continuation_policy_v2_bytes(
+            raws["continuation-policy"], source_git=source_git,
+            protocol_sha256=protocol_sha, capacity_sha256=capacity_sha,
+            selected_tier=tier)
+        # Existing adapter readers remain a useful independent ABI check.
         from .world_afterstate_v2_stage_adapters import _read_input, _read_stage_config
         supplied = dict(paths)
         digest_by_label = {row[0]: row[2] for row in rows}
-        _read_input(Path(supplied["population"]),
-                    expected_digest=digest_by_label["population"],
+        _read_input(Path(supplied["population"]), expected_digest=digest_by_label["population"],
                     freeze_deadline=deadline_seconds)
         config_binding = tuple(row for row in rows if row[0] == "config")
-        provisional = _ConfigBinding(
-            artifact_bindings=config_binding,
+        provisional = _ConfigBinding(artifact_bindings=config_binding,
             evidence_root=str(evidence_root), deadline_seconds=deadline_seconds)
         _read_stage_config(repo, provisional, "world-afterstate-v2-early-stage-adapters-input-v1")
     except WorldAfterstateV2FreezeBuilderError:
         raise
     except Exception as exc:
         _fail("Value V2 input authoritative reopen refused", exc)
-    # No typed reopener exists for the seed registry or continuation-policy
-    # input in this source head.  Their strict canonical envelope is the
-    # strongest honest check available; do not invent a weaker reinterpretation.
-    _strict_json(raws["seed"], "seed registry input")
-    _strict_json(raws["continuation-policy"], "continuation-policy input")
-    return tuple(rows), selected.name
+    return tuple(rows), tier
 
 
 def build_execution_freeze(
@@ -420,13 +450,6 @@ def build_execution_freeze(
         _fail("freeze heartbeat drift")
     source_git = _head(repo, expected_head)
     _clean_source_tree(repo)
-    artifacts, tier = _validate_inputs(
-        repo, (("protocol", protocol_path), ("capacity", capacity_path),
-               ("population", population_path), ("config", config_path),
-               ("seed", seed_path),
-               ("continuation-policy", continuation_policy_path)),
-        evidence_root=evidence, deadline_seconds=deadline_seconds)
-    bindings = _bindings(repo, source_git)
     try:
         runtime = live_runtime_profile()
     except Exception as exc:
@@ -434,6 +457,17 @@ def build_execution_freeze(
     if type(runtime) is not dict or not runtime.get("boot_identity"):
         _fail("live runtime profile drift")
     runtime_sha = _object_sha(runtime)
+    artifacts, tier = _validate_inputs(
+        repo, (("protocol", protocol_path), ("capacity", capacity_path),
+               ("population", population_path), ("config", config_path),
+               ("seed", seed_path),
+               ("continuation-policy", continuation_policy_path)),
+        source_git=source_git, evidence_root=evidence,
+        deadline_seconds=deadline_seconds,
+        heartbeat_seconds=heartbeat_seconds, runtime_sha256=runtime_sha)
+    bindings = _bindings(repo, source_git)
+    if live_runtime_profile() != runtime:
+        _fail("live runtime changed during freeze construction")
     source_manifest = source_manifest_sha256(source_git, bindings)
     values = {
         "source_git": source_git,
@@ -536,6 +570,7 @@ def publish_freeze(path: Path | str, freeze: ExecutionFreezeV2) -> None:
 
 __all__ = [
     "FreezeBuilderError", "WorldAfterstateV2FreezeBuilderError",
+    "capacity_source_sha256",
     "build_execution_freeze", "build_freeze",
     "build_world_afterstate_v2_freeze", "publish_freeze",
 ]

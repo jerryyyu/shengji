@@ -5,13 +5,21 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 from types import SimpleNamespace
+import time
 
 import pytest
 
 import shengji.rl.world_afterstate_v2_stage_adapters as adapters
 import shengji.rl.world_afterstate_v2_execution as execution
+import shengji.rl.world_afterstate_v2_late_stage_adapters as late_adapters
 from shengji.rl.belief_contract import canonical_json_bytes
-from shengji.rl.world_afterstate_v2_population_controller import WORKER_ARMS
+from shengji.rl.world_afterstate_v2_population_controller import (
+    AUTHORITY, WORKER_ARMS, PopulationCollectionReceiptV2,
+    PopulationSlotReceiptV2,
+)
+from shengji.rl.world_afterstate_v2_protocol import (
+    TIER_SPECS, build_population_slot_ledger,
+)
 
 
 FREEZE = "a" * 64
@@ -36,6 +44,8 @@ class Admission:
 class Supervisor:
     def __init__(self, root: Path):
         self.root = root
+        self._started = time.monotonic_ns()
+        self.clock = time.monotonic_ns
         self.admission = Admission()
         self.progress = []
         self.shards = {}
@@ -49,9 +59,28 @@ class Supervisor:
 
     def register_verified_shard(self, stage, shard, raw):
         self.shards.setdefault(stage, {})[shard] = raw
+        path = self.root / "shards" / stage / f"{shard}.bin"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(raw)
+        path.chmod(0o400)
 
     def terminal(self, route):
         self.terminal_routes.append(route)
+
+
+def test_stage_deadline_uses_original_supervisor_wall_not_fresh_stage_wall():
+    supervisor = SimpleNamespace(
+        _started=1_000_000_000,
+        clock=lambda: 250_000_000_000)
+    freeze = SimpleNamespace(deadline_seconds=300)
+    # A fresh 120-second stage would end at 370s.  The admission began at 1s,
+    # so the only valid deadline is its original 301s boundary.
+    assert adapters._absolute_stage_deadline(
+        supervisor, freeze, 120) == 301_000_000_000
+    supervisor.clock = lambda: 301_000_000_000
+    with pytest.raises(adapters.StageAdapterUnavailable,
+                       match="deadline exhausted"):
+        adapters._absolute_stage_deadline(supervisor, freeze, 120)
 
 
 def _input(**overrides) -> dict:
@@ -75,6 +104,23 @@ def _fixture(tmp_path: Path, **overrides):
     path.write_bytes(raw)
     path.chmod(0o400)
     return repo, Freeze("population-input.json", hashlib.sha256(raw).hexdigest())
+
+
+def _controller_receipt() -> dict:
+    slots = tuple(
+        PopulationSlotReceiptV2(
+            slot_sha256=slot.slot_sha256, tier=slot.tier, split=slot.split,
+            source=slot.source, ordinal=slot.ordinal, attempt_count=1,
+            accepted_attempt=0, rejection_counts=(), shard={})
+        for slot in build_population_slot_ledger(TIER_SPECS[0]))
+    return PopulationCollectionReceiptV2(
+        freeze_sha256=FREEZE,
+        population_namespace_sha256="c" * 64,
+        admission_sha256=ADMISSION,
+        config_sha256="d" * 64, tier="D256", max_attempts_per_slot=2,
+        slots=slots, attempts_total=256, accepted_slots=256,
+        manifest_sha256="e" * 64, population_sha256="f" * 64,
+        authority=dict(AUTHORITY)).payload()
 
 
 class StageFreeze:
@@ -159,13 +205,20 @@ def test_frozen_values_reach_real_producer_and_progress_is_bridged(
             "completed_slots": 1, "total_slots": 256,
             "active_workers": 2, "immutable_shards": 1,
         })
-        return "receipt"
+        class Receipt:
+            def payload(self):
+                return _controller_receipt()
+        return Receipt()
 
     monkeypatch.setattr(adapters, "collect_population_v2", fake)
     adapter = adapters.population_collection_adapter(freeze=freeze, repo=repo)
     supervisor = Supervisor(tmp_path / "evidence")
     supervisor.root.mkdir()
-    assert adapter(supervisor, ()) == "receipt"
+    result = adapter(supervisor, ())
+    assert result.payload() == _controller_receipt()
+    assert supervisor.verified_shards("population") == ("receipt",)
+    assert (supervisor.root / "shards" / "population" / "receipt.bin").read_bytes() \
+        == canonical_json_bytes(_controller_receipt())
     root, kwargs = observed[0]
     assert root == supervisor.root
     assert kwargs["freeze_sha256"] == FREEZE
@@ -190,16 +243,66 @@ def test_caller_cannot_inject_driver_or_override_config_and_repeated_call_reuses
 
     def fake(root, **kwargs):
         calls.append(kwargs)
-        return "same-receipt"
+        class Receipt:
+            def payload(self):
+                return _controller_receipt()
+        return Receipt()
 
     monkeypatch.setattr(adapters, "collect_population_v2", fake)
     adapter = adapters.population_collection_adapter(freeze=freeze, repo=repo)
     supervisor = Supervisor(tmp_path / "evidence")
     supervisor.root.mkdir()
-    assert adapter(supervisor, ()) == adapter(supervisor, ()) == "same-receipt"
-    assert len(calls) == 2
+    first = adapter(supervisor, ())
+    second = adapter(supervisor, ())
+    assert first.payload() == second.payload() == _controller_receipt()
+    assert len(calls) == 1
     assert all(call["workers"] == 2 for call in calls)
     assert "attempt_driver" not in calls[0]
+
+
+def test_population_receipt_shard_is_downstream_preflight_anchor(
+        tmp_path: Path, monkeypatch):
+    repo, freeze = _fixture(tmp_path)
+
+    class Receipt:
+        def payload(self):
+            return _controller_receipt()
+
+    calls = []
+
+    def fake(root, **kwargs):
+        calls.append(root)
+        return Receipt()
+
+    monkeypatch.setattr(adapters, "collect_population_v2", fake)
+    supervisor = Supervisor(tmp_path / "evidence")
+    supervisor.root.mkdir()
+    adapter = adapters.population_collection_adapter(freeze=freeze, repo=repo)
+    adapter(supervisor, ())
+    assert calls == [supervisor.root]
+    path = supervisor.root / "shards" / "population" / "receipt.bin"
+    raw = path.read_bytes()
+
+    # The downstream preflight consumes the supervisor shard, not the
+    # controller's private receipt path.  Keep the manifest boundary local to
+    # this witness so the test exercises only receipt authentication.
+    sentinel = object()
+    monkeypatch.setattr(late_adapters, "reopen_population_manifest",
+                        lambda *_args, **_kwargs: (sentinel,))
+    assert late_adapters._population(supervisor, freeze) == (sentinel,)
+
+    path.chmod(0o600)
+    path.write_bytes(raw + b"tamper")
+    path.chmod(0o400)
+    with pytest.raises(late_adapters.LateStageAdapterUnavailable,
+                       match="population reopen"):
+        late_adapters._population(supervisor, freeze)
+
+    path.unlink()
+    with pytest.raises(late_adapters.LateStageAdapterUnavailable,
+                       match="population reopen"):
+        late_adapters._population(supervisor, freeze)
+    assert calls == [supervisor.root]
 
 
 def test_p0_adapter_selects_exact_96_from_complete_128_before_opening_labels(

@@ -698,6 +698,13 @@ Every expensive stage emits at least every 60 seconds or 1%:
 - current/peak cgroup memory; and
 - immutable shard/checkpoint count.
 
+Every scientific controller runs in its own process group under the one
+admission-relative 12-hour monotonic deadline.  Stage-local limits are capped
+by that original absolute deadline rather than renewed on resume or stage
+entry.  At expiry the supervisor terminates the controller process group
+before selecting `REFUSE_RESOURCE_INCOMPLETE`; no controller, nested worker,
+audit read, or artifact publication may continue behind the terminal route.
+
 Population and split seal before labels. Each completed deal-label shard seals
 independently. Resume may reopen only verified shards under the same admission;
 it cannot regenerate, replace, or select them. Training checkpoints every
@@ -709,6 +716,15 @@ the first audit-label byte is read. One audit opening and one immediate
 independent reconstruction are allowed.
 Reconstruction reproduces the decision without retraining or repeating engine
 continuations whose exact immutable rows already reopen.
+
+A reboot never authorizes scientific resume because the persisted monotonic
+clock is no longer comparable.  A dedicated closeout-only command may reopen
+the frozen identity, admission tombstone, completed event prefix, and verified
+shards to seal a receipt-only `REFUSE_RESOURCE_INCOMPLETE` record.  That path
+records both boot identities and the honest audit-open count; it cannot invoke
+controllers, create shards, open new audit data, score, train, or reconstruct.
+The same receipt-only closeout is used after a deadline-killed controller so a
+spent admission is durable without pretending that incomplete work completed.
 
 ## 15. Terminal routes
 
@@ -733,8 +749,10 @@ passed. Either PASS authorizes design only and grants no PUCT, rollout,
 BELIEF, gameplay, strength, merge, promotion, or deployment authority.
 
 `REFUSE_RESOURCE_INCOMPLETE` preserves every verified population, label shard,
-and complete common-epoch checkpoint, records the exact incomplete stage, and
-forbids audit opening. It grants no retry under the spent admission.
+and complete common-epoch checkpoint and records the exact incomplete stage.
+It forbids any new audit opening or audit work after the route is selected and
+records whether the one-shot marker had already opened before an interruption.
+It grants no retry under the spent admission.
 
 Terminal precedence is frozen and first-match-wins:
 

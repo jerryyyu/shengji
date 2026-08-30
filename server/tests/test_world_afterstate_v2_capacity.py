@@ -115,7 +115,8 @@ def _receipt(**changes):
         host_logical_cpus=16, command_wall_seconds=7_200,
         memory_limit_bytes=MEMORY_LIMIT_BYTES, swap_bytes=0, task_count=0,
         arms=_arms(), selected_arms=tuple(), composed=_composed(), tiers=tiers,
-        progress_recovery=_progress())
+        progress_recovery=_progress(), source_sha256="a" * 64,
+        runtime_sha256="b" * 64)
     body.update(changes)
     if "task_count" not in changes:
         body["task_count"] = sum(arm.task_count for arm in body["arms"])
@@ -126,6 +127,11 @@ def _receipt(**changes):
              <= MEMORY_LIMIT_BYTES * 85),
             key=lambda arm: (arm.wall_seconds, arm.variant))
             for stage in ARM_GRIDS)
+    selected = {arm.stage: arm.variant for arm in body["selected_arms"]}
+    body.setdefault("member_workers", selected["member-concurrency"])
+    body.setdefault("torch_threads", 1)
+    body.setdefault("inference_batch", selected["inference-batch"])
+    body.setdefault("reconstruction_workers", selected["reconstruction"])
     return CapacityReceiptV2(**body)
 
 
@@ -138,6 +144,13 @@ def test_exact_arm_grid_caps_and_fastest_byte_identical_selection():
     assert receipt.sha256() == receipt.sha256()
     assert choose_capacity_tier_v2(receipt).name == "D1024"
     assert AUTHORITY and not any(AUTHORITY.values())
+
+
+def test_receipt_refuses_missing_reconstruction_layout():
+    receipt = _receipt()
+    with pytest.raises(WorldAfterstateV2CapacityError, match="layout"):
+        __import__("dataclasses").replace(
+            receipt, reconstruction_workers=0).validate()
 
 
 @pytest.mark.parametrize("torch_threads", (2, 4))

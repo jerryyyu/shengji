@@ -81,8 +81,15 @@ def validate_continuation_identity(value: Mapping[str, Any]) -> None:
         raise WorldAfterstateLabelError("continuation identity derivation drift")
 
 
+def _policy_name(value: object) -> str:
+    if type(value) is not str or not value or not value.isascii():
+        raise WorldAfterstateLabelError("continuation policy identity drift")
+    return value
+
+
 def derive_continuation_seed(
-        identity: Mapping[str, Any], *, decision: int, seat: int) -> int:
+        identity: Mapping[str, Any], *, decision: int, seat: int,
+        policy_name: str = CONTINUATION_POLICY) -> int:
     """Derive an action-independent policy seed for one downstream decision."""
     validate_continuation_identity(identity)
     if isinstance(decision, bool) or not isinstance(decision, int) \
@@ -90,12 +97,13 @@ def derive_continuation_seed(
         raise WorldAfterstateLabelError("continuation decision identity drift")
     if isinstance(seat, bool) or not isinstance(seat, int) or not 0 <= seat < 4:
         raise WorldAfterstateLabelError("continuation seat identity drift")
+    policy_name = _policy_name(policy_name)
     payload = {
         **identity,
         "purpose": "actor-visible-post-root-continuation",
         "decision": decision,
         "seat": seat,
-        "policy": CONTINUATION_POLICY,
+        "policy": policy_name,
     }
     return int.from_bytes(hashlib.sha256(stable_json(payload)).digest()[:16],
                           "big")
@@ -116,9 +124,11 @@ def _counter_delta(policy, before: dict[str, int]) -> dict[str, int]:
 
 
 def _derive_label(
-        audit: Mapping[str, Any], identity: Mapping[str, Any]) \
+        audit: Mapping[str, Any], identity: Mapping[str, Any], *,
+        policy_name: str = CONTINUATION_POLICY) \
         -> dict[str, Any]:
     validate_continuation_identity(identity)
+    policy_name = _policy_name(policy_name)
     clone = reopen_afterstate_audit(audit)
     root_seat = audit["root_seat"]
     root_is_attacker = clone.is_attacker(root_seat)
@@ -133,8 +143,9 @@ def _derive_label(
             raise WorldAfterstateLabelError(
                 "play continuation has no actor seat")
         seed = derive_continuation_seed(
-            identity, decision=decision, seat=actor_seat)
-        policy = make_bot(CONTINUATION_POLICY, seed=seed)
+            identity, decision=decision, seat=actor_seat,
+            policy_name=policy_name)
+        policy = make_bot(policy_name, seed=seed)
         before = sampler_snapshot(policy)
         attempted = policy.decide_play(clone, actor_seat)
         delta = _counter_delta(policy, before)
@@ -161,7 +172,7 @@ def _derive_label(
         "schema": LABEL_SCHEMA,
         "successor_sha256": audit["successor_sha256"],
         "continuation_identity": copy.deepcopy(identity),
-        "continuation_policy": CONTINUATION_POLICY,
+        "continuation_policy": policy_name,
         "continuation_seed_derivation": (
             "sha256(canonical identity plus purpose,decision,seat,policy)[:16];"
             " sibling root actions deliberately omitted"),
@@ -185,14 +196,16 @@ def _derive_label(
 
 
 def run_afterstate_continuation(
-        audit: Mapping[str, Any], identity: Mapping[str, Any]) \
+        audit: Mapping[str, Any], identity: Mapping[str, Any], *,
+        policy_name: str = CONTINUATION_POLICY) \
         -> dict[str, Any]:
     """Run and return one deterministic raw engine continuation outcome."""
-    return _derive_label(audit, identity)
+    return _derive_label(audit, identity, policy_name=policy_name)
 
 
 def reopen_afterstate_continuation(
-        audit: Mapping[str, Any], value: Mapping[str, Any]) -> dict[str, Any]:
+        audit: Mapping[str, Any], value: Mapping[str, Any], *,
+        policy_name: str = CONTINUATION_POLICY) -> dict[str, Any]:
     """Rerun the continuation and byte-compare the complete label record."""
     if type(value) is not dict or value.get("schema") != LABEL_SCHEMA:
         raise WorldAfterstateLabelError("continuation label schema drift")
@@ -209,7 +222,11 @@ def reopen_afterstate_continuation(
     if value["successor_sha256"] != audit.get("successor_sha256"):
         raise WorldAfterstateLabelError("continuation successor binding drift")
     validate_outcome(value["outcome"])
-    expected = _derive_label(audit, value["continuation_identity"])
+    policy_name = _policy_name(policy_name)
+    if value["continuation_policy"] != policy_name:
+        raise WorldAfterstateLabelError("continuation policy binding drift")
+    expected = _derive_label(
+        audit, value["continuation_identity"], policy_name=policy_name)
     if canonical_json_bytes(expected) != canonical_json_bytes(value):
         raise WorldAfterstateLabelError("continuation label reconstruction drift")
     return expected

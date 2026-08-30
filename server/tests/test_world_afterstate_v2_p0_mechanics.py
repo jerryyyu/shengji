@@ -76,7 +76,7 @@ def source_pair(monkeypatch):
     monkeypatch.setattr(continuation, "reopen_afterstate_audit",
                         lambda audit: _Round())
 
-    def run(audit, identity):
+    def run(audit, identity, **_kwargs):
         return {
             "schema": "fixture-label",
             "successor_sha256": audit["successor_sha256"],
@@ -108,9 +108,9 @@ def test_engine_checks_are_exact_and_fixed_rerun_is_one_per_material(
     calls = []
     original = continuation.run_afterstate_continuation
 
-    def count(audit, identity):
+    def count(audit, identity, **kwargs):
         calls.append((audit["successor_sha256"], identity["replicate"]))
-        return original(audit, identity)
+        return original(audit, identity, **kwargs)
 
     monkeypatch.setattr(mechanics, "run_afterstate_continuation", count)
     first = mechanics.derive_p0_engine_mechanics_checks([material], [bundle])
@@ -143,8 +143,9 @@ def test_no_caller_check_injection_and_continuation_mismatch_is_visible(
     assert "checks" not in inspect.signature(
         mechanics.build_engine_p0_mechanics_evidence).parameters
 
-    def altered(audit, identity):
-        value = continuation.run_afterstate_continuation(audit, identity)
+    def altered(audit, identity, **kwargs):
+        value = continuation.run_afterstate_continuation(
+            audit, identity, **kwargs)
         value["outcome"] = build_outcome(
             audit["successor_sha256"], 121, True)
         return value

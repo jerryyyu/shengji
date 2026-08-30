@@ -19,7 +19,7 @@ from typing import Any, Callable
 from .belief_artifacts import stable_read_bytes
 from .belief_contract import canonical_json_bytes
 from .world_afterstate_v2_population_controller import (
-    WORKER_ARMS, collect_population_v2,
+    WORKER_ARMS, collect_population_v2, reopen_population_receipt_v2,
 )
 
 # These are deliberately imported as the producer objects (rather than
@@ -86,12 +86,45 @@ def _digest(value: object, label: str) -> str:
     return value
 
 
+def _absolute_stage_deadline(supervisor: Any, freeze: Any,
+                             stage_seconds: int) -> int:
+    """Return one absolute deadline capped by the original admission wall.
+
+    A resumed or later stage may consume only the headroom left from the
+    supervisor's persisted start; it never receives a fresh full-stage wall.
+    """
+    try:
+        now = supervisor.clock()
+        started = int(supervisor._started)
+        global_deadline = (
+            started + int(freeze.deadline_seconds) * 1_000_000_000)
+        value = min(now + stage_seconds * 1_000_000_000, global_deadline)
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise StageAdapterUnavailable(
+            "stage absolute deadline binding unavailable") from exc
+    if value <= now:
+        raise StageAdapterUnavailable("stage absolute deadline exhausted")
+    return value
+
+
 def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     value: dict[str, Any] = {}
     for key, item in pairs:
         if key in value:
             raise StageAdapterUnavailable("population input duplicate key")
         value[key] = item
+    return value
+
+
+def _strict_json(raw: bytes) -> dict[str, Any]:
+    try:
+        value = json.loads(raw.decode("ascii"), object_pairs_hook=_strict_object)
+    except StageAdapterUnavailable:
+        raise
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise StageAdapterUnavailable("population receipt JSON drift") from exc
+    if type(value) is not dict or canonical_json_bytes(value) != raw:
+        raise StageAdapterUnavailable("population receipt canonical drift")
     return value
 
 
@@ -359,6 +392,52 @@ def _register_or_reopen(supervisor: Any, stage: str, receipt: Any) -> Any:
     return receipt
 
 
+def _population_receipt(supervisor: Any, *, freeze_sha: str,
+                        admission_sha: str, namespace: str,
+                        max_attempts: int, receipt: Any | None = None) -> Any:
+    """Reopen or publish the controller's authoritative population receipt.
+
+    The controller owns the receipt under ``population-controller``.  The
+    execution supervisor separately needs the exact same bytes as its
+    ``population/receipt.bin`` shard, so promotion happens only after the
+    controller payload has passed its typed reopener.
+    """
+    existing = tuple(supervisor.verified_shards("population"))
+    if existing:
+        if existing != ("receipt",):
+            raise StageAdapterUnavailable("population sealed output population drift")
+        path = supervisor.root / "shards" / "population" / "receipt.bin"
+        try:
+            value = _strict_json(stable_read_bytes(path))
+            reopened = reopen_population_receipt_v2(value)
+        except Exception as exc:
+            raise StageAdapterUnavailable("population sealed receipt reopen refused") from exc
+    else:
+        if receipt is None:
+            raise StageAdapterUnavailable("population controller receipt missing")
+        try:
+            payload = receipt.payload()
+            if type(payload) is not dict:
+                raise ValueError("population controller receipt payload drift")
+            raw = canonical_json_bytes(payload)
+            reopened = reopen_population_receipt_v2(payload)
+            if reopened.payload() != payload:
+                raise ValueError("population controller receipt reconstruction drift")
+        except Exception as exc:
+            raise StageAdapterUnavailable("population controller receipt reopen refused") from exc
+    if (reopened.freeze_sha256, reopened.population_namespace_sha256,
+            reopened.admission_sha256, reopened.max_attempts_per_slot) != (
+                freeze_sha, namespace, admission_sha, max_attempts):
+        raise StageAdapterUnavailable("population receipt identity drift")
+    if existing:
+        return reopened
+    try:
+        supervisor.register_verified_shard("population", "receipt", raw)
+    except Exception as exc:
+        raise StageAdapterUnavailable("population receipt publication refused") from exc
+    return reopened
+
+
 @dataclass(frozen=True)
 class PopulationCollectionAdapterV2:
     """Supervisor ABI adapter for real D256 population collection/resume."""
@@ -390,6 +469,17 @@ class PopulationCollectionAdapterV2:
         config = _read_input(self.repo / relative, expected_digest=digest,
                              freeze_deadline=freeze_deadline)
 
+        try:
+            population_shards = supervisor.verified_shards("population")
+        except Exception as exc:
+            raise StageAdapterUnavailable(
+                "population sealed shard registry drift") from exc
+        if population_shards:
+            return _population_receipt(
+                supervisor, freeze_sha=freeze_sha, admission_sha=admission_sha,
+                namespace=config["population_namespace_sha256"],
+                max_attempts=config["max_attempts_per_slot"])
+
         def progress(value: dict[str, Any]) -> None:
             if type(value) is not dict:
                 raise StageAdapterUnavailable("population progress drift")
@@ -403,7 +493,7 @@ class PopulationCollectionAdapterV2:
                 raise StageAdapterUnavailable("population progress drift") from exc
 
         try:
-            return self.producer(
+            receipt = self.producer(
                 supervisor.root, freeze_sha256=freeze_sha,
                 population_namespace_sha256=config["population_namespace_sha256"],
                 admission_sha256=admission_sha,
@@ -411,6 +501,10 @@ class PopulationCollectionAdapterV2:
                 workers=config["workers"], deadline_seconds=config["deadline_seconds"],
                 heartbeat_seconds=config["heartbeat_seconds"],
                 progress_callback=progress)
+            return _population_receipt(
+                supervisor, freeze_sha=freeze_sha, admission_sha=admission_sha,
+                namespace=config["population_namespace_sha256"],
+                max_attempts=config["max_attempts_per_slot"], receipt=receipt)
         except StageAdapterUnavailable:
             raise
         except (OSError, TypeError, ValueError) as exc:
@@ -477,7 +571,8 @@ class P0LabelsGatesAdapterV2:
             label_root = Path(self.freeze.evidence_root) / P0_CONTINUATION_ROOT
             label_receipt = build_continuation_population_v2(
                 label_root, selected, split="fit-select", workers=workers,
-                deadline_monotonic_ns=time.monotonic_ns() + deadline * 1_000_000_000,
+                deadline_monotonic_ns=_absolute_stage_deadline(
+                    supervisor, self.freeze, deadline),
                 progress=_label_progress(supervisor, "p0-labels-gates", "p0"))
             label_receipt.payload()
             bundles = reopen_continuation_manifest(label_root, selected)
@@ -604,7 +699,8 @@ class FitSelectLabelsAdapterV2:
             label_root = Path(self.freeze.evidence_root) / FIT_SELECT_CONTINUATION_ROOT
             receipt = self.producer(
                 label_root, values, split="fit-select", workers=workers,
-                deadline_monotonic_ns=time.monotonic_ns() + deadline * 1_000_000_000,
+                deadline_monotonic_ns=_absolute_stage_deadline(
+                    supervisor, self.freeze, deadline),
                 progress=_label_progress(supervisor, "fit-select-labels", "fit-select"),
                 reuse_root=reuse_root, reuse_materials=reuse_materials)
             reopen_continuation_manifest(label_root, values)

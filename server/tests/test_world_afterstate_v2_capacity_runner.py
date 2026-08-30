@@ -237,6 +237,7 @@ def _backend(fixture: FixtureV2, **changes):
 
 def _full_dag_measurement(*, capabilities=None, member_workers=2,
                           torch_threads=1, inference_batch=128,
+                          reconstruction_workers=1,
                           wall_seconds=1, cpu_seconds=1):
     capabilities = ({name: True for name in _RECOVERY_CAPABILITY_NAMES}
                     if capabilities is None else capabilities)
@@ -247,7 +248,8 @@ def _full_dag_measurement(*, capabilities=None, member_workers=2,
     return FullDAGCapacityMeasurementV2(
         tuple((name, value * 1_000_000_000) for name, value in walls), 1,
         COMPOSED_STAGE_NAMES, 0, True, capabilities, _FULL_DAG_PROVENANCE,
-        units, cpu, member_workers, torch_threads, inference_batch)
+        units, cpu, member_workers, torch_threads, inference_batch,
+        reconstruction_workers)
 
 
 def _selected_arms(fixture: FixtureV2):
@@ -280,7 +282,9 @@ def test_every_frozen_arm_runs_and_synthetic_cannot_publish():
     with pytest.raises(CapacityRunnerError, match="synthetic"):
         result.production_receipt()
     with pytest.raises(CapacityRunnerError, match="synthetic"):
-        build_receipt_v2(result.arms, host=HostTelemetryV2(16), preflight=preflight)
+        build_receipt_v2(
+            result.arms, host=HostTelemetryV2(16), preflight=preflight,
+            source_sha256="a" * 64, runtime_sha256="b" * 64)
     assert events[0]["completed_units"] == 1
     assert events[-1]["completed_units"] == len(ARM_GRIDS[events[-1]["stage"]])
 
@@ -421,13 +425,17 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
     monkeypatch.setattr(model_module, "new_world_afterstate_v2_model",
                         lambda seed: object())
 
-    result = runner.measure_capacity_v2(production=True)
+    result = runner.measure_capacity_v2(
+        production=True, source_sha256="a" * 64,
+        runtime_sha256="b" * 64)
     receipt = result.production_receipt()
     assert (seen["member_workers"], seen["torch_threads"],
-            seen["inference_batch"]) == (2, 1, 128)
+            seen["inference_batch"], seen["reconstruction_workers"]) \
+        == (2, 1, 128, 1)
     assert seen["continuation_workers"] == 1
     assert (receipt.member_workers, receipt.torch_threads,
-            receipt.inference_batch) == (2, 1, 128)
+            receipt.inference_batch, receipt.reconstruction_workers) \
+        == (2, 1, 128, 1)
     assert receipt.command_wall_seconds == (
         sum(arm.wall_seconds for arm in result.arms)
         + len(COMPOSED_STAGE_NAMES))
@@ -441,12 +449,15 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
         stage_source_unit_counts=tuple((name, 32) for name in COMPOSED_STAGE_NAMES),
         stage_process_cpu_nanoseconds=tuple(
             (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
-        member_workers=1, torch_threads=4, inference_batch=128)
+        member_workers=1, torch_threads=4, inference_batch=128,
+        reconstruction_workers=1)
     bad = replace(bad, attestation_sha256=_dag_attestation(bad))
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="layout"):
         build_receipt_v2(
             result.arms, host=HostTelemetryV2(16, free_disk_bytes=10**12),
-            preflight=preflight, representative_dag=bad,
+            preflight=preflight, source_sha256="a" * 64,
+            runtime_sha256="b" * 64,
+            representative_dag=bad,
             _provenance=_PRODUCTION_PROVENANCE)
 
 
@@ -499,7 +510,9 @@ def test_production_altitude_refuses_fixture_input_identity(monkeypatch):
         runner, "_model_operation",
         lambda stage, variant, fixtures: lambda: fixture.fixture_sha256)
     with pytest.raises(CapacityRunnerError, match="input identity"):
-        runner.measure_capacity_v2(production=True)
+        runner.measure_capacity_v2(
+            production=True, source_sha256="a" * 64,
+            runtime_sha256="b" * 64)
 
 
 def test_receipt_reopens_exactly_and_host_caps_refuse():
@@ -517,7 +530,9 @@ def test_receipt_reopens_exactly_and_host_caps_refuse():
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="full-DAG"):
         build_receipt_v2(
             arms, host=HostTelemetryV2(16, free_disk_bytes=10**9),
-            preflight=preflight, _provenance=_PRODUCTION_PROVENANCE)
+            preflight=preflight, source_sha256="a" * 64,
+            runtime_sha256="b" * 64,
+            _provenance=_PRODUCTION_PROVENANCE)
     with pytest.raises(CapacityRunnerError, match="16 logical"):
         HostTelemetryV2(8).validate()
     with pytest.raises(CapacityRunnerError, match="zero swap"):
@@ -664,6 +679,7 @@ def test_projected_label_cpu_uses_measured_stage_cpu_not_wall_times_sixteen():
             (name, value * 1_000_000_000)
             for name, value in cpu_seconds.items()),
         member_workers=1, torch_threads=1, inference_batch=32,
+        reconstruction_workers=1,
         progress_recovery={name: True for name in _RECOVERY_CAPABILITY_NAMES})
     composed = _composed_projection(selected, 32, 10**12, dag)
     tiers = _tiers(composed)
@@ -685,6 +701,7 @@ def test_build_receipt_cannot_promote_false_measured_progress_probe():
         stage_process_cpu_nanoseconds=tuple(
             (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
         member_workers=1, torch_threads=1, inference_batch=32,
+        reconstruction_workers=1,
         progress_recovery=capabilities)
     dag = __import__("dataclasses").replace(
         dag, provenance_token=_FULL_DAG_PROVENANCE)
@@ -694,7 +711,9 @@ def test_build_receipt_cannot_promote_false_measured_progress_probe():
         build_receipt_v2(
             _selected_arms(fixture),
             host=HostTelemetryV2(16, free_disk_bytes=10**12),
-            preflight=preflight, representative_dag=dag,
+            preflight=preflight, source_sha256="a" * 64,
+            runtime_sha256="b" * 64,
+            representative_dag=dag,
             _provenance=_PRODUCTION_PROVENANCE)
 
 

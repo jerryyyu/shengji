@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -325,6 +326,13 @@ def _validate_continuation(
             "continuation/material typed reopen refused") from exc
 
 
+def _validate_continuation_process(
+        item: tuple[PopulationMaterialV2, bytes]) -> ContinuationBundleV2:
+    """Process-pool spelling for one independently validated shard."""
+    material, raw = item
+    return _validate_continuation(material, raw)
+
+
 def publish_continuation_shard(
         root: Path, material: PopulationMaterialV2,
         bundle: ContinuationBundleV2) -> ContinuationShardV2:
@@ -487,9 +495,14 @@ def _expected_continuation_files(root: Path, rows: Sequence[dict[str, Any]]) -> 
 
 def reopen_continuation_manifest(
         root: Path, materials: Mapping[str, PopulationMaterialV2]
-        | Sequence[PopulationMaterialV2]) -> tuple[ContinuationBundleV2, ...]:
+        | Sequence[PopulationMaterialV2], *, workers: int = 1) \
+        -> tuple[ContinuationBundleV2, ...]:
     """Reopen every deal in an aggregate, refusing drops and extras."""
     root = _root(root)
+    if isinstance(workers, bool) or not isinstance(workers, int) \
+            or workers < 1 or workers > 16:
+        raise WorldAfterstateV2ArtifactError(
+            "continuation reopen worker population drift")
     directory = _directory(root / CONTINUATION_DIRNAME)
     try:
         rows, _ = _parse_manifest(
@@ -509,6 +522,8 @@ def reopen_continuation_manifest(
     if {path.name for path in directory.iterdir()} != _expected_continuation_files(root, rows):
         raise WorldAfterstateV2ArtifactError("continuation file population drift")
     result = []
+    pending: list[tuple[PopulationMaterialV2, bytes]] = []
+    pending_rows: list[dict[str, Any]] = []
     seen: set[str] = set()
     required = {
         "schema", "relative_path", "deal_sha256", "slot_sha256",
@@ -532,14 +547,24 @@ def reopen_continuation_manifest(
         if row["byte_count"] != len(raw) or row["sha256"] != _sha(raw) \
                 or row["bundle_sha256"] != _sha(raw):
             raise WorldAfterstateV2ArtifactError("continuation manifest byte drift")
-        bundle = _validate_continuation(material_map[deal], raw)
+        pending.append((material_map[deal], raw))
+        pending_rows.append(row)
+    try:
+        if workers == 1:
+            result = [_validate_continuation_process(item) for item in pending]
+        else:
+            with ProcessPoolExecutor(max_workers=workers) as pool:
+                result = list(pool.map(_validate_continuation_process, pending))
+    except Exception as exc:
+        raise WorldAfterstateV2ArtifactError(
+            "continuation shard process reopen refused") from exc
+    for row, bundle in zip(pending_rows, result, strict=True):
         if (row["slot_sha256"], row["state_sha256"],
                 row["candidate_set_sha256"]) != (
                     bundle.slot_sha256, bundle.state_sha256,
                     bundle.candidate_set_sha256):
             raise WorldAfterstateV2ArtifactError(
                 "continuation manifest semantic drift")
-        result.append(bundle)
     if seen != set(material_map):
         raise WorldAfterstateV2ArtifactError("continuation deal drop/extra")
     return tuple(result)

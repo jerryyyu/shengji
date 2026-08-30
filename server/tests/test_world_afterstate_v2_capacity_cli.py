@@ -13,6 +13,7 @@ from scripts import world_afterstate_v2_capacity as cli
 from shengji.rl.world_afterstate_v2_capacity import (
     AUTHORITY, reopen_capacity_failure_receipt_v2_bytes)
 from shengji.rl.world_afterstate_v2_capacity_runner import CapacityRunnerError
+from shengji.rl.world_afterstate_v2_freeze_builder import capacity_source_sha256
 
 
 def _private_spawn_transport_probe(writer):
@@ -42,6 +43,7 @@ def test_capacity_source_manifest_covers_the_executed_value_closure():
         "server/shengji/rl/world_afterstate_v2_training.py",
     }
     assert required <= paths
+    assert cli._source_sha256() == capacity_source_sha256(cli.REPO)
 
 
 def test_cli_refusal_publishes_only_typed_failure_and_cannot_retry(
@@ -184,14 +186,20 @@ def test_cli_refuses_symlinked_output_or_work_namespace(tmp_path, monkeypatch):
 def test_supervisor_reopens_worker_success_before_publication(tmp_path,
                                                               monkeypatch):
     monkeypatch.setattr(cli, "_source_sha256", lambda: "f" * 64)
+    monkeypatch.setattr(cli, "_runtime_sha256", lambda: "d" * 64)
     output = tmp_path / "capacity.json"
     failure = tmp_path / "failure.json"
     work = tmp_path / "work"
     events = []
 
     class Receipt:
+        source_sha256 = "f" * 64
+        runtime_sha256 = "d" * 64
+
         def payload(self):
-            return {"schema": "test-capacity-success"}
+            return {"schema": "test-capacity-success",
+                    "source_sha256": self.source_sha256,
+                    "runtime_sha256": self.runtime_sha256}
 
     class Worker:
         pid = 999998
@@ -199,10 +207,14 @@ def test_supervisor_reopens_worker_success_before_publication(tmp_path,
 
         def communicate(self, timeout):
             assert timeout == 7200
-            return b'{"schema":"test-capacity-success"}\n', None
+            return (b'{"schema":"test-capacity-success",'
+                    b'"source_sha256":"' + b'f' * 64 + b'",'
+                    b'"runtime_sha256":"' + b'd' * 64 + b'"}\n'), None
 
     def reopen(value):
-        assert value == {"schema": "test-capacity-success"}
+        assert value == {"schema": "test-capacity-success",
+                         "source_sha256": "f" * 64,
+                         "runtime_sha256": "d" * 64}
         events.append("reopen")
         return Receipt()
 
@@ -218,6 +230,39 @@ def test_supervisor_reopens_worker_success_before_publication(tmp_path,
         args, output=output, failure_out=failure, work_root=work) == 0
     assert events == ["reopen", "publish", "reopen"]
     assert output.exists() and not failure.exists()
+
+
+def test_supervisor_refuses_success_from_a_different_source(tmp_path,
+                                                            monkeypatch):
+    monkeypatch.setattr(cli, "_source_sha256", lambda: "f" * 64)
+    monkeypatch.setattr(cli, "_runtime_sha256", lambda: "d" * 64)
+    output = tmp_path / "capacity.json"
+    failure = tmp_path / "failure.json"
+    work = tmp_path / "work"
+
+    class Receipt:
+        source_sha256 = "e" * 64
+
+    class Worker:
+        pid = 999997
+        returncode = 0
+
+        def communicate(self, timeout):
+            assert timeout == 7200
+            return b'{}\n', None
+
+    refused = []
+    monkeypatch.setattr(cli, "_spawn_worker", lambda *args, **kwargs: Worker())
+    monkeypatch.setattr(cli, "reopen_capacity_receipt_v2",
+                        lambda _value: Receipt())
+    monkeypatch.setattr(
+        cli, "_publish_failure",
+        lambda exc, **_kwargs: refused.append(str(exc)) or 2)
+    args = argparse.Namespace(progress=False)
+    assert cli._supervised_main(
+        args, output=output, failure_out=failure, work_root=work) == 2
+    assert refused == ["worker success receipt source/runtime binding drift"]
+    assert not output.exists()
 
 
 def test_hard_kill_stops_process_group_descendant_before_publication(tmp_path):

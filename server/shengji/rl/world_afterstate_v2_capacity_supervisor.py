@@ -152,6 +152,7 @@ class FullDAGCapacityMeasurementV2:
     member_workers: int = 0
     torch_threads: int = 0
     inference_batch: int = 0
+    reconstruction_workers: int = 0
 
     @property
     def stage_cpu_nanoseconds(self) -> tuple[tuple[str, int], ...]:
@@ -182,7 +183,11 @@ class FullDAGCapacityMeasurementV2:
                 and (self.member_workers not in (1, 2, 4)
                      or type(self.torch_threads) is not int
                      or self.torch_threads != PINNED_TORCH_THREADS
-                     or self.inference_batch not in (32, 64, 128, 256)):
+                     or self.inference_batch not in (32, 64, 128, 256)
+                     or self.reconstruction_workers not in (1, 4, 8, 16)):
+            raise FullDAGCapacityDependencyBlocked(
+                "full-DAG resource layout missing")
+        if self.reconstruction_workers and not self.member_workers:
             raise FullDAGCapacityDependencyBlocked(
                 "full-DAG resource layout missing")
         if self.member_workers and not self.stage_process_cpu_nanoseconds:
@@ -214,7 +219,8 @@ class FullDAGCapacitySupervisorV2:
                  member_workers: int | None = None,
                  continuation_workers: int | None = None,
                  torch_threads: int | None = None,
-                 inference_batch: int | None = None) -> None:
+                 inference_batch: int | None = None,
+                 reconstruction_workers: int | None = None) -> None:
         self.fixtures = tuple(fixtures)
         self.backend = backend
         self.progress = progress
@@ -224,6 +230,7 @@ class FullDAGCapacitySupervisorV2:
         self.continuation_workers = continuation_workers
         self.torch_threads = torch_threads
         self.inference_batch = inference_batch
+        self.reconstruction_workers = reconstruction_workers
 
     def run(self) -> FullDAGCapacityMeasurementV2:
         return run_full_dag_supervisor(
@@ -231,7 +238,8 @@ class FullDAGCapacitySupervisorV2:
             deadline_ns=self.deadline_ns, output_root=self.output_root,
             member_workers=self.member_workers, torch_threads=self.torch_threads,
             continuation_workers=self.continuation_workers,
-            inference_batch=self.inference_batch)
+            inference_batch=self.inference_batch,
+            reconstruction_workers=self.reconstruction_workers)
 
 
 def _sha(value: object) -> str:
@@ -427,6 +435,7 @@ def run_full_dag_supervisor(
         continuation_workers: int | None = None,
         torch_threads: int | None = None,
         inference_batch: int | None = None,
+        reconstruction_workers: int | None = None,
         _provenance: object | None = None) -> FullDAGCapacityMeasurementV2:
     """Execute every representative stage over the retained 32 materials.
 
@@ -453,7 +462,8 @@ def run_full_dag_supervisor(
             or continuation_workers not in (1, 2, 4, 8, 12, 16)
             or type(torch_threads) is not int
             or torch_threads != PINNED_TORCH_THREADS
-            or inference_batch not in (32, 64, 128, 256)):
+            or inference_batch not in (32, 64, 128, 256)
+            or reconstruction_workers not in (1, 4, 8, 16)):
         raise FullDAGCapacityDependencyBlocked(
             "full-DAG resource layout missing")
     identity = _identity(values)
@@ -1035,10 +1045,22 @@ def run_full_dag_supervisor(
                 ("audit", audit_materials, tuple(audit_bundles)),
             )
             for name, stage_materials, stage_bundles in populations:
+                # This is the actual reconstruction workload: reopen the
+                # sealed aggregate with the selected worker width, retaining
+                # manifest order while the artifact boundary validates every
+                # shard and parent-level population/hash contract.
+                reopened_population = reopen_continuation_manifest(
+                    label_roots[name], stage_materials,
+                    workers=reconstruction_workers)
+                reopened_by_deal = {
+                    bundle.deal_sha256: bundle
+                    for bundle in reopened_population}
                 for index, (material, expected) in enumerate(zip(
                         stage_materials, stage_bundles, strict=True)):
-                    reopened = reopen_continuation_shard(
-                        label_roots[name], material)
+                    reopened = reopened_by_deal.get(material.deal_sha256)
+                    if reopened is None:
+                        raise FullDAGCapacityDependencyBlocked(
+                            "reconstruction continuation population drift")
                     reopened = reopen_continuation_bundle_v2(reopened, material)
                     reused = reused and (
                         reopened.bundle_sha256 == expected.bundle_sha256)
@@ -1071,7 +1093,7 @@ def run_full_dag_supervisor(
                 audit_derivation_sha256 is not None
                 and reconstructed_sha == audit_derivation_sha256)
             return identity
-        measure("reconstruction", reconstruct, 1)
+        measure("reconstruction", reconstruct, reconstruction_workers)
 
     if temp_context is not None:
         temp_context.cleanup()
@@ -1112,7 +1134,8 @@ def run_full_dag_supervisor(
             "reconstruction": len(materials),
         }[stage]) for stage in FULL_DAG_STAGES),
         tuple((stage, process_cpu[stage]) for stage in FULL_DAG_STAGES),
-        member_workers, torch_threads, inference_batch)
+        member_workers, torch_threads, inference_batch,
+        reconstruction_workers)
     result.validate()
     return result
 

@@ -59,7 +59,7 @@ def fake_engine(monkeypatch):
             return True
     monkeypatch.setattr(source, "reopen_afterstate_audit", lambda audit: FakeRound())
 
-    def run(audit, identity):
+    def run(audit, identity, **_kwargs):
         outcome = build_outcome(audit["successor_sha256"], 120, True)
         return {
             "schema": "fixture-label",
@@ -86,14 +86,30 @@ def test_crn_identity_is_shared_by_siblings_and_distinct_by_replica(fake_engine)
     assert len({row.continuation_sha256 for row in bundle.outcomes}) == 8
 
 
+def test_generation_runs_one_simulation_per_stored_row(fake_engine, monkeypatch):
+    calls = []
+    original = source.run_afterstate_continuation
+
+    def counted(audit, identity, **kwargs):
+        calls.append((audit, identity, kwargs))
+        return original(audit, identity, **kwargs)
+
+    monkeypatch.setattr(source, "run_afterstate_continuation", counted)
+    bundle = source.build_continuation_bundle_v2(fake_engine)
+    assert len(calls) == len(bundle.candidates)
+    assert len(calls) == len(fake_engine.candidates) * len(source.REPLICATES)
+    assert {call[2]["policy_name"] for call in calls} == {
+        source.V2_CONTINUATION_POLICY}
+
+
 def test_capacity_probe_runs_one_real_continuation_and_discards_population(
         fake_engine, monkeypatch):
     calls = []
     original = source.run_afterstate_continuation
 
-    def counted(audit, identity):
+    def counted(audit, identity, **kwargs):
         calls.append((audit, identity))
-        return original(audit, identity)
+        return original(audit, identity, **kwargs)
 
     monkeypatch.setattr(source, "run_afterstate_continuation", counted)
     digest = source.run_continuation_capacity_probe_v2(fake_engine)
@@ -117,11 +133,13 @@ def test_bundle_reconstructs_and_cross_binds_raw_label(fake_engine):
 
 def test_reopen_never_repeats_engine_continuations(fake_engine, monkeypatch):
     bundle = source.build_continuation_bundle_v2(fake_engine)
+    calls = []
     monkeypatch.setattr(source, "run_afterstate_continuation",
-                        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-                            AssertionError("reopen repeated continuation")))
-    assert source.reopen_continuation_bundle_v2(
-        bundle.canonical_bytes, fake_engine).bundle_sha256 == bundle.bundle_sha256
+                        lambda *args, **kwargs: calls.append((args, kwargs)))
+    for _ in range(2):
+        assert source.reopen_continuation_bundle_v2(
+            bundle.canonical_bytes, fake_engine).bundle_sha256 == bundle.bundle_sha256
+    assert calls == []
 
 
 def test_drop_duplicate_and_seed_drift_are_refused(fake_engine):

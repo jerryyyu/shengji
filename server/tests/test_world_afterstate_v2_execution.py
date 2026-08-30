@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import hashlib
+import functools
 import json
+import multiprocessing
 import os
 import shutil
 import subprocess
+import time
 from types import SimpleNamespace
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 import shengji.rl.world_afterstate_v2_execution as execution
+
+pytestmark = pytest.mark.filterwarnings(
+    "ignore:This process .* is multi-threaded, use of fork.*:DeprecationWarning")
 
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_audit_attempt import (
@@ -19,6 +25,7 @@ from shengji.rl.world_afterstate_v2_audit_attempt import (
 from shengji.rl.world_afterstate_v2_execution import (
     ALLOWED_SPLITS, AUTHORITY, STAGE_ORDER, ExecutionFreezeV2, PipelineAdmissionV2,
     REVIEW_PREFIX, StageSupervisorV2, WorldAfterstateV2ExecutionError,
+    DurableProgressSinkV2,
     StageStateV2,
     SourceBindingV2, MissingStageError, bind_stage_controller,
     authenticate_review_commit, build_admission, consumption_tombstone_path,
@@ -32,6 +39,49 @@ import shengji.rl.world_afterstate_v2_stage_adapters as stage_adapters
 from shengji.rl.world_afterstate_v2_stage_adapters import (
     StageAdapterUnavailable, population_reopen_adapter,
 )
+
+
+@pytest.fixture(autouse=True)
+def _unit_controller_context(monkeypatch):
+    """Local callback-heavy unit tests use fork; production defaults to spawn."""
+    monkeypatch.setattr(
+        execution, "_controller_context",
+        lambda: multiprocessing.get_context("fork"))
+
+
+def _delayed_sentinel(path: Path, _supervisor, _shards) -> None:
+    time.sleep(2)
+    path.write_text("late")
+
+
+def _spawn_publication(supervisor, _shards) -> str:
+    supervisor.register_verified_shard(
+        "population", "spawn-proof", canonical_json_bytes({"ok": True}))
+    supervisor.emit_progress(
+        stage="population", substage="spawn-proof", completed=1, total=1,
+        sealed_shards=1, force=True)
+    return "published"
+
+
+class _StepClock:
+    def __init__(self, values):
+        self.values = tuple(values)
+        self.index = 0
+
+    def __call__(self):
+        index = min(self.index, len(self.values) - 1)
+        self.index += 1
+        return self.values[index]
+
+
+def _raise_controller_deadline(_supervisor, _shards):
+    raise WorldAfterstateV2ExecutionError(
+        "controller deadline expired before operation")
+
+
+def test_production_controller_context_is_clean_spawn(monkeypatch):
+    monkeypatch.undo()
+    assert execution._controller_context().get_start_method() == "spawn"
 
 
 def _sha(value) -> str:
@@ -415,13 +465,251 @@ def test_deadline_and_telemetry_are_persistent_across_resume(tmp_path, monkeypat
     expired = StageSupervisorV2(root, base_freeze, admission, clock=expired_clock)
     with pytest.raises(WorldAfterstateV2ExecutionError, match="RESOURCE_INCOMPLETE"):
         expired.run_stage("population", split="fit", operation=None)
-    resumed = StageSupervisorV2(root, base_freeze, admission, clock=expired_clock)
-    with pytest.raises(WorldAfterstateV2ExecutionError, match="RESOURCE_INCOMPLETE"):
-        resumed.run_stage("population", split="fit", operation=None)
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="resource-closed"):
+        StageSupervisorV2(root, base_freeze, admission, clock=expired_clock)
+    closeout = execution.reopen_resource_incomplete_closeout(
+        (root / execution.RESOURCE_CLOSEOUT_RELATIVE).read_bytes(),
+        freeze=base_freeze, admission=admission)
+    assert closeout["decision"] == "REFUSE_RESOURCE_INCOMPLETE"
+    assert closeout["resource_stage"] == "population"
     monkeypatch.setattr(execution, "live_runtime_profile", lambda: {"runtime": "drift"})
     with pytest.raises(WorldAfterstateV2ExecutionError, match="runtime identity"):
         execution.reopen_supervisor(root, freeze=base_freeze, admission=admission,
                                     review_marker=_marker)
+
+
+def test_frozen_heartbeat_controls_progress_throttle_and_controller_poll(
+        tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    supervisor._last_progress = 10_000_000_000
+    supervisor.clock = lambda: 10_000_000_000 + (
+        freeze.heartbeat_seconds - 1) * 1_000_000_000
+    assert supervisor.emit_progress(
+        stage="population", completed=0, total=2) == {}
+    supervisor.clock = lambda: 10_000_000_000 + (
+        freeze.heartbeat_seconds * 1_000_000_000)
+    assert supervisor.emit_progress(
+        stage="population", completed=0, total=2)["stage"] == "population"
+
+    assert supervisor._invoke_controller(
+        lambda *_: "done", "population", 1) == "done"
+
+
+def test_deadline_kills_controller_group_before_resource_closeout(
+        tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    sentinel = tmp_path / "controller-survived"
+    meta_path = root / "supervisor-meta.json"
+    meta = json.loads(meta_path.read_bytes())
+    meta["started_monotonic_ns"] = (
+        time.monotonic_ns()
+        - freeze.deadline_seconds * 1_000_000_000 + 100_000_000)
+    meta["meta_sha256"] = _sha({
+        key: value for key, value in meta.items() if key != "meta_sha256"})
+    meta_path.chmod(0o600)
+    meta_path.write_bytes(canonical_json_bytes(meta))
+    meta_path.chmod(0o400)
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    monkeypatch.setattr(
+        execution, "_controller_context",
+        lambda: multiprocessing.get_context("spawn"))
+
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="RESOURCE_INCOMPLETE"):
+        supervisor._invoke_controller(
+            functools.partial(_delayed_sentinel, sentinel),
+            "population", 1)
+    time.sleep(0.2)
+    assert not sentinel.exists()
+    closeout = execution.reopen_resource_incomplete_closeout(
+        (root / execution.RESOURCE_CLOSEOUT_RELATIVE).read_bytes(),
+        freeze=freeze, admission=admission)
+    assert closeout["resource_stage"] == "population"
+    assert closeout["audit_opened_count"] == 0
+
+
+@pytest.mark.parametrize("stage,completed,route", (
+    ("terminal", execution.WORK_STAGE_ORDER, None),
+    ("reconstruction", (*execution.WORK_STAGE_ORDER, "terminal"),
+     "PASS_ABSOLUTE_VALUE_LEARNING_ONLY"),
+))
+def test_expired_real_terminal_dispatch_never_starts_controller(
+        tmp_path, stage, completed, route):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    started = json.loads(
+        (root / "supervisor-meta.json").read_text())["started_monotonic_ns"]
+    sentinel = tmp_path / f"{stage}-started"
+    supervisor = StageSupervisorV2(
+        root, freeze, admission,
+        clock=lambda: started + freeze.deadline_seconds * 1_000_000_000)
+    supervisor._state = StageStateV2(
+        tuple(completed), route,
+        "audit-attempt" in completed, stage == "reconstruction" and False)
+    controller = execution.StageControllerV2(
+        stage, execution.CONTROLLER_BINDINGS[stage][0],
+        functools.partial(_delayed_sentinel, sentinel), production=True)
+
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="REFUSE_RESOURCE_INCOMPLETE"):
+        supervisor.run_stage(
+            stage, split="audit", operation=controller)
+    assert not sentinel.exists()
+    receipt = execution.reopen_resource_incomplete_closeout(
+        (root / execution.RESOURCE_CLOSEOUT_RELATIVE).read_bytes(),
+        freeze=freeze, admission=admission)
+    assert receipt["resource_stage"] == stage
+    assert receipt["prior_terminal_route"] == route
+
+
+def test_spawn_controller_reopens_child_shard_and_progress_publications(
+        tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    progress = DurableProgressSinkV2(root, freeze=freeze, admission=admission)
+    supervisor = StageSupervisorV2(
+        root, freeze, admission, progress_callback=progress)
+    monkeypatch.setattr(
+        execution, "_controller_context",
+        lambda: multiprocessing.get_context("spawn"))
+
+    assert supervisor._invoke_controller(
+        _spawn_publication, "population", 1) == "published"
+    assert supervisor.verified_shards("population") == ("spawn-proof",)
+    events = sorted((root / execution.PROGRESS_DIRECTORY).glob("*.json"))
+    assert len(events) == 1
+    event = json.loads(events[0].read_bytes())
+    assert event["snapshot"]["substage"] == "spawn-proof"
+    assert event["snapshot"]["sealed_shards"] == 1
+
+
+def test_spawn_expiry_race_seals_closeout_in_parent(tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    limit = freeze.deadline_seconds * 1_000_000_000
+    supervisor._started = 0
+    # Parent pre-spawn and first poll remain just inside the wall.  The child
+    # refuses before operation; by the parent's post-result check the original
+    # admission wall has expired.
+    supervisor.clock = _StepClock((0, 0, 0, limit))
+    monkeypatch.setattr(
+        execution, "_controller_context",
+        lambda: multiprocessing.get_context("spawn"))
+
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="REFUSE_RESOURCE_INCOMPLETE"):
+        supervisor._invoke_controller(
+            _raise_controller_deadline, "population", 1)
+    receipt = execution.reopen_resource_incomplete_closeout(
+        (root / execution.RESOURCE_CLOSEOUT_RELATIVE).read_bytes(),
+        freeze=freeze, admission=admission)
+    assert receipt["resource_stage"] == "population"
+    assert receipt["completed_stages"] == []
+
+
+def test_postresult_expiry_closeout_binds_child_publications(
+        tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    progress = DurableProgressSinkV2(root, freeze=freeze, admission=admission)
+    supervisor = StageSupervisorV2(
+        root, freeze, admission, progress_callback=progress)
+    limit = freeze.deadline_seconds * 1_000_000_000
+    supervisor._started = 0
+    supervisor.clock = _StepClock((0, 0, 0, limit))
+    monkeypatch.setattr(
+        execution, "_controller_context",
+        lambda: multiprocessing.get_context("spawn"))
+
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="REFUSE_RESOURCE_INCOMPLETE"):
+        supervisor._invoke_controller(
+            _spawn_publication, "population", 1)
+    receipt = execution.reopen_resource_incomplete_closeout(
+        (root / execution.RESOURCE_CLOSEOUT_RELATIVE).read_bytes(),
+        freeze=freeze, admission=admission)
+    assert receipt["verified_shards"] == [[
+        "population:spawn-proof",
+        hashlib.sha256(canonical_json_bytes({"ok": True})).hexdigest(),
+    ]]
+    recovery = StageSupervisorV2(
+        root, freeze, admission, resource_closeout_only=True)
+    execution._validate_closeout_state(receipt, recovery)
+
+
+def test_cross_boot_can_only_seal_resource_incomplete_closeout(
+        tmp_path, monkeypatch):
+    repo, freeze, review, marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    monkeypatch.setattr(execution, "_boot_identity", lambda: "new-boot")
+    receipt = execution.seal_resource_incomplete_recovery(
+        root, freeze=freeze, admission=admission,
+        review_marker=marker, repo=repo)
+    assert receipt["decision"] == "REFUSE_RESOURCE_INCOMPLETE"
+    assert receipt["cross_boot"] is True
+    assert receipt["audit_opened_count"] == 0
+    assert execution.seal_resource_incomplete_recovery(
+        root, freeze=freeze, admission=admission,
+        review_marker=marker, repo=repo) == receipt
+    assert execution.verify_resource_incomplete_recovery(
+        root, freeze=freeze, admission=admission,
+        review_marker=marker, repo=repo) == receipt
+    recovery = StageSupervisorV2(
+        root, freeze, admission, resource_closeout_only=True)
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="cannot run scientific"):
+        recovery.run_stage("population", split="fit", operation=None)
+
+
+def test_deadline_during_reconstruction_preserves_but_invalidates_prior_route(
+        tmp_path):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    started = json.loads(
+        (root / "supervisor-meta.json").read_text())["started_monotonic_ns"]
+    supervisor = StageSupervisorV2(
+        root, freeze, admission,
+        clock=lambda: started + freeze.deadline_seconds * 1_000_000_000)
+    prior = "PASS_ABSOLUTE_VALUE_LEARNING_ONLY"
+    supervisor._state = StageStateV2(("terminal",), prior)
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="RESOURCE_INCOMPLETE"):
+        supervisor._deadline()
+    receipt = execution.reopen_resource_incomplete_closeout(
+        (root / execution.RESOURCE_CLOSEOUT_RELATIVE).read_bytes(),
+        freeze=freeze, admission=admission)
+    assert receipt["decision"] == "REFUSE_RESOURCE_INCOMPLETE"
+    assert receipt["prior_terminal_route"] == prior
+    assert receipt["resource_stage"] == "reconstruction"
 
 
 def test_live_telemetry_includes_process_pool_children(monkeypatch):
@@ -472,6 +760,55 @@ def test_supervisor_telemetry_baselines_reset_on_resume(tmp_path, monkeypatch):
     assert resumed_progress["cpu_utilization_ppm"] == 1_000_000
     assert first_progress["elapsed_nanoseconds"] == 1_000_000_000
     assert resumed_progress["elapsed_nanoseconds"] == 3_000_000_000
+
+
+def test_durable_progress_prefix_is_bound_and_resumes(tmp_path):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(root, freeze_raw=freeze.canonical_bytes(),
+                                     repo=repo, review_commit=review,
+                                     remote_url=str(remote))
+    snapshots = []
+    sink = DurableProgressSinkV2(root, freeze=freeze, admission=admission)
+    supervisor = StageSupervisorV2(root, freeze, admission,
+                                   progress_callback=snapshots.append)
+    snapshot = supervisor.emit_progress(stage="population", completed=0,
+                                        total=1, force=True)
+    sink(snapshot)
+    assert sink.next_index == 1
+    resumed = DurableProgressSinkV2(root, freeze=freeze, admission=admission)
+    assert resumed.next_index == 1
+    resumed(snapshot)
+    assert resumed.next_index == 2
+
+
+@pytest.mark.parametrize("tamper", ("tamper", "gap", "foreign"))
+def test_durable_progress_reopen_refuses_tamper_gap_or_foreign_admission(
+        tmp_path, tamper):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(root, freeze_raw=freeze.canonical_bytes(),
+                                     repo=repo, review_commit=review,
+                                     remote_url=str(remote))
+    sink = DurableProgressSinkV2(root, freeze=freeze, admission=admission)
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    sink(supervisor.emit_progress(stage="population", completed=0, total=1,
+                                  force=True))
+    path = root / "progress" / "00000000.json"
+    if tamper == "tamper":
+        os.chmod(path, 0o600)
+        path.write_bytes(path.read_bytes().replace(b'"index":0', b'"index":1'))
+        os.chmod(path, 0o400)
+        with pytest.raises(WorldAfterstateV2ExecutionError):
+            DurableProgressSinkV2(root, freeze=freeze, admission=admission)
+    elif tamper == "gap":
+        path.rename(root / "progress" / "00000002.json")
+        with pytest.raises(WorldAfterstateV2ExecutionError, match="prefix"):
+            DurableProgressSinkV2(root, freeze=freeze, admission=admission)
+    else:
+        foreign = replace(admission, review_commit="a" * 40)
+        with pytest.raises(WorldAfterstateV2ExecutionError, match="identity|binding"):
+            DurableProgressSinkV2(root, freeze=freeze, admission=foreign)
 
 
 def test_live_telemetry_uses_process_cgroup_v2_directory(tmp_path, monkeypatch):
@@ -643,12 +980,13 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
             stage_payload_factory=(prepare_audit
                                    if stage == "audit-attempt" else None))
     execution.run_v2_pipeline(supervisor, operations)
-    assert calls == [("verify", False)]
+    assert (root / "terminal" / "independent-reconstruction.json").read_bytes() \
+        == receipt_raw
     assert supervisor.state.reconstruction_completed is True
     resumed = execution.reopen_supervisor(
         root, freeze=freeze, admission=admission, review_marker=marker)
     execution.run_v2_pipeline(resumed, operations)
-    assert calls == [("verify", False)]
+    assert resumed.state.reconstruction_completed is True
 
 
 def test_interrupted_audit_stage_reuses_exact_marker_on_resume(tmp_path):
@@ -735,8 +1073,6 @@ def test_p0_stop_skips_training_and_seals_terminal_then_reconstruction(
             stage, execution.CONTROLLER_BINDINGS[stage][0], invoke, True)
         for stage in STAGE_ORDER}
     state = execution.run_v2_pipeline(supervisor, operations)
-    assert calls == ["population", "p0-labels-gates", "terminal",
-                     "reconstruction"]
     assert state.completed_stages == (
         "population", "p0-labels-gates", "terminal", "reconstruction")
     assert state.terminal_route == route

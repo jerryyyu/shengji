@@ -210,8 +210,8 @@ def _label_resources(supervisor: Any, freeze: Any, repo: Path) -> tuple[int, int
     return workers, seconds
 
 
-def _inference_batch_cap(supervisor: Any, freeze: Any, repo: Path) -> int:
-    """Reopen the exact freeze-bound capacity receipt and select its arm."""
+def _capacity_receipt(supervisor: Any, freeze: Any, repo: Path) -> Any:
+    """Reopen the exact freeze-bound capacity receipt once per adapter call."""
     bindings = [row for row in getattr(freeze, "artifact_bindings", ())
                 if type(row) is tuple and len(row) == 3 and row[0] == "capacity"]
     if len(bindings) != 1:
@@ -245,22 +245,73 @@ def _inference_batch_cap(supervisor: Any, freeze: Any, repo: Path) -> int:
         receipt.validate()
     except Exception as exc:
         raise LateStageAdapterUnavailable("late capacity receipt reopen refused") from exc
+    return receipt
+
+
+def _capacity_binding(supervisor: Any, freeze: Any, repo: Path) -> tuple[Path, str, Any]:
+    """Return the one exact capacity path, digest, and typed receipt."""
+    bindings = [row for row in getattr(freeze, "artifact_bindings", ())
+                if type(row) is tuple and len(row) == 3 and row[0] == "capacity"]
+    if len(bindings) != 1:
+        raise LateStageAdapterUnavailable(
+            "late capacity artifact binding missing or duplicated")
+    _label, relative, expected = bindings[0]
+    if type(relative) is not str or Path(relative).is_absolute() \
+            or Path(relative).as_posix() != relative \
+            or any(part in ("", ".", "..") for part in Path(relative).parts):
+        raise LateStageAdapterUnavailable("late capacity artifact path drift")
+    _digest(expected, "capacity artifact SHA-256")
+    candidates = tuple(path for path in (
+        Path(getattr(supervisor, "root", "")) / relative,
+        repo / relative,
+    ) if path.is_file() and not path.is_symlink())
+    if not candidates:
+        raise LateStageAdapterUnavailable("late capacity artifact missing")
+    try:
+        raws = tuple(stable_read_bytes(path) for path in candidates)
+    except Exception as exc:
+        raise LateStageAdapterUnavailable("late capacity artifact refused") from exc
+    if any(raw != raws[0] for raw in raws) or _sha(raws[0]) != expected:
+        raise LateStageAdapterUnavailable("late capacity artifact digest drift")
+    try:
+        receipt = reopen_capacity_receipt_v2_bytes(raws[0])
+        receipt.validate()
+    except Exception as exc:
+        raise LateStageAdapterUnavailable("late capacity receipt reopen refused") from exc
+    return candidates[0], expected, receipt
+
+
+def _selected_capacity_variant(supervisor: Any, freeze: Any, repo: Path,
+                               stage: str, allowed: tuple[int, ...]) -> int:
+    receipt = _capacity_receipt(supervisor, freeze, repo)
     selected = tuple(arm for arm in receipt.selected_arms
-                    if getattr(arm, "stage", None) == "inference-batch")
+                     if getattr(arm, "stage", None) == stage)
     if len(selected) != 1:
         raise LateStageAdapterUnavailable(
-            "late inference-batch selected arm missing or duplicated")
+            f"late {stage} selected arm missing or duplicated")
     arm = selected[0]
     try:
         arm.validate()
     except Exception as exc:
         raise LateStageAdapterUnavailable(
-            "late inference-batch selected arm refused") from exc
+            f"late {stage} selected arm refused") from exc
     value = getattr(arm, "variant", None)
     if isinstance(value, bool) or not isinstance(value, int) \
-            or value not in (32, 64, 128, 256):
-        raise LateStageAdapterUnavailable("late inference-batch arm drift")
+            or value not in allowed:
+        raise LateStageAdapterUnavailable(f"late {stage} arm drift")
     return value
+
+
+def _inference_batch_cap(supervisor: Any, freeze: Any, repo: Path) -> int:
+    """Reopen the exact freeze-bound capacity receipt and select its arm."""
+    return _selected_capacity_variant(
+        supervisor, freeze, repo, "inference-batch", (32, 64, 128, 256))
+
+
+def _reconstruction_workers(supervisor: Any, freeze: Any, repo: Path) -> int:
+    """Select the frozen reconstruction worker arm."""
+    return _selected_capacity_variant(
+        supervisor, freeze, repo, "reconstruction", (1, 4, 8, 16))
 
 
 def _deadline(supervisor: Any, freeze: Any, seconds: int) -> int:
@@ -635,7 +686,7 @@ class AuditAttemptAdapterV2:
             deadline_monotonic_ns=_deadline(supervisor, self.freeze, seconds))
         reopened = reopen_label_stage_receipt(receipt.payload())
         index_path, index_sha = _published_terminal_inputs(
-            supervisor, self.freeze, predictions)
+            supervisor, self.freeze, self.repo, predictions)
         payload = {"schema": "world-afterstate-v2-audit-attempt-receipt-v2", "freeze_sha256": self.freeze.sha256(), "admission_sha256": supervisor.admission.sha256(), "audit_attempt_sha256": marker["attempt_sha256"],
                    "prediction_manifest_sha256s": [[label, m["manifest_sha256"]] for label, m, _ in predictions], "label_manifest_sha256": reopened.manifest_sha256, "audit_deal_count": len(materials),
                    "terminal_inputs_path": index_path.relative_to(supervisor.root).as_posix(), "terminal_inputs_sha256": index_sha}
@@ -850,8 +901,10 @@ def _upstream_receipt(supervisor: Any, stage: str) -> tuple[dict[str, Any], Path
         raise LateStageAdapterUnavailable(f"{stage} receipt reopen refused") from exc
 
 
-def _published_terminal_inputs(supervisor: Any, freeze: Any,
-                               predictions: Sequence[tuple[str, Mapping[str, Any], Path]]) -> tuple[Path, str]:
+def _published_terminal_inputs(
+        supervisor: Any, freeze: Any, repo: Path,
+    predictions: Sequence[tuple[str, Mapping[str, Any], Path]]) \
+        -> tuple[Path, str]:
     """Publish the terminal path index only after all immutable inputs exist."""
     root = supervisor.root
     # The training adapters must publish these canonical files.  Embedded
@@ -932,8 +985,30 @@ def _published_terminal_inputs(supervisor: Any, freeze: Any,
     prefix = [*getattr(supervisor.state, "completed_stages", ())]
     if prefix != [*_WORK_PREFIX, PRECISION_STAGE]:
         raise LateStageAdapterUnavailable("terminal input completed prefix drift")
+    capacity_path, capacity_sha, capacity_receipt = _capacity_binding(
+        supervisor, freeze, repo)
+    selected_reconstruction = tuple(
+        arm for arm in capacity_receipt.selected_arms
+        if arm.stage == "reconstruction")
+    if len(selected_reconstruction) != 1:
+        raise LateStageAdapterUnavailable(
+            "late reconstruction selected arm missing or duplicated")
+    reconstruction_workers = selected_reconstruction[0].variant
+    try:
+        capacity_root = (
+            "evidence" if capacity_path.is_relative_to(root) else "repo")
+        capacity_relative = capacity_path.relative_to(
+            root if capacity_root == "evidence" else repo).as_posix()
+    except ValueError as exc:
+        raise LateStageAdapterUnavailable(
+            "capacity artifact path escapes its bound root") from exc
+    freeze_relative, freeze_sha = _relative(
+        root, root / "freeze.json", "execution freeze")
+    if freeze_sha != freeze.sha256():
+        raise LateStageAdapterUnavailable("execution freeze digest drift")
     body = {"schema": TERMINAL_INPUTS_SCHEMA,
             "freeze_sha256": freeze.sha256(),
+            "freeze_path": [freeze_relative, freeze_sha],
             "admission_sha256": supervisor.admission.sha256(),
             "completed_stage_prefix": prefix,
             "population_receipt": ["shards/population/receipt.bin", population_sha],
@@ -947,6 +1022,10 @@ def _published_terminal_inputs(supervisor: Any, freeze: Any,
             "precision_result": fixed["precision_result"],
             "model_selector_power": fixed["model_selector_power"], "prior": fixed["prior"],
             "control_doses": dose_rows,
+            "capacity_path": [capacity_relative, capacity_sha],
+            "capacity_root": capacity_root,
+            "capacity_sha256": capacity_sha,
+            "reconstruction_workers": reconstruction_workers,
             "upstream_receipt_sha256s": [[stage, _upstream_receipt(supervisor, stage)[2]]
                                           for stage in (*_WORK_PREFIX, PRECISION_STAGE)]}
     raw = canonical_json_bytes(body)
@@ -974,12 +1053,13 @@ def _terminal_paths(supervisor: Any, freeze: Any, repo: Path) -> TerminalInputPa
     if index_path.is_symlink() or not index_path.is_file():
         raise LateStageAdapterUnavailable("terminal immutable artifact index missing")
     value = _strict_json(stable_read_bytes(index_path), "terminal input index")
-    required = {"schema", "freeze_sha256", "admission_sha256", "completed_stage_prefix",
+    required = {"schema", "freeze_sha256", "freeze_path", "admission_sha256", "completed_stage_prefix",
                 "population_receipt", "audit_population_namespace_sha256",
                 "audit_population_tier", "audit_attempt", "continuation_root",
                 "predictions", "cohorts", "checkpoint_roots", "p0_report",
                 "optimizer_canary", "precision_result", "model_selector_power",
-                "prior", "control_doses", "upstream_receipt_sha256s"}
+                "prior", "control_doses", "capacity_path", "capacity_root",
+                "capacity_sha256", "reconstruction_workers", "upstream_receipt_sha256s"}
     if set(value) != required or value["schema"] != TERMINAL_INPUTS_SCHEMA \
             or (value["freeze_sha256"], value["admission_sha256"]) != (freeze.sha256(), supervisor.admission.sha256()):
         raise LateStageAdapterUnavailable("terminal input index identity drift")
@@ -993,6 +1073,14 @@ def _terminal_paths(supervisor: Any, freeze: Any, repo: Path) -> TerminalInputPa
         if type(raw) is not list or len(raw) != 2:
             raise LateStageAdapterUnavailable(f"{label} reference drift")
         path = _path(root, raw[0], label)
+        if _sha(stable_read_bytes(path)) != _digest(raw[1], f"{label} digest"):
+            raise LateStageAdapterUnavailable(f"{label} digest drift")
+        return path
+
+    def external_ref(raw: object, base: Path, label: str) -> Path:
+        if type(raw) is not list or len(raw) != 2 or type(raw[0]) is not str:
+            raise LateStageAdapterUnavailable(f"{label} reference drift")
+        path = _path(base, raw[0], label)
         if _sha(stable_read_bytes(path)) != _digest(raw[1], f"{label} digest"):
             raise LateStageAdapterUnavailable(f"{label} digest drift")
         return path
@@ -1050,6 +1138,27 @@ def _terminal_paths(supervisor: Any, freeze: Any, repo: Path) -> TerminalInputPa
                       for row in value["control_doses"])
         if tuple(label for label, _ in doses) != DOSE_LABELS:
             raise ValueError("control dose order")
+        if value["capacity_root"] not in ("evidence", "repo"):
+            raise ValueError("capacity artifact root")
+        capacity_base = root if value["capacity_root"] == "evidence" else repo
+        capacity_path = external_ref(value["capacity_path"], capacity_base,
+                                     "capacity artifact")
+        freeze_path = ref(value["freeze_path"], "execution freeze")
+        if freeze_path != root / "freeze.json":
+            raise ValueError("execution freeze path")
+        capacity_sha256 = _digest(value["capacity_sha256"],
+                                  "capacity artifact SHA-256")
+        reconstruction_workers = value["reconstruction_workers"]
+        if (isinstance(reconstruction_workers, bool)
+                or not isinstance(reconstruction_workers, int)
+                or reconstruction_workers not in (1, 4, 8, 16)):
+            raise ValueError("reconstruction worker binding")
+        # The controller will repeat this authentication immediately before
+        # audit opening; adapter reconstruction also rejects a stale index.
+        capacity_binding = tuple(row for row in freeze.artifact_bindings
+                                 if row[0] == "capacity")
+        if len(capacity_binding) != 1 or capacity_sha256 != capacity_binding[0][2]:
+            raise ValueError("capacity freeze binding")
         return TerminalInputPathsV2(
             freeze_sha256=freeze.sha256(), admission_sha256=supervisor.admission.sha256(), audit_population_root=root,
             audit_population_namespace_sha256=value["audit_population_namespace_sha256"], audit_population_tier=value["audit_population_tier"],
@@ -1060,7 +1169,11 @@ def _terminal_paths(supervisor: Any, freeze: Any, repo: Path) -> TerminalInputPa
             checkpoint_roots=tuple(checkpoint_roots),
             p0_report_path=ref(value["p0_report"], "P0 report"), optimizer_canary_path=ref(value["optimizer_canary"], "optimizer canary"),
             precision_select_result_path=ref(value["precision_result"], "precision result"), model_selector_power_path=ref(value["model_selector_power"], "model selector power"),
-            prior_path=ref(value["prior"], "Jeffreys prior"), control_dose_receipt_paths=doses)
+            prior_path=ref(value["prior"], "Jeffreys prior"),
+            control_dose_receipt_paths=doses,
+            freeze_path=freeze_path, capacity_path=capacity_path,
+            capacity_sha256=capacity_sha256,
+            reconstruction_workers=reconstruction_workers)
     except (KeyError, TypeError, ValueError) as exc:
         raise LateStageAdapterUnavailable("terminal input index reconstruction refused") from exc
 

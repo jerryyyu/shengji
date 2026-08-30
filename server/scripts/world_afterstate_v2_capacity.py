@@ -8,24 +8,46 @@ single-writer and non-destructive.
 
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import multiprocessing
 import os
-from pathlib import Path
-import signal
-import subprocess
 import sys
-import time
 
 
 if not sys.flags.safe_path or not sys.dont_write_bytecode:
     raise RuntimeError("Value V2 capacity requires Python -P -B")
+if os.environ.get("PYTHONPATH"):
+    raise RuntimeError("Value V2 capacity refuses PYTHONPATH")
+
+import argparse  # noqa: E402
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import multiprocessing  # noqa: E402
+from pathlib import Path  # noqa: E402
+import signal  # noqa: E402
+import subprocess  # noqa: E402
+import time  # noqa: E402
 
 SERVER = Path(__file__).resolve().parents[1]
-if str(SERVER) not in sys.path:
+if not sys.path or sys.path[0] != str(SERVER):
     sys.path.insert(0, str(SERVER))
+
+
+def _preimport_bytecode_scan(
+        prefixes: tuple[Path, ...] | None = None) -> None:
+    """Refuse ignored bytecode before importing any project module."""
+    roots = prefixes or (SERVER / "scripts", SERVER / "shengji")
+    for prefix in roots:
+        if not prefix.is_dir() or prefix.is_symlink():
+            raise RuntimeError("Value V2 capacity source root drift")
+        for _current, dirs, files in os.walk(
+                prefix, topdown=True, followlinks=False):
+            if "__pycache__" in dirs or any(name.endswith(".pyc")
+                                              for name in files):
+                raise RuntimeError(
+                    "Value V2 capacity refuses source bytecode artifacts")
+
+
+if __name__ == "__main__":
+    _preimport_bytecode_scan()
 
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
 from shengji.rl.world_afterstate_v2_capacity_runner import (  # noqa: E402
@@ -36,9 +58,28 @@ from shengji.rl.world_afterstate_v2_capacity_runner import (  # noqa: E402
 from shengji.rl.world_afterstate_v2_capacity import (  # noqa: E402
     MAX_COMMAND_WALL_SECONDS, CapacityFailureReceiptV2)
 from shengji.rl.world_afterstate_v2_freeze_builder import _source_closure  # noqa: E402
+from shengji.rl.world_afterstate_v2_execution import live_runtime_profile  # noqa: E402
 
 
 REPO = SERVER.parent
+
+
+def _assert_module_origins() -> None:
+    for name in (
+            "shengji.rl.belief_contract",
+            "shengji.rl.world_afterstate_v2_capacity",
+            "shengji.rl.world_afterstate_v2_capacity_runner",
+            "shengji.rl.world_afterstate_v2_execution",
+            "shengji.rl.world_afterstate_v2_freeze_builder"):
+        module = sys.modules.get(name)
+        origin = None if module is None else getattr(module, "__file__", None)
+        try:
+            Path(origin).resolve(strict=True).relative_to(SERVER.resolve(strict=True))
+        except (OSError, TypeError, ValueError) as exc:
+            raise RuntimeError("Value V2 capacity module origin drift") from exc
+
+
+_assert_module_origins()
 
 
 def parser() -> argparse.ArgumentParser:
@@ -92,6 +133,10 @@ def _source_sha256() -> str:
         "schema": "world-afterstate-v2-capacity-source-v2",
         "files": list(_source_rows()),
     })).hexdigest()
+
+
+def _runtime_sha256() -> str:
+    return hashlib.sha256(canonical_json_bytes(live_runtime_profile())).hexdigest()
 
 
 def _worker_deadline_expired(_signum: int, _frame: object) -> None:
@@ -225,13 +270,20 @@ def _run_worker(args: argparse.Namespace, *, output: Path, failure_out: Path,
     """Run capacity in the killable worker; return canonical bytes to parent."""
     started_ns = time.perf_counter_ns()
     source_sha256 = _source_sha256()
+    runtime_sha256 = _runtime_sha256()
     try:
         receipt = run_capacity_v2(
+            source_sha256=source_sha256,
+            runtime_sha256=runtime_sha256,
             progress=_progress if args.progress else None, output_root=work_root)
         if _source_sha256() != source_sha256:
             raise CapacityRunnerError(
                 "capacity source changed during worker execution",
                 stage="runner", reason_code="capacity-source-drift")
+        if _runtime_sha256() != runtime_sha256:
+            raise CapacityRunnerError(
+                "capacity runtime changed during worker execution",
+                stage="runner", reason_code="capacity-runtime-drift")
         raw = canonical_json_bytes(receipt.payload())
         if canonical_json_bytes(reopen_capacity_receipt_v2(
                 json.loads(raw.decode("ascii"))).payload()) != raw:
@@ -289,6 +341,7 @@ def _supervised_main(args: argparse.Namespace, *, output: Path,
                      failure_out: Path, work_root: Path) -> int:
     started_ns = time.perf_counter_ns()
     source_sha256 = _source_sha256()
+    runtime_sha256 = _runtime_sha256()
     try:
         process = _spawn_worker(
             args, output=output, failure_out=failure_out, work_root=work_root)
@@ -302,11 +355,17 @@ def _supervised_main(args: argparse.Namespace, *, output: Path,
                 started_ns=started_ns, output=output, failure_out=failure_out,
                 work_root=work_root, source_sha256=source_sha256)
         if process.returncode == 0:
-            if _source_sha256() != source_sha256:
+            if (_source_sha256() != source_sha256
+                    or _runtime_sha256() != runtime_sha256):
                 raise CapacityRunnerError(
-                    "capacity source changed during supervised execution",
-                    stage="publication", reason_code="capacity-source-drift")
+                    "capacity source/runtime changed during supervised execution",
+                    stage="publication", reason_code="capacity-binding-drift")
             receipt = reopen_capacity_receipt_v2(json.loads(raw.decode("ascii")))
+            if (receipt.source_sha256 != source_sha256
+                    or receipt.runtime_sha256 != runtime_sha256):
+                raise CapacityRunnerError(
+                    "worker success receipt source/runtime binding drift",
+                    stage="publication", reason_code="capacity-binding-drift")
             publish_capacity_receipt_v2(output, receipt)
             reopened = reopen_capacity_receipt_v2(
                 json.loads(output.read_text(encoding="ascii")))

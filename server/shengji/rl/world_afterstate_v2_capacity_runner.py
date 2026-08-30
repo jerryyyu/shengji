@@ -1094,6 +1094,7 @@ class RepresentativeDAGV2:
     member_workers: int = 0
     torch_threads: int = 0
     inference_batch: int = 0
+    reconstruction_workers: int = 0
 
     @property
     def stage_cpu_nanoseconds(self) -> tuple[tuple[str, int], ...]:
@@ -1116,6 +1117,7 @@ def _dag_attestation(value: RepresentativeDAGV2) -> str:
         "member_workers": value.member_workers,
         "torch_threads": value.torch_threads,
         "inference_batch": value.inference_batch,
+        "reconstruction_workers": value.reconstruction_workers,
         "progress_recovery": value.progress_recovery,
     })
 
@@ -1346,6 +1348,8 @@ def _tiers(composed: ComposedProjectionV2) -> tuple[TierProjectionV2, ...]:
 
 def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
                      preflight: PreflightResultV2,
+                     source_sha256: str,
+                     runtime_sha256: str,
                      synthetic: bool = False,
                      representative_dag: RepresentativeDAGV2 | None = None,
                      _provenance: object | None = None) -> CapacityReceiptV2:
@@ -1407,10 +1411,13 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
     selected = _select_arms(arms)
     layout = (selected["member-concurrency"].variant,
                PINNED_TORCH_THREADS,
-               selected["inference-batch"].variant)
-    if (representative_dag.member_workers,
-            representative_dag.torch_threads,
-            representative_dag.inference_batch) != layout:
+               selected["inference-batch"].variant,
+               selected["reconstruction"].variant)
+    dag_layout = (representative_dag.member_workers,
+                  representative_dag.torch_threads,
+                  representative_dag.inference_batch,
+                  representative_dag.reconstruction_workers)
+    if dag_layout != layout:
         raise FullDAGCapacityDependencyBlocked(
             "full-DAG resource layout mismatch")
     composed = _composed_projection(
@@ -1452,6 +1459,8 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
                         for arm in arms), arms=arms,
         selected_arms=tuple(selected.values()), composed=composed,
         tiers=_tiers(composed), progress_recovery=progress,
+        source_sha256=source_sha256,
+        runtime_sha256=runtime_sha256,
         authority=dict(AUTHORITY), model_parameter_count=parameter_count,
         candidate_distribution=preflight.candidate_distribution,
         per_epoch_wall_seconds=(representative_dag.epoch_wall_seconds
@@ -1461,7 +1470,7 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
                         for arm in arms), measurement_scope=MEASUREMENT_SCOPE)
     receipt = __import__("dataclasses").replace(
         receipt, member_workers=layout[0], torch_threads=layout[1],
-        inference_batch=layout[2])
+        inference_batch=layout[2], reconstruction_workers=layout[3])
     try:
         validate_capacity_receipt_v2(receipt)
     except WorldAfterstateV2CapacityError as exc:
@@ -1474,12 +1483,24 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                         host: HostTelemetryV2 | None = None,
                         progress: Callable[[dict[str, Any]], None] | None = None,
                         output_root: Path | None = None,
+                        source_sha256: str | None = None,
+                        runtime_sha256: str | None = None,
                         production: bool = True) -> CapacityRunResultV2:
     started = time.perf_counter_ns()
     deadline_ns = started + MAX_COMMAND_WALL_SECONDS * 1_000_000_000
     if production and any(value is not None for value in (preflight, backend, host)):
         raise CapacityRunnerError(
             "production capacity refuses caller-fabricated inputs")
+    if production and (type(source_sha256) is not str
+                       or len(source_sha256) != 64
+                       or any(char not in "0123456789abcdef"
+                              for char in source_sha256)):
+        raise CapacityRunnerError("production capacity source binding drift")
+    if production and (type(runtime_sha256) is not str
+                       or len(runtime_sha256) != 64
+                       or any(char not in "0123456789abcdef"
+                              for char in runtime_sha256)):
+        raise CapacityRunnerError("production capacity runtime binding drift")
     backend = backend or RealMeasurementBackendV2(
         deadline_ns=deadline_ns, progress=progress)
     if getattr(backend, "synthetic", False) and production:
@@ -1564,6 +1585,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
     member_workers = selected["member-concurrency"].variant
     torch_threads = PINNED_TORCH_THREADS
     inference_batch = selected["inference-batch"].variant
+    reconstruction_workers = selected["reconstruction"].variant
     if getattr(backend, "synthetic", False):
         return CapacityRunResultV2(None, tuple(arms), preflight, True,
                                    getattr(backend, "brand", SYNTHETIC_BRAND))
@@ -1581,7 +1603,8 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 deadline_ns=deadline_ns, _provenance=_FULL_DAG_PROVENANCE,
                 member_workers=member_workers, torch_threads=torch_threads,
                 continuation_workers=selected["continuation-mechanics"].variant,
-                inference_batch=inference_batch)
+                inference_batch=inference_batch,
+                reconstruction_workers=reconstruction_workers)
             measured.validate()
             stage = dict(measured.stage_wall_nanoseconds)
             required_staged_labels = {
@@ -1606,6 +1629,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 member_workers=measured.member_workers,
                 torch_threads=measured.torch_threads,
                 inference_batch=measured.inference_batch,
+                reconstruction_workers=measured.reconstruction_workers,
                 progress_recovery=dict(measured.progress_recovery),
                 provenance_token=measured.provenance_token)
             object.__setattr__(dag, "attestation_sha256", _dag_attestation(dag))
@@ -1618,6 +1642,8 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         dag = None
     receipt = build_receipt_v2(
         tuple(arms), host=host, preflight=preflight,
+        source_sha256=source_sha256,
+        runtime_sha256=runtime_sha256,
         representative_dag=dag, _provenance=_PRODUCTION_PROVENANCE)
     return CapacityRunResultV2(receipt, tuple(arms), preflight, False, None)
 
@@ -1630,18 +1656,24 @@ class CapacityRunnerV2:
                  host: HostTelemetryV2 | None = None,
                  progress: Callable[[dict[str, Any]], None] | None = None,
                  output_root: Path | None = None,
+                 source_sha256: str | None = None,
+                 runtime_sha256: str | None = None,
                  production: bool = True) -> None:
         self.preflight = preflight
         self.backend = backend
         self.host = host
         self.progress = progress
         self.output_root = output_root
+        self.source_sha256 = source_sha256
+        self.runtime_sha256 = runtime_sha256
         self.production = production
 
     def measure(self) -> CapacityRunResultV2:
         return measure_capacity_v2(
             preflight=self.preflight, backend=self.backend, host=self.host,
             progress=self.progress, output_root=self.output_root,
+            source_sha256=self.source_sha256,
+            runtime_sha256=self.runtime_sha256,
             production=self.production)
 
     def run(self) -> CapacityReceiptV2:
@@ -1650,12 +1682,15 @@ class CapacityRunnerV2:
         return self.measure().production_receipt()
 
 
-def run_capacity_v2(*, progress: Callable[[dict[str, Any]], None] | None = None,
+def run_capacity_v2(*, source_sha256: str, runtime_sha256: str,
+                    progress: Callable[[dict[str, Any]], None] | None = None,
                     output_root: Path | None = None
                     ) -> CapacityReceiptV2:
     """Run the real bounded command with no caller-fabricated inputs."""
-    result = measure_capacity_v2(progress=progress, output_root=output_root,
-                                 production=True)
+    result = measure_capacity_v2(
+        progress=progress, output_root=output_root,
+        source_sha256=source_sha256, runtime_sha256=runtime_sha256,
+        production=True)
     return result.production_receipt()
 
 
@@ -1669,7 +1704,8 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
                 "authority", "model_parameter_count",
                 "candidate_distribution", "per_epoch_wall_seconds",
                 "peak_task_count", "measurement_scope", "member_workers",
-                "torch_threads", "inference_batch"}
+                "torch_threads", "inference_batch", "source_sha256",
+                "runtime_sha256", "reconstruction_workers"}
     if set(payload) != required:
         raise CapacityRunnerError("capacity payload field population drift")
     try:
@@ -1707,6 +1743,8 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
             swap_bytes=payload["swap_bytes"], task_count=payload["task_count"],
             arms=arms, selected_arms=selected, composed=composed, tiers=tiers,
             progress_recovery=progress, schema=payload["schema"],
+            source_sha256=payload["source_sha256"],
+            runtime_sha256=payload["runtime_sha256"],
             authority=payload["authority"],
             model_parameter_count=payload["model_parameter_count"],
             candidate_distribution=candidate_distribution,
@@ -1715,7 +1753,8 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
             measurement_scope=payload["measurement_scope"],
             member_workers=payload["member_workers"],
             torch_threads=payload["torch_threads"],
-            inference_batch=payload["inference_batch"])
+            inference_batch=payload["inference_batch"],
+            reconstruction_workers=payload["reconstruction_workers"])
         validate_capacity_receipt_v2(result)
     except Exception as exc:
         raise CapacityRunnerError("capacity payload reconstruction refused") from exc

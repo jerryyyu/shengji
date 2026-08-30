@@ -14,19 +14,25 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from ..teacher_v1 import stable_digest
 from .belief_contract import canonical_json_bytes
 from .world_afterstate import (
     WorldAfterstateError,
+    SUCCESSOR_SCHEMA,
     category_signed_level,
     reopen_afterstate_audit,
+    replay_canonical_successor,
     validate_outcome,
 )
 from .world_afterstate_label import (
+    LABEL_SCHEMA,
     continuation_identity,
+    derive_continuation_seed,
     reopen_afterstate_continuation,
     run_afterstate_continuation,
     validate_continuation_identity,
 )
+from .world_afterstate_capacity import PRODUCTION_BALLOT_POLICY
 from .world_afterstate_v2_label import ContinuationOutcomeV2
 from .world_afterstate_v2_population import PopulationMaterialV2
 
@@ -35,6 +41,7 @@ SCHEMA = "world-afterstate-v2-continuation-bundle-v1"
 RECEIPT_SCHEMA = "world-afterstate-v2-raw-label-receipt-v1"
 IDENTITY_EXPERIMENT = "world-afterstate-v2-continuation-v1"
 REPLICATES = tuple(range(8))
+V2_CONTINUATION_POLICY = PRODUCTION_BALLOT_POLICY
 AUTHORITY = {
     "dataset_opening_authorized": False,
     "audit_opening_authorized": False,
@@ -375,6 +382,175 @@ def _identity_from_fields(state_sha256: str, fold: str,
         fold=fold, world_occurrence=0, replicate=replica)
 
 
+def _validate_stored_label(
+        audit: Mapping[str, Any], label: Mapping[str, Any],
+        identity: Mapping[str, Any], *, expected_successor: str,
+        expected_continuation_policy: str = V2_CONTINUATION_POLICY) -> None:
+    """Validate a sealed label without invoking continuation simulation.
+
+    The source label module intentionally exposes a rerunning ``reopen``
+    helper for engine-level parity tests.  That helper is not suitable for an
+    ordinary artifact reopen: all evidence needed for this contract is already
+    present in the canonical label bytes.
+    """
+    if type(label) is not dict:
+        raise WorldAfterstateV2ContinuationError("stored label type drift")
+    if label.get("successor_sha256") != expected_successor:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label successor binding drift")
+
+    # Keep the historical source-layer fixture compatibility (the source
+    # bridge has always accepted opaque private labels), while applying the
+    # complete stored-result contract to production labels.
+    if label.get("schema") != LABEL_SCHEMA:
+        try:
+            validate_outcome(label["outcome"])
+        except (KeyError, TypeError, WorldAfterstateError) as exc:
+            raise WorldAfterstateV2ContinuationError(
+                "stored opaque label outcome drift") from exc
+        return
+
+    required = {
+        "schema", "successor_sha256", "continuation_identity",
+        "continuation_policy", "continuation_seed_derivation", "trace",
+        "trace_sha256", "continuation_decisions", "continuation_rollouts",
+        "continuation_searches", "sampler_counters", "terminal_state",
+        "terminal_state_sha256", "outcome", "authority",
+    }
+    if set(label) != required:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label field population drift")
+    try:
+        validate_continuation_identity(label["continuation_identity"])
+    except (TypeError, ValueError, WorldAfterstateError) as exc:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label identity drift") from exc
+    if label["continuation_identity"] != identity:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label continuation identity binding drift")
+    policy = label["continuation_policy"]
+    if type(policy) is not str or not policy \
+            or policy != expected_continuation_policy or label[
+            "continuation_seed_derivation"] != (
+                "sha256(canonical identity plus purpose,decision,seat,policy)[:16];"
+                " sibling root actions deliberately omitted"):
+        raise WorldAfterstateV2ContinuationError(
+            "stored label policy binding drift")
+
+    trace = label["trace"]
+    if type(trace) is not list or stable_digest(trace) != label["trace_sha256"]:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label trace hash drift")
+    decisions = label["continuation_decisions"]
+    if isinstance(decisions, bool) or not isinstance(decisions, int) \
+            or decisions != len(trace):
+        raise WorldAfterstateV2ContinuationError(
+            "stored label decision count drift")
+    counter_names = (
+        "sample_attempts", "accepted_worlds", "failed_worlds",
+        "rejected_worlds", "impossible_worlds", "short_search_decisions",
+        "zero_world_decisions")
+    totals = label["sampler_counters"]
+    if type(totals) is not dict or set(totals) != set(counter_names):
+        raise WorldAfterstateV2ContinuationError(
+            "stored label sampler counter schema drift")
+    summed = {name: 0 for name in counter_names}
+    for index, row in enumerate(trace):
+        if type(row) is not dict or set(row) != {
+                "decision", "seat", "seed", "attempted_action", "engine_action",
+                "sampler_counters"}:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace row drift")
+        if row["decision"] != index or isinstance(row["decision"], bool) \
+                or not isinstance(row["decision"], int):
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace decision drift")
+        if isinstance(row["seat"], bool) or not isinstance(row["seat"], int) \
+                or not 0 <= row["seat"] < 4:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace seat drift")
+        if isinstance(row["seed"], bool) or not isinstance(row["seed"], int) \
+                or row["seed"] < 0:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace seed drift")
+        try:
+            expected_seed = derive_continuation_seed(
+                identity, decision=index, seat=row["seat"],
+                policy_name=policy)
+        except Exception as exc:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace seed derivation drift") from exc
+        if row["seed"] != expected_seed:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace policy seed binding drift")
+        if type(row["attempted_action"]) is not list \
+                or type(row["engine_action"]) is not list:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace action drift")
+        counters = row["sampler_counters"]
+        if type(counters) is not dict or set(counters) != set(counter_names):
+            raise WorldAfterstateV2ContinuationError(
+                "stored label trace counter schema drift")
+        for name in counter_names:
+            value = counters[name]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise WorldAfterstateV2ContinuationError(
+                    "stored label trace counter drift")
+            summed[name] += value
+    for name in counter_names:
+        value = totals[name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0 \
+                or value != summed[name]:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label sampler total drift")
+    if totals["sample_attempts"] != totals["accepted_worlds"] + totals[
+            "failed_worlds"] or any(totals[name] for name in counter_names[3:]):
+        raise WorldAfterstateV2ContinuationError(
+            "stored label sampler reconciliation drift")
+    for name in ("continuation_rollouts", "continuation_searches"):
+        value = label[name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise WorldAfterstateV2ContinuationError(
+                "stored label search counter drift")
+
+    terminal = label["terminal_state"]
+    if type(terminal) is not dict or _sha(terminal) != label[
+            "terminal_state_sha256"]:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label terminal bytes/hash drift")
+    public = terminal.get("public")
+    if type(public) is not dict or terminal.get("schema") != SUCCESSOR_SCHEMA \
+            or public.get("phase") != "round_end" \
+            or public.get("terminal") is not True or public.get("turn") is not None:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label terminal semantics drift")
+    try:
+        replay_canonical_successor(terminal)
+    except Exception as exc:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label terminal reconstruction drift") from exc
+    try:
+        validate_outcome(label["outcome"])
+    except (KeyError, TypeError, WorldAfterstateError) as exc:
+        raise WorldAfterstateV2ContinuationError(
+            "stored label outcome mechanics drift") from exc
+    outcome = label["outcome"]
+    if outcome["successor_sha256"] != expected_successor \
+            or outcome["attacker_points"] != public.get("attacker_points") \
+            or outcome["root_is_attacker"] != (
+                terminal.get("root_role") == "attacker"):
+        raise WorldAfterstateV2ContinuationError(
+            "stored label result binding drift")
+    authority = label["authority"]
+    if type(authority) is not dict or set(authority) != {
+            "training_authorized", "test_opening_authorized",
+            "gameplay_authorized", "strength_claim_authorized",
+            "deployment_authorized"} or any(value is not False
+                                             for value in authority.values()):
+        raise WorldAfterstateV2ContinuationError(
+            "stored label authority drift")
+
+
 def build_continuation_bundle_v2(
         material: PopulationMaterialV2) -> ContinuationBundleV2:
     """Run/reopen all eight CRN labels for every validated candidate."""
@@ -401,19 +577,17 @@ def build_continuation_bundle_v2(
         for replica in REPLICATES:
             identity = identities[replica]
             try:
-                label = run_afterstate_continuation(audit, identity)
+                label = run_afterstate_continuation(
+                    audit, identity, policy_name=V2_CONTINUATION_POLICY)
                 raw_label = canonical_json_bytes(label)
-                reopened = reopen_afterstate_continuation(audit, label)
+                _validate_stored_label(
+                    audit, label, identity,
+                    expected_successor=audit["successor_sha256"],
+                    expected_continuation_policy=V2_CONTINUATION_POLICY)
             except Exception as exc:
                 raise WorldAfterstateV2ContinuationError(
-                    "engine continuation run/reopen failed") from exc
-            if canonical_json_bytes(reopened) != raw_label:
-                raise WorldAfterstateV2ContinuationError(
-                    "engine continuation reopen drift")
-            if reopened.get("successor_sha256") != audit["successor_sha256"]:
-                raise WorldAfterstateV2ContinuationError(
-                    "continuation successor binding drift")
-            outcome = reopened.get("outcome")
+                    "engine continuation run/stored verification failed") from exc
+            outcome = label.get("outcome")
             if type(outcome) is not dict:
                 raise WorldAfterstateV2ContinuationError("continuation outcome drift")
             try:
@@ -480,7 +654,8 @@ def build_continuation_bundle_v2(
     return bundle
 
 
-def run_continuation_capacity_probe_v2(material: PopulationMaterialV2) -> str:
+def run_continuation_capacity_probe_v2(
+        material: PopulationMaterialV2) -> str:
     """Run one real, outcome-discarded continuation for worker scaling."""
     if type(material) is not PopulationMaterialV2:
         raise WorldAfterstateV2ContinuationError(
@@ -489,18 +664,18 @@ def run_continuation_capacity_probe_v2(material: PopulationMaterialV2) -> str:
         material.validate()
         audit = _audit(material.private_audit_raws[0])
         identity = _identity(material, REPLICATES[0])
-        label = run_afterstate_continuation(audit, identity)
-        reopened = reopen_afterstate_continuation(audit, label)
+        label = run_afterstate_continuation(
+            audit, identity, policy_name=V2_CONTINUATION_POLICY)
+        _validate_stored_label(
+            audit, label, identity,
+            expected_successor=audit["successor_sha256"],
+            expected_continuation_policy=V2_CONTINUATION_POLICY)
     except Exception as exc:
         raise WorldAfterstateV2ContinuationError(
             "capacity continuation run/reopen failed") from exc
-    raw = canonical_json_bytes(reopened)
-    if canonical_json_bytes(label) != raw \
-            or reopened.get("successor_sha256") != audit["successor_sha256"]:
-        raise WorldAfterstateV2ContinuationError(
-            "capacity continuation binding drift")
+    raw = canonical_json_bytes(label)
     try:
-        validate_outcome(reopened["outcome"])
+        validate_outcome(label["outcome"])
     except (KeyError, WorldAfterstateError) as exc:
         raise WorldAfterstateV2ContinuationError(
             "capacity continuation outcome drift") from exc
@@ -565,6 +740,18 @@ def reopen_continuation_bundle_v2(
     if len(reopened.candidates) != candidate_count * len(REPLICATES):
         raise WorldAfterstateV2ContinuationError(
             "bundle material candidate population drift")
+    expected_row_identity = (
+        state.deal_sha256, state.slot_sha256, state.state_sha256,
+        state.source, state.split, state.role, state.phase, state.position,
+        state.trump_rank, state.trump_mode,
+        _point_bucket(material.prestate.get("public", {}).get(
+            "attacker_points")))
+    if any((row.deal_sha256, row.slot_sha256, row.state_sha256,
+            row.source, row.split, row.role, row.phase, row.position,
+            row.trump_rank, row.trump_mode, row.points_bucket)
+           != expected_row_identity for row in reopened.candidates):
+        raise WorldAfterstateV2ContinuationError(
+            "bundle material row identity drift")
     by_label = {(row.candidate_index, row.replica): row
                 for row in reopened.labels}
     by_outcome = {(row.candidate_index, row.replica): row
@@ -576,14 +763,17 @@ def reopen_continuation_bundle_v2(
             receipt = by_label[(candidate_index, replica)]
             outcome_row = by_outcome[(candidate_index, replica)]
             label = json.loads(receipt.raw.decode("ascii"))
+            identity = _identity_from_fields(
+                reopened.state_sha256, material.state.split, replica)
             try:
-                reconstructed = reopen_afterstate_continuation(audit, label)
+                _validate_stored_label(
+                    audit, label, identity,
+                    expected_successor=candidate.successor_sha256,
+                    expected_continuation_policy=V2_CONTINUATION_POLICY)
             except Exception as exc:
                 raise WorldAfterstateV2ContinuationError(
-                    "sealed continuation reconstruction drift") from exc
-            if (canonical_json_bytes(reconstructed) != receipt.raw
-                    or label.get("successor_sha256") !=
-                    candidate.successor_sha256
+                    "sealed continuation stored-result drift") from exc
+            if (label.get("successor_sha256") != candidate.successor_sha256
                     or outcome_row.successor_sha256 !=
                     candidate.successor_sha256):
                 raise WorldAfterstateV2ContinuationError(

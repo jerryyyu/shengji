@@ -90,6 +90,70 @@ def _digest(value: object, label: str) -> str:
     return value
 
 
+def _reconstruction_workers(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) \
+            or value not in (1, 4, 8, 16):
+        raise WorldAfterstateV2TerminalControllerError(
+            "reconstruction worker binding drift")
+    return value
+
+
+def _bind_full_terminal_inputs(inputs: "TerminalInputPathsV2") -> tuple[Any, Any]:
+    """Reopen and authenticate the execution freeze and capacity receipt.
+
+    This is deliberately performed before the audit marker, population, or
+    continuation bytes are read.  A typed terminal input is only a path
+    witness; it cannot supply a reconstruction width independently of the
+    immutable execution inputs.
+    """
+    inputs.validate_shape()
+    if inputs.freeze_path is None or inputs.capacity_path is None:
+        raise WorldAfterstateV2TerminalControllerError(
+            "terminal freeze/capacity binding missing")
+    try:
+        from .world_afterstate_v2_execution import execution_freeze_from_bytes
+        from .world_afterstate_v2_capacity_runner import (
+            reopen_capacity_receipt_v2_bytes)
+        freeze_raw = stable_read_bytes(inputs.freeze_path)
+        freeze = execution_freeze_from_bytes(freeze_raw)
+        if (_sha_bytes(freeze_raw) != inputs.freeze_sha256
+                or freeze.sha256() != inputs.freeze_sha256
+                or Path(freeze.evidence_root) != inputs.audit_population_root
+                or inputs.freeze_path != inputs.audit_population_root / "freeze.json"):
+            raise ValueError("execution freeze identity")
+        bindings = tuple(row for row in freeze.artifact_bindings
+                         if row[0] == "capacity")
+        if len(bindings) != 1:
+            raise ValueError("capacity artifact binding")
+        _label, capacity_relative, expected_capacity_sha = bindings[0]
+        if inputs.capacity_sha256 != expected_capacity_sha:
+            raise ValueError("capacity digest binding")
+        relative_parts = Path(capacity_relative).parts
+        if tuple(inputs.capacity_path.parts[-len(relative_parts):]) != relative_parts:
+            raise ValueError("capacity artifact path binding")
+        capacity_raw = stable_read_bytes(inputs.capacity_path)
+        if _sha_bytes(capacity_raw) != expected_capacity_sha:
+            raise ValueError("capacity artifact digest")
+        receipt = reopen_capacity_receipt_v2_bytes(capacity_raw)
+        receipt.validate()
+        if receipt.runtime_sha256 != freeze.runtime_sha256:
+            raise ValueError("capacity runtime binding")
+        selected = tuple(arm for arm in receipt.selected_arms
+                         if arm.stage == "reconstruction")
+        if len(selected) != 1:
+            raise ValueError("reconstruction selected arm population")
+        selected[0].validate()
+        if (inputs.reconstruction_workers != selected[0].variant
+                or receipt.reconstruction_workers != selected[0].variant):
+            raise ValueError("reconstruction selected arm binding")
+    except WorldAfterstateV2TerminalControllerError:
+        raise
+    except Exception as exc:
+        raise WorldAfterstateV2TerminalControllerError(
+            "terminal freeze/capacity binding refused") from exc
+    return freeze, receipt
+
+
 def _path(value: object, label: str) -> Path:
     if not isinstance(value, Path) or value.is_symlink():
         raise WorldAfterstateV2TerminalControllerError(f"{label} path drift")
@@ -177,7 +241,6 @@ class EarlyTerminalInputPathsV2:
     precision_select_result_path: Path | None = None
     model_selector_power_path: Path | None = None
     cohort_manifest_paths: tuple[tuple[str, Path], ...] = ()
-
     def validate_shape(self) -> None:
         _digest(self.freeze_sha256, "early terminal freeze SHA-256")
         _digest(self.admission_sha256, "early terminal admission SHA-256")
@@ -237,6 +300,10 @@ class TerminalInputPathsV2:
     model_selector_power_path: Path
     prior_path: Path
     control_dose_receipt_paths: tuple[tuple[str, Path], ...]
+    freeze_path: Path
+    capacity_path: Path
+    capacity_sha256: str
+    reconstruction_workers: int
 
     # Descriptive aliases make the contract convenient for integration code
     # without adding alternate mutable fields to its canonical shape.
@@ -277,6 +344,10 @@ class TerminalInputPathsV2:
                        "checkpoint root")
         _ordered_paths(self.control_dose_receipt_paths, DOSE_LABELS,
                        "control dose")
+        _path(self.freeze_path, "execution freeze")
+        _path(self.capacity_path, "capacity artifact")
+        _digest(self.capacity_sha256, "capacity SHA-256")
+        _reconstruction_workers(self.reconstruction_workers)
 
 
 # The longer name reads naturally in callers and keeps old integration code
@@ -382,6 +453,8 @@ def _preflight_continuation_manifest(root: Path, deals: set[str]) -> tuple[str, 
 
 def _preflight(inputs: TerminalInputPathsV2) -> dict[str, Any]:
     inputs.validate_shape()
+    # Bind all execution resources before opening the shared audit marker.
+    _bind_full_terminal_inputs(inputs)
     try:
         audit_attempt_raw = stable_read_bytes(inputs.audit_attempt_path)
         audit_attempt = reopen_audit_attempt_bytes(
@@ -520,6 +593,8 @@ def _attempt_payload(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any])
         "audit_population_manifest_sha256": preflight["population"]["manifest_sha256"],
         "audit_population_sha256": preflight["population"]["population_sha256"],
         "continuation_manifest_sha256": preflight["continuation_sha"],
+        "capacity_sha256": inputs.capacity_sha256,
+        "reconstruction_workers": inputs.reconstruction_workers,
         "prediction_manifest_sha256s": [
             [label, value["manifest_sha256"]]
             for label, value in preflight["predictions"]],
@@ -563,7 +638,8 @@ def _reopen_audit(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any]) \
             expected_split="audit", expected_source=None)
         material_map = {item.deal_sha256: item for item in materials}
         bundles = reopen_continuation_manifest(
-            inputs.continuation_root, material_map)
+            inputs.continuation_root, material_map,
+            workers=inputs.reconstruction_workers)
     except Exception as exc:
         raise WorldAfterstateV2TerminalControllerError(
             "audit population or continuation reopen refused") from exc
@@ -875,11 +951,13 @@ def _source_sha(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any]) -> s
     return _sha({
         "freeze_sha256": inputs.freeze_sha256,
         "admission_sha256": inputs.admission_sha256,
+        "capacity_sha256": inputs.capacity_sha256,
         "population_sha256": preflight["population"]["population_sha256"],
         "continuation_manifest_sha256": preflight["continuation_sha"],
         "prediction_manifest_sha256s": [
             [label, value["manifest_sha256"]]
             for label, value in preflight["predictions"]],
+        "reconstruction_workers": inputs.reconstruction_workers,
     })
 
 
@@ -895,6 +973,7 @@ def independent_reconstruct_terminal_v2(
     if not root.is_dir() or root.name != "terminal":
         raise WorldAfterstateV2TerminalControllerError(
             "terminal root must be published terminal directory")
+    _bind_full_terminal_inputs(inputs)
     preflight = _preflight(inputs)
     attempt_value, attempt_raw = _read_json(root / ATTEMPT_NAME, "terminal attempt")
     expected_attempt = _attempt_payload(inputs, preflight)
@@ -980,6 +1059,9 @@ def run_terminal_v2(
         raise WorldAfterstateV2TerminalControllerError("terminal destination drift")
     if root.exists() and not root.is_dir():
         raise WorldAfterstateV2TerminalControllerError("terminal destination drift")
+    # Do this before creating a slot and, importantly, before any audit bytes
+    # are opened by preflight.
+    _bind_full_terminal_inputs(inputs)
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     final = root / "terminal"
     partial = root / "terminal.partial"

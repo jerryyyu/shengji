@@ -167,6 +167,31 @@ def test_production_prediction_refuses_duplicate_selected_capacity_arm(tmp_path)
         adapters._inference_batch_cap(supervisor, freeze, tmp_path)
 
 
+def test_reconstruction_arm_reopens_from_repository_when_evidence_has_no_copy(
+        tmp_path):
+    repo = tmp_path / "repo"
+    evidence = tmp_path / "evidence"
+    repo.mkdir(); evidence.mkdir()
+    receipt = _receipt()
+    raw = canonical_json_bytes(receipt.payload())
+    capacity_path = repo / "capacity.json"
+    capacity_path.write_bytes(raw)
+    capacity_path.chmod(0o400)
+    digest = hashlib.sha256(raw).hexdigest()
+    freeze = SimpleNamespace(
+        evidence_root=str(evidence), population_tier="D256",
+        capacity_sha256=digest,
+        artifact_bindings=(("capacity", "capacity.json", digest),),
+        deadline_seconds=300, sha256=lambda: "a" * 64)
+    supervisor = SimpleNamespace(
+        root=evidence,
+        admission=SimpleNamespace(sha256=lambda: "b" * 64))
+    expected = next(arm.variant for arm in receipt.selected_arms
+                    if arm.stage == "reconstruction")
+    assert adapters._reconstruction_workers(
+        supervisor, freeze, repo) == expected
+
+
 def test_precision_requires_all_prediction_cohorts_before_label_opening(monkeypatch):
     monkeypatch.setattr(adapters, "validate_prediction_population_manifest_v2",
                         lambda value: None)
@@ -490,7 +515,8 @@ def test_terminal_index_producer_refuses_missing_sixth_upstream_cohort(tmp_path,
         ("complete-world-shuffle:block-1", "block-1-controls",
          "complete-world-shuffle", 1),))
     with pytest.raises(adapters.LateStageAdapterUnavailable, match="complete-world-shuffle"):
-        adapters._published_terminal_inputs(Supervisor(), freeze, ())
+        adapters._published_terminal_inputs(
+            Supervisor(), freeze, tmp_path, ())
     assert not (tmp_path / "terminal-inputs.json").exists()
 
 
@@ -543,7 +569,8 @@ def test_terminal_index_wiring_refuses_divergent_cross_block_world_dose(
 
     with pytest.raises(adapters.LateStageAdapterUnavailable,
                        match="cross-block control-dose drift"):
-        adapters._published_terminal_inputs(Supervisor(), freeze, ())
+        adapters._published_terminal_inputs(
+            Supervisor(), freeze, tmp_path, ())
     assert not (tmp_path / "terminal-inputs.json").exists()
 
 
@@ -609,11 +636,21 @@ def test_terminal_index_publishes_and_reopens_all_six_canonical_inputs(
             return ("receipt",)
 
     supervisor = Supervisor()
-    freeze = SimpleNamespace(
-        sha256=lambda: "a" * 64, population_tier="D256",
-        evidence_root=str(tmp_path))
+    freeze, _capacity_supervisor, _capacity_receipt_value, _capacity_path = \
+        _capacity_bound_fixture(tmp_path)
+    freeze_raw = b"terminal-freeze-fixture\n"
+    freeze_path = tmp_path / "freeze.json"
+    freeze_path.write_bytes(freeze_raw)
+    freeze_path.chmod(0o400)
+    freeze_digest = hashlib.sha256(freeze_raw).hexdigest()
+    freeze.sha256 = lambda: freeze_digest
+    population["freeze_sha256"] = freeze_digest
+    population_receipt_path = tmp_path / "shards/population/receipt.bin"
+    population_receipt_path.chmod(0o600)
+    population_receipt_path.write_bytes(canonical_json_bytes(population))
+    population_receipt_path.chmod(0o400)
     index, digest = adapters._published_terminal_inputs(
-        supervisor, freeze, tuple(predictions))
+        supervisor, freeze, tmp_path, tuple(predictions))
     assert index == tmp_path / "terminal-inputs.json"
     assert len(digest) == 64
 

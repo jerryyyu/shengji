@@ -197,6 +197,17 @@ def test_full_dag_measurement_refuses_cross_width_torch_layout(torch_threads):
         result.validate()
 
 
+def test_full_dag_measurement_refuses_missing_reconstruction_layout():
+    result = FullDAGCapacityMeasurementV2(
+        tuple((stage, 1_000_000_000) for stage in FULL_DAG_STAGES), 1,
+        FULL_DAG_STAGES, 0, True, _capabilities(), None,
+        tuple((stage, 32) for stage in FULL_DAG_STAGES),
+        tuple((stage, 1_000_000_000) for stage in FULL_DAG_STAGES),
+        1, 1, 32, 0)
+    with pytest.raises(FullDAGCapacityDependencyBlocked, match="layout"):
+        result.validate()
+
+
 def test_audit_derivation_dependency_is_explicitly_non_admissible():
     assert "AuditDerivationInputV2" in FULL_DAG_MISSING_DEPENDENCY
 

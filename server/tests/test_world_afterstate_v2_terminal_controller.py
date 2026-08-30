@@ -22,7 +22,11 @@ from shengji.rl.world_afterstate_v2_terminal_controller import (
     verify_terminal_artifact_v2,
 )
 from shengji.rl import world_afterstate_v2_terminal_controller as terminal
+from shengji.rl.world_afterstate_v2_execution import (
+    ExecutionFreezeV2, SourceBindingV2, source_manifest_sha256,
+)
 from test_world_afterstate_v2_result import _p0
+from test_world_afterstate_v2_capacity import _receipt as _capacity_receipt
 
 
 def _digest(text: str) -> str:
@@ -31,7 +35,43 @@ def _digest(text: str) -> str:
 
 def _inputs(tmp_path: Path) -> TerminalInputPathsV2:
     path = tmp_path / "input.json"
-    freeze = _digest("freeze")
+    runtime_profile = {"boot_identity": "terminal-test-boot"}
+    runtime_sha = _digest(json.dumps(
+        runtime_profile, sort_keys=True, separators=(",", ":")) + "\n")
+    capacity_receipt = _capacity_receipt(runtime_sha256=runtime_sha)
+    capacity_raw = canonical_json_bytes(capacity_receipt.payload())
+    capacity_path = tmp_path / "capacity.json"
+    capacity_path.write_bytes(capacity_raw)
+    capacity_path.chmod(0o400)
+    capacity_sha = hashlib.sha256(capacity_raw).hexdigest()
+    source = SourceBindingV2("bound.py", 1, _digest("x"))
+    artifacts = (
+        ("protocol", "protocol.json", _digest("protocol")),
+        ("capacity", "capacity.json", capacity_sha),
+        ("population", "population.json", _digest("population")),
+        ("config", "config.json", _digest("config")),
+        ("seed", "seed.json", _digest("seed")),
+        ("continuation-policy", "policy.json", _digest("policy")),
+    )
+    evidence_root = tmp_path / "population"
+    evidence_root.mkdir(exist_ok=True)
+    freeze_value = ExecutionFreezeV2(
+        source_git="a" * 40,
+        source_manifest_sha256=source_manifest_sha256(
+            "a" * 40, (source,)),
+        runtime_sha256=runtime_sha,
+        protocol_sha256=artifacts[0][2],
+        capacity_sha256=capacity_sha,
+        population_sha256=artifacts[2][2],
+        config_sha256=artifacts[3][2], seed_sha256=artifacts[4][2],
+        continuation_policy_sha256=artifacts[5][2],
+        evidence_root=str(evidence_root), boot_identity="terminal-test-boot",
+        source_bindings=(source,), runtime_profile=runtime_profile,
+        artifact_bindings=artifacts)
+    freeze_path = evidence_root / "freeze.json"
+    freeze_path.write_bytes(freeze_value.canonical_bytes())
+    freeze_path.chmod(0o400)
+    freeze = freeze_value.sha256()
     admission = _digest("admission")
     audit_attempt = tmp_path / "audit-attempt.json"
     audit_attempt.write_bytes(build_audit_attempt_bytes(
@@ -54,6 +94,9 @@ def _inputs(tmp_path: Path) -> TerminalInputPathsV2:
         precision_select_result_path=path, model_selector_power_path=path,
         prior_path=path,
         control_dose_receipt_paths=tuple((label, path) for label in DOSE_LABELS),
+        freeze_path=freeze_path, capacity_path=capacity_path,
+        capacity_sha256=capacity_sha,
+        reconstruction_workers=capacity_receipt.reconstruction_workers,
     )
 
 
@@ -68,6 +111,26 @@ def test_input_contract_rejects_dropped_or_reordered_populations(tmp_path):
                 *inputs.prediction_manifest_paths[2:],
             ),
         }).validate_shape()
+
+
+def test_direct_terminal_cannot_assert_a_capacity_unbound_worker_width(
+        tmp_path, monkeypatch):
+    inputs = _inputs(tmp_path)
+    wrong = 4 if inputs.reconstruction_workers != 4 else 8
+    opened = False
+
+    def population_must_not_open(*_args, **_kwargs):
+        nonlocal opened
+        opened = True
+        raise AssertionError("audit population opened before capacity binding")
+
+    monkeypatch.setattr(terminal, "_preflight_population",
+                        population_must_not_open)
+    with pytest.raises(WorldAfterstateV2TerminalControllerError,
+                       match="freeze/capacity binding refused"):
+        terminal._preflight(inputs.__class__(**{
+            **inputs.__dict__, "reconstruction_workers": wrong}))
+    assert opened is False
     with pytest.raises(WorldAfterstateV2TerminalControllerError, match="population"):
         inputs.__class__(**{
             **inputs.__dict__,

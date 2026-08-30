@@ -106,7 +106,7 @@ def continuation_pair(monkeypatch):
     monkeypatch.setattr(
         continuation, "reopen_afterstate_audit", lambda _audit: FakeRound())
 
-    def run(audit, identity):
+    def run(audit, identity, **_kwargs):
         return {
             "schema": "fixture-label",
             "successor_sha256": audit["successor_sha256"],

@@ -12,18 +12,22 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import multiprocessing
 import os
 import platform
 import resource
+import signal
 import stat
 import subprocess
 import sys
 import time
-from concurrent.futures import TimeoutError as FutureTimeout, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+import fcntl
+
+from .belief_artifacts import publish_exclusive_bytes
 from .belief_contract import canonical_json_bytes
 from .world_afterstate_v2_audit_attempt import (
     build_audit_attempt_bytes, reopen_audit_attempt_bytes,
@@ -37,6 +41,7 @@ TOMBSTONE_SCHEMA = "world-afterstate-v2-absolute-leaf-consumption-tombstone-v1"
 STATE_SCHEMA = "world-afterstate-v2-stage-state-v1"
 EVENT_SCHEMA = "world-afterstate-v2-stage-event-v1"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-v1"
+PROGRESS_EVENT_SCHEMA = "world-afterstate-v2-progress-event-v1"
 META_SCHEMA = "world-afterstate-v2-supervisor-meta-v1"
 REVIEW_PREFIX = "WORLD_AFTERSTATE_V2_ABSOLUTE_LEAF_REVIEW "
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
@@ -46,6 +51,14 @@ REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
 CANONICAL_REMOTE_URL = "https://github.com/jerryyyu/shengji.git"
 CANONICAL_REMOTE_REF = "refs/heads/main"
 MAX_DEADLINE_SECONDS = 12 * 60 * 60
+# Progress is operational telemetry, rather than evidence.  Keep the sink
+# bounded even if a controller calls its callback more often than the frozen
+# heartbeat cadence.
+MAX_PROGRESS_EVENTS = 100_000
+MAX_PROGRESS_EVENT_BYTES = 64 * 1024
+PROGRESS_DIRECTORY = "progress"
+RESOURCE_CLOSEOUT_SCHEMA = "world-afterstate-v2-resource-incomplete-closeout-v1"
+RESOURCE_CLOSEOUT_RELATIVE = "resource-incomplete-closeout.json"
 
 # The names are part of the protocol.  A stage may consume only the listed
 # split; in particular no helper can accidentally label audit rows early.
@@ -159,12 +172,11 @@ def _write_once(path: Path, raw: bytes) -> None:
     if path.exists() or path.is_symlink():
         raise WorldAfterstateV2ExecutionError("immutable path occupied")
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    with path.open("xb") as handle:
-        handle.write(raw)
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.chmod(path, 0o400)
-    _fsync_dir(path.parent)
+    try:
+        publish_exclusive_bytes(path, raw)
+    except Exception as exc:
+        raise WorldAfterstateV2ExecutionError(
+            "immutable publication refused") from exc
 
 
 def _fsync_dir(path: Path) -> None:
@@ -173,6 +185,65 @@ def _fsync_dir(path: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _controller_process_entry(operation: Callable[..., Any],
+                              supervisor: "StageSupervisorV2",
+                              shards: tuple[str, ...], connection: Any) -> None:
+    """Run one scientific controller in its own killable process group."""
+    try:
+        os.setsid()
+        # Spawned controllers have their own process CPU counter.  Do not
+        # compare it with the parent's invocation baseline carried through
+        # pickling; reset all invocation-relative telemetry in the child.
+        supervisor._telemetry_started = supervisor.clock()
+        supervisor._process_cpu_baseline = _process_cpu_nanoseconds()
+        supervisor._cgroup_directory = _cgroup_v2_directory()
+        supervisor._cgroup_cpu_baseline = _cgroup_cpu_nanoseconds(
+            supervisor._cgroup_directory)
+        if (supervisor.clock() - supervisor._started
+                >= supervisor.freeze.deadline_seconds * 1_000_000_000):
+            raise WorldAfterstateV2ExecutionError(
+                "controller deadline expired before operation")
+        result = operation(supervisor, shards)
+        connection.send(("result", result))
+    except BaseException as exc:  # trusted child; preserve the typed refusal
+        try:
+            connection.send(("error", exc))
+        except BaseException:
+            pass
+    finally:
+        connection.close()
+
+
+def _controller_context() -> multiprocessing.context.BaseContext:
+    """Use a clean interpreter so Torch/native parent threads are not forked."""
+    try:
+        return multiprocessing.get_context("spawn")
+    except ValueError as exc:
+        raise WorldAfterstateV2ExecutionError(
+            "killable controller process boundary unavailable") from exc
+
+
+def _terminate_process_group(process: multiprocessing.Process) -> None:
+    """Stop a controller and every nested worker before selecting a route."""
+    if process.pid is None:
+        return
+    if process.is_alive():
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        process.join(timeout=2.0)
+    if process.is_alive():
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.join(timeout=2.0)
+    if process.is_alive():
+        raise WorldAfterstateV2ExecutionError(
+            "controller process survived deadline termination")
 
 
 def _boot_identity() -> str:
@@ -770,11 +841,14 @@ def _refuse_source_bytecode(freeze: ExecutionFreezeV2, repo: Path) -> None:
                     "source bytecode artifact before admission")
 
 
-def _verify_source_before_admission(freeze: ExecutionFreezeV2, repo: Path) -> None:
+def _verify_source_before_admission(
+        freeze: ExecutionFreezeV2, repo: Path, *,
+        verify_live_runtime: bool = True) -> None:
     _refuse_source_bytecode(freeze, repo)
     if freeze.runtime_sha256 != _sha(freeze.runtime_profile) \
-            or freeze.boot_identity != _boot_identity() \
-            or dict(freeze.runtime_profile) != live_runtime_profile():
+            or (verify_live_runtime and (
+                freeze.boot_identity != _boot_identity()
+                or dict(freeze.runtime_profile) != live_runtime_profile())):
         raise WorldAfterstateV2ExecutionError("runtime identity drift before admission")
     try:
         source_is_ancestor = subprocess.run(
@@ -849,17 +923,22 @@ def initialize_admission(root: Path, *, freeze_raw: bytes, repo: Path,
 
 
 def reopen_admission(root: Path, *, freeze: ExecutionFreezeV2,
-                     review_marker: bytes, repo: Path | None = None) -> PipelineAdmissionV2:
+                     review_marker: bytes, repo: Path | None = None,
+                     resource_closeout_only: bool = False) -> PipelineAdmissionV2:
     # A monotonic deadline is meaningful only on the same runtime image.  The
     # persisted boot witness below catches reboot; this profile check catches
     # interpreter/runtime replacement before any stage can resume.
+    if type(resource_closeout_only) is not bool:
+        raise WorldAfterstateV2ExecutionError("resource closeout mode drift")
     if type(freeze.runtime_profile) is not dict \
             or freeze.runtime_sha256 != _sha(freeze.runtime_profile) \
-            or freeze.boot_identity != _boot_identity() \
-            or dict(freeze.runtime_profile) != live_runtime_profile():
+            or (not resource_closeout_only and (
+                freeze.boot_identity != _boot_identity()
+                or dict(freeze.runtime_profile) != live_runtime_profile())):
         raise WorldAfterstateV2ExecutionError("runtime identity drift on resume")
     if repo is not None:
-        _verify_source_before_admission(freeze, repo)
+        _verify_source_before_admission(
+            freeze, repo, verify_live_runtime=not resource_closeout_only)
         verify_frozen_artifacts(freeze, root=root, base=repo)
     freeze_value = execution_freeze_from_bytes(_sealed(root / "freeze.json", "freeze"))
     if freeze_value != freeze:
@@ -891,6 +970,10 @@ class ProgressSnapshotV2:
     def payload(self) -> dict[str, Any]:
         if self.stage not in STAGE_ORDER or self.substage == "":
             raise WorldAfterstateV2ExecutionError("progress stage drift")
+        if self.eta_nanoseconds is not None \
+                and (type(self.eta_nanoseconds) is not int
+                     or self.eta_nanoseconds < 0):
+            raise WorldAfterstateV2ExecutionError("progress ETA drift")
         if any(type(value) is not int or value < 0 for value in (
                 self.completed, self.total, self.active_workers, self.active_threads,
                 self.cpu_utilization_ppm, self.cgroup_memory_bytes,
@@ -899,6 +982,145 @@ class ProgressSnapshotV2:
                 self.sealed_checkpoints)) or self.completed > self.total:
             raise WorldAfterstateV2ExecutionError("progress accounting drift")
         return {"schema": PROGRESS_SCHEMA, **self.__dict__, "authority": dict(AUTHORITY)}
+
+
+class DurableProgressSinkV2:
+    """Append-only, restart-safe operational progress under an evidence root.
+
+    Progress is deliberately kept in its own namespace.  It is bound to the
+    freeze and admission so an operator cannot accidentally combine telemetry
+    from two runs, but it is not read by :class:`StageSupervisorV2` when
+    reconstructing scientific stage state.
+    """
+
+    def __init__(self, root: Path, *, freeze: ExecutionFreezeV2,
+                 admission: PipelineAdmissionV2) -> None:
+        if not isinstance(root, Path) or not root.is_absolute():
+            raise WorldAfterstateV2ExecutionError("progress root path drift")
+        validate_execution_freeze(freeze)
+        if (root.resolve() != Path(freeze.evidence_root).resolve()
+                or type(admission) is not PipelineAdmissionV2
+                or admission.freeze_sha256 != freeze.sha256()
+                or admission.evidence_root != freeze.evidence_root):
+            raise WorldAfterstateV2ExecutionError("progress admission identity drift")
+        self.root = root
+        self.freeze = freeze
+        self.admission = admission
+        # The root's immutable identity files are the authority for a
+        # reopened sink.  This also refuses a foreign admission before any
+        # progress event happens to exist.
+        if (_sealed(root / "freeze.json", "progress freeze")
+                != freeze.canonical_bytes()
+                or _sealed(root / "admission.json", "progress admission")
+                != admission.canonical_bytes()):
+            raise WorldAfterstateV2ExecutionError("progress root identity drift")
+        self.directory = root / PROGRESS_DIRECTORY
+        if self.directory.exists() and (self.directory.is_symlink()
+                                        or not self.directory.is_dir()):
+            raise WorldAfterstateV2ExecutionError("progress directory drift")
+        self.directory.mkdir(mode=0o700, parents=False, exist_ok=True)
+        self._event_index = self._validate_prefix()
+
+    def _validate_prefix(self) -> int:
+        paths = sorted(self.directory.iterdir())
+        indices: list[int] = []
+        for path in paths:
+            if path.is_symlink() or not path.is_file() \
+                    or path.suffix != ".json" or not path.stem.isdigit():
+                raise WorldAfterstateV2ExecutionError("progress event path drift")
+            if len(path.stem) != 8:
+                raise WorldAfterstateV2ExecutionError("progress event index drift")
+            indices.append(int(path.stem))
+        if len(indices) > MAX_PROGRESS_EVENTS \
+                or indices != list(range(len(indices))):
+            raise WorldAfterstateV2ExecutionError("progress event prefix drift")
+        for index, path in zip(indices, paths):
+            raw = _sealed(path, "progress event")
+            if len(raw) > MAX_PROGRESS_EVENT_BYTES:
+                raise WorldAfterstateV2ExecutionError("progress event is too large")
+            event = _strict(raw, "progress event")
+            required = {"schema", "index", "freeze_sha256",
+                        "admission_sha256", "snapshot", "authority",
+                        "event_sha256"}
+            if set(event) != required or event["schema"] != PROGRESS_EVENT_SCHEMA \
+                    or type(event["index"]) is not int \
+                    or event["index"] != index \
+                    or event["freeze_sha256"] != self.freeze.sha256() \
+                    or event["admission_sha256"] != self.admission.sha256() \
+                    or event["authority"] != AUTHORITY \
+                    or event["event_sha256"] != _sha({
+                        key: value for key, value in event.items()
+                        if key != "event_sha256"}):
+                raise WorldAfterstateV2ExecutionError("progress event binding drift")
+            self._validate_snapshot(event["snapshot"])
+        return len(indices)
+
+    @staticmethod
+    def _validate_snapshot(snapshot: Any) -> dict[str, Any]:
+        if type(snapshot) is not dict:
+            raise WorldAfterstateV2ExecutionError("progress snapshot drift")
+        required = {"schema", "stage", "substage", "completed", "total",
+                    "active_workers", "active_threads", "cpu_utilization_ppm",
+                    "cgroup_memory_bytes", "peak_cgroup_memory_bytes",
+                    "elapsed_nanoseconds", "eta_nanoseconds",
+                    "deadline_headroom_nanoseconds", "sealed_shards",
+                    "sealed_checkpoints", "authority"}
+        if set(snapshot) != required or snapshot.get("schema") != PROGRESS_SCHEMA \
+                or snapshot.get("authority") != AUTHORITY:
+            raise WorldAfterstateV2ExecutionError("progress snapshot binding drift")
+        body = {key: value for key, value in snapshot.items()
+                if key not in ("schema", "authority")}
+        try:
+            expected = ProgressSnapshotV2(**body).payload()
+        except (TypeError, ValueError) as exc:
+            raise WorldAfterstateV2ExecutionError("progress snapshot drift") from exc
+        if expected != snapshot:
+            raise WorldAfterstateV2ExecutionError("progress snapshot canonical drift")
+        return snapshot
+
+    @property
+    def next_index(self) -> int:
+        return self._event_index
+
+    def __call__(self, snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        """Durably append one canonical callback snapshot and return its event."""
+        snapshot_value = self._validate_snapshot(dict(snapshot)
+                                                 if isinstance(snapshot, Mapping)
+                                                 else snapshot)
+        descriptor = os.open(self.directory, os.O_RDONLY)
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            # Parent heartbeat and controller subprocess callbacks share this
+            # sink.  Reopen the prefix while holding the directory lock rather
+            # than trusting either process's stale local counter.
+            self._event_index = self._validate_prefix()
+            if self._event_index >= MAX_PROGRESS_EVENTS:
+                raise WorldAfterstateV2ExecutionError(
+                    "progress event bound exceeded")
+            event = {"schema": PROGRESS_EVENT_SCHEMA,
+                     "index": self._event_index,
+                     "freeze_sha256": self.freeze.sha256(),
+                     "admission_sha256": self.admission.sha256(),
+                     "snapshot": snapshot_value,
+                     "authority": dict(AUTHORITY)}
+            event["event_sha256"] = _sha(event)
+            raw = canonical_json_bytes(event)
+            if len(raw) > MAX_PROGRESS_EVENT_BYTES:
+                raise WorldAfterstateV2ExecutionError(
+                    "progress event is too large")
+            _write_once(
+                self.directory / f"{self._event_index:08d}.json", raw)
+            self._event_index += 1
+            return event
+        finally:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            finally:
+                os.close(descriptor)
+
+
+# Short compatibility name for callers that treat this as a callback sink.
+ProgressSinkV2 = DurableProgressSinkV2
 
 
 @dataclass(frozen=True)
@@ -948,6 +1170,59 @@ class StageStateV2:
                 "reconstruction_completed": self.reconstruction_completed,
                 "verified_shards": [list(row) for row in self.verified_shards],
                 "authority": dict(AUTHORITY)}
+
+
+def reopen_resource_incomplete_closeout(
+        raw: bytes, *, freeze: ExecutionFreezeV2,
+        admission: PipelineAdmissionV2) -> dict[str, Any]:
+    """Reopen the receipt-only terminal route used after a hard stop."""
+    value = _strict(raw, "resource-incomplete closeout")
+    required = {"schema", "freeze_sha256", "admission_sha256", "decision",
+                "resource_stage", "completed_stages", "audit_opened_count",
+                "reconstruction_completed", "verified_shards",
+                "prior_terminal_route",
+                "original_boot_identity", "closeout_boot_identity",
+                "cross_boot", "authority", "closeout_sha256"}
+    body = {key: item for key, item in value.items()
+            if key != "closeout_sha256"}
+    if set(value) != required or value["schema"] != RESOURCE_CLOSEOUT_SCHEMA \
+            or value["freeze_sha256"] != freeze.sha256() \
+            or value["admission_sha256"] != admission.sha256() \
+            or value["decision"] != "REFUSE_RESOURCE_INCOMPLETE" \
+            or value["authority"] != AUTHORITY \
+            or value["closeout_sha256"] != _sha(body):
+        raise WorldAfterstateV2ExecutionError(
+            "resource-incomplete closeout identity drift")
+    if type(value["resource_stage"]) is not str \
+            or value["resource_stage"] not in (*STAGE_ORDER, "unknown") \
+            or type(value["audit_opened_count"]) is not int \
+            or value["audit_opened_count"] not in (0, 1) \
+            or type(value["cross_boot"]) is not bool \
+            or type(value["original_boot_identity"]) is not str \
+            or not value["original_boot_identity"] \
+            or type(value["closeout_boot_identity"]) is not str \
+            or not value["closeout_boot_identity"] \
+            or value["cross_boot"] != (
+                value["original_boot_identity"]
+                != value["closeout_boot_identity"]):
+        raise WorldAfterstateV2ExecutionError(
+            "resource-incomplete closeout field drift")
+    try:
+        prior_route = value["prior_terminal_route"]
+        if prior_route is not None and prior_route not in TERMINAL_ROUTES:
+            raise ValueError("prior terminal route")
+        state = StageStateV2(
+            completed_stages=tuple(value["completed_stages"]),
+            terminal_route=(prior_route or "REFUSE_RESOURCE_INCOMPLETE"),
+            audit_opened=value["audit_opened_count"] == 1,
+            reconstruction_completed=value["reconstruction_completed"],
+            verified_shards=tuple(tuple(row)
+                                   for row in value["verified_shards"]))
+        state.payload()
+    except (TypeError, ValueError) as exc:
+        raise WorldAfterstateV2ExecutionError(
+            "resource-incomplete closeout state drift") from exc
+    return value
 
 
 CONTROLLER_BINDINGS = {
@@ -1166,6 +1441,7 @@ class StageSupervisorV2:
     admission: PipelineAdmissionV2
     clock: Callable[[], int] = time.monotonic_ns
     progress_callback: Callable[[dict[str, Any]], None] | None = None
+    resource_closeout_only: bool = False
     _started: int = field(default_factory=time.monotonic_ns, repr=False)
     _state: StageStateV2 = field(default_factory=StageStateV2, repr=False)
     _event_index: int = field(default=0, repr=False)
@@ -1177,6 +1453,9 @@ class StageSupervisorV2:
     _cgroup_cpu_baseline: int | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
+        if type(self.resource_closeout_only) is not bool:
+            raise WorldAfterstateV2ExecutionError(
+                "resource closeout mode drift")
         validate_execution_freeze(self.freeze)
         validate_admission(self.admission, freeze=self.freeze,
                            review_marker=REVIEW_PREFIX.encode("ascii") + canonical_json_bytes(expected_review_claim(self.freeze)))
@@ -1194,7 +1473,8 @@ class StageSupervisorV2:
             raise WorldAfterstateV2ExecutionError("supervisor metadata drift")
         if type(meta["started_monotonic_ns"]) is not int or meta["started_monotonic_ns"] < 0:
             raise WorldAfterstateV2ExecutionError("supervisor deadline metadata drift")
-        if meta["boot_identity"] != _boot_identity():
+        if meta["boot_identity"] != _boot_identity() \
+                and not self.resource_closeout_only:
             raise WorldAfterstateV2ExecutionError("cross-boot resume refused")
         self._started = meta["started_monotonic_ns"]
         # Telemetry is invocation-relative.  In particular, a reopened
@@ -1280,6 +1560,14 @@ class StageSupervisorV2:
         self._state = StageStateV2(
             tuple(completed), terminal_route, marker.exists(), "reconstruction" in completed,
             tuple(shard_rows))
+        closeout_path = self.root / RESOURCE_CLOSEOUT_RELATIVE
+        if closeout_path.exists() or closeout_path.is_symlink():
+            if closeout_path.is_symlink() or not self.resource_closeout_only:
+                raise WorldAfterstateV2ExecutionError(
+                    "admission already resource-closed")
+            reopen_resource_incomplete_closeout(
+                _sealed(closeout_path, "resource-incomplete closeout"),
+                freeze=self.freeze, admission=self.admission)
 
     @property
     def state(self) -> StageStateV2:
@@ -1287,8 +1575,60 @@ class StageSupervisorV2:
 
     def _deadline(self) -> None:
         if self.clock() - self._started >= self.freeze.deadline_seconds * 1_000_000_000:
-            self.terminal("REFUSE_RESOURCE_INCOMPLETE", resource_stage=self.next_stage or "unknown")
+            resource_stage = self.next_stage or "unknown"
+            # A sealed terminal decision awaiting its mandatory immediate
+            # reconstruction is immutable, but it is not independently
+            # verified.  Preserve that prior route in the closeout receipt
+            # instead of trying to rewrite the terminal event.
+            if "terminal" not in self._state.completed_stages:
+                self.terminal("REFUSE_RESOURCE_INCOMPLETE",
+                              resource_stage=resource_stage)
+            self._seal_resource_incomplete_closeout(resource_stage)
             raise WorldAfterstateV2ExecutionError("REFUSE_RESOURCE_INCOMPLETE")
+
+    def _seal_resource_incomplete_closeout(
+            self, resource_stage: str) -> dict[str, Any]:
+        """Seal an outcome-blind terminal receipt after deadline/process loss."""
+        if resource_stage not in (*STAGE_ORDER, "unknown"):
+            raise WorldAfterstateV2ExecutionError(
+                "resource closeout stage drift")
+        meta = _strict(_sealed(
+            self.root / "supervisor-meta.json", "supervisor metadata"),
+            "supervisor metadata")
+        body = {
+            "schema": RESOURCE_CLOSEOUT_SCHEMA,
+            "freeze_sha256": self.freeze.sha256(),
+            "admission_sha256": self.admission.sha256(),
+            "decision": "REFUSE_RESOURCE_INCOMPLETE",
+            "resource_stage": resource_stage,
+            "completed_stages": list(self._state.completed_stages),
+            "audit_opened_count": int(self._state.audit_opened),
+            "reconstruction_completed": self._state.reconstruction_completed,
+            "verified_shards": [list(row)
+                                 for row in self._state.verified_shards],
+            "prior_terminal_route": (
+                self._state.terminal_route
+                if "terminal" in self._state.completed_stages else None),
+            "original_boot_identity": meta["boot_identity"],
+            "closeout_boot_identity": _boot_identity(),
+            "cross_boot": meta["boot_identity"] != _boot_identity(),
+            "authority": dict(AUTHORITY),
+        }
+        value = {**body, "closeout_sha256": _sha(body)}
+        raw = canonical_json_bytes(value)
+        path = self.root / RESOURCE_CLOSEOUT_RELATIVE
+        if path.exists() or path.is_symlink():
+            existing = reopen_resource_incomplete_closeout(
+                _sealed(path, "resource-incomplete closeout"),
+                freeze=self.freeze, admission=self.admission)
+            if existing != value:
+                raise WorldAfterstateV2ExecutionError(
+                    "resource-incomplete closeout replacement refused")
+            return existing
+        _write_once(path, raw)
+        return reopen_resource_incomplete_closeout(
+            _sealed(path, "resource-incomplete closeout"),
+            freeze=self.freeze, admission=self.admission)
 
     @property
     def next_stage(self) -> str | None:
@@ -1322,7 +1662,7 @@ class StageSupervisorV2:
                       force: bool = False) -> dict[str, Any]:
         now = self.clock()
         if not force and completed != total and completed * 100 < max(total, 1) * 99 \
-                and now - self._last_progress < 60 * 1_000_000_000:
+                and now - self._last_progress < self.freeze.heartbeat_seconds * 1_000_000_000:
             return {}
         elapsed = max(0, now - self._started)
         eta = (elapsed * (total - completed) // completed) if completed else None
@@ -1342,6 +1682,9 @@ class StageSupervisorV2:
         return snapshot
 
     def register_verified_shard(self, stage: str, shard_id: str, raw: bytes) -> None:
+        if self.resource_closeout_only:
+            raise WorldAfterstateV2ExecutionError(
+                "resource closeout cannot publish scientific shards")
         """Seal one shard once; reopening verifies bytes and never regenerates it."""
         if stage not in STAGE_ORDER or type(shard_id) is not str or not shard_id or type(raw) is not bytes or not raw:
             raise WorldAfterstateV2ExecutionError("shard identity drift")
@@ -1372,11 +1715,13 @@ class StageSupervisorV2:
     def run_stage(self, stage: str, *, split: str,
                   operation: StageControllerV2 | Callable[..., Any] | None,
                   total: int = 1, payload: Mapping[str, Any] | None = None) -> Any:
-        # Terminal sealing and its receipt-only reconstruction are allowed to
-        # finish after the scientific compute deadline.  Otherwise an expiry
-        # would prevent the fail-closed route from ever becoming durable.
-        if stage not in TERMINAL_STAGE_ORDER:
-            self._deadline()
+        if self.resource_closeout_only:
+            raise WorldAfterstateV2ExecutionError(
+                "resource closeout cannot run scientific stages")
+        # The deadline applies to the whole admitted DAG.  An expired run may
+        # seal only the receipt-only resource closeout; it may not start a
+        # terminal scorer or the independent reconstruction.
+        self._deadline()
         if self._state.terminal_route is not None \
                 and stage not in TERMINAL_STAGE_ORDER:
             raise WorldAfterstateV2ExecutionError("terminal route already selected")
@@ -1440,15 +1785,82 @@ class StageSupervisorV2:
 
     def _invoke_controller(self, operation: Callable[..., Any], stage: str,
                            total: int) -> Any:
-        """Run a controller with a mandatory <=60s heartbeat monitor."""
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(operation, self, tuple(self.verified_shards(stage)))
-            while True:
-                try:
-                    return future.result(timeout=60)
-                except FutureTimeout:
-                    self.emit_progress(stage=stage, completed=0, total=total,
-                                       active_workers=1, active_threads=1, force=True)
+        """Run a controller in a killable group under the global deadline."""
+        # Refuse before even creating the child.  The child repeats this check
+        # immediately before invoking scientific code to close the spawn gap.
+        self._deadline()
+        context = _controller_context()
+        receive, send = context.Pipe(duplex=False)
+        process = context.Process(
+            target=_controller_process_entry,
+            args=(operation, self, tuple(self.verified_shards(stage)), send),
+            name=f"world-afterstate-v2-{stage}")
+        process.start()
+        send.close()
+        message: tuple[str, Any] | None = None
+        try:
+            while message is None:
+                remaining = (self._started
+                             + self.freeze.deadline_seconds * 1_000_000_000
+                             - self.clock())
+                if remaining <= 0:
+                    _terminate_process_group(process)
+                    self._deadline()
+                wait = min(float(self.freeze.heartbeat_seconds),
+                           remaining / 1_000_000_000)
+                if receive.poll(max(0.001, wait)):
+                    try:
+                        message = receive.recv()
+                    except EOFError as exc:
+                        raise WorldAfterstateV2ExecutionError(
+                            "controller process result missing") from exc
+                    break
+                if not process.is_alive():
+                    if receive.poll():
+                        message = receive.recv()
+                        break
+                    raise WorldAfterstateV2ExecutionError(
+                        "controller process exited without result")
+                self.emit_progress(
+                    stage=stage, completed=0, total=total,
+                    active_workers=1, active_threads=1, force=True)
+        finally:
+            receive.close()
+            if process.is_alive() and message is None:
+                _terminate_process_group(process)
+            process.join(timeout=2.0)
+            if process.is_alive():
+                _terminate_process_group(process)
+        # Controllers publish only immutable shards/events.  Reopen those
+        # child publications before the parent validates, seals the stage, or
+        # snapshots a resource closeout at the wall.
+        refreshed = StageSupervisorV2(
+            self.root, self.freeze, self.admission, clock=self.clock,
+            progress_callback=self.progress_callback)
+        self._state = refreshed._state
+        self._event_index = refreshed._event_index
+        # Spawn and result transport are inside the admitted wall.  In
+        # particular, convert a child's pre-operation expiry refusal into the
+        # same durable receipt-only closeout instead of leaking a raw error.
+        # This check follows the refresh so the receipt includes every
+        # immutable child publication completed before termination.
+        self._deadline()
+        if type(message) is not tuple or len(message) != 2:
+            raise WorldAfterstateV2ExecutionError(
+                "controller process result envelope drift")
+        status, value = message
+        if status == "result":
+            if process.exitcode != 0:
+                raise WorldAfterstateV2ExecutionError(
+                    "controller process exit drift")
+            return value
+        if status == "error":
+            if isinstance(value, Exception):
+                raise value
+            raise WorldAfterstateV2ExecutionError(
+                "controller process refusal drift")
+        raise WorldAfterstateV2ExecutionError(
+            "controller process result status drift")
 
     def _open_audit_marker(self, payload: Mapping[str, Any] | None) -> None:
         if self.next_stage != "audit-attempt":
@@ -1564,6 +1976,8 @@ def run_v2_pipeline(supervisor: StageSupervisorV2,
             supervisor.run_stage(stage, split=split, operation=controller,
                                  payload=payload)
         except WorldAfterstateV2ExecutionError:
+            if (supervisor.root / RESOURCE_CLOSEOUT_RELATIVE).is_file():
+                return supervisor.state
             if supervisor.state.terminal_route == "REFUSE_RESOURCE_INCOMPLETE" \
                     and supervisor.next_stage == "terminal":
                 continue
@@ -1573,10 +1987,80 @@ def run_v2_pipeline(supervisor: StageSupervisorV2,
 
 def reopen_supervisor(root: Path, *, freeze: ExecutionFreezeV2,
                       admission: PipelineAdmissionV2,
-                      review_marker: bytes, repo: Path | None = None) -> StageSupervisorV2:
+                      review_marker: bytes, repo: Path | None = None,
+                      progress_callback: Callable[[dict[str, Any]], None] | None = None
+                      ) -> StageSupervisorV2:
     """Reopen immutable state; no controller, training, or continuation work."""
     reopen_admission(root, freeze=freeze, review_marker=review_marker, repo=repo)
-    return StageSupervisorV2(root, freeze, admission)
+    return StageSupervisorV2(root, freeze, admission,
+                             progress_callback=progress_callback)
+
+
+def seal_resource_incomplete_recovery(
+        root: Path, *, freeze: ExecutionFreezeV2,
+        admission: PipelineAdmissionV2, review_marker: bytes,
+        repo: Path | None = None) -> dict[str, Any]:
+    """Close a spent admission after reboot/process loss without science.
+
+    This path may reopen only immutable identity/events/shards.  It cannot
+    invoke a controller, open audit data, train, score, or reconstruct.
+    """
+    reopen_admission(
+        root, freeze=freeze, review_marker=review_marker, repo=repo,
+        resource_closeout_only=True)
+    supervisor = StageSupervisorV2(
+        root, freeze, admission, resource_closeout_only=True)
+    path = root / RESOURCE_CLOSEOUT_RELATIVE
+    if path.is_file() and not path.is_symlink():
+        receipt = reopen_resource_incomplete_closeout(
+            _sealed(path, "resource-incomplete closeout"),
+            freeze=freeze, admission=admission)
+        _validate_closeout_state(receipt, supervisor)
+        return receipt
+    resource_stage = supervisor.next_stage or "unknown"
+    if "terminal" not in supervisor.state.completed_stages:
+        supervisor.terminal(
+            "REFUSE_RESOURCE_INCOMPLETE", resource_stage=resource_stage)
+    receipt = supervisor._seal_resource_incomplete_closeout(resource_stage)
+    _validate_closeout_state(receipt, supervisor)
+    return receipt
+
+
+def _validate_closeout_state(
+        receipt: Mapping[str, Any], supervisor: StageSupervisorV2) -> None:
+    state = supervisor.state
+    expected_prior = (state.terminal_route
+                      if "terminal" in state.completed_stages else None)
+    if (tuple(receipt["completed_stages"]) != state.completed_stages
+            or receipt["audit_opened_count"] != int(state.audit_opened)
+            or receipt["reconstruction_completed"]
+            != state.reconstruction_completed
+            or tuple(tuple(row) for row in receipt["verified_shards"])
+            != state.verified_shards
+            or receipt["prior_terminal_route"] != expected_prior):
+        raise WorldAfterstateV2ExecutionError(
+            "resource-incomplete closeout filesystem drift")
+
+
+def verify_resource_incomplete_recovery(
+        root: Path, *, freeze: ExecutionFreezeV2,
+        admission: PipelineAdmissionV2, review_marker: bytes,
+        repo: Path | None = None) -> dict[str, Any]:
+    """Receipt-only verification; never creates or replaces a closeout."""
+    path = root / RESOURCE_CLOSEOUT_RELATIVE
+    if path.is_symlink() or not path.is_file():
+        raise WorldAfterstateV2ExecutionError(
+            "resource-incomplete closeout missing")
+    reopen_admission(
+        root, freeze=freeze, review_marker=review_marker, repo=repo,
+        resource_closeout_only=True)
+    supervisor = StageSupervisorV2(
+        root, freeze, admission, resource_closeout_only=True)
+    receipt = reopen_resource_incomplete_closeout(
+        _sealed(path, "resource-incomplete closeout"),
+        freeze=freeze, admission=admission)
+    _validate_closeout_state(receipt, supervisor)
+    return receipt
 
 
 verify_supervisor = reopen_supervisor

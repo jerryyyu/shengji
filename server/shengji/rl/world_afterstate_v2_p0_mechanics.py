@@ -28,6 +28,7 @@ from .world_afterstate_label import (
 from .world_afterstate_v2_continuation import (
     ContinuationBundleV2,
     RawLabelReceiptV2,
+    V2_CONTINUATION_POLICY,
 )
 from .world_afterstate_v2_label import (
     ContinuationOutcomeV2,
@@ -304,7 +305,9 @@ def _checks(materials: object, bundles: object) \
         try:
             sealed_identity = json.loads(
                 fixed_receipt.raw.decode("ascii"))["continuation_identity"]
-            rerun = run_afterstate_continuation(fixed_audit, sealed_identity)
+            rerun = run_afterstate_continuation(
+                fixed_audit, sealed_identity,
+                policy_name=V2_CONTINUATION_POLICY)
             sealed_hash = _sha(json.loads(fixed_receipt.raw.decode("ascii")))
             rerun_hash = _sha(rerun)
         except Exception as exc:

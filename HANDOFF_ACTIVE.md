@@ -4,31 +4,29 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 06:14 EDT**. Remote main before this update:
-`e1cda34`.
+Last reconciled: **2026-08-30 06:47 EDT**. Remote main before this update:
+`9d12923`.
 
 ## Review queue — one current review ask
 
-Review draft PR #170 from scratch at exact head
-`ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c`, parent `ab4cfb0`. This is the
-single source review needed before outcome-free preparation. The stack now
-implements the complete Value-Afterstate V2 scientific DAG, post-implementation
-capacity measurement/projection, immutable common-epoch recovery, audit
-preflight, pre-audit terminal routes, immediate receipt-only reconstruction,
-freeze builder and target-free plumbing rehearsal. Exact wildcard battery:
-**428 passed** in 189.58 s; `git diff --check` clean; source-tree `.pyc` scan
-empty. An independent integrated review returned PASS after the real terminal
-and reconstruction adapters were witnessed at five frontiers: P0 stop, failed
-canary, pre-audit no-learning selection, deadline after P0 and deadline before
-population. PR comment with the exact scope:
-https://github.com/jerryyyu/shengji/pull/170#issuecomment-5468064265.
+Review draft PR #171 at exact head
+`b243368ca275988811c3e54db9c56b0de86f5fa1`, parent `b12eea0`. This is one
+consolidated delta source review of the six-file PT-Luna Stop-hook repair. The
+reviewed shared game, ballots, rollouts, utility and mirror scheduler are
+untouched. The repair binds a fail-closed session-level Codex Stop hook into
+both Luna processes: it reads only the private engine-owned mailbox, blocks
+all early exits, and permits completion only for the exact engine-issued
+`round_end` token. Hook source/config/command are private-evidence bound and
+revalidated on reopen. Validation: **100 / 100** focused and **127 / 127** all
+PT-Luna tests; clean diff; zero source `.pyc`. Review request:
+https://github.com/jerryyyu/shengji/pull/171#issuecomment-5468213434.
 
-Requested authority is narrow: one non-scientific score-free full-DAG Perf
-capacity census and one bounded non-scientific rehearsal/preflight. Do not
-authorize scientific training, audit opening, outcome use, gameplay,
-PUCT/BELIEF integration, merge, retry, promotion, deployment or a strength
-claim. If those receipts pass, bind them and one immutable freeze in the final
-launch review without re-reviewing unchanged source.
+Requested authority is exactly one fresh non-scientific, score-free
+progressive Mini capacity census. Do not authorize the 104-game collection,
+outcome opening/use, gameplay or strength claims, merge, retry beyond that
+census, promotion or deployment. If capacity succeeds, the next review binds
+only that receipt plus the immutable 52-deal x two-mirror freeze; unchanged
+source must not be re-reviewed.
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -118,7 +116,7 @@ reviewed against the live systemd state before any recovery executes.
   Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
   the stronger reviewed privileged teacher. No promotion or strength claim.
 
-### PT-Luna fresh self-play — capacity failed safely; structural repair needed
+### PT-Luna fresh self-play — structural repair pushed; source review pending
 
 - PR #171 exact head `b12eea0485b944225ed1b99670d99c31dd010d33`
   received three convergent canonical source PASS entries. At **06:09 EDT**
@@ -131,18 +129,17 @@ reviewed against the live systemd state before any recovery executes.
   items and zero mailbox operations, so no terminal mailbox witness existed;
   team 1 was then peer-aborted and also performed zero mailbox operations. No
   scientific deal, action, trajectory, outcome or model prose was retained.
-- Do not blind-retry or submit another prompt-only repair. The harness tells
-  Luna to invoke a local mailbox program, but Codex can legally finish with
-  prose and the controller has no structural tool-use mechanism that makes the
-  model act. A future successful receipt may derive a candidate worker count
-  and immutable 52-deal x two-mirror freeze, followed by one narrow
-  receipt/freeze launch review without re-reviewing unchanged source; first,
-  the invocation protocol needs a structural repair and a new source review.
+- PR #171 repaired exact head `b243368ca275988811c3e54db9c56b0de86f5fa1`
+  adds the structural Stop hook described in the review queue. An independent
+  temporary Codex CLI probe demonstrated that the exact inline hook form
+  blocks an early final answer and continues the same model turn. No fresh
+  Mini attempt may start until this exact head receives the requested source
+  PASS.
 - The 104 games remain unauthorized. Their eventual trajectories are only
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
 
-### Value-Afterstate V2 — source complete, exact review pending
+### Value-Afterstate V2 — bounded score-free Perf capacity running
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
   exact pushed head `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c` is clean.
@@ -159,11 +156,16 @@ reviewed against the live systemd state before any recovery executes.
   one real early-terminal dispatch defect; it was repaired and re-reviewed to
   PASS. The five actual adapter/controller witnesses include the initial
   population-deadline frontier that the first repair missed.
-- No Value capacity, rehearsal, freeze, scientific run or audit is authorized
-  yet. The sole current ask is the narrow exact-head source/capacity review at
-  the top of this file. The lightweight rehearsal is target-free inference /
-  immutable publication / reopen plumbing; do not misdescribe it as the full
-  scientific DAG—the score-free capacity supervisor is the full-DAG exercise.
+- Canonical main `3e98d06` and `9d12923` record scoped exact-head PASSes for
+  one score-free full-DAG Perf capacity census and one bounded rehearsal. At
+  **06:42 EDT**, Codex launched the capacity census as systemd unit
+  `value-v2-capacity-ba17ab1e.service` in exact clean checkout
+  `/root/value-v2-capacity-ba17ab1e`; first preflight progress was healthy.
+  Output root is `/root/value-v2-capacity-ba17ab1e-output`. The rehearsal runs
+  only after capacity completes successfully. Neither action opens labels or
+  outcomes or authorizes science. The lightweight rehearsal is target-free
+  inference / immutable publication / reopen plumbing; the score-free
+  capacity supervisor is the full-DAG exercise.
 
 ### Value-Afterstate V0 — independently verified refusal
 
@@ -243,8 +245,8 @@ reviewed against the live systemd state before any recovery executes.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | free; reserved for Value V2 score-free capacity after exact source PASS |
-| Mini | free; PT-Luna `b12eea0` capacity authority is spent after a safe first-arm refusal |
+| Perf Cloud | Value V2 score-free capacity at exact `ba17ab1e`; no scientific data |
+| Mini | free; PT-Luna waits for exact `b243368` source PASS before one fresh census |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
 - Do not stop, duplicate, retry, merge, deploy, resume R5, or launch additional

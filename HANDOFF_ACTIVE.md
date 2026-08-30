@@ -4,43 +4,20 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 00:05 EDT**. Remote main before this update:
-`8cdc4a8`.
+Last reconciled: **2026-08-30 00:15 EDT**. Remote main before this update:
+`2777463`.
 
-## Review queue — one urgent actionable ask
+## Review queue
 
-### PR #172 R4 sealed-inner timeout recovery
+No review is actionable while the R4 scientific service remains active. PR
+#172 has final source-only PASS at exact head
+`5a81d89cd954a63ac97ca8588926b3367c28c5c1` in canonical
+`HANDOFF_REVIEW.md`. Do not repeat it.
 
-Review only the repaired delta `1d576e4d..5a81d89c` at final exact head
-`5a81d89cd954a63ac97ca8588926b3367c28c5c1`. The source-only PASS at
-`1d576e4d` is canonical in `HANDOFF_REVIEW.md`; do not repeat its unchanged
-2,358-line recovery surface.
-
-This is one consolidated source-only review. Verify that the absolute clean
-old checkout authenticates the sealed scientific freeze/admission/runtime,
-that the distinct clean new checkout authenticates the recovery source and
-runtime through an external exact-head marker, and that wrong/dirty/symlinked
-old source or any new-source/runtime/marker drift refuses. Verify the exact
-systemd timeout receipt, outcome-blind sealed-inner binding, dynamic pending
-review claim, route tombstone, single crash-safe verifier, receipt-only final
-reopen, and all-false retry/test/promotion/deployment/strength authority.
-
-The delta makes the frozen venv execute the new reviewed Python checkout while
-reusing only the byte-bound native extension from the old sealed checkout,
-reads protocol JSON from the correct clean checkout, and adds the exact
-non-timeout witness requested in the prior PASS. A live score-free dry run on
-Strength Cloud reproduced the full source-review claim against sealed git
-`56bd35f0` and recovery git `5a81d89c` without opening result bytes or touching
-the scientific service/evidence. Focused recovery tests: 55 passed. Result
-plus execution-identity/freeze battery: 91 passed. Diff-check clean.
-
-Return PASS or HOLD with only load-bearing blockers. PASS authorizes only
-generating the timeout receipt and exact pending recovery claim if the live
-scientific unit ends with `Result=timeout`, `MainPID=0`, a sealed inner
-`terminal/`, and no outer terminal. It does not authorize executing that
-pending recovery before its generated claim receives the separately required
-dynamic exact-artifact review; nor outcome interpretation, a second test
-opening, retry, merge, deployment, promotion, or a strength claim.
+If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
+timers below generate a timeout receipt and print the exact pending-recovery
+claim. That generated claim is the next single dynamic review ask. It must be
+reviewed against the live systemd state before any recovery executes.
 
 ## Live work
 
@@ -62,7 +39,7 @@ opening, retry, merge, deployment, promotion, or a strength claim.
   cohorts and 13 calibration rounds), but never calls
   `_derive_integrity_receipt`; it therefore omits the full capture/reference
   reconstruction above. The systemd unit has a hard two-day limit ending
-  **2026-08-30 12:23 UTC** (08:23 EDT), about 22 hours after this update, and
+  **2026-08-30 12:23 UTC** (08:23 EDT), about eight hours after this update, and
   immediate reconstruction repeats scoring plus integrity. Treat deadline
   exhaustion as a real open risk, not a predicted failure or permission to
   interrupt the only valid attempt.
@@ -84,17 +61,15 @@ opening, retry, merge, deployment, promotion, or a strength claim.
   canonical `origin/main` immediately before authentication; this closes the
   stale-remote-ref handoff failure observed during Value V0 without touching
   the scientific process or evidence.
-- Legacy fail-safe watcher
-  `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is also active with a
-  64-MiB envelope and has launched neither recovery nor verification. It waits
-  until the scientific unit stops. A normal outer seal makes it exit without
-  action; an unsealed `terminal.partial/` also makes it refuse without action.
-  Only the inner-only state (`terminal/` present, partial and outer absent)
-  can launch exact-head `recover-terminal-binding`; however that path repeats
-  the expensive old reconstruction. PR #172 replaces it with the narrower
-  sealed-inner pending route. Stop only this legacy recovery watcher after PR
-  #172 source PASS and before the scientific deadline; do not stop or modify
-  the scientific unit or its normal success-only independent-verifier watcher.
+- The legacy duplicate-reconstruction watcher
+  `belief-r4-terminal-recovery-watch-56bd35f-r1.service` is stopped and
+  inactive. Two reviewed non-executing timers replace it:
+  `belief-r4-timeout-receipt-5a81d89-r1.timer` at 12:25Z and
+  `belief-r4-pending-claim-5a81d89-r1.timer` at 12:28Z. They can only publish
+  the exact timeout receipt and print the dynamic review claim. They cannot
+  execute recovery, rescore, interpret outcomes, or launch a verifier. On
+  normal scientific success they fail closed without changing evidence. The
+  scientific service and normal success-only verifier watcher remain active.
 - R5 remains paused until the independently reproduced R4 verdict and curves
   are interpreted.
 

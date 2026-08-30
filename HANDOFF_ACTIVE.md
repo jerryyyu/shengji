@@ -4,24 +4,31 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 05:09 EDT**. Remote main before this update:
-`37567b4`.
+Last reconciled: **2026-08-30 06:12 EDT**. Remote main before this update:
+`3de4fb1`.
 
 ## Review queue — one current review ask
 
-Review PR #171 from scratch at repaired exact head
-`b12eea0` (`codex/pt-luna-selfplay-stack`). This is one consolidated
-source+retry-authority review of the four-file PT-Luna launch repair. Verify
-that the planner now inherits the proven Luna0 operational loop while retaining
-the same Luna/high model, full-information team-relative utility, ballot,
-continuations, work caps, JSON telemetry and peer-deny sandbox; and that the
-new v3 public failure receipt exposes only allowlisted item type/status counts,
-with all commands, arguments, prose, ids, actions, trajectories and outcomes
-still redacted. Focused PT-Luna suites: 91 passed; diff-check and py_compile
-passed. A PASS may authorize exactly one fresh non-scientific, score-free
-progressive Mini capacity census. It must not authorize the 104-game
-collection, outcome opening, data use, gameplay/strength claims, merge,
-promotion or deployment.
+Review draft PR #170 from scratch at exact head
+`ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c`, parent `ab4cfb0`. This is the
+single source review needed before outcome-free preparation. The stack now
+implements the complete Value-Afterstate V2 scientific DAG, post-implementation
+capacity measurement/projection, immutable common-epoch recovery, audit
+preflight, pre-audit terminal routes, immediate receipt-only reconstruction,
+freeze builder and target-free plumbing rehearsal. Exact wildcard battery:
+**428 passed** in 189.58 s; `git diff --check` clean; source-tree `.pyc` scan
+empty. An independent integrated review returned PASS after the real terminal
+and reconstruction adapters were witnessed at five frontiers: P0 stop, failed
+canary, pre-audit no-learning selection, deadline after P0 and deadline before
+population. PR comment with the exact scope:
+https://github.com/jerryyyu/shengji/pull/170#issuecomment-5468064265.
+
+Requested authority is narrow: one non-scientific score-free full-DAG Perf
+capacity census and one bounded non-scientific rehearsal/preflight. Do not
+authorize scientific training, audit opening, outcome use, gameplay,
+PUCT/BELIEF integration, merge, retry, promotion, deployment or a strength
+claim. If those receipts pass, bind them and one immutable freeze in the final
+launch review without re-reviewing unchanged source.
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -35,12 +42,10 @@ refusal `R4 terminal systemd observation drift`, because the scientific unit
 is still active. No timeout receipt, route claim, outcome read, or evidence
 mutation occurred. There is no R4 review action until the unit changes state.
 
-The exact-head `57d2a58` capacity admission is spent. Its first one-worker arm
-failed closed: both real Codex subprocesses exited zero, but neither emitted a
-mailbox operation; one lacked `turn.completed`, and the other returned a final
-message without the required terminal mailbox witness. No action, trajectory,
-outcome, prose, or usable data was opened or retained. Do not retry that head.
-The repaired-head ask above supersedes only the source/capacity-attempt step.
+The exact-head `b12eea0` PT-Luna source review is complete on canonical main.
+Its single fresh score-free capacity authority is now being consumed by the
+Mini census described below. Do not issue another source review or retry grant
+while that attempt is live.
 
 If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
 timers below generate a timeout receipt and print the exact pending-recovery
@@ -67,7 +72,7 @@ reviewed against the live systemd state before any recovery executes.
   cohorts and 13 calibration rounds), but never calls
   `_derive_integrity_receipt`; it therefore omits the full capture/reference
   reconstruction above. The systemd unit has a hard two-day limit ending
-  **2026-08-30 12:23 UTC** (08:23 EDT), about 7h40m after this update, and
+  **2026-08-30 12:23 UTC** (08:23 EDT), and
   immediate reconstruction repeats scoring plus integrity. Treat deadline
   exhaustion as a real open risk, not a predicted failure or permission to
   interrupt the only valid attempt.
@@ -112,13 +117,19 @@ reviewed against the live systemd state before any recovery executes.
   Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
   the stronger reviewed privileged teacher. No promotion or strength claim.
 
-### PT-Luna fresh self-play — repaired head awaiting one review
+### PT-Luna fresh self-play — score-free Mini capacity running
 
-- PR #171 repaired head `b12eea0` makes first-tool execution explicit using
-  the previously working Luna0 loop and adds redacted Codex item type/status
-  diagnostics. It changes no game policy, model, ballot, continuation, cap or
-  peer privacy rule. Its one consolidated review ask is at the top of this
-  file; no new model process has launched.
+- PR #171 exact head `b12eea0485b944225ed1b99670d99c31dd010d33`
+  received three convergent canonical source PASS entries. At **06:09 EDT**
+  Codex launched the one authorized fresh score-free progressive Mini census
+  in tmux `pt-luna-capacity-b12-r1`, root
+  `/private/tmp/shengji-pt-luna-capacity-b12eea0-r1`. It uses the reviewed
+  `gpt-5.6-luna` / high two-team process boundary, a new 32-byte capacity-only
+  secret, 1/2/4/6/8 worker arms, 1,200 s per-game deadline, 3,600 s cumulative
+  wall budget, exact 16-GiB physical-memory input and distinct immutable
+  success/failure outputs. The initial one-worker arm has two genuine Luna
+  subprocesses alive. No scientific deal, action, trajectory, outcome or model
+  prose is retained by this census.
 - On a successful receipt: derive the candidate worker count and immutable
   52-deal × two-mirror freeze, then request one narrow receipt/freeze launch
   review without re-reviewing unchanged source. If the repaired capacity still
@@ -127,6 +138,29 @@ reviewed against the live systemd state before any recovery executes.
 - The 104 games remain unauthorized. Their eventual trajectories are only
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
+
+### Value-Afterstate V2 — source complete, exact review pending
+
+- Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
+  exact pushed head `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c` is clean.
+- The 42-file implementation completes the production path from D256
+  population through P0, optimizer canary, labels, six natural/control
+  cohorts, precision selection, audit attempt, terminal and reconstruction.
+  Capacity runs the real P0 evaluator rather than a root-construction proxy;
+  CPU/resource projections cover all 19 substages. Training recovers only
+  sealed common-epoch member rows. Batched inference is byte-identical after
+  canonical probability quantization. Audit inputs are durably sealed before
+  any audit label opens.
+- Final source validation is **428 / 428** wildcard tests plus a clean
+  diff-check and empty source `.pyc` scan. The integrated Terra review found
+  one real early-terminal dispatch defect; it was repaired and re-reviewed to
+  PASS. The five actual adapter/controller witnesses include the initial
+  population-deadline frontier that the first repair missed.
+- No Value capacity, rehearsal, freeze, scientific run or audit is authorized
+  yet. The sole current ask is the narrow exact-head source/capacity review at
+  the top of this file. The lightweight rehearsal is target-free inference /
+  immutable publication / reopen plumbing; do not misdescribe it as the full
+  scientific DAG—the score-free capacity supervisor is the full-DAG exercise.
 
 ### Value-Afterstate V0 — independently verified refusal
 
@@ -206,8 +240,8 @@ reviewed against the live systemd state before any recovery executes.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | free; Value P1 r2 completed and independently reconstructed |
-| Mini | free; PT-Luna capacity after repaired-head source PASS |
+| Perf Cloud | free; reserved for Value V2 score-free capacity after exact source PASS |
+| Mini | PT-Luna `b12eea0` score-free progressive capacity census |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
 - Do not stop, duplicate, retry, merge, deploy, resume R5, or launch additional

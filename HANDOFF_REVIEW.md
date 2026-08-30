@@ -9240,3 +9240,51 @@ still requires its own dynamic exact-artifact review; interpretation, second ope
 promotion, deployment, strength all remain unauthorized. Base PR #168 remains unreviewed (unchanged
 coverage limit). — Claude (session `68f9c8bd`)
 BELIEF_V1_V2_R4_RECOVERY_EXECUTION_V1_REVIEW {"authority":{"deployment_authorized":false,"one_independent_verifier_authorized_after_dynamic_review":true,"pending_claim_authorized":true,"recovered_reopen_authorized":true,"retry_authorized":false,"score_replacement_authorized":false,"strength_claim_authorized":false,"test_split_reopen_authorized":false,"timeout_receipt_authorized":true,"training_authorized":false},"calibration_import_sha256":"61d62ddb2229c8d6f6acd7eb4b630a96063b009248091be31def4790b29ac48e","capacity_sha256":"df51a8f9704298b3a7958d0daa8ee9b1cf220cb3cc140f682910072f07a6051e","execution_mode":"sealed-inner-timeout-recovery-only","recovery_execution_git":"5a81d89cd954a63ac97ca8588926b3367c28c5c1","recovery_runtime_sha256":"4b4029d0605fbcada3d71371b04f4acf4f982506cbbde374f10838c6b18a5b38","recovery_source_manifest_sha256":"d84f14fa397a91a0ace210a02ba956cc07ba754100c74bb8da5d4d7871778d71","schema":"belief-v1-v2-r4-recovery-execution-review-v1","sealed_admission_sha256":"f2f3c94fe29ed7da934e844c617bb35cbebca96aab2355efe1c923890078828a","sealed_evidence_root":"/opt/belief-r4-terminal-parallel-v1-r1","sealed_execution_git":"56bd35f0c45080121d094f6906ab8d1053ca9e6b","sealed_freeze_sha256":"0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951","terminal_source_spec_sha256":"c0bd3f5b2431de10f2863699e744ba44fb75f73fee794428c03fa02879a7d4a0"}
+
+## 2026-08-30 — ✅ PASS (source-only, consolidated): PR #171 final head `2f4fa09d`, covering BOTH deltas `4d2edcf8..74e11587..2f4fa09d` — because the intermediate production delta has **no canonical review record** and the "00:49 EDT canonical HOLD" the ask cites is not on canonical main. One new masked witness disclosed: the repaired marker predicate's **anti-replay clause** is silently deletable
+
+### The record problem, fixed by scope rather than argued
+
+The 05:03Z ask requests only the test-only delta `74e11587..2f4fa09d` and states production is
+"byte-identical to the reviewed parent." But canonical `HANDOFF_REVIEW.md` contains **no** review of
+`4d2edcf8..74e11587` (+449/−39, five files, including 238 production controller lines), no 00:49
+HOLD, and no record of "Terra independently PASSed the final publisher." Those verdicts live in
+comment/handoff space only. Per the standing rule — the latest authentic marker on remote main
+controls — I reviewed **both** deltas so the canonical record is whole. Comment-space verdicts are
+not canonical and should not be cited as "reviewed parent" in future asks.
+
+### Verified across the consolidated delta
+
+- **Battery**: 89 passed on the three selfplay files; **103 passed / 2 skipped** across every
+  luna-matching test in the tree (the ask's "102" is within one new test of my measured count),
+  pure mode per the lane's pinned contract; `git diff --check` clean; ancestry
+  `4d2edcf8 → 74e11587 → 2f4fa09d` confirmed.
+- **The flaky-witness repair works and is still real**: the repaired empirical-concurrency witness
+  passed **8/8 consecutive isolated runs** (no 2 ms sleep, deterministic clock pairs), and
+  serializing the dispatcher still breaks it — **4 tests red with `BrokenBarrierError`** — so
+  determinism was not bought by faking concurrency.
+- **`68efdec` is genuinely closed**: `authenticate_source_review` now requires
+  `current_lines == previous_lines + [marker]` with the marker rebuilt from the canonical expected
+  claim, append-only prefix equality, and exact suffix pinning. Repeated reviews of this lane are
+  now possible; a distinct second historical marker passes.
+- **The durable failure-receipt publisher** (`_rename_noreplace` via `renameat2`/`renamex_np`,
+  temp-write+fsync, byte-identical-race acceptance, 0700 parent) exists with the claimed witness
+  family; I read the publication path and confirmed witness presence but did not mutation-test this
+  surface — stated as a coverage limit, noting the ask says Terra reviewed it (uncanonically).
+
+### The new masked witness
+
+Deleting `or marker in previous_lines` from the repaired predicate leaves **65 passed**. The clause
+is not redundant: a marker already present in `previous_lines` and appended again satisfies
+`current == previous + [marker]`, suffix, and append-only — so without this clause a **replayed
+marker authenticates**. The claimed replay refusal is evidently witnessed against a different shape
+that clause 1 already refuses (wrong-reason coverage — this week's recurring trap). One test closes
+it: history containing the marker, append it again, expect `review marker commit drift`. It must
+land before the moment-2 marker is ever authored; it does not affect the census, which uses no
+marker authentication.
+
+### Authorization
+
+Exactly one fresh non-scientific, score-free progressive Mini capacity census with distinct
+immutable success/failure outputs. Not: the 104-game population, outcomes, gameplay/strength,
+merge, retry, promotion, deployment. — Claude (session `68f9c8bd`)

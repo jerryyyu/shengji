@@ -53,7 +53,7 @@ DEFAULT_TOKEN_BUDGET = 1 << 62
 CAPACITY_EXECUTION_SYNTHETIC = "synthetic-injected-capacity"
 CAPACITY_EXECUTION_VERIFIED = "verified-runtime-capacity"
 CAPACITY_PROVENANCE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-provenance-v1"
-CAPACITY_FAILURE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-failure-v2"
+CAPACITY_FAILURE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-failure-v3"
 _REVIEW_AUTHENTICATION = object()
 
 # Capacity refusals may expose only controller-owned classifications.  Keep
@@ -85,6 +85,18 @@ _CAPACITY_CODEX_EVENT_TYPES = frozenset({
     "response.output_text.delta", "response.output_item.added",
     "response.output_item.done", "error",
 })
+# These are metadata values emitted in Codex ``item`` objects.  They are
+# deliberately narrower than the full event payload: only these names can
+# cross the capacity-refusal boundary, and every future/unknown value is
+# collapsed to ``opaque``.
+_CAPACITY_CODEX_ITEM_TYPES = frozenset({
+    "agent_message", "command_execution", "file_change", "mcp_tool_call",
+    "reasoning", "todo_list", "web_search", "error", "user_message",
+})
+_CAPACITY_CODEX_ITEM_STATUSES = frozenset({
+    "completed", "declined", "failed", "in_progress", "interrupted",
+    "pending", "started", "updated",
+})
 _CAPACITY_FAILURE_KEYS = frozenset({
     "schema", "failure_kind", "coordinate", "workers", "worker", "game",
     "reopened_status", "evidence_count", "expected_team_count",
@@ -94,13 +106,14 @@ _CAPACITY_FAILURE_KEYS = frozenset({
 _CAPACITY_CLASSIFICATION_KEYS = frozenset({
     "team", "execution_kind", "actual_subprocess", "synthetic",
     "process_error_present", "process_returncode", "process_error",
-    "codex_event_type_counts", "final_output_present",
+    "codex_event_type_counts", "codex_item_type_counts",
+    "codex_item_status_counts", "final_output_present",
     "trace_operation_counts", "stdout_sha256", "output_sha256",
 })
 _CAPACITY_PROCESS_DIAGNOSTIC_KEYS = frozenset({
     "process_returncode", "process_error", "codex_event_type_counts",
-    "final_output_present", "trace_operation_counts", "stdout_sha256",
-    "output_sha256",
+    "codex_item_type_counts", "codex_item_status_counts", "final_output_present",
+    "trace_operation_counts", "stdout_sha256", "output_sha256",
 })
 
 
@@ -121,29 +134,87 @@ def _capacity_b64(body: Mapping[str, object], key: str) -> bytes | None:
         return None
 
 
-def _capacity_codex_events(raw: bytes | None) -> dict[str, int]:
-    """Return bounded event names, never event payloads, from private stdout."""
+def _capacity_codex_telemetry(
+        raw: bytes | None) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """Extract allowlisted Codex metadata without retaining event payloads.
+
+    The parser intentionally treats the JSONL as all-or-nothing.  A malformed
+    line, or an event with a malformed type, makes every derived field opaque;
+    this avoids presenting a partial and potentially misleading public
+    diagnostic.  Item metadata is read only from ``item.type`` and
+    ``item.status``; commands, text, ids, and all other payload fields are
+    never copied.
+    """
+    opaque = ({_CAPACITY_CODEX_OPAQUE: 1},
+              {_CAPACITY_CODEX_OPAQUE: 1},
+              {_CAPACITY_CODEX_OPAQUE: 1})
     if raw is None:
-        return {_CAPACITY_CODEX_OPAQUE: 1}
-    counts: dict[str, int] = {}
+        return opaque
+    event_counts: dict[str, int] = {}
+    item_type_counts: dict[str, int] = {}
+    item_status_counts: dict[str, int] = {}
     lines = raw.splitlines()
     if not lines:
-        return {_CAPACITY_CODEX_OPAQUE: 1}
+        return opaque
     try:
         for line in lines:
             if not line:
                 continue
             event = json.loads(line.decode("utf-8"))
             if type(event) is not dict or type(event.get("type")) is not str:
-                return {_CAPACITY_CODEX_OPAQUE: 1}
+                return opaque
             event_type = event["type"]
             key = (event_type if event_type in _CAPACITY_CODEX_EVENT_TYPES
-                   else _CAPACITY_OP_OTHER)
-            counts[key] = counts.get(key, 0) + 1
+                   else _CAPACITY_CODEX_OPAQUE)
+            event_counts[key] = event_counts.get(key, 0) + 1
+
+            # Codex item events carry a metadata object under ``item``.  A
+            # missing/malformed item on an item event is itself opaque, while
+            # non-item events without an item contribute no item count.
+            if event_type.startswith("item."):
+                item = event.get("item")
+                if type(item) is not dict:
+                    item_type_counts[_CAPACITY_CODEX_OPAQUE] = (
+                        item_type_counts.get(_CAPACITY_CODEX_OPAQUE, 0) + 1)
+                    item_status_counts[_CAPACITY_CODEX_OPAQUE] = (
+                        item_status_counts.get(_CAPACITY_CODEX_OPAQUE, 0) + 1)
+                    continue
+                item_type = item.get("type")
+                item_type_key = (
+                    item_type if (type(item_type) is str
+                                  and item_type in _CAPACITY_CODEX_ITEM_TYPES)
+                    else _CAPACITY_CODEX_OPAQUE)
+                item_type_counts[item_type_key] = (
+                    item_type_counts.get(item_type_key, 0) + 1)
+                item_status = item.get("status")
+                # Current Codex JSONL commonly encodes item status in the
+                # event suffix (item.started/item.completed), while some
+                # providers also include item.status.  Prefer explicit item
+                # metadata and use the allowlisted suffix as a fallback.
+                if item_status is None:
+                    suffix = event_type.removeprefix("item.")
+                    if suffix in _CAPACITY_CODEX_ITEM_STATUSES:
+                        item_status = suffix
+                item_status_key = (
+                    item_status if (type(item_status) is str
+                                    and item_status in _CAPACITY_CODEX_ITEM_STATUSES)
+                    else _CAPACITY_CODEX_OPAQUE)
+                item_status_counts[item_status_key] = (
+                    item_status_counts.get(item_status_key, 0) + 1)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return {_CAPACITY_CODEX_OPAQUE: 1}
-    return {key: counts[key] for key in sorted(counts)} or {
-        _CAPACITY_CODEX_OPAQUE: 1}
+        return opaque
+    if not event_counts:
+        return opaque
+    return ({key: event_counts[key] for key in sorted(event_counts)},
+            {key: item_type_counts[key] for key in sorted(item_type_counts)}
+            or {_CAPACITY_CODEX_OPAQUE: 1},
+            {key: item_status_counts[key] for key in sorted(item_status_counts)}
+            or {_CAPACITY_CODEX_OPAQUE: 1})
+
+
+def _capacity_codex_events(raw: bytes | None) -> dict[str, int]:
+    """Return bounded event names, never event payloads, from private stdout."""
+    return _capacity_codex_telemetry(raw)[0]
 
 
 def _capacity_trace_operations(body: Mapping[str, object]) -> dict[str, int]:
@@ -169,6 +240,7 @@ def _capacity_trace_operations(body: Mapping[str, object]) -> dict[str, int]:
 def _capacity_process_diagnostic(body: Mapping[str, object]) -> dict[str, object]:
     stdout = _capacity_b64(body, "stdout_base64")
     final = _capacity_b64(body, "final_base64")
+    event_types, item_types, item_statuses = _capacity_codex_telemetry(stdout)
     returncode = body.get("process_returncode")
     if isinstance(returncode, bool) or not isinstance(returncode, int):
         returncode = None
@@ -181,7 +253,9 @@ def _capacity_process_diagnostic(body: Mapping[str, object]) -> dict[str, object
     return {
         "process_returncode": returncode,
         "process_error": process_error,
-        "codex_event_type_counts": _capacity_codex_events(stdout),
+        "codex_event_type_counts": event_types,
+        "codex_item_type_counts": item_types,
+        "codex_item_status_counts": item_statuses,
         "final_output_present": bool(final),
         "trace_operation_counts": _capacity_trace_operations(body),
         "stdout_sha256": (_sha_bytes(stdout) if stdout is not None else None),
@@ -263,8 +337,11 @@ def _validate_capacity_failure_body(body: Mapping[str, object]) -> None:
             raise ControllerError("capacity failure process error drift")
         for counts_key, allowed in (
                 ("codex_event_type_counts",
-                 _CAPACITY_CODEX_EVENT_TYPES | {_CAPACITY_OP_OTHER,
-                                                _CAPACITY_CODEX_OPAQUE}),
+                 _CAPACITY_CODEX_EVENT_TYPES | {_CAPACITY_CODEX_OPAQUE}),
+                ("codex_item_type_counts",
+                 _CAPACITY_CODEX_ITEM_TYPES | {_CAPACITY_CODEX_OPAQUE}),
+                ("codex_item_status_counts",
+                 _CAPACITY_CODEX_ITEM_STATUSES | {_CAPACITY_CODEX_OPAQUE}),
                 ("trace_operation_counts",
                  _CAPACITY_TRACE_OPERATIONS | {_CAPACITY_OP_OTHER})):
             counts = diagnostic[counts_key]

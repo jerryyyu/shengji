@@ -47,6 +47,15 @@ def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
     assert "full-information privilege" in prompt
     assert "Candidate zero is always the production prior" in prompt
     assert "defender's utility is the exact opposite" in prompt
+    assert "Immediately invoke the local tool's observe command as your first action" in prompt
+    assert "At every decision, call observe first" in prompt
+    assert "If it reports waiting, immediately call" in prompt
+    assert "A tool error changes no game state" in prompt
+    assert "candidate count times continuation count must be at most 16" in prompt
+    assert "Use at most two rollout commands per decision" in prompt
+    assert "reports round_end" in prompt
+    assert "After round_end" in prompt
+    assert '"completion_token":"TOKEN"' in prompt
     for consideration in ("multi-trick control", "partnership entries",
                            "point timing", "trump exhaustion",
                            "banker defense", "attacker thresholds"):

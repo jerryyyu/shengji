@@ -453,6 +453,8 @@ def test_real_capacity_refusal_is_typed_and_redacted_after_temp_cleanup(
             "process_error_present": False,
             "process_returncode": None, "process_error": None,
             "codex_event_type_counts": {"opaque": 1},
+            "codex_item_type_counts": {"opaque": 1},
+            "codex_item_status_counts": {"opaque": 1},
             "final_output_present": False,
             "trace_operation_counts": {"other": 1},
             "stdout_sha256": None, "output_sha256": None,
@@ -514,6 +516,46 @@ def test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable():
     assert opaque.body["evidence_classification"][0]["process_error"] == "other"
 
 
+def test_capacity_failure_codex_item_telemetry_is_allowlisted_and_redacted():
+    secret = "COMMAND SECRET MODEL PROSE"
+    events = [
+        {"type": "item.started", "item": {
+            "id": "private-id", "type": "command_execution",
+            "command": secret}},
+        {"type": "item.completed", "item": {
+            "id": "private-id", "type": "command_execution",
+            "aggregated_output": secret}},
+        {"type": "item.updated", "item": {
+            "type": "future_item", "status": "future_status",
+            "text": secret}},
+        {"type": "item.completed", "item": {
+            "type": [], "status": {}, "text": secret}},
+        {"type": "future.event", "payload": secret},
+    ]
+    stdout = ("\n".join(json.dumps(event) for event in events) + "\n").encode()
+    evidence = SimpleNamespace(team=0, body={
+        "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
+        "actual_subprocess": True, "synthetic": False,
+        "process_returncode": 7,
+        "process_error": "Luna model process did not complete engine round",
+        "stdout_base64": base64.b64encode(stdout).decode(),
+        "final_base64": base64.b64encode(secret.encode()).decode(),
+        "output_sha256": "c" * 64, "trace": [],
+    })
+    refusal = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=(evidence,))
+    diagnostic = refusal.body["evidence_classification"][0]
+    assert diagnostic["codex_event_type_counts"] == {
+        "item.completed": 2, "item.started": 1, "item.updated": 1,
+        "opaque": 1}
+    assert diagnostic["codex_item_type_counts"] == {
+        "command_execution": 2, "opaque": 2}
+    assert diagnostic["codex_item_status_counts"] == {
+        "completed": 1, "started": 1, "opaque": 2}
+    assert secret.encode() not in refusal.canonical_bytes()
+
+
 def test_capacity_failure_malformed_stdout_is_opaque():
     evidence = SimpleNamespace(team=1, body={
         "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
@@ -528,6 +570,8 @@ def test_capacity_failure_malformed_stdout_is_opaque():
         reopened_status="incomplete", evidence=(evidence,))
     diagnostic = refusal.body["evidence_classification"][0]
     assert diagnostic["codex_event_type_counts"] == {"opaque": 1}
+    assert diagnostic["codex_item_type_counts"] == {"opaque": 1}
+    assert diagnostic["codex_item_status_counts"] == {"opaque": 1}
     assert diagnostic["final_output_present"] is False
     assert refusal.body["scientific_admissible"] is False
     assert refusal.body["collection_authorized"] is False

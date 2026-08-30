@@ -267,19 +267,26 @@ information set. Use only this tool:
   {tool} wait
   {tool} rollout --decision SHA --candidates 0,1 --continuations smart-all,team-smart
   {tool} play --decision SHA --candidate 0 --confidence low
-Call observe before every decision. If it reports waiting, call wait; wait
-wakes when the other team acts, the round ends, or the game fails. You may
-roll out only on your team's decision and may play only one listed candidate.
-Candidate zero is always the production prior and is the bounded fallback.
+Immediately invoke the local tool's observe command as your first action. At every decision, call observe first. If it reports waiting, immediately call
+wait; wait blocks until the other team acts, the round ends, or the game
+fails, and its response is the next observation. Never roll out or play while
+waiting. You may roll out only on your team's decision and may play only one
+listed candidate. Candidate zero is always the production prior and is the
+bounded fallback.
+You may request useful candidate/continuation subsets, inspect each result,
+and adaptively request more. Never repeat an identical candidate/continuation pair. For each rollout command, candidate count times continuation count must be at most 16. Use at most two rollout commands per decision; spend the second only when the first result leaves a material signed-level choice unresolved. A tool error changes no game state: correct
+the request, observe again if needed, and continue. Then commit exactly one
+listed candidate with play.
 Interpret every rollout by your team's signed-level utility, including when
 your team is defending; do not optimize raw attacker points as a substitute.
 Consider multi-trick control, partnership entries, point timing, trump exhaustion,
-banker defense, attacker thresholds, and the risk that a conclusion depends on
-one continuation assumption.
-Continue until round_end.
-The final legal play or subsequent observe/wait returns a one-time
-completion_token. Do not stop early. Your final response must contain only
-this JSON object, with TOKEN replaced by that exact engine-returned value:
+banker defense, attacker thresholds, and the risk that a
+conclusion depends on one continuation assumption. Continue until the tool
+reports round_end. Do not stop early or invent cards, values, or tool results.
+The final legal play or a subsequent observe/wait returns a one-time
+completion_token. After round_end, your final response must contain only this
+JSON object with status complete and that exact engine-returned token, with
+TOKEN replaced by that value:
 {{"schema":"{FINAL_RESPONSE_SCHEMA}","status":"complete","completion_token":"TOKEN"}}
 """
 

@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 06:12 EDT**. Remote main before this update:
-`3de4fb1`.
+Last reconciled: **2026-08-30 06:14 EDT**. Remote main before this update:
+`e1cda34`.
 
 ## Review queue — one current review ask
 
@@ -43,9 +43,10 @@ is still active. No timeout receipt, route claim, outcome read, or evidence
 mutation occurred. There is no R4 review action until the unit changes state.
 
 The exact-head `b12eea0` PT-Luna source review is complete on canonical main.
-Its single fresh score-free capacity authority is now being consumed by the
-Mini census described below. Do not issue another source review or retry grant
-while that attempt is live.
+Its single fresh score-free capacity authority was consumed by the failed-safe
+Mini census described below. Do not issue another source review or retry grant:
+the public receipt now proves a structural model/tool-use gap that another
+prompt-only capacity attempt would not repair.
 
 If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
 timers below generate a timeout receipt and print the exact pending-recovery
@@ -117,24 +118,26 @@ reviewed against the live systemd state before any recovery executes.
   Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
   the stronger reviewed privileged teacher. No promotion or strength claim.
 
-### PT-Luna fresh self-play — score-free Mini capacity running
+### PT-Luna fresh self-play — capacity failed safely; structural repair needed
 
 - PR #171 exact head `b12eea0485b944225ed1b99670d99c31dd010d33`
   received three convergent canonical source PASS entries. At **06:09 EDT**
   Codex launched the one authorized fresh score-free progressive Mini census
   in tmux `pt-luna-capacity-b12-r1`, root
-  `/private/tmp/shengji-pt-luna-capacity-b12eea0-r1`. It uses the reviewed
-  `gpt-5.6-luna` / high two-team process boundary, a new 32-byte capacity-only
-  secret, 1/2/4/6/8 worker arms, 1,200 s per-game deadline, 3,600 s cumulative
-  wall budget, exact 16-GiB physical-memory input and distinct immutable
-  success/failure outputs. The initial one-worker arm has two genuine Luna
-  subprocesses alive. No scientific deal, action, trajectory, outcome or model
-  prose is retained by this census.
-- On a successful receipt: derive the candidate worker count and immutable
-  52-deal × two-mirror freeze, then request one narrow receipt/freeze launch
-  review without re-reviewing unchanged source. If the repaired capacity still
-  refuses, the v3 receipt must identify command/tool failure versus model
-  non-compliance without exposing private content; do not blind-retry.
+  `/private/tmp/shengji-pt-luna-capacity-b12eea0-r1`. It failed closed in the
+  first one-worker arm after about two minutes. The immutable public receipt is
+  `capacity-failure.json`: team 0's genuine Luna subprocess returned normally
+  with one `agent_message` and `turn.completed`, but zero `command_execution`
+  items and zero mailbox operations, so no terminal mailbox witness existed;
+  team 1 was then peer-aborted and also performed zero mailbox operations. No
+  scientific deal, action, trajectory, outcome or model prose was retained.
+- Do not blind-retry or submit another prompt-only repair. The harness tells
+  Luna to invoke a local mailbox program, but Codex can legally finish with
+  prose and the controller has no structural tool-use mechanism that makes the
+  model act. A future successful receipt may derive a candidate worker count
+  and immutable 52-deal x two-mirror freeze, followed by one narrow
+  receipt/freeze launch review without re-reviewing unchanged source; first,
+  the invocation protocol needs a structural repair and a new source review.
 - The 104 games remain unauthorized. Their eventual trajectories are only
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
@@ -241,7 +244,7 @@ reviewed against the live systemd state before any recovery executes.
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
 | Perf Cloud | free; reserved for Value V2 score-free capacity after exact source PASS |
-| Mini | PT-Luna `b12eea0` score-free progressive capacity census |
+| Mini | free; PT-Luna `b12eea0` capacity authority is spent after a safe first-arm refusal |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
 - Do not stop, duplicate, retry, merge, deploy, resume R5, or launch additional

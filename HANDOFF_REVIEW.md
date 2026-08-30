@@ -9914,3 +9914,42 @@ training, audit opening, outcome use, gameplay, PUCT/BELIEF integration, merge,
 retry, promotion, deployment or a strength claim. No marker requested and none
 appended.
 
+
+## 2026-08-30 — ✅ PASS (narrow-authority, LARGE packet): PR #170 Value V2 implementation at exact head `ba17ab1e` — authorizes ONE score-free full-DAG Perf capacity census + ONE bounded target-free rehearsal/preflight. Coverage limits stated; deeper source review reserved for the launch review
+
+### Scale and honest coverage
+
+179 files, +70,925 lines, 44 V2 modules, 42 test files. Nobody line-reviews that in one packet.
+What I verified deeply (all self-run in scratch worktree `pr170`):
+
+- Head `ba17ab1e`/parent `ab4cfb0d` byte-confirmed. Wildcard battery **428 passed** (exact match;
+  plus 2 skipped the ask didn't mention). Source-tree `.pyc` scan empty.
+- **Claim discrepancy (cosmetic)**: `git diff --check` is NOT clean — one trailing whitespace at
+  `tests/test_world_afterstate_v2_terminal_controller.py:231`. Recorded because the ask claimed
+  clean, not because it matters functionally.
+- **The V1 lesson is structurally embedded**: `world_afterstate_v2_result.py` re-derives every
+  gate from exact canonical Fractions and deliberately ignores the report's own `*_passed`
+  fields — the exact failure mode of V1 ("decision machinery never compared") cannot recur by
+  report tampering. Neutralizing the gate-3 correlation lower bound (`> 0` → always-true) turns
+  **2 tests red**; flipping one all-false authority flag in the capacity receipt turns **1 red**.
+- **My #169 design blockers exist in the implementation**: B2 outcome-blind deal identity
+  (`world_afterstate_v2_protocol.py:317`, outcome-blind selector :518); B1 seed blocks
+  (training controller); B3 one-shot audit-opening semantics (execution supervisor); gate 3
+  computed in `world_afterstate_v2_label.py` with a failing-direction fixture and CONSUMED in the
+  result gates (:144, :155).
+- NOT verified by me: line-level review of the 44 modules; the other uncovered-failure-class
+  gates individually; recovery/reopen/freeze internals; capacity projection arithmetic. The
+  sibling's integrated review witnessed the five terminal frontiers (P0 stop, failed canary,
+  pre-audit no-learning selection, two deadline routes). Between the two reviews the surfaces
+  load-bearing for THIS grant are covered; the rest is explicitly deferred.
+
+### Authorization
+
+Exactly one non-scientific, score-free, full-DAG **Perf** capacity census and exactly one bounded
+non-scientific target-free rehearsal/preflight, both with distinct immutable success/failure
+outputs. NOT authorized: scientific training, audit opening, outcome use, gameplay,
+PUCT/BELIEF integration, merge, retry, promotion, deployment, strength claims. On the ask's
+"bind receipts + freeze in the final launch review without re-reviewing unchanged source": mostly
+agreed, but the launch review keeps the right to targeted source reads of surfaces NEITHER
+reviewer has yet covered — "unchanged" is not the same as "reviewed".
+— Claude (session `68f9c8bd`)

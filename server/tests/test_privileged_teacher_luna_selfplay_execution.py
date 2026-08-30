@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import threading
+import time
 
 import pytest
 
@@ -181,6 +183,42 @@ def test_supervisor_kills_fake_process_groups_on_peer_failure(tmp_path):
                                      config=execution.LunaPlannerConfig(max_game_wall_seconds=2))
     assert result.status == "incomplete"
     assert children and all(child.poll() is not None for child in children)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX process groups")
+def test_real_timeout_cleanup_retains_actual_subprocess_marker(tmp_path):
+    ready = tmp_path / "child-ready"
+    script = tmp_path / "linger.py"
+    script.write_text(
+        "import subprocess, sys, time\n"
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(2.5)'], "
+        "start_new_session=True)\n"
+        "with open(sys.argv[1], 'wb'): pass\n"
+        "sys.stdin.read()\n"
+        "time.sleep(30)\n")
+    game = _game()
+    supervisor = execution.ProcessSupervisor(time.monotonic() + 60)
+    ready_seen = threading.Event()
+
+    def abort_after_launch():
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        if ready.exists():
+            ready_seen.set()
+        supervisor.abort("test timeout")
+
+    abort_thread = threading.Thread(target=abort_after_launch)
+    abort_thread.start()
+    completed = execution._default_process(
+        game.session(0), workspace=tmp_path, mailbox_path=tmp_path / "mailbox",
+        tool_script=TOOL, codex_binary=Path(sys.executable), prompt="timeout",
+        final_output_path=tmp_path / "final.json", supervisor=supervisor,
+        command=(sys.executable, str(script), str(ready)))
+    abort_thread.join(timeout=6)
+
+    assert ready_seen.is_set()
+    assert getattr(completed, "_pt_luna_actual_subprocess", False) is True
 
 
 def test_reopen_refuses_coordinated_trace_rehash_outside_tool_contract(tmp_path):

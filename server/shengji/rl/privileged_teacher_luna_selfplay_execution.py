@@ -661,7 +661,10 @@ def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
         else:
             process.kill()
         out, _ = process.communicate()
-        return subprocess.CompletedProcess(command, process.returncode or -9, out or b"")
+        completed = subprocess.CompletedProcess(
+            command, process.returncode or -9, out or b"")
+        completed._pt_luna_actual_subprocess = True
+        return completed
     finally:
         if supervisor is not None:
             supervisor.unregister(session.team)

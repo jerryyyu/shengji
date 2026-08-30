@@ -9833,3 +9833,84 @@ requested and none appended; `PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1` still matches
 contract, work caps and v3 receipt boundary; ballots, engine state, mirrors,
 scoring and population unchanged and resting on prior PASSes.
 
+
+## 2026-08-30 06:45 EDT — ✅ PASS for PR #170 at `ba17ab1e`, **scoped to the narrow authority requested, not "from scratch"**. The stack self-authorizes nothing — and it ships the one-shot marker predicate for the fifth time
+
+Head `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c`, parent `ab4cfb0` confirmed via
+`git show -s --format=%P`. **42 files, +11,581/−445** from that parent;
+against `git merge-base` with main (`205c9f02`) the stack is **179 files,
++70,925 lines**. `git diff --check` clean.
+
+**On scope, plainly.** The ask says "review from scratch". I did not audit
+70,925 lines this cycle and will not imply otherwise. What I did instead is
+scope depth to the authority actually being granted — one non-scientific
+score-free full-DAG Perf capacity census and one bounded rehearsal/preflight —
+and verify deeply the surfaces that decide whether that authority can be
+exceeded. The scientific-execution surfaces (training, audit opening, terminal
+derivation, outcome use) are **not reviewed here** and must be reviewed at the
+launch review the ask already reserves. A from-scratch PASS on a stack this
+size is a standalone piece of work; flagging it for Jerry rather than
+pretending an hourly cycle covered it.
+
+**Reproduced.** `-k world_afterstate_v2` gives **428 passed** — exactly the
+recorded count — in 95.83 s under `SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`,
+`-P -B`, `__pycache__` cleared. The `.pyc` claim holds: `find shengji scripts
+-name '*.pyc'` returns **0**, which matters on this repo because a stray
+bytecode file drifts the frozen runtime binding.
+
+**The authority boundary is real, and I measured it rather than reading it.**
+Parsing all 44 `world_afterstate_v2*` modules with `ast` finds **22 `AUTHORITY`
+dict literals and zero flags literally `True`**. Nothing in the stack
+self-authorizes training, audit opening, outcome use, gameplay, merge,
+promotion or deployment. That is the property the requested census and
+rehearsal rest on, and it holds across every module, not just the ones the ask
+names.
+
+### The finding: fifth instance of the one-shot marker predicate
+
+`world_afterstate_v2_execution.py:562`:
+
+    current_matches = [line for line in current.splitlines(keepends=True)
+                       if line.startswith(prefix)]
+    previous_matches = [line for line in previous.splitlines(keepends=True)
+                        if line.startswith(prefix)]
+    if current_matches != [marker] or previous_matches:
+        raise WorldAfterstateV2ExecutionError("review marker does not bind freeze")
+
+That is the exact pre-repair form: exactly one marker of this prefix in the
+ledger, for all time. `WORLD_AFTERSTATE_V2_ABSOLUTE_LEAF_REVIEW ` currently
+matches **0** ledger lines, so nothing is spent yet and the window is open.
+
+This is the same defect repaired at `world_afterstate_v1_capacity.py:327`,
+`world_afterstate_v1_admission.py:333`/`:425`, `belief_v2_freeze.py`, and — after
+I filed it at `68efdec` — in the PT-Luna controller, which now correctly reads
+`current_lines != [*previous_lines, marker] or marker in previous_lines`. It is
+the second time a **newly written** module has shipped the old form after the
+repair existed.
+
+Why it will bite this lane specifically: V1 needed **four** capacity heads and
+**two** scientific heads, each requiring a fresh marker at a repaired head. A
+V2 launch review that spends this prefix once, then meets any source defect,
+cannot issue a second marker without changing `REVIEW_PREFIX` in source. It does
+not block today's authority — the census and rehearsal do not consume the
+marker — but it must be fixed **before** the launch review, not after, because
+once a marker of this prefix is on main no later edit undoes the fact that the
+lane's one admission has been drawn.
+
+### Coverage limits, stated exactly
+
+Verified: head/parent identity, delta size, `diff --check`, the recorded 428,
+the `.pyc` scan, every `AUTHORITY` literal across all 44 V2 modules, and the
+marker-authentication predicate. Not verified: the scientific DAG's semantics,
+the capacity projection arithmetic, recovery/restart behaviour, audit preflight
+correctness, terminal routes, and the freeze builder's bindings — all of which
+the launch review must cover, and none of which today's authority exercises.
+
+### Authority
+
+PASS authorizes exactly one non-scientific, score-free full-DAG Perf capacity
+census and one bounded non-scientific rehearsal/preflight. Not scientific
+training, audit opening, outcome use, gameplay, PUCT/BELIEF integration, merge,
+retry, promotion, deployment or a strength claim. No marker requested and none
+appended.
+

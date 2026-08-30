@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib.util
 import json
@@ -439,7 +440,13 @@ def test_real_capacity_refusal_is_typed_and_redacted_after_temp_cleanup(
             "team": 0,
             "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
             "actual_subprocess": True, "synthetic": False,
-            "process_error_present": False}],
+            "process_error_present": False,
+            "process_returncode": None, "process_error": None,
+            "codex_event_type_counts": {"opaque": 1},
+            "final_output_present": False,
+            "trace_operation_counts": {"other": 1},
+            "stdout_sha256": None, "output_sha256": None,
+        }],
         "scientific_admissible": False, "collection_authorized": False,
         "opened": {"outcomes": False, "actions": False,
                     "trajectories": False, "model_prose": False},
@@ -450,6 +457,63 @@ def test_real_capacity_refusal_is_typed_and_redacted_after_temp_cleanup(
     payload = refusal.serialized()
     assert payload["diagnostic_sha256"] == controller._sha(refusal.body)
     assert not roots[0].exists()
+
+
+def test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable():
+    secret = b"MODEL PROSE SECRET"
+    stdout = (json.dumps({"type": "thread.started", "message":
+                          secret.decode()}) + "\n"
+              + json.dumps({"type": "turn.completed", "item": {
+                  "text": secret.decode()}}) + "\n").encode()
+    evidence = SimpleNamespace(team=0, body={
+        "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
+        "actual_subprocess": True, "synthetic": False,
+        "process_returncode": 7,
+        "process_error": "Luna model process did not complete engine round",
+        "stdout_base64": base64.b64encode(stdout).decode(),
+        "final_base64": base64.b64encode(secret).decode(),
+        "output_sha256": "a" * 64,
+        "trace": [{"request": {"op": "observe", "secret": secret.decode()},
+                   "response": {"text": secret.decode()}}],
+    })
+    refusal = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=(evidence,))
+    diagnostic = refusal.body["evidence_classification"][0]
+    assert diagnostic["process_returncode"] == 7
+    assert diagnostic["process_error"] == (
+        "Luna model process did not complete engine round")
+    assert diagnostic["codex_event_type_counts"] == {
+        "thread.started": 1, "turn.completed": 1}
+    assert diagnostic["final_output_present"] is True
+    assert diagnostic["trace_operation_counts"] == {"observe": 1}
+    assert secret not in refusal.canonical_bytes()
+
+    evidence.body["process_error"] = "provider leaked: " + secret.decode()
+    opaque = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=(evidence,))
+    assert opaque.body["evidence_classification"][0]["process_error"] == "other"
+
+
+def test_capacity_failure_malformed_stdout_is_opaque():
+    evidence = SimpleNamespace(team=1, body={
+        "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
+        "actual_subprocess": True, "synthetic": False,
+        "process_returncode": None, "process_error": None,
+        "stdout_base64": base64.b64encode(b"not JSONL").decode(),
+        "final_base64": "", "output_sha256": "b" * 64,
+        "trace": [],
+    })
+    refusal = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=(evidence,))
+    diagnostic = refusal.body["evidence_classification"][0]
+    assert diagnostic["codex_event_type_counts"] == {"opaque": 1}
+    assert diagnostic["final_output_present"] is False
+    assert refusal.body["scientific_admissible"] is False
+    assert refusal.body["collection_authorized"] is False
+    assert all(value is False for value in refusal.body["authority"].values())
 
 
 def test_capacity_failure_publication_is_exclusive_and_one_link(tmp_path):

@@ -11,6 +11,7 @@ trajectory or retried.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import base64
 import ctypes
 from dataclasses import dataclass
 import errno
@@ -52,8 +53,232 @@ DEFAULT_TOKEN_BUDGET = 1 << 62
 CAPACITY_EXECUTION_SYNTHETIC = "synthetic-injected-capacity"
 CAPACITY_EXECUTION_VERIFIED = "verified-runtime-capacity"
 CAPACITY_PROVENANCE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-provenance-v1"
-CAPACITY_FAILURE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-failure-v1"
+CAPACITY_FAILURE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-failure-v2"
 _REVIEW_AUTHENTICATION = object()
+
+# Capacity refusals may expose only controller-owned classifications.  Keep
+# this list frozen: arbitrary exception text is private process/model output.
+_CAPACITY_PROCESS_ERRORS = frozenset({
+    "Luna model process exceeded wall deadline",
+    "Luna model process did not complete engine round",
+    "Luna model process absent",
+    "Luna model output too large",
+    "Codex JSONL output drift",
+    "Codex JSONL output absent",
+    "Codex JSONL event drift",
+    "Codex completion telemetry drift",
+    "Codex token telemetry drift",
+    "Luna model final response absent or malformed",
+})
+_CAPACITY_PROCESS_ERROR_OTHER = "other"
+_CAPACITY_OP_OTHER = "other"
+_CAPACITY_CODEX_OPAQUE = "opaque"
+_CAPACITY_TRACE_OPERATIONS = frozenset({"observe", "wait", "rollout", "play"})
+# The names are the bounded Codex event vocabulary; unknown type strings are
+# collapsed so model prose cannot enter the public artifact as an event key.
+_CAPACITY_CODEX_EVENT_TYPES = frozenset({
+    "thread.started", "thread.completed", "thread.failed",
+    "turn.started", "turn.completed", "turn.failed",
+    "item.started", "item.updated", "item.completed",
+    "response.created", "response.completed", "response.failed",
+    "response.output_text.delta", "response.output_item.added",
+    "response.output_item.done", "error",
+})
+_CAPACITY_FAILURE_KEYS = frozenset({
+    "schema", "failure_kind", "coordinate", "workers", "worker", "game",
+    "reopened_status", "evidence_count", "expected_team_count",
+    "evidence_classification", "scientific_admissible",
+    "collection_authorized", "opened", "retained", "authority",
+})
+_CAPACITY_CLASSIFICATION_KEYS = frozenset({
+    "team", "execution_kind", "actual_subprocess", "synthetic",
+    "process_error_present", "process_returncode", "process_error",
+    "codex_event_type_counts", "final_output_present",
+    "trace_operation_counts", "stdout_sha256", "output_sha256",
+})
+_CAPACITY_PROCESS_DIAGNOSTIC_KEYS = frozenset({
+    "process_returncode", "process_error", "codex_event_type_counts",
+    "final_output_present", "trace_operation_counts", "stdout_sha256",
+    "output_sha256",
+})
+
+
+def _capacity_digest(value: object) -> str | None:
+    if (type(value) is str and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value)):
+        return value
+    return None
+
+
+def _capacity_b64(body: Mapping[str, object], key: str) -> bytes | None:
+    value = body.get(key)
+    if type(value) is not str:
+        return None
+    try:
+        return base64.b64decode(value, validate=True)
+    except (ValueError, TypeError):
+        return None
+
+
+def _capacity_codex_events(raw: bytes | None) -> dict[str, int]:
+    """Return bounded event names, never event payloads, from private stdout."""
+    if raw is None:
+        return {_CAPACITY_CODEX_OPAQUE: 1}
+    counts: dict[str, int] = {}
+    lines = raw.splitlines()
+    if not lines:
+        return {_CAPACITY_CODEX_OPAQUE: 1}
+    try:
+        for line in lines:
+            if not line:
+                continue
+            event = json.loads(line.decode("utf-8"))
+            if type(event) is not dict or type(event.get("type")) is not str:
+                return {_CAPACITY_CODEX_OPAQUE: 1}
+            event_type = event["type"]
+            key = (event_type if event_type in _CAPACITY_CODEX_EVENT_TYPES
+                   else _CAPACITY_OP_OTHER)
+            counts[key] = counts.get(key, 0) + 1
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {_CAPACITY_CODEX_OPAQUE: 1}
+    return {key: counts[key] for key in sorted(counts)} or {
+        _CAPACITY_CODEX_OPAQUE: 1}
+
+
+def _capacity_trace_operations(body: Mapping[str, object]) -> dict[str, int]:
+    """Count only the known operation names from the private trace."""
+    trace = body.get("trace")
+    if type(trace) is not list:
+        return {_CAPACITY_OP_OTHER: 1}
+    counts: dict[str, int] = {}
+    for event in trace:
+        operation = None
+        if type(event) is dict and isinstance(event.get("request"), Mapping):
+            candidate = event["request"].get("op")
+            if type(candidate) is str:
+                operation = candidate if candidate in _CAPACITY_TRACE_OPERATIONS \
+                    else _CAPACITY_OP_OTHER
+        else:
+            operation = _CAPACITY_OP_OTHER
+        if operation is not None:
+            counts[operation] = counts.get(operation, 0) + 1
+    return {key: counts[key] for key in sorted(counts)}
+
+
+def _capacity_process_diagnostic(body: Mapping[str, object]) -> dict[str, object]:
+    stdout = _capacity_b64(body, "stdout_base64")
+    final = _capacity_b64(body, "final_base64")
+    returncode = body.get("process_returncode")
+    if isinstance(returncode, bool) or not isinstance(returncode, int):
+        returncode = None
+    process_error = body.get("process_error")
+    if (process_error is not None
+            and (type(process_error) is not str
+                 or process_error not in _CAPACITY_PROCESS_ERRORS)):
+        process_error = _CAPACITY_PROCESS_ERROR_OTHER
+    output_sha256 = _capacity_digest(body.get("output_sha256"))
+    return {
+        "process_returncode": returncode,
+        "process_error": process_error,
+        "codex_event_type_counts": _capacity_codex_events(stdout),
+        "final_output_present": bool(final),
+        "trace_operation_counts": _capacity_trace_operations(body),
+        "stdout_sha256": (_sha_bytes(stdout) if stdout is not None else None),
+        "output_sha256": output_sha256,
+    }
+
+
+def _validate_capacity_failure_body(body: Mapping[str, object]) -> None:
+    """Keep the immutable public refusal artifact closed and type-safe."""
+    if type(body) is not dict or set(body) != _CAPACITY_FAILURE_KEYS:
+        raise ControllerError("capacity failure schema drift")
+    if body["schema"] != CAPACITY_FAILURE_SCHEMA \
+            or type(body["failure_kind"]) is not str \
+            or not body["failure_kind"]:
+        raise ControllerError("capacity failure identity drift")
+    coordinate = body["coordinate"]
+    if (type(coordinate) is not list or len(coordinate) != 3
+            or type(coordinate[0]) is not str
+            or type(coordinate[1]) is not int
+            or isinstance(coordinate[1], bool)
+            or type(coordinate[2]) is not int
+            or isinstance(coordinate[2], bool)):
+        raise ControllerError("capacity failure coordinate drift")
+    for key in ("workers", "worker", "game", "evidence_count",
+                "expected_team_count"):
+        if isinstance(body[key], bool) or not isinstance(body[key], int) \
+                or body[key] < 0 or (key == "workers" and body[key] == 0):
+            raise ControllerError("capacity failure count drift")
+    if body["worker"] >= body["workers"] or type(body["game"]) is not int:
+        raise ControllerError("capacity failure identity drift")
+    if body["reopened_status"] is not None \
+            and type(body["reopened_status"]) is not str:
+        raise ControllerError("capacity failure status drift")
+    for key in ("scientific_admissible", "collection_authorized"):
+        if type(body[key]) is not bool or body[key]:
+            raise ControllerError("capacity failure authority drift")
+    for key in ("opened", "retained"):
+        value = body[key]
+        if (type(value) is not dict
+                or set(value) != {"outcomes", "actions", "trajectories",
+                                  "model_prose"}
+                or any(type(item) is not bool or item for item in value.values())):
+            raise ControllerError("capacity failure privacy drift")
+    if body["authority"] != luna.AUTHORITY \
+            or type(body["authority"]) is not dict \
+            or any(type(value) is not bool or value
+                   for value in body["authority"].values()):
+        raise ControllerError("capacity failure authority drift")
+    classifications = body["evidence_classification"]
+    if (type(classifications) is not list
+            or body["evidence_count"] != len(classifications)
+            or body["expected_team_count"] != len(luna.TEAMS)):
+        raise ControllerError("capacity failure classification drift")
+    for item in classifications:
+        if type(item) is not dict or set(item) != _CAPACITY_CLASSIFICATION_KEYS:
+            raise ControllerError("capacity failure classification schema drift")
+        if (item["team"] is not None
+                and (isinstance(item["team"], bool)
+                     or not isinstance(item["team"], int))):
+            raise ControllerError("capacity failure team drift")
+        if item["execution_kind"] not in (
+                None, execution.PRODUCTION_EXECUTION_KIND,
+                execution.SYNTHETIC_EXECUTION_KIND):
+            raise ControllerError("capacity failure execution drift")
+        for key in ("actual_subprocess", "synthetic", "process_error_present"):
+            if type(item[key]) is not bool:
+                raise ControllerError("capacity failure classification type drift")
+        diagnostic = {key: item[key]
+                      for key in _CAPACITY_PROCESS_DIAGNOSTIC_KEYS}
+        returncode = diagnostic["process_returncode"]
+        if (returncode is not None
+                and (isinstance(returncode, bool) or not isinstance(returncode, int))):
+            raise ControllerError("capacity failure returncode drift")
+        process_error = diagnostic["process_error"]
+        if (process_error is not None
+                and (type(process_error) is not str
+                     or process_error not in _CAPACITY_PROCESS_ERRORS)
+                and process_error != _CAPACITY_PROCESS_ERROR_OTHER):
+            raise ControllerError("capacity failure process error drift")
+        for counts_key, allowed in (
+                ("codex_event_type_counts",
+                 _CAPACITY_CODEX_EVENT_TYPES | {_CAPACITY_OP_OTHER,
+                                                _CAPACITY_CODEX_OPAQUE}),
+                ("trace_operation_counts",
+                 _CAPACITY_TRACE_OPERATIONS | {_CAPACITY_OP_OTHER})):
+            counts = diagnostic[counts_key]
+            if (type(counts) is not dict
+                    or any(type(key) is not str or key not in allowed
+                           or isinstance(value, bool)
+                           or not isinstance(value, int) or value < 0
+                           for key, value in counts.items())):
+                raise ControllerError("capacity failure count schema drift")
+        if type(diagnostic["final_output_present"]) is not bool:
+            raise ControllerError("capacity failure final output drift")
+        for key in ("stdout_sha256", "output_sha256"):
+            if (diagnostic[key] is not None
+                    and _capacity_digest(diagnostic[key]) is None):
+                raise ControllerError("capacity failure hash drift")
 
 # Complete static local-Python import closure rooted at the collection CLI,
 # controller, execution adapter, and game implementation.  Keep this explicit:
@@ -122,6 +347,7 @@ class CapacityEvidenceRefusal(ControllerError):
                                       execution.SYNTHETIC_EXECUTION_KIND):
                 execution_kind = None
             team = getattr(item, "team", None)
+            diagnostic = _capacity_process_diagnostic(body)
             classifications.append({
                 "team": team if isinstance(team, int) and not isinstance(team, bool)
                 else None,
@@ -129,6 +355,7 @@ class CapacityEvidenceRefusal(ControllerError):
                 "actual_subprocess": body.get("actual_subprocess") is True,
                 "synthetic": body.get("synthetic") is True,
                 "process_error_present": body.get("process_error") is not None,
+                **diagnostic,
             })
         body = {
             "schema": CAPACITY_FAILURE_SCHEMA,
@@ -149,6 +376,7 @@ class CapacityEvidenceRefusal(ControllerError):
                           "trajectories": False, "model_prose": False},
             "authority": {key: False for key in luna.AUTHORITY},
         }
+        _validate_capacity_failure_body(body)
         self.body = body
         self.payload = {**body, "diagnostic_sha256": _sha(body)}
         super().__init__("capacity requires verified subprocess evidence")

@@ -423,8 +423,27 @@ def _overlap_runner(*, serialized: bool = False, incomplete: bool = False):
     return runner
 
 
+def _controlled_arm_clock(*durations_nanoseconds: int):
+    """Return deterministic start/finish pairs for successive capacity arms.
+
+    The overlap witnesses below still use real barriers and threads to prove
+    concurrent scheduling.  Their receipt arithmetic must not, however,
+    depend on unrelated load on the host running the test suite.
+    """
+    readings = []
+    now = 1_000_000_000
+    for duration in durations_nanoseconds:
+        readings.extend((now, now + duration))
+        now += duration + 1_000_000
+    iterator = iter(readings)
+    return lambda: next(iterator)
+
+
 def test_barrier_backed_overlap_passes_empirical_concurrency(monkeypatch):
     monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1, 2))
+    monkeypatch.setattr(
+        controller.time, "monotonic_ns",
+        _controlled_arm_clock(500_000_000, 500_000_000))
     receipt = controller.run_capacity(
         deadline_nanoseconds=1200 * 1_000_000_000,
         physical_memory_bytes=8_000_000_000,
@@ -435,6 +454,9 @@ def test_barrier_backed_overlap_passes_empirical_concurrency(monkeypatch):
 
 def test_serialized_probe_fails_empirical_concurrency_and_admits_none(monkeypatch):
     monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1, 2))
+    monkeypatch.setattr(
+        controller.time, "monotonic_ns",
+        _controlled_arm_clock(500_000_000, 1_000_000_000))
     receipt = controller.run_capacity(
         deadline_nanoseconds=1200 * 1_000_000_000,
         physical_memory_bytes=8_000_000_000,
@@ -455,6 +477,9 @@ def test_process_failure_or_incomplete_probe_fails_and_admits_none(monkeypatch):
 
 
 def test_passing_eight_selects_at_most_six(monkeypatch):
+    monkeypatch.setattr(
+        controller.time, "monotonic_ns",
+        _controlled_arm_clock(*((500_000_000,) * 5)))
     receipt = controller.run_capacity(
         deadline_nanoseconds=1200 * 1_000_000_000,
         physical_memory_bytes=8_000_000_000,

@@ -418,6 +418,41 @@ def test_real_deadline_interrupts_hung_operation():
                         lambda: time.sleep(.2))
 
 
+def test_operation_outputs_are_domain_separated_and_input_identity_refused(
+        monkeypatch):
+    fixture = FixtureV2(
+        {"score_free": True}, audit_raws=(
+            b'{"successor": {}, "root_seat": 0}',))
+    fixtures = (fixture,) * 32
+    ordered_input = runner._ordered_fixture_identity(fixtures)
+    fake_round = SimpleNamespace(phase="deal", trick=None, turn=0)
+    successor = {"schema": "world-afterstate-successor-v0",
+                 "output": "replayed-operation"}
+    monkeypatch.setattr(runner, "replay_canonical_successor",
+                        lambda snapshot: fake_round)
+    monkeypatch.setattr(runner, "canonical_successor",
+                        lambda value, root_seat: successor)
+    import shengji.rl.world_afterstate as world_afterstate
+    monkeypatch.setattr(world_afterstate, "reopen_afterstate_audit",
+                        lambda record: fake_round)
+
+    for stage in ("state-successor", "continuation-mechanics",
+                  "reconstruction"):
+        population_identities = []
+        for variant in (1, 2, 4):
+            outputs = tuple(runner._process_fixture((stage, variant, item))
+                            for item in fixtures)
+            population_identities.append(runner._sha(outputs))
+        assert len(set(population_identities)) == 1
+        assert population_identities[0] != ordered_input
+
+    monkeypatch.setattr(
+        runner, "_operation",
+        lambda stage, variant, value: lambda: fixture.fixture_sha256)
+    with pytest.raises(CapacityRunnerError, match="input identity"):
+        runner._process_fixture(("state-successor", 1, fixture))
+
+
 def test_torch_thread_arm_preserves_output_digest_and_restores_width():
     import torch
     before = torch.get_num_threads()

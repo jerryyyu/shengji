@@ -49,6 +49,13 @@ PREFLIGHT_ATTEMPT_CEILING = 384
 PREFLIGHT_WORKERS = HOST_CPUS
 SYNTHETIC_BRAND = "SYNTHETIC_TEST_MEASUREMENT_ONLY"
 RUNNER_SCHEMA = "world-afterstate-v2-capacity-runner-v1"
+OPERATION_OUTPUT_SCHEMA = "world-afterstate-v2-capacity-operation-output-v1"
+OPERATION_OUTPUT_DOMAIN = "world-afterstate-v2.capacity.operation-output"
+_OPERATION_OUTPUT_SCHEMAS = {
+    "state-successor": "world-afterstate-successor-v0",
+    "continuation-mechanics": "world-afterstate-successor-v0",
+    "reconstruction": "world-afterstate-v2-capacity-reconstruction-output-v1",
+}
 _PRODUCTION_PROVENANCE = object()
 _FULL_DAG_PROVENANCE = object()
 
@@ -643,7 +650,22 @@ class SyntheticMeasurementBackendV2:
         return value
 
 
-def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], None]:
+def _operation_output_identity(stage: str, output: Any) -> str:
+    """Digest an operation's actual output in a variant-independent domain."""
+    try:
+        output_schema = _OPERATION_OUTPUT_SCHEMAS[stage]
+    except KeyError as exc:
+        raise CapacityRunnerError("unknown capacity operation output stage") from exc
+    return _sha({
+        "schema": OPERATION_OUTPUT_SCHEMA,
+        "domain": OPERATION_OUTPUT_DOMAIN,
+        "stage": stage,
+        "output_schema": output_schema,
+        "output": output,
+    })
+
+
+def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Any]:
     """Construct a score-free operation from the current V2 primitives."""
     if stage in {"member-concurrency", "torch-threads-per-member"}:
         # Keep the low-level operation seam honest for callers that exercise
@@ -651,10 +673,10 @@ def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Non
         # retained fixture population.
         return _model_operation(stage, variant, (fixture,))
 
-    def run() -> None:
+    def run() -> Any:
         if stage == "state-successor":
             value = replay_canonical_successor(dict(fixture.snapshot))
-            return _sha(canonical_successor(value, 0))
+            return canonical_successor(value, 0)
         elif stage == "continuation-mechanics":
             # Replaying and applying legal afterstate transitions exercises the
             # continuation mechanics; points/outcomes are never serialized.
@@ -665,7 +687,7 @@ def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Non
                 actions = enumerate_actions(value, actor)
                 if actions:
                     value.play(actor, list(actions[0]))
-            return _sha(canonical_successor(value, 0))
+            return canonical_successor(value, 0)
         elif stage == "inference-batch":
             # The inference arm exercises the actual target-free model input
             # and forward path.  No training target, optimizer, or label is
@@ -698,20 +720,26 @@ def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Non
             return _sha(output)
         elif stage == "reconstruction":
             from .world_afterstate import reopen_afterstate_audit
-            outputs: list[str] = []
+            outputs: list[Any] = []
             for raw in fixture.audit_raws or (canonical_json_bytes(fixture.snapshot),):
                 hashlib.sha256(raw).digest()
                 try:
                     value = json.loads(raw.decode("ascii"))
                     if isinstance(value, dict) and "successor" in value:
                         reopened = reopen_afterstate_audit(value)
-                        outputs.append(_sha(canonical_successor(
-                            reopened, value["root_seat"])))
+                        outputs.append(canonical_successor(
+                            reopened, value["root_seat"]))
                     else:
-                        outputs.append(_sha_bytes(raw))
+                        outputs.append({
+                            "schema": "world-afterstate-v2-capacity-raw-audit-output-v1",
+                            "sha256": _sha_bytes(raw),
+                        })
                 except (UnicodeDecodeError, ValueError):
-                    outputs.append(_sha_bytes(raw))
-            return _sha(outputs)
+                    outputs.append({
+                        "schema": "world-afterstate-v2-capacity-raw-audit-output-v1",
+                        "sha256": _sha_bytes(raw),
+                    })
+            return outputs
         else:
             raise CapacityRunnerError("unknown capacity stage")
     return run
@@ -795,12 +823,15 @@ def _run_with_torch_threads(operation: Callable[[], str], variant: int) -> str:
 
 
 def _process_fixture(payload: tuple[str, int, FixtureV2]) -> str:
-    """Process worker entry point; only score-free ordered fixture identity returns."""
+    """Process one fixture and digest its actual score-free operation output."""
     stage, variant, fixture = payload
     output = _operation(stage, variant, fixture)()
-    if not isinstance(output, str) or len(output) != 64:
-        raise CapacityRunnerError("capacity operation output identity missing")
-    return output
+    # Check before domain separation so a producer returning the fixture's
+    # input identity cannot be hidden by the output-identity envelope.
+    if isinstance(output, str) and output == fixture.fixture_sha256:
+        raise CapacityRunnerError(
+            "capacity operation returned fixture input identity")
+    return _operation_output_identity(stage, output)
 
 
 def _parallel_operation(stage: str, variant: int,

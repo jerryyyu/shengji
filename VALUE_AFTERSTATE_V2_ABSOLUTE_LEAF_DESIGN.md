@@ -643,8 +643,13 @@ Publish exact model parameters, candidate distribution, per-epoch wall,
 composed peak memory, CPU utilization, and projected P0, label, train, audit,
 and reconstruction walls. The complete composed projection includes the
 optimizer canary, nested 25/50/100% data curve, natural cohort, and every
-learning-control cohort. It must be at most six hours, providing 2x measured
-headroom under the immutable 12-hour scientific service cap. GPU support is
+learning-control cohort. Reconstruction must reopen the immutable
+continuations and repeat audit scoring/control arithmetic exactly once,
+matching the scientific immediate verifier without rebuilding labels,
+continuations, or models. Later routine verification is receipt-only unless
+an explicit rescore is requested. The projection must be at most six hours,
+providing 2x measured headroom under the immutable 12-hour scientific service
+cap. GPU support is
 out of scope. The composed peak artifact projection must retain at least 25%
 free-disk headroom after temporary and final artifacts coexist.
 

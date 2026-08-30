@@ -77,7 +77,8 @@ _RECOVERY_CAPABILITY_NAMES = (
     "checkpoints_each_common_epoch", "deadline_truncation_keeps_complete_epoch",
     "audit_requires_complete_upstream", "audit_attempt_fsynced_before_open",
     "one_audit_open", "reconstruction_without_retraining",
-    "reconstruction_reuses_immutable_continuations")
+    "reconstruction_reuses_immutable_continuations",
+    "reconstruction_rederives_audit_arithmetic")
 
 
 class FullDAGCapacityDependencyBlocked(RuntimeError):
@@ -369,6 +370,7 @@ def run_full_dag_supervisor(
     evaluations: dict[tuple[str, int], Any] = {}
     audit_predictions: dict[tuple[str, int], dict[str, Any]] = {}
     audit_evaluations: dict[tuple[str, int], Any] = {}
+    audit_derivation_sha256: str | None = None
     capability_probes = {name: False for name in _RECOVERY_CAPABILITY_NAMES}
     progress_events: list[dict[str, Any]] = []
     training_invocations = 0
@@ -838,7 +840,7 @@ def run_full_dag_supervisor(
 
         measure("label-audit", open_audit_labels, 1)
 
-        def audit_cost() -> str:
+        def derive_audit_clone() -> tuple[dict[tuple[str, int], Any], str]:
             # Evaluate the deterministic audit clone with the same pure
             # evaluation/control arithmetic.  This is timing-only: no P0,
             # AuditDerivationInputV2, or terminal scientific receipt is
@@ -848,14 +850,30 @@ def run_full_dag_supervisor(
                 for row in bundle.candidates)
             evaluated = tuple(evaluate_v2(manifest, audit_outcomes, prior)
                               for manifest in audit_predictions.values())
-            for value in evaluated:
-                audit_evaluations[(value.control_name, value.seed_block)] = value
+            by_cohort = {(value.control_name, value.seed_block): value
+                         for value in evaluated}
+            comparisons = []
             for name, block in ((CONTROL_NAMES[0], 1),
                                 (CONTROL_NAMES[1], 1),
                                 (CONTROL_NAMES[2], 1),
                                 (CONTROL_NAMES[2], 2)):
-                natural = audit_evaluations[("natural", block)]
-                evaluate_control_difference(natural, audit_evaluations[(name, block)])
+                natural = by_cohort[("natural", block)]
+                comparisons.append(evaluate_control_difference(
+                    natural, by_cohort[(name, block)]))
+            derivation_sha = _sha({
+                "evaluations": [[name, block, value.sha256()]
+                                for (name, block), value in sorted(
+                                    by_cohort.items())],
+                "control_comparisons": [value.sha256()
+                                        for value in comparisons],
+            })
+            return by_cohort, derivation_sha
+
+        def audit_cost() -> str:
+            nonlocal audit_derivation_sha256
+            by_cohort, audit_derivation_sha256 = derive_audit_clone()
+            audit_evaluations.clear()
+            audit_evaluations.update(by_cohort)
             return identity
         measure("audit", audit_cost, 1)
 
@@ -892,6 +910,13 @@ def run_full_dag_supervisor(
             capability_probes["reconstruction_without_retraining"] = (
                 training_invocations == training_before)
             capability_probes["reconstruction_reuses_immutable_continuations"] = reused
+            # The scientific immediate verifier reopens the already-sealed
+            # predictions/outcomes and repeats audit arithmetic. Charge that
+            # work here without rebuilding any continuation.
+            _, reconstructed_sha = derive_audit_clone()
+            capability_probes["reconstruction_rederives_audit_arithmetic"] = (
+                audit_derivation_sha256 is not None
+                and reconstructed_sha == audit_derivation_sha256)
             return identity
         measure("reconstruction", reconstruct, 1)
 

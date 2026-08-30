@@ -23,7 +23,8 @@ def _capabilities():
         "checkpoints_each_common_epoch", "deadline_truncation_keeps_complete_epoch",
         "audit_requires_complete_upstream", "audit_attempt_fsynced_before_open",
         "one_audit_open", "reconstruction_without_retraining",
-        "reconstruction_reuses_immutable_continuations")}
+        "reconstruction_reuses_immutable_continuations",
+        "reconstruction_rederives_audit_arithmetic")}
 
 
 @dataclass
@@ -158,6 +159,11 @@ def test_default_or_false_recovery_capability_witness_is_not_admissible():
             walls, 1, FULL_DAG_STAGES, 0, True).validate()
     capabilities = _capabilities()
     capabilities["resume_same_admission"] = False
+    with pytest.raises(FullDAGCapacityDependencyBlocked, match="progress"):
+        FullDAGCapacityMeasurementV2(
+            walls, 1, FULL_DAG_STAGES, 0, True, capabilities).validate()
+    capabilities = _capabilities()
+    capabilities["reconstruction_rederives_audit_arithmetic"] = False
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="progress"):
         FullDAGCapacityMeasurementV2(
             walls, 1, FULL_DAG_STAGES, 0, True, capabilities).validate()

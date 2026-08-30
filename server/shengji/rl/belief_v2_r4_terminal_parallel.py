@@ -36,6 +36,7 @@ from .belief_v2_device_qualification import qualification_protocol_sha256
 from .belief_v2_input_index_controller import reopen_training_input_index
 from .belief_v2_progress import ProgressCallback
 from .belief_v2_r4_completion import (
+    PENDING_RECOVERY_ROUTE,
     R4CompletionAdmissionV1,
     R4CompletionSourceSpecV1,
     R4CompletionSourceV1,
@@ -43,10 +44,17 @@ from .belief_v2_r4_completion import (
     _completion_stage_gate,
     _process_tree_cpu_time_ns,
     _projection_pool,
+    _publish_or_validate_recovery_route_claim,
+    _recovery_route_claim_bytes,
     _recover_r4_completion_terminal_reopened,
+    _recover_r4_completion_terminal_pending_reopened,
+    _r4_completion_pending_recovery_review_claim_reopened,
+    _finalize_r4_completion_terminal_pending_reopened,
+    build_r4_completion_timeout_receipt_bytes,
     _warm_projection_pool,
     _reopen_r4_completion_terminal_reopened,
     _run_r4_completion_terminal_reopened,
+    _sealed_inner_tree_binding,
     load_r4_completion_source_spec,
     r4_completion_admission_from_bytes,
     reauthenticate_r4_completion_admission,
@@ -1134,7 +1142,7 @@ def reopen_r4_terminal_parallel(
         bound_calibration_manifest=calibration,
         parallel_integrity_workers=(
             INDEPENDENT_VERIFIER_INTEGRITY_WORKERS),
-        progress=progress)
+        repo=repo, progress=progress)
 
 
 def recover_r4_terminal_parallel(
@@ -1157,6 +1165,130 @@ def recover_r4_terminal_parallel(
         progress=progress)
 
 
+def r4_terminal_parallel_timeout_receipt(
+        root: Path, freeze: V2ExecutionFreezeV1,
+        admission: R4CompletionAdmissionV1, *, repo: Path,
+        review_marker: bytes, service_unit: str,
+        observed_at_unix_nanoseconds: int, runtime_max_microseconds: int,
+        active_state: str, service_result: str, main_pid: int,
+        restart_count: int) -> bytes:
+    """Build the no-authority timeout receipt from authenticated inputs."""
+    terminal_spec, calibration_import = _stage(
+        root, freeze, admission, repo=repo, review_marker=review_marker)
+    attempt = root / "r4-completion-test-attempt.json"
+    final = root / "terminal"
+    forbidden = (
+        root / "terminal.partial", root / "r4-completion-terminal.json",
+        root / "r4-completion-timeout-receipt.json",
+        root / "r4-completion-terminal.pending.json",
+        root / "r4-completion-pending-recovery-tombstone.json",
+        root / "r4-completion-pending-verifier-attempt.json",
+        root / "r4-completion-pending-verifier-receipt.json",
+    )
+    if attempt.is_symlink() or not attempt.is_file() \
+            or final.is_symlink() or not final.is_dir() \
+            or any(path.exists() or path.is_symlink()
+                   for path in forbidden):
+        raise BeliefV2R4TerminalParallelError(
+            "R4 terminal timeout receipt namespace is not eligible")
+    _calibration, source, _selection = reopen_bound_imported_calibration(
+        terminal_spec, calibration_import, repo=repo)
+    fresh_receipt_raw = build_r4_completion_timeout_receipt_bytes(
+        completion_freeze=freeze, completion_admission=admission,
+        source=source, service_unit=service_unit,
+        observed_at_unix_nanoseconds=observed_at_unix_nanoseconds,
+        runtime_max_microseconds=runtime_max_microseconds,
+        active_state=active_state, service_result=service_result,
+        main_pid=main_pid, restart_count=restart_count)
+    attempt_raw = stable_read_bytes(attempt)
+    inner_tree = _sealed_inner_tree_binding(final)
+    route_claim_path = root / "r4-completion-recovery-route-claim.json"
+    receipt_raw = fresh_receipt_raw
+    if route_claim_path.exists() or route_claim_path.is_symlink():
+        if route_claim_path.is_symlink() or not route_claim_path.is_file():
+            raise BeliefV2R4TerminalParallelError(
+                "R4 terminal timeout route claim is invalid")
+        claim_raw = stable_read_bytes(route_claim_path)
+        try:
+            claim = json.loads(claim_raw.decode("ascii"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BeliefV2R4TerminalParallelError(
+                "R4 terminal timeout route claim is not JSON") from exc
+        bound_observed_at = claim.get(
+            "timeout_receipt_observed_at_unix_nanoseconds")
+        if claim.get("route") != PENDING_RECOVERY_ROUTE \
+                or type(bound_observed_at) is not int \
+                or canonical_json_bytes(claim) != claim_raw:
+            raise BeliefV2R4TerminalParallelError(
+                "R4 terminal timeout route claim cannot resume")
+        receipt_raw = build_r4_completion_timeout_receipt_bytes(
+            completion_freeze=freeze, completion_admission=admission,
+            source=source, service_unit=service_unit,
+            observed_at_unix_nanoseconds=bound_observed_at,
+            runtime_max_microseconds=runtime_max_microseconds,
+            active_state=active_state, service_result=service_result,
+            main_pid=main_pid, restart_count=restart_count)
+    route_claim_raw = _recovery_route_claim_bytes(
+        completion_freeze=freeze, completion_admission=admission,
+        source=source, completion_attempt_raw=attempt_raw,
+        inner_tree=inner_tree, route=PENDING_RECOVERY_ROUTE,
+        timeout_receipt_raw=receipt_raw)
+    _publish_or_validate_recovery_route_claim(root, route_claim_raw)
+    return receipt_raw
+
+
+def r4_terminal_parallel_pending_recovery_review_claim(
+        root: Path, freeze: V2ExecutionFreezeV1,
+        admission: R4CompletionAdmissionV1, *, repo: Path,
+        review_marker: bytes,
+        recovery_execution: dict[str, Any]) -> dict[str, Any]:
+    """Derive the exact pending-recovery marker claim without outcomes."""
+    terminal_spec, calibration_import = _stage(
+        root, freeze, admission, repo=repo, review_marker=review_marker)
+    calibration, source, _selection = reopen_bound_imported_calibration(
+        terminal_spec, calibration_import, repo=repo)
+    return _r4_completion_pending_recovery_review_claim_reopened(
+        root, freeze, admission, calibration=calibration, source=source,
+        recovery_execution=recovery_execution)
+
+
+def recover_r4_terminal_parallel_pending(
+        root: Path, freeze: V2ExecutionFreezeV1,
+        admission: R4CompletionAdmissionV1, *, repo: Path,
+        review_marker: bytes, recovery_review_commit: str,
+        recovery_execution: dict[str, Any]) -> dict[str, Any]:
+    """Publish only the outcome-blind pending recovery binding."""
+    terminal_spec, calibration_import = _stage(
+        root, freeze, admission, repo=repo, review_marker=review_marker)
+    calibration, source, _selection = reopen_bound_imported_calibration(
+        terminal_spec, calibration_import, repo=repo)
+    return _recover_r4_completion_terminal_pending_reopened(
+        root, freeze, admission, calibration=calibration, source=source,
+        repo=repo, recovery_review_commit=recovery_review_commit,
+        recovery_execution=recovery_execution)
+
+
+def finalize_r4_terminal_parallel_pending(
+        root: Path, freeze: V2ExecutionFreezeV1,
+        admission: R4CompletionAdmissionV1, *, repo: Path,
+        review_marker: bytes, recovery_review_commit: str,
+        recovery_execution: dict[str, Any],
+        progress: ProgressCallback | None = None) -> dict[str, Any]:
+    """Run the sole verifier and publish the ordinary terminal binding."""
+    terminal_spec, calibration_import = _stage(
+        root, freeze, admission, repo=repo, review_marker=review_marker)
+    calibration, source, selection = reopen_bound_imported_calibration(
+        terminal_spec, calibration_import, repo=repo)
+    return _finalize_r4_completion_terminal_pending_reopened(
+        root, freeze, admission, calibration=calibration, source=source,
+        repo=repo, recovery_review_commit=recovery_review_commit,
+        recovery_execution=recovery_execution,
+        calibration_directory=selection,
+        bound_calibration_manifest=calibration,
+        parallel_integrity_workers=INDEPENDENT_VERIFIER_INTEGRITY_WORKERS,
+        progress=progress)
+
+
 __all__ = [
     "BeliefV2R4TerminalParallelError", "R4TerminalCalibrationImportV1",
     "build_r4_terminal_calibration_import",
@@ -1165,6 +1297,10 @@ __all__ = [
     "r4_terminal_parallel_capacity", "reopen_r4_terminal_parallel_capacity",
     "r4_terminal_parallel_readiness", "reopen_bound_imported_calibration",
     "reopen_imported_calibration",
+    "r4_terminal_parallel_timeout_receipt",
+    "r4_terminal_parallel_pending_recovery_review_claim",
+    "recover_r4_terminal_parallel_pending",
+    "finalize_r4_terminal_parallel_pending",
     "recover_r4_terminal_parallel", "reopen_r4_terminal_parallel",
     "run_r4_terminal_parallel",
 ]

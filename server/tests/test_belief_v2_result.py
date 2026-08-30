@@ -459,6 +459,35 @@ def _completion_admission(freeze):
         evidence_root=freeze.evidence_root)
 
 
+def _recovery_execution(freeze, admission):
+    return {
+        **R4_COMPLETION.expected_r4_recovery_execution_review_claim(
+            freeze, admission, recovery_execution_git="f" * 40,
+            recovery_source_manifest_sha256=_sha("recovery-source"),
+            terminal_source_spec_sha256=_sha("terminal-spec"),
+            calibration_import_sha256=_sha("calibration-import"),
+            capacity_sha256=_sha("capacity")),
+        "source_review_commit": "e" * 40,
+        "source_review_marker_sha256": _sha("recovery-review-marker"),
+    }
+
+
+def test_r4_recovery_execution_identity_reconstructs_review_claim():
+    freeze = _freeze()
+    admission = _completion_admission(freeze)
+    identity = _recovery_execution(freeze, admission)
+    R4_COMPLETION._validate_recovery_execution_identity(
+        identity, freeze=freeze, admission=admission)
+
+    forged = dict(identity)
+    forged["recovery_runtime_sha256"] = _sha("different-runtime")
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="claim reconstruction drift"):
+        R4_COMPLETION._validate_recovery_execution_identity(
+            forged, freeze=freeze, admission=admission)
+
+
 def _completion_source_spec(destination: Path, source: Path):
     return R4_COMPLETION.R4CompletionSourceSpecV1(
         destination_evidence_root=destination,
@@ -1056,16 +1085,40 @@ def test_r4_terminal_wrappers_forward_bound_calibration_to_every_replay(
     monkeypatch.setattr(
         R4_PARALLEL, "_recover_r4_completion_terminal_reopened",
         record("recover"))
+    monkeypatch.setattr(
+        R4_PARALLEL,
+        "_r4_completion_pending_recovery_review_claim_reopened",
+        record("pending-claim"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_recover_r4_completion_terminal_pending_reopened",
+        record("pending"))
+    monkeypatch.setattr(
+        R4_PARALLEL, "_finalize_r4_completion_terminal_pending_reopened",
+        record("finalize-pending"))
 
     common = dict(repo=tmp_path.resolve(), review_marker=b"review")
+    recovery_execution = _recovery_execution(freeze, admission)
     assert R4_PARALLEL.run_r4_terminal_parallel(
         root, freeze, admission, **common) == {"label": "run"}
     assert R4_PARALLEL.reopen_r4_terminal_parallel(
         root, freeze, admission, **common) == {"label": "reopen"}
     assert R4_PARALLEL.recover_r4_terminal_parallel(
         root, freeze, admission, **common) == {"label": "recover"}
-    assert [label for label, _, _ in calls] == ["run", "reopen", "recover"]
-    for _, _, kwargs in calls:
+    assert R4_PARALLEL.r4_terminal_parallel_pending_recovery_review_claim(
+        root, freeze, admission, **common,
+        recovery_execution=recovery_execution) == {"label": "pending-claim"}
+    assert R4_PARALLEL.recover_r4_terminal_parallel_pending(
+        root, freeze, admission, **common,
+        recovery_review_commit="e" * 40,
+        recovery_execution=recovery_execution) == {"label": "pending"}
+    assert R4_PARALLEL.finalize_r4_terminal_parallel_pending(
+        root, freeze, admission, **common,
+        recovery_review_commit="e" * 40,
+        recovery_execution=recovery_execution) == {"label": "finalize-pending"}
+    assert [label for label, _, _ in calls] == [
+        "run", "reopen", "recover", "pending-claim", "pending",
+        "finalize-pending"]
+    for _, _, kwargs in calls[:3]:
         assert kwargs["calibration"] is calibration
         assert kwargs["bound_calibration_manifest"] is calibration
         assert kwargs["calibration_directory"] == selection
@@ -1074,6 +1127,138 @@ def test_r4_terminal_wrappers_forward_bound_calibration_to_every_replay(
         == R4_PARALLEL.INDEPENDENT_VERIFIER_INTEGRITY_WORKERS
     assert calls[2][2]["parallel_integrity_workers"] \
         == R4_PARALLEL.INDEPENDENT_VERIFIER_INTEGRITY_WORKERS
+    for _, _, kwargs in calls[3:]:
+        assert kwargs["calibration"] is calibration
+        assert kwargs["source"] is source
+    assert calls[4][2]["repo"] == tmp_path.resolve()
+    assert calls[4][2]["recovery_review_commit"] == "e" * 40
+    assert all(call[2]["recovery_execution"] is recovery_execution
+               for call in calls[3:])
+    assert calls[5][2]["calibration_directory"] == selection
+    assert calls[5][2]["bound_calibration_manifest"] is calibration
+    assert calls[5][2]["parallel_integrity_workers"] \
+        == R4_PARALLEL.INDEPENDENT_VERIFIER_INTEGRITY_WORKERS
+
+
+def test_r4_terminal_timeout_receipt_wrapper_checks_namespace(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "terminal").resolve()
+    root.mkdir()
+    attempt_path = root / "r4-completion-test-attempt.json"
+    attempt_path.write_bytes(b"attempt\n")
+    attempt_path.chmod(0o400)
+    (root / "terminal").mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    source = object()
+    monkeypatch.setattr(
+        R4_PARALLEL, "_stage", lambda *args, **kwargs: (object(), object()))
+    monkeypatch.setattr(
+        R4_PARALLEL, "reopen_bound_imported_calibration",
+        lambda *args, **kwargs: ({}, source, tmp_path / "selection"))
+    calls = []
+
+    def build(**kwargs):
+        calls.append(kwargs)
+        return canonical_json_bytes({
+            "observed_at_unix_nanoseconds":
+                kwargs["observed_at_unix_nanoseconds"]})
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "build_r4_completion_timeout_receipt_bytes", build)
+    monkeypatch.setattr(
+        R4_PARALLEL, "_sealed_inner_tree_binding",
+        lambda path: {"tree_sha256": _sha("tree")})
+    monkeypatch.setattr(
+        R4_PARALLEL, "_recovery_route_claim_bytes",
+        lambda **kwargs: canonical_json_bytes({
+            "route": R4_COMPLETION.PENDING_RECOVERY_ROUTE,
+            "timeout_receipt_observed_at_unix_nanoseconds": json.loads(
+                kwargs["timeout_receipt_raw"])[
+                    "observed_at_unix_nanoseconds"]}))
+    route_claims = []
+
+    def publish_claim(candidate, raw):
+        route_claims.append((candidate, raw))
+        path = candidate / "r4-completion-recovery-route-claim.json"
+        if path.exists():
+            assert path.read_bytes() == raw
+        else:
+            path.write_bytes(raw)
+            path.chmod(0o400)
+
+    monkeypatch.setattr(
+        R4_PARALLEL, "_publish_or_validate_recovery_route_claim",
+        publish_claim)
+    receipt = R4_PARALLEL.r4_terminal_parallel_timeout_receipt(
+        root, freeze, admission, repo=tmp_path.resolve(),
+        review_marker=b"review", service_unit="unit",
+        observed_at_unix_nanoseconds=1, runtime_max_microseconds=2,
+        active_state="failed", service_result="timeout", main_pid=0,
+        restart_count=0)
+    assert json.loads(receipt)["observed_at_unix_nanoseconds"] == 1
+    assert len(route_claims) == 1
+    resumed = R4_PARALLEL.r4_terminal_parallel_timeout_receipt(
+        root, freeze, admission, repo=tmp_path.resolve(),
+        review_marker=b"review", service_unit="unit",
+        observed_at_unix_nanoseconds=2, runtime_max_microseconds=2,
+        active_state="failed", service_result="timeout", main_pid=0,
+        restart_count=0)
+    assert resumed == receipt
+    assert len(route_claims) == 2
+    assert route_claims[1] == route_claims[0]
+    expected_call = {
+        "completion_freeze": freeze,
+        "completion_admission": admission,
+        "source": source,
+        "service_unit": "unit",
+        "observed_at_unix_nanoseconds": 1,
+        "runtime_max_microseconds": 2,
+        "active_state": "failed",
+        "service_result": "timeout",
+        "main_pid": 0,
+        "restart_count": 0,
+    }
+    assert calls[0] == expected_call
+    assert calls[1]["observed_at_unix_nanoseconds"] == 2
+    assert calls[2] == expected_call
+    (root / "r4-completion-terminal.json").write_bytes(b"outer\n")
+    with pytest.raises(
+            R4_PARALLEL.BeliefV2R4TerminalParallelError,
+            match="namespace is not eligible"):
+        R4_PARALLEL.r4_terminal_parallel_timeout_receipt(
+            root, freeze, admission, repo=tmp_path.resolve(),
+            review_marker=b"review", service_unit="unit",
+            observed_at_unix_nanoseconds=1, runtime_max_microseconds=2,
+            active_state="failed", service_result="timeout", main_pid=0,
+            restart_count=0)
+    assert len(calls) == 3
+
+
+def test_r4_timeout_receipt_refuses_non_timeout_service_result(tmp_path):
+    root = (tmp_path / "terminal").resolve()
+    source_root = (tmp_path / "source").resolve()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source = SimpleNamespace(
+        spec=_completion_source_spec(root, source_root),
+        freeze=source_freeze, admission=_admission(source_freeze),
+        inventory={}, group_split={})
+    common = dict(
+        completion_freeze=freeze, completion_admission=admission,
+        source=source,
+        service_unit=(
+            "belief-r4-terminal-scientific-56bd35f-r1.service"),
+        observed_at_unix_nanoseconds=1,
+        runtime_max_microseconds=172_800_000_000,
+        active_state="failed", main_pid=0, restart_count=0)
+
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="timeout receipt observation drift"):
+        R4_COMPLETION.build_r4_completion_timeout_receipt_bytes(
+            **common, service_result="exit-code")
 
 
 def test_r4_terminal_parity_coordinates_cover_every_rank_without_test():
@@ -1423,9 +1608,9 @@ def test_r4_terminal_runner_refuses_unexpected_root_entry_before_read(
         (root / name).write_bytes(b"placeholder\n")
     (root / "smuggled.json").write_bytes(b"{}\n")
     monkeypatch.setattr(
-        runner, "load_terminal_source_spec",
-        lambda: SimpleNamespace(destination_evidence_root=root))
-    monkeypatch.setattr(runner, "load_calibration_import", lambda: object())
+        runner, "_repository_protocol_inputs",
+        lambda repo: (
+            SimpleNamespace(destination_evidence_root=root), object()))
 
     with pytest.raises(ValueError, match="evidence root shape drift"):
         runner._load_root(root)
@@ -1478,9 +1663,9 @@ def test_r4_terminal_runner_reopens_frozen_capacity_at_stage_gate(
         preflight_runtime_sha256=_sha("runtime"), execution_git="a" * 40,
         source_bindings=(), runtime=object())
     monkeypatch.setattr(
-        runner, "load_terminal_source_spec",
-        lambda: SimpleNamespace(destination_evidence_root=root))
-    monkeypatch.setattr(runner, "load_calibration_import", lambda: object())
+        runner, "_repository_protocol_inputs",
+        lambda repo: (
+            SimpleNamespace(destination_evidence_root=root), object()))
     monkeypatch.setattr(
         runner, "execution_freeze_from_bytes", lambda raw: freeze)
     monkeypatch.setattr(
@@ -1529,6 +1714,11 @@ def test_r4_terminal_runner_wires_sealed_result_recovery(tmp_path, monkeypatch):
         runner, "_load_root",
         lambda candidate: (freeze, admission, marker))
     monkeypatch.setattr(
+        runner, "_systemd_service_properties",
+        lambda: {"ActiveState": "failed", "SubState": "failed",
+                 "Result": "exit-code", "MainPID": "0",
+                 "NRestarts": "0", "RuntimeMaxUSec": "2d"})
+    monkeypatch.setattr(
         R4_PARALLEL, "_stage",
         lambda *args, **kwargs: (terminal_spec, imported))
     monkeypatch.setattr(
@@ -1556,6 +1746,162 @@ def test_r4_terminal_runner_wires_sealed_result_recovery(tmp_path, monkeypatch):
     assert calls[0][1]["source"] is source
     assert calls[0][1]["calibration_directory"] == selection
     assert callable(calls[0][1]["progress"])
+    monkeypatch.setattr(
+        runner, "_systemd_service_properties",
+        lambda: {"ActiveState": "failed", "SubState": "failed",
+                 "Result": "timeout", "MainPID": "0",
+                 "NRestarts": "0", "RuntimeMaxUSec": "2d"})
+    with pytest.raises(
+            ValueError,
+            match="timed-out terminal requires reviewed pending recovery"):
+        parsed.function(parsed)
+    assert len(calls) == 1
+    monkeypatch.setattr(
+        runner, "_systemd_service_properties",
+        lambda: {"ActiveState": "active", "SubState": "running",
+                 "Result": "success", "MainPID": "123",
+                 "NRestarts": "0", "RuntimeMaxUSec": "2d"})
+    with pytest.raises(
+            ValueError,
+            match="requires an inactive scientific service"):
+        parsed.function(parsed)
+    assert len(calls) == 1
+
+
+def test_r4_terminal_runner_timeout_observation_is_exact(monkeypatch):
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_terminal_parallel_timeout_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append((command, kwargs))
+        return SimpleNamespace(stdout=(
+            "ActiveState=failed\n"
+            "SubState=failed\n"
+            "Result=timeout\n"
+            "MainPID=0\n"
+            "NRestarts=0\n"
+            "RuntimeMaxUSec=2d\n"))
+
+    monkeypatch.setattr(runner.subprocess, "run", run)
+    monkeypatch.setattr(runner.time, "time_ns", lambda: 123)
+    observation = runner._systemd_timeout_observation()
+    assert observation == {
+        "service_unit": runner.R4_SCIENTIFIC_SERVICE,
+        "observed_at_unix_nanoseconds": 123,
+        "runtime_max_microseconds": 172_800_000_000,
+        "active_state": "failed",
+        "service_result": "timeout",
+        "main_pid": 0,
+        "restart_count": 0,
+    }
+    assert seen[0][0][:3] == (
+        "systemctl", "show", runner.R4_SCIENTIFIC_SERVICE)
+    assert seen[0][1] == {
+        "check": True, "capture_output": True, "text": True}
+    parsed = runner.parser().parse_args([
+        "build-timeout-receipt", "--root", "/tmp/root",
+        "--sealed-repo", "/tmp/sealed", "--recovery-execution-git",
+        "a" * 40, "--recovery-source-review-commit", "b" * 40])
+    assert parsed.function is runner.build_timeout_receipt
+
+    def wrong_runtime(*args, **kwargs):
+        return SimpleNamespace(stdout=(
+            "ActiveState=failed\nSubState=failed\nResult=timeout\n"
+            "MainPID=0\nNRestarts=0\nRuntimeMaxUSec=1d\n"))
+
+    monkeypatch.setattr(runner.subprocess, "run", wrong_runtime)
+    with pytest.raises(ValueError, match="systemd observation drift"):
+        runner._systemd_timeout_observation()
+
+
+def test_r4_terminal_runner_binds_distinct_sealed_and_recovery_repositories(
+        tmp_path, monkeypatch):
+    """Old evidence is authenticated by old source; new code by new source."""
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_dual_repository_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    sealed_repo = (tmp_path / "sealed").resolve()
+    recovery_repo = (tmp_path / "recovery").resolve()
+    sealed_repo.mkdir()
+    recovery_repo.mkdir()
+    root = (tmp_path / "evidence").resolve()
+    freeze = SimpleNamespace(
+        execution_git="a" * 40, runtime=object())
+    admission = object()
+    marker = b"old-review"
+    terminal_spec = SimpleNamespace(sha256=lambda: _sha("terminal-spec"))
+    calibration_import = SimpleNamespace(
+        sha256=lambda: _sha("calibration-import"))
+    calls = []
+
+    monkeypatch.setattr(runner, "REPO", recovery_repo)
+    monkeypatch.setattr(
+        runner, "_load_root",
+        lambda candidate, *, repo: (
+            calls.append(("old-root", candidate, repo))
+            or (freeze, admission, marker)))
+    monkeypatch.setattr(
+        runner, "_repository_protocol_inputs",
+        lambda repo: (
+            calls.append(("new-inputs", repo))
+            or (terminal_spec, calibration_import)))
+    monkeypatch.setattr(
+        runner, "build_source_bindings",
+        lambda repo, *, expected_git: (
+            calls.append(("new-bindings", repo, expected_git)) or ()))
+    monkeypatch.setattr(
+        runner, "source_manifest_sha256",
+        lambda execution_git, bindings: _sha("recovery-source"))
+    monkeypatch.setattr(
+        runner, "validate_live_execution",
+        lambda **kwargs: calls.append((
+            "new-runtime", kwargs["repo"], kwargs["execution_git"])))
+    monkeypatch.setattr(
+        runner, "stable_read_bytes", lambda path: b"capacity\n")
+
+    reopened = runner._recovery_review_inputs(
+        root, sealed_repo=sealed_repo,
+        recovery_execution_git="b" * 40)
+    assert reopened[:4] == (freeze, admission, marker, sealed_repo)
+    assert ("old-root", root, sealed_repo) in calls
+    assert ("new-inputs", recovery_repo) in calls
+    assert ("new-bindings", recovery_repo, "b" * 40) in calls
+    assert ("new-runtime", recovery_repo, "b" * 40) in calls
+
+    with pytest.raises(ValueError, match="dual execution identity drift"):
+        runner._recovery_review_inputs(
+            root, sealed_repo=recovery_repo,
+            recovery_execution_git="b" * 40)
+
+
+def test_r4_terminal_runner_refuses_symlinked_sealed_repository(
+        tmp_path):
+    script = Path(__file__).parents[1] / "scripts" / (
+        "belief_v2_r4_terminal_parallel.py")
+    spec = importlib.util.spec_from_file_location(
+        "belief_v2_r4_symlinked_repository_test", script)
+    assert spec is not None and spec.loader is not None
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+
+    actual = (tmp_path / "actual").resolve()
+    actual.mkdir()
+    linked = tmp_path / "linked"
+    linked.symlink_to(actual, target_is_directory=True)
+    with pytest.raises(ValueError, match="repository identity drift"):
+        runner._strict_recovery_repo(
+            linked.absolute(), label="sealed scientific")
 
 
 def test_test_scorer_reports_exact_outcome_blind_population_progress(
@@ -2192,6 +2538,355 @@ def test_r4_completion_terminal_round_trip_binds_fresh_and_source_runs(
         R4_COMPLETION.reopen_r4_completion_terminal(
             root, completion_freeze, completion_admission,
             repo=Path("/unused"), review_marker=b"review")
+
+
+def test_r4_pending_verifier_crash_before_receipt_cannot_retry(
+        tmp_path, monkeypatch):
+    root = (tmp_path / "completion").resolve()
+    root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    source = SimpleNamespace(
+        freeze=_freeze(), admission=_admission(_freeze()),
+        inventory={}, group_split={}, spec=SimpleNamespace(
+            source_tensor_cache_manifest_sha256=_sha("cache")))
+    pending_raw = canonical_json_bytes({"pending": True})
+    timeout_raw = canonical_json_bytes({"timeout": True})
+    inner_tree = {
+        "tree_sha256": _sha("tree"),
+        "manifest_sha256": _sha("manifest"),
+    }
+    recovery_marker = b"marker\n"
+    monkeypatch.setattr(
+        R4_COMPLETION, "_reopen_pending_recovery_controls",
+        lambda *args, **kwargs: (
+            canonical_json_bytes({"attempt": True}), timeout_raw,
+            inner_tree, pending_raw, recovery_marker))
+    verifier_calls = 0
+
+    def crash(*args, **kwargs):
+        nonlocal verifier_calls
+        verifier_calls += 1
+        assert (root / (
+            "r4-completion-pending-verifier-attempt.json")).is_file()
+        raise RuntimeError("injected verifier crash")
+
+    monkeypatch.setattr(R4_COMPLETION, "reopen_v2_terminal", crash)
+    kwargs = dict(
+        calibration={}, source=source, repo=tmp_path.resolve(),
+        recovery_review_commit="e" * 40,
+        recovery_execution=_recovery_execution(freeze, admission),
+        calibration_directory=tmp_path / "selection")
+    with pytest.raises(RuntimeError, match="verifier crash"):
+        R4_COMPLETION._finalize_r4_completion_terminal_pending_reopened(
+            root, freeze, admission, **kwargs)
+    assert verifier_calls == 1
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="attempt is already consumed"):
+        R4_COMPLETION._finalize_r4_completion_terminal_pending_reopened(
+            root, freeze, admission, **kwargs)
+    assert verifier_calls == 1
+
+
+def test_r4_recovery_route_claim_closes_check_to_publish_race(
+        tmp_path, monkeypatch):
+    """Timeout cannot claim the route in ordinary recovery's publish window."""
+    root = (tmp_path / "completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    root.mkdir()
+    source_root.mkdir()
+    freeze = replace(_freeze(), evidence_root=str(root))
+    admission = _completion_admission(freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source = SimpleNamespace(
+        spec=_completion_source_spec(root, source_root),
+        freeze=source_freeze, admission=_admission(source_freeze),
+        inventory={}, group_split={})
+    calibration = {"schema": "sealed-calibration"}
+    attempt = R4_COMPLETION._completion_test_attempt(
+        completion_freeze=freeze, completion_admission=admission,
+        source=source, source_calibration_manifest=calibration)
+    attempt_path = root / "r4-completion-test-attempt.json"
+    attempt_path.write_bytes(canonical_json_bytes(attempt))
+    attempt_path.chmod(0o400)
+    (root / "terminal").mkdir()
+    monkeypatch.setattr(
+        R4_COMPLETION, "_sealed_inner_tree_binding",
+        lambda path: {"tree_sha256": _sha("ordinary-tree")})
+
+    def reconstruct(*args, **kwargs):
+        return {"schema": "inner", "terminal_route": PASS_B3}
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_v2_terminal",
+        reconstruct)
+    original_publish = R4_COMPLETION.publish_exclusive_bytes
+    timeout_claim_refused = False
+
+    def race_at_outer_publish(path, raw):
+        nonlocal timeout_claim_refused
+        if path == root / "r4-completion-terminal.json":
+            timeout_receipt = (
+                R4_COMPLETION.build_r4_completion_timeout_receipt_bytes(
+                    completion_freeze=freeze,
+                    completion_admission=admission, source=source,
+                    service_unit=(
+                        "belief-r4-terminal-scientific-56bd35f-r1.service"),
+                    observed_at_unix_nanoseconds=1,
+                    runtime_max_microseconds=172_800_000_000,
+                    active_state="failed", service_result="timeout",
+                    main_pid=0, restart_count=0))
+            timeout_claim = R4_COMPLETION._recovery_route_claim_bytes(
+                completion_freeze=freeze, completion_admission=admission,
+                source=source, completion_attempt_raw=attempt_path.read_bytes(),
+                inner_tree={"tree_sha256": _sha("ordinary-tree")},
+                route=R4_COMPLETION.PENDING_RECOVERY_ROUTE,
+                timeout_receipt_raw=timeout_receipt)
+            with pytest.raises(
+                    R4_COMPLETION.BeliefV2R4CompletionError,
+                    match="already claimed"):
+                R4_COMPLETION._publish_or_validate_recovery_route_claim(
+                    root, timeout_claim)
+            timeout_claim_refused = True
+        return original_publish(path, raw)
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "publish_exclusive_bytes", race_at_outer_publish)
+    outer = R4_COMPLETION._recover_r4_completion_terminal_reopened(
+        root, freeze, admission, calibration=calibration,
+        source=source, calibration_directory=tmp_path / "selection")
+    assert timeout_claim_refused is True
+    assert outer["recovery_route"] == R4_COMPLETION.ORDINARY_RECOVERY_ROUTE
+    assert (root / "r4-completion-terminal.json").is_file()
+    assert not (root / "r4-completion-timeout-receipt.json").exists()
+
+
+def test_r4_timeout_pending_recovery_is_outcome_blind_and_verifies_once(
+        tmp_path, monkeypatch):
+    """Witness the complete timeout wiring, including crash after receipt."""
+    root = (tmp_path / "completion").resolve()
+    source_root = (tmp_path / "source").resolve()
+    root.mkdir()
+    source_root.mkdir()
+    completion_freeze = replace(_freeze(), evidence_root=str(root))
+    completion_admission = _completion_admission(completion_freeze)
+    source_freeze = replace(_freeze(), evidence_root=str(source_root))
+    source_admission = _admission(source_freeze)
+    spec = _completion_source_spec(root, source_root)
+    source = SimpleNamespace(
+        spec=spec, freeze=source_freeze, admission=source_admission,
+        inventory={}, group_split={})
+    calibration = {
+        "schema": "sealed-calibration",
+        "selected_cohort_id": "synthetic-primary",
+    }
+    attempt = R4_COMPLETION._completion_test_attempt(
+        completion_freeze=completion_freeze,
+        completion_admission=completion_admission, source=source,
+        source_calibration_manifest=calibration)
+    attempt_path = root / "r4-completion-test-attempt.json"
+    attempt_path.write_bytes(canonical_json_bytes(attempt))
+    attempt_path.chmod(0o400)
+    final = root / "terminal"
+    final.mkdir()
+    inner_manifest = {
+        "schema": "sealed-inner-terminal",
+        "terminal_route": PASS_B3,
+    }
+    filenames = {
+        "attempt.json", "manifest.json",
+        *R4_COMPLETION.TEST_POPULATION_FILES.values(),
+        *R4_COMPLETION.STATISTIC_FILES.values(),
+    }
+    for name in filenames:
+        raw = canonical_json_bytes(
+            inner_manifest if name == "manifest.json" else {"file": name})
+        path = final / name
+        path.write_bytes(raw)
+        path.chmod(0o400)
+    timeout_raw = R4_COMPLETION.build_r4_completion_timeout_receipt_bytes(
+        completion_freeze=completion_freeze,
+        completion_admission=completion_admission, source=source,
+        service_unit=(
+            "belief-r4-terminal-scientific-56bd35f-r1.service"),
+        observed_at_unix_nanoseconds=1,
+        runtime_max_microseconds=172_800_000_000,
+        active_state="failed", service_result="timeout", main_pid=0,
+        restart_count=0)
+    timeout_path = root / "r4-completion-timeout-receipt.json"
+    timeout_path.write_bytes(timeout_raw)
+    timeout_path.chmod(0o400)
+    inner_tree = R4_COMPLETION._sealed_inner_tree_binding(final)
+    route_claim_raw = R4_COMPLETION._recovery_route_claim_bytes(
+        completion_freeze=completion_freeze,
+        completion_admission=completion_admission, source=source,
+        completion_attempt_raw=attempt_path.read_bytes(),
+        inner_tree=inner_tree,
+        route=R4_COMPLETION.PENDING_RECOVERY_ROUTE,
+        timeout_receipt_raw=timeout_raw)
+    route_claim_path = root / "r4-completion-recovery-route-claim.json"
+    route_claim_path.write_bytes(route_claim_raw)
+    route_claim_path.chmod(0o400)
+
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="not recovery-eligible"):
+        R4_COMPLETION._recover_r4_completion_terminal_reopened(
+            root, completion_freeze, completion_admission,
+            calibration=calibration, source=source,
+            calibration_directory=tmp_path / "selection")
+
+    remote_tip = "f" * 40
+    monkeypatch.setattr(
+        R4_COMPLETION, "_canonical_remote_tip", lambda repo: remote_tip)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_git", lambda *args, **kwargs: remote_tip)
+    monkeypatch.setattr(
+        R4_COMPLETION, "_authenticate_review_marker_at_tip",
+        lambda *args, **kwargs: None)
+    review_commit = "e" * 40
+    recovery_execution = _recovery_execution(
+        completion_freeze, completion_admission)
+
+    def outcome_open_before_review(*args, **kwargs):
+        raise AssertionError(
+            "pending recovery must not open or reconstruct outcomes")
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_v2_terminal", outcome_open_before_review)
+    claim = (
+        R4_COMPLETION
+        ._r4_completion_pending_recovery_review_claim_reopened(
+            root, completion_freeze, completion_admission,
+            calibration=calibration, source=source,
+            recovery_execution=recovery_execution))
+    assert claim["execution_mode"] \
+        == "outcome-blind-pending-then-one-verifier"
+    assert claim["authority"]["one_independent_verifier_authorized"] \
+        is True
+    original_publish = R4_COMPLETION.publish_exclusive_bytes
+    injected_pending_crash = False
+
+    def crash_after_durable_tombstone(path, raw):
+        nonlocal injected_pending_crash
+        if path == root / "r4-completion-terminal.pending.json" \
+                and not injected_pending_crash:
+            injected_pending_crash = True
+            raise RuntimeError("injected crash before pending publication")
+        return original_publish(path, raw)
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "publish_exclusive_bytes",
+        crash_after_durable_tombstone)
+    with pytest.raises(RuntimeError, match="before pending publication"):
+        R4_COMPLETION._recover_r4_completion_terminal_pending_reopened(
+            root, completion_freeze, completion_admission,
+            calibration=calibration, source=source, repo=tmp_path.resolve(),
+            recovery_review_commit=review_commit,
+            recovery_execution=recovery_execution)
+    assert (root / "r4-completion-pending-recovery-tombstone.json").is_file()
+    assert not (root / "r4-completion-terminal.pending.json").exists()
+    monkeypatch.setattr(
+        R4_COMPLETION, "publish_exclusive_bytes", original_publish)
+    pending = R4_COMPLETION._recover_r4_completion_terminal_pending_reopened(
+        root, completion_freeze, completion_admission,
+        calibration=calibration, source=source, repo=tmp_path.resolve(),
+        recovery_review_commit=review_commit,
+        recovery_execution=recovery_execution)
+    assert pending["route"] == R4_COMPLETION.PENDING_RECOVERY_ROUTE
+    assert pending["outcome_bytes_opened"] is False
+    assert pending["score_recomputed"] is False
+    assert pending["scientific_interpretation_authorized"] is False
+    assert (root / "r4-completion-pending-recovery-tombstone.json").is_file()
+    assert (root / "r4-completion-terminal.pending.json").is_file()
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="not recovery-eligible"):
+        R4_COMPLETION._recover_r4_completion_terminal_reopened(
+            root, completion_freeze, completion_admission,
+            calibration=calibration, source=source,
+            calibration_directory=tmp_path / "selection")
+
+    verifier_calls = 0
+
+    def verify_once(directory, **kwargs):
+        nonlocal verifier_calls
+        verifier_calls += 1
+        assert directory == final
+        assert (root / (
+            "r4-completion-pending-verifier-attempt.json")).is_file()
+        assert kwargs["parallel_decisions"] is True
+        assert kwargs["bound_calibration_manifest"] is calibration
+        return inner_manifest
+
+    monkeypatch.setattr(R4_COMPLETION, "reopen_v2_terminal", verify_once)
+    def fail_only_outer(path, raw):
+        if path == root / "r4-completion-terminal.json":
+            raise RuntimeError("injected crash after verifier receipt")
+        return original_publish(path, raw)
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "publish_exclusive_bytes", fail_only_outer)
+    with pytest.raises(RuntimeError, match="after verifier receipt"):
+        R4_COMPLETION._finalize_r4_completion_terminal_pending_reopened(
+            root, completion_freeze, completion_admission,
+            calibration=calibration, source=source,
+            repo=tmp_path.resolve(),
+            recovery_review_commit=review_commit,
+            recovery_execution=recovery_execution,
+            calibration_directory=tmp_path / "selection",
+            bound_calibration_manifest=calibration,
+            parallel_integrity_workers=16)
+    assert verifier_calls == 1
+    receipt_path = root / "r4-completion-pending-verifier-receipt.json"
+    assert receipt_path.is_file()
+    receipt = json.loads(receipt_path.read_bytes())
+    assert receipt["matched"] is True
+    assert receipt["independent_verifier_count"] == 1
+    assert receipt["scientific_interpretation_authorized"] is True
+
+    monkeypatch.setattr(
+        R4_COMPLETION, "publish_exclusive_bytes", original_publish)
+    monkeypatch.setattr(
+        R4_COMPLETION, "reopen_v2_terminal",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("sealed verifier receipt must prevent replay")))
+    outer = R4_COMPLETION._finalize_r4_completion_terminal_pending_reopened(
+        root, completion_freeze, completion_admission,
+        calibration=calibration, source=source, repo=tmp_path.resolve(),
+        recovery_review_commit=review_commit,
+        recovery_execution=recovery_execution,
+        calibration_directory=tmp_path / "selection",
+        bound_calibration_manifest=calibration,
+        parallel_integrity_workers=16)
+    assert verifier_calls == 1
+    assert outer["terminal_route"] == PASS_B3
+    assert outer["source_test_split_decision_open_count"] == 1
+    assert outer["retry_count"] == 0
+    reopened_outer = R4_COMPLETION._reopen_r4_completion_terminal_reopened(
+        root, completion_freeze, completion_admission,
+        calibration=calibration, source=source,
+        calibration_directory=tmp_path / "selection",
+        repo=tmp_path.resolve())
+    assert reopened_outer == outer
+    assert reopened_outer["schema"] \
+        == R4_COMPLETION.RECOVERED_TERMINAL_OUTER_SCHEMA
+    assert reopened_outer["verifier_receipt_sha256"] \
+        == hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    outer_path = root / "r4-completion-terminal.json"
+    outer_path.chmod(0o600)
+    outer_path.write_bytes(canonical_json_bytes({
+        **outer, "independent_verifier_count": 2}))
+    outer_path.chmod(0o400)
+    with pytest.raises(
+            R4_COMPLETION.BeliefV2R4CompletionError,
+            match="recovered outer binding drift"):
+        R4_COMPLETION._reopen_r4_completion_terminal_reopened(
+            root, completion_freeze, completion_admission,
+            calibration=calibration, source=source,
+            calibration_directory=tmp_path / "selection",
+            repo=tmp_path.resolve())
 
 
 def test_terminal_round_trip_and_coordinated_result_rehash_refuse(

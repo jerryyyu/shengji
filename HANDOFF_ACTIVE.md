@@ -4,10 +4,10 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 08:12 EDT**. Remote main before this update:
-`1de77a5`.
+Last reconciled: **2026-08-30 08:20 EDT**. Remote main before this update:
+`9364e41`.
 
-## Review queue — one narrow run-unblocking ask
+## Review queue — two narrow run-unblocking asks
 
 Review PR #171 exact repaired head
 `e271ede7021dc8440896fc3b816e0699579968bc`, parent
@@ -36,16 +36,37 @@ deployment or Value use. On success, the next review binds only the capacity
 receipt plus immutable 52-deal x two-mirror freeze; unchanged source is not
 reviewed again.
 
+Review PR #170 exact repaired head
+`7c77ca70068d72a8ce3774258107c04ad05efdff`, parent
+`cf115ceac7dbf6f55a177a1de4058d14742a912b`. This is a two-file source delta
+after the authorized `cf115cea` capacity census found 32/32 eligible fixtures
+and then refused at the first state-successor arm because its legitimate
+canonical replay output equaled the fixture input SHA. The repair hashes each
+real operation output under an explicit operation-output schema/domain/stage,
+while retaining the pre-wrap guard that rejects a worker returning the raw
+fixture input identity. Its can-fail witness compares the exact ordered
+32-fixture population. Validation: **434 / 434** V2 wildcard tests,
+**48 / 48** focused capacity tests, both PR checks green and clean diff-check.
+Review request:
+https://github.com/jerryyyu/shengji/pull/170#issuecomment-5468647642.
+
+Requested authority is exactly one replacement non-scientific, score-free
+full-DAG Perf capacity census and, only after capacity success, one bounded
+target-free rehearsal/preflight. Do not authorize scientific training, audit
+opening, labels/outcomes, gameplay, PUCT/BELIEF integration, merge, retry
+beyond those two actions, promotion, deployment or a strength claim. If both
+succeed, the next review binds only their receipts plus the immutable
+scientific freeze; unchanged source is not reviewed again.
+
 Canonical ledger `979885f` PASSed both exact run-unblocking deltas: PR #171
 `b243368ca275988811c3e54db9c56b0de86f5fa1` for one fresh score-free Mini
 capacity census, and PR #170
 `cf115ceac7dbf6f55a177a1de4058d14742a912b` for one replacement score-free
 full-DAG Perf census followed, only on success, by one bounded target-free
 rehearsal. Both censuses have now refused safely in their isolated namespaces
-and consumed those authorities. PT has the single repaired-head review ask
-above; Value's newly localized output-identity repair is still in development
-and has no review ask yet. Neither refusal opened scientific data, and no retry
-is pre-authorized.
+and consumed those authorities. PT and Value have the two repaired-head review
+asks above. Neither refusal opened scientific data, and no retry is
+pre-authorized.
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -168,7 +189,7 @@ reviewed against the live systemd state before any recovery executes.
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
 
-### Value-Afterstate V2 — replacement capacity refused at first arm
+### Value-Afterstate V2 — output-identity repair awaits delta review
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
   repaired pushed head `cf115ceac7dbf6f55a177a1de4058d14742a912b` is
@@ -217,6 +238,14 @@ reviewed against the live systemd state before any recovery executes.
   `62f4666de63fb14743e8c1f5fd2bbdaa9d956eed3984092246f12f82e8520081`.
   The runner emitted no structured failure receipt; record that as a later
   capacity-durability gap, not permission to fabricate one post hoc.
+- PR #170 repaired head
+  `7c77ca70068d72a8ce3774258107c04ad05efdff` changes only the capacity runner
+  and its tests. It domain-separates identities derived from actual operation
+  outputs and retains a failing-direction raw-input-identity witness over the
+  exact 32-fixture population. The source is pushed, both PR checks are green,
+  and the exact-head delta review above is the sole blocker to one replacement
+  score-free capacity census. No Perf process is running and no rehearsal or
+  scientific authority exists yet.
 
 ### Value-Afterstate V0 — independently verified refusal
 

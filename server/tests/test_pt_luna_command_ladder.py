@@ -182,18 +182,58 @@ def test_two_model_observes_cannot_substitute_for_hook_observe(tmp_path: Path):
     assert row["passed"] is False
 
 
-def test_executable_mutation_between_arms_refuses(tmp_path: Path):
+def test_original_executable_replacement_before_launch_cannot_change_snapshot(
+        monkeypatch, tmp_path: Path):
     executable = _fake(tmp_path)
-    output = tmp_path / "mutated.json"
+    marker = tmp_path / "replacement-ran"
+    replacement = (f"#!{sys.executable}\n"
+                   "from pathlib import Path\n"
+                   f"Path({str(marker)!r}).write_text('ran')\n")
+    observed_commands = []
+    original_probe = ladder.run_subprocess_probe
+    replaced = False
 
-    def progress(message: str) -> None:
-        if message == "pt-luna-command-ladder variant=A passed=true":
-            executable.write_bytes(executable.read_bytes() + b"\n")
+    def replace_before_delegate(*, command, prompt, timeout_seconds):
+        nonlocal replaced
+        if not replaced:
+            executable.unlink()
+            executable.write_text(replacement)
+            executable.chmod(stat.S_IRWXU)
+            replaced = True
+        observed_commands.append(command[0])
+        return original_probe(command=command, prompt=prompt,
+                              timeout_seconds=timeout_seconds)
 
-    with pytest.raises(ladder.DiagnosticError, match="identity drift"):
-        ladder.run_ladder(executable=executable, output=output,
-                          progress=progress)
-    assert not output.exists()
+    monkeypatch.setattr(ladder, "run_subprocess_probe", replace_before_delegate)
+    report = ladder.run_ladder(executable=executable,
+                               output=tmp_path / "replaced.json",
+                               progress=lambda _: None)
+    assert report["passed"] is True
+    assert len(observed_commands) == len(ladder.VARIANTS)
+    assert all(command != str(executable) for command in observed_commands)
+    assert len(set(observed_commands)) == 1
+    assert not marker.exists()
+
+
+def test_corrupted_private_snapshot_fails_closed(tmp_path: Path, monkeypatch):
+    executable = _fake(tmp_path)
+    original_probe = ladder.run_subprocess_probe
+    corrupted = False
+
+    def corrupt_before_delegate(*, command, prompt, timeout_seconds):
+        nonlocal corrupted
+        if not corrupted:
+            Path(command[0]).write_bytes(b"not an executable")
+            corrupted = True
+        return original_probe(command=command, prompt=prompt,
+                              timeout_seconds=timeout_seconds)
+
+    monkeypatch.setattr(ladder, "run_subprocess_probe", corrupt_before_delegate)
+    report = ladder.run_ladder(executable=executable,
+                               output=tmp_path / "corrupted.json",
+                               progress=lambda _: None)
+    assert report["passed"] is False
+    assert report["variants"][0]["passed"] is False
 
 
 def test_symlinked_executable_binds_resolved_target(tmp_path: Path):

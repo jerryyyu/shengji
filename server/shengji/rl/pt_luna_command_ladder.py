@@ -59,6 +59,9 @@ class ExecutableBinding:
     sha256: str
     identity_sha256: str
     identity: tuple[int, int, int, int, int, int, int, int, int]
+    # Retained only long enough to publish the private execution snapshot.
+    # The report continues to expose only the digest and identity digest.
+    raw: bytes
 
 
 class ProbeMailboxServer:
@@ -202,14 +205,7 @@ def _reviewed_executable(path: Path) -> ExecutableBinding:
     identity_sha256 = _sha_bytes(canonical_json_bytes(list(identity)))
     return ExecutableBinding(sha256=_sha_bytes(raw),
                              identity_sha256=identity_sha256,
-                             identity=identity)
-
-
-def _revalidate_executable(path: Path, binding: ExecutableBinding) -> None:
-    current = _reviewed_executable(path)
-    if (current.sha256 != binding.sha256
-            or current.identity != binding.identity):
-        raise DiagnosticError("executable identity drift")
+                             identity=identity, raw=raw)
 
 
 def _old_command(*, executable: Path, workspace: Path, final_output: Path,
@@ -451,6 +447,36 @@ def _publish_exclusive(path: Path, payload: bytes) -> None:
         os.fsync(handle.fileno())
 
 
+def _publish_executable_snapshot(path: Path,
+                                 binding: ExecutableBinding) -> Path:
+    """Publish and verify a private executable copy from reviewed bytes."""
+    if path.exists() or path.is_symlink():
+        raise DiagnosticError("output occupied")
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # The snapshot is created exclusively, is never populated from the source
+    # pathname again, and is not owner-writable while it is an execution input.
+    mode = stat.S_IRUSR | stat.S_IXUSR
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                             | getattr(os, "O_NOFOLLOW", 0), mode)
+    except OSError as exc:
+        raise DiagnosticError("executable snapshot refused") from exc
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(binding.raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+            os.fchmod(handle.fileno(), mode)
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise DiagnosticError("executable snapshot refused") from exc
+    snapshot = _reviewed_executable(path)
+    if (snapshot.sha256 != binding.sha256
+            or stat.S_IMODE(snapshot.identity[2]) != mode):
+        raise DiagnosticError("executable snapshot drift")
+    return path
+
+
 def run_ladder(*, executable: Path, output: Path,
                progress: Callable[[str], None] = print,
                wall_seconds: float = 120.0) -> dict[str, object]:
@@ -472,14 +498,15 @@ def run_ladder(*, executable: Path, output: Path,
         root = Path(raw)
         workspace = root / "workspace"
         workspace.mkdir(mode=0o700)
+        snapshot = _publish_executable_snapshot(root / "executable",
+                                                 binding)
         rows: list[dict[str, object]] = []
         for variant in VARIANTS:
             progress(f"pt-luna-command-ladder variant={variant} phase=start")
-            _revalidate_executable(executable, binding)
             remaining = wall_seconds - (time.monotonic() - started)
             if remaining <= 0:
                 command, bridge, _prompt = _variant_identity(
-                    variant, executable=executable, workspace=workspace,
+                    variant, executable=snapshot, workspace=workspace,
                     model_mailbox=root / f"model-mailbox-{variant}",
                     hook_mailbox=root / f"hook-mailbox-{variant}",
                     final_output=root / f"final-{variant}")
@@ -490,12 +517,11 @@ def run_ladder(*, executable: Path, output: Path,
                               valid_probe=False)
             else:
                 row = run_variant(
-                    variant, executable=executable, workspace=workspace,
+                    variant, executable=snapshot, workspace=workspace,
                     model_mailbox=root / f"model-mailbox-{variant}",
                     hook_mailbox=root / f"hook-mailbox-{variant}",
                     final_output=root / f"final-{variant}",
                     timeout_seconds=remaining)
-            _revalidate_executable(executable, binding)
             rows.append(row)
             progress(f"pt-luna-command-ladder variant={variant} "
                      f"passed={str(row['passed']).lower()}")

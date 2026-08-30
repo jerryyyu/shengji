@@ -33,9 +33,12 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 
 MODEL = luna.MODEL
 REASONING_EFFORT = "high"
-FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v1"
-PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v1"
-ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v1"
+LEGACY_FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v1"
+FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v2"
+LEGACY_PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v1"
+PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v2"
+LEGACY_ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v1"
+ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v2"
 ARTIFACT_SCHEMA = "privileged-teacher-luna-selfplay-private-artifact-v1"
 MAX_REQUEST_BYTES = 1 << 20
 MAX_PROCESS_BYTES = 16 << 20
@@ -80,6 +83,11 @@ def _sha_bytes(raw: bytes) -> str:
 
 def _sha(value: object) -> str:
     return _sha_bytes(canonical_json_bytes(value))
+
+
+def _valid_completion_token(value: object) -> bool:
+    return (type(value) is str and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
 
 
 def _publish(path: Path, raw: bytes, *, mode: int) -> None:
@@ -257,8 +265,11 @@ Call observe before every decision. If it reports waiting, call wait; wait
 wakes when the other team acts, the round ends, or the game fails. You may
 roll out only on your team's decision and may play only one listed candidate.
 Candidate zero is always the production prior and is the bounded fallback.
-Continue until round_end, then write exactly:
-{{"schema":"{FINAL_RESPONSE_SCHEMA}","status":"complete"}}
+Continue until round_end.
+The final legal play or subsequent observe/wait returns a one-time
+completion_token. Do not stop early. Your final response must contain only
+this JSON object, with TOKEN replaced by that exact engine-returned value:
+{{"schema":"{FINAL_RESPONSE_SCHEMA}","status":"complete","completion_token":"TOKEN"}}
 """
 
 
@@ -874,7 +885,7 @@ def _validate_budget(value: object) -> None:
 def _validate_trace_semantics(
         event: Mapping[str, object], *, team: int,
         trajectory_events: Mapping[str, Mapping[str, object]],
-        complete: bool) -> None:
+        complete: bool, completion_token_sha256: str | None) -> None:
     """Bind every private tool exchange to the frozen game/tool contract."""
     request = event["request"]
     response = event["response"]
@@ -893,8 +904,19 @@ def _validate_trace_semantics(
             raise LunaExecutionError("process observe/wait request drift")
         status = response.get("status")
         if status == "round_end":
-            if response != {"schema": luna.GAME_SCHEMA,
-                            "status": "round_end"}:
+            if completion_token_sha256 is None:
+                valid = response == {
+                    "schema": luna.GAME_SCHEMA, "status": "round_end"}
+            else:
+                valid = (set(response) == {
+                    "schema", "status", "completion_token"}
+                    and response.get("schema") == luna.GAME_SCHEMA
+                    and _valid_completion_token(
+                        response.get("completion_token"))
+                    and _sha_bytes(
+                        response["completion_token"].encode("ascii"))
+                    == completion_token_sha256)
+            if not valid:
                 raise LunaExecutionError("process observation response drift")
         elif status == "failed":
             if set(response) != {"schema", "status", "error"} \
@@ -981,10 +1003,26 @@ def _validate_trace_semantics(
             or not isinstance(request.get("candidate_index"), int)
             or not 0 <= request["candidate_index"] < len(
                 trajectory_events[request["decision_sha256"]]["legal_ballot"])
-            or set(response) != {"schema", "status", "acting_team"}
+            or set(response) not in ({"schema", "status", "acting_team"},
+                                     {"schema", "status", "acting_team",
+                                      "completion_token"})
             or response.get("schema") != luna.GAME_SCHEMA
             or response.get("status") not in ("waiting", "round_end", "failed")):
         raise LunaExecutionError("process play trace drift")
+    if response.get("status") == "round_end":
+        token = response.get("completion_token")
+        if completion_token_sha256 is None:
+            valid = set(response) == {"schema", "status", "acting_team"}
+        else:
+            valid = (set(response) == {"schema", "status", "acting_team",
+                                      "completion_token"}
+                     and _valid_completion_token(token)
+                     and _sha_bytes(token.encode("ascii"))
+                     == completion_token_sha256)
+        if not valid:
+            raise LunaExecutionError("process play completion drift")
+    elif "completion_token" in response:
+        raise LunaExecutionError("process play completion drift")
 
 
 def run_luna_game(
@@ -1022,6 +1060,8 @@ def run_luna_game(
     attempt_body = {"schema": ATTEMPT_SCHEMA, "coordinate": list(game.coordinate),
                     "mirror": game.mirror, "root_sha256": game.root_sha256,
                     "planner": config.payload(), "runtime": runtime,
+                    "private_trace_schema": PRIVATE_TRACE_SCHEMA,
+                    "final_response_schema": FINAL_RESPONSE_SCHEMA,
                     "status": "started"}
     _publish(attempt / "attempt.json", canonical_json_bytes(
         {**attempt_body, "attempt_sha256": _sha(attempt_body)}), mode=0o400)
@@ -1105,7 +1145,9 @@ def run_luna_game(
             final_obj = json.loads(final_raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             final_obj = None
-        if final_obj != {"schema": FINAL_RESPONSE_SCHEMA, "status": "complete"}:
+        expected_final = {"schema": FINAL_RESPONSE_SCHEMA, "status": "complete",
+                          "completion_token": session._completion_token}
+        if final_obj != expected_final:
             process_error = process_error or "Luna model final response absent or malformed"
         if not game.complete:
             process_error = process_error or "Luna model process did not complete engine round"
@@ -1128,6 +1170,8 @@ def run_luna_game(
                 "codex_usage": usage,
                 "stdout_base64": base64.b64encode(stdout).decode("ascii"),
                 "final_base64": base64.b64encode(final_raw).decode("ascii"),
+                "completion_token_sha256": _sha_bytes(
+                    session._completion_token.encode("ascii")),
                 "process_returncode": (completed.returncode if completed else None),
                 "process_error": process_error,
                 "execution_kind": execution_kind,
@@ -1277,10 +1321,23 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
     attempt_sha = attempt_payload.pop("attempt_sha256", None)
     if not isinstance(attempt_sha, str) or attempt_sha != _sha(attempt_payload):
         raise LunaExecutionError("attempt hash drift")
-    if set(attempt_payload) != {"schema", "coordinate", "mirror", "root_sha256",
-                                "planner", "runtime", "status"} \
-            or attempt_payload.get("schema") != ATTEMPT_SCHEMA \
-            or attempt_payload.get("status") != "started":
+    attempt_schema = attempt_payload.get("schema")
+    current_attempt_keys = {"schema", "coordinate", "mirror", "root_sha256",
+                            "planner", "runtime", "private_trace_schema",
+                            "final_response_schema", "status"}
+    legacy_attempt_keys = {"schema", "coordinate", "mirror", "root_sha256",
+                           "planner", "runtime", "status"}
+    if (attempt_schema == ATTEMPT_SCHEMA
+            and set(attempt_payload) == current_attempt_keys
+            and attempt_payload.get("private_trace_schema") == PRIVATE_TRACE_SCHEMA
+            and attempt_payload.get("final_response_schema") == FINAL_RESPONSE_SCHEMA):
+        expected_private_trace_schema = PRIVATE_TRACE_SCHEMA
+    elif (attempt_schema == LEGACY_ATTEMPT_SCHEMA
+            and set(attempt_payload) == legacy_attempt_keys):
+        expected_private_trace_schema = LEGACY_PRIVATE_TRACE_SCHEMA
+    else:
+        raise LunaExecutionError("attempt schema drift")
+    if attempt_payload.get("status") != "started":
         raise LunaExecutionError("attempt schema drift")
     if (manifest.get("coordinate") != attempt_payload.get("coordinate")
             or manifest.get("mirror") != attempt_payload.get("mirror")
@@ -1362,16 +1419,24 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
         evidence_sha = body.pop("evidence_sha256", None)
         if not isinstance(evidence_sha, str) or evidence_sha != _sha(body):
             raise LunaExecutionError("process evidence hash drift")
-        expected_keys = {"schema", "team", "planner_identity", "command",
+        common_keys = {"schema", "team", "planner_identity", "command",
                          "config", "trace", "runtime", "sandbox",
                          "prompt_sha256", "codex_usage",
                          "stdout_base64", "final_base64", "process_returncode",
                          "process_error", "output_sha256", "execution_kind",
                          "synthetic", "actual_subprocess", "authority"}
-        if set(body) != expected_keys or body["schema"] != PRIVATE_TRACE_SCHEMA \
+        body_schema = body.get("schema")
+        expected_keys = (common_keys | {"completion_token_sha256"}
+                         if body_schema == PRIVATE_TRACE_SCHEMA else common_keys)
+        if (body_schema != expected_private_trace_schema
+                or set(body) != expected_keys) \
                 or body["team"] != team or body["config"] != attempt_payload["planner"] \
                 or body["runtime"] != attempt_payload["runtime"]:
             raise LunaExecutionError("process trace schema/binding drift")
+        completion_token_sha256 = body.get("completion_token_sha256")
+        if (body_schema == PRIVATE_TRACE_SCHEMA
+                and not _valid_completion_token(completion_token_sha256)):
+            raise LunaExecutionError("process completion binding drift")
         if (body["execution_kind"] not in (PRODUCTION_EXECUTION_KIND,
                                             SYNTHETIC_EXECUTION_KIND)
                 or type(body["synthetic"]) is not bool
@@ -1455,7 +1520,13 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             _validate_trace_semantics(
                 event, team=team,
                 trajectory_events=trajectory_events_by_team[team],
-                complete=manifest["status"] == "complete")
+                complete=manifest["status"] == "complete",
+                completion_token_sha256=completion_token_sha256)
+        if (body_schema == PRIVATE_TRACE_SCHEMA
+                and manifest["status"] == "complete"
+                and not any(event["response"].get("status") == "round_end"
+                            for event in trace)):
+            raise LunaExecutionError("process terminal mailbox witness absent")
         try:
             if _codex_jsonl_usage(stdout) != body["codex_usage"]:
                 raise LunaExecutionError("Codex usage binding drift")
@@ -1488,10 +1559,21 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise LunaExecutionError(
                     "complete process evidence drift") from exc
+            is_current = item.body["schema"] == PRIVATE_TRACE_SCHEMA
+            token = final.get("completion_token") if type(final) is dict else None
+            expected_final = ({"schema": FINAL_RESPONSE_SCHEMA,
+                               "status": "complete",
+                               "completion_token": token}
+                              if is_current else {
+                                  "schema": LEGACY_FINAL_RESPONSE_SCHEMA,
+                                  "status": "complete"})
             if (item.body["process_returncode"] != 0
                     or item.body["process_error"] is not None
-                    or final != {"schema": FINAL_RESPONSE_SCHEMA,
-                                 "status": "complete"}):
+                    or final != expected_final
+                    or is_current and (
+                        not _valid_completion_token(token)
+                        or _sha_bytes(token.encode("ascii"))
+                        != item.body["completion_token_sha256"])):
                 raise LunaExecutionError("complete process evidence drift")
     # Every contested play must have one matching private mailbox request. A
     # forced engine action has no request and is intentionally excluded.

@@ -261,6 +261,27 @@ def test_worker_threads_overlap_and_none_is_incomplete():
     assert updates[-1]["active_model_processes"] == 0
 
 
+def test_completion_tokens_are_team_scoped_and_withheld_until_round_end():
+    game = luna.LunaSelfPlayGame(luna.build_root(SECRET, ("2", 0, 0)),
+                                 coordinate=("2", 0, 0))
+    sessions = {team: game.session(team) for team in luna.TEAMS}
+    first = sessions[game.acting_team].observe()
+    assert first["status"] == "decision"
+    assert "completion_token" not in first
+    while not game.complete:
+        team = game.acting_team
+        observed = sessions[team].observe()
+        played = sessions[team].play({
+            "op": "play", "decision_sha256": observed["decision_sha256"],
+            "candidate_index": 0, "confidence": "low"})
+        if played["status"] != "round_end":
+            assert "completion_token" not in played
+    tokens = [sessions[team].observe()["completion_token"]
+              for team in luna.TEAMS]
+    assert len(set(tokens)) == 2
+    assert all(len(token) == 64 for token in tokens)
+
+
 def test_population_census_gate_and_incomplete_sealed_hash():
     design = luna.LunaDesign(
         seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())

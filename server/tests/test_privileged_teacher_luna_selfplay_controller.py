@@ -57,18 +57,28 @@ def _metric(workers: int, worker: int, game: int) -> dict[str, object]:
 
 
 def _fake_process(session, *, mailbox_path, final_output_path, **_kwargs):
+    terminal = None
     while True:
         observed = execution.tool_request(mailbox_path, {"op": "observe"})
         if observed["status"] in ("round_end", "failed"):
+            terminal = observed
             break
         if observed["status"] == "waiting":
-            execution.tool_request(mailbox_path, {"op": "wait"})
+            waited = execution.tool_request(mailbox_path, {"op": "wait"})
+            if waited["status"] in ("round_end", "failed"):
+                terminal = waited
+                break
         else:
-            execution.tool_request(mailbox_path, {
+            played = execution.tool_request(mailbox_path, {
                 "op": "play", "decision_sha256": observed["decision_sha256"],
                 "candidate_index": 0, "confidence": "low"})
+            if played["status"] in ("round_end", "failed"):
+                terminal = played
+                break
+    assert terminal is not None and terminal["status"] == "round_end"
     final_output_path.write_bytes(canonical_json_bytes({
-        "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete"}))
+        "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
+        "completion_token": terminal["completion_token"]}))
     return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
 
 

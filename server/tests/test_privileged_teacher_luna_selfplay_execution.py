@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import Path
@@ -62,19 +63,71 @@ def _rewrite(path: Path, value: dict[str, object]) -> None:
     path.chmod(0o400)
 
 
+def _downgrade_attempt_to_v1(attempt: Path, *, drop_terminal_witness: bool) -> None:
+    attempt_path = attempt / "attempt.json"
+    attempt_body = json.loads(attempt_path.read_text())
+    attempt_body.pop("attempt_sha256")
+    attempt_body["schema"] = execution.LEGACY_ATTEMPT_SCHEMA
+    attempt_body.pop("private_trace_schema")
+    attempt_body.pop("final_response_schema")
+    attempt_body["attempt_sha256"] = execution._sha(attempt_body)
+    _rewrite(attempt_path, attempt_body)
+
+    manifest_path = attempt / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    witness_dropped = not drop_terminal_witness
+    for team in luna.TEAMS:
+        path = attempt / f"process-team-{team}.json"
+        process = json.loads(path.read_text())
+        process["schema"] = execution.LEGACY_PRIVATE_TRACE_SCHEMA
+        process.pop("completion_token_sha256")
+        retained = []
+        for event in process["trace"]:
+            terminal = event["response"].get("status") == "round_end"
+            removable = (terminal and event["request"].get("op")
+                         in ("observe", "wait"))
+            if drop_terminal_witness and not witness_dropped and removable:
+                witness_dropped = True
+                continue
+            if terminal:
+                event["response"].pop("completion_token")
+                event["response_sha256"] = execution._sha(event["response"])
+            retained.append(event)
+        process["trace"] = retained
+        process.pop("evidence_sha256")
+        process["evidence_sha256"] = execution._sha(process)
+        _rewrite(path, process)
+        manifest["evidence"][team]["evidence_sha256"] = process[
+            "evidence_sha256"]
+    assert witness_dropped
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+
+
 def _fake(session, *, mailbox_path, final_output_path, **_kwargs):
+    terminal = None
     while True:
         observed = execution.tool_request(mailbox_path, {"op": "observe"})
         if observed["status"] in ("round_end", "failed"):
+            terminal = observed
             break
         if observed["status"] == "waiting":
-            execution.tool_request(mailbox_path, {"op": "wait"})
+            waited = execution.tool_request(mailbox_path, {"op": "wait"})
+            if waited["status"] in ("round_end", "failed"):
+                terminal = waited
+                break
             continue
-        execution.tool_request(mailbox_path, {
+        played = execution.tool_request(mailbox_path, {
             "op": "play", "decision_sha256": observed["decision_sha256"],
             "candidate_index": 0, "confidence": "low"})
+        if played["status"] in ("round_end", "failed"):
+            terminal = played
+            break
+    assert terminal is not None and terminal["status"] == "round_end"
     final_output_path.write_text(json.dumps({
-        "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete"}))
+        "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
+        "completion_token": terminal["completion_token"]}))
     return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
 
 
@@ -87,20 +140,31 @@ def test_fake_processes_launch_concurrently_and_share_alternating_engine(tmp_pat
     def planner(session, **kwargs):
         with lock:
             starts.append(session.team)
+        terminal = None
         while True:
             observed = execution.tool_request(kwargs["mailbox_path"], {"op": "observe"})
             if observed["status"] in ("round_end", "failed"):
+                terminal = observed
                 break
             if observed["status"] == "waiting":
-                execution.tool_request(kwargs["mailbox_path"], {"op": "wait"})
+                waited = execution.tool_request(
+                    kwargs["mailbox_path"], {"op": "wait"})
+                if waited["status"] in ("round_end", "failed"):
+                    terminal = waited
+                    break
                 continue
             with lock:
                 plays.append((session.team, observed["acting_seat"]))
-            execution.tool_request(kwargs["mailbox_path"], {
+            played = execution.tool_request(kwargs["mailbox_path"], {
                 "op": "play", "decision_sha256": observed["decision_sha256"],
                 "candidate_index": 0, "confidence": "low"})
+            if played["status"] in ("round_end", "failed"):
+                terminal = played
+                break
+        assert terminal is not None and terminal["status"] == "round_end"
         kwargs["final_output_path"].write_text(json.dumps({
-            "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete"}))
+            "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
+            "completion_token": terminal["completion_token"]}))
         return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
 
     result = execution.run_luna_game(game, private_root=tmp_path, tool_script=TOOL,
@@ -132,6 +196,136 @@ def test_forced_actions_are_engine_only_and_artifacts_reopen(tmp_path):
         assert evidence.body["execution_kind"] == execution.SYNTHETIC_EXECUTION_KIND
         assert evidence.body["synthetic"] is True
         assert evidence.body["actual_subprocess"] is False
+
+
+def test_generic_or_wrong_completion_response_cannot_seal(tmp_path):
+    def wrong_final(session, *, mailbox_path, final_output_path, **_kwargs):
+        while True:
+            observed = execution.tool_request(mailbox_path, {"op": "observe"})
+            if observed["status"] in ("round_end", "failed"):
+                break
+            if observed["status"] == "waiting":
+                execution.tool_request(mailbox_path, {"op": "wait"})
+                continue
+            execution.tool_request(mailbox_path, {
+                "op": "play", "decision_sha256": observed["decision_sha256"],
+                "candidate_index": 0, "confidence": "low"})
+        token = session._completion_token if session.team else "0" * 64
+        final_output_path.write_text(json.dumps({
+            "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
+            "completion_token": token}))
+        return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=wrong_final)
+    assert result.status == "incomplete"
+    assert result.scientific_admissible is False
+    team0 = json.loads((result.attempt_path / "process-team-0.json").read_text())
+    assert team0["process_error"] == (
+        "Luna model final response absent or malformed")
+
+
+def test_coordinated_rehash_cannot_remove_terminal_mailbox_witness(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    mutated_team = None
+    for team in luna.TEAMS:
+        path = result.attempt_path / f"process-team-{team}.json"
+        process = json.loads(path.read_text())
+        removable = [event for event in process["trace"]
+                     if event["response"].get("status") == "round_end"
+                     and event["request"].get("op") in ("observe", "wait")]
+        if not removable:
+            continue
+        process["trace"] = [event for event in process["trace"]
+                            if event not in removable]
+        process.pop("evidence_sha256")
+        process["evidence_sha256"] = execution._sha(process)
+        _rewrite(path, process)
+        manifest["evidence"][team]["evidence_sha256"] = process[
+            "evidence_sha256"]
+        mutated_team = team
+        break
+    assert mutated_team is not None
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    with pytest.raises(execution.LunaExecutionError,
+                       match="terminal mailbox witness absent"):
+        execution.reopen_attempt(result.attempt_path)
+
+
+def test_legacy_v1_complete_attempt_remains_reopenable(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    _downgrade_attempt_to_v1(result.attempt_path, drop_terminal_witness=True)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for team in luna.TEAMS:
+        path = result.attempt_path / f"process-team-{team}.json"
+        process = json.loads(path.read_text())
+        final = json.dumps({
+            "schema": execution.LEGACY_FINAL_RESPONSE_SCHEMA,
+            "status": "complete"}).encode()
+        stdout = base64.b64decode(process["stdout_base64"])
+        process["final_base64"] = base64.b64encode(final).decode("ascii")
+        process["output_sha256"] = execution._sha_bytes(
+            stdout + b"\0" + final)
+        process.pop("evidence_sha256")
+        process["evidence_sha256"] = execution._sha(process)
+        _rewrite(path, process)
+        manifest["evidence"][team]["evidence_sha256"] = process[
+            "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+
+
+def test_legacy_v1_incomplete_attempt_remains_reopenable(tmp_path):
+    def early(_session, *, final_output_path, **_kwargs):
+        final_output_path.write_text("{}")
+        return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=early)
+    assert result.status == "incomplete"
+    _downgrade_attempt_to_v1(result.attempt_path,
+                             drop_terminal_witness=False)
+    assert execution.reopen_attempt(result.attempt_path).status == "incomplete"
+
+
+def test_current_attempt_cannot_mix_or_downgrade_one_team_to_v1(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    process_path = result.attempt_path / "process-team-0.json"
+    process = json.loads(process_path.read_text())
+    process["schema"] = execution.LEGACY_PRIVATE_TRACE_SCHEMA
+    process.pop("completion_token_sha256")
+    for event in process["trace"]:
+        if event["response"].get("status") == "round_end":
+            event["response"].pop("completion_token")
+            event["response_sha256"] = execution._sha(event["response"])
+    process.pop("evidence_sha256")
+    process["evidence_sha256"] = execution._sha(process)
+    _rewrite(process_path, process)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["evidence"][0]["evidence_sha256"] = process["evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    with pytest.raises(execution.LunaExecutionError,
+                       match="trace schema/binding drift"):
+        execution.reopen_attempt(result.attempt_path)
 
 
 def test_process_failure_aborts_game_and_wakes_peer(tmp_path):
@@ -198,7 +392,8 @@ def test_supervisor_kills_fake_process_groups_on_peer_failure(tmp_path):
         while not supervisor.aborted:
             time.sleep(0.01)
         final_output_path.write_text(json.dumps({
-            "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete"}))
+            "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
+            "completion_token": session._completion_token}))
         return subprocess.CompletedProcess(("fake",), 1, b"")
 
     import time

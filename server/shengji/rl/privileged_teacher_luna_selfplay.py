@@ -14,6 +14,7 @@ import hashlib
 import json
 import math
 import random
+import secrets
 import threading
 import time
 from typing import Callable, Mapping, Sequence
@@ -1276,6 +1277,11 @@ class LunaTeamSession:
         # This is an identity receipt for the process boundary.  The harness
         # intentionally does not launch a model process during unit tests.
         self.model_process_id = session_record["model_process_id"]
+        # The token is disclosed only after the shared engine reaches
+        # round_end.  It proves that this specific planner stayed attached to
+        # its mailbox until completion instead of emitting an early generic
+        # success response.
+        self._completion_token = secrets.token_hex(32)
         self._cache: dict[tuple[int, str], dict[str, object]] = {}
         self._calls = 0
         self._used = 0
@@ -1319,7 +1325,10 @@ class LunaTeamSession:
 
     def observe(self) -> dict[str, object]:
         self._sync_decision()
-        return self.game.observe(self.team)
+        response = self.game.observe(self.team)
+        if response.get("status") == "round_end":
+            response = {**response, "completion_token": self._completion_token}
+        return response
 
     def wait(self, timeout: float | None = 0.0) -> bool:
         return self.game.wait_for_turn(self.team, timeout)
@@ -1372,8 +1381,11 @@ class LunaTeamSession:
             raise LunaPlannerRequestError("play request shape drift")
         if request["confidence"] not in sol0.CONFIDENCE_LEVELS:
             raise LunaPlannerRequestError("confidence drift")
-        return self.game.commit(self.team, request["decision_sha256"],
-                                request["candidate_index"])
+        response = self.game.commit(self.team, request["decision_sha256"],
+                                    request["candidate_index"])
+        if response.get("status") == "round_end":
+            response = {**response, "completion_token": self._completion_token}
+        return response
 
 
 def progress(*, completed_games: int, total_games: int,

@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 01:15 EDT**. Remote main before this update:
-`778d4c4`.
+Last reconciled: **2026-08-30 04:35 EDT**. Remote main before this update:
+`1e39215`.
 
 ## Review queue — R4 waits on state, one secondary source ask
 
@@ -21,21 +21,30 @@ refusal `R4 terminal systemd observation drift`, because the scientific unit
 is still active. No timeout receipt, route claim, outcome read, or evidence
 mutation occurred. There is no R4 review action until the unit changes state.
 
-Secondary review while R4 runs: PR #171 final head
-`2f4fa09dc18a412125539b80ebe90378f00d7247` requests one narrow review of its
-one-file test-only delta from held parent `74e1158`. Production
-collector/capacity bytes are unchanged. The empirical-concurrency witness now
-uses deterministic controller clock pairs while retaining real executor
-threads, per-arm start barriers, and a second barrier while every worker is
-active; a serialized dispatcher therefore breaks the witness without making
-the receipt depend on a 2 ms host sleep. Exact-head evidence: the focused test
-passed 20/20 consecutive isolated runs, the full PT-Luna battery passed 102/102,
-and compile/diff checks are clean. Exact ask:
-https://github.com/jerryyyu/shengji/pull/171#issuecomment-5466825259. PASS may
-authorize exactly one fresh non-scientific score-free progressive Mini
-capacity census with distinct immutable success/failure outputs. It grants no
-104-game collection, outcome opening, gameplay/strength claim, merge, retry,
-promotion, or deployment.
+Secondary review while R4 runs: review PR #171 once at repaired exact head
+`57d2a58` (parent `1f80b3d`). The capacity census authorized at `1f80b3d` is
+spent: its first arm failed safely and retained no game, action, outcome or
+model prose. The six-file repair addresses the observed failure and one
+behavioral-parity defect together:
+
+- completion authority is now process exit zero + Codex `turn.completed`
+  telemetry + the completed shared engine + a hash-bound per-team terminal
+  mailbox witness carrying the issued token; independent reopening rederives
+  the same witness, while final model prose is diagnostic only;
+- a killed peer is reported as `peer-aborted/cascade`, not as an independent
+  root cause; and
+- the prompt and rollout response now match PT-Luna0's intended teacher
+  behavior: maximize partnership signed-level utility, expose the exact
+  team-relative value (including the defender sign), advertise
+  `smart-all,team-smart`, and retain the same ballot and work bounds.
+
+Primary inspection and the exact three-file changed-surface battery are green
+at **105 / 105**; all six files compile and `git diff --check` is clean. Ask for
+one consolidated repaired-head source PASS authorizing exactly one replacement
+non-scientific, score-free progressive Mini capacity census. If it passes,
+the next review must be only the candidate freeze/receipt binding—not another
+review of unchanged source. This grants no 104-game collection, outcome
+opening, gameplay/strength claim, merge, promotion or deployment.
 
 If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
 timers below generate a timeout receipt and print the exact pending-recovery
@@ -106,6 +115,17 @@ reviewed against the live systemd state before any recovery executes.
 - Mean signed-level contrasts: Luna−A +0.385, Luna−B +0.442,
   Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
   the stronger reviewed privileged teacher. No promotion or strength claim.
+
+### PT-Luna fresh self-play — repaired source review pending
+
+- PR #171 head `57d2a58` is the only current review target. The failed capacity
+  attempt spent the prior grant and retained no scientific/gameplay data.
+- After a consolidated repaired-head source PASS: run one progressive
+  score-free Mini capacity census, derive the candidate worker count and
+  immutable 52-deal × two-mirror freeze, then request one narrow launch review.
+- The 104 games remain unauthorized. Their eventual trajectories are only
+  state/proposal sources for later engine relabeling, never value truth or a
+  gameplay/strength result.
 
 ### Value-Afterstate V0 — independently verified refusal
 
@@ -186,7 +206,7 @@ reviewed against the live systemd state before any recovery executes.
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
 | Perf Cloud | free; Value P1 r2 completed and independently reconstructed |
-| Mini | free; no goal-critical run |
+| Mini | free; PT-Luna capacity after repaired-head source PASS |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
 - Do not stop, duplicate, retry, merge, deploy, resume R5, or launch additional

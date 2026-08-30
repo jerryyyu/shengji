@@ -9661,3 +9661,58 @@ matches 0 ledger lines and belongs to the launch review. Coverage: deep on the
 objective, completion-authority and reopen surfaces; ballots, engine state,
 mirrors, scoring and population are unchanged and rest on prior PASSes.
 
+
+## 2026-08-30 — ✅ PASS (source-only, delta): PR #171 `1f80b3de..57d2a58` — mailbox-witness completion authority, cascade classification, Sol0 utility parity. Authorizes exactly one replacement census (the FIFTH). TWO new unwitnessed validator clauses disclosed; three fixtures now REQUIRED before the launch review
+
+### The v2 diagnostics earned their keep on first use
+
+The fourth census receipt (`…1f80b3d-r1`, v2 schema) names distinct causes for the first time:
+team 0 `Luna model final response absent or malformed` (returncode 0, full event sequence, final
+present but malformed), team 1 `Codex completion telemetry drift` (no `turn.completed` at all).
+Both teams: **empty `trace_operation_counts`** — the models never called the engine tools. This
+repair addresses exactly that: the prompt now states the team objective and advertises the
+continuations the tool actually accepts, and completion authority no longer depends on the
+model's final prose.
+
+### Verified (worktree `pr171c` at `57d2a58`, parent `1f80b3de` byte-confirmed)
+
+- Six files, +215/−50. Three-file changed-surface battery **105/105** (exact match);
+  full luna sweep **119 passed / 2 skipped**; compile and `git diff --check` clean.
+- **Completion authority**: `_terminal_trace_witness` requires an engine-emitted, hash-bound
+  `round_end` response whose token digest equals the process receipt; model final prose is
+  diagnostic only (witnessed: generic/wrong/absent finals no longer gate; missing
+  `turn.completed` still fails closed; coordinated rehash cannot remove the witness). Direct
+  property probe at head: right-token witness True, wrong-token witness **False**.
+- **Cascade**: killed peers become `peer-aborted/cascade`, and removing that classification
+  turns 1 test red — witnessed.
+- **Sol0 parity is real, checked against the reference**: `smart-all,team-smart` live in
+  `sol0.CONTINUATIONS` (the game refuses unknown names), the Sol0 prompt advertises the same
+  pair, utilities come from `sol0.signed_level_utility` with defender antisymmetry witnessed.
+- The sibling's `1e39215` finding (reopen final-token comparison unwitnessed) is resolved by
+  REMOVAL: that redundant prose-based check is gone; authority moved to the witness.
+
+### Two new unwitnessed validator clauses (disclosed; property holds at head)
+
+1. Dropping the witness's token-digest comparison (`_sha_bytes(token) == completion_token_sha256`)
+   leaves **105/105 green**. This is the sibling's finding reincarnated one head later in
+   relocated, STRONGER form: the binding is now the sole completion authority in BOTH live and
+   reopen paths, with no second layer behind it. A silent regression deleting it would pass CI.
+2. Dropping the rollout utility-drift refusal in `_validate_trace_semantics` leaves **105/105
+   green** — producer witnessed, validator refusal never fired in a test.
+
+Honest note: my first mutation run of (1) timed out at 10 minutes and looked like a deadlock
+witness; it was not reproducible — individually and combined the battery is cleanly green under
+the mutation. The hang was environmental, not a witness.
+
+The producer-witnessed/validator-unwitnessed pattern is now **three heads in a row** (event-type
+collapse at `2e60a584`, token comparison at `1f80b3de`, these two at `57d2a58`). REQUIRED before
+the launch review (with the still-open anti-replay fixture, three total): a wrong-token
+`round_end` refusal test, a tampered-utility refusal test, and the marker-replay refusal test.
+
+### Authorization
+
+Exactly one replacement non-scientific, score-free progressive Mini capacity census (fifth
+overall) with distinct immutable success/failure outputs. Per the ask: if it succeeds, the next
+review is the candidate freeze/receipt binding only. Not: the 104-game collection, outcome
+opening, data use, gameplay/strength claims, retry beyond this one, merge, promotion, deployment.
+— Claude (session `68f9c8bd`)

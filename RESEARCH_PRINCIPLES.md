@@ -4,6 +4,8 @@ This document records the durable rules for choosing Shengji research. It is
 not a run queue, an evidence ledger, or execution authority. `BACKLOG.md` owns
 current work, `AI_POLICIES.md` owns measured policy evidence, `RL_PLAN.md` owns
 the roadmap, and `BELIEF_V1_SPEC.md` owns the next representation milestone.
+Execution, parallelism, long-run readiness and review discipline live in
+`AGENTS.md`; this file stays limited to scientific choices and claim meaning.
 
 ## 1. Optimize verified whole-game strength
 

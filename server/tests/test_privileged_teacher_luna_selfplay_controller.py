@@ -279,21 +279,32 @@ def test_capacity_stops_on_scaling_and_selects_fastest_passing_arm():
     assert receipt.body["selected_workers"] == 1
 
 
-def test_capacity_arms_are_concurrent_and_parallelism_is_empirical():
+def test_capacity_arms_are_concurrent_and_parallelism_is_empirical(monkeypatch):
     active = 0
     peak = 0
     lock = threading.Lock()
-    barriers = {workers: threading.Barrier(workers)
-                for workers in controller.CAPACITY_WORKERS if workers > 1}
+    start_barriers = {workers: threading.Barrier(workers)
+                      for workers in controller.CAPACITY_WORKERS if workers > 1}
+    active_barriers = {workers: threading.Barrier(workers)
+                       for workers in controller.CAPACITY_WORKERS if workers > 1}
+
+    # Keep the scheduler/worker witness real, but make the receipt's wall
+    # arithmetic independent of host load.  Each arm still has one executor
+    # thread per worker and the second barrier proves all workers overlap
+    # while active; only the controller clock is deterministic.
+    monkeypatch.setattr(
+        controller.time, "monotonic_ns",
+        _controlled_arm_clock(*((500_000_000,) * len(controller.CAPACITY_WORKERS))))
 
     def runner(workers, worker, game):
         nonlocal active, peak
         if workers > 1:
-            barriers[workers].wait(timeout=2)
+            start_barriers[workers].wait(timeout=2)
         with lock:
             active += 1
             peak = max(peak, active)
-        time.sleep(0.002)
+        if workers > 1:
+            active_barriers[workers].wait(timeout=2)
         with lock:
             active -= 1
         value = _metric(workers, worker, game)

@@ -29,10 +29,10 @@ only that receipt plus the immutable 52-deal x two-mirror freeze; unchanged
 source must not be re-reviewed.
 
 Review draft PR #170 at exact repaired head
-`0109d6f189d499c59416a0279d589cad7da0c12a` (parent
+`cf115ceac7dbf6f55a177a1de4058d14742a912b` (review baseline
 `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c`). This is one consolidated delta source review;
-the previously reviewed 42-file Value V2 DAG is unchanged outside these five
-files. The first authorized score-free Perf capacity census correctly refused
+the previously reviewed 42-file Value V2 DAG is unchanged outside these seven
+files across two commits. The first authorized score-free Perf capacity census correctly refused
 before any arm/DAG measurement because the frozen 96 attempts supplied only
 14 of the required 32 eligible fixtures. Its immutable progress-log SHA-256 is
 `3e926ce0a78ea4855e85fb339b8ce8de542513b902ce0a6030e0ba370e0181e8`;
@@ -47,8 +47,12 @@ rejection, utilization, memory and ETA; checks cgroup aggregate memory; refuses
 expired batches and worker failures; and witnesses the real source driver in a
 distinct process. The same delta repairs the append-only marker authenticator
 needed for a fresh freeze while proving that an older marker cannot be reused.
+The full-DAG reconstruction stage now repeats audit scoring/control arithmetic,
+hash-matches it to the audit-stage derivation, and still rebuilds no
+continuation or model. Later routine verification is receipt-only unless an
+explicit rescore is requested.
 Validation on the repaired exact head: **433 / 433** full V2 wildcard tests
-and **18 / 18** focused capacity-runner tests; clean diff and zero source
+and **31 / 31** focused capacity runner/supervisor tests; clean diff and zero source
 `.pyc`.
 
 Requested authority on PASS: exactly one replacement score-free full-DAG Perf
@@ -172,7 +176,7 @@ reviewed against the live systemd state before any recovery executes.
 ### Value-Afterstate V2 — first capacity refused; repaired source review pending
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
-  repaired pushed head `0109d6f189d499c59416a0279d589cad7da0c12a` is
+  repaired pushed head `cf115ceac7dbf6f55a177a1de4058d14742a912b` is
   clean; parent `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c` remains the exact
   previously reviewed DAG source.
 - The 42-file implementation completes the production path from D256
@@ -196,7 +200,7 @@ reviewed against the live systemd state before any recovery executes.
   bounded log is immutable and hash-bound above. The rehearsal authority was
   conditional on capacity success and therefore remains unused but cannot be
   applied to changed source. Exact repaired head
-  `0109d6f189d499c59416a0279d589cad7da0c12a` now awaits the one
+  `cf115ceac7dbf6f55a177a1de4058d14742a912b` now awaits the one
   delta review above; no replacement capacity may launch before PASS.
 
 ### Value-Afterstate V0 — independently verified refusal
@@ -277,7 +281,7 @@ reviewed against the live systemd state before any recovery executes.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | free; Value V2 waits for exact `0109d6f` delta PASS before replacement capacity |
+| Perf Cloud | free; Value V2 waits for exact `cf115ce` delta PASS before replacement capacity |
 | Mini | free; PT-Luna waits for exact `b243368` source PASS before one fresh census |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.

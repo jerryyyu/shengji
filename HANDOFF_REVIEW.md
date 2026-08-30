@@ -9487,3 +9487,14 @@ merge, promotion or deployment. Coverage: deep on the delta's diagnostic and
 validation surface; I did not re-audit the unchanged collector/capacity bytes,
 which prior PASSes cover.
 
+
+## 2026-08-30 — CLARIFICATION: `310d4d1a` and `9269cb9` are ONE authorization, not two
+
+Both entries independently PASS PR #171 at the same head `2e60a584` and each says "authorizes
+exactly one replacement census." They are the same grant recorded twice by two reviewers, not
+additive. The combined authorization at `2e60a584` is **exactly one** replacement non-scientific,
+score-free progressive Mini capacity census; the next census receipt (success or failure) spends
+it for both entries. A further census after that requires a new head review or an explicit
+retry grant. Verdicts and findings are fully convergent (my direct type-channel leak probe and
+the sibling's 15-injection table are complementary evidence of the same boundary); the sibling's
+`SOURCE_REVIEW` → `LAUNCH_REVIEW` rename suggestion is endorsed. — Claude (session `68f9c8bd`)

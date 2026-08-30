@@ -9150,3 +9150,54 @@ the known shape.
 
 Read-only throughout; no authority beyond the census already granted at `e45daaa`.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-30 — ✅ PASS (source-only): PR #172 R4 timeout recovery at exact head `1d576e4d`, reviewed tonight because the machinery may be needed at 12:23Z. One masked witness disclosed loudly: **the packet's own headline condition — Result=timeout, MainPID=0 — can be deleted from the observation guard with all 90 tests green**
+
+Scope: delta on parent `a327abb8` (PR #168, which is **unreviewed** — noted as a coverage limit;
+the recovery surface lives in this delta). 4 files, +2,358/−26; `git diff --check` clean. Batteries
+reproduced at the exact head, strict native: **54 focused** and **90 wider**, both matching the
+claim exactly.
+
+### Why this passes, and what it authorizes
+
+The fail-closed shape is right, and the parts that must not regress are witnessed:
+
+- **One-shot verifier**: neutralizing the "pending verifier attempt is already consumed" refusal
+  turns a test red immediately. Crash-before-receipt cannot retry.
+- **Marker machinery uses the repaired append-only form** (`current == previous + [marker]`,
+  replay refused) via the shared `_authenticate_review_marker_at_tip`, which also enforces reviewer
+  identity, session trailer, and HANDOFF_REVIEW.md-only commit scope. The single-marker-ever defect
+  family (`68efdec`) is absent here.
+- The timeout receipt hard-pins the exact live unit name, the exact 172,800s cap, and self-asserts
+  `outcome_bytes_opened: false`; its digest, the sealed inner tree digest, and the pending record
+  must all appear in a later externally authenticated marker before any recovery authority exists.
+  Recovery **re-opens receipts rather than re-scoring**, and all retry/promotion/deployment/strength
+  authority is false at every layer I read.
+
+PASS authorizes only: generating the timeout receipt and exact pending recovery claim **if** the
+live unit ends `Result=timeout, MainPID=0`, outer terminal absent, inner sealed. Interpretation, a
+second opening, retry, merge, promotion, deployment, strength — all stay unauthorized.
+
+### The disclosed masked witness — on the headline condition itself
+
+Deleting `active_state != "failed" or service_result != "timeout"` from
+`build_r4_completion_timeout_receipt_bytes` (:1245) leaves **90 passed**. That clause *is* the
+PR-body condition. A receipt could then be built for a crash (`Result=exit-code`) and routed as a
+timeout — the pending-vs-ordinary recovery routing keys on exactly this distinction. Why it does not
+block tonight: the receipt grants nothing by itself — the pending-recovery review (a second, human
+moment that I will perform against the **live systemd state**, not the receipt's echo of it) gates
+all authority, so the missing witness is a regression risk, not an open door. The one-test fix:
+build the receipt args from a non-timeout observation and assert the exact refusal. It should land
+before the pending-recovery review is ever requested.
+
+### Standing note for the possible next few hours
+
+R4 is at ~39h of 48h with a sealed inner terminal and a quiet single-core tail. If the cap fires,
+the sequence this PASS enables is: observe the systemd facts → timeout receipt → pending recovery
+claim → **my external marker after verifying the facts live** → receipt-reopened recovery. Nothing
+in that sequence re-scores or reopens outcome bytes before the marker. If instead the run completes,
+this machinery goes unused — the cheapest outcome and still the likelier one.
+
+Coverage limits: I did not line-audit +2,358 lines; deep on the timeout receipt, marker
+authentication, one-shot verifier, and authority maps. Base PR #168's parallel-integrity delta is
+NOT covered by this review and needs its own. — Claude (session `68f9c8bd`)

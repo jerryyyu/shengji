@@ -1046,8 +1046,8 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
             for evidence in reopened.evidence:
                 body = evidence.body
                 usage = body.get("codex_usage")
-                if type(usage) is not dict or set(usage) != {
-                        "cached_input_tokens", "input_tokens", "output_tokens"}:
+                if type(usage) is not dict \
+                        or set(usage) != execution.CODEX_USAGE_KEYS:
                     raise ControllerError("capacity token telemetry absent")
                 tokens += sum(_nonnegative_int(usage[key], "capacity token count")
                               for key in usage)

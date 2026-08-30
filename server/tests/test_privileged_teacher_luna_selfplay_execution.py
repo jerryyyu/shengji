@@ -24,7 +24,31 @@ def _codex_stdout() -> bytes:
     return (json.dumps({"type": "thread.started", "thread_id": "fake"}) + "\n"
             + json.dumps({"type": "turn.completed", "usage": {
                 "input_tokens": 10, "cached_input_tokens": 2,
-                "output_tokens": 3}}) + "\n").encode()
+                "cache_write_input_tokens": 1, "output_tokens": 3,
+                "reasoning_output_tokens": 4}}) + "\n").encode()
+
+
+def test_codex_0150_usage_schema_is_bound_exactly():
+    assert execution._codex_jsonl_usage(_codex_stdout()) == {
+        "cache_write_input_tokens": 1,
+        "cached_input_tokens": 2,
+        "input_tokens": 10,
+        "output_tokens": 3,
+        "reasoning_output_tokens": 4,
+    }
+
+
+@pytest.mark.parametrize("mutation", ("missing", "unknown"))
+def test_codex_usage_schema_drift_refuses(mutation):
+    usage = {key: 1 for key in execution.CODEX_USAGE_KEYS}
+    if mutation == "missing":
+        usage.pop("reasoning_output_tokens")
+    else:
+        usage["future_tokens"] = 1
+    raw = (json.dumps({"type": "turn.completed", "usage": usage}) + "\n").encode()
+    with pytest.raises(execution.LunaExecutionError,
+                       match="token telemetry drift"):
+        execution._codex_jsonl_usage(raw)
 
 
 def _game() -> luna.LunaSelfPlayGame:

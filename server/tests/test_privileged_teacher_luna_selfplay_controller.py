@@ -40,7 +40,8 @@ def _codex_stdout() -> bytes:
     return (json.dumps({"type": "thread.started", "thread_id": "fake"}) + "\n"
             + json.dumps({"type": "turn.completed", "usage": {
                 "input_tokens": 10, "cached_input_tokens": 2,
-                "output_tokens": 3}}) + "\n").encode()
+                "cache_write_input_tokens": 1, "output_tokens": 3,
+                "reasoning_output_tokens": 4}}) + "\n").encode()
 
 
 def _metric(workers: int, worker: int, game: int) -> dict[str, object]:
@@ -357,7 +358,8 @@ def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
     monkeypatch.setattr(execution, "run_luna_game", run)
     evidence = SimpleNamespace(body={
         "codex_usage": {"cached_input_tokens": 1, "input_tokens": 2,
-                        "output_tokens": 3},
+                        "cache_write_input_tokens": 0, "output_tokens": 3,
+                        "reasoning_output_tokens": 4},
         "trace": [{"request": {"op": "observe"}}],
         "runtime": {"codex": "fixture"}, "process_error": None,
         "execution_kind": execution.PRODUCTION_EXECUTION_KIND,

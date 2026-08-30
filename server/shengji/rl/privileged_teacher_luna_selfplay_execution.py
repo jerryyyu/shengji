@@ -40,6 +40,10 @@ ARTIFACT_SCHEMA = "privileged-teacher-luna-selfplay-private-artifact-v1"
 MAX_REQUEST_BYTES = 1 << 20
 MAX_PROCESS_BYTES = 16 << 20
 MAX_GAME_WALL_SECONDS = 1200
+CODEX_USAGE_KEYS = frozenset({
+    "input_tokens", "cached_input_tokens", "cache_write_input_tokens",
+    "output_tokens", "reasoning_output_tokens",
+})
 SANDBOX_PROFILE_SCHEMA = "privileged-teacher-luna-selfplay-sandbox-profile-v1"
 RESOURCE_SCHEMA = "privileged-teacher-luna-process-tree-resource-v1"
 RECOVERY_SCHEMA = "privileged-teacher-luna-selfplay-pre-manifest-recovery-v1"
@@ -604,12 +608,11 @@ def _codex_jsonl_usage(raw: bytes) -> dict[str, int]:
     if len(completed) != 1 or type(completed[0].get("usage")) is not dict:
         raise LunaExecutionError("Codex completion telemetry drift")
     usage = completed[0]["usage"]
-    expected = {"input_tokens", "cached_input_tokens", "output_tokens"}
-    if set(usage) != expected or any(
+    if set(usage) != CODEX_USAGE_KEYS or any(
             isinstance(usage[key], bool) or not isinstance(usage[key], int)
-            or usage[key] < 0 for key in expected):
+            or usage[key] < 0 for key in CODEX_USAGE_KEYS):
         raise LunaExecutionError("Codex token telemetry drift")
-    return {key: usage[key] for key in sorted(expected)}
+    return {key: usage[key] for key in sorted(CODEX_USAGE_KEYS)}
 
 
 def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
@@ -1096,8 +1099,7 @@ def run_luna_game(
         try:
             usage = _codex_jsonl_usage(stdout)
         except LunaExecutionError as exc:
-            usage = {"cached_input_tokens": 0, "input_tokens": 0,
-                     "output_tokens": 0}
+            usage = {key: 0 for key in sorted(CODEX_USAGE_KEYS)}
             process_error = process_error or str(exc)
         try:
             final_obj = json.loads(final_raw.decode("utf-8"))
@@ -1386,8 +1388,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
         if (type(body["prompt_sha256"]) is not str
                 or len(body["prompt_sha256"]) != 64
                 or type(body["codex_usage"]) is not dict
-                or set(body["codex_usage"]) != {"input_tokens",
-                    "cached_input_tokens", "output_tokens"}
+                or set(body["codex_usage"]) != CODEX_USAGE_KEYS
                 or any(isinstance(value, bool) or not isinstance(value, int)
                        or value < 0 for value in body["codex_usage"].values())):
             raise LunaExecutionError("process telemetry binding drift")
@@ -1522,7 +1523,8 @@ run_luna_processes = run_luna_game
 __all__ = ["ARTIFACT_SCHEMA", "ATTEMPT_SCHEMA", "FINAL_RESPONSE_SCHEMA",
            "LunaExecutionError", "LunaPlannerConfig", "LunaProcessError",
            "LunaExecutionResult", "LunaProcessEvidence", "LunaToolServer",
-           "ProcessSupervisor", "ProcessTreeResourceMeter", "RESOURCE_SCHEMA",
+           "CODEX_USAGE_KEYS", "ProcessSupervisor", "ProcessTreeResourceMeter",
+           "RESOURCE_SCHEMA",
            "SandboxIdentity", "SANDBOX_PROFILE_SCHEMA",
            "MAX_GAME_WALL_SECONDS", "MODEL", "PRIVATE_TRACE_SCHEMA",
            "REASONING_EFFORT", "planner_prompt", "process_command",

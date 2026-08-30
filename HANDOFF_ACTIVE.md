@@ -4,10 +4,10 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 06:47 EDT**. Remote main before this update:
-`9d12923`.
+Last reconciled: **2026-08-30 07:14 EDT**. Remote main before this update:
+`33d784c`.
 
-## Review queue — one current review ask
+## Review queue — two current, run-unblocking asks
 
 Review draft PR #171 at exact head
 `b243368ca275988811c3e54db9c56b0de86f5fa1`, parent `b12eea0`. This is one
@@ -27,6 +27,35 @@ outcome opening/use, gameplay or strength claims, merge, retry beyond that
 census, promotion or deployment. If capacity succeeds, the next review binds
 only that receipt plus the immutable 52-deal x two-mirror freeze; unchanged
 source must not be re-reviewed.
+
+Review draft PR #170 at exact repaired head
+`0109d6f` (parent `ba17ab1e`). This is one consolidated delta source review;
+the previously reviewed 42-file Value V2 DAG is unchanged outside these five
+files. The first authorized score-free Perf capacity census correctly refused
+before any arm/DAG measurement because the frozen 96 attempts supplied only
+14 of the required 32 eligible fixtures. Its immutable progress-log SHA-256 is
+`3e926ce0a78ea4855e85fb339b8ce8de542513b902ce0a6030e0ba370e0181e8`;
+no label, outcome, audit, or scientific stage opened.
+
+The repaired delta preserves the exact 32-fixture target and byte-identical
+first-96 identity prefix, extends the hard deterministic ceiling to 384 (the
+measured 14/96 rate projects about 56), and runs fixed index-ordered batches
+on up to 16 real processes. Batches never exceed the fixtures still needed,
+so no eligible surplus can be selected post hoc. It reports acceptance,
+rejection, utilization, memory and ETA; checks cgroup aggregate memory; refuses
+expired batches and worker failures; and witnesses the real source driver in a
+distinct process. The same delta repairs the append-only marker authenticator
+needed for a fresh freeze while proving that an older marker cannot be reused.
+Validation on the repaired exact head: **433 / 433** full V2 wildcard tests
+and **18 / 18** focused capacity-runner tests; clean diff and zero source
+`.pyc`.
+
+Requested authority on PASS: exactly one replacement score-free full-DAG Perf
+capacity census and, only after that succeeds, one bounded target-free
+rehearsal. No labels/outcomes, scientific run, merge, retry beyond those two
+steps, gameplay/PUCT/BELIEF integration, promotion, deployment, or strength
+claim. If both succeed, the next and only remaining review binds their receipts
+plus the immutable scientific freeze; unchanged source must not be re-reviewed.
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -139,10 +168,11 @@ reviewed against the live systemd state before any recovery executes.
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
 
-### Value-Afterstate V2 — bounded score-free Perf capacity running
+### Value-Afterstate V2 — first capacity refused; repaired source review pending
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
-  exact pushed head `ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c` is clean.
+  repaired pushed head `0109d6f` is clean; parent `ba17ab1e` remains the exact
+  previously reviewed DAG source.
 - The 42-file implementation completes the production path from D256
   population through P0, optimizer canary, labels, six natural/control
   cohorts, precision selection, audit attempt, terminal and reconstruction.
@@ -151,21 +181,20 @@ reviewed against the live systemd state before any recovery executes.
   sealed common-epoch member rows. Batched inference is byte-identical after
   canonical probability quantization. Audit inputs are durably sealed before
   any audit label opens.
-- Final source validation is **428 / 428** wildcard tests plus a clean
-  diff-check and empty source `.pyc` scan. The integrated Terra review found
-  one real early-terminal dispatch defect; it was repaired and re-reviewed to
-  PASS. The five actual adapter/controller witnesses include the initial
-  population-deadline frontier that the first repair missed.
-- Canonical main `3e98d06` and `9d12923` record scoped exact-head PASSes for
-  one score-free full-DAG Perf capacity census and one bounded rehearsal. At
-  **06:42 EDT**, Codex launched the capacity census as systemd unit
-  `value-v2-capacity-ba17ab1e.service` in exact clean checkout
-  `/root/value-v2-capacity-ba17ab1e`; first preflight progress was healthy.
-  Output root is `/root/value-v2-capacity-ba17ab1e-output`. The rehearsal runs
-  only after capacity completes successfully. Neither action opens labels or
-  outcomes or authorizes science. The lightweight rehearsal is target-free
-  inference / immutable publication / reopen plumbing; the score-free
-  capacity supervisor is the full-DAG exercise.
+- Repaired-source validation is recorded in the current review ask above. The
+  original integrated Terra review found one real early-terminal dispatch
+  defect; it was repaired and re-reviewed to PASS. The five actual
+  adapter/controller witnesses include the initial population-deadline frontier
+  that the first repair missed.
+- Canonical main `3e98d06` and `9d12923` record the now-consumed exact-head
+  `ba17ab1e` capacity authority. At **06:42 EDT**, the exact clean Perf census
+  started and then refused safely after all 96 score-free attempts: only 14
+  eligible fixtures existed versus the fixed 32 target. It never entered an
+  arm, full-DAG, rehearsal, label, outcome, audit, or scientific stage. The
+  bounded log is immutable and hash-bound above. The rehearsal authority was
+  conditional on capacity success and therefore remains unused but cannot be
+  applied to changed source. Exact repaired head `0109d6f` now awaits the one
+  delta review above; no replacement capacity may launch before PASS.
 
 ### Value-Afterstate V0 — independently verified refusal
 

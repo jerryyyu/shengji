@@ -10111,3 +10111,83 @@ target-free rehearsal. All other authority denials unchanged from `816a1b4b`.
 
 Running fixture-debt ledger before the two freeze/launch reviews: Luna — wrong-token round_end,
 tampered-utility, marker-replay; V2 — marker-replay, echo-shaped replay. — Claude (session `68f9c8bd`)
+
+## 2026-08-30 08:45 EDT — ✅ PASS: the R4 sealed-inner pending-recovery claim. Every constituent verified against measurements I took before reading it — **and the recovery will refuse on a stale ref unless the refresh is re-run, because both refresh timers are spent one-shots**
+
+R4 reached its frozen limit exactly as designed. I measured the unit directly
+before reading any receipt: `ActiveState=failed`, `Result=timeout`,
+`ExecMainStatus=15`, `NRestarts=0`, `ExecMainStartTimestamp=2026-08-28
+12:23:19 UTC`, `ExecMainExitTimestamp=2026-08-30 12:23:20 UTC` — **48.00 h
+wall, 116.25 CPU-hours**. Namespace: `terminal/` present, `terminal.partial/`
+absent, `r4-completion-terminal.json` absent. The success-only verifier watcher
+launched nothing, correctly.
+
+### The receipt agrees with an independent reading of the same machine
+
+`r4-completion-timeout-receipt.json` is `0400`, 1,281 bytes, written 12:25:50,
+external SHA-256 `b089dca4198dd3012b86ace734c9ff7f93fb5e0e57d05e75425a51eefabe1fd6`
+— which is also the `timeout_receipt_sha256` inside the claim. Its recorded
+observation matches what I had already measured, field by field:
+`active_state='failed'`, `service_result='timeout'`, `restart_count=0`,
+`retry_count=0`, `inner_terminal_present=True`, `outer_terminal_absent=True`,
+`runtime_max_microseconds=172800000000` (48 h), `outcome_bytes_opened=False`,
+`test_split_reopened=False`, and **every authority flag false**. Two readings of
+the same systemd state taken separately, not one reading quoted twice.
+
+### The claim
+
+2,994 bytes, exactly one line with a trailing newline, and its payload
+re-serialises byte-identically under sort/separators/ensure_ascii — already
+canonical. `completion_execution_git 56bd35f0…` is the sealed scientific head;
+`execution_mode` is `outcome-blind-pending-then-one-verifier`; the embedded
+`recovery_execution` block carries `source_review_commit 00c184da…` and
+`source_review_marker_sha256 ce7debc9f89c0edf8443f03b2abd4da1df9244dc4b7a2a1657d4894b59dfaa66`
+— the marker I generated independently on this host last night and found
+byte-identical to the one published. Authority is exactly three true flags:
+outcome-blind pending binding, one independent verifier, and that verifier may
+open outcome bytes. False: pending-binding outcome opening, interpretation,
+result replacement, retry, test-split open or reopen, strength claim, promotion,
+deployment. That is the scope the ask states, with nothing added.
+
+### The blocker for the *next* step, found by trying it
+
+I attempted to regenerate the claim independently, the way I regenerated the
+source marker. It refused:
+
+    BeliefV2R4CompletionError: R4 recovery execution local canonical ref drift
+
+from `belief_v2_r4_completion.py:567`, which requires the recovery checkout's
+`origin/main` to equal the live GitHub tip. Measured right now: the checkout's
+`origin/main` is **`759311f1`**, the real remote is **`6f361a1b`**. The refresh
+units exist precisely to close this — and **both are spent one-shots**:
+`belief-r4-recovery-ref-refresh-00c184d-r1.timer` and
+`belief-r4-sealed-ref-refresh-00c184d-r1.timer` are `inactive`, fired once at
+12:24, with no next elapse.
+
+So the recovery execution, launched now, refuses exactly as my probe did. And
+the situation strictly worsens with time: **this very commit advances main**,
+as does every ledger entry any session writes. The reviewed design closes the
+stale-ref handoff by refreshing immediately before authentication; that
+property is real but is wired to a timer that has already fired.
+
+Concretely, before `recover-pending` runs, the canonical refs must be
+refreshed again — either by re-triggering both refresh units or by an
+equivalent fetch inside the recovery checkout — and it must happen after the
+last ledger write, not before. I did not do it myself: writing into
+`/opt/belief-r4-recovery-1d576e4` is a mutation of a Codex-owned tree and is
+not mine to make.
+
+This does not block the marker. It blocks what the marker authorizes, and it
+would have surfaced as a confusing refusal minutes after a PASS.
+
+### Coverage
+
+Verified: live systemd state by direct measurement, the timeout receipt on disk
+(mode, size, external hash, every recorded field), the claim's byte shape and
+canonical form, its embedded recovery-execution identities against the marker I
+generated myself, and the authority set. Not verified: I could not regenerate
+the claim independently — the ref guard above refuses, and refreshing the ref
+would mutate a Codex tree. The inner terminal's own bytes remain unread, as
+required.
+
+BELIEF_V1_V2_R4_COMPLETION_PENDING_RECOVERY_V1_REVIEW {"authority":{"deployment_authorized":false,"independent_verifier_outcome_bytes_open_authorized":true,"one_independent_verifier_authorized":true,"outcome_blind_pending_binding_authorized":true,"pending_binding_outcome_bytes_open_authorized":false,"promotion_authorized":false,"result_replacement_authorized":false,"retry_authorized":false,"scientific_interpretation_authorized":false,"strength_claim_authorized":false,"test_split_open_authorized":false,"test_split_reopen_authorized":false},"completion_admission_sha256":"f2f3c94fe29ed7da934e844c617bb35cbebca96aab2355efe1c923890078828a","completion_attempt_sha256":"ed13739e82b7e4685d317fecbbc1f3f98006c349700fc0a9bb4dcfb299085337","completion_execution_git":"56bd35f0c45080121d094f6906ab8d1053ca9e6b","completion_freeze_sha256":"0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951","execution_mode":"outcome-blind-pending-then-one-verifier","inner_manifest_sha256":"b61b34c32cc16f570b3d20652bdffa28ace5af0b98063835c625546b5281ce56","inner_tree_sha256":"4c6e79e4f5293b80d9c5b015f929800b664ab1ca8d164245be212d3da552efef","planned_pending_sha256":"01f8d363e0c508e9ae38485b2e38c99e013dd78e5c8ef033671f8830e4509a0d","recovery_execution":{"authority":{"deployment_authorized":false,"one_independent_verifier_authorized_after_dynamic_review":true,"pending_claim_authorized":true,"recovered_reopen_authorized":true,"retry_authorized":false,"score_replacement_authorized":false,"strength_claim_authorized":false,"test_split_reopen_authorized":false,"timeout_receipt_authorized":true,"training_authorized":false},"calibration_import_sha256":"61d62ddb2229c8d6f6acd7eb4b630a96063b009248091be31def4790b29ac48e","capacity_sha256":"df51a8f9704298b3a7958d0daa8ee9b1cf220cb3cc140f682910072f07a6051e","execution_mode":"sealed-inner-timeout-recovery-only","recovery_execution_git":"5a81d89cd954a63ac97ca8588926b3367c28c5c1","recovery_runtime_sha256":"4b4029d0605fbcada3d71371b04f4acf4f982506cbbde374f10838c6b18a5b38","recovery_source_manifest_sha256":"d84f14fa397a91a0ace210a02ba956cc07ba754100c74bb8da5d4d7871778d71","schema":"belief-v1-v2-r4-recovery-execution-review-v1","sealed_admission_sha256":"f2f3c94fe29ed7da934e844c617bb35cbebca96aab2355efe1c923890078828a","sealed_evidence_root":"/opt/belief-r4-terminal-parallel-v1-r1","sealed_execution_git":"56bd35f0c45080121d094f6906ab8d1053ca9e6b","sealed_freeze_sha256":"0af5dc750789517cd2c09530afbd9b1e1d998d01ad28deb9c5c2940625bd4951","source_review_commit":"00c184dae0fb69c8c5d78d1e0c2b665366448451","source_review_marker_sha256":"ce7debc9f89c0edf8443f03b2abd4da1df9244dc4b7a2a1657d4894b59dfaa66","terminal_source_spec_sha256":"c0bd3f5b2431de10f2863699e744ba44fb75f73fee794428c03fa02879a7d4a0"},"schema":"belief-v1-v2-r4-completion-pending-recovery-review-v1","source_spec_sha256":"c0bd3f5b2431de10f2863699e744ba44fb75f73fee794428c03fa02879a7d4a0","timeout_receipt_sha256":"b089dca4198dd3012b86ace734c9ff7f93fb5e0e57d05e75425a51eefabe1fd6"}

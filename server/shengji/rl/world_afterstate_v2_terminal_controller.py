@@ -26,6 +26,7 @@ from typing import Any, Mapping, Sequence
 
 from .belief_artifacts import publish_exclusive_bytes, stable_read_bytes
 from .belief_contract import canonical_json_bytes
+from .world_afterstate_v2_audit_attempt import reopen_audit_attempt_bytes
 from .world_afterstate_v2_artifacts import (
     AUTHORITY as ARTIFACT_AUTHORITY,
     CONTINUATION_MANIFEST_SCHEMA, checkpoint_manifest_path,
@@ -46,6 +47,7 @@ from .world_afterstate_v2_reopen import (
     reopen_model_selector_power_v2, reopen_optimizer_canary_v2,
 )
 from .world_afterstate_v2_result import (
+    DECISIONS, WorldAfterstateV2TerminalEvidence,
     WorldAfterstateV2TerminalResult, derive_terminal_result,
 )
 from .world_afterstate_v2_terminal_provenance import (
@@ -62,6 +64,10 @@ PROVENANCE_NAME = "provenance.json"
 RESULT_NAME = "terminal.json"
 RECONSTRUCTION_NAME = "independent-reconstruction.json"
 ATTEMPT_SCHEMA = "world-afterstate-v2-terminal-attempt-v1"
+EARLY_ATTEMPT_SCHEMA = "world-afterstate-v2-early-terminal-attempt-v1"
+EARLY_ROUTE_SCHEMA = "world-afterstate-v2-early-route-evidence-v1"
+EARLY_STAGES = ("p0", "training", "precision-select")
+EARLY_DECISIONS = DECISIONS[:7]
 CONTROLLER_AUTHORITY = dict(AUTHORITY)
 
 
@@ -126,6 +132,86 @@ def _ordered_paths(value: object, labels: tuple[str, ...], label: str) \
     return tuple(result)
 
 
+def build_early_route_evidence_bytes(
+        *, freeze_sha256: str, admission_sha256: str, source_stage: str,
+        resource_incomplete: bool = False,
+        resource_cap_exceeded: bool = False,
+        mechanics_failure: bool = False) -> bytes:
+    """Build the target-free stage-status receipt consumed by early routing."""
+    _digest(freeze_sha256, "early-route freeze SHA-256")
+    _digest(admission_sha256, "early-route admission SHA-256")
+    if source_stage not in EARLY_STAGES or any(type(value) is not bool for value in (
+            resource_incomplete, resource_cap_exceeded, mechanics_failure)):
+        raise WorldAfterstateV2TerminalControllerError(
+            "early-route evidence field drift")
+    body = {
+        "schema": EARLY_ROUTE_SCHEMA,
+        "freeze_sha256": freeze_sha256,
+        "admission_sha256": admission_sha256,
+        "source_stage": source_stage,
+        "resource_incomplete": resource_incomplete,
+        "resource_cap_exceeded": resource_cap_exceeded,
+        "mechanics_failure": mechanics_failure,
+        "audit_opened_count": 0,
+        "authority": dict(CONTROLLER_AUTHORITY),
+    }
+    return canonical_json_bytes({**body, "evidence_sha256": _sha(body)})
+
+
+@dataclass(frozen=True)
+class EarlyTerminalInputPathsV2:
+    """Closed receipt set for a pre-audit terminal route.
+
+    Optional paths are permitted only because the first-match route can stop
+    before those artifacts exist.  Their allowed population is rederived from
+    ``source_stage`` and the pure terminal router; a caller cannot omit a
+    required receipt and still obtain its requested route.
+    """
+
+    freeze_sha256: str
+    admission_sha256: str
+    expected_route: str
+    route_evidence_path: Path
+    p0_report_path: Path | None = None
+    optimizer_canary_path: Path | None = None
+    precision_select_result_path: Path | None = None
+    model_selector_power_path: Path | None = None
+    cohort_manifest_paths: tuple[tuple[str, Path], ...] = ()
+
+    def validate_shape(self) -> None:
+        _digest(self.freeze_sha256, "early terminal freeze SHA-256")
+        _digest(self.admission_sha256, "early terminal admission SHA-256")
+        if self.expected_route not in EARLY_DECISIONS:
+            raise WorldAfterstateV2TerminalControllerError(
+                "early terminal route drift")
+        _path(self.route_evidence_path, "early route evidence")
+        for value, label in (
+                (self.p0_report_path, "early P0 report"),
+                (self.optimizer_canary_path, "early optimizer canary"),
+                (self.precision_select_result_path,
+                 "early precision-select result"),
+                (self.model_selector_power_path,
+                 "early model-selector power")):
+            if value is not None:
+                _path(value, label)
+        if type(self.cohort_manifest_paths) is not tuple \
+                or len({label for label, _ in self.cohort_manifest_paths}) != len(
+                    self.cohort_manifest_paths):
+            raise WorldAfterstateV2TerminalControllerError(
+                "early cohort manifest population drift")
+        allowed = set(COHORT_LABELS)
+        for row in self.cohort_manifest_paths:
+            if type(row) is not tuple or len(row) != 2 or row[0] not in allowed:
+                raise WorldAfterstateV2TerminalControllerError(
+                    "early cohort manifest identity drift")
+            _path(row[1], f"early cohort manifest {row[0]}")
+        if tuple(label for label, _ in self.cohort_manifest_paths) != tuple(
+                label for label in COHORT_LABELS
+                if label in {row[0] for row in self.cohort_manifest_paths}):
+            raise WorldAfterstateV2TerminalControllerError(
+                "early cohort manifest order drift")
+
+
 @dataclass(frozen=True)
 class TerminalInputPathsV2:
     """Closed path/hash contract consumed by the terminal supervisor.
@@ -140,6 +226,7 @@ class TerminalInputPathsV2:
     audit_population_root: Path
     audit_population_namespace_sha256: str
     audit_population_tier: str
+    audit_attempt_path: Path
     continuation_root: Path
     prediction_manifest_paths: tuple[tuple[str, Path], ...]
     cohort_manifest_paths: tuple[tuple[str, Path], ...]
@@ -168,6 +255,7 @@ class TerminalInputPathsV2:
                               "audit population namespace SHA-256")):
             _digest(value, label)
         for value, label in ((self.audit_population_root, "audit population"),
+                             (self.audit_attempt_path, "audit attempt"),
                              (self.continuation_root, "continuation"),
                              (self.p0_report_path, "P0 report"),
                              (self.optimizer_canary_path, "optimizer canary"),
@@ -294,6 +382,14 @@ def _preflight_continuation_manifest(root: Path, deals: set[str]) -> tuple[str, 
 
 def _preflight(inputs: TerminalInputPathsV2) -> dict[str, Any]:
     inputs.validate_shape()
+    try:
+        audit_attempt_raw = stable_read_bytes(inputs.audit_attempt_path)
+        audit_attempt = reopen_audit_attempt_bytes(
+            audit_attempt_raw, expected_freeze_sha256=inputs.freeze_sha256,
+            expected_admission_sha256=inputs.admission_sha256)
+    except Exception as exc:
+        raise WorldAfterstateV2TerminalControllerError(
+            "durable audit attempt refused") from exc
     population, population_raw = _preflight_population(
         inputs.audit_population_root, inputs.freeze_sha256,
         inputs.audit_population_namespace_sha256, inputs.audit_population_tier)
@@ -400,6 +496,8 @@ def _preflight(inputs: TerminalInputPathsV2) -> dict[str, Any]:
         raise WorldAfterstateV2TerminalControllerError(
             "typed target-free receipt reconstruction refused") from exc
     return {
+        "audit_attempt": audit_attempt,
+        "audit_attempt_raw": audit_attempt_raw,
         "population": population, "population_raw": population_raw,
         "continuation_sha": continuation_sha, "continuation_raw": continuation_raw,
         "predictions": tuple(predictions), "prediction_raws": tuple(prediction_raws),
@@ -418,6 +516,7 @@ def _attempt_payload(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any])
     return {
         "schema": ATTEMPT_SCHEMA, "freeze_sha256": inputs.freeze_sha256,
         "admission_sha256": inputs.admission_sha256,
+        "audit_attempt_sha256": preflight["audit_attempt"]["attempt_sha256"],
         "audit_population_manifest_sha256": preflight["population"]["manifest_sha256"],
         "audit_population_sha256": preflight["population"]["population_sha256"],
         "continuation_manifest_sha256": preflight["continuation_sha"],
@@ -429,7 +528,10 @@ def _attempt_payload(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any])
             for label, value in preflight["cohorts"]],
         "checkpoint_manifest_sha256s": [list(row)
                                          for row in preflight["checkpoint_ids"]],
-        "audit_opened_count": 0, "published_before_audit_labels": True,
+        # This is the terminal-decision attempt, not the audit-opening marker.
+        # The shared audit-attempt record above is the sole artifact allowed to
+        # claim publication before labels.
+        "audit_opened_count": 1,
         "authority": dict(CONTROLLER_AUTHORITY),
     }
 
@@ -449,8 +551,8 @@ def _publish_attempt(partial: Path, parent: Path, payload: dict[str, Any]) -> tu
     return raw, _sha_bytes(raw)
 
 
-def _reopen_audit(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any],
-                  attempt_sha: str) -> tuple[AuditDerivationInputV2, Any]:
+def _reopen_audit(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any]) \
+        -> tuple[AuditDerivationInputV2, Any]:
     try:
         materials = reopen_population_audit_subset(
             inputs.audit_population_root,
@@ -473,7 +575,7 @@ def _reopen_audit(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any],
     result_input = AuditDerivationInputV2(
         freeze_sha256=inputs.freeze_sha256,
         admission_sha256=inputs.admission_sha256,
-        audit_attempt_sha256=attempt_sha,
+        audit_attempt_sha256=preflight["audit_attempt"]["attempt_sha256"],
         continuation_manifest_sha256=preflight["continuation_sha"],
         prediction_manifests=tuple(preflight["predictions"]),
         checkpoint_manifest_sha256s=preflight["checkpoint_ids"],
@@ -515,6 +617,222 @@ def _reopen_result(value: Mapping[str, Any]) -> WorldAfterstateV2TerminalResult:
     return result
 
 
+def _early_route_evidence(inputs: EarlyTerminalInputPathsV2) \
+        -> tuple[WorldAfterstateV2TerminalEvidence,
+                 WorldAfterstateV2TerminalResult,
+                 tuple[tuple[str, str], ...]]:
+    """Reopen every receipt available at the claimed pre-audit stage."""
+    inputs.validate_shape()
+    route_value, route_raw = _read_json(
+        inputs.route_evidence_path, "early route evidence")
+    required = {
+        "schema", "freeze_sha256", "admission_sha256", "source_stage",
+        "resource_incomplete", "resource_cap_exceeded", "mechanics_failure",
+        "audit_opened_count", "authority", "evidence_sha256",
+    }
+    if set(route_value) != required \
+            or route_value["schema"] != EARLY_ROUTE_SCHEMA \
+            or route_value["freeze_sha256"] != inputs.freeze_sha256 \
+            or route_value["admission_sha256"] != inputs.admission_sha256 \
+            or route_value["source_stage"] not in EARLY_STAGES \
+            or any(type(route_value[name]) is not bool for name in (
+                "resource_incomplete", "resource_cap_exceeded",
+                "mechanics_failure")) \
+            or route_value["audit_opened_count"] != 0 \
+            or route_value["authority"] != CONTROLLER_AUTHORITY:
+        raise WorldAfterstateV2TerminalControllerError(
+            "early route evidence contract drift")
+    route_body = {key: item for key, item in route_value.items()
+                  if key != "evidence_sha256"}
+    if route_value["evidence_sha256"] != _sha(route_body):
+        raise WorldAfterstateV2TerminalControllerError(
+            "early route evidence hash drift")
+
+    source_rows: list[tuple[str, str]] = [
+        ("route-evidence", _sha_bytes(route_raw))]
+    p0 = None
+    if inputs.p0_report_path is not None:
+        p0, raw = _read_json(inputs.p0_report_path, "early P0 report")
+        try:
+            validate_precision_label(p0)
+        except Exception as exc:
+            raise WorldAfterstateV2TerminalControllerError(
+                "early P0 report refused") from exc
+        source_rows.append(("p0", _sha_bytes(raw)))
+    canary = None
+    if inputs.optimizer_canary_path is not None:
+        value, raw = _read_json(inputs.optimizer_canary_path,
+                                "early optimizer canary")
+        try:
+            canary = reopen_optimizer_canary_v2(value)
+        except Exception as exc:
+            raise WorldAfterstateV2TerminalControllerError(
+                "early optimizer canary refused") from exc
+        source_rows.append(("optimizer-canary", _sha_bytes(raw)))
+    precision = None
+    if inputs.precision_select_result_path is not None:
+        value, raw = _read_json(inputs.precision_select_result_path,
+                                "early precision-select result")
+        try:
+            precision = reopen_evaluation_result_v2(value)
+        except Exception as exc:
+            raise WorldAfterstateV2TerminalControllerError(
+                "early precision-select result refused") from exc
+        source_rows.append(("precision-select", _sha_bytes(raw)))
+    power = None
+    if inputs.model_selector_power_path is not None:
+        value, raw = _read_json(inputs.model_selector_power_path,
+                                "early model-selector power")
+        try:
+            power = reopen_model_selector_power_v2(value)
+        except Exception as exc:
+            raise WorldAfterstateV2TerminalControllerError(
+                "early model-selector power refused") from exc
+        source_rows.append(("model-selector-power", _sha_bytes(raw)))
+    manifests = []
+    for label, path in inputs.cohort_manifest_paths:
+        value, raw = _read_json(path, f"early cohort manifest {label}")
+        try:
+            validate_cohort_manifest(value)
+        except Exception as exc:
+            raise WorldAfterstateV2TerminalControllerError(
+                f"early cohort manifest {label} refused") from exc
+        manifests.append(value)
+        source_rows.append((f"cohort:{label}", _sha_bytes(raw)))
+
+    stage = route_value["source_stage"]
+    evidence = WorldAfterstateV2TerminalEvidence(
+        p0_report=p0, optimizer_canary=canary,
+        precision_select_result=precision, model_selector_power=power,
+        cohort_manifests=tuple(manifests),
+        cohort_truncated=any(
+            row.get("truncated_by_deadline") is True for row in manifests),
+        resource_incomplete=route_value["resource_incomplete"],
+        resource_stage=stage if route_value["resource_incomplete"]
+        or route_value["resource_cap_exceeded"]
+        or any(row.get("truncated_by_deadline") is True for row in manifests)
+        else None,
+        resource_cap_exceeded=route_value["resource_cap_exceeded"],
+        mechanics_failure=route_value["mechanics_failure"],
+        mechanics_stage=stage if route_value["mechanics_failure"] else None,
+        audit_opened_count=0)
+    try:
+        result = derive_terminal_result(evidence)
+    except Exception as exc:
+        raise WorldAfterstateV2TerminalControllerError(
+            "early terminal result derivation refused") from exc
+    if result.decision != inputs.expected_route \
+            or result.decision not in EARLY_DECISIONS \
+            or result.audit_opened_count != 0:
+        raise WorldAfterstateV2TerminalControllerError(
+            "early terminal expected route differs")
+    return evidence, result, tuple(source_rows)
+
+
+def _early_attempt_payload(inputs: EarlyTerminalInputPathsV2,
+                           source_rows: tuple[tuple[str, str], ...]) \
+        -> dict[str, Any]:
+    return {
+        "schema": EARLY_ATTEMPT_SCHEMA,
+        "freeze_sha256": inputs.freeze_sha256,
+        "admission_sha256": inputs.admission_sha256,
+        "expected_route": inputs.expected_route,
+        "source_receipt_sha256s": [list(row) for row in source_rows],
+        "audit_opened_count": 0,
+        "authority": dict(CONTROLLER_AUTHORITY),
+    }
+
+
+def _independent_reconstruct_early_terminal_v2(
+        root: Path, inputs: EarlyTerminalInputPathsV2,
+        *, publish: bool = True) -> dict[str, Any]:
+    root = _path(root, "early terminal root")
+    if not root.is_dir() or root.name != "terminal":
+        raise WorldAfterstateV2TerminalControllerError(
+            "early terminal root drift")
+    _evidence, derived, source_rows = _early_route_evidence(inputs)
+    attempt_value, attempt_raw = _read_json(
+        root / ATTEMPT_NAME, "early terminal attempt")
+    if attempt_value != _early_attempt_payload(inputs, source_rows):
+        raise WorldAfterstateV2TerminalControllerError(
+            "early terminal attempt reconstruction drift")
+    result_value, result_raw = _read_json(root / RESULT_NAME,
+                                          "early terminal result")
+    sealed = _reopen_result(result_value)
+    receipt = IndependentReconstructionReceiptV2(
+        provenance_sha256=_sha_bytes(attempt_raw),
+        sealed_terminal_result_sha256=sealed.result_sha256,
+        independently_derived_terminal_result_sha256=derived.result_sha256,
+        matched=sealed.result_sha256 == derived.result_sha256,
+        verifier_sha256=_sha({
+            "module": "world_afterstate_v2_terminal_controller",
+            "purpose": "early-independent-reconstruction"}),
+        source_sha256=_sha({label: digest for label, digest in source_rows}),
+        runtime_sha256=_sha({"python": platform.python_version(),
+                             "implementation": platform.python_implementation(),
+                             "sys": sys.version_info[:3]}))
+    validate_independent_reconstruction_v2(receipt)
+    if canonical_json_bytes(_result_payload(sealed)) != result_raw:
+        raise WorldAfterstateV2TerminalControllerError(
+            "early terminal result byte reconstruction drift")
+    if publish:
+        try:
+            publish_exclusive_bytes(
+                root / RECONSTRUCTION_NAME, receipt.canonical_bytes())
+        except Exception as exc:
+            raise WorldAfterstateV2TerminalControllerError(
+                "early independent reconstruction publication refused") from exc
+    if not receipt.matched:
+        raise WorldAfterstateV2TerminalControllerError(
+            "early independent terminal result differs")
+    return receipt.payload()
+
+
+def _run_early_terminal_v2(root: Path,
+                           inputs: EarlyTerminalInputPathsV2) -> dict[str, Any]:
+    if not isinstance(root, Path) or root.is_symlink():
+        raise WorldAfterstateV2TerminalControllerError(
+            "early terminal destination drift")
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    final = root / "terminal"
+    partial = root / "terminal.partial"
+    if final.exists() or partial.exists() or final.is_symlink() \
+            or partial.is_symlink():
+        raise WorldAfterstateV2TerminalControllerError(
+            "terminal decision slot occupied")
+    _evidence, result, source_rows = _early_route_evidence(inputs)
+    try:
+        partial.mkdir(mode=0o700, exist_ok=False)
+        descriptor = os.open(root, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except FileExistsError as exc:
+        raise WorldAfterstateV2TerminalControllerError(
+            "terminal decision slot occupied") from exc
+    attempt = _early_attempt_payload(inputs, source_rows)
+    _publish_attempt(partial, root, attempt)
+    try:
+        publish_exclusive_bytes(
+            partial / RESULT_NAME,
+            canonical_json_bytes(_result_payload(result)))
+        descriptor = os.open(partial, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.rename(partial, final)
+        descriptor = os.open(root, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except BaseException:
+        raise
+    return _independent_reconstruct_early_terminal_v2(final, inputs)
+
+
 def _reopen_provenance(value: Mapping[str, Any]) -> AuditProvenanceV2:
     if type(value) is not dict:
         raise WorldAfterstateV2TerminalControllerError("provenance schema drift")
@@ -541,9 +859,9 @@ def _reopen_provenance(value: Mapping[str, Any]) -> AuditProvenanceV2:
 
 
 def _derive_from_inputs(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any],
-                        attempt_sha: str) -> tuple[AuditProvenanceV2,
+                        _terminal_attempt_sha: str) -> tuple[AuditProvenanceV2,
                                                    WorldAfterstateV2TerminalResult]:
-    derivation, _materials = _reopen_audit(inputs, preflight, attempt_sha)
+    derivation, _materials = _reopen_audit(inputs, preflight)
     try:
         derived = derive_audit_v2(derivation)
         terminal = derive_terminal_result(derived.evidence)
@@ -566,17 +884,19 @@ def _source_sha(inputs: TerminalInputPathsV2, preflight: Mapping[str, Any]) -> s
 
 
 def independent_reconstruct_terminal_v2(
-        root: Path, inputs: TerminalInputPathsV2, *, publish: bool = True) \
+        root: Path, inputs: TerminalInputPathsV2 | EarlyTerminalInputPathsV2,
+        *, publish: bool = True) \
         -> dict[str, Any]:
     """Reopen sealed inputs, rederive once, and publish a reconstruction receipt."""
+    if isinstance(inputs, EarlyTerminalInputPathsV2):
+        return _independent_reconstruct_early_terminal_v2(
+            root, inputs, publish=publish)
     root = _path(root, "terminal root")
     if not root.is_dir() or root.name != "terminal":
         raise WorldAfterstateV2TerminalControllerError(
             "terminal root must be published terminal directory")
     preflight = _preflight(inputs)
     attempt_value, attempt_raw = _read_json(root / ATTEMPT_NAME, "terminal attempt")
-    if attempt_value.get("published_before_audit_labels") is not True:
-        raise WorldAfterstateV2TerminalControllerError("terminal attempt marker drift")
     expected_attempt = _attempt_payload(inputs, preflight)
     if attempt_value != expected_attempt:
         raise WorldAfterstateV2TerminalControllerError(
@@ -623,7 +943,8 @@ def independent_reconstruct_terminal_v2(
 
 
 def verify_terminal_artifact_v2(
-        root: Path, inputs: TerminalInputPathsV2, *, rescore: bool = False) \
+        root: Path, inputs: TerminalInputPathsV2 | EarlyTerminalInputPathsV2,
+        *, rescore: bool = False) \
         -> dict[str, Any]:
     """Read a receipt by default; explicitly requested ``rescore`` reopens all inputs."""
     root = _path(root, "terminal root")
@@ -649,8 +970,12 @@ def verify_terminal_artifact_v2(
     return receipt.payload()
 
 
-def run_terminal_v2(root: Path, inputs: TerminalInputPathsV2) -> dict[str, Any]:
+def run_terminal_v2(
+        root: Path, inputs: TerminalInputPathsV2 | EarlyTerminalInputPathsV2) \
+        -> dict[str, Any]:
     """Run the scientific audit once, then perform its one immediate verifier call."""
+    if isinstance(inputs, EarlyTerminalInputPathsV2):
+        return _run_early_terminal_v2(root, inputs)
     if not isinstance(root, Path) or root.is_symlink():
         raise WorldAfterstateV2TerminalControllerError("terminal destination drift")
     if root.exists() and not root.is_dir():

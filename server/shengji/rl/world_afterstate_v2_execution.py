@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .belief_contract import canonical_json_bytes
+from .world_afterstate_v2_audit_attempt import build_audit_attempt_bytes
 
 
 SCHEMA = "world-afterstate-v2-absolute-leaf-execution-v1"
@@ -52,6 +53,8 @@ STAGE_ORDER = (
     "block-2-controls", "precision-select-power", "audit-attempt",
     "terminal", "reconstruction",
 )
+WORK_STAGE_ORDER = STAGE_ORDER[:-2]
+TERMINAL_STAGE_ORDER = STAGE_ORDER[-2:]
 ALLOWED_SPLITS = {
     "population": ("fit", "select", "audit"),
     "p0-labels-gates": ("fit",),
@@ -63,8 +66,8 @@ ALLOWED_SPLITS = {
     "block-2-controls": ("fit",),
     "precision-select-power": ("select",),
     "audit-attempt": ("audit",),
-    "terminal": ("audit",),
-    "reconstruction": ("audit",),
+    "terminal": ("fit", "select", "audit"),
+    "reconstruction": ("fit", "select", "audit"),
 }
 AUTHORITY = {
     "population_authorized": False,
@@ -815,14 +818,32 @@ class StageStateV2:
 
     def payload(self) -> dict[str, Any]:
         if any(stage not in STAGE_ORDER for stage in self.completed_stages) \
-                or tuple(sorted(self.completed_stages, key=STAGE_ORDER.index)) != self.completed_stages:
+                or len(set(self.completed_stages)) != len(self.completed_stages):
+            raise WorldAfterstateV2ExecutionError("stage completion order drift")
+        terminal_index = next((index for index, stage in enumerate(
+            self.completed_stages) if stage in TERMINAL_STAGE_ORDER),
+            len(self.completed_stages))
+        work = self.completed_stages[:terminal_index]
+        terminal = self.completed_stages[terminal_index:]
+        if work != WORK_STAGE_ORDER[:len(work)] \
+                or terminal not in ((), ("terminal",),
+                                    ("terminal", "reconstruction")):
             raise WorldAfterstateV2ExecutionError("stage completion order drift")
         if self.terminal_route is not None and self.terminal_route not in TERMINAL_ROUTES:
             raise WorldAfterstateV2ExecutionError("terminal route drift")
         if self.audit_opened and "audit-attempt" not in self.completed_stages:
-            raise WorldAfterstateV2ExecutionError("audit state drift")
-        if self.reconstruction_completed != ("reconstruction" in self.completed_stages):
+            # A crash after the marker fsync but while audit-label shards are
+            # being built is a legitimate resumable state.  No earlier stage
+            # may carry the marker, and no later stage may hide the incomplete
+            # audit producer.
+            if work != WORK_STAGE_ORDER[:-1] or terminal:
+                raise WorldAfterstateV2ExecutionError("audit state drift")
+        if self.reconstruction_completed != (
+                "reconstruction" in self.completed_stages):
             raise WorldAfterstateV2ExecutionError("reconstruction state drift")
+        if "terminal" in self.completed_stages \
+                and self.terminal_route is None:
+            raise WorldAfterstateV2ExecutionError("terminal stage route drift")
         if len({row[0] for row in self.verified_shards}) != len(self.verified_shards) \
                 or any(type(row) is not tuple or len(row) != 2
                        or type(row[0]) is not str or not row[0]
@@ -1073,7 +1094,7 @@ class StageSupervisorV2:
                             terminal_route = decoded_route
                     if event.get("status") == "complete" and event.get("stage") in STAGE_ORDER:
                         completed.append(event["stage"])
-                    if event.get("status") == "terminal":
+                    if event.get("status") == "terminal-pending":
                         route = (event.get("payload") or {}).get("route")
                         if route not in TERMINAL_ROUTES or (
                                 terminal_route is not None and terminal_route != route):
@@ -1092,9 +1113,12 @@ class StageSupervisorV2:
                     raw = _sealed(path, "verified shard")
                     shard_rows.append((f"{stage_dir.name}:{path.stem}", _sha_bytes(raw)))
         marker = self.root / "audit-attempt.json"
-        if len(set(completed)) != len(completed) \
-                or tuple(completed) != STAGE_ORDER[:len(completed)]:
-            raise WorldAfterstateV2ExecutionError("stage event prefix drift")
+        try:
+            StageStateV2(tuple(completed), terminal_route, marker.exists(),
+                         "reconstruction" in completed, tuple(shard_rows)).payload()
+        except Exception as exc:
+            raise WorldAfterstateV2ExecutionError(
+                "stage event prefix drift") from exc
         self._state = StageStateV2(
             tuple(completed), terminal_route, marker.exists(), "reconstruction" in completed,
             tuple(shard_rows))
@@ -1110,7 +1134,17 @@ class StageSupervisorV2:
 
     @property
     def next_stage(self) -> str | None:
-        return STAGE_ORDER[len(self._state.completed_stages)] if len(self._state.completed_stages) < len(STAGE_ORDER) else None
+        if "reconstruction" in self._state.completed_stages:
+            return None
+        if "terminal" in self._state.completed_stages:
+            return "reconstruction"
+        if self._state.terminal_route is not None:
+            return "terminal"
+        work_count = sum(stage in WORK_STAGE_ORDER
+                         for stage in self._state.completed_stages)
+        if work_count < len(WORK_STAGE_ORDER):
+            return WORK_STAGE_ORDER[work_count]
+        return "terminal"
 
     def _event(self, stage: str, *, status: str, split: str | None = None,
                payload: Mapping[str, Any] | None = None) -> None:
@@ -1176,8 +1210,13 @@ class StageSupervisorV2:
     def run_stage(self, stage: str, *, split: str,
                   operation: StageControllerV2 | Callable[..., Any] | None,
                   total: int = 1, payload: Mapping[str, Any] | None = None) -> Any:
-        self._deadline()
-        if self._state.terminal_route is not None and stage != "reconstruction":
+        # Terminal sealing and its receipt-only reconstruction are allowed to
+        # finish after the scientific compute deadline.  Otherwise an expiry
+        # would prevent the fail-closed route from ever becoming durable.
+        if stage not in TERMINAL_STAGE_ORDER:
+            self._deadline()
+        if self._state.terminal_route is not None \
+                and stage not in TERMINAL_STAGE_ORDER:
             raise WorldAfterstateV2ExecutionError("terminal route already selected")
         if stage not in STAGE_ORDER or split not in ALLOWED_SPLITS.get(stage, ()):
             raise WorldAfterstateV2ExecutionError("stage split is not admitted")
@@ -1203,6 +1242,10 @@ class StageSupervisorV2:
         if stage == "terminal":
             raw = _sealed(self.root / TERMINAL_RESULT_RELATIVE, "terminal result")
             route = _terminal_route(raw)
+            if self._state.terminal_route is not None \
+                    and route != self._state.terminal_route:
+                raise WorldAfterstateV2ExecutionError(
+                    "terminal precedence drift")
             self._state = StageStateV2(self._state.completed_stages, route,
                 self._state.audit_opened, self._state.reconstruction_completed,
                 self._state.verified_shards)
@@ -1250,12 +1293,11 @@ class StageSupervisorV2:
             raise WorldAfterstateV2ExecutionError("audit opening order drift")
         if self._state.audit_opened or (self.root / "audit-attempt.json").exists():
             raise WorldAfterstateV2ExecutionError("audit already opened")
-        body = {"schema": "world-afterstate-v2-audit-attempt-v1",
-                "freeze_sha256": self.freeze.sha256(), "admission_sha256": self.admission.sha256(),
-                "audit_opened_once": True, "published_before_audit_labels": True,
-                "payload": dict(payload or {}), "authority": dict(AUTHORITY)}
-        body["attempt_sha256"] = _sha(body)
-        _write_once(self.root / "audit-attempt.json", canonical_json_bytes(body))
+        raw = build_audit_attempt_bytes(
+            freeze_sha256=self.freeze.sha256(),
+            admission_sha256=self.admission.sha256(),
+            preflight=dict(payload or {}))
+        _write_once(self.root / "audit-attempt.json", raw)
         _fsync_dir(self.root)
 
     def _validate_audit_preflight(self, payload: Mapping[str, Any] | None) -> None:
@@ -1290,7 +1332,7 @@ class StageSupervisorV2:
             raise WorldAfterstateV2ExecutionError("terminal precedence drift")
         if self._state.terminal_route == route:
             return
-        self._event(self.next_stage or "terminal", status="terminal",
+        self._event(self.next_stage or "terminal", status="terminal-pending",
                     payload={"route": route, "resource_stage": resource_stage})
         self._state = StageStateV2(self._state.completed_stages, route,
             self._state.audit_opened, self._state.reconstruction_completed,
@@ -1304,19 +1346,27 @@ def run_v2_pipeline(supervisor: StageSupervisorV2,
             not isinstance(operations.get(stage), StageControllerV2)
             or not operations[stage].production for stage in STAGE_ORDER):
         raise MissingStageError("scientific pipeline requires closed production adapters")
-    for stage in STAGE_ORDER:
-        # A terminal route blocks every future scientific stage, except the
-        # mandatory receipt-only reconstruction immediately following it.
-        if ((supervisor.state.terminal_route
-             and supervisor.next_stage != "reconstruction")
-                or supervisor.next_stage is None):
-            break
-        split = ALLOWED_SPLITS[stage][0]
-        if stage == "population":
-            split = "fit"
-        controller = operations.get(stage)
-        supervisor.run_stage(stage, split=split, operation=controller,
-                             payload=controller.stage_payload)
+    while (stage := supervisor.next_stage) is not None:
+        if stage in TERMINAL_STAGE_ORDER:
+            if supervisor.state.audit_opened:
+                split = "audit"
+            elif "precision-select-power" in supervisor.state.completed_stages:
+                split = "select"
+            else:
+                split = "fit"
+        else:
+            split = ALLOWED_SPLITS[stage][0]
+            if stage == "population":
+                split = "fit"
+        controller = operations[stage]
+        try:
+            supervisor.run_stage(stage, split=split, operation=controller,
+                                 payload=controller.stage_payload)
+        except WorldAfterstateV2ExecutionError:
+            if supervisor.state.terminal_route == "REFUSE_RESOURCE_INCOMPLETE" \
+                    and supervisor.next_stage == "terminal":
+                continue
+            raise
     return supervisor.state
 
 

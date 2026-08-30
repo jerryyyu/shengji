@@ -12,6 +12,9 @@ import pytest
 import shengji.rl.world_afterstate_v2_execution as execution
 
 from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.world_afterstate_v2_audit_attempt import (
+    reopen_audit_attempt_bytes,
+)
 from shengji.rl.world_afterstate_v2_execution import (
     ALLOWED_SPLITS, AUTHORITY, STAGE_ORDER, ExecutionFreezeV2, PipelineAdmissionV2,
     REVIEW_PREFIX, StageSupervisorV2, WorldAfterstateV2ExecutionError,
@@ -222,6 +225,11 @@ def test_audit_marker_precedes_first_audit_byte_and_only_one_open(tmp_path):
     assert not (root / "audit-attempt.json").exists()
     supervisor._open_audit_marker({"preflight_complete": True})
     assert (root / "audit-attempt.json").exists()
+    reopened = reopen_audit_attempt_bytes(
+        (root / "audit-attempt.json").read_bytes(),
+        expected_freeze_sha256=freeze.sha256(),
+        expected_admission_sha256=admission.sha256())
+    assert reopened["preflight"] == {"preflight_complete": True}
     with pytest.raises(WorldAfterstateV2ExecutionError, match="already"):
         supervisor._open_audit_marker({"preflight_complete": True})
 
@@ -372,7 +380,58 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
     execution.run_v2_pipeline(supervisor, operations)
     assert calls == [("verify", False)]
     assert supervisor.state.reconstruction_completed is True
-    resumed = execution.reopen_supervisor(root, freeze=freeze, admission=admission,
-                                          review_marker=marker)
+    resumed = execution.reopen_supervisor(
+        root, freeze=freeze, admission=admission, review_marker=marker)
     execution.run_v2_pipeline(resumed, operations)
     assert calls == [("verify", False)]
+
+
+def test_p0_stop_skips_training_and_seals_terminal_then_reconstruction(
+        tmp_path, monkeypatch):
+    repo, freeze, review, marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    monkeypatch.setattr(execution.StageControllerV2, "validate",
+                        lambda _self: None)
+    monkeypatch.setattr(execution, "_production_callable", lambda _name: object())
+    route = "STOP_NO_REPRODUCIBLE_VALUE_LABEL"
+    result_sha = "c" * 64
+    terminal_raw = canonical_json_bytes({
+        "decision": route, "result_sha256": result_sha})
+    receipt_raw = canonical_json_bytes({
+        "matched": True, "sealed_terminal_result_sha256": result_sha})
+    calls = []
+
+    def invoke(operation_supervisor, _shards):
+        stage = operation_supervisor.next_stage
+        calls.append(stage)
+        if stage == "p0-labels-gates":
+            operation_supervisor.terminal(route)
+        elif stage == "terminal":
+            target = root / "terminal"
+            target.mkdir()
+            (target / "terminal.json").write_bytes(terminal_raw)
+            os.chmod(target / "terminal.json", 0o400)
+            (target / "independent-reconstruction.json").write_bytes(
+                receipt_raw)
+            os.chmod(target / "independent-reconstruction.json", 0o400)
+        elif stage == "reconstruction":
+            execution._verify_reconstruction_binding(terminal_raw, receipt_raw)
+
+    operations = {
+        stage: execution.StageControllerV2(
+            stage, execution.CONTROLLER_BINDINGS[stage][0], invoke, True)
+        for stage in STAGE_ORDER}
+    state = execution.run_v2_pipeline(supervisor, operations)
+    assert calls == ["population", "p0-labels-gates", "terminal",
+                     "reconstruction"]
+    assert state.completed_stages == (
+        "population", "p0-labels-gates", "terminal", "reconstruction")
+    assert state.terminal_route == route
+    assert state.reconstruction_completed is True
+    resumed = execution.reopen_supervisor(
+        root, freeze=freeze, admission=admission, review_marker=marker)
+    assert resumed.state == state

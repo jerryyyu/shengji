@@ -7,15 +7,22 @@ from pathlib import Path
 import pytest
 
 from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.world_afterstate_v2_audit_attempt import (
+    build_audit_attempt_bytes,
+)
 from shengji.rl.world_afterstate_v2_terminal_controller import (
     AUDIT_COHORTS,
     COHORT_LABELS,
     DOSE_LABELS,
+    EarlyTerminalInputPathsV2,
     TerminalInputPathsV2,
     WorldAfterstateV2TerminalControllerError,
+    build_early_route_evidence_bytes,
     run_terminal_v2,
+    verify_terminal_artifact_v2,
 )
 from shengji.rl import world_afterstate_v2_terminal_controller as terminal
+from test_world_afterstate_v2_result import _p0
 
 
 def _digest(text: str) -> str:
@@ -24,11 +31,20 @@ def _digest(text: str) -> str:
 
 def _inputs(tmp_path: Path) -> TerminalInputPathsV2:
     path = tmp_path / "input.json"
+    freeze = _digest("freeze")
+    admission = _digest("admission")
+    audit_attempt = tmp_path / "audit-attempt.json"
+    audit_attempt.write_bytes(build_audit_attempt_bytes(
+        freeze_sha256=freeze, admission_sha256=admission,
+        preflight={"preflight_relative_path": "audit-preflight.json",
+                   "preflight_sha256": _digest("preflight")}))
+    audit_attempt.chmod(0o400)
     return TerminalInputPathsV2(
-        freeze_sha256=_digest("freeze"), admission_sha256=_digest("admission"),
+        freeze_sha256=freeze, admission_sha256=admission,
         audit_population_root=tmp_path / "population",
         audit_population_namespace_sha256=_digest("namespace"),
-        audit_population_tier="D256", continuation_root=tmp_path / "continuation",
+        audit_population_tier="D256", audit_attempt_path=audit_attempt,
+        continuation_root=tmp_path / "continuation",
         prediction_manifest_paths=tuple(
             (label, path) for label in COHORT_LABELS),
         cohort_manifest_paths=tuple((label, path) for label in COHORT_LABELS),
@@ -67,11 +83,31 @@ def test_input_contract_rejects_dropped_or_reordered_populations(tmp_path):
         }).validate_shape()
 
 
+def test_preflight_requires_the_shared_pipeline_audit_attempt(
+        tmp_path, monkeypatch):
+    inputs = _inputs(tmp_path)
+    inputs.audit_attempt_path.chmod(0o600)
+    inputs.audit_attempt_path.write_bytes(build_audit_attempt_bytes(
+        freeze_sha256=inputs.freeze_sha256,
+        admission_sha256=_digest("different-admission"),
+        preflight={"preflight_relative_path": "audit-preflight.json"}))
+    inputs.audit_attempt_path.chmod(0o400)
+    monkeypatch.setattr(
+        terminal, "_preflight_population",
+        lambda *_: (_ for _ in ()).throw(
+            AssertionError("population must not open before marker validation")))
+    with pytest.raises(WorldAfterstateV2TerminalControllerError,
+                       match="audit attempt"):
+        terminal._preflight(inputs)
+
+
 def test_attempt_is_published_before_derivation_and_failure_consumes_slot(
         monkeypatch, tmp_path):
     inputs = _inputs(tmp_path)
     digest = _digest("sealed")
     preflight = {
+        "audit_attempt": {
+            "attempt_sha256": _digest("pipeline-audit-attempt")},
         "population": {"manifest_sha256": digest, "population_sha256": digest},
         "continuation_sha": digest,
         "predictions": tuple((label, {"manifest_sha256": _digest(label)})
@@ -100,7 +136,43 @@ def test_attempt_is_published_before_derivation_and_failure_consumes_slot(
     partial = tmp_path / "run" / "terminal.partial"
     assert (partial / "attempt.json").is_file()
     attempt = json.loads((partial / "attempt.json").read_bytes())
-    assert attempt["published_before_audit_labels"] is True
+    assert "published_before_audit_labels" not in attempt
+    assert attempt["audit_opened_count"] == 1
+    assert attempt["audit_attempt_sha256"] == _digest(
+        "pipeline-audit-attempt")
+    with pytest.raises(WorldAfterstateV2TerminalControllerError,
+                       match="slot occupied"):
+        run_terminal_v2(tmp_path / "run", inputs)
+
+
+def test_early_p0_stop_seals_and_immediately_reconstructs_without_audit(
+        tmp_path):
+    freeze = _digest("early-freeze")
+    admission = _digest("early-admission")
+    route = "STOP_NO_REPRODUCIBLE_VALUE_LABEL"
+    route_path = tmp_path / "early-route.json"
+    route_path.write_bytes(build_early_route_evidence_bytes(
+        freeze_sha256=freeze, admission_sha256=admission,
+        source_stage="p0"))
+    route_path.chmod(0o400)
+    p0_path = tmp_path / "p0.json"
+    p0_path.write_bytes(canonical_json_bytes(_p0(
+        sibling_advantage_correlation_bootstrap_lower_ppm=0,
+        statistical_gates_passed=False, decision=route)))
+    p0_path.chmod(0o400)
+    inputs = EarlyTerminalInputPathsV2(
+        freeze_sha256=freeze, admission_sha256=admission,
+        expected_route=route, route_evidence_path=route_path,
+        p0_report_path=p0_path)
+    receipt = run_terminal_v2(tmp_path / "run", inputs)
+    assert receipt["matched"] is True
+    terminal_root = tmp_path / "run" / "terminal"
+    attempt = json.loads((terminal_root / "attempt.json").read_bytes())
+    assert attempt["audit_opened_count"] == 0
+    assert "published_before_audit_labels" not in attempt
+    result = json.loads((terminal_root / "terminal.json").read_bytes())
+    assert result["decision"] == route
+    assert verify_terminal_artifact_v2(terminal_root, inputs)["matched"] is True
     with pytest.raises(WorldAfterstateV2TerminalControllerError,
                        match="slot occupied"):
         run_terminal_v2(tmp_path / "run", inputs)

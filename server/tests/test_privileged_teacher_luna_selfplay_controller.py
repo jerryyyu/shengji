@@ -166,8 +166,9 @@ def _verified_capacity_fixture(*, one_arm: bool = False) -> controller.CapacityR
     return controller.CapacityReceipt(body, controller._sha(body))
 
 
-def _reviewed_inputs(tmp_path, design, census, capacity, monkeypatch):
-    """Create a local bare GitHub-main stand-in with one exact review line."""
+def _reviewed_inputs(tmp_path, design, census, capacity, monkeypatch, *,
+                     historical=False, current_variant=None):
+    """Create a local bare GitHub-main stand-in with review line history."""
     tool = TOOL
     output_root = tmp_path
     freeze = controller.launch_freeze_payload(
@@ -176,6 +177,12 @@ def _reviewed_inputs(tmp_path, design, census, capacity, monkeypatch):
     claim = controller._review_claim(
         freeze=freeze, design=design, census=census, capacity=capacity,
         output_root=output_root, tool_script=tool)
+    marker_prefix = controller.REVIEW_MARKER_PREFIX.encode("ascii")
+    historical_markers = ()
+    if historical:
+        historical_claim = {**claim, "candidate_freeze_sha256": "0" * 64}
+        historical_markers = (marker_prefix
+                              + canonical_json_bytes(historical_claim),)
     source = tmp_path / "review-source"
     remote = tmp_path / "review-remote.git"
     source.mkdir()
@@ -185,14 +192,21 @@ def _reviewed_inputs(tmp_path, design, census, capacity, monkeypatch):
                    check=True)
     subprocess.run(("git", "-C", str(source), "config", "user.email", "reviewer@example"),
                    check=True)
-    marker = (controller.REVIEW_MARKER_PREFIX.encode("ascii")
-              + canonical_json_bytes(claim))
-    (source / "HANDOFF_REVIEW.md").write_bytes(b"review baseline\n")
+    marker = marker_prefix + canonical_json_bytes(claim)
+    previous = b"review baseline\n" + b"".join(historical_markers)
+    (source / "HANDOFF_REVIEW.md").write_bytes(previous)
     subprocess.run(("git", "-C", str(source), "add", "HANDOFF_REVIEW.md"),
                    check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     subprocess.run(("git", "-C", str(source), "commit", "-m", "review"),
                    check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    (source / "HANDOFF_REVIEW.md").write_bytes(b"review baseline\n" + marker)
+    current = previous + marker
+    if current_variant == "replay":
+        current = previous + historical_markers[-1]
+    elif current_variant == "replacement":
+        current = b"review baseline\n" + marker
+    elif current_variant == "extra":
+        current += b"extra suffix"
+    (source / "HANDOFF_REVIEW.md").write_bytes(current)
     subprocess.run(("git", "-C", str(source), "add", "HANDOFF_REVIEW.md"),
                    check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     subprocess.run(("git", "-C", str(source), "commit", "-m", "external review"),
@@ -727,6 +741,39 @@ def test_candidate_freeze_and_direct_controller_omission_cannot_admit(tmp_path,
     relabelled_payload["receipt_sha256"] = controller._sha(relabelled_body)
     with pytest.raises(controller.ControllerError, match="provenance"):
         controller.CapacityReceipt.reopen(relabelled_payload)
+
+
+def test_source_review_allows_a_distinct_marker_appended_to_history(
+        tmp_path, monkeypatch):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity_fixture(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(
+        tmp_path, design, census, capacity, monkeypatch, historical=True)
+    review = controller.authenticate_source_review(
+        freeze=freeze, design=design, census=census, capacity=capacity,
+        output_root=tmp_path, tool_script=TOOL, review_commit=review_commit,
+        repo_root=tmp_path)
+    expected = controller._review_claim(
+        freeze=freeze, design=design, census=census, capacity=capacity,
+        output_root=tmp_path, tool_script=TOOL)
+    assert review["review_claim"] == expected
+
+
+@pytest.mark.parametrize("variant", ("replay", "replacement", "extra"))
+def test_source_review_rejects_non_append_only_marker_history(
+        tmp_path, monkeypatch, variant):
+    design = TinyDesign(seed_commitment_sha256=hashlib.sha256(SECRET).hexdigest())
+    census = _tiny_census(design)
+    capacity = _verified_capacity_fixture(one_arm=True)
+    freeze, review_commit = _reviewed_inputs(
+        tmp_path, design, census, capacity, monkeypatch,
+        historical=True, current_variant=variant)
+    with pytest.raises(controller.ControllerError, match="review marker commit"):
+        controller.authenticate_source_review(
+            freeze=freeze, design=design, census=census, capacity=capacity,
+            output_root=tmp_path, tool_script=TOOL, review_commit=review_commit,
+            repo_root=tmp_path)
 
 
 @pytest.mark.parametrize("relative", controller.SOURCE_CLOSURE)

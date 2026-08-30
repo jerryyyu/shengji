@@ -1248,27 +1248,19 @@ def authenticate_source_review(*, freeze: Mapping[str, object],
                 ("git", "-C", str(bare), "show", f"{parents[1]}:HANDOFF_REVIEW.md"))
         except (OSError, subprocess.CalledProcessError) as exc:
             raise ControllerError("review ledger unavailable") from exc
-    try:
-        lines = [line for line in review_bytes.splitlines(keepends=True)
-                 if line.startswith(REVIEW_MARKER_PREFIX.encode("ascii"))]
-        if len(lines) != 1 or not lines[0].endswith(b"\n"):
-            raise ControllerError("review marker count drift")
-        marker_payload = json.loads(lines[0][len(REVIEW_MARKER_PREFIX):].decode("ascii"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ControllerError("review marker encoding drift") from exc
-    if (marker_payload != expected
-            or canonical_json_bytes(marker_payload)
-            != lines[0][len(REVIEW_MARKER_PREFIX):]):
-        raise ControllerError("review claim binding drift")
-    if (review_bytes.count(lines[0]) != 1
-            or lines[0] in previous_bytes
+    marker = (REVIEW_MARKER_PREFIX.encode("ascii")
+              + canonical_json_bytes(expected))
+    previous_lines = previous_bytes.splitlines(keepends=True)
+    current_lines = review_bytes.splitlines(keepends=True)
+    if (current_lines != [*previous_lines, marker]
+            or marker in previous_lines
             or not review_bytes.startswith(previous_bytes)
-            or review_bytes[len(previous_bytes):] != lines[0]):
+            or review_bytes[len(previous_bytes):] != marker):
         raise ControllerError("review marker commit drift")
     return _AuthenticatedSourceReview(
         review_commit=review_commit,
-        review_marker_sha256=_sha_bytes(lines[0]),
-        review_claim=marker_payload,
+        review_marker_sha256=_sha_bytes(marker),
+        review_claim=expected,
         _token=_REVIEW_AUTHENTICATION)
 
 

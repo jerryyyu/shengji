@@ -4,63 +4,21 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 07:14 EDT**. Remote main before this update:
-`33d784c`.
+Last reconciled: **2026-08-30 07:55 EDT**. Remote main before this update:
+`979885f`.
 
-## Review queue — two current, run-unblocking asks
+## Review queue — no current ask
 
-Review draft PR #171 at exact head
-`b243368ca275988811c3e54db9c56b0de86f5fa1`, parent `b12eea0`. This is one
-consolidated delta source review of the six-file PT-Luna Stop-hook repair. The
-reviewed shared game, ballots, rollouts, utility and mirror scheduler are
-untouched. The repair binds a fail-closed session-level Codex Stop hook into
-both Luna processes: it reads only the private engine-owned mailbox, blocks
-all early exits, and permits completion only for the exact engine-issued
-`round_end` token. Hook source/config/command are private-evidence bound and
-revalidated on reopen. Validation: **100 / 100** focused and **127 / 127** all
-PT-Luna tests; clean diff; zero source `.pyc`. Review request:
-https://github.com/jerryyyu/shengji/pull/171#issuecomment-5468213434.
-
-Requested authority is exactly one fresh non-scientific, score-free
-progressive Mini capacity census. Do not authorize the 104-game collection,
-outcome opening/use, gameplay or strength claims, merge, retry beyond that
-census, promotion or deployment. If capacity succeeds, the next review binds
-only that receipt plus the immutable 52-deal x two-mirror freeze; unchanged
-source must not be re-reviewed.
-
-Review draft PR #170 at exact repaired head
-`cf115ceac7dbf6f55a177a1de4058d14742a912b` (review baseline
-`ba17ab1eaa7eee4b083688e0f9e6cd19e683cb2c`). This is one consolidated delta source review;
-the previously reviewed 42-file Value V2 DAG is unchanged outside these seven
-files across two commits. The first authorized score-free Perf capacity census correctly refused
-before any arm/DAG measurement because the frozen 96 attempts supplied only
-14 of the required 32 eligible fixtures. Its immutable progress-log SHA-256 is
-`3e926ce0a78ea4855e85fb339b8ce8de542513b902ce0a6030e0ba370e0181e8`;
-no label, outcome, audit, or scientific stage opened.
-
-The repaired delta preserves the exact 32-fixture target and byte-identical
-first-96 identity prefix, extends the hard deterministic ceiling to 384 (the
-measured 14/96 rate projects about 56), and runs fixed index-ordered batches
-on up to 16 real processes. Batches never exceed the fixtures still needed,
-so no eligible surplus can be selected post hoc. It reports acceptance,
-rejection, utilization, memory and ETA; checks cgroup aggregate memory; refuses
-expired batches and worker failures; and witnesses the real source driver in a
-distinct process. The same delta repairs the append-only marker authenticator
-needed for a fresh freeze while proving that an older marker cannot be reused.
-The full-DAG reconstruction stage now repeats audit scoring/control arithmetic,
-hash-matches it to the audit-stage derivation, and still rebuilds no
-continuation or model. Later routine verification is receipt-only unless an
-explicit rescore is requested.
-Validation on the repaired exact head: **433 / 433** full V2 wildcard tests
-and **31 / 31** focused capacity runner/supervisor tests; clean diff and zero source
-`.pyc`.
-
-Requested authority on PASS: exactly one replacement score-free full-DAG Perf
-capacity census and, only after that succeeds, one bounded target-free
-rehearsal. No labels/outcomes, scientific run, merge, retry beyond those two
-steps, gameplay/PUCT/BELIEF integration, promotion, deployment, or strength
-claim. If both succeed, the next and only remaining review binds their receipts
-plus the immutable scientific freeze; unchanged source must not be re-reviewed.
+Canonical ledger `979885f` PASSed both exact run-unblocking deltas: PR #171
+`b243368ca275988811c3e54db9c56b0de86f5fa1` for one fresh score-free Mini
+capacity census, and PR #170
+`cf115ceac7dbf6f55a177a1de4058d14742a912b` for one replacement score-free
+full-DAG Perf census followed, only on success, by one bounded target-free
+rehearsal. The Value census is live in the isolated namespace below. The PT
+census has already refused safely and consumed its authority; it now needs a
+source repair, not another review or retry. Successful Value capacity plus
+rehearsal next needs one receipt-plus-scientific-freeze review. A refusal is
+preserved and interpreted before any new work; no retry is pre-authorized.
 
 PR #172 is fully source-authenticated. Canonical commit
 `00c184dae0fb69c8c5d78d1e0c2b665366448451` appends the exact
@@ -73,12 +31,6 @@ against both clean cloud checkouts and reached only the expected live-state
 refusal `R4 terminal systemd observation drift`, because the scientific unit
 is still active. No timeout receipt, route claim, outcome read, or evidence
 mutation occurred. There is no R4 review action until the unit changes state.
-
-The exact-head `b12eea0` PT-Luna source review is complete on canonical main.
-Its single fresh score-free capacity authority was consumed by the failed-safe
-Mini census described below. Do not issue another source review or retry grant:
-the public receipt now proves a structural model/tool-use gap that another
-prompt-only capacity attempt would not repair.
 
 If and only if the scientific service ends `Result=timeout`, the 12:25/12:28Z
 timers below generate a timeout receipt and print the exact pending-recovery
@@ -150,7 +102,7 @@ reviewed against the live systemd state before any recovery executes.
   Luna−C0-S +0.615, Luna−Sol −0.269. Luna beats fixed baselines; Sol remains
   the stronger reviewed privileged teacher. No promotion or strength claim.
 
-### PT-Luna fresh self-play — structural repair pushed; source review pending
+### PT-Luna fresh self-play — repaired capacity refused before gameplay
 
 - PR #171 exact head `b12eea0485b944225ed1b99670d99c31dd010d33`
   received three convergent canonical source PASS entries. At **06:09 EDT**
@@ -163,17 +115,29 @@ reviewed against the live systemd state before any recovery executes.
   items and zero mailbox operations, so no terminal mailbox witness existed;
   team 1 was then peer-aborted and also performed zero mailbox operations. No
   scientific deal, action, trajectory, outcome or model prose was retained.
-- PR #171 repaired exact head `b243368ca275988811c3e54db9c56b0de86f5fa1`
-  adds the structural Stop hook described in the review queue. An independent
-  temporary Codex CLI probe demonstrated that the exact inline hook form
-  blocks an early final answer and continues the same model turn. No fresh
-  Mini attempt may start until this exact head receives the requested source
-  PASS.
+- Canonical main `979885f` PASSed repaired exact head
+  `b243368ca275988811c3e54db9c56b0de86f5fa1` for one replacement score-free
+  capacity census. It launched at **07:44 EDT** in tmux
+  `pt-luna-cap-b243368-r1`, root
+  `/private/tmp/shengji-pt-luna-capacity-b243368-r1`, and refused safely in the
+  first one-worker arm at **07:46 EDT**. The immutable public
+  `capacity-failure.json` records two verified Luna subprocesses but zero
+  mailbox operations from either team. Team 0 produced only two Codex error
+  items and no final output; team 1 produced four error items plus two agent
+  messages/final output, but no terminal mailbox witness. No action,
+  trajectory, outcome or model prose was retained or opened.
+- This localizes the remaining defect above the game engine: PR #171 reuses
+  the reviewed production ballot, continuation evaluators, signed-level
+  utility and engine mechanics, but its dual-process mailbox/peer-sandbox/Stop
+  orchestration is new relative to successful PT-Luna0. The next change must
+  prove one real exact-launch Luna process reaches the mailbox's first
+  `observe` under the production sandbox before requesting another capacity
+  authority. Do not spend another review on prompt-only or synthetic evidence.
 - The 104 games remain unauthorized. Their eventual trajectories are only
   state/proposal sources for later engine relabeling, never value truth or a
   gameplay/strength result.
 
-### Value-Afterstate V2 — first capacity refused; repaired source review pending
+### Value-Afterstate V2 — repaired full-DAG capacity running on Perf
 
 - Reviewed design: PR #169 exact `b2eb02bc`, design-only PASS. Draft PR #170
   repaired pushed head `cf115ceac7dbf6f55a177a1de4058d14742a912b` is
@@ -187,7 +151,7 @@ reviewed against the live systemd state before any recovery executes.
   sealed common-epoch member rows. Batched inference is byte-identical after
   canonical probability quantization. Audit inputs are durably sealed before
   any audit label opens.
-- Repaired-source validation is recorded in the current review ask above. The
+- Repaired-source validation is bound by canonical PASS `979885f`. The
   original integrated Terra review found one real early-terminal dispatch
   defect; it was repaired and re-reviewed to PASS. The five actual
   adapter/controller witnesses include the initial population-deadline frontier
@@ -200,8 +164,15 @@ reviewed against the live systemd state before any recovery executes.
   bounded log is immutable and hash-bound above. The rehearsal authority was
   conditional on capacity success and therefore remains unused but cannot be
   applied to changed source. Exact repaired head
-  `cf115ceac7dbf6f55a177a1de4058d14742a912b` now awaits the one
-  delta review above; no replacement capacity may launch before PASS.
+  `cf115ceac7dbf6f55a177a1de4058d14742a912b` launched its single authorized
+  replacement capacity census at **07:44 EDT** as Perf systemd unit
+  `value-v2-capacity-cf115ce-r1.service`, output root
+  `/root/value-v2-capacity-cf115ce-output`. The unit is active with zero
+  restarts. Its 16-process deterministic preflight is reporting acceptance,
+  rejection distribution, memory, utilization and ETA; it opens no target,
+  label, outcome or audit data. Do not restart it. Capacity success authorizes
+  only the already-reviewed target-free rehearsal; refusal is terminal for
+  this authority.
 
 ### Value-Afterstate V0 — independently verified refusal
 
@@ -281,8 +252,8 @@ reviewed against the live systemd state before any recovery executes.
 | host | current use |
 |---|---|
 | Strength Cloud | R4 sole scientific terminal + verifier watcher; hands off |
-| Perf Cloud | free; Value V2 waits for exact `cf115ce` delta PASS before replacement capacity |
-| Mini | free; PT-Luna waits for exact `b243368` source PASS before one fresh census |
+| Perf Cloud | Value V2 exact `cf115ce` replacement full-DAG capacity census; active, hands off |
+| Mini | free after exact `b243368` PT-Luna capacity refused before gameplay; source diagnosis only |
 
 - Keep hosts, branches, runtimes, and artifacts isolated.
 - Do not stop, duplicate, retry, merge, deploy, resume R5, or launch additional

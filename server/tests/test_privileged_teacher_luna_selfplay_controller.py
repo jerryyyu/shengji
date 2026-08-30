@@ -500,6 +500,10 @@ def test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable():
     assert diagnostic["final_output_present"] is True
     assert diagnostic["trace_operation_counts"] == {"observe": 1}
     assert secret not in refusal.canonical_bytes()
+    public_failure = refusal.canonical_bytes()
+    for private_key in (b"stop_hook", b"config_override", b"script_path",
+                        b"completion_token"):
+        assert private_key not in public_failure
 
     evidence.body["process_error"] = (
         "Luna terminal mailbox witness absent or malformed")

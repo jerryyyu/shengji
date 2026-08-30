@@ -364,6 +364,7 @@ def _validate_capacity_failure_body(body: Mapping[str, object]) -> None:
 # a runtime import walk may silently admit after the marker was written.
 SOURCE_CLOSURE = (
     "scripts/privileged_teacher_luna_selfplay.py",
+    "scripts/privileged_teacher_luna_stop_hook.py",
     "shengji/__init__.py",
     "shengji/ai/__init__.py",
     "shengji/ai/bury.py",

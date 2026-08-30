@@ -62,6 +62,47 @@ def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
         assert consideration in prompt
 
 
+def test_production_command_binds_reviewed_inline_stop_hook(tmp_path):
+    command = execution.process_command(
+        codex_binary=Path("/usr/bin/codex"), workspace=tmp_path,
+        final_output_path=tmp_path / "final.json",
+        mailbox_path=tmp_path / "mailbox")
+    assert execution.STOP_HOOK_AUTOMATION_FLAG in command
+    assert "-P -B" in command[command.index("-c") + 1]
+    hook_override = command[command.index("-c") + 1]
+    assert hook_override.startswith("hooks.Stop=[{hooks=[{")
+    assert str(execution.STOP_HOOK_SCRIPT) in hook_override
+    assert str(tmp_path / "mailbox") in hook_override
+    assert ".codex" not in " ".join(command)
+    assert execution.STOP_HOOK_SOURCE_SHA256 == execution._sha_bytes(
+        execution.STOP_HOOK_SCRIPT.read_bytes())
+
+
+def test_production_command_refuses_removed_stop_hook_wiring(tmp_path, monkeypatch):
+    monkeypatch.setattr(execution, "stop_hook_config",
+                        lambda **_kwargs: {"hooks": {}})
+    with pytest.raises(execution.LunaExecutionError,
+                       match="stop hook config schema drift"):
+        execution.process_command(
+            codex_binary=Path("/usr/bin/codex"), workspace=tmp_path,
+            final_output_path=tmp_path / "final.json",
+            mailbox_path=tmp_path / "mailbox")
+
+
+def test_reviewed_stop_hook_source_refuses_link_and_changed_bytes(tmp_path):
+    changed = tmp_path / "changed.py"
+    changed.write_bytes(execution.STOP_HOOK_SCRIPT.read_bytes() + b"\n")
+    with pytest.raises(execution.LunaExecutionError,
+                       match="stop hook source hash drift"):
+        execution._reviewed_stop_hook_source(hook_script=changed)
+
+    linked = tmp_path / "linked.py"
+    linked.symlink_to(execution.STOP_HOOK_SCRIPT)
+    with pytest.raises(execution.LunaExecutionError,
+                       match="stop hook source absent"):
+        execution._reviewed_stop_hook_source(hook_script=linked)
+
+
 @pytest.mark.parametrize("mutation", ("missing", "unknown"))
 def test_codex_usage_schema_drift_refuses(mutation):
     usage = {key: 1 for key in execution.CODEX_USAGE_KEYS}

@@ -18,6 +18,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import shlex
 import stat
 import subprocess
 import sys
@@ -52,6 +53,14 @@ RESOURCE_SCHEMA = "privileged-teacher-luna-process-tree-resource-v1"
 RECOVERY_SCHEMA = "privileged-teacher-luna-selfplay-pre-manifest-recovery-v1"
 PRODUCTION_EXECUTION_KIND = "verified-subprocess"
 SYNTHETIC_EXECUTION_KIND = "synthetic-injected-runner"
+STOP_HOOK_SCHEMA = "privileged-teacher-luna-stop-hook-v1"
+STOP_HOOK_TIMEOUT_SECONDS = 10
+STOP_HOOK_AUTOMATION_FLAG = "--dangerously-bypass-hook-trust"
+STOP_HOOK_SCRIPT = (Path(__file__).resolve().parents[2] / "scripts"
+                    / "privileged_teacher_luna_stop_hook.py")
+# This is deliberately pinned separately from the generated config.  A
+# changed hook source must fail before a production planner is launched.
+STOP_HOOK_SOURCE_SHA256 = "c038ac466fdfe25389fbdabd99aadf0a093111de527a63615d154bc0d130093e"
 
 
 class LunaExecutionError(ValueError):
@@ -291,6 +300,114 @@ TOKEN replaced by that value:
 """
 
 
+def _reviewed_stop_hook_source(*, hook_script: Path = STOP_HOOK_SCRIPT) -> tuple[Path, str]:
+    """Read and pin the reviewed hook without following a replacement link."""
+    hook_script = Path(hook_script)
+    if hook_script.suffix == ".pyc":
+        raise LunaExecutionError("stop hook source identity drift")
+    try:
+        descriptor = os.open(
+            hook_script, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as exc:
+        raise LunaExecutionError("stop hook source absent") from exc
+    try:
+        before = os.fstat(descriptor)
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+    except OSError as exc:
+        raise LunaExecutionError("stop hook source read refused") from exc
+    finally:
+        os.close(descriptor)
+    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+    raw = b"".join(chunks)
+    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or before.st_uid != os.getuid()
+            or any(getattr(before, field) != getattr(after, field)
+                   for field in fields)
+            or len(raw) != before.st_size):
+        raise LunaExecutionError("stop hook source identity drift")
+    digest = _sha_bytes(raw)
+    if digest != STOP_HOOK_SOURCE_SHA256:
+        raise LunaExecutionError("stop hook source hash drift")
+    return hook_script, digest
+
+
+def stop_hook_config(*, mailbox_path: Path,
+                     hook_script: Path = STOP_HOOK_SCRIPT,
+                     python: Path = Path(sys.executable)) -> dict[str, object]:
+    """Build the exact session-level Codex Stop hook configuration.
+
+    Codex executes command hooks through its command runner, so every dynamic
+    path is shell-quoted.  The generated config carries no game or model
+    payload; the mailbox is the only private authority the hook can observe.
+    """
+    hook_script, _ = _reviewed_stop_hook_source(hook_script=hook_script)
+    mailbox_path = Path(mailbox_path).resolve()
+    python = Path(python).resolve()
+    command = " ".join(shlex.quote(value) for value in (
+        str(python), "-P", "-B", str(hook_script.resolve()), "--mailbox",
+        str(mailbox_path)))
+    return {"hooks": {"Stop": [{"hooks": [{
+        "type": "command", "command": command,
+        "timeout": STOP_HOOK_TIMEOUT_SECONDS,
+    }]}]}}
+
+
+def _validate_stop_hook_config(config: object, *, mailbox_path: Path,
+                               hook_script: Path) -> str:
+    """Validate config shape before publishing it to an untrusted process."""
+    if (type(config) is not dict or set(config) != {"hooks"}
+            or type(config.get("hooks")) is not dict
+            or set(config["hooks"]) != {"Stop"}
+            or type(config["hooks"]["Stop"]) is not list
+            or len(config["hooks"]["Stop"]) != 1):
+        raise LunaExecutionError("stop hook config schema drift")
+    group = config["hooks"]["Stop"][0]
+    if (type(group) is not dict or set(group) != {"hooks"}
+            or type(group["hooks"]) is not list or len(group["hooks"]) != 1):
+        raise LunaExecutionError("stop hook config schema drift")
+    hook = group["hooks"][0]
+    if (type(hook) is not dict or set(hook) != {"type", "command", "timeout"}
+            or hook.get("type") != "command"
+            or type(hook.get("command")) is not str
+            or hook.get("timeout") != STOP_HOOK_TIMEOUT_SECONDS):
+        raise LunaExecutionError("stop hook config schema drift")
+    command = hook["command"]
+    expected_script = shlex.quote(str(Path(hook_script).resolve()))
+    expected_mailbox = shlex.quote(str(Path(mailbox_path).resolve()))
+    if (expected_script not in command or expected_mailbox not in command
+            or " -P -B " not in command):
+        raise LunaExecutionError("stop hook config wiring drift")
+    return command
+
+
+def _stop_hook_binding(*, mailbox_path: Path) -> dict[str, object]:
+    hook_script, source_sha256 = _reviewed_stop_hook_source()
+    config = stop_hook_config(mailbox_path=mailbox_path,
+                              hook_script=hook_script)
+    command = _validate_stop_hook_config(config, mailbox_path=mailbox_path,
+                                         hook_script=hook_script)
+    raw = canonical_json_bytes(config)
+    # Codex's session-level -c accepts a TOML inline table.  This is the
+    # project-local equivalent that remains discoverable with user config and
+    # Git trust disabled; no transient .codex file is needed or retained.
+    override = ("hooks.Stop=[{hooks=[{type=\"command\",command="
+                + json.dumps(command) + ",timeout="
+                + str(STOP_HOOK_TIMEOUT_SECONDS) + "}]}]")
+    return {"schema": STOP_HOOK_SCHEMA,
+            "script_sha256": source_sha256,
+            "config_sha256": _sha_bytes(raw),
+            "command_sha256": _sha_bytes(command.encode("utf-8")),
+            "script_path": str(hook_script),
+            "automation_flag": STOP_HOOK_AUTOMATION_FLAG,
+            "config_override": override}
+
+
 class PlannerProcess(Protocol):
     def __call__(self, session: luna.LunaTeamSession, *, workspace: Path,
                  mailbox_path: Path, tool_script: Path, codex_binary: Path,
@@ -300,15 +417,18 @@ class PlannerProcess(Protocol):
 
 def process_command(*, codex_binary: Path, workspace: Path,
                     model: str = MODEL, reasoning_effort: str = REASONING_EFFORT,
-                    final_output_path: Path, peer_workspace: Path | None = None,
+                    final_output_path: Path, mailbox_path: Path | None = None,
+                    peer_workspace: Path | None = None,
                     peer_outputs: tuple[Path, ...] = (),
                     sandbox_profile_path: Path | None = None) -> tuple[str, ...]:
     if model != MODEL or reasoning_effort != REASONING_EFFORT:
         raise LunaExecutionError("process identity drift")
+    hook = _stop_hook_binding(mailbox_path=Path(mailbox_path or workspace / "mailbox"))
     command = (str(codex_binary), "exec", "--ephemeral", "--json",
             "--ignore-user-config",
             "--ignore-rules", "--skip-git-repo-check", "--sandbox",
-            "workspace-write", "-C", str(workspace), "-m", model, "-c",
+            "workspace-write", STOP_HOOK_AUTOMATION_FLAG, "-C", str(workspace),
+            "-m", model, "-c", hook["config_override"], "-c",
             f'model_reasoning_effort="{reasoning_effort}"',
             "--output-last-message", str(final_output_path), "-")
     if peer_workspace is None:
@@ -652,9 +772,10 @@ def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
                      final_output_path: Path,
                      supervisor: ProcessSupervisor | None = None,
                      command: tuple[str, ...] | None = None) -> subprocess.CompletedProcess[bytes]:
-    del mailbox_path, tool_script
+    del tool_script
     command = command or process_command(codex_binary=codex_binary,
                                          workspace=workspace,
+                                         mailbox_path=mailbox_path,
                                          final_output_path=final_output_path)
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
@@ -1165,8 +1286,10 @@ def run_luna_game(
                                                     attempt / "terminal-receipt.json"))
         _publish(profile_path, profile_raw.encode("utf-8"), mode=0o400)
         sandbox_binary = shutil.which("sandbox-exec") if sys.platform == "darwin" else None
+        hook = _stop_hook_binding(mailbox_path=mailbox)
         command = process_command(codex_binary=binary, workspace=workspace,
                                   final_output_path=final,
+                                  mailbox_path=mailbox,
                                   peer_workspace=peer,
                                   peer_outputs=(peer_trace,),
                                   sandbox_profile_path=profile_path)
@@ -1178,10 +1301,10 @@ def run_luna_game(
         completed: subprocess.CompletedProcess[bytes] | None = None
         process_error: str | None = None
         stdout = b""
+        prompt = planner_prompt(mailbox_path=mailbox, tool_script=tool_script)
         try:
             with LunaToolServer(mailbox, session) as trace_server:
                 barrier.wait(timeout=10)
-                prompt = planner_prompt(mailbox_path=mailbox, tool_script=tool_script)
                 try:
                     completed = runner(session, workspace=workspace,
                                        mailbox_path=mailbox, tool_script=tool_script,
@@ -1242,6 +1365,7 @@ def run_luna_game(
                 "planner_identity": session.planner_identity,
                 "command": list(command),
                 "config": config.payload(), "trace": trace,
+                "stop_hook": hook,
                 "runtime": runtime,
                 "sandbox": sandbox_identity.payload(),
                 "prompt_sha256": _sha_bytes(prompt.encode("utf-8")),
@@ -1503,8 +1627,15 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                          "process_error", "output_sha256", "execution_kind",
                          "synthetic", "actual_subprocess", "authority"}
         body_schema = body.get("schema")
-        expected_keys = (common_keys | {"completion_token_sha256"}
-                         if body_schema == PRIVATE_TRACE_SCHEMA else common_keys)
+        expected_keys = (common_keys | {"completion_token_sha256", "stop_hook"}
+                         if body_schema == PRIVATE_TRACE_SCHEMA
+                         else common_keys)
+        # A v1 downgrade of a current attempt may retain the newer private
+        # hook binding; genuinely old v1 evidence has no such field and
+        # remains reopenable for historical compatibility.
+        if (body_schema == LEGACY_PRIVATE_TRACE_SCHEMA
+                and set(body) == common_keys | {"stop_hook"}):
+            expected_keys = common_keys | {"stop_hook"}
         if (body_schema != expected_private_trace_schema
                 or set(body) != expected_keys) \
                 or body["team"] != team or body["config"] != attempt_payload["planner"] \
@@ -1521,6 +1652,22 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                 or body["synthetic"] != (not body["actual_subprocess"])
                 or body["authority"] != luna.AUTHORITY):
             raise LunaExecutionError("process execution provenance drift")
+        stop_hook = body.get("stop_hook")
+        if (body_schema == PRIVATE_TRACE_SCHEMA
+                and (type(stop_hook) is not dict
+                     or set(stop_hook) != {"schema", "script_sha256",
+                         "config_sha256", "command_sha256", "script_path",
+                         "automation_flag", "config_override"}
+                     or stop_hook.get("schema") != STOP_HOOK_SCHEMA
+                     or not all(_valid_completion_token(value)
+                                for value in (stop_hook.get("script_sha256"),
+                                              stop_hook.get("config_sha256"),
+                                              stop_hook.get("command_sha256")))
+                     or stop_hook.get("automation_flag") != STOP_HOOK_AUTOMATION_FLAG
+                     or type(stop_hook.get("script_path")) is not str
+                     or type(stop_hook.get("config_override")) is not str
+                     or not stop_hook["config_override"].startswith("hooks.Stop="))):
+            raise LunaExecutionError("stop hook binding drift")
         if body["execution_kind"] == PRODUCTION_EXECUTION_KIND \
                 and (body["synthetic"] or not body["actual_subprocess"]):
             raise LunaExecutionError("production process provenance drift")
@@ -1552,9 +1699,14 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
         command = body["command"]
         if ("exec" not in command or "--ephemeral" not in command
                 or "--json" not in command
+                or (body_schema == PRIVATE_TRACE_SCHEMA
+                    and STOP_HOOK_AUTOMATION_FLAG not in command)
                 or "-m" not in command or command[command.index("-m") + 1] != MODEL
                 or f'model_reasoning_effort="{REASONING_EFFORT}"' not in command):
             raise LunaExecutionError("process command identity drift")
+        if (body_schema == PRIVATE_TRACE_SCHEMA
+                and stop_hook["config_override"] not in command):
+            raise LunaExecutionError("stop hook command binding drift")
         if (set(planner_identity) != {"team", "model",
                     "agent_identity", "model_process_id", "session_id"}
                 or planner_identity.get("team") != team
@@ -1673,6 +1825,8 @@ __all__ = ["ARTIFACT_SCHEMA", "ATTEMPT_SCHEMA", "FINAL_RESPONSE_SCHEMA",
            "SandboxIdentity", "SANDBOX_PROFILE_SCHEMA",
            "MAX_GAME_WALL_SECONDS", "MODEL", "PRIVATE_TRACE_SCHEMA",
            "REASONING_EFFORT", "planner_prompt", "process_command",
+           "STOP_HOOK_SCHEMA", "STOP_HOOK_AUTOMATION_FLAG", "STOP_HOOK_SCRIPT",
+           "STOP_HOOK_SOURCE_SHA256", "stop_hook_config",
            "sandbox_profile", "run_luna_game", "run_luna_processes", "reopen_attempt",
            "runtime_identity", "tool_request", "RECOVERY_SCHEMA",
            "PRODUCTION_EXECUTION_KIND", "SYNTHETIC_EXECUTION_KIND",

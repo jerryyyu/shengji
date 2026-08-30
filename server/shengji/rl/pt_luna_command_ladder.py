@@ -502,14 +502,21 @@ def run_ladder(*, executable: Path, output: Path,
                                                  binding)
         rows: list[dict[str, object]] = []
         for variant in VARIANTS:
+            # Codex's workspace-write sandbox grants write access only below
+            # this directory.  Keep every per-arm writable path inside it;
+            # the reviewed executable snapshot remains a read/exec input
+            # adjacent to the workspace.
+            model_mailbox = workspace / f"model-mailbox-{variant}"
+            hook_mailbox = workspace / f"hook-mailbox-{variant}"
+            final_output = workspace / f"final-{variant}"
             progress(f"pt-luna-command-ladder variant={variant} phase=start")
             remaining = wall_seconds - (time.monotonic() - started)
             if remaining <= 0:
                 command, bridge, _prompt = _variant_identity(
                     variant, executable=snapshot, workspace=workspace,
-                    model_mailbox=root / f"model-mailbox-{variant}",
-                    hook_mailbox=root / f"hook-mailbox-{variant}",
-                    final_output=root / f"final-{variant}")
+                    model_mailbox=model_mailbox,
+                    hook_mailbox=hook_mailbox,
+                    final_output=final_output)
                 row = _failed(variant, command, bridge, result=None,
                               error="overall wall deadline exceeded",
                               model_operations=0, model_observes=0,
@@ -518,9 +525,9 @@ def run_ladder(*, executable: Path, output: Path,
             else:
                 row = run_variant(
                     variant, executable=snapshot, workspace=workspace,
-                    model_mailbox=root / f"model-mailbox-{variant}",
-                    hook_mailbox=root / f"hook-mailbox-{variant}",
-                    final_output=root / f"final-{variant}",
+                    model_mailbox=model_mailbox,
+                    hook_mailbox=hook_mailbox,
+                    final_output=final_output,
                     timeout_seconds=remaining)
             rows.append(row)
             progress(f"pt-luna-command-ladder variant={variant} "

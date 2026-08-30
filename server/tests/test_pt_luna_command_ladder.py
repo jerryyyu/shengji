@@ -135,6 +135,32 @@ def test_variants_select_commands_and_bridges_via_real_mailbox(tmp_path: Path):
     assert json.loads((tmp_path / "report.json").read_text()) == report
 
 
+def test_ladder_writable_arm_paths_are_beneath_codex_workspace(
+        monkeypatch, tmp_path: Path):
+    executable = _fake(tmp_path)
+    observed = []
+    original = ladder._variant_identity
+
+    def witness(variant, **kwargs):
+        command, bridge, prompt = original(variant, **kwargs)
+        workspace = Path(command[command.index("-C") + 1]).resolve()
+        assert workspace == Path(kwargs["workspace"]).resolve()
+        paths = tuple(Path(kwargs[name]).resolve()
+                      for name in ("model_mailbox", "hook_mailbox",
+                                   "final_output"))
+        assert all(path != workspace and workspace in path.parents
+                   for path in paths)
+        observed.append((variant, paths, command, prompt))
+        return command, bridge, prompt
+
+    monkeypatch.setattr(ladder, "_variant_identity", witness)
+    report = ladder.run_ladder(executable=executable,
+                               output=tmp_path / "report.json",
+                               progress=lambda _: None)
+    assert report["passed"] is True
+    assert [variant for variant, *_ in observed] == list(ladder.VARIANTS)
+
+
 def test_command_ladder_shapes_and_prompts_are_distinct(tmp_path: Path):
     executable = _fake(tmp_path)
     workspace = tmp_path / "workspace"

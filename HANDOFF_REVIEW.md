@@ -9046,3 +9046,67 @@ went deep on the capacity/controller surface (the ask's scope), ran the full bat
 pinned mode, and mutation-tested four guards with source restored after each (porcelain 0). The
 two-team synthetic end-to-end test required by design §7 exists and passes in the battery. No
 authority beyond the single census. — Claude (session `68f9c8bd`)
+
+## 2026-08-30 02:45 EDT — PR #171's new authenticator ships the **pre-repair one-shot marker predicate**, three modules after we fixed it today. Correct timing will not save it: the first moment-2 marker spends the family permanently
+
+`e45daaa` is right that no marker belongs at moment 1, and right that
+`review marker count drift` would then fire forever. This is the adjacent point
+that entry does not make: **even a perfectly timed moment-2 marker spends this
+lane's prefix for all time**, because the predicate admits exactly one marker
+ever — not one *new* marker per review.
+
+`privileged_teacher_luna_selfplay_controller.py:1057–1072`:
+
+    lines = [line for line in review_bytes.splitlines(keepends=True)
+             if line.startswith(REVIEW_MARKER_PREFIX.encode("ascii"))]
+    if len(lines) != 1 or not lines[0].endswith(b"\n"):
+        raise ControllerError("review marker count drift")
+    ...
+    if (review_bytes.count(lines[0]) != 1
+            or lines[0] in previous_bytes
+            or not review_bytes.startswith(previous_bytes)
+            or review_bytes[len(previous_bytes):] != lines[0]):
+        raise ControllerError("review marker commit drift")
+
+Three of those four clauses are the good ones — `lines[0] in previous_bytes` is
+anti-replay, `startswith(previous_bytes)` is append-only, and the suffix
+equality pins the marker to its own commit. `len(lines) != 1` is the defect.
+`REVIEW_MARKER_PREFIX = "PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1 "` matches **0**
+ledger lines today, so the first marker authenticates and every later one is
+refused, permanently, since the ledger is append-only and never-delete.
+
+**Why that is not hypothetical here.** This is the same predicate repaired
+twice today after it cost real admissions: `world_afterstate_v1_capacity.py:327`
+and `world_afterstate_v1_admission.py:333` and `:425` now read
+`current_matches != [*previous_matches, marker] or marker in previous_matches`.
+The Value V1 lane needed **four** capacity heads and **two** scientific heads
+this week; each repaired head required a fresh marker. A collector lane that
+can never re-review a repaired head is one source defect away from needing a
+new prefix constant in source — which is the workaround
+`CAPACITY_REENTRY_V2_PREFIX` already documents.
+
+**The repair is not a copy-paste of the other one.** This module additionally
+requires the marker to be the entire byte-suffix of its commit, and it reads
+`lines[0]`. Once several markers exist, `lines[0]` is the *oldest*, so the
+naive edit would compare the suffix against the wrong line. The shape that
+preserves every property here is to name the new marker explicitly:
+
+    previous_lines = [line for line in previous_bytes.splitlines(keepends=True)
+                      if line.startswith(prefix)]
+    if lines != [*previous_lines, marker] or marker in previous_lines \
+            or not review_bytes.startswith(previous_bytes) \
+            or review_bytes[len(previous_bytes):] != marker:
+        raise ControllerError(...)
+
+with `marker` built from `expected` rather than discovered by indexing. That
+keeps anti-replay, append-only, and sole-suffix intact while allowing an
+honest second review.
+
+Worth fixing before the moment-2 ask is issued, not after — once a marker of
+this prefix is on main, no later edit to the predicate can undo the fact that
+the lane's one admission has been drawn. I verified the current count is zero,
+so the window is open now.
+
+I did not re-verify `e45daaa`'s four mutation-proven properties; that review
+stands on its own and this is one additional surface it did not cover.
+

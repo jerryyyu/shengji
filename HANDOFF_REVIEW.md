@@ -8999,3 +8999,50 @@ authority, not an execution review. I verified the delta's arithmetic against
 the unchanged tier table where the delta depends on it, and otherwise did not
 re-read passed baseline text. PASS authorizes implementation planning only.
 
+
+## 2026-08-29 — ✅ PASS (source-only): PR #171 PT-Luna self-play collector at exact head `73c22df6`. All four asked properties mutation-proven. **Deliberately no machine marker: appending one now would permanently poison the lane's own authentication — details below, and the ask should be corrected**
+
+One source-only review as requested. This PASS authorizes exactly one non-scientific, score-free
+progressive Mini capacity census — not the 104-game collection, outcome opening, gameplay/strength
+claims, merge, promotion, or deployment.
+
+### Environment finding first, because my own first run misread it
+
+At the exact head with `SHENGJI_FAST=1`, 40 of 79 tests fail. That is **the lane's own guard
+working**: `_require_pure_python_runtime` (controller :134) deliberately refuses the compiled fast
+path — PT-Luna V1 pins the pure Python engine. Pure mode: **79 passed**, `git diff --check` clean,
+parent `69e80db9`. (The PR body's "37 focused tests" is stale against this head's 79.)
+
+### The four asked properties, each falsified rather than read
+
+| ask | verification |
+|---|---|
+| clock-stable tests exercise real threads/barriers | Serializing the arm dispatcher (`ThreadPoolExecutor(max_workers=workers)` → `1`) kills `test_capacity_arms_are_concurrent_and_parallelism_is_empirical` with **`BrokenBarrierError` in 2.18 s** — the witness's barrier genuinely requires concurrent workers |
+| parallelism from per-game receipts, not caller assertions | Replacing the empirical derivation (Σ complete-game walls ÷ arm span) with `workers × 1000` turns the serialized-probe witness red. Verified-runtime provenance requires per-game `runtime/evidence/tool` SHAs with hash-of-hashes binding (`:268–288`); synthetic injection must declare itself and is structurally non-admissible |
+| incomplete/error/serialized arms fail | Dedicated named witnesses (`test_serialized_probe_fails_empirical_concurrency_and_admits_none`, `test_process_failure_or_incomplete_probe_fails_and_admits_none`) plus independent `complete/verified/process_errors` terms in both the arm's `passed` conjunction and the eligibility rule. Honest disclosure: my mutation removing the *redundant* copies of those terms inside `parallelism_passed` survives (56 passed) — redundancy removal, not guard removal; the property held everywhere it is load-bearing |
+| selected workers supported by a larger passing arm | Removing `arm["workers"] > workers` from the eligibility rule (both occurrences — the builder and the validator mirror it) turns **3 tests red**, including the witness asserting the final arm is never selectable |
+
+Also verified: RSS is aggregated as the sum of the top-`workers` per-game peaks (conservative for
+concurrency, with the rationale in a comment), swap must be exactly zero, p95 wall must clear the
+deadline with headroom, scaling efficiency ≥70% against the previous arm, cumulative wall/token
+budgets bound in the receipt with `cumulative_budget_overrun` forced to the refuse route, and the
+selected arm re-derived independently by the validator (`capacity selected arm drift`).
+
+### Why no machine marker, stated so the next reviewer does not "fix" it
+
+`authenticate_source_review` (`:1057–1072`) requires **exactly one** ledger line bearing the
+`PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1` prefix (never placed at line start in this entry, deliberately),
+whose payload binds `census_sha256`, `capacity_receipt_sha256`, `candidate_freeze_sha256` and
+`worker_count` — artifacts that will exist only **after** the census this review authorizes — and
+that line must be the sole byte-suffix of its own commit. The machine marker therefore belongs to
+review moment 2 (the design's §7 launch review), and appending any prefix-bearing line now would
+make that future authentication fail `review marker count drift` **permanently**, since ledger
+history cannot be rewritten. The ask's "append the authentic exact-head marker" cannot be satisfied
+mechanically at moment 1; this prose entry is the census authorization, and the single machine
+marker must be authored at moment 2 as its own one-line commit.
+
+Coverage limits: +6,696 lines across 9 files; I did not line-audit the execution/tool modules. I
+went deep on the capacity/controller surface (the ask's scope), ran the full battery in the lane's
+pinned mode, and mutation-tested four guards with source restored after each (porcelain 0). The
+two-team synthetic end-to-end test required by design §7 exists and passes in the battery. No
+authority beyond the single census. — Claude (session `68f9c8bd`)

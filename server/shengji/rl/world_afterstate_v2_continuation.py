@@ -480,6 +480,33 @@ def build_continuation_bundle_v2(
     return bundle
 
 
+def run_continuation_capacity_probe_v2(material: PopulationMaterialV2) -> str:
+    """Run one real, outcome-discarded continuation for worker scaling."""
+    if type(material) is not PopulationMaterialV2:
+        raise WorldAfterstateV2ContinuationError(
+            "capacity probe material type drift")
+    try:
+        material.validate()
+        audit = _audit(material.private_audit_raws[0])
+        identity = _identity(material, REPLICATES[0])
+        label = run_afterstate_continuation(audit, identity)
+        reopened = reopen_afterstate_continuation(audit, label)
+    except Exception as exc:
+        raise WorldAfterstateV2ContinuationError(
+            "capacity continuation run/reopen failed") from exc
+    raw = canonical_json_bytes(reopened)
+    if canonical_json_bytes(label) != raw \
+            or reopened.get("successor_sha256") != audit["successor_sha256"]:
+        raise WorldAfterstateV2ContinuationError(
+            "capacity continuation binding drift")
+    try:
+        validate_outcome(reopened["outcome"])
+    except (KeyError, WorldAfterstateError) as exc:
+        raise WorldAfterstateV2ContinuationError(
+            "capacity continuation outcome drift") from exc
+    return _sha_bytes(raw)
+
+
 def validate_continuation_bundle_v2(value: ContinuationBundleV2) -> None:
     if type(value) is not ContinuationBundleV2:
         raise WorldAfterstateV2ContinuationError("bundle type drift")
@@ -577,5 +604,6 @@ __all__ = [
     "WorldAfterstateV2ContinuationError", "build_continuation_bundle_v2",
     "build_continuation_outcomes_v2", "materialize_continuation_v2",
     "reopen_continuation_bundle_v2", "reopen_continuation_v2",
+    "run_continuation_capacity_probe_v2",
     "validate_continuation_bundle_v2", "validate_continuation_v2",
 ]

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import hashlib
+import json
 from typing import Any, Mapping, Sequence
 
 from .belief_contract import canonical_json_bytes
@@ -27,6 +28,7 @@ from .world_afterstate_v2_protocol import (
 
 
 SCHEMA = "world-afterstate-v2-post-implementation-capacity-v3"
+FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v1"
 ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v2"
 PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v2"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-recovery-v1"
@@ -65,6 +67,9 @@ COMPOSED_STAGE_NAMES = (
     "label-audit", "audit",
     "reconstruction",
 )
+FAILURE_STAGES = frozenset((*COMPOSED_STAGE_NAMES, "capacity-cli",
+                            "preflight", "measurement", "publication",
+                            "runner", "full-dag"))
 # The executable production supervisor has coarser boundaries than the
 # capacity witness.  Keep this relation closed and explicit so every measured
 # substage remains attributable when boundaries collapse (notably terminal).
@@ -172,6 +177,114 @@ AUTHORITY = {
 
 class WorldAfterstateV2CapacityError(ValueError):
     """A post-implementation capacity receipt violated its frozen contract."""
+
+
+@dataclass(frozen=True)
+class CapacityFailureReceiptV2:
+    """Bounded, immutable metadata for one refused CLI capacity attempt."""
+
+    stage: str
+    reason: str
+    elapsed_seconds: int
+    source_sha256: str
+    input_sha256: str
+    namespace_sha256: str
+    detail_sha256: str
+    deadline_seconds: int = MAX_COMMAND_WALL_SECONDS
+    status: str = "failure"
+    schema: str = FAILURE_SCHEMA
+
+    def payload(self) -> dict[str, Any]:
+        if self.schema != FAILURE_SCHEMA or self.status != "failure":
+            raise WorldAfterstateV2CapacityError(
+                "capacity failure identity drift")
+        digests = (self.source_sha256, self.input_sha256,
+                   self.namespace_sha256, self.detail_sha256)
+        if (type(self.stage) is not str or self.stage not in FAILURE_STAGES
+                or type(self.reason) is not str
+                or not 1 <= len(self.reason) <= 64
+                or any(char not in "abcdefghijklmnopqrstuvwxyz0123456789-_"
+                       for char in self.reason)
+                or any(type(value) is not str or len(value) != 64
+                       or any(char not in "0123456789abcdef" for char in value)
+                       for value in digests)):
+                raise WorldAfterstateV2CapacityError(
+                    "capacity failure evidence drift")
+        if self.namespace_sha256 != _sha({
+                "source_sha256": self.source_sha256,
+                "input_sha256": self.input_sha256}):
+            raise WorldAfterstateV2CapacityError(
+                "capacity failure namespace binding drift")
+        if (isinstance(self.elapsed_seconds, bool)
+                or not isinstance(self.elapsed_seconds, int)
+                or self.elapsed_seconds < 0
+                or self.elapsed_seconds > MAX_COMMAND_WALL_SECONDS
+                or self.deadline_seconds != MAX_COMMAND_WALL_SECONDS):
+            raise WorldAfterstateV2CapacityError(
+                "capacity failure deadline drift")
+        body = {
+            "schema": self.schema, "status": self.status,
+            "stage": self.stage, "reason": self.reason,
+            "source_sha256": self.source_sha256,
+            "input_sha256": self.input_sha256,
+            "namespace_sha256": self.namespace_sha256,
+            "detail_sha256": self.detail_sha256,
+            "elapsed_seconds": self.elapsed_seconds,
+            "deadline_seconds": self.deadline_seconds,
+            "authority": dict(AUTHORITY),
+        }
+        return {**body, "failure_receipt_sha256": _sha(body)}
+
+
+def reopen_capacity_failure_receipt_v2(
+        payload: Mapping[str, Any]) -> CapacityFailureReceiptV2:
+    """Strictly reconstruct one canonical refusal artifact."""
+    required = {"schema", "status", "stage", "reason", "source_sha256",
+                "input_sha256", "namespace_sha256", "detail_sha256",
+                "elapsed_seconds",
+                "deadline_seconds", "authority", "failure_receipt_sha256"}
+    if type(payload) is not dict or set(payload) != required \
+            or payload.get("authority") != AUTHORITY:
+        raise WorldAfterstateV2CapacityError("capacity failure schema drift")
+    body = {key: value for key, value in payload.items()
+            if key != "failure_receipt_sha256"}
+    if payload["failure_receipt_sha256"] != _sha(body):
+        raise WorldAfterstateV2CapacityError(
+            "capacity failure reconstruction drift")
+    receipt = CapacityFailureReceiptV2(
+        stage=payload["stage"], reason=payload["reason"],
+        elapsed_seconds=payload["elapsed_seconds"],
+        source_sha256=payload["source_sha256"],
+        input_sha256=payload["input_sha256"],
+        namespace_sha256=payload["namespace_sha256"],
+        detail_sha256=payload["detail_sha256"],
+        deadline_seconds=payload["deadline_seconds"],
+        status=payload["status"], schema=payload["schema"])
+    if receipt.payload() != payload:
+        raise WorldAfterstateV2CapacityError("capacity failure canonical drift")
+    return receipt
+
+
+def validate_capacity_failure_receipt_v2(
+        value: CapacityFailureReceiptV2) -> None:
+    if type(value) is not CapacityFailureReceiptV2:
+        raise WorldAfterstateV2CapacityError(
+            "capacity failure receipt type drift")
+    value.payload()
+
+
+def reopen_capacity_failure_receipt_v2_bytes(raw: bytes) -> CapacityFailureReceiptV2:
+    if type(raw) is not bytes:
+        raise WorldAfterstateV2CapacityError("capacity failure bytes type drift")
+    try:
+        payload = json.loads(raw.decode("ascii"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise WorldAfterstateV2CapacityError(
+            "capacity failure is not JSON") from exc
+    if type(payload) is not dict or canonical_json_bytes(payload) != raw:
+        raise WorldAfterstateV2CapacityError(
+            "capacity failure is not canonical JSON")
+    return reopen_capacity_failure_receipt_v2(payload)
 
 
 def _sha(value: object) -> str:
@@ -770,7 +883,8 @@ def capacity_receipt_sha256(value: CapacityReceiptV2) -> str:
 
 
 __all__ = [
-    "ARM_GRIDS", "AUTHORITY", "CapacityArmV2", "CapacityReceiptV2",
+    "ARM_GRIDS", "AUTHORITY", "CapacityArmV2", "CapacityFailureReceiptV2",
+    "CapacityReceiptV2",
     "CAPACITY_ARM_TO_PRODUCTION_STAGE", "CAPACITY_PRODUCTION_STAGE_COVERAGE",
     "CAPACITY_STAGE_TO_PRODUCTION_STAGE",
     "CAPACITY_SUBSTAGE_TO_PRODUCTION_STAGE",
@@ -782,5 +896,8 @@ __all__ = [
     "MEASUREMENT_SCOPE", "PINNED_TORCH_THREADS",
     "WorldAfterstateV2CapacityError", "choose_capacity_tier_v2",
     "capacity_receipt_sha256", "composed_critical_path_seconds",
+    "reopen_capacity_failure_receipt_v2",
+    "reopen_capacity_failure_receipt_v2_bytes",
+    "validate_capacity_failure_receipt_v2",
     "validate_capacity_receipt_v2",
 ]

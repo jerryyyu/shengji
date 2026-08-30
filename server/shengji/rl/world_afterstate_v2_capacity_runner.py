@@ -32,9 +32,13 @@ from .world_afterstate import canonical_successor, replay_canonical_successor
 from .world_afterstate_v2_capacity import (
     ARM_GRIDS, AUTHORITY, COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS, MEMORY_LIMIT_BYTES,
     MEASUREMENT_SCOPE, PINNED_TORCH_THREADS,
-    MAX_TASKS, CapacityArmV2, CapacityReceiptV2, ComposedProjectionV2,
+    MAX_TASKS, CapacityArmV2, CapacityFailureReceiptV2, CapacityReceiptV2,
+    ComposedProjectionV2,
     ProgressRecoveryV2, TierProjectionV2, WorldAfterstateV2CapacityError,
     composed_critical_path_seconds, validate_capacity_receipt_v2,
+    reopen_capacity_failure_receipt_v2,
+    reopen_capacity_failure_receipt_v2_bytes,
+    validate_capacity_failure_receipt_v2,
 )
 from .world_afterstate_v2_protocol import ATTEMPT_SCHEMA, P0_DEALS, TIER_SPECS
 from .world_afterstate_v2_schedule import MAX_EPOCHS
@@ -53,7 +57,7 @@ OPERATION_OUTPUT_SCHEMA = "world-afterstate-v2-capacity-operation-output-v1"
 OPERATION_OUTPUT_DOMAIN = "world-afterstate-v2.capacity.operation-output"
 _OPERATION_OUTPUT_SCHEMAS = {
     "state-successor": "world-afterstate-successor-v0",
-    "continuation-mechanics": "world-afterstate-successor-v0",
+    "continuation-mechanics": "world-afterstate-v2-continuation-probe-v1",
     "reconstruction": "world-afterstate-v2-capacity-reconstruction-output-v1",
 }
 _PRODUCTION_PROVENANCE = object()
@@ -62,6 +66,12 @@ _FULL_DAG_PROVENANCE = object()
 
 class CapacityRunnerError(RuntimeError):
     """A capacity run was refused or could not be measured honestly."""
+
+    def __init__(self, message: str, *, stage: str = "runner",
+                 reason_code: str = "capacity-runner-refused") -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.reason_code = reason_code
 
 
 class FullDAGCapacityDependencyBlocked(CapacityRunnerError):
@@ -319,6 +329,56 @@ def _preflight_executor_type(attempt: Callable[..., Any]):
             if attempt is drive_population_attempt_v2 else ThreadPoolExecutor)
 
 
+def _population_category(value: Any) -> str | None:
+    state = getattr(value, "state", value)
+    split = getattr(state, "split", None)
+    source = getattr(state, "source", None)
+    subfold = getattr(state, "select_subfold", None)
+    if split == "fit" and source in (None, "natural"):
+        return "fit"
+    if split == "select" and subfold in ("epoch-select", "precision-select"):
+        return subfold
+    return "audit" if split == "audit" else None
+
+
+def _preflight_slot(slots: Sequence[Any], attempt_index: int) -> Any:
+    """Keep the reviewed first 96 attempts, then cover all held-out cells."""
+    values = tuple(slots)
+    if attempt_index < 96:
+        return values[attempt_index % len(values)]
+    names = ("epoch-select", "precision-select", "audit", "fit")
+    groups = tuple(tuple(
+        slot for slot in values if _population_category(slot) == name)
+                   for name in names)
+    if any(not group for group in groups):
+        # Narrow test seams retain their caller-supplied cyclic schedule.
+        return values[attempt_index % len(values)]
+    group_index = (attempt_index - 96) % len(groups)
+    group = groups[group_index]
+    return group[((attempt_index - 96) // len(groups)) % len(group)]
+
+
+def _required_population_counts() -> dict[str, int]:
+    return {
+        "fit": max(1, min(17, PREFLIGHT_ACCEPTED - 3)),
+        "epoch-select": 1, "precision-select": 1, "audit": 1,
+    }
+
+
+def _population_counts(fixtures: Sequence[Any]) -> Counter[str]:
+    return Counter(
+        category for fixture in fixtures
+        if fixture.material is not None
+        for category in (_population_category(fixture.material),)
+        if category is not None)
+
+
+def _population_coverage_complete(fixtures: Sequence[Any]) -> bool:
+    counts = _population_counts(fixtures)
+    return all(counts[name] >= minimum
+               for name, minimum in _required_population_counts().items())
+
+
 def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_attempt_v2,
                              slots: Sequence[Any] | None = None,
                              deadline_ns: int | None = None,
@@ -341,12 +401,18 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
     rejected: Counter[str] = Counter()
     candidates: Counter[int] = Counter()
     strata: Counter[str] = Counter()
+    required_splits = set(_required_population_counts())
+    coverage_required = (attempt is drive_population_attempt_v2
+                         or required_splits <= {
+                             _population_category(slot) for slot in slots})
     index = 0
     executor_type = _preflight_executor_type(attempt)
     peak_memory = _cgroup_memory_bytes()
     with executor_type(max_workers=PREFLIGHT_WORKERS) as pool:
         while index < PREFLIGHT_ATTEMPT_CEILING \
-                and len(accepted) < PREFLIGHT_ACCEPTED:
+                and (len(accepted) < PREFLIGHT_ACCEPTED
+                     or (coverage_required
+                         and not _population_coverage_complete(accepted))):
             if deadline_ns is not None and time.perf_counter_ns() >= deadline_ns:
                 raise CapacityRunnerError(
                     "capacity deadline exceeded during preflight")
@@ -363,14 +429,14 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
             # needed.  Therefore a concurrent batch cannot produce an eligible
             # surplus that would require post-hoc selection or hidden accounting.
             batch_size = min(
-                PREFLIGHT_WORKERS, PREFLIGHT_ACCEPTED - len(accepted),
+                PREFLIGHT_WORKERS, max(1, PREFLIGHT_ACCEPTED - len(accepted)),
                 PREFLIGHT_ATTEMPT_CEILING - index)
             batch_started = time.perf_counter_ns()
             batch_cpu_started = _proc_cpu_ns()
             jobs = []
             for offset in range(batch_size):
                 attempt_index = index + offset
-                slot = slots[attempt_index % len(slots)]
+                slot = _preflight_slot(slots, attempt_index)
                 jobs.append((attempt_index, slot, pool.submit(
                     attempt,
                     _attempt_identity(namespace, slot, attempt_index), slot)))
@@ -409,6 +475,22 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
                 if material is None:
                     rejected["missing-material"] += 1
                     continue
+                if coverage_required:
+                    counts = _population_counts(accepted)
+                    required_counts = _required_population_counts()
+                    split = _population_category(material)
+                    deficits = sum(max(0, required_counts[name] - counts[name])
+                                   for name in required_counts)
+                    remaining = PREFLIGHT_ACCEPTED - len(accepted)
+                    # Keep the target at exactly 32 while reserving every
+                    # still-missing production population, including the 17
+                    # natural-fit deals needed by P0 plus later training.
+                    if (len(accepted) >= PREFLIGHT_ACCEPTED
+                            or split is None
+                            or (counts[split] >= required_counts[split]
+                                and remaining <= deficits)):
+                        rejected["split-reservation"] += 1
+                        continue
                 # Only the score-free canonical state and private audit bytes
                 # enter the in-memory fixture.  No continuation/result field is
                 # copied.
@@ -459,6 +541,9 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
             if _task_count() > MAX_TASKS:
                 raise CapacityRunnerError(
                     "capacity task cap exceeded during preflight")
+    if coverage_required and not _population_coverage_complete(accepted):
+        raise CapacityRunnerError(
+            "preflight retained split coverage is incomplete")
     result = PreflightResultV2(
         tuple(accepted), index, len(accepted), tuple(sorted(rejected.items())),
         tuple(sorted(candidates.items())), tuple(sorted(strata.items())))
@@ -678,16 +763,17 @@ def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Any
             value = replay_canonical_successor(dict(fixture.snapshot))
             return canonical_successor(value, 0)
         elif stage == "continuation-mechanics":
-            # Replaying and applying legal afterstate transitions exercises the
-            # continuation mechanics; points/outcomes are never serialized.
-            value = replay_canonical_successor(dict(fixture.snapshot))
-            if value.phase == "play" and value.trick is not None:
-                actor = value.turn
-                from .actions import enumerate_actions
-                actions = enumerate_actions(value, actor)
-                if actions:
-                    value.play(actor, list(actions[0]))
-            return canonical_successor(value, 0)
+            # One real engine continuation per retained material is enough to
+            # measure independent-worker scaling without paying the complete
+            # 8xN label bundle in every arm. The resulting outcome is hashed
+            # in-process and discarded; the full-DAG stage below measures the
+            # production bundle/controller at the selected worker width.
+            if fixture.material is None:
+                raise CapacityRunnerError(
+                    "continuation capacity material is missing")
+            from .world_afterstate_v2_continuation import (
+                run_continuation_capacity_probe_v2)
+            return run_continuation_capacity_probe_v2(fixture.material)
         elif stage == "inference-batch":
             # The inference arm exercises the actual target-free model input
             # and forward path.  No training target, optimizer, or label is
@@ -1387,6 +1473,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                         backend: MeasurementBackendV2 | None = None,
                         host: HostTelemetryV2 | None = None,
                         progress: Callable[[dict[str, Any]], None] | None = None,
+                        output_root: Path | None = None,
                         production: bool = True) -> CapacityRunResultV2:
     started = time.perf_counter_ns()
     deadline_ns = started + MAX_COMMAND_WALL_SECONDS * 1_000_000_000
@@ -1490,8 +1577,10 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         try:
             measured = run_full_dag_supervisor(
                 fixtures, backend=backend, progress=progress,
+                output_root=output_root,
                 deadline_ns=deadline_ns, _provenance=_FULL_DAG_PROVENANCE,
                 member_workers=member_workers, torch_threads=torch_threads,
+                continuation_workers=selected["continuation-mechanics"].variant,
                 inference_batch=inference_batch)
             measured.validate()
             stage = dict(measured.stage_wall_nanoseconds)
@@ -1521,7 +1610,10 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 provenance_token=measured.provenance_token)
             object.__setattr__(dag, "attestation_sha256", _dag_attestation(dag))
         except SupervisorBlocked as exc:
-            raise FullDAGCapacityDependencyBlocked(str(exc)) from exc
+            raise FullDAGCapacityDependencyBlocked(
+                str(exc), stage=getattr(exc, "stage", "full-dag"),
+                reason_code=getattr(exc, "reason_code",
+                                    "full-dag-dependency-failed")) from exc
     else:
         dag = None
     receipt = build_receipt_v2(
@@ -1537,17 +1629,20 @@ class CapacityRunnerV2:
                  backend: MeasurementBackendV2 | None = None,
                  host: HostTelemetryV2 | None = None,
                  progress: Callable[[dict[str, Any]], None] | None = None,
+                 output_root: Path | None = None,
                  production: bool = True) -> None:
         self.preflight = preflight
         self.backend = backend
         self.host = host
         self.progress = progress
+        self.output_root = output_root
         self.production = production
 
     def measure(self) -> CapacityRunResultV2:
         return measure_capacity_v2(
             preflight=self.preflight, backend=self.backend, host=self.host,
-            progress=self.progress, production=self.production)
+            progress=self.progress, output_root=self.output_root,
+            production=self.production)
 
     def run(self) -> CapacityReceiptV2:
         if not self.production:
@@ -1555,10 +1650,12 @@ class CapacityRunnerV2:
         return self.measure().production_receipt()
 
 
-def run_capacity_v2(*, progress: Callable[[dict[str, Any]], None] | None = None
+def run_capacity_v2(*, progress: Callable[[dict[str, Any]], None] | None = None,
+                    output_root: Path | None = None
                     ) -> CapacityReceiptV2:
     """Run the real bounded command with no caller-fabricated inputs."""
-    result = measure_capacity_v2(progress=progress, production=True)
+    result = measure_capacity_v2(progress=progress, output_root=output_root,
+                                 production=True)
     return result.production_receipt()
 
 
@@ -1640,15 +1737,54 @@ def reopen_capacity_receipt_v2_bytes(raw: bytes) -> CapacityReceiptV2:
     return reopen_capacity_receipt_v2(payload)
 
 
+def _publication_target(path: Path | str) -> Path:
+    target = Path(os.path.abspath(os.fspath(path)))
+    current = target
+    while current != current.parent:
+        if current.is_symlink():
+            raise CapacityRunnerError(
+                "capacity output namespace is occupied or aliased")
+        current = current.parent
+    if current.is_symlink():
+        raise CapacityRunnerError(
+            "capacity output namespace is occupied or aliased")
+    return target
+
+
 def publish_capacity_receipt_v2(path: Path | str, receipt: CapacityReceiptV2) -> None:
     """Publish exact canonical bytes once; never overwrite an occupied path."""
     validate_capacity_receipt_v2(receipt)
-    target = Path(path).resolve()
+    target = _publication_target(path)
     partial = target.with_name(f".{target.name}.partial")
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists() or target.is_symlink() or partial.exists() or partial.is_symlink():
         raise CapacityRunnerError("capacity output namespace is occupied")
     raw = canonical_json_bytes(receipt.payload())
+    with partial.open("xb") as handle:
+        handle.write(raw)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.chmod(partial, 0o400)
+    os.link(partial, target)
+    partial.unlink()
+    descriptor = os.open(target.parent, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def publish_capacity_failure_receipt_v2(
+        path: Path | str, receipt: CapacityFailureReceiptV2) -> None:
+    """Publish one canonical refusal artifact without overwrite."""
+    validate_capacity_failure_receipt_v2(receipt)
+    raw = canonical_json_bytes(receipt.payload())
+    target = _publication_target(path)
+    partial = target.with_name(f".{target.name}.partial")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() or target.is_symlink() or partial.exists() \
+            or partial.is_symlink():
+        raise CapacityRunnerError("capacity output namespace is occupied")
     with partial.open("xb") as handle:
         handle.write(raw)
         handle.flush()
@@ -1680,6 +1816,9 @@ __all__ = [
     "build_receipt_v2", "measure_capacity_v2", "observe_host",
     "publish_capacity_receipt_v2", "reopen_capacity_receipt_v2",
     "reopen_capacity_receipt_v2_bytes",
+    "publish_capacity_failure_receipt_v2", "reopen_capacity_failure_receipt_v2",
+    "reopen_capacity_failure_receipt_v2_bytes",
+    "validate_capacity_failure_receipt_v2",
     "run_capacity_v2", "run_score_free_preflight", "run_capacity",
     "measure_capacity", "reopen_capacity_receipt", "publish_capacity_receipt",
     "PREFLIGHT_ACCEPTED", "PREFLIGHT_ATTEMPT_CEILING", "SYNTHETIC_BRAND",

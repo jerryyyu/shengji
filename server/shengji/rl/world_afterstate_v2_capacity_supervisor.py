@@ -21,7 +21,8 @@ from .belief_contract import canonical_json_bytes
 from .world_afterstate_v2_artifacts import (
     WorldAfterstateV2ArtifactError,
     publish_checkpoint_shard, publish_continuation_shard,
-    reopen_checkpoint_shard, reopen_continuation_shard,
+    reopen_checkpoint_shard, reopen_continuation_manifest,
+    reopen_continuation_shard,
 )
 from .world_afterstate_v2_capacity import (
     COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS, PINNED_TORCH_THREADS)
@@ -56,8 +57,9 @@ from .world_afterstate_v2_protocol import (
 )
 from .world_afterstate_v2_continuation import (
     WorldAfterstateV2ContinuationError,
-    build_continuation_bundle_v2, reopen_continuation_bundle_v2,
+    reopen_continuation_bundle_v2,
 )
+from .world_afterstate_v2_label_controller import build_continuation_population_v2
 
 
 FULL_DAG_STAGES = COMPOSED_STAGE_NAMES
@@ -83,6 +85,12 @@ _RECOVERY_CAPABILITY_NAMES = (
 
 class FullDAGCapacityDependencyBlocked(RuntimeError):
     """A required reviewed primitive did not execute successfully."""
+
+    def __init__(self, message: str, *, stage: str = "full-dag",
+                 reason_code: str = "full-dag-dependency-failed") -> None:
+        super().__init__(message)
+        self.stage = stage
+        self.reason_code = reason_code
 
 
 def _predict_roots_batched(predictor: Callable[..., Any], model: Any,
@@ -204,6 +212,7 @@ class FullDAGCapacitySupervisorV2:
                  deadline_ns: int | None = None,
                  output_root: Path | None = None,
                  member_workers: int | None = None,
+                 continuation_workers: int | None = None,
                  torch_threads: int | None = None,
                  inference_batch: int | None = None) -> None:
         self.fixtures = tuple(fixtures)
@@ -212,6 +221,7 @@ class FullDAGCapacitySupervisorV2:
         self.deadline_ns = deadline_ns
         self.output_root = output_root
         self.member_workers = member_workers
+        self.continuation_workers = continuation_workers
         self.torch_threads = torch_threads
         self.inference_batch = inference_batch
 
@@ -220,6 +230,7 @@ class FullDAGCapacitySupervisorV2:
             self.fixtures, backend=self.backend, progress=self.progress,
             deadline_ns=self.deadline_ns, output_root=self.output_root,
             member_workers=self.member_workers, torch_threads=self.torch_threads,
+            continuation_workers=self.continuation_workers,
             inference_batch=self.inference_batch)
 
 
@@ -317,8 +328,94 @@ def _execute_capacity_p0(
 
 
 def _fail(stage: str, exc: BaseException) -> FullDAGCapacityDependencyBlocked:
+    bounded_stage = stage if stage in (*FULL_DAG_STAGES, "full-dag") else "full-dag"
     return FullDAGCapacityDependencyBlocked(
-        f"full-DAG dependency failed at {stage}: {type(exc).__name__}: {exc}")
+        f"full-DAG dependency failed at {stage}: {type(exc).__name__}: {exc}",
+        stage=bounded_stage, reason_code="full-dag-dependency-failed")
+
+
+def _build_capacity_label_population(
+        work_root: Path, name: str, stage_materials: Sequence[Any], *,
+        workers: int, deadline_perf_ns: int,
+        progress: Callable[[dict[str, Any]], None] | None = None
+        ) -> tuple[tuple[Any, ...], int, Path]:
+    """Run and reopen one real, independently charged label-controller stage."""
+    if name not in {"p0", "fit", "precision-select", "audit"}:
+        raise FullDAGCapacityDependencyBlocked("capacity label stage drift")
+    values = tuple(stage_materials)
+    root = work_root / f"labels-{name}"
+    if root.is_symlink():
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity label namespace is a symlink")
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # The outer runner owns a perf-counter deadline; the production label
+    # controller uses the monotonic clock. Preserve the exact remaining
+    # duration without assuming that the clocks share an epoch.
+    remaining_ns = max(0, deadline_perf_ns - time.perf_counter_ns())
+    label_deadline_ns = time.monotonic_ns() + remaining_ns
+    split = "audit" if name == "audit" else "fit-select"
+    receipt = build_continuation_population_v2(
+        root, values, split=split, workers=workers,
+        deadline_monotonic_ns=label_deadline_ns,
+        progress=(lambda row: progress({**row, "stage": name})
+                  if progress is not None else None))
+    reopened = reopen_continuation_manifest(root, values)
+    bundles = tuple(
+        reopen_continuation_bundle_v2(bundle, material)
+        for material, bundle in zip(values, reopened, strict=True))
+    if len(bundles) != len(values):
+        raise FullDAGCapacityDependencyBlocked(
+            f"capacity {name} label population incomplete")
+    return bundles, receipt.artifact_bytes, root
+
+
+def _capacity_stage_materials(materials: Sequence[Any]) -> tuple[
+        tuple[Any, ...], tuple[Any, ...], tuple[Any, ...], tuple[Any, ...],
+        tuple[Any, ...], tuple[Any, ...]]:
+    """Return disjoint, protocol-faithful populations for each label stage."""
+    ordered = tuple(sorted(
+        materials, key=lambda material: material.state.deal_sha256))
+    natural_fit = tuple(
+        material for material in ordered
+        if material.state.source == "natural" and material.state.split == "fit")
+    epoch_select = tuple(
+        material for material in ordered
+        if material.state.split == "select"
+        and material.state.select_subfold == "epoch-select")
+    precision = tuple(
+        material for material in ordered
+        if material.state.split == "select"
+        and material.state.select_subfold == "precision-select")
+    audit = tuple(
+        material for material in ordered if material.state.split == "audit")
+    if (len(natural_fit) < 2 or not epoch_select or not precision or not audit):
+        raise FullDAGCapacityDependencyBlocked(
+            "retained capacity sample lacks fit/select/audit coverage")
+    p0_count = min(16, len(natural_fit) - 1)
+    p0 = natural_fit[:p0_count]
+    fit_natural = natural_fit[p0_count:]
+    fit_epoch_select = epoch_select[:max(1, len(epoch_select) // 2)]
+    fit = fit_natural + fit_epoch_select
+    return p0, fit, fit_natural, fit_epoch_select, precision, audit
+
+
+def _capacity_training_pairs(
+        p0_materials: Sequence[Any], p0_bundles: Sequence[Any],
+        fit_materials: Sequence[Any], fit_bundles: Sequence[Any]
+        ) -> tuple[tuple[Any, Any], ...]:
+    """Reuse every natural-fit label while excluding epoch-select targets."""
+    p0 = tuple(zip(p0_materials, p0_bundles, strict=True))
+    later = tuple(zip(fit_materials, fit_bundles, strict=True))
+    values = p0 + tuple(
+        pair for pair in later if pair[0].state.split == "fit")
+    if (not values or any(
+            material.state.source != "natural" or material.state.split != "fit"
+            for material, _bundle in values)
+            or len({material.state.deal_sha256
+                    for material, _bundle in values}) != len(values)):
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity training population membership drift")
+    return values
 
 
 def run_full_dag_supervisor(
@@ -327,6 +424,7 @@ def run_full_dag_supervisor(
         deadline_ns: int | None = None,
         output_root: Path | None = None,
         member_workers: int | None = None,
+        continuation_workers: int | None = None,
         torch_threads: int | None = None,
         inference_batch: int | None = None,
         _provenance: object | None = None) -> FullDAGCapacityMeasurementV2:
@@ -352,20 +450,22 @@ def run_full_dag_supervisor(
             raise _fail("material", exc) from exc
         materials.append(material)
     if (member_workers not in (1, 2, 4)
+            or continuation_workers not in (1, 2, 4, 8, 12, 16)
             or type(torch_threads) is not int
             or torch_threads != PINNED_TORCH_THREADS
             or inference_batch not in (32, 64, 128, 256)):
         raise FullDAGCapacityDependencyBlocked(
             "full-DAG resource layout missing")
     identity = _identity(values)
+    if deadline_ns is None:
+        deadline_ns = (time.perf_counter_ns()
+                       + MAX_COMMAND_WALL_SECONDS * 1_000_000_000)
     walls: dict[str, int] = {}
     process_cpu: dict[str, int] = {}
     witnesses: list[str] = []
     artifact_count = 0
-    bundles: list[Any] = []
-    bundle_cache: dict[str, Any] = {}
-    persisted_deals: set[str] = set()
     examples: tuple[Any, ...] = ()
+    training_pairs: tuple[tuple[Any, Any], ...] = ()
     roots: tuple[Any, ...] = ()
     cohort_builds: dict[tuple[str, int], Any] = {}
     predictions: dict[tuple[str, int], dict[str, Any]] = {}
@@ -465,9 +565,28 @@ def run_full_dag_supervisor(
             capability_probes["reports_immutable_shard_checkpoint_count"] and shard_ok)
         return raw
 
-    with tempfile.TemporaryDirectory(prefix="shengji-v2-full-dag-",
-                                      dir=str(output_root) if output_root else None) as temp:
-        artifact_root = Path(temp)
+    if output_root is None:
+        # Direct unit callers retain an ephemeral seam. Production passes the
+        # CLI work root. Interrupted attempts retain verified label shards for
+        # diagnosis, but a capacity retry must use a fresh namespace so old
+        # zero-time reopens cannot become performance evidence. Capacity-only
+        # checkpoints remain ephemeral below.
+        temp_context = tempfile.TemporaryDirectory(prefix="shengji-v2-full-dag-")
+        artifact_root = Path(temp_context.name)
+    else:
+        temp_context = None
+        artifact_root = Path(output_root).absolute()
+        if artifact_root.exists() or artifact_root.is_symlink():
+            raise FullDAGCapacityDependencyBlocked(
+                "capacity work namespace is occupied or aliased")
+        artifact_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if not artifact_root.is_dir():
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity work namespace was not created")
+    else:
+        ephemeral_context = tempfile.TemporaryDirectory(
+            prefix="shengji-v2-capacity-ephemeral-")
+        ephemeral_root = Path(ephemeral_context.name)
 
         def p0() -> str:
             nonlocal roots
@@ -478,44 +597,40 @@ def run_full_dag_supervisor(
         # representative is never rebuilt/counting again in later fit labels.
         # Precision and audit populations are separate staged callbacks; their
         # labels are generated only after their respective dependency fences.
-        ordered_materials = tuple(sorted(
-            materials, key=lambda material: material.state.deal_sha256))
-        p0_materials = ordered_materials[:16]
-        fit_materials = ordered_materials[16:]
+        (p0_materials, fit_materials, fit_natural_materials,
+         fit_epoch_select_materials, precision_materials,
+         audit_materials) = _capacity_stage_materials(materials)
         p0_bundles: list[Any] = []
         fit_bundles: list[Any] = []
         precision_bundles: list[Any] = []
         audit_bundles: list[Any] = []
+        label_roots: dict[str, Path] = {}
 
-        def build_label_stage(stage_materials: Sequence[Any], destination: list[Any],
-                              *, persist: bool) -> str:
+        def _label_population(name: str, stage_materials: Sequence[Any]) -> tuple[Any, ...]:
             nonlocal artifact_count
-            for material in stage_materials:
-                deal = material.deal_sha256
-                bundle = bundle_cache.get(deal)
-                if bundle is None:
-                    bundle = build_continuation_bundle_v2(material)
-                    bundle_cache[deal] = bundle
-                if persist and deal not in persisted_deals:
-                    shard = publish_continuation_shard(
-                        artifact_root, material, bundle)
-                    artifact_count += shard.byte_count
-                    bundle = reopen_continuation_shard(artifact_root, material)
-                    bundle_cache[deal] = bundle
-                    persisted_deals.add(deal)
-                destination.append(bundle)
-            return identity
+            stage_bundles, artifacts, root = _build_capacity_label_population(
+                artifact_root, name, stage_materials,
+                workers=continuation_workers, deadline_perf_ns=deadline_ns,
+                progress=progress)
+            label_roots[name] = root
+            artifact_count += artifacts
+            return stage_bundles
 
         def label_p0() -> str:
-            return build_label_stage(p0_materials, p0_bundles, persist=True)
+            nonlocal p0_bundles
+            p0_bundles = list(_label_population("p0", p0_materials))
+            return identity
 
         def label_precision_select() -> str:
-            return build_label_stage(materials, precision_bundles, persist=False)
+            nonlocal precision_bundles
+            precision_bundles = list(_label_population(
+                "precision-select", precision_materials))
+            return identity
 
         # Capacity uses deterministic in-memory categories to execute the real
         # P0 cross-fit/bootstrap/mechanics arithmetic.  It never mints a
         # scientific report or opens scientific continuation outcomes.
-        measure("label-p0", label_p0)
+        measure("label-p0", label_p0, continuation_workers)
         measure("p0", p0)
 
         def build_examples(source: Sequence[Any]) -> tuple[Any, ...]:
@@ -530,15 +645,22 @@ def run_full_dag_supervisor(
         config = WorldAfterstateV2TrainingConfig(
             learning_rate_ppb=10_000_000, weight_decay_ppb=0,
             gradient_norm_milli=1_000, max_epochs=1, sigma_pair_squared=1.0)
-        fit_deals = {material.state.deal_sha256 for material in fit_materials}
+        fit_deals = {material.state.deal_sha256
+                     for material in fit_natural_materials}
+        epoch_select_deals = {material.state.deal_sha256
+                              for material in fit_epoch_select_materials}
+        precision_deals = {
+            material.state.deal_sha256 for material in precision_materials}
+        audit_deals = {material.state.deal_sha256 for material in audit_materials}
         select_roots = tuple(__import__("dataclasses").replace(
             root, split="select", select_subfold="epoch-select")
-            for root in roots if root.deal_sha256 in fit_deals)
+            for root in roots if root.deal_sha256 in epoch_select_deals)
         precision_roots = tuple(__import__("dataclasses").replace(
             root, split="select", select_subfold="epoch-select")
-            for root in roots)
+            for root in roots if root.deal_sha256 in precision_deals)
         audit_roots = tuple(__import__("dataclasses").replace(
-            root, split="audit", select_subfold=None) for root in roots)
+            root, split="audit", select_subfold=None)
+            for root in roots if root.deal_sha256 in audit_deals)
         select_outcomes: tuple[Any, ...] = ()
         selection: EpochSelectPopulationV2 | None = None
 
@@ -570,11 +692,11 @@ def run_full_dag_supervisor(
             if persist_artifact:
                 for member, raw in enumerate(build.selected_checkpoint_raws):
                     shard = publish_checkpoint_shard(
-                        artifact_root, raw, cohort=cohort, seed_block=block,
+                        ephemeral_root, raw, cohort=cohort, seed_block=block,
                         member_index=member, epoch=1)
                     artifact_count += shard.byte_count
                     _model, metadata = reopen_checkpoint_shard(
-                        artifact_root, cohort, block, member, 1)
+                        ephemeral_root, cohort, block, member, 1)
                     checkpoint_common_epochs.append(metadata["selected_epoch"])
             return identity
 
@@ -611,13 +733,14 @@ def run_full_dag_supervisor(
         measure("optimizer-canary", run_canary, member_workers)
 
         def label_fit_and_prepare() -> str:
-            nonlocal examples, bundles, select_outcomes, selection
-            build_label_stage(fit_materials, fit_bundles, persist=True)
-            bundles = p0_bundles + fit_bundles
-            examples = build_examples(tuple(zip(fit_materials, fit_bundles,
-                                                 strict=True)))
+            nonlocal examples, training_pairs, select_outcomes, selection
+            fit_bundles.extend(_label_population("fit", fit_materials))
+            training_pairs = _capacity_training_pairs(
+                p0_materials, p0_bundles, fit_materials, fit_bundles)
+            examples = build_examples(training_pairs)
             select_outcomes = tuple(__import__("dataclasses").replace(
                 row, split="select") for bundle in fit_bundles
+                if bundle.deal_sha256 in epoch_select_deals
                 for row in bundle.candidates)
             selection = EpochSelectPopulationV2(select_roots, select_outcomes)
             selection.validate()
@@ -625,7 +748,7 @@ def run_full_dag_supervisor(
 
         # The remaining fit and epoch-select labels are opened only after the
         # P0 roots and optimizer-canary have completed.
-        measure("label-fit", label_fit_and_prepare)
+        measure("label-fit", label_fit_and_prepare, continuation_workers)
 
         nested_builds: dict[str, Any] = {}
 
@@ -777,7 +900,8 @@ def run_full_dag_supervisor(
         prior = build_natural_fit_prior(examples)
         # Precision-select continuation labels are a distinct spend and are
         # opened only after all prediction manifests have sealed.
-        measure("label-precision-select", label_precision_select)
+        measure("label-precision-select", label_precision_select,
+                continuation_workers)
         precision_outcomes = tuple(__import__("dataclasses").replace(
             row, split="select") for bundle in precision_bundles
             for row in bundle.candidates)
@@ -803,21 +927,37 @@ def run_full_dag_supervisor(
             upstream_reopened = (
                 artifact_count > 0
                 and _verified_continuation_population(
-                    artifact_root, materials, bundles))
+                    label_roots["p0"], p0_materials, p0_bundles)
+                and _verified_continuation_population(
+                    label_roots["fit"], fit_materials, fit_bundles)
+                and _verified_continuation_population(
+                    label_roots["precision-select"], precision_materials,
+                    precision_bundles))
             attempt_payload = canonical_json_bytes({
                 "schema": "retained-32-capacity-audit-attempt-v1",
                 "audit_population_sha256": _sha(
                     [root.root_sha256 for root in audit_roots]),
                 "upstream_complete": capability_probes[
                     "audit_requires_complete_upstream"]})
-            attempt_path = artifact_root / "audit-attempt.json"
-            with attempt_path.open("xb") as handle:
-                handle.write(attempt_payload)
-                handle.flush()
-                os.fsync(handle.fileno())
-            with attempt_path.open("rb") as handle:
-                audit_open_count += 1
-                reopened_attempt = handle.read()
+            attempt_path = ephemeral_root / "audit-attempt.json"
+            if attempt_path.exists() or attempt_path.is_symlink():
+                if attempt_path.is_symlink():
+                    raise FullDAGCapacityDependencyBlocked(
+                        "capacity audit attempt marker is a symlink")
+                with attempt_path.open("rb") as handle:
+                    audit_open_count += 1
+                    reopened_attempt = handle.read()
+                if reopened_attempt != attempt_payload:
+                    raise FullDAGCapacityDependencyBlocked(
+                        "capacity audit attempt marker binding drift")
+            else:
+                with attempt_path.open("xb") as handle:
+                    handle.write(attempt_payload)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                with attempt_path.open("rb") as handle:
+                    audit_open_count += 1
+                    reopened_attempt = handle.read()
             if reopened_attempt != attempt_payload:
                 capability_probes["audit_attempt_fsynced_before_open"] = False
             try:
@@ -827,7 +967,7 @@ def run_full_dag_supervisor(
                 pass
             else:
                 capability_probes["one_audit_open"] = False
-            directory_fd = os.open(artifact_root, os.O_RDONLY)
+            directory_fd = os.open(ephemeral_root, os.O_RDONLY)
             try:
                 os.fsync(directory_fd)
             finally:
@@ -837,10 +977,12 @@ def run_full_dag_supervisor(
             # The durable attempt marker and parent-directory fsync above are
             # the audit-label boundary.  Build continuations exactly once and
             # charge their wall/CPU to the explicit label-audit stage.
-            build_label_stage(materials, audit_bundles, persist=False)
+            # Audit has its own immutable manifest and independently charged
+            # representative continuation spend.
+            audit_bundles.extend(_label_population("audit", audit_materials))
             return identity
 
-        measure("label-audit", open_audit_labels, 1)
+        measure("label-audit", open_audit_labels, continuation_workers)
 
         def derive_audit_clone() -> tuple[dict[tuple[str, int], Any], str]:
             # Evaluate the deterministic audit clone with the same pure
@@ -885,27 +1027,36 @@ def run_full_dag_supervisor(
             reused = True
             replace_refused = True
             wrong_admission_refused = True
-            for index, material in enumerate(materials):
-                reopened = reopen_continuation_shard(artifact_root, material)
-                expected = next(bundle for bundle in bundles
-                                if bundle.deal_sha256 == material.deal_sha256)
-                reopened = reopen_continuation_bundle_v2(reopened, material)
-                reused = reused and reopened.bundle_sha256 == expected.bundle_sha256
-                wrong_material = materials[(index + 1) % len(materials)]
-                try:
-                    reopen_continuation_bundle_v2(reopened, wrong_material)
-                except WorldAfterstateV2ContinuationError:
-                    pass
-                else:
-                    wrong_admission_refused = False
-                try:
-                    publish_continuation_shard(artifact_root, material, reopened)
-                except WorldAfterstateV2ArtifactError:
-                    # The immutable publisher must reject replacement.  This
-                    # probe is deliberately performed only after reopening.
-                    pass
-                else:
-                    replace_refused = False
+            populations = (
+                ("p0", p0_materials, tuple(p0_bundles)),
+                ("fit", fit_materials, tuple(fit_bundles)),
+                ("precision-select", precision_materials,
+                 tuple(precision_bundles)),
+                ("audit", audit_materials, tuple(audit_bundles)),
+            )
+            for name, stage_materials, stage_bundles in populations:
+                for index, (material, expected) in enumerate(zip(
+                        stage_materials, stage_bundles, strict=True)):
+                    reopened = reopen_continuation_shard(
+                        label_roots[name], material)
+                    reopened = reopen_continuation_bundle_v2(reopened, material)
+                    reused = reused and (
+                        reopened.bundle_sha256 == expected.bundle_sha256)
+                    wrong_material = materials[
+                        (materials.index(material) + 1) % len(materials)]
+                    try:
+                        reopen_continuation_bundle_v2(reopened, wrong_material)
+                    except WorldAfterstateV2ContinuationError:
+                        pass
+                    else:
+                        wrong_admission_refused = False
+                    try:
+                        publish_continuation_shard(
+                            label_roots[name], material, reopened)
+                    except WorldAfterstateV2ArtifactError:
+                        pass
+                    else:
+                        replace_refused = False
             capability_probes["resumes_verified_shards_only"] = reused
             capability_probes["resume_same_admission"] = reused and wrong_admission_refused
             capability_probes["resume_cannot_regenerate_replace_select"] = replace_refused
@@ -922,6 +1073,9 @@ def run_full_dag_supervisor(
             return identity
         measure("reconstruction", reconstruct, 1)
 
+    if temp_context is not None:
+        temp_context.cleanup()
+    ephemeral_context.cleanup()
     capability_probes["one_audit_open"] = audit_open_count == 1
     capability_probes["reports_stage_counts"] = (
         len(progress_events) == len(FULL_DAG_STAGES)
@@ -931,6 +1085,7 @@ def run_full_dag_supervisor(
         and all(event["elapsed_seconds"] >= 1
                 and event["headroom_seconds"] >= 1
                 for event in progress_events))
+    training_material_count = len(training_pairs)
     result = FullDAGCapacityMeasurementV2(
         tuple((stage, walls[stage]) for stage in FULL_DAG_STAGES),
         max(1, artifact_count), tuple(witnesses), 0, True,
@@ -938,21 +1093,23 @@ def run_full_dag_supervisor(
         tuple((stage, {
             "label-p0": len(p0_materials), "p0": P0_DEALS,
             "optimizer-canary": 16 * 500, "label-fit": len(fit_materials),
-            "nested-curve-25": max(1, len(fit_materials) * 25 // 100)
+            "nested-curve-25": max(1, training_material_count * 25 // 100)
             + len(select_roots),
-            "nested-curve-50": max(1, len(fit_materials) * 50 // 100)
+            "nested-curve-50": max(1, training_material_count * 50 // 100)
             + len(select_roots),
-            "block-1-natural": len(fit_materials),
+            "block-1-natural": training_material_count,
             "nested-curve-100": len(select_roots),
-            "block-1-action-association-permutation": len(fit_materials),
-            "block-1-label-permutation": len(fit_materials),
-            "block-1-complete-world-shuffle": len(fit_materials),
-            "block-2-natural": len(fit_materials),
-            "block-2-complete-world-shuffle": len(fit_materials),
-            "precision-select-inference": len(materials),
-            "label-precision-select": len(materials),
-            "precision-select": len(materials), "audit": len(materials),
-            "label-audit": len(materials), "reconstruction": len(materials),
+            "block-1-action-association-permutation": training_material_count,
+            "block-1-label-permutation": training_material_count,
+            "block-1-complete-world-shuffle": training_material_count,
+            "block-2-natural": training_material_count,
+            "block-2-complete-world-shuffle": training_material_count,
+            "precision-select-inference": len(precision_materials),
+            "label-precision-select": len(precision_materials),
+            "precision-select": len(precision_materials),
+            "audit": len(audit_materials),
+            "label-audit": len(audit_materials),
+            "reconstruction": len(materials),
         }[stage]) for stage in FULL_DAG_STAGES),
         tuple((stage, process_cpu[stage]) for stage in FULL_DAG_STAGES),
         member_workers, torch_threads, inference_batch)

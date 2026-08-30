@@ -1,17 +1,104 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
+import time
 
 import pytest
+import shengji.rl.world_afterstate_v2_capacity_supervisor as supervisor
 
 from shengji.rl.world_afterstate_v2_capacity_supervisor import (
     FULL_DAG_MISSING_DEPENDENCY, FULL_DAG_STAGES,
     FullDAGCapacityDependencyBlocked,
     FullDAGCapacityMeasurementV2, _predict_roots_batched,
-    _capacity_p0_inputs, _execute_capacity_p0,
+    _capacity_p0_inputs, _capacity_stage_materials,
+    _capacity_training_pairs, _execute_capacity_p0,
+    _build_capacity_label_population, _fail,
     _verified_continuation_population,
     run_full_dag_supervisor,
 )
+
+
+def test_label_population_uses_production_controller_with_distinct_roots(
+        tmp_path, monkeypatch):
+    materials = (SimpleNamespace(name="one"), SimpleNamespace(name="two"))
+    bundles = tuple(SimpleNamespace(name=value.name) for value in materials)
+    calls = []
+    progress = []
+
+    def build(root, values, **kwargs):
+        calls.append((root, values, kwargs))
+        kwargs["progress"]({"completed_deals": len(values),
+                            "deadline_headroom_nanoseconds": 1})
+        return SimpleNamespace(artifact_bytes=123)
+
+    monkeypatch.setattr(supervisor, "build_continuation_population_v2", build)
+    monkeypatch.setattr(supervisor, "reopen_continuation_manifest",
+                        lambda _root, _values: bundles)
+    monkeypatch.setattr(supervisor, "reopen_continuation_bundle_v2",
+                        lambda bundle, _material: bundle)
+    deadline = time.perf_counter_ns() + 10_000_000_000
+    roots = []
+    for name in ("p0", "fit", "precision-select", "audit"):
+        reopened, artifacts, root = _build_capacity_label_population(
+            tmp_path, name, materials, workers=8,
+            deadline_perf_ns=deadline, progress=progress.append)
+        assert reopened == bundles and artifacts == 123
+        roots.append(root)
+    assert len(set(roots)) == 4
+    assert [call[0].name for call in calls] == [
+        "labels-p0", "labels-fit", "labels-precision-select", "labels-audit"]
+    assert [call[2]["split"] for call in calls] == [
+        "fit-select", "fit-select", "fit-select", "audit"]
+    assert all(call[1] == materials and call[2]["workers"] == 8
+               and call[2]["deadline_monotonic_ns"] > time.monotonic_ns()
+               for call in calls)
+    assert [row["stage"] for row in progress] == [
+        "p0", "fit", "precision-select", "audit"]
+    assert not hasattr(supervisor, "build_continuation_bundle_v2")
+
+
+def test_dependency_failure_carries_typed_stage_and_reason():
+    failure = _fail("label-p0", RuntimeError("boom"))
+    assert failure.stage == "label-p0"
+    assert failure.reason_code == "full-dag-dependency-failed"
+    assert "RuntimeError: boom" in str(failure)
+
+
+def test_stage_material_partition_preserves_protocol_membership():
+    def material(deal, split, *, source="natural", subfold=None):
+        return SimpleNamespace(state=SimpleNamespace(
+            deal_sha256=f"{deal:064x}", split=split, source=source,
+            select_subfold=subfold))
+
+    fit = tuple(material(index, "fit") for index in range(18))
+    epoch = tuple(material(100 + index, "select", subfold="epoch-select")
+                  for index in range(4))
+    precision = tuple(material(
+        200 + index, "select", subfold="precision-select")
+                      for index in range(3))
+    audit = tuple(material(300 + index, "audit") for index in range(2))
+    p0, label_fit, fit_natural, fit_epoch, selected, heldout = \
+        _capacity_stage_materials((*audit, *precision, *epoch, *fit))
+
+    assert p0 == fit[:16]
+    assert fit_natural == fit[16:]
+    assert fit_epoch == epoch[:2]
+    assert label_fit == fit[16:] + epoch[:2]
+    assert selected == precision and heldout == audit
+    assert not ({id(row) for row in p0} & {id(row) for row in label_fit})
+    assert all(row.state.split == "fit" for row in p0)
+    assert all(row.state.split == "select" for row in selected)
+    assert all(row.state.split == "audit" for row in heldout)
+
+    p0_bundles = tuple(SimpleNamespace(deal=row.state.deal_sha256)
+                       for row in p0)
+    label_fit_bundles = tuple(SimpleNamespace(deal=row.state.deal_sha256)
+                              for row in label_fit)
+    pairs = _capacity_training_pairs(
+        p0, p0_bundles, label_fit, label_fit_bundles)
+    assert tuple(row for row, _bundle in pairs) == fit
+    assert len(pairs) == 18
 
 
 def _capabilities():

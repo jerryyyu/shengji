@@ -3,13 +3,15 @@ import hashlib
 
 import pytest
 
+from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_capacity import (
     ARM_GRIDS, AUTHORITY, CAPACITY_ARM_TO_PRODUCTION_STAGE,
     CAPACITY_STAGE_TO_PRODUCTION_STAGE,
     COMPOSED_DAG_EDGES, COMPOSED_STAGE_NAMES, PRODUCTION_STAGE_NAMES,
     MEMORY_LIMIT_BYTES, SCIENTIFIC_DAG_EDGES,
     TRAINING_RESOURCE_SERIALIZATION_EDGES, CapacityArmV2,
-    CapacityReceiptV2, ComposedProjectionV2, ProgressRecoveryV2,
+    CapacityFailureReceiptV2, CapacityReceiptV2, ComposedProjectionV2,
+    ProgressRecoveryV2,
     TierProjectionV2, WorldAfterstateV2CapacityError,
     PINNED_TORCH_THREADS, choose_capacity_tier_v2,
     composed_critical_path_seconds,
@@ -77,6 +79,28 @@ def _progress(**changes):
         reconstruction_reuses_immutable_continuations=True)
     body.update(changes)
     return ProgressRecoveryV2(**body)
+
+
+def test_typed_capacity_failure_reopens_and_is_not_a_success_receipt():
+    from shengji.rl.world_afterstate_v2_capacity import (
+        reopen_capacity_failure_receipt_v2)
+
+    source, input_sha = "1" * 64, "2" * 64
+    namespace = hashlib.sha256(canonical_json_bytes({
+        "source_sha256": source, "input_sha256": input_sha})).hexdigest()
+    failure = CapacityFailureReceiptV2(
+        stage="runner", reason="capacity-runner-refused", elapsed_seconds=4,
+        source_sha256=source, input_sha256=input_sha,
+        namespace_sha256=namespace, detail_sha256="4" * 64)
+    payload = failure.payload()
+    assert reopen_capacity_failure_receipt_v2(payload) == failure
+    assert payload["status"] == "failure"
+    assert set(payload["authority"].values()) == {False}
+    with pytest.raises(CapacityRunnerError):
+        reopen_capacity_receipt_v2(payload)
+    tampered = dict(payload, namespace_sha256="5" * 64)
+    with pytest.raises(WorldAfterstateV2CapacityError):
+        reopen_capacity_failure_receipt_v2(tampered)
 
 
 def _receipt(**changes):

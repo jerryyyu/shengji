@@ -1,6 +1,8 @@
 """Fast contract tests for the score-free V2 capacity runner."""
 
 import os
+import json
+import hashlib
 import pytest
 import subprocess
 import threading
@@ -9,9 +11,11 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from types import SimpleNamespace
 
 import shengji.rl.world_afterstate_v2_capacity_runner as runner
+from shengji.rl.belief_contract import canonical_json_bytes
 
 from shengji.rl.world_afterstate_v2_capacity import (
-    ARM_GRIDS, COMPOSED_STAGE_NAMES, composed_critical_path_seconds)
+    ARM_GRIDS, COMPOSED_STAGE_NAMES, CapacityFailureReceiptV2,
+    composed_critical_path_seconds)
 from shengji.rl.world_afterstate_v2_capacity_runner import (
     CapacityRunnerError, FixtureV2, HostTelemetryV2, PreflightResultV2,
     RawMeasurementV2, SyntheticMeasurementBackendV2, measure_capacity_v2,
@@ -20,6 +24,7 @@ from shengji.rl.world_afterstate_v2_capacity_runner import (
     RepresentativeDAGV2, _batched_tensor_identity, _composed_projection,
     _run_with_torch_threads, _scientific_stage_units, _tiers, _dag_attestation,
     _FULL_DAG_PROVENANCE,
+    publish_capacity_failure_receipt_v2, reopen_capacity_failure_receipt_v2,
 )
 from shengji.rl.world_afterstate_v2_capacity_supervisor import (
     FullDAGCapacityMeasurementV2,
@@ -96,6 +101,62 @@ def test_score_free_preflight_parallelizes_without_eligible_surplus(
     assert [row["workers"] for row in progress] == [4, 2]
     assert progress[-1]["accepted"] == 4
     assert progress[-1]["rejection_counts"] == {"miss": 2}
+
+
+def test_preflight_preserves_first_96_then_interleaves_select_and_audit():
+    fit = SimpleNamespace(split="fit", slot_sha256="1" * 64)
+    select_a = SimpleNamespace(
+        split="select", select_subfold="epoch-select", slot_sha256="2" * 64)
+    select_b = SimpleNamespace(
+        split="select", select_subfold="precision-select",
+        slot_sha256="3" * 64)
+    audit_a = SimpleNamespace(split="audit", slot_sha256="4" * 64)
+    slots = (fit, select_a, select_b, audit_a)
+    assert [runner._preflight_slot(slots, index) for index in range(96)] == [
+        slots[index % len(slots)] for index in range(96)]
+    assert [runner._preflight_slot(slots, index) for index in range(96, 102)] == [
+        select_a, select_b, audit_a, fit, select_a, select_b]
+
+
+def test_preflight_early_fit_acceptance_reserves_select_and_audit_slots(
+        monkeypatch):
+    monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 5)
+    monkeypatch.setattr(runner, "PREFLIGHT_ATTEMPT_CEILING", 100)
+    monkeypatch.setattr(runner, "PREFLIGHT_WORKERS", 4)
+
+    class FakeFixture:
+        def __init__(self, _prestate, _audit_raws, *, deal_sha256, material):
+            self.deal_sha256 = deal_sha256
+            self.fixture_sha256 = deal_sha256
+            self.material = material
+
+    monkeypatch.setattr(runner, "FixtureV2", FakeFixture)
+    slots = tuple(
+        SimpleNamespace(split="fit", slot_sha256=f"{index:064x}")
+        for index in range(96)) + (
+            SimpleNamespace(split="select", select_subfold="epoch-select",
+                            slot_sha256="a" * 64),
+            SimpleNamespace(split="select", select_subfold="precision-select",
+                            slot_sha256="b" * 64),
+            SimpleNamespace(split="audit", slot_sha256="c" * 64))
+
+    def accept(identity, slot):
+        material = SimpleNamespace(
+            prestate={"index": identity["attempt_index"]}, audit_raws=(),
+            candidates=(0, 1), state=SimpleNamespace(
+                split=slot.split, phase="early", position="lead",
+                role="attacker", source="natural",
+                select_subfold=getattr(slot, "select_subfold", None)))
+        return SimpleNamespace(
+            accepted=True, rejection_reason=None, material=material,
+            deal_sha256=identity["deal_sha256"])
+
+    result = runner.run_score_free_preflight(attempt=accept, slots=slots)
+    assert result.attempted == 99 and result.accepted == 5
+    assert [runner._population_category(fixture.material)
+            for fixture in result.accepted_fixtures] == [
+                "fit", "fit", "epoch-select", "precision-select", "audit"]
+    assert result.rejection_counts == (("split-reservation", 94),)
 
 
 def test_real_preflight_driver_executes_in_a_process():
@@ -364,6 +425,7 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
     receipt = result.production_receipt()
     assert (seen["member_workers"], seen["torch_threads"],
             seen["inference_batch"]) == (2, 1, 128)
+    assert seen["continuation_workers"] == 1
     assert (receipt.member_workers, receipt.torch_threads,
             receipt.inference_batch) == (2, 1, 128)
     assert receipt.command_wall_seconds == (
@@ -485,9 +547,17 @@ def test_real_deadline_interrupts_hung_operation():
 
 def test_operation_outputs_are_domain_separated_and_input_identity_refused(
         monkeypatch):
+    monkeypatch.setattr(
+        runner.PopulationMaterialV2, "validate", lambda self: None)
+    material = object.__new__(runner.PopulationMaterialV2)
+    object.__setattr__(material, "prestate", {"score_free": True})
+    object.__setattr__(material, "audit_raws", (
+        b'{"successor": {}, "root_seat": 0}',))
+    object.__setattr__(material, "state", SimpleNamespace(deal_sha256=""))
     fixture = FixtureV2(
         {"score_free": True}, audit_raws=(
-            b'{"successor": {}, "root_seat": 0}',))
+            b'{"successor": {}, "root_seat": 0}',),
+        material=material)
     fixtures = (fixture,) * 32
     ordered_input = runner._ordered_fixture_identity(fixtures)
     fake_round = SimpleNamespace(phase="deal", trick=None, turn=0)
@@ -498,8 +568,12 @@ def test_operation_outputs_are_domain_separated_and_input_identity_refused(
     monkeypatch.setattr(runner, "canonical_successor",
                         lambda value, root_seat: successor)
     import shengji.rl.world_afterstate as world_afterstate
+    import shengji.rl.world_afterstate_v2_continuation as continuation
     monkeypatch.setattr(world_afterstate, "reopen_afterstate_audit",
                         lambda record: fake_round)
+    monkeypatch.setattr(
+        continuation, "run_continuation_capacity_probe_v2",
+        lambda material: runner._sha("continuation-probe"))
 
     for stage in ("state-successor", "continuation-mechanics",
                   "reconstruction"):
@@ -645,3 +719,28 @@ def test_production_refuses_unimplemented_full_dag_dependency():
         measure_capacity_v2(preflight=preflight, backend=backend,
                             host=HostTelemetryV2(16))
     assert FullDAGCapacityDependencyBlocked.dependency
+
+
+def test_failure_receipt_publishes_once_at_distinct_sibling_path(tmp_path):
+    success = tmp_path / "capacity.json"
+    failure_path = tmp_path / "capacity-failure.json"
+    source, input_sha = "1" * 64, "2" * 64
+    namespace = hashlib.sha256(canonical_json_bytes({
+        "source_sha256": source, "input_sha256": input_sha})).hexdigest()
+    failure = CapacityFailureReceiptV2(
+        stage="runner", reason="capacity-runner-refused", elapsed_seconds=1,
+        source_sha256=source, input_sha256=input_sha,
+        namespace_sha256=namespace, detail_sha256="4" * 64)
+    publish_capacity_failure_receipt_v2(failure_path, failure)
+    assert not success.exists()
+    assert reopen_capacity_failure_receipt_v2(
+        json.loads(failure_path.read_text())) == failure
+    with pytest.raises(CapacityRunnerError, match="occupied"):
+        publish_capacity_failure_receipt_v2(failure_path, failure)
+
+    target = tmp_path / "real"
+    target.mkdir()
+    linked = tmp_path / "linked"
+    linked.symlink_to(target, target_is_directory=True)
+    with pytest.raises(CapacityRunnerError, match="aliased"):
+        publish_capacity_failure_receipt_v2(linked / "failure.json", failure)

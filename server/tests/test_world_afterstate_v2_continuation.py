@@ -86,6 +86,22 @@ def test_crn_identity_is_shared_by_siblings_and_distinct_by_replica(fake_engine)
     assert len({row.continuation_sha256 for row in bundle.outcomes}) == 8
 
 
+def test_capacity_probe_runs_one_real_continuation_and_discards_population(
+        fake_engine, monkeypatch):
+    calls = []
+    original = source.run_afterstate_continuation
+
+    def counted(audit, identity):
+        calls.append((audit, identity))
+        return original(audit, identity)
+
+    monkeypatch.setattr(source, "run_afterstate_continuation", counted)
+    digest = source.run_continuation_capacity_probe_v2(fake_engine)
+    assert len(digest) == 64
+    assert len(calls) == 1
+    assert calls[0][1]["replicate"] == 0
+
+
 def test_bundle_reconstructs_and_cross_binds_raw_label(fake_engine):
     bundle = source.build_continuation_bundle_v2(fake_engine)
     assert bundle.bundle_sha256 == _sha_bytes(bundle.canonical_bytes)

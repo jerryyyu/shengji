@@ -4,8 +4,8 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-30 00:43 EDT**. Remote main before this update:
-`00c184d`.
+Last reconciled: **2026-08-30 01:15 EDT**. Remote main before this update:
+`778d4c4`.
 
 ## Review queue — R4 waits on state, one secondary source ask
 
@@ -22,12 +22,16 @@ is still active. No timeout receipt, route claim, outcome read, or evidence
 mutation occurred. There is no R4 review action until the unit changes state.
 
 Secondary review while R4 runs: PR #171 final head
-`74e11587d374c746ce4c44e2c6a421fe40ace3da` requests one consolidated
-source-only delta review from its prior PASS head `4d2edcf8`. The delta adds a
-durable outcome-blind Mini capacity-failure receipt and repairs the
-single-marker-ever authenticator into exact append-only repeated markers.
-Exact-head evidence: 89 PT-Luna tests, compile, and diff-check pass; the final
-atomic no-replace publisher also received an independent Terra PASS. PASS may
+`2f4fa09dc18a412125539b80ebe90378f00d7247` requests one narrow review of its
+one-file test-only delta from held parent `74e1158`. Production
+collector/capacity bytes are unchanged. The empirical-concurrency witness now
+uses deterministic controller clock pairs while retaining real executor
+threads, per-arm start barriers, and a second barrier while every worker is
+active; a serialized dispatcher therefore breaks the witness without making
+the receipt depend on a 2 ms host sleep. Exact-head evidence: the focused test
+passed 20/20 consecutive isolated runs, the full PT-Luna battery passed 102/102,
+and compile/diff checks are clean. Exact ask:
+https://github.com/jerryyyu/shengji/pull/171#issuecomment-5466825259. PASS may
 authorize exactly one fresh non-scientific score-free progressive Mini
 capacity census with distinct immutable success/failure outputs. It grants no
 104-game collection, outcome opening, gameplay/strength claim, merge, retry,

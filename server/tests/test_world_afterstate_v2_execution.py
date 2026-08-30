@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+from types import SimpleNamespace
 from dataclasses import replace
 from pathlib import Path
 
@@ -423,6 +424,132 @@ def test_deadline_and_telemetry_are_persistent_across_resume(tmp_path, monkeypat
                                     review_marker=_marker)
 
 
+def test_live_telemetry_includes_process_pool_children(monkeypatch):
+    own = SimpleNamespace(ru_utime=0.25, ru_stime=0.25, ru_maxrss=10)
+    children = SimpleNamespace(ru_utime=0.5, ru_stime=0.5, ru_maxrss=0)
+    monkeypatch.setattr(execution, "_cgroup_v2_directory", lambda: None)
+    monkeypatch.setattr(execution, "_process_memory_bytes", lambda _usage: 1)
+    monkeypatch.setattr(execution.resource, "getrusage",
+                        lambda kind: own if kind == execution.resource.RUSAGE_SELF
+                        else children)
+
+    cpu_ppm, memory = execution._live_telemetry(
+        1_000_000_000, process_cpu_baseline=0)
+
+    assert cpu_ppm == 1_500_000
+    assert memory == 1
+
+
+def test_supervisor_telemetry_baselines_reset_on_resume(tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(root, freeze_raw=freeze.canonical_bytes(),
+                                     repo=repo, review_commit=review,
+                                     remote_url=str(remote))
+    started = json.loads((root / "supervisor-meta.json").read_text())["started_monotonic_ns"]
+    clock_values = iter((started, started + 1_000_000_000,
+                         started + 2_000_000_000, started + 3_000_000_000))
+    cpu_totals = iter((500_000_000, 500_000_000,
+                       1_000_000_000, 1_000_000_000,
+                       1_000_000_000, 1_000_000_000,
+                       1_500_000_000, 1_500_000_000))
+    monkeypatch.setattr(execution, "_cgroup_v2_directory", lambda: None)
+    monkeypatch.setattr(execution, "_process_memory_bytes", lambda _usage: 1)
+    monkeypatch.setattr(execution, "resource", SimpleNamespace(
+        RUSAGE_SELF=0, RUSAGE_CHILDREN=-1,
+        getrusage=lambda _kind: SimpleNamespace(
+            ru_utime=next(cpu_totals) / 1_000_000_000,
+            ru_stime=0, ru_maxrss=1)))
+    first = StageSupervisorV2(root, freeze, admission, clock=lambda: next(clock_values))
+    first_progress = first.emit_progress(stage="population", completed=0,
+                                         total=1, force=True)
+    resumed = StageSupervisorV2(root, freeze, admission,
+                                clock=lambda: next(clock_values))
+    resumed_progress = resumed.emit_progress(stage="population", completed=0,
+                                             total=1, force=True)
+
+    assert first_progress["cpu_utilization_ppm"] == 1_000_000
+    assert resumed_progress["cpu_utilization_ppm"] == 1_000_000
+    assert first_progress["elapsed_nanoseconds"] == 1_000_000_000
+    assert resumed_progress["elapsed_nanoseconds"] == 3_000_000_000
+
+
+def test_live_telemetry_uses_process_cgroup_v2_directory(tmp_path, monkeypatch):
+    proc_cgroup = tmp_path / "proc-self-cgroup"
+    cgroup_root = tmp_path / "sys-fs-cgroup"
+    directory = cgroup_root / "tenant" / "worker"
+    directory.mkdir(parents=True)
+    proc_cgroup.write_text("0::/tenant/worker\n")
+    (directory / "cpu.stat").write_text("usage_usec 2500\nuser_usec 2400\n")
+    (directory / "memory.current").write_text("4096\n")
+    original_resolver = execution._cgroup_v2_directory
+    resolver = lambda: original_resolver(
+        proc_cgroup=proc_cgroup, cgroup_root=cgroup_root)
+    monkeypatch.setattr(execution, "_cgroup_v2_directory", resolver)
+    stale = SimpleNamespace(ru_utime=10, ru_stime=0, ru_maxrss=1)
+    monkeypatch.setattr(execution.resource, "getrusage", lambda _kind: stale)
+
+    cpu_ppm, memory = execution._live_telemetry(
+        1_000_000_000, process_cpu_baseline=20_000_000_000,
+        cgroup_directory=directory,
+        cgroup_cpu_baseline=2_000_000)
+
+    assert execution._cgroup_v2_directory() == directory
+    # Only the invocation-relative 500 usec delta contributes; the pre-run
+    # cgroup counter is not treated as this supervisor's CPU time.
+    assert cpu_ppm == 500
+    assert memory == 4096
+
+
+def test_live_telemetry_refuses_cross_cgroup_baseline(tmp_path, monkeypatch):
+    cgroup_a = tmp_path / "a"
+    cgroup_b = tmp_path / "b"
+    cgroup_a.mkdir()
+    cgroup_b.mkdir()
+    (cgroup_b / "cpu.stat").write_text("usage_usec 9000000\n")
+    (cgroup_b / "memory.current").write_text("4096\n")
+    monkeypatch.setattr(execution, "_cgroup_v2_directory", lambda: cgroup_b)
+    own = SimpleNamespace(ru_utime=1.25, ru_stime=0, ru_maxrss=1)
+    children = SimpleNamespace(ru_utime=0.25, ru_stime=0, ru_maxrss=0)
+    monkeypatch.setattr(execution.resource, "getrusage",
+                        lambda kind: own if kind == execution.resource.RUSAGE_SELF
+                        else children)
+
+    cpu_ppm, memory = execution._live_telemetry(
+        1_000_000_000, process_cpu_baseline=1_000_000_000,
+        cgroup_directory=cgroup_a, cgroup_cpu_baseline=1_000_000)
+
+    # The unrelated nine-second B counter must not be combined
+    # with A's baseline.  Fall back to this process plus its children instead.
+    assert cpu_ppm == 500_000
+    assert memory == 4096
+
+
+def test_live_telemetry_falls_back_on_malformed_cgroup_data(tmp_path, monkeypatch):
+    proc_cgroup = tmp_path / "proc-self-cgroup"
+    cgroup_root = tmp_path / "sys-fs-cgroup"
+    directory = cgroup_root / "tenant"
+    directory.mkdir(parents=True)
+    proc_cgroup.write_text("0::/tenant\n")
+    (directory / "cpu.stat").write_text("usage_usec not-an-integer\n")
+    (directory / "memory.current").write_text("-1\n")
+    original_resolver = execution._cgroup_v2_directory
+    monkeypatch.setattr(execution, "_cgroup_v2_directory", lambda: original_resolver(
+        proc_cgroup=proc_cgroup, cgroup_root=cgroup_root))
+    own = SimpleNamespace(ru_utime=0.1, ru_stime=0.1, ru_maxrss=1)
+    children = SimpleNamespace(ru_utime=0, ru_stime=0, ru_maxrss=0)
+    monkeypatch.setattr(execution.resource, "getrusage",
+                        lambda kind: own if kind == execution.resource.RUSAGE_SELF
+                        else children)
+    monkeypatch.setattr(execution, "_process_memory_bytes", lambda _usage: 77)
+
+    cpu_ppm, memory = execution._live_telemetry(
+        1_000_000_000, process_cpu_baseline=0)
+
+    assert cpu_ppm == 200_000
+    assert memory == 77
+
+
 def test_reopen_requires_exact_completed_prefix_and_live_telemetry(tmp_path, monkeypatch):
     repo, freeze, review, marker, remote = _fixture(tmp_path)
     root = tmp_path / "evidence"
@@ -430,7 +557,7 @@ def test_reopen_requires_exact_completed_prefix_and_live_telemetry(tmp_path, mon
                                      repo=repo, review_commit=review, remote_url=str(remote))
     supervisor = StageSupervisorV2(root, freeze, admission)
     monkeypatch.setattr(execution, "_live_telemetry",
-                        lambda _elapsed: (_ for _ in ()).throw(
+                        lambda _elapsed, **_baselines: (_ for _ in ()).throw(
                             WorldAfterstateV2ExecutionError("telemetry unavailable")))
     with pytest.raises(WorldAfterstateV2ExecutionError, match="telemetry"):
         supervisor.emit_progress(stage="population", completed=0, total=1, force=True)

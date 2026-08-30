@@ -192,38 +192,127 @@ def _boot_identity() -> str:
     return value
 
 
-def _live_telemetry(elapsed_nanoseconds: int) -> tuple[int, int]:
+def _cgroup_v2_directory(*, proc_cgroup: Path | None = None,
+                          cgroup_root: Path | None = None) -> Path | None:
+    """Resolve this process's unified cgroup directory, if one is usable."""
+    proc_cgroup = proc_cgroup or Path("/proc/self/cgroup")
+    cgroup_root = cgroup_root or Path("/sys/fs/cgroup")
+    try:
+        rows = proc_cgroup.read_text(encoding="ascii").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    unified = []
+    for row in rows:
+        fields = row.split(":", 2)
+        if len(fields) == 3 and fields[0] == "0" and fields[1] == "":
+            unified.append(fields[2])
+    if len(unified) != 1 or not unified[0].startswith("/") \
+            or "\x00" in unified[0]:
+        return None
+    relative_parts = tuple(part for part in unified[0].split("/") if part)
+    if any(part in (".", "..") for part in relative_parts):
+        return None
+    return cgroup_root.joinpath(*relative_parts)
+
+
+def _nonnegative_integer(path: Path) -> int | None:
+    try:
+        value = int(path.read_text(encoding="ascii").strip())
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    return value if value >= 0 else None
+
+
+def _cgroup_cpu_nanoseconds(directory: Path | None) -> int | None:
+    if directory is None:
+        return None
+    try:
+        values: dict[str, int] = {}
+        for row in (directory / "cpu.stat").read_text(encoding="ascii").splitlines():
+            fields = row.split()
+            if len(fields) != 2 or fields[0] in values:
+                return None
+            values[fields[0]] = int(fields[1])
+        usage_usec = values.get("usage_usec")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    if usage_usec is None or usage_usec < 0:
+        return None
+    return usage_usec * 1_000
+
+
+def _process_cpu_nanoseconds(usage: Any | None = None) -> int:
+    try:
+        if usage is None:
+            usage = resource.getrusage(resource.RUSAGE_SELF)
+        children = resource.getrusage(resource.RUSAGE_CHILDREN)
+        seconds = (usage.ru_utime + usage.ru_stime + children.ru_utime
+                   + children.ru_stime)
+        value = int(seconds * 1_000_000_000)
+    except (OSError, TypeError, ValueError, OverflowError) as exc:
+        raise WorldAfterstateV2ExecutionError(
+            "process CPU telemetry unavailable") from exc
+    if value < 0:
+        raise WorldAfterstateV2ExecutionError("process CPU telemetry unavailable")
+    return value
+
+
+def _process_memory_bytes(usage: Any) -> int:
+    # Older Linux hosts have no cgroup v2; /proc gives current RSS rather than
+    # the historical high-water mark returned by getrusage.
+    statm = Path("/proc/self/statm")
+    try:
+        if statm.is_file():
+            fields = statm.read_text(encoding="ascii").split()
+            if len(fields) > 1:
+                rss_pages = int(fields[1])
+                if rss_pages >= 0:
+                    return rss_pages * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, UnicodeDecodeError, IndexError, ValueError):
+        pass
+    # macOS exposes only the process high-water mark through this stdlib API;
+    # it remains a live nonzero witness and is tracked independently as peak.
+    try:
+        rss = int(usage.ru_maxrss)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise WorldAfterstateV2ExecutionError(
+            "process memory telemetry unavailable") from exc
+    if rss < 0:
+        raise WorldAfterstateV2ExecutionError("process memory telemetry unavailable")
+    if sys.platform == "darwin":
+        return rss
+    return rss * 1024
+
+
+def _live_telemetry(elapsed_nanoseconds: int, *,
+                    process_cpu_baseline: int | None = None,
+                    cgroup_directory: Path | None = None,
+                    cgroup_cpu_baseline: int | None = None) -> tuple[int, int]:
     """Return process CPU utilization and current cgroup/RSS memory."""
     try:
         usage = resource.getrusage(resource.RUSAGE_SELF)
     except OSError as exc:
         raise WorldAfterstateV2ExecutionError("process CPU telemetry unavailable") from exc
-    cpu_ns = (usage.ru_utime + usage.ru_stime) * 1_000_000_000
-    # This is aggregate process CPU; values above one core are meaningful
-    # when a controller has active workers and are intentionally not capped.
+    process_cpu_ns = _process_cpu_nanoseconds(usage)
+    if process_cpu_baseline is not None and process_cpu_ns >= process_cpu_baseline:
+        process_delta_ns = process_cpu_ns - process_cpu_baseline
+    else:
+        process_delta_ns = None
+    cgroup = _cgroup_v2_directory()
+    cgroup_cpu_ns = _cgroup_cpu_nanoseconds(cgroup)
+    if cgroup is not None and cgroup == cgroup_directory \
+            and cgroup_cpu_ns is not None and cgroup_cpu_baseline is not None \
+            and cgroup_cpu_ns >= cgroup_cpu_baseline:
+        # Only an invocation-relative cgroup delta is comparable with the
+        # supervisor's elapsed time; absolute counters may predate this run.
+        cpu_ns = cgroup_cpu_ns - cgroup_cpu_baseline
+    elif process_delta_ns is not None:
+        cpu_ns = process_delta_ns
+    else:
+        raise WorldAfterstateV2ExecutionError("process CPU telemetry unavailable")
     cpu_ppm = int(cpu_ns * 1_000_000 // max(elapsed_nanoseconds, 1))
-    cgroup = Path("/sys/fs/cgroup/memory.current")
-    if cgroup.is_file():
-        try:
-            return cpu_ppm, int(cgroup.read_text(encoding="ascii").strip())
-        except (OSError, ValueError) as exc:
-            raise WorldAfterstateV2ExecutionError("cgroup memory telemetry unavailable") from exc
-    # Older Linux hosts have no cgroup v2; /proc gives current RSS rather than
-    # the historical high-water mark returned by getrusage.
-    statm = Path("/proc/self/statm")
-    if statm.is_file():
-        try:
-            rss_pages = int(statm.read_text(encoding="ascii").split()[1])
-            return cpu_ppm, rss_pages * os.sysconf("SC_PAGE_SIZE")
-        except (OSError, IndexError, ValueError) as exc:
-            raise WorldAfterstateV2ExecutionError(
-                "process memory telemetry unavailable") from exc
-    # macOS exposes only the process high-water mark through this stdlib API;
-    # it remains a live nonzero witness and is tracked independently as peak.
-    rss = int(usage.ru_maxrss)
-    if sys.platform == "darwin":
-        return cpu_ppm, rss
-    return cpu_ppm, rss * 1024
+    memory = _nonnegative_integer(cgroup / "memory.current") if cgroup is not None else None
+    return cpu_ppm, memory if memory is not None else _process_memory_bytes(usage)
 
 
 def live_runtime_profile() -> dict[str, Any]:
@@ -1082,6 +1171,10 @@ class StageSupervisorV2:
     _event_index: int = field(default=0, repr=False)
     _last_progress: int = field(default=0, repr=False)
     _peak_memory: int = field(default=0, repr=False)
+    _telemetry_started: int = field(default=0, repr=False)
+    _process_cpu_baseline: int | None = field(default=None, repr=False)
+    _cgroup_directory: Path | None = field(default=None, repr=False)
+    _cgroup_cpu_baseline: int | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         validate_execution_freeze(self.freeze)
@@ -1104,6 +1197,14 @@ class StageSupervisorV2:
         if meta["boot_identity"] != _boot_identity():
             raise WorldAfterstateV2ExecutionError("cross-boot resume refused")
         self._started = meta["started_monotonic_ns"]
+        # Telemetry is invocation-relative.  In particular, a reopened
+        # supervisor must not divide process-lifetime CPU by its old deadline
+        # elapsed time or trust a pre-existing cgroup counter as fresh work.
+        self._telemetry_started = self.clock()
+        self._process_cpu_baseline = _process_cpu_nanoseconds()
+        self._cgroup_directory = _cgroup_v2_directory()
+        self._cgroup_cpu_baseline = _cgroup_cpu_nanoseconds(
+            self._cgroup_directory)
         # A process interruption is not a retry.  Reopen only immutable
         # complete events and verified shard bytes already present under this
         # admission.  An absent/malformed event is deliberately ignored here;
@@ -1225,7 +1326,11 @@ class StageSupervisorV2:
             return {}
         elapsed = max(0, now - self._started)
         eta = (elapsed * (total - completed) // completed) if completed else None
-        cpu_ppm, memory_bytes = _live_telemetry(elapsed)
+        telemetry_elapsed = max(0, now - self._telemetry_started)
+        cpu_ppm, memory_bytes = _live_telemetry(
+            telemetry_elapsed, process_cpu_baseline=self._process_cpu_baseline,
+            cgroup_directory=self._cgroup_directory,
+            cgroup_cpu_baseline=self._cgroup_cpu_baseline)
         self._peak_memory = max(getattr(self, "_peak_memory", 0), memory_bytes)
         snapshot = ProgressSnapshotV2(stage, substage, completed, total,
             active_workers, active_threads, cpu_ppm, memory_bytes, self._peak_memory, elapsed, eta,

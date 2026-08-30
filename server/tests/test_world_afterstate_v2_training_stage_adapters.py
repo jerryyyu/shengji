@@ -6,7 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 from shengji.rl import world_afterstate_v2_training_stage_adapters as adapters
+from shengji.rl.world_afterstate_v2_model import new_world_afterstate_v2_model
 from test_world_afterstate_v2_training_controller import _build
+from test_world_afterstate_v2_inference import _root
 
 
 class _Freeze:
@@ -229,3 +231,73 @@ def test_nested_score_binds_capacity_cap(monkeypatch):
             object(), "nested-curve", object(), (object(),), (), split="fit",
             fraction_ppm=250_000, inference_batch_cap=128)
     assert observed == [128]
+
+
+def test_prediction_manifest_resume_reuses_exact_content_before_supervisor_shard(
+        tmp_path, monkeypatch):
+    root = _root()
+    models = tuple(new_world_afterstate_v2_model(seed) for seed in range(101, 105))
+    supervisor = SimpleNamespace(root=tmp_path)
+
+    def interrupt(*args, **kwargs):
+        del args, kwargs
+        raise RuntimeError("simulated interruption before supervisor shard")
+
+    monkeypatch.setattr(adapters, "_publish", interrupt)
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        adapters._prediction_receipts(
+            supervisor, "stage", models, (root,), split="audit",
+            control_name="natural", seed_block=1)
+
+    manifest_path = (tmp_path / "predictions" / "natural" / "block-1"
+                     / "audit" / "main" / "manifest.json")
+    published = manifest_path.read_bytes()
+    calls = []
+
+    def fail_inference(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("resume reran inference")
+
+    def register(supervisor, stage, shard, raw):
+        calls.append((supervisor, stage, shard, raw))
+
+    monkeypatch.setattr(adapters, "predict_roots_v2", fail_inference)
+    monkeypatch.setattr(adapters, "_publish", register)
+    resumed = adapters._prediction_receipts(
+        supervisor, "stage", models, (root,), split="audit",
+        control_name="natural", seed_block=1)
+
+    assert calls == [(
+        supervisor, "stage", "prediction-natural-1-audit-0", published)]
+    assert resumed[0]["manifest_sha256"]
+    assert resumed[0]["artifact_sha256"] == adapters._sha(published)
+
+
+def test_prediction_manifest_resume_refuses_mismatched_current_model_or_root(
+        tmp_path, monkeypatch):
+    root = _root()
+    models = tuple(new_world_afterstate_v2_model(seed) for seed in range(111, 115))
+    supervisor = SimpleNamespace(root=tmp_path)
+    monkeypatch.setattr(adapters, "_publish", lambda *args, **kwargs: None)
+    adapters._prediction_receipts(
+        supervisor, "stage", models, (root,), split="audit",
+        control_name="natural", seed_block=1)
+
+    def fail_inference(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("mismatched manifest reran inference")
+
+    monkeypatch.setattr(adapters, "predict_roots_v2", fail_inference)
+    with pytest.raises(adapters.TrainingStageAdapterUnavailable,
+                       match="current-input binding"):
+        adapters._prediction_receipts(
+            supervisor, "stage", (new_world_afterstate_v2_model(999),
+                                   *models[1:]), (root,), split="audit",
+            control_name="natural", seed_block=1)
+
+    mismatched_root = dataclasses.replace(root, deal_sha256="f" * 64)
+    with pytest.raises(adapters.TrainingStageAdapterUnavailable,
+                       match="current-input binding"):
+        adapters._prediction_receipts(
+            supervisor, "stage", models, (mismatched_root,), split="audit",
+            control_name="natural", seed_block=1)

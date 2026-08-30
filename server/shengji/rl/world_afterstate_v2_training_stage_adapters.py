@@ -36,12 +36,14 @@ from .world_afterstate_v2_evaluation import evaluate_nested_curve_v2
 from .world_afterstate_v2_inference import (
     ValueInferenceRootV2, build_inference_root_v2, nested_curve_prediction_manifest_v2,
     predict_nested_curve_v2, predict_roots_v2, prediction_population_manifest_v2,
+    reopen_prediction_population_manifest_v2,
 )
 from .world_afterstate_v2_metrics import build_natural_fit_prior
 from .world_afterstate_v2_label import ContinuationOutcomeV2
 from .world_afterstate_v2_population_artifacts import reopen_population_manifest
 from .world_afterstate_v2_prediction_artifacts import (
-    publish_prediction_population_manifest,
+    prediction_population_manifest_path, publish_prediction_population_manifest,
+    reopen_prediction_population_artifact,
 )
 from .world_afterstate_v2_schedule import derive_nested_prefixes, training_epoch_batches
 from .world_afterstate_v2_training_controller import (
@@ -49,6 +51,7 @@ from .world_afterstate_v2_training_controller import (
     reopen_member_build, train_named_cohort, train_named_member,
     validate_cohort_manifest,
 )
+from .world_afterstate_v2_training import model_state_sha256
 from .world_afterstate_v2_training_recovery_store import (
     RecoveryStoreBindingV2, WorldAfterstateV2RecoveryStore,
 )
@@ -724,6 +727,48 @@ def _nested_score(
             "nested curve prediction/evaluation refused") from exc
 
 
+def _authenticate_prediction_manifest(
+        manifest: Mapping[str, Any], models: Sequence[Any],
+        roots: Sequence[ValueInferenceRootV2], *, split: str,
+        control_name: str, seed_block: int) -> None:
+    """Bind a reopened immutable manifest to this exact inference input set."""
+    try:
+        if (manifest.get("split"), manifest.get("control_name"),
+                manifest.get("seed_block")) != (split, control_name, seed_block):
+            raise ValueError("prediction manifest identity")
+        if type(roots) not in (tuple, list) or not roots:
+            raise ValueError("prediction root population")
+        current_bindings = []
+        for root in roots:
+            if type(root) is not ValueInferenceRootV2:
+                raise ValueError("prediction root type")
+            root.validate()
+            current_bindings.append({
+                **root.target_free_body(), "root_sha256": root.root_sha256})
+        current_bindings.sort(key=lambda item: item["root_sha256"])
+        if (manifest.get("root_count"), manifest.get("candidate_count"),
+                manifest.get("root_bindings")) != (
+                    len(current_bindings),
+                    sum(len(root.successor_sha256s) for root in roots),
+                    current_bindings):
+            raise ValueError("prediction root binding")
+        if type(models) not in (tuple, list) or len(models) != 4:
+            raise ValueError("prediction model population")
+        expected_states = tuple(model_state_sha256(model) for model in models)
+        predictions = reopen_prediction_population_manifest_v2(manifest)
+        for member, expected_state in enumerate(expected_states):
+            observed = {
+                row.model_state_sha256 for row in predictions
+                if row.member_index == member}
+            if observed != {expected_state}:
+                raise ValueError("prediction model state binding")
+    except TrainingStageAdapterUnavailable:
+        raise
+    except Exception as exc:
+        raise TrainingStageAdapterUnavailable(
+            "prediction manifest current-input binding refused") from exc
+
+
 def _prediction_receipts(
         supervisor: Any, stage: str, models: Sequence[Any], roots: Sequence[ValueInferenceRootV2],
         *, split: str, control_name: str, seed_block: int,
@@ -731,17 +776,56 @@ def _prediction_receipts(
         inference_batch_cap: int = 256) -> tuple[dict[str, Any], ...]:
     if not models or not roots:
         raise TrainingStageAdapterUnavailable("prediction population is empty")
+    subfold = "epoch-select" if split == "select" else None
+    artifact = None
     if nested_fraction_ppm is None:
-        predictions = tuple(
-            row for member, model in enumerate(models)
-            for row in predict_roots_v2(
-                model, roots, seed_block=seed_block, member_index=member,
-                control_name=control_name,
-                inference_batch_cap=inference_batch_cap))
-        manifest = prediction_population_manifest_v2(
-            roots, predictions, split=split, control_name=control_name,
-            seed_block=seed_block)
-        subfold = "epoch-select" if split == "select" else None
+        resumed = False
+        if isinstance(getattr(supervisor, "root", None), Path):
+            try:
+                manifest_path = prediction_population_manifest_path(
+                    supervisor.root, control_name, seed_block, split, subfold)
+                # Check the full parent chain before deciding that no
+                # publication exists.  This prevents a symlinked/aliased
+                # namespace from being treated as a fresh run and later
+                # receiving a publication.
+                _check_directory_chain(
+                    supervisor.root, manifest_path.parent,
+                    f"{stage} prediction artifact")
+                if manifest_path.is_symlink() or manifest_path.exists():
+                    if manifest_path.is_symlink():
+                        raise TrainingStageAdapterUnavailable(
+                            f"{stage} prediction manifest symlink")
+                    manifest, artifact = reopen_prediction_population_artifact(
+                        supervisor.root, control_name=control_name,
+                        seed_block=seed_block, split=split, subfold=subfold)
+                    _authenticate_prediction_manifest(
+                        manifest, models, roots, split=split,
+                        control_name=control_name, seed_block=seed_block)
+                    resumed = True
+            except TrainingStageAdapterUnavailable:
+                raise
+            except Exception as exc:
+                raise TrainingStageAdapterUnavailable(
+                    f"{stage} prediction publication/reopen refused") from exc
+        if not resumed:
+            predictions = tuple(
+                row for member, model in enumerate(models)
+                for row in predict_roots_v2(
+                    model, roots, seed_block=seed_block, member_index=member,
+                    control_name=control_name,
+                    inference_batch_cap=inference_batch_cap))
+            manifest = prediction_population_manifest_v2(
+                roots, predictions, split=split, control_name=control_name,
+                seed_block=seed_block)
+            try:
+                artifact = publish_prediction_population_manifest(
+                    supervisor.root, manifest, control_name=control_name,
+                    seed_block=seed_block, split=split, subfold=subfold)
+            except TrainingStageAdapterUnavailable:
+                raise
+            except Exception as exc:
+                raise TrainingStageAdapterUnavailable(
+                    f"{stage} prediction publication/reopen refused") from exc
     else:
         predictions = tuple(
             predict_nested_curve_v2(
@@ -750,16 +834,6 @@ def _prediction_receipts(
                 inference_batch_cap=inference_batch_cap))
         manifest = nested_curve_prediction_manifest_v2(
             roots, predictions, split=split, fraction_ppm=nested_fraction_ppm)
-        subfold = "epoch-select" if split == "select" else None
-    artifact = None
-    if nested_fraction_ppm is None:
-        try:
-            artifact = publish_prediction_population_manifest(
-                supervisor.root, manifest, control_name=control_name,
-                seed_block=seed_block, split=split, subfold=subfold)
-        except Exception as exc:
-            raise TrainingStageAdapterUnavailable(
-                f"{stage} prediction publication refused") from exc
     # Keep a supervisor-visible receipt as well as the content-addressed
     # prediction manifest.  Reopening the shard is therefore enough to prove
     # that the prediction publication was part of this stage's immutable DAG.

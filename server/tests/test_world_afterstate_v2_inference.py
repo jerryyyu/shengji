@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import dataclasses
 import hashlib
 
 import torch
@@ -48,6 +49,51 @@ def _root() -> inference.ValueInferenceRootV2:
         tensor_sha256s=(_sha("tensor-0"), _sha("tensor-1")), tensors=batch)
 
 
+def _variable_roots() -> tuple[inference.ValueInferenceRootV2, ...]:
+    """A population whose roots have different candidate/history widths."""
+    roots = []
+    for root_index in range(14):
+        candidate_count = 2 + root_index % 2
+        lengths = ((0, 2) if candidate_count == 2 else (3, 1, 0))
+        history = torch.zeros(
+            (candidate_count, max(lengths), HISTORY_EVENT_DIM),
+            dtype=torch.float32)
+        for candidate, length in enumerate(lengths):
+            if length:
+                history[candidate, :length] = (root_index + candidate + 1) / 10
+        base = _root()
+        state = _sha(("variable-state", root_index))
+        successors = tuple(
+            _sha(("variable-successor", root_index, candidate))
+            for candidate in range(candidate_count))
+        tensors = WorldAfterstateV2Batch(
+            public=torch.zeros((candidate_count, PUBLIC_DIM), dtype=torch.float32),
+            history=history,
+            history_lengths=torch.tensor(lengths, dtype=torch.long),
+            world=torch.zeros(
+                (candidate_count, WORLD_RECEIVERS, N_CARDS), dtype=torch.float32),
+            perspective=torch.tensor(
+                [[1.0, 0.0]] * candidate_count, dtype=torch.float32),
+        )
+        roots.append(dataclasses.replace(
+            base,
+            deal_sha256=_sha(("variable-deal", root_index)),
+            slot_sha256=_sha(("variable-slot", root_index)),
+            state_sha256=state,
+            candidate_set_sha256=_sha({
+                "schema": "world-afterstate-v2-candidate-set-v1",
+                "state_sha256": state,
+                "successor_sha256s": list(successors),
+            }),
+            successor_sha256s=successors,
+            tensor_sha256s=tuple(
+                _sha(("variable-tensor", root_index, candidate))
+                for candidate in range(candidate_count)),
+            tensors=tensors,
+        ))
+    return tuple(roots)
+
+
 def test_prediction_is_target_free_normalized_and_does_not_mutate_model():
     root = _root()
     root.validate()
@@ -61,6 +107,67 @@ def test_prediction_is_target_free_normalized_and_does_not_mutate_model():
                for row in rows)
     assert all(row.consumer_eligible for row in rows)
     assert all(torch.equal(before[name], model.state_dict()[name]) for name in before)
+
+
+def test_batched_prediction_matches_root_predictions_and_respects_whole_root_cap(
+        monkeypatch):
+    roots = _variable_roots()
+    expected_model = new_world_afterstate_v2_model(610)
+    expected = tuple(
+        row for root in roots for row in inference.predict_root_v2(
+            expected_model, root, seed_block=1, member_index=0))
+
+    calls = []
+    original_forward = type(expected_model).forward
+
+    def counted_forward(model, *args, **kwargs):
+        calls.append(args[0])
+        return original_forward(model, *args, **kwargs)
+
+    monkeypatch.setattr(type(expected_model), "forward", counted_forward)
+    model_32 = new_world_afterstate_v2_model(610)
+    batched_32 = inference.predict_roots_v2(
+        model_32, roots, seed_block=1, member_index=0, candidate_cap=32)
+    assert len(calls) == 2
+    assert tuple(row.payload() for row in batched_32) == tuple(
+        row.payload() for row in expected)
+    assert tuple(row.root_sha256 for row in batched_32[::2])[:2] == tuple(
+        root.root_sha256 for root in roots[:2])
+
+    calls.clear()
+    model_256 = new_world_afterstate_v2_model(610)
+    batched_256 = inference.predict_roots_v2(
+        model_256, roots, seed_block=1, member_index=0,
+        inference_batch_cap=256)
+    assert len(calls) == 1
+    assert tuple(row.payload() for row in batched_256) == tuple(
+        row.payload() for row in expected)
+    assert [row.root_sha256 for row in batched_256] == [
+        root.root_sha256 for root in roots for _ in range(root.candidate_count)]
+
+
+def test_probability_canonicalization_absorbs_only_sub_ppm_kernel_drift():
+    base = torch.zeros(OUTCOME_CLASSES, dtype=torch.float64)
+    base[0], base[1] = 0.25, 0.75
+    sub_ppm = base.clone()
+    sub_ppm[0] += 4e-10
+    sub_ppm[1] -= 4e-10
+    material = base.clone()
+    material[0] += 2e-6
+    material[1] -= 2e-6
+
+    canonical = inference._quantize_probability_row(base)
+    assert inference.PROBABILITY_CANONICAL_DECIMALS == 6
+    assert inference._quantize_probability_row(sub_ppm) == canonical
+    assert inference._quantize_probability_row(material) != canonical
+
+
+@pytest.mark.parametrize("cap", (0, 1, 16, 33, True))
+def test_prediction_rejects_invalid_or_too_small_inference_cap(cap):
+    with pytest.raises(inference.WorldAfterstateV2InferenceError, match="cap"):
+        inference.predict_roots_v2(
+            new_world_afterstate_v2_model(611), (_root(),),
+            seed_block=1, member_index=0, candidate_cap=cap)
 
 
 def test_expected_signed_microlevels_is_exact_for_half_level_mixture():
@@ -164,3 +271,44 @@ def test_primary_selection_refuses_foreign_root_and_collapsed_models():
     collapsed["manifest_sha256"] = _sha(body)
     with pytest.raises(inference.WorldAfterstateV2InferenceError):
         inference.select_primary_actions_v2(collapsed)
+
+
+def test_nested_curve_prediction_is_single_member_nonconsumer_and_closed():
+    root = dataclasses.replace(_root(), split="fit", select_subfold=None)
+    rows = inference.predict_nested_curve_v2(
+        new_world_afterstate_v2_model(501), (root,), split="fit",
+        fraction_ppm=250_000)
+    manifest = inference.nested_curve_prediction_manifest_v2(
+        (root,), rows, split="fit", fraction_ppm=250_000)
+    assert manifest["member_count"] == 1
+    assert manifest["consumer_eligible"] is False
+    assert all(row["consumer_eligible"] is False for row in manifest["predictions"])
+    inference.validate_nested_curve_prediction_manifest_v2(manifest)
+    with pytest.raises(inference.WorldAfterstateV2InferenceError, match="drop"):
+        inference.nested_curve_prediction_manifest_v2(
+            (root,), rows[:-1], split="fit", fraction_ppm=250_000)
+    forged = copy.deepcopy(manifest)
+    forged["consumer_eligible"] = True
+    with pytest.raises(inference.WorldAfterstateV2InferenceError):
+        inference.validate_nested_curve_prediction_manifest_v2(forged)
+
+
+def test_nested_curve_uses_whole_root_capacity_batches(monkeypatch):
+    roots = tuple(
+        dataclasses.replace(root, split="fit", select_subfold=None)
+        for root in _variable_roots())
+    calls = []
+    model = new_world_afterstate_v2_model(701)
+    original_forward = type(model).forward
+
+    def counted_forward(instance, *args, **kwargs):
+        calls.append(args[0].size)
+        return original_forward(instance, *args, **kwargs)
+
+    monkeypatch.setattr(type(model), "forward", counted_forward)
+    rows = inference.predict_nested_curve_v2(
+        model, roots, split="fit", fraction_ppm=250_000,
+        inference_batch_cap=32)
+    assert len(calls) == 2
+    assert sum(calls) == sum(root.candidate_count for root in roots)
+    assert all(not row.consumer_eligible for row in rows)

@@ -12,8 +12,11 @@ from shengji.rl.world_afterstate_v2_diagnostic_producers import (
     produce_model_selector_power_v2, produce_nested_curve_v2,
     produce_optimizer_canary_v2, produce_primary_stability_v2,
 )
-from shengji.rl.world_afterstate_v2_training_controller import CohortTrainingBuildV2
+from shengji.rl.world_afterstate_v2_training_controller import (
+    CohortTrainingBuildV2, SingleMemberTrainingBuildV2,
+)
 from shengji.rl.world_afterstate_v2_evaluation import (
+    AbsoluteCurveScoreReceiptV2, NestedCurveScoreV2,
     evaluate_absolute_curve_v2, evaluate_v2,
 )
 from test_world_afterstate_v2_evaluation import _manifest, _population
@@ -87,10 +90,73 @@ def test_nested_curve_rederives_slopes_and_checkpoint_bindings(monkeypatch):
         checkpoint_build=builds[index],
         ensemble_member_eligible=(count == 100))
         for index, count in enumerate((25, 50, 100)))
-    with pytest.raises(DiagnosticProducerDependencyBlocked, match="absolute"):
+    with pytest.raises(DiagnosticProducerDependencyBlocked, match="single-member"):
         produce_nested_curve_v2(
             inputs, full_fit_population_sha256=_sha("fit-100"),
             primary_member0_checkpoint_sha256=digests[2])
+
+
+def test_nested_curve_wires_single_members_then_primary_member_zero(monkeypatch):
+    member_builds = (
+        SingleMemberTrainingBuildV2({"point": 25}, b"25"),
+        SingleMemberTrainingBuildV2({"point": 50}, b"50"),
+    )
+    full_build = CohortTrainingBuildV2({"point": 100}, ())
+    model_states = (_sha("model-25"), _sha("model-50"))
+    checkpoints = (_sha("checkpoint-25"), _sha("checkpoint-50"),
+                   _sha("checkpoint-100"))
+    full_model_state = _sha("model-100")
+
+    def reopen_member(build):
+        index = member_builds.index(build)
+        return object(), {
+            "seed_block": 1, "member_index": 0, "cohort_name": "natural",
+            "data_fraction_ppm": (250_000, 500_000)[index],
+            "selected_model_state_sha256": model_states[index],
+            "selected_checkpoint_external_sha256": checkpoints[index],
+        }
+
+    monkeypatch.setattr(
+        "shengji.rl.world_afterstate_v2_diagnostic_producers.reopen_member_build",
+        reopen_member)
+    monkeypatch.setattr(
+        "shengji.rl.world_afterstate_v2_diagnostic_producers.reopen_cohort_build",
+        lambda build: ((), {"cohort_name": "natural", "seed_block": 1,
+                            "members": [{"member_index": 0,
+                                         "selected_model_state_sha256":
+                                         full_model_state,
+                                         "selected_checkpoint_external_sha256":
+                                         checkpoints[2]}]}))
+
+    def nested_score(label, fraction, split, model):
+        return NestedCurveScoreV2(
+            population_sha256=_sha(f"{label}-{split}"),
+            source_binding_sha256=_sha(f"source-{label}-{split}"),
+            split=split, model_state_sha256=model, fraction_ppm=fraction,
+            deal_count=1, rps_nano=100, paired_target_error_nano=200,
+            deal_rps_nano=((label, 100),),
+            deal_paired_target_error_nano=((label, 200),))
+
+    inputs = []
+    for index, (count, fraction) in enumerate(((25, 250_000), (50, 500_000))):
+        inputs.append(NestedCurveInputV2(
+            independent_deal_count=count,
+            fit=nested_score(f"d{count}", fraction, "fit", model_states[index]),
+            select=nested_score(
+                f"d{count}", fraction, "select", model_states[index]),
+            checkpoint_build=member_builds[index]))
+    fit = nested_score("d100", 1_000_000, "fit", full_model_state)
+    select = nested_score("d100", 1_000_000, "select", full_model_state)
+    inputs.append(NestedCurveInputV2(
+        independent_deal_count=100, fit=fit, select=select,
+        checkpoint_build=full_build, ensemble_member_eligible=True))
+
+    receipt = produce_nested_curve_v2(
+        tuple(inputs), full_fit_population_sha256=fit.population_sha256,
+        primary_member0_checkpoint_sha256=checkpoints[2])
+    assert tuple(point.ensemble_member_eligible for point in receipt.points) == (
+        False, False, True)
+    assert tuple(point.checkpoint_sha256 for point in receipt.points) == checkpoints
 
 
 def test_canary_and_stability_do_not_relabel_epoch_receipts():
@@ -102,7 +168,7 @@ def test_canary_and_stability_do_not_relabel_epoch_receipts():
 
 def test_canary_requires_complete_typed_p0_material_population():
     with pytest.raises(DiagnosticProducerDependencyBlocked, match="complete D256"):
-        produce_optimizer_canary_v2(OptimizerCanaryInputV2((), ()))
+        produce_optimizer_canary_v2(OptimizerCanaryInputV2((), (), ()))
 
 
 def test_canary_empirical_floor_is_root_and_candidate_balanced():

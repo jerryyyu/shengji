@@ -23,8 +23,8 @@ from .world_afterstate_v2_diagnostics import (
     PrimaryMemberEpochV2, PrimaryStabilityReceiptV2,
 )
 from .world_afterstate_v2_evaluation import (
-    AbsoluteCurveScoreReceiptV2, EvaluationResultV2,
-    evaluate_absolute_curve_v2,
+    AbsoluteCurveScoreReceiptV2, EvaluationResultV2, NestedCurveScoreV2,
+    evaluate_absolute_curve_v2, evaluate_nested_curve_v2,
 )
 from .world_afterstate_v2_continuation import ContinuationBundleV2
 from .world_afterstate_v2_dataset import build_training_examples_v2
@@ -39,7 +39,8 @@ from .world_afterstate_v2_model import OUTCOME_CLASSES, new_world_afterstate_v2_
 from .world_afterstate_v2_metrics import JeffreysPriorV2
 from .world_afterstate_v2_protocol import P0_CELLS, TIER_SPECS, select_p0_population
 from .world_afterstate_v2_training_controller import (
-    CohortTrainingBuildV2, reopen_cohort_build,
+    CohortTrainingBuildV2, SingleMemberTrainingBuildV2,
+    reopen_cohort_build, reopen_member_build,
 )
 from .world_afterstate import category_signed_level
 
@@ -50,22 +51,37 @@ class DiagnosticProducerDependencyBlocked(RuntimeError):
 
 @dataclass(frozen=True)
 class OptimizerCanaryInputV2:
-    """The sealed, complete natural-fit population used by the canary.
+    """The sealed canonical P0 labels plus their full pre-label population.
 
-    Keeping materials and reopened continuation bundles together prevents a
-    caller from supplying a hand-picked list of labelled rows.  The producer
-    validates the D256 slot ledger and derives the canonical P0 subset before
-    any target-bearing dataset rows are assembled.
+    The 128 unlabelled natural-fit materials prove that the 96 labelled
+    materials are exactly the outcome-blind canonical P0 subset.  This keeps
+    the canary behind P0 without spending labels on the other 32 deals.
     """
 
+    natural_fit_materials: tuple[PopulationMaterialV2, ...]
     materials: tuple[PopulationMaterialV2, ...]
     bundles: tuple[ContinuationBundleV2, ...]
 
     def validate(self) -> None:
-        if type(self.materials) is not tuple or type(self.bundles) is not tuple \
-                or len(self.materials) != 128 or len(self.bundles) != 128:
+        if (type(self.natural_fit_materials) is not tuple
+                or type(self.materials) is not tuple
+                or type(self.bundles) is not tuple
+                or len(self.natural_fit_materials) != 128
+                or len(self.materials) != 96 or len(self.bundles) != 96):
             raise DiagnosticProducerDependencyBlocked(
-                "optimizer canary requires complete D256 natural-fit materials")
+                "optimizer canary requires complete D256/P0 materials")
+        for material in self.natural_fit_materials:
+            if type(material) is not PopulationMaterialV2:
+                raise DiagnosticProducerDependencyBlocked(
+                    "optimizer canary source type drift")
+            try:
+                material.validate()
+            except Exception as exc:
+                raise DiagnosticProducerDependencyBlocked(
+                    "optimizer canary source seal drift") from exc
+            if material.state.source != "natural" or material.state.split != "fit":
+                raise DiagnosticProducerDependencyBlocked(
+                    "optimizer canary requires natural-fit materials")
         for material, bundle in zip(self.materials, self.bundles, strict=True):
             if type(material) is not PopulationMaterialV2 \
                     or type(bundle) is not ContinuationBundleV2:
@@ -86,12 +102,16 @@ class OptimizerCanaryInputV2:
                 raise DiagnosticProducerDependencyBlocked(
                     "optimizer canary requires natural-fit materials")
         try:
-            select_p0_population(
-                tuple(material.state for material in self.materials),
+            selected = select_p0_population(
+                tuple(material.state for material in self.natural_fit_materials),
                 tier=TIER_SPECS[0])
         except Exception as exc:
             raise DiagnosticProducerDependencyBlocked(
                 "optimizer canary canonical P0 selection refused") from exc
+        if ({state.deal_sha256 for state in selected}
+                != {material.deal_sha256 for material in self.materials}):
+            raise DiagnosticProducerDependencyBlocked(
+                "optimizer canary labelled P0 selection drift")
 
 
 MISSING_OPTIMIZER_TELEMETRY = (
@@ -188,7 +208,7 @@ def produce_optimizer_canary_v2(*args: Any, **kwargs: Any) -> OptimizerCanaryRec
             population.materials, population.bundles, strict=True)
                      for row in build_training_examples_v2(material, bundle))
         selected_states = select_p0_population(
-            tuple(material.state for material in population.materials),
+            tuple(material.state for material in population.natural_fit_materials),
             tier=TIER_SPECS[0])
     except Exception as exc:
         raise DiagnosticProducerDependencyBlocked(
@@ -373,9 +393,9 @@ class NestedCurveInputV2:
     """One actual fit/select evaluation pair and sealed checkpoint build."""
 
     independent_deal_count: int
-    fit: EvaluationResultV2
-    select: EvaluationResultV2
-    checkpoint_build: CohortTrainingBuildV2
+    fit: EvaluationResultV2 | NestedCurveScoreV2
+    select: EvaluationResultV2 | NestedCurveScoreV2
+    checkpoint_build: CohortTrainingBuildV2 | SingleMemberTrainingBuildV2
     ensemble_member_eligible: bool = False
     fit_absolute: AbsoluteCurveScoreReceiptV2 | None = None
     select_absolute: AbsoluteCurveScoreReceiptV2 | None = None
@@ -387,7 +407,20 @@ class NestedCurveInputV2:
     select_prior: JeffreysPriorV2 | None = None
 
 
-def _checkpoint_sha(build: CohortTrainingBuildV2) -> str:
+def _checkpoint_sha(build: CohortTrainingBuildV2 | SingleMemberTrainingBuildV2) -> str:
+    if type(build) is SingleMemberTrainingBuildV2:
+        try:
+            _model, manifest = reopen_member_build(build)
+            if (manifest["seed_block"], manifest["member_index"],
+                    manifest["cohort_name"]) != (1, 0, "natural"):
+                raise ValueError
+            if manifest["data_fraction_ppm"] not in (250_000, 500_000):
+                raise ValueError
+            return _digest(manifest["selected_checkpoint_external_sha256"],
+                           "nested curve checkpoint")
+        except Exception as exc:
+            raise DiagnosticProducerDependencyBlocked(
+                "nested curve single-member checkpoint cannot be typed-reopened") from exc
     if type(build) is not CohortTrainingBuildV2:
         raise DiagnosticProducerDependencyBlocked("nested curve checkpoint build type drift")
     try:
@@ -415,13 +448,51 @@ def produce_nested_curve_v2(
         raise DiagnosticProducerDependencyBlocked("nested curve multiplicities are not 25/50/100 percent")
     points = []
     for index, item in enumerate(ordered):
-        if type(item) is not NestedCurveInputV2 \
-                or type(item.fit) is not EvaluationResultV2 \
-                or type(item.select) is not EvaluationResultV2:
+        if type(item) is not NestedCurveInputV2:
+            raise DiagnosticProducerDependencyBlocked("nested curve evaluation type drift")
+        if type(item.fit) is not EvaluationResultV2 and type(item.fit) is not NestedCurveScoreV2 \
+                or type(item.select) is not EvaluationResultV2 and type(item.select) is not NestedCurveScoreV2:
             raise DiagnosticProducerDependencyBlocked("nested curve evaluation type drift")
         item.fit.validate(); item.select.validate()
         fit_absolute = item.fit_absolute
         select_absolute = item.select_absolute
+        if type(item.fit) is NestedCurveScoreV2:
+            if type(item.select) is not NestedCurveScoreV2 \
+                    or item.fit.fraction_ppm != CURVE_FRACTIONS_PPM[index] \
+                    or item.select.fraction_ppm != CURVE_FRACTIONS_PPM[index] \
+                    or item.fit.split != "fit" or item.select.split != "select" \
+                    or (item.fit.control_name, item.fit.seed_block,
+                        item.select.control_name, item.select.seed_block) != (
+                            "natural", 1, "natural", 1) \
+                    or item.fit.consumer_eligible or item.select.consumer_eligible \
+                    or (index < 2 and (
+                        type(item.checkpoint_build) is not SingleMemberTrainingBuildV2
+                        or item.ensemble_member_eligible)) \
+                    or (index == 2 and (
+                        type(item.checkpoint_build) is not CohortTrainingBuildV2
+                        or item.ensemble_member_eligible is not True)):
+                raise DiagnosticProducerDependencyBlocked(
+                    "nested curve score eligibility/binding drift")
+            if index < 2:
+                try:
+                    _model, member_manifest = reopen_member_build(
+                        item.checkpoint_build)
+                except Exception as exc:
+                    raise DiagnosticProducerDependencyBlocked(
+                        "nested curve single-member checkpoint cannot be typed-reopened") from exc
+                if (member_manifest["data_fraction_ppm"]
+                        != CURVE_FRACTIONS_PPM[index]
+                        or member_manifest["selected_model_state_sha256"]
+                        != item.fit.model_state_sha256
+                        or item.select.model_state_sha256
+                        != item.fit.model_state_sha256):
+                    raise DiagnosticProducerDependencyBlocked(
+                        "nested curve single-member checkpoint/model binding drift")
+            fit_absolute = item.fit
+            select_absolute = item.select
+        elif index < 2:
+            raise DiagnosticProducerDependencyBlocked(
+                "nested curve 25/50 require single-member absolute scores")
         if fit_absolute is None and item.fit_prediction_manifest is not None \
                 and item.fit_outcomes is not None and item.fit_prior is not None:
             fit_absolute = evaluate_absolute_curve_v2(
@@ -430,21 +501,44 @@ def produce_nested_curve_v2(
                 and item.select_outcomes is not None and item.select_prior is not None:
             select_absolute = evaluate_absolute_curve_v2(
                 item.select_prediction_manifest, item.select_outcomes, item.select_prior)
-        if type(fit_absolute) is not AbsoluteCurveScoreReceiptV2 \
-                or type(select_absolute) is not AbsoluteCurveScoreReceiptV2:
+        if type(fit_absolute) not in (
+                NestedCurveScoreV2, AbsoluteCurveScoreReceiptV2) \
+                or type(select_absolute) is not type(fit_absolute) \
+                or index < 2 and type(fit_absolute) is not NestedCurveScoreV2:
             raise DiagnosticProducerDependencyBlocked(MISSING_CURVE_TELEMETRY)
         fit_absolute.validate(); select_absolute.validate()
         if (fit_absolute.population_sha256 != item.fit.population_sha256
                 or select_absolute.population_sha256 != item.select.population_sha256):
             raise DiagnosticProducerDependencyBlocked("nested curve absolute score binding drift")
-        if (item.fit.control_name, item.fit.seed_block,
-                item.select.control_name, item.select.seed_block) != (
-                    "natural", 1, "natural", 1):
+        if index >= 2 and (item.fit.control_name, item.fit.seed_block,
+                           item.select.control_name, item.select.seed_block) != (
+                               "natural", 1, "natural", 1):
             raise DiagnosticProducerDependencyBlocked("nested curve natural fit/select binding drift")
         if item.fit.population_sha256 == item.select.population_sha256:
             raise DiagnosticProducerDependencyBlocked("nested curve fit/select populations must differ")
         population = _digest(item.fit.population_sha256, "nested curve population")
         checkpoint = _checkpoint_sha(item.checkpoint_build)
+        if index == 2:
+            if type(item.checkpoint_build) is not CohortTrainingBuildV2 \
+                    or item.ensemble_member_eligible is not True:
+                raise DiagnosticProducerDependencyBlocked(
+                    "nested curve 100% member eligibility drift")
+            try:
+                full_manifest = reopen_cohort_build(item.checkpoint_build)[1]
+            except Exception as exc:
+                raise DiagnosticProducerDependencyBlocked(
+                    "nested curve full cohort checkpoint cannot be reopened") from exc
+            if (full_manifest.get("cohort_name") != "natural"
+                    or full_manifest.get("seed_block") != 1
+                    or full_manifest.get("members", [{}])[0].get("member_index") != 0
+                    or type(item.fit) is NestedCurveScoreV2 and (
+                        full_manifest["members"][0].get(
+                            "selected_model_state_sha256")
+                        != item.fit.model_state_sha256
+                        or item.select.model_state_sha256
+                        != item.fit.model_state_sha256)):
+                raise DiagnosticProducerDependencyBlocked(
+                    "nested curve full cohort/member-0 binding drift")
         points.append(NestedCurvePointV2(
             fraction_ppm=CURVE_FRACTIONS_PPM[index],
             independent_deal_count=item.independent_deal_count,

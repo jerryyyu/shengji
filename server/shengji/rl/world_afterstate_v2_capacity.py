@@ -26,9 +26,9 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-SCHEMA = "world-afterstate-v2-post-implementation-capacity-v1"
+SCHEMA = "world-afterstate-v2-post-implementation-capacity-v2"
 ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v1"
-PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v1"
+PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v2"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-recovery-v1"
 MEASUREMENT_SCOPE = "retained-32-material-sample-projection-v1"
 MAX_COMMAND_WALL_SECONDS = 2 * 60 * 60
@@ -56,14 +56,103 @@ ARM_DIMENSIONS = {
     "reconstruction": "workers",
 }
 COMPOSED_STAGE_NAMES = (
-    "optimizer-canary", "nested-curve-25", "nested-curve-50",
-    "nested-curve-100", "p0", "label",
-    "block-1-natural", "block-1-action-association-permutation",
+    "label-p0", "p0", "optimizer-canary", "label-fit",
+    "nested-curve-25", "nested-curve-50", "block-1-natural",
+    "nested-curve-100",
+    "block-1-action-association-permutation",
     "block-1-label-permutation", "block-1-complete-world-shuffle",
     "block-2-natural", "block-2-complete-world-shuffle",
-    "precision-select-inference", "precision-select", "audit",
+    "precision-select-inference", "label-precision-select", "precision-select",
+    "label-audit", "audit",
     "reconstruction",
 )
+# The executable production supervisor has coarser boundaries than the
+# capacity witness.  Keep this relation closed and explicit so every measured
+# substage remains attributable when boundaries collapse (notably terminal).
+PRODUCTION_STAGE_NAMES = (
+    "population", "p0-labels-gates", "optimizer-canary", "fit-select-labels",
+    "block-1-natural", "nested-curve", "block-1-controls", "block-2-natural",
+    "block-2-controls", "precision-select-power", "audit-attempt", "terminal",
+    "reconstruction",
+)
+CAPACITY_STAGE_TO_PRODUCTION_STAGE = {
+    "label-p0": "p0-labels-gates", "p0": "p0-labels-gates",
+    "optimizer-canary": "optimizer-canary", "label-fit": "fit-select-labels",
+    "nested-curve-25": "nested-curve", "nested-curve-50": "nested-curve",
+    "block-1-natural": "block-1-natural", "nested-curve-100": "nested-curve",
+    "block-1-action-association-permutation": "block-1-controls",
+    "block-1-label-permutation": "block-1-controls",
+    "block-1-complete-world-shuffle": "block-1-controls",
+    "block-2-natural": "block-2-natural",
+    "block-2-complete-world-shuffle": "block-2-controls",
+    "precision-select-inference": "precision-select-power",
+    "label-precision-select": "precision-select-power",
+    "precision-select": "precision-select-power",
+    "label-audit": "audit-attempt", "audit": "terminal",
+    "reconstruction": "reconstruction",
+}
+# Population construction is intentionally not charged to a composed DAG
+# substage: the dedicated state/successor arms provide that measurement.
+CAPACITY_ARM_TO_PRODUCTION_STAGE = {
+    "state-successor": "population",
+    "continuation-mechanics": "population",
+}
+CAPACITY_PRODUCTION_STAGE_COVERAGE = frozenset(
+    (*CAPACITY_STAGE_TO_PRODUCTION_STAGE.values(),
+     *CAPACITY_ARM_TO_PRODUCTION_STAGE.values()))
+# Descriptive aliases used by callers that distinguish a capacity substage
+# from its production stage.
+CAPACITY_SUBSTAGE_TO_PRODUCTION_STAGE = CAPACITY_STAGE_TO_PRODUCTION_STAGE
+# Scientific dependencies are recorded explicitly.  Edges are
+# (predecessor, successor); their order is wire-stable.
+SCIENTIFIC_DAG_EDGES = (
+    ("label-p0", "p0"),
+    ("p0", "optimizer-canary"),
+    ("optimizer-canary", "label-fit"),
+    ("label-fit", "block-1-natural"),
+    ("label-fit", "block-1-action-association-permutation"),
+    ("label-fit", "block-1-label-permutation"),
+    ("label-fit", "block-1-complete-world-shuffle"),
+    ("label-fit", "block-2-natural"),
+    ("label-fit", "block-2-complete-world-shuffle"),
+    ("optimizer-canary", "block-1-natural"),
+    ("block-1-natural", "nested-curve-100"),
+    ("optimizer-canary", "nested-curve-25"),
+    ("optimizer-canary", "nested-curve-50"),
+    ("optimizer-canary", "block-1-action-association-permutation"),
+    ("optimizer-canary", "block-1-label-permutation"),
+    ("optimizer-canary", "block-1-complete-world-shuffle"),
+    ("optimizer-canary", "block-2-natural"),
+    ("optimizer-canary", "block-2-complete-world-shuffle"),
+    ("block-1-natural", "precision-select-inference"),
+    ("block-1-action-association-permutation", "precision-select-inference"),
+    ("block-1-label-permutation", "precision-select-inference"),
+    ("block-1-complete-world-shuffle", "precision-select-inference"),
+    ("block-2-natural", "precision-select-inference"),
+    ("block-2-complete-world-shuffle", "precision-select-inference"),
+    ("nested-curve-25", "precision-select-inference"),
+    ("nested-curve-50", "precision-select-inference"),
+    ("nested-curve-100", "precision-select-inference"),
+    ("precision-select-inference", "label-precision-select"),
+    ("label-precision-select", "precision-select"),
+    ("precision-select", "label-audit"),
+    ("label-audit", "audit"),
+    ("audit", "reconstruction"),
+)
+# Separate member-concurrency and torch-thread arms do not prove a joint
+# co-scheduled multi-cohort layout.  Until such an arm exists, these resource
+# edges conservatively serialize the otherwise independent training cohorts.
+TRAINING_RESOURCE_SERIALIZATION_EDGES = (
+    ("block-1-natural", "nested-curve-25"),
+    ("nested-curve-25", "nested-curve-50"),
+    ("nested-curve-50", "nested-curve-100"),
+    ("nested-curve-100", "block-1-action-association-permutation"),
+    ("block-1-action-association-permutation", "block-1-label-permutation"),
+    ("block-1-label-permutation", "block-1-complete-world-shuffle"),
+    ("block-1-complete-world-shuffle", "block-2-natural"),
+    ("block-2-natural", "block-2-complete-world-shuffle"),
+)
+COMPOSED_DAG_EDGES = SCIENTIFIC_DAG_EDGES + TRAINING_RESOURCE_SERIALIZATION_EDGES
 AUTHORITY = {
     "capacity_execution_authorized": False,
     "data_collection_authorized": False,
@@ -108,6 +197,50 @@ def _ppm(value: object, label: str, *, maximum: int = 1_000_000) -> int:
     if value > maximum:
         raise WorldAfterstateV2CapacityError(f"{label} drift")
     return value
+
+
+def composed_critical_path_seconds(
+        stage_walls_seconds: Mapping[str, int],
+        dag_edges: Sequence[tuple[str, str]] = COMPOSED_DAG_EDGES) -> int:
+    """Return the longest permitted dependency path through stage walls.
+
+    This deliberately validates the closed DAG rather than silently accepting
+    an omitted stage or an accidental cycle.  It is used for both the D256
+    projection and every scaled tier projection.
+    """
+    if set(stage_walls_seconds) != set(COMPOSED_STAGE_NAMES):
+        raise WorldAfterstateV2CapacityError("composed stage grid drift")
+    if any(type(name) is not str or type(value) is not int or value < 1
+           for name, value in stage_walls_seconds.items()):
+        raise WorldAfterstateV2CapacityError("composed stage wall drift")
+    edges = tuple(dag_edges)
+    if edges != COMPOSED_DAG_EDGES:
+        raise WorldAfterstateV2CapacityError("composed DAG contract drift")
+    children: dict[str, list[str]] = {name: [] for name in COMPOSED_STAGE_NAMES}
+    indegree = {name: 0 for name in COMPOSED_STAGE_NAMES}
+    for edge in edges:
+        if type(edge) is not tuple or len(edge) != 2:
+            raise WorldAfterstateV2CapacityError("composed DAG edge drift")
+        parent, child = edge
+        if parent not in children or child not in children or parent == child:
+            raise WorldAfterstateV2CapacityError("composed DAG edge drift")
+        children[parent].append(child)
+        indegree[child] += 1
+    distance = {name: stage_walls_seconds[name] for name in COMPOSED_STAGE_NAMES}
+    ready = [name for name in COMPOSED_STAGE_NAMES if indegree[name] == 0]
+    visited = 0
+    while ready:
+        node = ready.pop(0)
+        visited += 1
+        for child in children[node]:
+            distance[child] = max(distance[child],
+                                   distance[node] + stage_walls_seconds[child])
+            indegree[child] -= 1
+            if indegree[child] == 0:
+                ready.append(child)
+    if visited != len(COMPOSED_STAGE_NAMES):
+        raise WorldAfterstateV2CapacityError("composed DAG cycle drift")
+    return max(distance.values())
 
 
 @dataclass(frozen=True)
@@ -220,6 +353,14 @@ class ComposedProjectionV2:
     # workloads therefore do not inherit one universal fit/32 multiplier.
     stage_unit_counts: tuple[tuple[str, int, int], ...] = ()
     measured_stage_walls_seconds: tuple[tuple[str, int], ...] = ()
+    # CPU is retained independently from wall.  A projected label budget must
+    # never be inferred by multiplying wall by host width.
+    stage_cpu_seconds: tuple[tuple[str, int], ...] = ()
+    measured_stage_cpu_seconds: tuple[tuple[str, int], ...] = ()
+    scientific_dag_edges: tuple[tuple[str, str], ...] = SCIENTIFIC_DAG_EDGES
+    dag_edges: tuple[tuple[str, str], ...] = COMPOSED_DAG_EDGES
+    capacity_stage_to_production_stage: tuple[tuple[str, str], ...] = tuple(
+        CAPACITY_STAGE_TO_PRODUCTION_STAGE.items())
     schema: str = PROJECTION_SCHEMA
 
     def validate(self) -> None:
@@ -245,12 +386,42 @@ class ComposedProjectionV2:
                 raise WorldAfterstateV2CapacityError("measured stage wall grid drift")
         if self.stage_unit_counts and not self.measured_stage_walls_seconds:
             raise WorldAfterstateV2CapacityError("measured stage walls missing")
+        if self.stage_unit_counts and not self.measured_stage_cpu_seconds:
+            raise WorldAfterstateV2CapacityError("measured stage CPU missing")
+        if self.stage_unit_counts:
             if tuple(row[0] for row in self.stage_unit_counts) != COMPOSED_STAGE_NAMES:
                 raise WorldAfterstateV2CapacityError("composed stage unit grid drift")
             if any(type(row) is not tuple or len(row) != 3
                    or type(row[1]) is not int or type(row[2]) is not int
                    or row[1] < 1 or row[2] < 1 for row in self.stage_unit_counts):
                 raise WorldAfterstateV2CapacityError("composed stage unit counts drift")
+        for rows, label in ((self.stage_cpu_seconds, "composed stage CPU"),
+                            (self.measured_stage_cpu_seconds,
+                             "measured stage CPU")):
+            if type(rows) is not tuple:
+                raise WorldAfterstateV2CapacityError(f"{label} population drift")
+            if rows and (tuple(row[0] for row in rows) != COMPOSED_STAGE_NAMES
+                         or any(type(row) is not tuple or len(row) != 2
+                                or type(row[1]) is not int or row[1] < 1
+                                for row in rows)):
+                raise WorldAfterstateV2CapacityError(f"{label} grid drift")
+        if self.stage_unit_counts and (
+                tuple(row[0] for row in self.stage_cpu_seconds)
+                != COMPOSED_STAGE_NAMES):
+            raise WorldAfterstateV2CapacityError("composed stage CPU grid drift")
+        if self.scientific_dag_edges != SCIENTIFIC_DAG_EDGES:
+            raise WorldAfterstateV2CapacityError("scientific DAG contract drift")
+        if (tuple(name for name, _ in self.capacity_stage_to_production_stage)
+                != COMPOSED_STAGE_NAMES
+                or tuple(stage for _, stage in
+                         self.capacity_stage_to_production_stage)
+                != tuple(CAPACITY_STAGE_TO_PRODUCTION_STAGE[name]
+                         for name in COMPOSED_STAGE_NAMES)
+                or set(stage for _, stage in
+                       self.capacity_stage_to_production_stage)
+                != (set(PRODUCTION_STAGE_NAMES) - {"population"})):
+            raise WorldAfterstateV2CapacityError(
+                "capacity/production stage mapping drift")
         for name, value in self.stage_walls_seconds:
             if type(name) is not str:
                 raise WorldAfterstateV2CapacityError("composed stage name drift")
@@ -261,7 +432,9 @@ class ComposedProjectionV2:
                 (self.composed_artifact_bytes, "composed artifact bytes"),
                 (self.free_disk_bytes_before, "composed free disk")):
             _int(value, label, minimum=1)
-        if self.composed_wall_seconds != sum(value for _, value in self.stage_walls_seconds) \
+        expected_critical_path = composed_critical_path_seconds(
+            dict(self.stage_walls_seconds), self.dag_edges)
+        if self.composed_wall_seconds != expected_critical_path \
                 or self.composed_wall_seconds > COMPLETE_DAG_WALL_SECONDS_MAX \
                 or self.composed_wall_seconds * 2 > SCIENTIFIC_SERVICE_SECONDS \
                 or self.peak_memory_bytes * 100 > MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX \
@@ -282,6 +455,13 @@ class ComposedProjectionV2:
             "stage_unit_counts": [list(row) for row in self.stage_unit_counts],
             "measured_stage_walls_seconds": [
                 list(row) for row in self.measured_stage_walls_seconds],
+            "stage_cpu_seconds": [list(row) for row in self.stage_cpu_seconds],
+            "measured_stage_cpu_seconds": [
+                list(row) for row in self.measured_stage_cpu_seconds],
+            "scientific_dag_edges": [list(row) for row in self.scientific_dag_edges],
+            "dag_edges": [list(row) for row in self.dag_edges],
+            "capacity_stage_to_production_stage": [
+                list(row) for row in self.capacity_stage_to_production_stage],
         }
 
 
@@ -395,6 +575,12 @@ class CapacityReceiptV2:
     per_epoch_wall_seconds: int = 0
     peak_task_count: int = 0
     measurement_scope: str = MEASUREMENT_SCOPE
+    # Exact production layout selected from the measured byte-identical arms.
+    # Zero defaults preserve construction of legacy typed fixtures; production
+    # receipts are required to populate and bind these fields.
+    member_workers: int = 0
+    torch_threads: int = 0
+    inference_batch: int = 0
 
     def validate(self) -> None:
         if self.schema != SCHEMA or self.authority != AUTHORITY \
@@ -433,11 +619,18 @@ class CapacityReceiptV2:
         # A production command executes the arm grid sequentially and then
         # runs the retained-sample DAG.  The six-hour scientific projection
         # is separate and must not be mistaken for measured command wall.
+        if self.peak_task_count and not self.composed.measured_stage_walls_seconds:
+            raise WorldAfterstateV2CapacityError(
+                "capacity command/arm accounting drift")
         arm_wall = sum(arm.wall_seconds for arm in self.arms)
         required_command_wall = arm_wall + (
             sum(value for _, value in self.composed.measured_stage_walls_seconds)
             if self.peak_task_count else 0)
-        if self.command_wall_seconds < required_command_wall \
+        command_wall_ok = (
+            self.command_wall_seconds == required_command_wall
+            if self.peak_task_count else
+            self.command_wall_seconds >= arm_wall)
+        if not command_wall_ok \
                 or not task_accounting_ok:
             raise WorldAfterstateV2CapacityError(
                 "capacity command/arm accounting drift")
@@ -463,7 +656,9 @@ class CapacityReceiptV2:
                         <= MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX]
             if not eligible:
                 raise WorldAfterstateV2CapacityError("no memory-eligible arm")
-            fastest = min(eligible, key=lambda arm: (arm.wall_seconds, arm.variant))
+            fastest = min(eligible, key=lambda arm: (
+                arm.wall_nanoseconds or arm.wall_seconds * 1_000_000_000,
+                arm.variant))
             chosen = [arm for arm in self.selected_arms if arm.stage == stage]
             if len(chosen) != 1 or chosen[0] != fastest:
                 raise WorldAfterstateV2CapacityError(
@@ -477,6 +672,20 @@ class CapacityReceiptV2:
                         for arm in next_arms):
                     raise WorldAfterstateV2CapacityError(
                         "CPU-bound stage utilization/next-arm gate drift")
+        if any((self.member_workers, self.torch_threads, self.inference_batch)):
+            if (self.member_workers not in ARM_GRIDS["member-concurrency"]
+                    or self.torch_threads not in ARM_GRIDS["torch-threads-per-member"]
+                    or self.inference_batch not in ARM_GRIDS["inference-batch"]):
+                raise WorldAfterstateV2CapacityError("capacity resource layout drift")
+            selected_by_stage = {arm.stage: arm for arm in self.selected_arms}
+            if (selected_by_stage["member-concurrency"].variant != self.member_workers
+                    or selected_by_stage["torch-threads-per-member"].variant
+                    != self.torch_threads
+                    or selected_by_stage["inference-batch"].variant
+                    != self.inference_batch):
+                raise WorldAfterstateV2CapacityError("capacity resource layout mismatch")
+        elif self.peak_task_count:
+            raise WorldAfterstateV2CapacityError("capacity resource layout missing")
         if len(self.selected_arms) != len(ARM_GRIDS):
             raise WorldAfterstateV2CapacityError("selected arm population drift")
         self.composed.validate()
@@ -532,6 +741,9 @@ class CapacityReceiptV2:
             "per_epoch_wall_seconds": self.per_epoch_wall_seconds,
             "peak_task_count": self.peak_task_count,
             "measurement_scope": self.measurement_scope,
+            "member_workers": self.member_workers,
+            "torch_threads": self.torch_threads,
+            "inference_batch": self.inference_batch,
             "authority": dict(self.authority),
         }
 
@@ -561,8 +773,15 @@ def capacity_receipt_sha256(value: CapacityReceiptV2) -> str:
 
 __all__ = [
     "ARM_GRIDS", "AUTHORITY", "CapacityArmV2", "CapacityReceiptV2",
-    "ComposedProjectionV2", "MAX_COMMAND_WALL_SECONDS", "MAX_TASKS",
+    "CAPACITY_ARM_TO_PRODUCTION_STAGE", "CAPACITY_PRODUCTION_STAGE_COVERAGE",
+    "CAPACITY_STAGE_TO_PRODUCTION_STAGE",
+    "CAPACITY_SUBSTAGE_TO_PRODUCTION_STAGE",
+    "COMPOSED_DAG_EDGES", "COMPOSED_STAGE_NAMES", "PRODUCTION_STAGE_NAMES",
+    "SCIENTIFIC_DAG_EDGES",
+    "TRAINING_RESOURCE_SERIALIZATION_EDGES", "ComposedProjectionV2",
+    "MAX_COMMAND_WALL_SECONDS", "MAX_TASKS",
     "MEMORY_LIMIT_BYTES", "ProgressRecoveryV2", "TierProjectionV2",
     "MEASUREMENT_SCOPE", "WorldAfterstateV2CapacityError", "choose_capacity_tier_v2",
-    "capacity_receipt_sha256", "validate_capacity_receipt_v2",
+    "capacity_receipt_sha256", "composed_critical_path_seconds",
+    "validate_capacity_receipt_v2",
 ]

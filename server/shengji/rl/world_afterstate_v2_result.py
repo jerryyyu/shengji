@@ -558,6 +558,18 @@ def _validate_p0_and_route(e: WorldAfterstateV2TerminalEvidence) -> tuple[str | 
     return None, ""
 
 
+def precision_select_learning_passed(result: EvaluationResultV2) -> bool:
+    """Return the frozen pre-audit learning gate from validated metrics."""
+    precision = _validate_eval(result, "precision-select")
+    if precision.control_name != "natural" or precision.seed_block != 1:
+        raise WorldAfterstateV2ResultError("precision-select binding drift")
+    return (
+        precision.rps_improvement.lower_5th > 0
+        and precision.paired_error_improvement.lower_5th > 0
+        and precision.positive_rps_member_count >= 3
+    )
+
+
 def derive_terminal_result(evidence: WorldAfterstateV2TerminalEvidence) -> WorldAfterstateV2TerminalResult:
     """Derive the frozen first-match terminal route without side effects."""
     if type(evidence) is not WorldAfterstateV2TerminalEvidence:
@@ -627,14 +639,10 @@ def derive_terminal_result(evidence: WorldAfterstateV2TerminalEvidence) -> World
             "precision-select", 0, _input_hashes(evidence),
             "REFUSE_MECHANICS_OR_CONTROL"))
     precision = _validate_eval(evidence.precision_select_result, "precision-select")
-    if precision.control_name != "natural" or precision.seed_block != 1:
-        raise WorldAfterstateV2ResultError("precision-select binding drift")
     # Preadmission is deliberately narrower than audit learning gates: it
     # requires RPS, paired-error, and member-RPS evidence, as specified in
     # Section 9, but does not turn absolute-error gate 2 into an extra stop.
-    if not (precision.rps_improvement.lower_5th > 0
-            and precision.paired_error_improvement.lower_5th > 0
-            and precision.positive_rps_member_count >= 3):
+    if not precision_select_learning_passed(precision):
         _reject_after_stop(evidence, "precision-select")
         return _seal(WorldAfterstateV2TerminalResult(
             "precision-select", 0, _input_hashes(evidence),
@@ -869,6 +877,7 @@ __all__ = [
     "TerminalEvidenceV2", "TerminalResultV2",
     "WorldAfterstateV2ResultError", "WorldAfterstateV2TerminalEvidence",
     "WorldAfterstateV2TerminalResult", "derive_terminal_result",
-    "derive_v2_terminal_result", "validate_terminal_result",
+    "derive_v2_terminal_result", "precision_select_learning_passed",
+    "validate_terminal_result",
     "validate_v2_terminal_result",
 ]

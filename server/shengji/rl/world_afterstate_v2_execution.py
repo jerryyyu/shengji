@@ -25,7 +25,9 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 from .belief_contract import canonical_json_bytes
-from .world_afterstate_v2_audit_attempt import build_audit_attempt_bytes
+from .world_afterstate_v2_audit_attempt import (
+    build_audit_attempt_bytes, reopen_audit_attempt_bytes,
+)
 
 
 SCHEMA = "world-afterstate-v2-absolute-leaf-execution-v1"
@@ -48,8 +50,8 @@ MAX_DEADLINE_SECONDS = 12 * 60 * 60
 # The names are part of the protocol.  A stage may consume only the listed
 # split; in particular no helper can accidentally label audit rows early.
 STAGE_ORDER = (
-    "population", "p0-labels-gates", "optimizer-canary", "nested-curve",
-    "block-1-natural", "block-1-controls", "block-2-natural",
+    "population", "p0-labels-gates", "optimizer-canary", "fit-select-labels",
+    "block-1-natural", "nested-curve", "block-1-controls", "block-2-natural",
     "block-2-controls", "precision-select-power", "audit-attempt",
     "terminal", "reconstruction",
 )
@@ -57,6 +59,7 @@ WORK_STAGE_ORDER = STAGE_ORDER[:-2]
 TERMINAL_STAGE_ORDER = STAGE_ORDER[-2:]
 ALLOWED_SPLITS = {
     "population": ("fit", "select", "audit"),
+    "fit-select-labels": ("fit", "select"),
     "p0-labels-gates": ("fit",),
     "optimizer-canary": ("fit",),
     "nested-curve": ("fit", "select"),
@@ -859,6 +862,7 @@ class StageStateV2:
 
 CONTROLLER_BINDINGS = {
     "population": ("collect_population_v2", "reopen_population_collection_v2"),
+    "fit-select-labels": ("build_fit_select_continuations_v2",),
     "p0-labels-gates": ("evaluate_precision_label",),
     "optimizer-canary": ("run_optimizer_canary_v2",),
     "nested-curve": ("run_nested_curve_v2",),
@@ -877,7 +881,17 @@ CONTROLLER_BINDINGS = {
 TERMINAL_RESULT_RELATIVE = "terminal/terminal.json"
 RECONSTRUCTION_RESULT_RELATIVE = "terminal/independent-reconstruction.json"
 AUDIT_PREFLIGHT_RELATIVE = "audit-preflight.json"
+AUDIT_PREFLIGHT_SCHEMA = "world-afterstate-v2-audit-preflight-v2"
+AUDIT_PREFLIGHT_STAGES = STAGE_ORDER[:STAGE_ORDER.index("audit-attempt")]
+AUDIT_UNOPENED_PATHS = (
+    "audit-attempt.json", "audit-continuations", "terminal-inputs.json",
+)
 STAGE_ADAPTER_ABI = "world-afterstate-v2-stage-adapter-supervisor-shards-v1"
+PRODUCTION_STAGE_ADAPTER_MODULES = frozenset({
+    "shengji.rl.world_afterstate_v2_stage_adapters",
+    "shengji.rl.world_afterstate_v2_training_stage_adapters",
+    "shengji.rl.world_afterstate_v2_late_stage_adapters",
+})
 
 
 def _production_callable(name: str) -> Callable[..., Any] | None:
@@ -885,6 +899,7 @@ def _production_callable(name: str) -> Callable[..., Any] | None:
     modules = {
         "collect_population_v2": "world_afterstate_v2_population_controller",
         "reopen_population_collection_v2": "world_afterstate_v2_population_controller",
+        "build_fit_select_continuations_v2": "world_afterstate_v2_stage_adapters",
         "evaluate_precision_label": "world_afterstate_v2_label",
         "train_named_cohort": "world_afterstate_v2_training_controller",
         "run_terminal_v2": "world_afterstate_v2_terminal_controller",
@@ -894,11 +909,20 @@ def _production_callable(name: str) -> Callable[..., Any] | None:
         # their producer identity to the reviewed producer functions.
         "run_optimizer_canary_v2": "world_afterstate_v2_diagnostic_producers",
         "run_nested_curve_v2": "world_afterstate_v2_diagnostic_producers",
+        # These boundaries are intentionally exported by the closed adapter
+        # module.  They are not available as direct low-level controllers.
+        "evaluate_precision_select_v2": "world_afterstate_v2_stage_adapters",
+        "publish_audit_attempt": "world_afterstate_v2_stage_adapters",
     }
     module_name = modules.get(name)
     if module_name is None:
         return None
-    module = __import__(f"shengji.rl.{module_name}", fromlist=[name])
+    try:
+        module = __import__(f"shengji.rl.{module_name}", fromlist=[name])
+    except ImportError:
+        # An unavailable reviewed boundary is a missing stage, not permission
+        # to fall back to an untyped callback.
+        return None
     aliases = {"run_optimizer_canary_v2": "produce_optimizer_canary_v2",
                "run_nested_curve_v2": "produce_nested_curve_v2"}
     value = getattr(module, aliases.get(name, name), None)
@@ -917,6 +941,7 @@ class StageControllerV2:
     operation: Callable[..., Any]
     production: bool = False
     stage_payload: Mapping[str, Any] | None = None
+    stage_payload_factory: Callable[[Any], Mapping[str, Any]] | None = None
 
     def validate(self) -> None:
         if self.stage not in STAGE_ORDER \
@@ -933,10 +958,22 @@ class StageControllerV2:
                     != STAGE_ADAPTER_ABI
                     or producer is not _production_callable(self.controller_name)
                     or type(self.operation).__module__
-                    != "shengji.rl.world_afterstate_v2_stage_adapters"):
+                    not in PRODUCTION_STAGE_ADAPTER_MODULES):
                 raise MissingStageError(
                     f"stage adapter ABI unavailable for {self.stage}:"
                     f" {self.controller_name}")
+            if self.stage == "audit-attempt":
+                owner = getattr(self.stage_payload_factory, "__self__", None)
+                if (self.stage_payload is not None
+                        or not callable(self.stage_payload_factory)
+                        or owner is not self.operation
+                        or getattr(self.stage_payload_factory, "__name__", None)
+                        != "prepare_stage_payload"):
+                    raise MissingStageError(
+                        "audit-attempt preflight producer unavailable")
+            elif self.stage_payload_factory is not None:
+                raise MissingStageError(
+                    f"unexpected stage payload producer for {self.stage}")
         elif (getattr(self.operation, "__module__", "")
               != "world_afterstate_v2_test_adapter"):
             raise MissingStageError(f"typed controller binding missing for {self.stage}")
@@ -959,79 +996,68 @@ def bind_stage_controller(stage: str, operation: Callable[..., Any], *,
     return NonScientificStageControllerV2(stage, controller_name, operation)
 
 
-def bind_production_stage_controller(stage: str, *, freeze: ExecutionFreezeV2 | None = None,
-                                     repo: Path | None = None) -> StageControllerV2:
+def _closed_production_stage_adapter(stage: str, *, freeze: ExecutionFreezeV2,
+                                     repo: Path) -> Callable[..., Any]:
+    """Obtain a stage only through the reviewed, closed adapter factory."""
+    try:
+        from .world_afterstate_v2_stage_adapters import production_stage_adapter
+    except ImportError as exc:
+        raise MissingStageError(
+            f"closed production stage factory unavailable for {stage}") from exc
+    try:
+        return production_stage_adapter(stage, freeze=freeze, repo=repo)
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
+        raise MissingStageError(
+            f"closed production stage adapter unavailable for {stage}") from exc
+
+
+def _production_binding(stage: str, *, freeze: ExecutionFreezeV2,
+                        repo: Path) -> StageControllerV2:
     names = CONTROLLER_BINDINGS.get(stage, ())
+    if not names:
+        raise MissingStageError(f"existing typed controller unavailable for {stage}")
+    operation = _closed_production_stage_adapter(stage, freeze=freeze, repo=repo)
+    try:
+        producer = getattr(operation, "producer", None)
+    except (AttributeError, OSError, TypeError, ValueError) as exc:
+        raise MissingStageError(
+            f"closed production stage adapter unavailable for {stage}") from exc
     for name in names:
-        operation = _production_callable(name)
-        if operation is not None:
-            if name == "reopen_population_collection_v2":
-                if freeze is None or repo is None:
-                    continue
-                from .world_afterstate_v2_stage_adapters import population_reopen_adapter
-                operation = population_reopen_adapter(freeze=freeze, repo=repo)
-            elif stage in ("p0-labels-gates", "optimizer-canary", "nested-curve"):
-                if freeze is None or repo is None:
-                    continue
-                from .world_afterstate_v2_stage_adapters import (
-                    p0_labels_gates_adapter, optimizer_canary_adapter,
-                    nested_curve_adapter)
-                factory = {"p0-labels-gates": p0_labels_gates_adapter,
-                           "optimizer-canary": optimizer_canary_adapter,
-                           "nested-curve": nested_curve_adapter}[stage]
-                try:
-                    operation = factory(freeze=freeze, repo=repo)
-                except ValueError:
-                    continue
-            result = StageControllerV2(stage, name, operation, production=True)
-            try:
-                result.validate()
-            except (MissingStageError, ValueError):
-                continue
+        if producer is _production_callable(name):
+            result = StageControllerV2(
+                stage, name, operation, production=True,
+                stage_payload_factory=getattr(
+                    operation, "prepare_stage_payload", None),
+            )
+            result.validate()
             return result
     raise MissingStageError(f"existing typed controller unavailable for {stage}")
 
 
-def validate_production_stage_set(*, freeze: ExecutionFreezeV2 | None = None,
-                                  repo: Path | None = None) -> tuple[str, ...]:
+def bind_production_stage_controller(stage: str, *, freeze: ExecutionFreezeV2,
+                                     repo: Path) -> StageControllerV2:
+    """Bind one stage from the closed factory and frozen repository inputs."""
+    if freeze is None or repo is None:
+        raise TypeError("production stage binding requires freeze and repo")
+    return _production_binding(stage, freeze=freeze, repo=repo)
+
+
+def validate_production_stage_set(*, freeze: ExecutionFreezeV2,
+                                  repo: Path) -> tuple[str, ...]:
     """Return absent reviewed stage producers without consuming admission."""
+    if freeze is None or repo is None:
+        raise TypeError("production stage set requires freeze and repo")
     missing = []
     for stage in STAGE_ORDER:
-        names = CONTROLLER_BINDINGS[stage]
-        available = False
-        for name in names:
-            operation = _production_callable(name)
-            if operation is None:
-                continue
-            try:
-                candidate = operation
-                if name == "reopen_population_collection_v2":
-                    if freeze is None or repo is None:
-                        continue
-                    from .world_afterstate_v2_stage_adapters import population_reopen_adapter
-                    candidate = population_reopen_adapter(freeze=freeze, repo=repo)
-                elif stage in ("p0-labels-gates", "optimizer-canary", "nested-curve"):
-                    if freeze is None or repo is None:
-                        continue
-                    from .world_afterstate_v2_stage_adapters import (
-                        p0_labels_gates_adapter, optimizer_canary_adapter,
-                        nested_curve_adapter)
-                    factory = {"p0-labels-gates": p0_labels_gates_adapter,
-                               "optimizer-canary": optimizer_canary_adapter,
-                               "nested-curve": nested_curve_adapter}[stage]
-                    candidate = factory(freeze=freeze, repo=repo)
-                StageControllerV2(stage, name, candidate, production=True).validate()
-            except (MissingStageError, ValueError):
-                continue
-            available = True
-            break
-        if not available:
-            missing.append(f"{stage}:{names[0]}")
+        try:
+            _production_binding(stage, freeze=freeze, repo=repo)
+        except (MissingStageError, ValueError):
+            missing.append(f"{stage}:{CONTROLLER_BINDINGS[stage][0]}")
     return tuple(missing)
 
 
-def production_stage_controllers(*, freeze: ExecutionFreezeV2 | None = None,
-                                 repo: Path | None = None) -> dict[str, StageControllerV2]:
+def production_stage_controllers(*, freeze: ExecutionFreezeV2,
+                                 repo: Path) -> dict[str, StageControllerV2]:
     """Build the complete closed production set without consuming admission."""
     missing = validate_production_stage_set(freeze=freeze, repo=repo)
     if missing:
@@ -1321,13 +1347,24 @@ class StageSupervisorV2:
     def _open_audit_marker(self, payload: Mapping[str, Any] | None) -> None:
         if self.next_stage != "audit-attempt":
             raise WorldAfterstateV2ExecutionError("audit opening order drift")
-        if self._state.audit_opened or (self.root / "audit-attempt.json").exists():
+        marker = self.root / "audit-attempt.json"
+        if self._state.audit_opened:
+            value = reopen_audit_attempt_bytes(
+                _sealed(marker, "audit attempt"),
+                expected_freeze_sha256=self.freeze.sha256(),
+                expected_admission_sha256=self.admission.sha256(),
+            )
+            if value["preflight"] != dict(payload or {}):
+                raise WorldAfterstateV2ExecutionError(
+                    "audit attempt preflight binding drift")
+            return
+        if marker.exists() or marker.is_symlink():
             raise WorldAfterstateV2ExecutionError("audit already opened")
         raw = build_audit_attempt_bytes(
             freeze_sha256=self.freeze.sha256(),
             admission_sha256=self.admission.sha256(),
             preflight=dict(payload or {}))
-        _write_once(self.root / "audit-attempt.json", raw)
+        _write_once(marker, raw)
         _fsync_dir(self.root)
 
     def _validate_audit_preflight(self, payload: Mapping[str, Any] | None) -> None:
@@ -1340,20 +1377,45 @@ class StageSupervisorV2:
         raw = _sealed(path, "audit preflight")
         value = _strict(raw, "audit preflight")
         required = {"schema", "freeze_sha256", "admission_sha256",
-                    "deterministic_checks", "preflight_sha256"}
-        if set(value) != required or value["schema"] != (
-                "world-afterstate-v2-audit-preflight-v1") \
+                    "completed_stages", "upstream_receipt_sha256s",
+                    "audit_paths_absent", "preflight_sha256"}
+        if set(value) != required or value["schema"] != AUDIT_PREFLIGHT_SCHEMA \
                 or value["freeze_sha256"] != self.freeze.sha256() \
                 or value["admission_sha256"] != self.admission.sha256() \
-                or type(value["deterministic_checks"]) is not list \
-                or not value["deterministic_checks"] \
-                or any(item is not True for item in value["deterministic_checks"]):
+                or value["completed_stages"] != list(AUDIT_PREFLIGHT_STAGES) \
+                or tuple(self._state.completed_stages) != AUDIT_PREFLIGHT_STAGES \
+                or value["audit_paths_absent"] != list(AUDIT_UNOPENED_PATHS):
             raise MissingStageError(
                 "audit deterministic pre-open checks are unavailable or incomplete")
+        expected_receipts = []
+        for stage in AUDIT_PREFLIGHT_STAGES:
+            if "receipt" not in self.verified_shards(stage):
+                raise MissingStageError(
+                    "audit deterministic pre-open checks are unavailable or incomplete")
+            raw_receipt = _sealed(
+                self.root / "shards" / stage / "receipt.bin",
+                f"{stage} preflight receipt")
+            expected_receipts.append([stage, _sha_bytes(raw_receipt)])
+        if value["upstream_receipt_sha256s"] != expected_receipts:
+            raise MissingStageError("audit preflight artifact binding drift")
         body = {key: item for key, item in value.items() if key != "preflight_sha256"}
         if value["preflight_sha256"] != _sha(body) \
                 or payload.get("preflight_sha256") != value["preflight_sha256"]:
             raise MissingStageError("audit preflight artifact binding drift")
+        if not self._state.audit_opened:
+            for relative in AUDIT_UNOPENED_PATHS:
+                target = self.root / relative
+                if target.exists() or target.is_symlink():
+                    raise MissingStageError(
+                        "audit deterministic pre-open checks are unavailable or incomplete")
+        else:
+            attempt = reopen_audit_attempt_bytes(
+                _sealed(self.root / "audit-attempt.json", "audit attempt"),
+                expected_freeze_sha256=self.freeze.sha256(),
+                expected_admission_sha256=self.admission.sha256(),
+            )
+            if attempt["preflight"] != dict(payload):
+                raise MissingStageError("audit preflight artifact binding drift")
 
     def terminal(self, route: str, *, resource_stage: str | None = None) -> None:
         if route not in TERMINAL_ROUTES:
@@ -1389,9 +1451,12 @@ def run_v2_pipeline(supervisor: StageSupervisorV2,
             if stage == "population":
                 split = "fit"
         controller = operations[stage]
+        payload = controller.stage_payload
+        if controller.stage_payload_factory is not None:
+            payload = controller.stage_payload_factory(supervisor)
         try:
             supervisor.run_stage(stage, split=split, operation=controller,
-                                 payload=controller.stage_payload)
+                                 payload=payload)
         except WorldAfterstateV2ExecutionError:
             if supervisor.state.terminal_route == "REFUSE_RESOURCE_INCOMPLETE" \
                     and supervisor.next_stage == "terminal":

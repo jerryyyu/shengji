@@ -19,8 +19,11 @@ from .world_afterstate import category_signed_level
 from .world_afterstate_v2_continuation import ContinuationOutcomeV2
 from .world_afterstate_v2_inference import (
     CONTROL_NAMES, CandidatePredictionV2,
+    NestedCurvePredictionV2,
     reopen_prediction_population_manifest_v2,
+    reopen_nested_curve_prediction_manifest_v2,
     validate_prediction_population_manifest_v2,
+    validate_nested_curve_prediction_manifest_v2,
 )
 from .world_afterstate_v2_metrics import (
     AUTHORITY as METRIC_AUTHORITY, BootstrapIntervalV2, JeffreysPriorV2,
@@ -92,6 +95,70 @@ class AbsoluteCurveScoreReceiptV2:
             "deal_paired_target_error_nano": [
                 list(row) for row in self.deal_paired_target_error_nano],
         }
+
+    def sha256(self) -> str:
+        return _sha(self.payload())
+
+
+@dataclass(frozen=True)
+class NestedCurveScoreV2:
+    """Absolute fit/select score for one diagnostic-only model state."""
+
+    population_sha256: str
+    source_binding_sha256: str
+    split: str
+    model_state_sha256: str
+    fraction_ppm: int
+    deal_count: int
+    rps_nano: int
+    paired_target_error_nano: int
+    deal_rps_nano: tuple[tuple[str, int], ...]
+    deal_paired_target_error_nano: tuple[tuple[str, int], ...]
+    seed_block: int = 1
+    control_name: str = "natural"
+    consumer_eligible: bool = False
+    schema: str = "world-afterstate-v2-nested-curve-score-v2"
+
+    def validate(self) -> None:
+        _digest(self.population_sha256, "nested score population SHA-256")
+        _digest(self.source_binding_sha256, "nested score source binding SHA-256")
+        _digest(self.model_state_sha256, "nested score model state SHA-256")
+        if (self.schema != "world-afterstate-v2-nested-curve-score-v2"
+                or self.split not in ("fit", "select")
+                or self.fraction_ppm not in (250_000, 500_000, 1_000_000)
+                or self.seed_block != 1 or self.control_name != "natural"
+                or isinstance(self.deal_count, bool) or not isinstance(self.deal_count, int)
+                or self.deal_count < 1 or type(self.consumer_eligible) is not bool
+                or self.consumer_eligible is not False
+                or len(self.deal_rps_nano) != self.deal_count
+                or len(self.deal_paired_target_error_nano) != self.deal_count
+                or self.rps_nano < 0 or self.paired_target_error_nano < 0):
+            raise WorldAfterstateV2EvaluationError("nested curve score drift")
+        for values in (self.deal_rps_nano, self.deal_paired_target_error_nano):
+            if type(values) is not tuple or any(
+                    type(row) is not tuple or len(row) != 2 or type(row[0]) is not str
+                    or not row[0] or isinstance(row[1], bool) or not isinstance(row[1], int)
+                    or row[1] < 0 for row in values) \
+                    or len({row[0] for row in values}) != self.deal_count:
+                raise WorldAfterstateV2EvaluationError("nested score deal population drift")
+        if (_mean(tuple(value for _, value in self.deal_rps_nano)) != self.rps_nano
+                or _mean(tuple(value for _, value in self.deal_paired_target_error_nano))
+                != self.paired_target_error_nano):
+            raise WorldAfterstateV2EvaluationError("nested score aggregate drift")
+
+    def payload(self) -> dict[str, Any]:
+        self.validate()
+        return {"schema": self.schema, "population_sha256": self.population_sha256,
+                "source_binding_sha256": self.source_binding_sha256,
+                "split": self.split, "model_state_sha256": self.model_state_sha256,
+                "fraction_ppm": self.fraction_ppm, "deal_count": self.deal_count,
+                "seed_block": self.seed_block,
+                "control_name": self.control_name,
+                "rps_nano": self.rps_nano,
+                "paired_target_error_nano": self.paired_target_error_nano,
+                "deal_rps_nano": [list(row) for row in self.deal_rps_nano],
+                "deal_paired_target_error_nano": [list(row) for row in self.deal_paired_target_error_nano],
+                "consumer_eligible": False}
 
     def sha256(self) -> str:
         return _sha(self.payload())
@@ -595,6 +662,118 @@ def evaluate_absolute_curve_v2(
     return result
 
 
+def evaluate_nested_curve_v2(
+        prediction_manifest: Mapping[str, Any],
+        outcomes: Sequence[ContinuationOutcomeV2], *, fraction_ppm: int | None = None
+        ) -> NestedCurveScoreV2:
+    """Score one non-consumer nested-curve prediction manifest."""
+    try:
+        validate_nested_curve_prediction_manifest_v2(prediction_manifest)
+        predictions = reopen_nested_curve_prediction_manifest_v2(prediction_manifest)
+    except Exception as exc:
+        raise WorldAfterstateV2EvaluationError(
+            "nested prediction manifest refused") from exc
+    if fraction_ppm is not None and fraction_ppm != prediction_manifest["fraction_ppm"]:
+        raise WorldAfterstateV2EvaluationError("nested score fraction binding drift")
+    if type(outcomes) not in (tuple, list) or not outcomes:
+        raise WorldAfterstateV2EvaluationError("nested score outcome population drift")
+    pmap = {(row.root_sha256, row.candidate_index): row for row in predictions}
+    roots: dict[str, list[ContinuationOutcomeV2]] = {}
+    for row in outcomes:
+        if type(row) is not ContinuationOutcomeV2:
+            raise WorldAfterstateV2EvaluationError("nested score outcome type drift")
+        try:
+            row.validate()
+        except Exception as exc:
+            raise WorldAfterstateV2EvaluationError("nested score outcome refused") from exc
+        if row.split != prediction_manifest["split"]:
+            raise WorldAfterstateV2EvaluationError("nested score split drift")
+        roots.setdefault(row.state_sha256, []).append(row)
+    root_state_to_sha = {binding["state_sha256"]: binding["root_sha256"]
+                         for binding in prediction_manifest["root_bindings"]}
+    if set(roots) != set(root_state_to_sha):
+        raise WorldAfterstateV2EvaluationError("nested score root population drift")
+    deal_rps: dict[str, list[int]] = {}
+    deal_pair: dict[str, list[int]] = {}
+    source_rows = []
+    for state, rows in roots.items():
+        root_sha = root_state_to_sha[state]
+        candidates = sorted({row.candidate_index for row in rows})
+        if candidates != list(range(len(candidates))) or len(candidates) < 2 \
+                or len(rows) != len(candidates) * len(REPLICATES):
+            raise WorldAfterstateV2EvaluationError("nested score candidate/replica drop")
+        identities = {_identity(row) for row in rows}
+        if len(identities) != 1:
+            raise WorldAfterstateV2EvaluationError("nested score root identity drift")
+        binding = next(item for item in prediction_manifest["root_bindings"]
+                       if item["root_sha256"] == root_sha)
+        if next(iter(identities)) != (binding["deal_sha256"], binding["slot_sha256"],
+                                      binding["state_sha256"], binding["candidate_set_sha256"]):
+            raise WorldAfterstateV2EvaluationError("nested score root binding drift")
+        if any({row.replica for row in rows if row.candidate_index == candidate}
+               != set(REPLICATES) for candidate in candidates):
+            raise WorldAfterstateV2EvaluationError("nested score replica drop")
+        by_pair = {(row.candidate_index, row.replica): row for row in rows}
+        continuation = {row.replica: row.continuation_sha256 for row in rows
+                        if row.candidate_index == 0}
+        if set(continuation) != set(REPLICATES) \
+                or any(row.continuation_sha256 != continuation[row.replica] for row in rows):
+            raise WorldAfterstateV2EvaluationError("nested score CRN binding drift")
+        rps_values = []; pair_values = []
+        for candidate in candidates:
+            for replica in REPLICATES:
+                truth = by_pair[(candidate, replica)]
+                prediction = pmap.get((root_sha, candidate))
+                if prediction is None or prediction.successor_sha256 != truth.successor_sha256:
+                    raise WorldAfterstateV2EvaluationError("nested score prediction binding drift")
+                rps_values.append(ranked_probability_score_ppb(
+                    prediction.probability_ppb, truth.signed_level_category))
+            if candidate == 0:
+                continue
+            pred_c = pmap[(root_sha, candidate)]
+            pred_i = pmap[(root_sha, 0)]
+            for replica in REPLICATES:
+                candidate_row = by_pair[(candidate, replica)]
+                incumbent_row = by_pair[(0, replica)]
+                predicted = expected_signed_microlevels(pred_c.probability_ppb) \
+                    - expected_signed_microlevels(pred_i.probability_ppb)
+                target = int(round((category_signed_level(
+                    candidate_row.signed_level_category) - category_signed_level(
+                        incumbent_row.signed_level_category)) * MICROLEVELS))
+                pair_values.append((predicted - target) ** 2)
+        deal = rows[0].deal_sha256
+        deal_rps.setdefault(deal, []).append(_mean(tuple(rps_values)))
+        deal_pair.setdefault(deal, []).append(_mean(tuple(pair_values)))
+        source_rows.extend(dict(row.__dict__) for row in rows)
+    population = prediction_manifest["root_population_sha256"]
+    score = NestedCurveScoreV2(
+        population_sha256=population,
+        source_binding_sha256=_sha({
+            "schema": "world-afterstate-v2-nested-curve-score-source-v1",
+            "prediction_manifest": _sha(prediction_manifest),
+            "outcomes": sorted(source_rows, key=lambda row: (
+                row["deal_sha256"], row["state_sha256"], row["candidate_index"],
+                row["replica"]))}),
+        split=prediction_manifest["split"], model_state_sha256=prediction_manifest[
+            "model_state_sha256"], fraction_ppm=prediction_manifest["fraction_ppm"],
+        seed_block=prediction_manifest["seed_block"],
+        control_name=prediction_manifest["control_name"],
+        deal_count=len(deal_rps),
+        rps_nano=_mean(tuple(_mean(tuple(values)) for values in deal_rps.values())),
+        paired_target_error_nano=_mean(tuple(
+            _mean(tuple(values)) for values in deal_pair.values())),
+        deal_rps_nano=tuple(sorted(
+            (deal, _mean(tuple(values))) for deal, values in deal_rps.items())),
+        deal_paired_target_error_nano=tuple(sorted(
+            (deal, _mean(tuple(values))) for deal, values in deal_pair.items())))
+    score.validate()
+    return score
+
+
+NestedCurveAbsoluteScoreV2 = NestedCurveScoreV2
+NestedCurveAbsoluteScoreReceiptV2 = NestedCurveScoreV2
+
+
 def _receipt(name: str, deal_values: Mapping[str, int], population_sha256: str) \
         -> EvaluationMetricReceiptV2:
     try:
@@ -857,8 +1036,9 @@ evaluate_block_v2 = evaluate_v2
 
 
 __all__ = [
-    "AUTHORITY", "AbsoluteCurveScoreReceiptV2", "ControlComparisonV2", "EvaluationMetricReceiptV2",
-    "EvaluationResultV2", "WorldAfterstateV2EvaluationError", "evaluate_absolute_curve_v2", "evaluate_v2",
+    "AUTHORITY", "AbsoluteCurveScoreReceiptV2", "NestedCurveAbsoluteScoreReceiptV2",
+    "NestedCurveAbsoluteScoreV2", "NestedCurveScoreV2", "ControlComparisonV2", "EvaluationMetricReceiptV2",
+    "EvaluationResultV2", "WorldAfterstateV2EvaluationError", "evaluate_absolute_curve_v2", "evaluate_nested_curve_v2", "evaluate_v2",
     "evaluate_population_v2", "evaluate_audit_v2", "evaluate_block_v2",
     "evaluate_control_difference",
     "validate_control_comparison", "validate_evaluation_receipt",

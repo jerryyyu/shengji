@@ -4,10 +4,14 @@ import hashlib
 import pytest
 
 from shengji.rl.world_afterstate_v2_capacity import (
-    ARM_GRIDS, AUTHORITY, MEMORY_LIMIT_BYTES, CapacityArmV2,
+    ARM_GRIDS, AUTHORITY, CAPACITY_ARM_TO_PRODUCTION_STAGE,
+    CAPACITY_STAGE_TO_PRODUCTION_STAGE,
+    COMPOSED_DAG_EDGES, COMPOSED_STAGE_NAMES, PRODUCTION_STAGE_NAMES,
+    MEMORY_LIMIT_BYTES, SCIENTIFIC_DAG_EDGES,
+    TRAINING_RESOURCE_SERIALIZATION_EDGES, CapacityArmV2,
     CapacityReceiptV2, ComposedProjectionV2, ProgressRecoveryV2,
     TierProjectionV2, WorldAfterstateV2CapacityError,
-    choose_capacity_tier_v2,
+    choose_capacity_tier_v2, composed_critical_path_seconds,
 )
 
 
@@ -41,17 +45,10 @@ def _arms(*, memory=None, command_tasks=1, low_cpu=False, byte_suffix="same"):
 
 
 def _composed(**changes):
-    values = {name: 100 for name in (
-        "optimizer-canary", "nested-curve-25", "nested-curve-50",
-        "nested-curve-100", "p0", "label",
-        "block-1-natural", "block-1-action-association-permutation",
-        "block-1-label-permutation", "block-1-complete-world-shuffle",
-        "block-2-natural", "block-2-complete-world-shuffle",
-        "precision-select-inference", "precision-select", "audit",
-        "reconstruction")}
+    values = {name: 100 for name in COMPOSED_STAGE_NAMES}
     values.update(changes.pop("stage_walls_seconds", {}))
     body = dict(stage_walls_seconds=tuple(values.items()),
-                composed_wall_seconds=sum(values.values()),
+                composed_wall_seconds=composed_critical_path_seconds(values),
                 peak_memory_bytes=20 * 1024**3,
                 composed_artifact_bytes=75,
                 free_disk_bytes_before=100)
@@ -202,31 +199,103 @@ def test_composed_dag_disk_and_progress_recovery_bindings():
         _progress(one_audit_open=False).validate()
 
 
+def test_serialized_nested_100_cost_is_counted_on_the_critical_path():
+    base = _composed()
+    sibling_below = _composed(
+        stage_walls_seconds={"nested-curve-100": 50})
+    sibling_above = _composed(
+        stage_walls_seconds={"nested-curve-100": 2_000})
+    assert sibling_below.composed_wall_seconds \
+        == base.composed_wall_seconds - 50
+    assert sibling_above.composed_wall_seconds > base.composed_wall_seconds
+    base.validate()
+    sibling_below.validate()
+    sibling_above.validate()
+
+
+def test_capacity_substage_mapping_is_closed_over_production_stages():
+    assert tuple(CAPACITY_STAGE_TO_PRODUCTION_STAGE) == COMPOSED_STAGE_NAMES
+    assert set(CAPACITY_STAGE_TO_PRODUCTION_STAGE.values()) == (
+        set(PRODUCTION_STAGE_NAMES) - {"population"})
+    assert CAPACITY_ARM_TO_PRODUCTION_STAGE["state-successor"] == "population"
+    assert CAPACITY_STAGE_TO_PRODUCTION_STAGE["audit"] == "terminal"
+    assert CAPACITY_STAGE_TO_PRODUCTION_STAGE["reconstruction"] == "reconstruction"
+    with pytest.raises(WorldAfterstateV2CapacityError, match="mapping"):
+        dataclasses.replace(
+            _composed(),
+            capacity_stage_to_production_stage=tuple(
+                CAPACITY_STAGE_TO_PRODUCTION_STAGE.items())[:-1]).validate()
+
+
+def test_dag_edge_contract_and_wrong_wall_receipts_refuse():
+    composed = _composed()
+    with pytest.raises(WorldAfterstateV2CapacityError, match="DAG"):
+        dataclasses.replace(
+            composed, dag_edges=COMPOSED_DAG_EDGES[:-1]).validate()
+    with pytest.raises(WorldAfterstateV2CapacityError, match="scientific DAG"):
+        dataclasses.replace(
+            composed, scientific_dag_edges=COMPOSED_DAG_EDGES[:-1]).validate()
+    with pytest.raises(WorldAfterstateV2CapacityError, match="composed"):
+        dataclasses.replace(
+            composed,
+            composed_wall_seconds=composed.composed_wall_seconds + 1,
+        ).validate()
+
+
+def test_staged_label_dependencies_cannot_move_or_double_spend_label_work():
+    assert ("label-p0", "p0") in SCIENTIFIC_DAG_EDGES
+    assert ("p0", "optimizer-canary") in SCIENTIFIC_DAG_EDGES
+    assert ("optimizer-canary", "label-fit") in SCIENTIFIC_DAG_EDGES
+    assert ("label-fit", "p0") not in SCIENTIFIC_DAG_EDGES
+    assert ("precision-select-inference", "label-precision-select") \
+        in SCIENTIFIC_DAG_EDGES
+    assert ("label-precision-select", "precision-select") in SCIENTIFIC_DAG_EDGES
+    assert ("precision-select", "label-audit") in SCIENTIFIC_DAG_EDGES
+    assert ("label-audit", "audit") in SCIENTIFIC_DAG_EDGES
+    assert ("audit", "reconstruction") in SCIENTIFIC_DAG_EDGES
+    assert COMPOSED_STAGE_NAMES.index("precision-select") \
+        < COMPOSED_STAGE_NAMES.index("label-audit") \
+        < COMPOSED_STAGE_NAMES.index("audit") \
+        < COMPOSED_STAGE_NAMES.index("reconstruction")
+    assert ("nested-curve-50", "nested-curve-100") \
+        in TRAINING_RESOURCE_SERIALIZATION_EDGES
+    assert ("nested-curve-100", "block-1-action-association-permutation") \
+        in TRAINING_RESOURCE_SERIALIZATION_EDGES
+
+
 def test_production_command_wall_binds_sequential_arms_plus_dag():
     arms = _arms()
     selected = tuple(min((arm for arm in arms if arm.stage == stage),
                          key=lambda arm: (arm.wall_seconds, arm.variant))
                     for stage in ARM_GRIDS)
-    measured = tuple((name, 10) for name in (
-        "optimizer-canary", "nested-curve-25", "nested-curve-50",
-        "nested-curve-100", "p0", "label", "block-1-natural",
-        "block-1-action-association-permutation",
-        "block-1-label-permutation", "block-1-complete-world-shuffle",
-        "block-2-natural", "block-2-complete-world-shuffle",
-        "precision-select-inference", "precision-select", "audit",
-        "reconstruction"))
+    selected_by_stage = {arm.stage: arm.variant for arm in selected}
+    layout = {
+        "member_workers": selected_by_stage["member-concurrency"],
+        "torch_threads": selected_by_stage["torch-threads-per-member"],
+        "inference_batch": selected_by_stage["inference-batch"],
+    }
+    measured = tuple((name, 10) for name in COMPOSED_STAGE_NAMES)
     composed = _composed(measured_stage_walls_seconds=measured)
     with pytest.raises(WorldAfterstateV2CapacityError, match="accounting"):
         _receipt(
             arms=arms, selected_arms=selected,
             command_wall_seconds=sum(arm.wall_seconds for arm in arms)
             + sum(value for _, value in measured) - 1,
-            task_count=1, peak_task_count=1, composed=composed).validate()
+            task_count=1, peak_task_count=1, composed=composed,
+            **layout).validate()
     _receipt(
         arms=arms, selected_arms=selected,
         command_wall_seconds=sum(arm.wall_seconds for arm in arms)
         + sum(value for _, value in measured),
-        task_count=1, peak_task_count=1, composed=composed).validate()
+        task_count=1, peak_task_count=1, composed=composed,
+        **layout).validate()
+    with pytest.raises(WorldAfterstateV2CapacityError, match="accounting"):
+        _receipt(
+            arms=arms, selected_arms=selected,
+            command_wall_seconds=sum(arm.wall_seconds for arm in arms)
+            + sum(value for _, value in measured) + 1,
+            task_count=1, peak_task_count=1, composed=composed,
+            **layout).validate()
 
 
 def test_tier_selection_is_outcome_blind_and_uses_protocol_thresholds():

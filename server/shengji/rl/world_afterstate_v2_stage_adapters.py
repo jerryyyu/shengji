@@ -1,14 +1,17 @@
 """Closed adapters from the execution ABI to reviewed V2 controllers.
 
-The population adapter is the one production adapter currently available.  Its
-configuration is an authenticated, freeze-bound input artifact; callers do
-not provide a driver or override any of the frozen values.
+Each adapter owns its frozen inputs and all low-level producer choices.  The
+execution supervisor can therefore obtain only a reviewed operation through
+``production_stage_adapter``; callers cannot inject callbacks or resource
+overrides.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -28,11 +31,20 @@ from .world_afterstate_v2_diagnostic_producers import (
 )
 from .world_afterstate_v2_population_artifacts import reopen_population_manifest
 from .world_afterstate_v2_artifacts import reopen_continuation_manifest
+from .world_afterstate_v2_label_controller import (
+    build_continuation_population_v2, reopen_label_stage_receipt)
 from .world_afterstate_v2_protocol import (
     TIER_SPECS, build_population_slot_ledger, select_p0_population)
 from .world_afterstate_v2_p0_mechanics import build_engine_p0_mechanics_evidence
 from .world_afterstate_v2_reopen import (
     reopen_optimizer_canary_v2,
+)
+from .world_afterstate_v2_training_stage_adapters import (
+    production_training_stage_adapter,
+)
+from .world_afterstate_v2_late_stage_adapters import (
+    evaluate_precision_select_v2, publish_audit_attempt,
+    production_stage_adapter as production_late_stage_adapter,
 )
 
 
@@ -46,8 +58,11 @@ STAGE_INPUT_SCHEMA = "world-afterstate-v2-early-stage-adapters-input-v1"
 P0_INPUT_SCHEMA = STAGE_INPUT_SCHEMA
 OPTIMIZER_INPUT_SCHEMA = STAGE_INPUT_SCHEMA
 NESTED_INPUT_SCHEMA = STAGE_INPUT_SCHEMA
+P0_CONTINUATION_ROOT = "p0-continuations"
+FIT_SELECT_CONTINUATION_ROOT = "fit-select-continuations"
 _STAGE_CONFIG_FIELDS = frozenset({
     "schema", "artifact_root", "population_namespace_sha256",
+    "label_workers", "label_deadline_seconds",
     "p0-labels-gates", "optimizer-canary", "nested-curve",
 })
 _INPUT_FIELDS = frozenset({
@@ -185,6 +200,16 @@ def _read_stage_config(repo: Path, freeze: Any, schema: str) -> dict[str, Any]:
         raise StageAdapterUnavailable("stage adapter config schema drift")
     if canonical_json_bytes(value) != raw:
         raise StageAdapterUnavailable("stage adapter config is not canonical")
+    workers = value["label_workers"]
+    deadline = value["label_deadline_seconds"]
+    freeze_deadline = getattr(freeze, "deadline_seconds", None)
+    if (isinstance(workers, bool) or not isinstance(workers, int)
+            or not 1 <= workers <= (os.cpu_count() or 1)
+            or isinstance(deadline, bool) or not isinstance(deadline, int)
+            or deadline < 1 or isinstance(freeze_deadline, bool)
+            or not isinstance(freeze_deadline, int) or freeze_deadline < 1
+            or deadline > freeze_deadline):
+        raise StageAdapterUnavailable("stage adapter label resource binding drift")
     # The currently implemented population controller is deliberately D256.
     # The score-free tier gate must therefore make larger tiers ineligible;
     # an adapter may not silently run D256 under a larger frozen tier.
@@ -200,9 +225,28 @@ def _read_stage_config(repo: Path, freeze: Any, schema: str) -> dict[str, Any]:
     return value
 
 
-def _natural_fit_inputs(supervisor: Any, freeze: Any, repo: Path,
-                        schema: str) -> tuple[Any, ...]:
-    """Reopen the exact natural-fit materials and continuations from root."""
+def _population_materials(freeze: Any, repo: Path, *, split: str,
+                          source: str | None = None) -> tuple[Any, ...]:
+    """Reopen only the frozen population material split requested by a stage."""
+    config = _read_stage_config(repo, freeze, STAGE_INPUT_SCHEMA)
+    namespace = _digest(config["population_namespace_sha256"],
+                        "stage population namespace SHA-256")
+    root = Path(freeze.evidence_root)
+    try:
+        values = reopen_population_manifest(
+            root, expected_freeze_sha256=freeze.sha256(),
+            expected_population_namespace_sha256=namespace,
+            expected_tier="D256", expected_split=split,
+            expected_source=source)
+    except Exception as exc:
+        raise StageAdapterUnavailable("stage population material reopen refused") from exc
+    return tuple(values)
+
+
+def _optimizer_canary_inputs(supervisor: Any, freeze: Any, repo: Path,
+                             schema: str) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
+    """Reopen all 128 pre-label states and only the 96 sealed P0 labels."""
+    del supervisor
     config = _read_stage_config(repo, freeze, schema)
     try:
         namespace = _digest(config["population_namespace_sha256"],
@@ -214,14 +258,75 @@ def _natural_fit_inputs(supervisor: Any, freeze: Any, repo: Path,
             root, expected_freeze_sha256=freeze.sha256(),
             expected_population_namespace_sha256=namespace,
             expected_tier="D256", expected_split="fit", expected_source="natural")
-        bundles = reopen_continuation_manifest(root, materials)
+        selected_states = select_p0_population(
+            tuple(material.state for material in materials), tier=TIER_SPECS[0])
+        selected_deals = {state.deal_sha256 for state in selected_states}
+        selected = tuple(material for material in materials
+                         if material.deal_sha256 in selected_deals)
+        bundles = reopen_continuation_manifest(
+            root / P0_CONTINUATION_ROOT, selected)
     except StageAdapterUnavailable:
         raise
     except Exception as exc:
         raise StageAdapterUnavailable("P0 sealed input reopen refused") from exc
-    if len(materials) != 128 or len(bundles) != 128:
+    if len(materials) != 128 or len(selected) != 96 or len(bundles) != 96:
         raise StageAdapterUnavailable("P0 natural-fit input population drift")
-    return tuple(zip(materials, bundles, strict=True))
+    return tuple(materials), tuple(zip(selected, bundles, strict=True))
+
+
+def _p0_reuse_source(
+        fit: tuple[Any, ...], freeze: Any
+        ) -> tuple[Path, tuple[Any, ...]]:
+    """Derive the canonical P0 materials used by FitSelect reuse.
+
+    The label controller reopens the returned source root only after its
+    final-target manifest check, so an already complete FitSelect target keeps
+    the normal authoritative reopener path.
+    """
+    natural = tuple(material for material in fit
+                    if getattr(material.state, "source", None) == "natural")
+    if len(natural) != 128:
+        raise StageAdapterUnavailable("P0 natural-fit material population drift")
+    try:
+        selected_states = select_p0_population(
+            tuple(material.state for material in natural), tier=TIER_SPECS[0])
+    except Exception as exc:
+        raise StageAdapterUnavailable("P0 canonical selection refused") from exc
+    selected_deals = {state.deal_sha256 for state in selected_states}
+    selected = tuple(material for material in natural
+                     if material.deal_sha256 in selected_deals)
+    if len(selected) != 96:
+        raise StageAdapterUnavailable("P0 canonical 128-to-96 selection drift")
+    return Path(freeze.evidence_root) / P0_CONTINUATION_ROOT, selected
+
+
+def _label_progress(supervisor: Any, stage: str, split: str):
+    def progress(value: dict[str, Any]) -> None:
+        if type(value) is not dict:
+            raise StageAdapterUnavailable("label progress drift")
+        try:
+            supervisor.emit_progress(
+                stage=stage, substage=f"{split}-labels",
+                completed=value["completed_deals"], total=value["total_deals"],
+                active_workers=value["active_workers"], active_threads=0,
+                sealed_shards=value["immutable_shards"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise StageAdapterUnavailable("label progress drift") from exc
+    return progress
+
+
+def _stage_label_resources(config: dict[str, Any], freeze: Any) -> tuple[int, int]:
+    workers = config["label_workers"]
+    deadline = config["label_deadline_seconds"]
+    freeze_deadline = getattr(freeze, "deadline_seconds", None)
+    if (isinstance(workers, bool) or not isinstance(workers, int)
+            or not 1 <= workers <= (os.cpu_count() or 1)
+            or isinstance(deadline, bool) or not isinstance(deadline, int)
+            or deadline < 1 or isinstance(freeze_deadline, bool)
+            or not isinstance(freeze_deadline, int) or freeze_deadline < 1
+            or deadline > freeze_deadline):
+        raise StageAdapterUnavailable("stage adapter label resource binding drift")
+    return workers, deadline
 
 
 def _register_or_reopen(supervisor: Any, stage: str, receipt: Any) -> Any:
@@ -238,6 +343,8 @@ def _register_or_reopen(supervisor: Any, stage: str, receipt: Any) -> Any:
                 raise ValueError("non-canonical sealed output")
             if stage == "optimizer-canary":
                 return reopen_optimizer_canary_v2(value)
+            if stage == "fit-select-labels":
+                return reopen_label_stage_receipt(value)
             from .world_afterstate_v2_label import validate_precision_label
             validate_precision_label(value)
             return value
@@ -350,25 +457,33 @@ class P0LabelsGatesAdapterV2:
         del verified_shards
         if not callable(getattr(supervisor, "emit_progress", None)):
             raise StageAdapterUnavailable("P0 adapter supervisor progress unavailable")
-        if supervisor.verified_shards("p0-labels-gates"):
-            return _register_or_reopen(supervisor, "p0-labels-gates", {})
         supervisor.emit_progress(stage="p0-labels-gates", completed=0, total=1, force=True)
         try:
-            pairs = _natural_fit_inputs(supervisor, self.freeze, self.repo,
-                                        P0_INPUT_SCHEMA)
-            all_materials = tuple(material for material, _bundle in pairs)
+            config = _read_stage_config(self.repo, self.freeze, P0_INPUT_SCHEMA)
+            workers, deadline = _stage_label_resources(config, self.freeze)
+            all_materials = _population_materials(
+                self.freeze, self.repo, split="fit", source="natural")
+            if len(all_materials) != 128:
+                raise StageAdapterUnavailable("P0 natural-fit material population drift")
             selected_states = select_p0_population(
                 tuple(item.state for item in all_materials), tier=TIER_SPECS[0])
             selected_deals = {state.deal_sha256 for state in selected_states}
-            # The population producer seals 128 natural-fit rows.  P0 is the
-            # frozen 96-deal canonical subset, selected by the reviewed
-            # outcome-blind protocol helper.
-            selected = tuple((material, bundle) for material, bundle in pairs
+            selected = tuple(material for material in all_materials
                              if material.deal_sha256 in selected_deals)
             if len(selected) != 96:
                 raise StageAdapterUnavailable("P0 canonical 128-to-96 selection drift")
-            materials = tuple(material for material, _bundle in selected)
-            bundles = tuple(bundle for _material, bundle in selected)
+            # P0 labels are spent only inside their dedicated continuation root;
+            # the fit/select root is never touched by this adapter.
+            label_root = Path(self.freeze.evidence_root) / P0_CONTINUATION_ROOT
+            label_receipt = build_continuation_population_v2(
+                label_root, selected, split="fit-select", workers=workers,
+                deadline_monotonic_ns=time.monotonic_ns() + deadline * 1_000_000_000,
+                progress=_label_progress(supervisor, "p0-labels-gates", "p0"))
+            label_receipt.payload()
+            bundles = reopen_continuation_manifest(label_root, selected)
+            if supervisor.verified_shards("p0-labels-gates"):
+                return _register_or_reopen(supervisor, "p0-labels-gates", None)
+            materials = selected
             outcomes = tuple(row for bundle in bundles for row in bundle.candidates)
             natural_slots = {
                 slot.slot_sha256: slot
@@ -425,9 +540,10 @@ class OptimizerCanaryAdapterV2:
             return _register_or_reopen(supervisor, "optimizer-canary", {})
         supervisor.emit_progress(stage="optimizer-canary", completed=0, total=1, force=True)
         try:
-            pairs = _natural_fit_inputs(supervisor, self.freeze, self.repo,
-                                        OPTIMIZER_INPUT_SCHEMA)
+            natural_fit, pairs = _optimizer_canary_inputs(
+                supervisor, self.freeze, self.repo, OPTIMIZER_INPUT_SCHEMA)
             population = OptimizerCanaryInputV2(
+                natural_fit,
                 tuple(material for material, _bundle in pairs),
                 tuple(bundle for _material, bundle in pairs))
             result = self.producer(population)
@@ -443,6 +559,70 @@ class OptimizerCanaryAdapterV2:
         return result
 
 
+build_fit_select_continuations_v2 = build_continuation_population_v2
+
+
+@dataclass(frozen=True)
+class FitSelectLabelsAdapterV2:
+    """Build the fit and epoch-select labels, excluding precision-select."""
+
+    freeze: Any
+    repo: Path
+    __world_afterstate_v2_stage_adapter__: str = ABI
+
+    @property
+    def producer(self) -> Callable[..., Any]:
+        return build_fit_select_continuations_v2
+
+    def __call__(self, supervisor: Any,
+                 verified_shards: tuple[str, ...]) -> Any:
+        del verified_shards
+        if not callable(getattr(supervisor, "emit_progress", None)):
+            raise StageAdapterUnavailable(
+                "fit-select labels supervisor progress unavailable")
+        state = getattr(supervisor, "state", None)
+        completed = getattr(state, "completed_stages", ())
+        if state is None or not {"p0-labels-gates", "optimizer-canary"}.issubset(
+                set(completed)):
+            raise StageAdapterUnavailable(
+                "fit-select labels require completed P0 and optimizer stages")
+        config = _read_stage_config(self.repo, self.freeze, STAGE_INPUT_SCHEMA)
+        workers, deadline = _stage_label_resources(config, self.freeze)
+        try:
+            fit = _population_materials(
+                self.freeze, self.repo, split="fit", source=None)
+            select = _population_materials(
+                self.freeze, self.repo, split="select", source="natural")
+            epoch_select = tuple(
+                material for material in select
+                if material.state.select_subfold == "epoch-select")
+            if len(fit) != 160 or len(epoch_select) != 24:
+                raise StageAdapterUnavailable(
+                    "fit-select label material population drift")
+            values = (*fit, *epoch_select)
+            reuse_root, reuse_materials = _p0_reuse_source(fit, self.freeze)
+            label_root = Path(self.freeze.evidence_root) / FIT_SELECT_CONTINUATION_ROOT
+            receipt = self.producer(
+                label_root, values, split="fit-select", workers=workers,
+                deadline_monotonic_ns=time.monotonic_ns() + deadline * 1_000_000_000,
+                progress=_label_progress(supervisor, "fit-select-labels", "fit-select"),
+                reuse_root=reuse_root, reuse_materials=reuse_materials)
+            reopen_continuation_manifest(label_root, values)
+            result = _register_or_reopen(supervisor, "fit-select-labels",
+                                         receipt.payload())
+            supervisor.emit_progress(
+                stage="fit-select-labels", substage="fit-select-labels",
+                completed=len(values), total=len(values),
+                active_workers=0, active_threads=0, sealed_shards=len(values),
+                force=True)
+            return result
+        except StageAdapterUnavailable:
+            raise
+        except Exception as exc:
+            raise StageAdapterUnavailable(
+                "fit-select labels producer refused") from exc
+
+
 def p0_labels_gates_adapter(*, freeze: Any, repo: Path) -> P0LabelsGatesAdapterV2:
     _read_stage_config(repo, freeze, P0_INPUT_SCHEMA)
     return P0LabelsGatesAdapterV2(freeze, repo)
@@ -454,10 +634,43 @@ def optimizer_canary_adapter(*, freeze: Any, repo: Path) -> OptimizerCanaryAdapt
 
 
 def nested_curve_adapter(*, freeze: Any, repo: Path) -> Any:
-    del freeze, repo
+    return production_training_stage_adapter(
+        "nested-curve", freeze=freeze, repo=repo)
+
+
+def fit_select_labels_adapter(*, freeze: Any, repo: Path) -> FitSelectLabelsAdapterV2:
+    _read_stage_config(repo, freeze, STAGE_INPUT_SCHEMA)
+    return FitSelectLabelsAdapterV2(freeze, repo)
+
+
+def production_stage_adapter(stage: str, *, freeze: Any,
+                             repo: Path) -> Any:
+    """Return only an implemented closed adapter for ``stage``."""
+    if type(stage) is not str or not stage:
+        raise StageAdapterUnavailable("stage adapter stage drift")
+    if freeze is None or repo is None:
+        raise StageAdapterUnavailable("stage adapter requires freeze and repo")
+    factories = {
+        "population": population_collection_adapter,
+        "p0-labels-gates": p0_labels_gates_adapter,
+        "optimizer-canary": optimizer_canary_adapter,
+        "fit-select-labels": fit_select_labels_adapter,
+    }
+    factory = factories.get(stage)
+    if factory is not None:
+        return factory(freeze=freeze, repo=repo)
+    if stage in {
+            "block-1-natural", "nested-curve", "block-1-controls",
+            "block-2-natural", "block-2-controls"}:
+        return production_training_stage_adapter(
+            stage, freeze=freeze, repo=repo)
+    if stage in {
+            "precision-select-power", "audit-attempt", "terminal",
+            "reconstruction"}:
+        return production_late_stage_adapter(
+            stage, freeze=freeze, repo=repo)
     raise StageAdapterUnavailable(
-        "nested curve adapter unavailable: reviewed training/evaluation composition "
-        "does not expose a supervisor-bound 25/50/100% prefix boundary")
+        f"stage adapter unavailable for {stage}: no composed producer")
 
 
 __all__ = [
@@ -466,7 +679,11 @@ __all__ = [
     "PopulationProductionAdapterV2",
     "P0_INPUT_SCHEMA", "OPTIMIZER_INPUT_SCHEMA", "NESTED_INPUT_SCHEMA",
     "P0LabelsGatesAdapterV2", "OptimizerCanaryAdapterV2",
-    "p0_labels_gates_adapter", "optimizer_canary_adapter", "nested_curve_adapter",
+    "FitSelectLabelsAdapterV2", "p0_labels_gates_adapter",
+    "optimizer_canary_adapter", "nested_curve_adapter",
+    "fit_select_labels_adapter", "build_fit_select_continuations_v2",
+    "production_stage_adapter",
+    "evaluate_precision_select_v2", "publish_audit_attempt",
     "StageAdapterUnavailable", "population_collection_adapter",
     "population_reopen_adapter", "population_production_adapter",
     "population_adapter",

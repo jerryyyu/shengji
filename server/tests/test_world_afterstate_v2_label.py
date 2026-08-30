@@ -113,6 +113,8 @@ def test_p0_crossfit_uses_complete_candidate_mean_and_closed_authority():
     assert result["deal_count"] == result["state_count"] == 96
     assert result["raw_outcome_count"] == 96 * 3 * 8
     assert result["candidate_pair_count"] == 96 * 2
+    assert result["pair_target_population_variance"] == {
+        "numerator": 25, "denominator": 4}
     assert result["directional_candidate_mean_microlevels"] == {
         "0-to-1": 5_000_000, "1-to-0": 2_333_333}
     assert result["chosen_minus_incumbent_microlevels"] == {
@@ -242,6 +244,16 @@ def test_result_schema_is_closed_and_hash_bound():
     forged = copy.deepcopy(result)
     forged["unexpected"] = True
     with pytest.raises(WorldAfterstateV2LabelError):
+        validate_precision_label(forged)
+    forged = copy.deepcopy(result)
+    forged["pair_target_population_variance"] = {
+        "numerator": -1, "denominator": 1}
+    body = {key: item for key, item in forged.items()
+            if key != "result_sha256"}
+    forged["result_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    with pytest.raises(WorldAfterstateV2LabelError,
+                       match="pair target population variance"):
         validate_precision_label(forged)
 
 

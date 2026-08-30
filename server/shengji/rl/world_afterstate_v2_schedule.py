@@ -565,13 +565,45 @@ def canonical_deal_hash_prefix(
         key = (row.split, row.source, row.phase, row.position, row.role,
                row.trump_rank, row.trump_mode, row.points_bucket)
         groups.setdefault(key, {}).setdefault(row.deal_sha256, []).append(row)
+    # Apportion an exact global deal count across the frozen source/stratum
+    # groups. ``max(1, ceil(group*fraction))`` selected nearly the complete
+    # population when D256 strata were sparse, so its nominal 25/50 points
+    # were not 25/50. Largest-remainder apportionment retains the exact deal
+    # count while preserving every stratum as closely as the finite population
+    # permits and still selecting a deterministic deal-hash prefix per group.
+    ratios = {0.25: (1, 4), 0.5: (1, 2), 1.0: (1, 1)}
+    if fraction not in ratios:
+        raise WorldAfterstateV2ScheduleError("prefix fraction drift")
+    numerator, denominator = ratios[fraction]
+    deal_groups: dict[str, tuple[str, ...]] = {}
+    for key, deals in groups.items():
+        for deal in deals:
+            previous = deal_groups.setdefault(deal, key)
+            if previous != key:
+                raise WorldAfterstateV2ScheduleError(
+                    "deal crosses nested-prefix strata")
+    target = (len(deal_groups) * numerator + denominator - 1) // denominator
+    ordered_groups = sorted(groups)
+    quotas = {
+        key: len(groups[key]) * numerator // denominator
+        for key in ordered_groups}
+    remaining = target - sum(quotas.values())
+    remainders = sorted(
+        ordered_groups,
+        key=lambda key: (
+            -(len(groups[key]) * numerator % denominator), key))
+    for key in remainders[:remaining]:
+        quotas[key] += 1
     selected: list[WorldAfterstateV2TrainingExample] = []
-    for key in sorted(groups):
+    selected_deals: set[str] = set()
+    for key in ordered_groups:
         deals = groups[key]
-        ordered = sorted(deals)
-        count = max(1, math.ceil(len(ordered) * float(fraction)))
-        for deal in ordered[:count]:
+        for deal in sorted(deals)[:quotas[key]]:
+            selected_deals.add(deal)
             selected.extend(deals[deal])
+    if len(selected_deals) != target:
+        raise WorldAfterstateV2ScheduleError(
+            "nested-prefix exact deal count drift")
     result = tuple(sorted(selected, key=lambda row: (
         row.deal_sha256, row.root_key, row.candidate_index, row.replica)))
     if not result or fraction == 1 and len(result) != len(examples):

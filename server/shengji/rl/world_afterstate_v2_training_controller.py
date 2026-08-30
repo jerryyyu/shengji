@@ -22,9 +22,9 @@ from .world_afterstate_v2_checkpoint import checkpoint_bytes, reopen_checkpoint
 from .world_afterstate_v2_diagnostics import validate_optimizer_canary_v2
 from .world_afterstate_v2_model import WorldAfterstateValueV2, new_world_afterstate_v2_model
 from .world_afterstate_v2_schedule import (
-    BLOCK_1, BLOCK_2, MAX_EPOCHS, TrainingSeedBlockV2,
+    BLOCK_1, BLOCK_2, EARLY_STOP_PATIENCE, MAX_EPOCHS, TrainingSeedBlockV2,
     CommonEpochDecisionV2, EpochScheduleV2, reuse_schedule_for_control,
-    select_common_epoch, training_epoch_batches,
+    derive_nested_prefixes, select_common_epoch, training_epoch_batches,
     validate_common_epoch_checkpoints, validate_common_epoch_receipt,
 )
 from .world_afterstate_v2_training import (
@@ -36,9 +36,12 @@ from .world_afterstate_v2_training import (
 from .world_afterstate_v2_selection_contract import (
     CONTROL_NAMES, EpochSelectScoreV2)
 from .world_afterstate_v2_selection import EpochSelectPopulationV2
+from .world_afterstate_v2_recovery import (
+    WorldAfterstateV2Recovery, reopen_recovery, recovery_bytes)
 
 
 MANIFEST_SCHEMA = "world-afterstate-v2-training-cohort-manifest-v1"
+SINGLE_MEMBER_MANIFEST_SCHEMA = "world-afterstate-v2-training-single-member-manifest-v1"
 PROGRESS_SCHEMA = "world-afterstate-v2-training-progress-v1"
 AUTHORITY = {
     "data_collection_authorized": False,
@@ -64,6 +67,19 @@ class WorldAfterstateV2TrainingControllerError(ValueError):
 class CohortTrainingBuildV2:
     manifest: dict[str, Any]
     selected_checkpoint_raws: tuple[bytes, ...]
+
+
+@dataclass(frozen=True)
+class SingleMemberTrainingBuildV2:
+    """One natural member of the sealed 25%/50% nested data curve."""
+
+    manifest: dict[str, Any]
+    selected_checkpoint_raw: bytes
+
+    @property
+    def selected_checkpoint_raws(self) -> tuple[bytes, ...]:
+        """Compatibility view; a single-member build has exactly one raw."""
+        return (self.selected_checkpoint_raw,)
 
 
 def _sha(value: object) -> str:
@@ -152,6 +168,192 @@ def _training_schedule_sha(schedule: EpochScheduleV2) -> str:
                                          for batch in schedule.batch_example_keys]})
 
 
+def _recovery_error(exc: Exception, label: str = "recovery history refused") \
+        -> WorldAfterstateV2TrainingControllerError:
+    return WorldAfterstateV2TrainingControllerError(label)
+
+
+def _validate_recovery_history_shape(value: object, *, members: int) -> tuple:
+    """Validate the deliberately strict, in-memory history envelope shape."""
+    if value is None:
+        value = ()
+    if type(value) is not tuple:
+        raise WorldAfterstateV2TrainingControllerError(
+            "recovery history must be a tuple")
+    # Single-member diagnostics intentionally expose one blob per epoch;
+    # normalize that compact form to the common internal epoch tuple.
+    if members == 1 and all(type(item) is bytes for item in value):
+        value = tuple((item,) for item in value)
+    for epoch in value:
+        if type(epoch) is not tuple or len(epoch) != members \
+                or any(type(raw) is not bytes or not raw for raw in epoch):
+            raise WorldAfterstateV2TrainingControllerError(
+                "recovery history member drop")
+    return value
+
+
+def _reopen_cohort_history(
+        history: tuple, *, values: Sequence[WorldAfterstateV2TrainingExample],
+        natural_values: Sequence[WorldAfterstateV2TrainingExample] | None,
+        cohort: str, cohort_name: str, freeze_sha256: str,
+        config: WorldAfterstateV2TrainingConfig,
+        selection_population: EpochSelectPopulationV2, seed_block: int,
+        block: TrainingSeedBlockV2, batch_example_cap: int
+        ) -> tuple[list[WorldAfterstateValueV2], list[torch.optim.Optimizer],
+                   list[list[dict[str, Any]]],
+                   list[list[EpochSelectScoreV2]],
+                   list[list[dict[str, torch.Tensor]]],
+                   list[list[EpochScheduleV2]]]:
+    """Reopen and validate every historical member/epoch before training."""
+    models: list[WorldAfterstateValueV2] = []
+    optimizers: list[torch.optim.Optimizer] = []
+    receipts: list[list[dict[str, Any]]] = [[] for _ in range(4)]
+    scores: list[list[EpochSelectScoreV2]] = [[] for _ in range(4)]
+    snapshots: list[list[dict[str, torch.Tensor]]] = [[] for _ in range(4)]
+    schedules: list[list[EpochScheduleV2]] = [[] for _ in range(4)]
+    if not history:
+        return models, optimizers, receipts, scores, snapshots, schedules
+    opened: list[list[WorldAfterstateV2]] = []
+    for epoch_index, epoch_raws in enumerate(history, 1):
+        current: list[WorldAfterstateV2] = []
+        for member, raw in enumerate(epoch_raws):
+            try:
+                item = reopen_recovery(
+                    raw, expected_freeze_sha256=freeze_sha256,
+                    expected_selection_population_sha256=
+                    selection_population.population_sha256)
+            except Exception as exc:
+                raise _recovery_error(exc) from exc
+            metadata = item.metadata
+            if (metadata["completed_epoch"] != epoch_index
+                    or metadata["seed_block"] != seed_block
+                    or metadata["member_index"] != member
+                    or metadata["control_name"] != cohort_name
+                    or metadata["init_seed"] != block.initialization_seeds[member]
+                    or item.config.payload() != config.payload()
+                    or item.score.selection_population_sha256 !=
+                    selection_population.population_sha256):
+                raise WorldAfterstateV2TrainingControllerError(
+                    "recovery history identity drift")
+            current.append(item)
+        opened.append(current)
+
+    # Verify all common decisions and deterministic schedule identities while
+    # reconstructing the exact receipt/model chains.
+    for member in range(4):
+        prior_state_sha = model_state_sha256(
+            new_world_afterstate_v2_model(block.initialization_seeds[member]))
+        for epoch_index, current in enumerate(opened, 1):
+            item = current[member]
+            schedule, _ = _schedule_and_batches(
+                values, epoch=epoch_index,
+                data_order_seed=block.data_order_seeds[member], cohort=cohort,
+                control_name=cohort_name, natural_values=natural_values,
+                batch_example_cap=batch_example_cap)
+            if (item.receipt.model_state_sha256_before != prior_state_sha
+                    or item.receipt.schedule_sha256 !=
+                    _training_schedule_sha(schedule)
+                    or item.receipt.population_sha256 != schedule.population_sha256
+                    or item.receipt.model_state_sha256_after !=
+                    model_state_sha256(item.model)
+                    or item.score.model_state_sha256 !=
+                    item.receipt.model_state_sha256_after):
+                raise WorldAfterstateV2TrainingControllerError(
+                    "recovery history state/schedule chain drift")
+            if epoch_index > 1 and item.receipt.model_state_sha256_before != \
+                    opened[epoch_index - 2][member].receipt.model_state_sha256_after:
+                raise WorldAfterstateV2TrainingControllerError(
+                    "recovery history state chain drift")
+            prior_state_sha = item.receipt.model_state_sha256_after
+            receipts[member].append(item.receipt.payload())
+            scores[member].append(item.score)
+            snapshots[member].append(copy.deepcopy(item.model.state_dict()))
+            schedules[member].append(schedule)
+    population_sha = receipts[0][0]["population_sha256"]
+    if any(receipt["population_sha256"] != population_sha
+           for member in receipts for receipt in member):
+        raise WorldAfterstateV2TrainingControllerError(
+            "recovery history population mixing")
+    for epoch_index, current in enumerate(opened, 1):
+        common = select_common_epoch(
+            tuple(tuple(row.loss_nano for row in member_scores[:epoch_index])
+                  for member_scores in scores), block_name=block.name)
+        expected_sha = common.sha256()
+        if common.stop_epoch != epoch_index or any(
+                item.metadata["common_epoch_sha256"] != expected_sha
+               for item in current):
+            raise WorldAfterstateV2TrainingControllerError(
+                "recovery history common decision drift")
+    models = [opened[-1][member].model for member in range(4)]
+    optimizers = [opened[-1][member].optimizer for member in range(4)]
+    return models, optimizers, receipts, scores, snapshots, schedules
+
+
+def _reopen_member_history(
+        history: tuple, *, values: Sequence[WorldAfterstateV2TrainingExample],
+        point_values: Sequence[WorldAfterstateV2TrainingExample],
+        freeze_sha256: str, config: WorldAfterstateV2TrainingConfig,
+        selection_population: EpochSelectPopulationV2, block: TrainingSeedBlockV2,
+        batch_example_cap: int
+        ) -> tuple[WorldAfterstateValueV2 | None, torch.optim.Optimizer | None,
+                   list[dict[str, Any]], list[EpochSelectScoreV2],
+                   list[dict[str, torch.Tensor]], list[EpochScheduleV2]]:
+    if not history:
+        return None, None, [], [], [], []
+    opened: list[WorldAfterstateV2Recovery] = []
+    for epoch_index, epoch_raws in enumerate(history, 1):
+        try:
+            item = reopen_recovery(
+                epoch_raws[0], expected_freeze_sha256=freeze_sha256,
+                expected_selection_population_sha256=
+                selection_population.population_sha256)
+        except Exception as exc:
+            raise _recovery_error(exc) from exc
+        metadata = item.metadata
+        if (metadata["completed_epoch"] != epoch_index
+                or metadata["seed_block"] != 1
+                or metadata["member_index"] != 0
+                or metadata["control_name"] != "natural"
+                or metadata["init_seed"] != block.initialization_seeds[0]
+                or item.config.payload() != config.payload()):
+            raise WorldAfterstateV2TrainingControllerError(
+                "recovery history identity drift")
+        opened.append(item)
+    prior_state_sha = model_state_sha256(new_world_afterstate_v2_model(
+        block.initialization_seeds[0]))
+    receipts: list[dict[str, Any]] = []
+    scores: list[EpochSelectScoreV2] = []
+    snapshots: list[dict[str, torch.Tensor]] = []
+    schedules: list[EpochScheduleV2] = []
+    for epoch_index, item in enumerate(opened, 1):
+        schedule, _ = _schedule_and_batches(
+            point_values, epoch=epoch_index,
+            data_order_seed=block.data_order_seeds[0], cohort="primary",
+            control_name="natural", natural_values=None,
+            batch_example_cap=batch_example_cap)
+        if (item.receipt.model_state_sha256_before != prior_state_sha
+                or item.receipt.schedule_sha256 != _training_schedule_sha(schedule)
+                or item.receipt.population_sha256 != schedule.population_sha256
+                or item.receipt.model_state_sha256_after !=
+                model_state_sha256(item.model)
+                or item.score.model_state_sha256 !=
+                item.receipt.model_state_sha256_after):
+            raise WorldAfterstateV2TrainingControllerError(
+                "recovery history state/schedule chain drift")
+        prior_state_sha = item.receipt.model_state_sha256_after
+        receipts.append(item.receipt.payload())
+        scores.append(item.score)
+        snapshots.append(copy.deepcopy(item.model.state_dict()))
+        schedules.append(schedule)
+        common = _select_member_epoch(
+            tuple(score.loss_nano for score in scores), block_name=block.name)
+        if common.stop_epoch != epoch_index \
+                or item.metadata["common_epoch_sha256"] != common.sha256():
+            raise WorldAfterstateV2TrainingControllerError(
+                "recovery history common decision drift")
+    return opened[-1].model, opened[-1].optimizer, receipts, scores, snapshots, schedules
+
+
 def train_named_cohort(
         *, cohort_name: str,
         values: Sequence[WorldAfterstateV2TrainingExample],
@@ -165,7 +367,10 @@ def train_named_cohort(
         batch_example_cap: int = 256,
         optimizer_canary: Callable[[], object] | None = None,
         clock: Callable[[], int] = time.monotonic_ns,
-        progress: Callable[[dict[str, Any]], None] | None = None) -> CohortTrainingBuildV2:
+        progress: Callable[[dict[str, Any]], None] | None = None,
+        recovery_history: tuple = (),
+        recovery_callback: Callable[[tuple[bytes, ...]], None] | None = None
+        ) -> CohortTrainingBuildV2:
     """Train exactly one four-member natural or matched-control cohort.
 
     ``selection_population`` is the only permitted epoch-select input.  Its
@@ -213,12 +418,24 @@ def train_named_cohort(
             or not isinstance(batch_example_cap, int) or batch_example_cap < 1):
         raise WorldAfterstateV2TrainingControllerError("cohort resource request drift")
 
-    models = [new_world_afterstate_v2_model(seed) for seed in block.initialization_seeds]
-    optimizers = [new_optimizer(model, config) for model in models]
-    receipts: list[list[dict[str, Any]]] = [[] for _ in models]
-    selection_scores: list[list[EpochSelectScoreV2]] = [[] for _ in models]
-    snapshots: list[list[dict[str, torch.Tensor]]] = [[] for _ in models]
-    schedules: list[list[EpochScheduleV2]] = [[] for _ in models]
+    history = _validate_recovery_history_shape(recovery_history, members=4)
+    if recovery_callback is not None and not callable(recovery_callback):
+        raise WorldAfterstateV2TrainingControllerError("recovery callback drift")
+    (models, optimizers, receipts, selection_scores, snapshots,
+     schedules) = _reopen_cohort_history(
+        history, values=values, natural_values=natural_values, cohort=cohort,
+        cohort_name=cohort_name, freeze_sha256=freeze_sha256, config=config,
+        selection_population=selection_population, seed_block=seed_block,
+        block=block, batch_example_cap=batch_example_cap)
+    if not history:
+        models = [new_world_afterstate_v2_model(seed)
+                  for seed in block.initialization_seeds]
+        optimizers = [new_optimizer(model, config) for model in models]
+    recovered_epochs = len(history)
+    prior_common = (select_common_epoch(
+        tuple(tuple(score.loss_nano for score in row)
+              for row in selection_scores), block_name=block.name)
+                    if recovered_epochs else None)
     started = clock()
     deadline = started + wall_budget_nanoseconds
     truncated = False
@@ -226,7 +443,27 @@ def train_named_cohort(
     old_threads = torch.get_num_threads()
     try:
         torch.set_num_threads(torch_threads)
-        for epoch in range(1, min(config.max_epochs, MAX_EPOCHS) + 1):
+        if history and progress is not None:
+            completed = recovered_epochs * 4
+            total = config.max_epochs * 4
+            progress({
+                "schema": PROGRESS_SCHEMA, "cohort_name": cohort_name,
+                "seed_block": seed_block, "epoch": recovered_epochs,
+                "completed_units": completed, "total_units": total,
+                "percent_basis_points": completed * 10_000 // total,
+                "elapsed_nanoseconds": 0,
+                "estimated_remaining_nanoseconds": 0,
+                "active_workers": member_workers,
+                "audit_rows_opened": False, "report_rows_opened": False,
+                "authority": dict(AUTHORITY),
+            })
+        resume_stopped = bool(history and prior_common is not None
+                              and prior_common.stopped_for_patience)
+        if resume_stopped:
+            stop_reason = "early-stopping"
+        for epoch in range(recovered_epochs + 1,
+                           (recovered_epochs if resume_stopped else
+                            min(config.max_epochs, MAX_EPOCHS)) + 1):
             if clock() >= deadline:
                 if not selection_scores[0]:
                     raise WorldAfterstateV2TrainingControllerError("deadline before epoch")
@@ -276,6 +513,23 @@ def train_named_cohort(
                 tuple(tuple(score.loss_nano for score in row)
                       for row in selection_scores),
                 block_name=block.name)
+            if recovery_callback is not None:
+                try:
+                    callback_raws = tuple(
+                        recovery_bytes(
+                            models[member], optimizers[member], config,
+                            _epoch_receipt(receipts[member][-1]),
+                            selection_scores[member][-1],
+                            seed_block=seed_block, member_index=member,
+                            control_name=cohort_name,
+                            init_seed=block.initialization_seeds[member],
+                            freeze_sha256=freeze_sha256,
+                            common_epoch_sha256=common.sha256())
+                        for member in range(4))
+                    recovery_callback(callback_raws)
+                except Exception as exc:
+                    raise WorldAfterstateV2TrainingControllerError(
+                        "recovery callback refused") from exc
             if progress is not None:
                 completed = epoch * 4
                 total = config.max_epochs * 4
@@ -640,9 +894,506 @@ def reopen_cohort_build(value: CohortTrainingBuildV2) -> tuple[tuple[WorldAfters
     return tuple(models), value.manifest
 
 
+def _select_member_epoch(losses: Sequence[int], *, block_name: str) -> CommonEpochDecisionV2:
+    """Apply the reviewed common-epoch rule to one member's losses."""
+    if type(losses) not in (tuple, list) or not losses or len(losses) > MAX_EPOCHS:
+        raise WorldAfterstateV2TrainingControllerError("member epoch-select metrics drift")
+    if any(isinstance(loss, bool) or not isinstance(loss, int) or loss < 0
+           for loss in losses):
+        raise WorldAfterstateV2TrainingControllerError("member epoch-select loss drift")
+    best = min(range(len(losses)), key=lambda index: (losses[index], index))
+    stale = 0
+    stop = len(losses)
+    stopped = False
+    incumbent = losses[0]
+    for index in range(1, len(losses)):
+        if losses[index] < incumbent:
+            incumbent = losses[index]
+            stale = 0
+        else:
+            stale += 1
+            if stale == EARLY_STOP_PATIENCE:
+                stop = index + 1
+                stopped = True
+                break
+    if best >= stop:
+        best = min(range(stop), key=lambda index: (losses[index], index))
+    result = CommonEpochDecisionV2(
+        selected_epoch=best + 1, stop_epoch=stop,
+        cohort_mean_loss_nano=tuple(losses[:stop]),
+        stopped_for_patience=stopped, block_name=block_name)
+    try:
+        result.validate()
+    except Exception as exc:
+        raise WorldAfterstateV2TrainingControllerError(
+            "member common epoch receipt drift") from exc
+    return result
+
+
+def _member_fraction(value: object) -> tuple[float, int]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise WorldAfterstateV2TrainingControllerError("nested data fraction drift")
+    if value == 0.25:
+        return 0.25, 250_000
+    if value == 0.5:
+        return 0.5, 500_000
+    raise WorldAfterstateV2TrainingControllerError(
+        "single-member data fraction must be 25% or 50%")
+
+
+def train_named_member(
+        *, values: Sequence[WorldAfterstateV2TrainingExample],
+        data_fraction: float | None = None, fraction: float | None = None,
+        data_fraction_ppm: int | None = None,
+        member_name: str | None = None,
+        freeze_sha256: str, config: WorldAfterstateV2TrainingConfig,
+        selection_population: EpochSelectPopulationV2,
+        seed_block: int = 1, member_index: int = 0,
+        cohort_name: str = "natural", member_workers: int = 1,
+        torch_threads: int = 1,
+        wall_budget_nanoseconds: int = 6 * 60 * 60 * 1_000_000_000,
+        batch_example_cap: int = 256,
+        clock: Callable[[], int] = time.monotonic_ns,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+        recovery_history: tuple = (),
+        recovery_callback: Callable[[bytes], None] | None = None
+        ) -> SingleMemberTrainingBuildV2:
+    """Train one fixed-seed natural member for the nested 25%/50% curve.
+
+    ``values`` is the complete fit population.  The selected point is always
+    rederived by the canonical, source/stratum-preserving deal-hash prefix.
+    """
+    _digest(freeze_sha256, "freeze SHA-256")
+    config.validate()
+    block = _block(seed_block)
+    if seed_block != 1:
+        raise WorldAfterstateV2TrainingControllerError(
+            "single-member diagnostic requires primary seed block")
+    if cohort_name != "natural":
+        raise WorldAfterstateV2TrainingControllerError(
+            "single-member natural cohort required")
+    if isinstance(member_index, bool) or not isinstance(member_index, int) \
+            or member_index != 0:
+        raise WorldAfterstateV2TrainingControllerError("member index drift")
+    if data_fraction is not None and fraction is not None:
+        raise WorldAfterstateV2TrainingControllerError("nested data fraction alias drift")
+    if data_fraction is None:
+        data_fraction = fraction
+    if data_fraction is None and data_fraction_ppm is None:
+        if member_name == "nested-curve-25":
+            data_fraction = 0.25
+        elif member_name == "nested-curve-50":
+            data_fraction = 0.5
+        else:
+            raise WorldAfterstateV2TrainingControllerError("nested data fraction required")
+    if data_fraction is not None:
+        selected_fraction, fraction_ppm = _member_fraction(data_fraction)
+        if data_fraction_ppm is not None and data_fraction_ppm != fraction_ppm:
+            raise WorldAfterstateV2TrainingControllerError("nested data fraction drift")
+    else:
+        if isinstance(data_fraction_ppm, bool) or data_fraction_ppm not in (250_000, 500_000):
+            raise WorldAfterstateV2TrainingControllerError("nested data fraction drift")
+        fraction_ppm = data_fraction_ppm
+        selected_fraction = fraction_ppm / 1_000_000
+    canonical_member_name = f"nested-curve-{fraction_ppm // 10_000}"
+    if member_name is not None and member_name != canonical_member_name:
+        raise WorldAfterstateV2TrainingControllerError("nested member name drift")
+    if type(values) not in (tuple, list):
+        raise WorldAfterstateV2TrainingControllerError("cohort population drift")
+    _validate_rows(values, "primary")
+    try:
+        prefixes = derive_nested_prefixes(tuple(values))
+        point_values = prefixes[selected_fraction]
+    except Exception as exc:
+        raise WorldAfterstateV2TrainingControllerError(
+            "nested data prefix refused") from exc
+    if type(selection_population) is not EpochSelectPopulationV2:
+        raise WorldAfterstateV2TrainingControllerError(
+            "sealed epoch-select population required")
+    try:
+        selection_population.validate()
+    except Exception as exc:
+        raise WorldAfterstateV2TrainingControllerError(
+            "epoch-select population refused") from exc
+    if (isinstance(member_workers, bool) or member_workers != 1
+            or isinstance(torch_threads, bool) or not isinstance(torch_threads, int)
+            or not 1 <= torch_threads <= 64
+            or isinstance(wall_budget_nanoseconds, bool)
+            or not isinstance(wall_budget_nanoseconds, int)
+            or wall_budget_nanoseconds <= 0
+            or isinstance(batch_example_cap, bool)
+            or not isinstance(batch_example_cap, int) or batch_example_cap < 1):
+        raise WorldAfterstateV2TrainingControllerError("member resource request drift")
+
+    initialization_seed = block.initialization_seeds[member_index]
+    data_order_seed = block.data_order_seeds[member_index]
+    history = _validate_recovery_history_shape(recovery_history, members=1)
+    if recovery_callback is not None and not callable(recovery_callback):
+        raise WorldAfterstateV2TrainingControllerError("recovery callback drift")
+    (model, optimizer, receipts, selection_scores, snapshots,
+     schedules) = _reopen_member_history(
+        history, values=values, point_values=point_values,
+        freeze_sha256=freeze_sha256, config=config,
+        selection_population=selection_population, block=block,
+        batch_example_cap=batch_example_cap)
+    if model is None or optimizer is None:
+        model = new_world_afterstate_v2_model(initialization_seed)
+        optimizer = new_optimizer(model, config)
+    recovered_epochs = len(history)
+    prior_decision = (_select_member_epoch(
+        tuple(item.loss_nano for item in selection_scores), block_name=block.name)
+                      if recovered_epochs else None)
+    started = clock()
+    deadline = started + wall_budget_nanoseconds
+    truncated = False
+    stop_reason = "max-epochs"
+    old_threads = torch.get_num_threads()
+    try:
+        torch.set_num_threads(torch_threads)
+        if history and progress is not None:
+            completed = recovered_epochs
+            total = config.max_epochs
+            progress({
+                "schema": PROGRESS_SCHEMA, "cohort_name": "natural",
+                "data_fraction_ppm": fraction_ppm, "seed_block": seed_block,
+                "member_index": member_index, "epoch": recovered_epochs,
+                "completed_units": completed, "total_units": total,
+                "percent_basis_points": completed * 10_000 // total,
+                "elapsed_nanoseconds": 0,
+                "estimated_remaining_nanoseconds": 0,
+                "active_workers": member_workers,
+                "audit_rows_opened": False, "report_rows_opened": False,
+                "authority": dict(AUTHORITY),
+            })
+        resume_stopped = bool(history and prior_decision is not None
+                              and prior_decision.stopped_for_patience)
+        if resume_stopped:
+            stop_reason = "early-stopping"
+        for epoch in range(recovered_epochs + 1,
+                           (recovered_epochs if resume_stopped else
+                            min(config.max_epochs, MAX_EPOCHS)) + 1):
+            if clock() >= deadline:
+                if not selection_scores:
+                    raise WorldAfterstateV2TrainingControllerError("deadline before epoch")
+                truncated = True
+                stop_reason = "deadline-truncation"
+                break
+            schedule, batches = _schedule_and_batches(
+                point_values, epoch=epoch, data_order_seed=data_order_seed,
+                cohort="primary", control_name="natural", natural_values=None,
+                batch_example_cap=batch_example_cap)
+            receipt = train_epoch(model, optimizer, batches, epoch=epoch, config=config)
+            score = _selection_score(
+                selection_population.score(
+                    model, epoch=epoch, seed_block=seed_block,
+                    member_index=member_index, control_name="natural",
+                    sigma_pair_squared=config.sigma_pair_squared),
+                model=model, epoch=epoch, seed_block=seed_block,
+                member_index=member_index, control_name="natural")
+            if score.selection_population_sha256 != selection_population.population_sha256:
+                raise WorldAfterstateV2TrainingControllerError(
+                    "epoch-select sealed population binding drift")
+            receipts.append(receipt.payload())
+            selection_scores.append(score)
+            snapshots.append(copy.deepcopy(model.state_dict()))
+            schedules.append(schedule)
+            decision = _select_member_epoch(
+                tuple(item.loss_nano for item in selection_scores),
+                block_name=block.name)
+            if recovery_callback is not None:
+                try:
+                    recovery_callback(recovery_bytes(
+                        model, optimizer, config, _epoch_receipt(receipts[-1]),
+                        selection_scores[-1], seed_block=seed_block,
+                        member_index=member_index, control_name="natural",
+                        init_seed=initialization_seed,
+                        freeze_sha256=freeze_sha256,
+                        common_epoch_sha256=decision.sha256()))
+                except Exception as exc:
+                    raise WorldAfterstateV2TrainingControllerError(
+                        "recovery callback refused") from exc
+            if progress is not None:
+                completed = epoch
+                total = config.max_epochs
+                elapsed = max(0, clock() - started)
+                remaining = max(total - completed, 0)
+                eta = (elapsed * remaining + completed - 1) // completed
+                progress({
+                    "schema": PROGRESS_SCHEMA, "cohort_name": "natural",
+                    "data_fraction_ppm": fraction_ppm, "seed_block": seed_block,
+                    "member_index": member_index, "epoch": epoch,
+                    "completed_units": completed, "total_units": total,
+                    "percent_basis_points": completed * 10_000 // total,
+                    "elapsed_nanoseconds": elapsed,
+                    "estimated_remaining_nanoseconds": eta,
+                    "active_workers": member_workers,
+                    "audit_rows_opened": False, "report_rows_opened": False,
+                    "authority": dict(AUTHORITY),
+                })
+            if decision.stopped_for_patience:
+                stop_reason = "early-stopping"
+                break
+            if clock() >= deadline:
+                truncated = True
+                stop_reason = "deadline-truncation"
+                break
+    finally:
+        torch.set_num_threads(old_threads)
+    if not selection_scores:
+        raise WorldAfterstateV2TrainingControllerError("member produced no epoch")
+    decision = _select_member_epoch(
+        tuple(item.loss_nano for item in selection_scores), block_name=block.name)
+    population_sha = receipts[0]["population_sha256"]
+    if any(item["population_sha256"] != population_sha for item in receipts):
+        raise WorldAfterstateV2TrainingControllerError("member population drift")
+    common_sha = decision.sha256()
+    selected = decision.selected_epoch - 1
+    model.load_state_dict(snapshots[selected])
+    raw = checkpoint_bytes(
+        model, seed_block=seed_block, member_index=member_index,
+        control_name="natural", init_seed=initialization_seed,
+        selected_epoch=decision.selected_epoch, freeze_sha256=freeze_sha256,
+        config_sha256=config.sha256(), population_sha256=population_sha,
+        schedule_sha256=_training_schedule_sha(schedules[selected]),
+        common_epoch_sha256=common_sha)
+    _model, metadata = reopen_checkpoint(raw)
+    elapsed = max(0, clock() - started)
+    body = {
+        "schema": SINGLE_MEMBER_MANIFEST_SCHEMA, "cohort_name": "natural",
+        "member_name": canonical_member_name,
+        "data_fraction": selected_fraction, "data_fraction_ppm": fraction_ppm,
+        "seed_block": seed_block, "member_index": member_index,
+        "freeze_sha256": freeze_sha256, "config": config.payload(),
+        "config_sha256": config.sha256(), "initialization_seed": initialization_seed,
+        "data_order_seed": data_order_seed, "member_count": 1,
+        "member_workers": member_workers, "torch_threads": torch_threads,
+        "batch_example_cap": batch_example_cap,
+        "training_population_sha256": population_sha,
+        "selection_population_sha256": selection_scores[0].selection_population_sha256,
+        "epoch_count": decision.stop_epoch,
+        "fit_schedule_receipts": [schedule.payload() for schedule in schedules],
+        "epoch_receipts": receipts,
+        "selection_scores": [score.payload() for score in selection_scores],
+        "common_epoch": decision.payload(), "common_epoch_sha256": common_sha,
+        "wall_budget_nanoseconds": wall_budget_nanoseconds,
+        "elapsed_nanoseconds": elapsed, "truncated_by_deadline": truncated,
+        "stop_reason": stop_reason, "audit_eligible": False,
+        "consumer_eligible": False,
+        "selected_checkpoint_external_sha256": _sha_bytes(raw),
+        "selected_checkpoint_sha256": metadata["checkpoint_sha256"],
+        "selected_model_state_sha256": metadata["model_state_sha256"],
+        "audit_rows_opened": False, "report_rows_opened": False,
+        "authority": dict(AUTHORITY),
+    }
+    manifest = {**body, "manifest_sha256": _sha(body)}
+    validate_member_manifest(manifest)
+    return SingleMemberTrainingBuildV2(manifest, raw)
+
+
+def validate_member_manifest(value: object) -> None:
+    """Fail closed on a single-member manifest, including all receipt chains."""
+    required = {
+        "schema", "cohort_name", "member_name", "data_fraction", "data_fraction_ppm",
+        "seed_block", "member_index", "freeze_sha256", "config",
+        "config_sha256", "initialization_seed", "data_order_seed", "member_count",
+        "member_workers", "torch_threads", "batch_example_cap",
+        "training_population_sha256", "selection_population_sha256", "epoch_count",
+        "fit_schedule_receipts", "epoch_receipts", "selection_scores", "common_epoch",
+        "common_epoch_sha256", "wall_budget_nanoseconds", "elapsed_nanoseconds",
+        "truncated_by_deadline", "stop_reason", "audit_eligible",
+        "consumer_eligible",
+        "selected_checkpoint_external_sha256", "selected_checkpoint_sha256",
+        "selected_model_state_sha256", "audit_rows_opened", "report_rows_opened",
+        "authority", "manifest_sha256"}
+    if type(value) is not dict or set(value) != required \
+            or value.get("schema") != SINGLE_MEMBER_MANIFEST_SCHEMA \
+            or value.get("cohort_name") != "natural" \
+            or value.get("member_name") != f"nested-curve-{value.get('data_fraction_ppm', 0) // 10_000}" \
+            or value.get("authority") != AUTHORITY \
+            or value.get("member_count") != 1 \
+            or value.get("audit_rows_opened") is not False \
+            or value.get("report_rows_opened") is not False \
+            or value.get("audit_eligible") is not False \
+            or value.get("consumer_eligible") is not False:
+        raise WorldAfterstateV2TrainingControllerError("member manifest identity drift")
+    block = _block(value["seed_block"])
+    if value["seed_block"] != 1:
+        raise WorldAfterstateV2TrainingControllerError(
+            "single-member diagnostic requires primary seed block")
+    if (value["initialization_seed"] != block.initialization_seeds[value["member_index"]]
+            if isinstance(value.get("member_index"), int) and not isinstance(
+                value.get("member_index"), bool) and 0 <= value["member_index"] < 4 else True):
+        raise WorldAfterstateV2TrainingControllerError("member seed binding drift")
+    member = value["member_index"]
+    if isinstance(member, bool) or not isinstance(member, int) or member != 0 \
+            or value["data_order_seed"] != block.data_order_seeds[member]:
+        raise WorldAfterstateV2TrainingControllerError("member seed binding drift")
+    fraction, fraction_ppm = _member_fraction(value["data_fraction"])
+    if value["data_fraction_ppm"] != fraction_ppm or value["data_fraction"] != fraction:
+        raise WorldAfterstateV2TrainingControllerError("nested data fraction drift")
+    for key in ("initialization_seed", "data_order_seed"):
+        _strict_int(value[key], f"member {key}")
+    if (isinstance(value.get("member_workers"), bool)
+            or value.get("member_workers") != 1
+            or isinstance(value.get("torch_threads"), bool)
+            or not isinstance(value.get("torch_threads"), int)
+            or not 1 <= value["torch_threads"] <= 64
+            or isinstance(value.get("batch_example_cap"), bool)
+            or not isinstance(value.get("batch_example_cap"), int)
+            or value["batch_example_cap"] < 1):
+        raise WorldAfterstateV2TrainingControllerError("member resource/identity drift")
+    for key in ("wall_budget_nanoseconds", "elapsed_nanoseconds"):
+        _strict_int(value.get(key), f"member {key}",
+                    1 if key == "wall_budget_nanoseconds" else 0)
+    if type(value["truncated_by_deadline"]) is not bool \
+            or type(value["audit_eligible"]) is not bool \
+            or type(value["consumer_eligible"]) is not bool:
+        raise WorldAfterstateV2TrainingControllerError("member resource route drift")
+    _digest(value["freeze_sha256"], "freeze SHA-256")
+    _digest(value["training_population_sha256"], "member population SHA-256")
+    _digest(value["selection_population_sha256"], "selection population SHA-256")
+    _digest(value["common_epoch_sha256"], "common epoch SHA-256")
+    try:
+        config = WorldAfterstateV2TrainingConfig(**{
+            key: value["config"][key] for key in (
+                "learning_rate_ppb", "weight_decay_ppb", "gradient_norm_milli",
+                "max_epochs", "sigma_pair_squared")},
+            schema=value["config"].get("schema"))
+        config.validate()
+    except Exception as exc:
+        raise WorldAfterstateV2TrainingControllerError("member config drift") from exc
+    if value["config"] != config.payload() or value["config_sha256"] != config.sha256():
+        raise WorldAfterstateV2TrainingControllerError("member config drift")
+    try:
+        common_payload = value["common_epoch"]
+        common = CommonEpochDecisionV2(
+            selected_epoch=common_payload.get("selected_epoch"),
+            stop_epoch=common_payload.get("stop_epoch"),
+            cohort_mean_loss_nano=tuple(common_payload.get("cohort_mean_loss_nano", ())),
+            stopped_for_patience=common_payload.get("stopped_for_patience"),
+            block_name=common_payload.get("block_name"),
+            authority=common_payload.get("authority"))
+        validate_common_epoch_receipt(common)
+    except Exception as exc:
+        raise WorldAfterstateV2TrainingControllerError("member common epoch drift") from exc
+    if (common.payload() != value["common_epoch"]
+            or common.sha256() != value["common_epoch_sha256"]
+            or value["epoch_count"] != common.stop_epoch
+            or value["stop_reason"] not in (
+                "max-epochs", "early-stopping", "deadline-truncation")):
+        raise WorldAfterstateV2TrainingControllerError("member common epoch binding drift")
+    expected_stop = ("deadline-truncation" if value["truncated_by_deadline"] else
+                     ("early-stopping" if common.stopped_for_patience else "max-epochs"))
+    if value["stop_reason"] != expected_stop:
+        raise WorldAfterstateV2TrainingControllerError("member resource route drift")
+    schedules = value["fit_schedule_receipts"]
+    receipts = value["epoch_receipts"]
+    scores = value["selection_scores"]
+    if (type(schedules) is not list or len(schedules) != common.stop_epoch
+            or type(receipts) is not list or len(receipts) != common.stop_epoch
+            or type(scores) is not list or len(scores) != common.stop_epoch):
+        raise WorldAfterstateV2TrainingControllerError("member epoch receipt drop")
+    parsed_schedules: list[EpochScheduleV2] = []
+    parsed_receipts: list[WorldAfterstateV2EpochReceipt] = []
+    parsed_scores: list[EpochSelectScoreV2] = []
+    for epoch, payload in enumerate(schedules, 1):
+        parsed = _schedule_from_payload(payload)
+        try:
+            parsed.validate()
+        except Exception as exc:
+            raise WorldAfterstateV2TrainingControllerError("member schedule receipt drift") from exc
+        if (parsed.epoch != epoch or parsed.data_order_seed != value["data_order_seed"]
+                or parsed.cohort != "primary" or parsed.control_name != "natural"
+                or parsed.split != "fit"):
+            raise WorldAfterstateV2TrainingControllerError("member schedule binding drift")
+        parsed_schedules.append(parsed)
+    for epoch, payload in enumerate(receipts, 1):
+        parsed = _epoch_receipt(payload)
+        if (parsed.epoch != epoch or parsed.config_sha256 != value["config_sha256"]
+                or parsed.population_sha256 != value["training_population_sha256"]
+                or parsed.split != "fit" or parsed.cohort != "primary"
+                or parsed.schedule_sha256 != _training_schedule_sha(parsed_schedules[epoch - 1])):
+            raise WorldAfterstateV2TrainingControllerError("member state chain drift")
+        parsed_receipts.append(parsed)
+    initial = new_world_afterstate_v2_model(value["initialization_seed"])
+    if (parsed_receipts[0].model_state_sha256_before != model_state_sha256(initial)
+            or any(left.model_state_sha256_after != right.model_state_sha256_before
+                   for left, right in zip(parsed_receipts, parsed_receipts[1:]))):
+        raise WorldAfterstateV2TrainingControllerError("member state chain drift")
+    losses = []
+    for epoch, payload in enumerate(scores, 1):
+        if type(payload) is not dict:
+            raise WorldAfterstateV2TrainingControllerError("epoch-select score receipt drift")
+        try:
+            score = EpochSelectScoreV2(**payload)
+            score.validate()
+        except Exception as exc:
+            raise WorldAfterstateV2TrainingControllerError("epoch-select score receipt drift") from exc
+        if (score.payload() != payload or
+                (score.epoch, score.seed_block, score.member_index, score.control_name) !=
+                (epoch, value["seed_block"], member, "natural") or
+                score.selection_population_sha256 != value["selection_population_sha256"]
+                or score.model_state_sha256 != parsed_receipts[epoch - 1].model_state_sha256_after):
+            raise WorldAfterstateV2TrainingControllerError("epoch-select score/model state chain drift")
+        parsed_scores.append(score)
+        losses.append(score.loss_nano)
+    if _select_member_epoch(tuple(losses), block_name=block.name).payload() != common.payload():
+        raise WorldAfterstateV2TrainingControllerError("member epoch selection drift")
+    for key in ("selected_checkpoint_external_sha256", "selected_checkpoint_sha256",
+                "selected_model_state_sha256"):
+        _digest(value[key], f"member {key}")
+    body = {key: item for key, item in value.items() if key != "manifest_sha256"}
+    if value["manifest_sha256"] != _sha(body):
+        raise WorldAfterstateV2TrainingControllerError("member manifest reconstruction drift")
+
+
+def reopen_member_build(value: SingleMemberTrainingBuildV2) -> tuple[WorldAfterstateValueV2, dict[str, Any]]:
+    if type(value) is not SingleMemberTrainingBuildV2:
+        raise WorldAfterstateV2TrainingControllerError("member build type drift")
+    validate_member_manifest(value.manifest)
+    raw = value.selected_checkpoint_raw
+    if type(raw) is not bytes or _sha_bytes(raw) != value.manifest[
+            "selected_checkpoint_external_sha256"]:
+        raise WorldAfterstateV2TrainingControllerError("checkpoint external binding drift")
+    try:
+        model, metadata = reopen_checkpoint(raw)
+    except Exception as exc:
+        raise WorldAfterstateV2TrainingControllerError("checkpoint reopen refused") from exc
+    selected = value.manifest["common_epoch"]["selected_epoch"]
+    schedule = _schedule_from_payload(value.manifest["fit_schedule_receipts"][selected - 1])
+    expected = {
+        "member_index": value.manifest["member_index"],
+        "seed_block": value.manifest["seed_block"], "control_name": "natural",
+        "init_seed": value.manifest["initialization_seed"], "selected_epoch": selected,
+        "freeze_sha256": value.manifest["freeze_sha256"],
+        "config_sha256": value.manifest["config_sha256"],
+        "population_sha256": value.manifest["training_population_sha256"],
+        "schedule_sha256": _training_schedule_sha(schedule),
+        "common_epoch_sha256": value.manifest["common_epoch_sha256"],
+    }
+    if any(metadata[key] != actual for key, actual in expected.items()) \
+            or metadata["checkpoint_sha256"] != value.manifest["selected_checkpoint_sha256"] \
+            or metadata["model_state_sha256"] != value.manifest["selected_model_state_sha256"]:
+        raise WorldAfterstateV2TrainingControllerError("checkpoint metadata binding drift")
+    if value.manifest["epoch_receipts"][selected - 1][
+            "model_state_sha256_after"] != metadata["model_state_sha256"]:
+        raise WorldAfterstateV2TrainingControllerError("selected state binding drift")
+    return model, value.manifest
+
+
+# Explicit aliases make the typed primitive discoverable without introducing a
+# second implementation or an alternate control/audit route.
+validate_single_member_manifest = validate_member_manifest
+reopen_single_member_build = reopen_member_build
+train_named_single_member = train_named_member
+
+
 __all__ = [
     "AUTHORITY", "CohortTrainingBuildV2", "EpochSelectScoreV2",
-    "MANIFEST_SCHEMA",
-    "WorldAfterstateV2TrainingControllerError", "reopen_cohort_build",
-    "train_named_cohort", "validate_cohort_manifest",
+    "MANIFEST_SCHEMA", "SINGLE_MEMBER_MANIFEST_SCHEMA",
+    "SingleMemberTrainingBuildV2", "WorldAfterstateV2TrainingControllerError",
+    "reopen_cohort_build", "reopen_member_build", "reopen_single_member_build",
+    "train_named_cohort", "train_named_member", "train_named_single_member",
+    "validate_cohort_manifest", "validate_member_manifest",
+    "validate_single_member_manifest",
 ]

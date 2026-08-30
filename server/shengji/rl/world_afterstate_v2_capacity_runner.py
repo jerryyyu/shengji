@@ -34,7 +34,7 @@ from .world_afterstate_v2_capacity import (
     MEASUREMENT_SCOPE,
     MAX_TASKS, CapacityArmV2, CapacityReceiptV2, ComposedProjectionV2,
     ProgressRecoveryV2, TierProjectionV2, WorldAfterstateV2CapacityError,
-    validate_capacity_receipt_v2,
+    composed_critical_path_seconds, validate_capacity_receipt_v2,
 )
 from .world_afterstate_v2_protocol import ATTEMPT_SCHEMA, P0_DEALS, TIER_SPECS
 from .world_afterstate_v2_schedule import MAX_EPOCHS
@@ -554,6 +554,12 @@ class SyntheticMeasurementBackendV2:
 
 def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], None]:
     """Construct a score-free operation from the current V2 primitives."""
+    if stage in {"member-concurrency", "torch-threads-per-member"}:
+        # Keep the low-level operation seam honest for callers that exercise
+        # an arm directly; the runner uses _model_operation for the full
+        # retained fixture population.
+        return _model_operation(stage, variant, (fixture,))
+
     def run() -> None:
         if stage == "state-successor":
             value = replay_canonical_successor(dict(fixture.snapshot))
@@ -569,11 +575,11 @@ def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Non
                 if actions:
                     value.play(actor, list(actions[0]))
             return _sha(canonical_successor(value, 0))
-        elif stage in {"member-concurrency", "torch-threads-per-member", "inference-batch"}:
-            # These three arms exercise the actual target-free model input and
-            # forward path.  No training target, optimizer, or label is ever
-            # constructed.  Imports stay local because the server itself does
-            # not require the optional RL dependency.
+        elif stage == "inference-batch":
+            # The inference arm exercises the actual target-free model input
+            # and forward path.  No training target, optimizer, or label is
+            # ever constructed.  Imports stay local because the server itself
+            # does not require the optional RL dependency.
             import json as _json
             import torch
             from .world_afterstate import build_afterstate_tensors
@@ -618,6 +624,57 @@ def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Non
         else:
             raise CapacityRunnerError("unknown capacity stage")
     return run
+
+
+def _capacity_training_batch(fixtures: Sequence[FixtureV2]) -> Any:
+    """Build one typed, score-free training batch before timing starts.
+
+    Capacity labels are deterministic workload targets only.  They are kept in
+    memory and are deliberately derived from sealed candidate/audit identity;
+    no scientific continuation or outcome is opened or persisted here.
+    """
+    import json as _json
+    from .world_afterstate import build_afterstate_tensors
+    from .world_afterstate_v2_training import (
+        WorldAfterstateV2TrainingExample, collate_training_examples)
+    from .world_afterstate import OUTCOME_CLASSES
+    values = tuple(fixtures)
+    if not values or any(type(item.material) is not PopulationMaterialV2
+                         for item in values):
+        raise CapacityRunnerError("capacity training material is missing")
+    material = values[0].material
+    assert material is not None
+    material.validate()
+    rows = []
+    points = material.prestate.get("public", {}).get("attacker_points")
+    from .world_afterstate_v2_protocol import prior_points_bucket
+    points_bucket = prior_points_bucket(points)
+    for candidate, raw in zip(material.candidates, material.audit_raws, strict=True):
+        audit = _json.loads(raw.decode("ascii"))
+        tensors = build_afterstate_tensors(audit)
+        for replica in range(8):
+            continuation_identity = _sha({
+                "namespace": "world-afterstate-v2-capacity-label-v1",
+                "state": material.state.state_sha256,
+                "replica": replica})
+            target = int(continuation_identity[:8], 16) % OUTCOME_CLASSES
+            rows.append(WorldAfterstateV2TrainingExample(
+                deal_sha256=material.state.deal_sha256,
+                slot_sha256=material.state.slot_sha256,
+                state_sha256=material.state.state_sha256,
+                candidate_set_sha256=material.candidate_set_sha256,
+                candidate_index=candidate.candidate_index,
+                protected_incumbent=candidate.protected_incumbent,
+                successor_sha256=candidate.successor_sha256,
+                continuation_sha256=continuation_identity,
+                replica=replica, source=material.state.source, split="fit",
+                role=material.state.role, phase=material.state.phase,
+                position=material.state.position,
+                trump_rank=material.state.trump_rank,
+                trump_mode=material.state.trump_mode,
+                points_bucket=points_bucket, tensors=tensors,
+                signed_level_category=target))
+    return collate_training_examples(tuple(rows))
 
 
 def _tensor_identity(value: Any) -> str:
@@ -671,40 +728,75 @@ def _parallel_operation(stage: str, variant: int,
 
 def _model_operation(stage: str, variant: int,
                      fixtures: Sequence[FixtureV2]) -> Callable[[], str]:
-    """Run target-free model work with the requested member/batch shape."""
+    """Run fixed model work with the requested member/batch shape.
+
+    Training arms capture a typed batch at factory time, outside the backend's
+    timed callback.  Inference-batch remains target-free and inference-only.
+    """
     values = tuple(fixtures)
+    training_batch = (_capacity_training_batch(values)
+                      if stage in {"member-concurrency",
+                                   "torch-threads-per-member"} else None)
 
     def run() -> str:
         import torch
-        from .world_afterstate import build_afterstate_tensors
-        from .world_afterstate_v2_model import (
-            collate_world_afterstate_tensors, new_world_afterstate_v2_model)
-        tensors = tuple(
-            build_afterstate_tensors(json.loads(raw.decode("ascii")))
-            for fixture in values for raw in fixture.audit_raws)
-        if not tensors:
-            raise CapacityRunnerError("model fixture has no score-free audit bytes")
-        with torch.inference_mode():
+        from .world_afterstate_v2_model import new_world_afterstate_v2_model
+        with torch.random.fork_rng(devices=[]):
+            # Model initialization is part of the fixed score-free fixture;
+            # reset it for every arm so output identity compares work, not
+            # process-global RNG state.
+            torch.manual_seed(0)
             if stage == "member-concurrency":
-                model_count = variant
+                # Every arm executes the same four-model/four-step population;
+                # only executor width varies.  State digests bind post-step
+                # model bytes rather than inference outputs.
+                from .world_afterstate_v2_training import (
+                    WorldAfterstateV2TrainingConfig, model_state_sha256,
+                    new_optimizer, train_epoch)
+                config = WorldAfterstateV2TrainingConfig(
+                    learning_rate_ppb=10_000_000, weight_decay_ppb=0,
+                    gradient_norm_milli=1_000, max_epochs=1,
+                    sigma_pair_squared=1.0)
+                model_count = 4
                 output: list[str] = [""] * model_count
+                with torch.random.fork_rng(devices=[]):
+                    torch.manual_seed(0)
+                    models = tuple(new_world_afterstate_v2_model(0)
+                                   for _ in range(model_count))
                 def member(index: int) -> None:
-                    model = new_world_afterstate_v2_model(0)
-                    output[index] = _tensor_identity(
-                        model(collate_world_afterstate_tensors(tensors)))
-                with ThreadPoolExecutor(max_workers=model_count) as pool:
+                    optimizer = new_optimizer(models[index], config)
+                    train_epoch(models[index], optimizer, (training_batch,),
+                                epoch=1, config=config)
+                    output[index] = model_state_sha256(models[index])
+                with ThreadPoolExecutor(max_workers=variant) as pool:
+                    # Executor width is the only member-concurrency arm
+                    # dimension; fixed population and order are retained.
                     tuple(pool.map(member, range(model_count)))
-                if len(set(output)) != 1:
-                    raise CapacityRunnerError(
-                        "member-concurrency output population drift")
-                output = output[:1]
             elif stage == "torch-threads-per-member":
+                from .world_afterstate_v2_training import (
+                    WorldAfterstateV2TrainingConfig, model_state_sha256,
+                    new_optimizer, train_epoch)
+                config = WorldAfterstateV2TrainingConfig(
+                    learning_rate_ppb=10_000_000, weight_decay_ppb=0,
+                    gradient_norm_milli=1_000, max_epochs=1,
+                    sigma_pair_squared=1.0)
                 # Thread arms alter torch's execution width only; one model
-                # forward over the same tensors is performed for every arm.
+                # train step over the same typed batch is performed for every
+                # arm.
                 model = new_world_afterstate_v2_model(0)
-                output = [_tensor_identity(
-                    model(collate_world_afterstate_tensors(tensors)))]
+                optimizer = new_optimizer(model, config)
+                train_epoch(model, optimizer, (training_batch,), epoch=1,
+                            config=config)
+                output = [model_state_sha256(model)]
             else:
+                from .world_afterstate import build_afterstate_tensors
+                from .world_afterstate_v2_model import collate_world_afterstate_tensors
+                tensors = tuple(
+                    build_afterstate_tensors(json.loads(raw.decode("ascii")))
+                    for fixture in values for raw in fixture.audit_raws)
+                if not tensors:
+                    raise CapacityRunnerError(
+                        "model fixture has no score-free audit bytes")
                 model = new_world_afterstate_v2_model(0)
                 batches = []
                 for start in range(0, len(tensors), variant):
@@ -753,6 +845,24 @@ def _arm_from_raw(stage: str, variant: int, raw: RawMeasurementV2,
     return arm
 
 
+def _select_arms(arms: Sequence[CapacityArmV2]) -> dict[str, CapacityArmV2]:
+    """Select fastest memory-eligible byte-identical arm per dimension."""
+    selected: dict[str, CapacityArmV2] = {}
+    for stage in ARM_GRIDS:
+        stage_arms = [arm for arm in arms if arm.stage == stage]
+        if len({arm.byte_identity_sha256 for arm in stage_arms}) != 1:
+            raise CapacityRunnerError("stage arms are not byte-identical")
+        eligible = [arm for arm in stage_arms
+                    if arm.peak_memory_bytes * 100 <= MEMORY_LIMIT_BYTES * 85]
+        if not eligible:
+            raise CapacityRunnerError("no memory-eligible arm")
+        selected[stage] = min(
+            eligible, key=lambda arm: (arm.wall_nanoseconds or
+                                       arm.wall_seconds * 1_000_000_000,
+                                       arm.variant))
+    return selected
+
+
 @dataclass(frozen=True)
 class CapacityRunResultV2:
     receipt: CapacityReceiptV2 | None
@@ -786,6 +896,16 @@ class RepresentativeDAGV2:
     progress_recovery: Mapping[str, bool] | None = None
     provenance_token: object | None = None
     attestation_sha256: str | None = None
+    stage_source_unit_counts: tuple[tuple[str, int], ...] = ()
+    stage_process_cpu_nanoseconds: tuple[tuple[str, int], ...] = ()
+    member_workers: int = 0
+    torch_threads: int = 0
+    inference_batch: int = 0
+
+    @property
+    def stage_cpu_nanoseconds(self) -> tuple[tuple[str, int], ...]:
+        """Compatibility spelling for the process-CPU witness."""
+        return self.stage_process_cpu_nanoseconds
 
 
 def _dag_attestation(value: RepresentativeDAGV2) -> str:
@@ -798,6 +918,11 @@ def _dag_attestation(value: RepresentativeDAGV2) -> str:
         "admissible": value.admissible,
         "source_fixture_count": value.source_fixture_count,
         "stage_walls_seconds": list(value.stage_walls_seconds),
+        "stage_source_unit_counts": list(value.stage_source_unit_counts),
+        "stage_process_cpu_nanoseconds": list(value.stage_process_cpu_nanoseconds),
+        "member_workers": value.member_workers,
+        "torch_threads": value.torch_threads,
+        "inference_batch": value.inference_batch,
         "progress_recovery": value.progress_recovery,
     })
 
@@ -829,11 +954,20 @@ def _scientific_stage_units(spec: Any) -> dict[str, int]:
     fit = spec.fit
     return {
         "optimizer-canary": 16 * 500,
-        "nested-curve-25": max(1, fit * 25 // 100) * MAX_EPOCHS,
-        "nested-curve-50": max(1, fit * 50 // 100) * MAX_EPOCHS,
-        "nested-curve-100": fit * MAX_EPOCHS,
+        # Nested 25/50 each train a prefix for all epochs and then perform the
+        # fit/select epoch-selection evaluation.  Nested-100 reuses the
+        # already-fitted member and therefore pays evaluation only.
+        "nested-curve-25": max(1, fit * 25 // 100) * MAX_EPOCHS + spec.select,
+        "nested-curve-50": max(1, fit * 50 // 100) * MAX_EPOCHS + spec.select,
+        "nested-curve-100": fit + spec.select,
         "p0": P0_DEALS,
-        "label": spec.total,
+        # P0 labels are a strict pre-P0 spend.  The remaining fit labels and
+        # epoch-select half are opened after P0+optimizer; precision-select
+        # and audit labels each wait for their respective durable boundary.
+        "label-p0": P0_DEALS,
+        "label-fit": fit - P0_DEALS + spec.select // 2,
+        "label-precision-select": spec.select // 2,
+        "label-audit": spec.audit,
         "block-1-natural": fit * MAX_EPOCHS,
         "block-1-action-association-permutation": fit * MAX_EPOCHS,
         "block-1-label-permutation": fit * MAX_EPOCHS,
@@ -855,21 +989,26 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
     base = wall("state-successor", fixture_count)
     continuation = wall("continuation-mechanics", fixture_count)
     measured = dict(dag.stage_walls_seconds) if dag else {}
+    measured_cpu = (dict(dag.stage_process_cpu_nanoseconds)
+                    if dag else {})
     if dag:
         source = max(1, dag.source_fixture_count)
         # These are the reviewed D256 populations, expressed per measured
         # retained-sample stage.  Fixed canary work remains 16 roots/500
         # optimizer steps; split/cohort stages have distinct populations.
         projected_units = _scientific_stage_units(TIER_SPECS[0])
+        source_units = dict(dag.stage_source_unit_counts)
+        fit_source = max(1, source // 2)
         units = {
             "optimizer-canary": (16 * 500, projected_units["optimizer-canary"]),
-            "nested-curve-25": (max(1, source * 25 // 100),
+            "nested-curve-25": (max(1, fit_source * 25 // 100) + fit_source,
                                  projected_units["nested-curve-25"]),
-            "nested-curve-50": (max(1, source * 50 // 100),
+            "nested-curve-50": (max(1, fit_source * 50 // 100) + fit_source,
                                  projected_units["nested-curve-50"]),
-            "nested-curve-100": (source, projected_units["nested-curve-100"]),
+            "nested-curve-100": (fit_source, projected_units["nested-curve-100"]),
+            "label-p0": (source, projected_units["label-p0"]),
             "p0": (source, projected_units["p0"]),
-            "label": (source, projected_units["label"]),
+            "label-fit": (source, projected_units["label-fit"]),
             "block-1-natural": (source, projected_units["block-1-natural"]),
             "block-2-natural": (source, projected_units["block-2-natural"]),
             "block-1-action-association-permutation": (source,
@@ -881,21 +1020,36 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
             "block-2-complete-world-shuffle": (source,
                 projected_units["block-2-complete-world-shuffle"]),
             "precision-select-inference": (source, TIER_SPECS[0].select),
+            "label-precision-select": (source,
+                projected_units["label-precision-select"]),
             "precision-select": (source, TIER_SPECS[0].select),
             "audit": (source, TIER_SPECS[0].audit),
+            "label-audit": (source, projected_units["label-audit"]),
             "reconstruction": (source, TIER_SPECS[0].total),
         }
+        if source_units:
+            units = {name: (source_units.get(name, source), projected)
+                     for name, (_sample, projected) in units.items()}
         stage_units = tuple((name, *units[name]) for name in COMPOSED_STAGE_NAMES)
         def measured_wall(name: str, fallback: int) -> int:
             sample, projected = units[name]
             seconds = measured.get(name, fallback)
             return max(1, (seconds * projected + sample - 1) // sample)
+        measured_cpu_seconds = {
+            name: max(1, (value + 999_999_999) // 1_000_000_000)
+            for name, value in measured_cpu.items()}
+        def projected_cpu(name: str, fallback: int) -> int:
+            sample, projected = units[name]
+            seconds = measured_cpu_seconds.get(name, fallback)
+            return max(1, (seconds * projected + sample - 1) // sample)
     else:
         stage_units = ()
         def measured_wall(name: str, fallback: int) -> int:
             return fallback
-    label = measured_wall("label", dag.label_wall_seconds
-                         if dag else max(1, base + continuation * 8))
+        measured_cpu_seconds = {}
+        def projected_cpu(name: str, fallback: int) -> int:
+            return fallback
+    label = max(1, base + continuation * 8)
     inference = measured_wall("precision-select-inference", dag.inference_wall_seconds
                               if dag else wall("inference-batch", fixture_count))
     reconstruction = measured_wall("reconstruction", dag.reconstruction_wall_seconds
@@ -906,12 +1060,14 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
                              dag.control_wall_seconds if dag else label)
     audit = measured_wall("audit", dag.audit_wall_seconds if dag else label)
     values = (
+        ("label-p0", measured_wall("label-p0", p0)),
+        ("p0", p0),
         ("optimizer-canary", measured_wall("optimizer-canary", wall("state-successor"))),
+        ("label-fit", measured_wall("label-fit", label)),
         ("nested-curve-25", measured_wall("nested-curve-25", max(1, base // 4))),
         ("nested-curve-50", measured_wall("nested-curve-50", max(1, base // 2))),
-        ("nested-curve-100", measured_wall("nested-curve-100", base)),
-        ("p0", p0), ("label", label),
         ("block-1-natural", epoch),
+        ("nested-curve-100", measured_wall("nested-curve-100", base)),
         ("block-1-action-association-permutation",
          measured_wall("block-1-action-association-permutation", controls)),
         ("block-1-label-permutation",
@@ -921,9 +1077,16 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
         ("block-2-complete-world-shuffle",
          measured_wall("block-2-complete-world-shuffle", controls)),
         ("precision-select-inference", inference),
+        ("label-precision-select",
+         measured_wall("label-precision-select", inference)),
         ("precision-select", measured_wall("precision-select", inference)),
-        ("audit", audit), ("reconstruction", reconstruction),)
-    total = sum(value for _, value in values)
+        ("label-audit", measured_wall("label-audit", audit)),
+        ("audit", audit),
+        ("reconstruction", reconstruction),)
+    cpu_values = tuple((name, projected_cpu(name,
+        max(1, values[index][1] * HOST_CPUS)))
+        for index, (name, _value) in enumerate(values))
+    total = composed_critical_path_seconds(dict(values))
     artifact = (max(1, (dag.artifact_bytes * TIER_SPECS[0].total
                         + max(1, dag.source_fixture_count) - 1)
                      // max(1, dag.source_fixture_count))
@@ -934,13 +1097,24 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
         composed_artifact_bytes=artifact, free_disk_bytes_before=free_disk_bytes,
         stage_unit_counts=stage_units,
         measured_stage_walls_seconds=(
-            tuple(dag.stage_walls_seconds) if dag else ()))
+            tuple(dag.stage_walls_seconds) if dag else ()),
+        stage_cpu_seconds=cpu_values,
+        measured_stage_cpu_seconds=(
+            tuple((name, max(1, (value + 999_999_999) // 1_000_000_000))
+                  for name, value in dag.stage_process_cpu_nanoseconds)
+            if dag else ()))
 
 
 def _tiers(composed: ComposedProjectionV2) -> tuple[TierProjectionV2, ...]:
     stage = dict(composed.stage_walls_seconds)
     base_units = {name: projected for name, _measured, projected
                   in composed.stage_unit_counts}
+    base_cpu = dict(composed.stage_cpu_seconds)
+    if not base_units:
+        base_units = {name: 1 for name in stage}
+    if not base_cpu:
+        base_cpu = {name: max(1, seconds * HOST_CPUS)
+                    for name, seconds in stage.items()}
     result = []
     for spec in TIER_SPECS:
         target_units = _scientific_stage_units(spec)
@@ -949,14 +1123,26 @@ def _tiers(composed: ComposedProjectionV2) -> tuple[TierProjectionV2, ...]:
                           + base_units[name] - 1) // base_units[name])
             for name, seconds in stage.items()
         }
+        projected_cpu = {
+            name: max(1, (base_cpu[name] * target_units[name]
+                          + base_units[name] - 1) // base_units[name])
+            for name in stage}
         result.append(TierProjectionV2(
-            tier=spec.name, exact_source_supply=True,
-            # Label cost is the measured label stage, not an arbitrary share
-            # of the composed total.  CPU is the same exact work category in
-            # the projected tier.
-            label_wall_seconds=projected_stage["label"],
-            label_cpu_seconds=projected_stage["label"] * HOST_CPUS,
-            complete_dag_wall_seconds=sum(projected_stage.values()),
+            tier=spec.name,
+            # The first reviewed scientific implementation composes only the
+            # exact D256 population.  Keep larger projections visible for a
+            # future source amendment, but never let host speed alone freeze a
+            # tier whose population/adapters cannot actually be produced.
+            exact_source_supply=spec.name == "D256",
+            # Label cost is the sum of the four measured label buckets, not an
+            # arbitrary share of the composed total.  CPU is the same exact
+            # work category in the projected tier.
+            label_wall_seconds=sum(projected_stage[name] for name in (
+                "label-p0", "label-fit", "label-precision-select", "label-audit")),
+            label_cpu_seconds=sum(projected_cpu[name] for name in (
+                "label-p0", "label-fit", "label-precision-select", "label-audit")),
+            complete_dag_wall_seconds=composed_critical_path_seconds(
+                projected_stage, composed.dag_edges),
             peak_memory_bytes=composed.peak_memory_bytes,
             composed_artifact_bytes=max(
                 1, composed.composed_artifact_bytes * spec.total
@@ -992,6 +1178,18 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
                    for _, seconds in stage_rows)):
         raise FullDAGCapacityDependencyBlocked(
             "complete full-DAG stage timing witness is missing")
+    unit_rows = representative_dag.stage_source_unit_counts
+    if (type(unit_rows) is not tuple
+            or tuple(name for name, _ in unit_rows) != COMPOSED_STAGE_NAMES
+            or any(type(value) is not int or value < 1 for _, value in unit_rows)):
+        raise FullDAGCapacityDependencyBlocked(
+            "complete full-DAG representative unit witness is missing")
+    cpu_rows = representative_dag.stage_process_cpu_nanoseconds
+    if (type(cpu_rows) is not tuple
+            or tuple(name for name, _ in cpu_rows) != COMPOSED_STAGE_NAMES
+            or any(type(value) is not int or value < 1 for _, value in cpu_rows)):
+        raise FullDAGCapacityDependencyBlocked(
+            "complete full-DAG process CPU witness is missing")
     required_recovery = (
         "reports_stage_counts", "reports_active_workers_and_cpu",
         "reports_elapsed_eta_headroom", "reports_current_peak_cgroup_memory",
@@ -1013,16 +1211,15 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
         if getattr(arm, "_synthetic_measurement", False):
             raise CapacityRunnerError("synthetic measurement cannot build production receipt")
         arm.validate()
-    selected: dict[str, CapacityArmV2] = {}
-    for stage in ARM_GRIDS:
-        eligible = [arm for arm in arms if arm.stage == stage and
-                    arm.peak_memory_bytes * 100 <= MEMORY_LIMIT_BYTES * 85]
-        if not eligible:
-            raise CapacityRunnerError("no memory-eligible arm")
-        selected[stage] = min(
-            eligible, key=lambda arm: (arm.wall_nanoseconds or
-                                       arm.wall_seconds * 1_000_000_000,
-                                       arm.variant))
+    selected = _select_arms(arms)
+    layout = (selected["member-concurrency"].variant,
+               selected["torch-threads-per-member"].variant,
+               selected["inference-batch"].variant)
+    if (representative_dag.member_workers,
+            representative_dag.torch_threads,
+            representative_dag.inference_batch) != layout:
+        raise FullDAGCapacityDependencyBlocked(
+            "full-DAG resource layout mismatch")
     composed = _composed_projection(
         selected, len(preflight.accepted_fixtures), host.free_disk_bytes,
         representative_dag)
@@ -1037,19 +1234,20 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
             new_world_afterstate_v2_model(0)))
     except Exception as exc:
         raise CapacityRunnerError("model parameter measurement unavailable") from exc
+    capabilities = dict(representative_dag.progress_recovery)
     progress = ProgressRecoveryV2(
         progress_interval_seconds=60, progress_interval_fraction_ppm=10_000,
-        reports_stage_counts=True, reports_active_workers_and_cpu=True,
-        reports_elapsed_eta_headroom=True, reports_current_peak_cgroup_memory=True,
-        reports_immutable_shard_checkpoint_count=True,
-        resumes_verified_shards_only=True, resume_same_admission=True,
-        resume_cannot_regenerate_replace_select=True,
-        checkpoints_each_common_epoch=True,
-        deadline_truncation_keeps_complete_epoch=True,
-        audit_requires_complete_upstream=True,
-        audit_attempt_fsynced_before_open=True, one_audit_open=True,
-        reconstruction_without_retraining=True,
-        reconstruction_reuses_immutable_continuations=True)
+        **{name: capabilities[name] for name in (
+            "reports_stage_counts", "reports_active_workers_and_cpu",
+            "reports_elapsed_eta_headroom", "reports_current_peak_cgroup_memory",
+            "reports_immutable_shard_checkpoint_count",
+            "resumes_verified_shards_only", "resume_same_admission",
+            "resume_cannot_regenerate_replace_select",
+            "checkpoints_each_common_epoch",
+            "deadline_truncation_keeps_complete_epoch",
+            "audit_requires_complete_upstream", "audit_attempt_fsynced_before_open",
+            "one_audit_open", "reconstruction_without_retraining",
+            "reconstruction_reuses_immutable_continuations")})
     receipt = CapacityReceiptV2(
         host_logical_cpus=host.logical_cpus,
         # Arms run sequentially and the complete DAG follows them.  Taking
@@ -1067,7 +1265,10 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
                                 if representative_dag else
                             selected["member-concurrency"].wall_seconds),
         peak_task_count=max((arm.peak_task_count or arm.task_count)
-                            for arm in arms), measurement_scope=MEASUREMENT_SCOPE)
+                        for arm in arms), measurement_scope=MEASUREMENT_SCOPE)
+    receipt = __import__("dataclasses").replace(
+        receipt, member_workers=layout[0], torch_threads=layout[1],
+        inference_batch=layout[2])
     try:
         validate_capacity_receipt_v2(receipt)
     except WorldAfterstateV2CapacityError as exc:
@@ -1106,11 +1307,23 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
             # Same bytes are supplied to all arms; a backend changing that
             # identity is refused before it can influence selection.
             fixture = fixtures[0]
-            operation = (_parallel_operation(stage, variant, fixtures)
-                         if stage in {"state-successor", "continuation-mechanics",
-                                       "reconstruction"}
-                         else _model_operation(stage, variant, fixtures))
-            if stage == "torch-threads-per-member":
+            # Synthetic measurements are a receipt-validation seam and never
+            # execute or publish workload evidence.  Do not require their
+            # deliberately minimal fixtures to carry the real population
+            # material needed by the production training operations.
+            if getattr(backend, "synthetic", False):
+                operation = lambda: fixture_sha
+            else:
+                operation = (_parallel_operation(stage, variant, fixtures)
+                             if stage in {"state-successor",
+                                           "continuation-mechanics",
+                                           "reconstruction"}
+                             else _model_operation(stage, variant, fixtures))
+            if stage == "member-concurrency":
+                operation_to_run = operation
+                operation = lambda: _run_with_torch_threads(
+                    operation_to_run, 1)
+            elif stage == "torch-threads-per-member":
                 operation_to_run = operation
                 operation = lambda: _run_with_torch_threads(
                     operation_to_run, variant)
@@ -1152,6 +1365,11 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                             arm.mean_cpu_utilization_ppm, progress)
     if production and time.perf_counter_ns() - started > MAX_COMMAND_WALL_SECONDS * 1_000_000_000:
         raise CapacityRunnerError("capacity command wall cap exceeded")
+    selected = _select_arms(arms)
+    # Freeze the exact layout before any representative DAG work starts.
+    member_workers = selected["member-concurrency"].variant
+    torch_threads = selected["torch-threads-per-member"].variant
+    inference_batch = selected["inference-batch"].variant
     if getattr(backend, "synthetic", False):
         return CapacityRunResultV2(None, tuple(arms), preflight, True,
                                    getattr(backend, "brand", SYNTHETIC_BRAND))
@@ -1165,12 +1383,21 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         try:
             measured = run_full_dag_supervisor(
                 fixtures, backend=backend, progress=progress,
-                deadline_ns=deadline_ns, _provenance=_FULL_DAG_PROVENANCE)
+                deadline_ns=deadline_ns, _provenance=_FULL_DAG_PROVENANCE,
+                member_workers=member_workers, torch_threads=torch_threads,
+                inference_batch=inference_batch)
             measured.validate()
             stage = dict(measured.stage_wall_nanoseconds)
+            required_staged_labels = {
+                "label-p0", "label-fit", "label-precision-select", "label-audit"}
+            if not required_staged_labels.issubset(stage):
+                raise FullDAGCapacityDependencyBlocked(
+                    "full-DAG staged label timing witness is missing")
+            label_wall = sum(stage[name] for name in required_staged_labels)
             dag = RepresentativeDAGV2(
+                _ceil_seconds(stage["p0"]), _ceil_seconds(label_wall),
                 *(_ceil_seconds(stage[name]) for name in (
-                    "p0", "label", "block-1-natural",
+                    "block-1-natural",
                     "block-1-complete-world-shuffle",
                     "precision-select-inference", "audit",
                     "reconstruction")),
@@ -1178,6 +1405,11 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 stage_walls_seconds=tuple(
                     (name, _ceil_seconds(value))
                     for name, value in measured.stage_wall_nanoseconds),
+                stage_source_unit_counts=measured.stage_source_unit_counts,
+                stage_process_cpu_nanoseconds=measured.stage_process_cpu_nanoseconds,
+                member_workers=measured.member_workers,
+                torch_threads=measured.torch_threads,
+                inference_batch=measured.inference_batch,
                 progress_recovery=dict(measured.progress_recovery),
                 provenance_token=measured.provenance_token)
             object.__setattr__(dag, "attestation_sha256", _dag_attestation(dag))
@@ -1232,7 +1464,8 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
                 "selected_arms", "composed", "tiers", "progress_recovery",
                 "authority", "model_parameter_count",
                 "candidate_distribution", "per_epoch_wall_seconds",
-                "peak_task_count", "measurement_scope"}
+                "peak_task_count", "measurement_scope", "member_workers",
+                "torch_threads", "inference_batch"}
     if set(payload) != required:
         raise CapacityRunnerError("capacity payload field population drift")
     try:
@@ -1246,6 +1479,18 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
         composed_payload["measured_stage_walls_seconds"] = tuple(
             tuple(row) for row in composed_payload.get(
                 "measured_stage_walls_seconds", ()))
+        composed_payload["stage_cpu_seconds"] = tuple(
+            tuple(row) for row in composed_payload.get("stage_cpu_seconds", ()))
+        composed_payload["measured_stage_cpu_seconds"] = tuple(
+            tuple(row) for row in composed_payload.get(
+                "measured_stage_cpu_seconds", ()))
+        composed_payload["scientific_dag_edges"] = tuple(
+            tuple(row) for row in composed_payload.get("scientific_dag_edges", ()))
+        composed_payload["dag_edges"] = tuple(
+            tuple(row) for row in composed_payload.get("dag_edges", ()))
+        composed_payload["capacity_stage_to_production_stage"] = tuple(
+            tuple(row) for row in composed_payload.get(
+                "capacity_stage_to_production_stage", ()))
         composed = ComposedProjectionV2(**composed_payload)
         tiers = tuple(TierProjectionV2(**row) for row in payload["tiers"])
         progress = ProgressRecoveryV2(**payload["progress_recovery"])
@@ -1263,7 +1508,10 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
             candidate_distribution=candidate_distribution,
             per_epoch_wall_seconds=payload["per_epoch_wall_seconds"],
             peak_task_count=payload["peak_task_count"],
-            measurement_scope=payload["measurement_scope"])
+            measurement_scope=payload["measurement_scope"],
+            member_workers=payload["member_workers"],
+            torch_threads=payload["torch_threads"],
+            inference_batch=payload["inference_batch"])
         validate_capacity_receipt_v2(result)
     except Exception as exc:
         raise CapacityRunnerError("capacity payload reconstruction refused") from exc

@@ -42,7 +42,15 @@ from .world_afterstate_v2_training import model_state_sha256
 ROOT_SCHEMA = "world-afterstate-v2-inference-root-v1"
 PREDICTION_SCHEMA = "world-afterstate-v2-candidate-prediction-v1"
 POPULATION_SCHEMA = "world-afterstate-v2-prediction-population-v1"
+NESTED_CURVE_PREDICTION_SCHEMA = "world-afterstate-v2-nested-curve-prediction-v1"
+NESTED_CURVE_FRACTIONS_PPM = (250_000, 500_000, 1_000_000)
 PROBABILITY_SCALE = 1_000_000_000
+# Float32 matrix kernels are not reduction-order byte stable across otherwise
+# equivalent inference batch shapes.  Six decimal places are finer than the
+# model's calibrated resolution while absorbing those sub-PPM kernel deltas;
+# the subsequent PPB largest-remainder encoding remains exact and normalized.
+PROBABILITY_CANONICAL_DECIMALS = 6
+INFERENCE_BATCH_CAPS = (32, 64, 128, 256)
 MEMBERS_PER_BLOCK = 4
 SEED_BLOCKS = (1, 2)
 CONTROL_NAMES = ("natural", *TRAINING_CONTROL_NAMES)
@@ -278,6 +286,17 @@ def _quantize_probability_row(row: torch.Tensor) -> tuple[int, ...]:
         raise WorldAfterstateV2InferenceError(
             "inference probability total drift")
     values = values / total
+    # Batched linear algebra can choose a different reduction order than a
+    # one-root call, leaving otherwise identical probabilities a few float32
+    # ulps apart.  Canonicalize below the sealed PPB precision before applying
+    # largest-remainder quantization so the byte artifact is batch-shape
+    # independent while retaining the reviewed probability scale.
+    values = np.round(values, decimals=PROBABILITY_CANONICAL_DECIMALS)
+    rounded_total = float(values.sum())
+    if not math.isfinite(rounded_total) or rounded_total <= 0:
+        raise WorldAfterstateV2InferenceError(
+            "inference probability rounding drift")
+    values = values / rounded_total
     scaled = values * PROBABILITY_SCALE
     floors = np.floor(scaled).astype(np.int64)
     residual = PROBABILITY_SCALE - int(floors.sum())
@@ -384,60 +403,153 @@ class CandidatePredictionV2:
         }
 
 
-def predict_root_v2(model: WorldAfterstateValueV2,
-                    root: ValueInferenceRootV2, *, seed_block: int,
-                    member_index: int,
-                    control_name: str = "natural") \
-        -> tuple[CandidatePredictionV2, ...]:
+def _prediction_request(model: WorldAfterstateValueV2,
+                        roots: Sequence[ValueInferenceRootV2], *,
+                        seed_block: int, member_index: int,
+                        control_name: str) -> tuple[ValueInferenceRootV2, ...]:
     if type(model) is not WorldAfterstateValueV2 \
-            or type(root) is not ValueInferenceRootV2:
+            or type(roots) not in (tuple, list) or not roots:
         raise WorldAfterstateV2InferenceError(
             "prediction request type drift")
-    root.validate()
+    for root in roots:
+        if type(root) is not ValueInferenceRootV2:
+            raise WorldAfterstateV2InferenceError(
+                "prediction root type drift")
+        root.validate()
     _strict_int(member_index, "prediction member index")
     if seed_block not in SEED_BLOCKS or member_index >= MEMBERS_PER_BLOCK \
             or control_name not in CONTROL_NAMES:
         raise WorldAfterstateV2InferenceError(
             "prediction cohort identity drift")
+    return tuple(roots)
+
+
+def _resolve_inference_batch_cap(candidate_cap: int,
+                                 inference_batch_cap: int | None) -> int:
+    if inference_batch_cap is not None:
+        if candidate_cap != 256 and candidate_cap != inference_batch_cap:
+            raise WorldAfterstateV2InferenceError(
+                "inference batch cap specified twice")
+        candidate_cap = inference_batch_cap
+    if isinstance(candidate_cap, bool) or not isinstance(candidate_cap, int) \
+            or candidate_cap not in INFERENCE_BATCH_CAPS:
+        raise WorldAfterstateV2InferenceError("inference batch cap drift")
+    return candidate_cap
+
+
+def _collate_prediction_roots(roots: Sequence[ValueInferenceRootV2],
+                              start: int, stop: int) -> WorldAfterstateV2Batch:
+    """Collate a whole-root range, trimming each root's history padding."""
+    selected = roots[start:stop]
+    tensors = [root.tensors for root in selected]
+    count = sum(tensor.size for tensor in tensors)
+    max_history = max(
+        (int(tensor.history_lengths[index]) for tensor in tensors
+         for index in range(tensor.size)), default=0)
+    first = tensors[0]
+    history = torch.zeros(
+        (count, max_history, first.history.shape[2]), dtype=first.history.dtype,
+        device=first.history.device)
+    offset = 0
+    for tensor in tensors:
+        for index in range(tensor.size):
+            length = int(tensor.history_lengths[index])
+            if length:
+                history[offset + index, :length] = tensor.history[index, :length]
+        offset += tensor.size
+    result = WorldAfterstateV2Batch(
+        public=torch.cat(tuple(tensor.public for tensor in tensors), dim=0),
+        history=history,
+        history_lengths=torch.cat(tuple(tensor.history_lengths for tensor in tensors), dim=0),
+        world=torch.cat(tuple(tensor.world for tensor in tensors), dim=0),
+        perspective=torch.cat(tuple(tensor.perspective for tensor in tensors), dim=0),
+    )
+    result.validate()
+    return result
+
+
+def predict_roots_v2(model: WorldAfterstateValueV2,
+                     roots: Sequence[ValueInferenceRootV2], *, seed_block: int,
+                     member_index: int, control_name: str = "natural",
+                     candidate_cap: int = 256,
+                     inference_batch_cap: int | None = None) \
+        -> tuple[CandidatePredictionV2, ...]:
+    """Predict an ordered root population in whole-root candidate batches."""
+    roots = _prediction_request(
+        model, roots, seed_block=seed_block, member_index=member_index,
+        control_name=control_name)
+    candidate_cap = _resolve_inference_batch_cap(
+        candidate_cap, inference_batch_cap)
+    if any(root.candidate_count > candidate_cap for root in roots):
+        raise WorldAfterstateV2InferenceError(
+            "inference root exceeds batch cap")
     before = model_state_sha256(model)
     was_training = model.training
     model.eval()
     try:
         with torch.no_grad():
-            logits = model(root.tensors)
-            probabilities = torch.softmax(logits, dim=1)
+            all_probabilities: list[torch.Tensor] = []
+            start = 0
+            while start < len(roots):
+                stop = start
+                count = 0
+                while stop < len(roots):
+                    next_count = roots[stop].candidate_count
+                    if stop > start and count + next_count > candidate_cap:
+                        break
+                    count += next_count
+                    stop += 1
+                batch = _collate_prediction_roots(roots, start, stop)
+                all_probabilities.append(torch.softmax(model(batch), dim=1))
+                start = stop
     finally:
         model.train(was_training)
-    if probabilities.shape != (root.candidate_count, OUTCOME_CLASSES) \
+    probabilities = torch.cat(all_probabilities, dim=0)
+    total_candidates = sum(root.candidate_count for root in roots)
+    if probabilities.shape != (total_candidates, OUTCOME_CLASSES) \
             or model_state_sha256(model) != before:
         raise WorldAfterstateV2InferenceError(
             "prediction execution drift")
     built = []
-    for index in range(root.candidate_count):
-        probability_ppb = _quantize_probability_row(probabilities[index])
-        built.append(CandidatePredictionV2(
-            root_sha256=root.root_sha256,
-            deal_sha256=root.deal_sha256,
-            slot_sha256=root.slot_sha256,
-            state_sha256=root.state_sha256,
-            candidate_set_sha256=root.candidate_set_sha256,
-            candidate_index=index,
-            successor_sha256=root.successor_sha256s[index],
-            tensor_sha256=root.tensor_sha256s[index],
-            seed_block=seed_block,
-            member_index=member_index,
-            control_name=control_name,
-            model_state_sha256=before,
-            probability_ppb=probability_ppb,
-            expected_signed_microlevels=expected_signed_microlevels(
-                probability_ppb),
-            consumer_eligible=(seed_block == 1
-                               and control_name == "natural"),
-        ))
+    offset = 0
+    for root in roots:
+        for index in range(root.candidate_count):
+            probability_ppb = _quantize_probability_row(probabilities[offset + index])
+            built.append(CandidatePredictionV2(
+                root_sha256=root.root_sha256,
+                deal_sha256=root.deal_sha256,
+                slot_sha256=root.slot_sha256,
+                state_sha256=root.state_sha256,
+                candidate_set_sha256=root.candidate_set_sha256,
+                candidate_index=index,
+                successor_sha256=root.successor_sha256s[index],
+                tensor_sha256=root.tensor_sha256s[index],
+                seed_block=seed_block,
+                member_index=member_index,
+                control_name=control_name,
+                model_state_sha256=before,
+                probability_ppb=probability_ppb,
+                expected_signed_microlevels=expected_signed_microlevels(
+                    probability_ppb),
+                consumer_eligible=(seed_block == 1
+                                   and control_name == "natural"),
+            ))
+        offset += root.candidate_count
     rows = tuple(built)
     for row in rows:
         row.validate()
     return rows
+
+
+def predict_root_v2(model: WorldAfterstateValueV2,
+                    root: ValueInferenceRootV2, *, seed_block: int,
+                    member_index: int,
+                    control_name: str = "natural") \
+        -> tuple[CandidatePredictionV2, ...]:
+    """Compatibility wrapper for one-root prediction."""
+    return predict_roots_v2(
+        model, (root,), seed_block=seed_block, member_index=member_index,
+        control_name=control_name)
 
 
 def prediction_population_manifest_v2(
@@ -745,12 +857,280 @@ def select_primary_actions_v2(
     return _select_primary_rows_v2(predictions)
 
 
+@dataclass(frozen=True)
+class NestedCurvePredictionV2:
+    """One target-free, non-consumer prediction for a nested curve point."""
+
+    root_sha256: str
+    deal_sha256: str
+    slot_sha256: str
+    state_sha256: str
+    candidate_set_sha256: str
+    candidate_index: int
+    successor_sha256: str
+    tensor_sha256: str
+    seed_block: int
+    member_index: int
+    control_name: str
+    model_state_sha256: str
+    probability_ppb: tuple[int, ...]
+    expected_signed_microlevels: int
+    consumer_eligible: bool = False
+    schema: str = NESTED_CURVE_PREDICTION_SCHEMA
+
+    def validate(self) -> None:
+        for value in (self.root_sha256, self.deal_sha256, self.slot_sha256,
+                      self.state_sha256, self.candidate_set_sha256,
+                      self.successor_sha256, self.tensor_sha256,
+                      self.model_state_sha256):
+            _digest(value, "nested prediction digest")
+        _strict_int(self.candidate_index, "nested prediction candidate index")
+        if (self.schema != NESTED_CURVE_PREDICTION_SCHEMA
+                or self.seed_block != 1 or self.member_index != 0
+                or self.control_name != "natural"
+                or type(self.probability_ppb) is not tuple
+                or self.expected_signed_microlevels != expected_signed_microlevels(
+                    self.probability_ppb)
+                or self.consumer_eligible is not False):
+            raise WorldAfterstateV2InferenceError(
+                "nested prediction identity/value drift")
+
+    def payload(self) -> dict[str, Any]:
+        self.validate()
+        return {"schema": self.schema, "root_sha256": self.root_sha256,
+                "deal_sha256": self.deal_sha256, "slot_sha256": self.slot_sha256,
+                "state_sha256": self.state_sha256,
+                "candidate_set_sha256": self.candidate_set_sha256,
+                "candidate_index": self.candidate_index,
+                "successor_sha256": self.successor_sha256,
+                "tensor_sha256": self.tensor_sha256, "seed_block": self.seed_block,
+                "member_index": self.member_index, "control_name": self.control_name,
+                "model_state_sha256": self.model_state_sha256,
+                "probability_ppb": list(self.probability_ppb),
+                "expected_signed_microlevels": self.expected_signed_microlevels,
+                "consumer_eligible": False}
+
+
+def predict_nested_curve_v2(
+        model: WorldAfterstateValueV2,
+        roots: Sequence[ValueInferenceRootV2], *, split: str,
+        fraction_ppm: int,
+        inference_batch_cap: int | None = None) -> tuple[NestedCurvePredictionV2, ...]:
+    """Predict one fixed block-1/member-0 nested-curve diagnostic point."""
+    if type(model) is not WorldAfterstateValueV2 or type(roots) not in (tuple, list) \
+            or not roots or split not in ("fit", "select") \
+            or fraction_ppm not in NESTED_CURVE_FRACTIONS_PPM:
+        raise WorldAfterstateV2InferenceError("nested prediction request drift")
+    for root in roots:
+        if type(root) is not ValueInferenceRootV2:
+            raise WorldAfterstateV2InferenceError("nested prediction root type drift")
+        root.validate()
+        if root.split != split or (split == "select" and root.select_subfold != "epoch-select"):
+            raise WorldAfterstateV2InferenceError("nested prediction split drift")
+    # Reuse the canonical whole-root batching implementation.  Mapping its
+    # target-free rows preserves the historical nested diagnostic payload while
+    # ensuring its execution shape is governed by the selected capacity arm.
+    rows = predict_roots_v2(
+        model, roots, seed_block=1, member_index=0,
+        control_name="natural", inference_batch_cap=inference_batch_cap)
+    built: list[NestedCurvePredictionV2] = []
+    for row in rows:
+        built.append(NestedCurvePredictionV2(
+            root_sha256=row.root_sha256, deal_sha256=row.deal_sha256,
+            slot_sha256=row.slot_sha256, state_sha256=row.state_sha256,
+            candidate_set_sha256=row.candidate_set_sha256,
+            candidate_index=row.candidate_index,
+            successor_sha256=row.successor_sha256,
+            tensor_sha256=row.tensor_sha256, seed_block=1, member_index=0,
+            control_name="natural", model_state_sha256=row.model_state_sha256,
+            probability_ppb=row.probability_ppb,
+            expected_signed_microlevels=row.expected_signed_microlevels))
+    return tuple(built)
+
+
+def nested_curve_prediction_manifest_v2(
+        roots: Sequence[ValueInferenceRootV2],
+        predictions: Sequence[NestedCurvePredictionV2], *, split: str,
+        fraction_ppm: int) -> dict[str, Any]:
+    if type(roots) not in (tuple, list) or not roots \
+            or type(predictions) not in (tuple, list) or not predictions \
+            or split not in ("fit", "select") \
+            or fraction_ppm not in NESTED_CURVE_FRACTIONS_PPM:
+        raise WorldAfterstateV2InferenceError("nested prediction manifest request drift")
+    root_map: dict[str, ValueInferenceRootV2] = {}
+    for root in roots:
+        if type(root) is not ValueInferenceRootV2:
+            raise WorldAfterstateV2InferenceError("nested prediction root type drift")
+        root.validate()
+        if root.split != split or (split == "select" and root.select_subfold != "epoch-select") \
+                or root.root_sha256 in root_map:
+            raise WorldAfterstateV2InferenceError("nested prediction root split/duplicate drift")
+        root_map[root.root_sha256] = root
+    rows: dict[tuple[str, int], NestedCurvePredictionV2] = {}
+    for prediction in predictions:
+        if type(prediction) is not NestedCurvePredictionV2:
+            raise WorldAfterstateV2InferenceError("nested prediction row type drift")
+        prediction.validate()
+        key = (prediction.root_sha256, prediction.candidate_index)
+        if key in rows:
+            raise WorldAfterstateV2InferenceError("nested prediction duplicate")
+        root = root_map.get(prediction.root_sha256)
+        if root is None or prediction.candidate_index >= root.candidate_count \
+                or (prediction.deal_sha256, prediction.slot_sha256,
+                    prediction.state_sha256, prediction.candidate_set_sha256,
+                    prediction.successor_sha256, prediction.tensor_sha256) != (
+                        root.deal_sha256, root.slot_sha256, root.state_sha256,
+                        root.candidate_set_sha256,
+                        root.successor_sha256s[prediction.candidate_index],
+                        root.tensor_sha256s[prediction.candidate_index]):
+            raise WorldAfterstateV2InferenceError("nested prediction/root binding drift")
+        rows[key] = prediction
+    expected = {(root.root_sha256, candidate) for root in roots
+                for candidate in range(root.candidate_count)}
+    if set(rows) != expected:
+        raise WorldAfterstateV2InferenceError("nested prediction candidate drop")
+    model_states = {row.model_state_sha256 for row in rows.values()}
+    if len(model_states) != 1:
+        raise WorldAfterstateV2InferenceError("nested prediction model population drift")
+    ordered = sorted(roots, key=lambda item: item.root_sha256)
+    bindings = [{**root.target_free_body(), "root_sha256": root.root_sha256}
+                for root in ordered]
+    body = {
+        "schema": NESTED_CURVE_PREDICTION_SCHEMA, "split": split,
+        "fraction_ppm": fraction_ppm, "seed_block": 1, "member_index": 0,
+        "control_name": "natural", "member_count": 1,
+        "consumer_eligible": False, "root_count": len(roots),
+        "candidate_count": len(rows), "model_state_sha256": next(iter(model_states)),
+        "root_bindings": bindings,
+        "root_population_sha256": _sha([{
+            key: item for key, item in binding.items() if key != "root_sha256"}
+            for binding in bindings]),
+        "predictions": [rows[key].payload() for key in sorted(rows)],
+        "audit_rows_opened": False, "precision_labels_opened": False,
+    }
+    result = {**body, "manifest_sha256": _sha(body)}
+    validate_nested_curve_prediction_manifest_v2(result)
+    return result
+
+
+def validate_nested_curve_prediction_manifest_v2(value: Mapping[str, Any]) -> None:
+    required = {"schema", "split", "fraction_ppm", "seed_block", "member_index",
+                "control_name", "member_count", "consumer_eligible", "root_count",
+                "candidate_count", "model_state_sha256", "root_bindings",
+                "root_population_sha256", "predictions", "audit_rows_opened",
+                "precision_labels_opened", "manifest_sha256"}
+    if type(value) is not dict or set(value) != required \
+            or value.get("schema") != NESTED_CURVE_PREDICTION_SCHEMA \
+            or value.get("split") not in ("fit", "select") \
+            or value.get("fraction_ppm") not in NESTED_CURVE_FRACTIONS_PPM \
+            or value.get("seed_block") != 1 or value.get("member_index") != 0 \
+            or value.get("control_name") != "natural" or value.get("member_count") != 1 \
+            or value.get("consumer_eligible") is not False \
+            or value.get("audit_rows_opened") is not False \
+            or value.get("precision_labels_opened") is not False:
+        raise WorldAfterstateV2InferenceError("nested prediction manifest identity drift")
+    _digest(value["model_state_sha256"], "nested prediction model state")
+    _digest(value["root_population_sha256"], "nested prediction root population")
+    _digest(value["manifest_sha256"], "nested prediction manifest")
+    bindings = value["root_bindings"]
+    if type(bindings) is not list or len(bindings) != value["root_count"] \
+            or isinstance(value["root_count"], bool) \
+            or not isinstance(value["root_count"], int) or value["root_count"] < 1 \
+            or isinstance(value["candidate_count"], bool) \
+            or not isinstance(value["candidate_count"], int) or value["candidate_count"] < 1:
+        raise WorldAfterstateV2InferenceError("nested prediction root population drift")
+    root_keys = {"schema", "deal_sha256", "slot_sha256", "state_sha256",
+                 "candidate_set_sha256", "split", "source", "role", "phase",
+                 "position", "trump_rank", "trump_mode", "select_subfold",
+                 "points_bucket", "successor_sha256s", "tensor_sha256s", "root_sha256"}
+    roots: dict[str, dict[str, Any]] = {}
+    states: set[str] = set()
+    bodies = []
+    for binding in bindings:
+        if type(binding) is not dict or set(binding) != root_keys \
+                or binding.get("split") != value["split"] \
+                or (value["split"] == "select" and binding.get("select_subfold") != "epoch-select") \
+                or value["split"] == "fit" and binding.get("select_subfold") is not None:
+            raise WorldAfterstateV2InferenceError("nested prediction root binding drift")
+        for key in ("deal_sha256", "slot_sha256", "state_sha256",
+                    "candidate_set_sha256", "root_sha256"):
+            _digest(binding[key], "nested prediction root digest")
+        successors = binding["successor_sha256s"]; tensors = binding["tensor_sha256s"]
+        if type(successors) is not list or len(successors) < 2 \
+                or type(tensors) is not list or len(tensors) != len(successors):
+            raise WorldAfterstateV2InferenceError("nested prediction candidate drift")
+        for digest in (*successors, *tensors): _digest(digest, "nested prediction candidate digest")
+        root_body = {key: item for key, item in binding.items() if key != "root_sha256"}
+        if (binding["root_sha256"] != _sha(root_body)
+                or binding["root_sha256"] in roots
+                or binding["state_sha256"] in states):
+            raise WorldAfterstateV2InferenceError("nested prediction root reconstruction drift")
+        roots[binding["root_sha256"]] = binding; states.add(binding["state_sha256"]); bodies.append(root_body)
+    if value["candidate_count"] != sum(len(row["successor_sha256s"]) for row in bindings) \
+            or value["root_population_sha256"] != _sha(bodies):
+        raise WorldAfterstateV2InferenceError("nested prediction root population reconstruction drift")
+    rows = value["predictions"]
+    if type(rows) is not list or len(rows) != value["candidate_count"]:
+        raise WorldAfterstateV2InferenceError("nested prediction manifest population drift")
+    seen = set()
+    for payload in rows:
+        try:
+            row = NestedCurvePredictionV2(
+                **{key: tuple(item) if key == "probability_ppb" else item
+                   for key, item in payload.items()})
+            row.validate()
+        except Exception as exc:
+            raise WorldAfterstateV2InferenceError("nested prediction manifest row drift") from exc
+        key = (row.root_sha256, row.candidate_index)
+        binding = roots.get(row.root_sha256)
+        if key in seen or binding is None or row.candidate_index >= len(binding["successor_sha256s"]) \
+                or row.model_state_sha256 != value["model_state_sha256"] \
+                or (row.deal_sha256, row.slot_sha256, row.state_sha256,
+                    row.candidate_set_sha256, row.successor_sha256,
+                    row.tensor_sha256) != (binding["deal_sha256"], binding["slot_sha256"],
+                    binding["state_sha256"], binding["candidate_set_sha256"],
+                    binding["successor_sha256s"][row.candidate_index],
+                    binding["tensor_sha256s"][row.candidate_index]):
+            raise WorldAfterstateV2InferenceError("nested prediction manifest row binding drift")
+        seen.add(key)
+    if seen != {(root, candidate) for root, binding in roots.items()
+                for candidate in range(len(binding["successor_sha256s"]))}:
+        raise WorldAfterstateV2InferenceError("nested prediction manifest candidate drop")
+    body = {key: item for key, item in value.items() if key != "manifest_sha256"}
+    if value["manifest_sha256"] != _sha(body):
+        raise WorldAfterstateV2InferenceError("nested prediction manifest reconstruction drift")
+
+
+def reopen_nested_curve_prediction_manifest_v2(
+        value: Mapping[str, Any]) -> tuple[NestedCurvePredictionV2, ...]:
+    validate_nested_curve_prediction_manifest_v2(value)
+    return tuple(NestedCurvePredictionV2(
+        **{key: tuple(item) if key == "probability_ppb" else item for key, item in row.items()})
+        for row in value["predictions"])
+
+
+# Descriptive aliases used by diagnostic callers; all route through the same
+# one-member, non-consumer implementation.
+nested_curve_prediction_population_manifest_v2 = nested_curve_prediction_manifest_v2
+validate_nested_curve_prediction_population_manifest_v2 = validate_nested_curve_prediction_manifest_v2
+reopen_nested_curve_prediction_population_manifest_v2 = reopen_nested_curve_prediction_manifest_v2
+predict_nested_curve_member_v2 = predict_nested_curve_v2
+
+
 __all__ = [
-    "AUTHORITY", "CONTROL_NAMES", "MEMBERS_PER_BLOCK", "PROBABILITY_SCALE",
-    "CandidatePredictionV2", "ValueInferenceRootV2",
+    "AUTHORITY", "CONTROL_NAMES", "INFERENCE_BATCH_CAPS", "MEMBERS_PER_BLOCK",
+    "PROBABILITY_CANONICAL_DECIMALS", "PROBABILITY_SCALE",
+    "CandidatePredictionV2", "NestedCurvePredictionV2", "ValueInferenceRootV2",
     "WorldAfterstateV2InferenceError", "build_inference_root_v2",
-    "expected_signed_microlevels", "predict_root_v2",
-    "prediction_population_manifest_v2",
+    "expected_signed_microlevels", "predict_root_v2", "predict_roots_v2",
+    "NESTED_CURVE_PREDICTION_SCHEMA", "nested_curve_prediction_manifest_v2",
+    "nested_curve_prediction_population_manifest_v2",
+    "predict_nested_curve_member_v2",
+    "predict_nested_curve_v2", "prediction_population_manifest_v2",
+    "reopen_nested_curve_prediction_manifest_v2",
+    "reopen_nested_curve_prediction_population_manifest_v2",
     "reopen_prediction_population_manifest_v2",
-    "select_primary_actions_v2", "validate_prediction_population_manifest_v2",
+    "select_primary_actions_v2", "validate_nested_curve_prediction_manifest_v2",
+    "validate_nested_curve_prediction_population_manifest_v2",
+    "validate_prediction_population_manifest_v2",
 ]

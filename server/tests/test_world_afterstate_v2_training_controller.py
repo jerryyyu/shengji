@@ -14,8 +14,10 @@ from shengji.rl.world_afterstate_v2_training import (
 from shengji.rl.world_afterstate_v2_selection import EpochSelectPopulationV2
 from shengji.rl.world_afterstate_v2_training_controller import (
     CohortTrainingBuildV2,
+    SingleMemberTrainingBuildV2,
     WorldAfterstateV2TrainingControllerError,
-    reopen_cohort_build, train_named_cohort, validate_cohort_manifest,
+    reopen_cohort_build, reopen_member_build, train_named_cohort, train_named_member,
+    validate_cohort_manifest, validate_member_manifest,
 )
 from test_world_afterstate_v2_training import _rows
 from test_world_afterstate_v2_evaluation import _population
@@ -209,3 +211,62 @@ def test_recovery_binds_checkpoint_init_seed_and_selected_schedule(identity):
     with pytest.raises(WorldAfterstateV2TrainingControllerError,
                        match="checkpoint metadata binding"):
         reopen_cohort_build(forged)
+
+
+def _member_build(*, fraction=0.25, max_epochs=1, **kwargs):
+    options = {"wall_budget_nanoseconds": 10**15, "torch_threads": 1,
+               "clock": lambda: 0}
+    options.update(kwargs)
+    return train_named_member(
+        values=tuple(_rows("nested-member")), data_fraction=fraction,
+        freeze_sha256=hashlib.sha256(b"freeze").hexdigest(),
+        config=_config(max_epochs), selection_population=_selection_population(),
+        **options)
+
+
+def test_single_member_nested_point_is_deterministic_and_reopens():
+    first = _member_build(fraction=0.25)
+    second = _member_build(fraction=0.25)
+    assert type(first) is SingleMemberTrainingBuildV2
+    assert first.manifest == second.manifest
+    assert first.selected_checkpoint_raw == second.selected_checkpoint_raw
+    model, manifest = reopen_member_build(first)
+    assert manifest["member_name"] == "nested-curve-25"
+    assert manifest["member_index"] == 0
+    assert manifest["audit_eligible"] is False
+    assert manifest["consumer_eligible"] is False
+    assert model.training is True
+    promoted = dict(manifest)
+    promoted["consumer_eligible"] = True
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="identity"):
+        validate_member_manifest(promoted)
+
+
+def test_single_member_rejects_control_and_invalid_member():
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="natural cohort"):
+        _member_build(cohort_name="complete-world-shuffle")
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="member index"):
+        _member_build(member_index=1)
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="primary seed block"):
+        _member_build(seed_block=2)
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="resource"):
+        _member_build(member_workers=2)
+
+
+def test_single_member_progress_and_deadline_routes():
+    progress = []
+    build = _member_build(fraction=0.5, max_epochs=2,
+                          progress=lambda row: progress.append(row))
+    assert progress[-1]["completed_units"] == 2
+    assert progress[-1]["total_units"] == 2
+    assert progress[-1]["percent_basis_points"] == 10_000
+    assert progress[-1]["active_workers"] == 1
+    validate_member_manifest(build.manifest)
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="deadline before epoch"):
+        _member_build(wall_budget_nanoseconds=1, clock=iter((10, 11)).__next__)

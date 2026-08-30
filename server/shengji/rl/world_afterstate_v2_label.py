@@ -25,7 +25,7 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-LABEL_SCHEMA = "world-afterstate-v2-p0-precision-label-v0"
+LABEL_SCHEMA = "world-afterstate-v2-p0-precision-label-v1"
 OUTCOME_SCHEMA = "world-afterstate-v2-continuation-outcome-v1"
 MECHANICS_EVIDENCE_SCHEMA = "world-afterstate-v2-p0-mechanics-evidence-v1"
 MECHANICS_SURFACES = (
@@ -525,6 +525,7 @@ def evaluate_precision_label(
     direction_values = {"0-to-1": [], "1-to-0": []}
     deal_values: dict[str, Fraction] = {}
     pair_halves: list[tuple[Fraction, Fraction, str]] = []
+    pair_targets: list[Fraction] = []
     chosen_incumbent: dict[str, tuple[Fraction, Fraction]] = {}
     for state in sorted(groups):
         candidates = groups[state]
@@ -555,12 +556,22 @@ def evaluate_precision_label(
         for index in sorted(candidates):
             if index == 0:
                 continue
+            pair_targets.append(_mean(tuple(
+                utilities[index][r] - utilities[0][r]
+                for r in REPLICATES)))
             pair_halves.append((
                 _mean(tuple(utilities[index][r] - utilities[0][r]
                             for r in HALVES[0])),
                 _mean(tuple(utilities[index][r] - utilities[0][r]
                             for r in HALVES[1])), rows.deal_sha256))
     pair_total = len(pair_halves)
+    pair_target_mean = _mean(tuple(pair_targets))
+    # Section 9 freezes the population (not Bessel/sample) variance across
+    # every non-incumbent P0 action's complete eight-replica advantage.  This
+    # is the auxiliary-loss normalization; it is intentionally distinct from
+    # the selected-action diagnostic standard deviation published below.
+    pair_target_variance = _mean(tuple(
+        (target - pair_target_mean) ** 2 for target in pair_targets))
     same_nonzero = sum(
         int(x != 0 and y != 0 and ((x > 0) == (y > 0)))
         for x, y, _ in pair_halves)
@@ -620,6 +631,8 @@ def evaluate_precision_label(
         "raw_outcome_count": len(outcomes),
         "replica_count": len(REPLICATES),
         "candidate_pair_count": pair_total,
+        "pair_target_population_variance": _fraction_payload(
+            pair_target_variance),
         "cell_counts": {"/".join(cell): sum(
             int(groups[state][0][0].phase == cell[0]
                 and groups[state][0][0].position == cell[1]
@@ -672,6 +685,7 @@ def validate_precision_label(value: Mapping[str, Any]) -> None:
     required = {
         "schema", "population_sha256", "deal_count", "state_count",
         "raw_outcome_count", "replica_count", "candidate_pair_count",
+        "pair_target_population_variance",
         "cell_counts", "directional_candidate_mean_microlevels",
         "combined_candidate_mean_microlevels", "sibling_same_nonzero_sign_ppm",
         "sibling_advantage_correlation_ppm",
@@ -721,6 +735,12 @@ def validate_precision_label(value: Mapping[str, Any]) -> None:
             or not -1_000_000 <= value["sibling_advantage_correlation_ppm"] <= 1_000_000 \
             or not -1_000_000 <= value["sibling_advantage_correlation_bootstrap_lower_ppm"] <= 1_000_000:
         raise WorldAfterstateV2LabelError("precision result metric drift")
+    pair_target_variance = _reopen_fraction(
+        value["pair_target_population_variance"],
+        "precision pair target population variance")
+    if pair_target_variance < 0:
+        raise WorldAfterstateV2LabelError(
+            "precision pair target population variance drift")
     cells = value["cell_counts"]
     if type(cells) is not dict or set(cells) != {"/".join(cell) for cell in P0_CELLS} \
             or any(type(item) is not int or item != P0_PER_CELL

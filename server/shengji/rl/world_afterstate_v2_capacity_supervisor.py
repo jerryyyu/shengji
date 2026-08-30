@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import hashlib
+import inspect
 import os
 from pathlib import Path
 import tempfile
@@ -31,8 +32,12 @@ from .world_afterstate_v2_controls import (
 from .world_afterstate_v2_dataset import build_training_examples_v2
 from .world_afterstate_v2_evaluation import evaluate_control_difference, evaluate_v2
 from .world_afterstate_v2_inference import (
-    build_inference_root_v2, predict_root_v2,
-    prediction_population_manifest_v2,
+    build_inference_root_v2, prediction_population_manifest_v2,
+)
+from .world_afterstate_v2_label import (
+    MECHANICS_SURFACES, P0_DEALS, ContinuationOutcomeV2,
+    build_p0_mechanics_evidence, evaluate_precision_label,
+    validate_precision_label,
 )
 from .world_afterstate_v2_metrics import build_natural_fit_prior
 from .world_afterstate_v2_population import PopulationMaterialV2
@@ -42,9 +47,13 @@ from .world_afterstate_v2_training import (
     collate_training_examples, new_optimizer, train_epoch)
 from .world_afterstate_v2_model import new_world_afterstate_v2_model
 from .world_afterstate_v2_training_controller import (
-    reopen_cohort_build, train_named_cohort,
+    reopen_cohort_build, reopen_member_build, train_named_cohort,
+    train_named_member,
 )
-from .world_afterstate_v2_protocol import TIER_SPECS
+from .world_afterstate_v2_protocol import (
+    TIER_SPECS, StateCandidateV2, build_population_slot_ledger,
+    select_p0_population,
+)
 from .world_afterstate_v2_continuation import (
     WorldAfterstateV2ContinuationError,
     build_continuation_bundle_v2, reopen_continuation_bundle_v2,
@@ -52,11 +61,12 @@ from .world_afterstate_v2_continuation import (
 
 
 FULL_DAG_STAGES = COMPOSED_STAGE_NAMES
+TRAINING_BATCH_EXAMPLE_CAP = 256
 FULL_DAG_MISSING_DEPENDENCY = (
-    "scientific P0/canary/AuditDerivationInputV2/audit receipts are "
-    "intentionally outside the retained-32 capacity witness; capacity "
-    "measures only typed sample primitives and their frozen workload "
-    "projections"
+    "scientific AuditDerivationInputV2 and audit receipts are intentionally "
+    "outside the retained-32 score-free capacity witness; P0, canary, "
+    "training, control, selection, audit-arithmetic, and reconstruction "
+    "workloads execute with non-scientific capacity inputs"
 )
 
 _RECOVERY_CAPABILITY_NAMES = (
@@ -74,6 +84,44 @@ class FullDAGCapacityDependencyBlocked(RuntimeError):
     """A required reviewed primitive did not execute successfully."""
 
 
+def _predict_roots_batched(predictor: Callable[..., Any], model: Any,
+                           roots: Sequence[Any], *, seed_block: int,
+                           member_index: int, control_name: str,
+                           inference_batch: int) -> tuple[Any, ...]:
+    """Call the reviewed whole-root predictor with its batch-cap spelling."""
+    parameters = inspect.signature(predictor).parameters
+    if ("batch_candidate_cap" in parameters
+            or any(parameter.kind is inspect.Parameter.VAR_KEYWORD
+                   for parameter in parameters.values())):
+        keyword = "batch_candidate_cap"
+    elif "inference_batch_cap" in parameters:
+        # Current inference implementation uses this equivalent spelling;
+        # retain the explicit batch cap until the public name settles.
+        keyword = "inference_batch_cap"
+    elif "candidate_cap" in parameters:
+        keyword = "candidate_cap"
+    else:
+        raise FullDAGCapacityDependencyBlocked(
+            "batched predictor has no candidate-cap parameter")
+    return tuple(predictor(
+        model, roots, seed_block=seed_block, member_index=member_index,
+        control_name=control_name, **{keyword: inference_batch}))
+
+
+def _verified_continuation_population(
+        artifact_root: Path, materials: Sequence[Any],
+        bundles: Sequence[Any]) -> bool:
+    """Reopen the persisted label population by deal identity, not order."""
+    bundle_by_deal = {bundle.deal_sha256: bundle for bundle in bundles}
+    return (len(bundle_by_deal) == len(materials)
+            and all(
+                material.deal_sha256 in bundle_by_deal
+                and reopen_continuation_shard(
+                    artifact_root, material).bundle_sha256
+                == bundle_by_deal[material.deal_sha256].bundle_sha256
+                for material in materials))
+
+
 @dataclass(frozen=True)
 class FullDAGCapacityMeasurementV2:
     """Receipt-free result consumed by the capacity runner."""
@@ -87,6 +135,19 @@ class FullDAGCapacityMeasurementV2:
     # this map from probes that ran against the sealed sample artifacts.
     progress_recovery: Mapping[str, bool] = field(default_factory=dict)
     provenance_token: object | None = None
+    # Representative unit counts bind each measured stage wall to the
+    # population actually executed; this prevents a 16-material label stage
+    # from being mistaken for the aggregate retained-32 stage.
+    stage_source_unit_counts: tuple[tuple[str, int], ...] = ()
+    stage_process_cpu_nanoseconds: tuple[tuple[str, int], ...] = ()
+    member_workers: int = 0
+    torch_threads: int = 0
+    inference_batch: int = 0
+
+    @property
+    def stage_cpu_nanoseconds(self) -> tuple[tuple[str, int], ...]:
+        """Compatibility spelling for the process-CPU witness."""
+        return self.stage_process_cpu_nanoseconds
 
     def validate(self) -> None:
         if tuple(name for name, _ in self.stage_wall_nanoseconds) != FULL_DAG_STAGES:
@@ -94,10 +155,34 @@ class FullDAGCapacityMeasurementV2:
         if any(type(value) is not int or value < 1
                for _, value in self.stage_wall_nanoseconds):
             raise FullDAGCapacityDependencyBlocked("full-DAG timing drift")
+        if self.stage_source_unit_counts:
+            if tuple(name for name, _ in self.stage_source_unit_counts) != FULL_DAG_STAGES \
+                    or any(type(value) is not int or value < 1
+                           for _, value in self.stage_source_unit_counts):
+                raise FullDAGCapacityDependencyBlocked(
+                    "full-DAG representative unit witness drift")
+        if self.stage_process_cpu_nanoseconds and (
+                type(self.stage_process_cpu_nanoseconds) is not tuple
+                or tuple(name for name, _ in self.stage_process_cpu_nanoseconds)
+                != FULL_DAG_STAGES
+                or any(type(value) is not int or value < 1
+                       for _, value in self.stage_process_cpu_nanoseconds)):
+            raise FullDAGCapacityDependencyBlocked(
+                "full-DAG process CPU witness drift")
+        if any((self.member_workers, self.torch_threads, self.inference_batch)) \
+                and (self.member_workers not in (1, 2, 4)
+                     or self.torch_threads not in (1, 2, 4)
+                     or self.inference_batch not in (32, 64, 128, 256)):
+            raise FullDAGCapacityDependencyBlocked(
+                "full-DAG resource layout missing")
+        if self.member_workers and not self.stage_process_cpu_nanoseconds:
+            raise FullDAGCapacityDependencyBlocked(
+                "full-DAG process CPU witness missing")
         if self.artifact_bytes < 1 or self.reconstruction_continuation_builds != 0:
             raise FullDAGCapacityDependencyBlocked("full-DAG artifact/reconstruction drift")
         if (len(self.actual_stage_witnesses) != len(FULL_DAG_STAGES)
                 or set(self.actual_stage_witnesses) != set(FULL_DAG_STAGES)
+                or tuple(self.actual_stage_witnesses) != FULL_DAG_STAGES
                 or not self.admissible):
             raise FullDAGCapacityDependencyBlocked("full-DAG actual witness missing")
         if (type(self.progress_recovery) is not dict
@@ -115,17 +200,25 @@ class FullDAGCapacitySupervisorV2:
     def __init__(self, fixtures: Sequence[Any], *, backend: Any,
                  progress: Callable[[dict[str, Any]], None] | None = None,
                  deadline_ns: int | None = None,
-                 output_root: Path | None = None) -> None:
+                 output_root: Path | None = None,
+                 member_workers: int | None = None,
+                 torch_threads: int | None = None,
+                 inference_batch: int | None = None) -> None:
         self.fixtures = tuple(fixtures)
         self.backend = backend
         self.progress = progress
         self.deadline_ns = deadline_ns
         self.output_root = output_root
+        self.member_workers = member_workers
+        self.torch_threads = torch_threads
+        self.inference_batch = inference_batch
 
     def run(self) -> FullDAGCapacityMeasurementV2:
         return run_full_dag_supervisor(
             self.fixtures, backend=self.backend, progress=self.progress,
-            deadline_ns=self.deadline_ns, output_root=self.output_root)
+            deadline_ns=self.deadline_ns, output_root=self.output_root,
+            member_workers=self.member_workers, torch_threads=self.torch_threads,
+            inference_batch=self.inference_batch)
 
 
 def _sha(value: object) -> str:
@@ -134,6 +227,91 @@ def _sha(value: object) -> str:
 
 def _identity(fixtures: Sequence[Any]) -> str:
     return _sha([fixture.fixture_sha256 for fixture in fixtures])
+
+
+def _capacity_p0_inputs() -> tuple[
+        tuple[ContinuationOutcomeV2, ...], Mapping[str, Any],
+        tuple[StateCandidateV2, ...], Mapping[str, Any]]:
+    """Build deterministic score-free inputs for the real P0 evaluator.
+
+    Scientific P0 continuation labels are not available during capacity.
+    These in-memory categories are workload values derived solely from public
+    slot identities.  They exercise the exact 128-to-96 selection,
+    cross-fitting, bootstrap, mechanics, and route arithmetic without opening
+    or persisting a scientific outcome.
+    """
+    tier = TIER_SPECS[0]
+    natural_slots = tuple(
+        slot for slot in build_population_slot_ledger(tier)
+        if slot.group == "natural-fit")
+    natural = tuple(StateCandidateV2(
+        deal_sha256=_sha(["capacity-p0-deal", index]),
+        slot_sha256=slot.slot_sha256,
+        state_sha256=_sha(["capacity-p0-state", index]),
+        source="natural", split="fit", phase=slot.phase,
+        position=slot.position, role=slot.role,
+        trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+        select_subfold=slot.select_subfold, mechanics_surfaces=(),
+        legal_candidate_count=3)
+        for index, slot in enumerate(natural_slots))
+    selected = select_p0_population(natural, tier=tier)
+    slot_by_sha = {slot.slot_sha256: slot for slot in natural_slots}
+    required = {state.deal_sha256: slot_by_sha[state.slot_sha256]
+                for state in selected}
+    rows: list[ContinuationOutcomeV2] = []
+    for deal_index, state in enumerate(selected):
+        slot = required[state.deal_sha256]
+        successors = tuple(
+            _sha(["capacity-p0-successor", deal_index, candidate])
+            for candidate in range(3))
+        candidate_set = _sha({
+            "schema": "world-afterstate-v2-candidate-set-v1",
+            "state_sha256": state.state_sha256,
+            "successor_sha256s": list(successors),
+        })
+        for replica in range(8):
+            for candidate in range(3):
+                # Nonconstant deterministic siblings keep every statistical
+                # branch live while remaining unrelated to game outcomes.
+                multiplier = 4 if candidate == 2 and replica >= 4 else candidate
+                rows.append(ContinuationOutcomeV2(
+                    deal_sha256=state.deal_sha256,
+                    slot_sha256=slot.slot_sha256,
+                    state_sha256=state.state_sha256,
+                    candidate_set_sha256=candidate_set,
+                    source="natural", split="fit", role=slot.role,
+                    phase=slot.phase, position=slot.position,
+                    trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+                    points_bucket="40-79", candidate_index=candidate,
+                    protected_incumbent=candidate == 0,
+                    successor_sha256=successors[candidate],
+                    continuation_sha256=_sha([
+                        "capacity-p0-continuation", deal_index, replica]),
+                    replica=replica,
+                    signed_level_category=100 + candidate * multiplier))
+    digest = _sha("capacity-p0-mechanics-match")
+    checks = {surface: ((digest, digest),) for surface in MECHANICS_SURFACES}
+    outcomes = tuple(rows)
+    evidence = build_p0_mechanics_evidence(
+        outcomes, required_slots=required,
+        natural_fit_population=natural, tier=tier, checks=checks)
+    return outcomes, required, natural, evidence
+
+
+def _execute_capacity_p0(
+        materials: Sequence[PopulationMaterialV2],
+        inputs: tuple[tuple[ContinuationOutcomeV2, ...], Mapping[str, Any],
+                      tuple[StateCandidateV2, ...], Mapping[str, Any]]) \
+        -> tuple[Any, ...]:
+    """Run target-free root construction and the production P0 evaluator."""
+    roots = tuple(build_inference_root_v2(material) for material in materials)
+    outcomes, required_slots, natural_population, mechanics = inputs
+    result = evaluate_precision_label(
+        outcomes, required_slots=required_slots,
+        natural_fit_population=natural_population,
+        tier=TIER_SPECS[0], mechanics_evidence=mechanics)
+    validate_precision_label(result)
+    return roots
 
 
 def _fail(stage: str, exc: BaseException) -> FullDAGCapacityDependencyBlocked:
@@ -146,6 +324,9 @@ def run_full_dag_supervisor(
         progress: Callable[[dict[str, Any]], None] | None = None,
         deadline_ns: int | None = None,
         output_root: Path | None = None,
+        member_workers: int | None = None,
+        torch_threads: int | None = None,
+        inference_batch: int | None = None,
         _provenance: object | None = None) -> FullDAGCapacityMeasurementV2:
     """Execute every representative stage over the retained 32 materials.
 
@@ -168,11 +349,19 @@ def run_full_dag_supervisor(
         except Exception as exc:
             raise _fail("material", exc) from exc
         materials.append(material)
+    if (member_workers not in (1, 2, 4)
+            or torch_threads not in (1, 2, 4)
+            or inference_batch not in (32, 64, 128, 256)):
+        raise FullDAGCapacityDependencyBlocked(
+            "full-DAG resource layout missing")
     identity = _identity(values)
     walls: dict[str, int] = {}
+    process_cpu: dict[str, int] = {}
     witnesses: list[str] = []
     artifact_count = 0
     bundles: list[Any] = []
+    bundle_cache: dict[str, Any] = {}
+    persisted_deals: set[str] = set()
     examples: tuple[Any, ...] = ()
     roots: tuple[Any, ...] = ()
     cohort_builds: dict[tuple[str, int], Any] = {}
@@ -185,6 +374,7 @@ def run_full_dag_supervisor(
     training_invocations = 0
     audit_open_count = 0
     checkpoint_common_epochs: list[int] = []
+    p0_inputs = _capacity_p0_inputs()
 
     started = time.perf_counter_ns()
     def measure(stage: str, operation: Callable[[], Any], workers: int = 1) -> Any:
@@ -193,9 +383,15 @@ def run_full_dag_supervisor(
                 f"full-DAG deadline exceeded before {stage}")
         try:
             raw = backend.measure(stage, workers, values[0], operation)
+            validator = getattr(raw, "validate", None)
+            if callable(validator):
+                validator()
             elapsed = int(raw.elapsed_ns)
+            cpu_elapsed = int(raw.process_cpu_ns)
             if elapsed < 1:
                 raise ValueError("non-positive stage timer")
+            if cpu_elapsed < 1:
+                raise ValueError("non-positive stage CPU timer")
             # The receipt's progress/recovery capabilities are earned from
             # live measurements, not default values in a progress callback.
             for attribute in ("sample_utilization_ppm", "sample_memory_bytes",
@@ -219,6 +415,7 @@ def run_full_dag_supervisor(
         except BaseException as exc:
             raise _fail(stage, exc) from exc
         walls[stage] = elapsed
+        process_cpu[stage] = cpu_elapsed
         witnesses.append(stage)
         elapsed_total = max(1, time.perf_counter_ns() - started)
         completed = len(witnesses)
@@ -270,44 +467,76 @@ def run_full_dag_supervisor(
 
         def p0() -> str:
             nonlocal roots
-            roots = tuple(build_inference_root_v2(material) for material in materials)
+            roots = _execute_capacity_p0(materials, p0_inputs)
             return identity
 
-        def label() -> str:
-            nonlocal examples
-            rows = []
-            for material, bundle in zip(materials, bundles, strict=True):
-                rows.extend(build_training_examples_v2(material, bundle))
-            examples = tuple(rows)
+        # The retained sample is partitioned deterministically so the P0
+        # representative is never rebuilt/counting again in later fit labels.
+        # Precision and audit populations are separate staged callbacks; their
+        # labels are generated only after their respective dependency fences.
+        ordered_materials = tuple(sorted(
+            materials, key=lambda material: material.state.deal_sha256))
+        p0_materials = ordered_materials[:16]
+        fit_materials = ordered_materials[16:]
+        p0_bundles: list[Any] = []
+        fit_bundles: list[Any] = []
+        precision_bundles: list[Any] = []
+        audit_bundles: list[Any] = []
+
+        def build_label_stage(stage_materials: Sequence[Any], destination: list[Any],
+                              *, persist: bool) -> str:
+            nonlocal artifact_count
+            for material in stage_materials:
+                deal = material.deal_sha256
+                bundle = bundle_cache.get(deal)
+                if bundle is None:
+                    bundle = build_continuation_bundle_v2(material)
+                    bundle_cache[deal] = bundle
+                if persist and deal not in persisted_deals:
+                    shard = publish_continuation_shard(
+                        artifact_root, material, bundle)
+                    artifact_count += shard.byte_count
+                    bundle = reopen_continuation_shard(artifact_root, material)
+                    bundle_cache[deal] = bundle
+                    persisted_deals.add(deal)
+                destination.append(bundle)
             return identity
-        # Continuation labels are constructed once, inside the measured label
-        # stage; the continuation arm itself is the mechanics benchmark.
-        def build_labels() -> str:
-            nonlocal bundles, artifact_count
-            for material in materials:
-                bundle = build_continuation_bundle_v2(material)
-                shard = publish_continuation_shard(artifact_root, material, bundle)
-                artifact_count += shard.byte_count
-                bundles.append(reopen_continuation_shard(artifact_root, material))
-            return identity
-        measure("label", lambda: (build_labels(), label())[1])
-        # P0 is a target-free root/tensor construction in capacity mode; the
-        # scientific P0 report is intentionally not minted from 32 materials.
+
+        def label_p0() -> str:
+            return build_label_stage(p0_materials, p0_bundles, persist=True)
+
+        def label_precision_select() -> str:
+            return build_label_stage(materials, precision_bundles, persist=False)
+
+        # Capacity uses deterministic in-memory categories to execute the real
+        # P0 cross-fit/bootstrap/mechanics arithmetic.  It never mints a
+        # scientific report or opens scientific continuation outcomes.
+        measure("label-p0", label_p0)
         measure("p0", p0)
+
+        def build_examples(source: Sequence[Any]) -> tuple[Any, ...]:
+            rows = []
+            for material, bundle in source:
+                rows.extend(build_training_examples_v2(material, bundle))
+            return tuple(rows)
+
+        examples = build_examples(tuple(zip(p0_materials, p0_bundles,
+                                             strict=True)))
 
         config = WorldAfterstateV2TrainingConfig(
             learning_rate_ppb=10_000_000, weight_decay_ppb=0,
             gradient_norm_milli=1_000, max_epochs=1, sigma_pair_squared=1.0)
+        fit_deals = {material.state.deal_sha256 for material in fit_materials}
         select_roots = tuple(__import__("dataclasses").replace(
-            root, split="select", select_subfold="epoch-select") for root in roots)
-        select_outcomes = tuple(__import__("dataclasses").replace(
-            row, split="select") for bundle in bundles for row in bundle.candidates)
+            root, split="select", select_subfold="epoch-select")
+            for root in roots if root.deal_sha256 in fit_deals)
+        precision_roots = tuple(__import__("dataclasses").replace(
+            root, split="select", select_subfold="epoch-select")
+            for root in roots)
         audit_roots = tuple(__import__("dataclasses").replace(
             root, split="audit", select_subfold=None) for root in roots)
-        audit_outcomes = tuple(__import__("dataclasses").replace(
-            row, split="audit") for bundle in bundles for row in bundle.candidates)
-        selection = EpochSelectPopulationV2(select_roots, select_outcomes)
-        selection.validate()
+        select_outcomes: tuple[Any, ...] = ()
+        selection: EpochSelectPopulationV2 | None = None
 
         def train(cohort: str, block: int, vals: Sequence[Any], natural: Sequence[Any] | None = None) -> str:
             nonlocal artifact_count, training_invocations
@@ -320,7 +549,11 @@ def run_full_dag_supervisor(
                 cohort_name=cohort, values=vals,
                 natural_values=natural, freeze_sha256=_sha(identity),
                 config=config, selection_population=selection, seed_block=block,
-                member_workers=4, torch_threads=1, batch_example_cap=256,
+                member_workers=member_workers, torch_threads=torch_threads,
+                # Training batching is a frozen recipe constant.  The
+                # independently measured inference arm affects only model
+                # prediction below.
+                batch_example_cap=TRAINING_BATCH_EXAMPLE_CAP,
                 wall_budget_nanoseconds=2 * 60 * 60 * 1_000_000_000)
             training_invocations += 1
             manifest = getattr(build, "manifest", None)
@@ -371,21 +604,49 @@ def run_full_dag_supervisor(
                     "capacity canary sibling population drift")
             training_cost(selected, 500)
             return identity
-        measure("optimizer-canary", run_canary, 4)
+        measure("optimizer-canary", run_canary, member_workers)
 
-        def run_nested(fraction: int) -> str:
-            groups: dict[str, list[Any]] = {}
-            for row in examples:
-                groups.setdefault(row.root_key, []).append(row)
-            keys = sorted(groups)
-            count = max(1, len(keys) * fraction // 4)
-            selected = tuple(row for key in keys[:count] for row in groups[key])
-            training_cost(selected, 1)
+        def label_fit_and_prepare() -> str:
+            nonlocal examples, bundles, select_outcomes, selection
+            build_label_stage(fit_materials, fit_bundles, persist=True)
+            bundles = p0_bundles + fit_bundles
+            examples = build_examples(tuple(zip(fit_materials, fit_bundles,
+                                                 strict=True)))
+            select_outcomes = tuple(__import__("dataclasses").replace(
+                row, split="select") for bundle in fit_bundles
+                for row in bundle.candidates)
+            selection = EpochSelectPopulationV2(select_roots, select_outcomes)
+            selection.validate()
             return identity
-        for stage, fraction in (("nested-curve-25", 1),
-                                ("nested-curve-50", 2),
-                                ("nested-curve-100", 4)):
-            measure(stage, lambda fraction=fraction: run_nested(fraction), 4)
+
+        # The remaining fit and epoch-select labels are opened only after the
+        # P0 roots and optimizer-canary have completed.
+        measure("label-fit", label_fit_and_prepare)
+
+        nested_builds: dict[str, Any] = {}
+
+        def run_nested(stage: str, fraction: float) -> str:
+            # Use the reviewed single-member controller, which performs the
+            # real fit epoch(s) followed by sealed epoch-select scoring.  The
+            # returned build remains in memory for this capacity witness only.
+            nested_builds[stage] = train_named_member(
+                values=examples, data_fraction=fraction, member_name=stage,
+                freeze_sha256=_sha(identity), config=config,
+                selection_population=selection, seed_block=1, member_index=0,
+                cohort_name="natural", member_workers=1,
+                torch_threads=torch_threads,
+                batch_example_cap=TRAINING_BATCH_EXAMPLE_CAP,
+                wall_budget_nanoseconds=2 * 60 * 60 * 1_000_000_000)
+            model, manifest = reopen_member_build(nested_builds[stage])
+            if model is None or manifest.get("member_index") != 0:
+                raise FullDAGCapacityDependencyBlocked(
+                    f"nested member build drift: {stage}")
+            return identity
+
+        for stage, fraction in (("nested-curve-25", 0.25),
+                                ("nested-curve-50", 0.50)):
+            measure(stage, lambda stage=stage, fraction=fraction:
+                    run_nested(stage, fraction), 1)
 
         control_rows: dict[str, tuple[Any, ...]] = {}
         transforms = {
@@ -406,16 +667,35 @@ def run_full_dag_supervisor(
             # ``train``.  Nested cost uses the raw train_epoch primitive and
             # never invokes train_named_cohort a second time.
             return train("natural", 1, examples)
-        measure("block-1-natural", natural_block1, 4)
+        measure("block-1-natural", natural_block1, member_workers)
+        # Nested-100 is evaluation/reuse only: reopen block-1 member 0 and
+        # score it on the sealed fit/select population.  It must never train.
+        def run_nested_100() -> str:
+            build = cohort_builds.get(("natural", 1))
+            if build is None or selection is None:
+                raise FullDAGCapacityDependencyBlocked(
+                    "nested-100 natural member is missing")
+            models, manifest = reopen_cohort_build(build)
+            if len(models) != 4 or manifest.get("cohort_name") != "natural":
+                raise FullDAGCapacityDependencyBlocked(
+                    "nested-100 cohort reopen drift")
+            selected_epoch = manifest["common_epoch"]["selected_epoch"]
+            selection.score(
+                models[0], epoch=selected_epoch, seed_block=1,
+                member_index=0, control_name="natural",
+                sigma_pair_squared=config.sigma_pair_squared)
+            return identity
+
+        measure("nested-curve-100", run_nested_100, 1)
         measure("block-1-action-association-permutation",
-                lambda: control_train(CONTROL_NAMES[0], 1), 4)
+                lambda: control_train(CONTROL_NAMES[0], 1), member_workers)
         measure("block-1-label-permutation",
-                lambda: control_train(CONTROL_NAMES[1], 1), 4)
+                lambda: control_train(CONTROL_NAMES[1], 1), member_workers)
         measure("block-1-complete-world-shuffle",
-                lambda: control_train(CONTROL_NAMES[2], 1), 4)
-        measure("block-2-natural", lambda: train("natural", 2, examples), 4)
+                lambda: control_train(CONTROL_NAMES[2], 1), member_workers)
+        measure("block-2-natural", lambda: train("natural", 2, examples), member_workers)
         measure("block-2-complete-world-shuffle",
-                lambda: control_train(CONTROL_NAMES[2], 2), 4)
+                lambda: control_train(CONTROL_NAMES[2], 2), member_workers)
 
         expected_cohorts = {
             ("natural", 1), ("natural", 2),
@@ -446,7 +726,8 @@ def run_full_dag_supervisor(
             freeze_sha256=_sha(identity), config=__import__(
                 "dataclasses").replace(config, max_epochs=2),
             selection_population=selection, seed_block=1,
-            member_workers=4, torch_threads=1, batch_example_cap=256,
+            member_workers=member_workers, torch_threads=torch_threads,
+            batch_example_cap=TRAINING_BATCH_EXAMPLE_CAP,
             wall_budget_nanoseconds=1, clock=truncation_clock)
         reopened_models, reopened_manifest = reopen_cohort_build(truncated_build)
         capability_probes["deadline_truncation_keeps_complete_epoch"] = (
@@ -460,32 +741,45 @@ def run_full_dag_supervisor(
                     reopened_manifest["members"]))
 
         def infer() -> str:
+            # Import lazily so this capacity artifact can land before the
+            # companion batched inference implementation.  Once present, a
+            # root-by-root call is intentionally impossible here.
+            try:
+                from .world_afterstate_v2_inference import predict_roots_v2
+            except ImportError as exc:
+                raise FullDAGCapacityDependencyBlocked(
+                    "batched predict_roots_v2 dependency is missing") from exc
             for (cohort, block), build in cohort_builds.items():
                 select_rows = []
                 audit_rows = []
                 for member, raw in enumerate(build.selected_checkpoint_raws):
                     model, _ = __import__("shengji.rl.world_afterstate_v2_checkpoint", fromlist=["reopen_checkpoint"]).reopen_checkpoint(raw)
-                    for root in select_roots:
-                        select_rows.extend(predict_root_v2(
-                            model, root, seed_block=block,
-                            member_index=member, control_name=cohort))
-                    for root in audit_roots:
-                        audit_rows.extend(predict_root_v2(
-                            model, root, seed_block=block,
-                            member_index=member, control_name=cohort))
+                    select_rows.extend(_predict_roots_batched(
+                        predict_roots_v2, model, precision_roots,
+                        seed_block=block, member_index=member,
+                        control_name=cohort, inference_batch=inference_batch))
+                    audit_rows.extend(_predict_roots_batched(
+                        predict_roots_v2, model, audit_roots,
+                        seed_block=block, member_index=member,
+                        control_name=cohort, inference_batch=inference_batch))
                 predictions[(cohort, block)] = prediction_population_manifest_v2(
-                    select_roots, tuple(select_rows), split="select", control_name=cohort,
+                    precision_roots, tuple(select_rows), split="select", control_name=cohort,
                     seed_block=block)
                 audit_predictions[(cohort, block)] = prediction_population_manifest_v2(
                     audit_roots, tuple(audit_rows), split="audit", control_name=cohort,
                     seed_block=block)
             return identity
-        measure("precision-select-inference", infer, 4)
+        measure("precision-select-inference", infer, member_workers)
         prior = build_natural_fit_prior(examples)
-        outcomes = select_outcomes
+        # Precision-select continuation labels are a distinct spend and are
+        # opened only after all prediction manifests have sealed.
+        measure("label-precision-select", label_precision_select)
+        precision_outcomes = tuple(__import__("dataclasses").replace(
+            row, split="select") for bundle in precision_bundles
+            for row in bundle.candidates)
 
         def precision_stage() -> str:
-            evaluated = tuple(evaluate_v2(manifest, outcomes, prior)
+            evaluated = tuple(evaluate_v2(manifest, precision_outcomes, prior)
                               for manifest in predictions.values())
             for value in evaluated:
                 evaluations[(value.control_name, value.seed_block)] = value
@@ -493,23 +787,19 @@ def run_full_dag_supervisor(
                 raise FullDAGCapacityDependencyBlocked(
                     "capacity select evaluation population missing")
             return identity
-        measure("precision-select", precision_stage, 4)
+        measure("precision-select", precision_stage, member_workers)
 
-        def audit_cost() -> str:
-            # Evaluate the deterministic audit clone with the same pure
-            # evaluation/control arithmetic.  This is timing-only: no P0,
-            # AuditDerivationInputV2, or terminal scientific receipt is
-            # constructed from the 32-deal sample.
+        def open_audit_labels() -> str:
+            """Publish the attempt boundary, then measure the sole label open."""
             nonlocal audit_open_count
             capability_probes["audit_requires_complete_upstream"] = (
                 set(cohort_builds) == expected_cohorts
                 and set(predictions) == expected_cohorts
                 and set(audit_predictions) == expected_cohorts)
-            capability_probes["audit_attempt_fsynced_before_open"] = (
-                artifact_count > 0 and all(
-                    reopen_continuation_shard(artifact_root, material).bundle_sha256
-                    == bundle.bundle_sha256
-                    for material, bundle in zip(materials, bundles, strict=True)))
+            upstream_reopened = (
+                artifact_count > 0
+                and _verified_continuation_population(
+                    artifact_root, materials, bundles))
             attempt_payload = canonical_json_bytes({
                 "schema": "retained-32-capacity-audit-attempt-v1",
                 "audit_population_sha256": _sha(
@@ -533,6 +823,29 @@ def run_full_dag_supervisor(
                 pass
             else:
                 capability_probes["one_audit_open"] = False
+            directory_fd = os.open(artifact_root, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+            capability_probes["audit_attempt_fsynced_before_open"] = (
+                upstream_reopened and reopened_attempt == attempt_payload)
+            # The durable attempt marker and parent-directory fsync above are
+            # the audit-label boundary.  Build continuations exactly once and
+            # charge their wall/CPU to the explicit label-audit stage.
+            build_label_stage(materials, audit_bundles, persist=False)
+            return identity
+
+        measure("label-audit", open_audit_labels, 1)
+
+        def audit_cost() -> str:
+            # Evaluate the deterministic audit clone with the same pure
+            # evaluation/control arithmetic.  This is timing-only: no P0,
+            # AuditDerivationInputV2, or terminal scientific receipt is
+            # constructed from the 32-deal sample.
+            audit_outcomes = tuple(__import__("dataclasses").replace(
+                row, split="audit") for bundle in audit_bundles
+                for row in bundle.candidates)
             evaluated = tuple(evaluate_v2(manifest, audit_outcomes, prior)
                               for manifest in audit_predictions.values())
             for value in evaluated:
@@ -594,7 +907,28 @@ def run_full_dag_supervisor(
     result = FullDAGCapacityMeasurementV2(
         tuple((stage, walls[stage]) for stage in FULL_DAG_STAGES),
         max(1, artifact_count), tuple(witnesses), 0, True,
-        dict(capability_probes), _provenance)
+        dict(capability_probes), _provenance,
+        tuple((stage, {
+            "label-p0": len(p0_materials), "p0": P0_DEALS,
+            "optimizer-canary": 16 * 500, "label-fit": len(fit_materials),
+            "nested-curve-25": max(1, len(fit_materials) * 25 // 100)
+            + len(select_roots),
+            "nested-curve-50": max(1, len(fit_materials) * 50 // 100)
+            + len(select_roots),
+            "block-1-natural": len(fit_materials),
+            "nested-curve-100": len(select_roots),
+            "block-1-action-association-permutation": len(fit_materials),
+            "block-1-label-permutation": len(fit_materials),
+            "block-1-complete-world-shuffle": len(fit_materials),
+            "block-2-natural": len(fit_materials),
+            "block-2-complete-world-shuffle": len(fit_materials),
+            "precision-select-inference": len(materials),
+            "label-precision-select": len(materials),
+            "precision-select": len(materials), "audit": len(materials),
+            "label-audit": len(materials), "reconstruction": len(materials),
+        }[stage]) for stage in FULL_DAG_STAGES),
+        tuple((stage, process_cpu[stage]) for stage in FULL_DAG_STAGES),
+        member_workers, torch_threads, inference_batch)
     result.validate()
     return result
 

@@ -125,3 +125,21 @@ def test_nested_prefixes_select_complete_deal_groups():
     for prefix in prefixes.values():
         assert {row.deal_sha256 for row in prefix}
         assert len(prefix) % 16 == 0
+
+
+def test_nested_prefixes_keep_exact_counts_when_every_stratum_is_sparse():
+    rows = _rows("sparse-prefix", deals=16)
+    deals = sorted({row.deal_sha256 for row in rows})
+    deal_index = {deal: index for index, deal in enumerate(deals)}
+    ranks = tuple("23456789TJQKA")
+    modes = ("S", "H", "D", "C", "NT")
+    sparse = tuple(dataclasses.replace(
+        row, trump_rank=ranks[deal_index[row.deal_sha256] % len(ranks)],
+        trump_mode=modes[deal_index[row.deal_sha256] % len(modes)],
+        points_bucket=("0-39", "40-79", "80+")[
+            deal_index[row.deal_sha256] % 3]) for row in rows)
+    prefixes = derive_nested_prefixes(sparse)
+    assert tuple(len({row.deal_sha256 for row in prefixes[fraction]})
+                 for fraction in (0.25, 0.5, 1.0)) == (4, 8, 16)
+    assert {row.example_key for row in prefixes[0.25]}.issubset(
+        {row.example_key for row in prefixes[0.5]})

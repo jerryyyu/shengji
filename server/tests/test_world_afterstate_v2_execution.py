@@ -25,7 +25,9 @@ from shengji.rl.world_afterstate_v2_execution import (
     pipeline_consumption_tombstone_bytes, source_manifest_sha256,
     live_runtime_profile,
     validate_production_stage_set, bind_production_stage_controller,
+    production_stage_controllers, StageControllerV2,
 )
+import shengji.rl.world_afterstate_v2_stage_adapters as stage_adapters
 from shengji.rl.world_afterstate_v2_stage_adapters import (
     StageAdapterUnavailable, population_reopen_adapter,
 )
@@ -107,23 +109,114 @@ def test_freeze_serialization_binds_all_identity_hashes_and_authority(tmp_path):
         changed.sha256()
 
 
-def test_production_stage_factory_reports_exact_missing_domain_producers():
-    assert validate_production_stage_set() == (
-        "population:collect_population_v2",
-        "p0-labels-gates:evaluate_precision_label",
-        "optimizer-canary:run_optimizer_canary_v2",
-        "nested-curve:run_nested_curve_v2",
-        "block-1-natural:train_named_cohort",
-        "block-1-controls:train_named_cohort",
-        "block-2-natural:train_named_cohort",
-        "block-2-controls:train_named_cohort",
-        "precision-select-power:evaluate_precision_select_v2",
-        "audit-attempt:publish_audit_attempt",
-        "terminal:run_terminal_v2",
-        "reconstruction:verify_terminal_artifact_v2",
-    )
-    with pytest.raises(MissingStageError, match="nested-curve"):
+def test_stage_order_seals_primary_cohort_before_nested_curve():
+    assert STAGE_ORDER == (
+        "population", "p0-labels-gates", "optimizer-canary",
+        "fit-select-labels", "block-1-natural", "nested-curve",
+        "block-1-controls", "block-2-natural", "block-2-controls",
+        "precision-select-power", "audit-attempt", "terminal",
+        "reconstruction")
+
+
+def test_production_stage_set_requires_frozen_inputs():
+    with pytest.raises(TypeError):
+        validate_production_stage_set()
+    with pytest.raises(TypeError):
+        production_stage_controllers()
+    with pytest.raises(TypeError):
         bind_production_stage_controller("nested-curve")
+
+
+def test_production_binding_dispatches_every_stage_through_closed_factory(
+        monkeypatch):
+    producers = {
+        name: (lambda *args, _name=name, **kwargs: (_name, args, kwargs))
+        for names in execution.CONTROLLER_BINDINGS.values() for name in names}
+    calls = []
+
+    class Adapter:
+        __world_afterstate_v2_stage_adapter__ = execution.STAGE_ADAPTER_ABI
+        __module__ = "shengji.rl.world_afterstate_v2_stage_adapters"
+
+        def __init__(self, producer):
+            self.producer = producer
+
+        def __call__(self, *_args, **_kwargs):
+            return None
+
+    class AuditAdapter(Adapter):
+        __module__ = "shengji.rl.world_afterstate_v2_stage_adapters"
+
+        def prepare_stage_payload(self, _supervisor):
+            return {"preflight_relative_path": "audit-preflight.json",
+                    "preflight_sha256": "a" * 64}
+
+    def factory(stage, *, freeze, repo):
+        calls.append((stage, freeze, repo))
+        kind = AuditAdapter if stage == "audit-attempt" else Adapter
+        return kind(producers[execution.CONTROLLER_BINDINGS[stage][0]])
+
+    monkeypatch.setattr(stage_adapters, "production_stage_adapter", factory,
+                        raising=False)
+    monkeypatch.setattr(execution, "_production_callable",
+                        lambda name: producers.get(name))
+    freeze = object()
+    repo = Path("/sealed/repository")
+    missing = validate_production_stage_set(freeze=freeze, repo=repo)
+    assert missing == ()
+    assert [(stage, frozen, checked_repo) for stage, frozen, checked_repo in calls] == [
+        (stage, freeze, repo) for stage in STAGE_ORDER]
+
+
+def test_actual_production_factory_binds_the_complete_reviewed_stage_set(
+        tmp_path):
+    """Exercise the real cross-module factories, not a monkeypatched twin."""
+    repo, freeze, _review, _marker, _remote = _fixture(tmp_path)
+    evidence = Path(freeze.evidence_root)
+    evidence.mkdir()
+    population_raw = canonical_json_bytes({
+        "schema": stage_adapters.INPUT_SCHEMA,
+        "population_namespace_sha256": "c" * 64,
+        "max_attempts_per_slot": 2, "workers": 2,
+        "deadline_seconds": 120, "heartbeat_seconds": 30,
+    })
+    config_raw = canonical_json_bytes({
+        "schema": stage_adapters.STAGE_INPUT_SCHEMA,
+        "artifact_root": str(evidence),
+        "population_namespace_sha256": "c" * 64,
+        "label_workers": 1, "label_deadline_seconds": 120,
+        "p0-labels-gates": {}, "optimizer-canary": {}, "nested-curve": {},
+    })
+    replacements = {
+        "population": (population_raw, hashlib.sha256(population_raw).hexdigest()),
+        "config": (config_raw, hashlib.sha256(config_raw).hexdigest()),
+    }
+    bindings = []
+    for label, relative, digest in freeze.artifact_bindings:
+        if label in replacements:
+            raw, digest = replacements[label]
+            path = repo / relative
+            path.write_bytes(raw)
+            path.chmod(0o400)
+        bindings.append((label, relative, digest))
+    freeze = replace(
+        freeze, artifact_bindings=tuple(bindings),
+        population_sha256=replacements["population"][1],
+        config_sha256=replacements["config"][1])
+    assert validate_production_stage_set(freeze=freeze, repo=repo) == ()
+    controllers = production_stage_controllers(freeze=freeze, repo=repo)
+    assert tuple(controllers) == STAGE_ORDER
+    assert all(controller.production for controller in controllers.values())
+
+
+def test_direct_low_level_controller_is_not_a_production_adapter(monkeypatch):
+    producer = lambda *_args, **_kwargs: None
+    monkeypatch.setattr(execution, "_production_callable",
+                        lambda name: producer if name == "collect_population_v2"
+                        else None)
+    with pytest.raises(MissingStageError, match="stage adapter ABI"):
+        StageControllerV2("population", "collect_population_v2", producer,
+                          production=True).validate()
 
 
 def test_population_adapter_refuses_untyped_frozen_input(tmp_path):
@@ -216,7 +309,8 @@ def test_audit_marker_precedes_first_audit_byte_and_only_one_open(tmp_path):
                              operation=_controller("population", lambda *_: None,
                                "collect_population_v2"))
     assert not (root / "audit-attempt.json").exists()
-    supervisor._state = StageStateV2(STAGE_ORDER[:9])
+    supervisor._state = StageStateV2(
+        STAGE_ORDER[:STAGE_ORDER.index("audit-attempt")])
     with pytest.raises(MissingStageError, match="pre-open"):
         supervisor.run_stage("audit-attempt", split="audit",
                              operation=_controller("audit-attempt", lambda *_: None,
@@ -345,7 +439,10 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
 
     def invoke(operation_supervisor, _shards):
         stage = operation_supervisor.next_stage
-        if stage == "terminal":
+        if stage not in ("terminal", "reconstruction"):
+            operation_supervisor.register_verified_shard(
+                stage, "receipt", canonical_json_bytes({"stage": stage}))
+        elif stage == "terminal":
             target = root / "terminal"
             target.mkdir()
             (target / "terminal.json").write_bytes(terminal_raw)
@@ -362,21 +459,32 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
             # it passes the reviewed producer an explicit rescore=False.
             verify_receipt(root / "terminal", object(), rescore=False)
 
-    preflight_body = {"schema": "world-afterstate-v2-audit-preflight-v1",
-                      "freeze_sha256": freeze.sha256(),
-                      "admission_sha256": admission.sha256(),
-                      "deterministic_checks": [True]}
-    preflight_body["preflight_sha256"] = _sha(preflight_body)
-    (root / "audit-preflight.json").write_bytes(canonical_json_bytes(preflight_body))
-    os.chmod(root / "audit-preflight.json", 0o400)
-    audit_payload = {"preflight_relative_path": "audit-preflight.json",
-                     "preflight_sha256": preflight_body["preflight_sha256"]}
+    def prepare_audit(operation_supervisor):
+        preflight_body = {
+            "schema": execution.AUDIT_PREFLIGHT_SCHEMA,
+            "freeze_sha256": freeze.sha256(),
+            "admission_sha256": admission.sha256(),
+            "completed_stages": list(execution.AUDIT_PREFLIGHT_STAGES),
+            "upstream_receipt_sha256s": [
+                [stage, __import__("hashlib").sha256(canonical_json_bytes(
+                    {"stage": stage})).hexdigest()]
+                for stage in execution.AUDIT_PREFLIGHT_STAGES],
+            "audit_paths_absent": list(execution.AUDIT_UNOPENED_PATHS),
+        }
+        preflight_body["preflight_sha256"] = _sha(preflight_body)
+        (root / "audit-preflight.json").write_bytes(
+            canonical_json_bytes(preflight_body))
+        os.chmod(root / "audit-preflight.json", 0o400)
+        return {"preflight_relative_path": "audit-preflight.json",
+                "preflight_sha256": preflight_body["preflight_sha256"]}
+
     operations = {}
     for stage in STAGE_ORDER:
         name = execution.CONTROLLER_BINDINGS[stage][0]
         operations[stage] = execution.StageControllerV2(
             stage, name, invoke, True,
-            audit_payload if stage == "audit-attempt" else None)
+            stage_payload_factory=(prepare_audit
+                                   if stage == "audit-attempt" else None))
     execution.run_v2_pipeline(supervisor, operations)
     assert calls == [("verify", False)]
     assert supervisor.state.reconstruction_completed is True
@@ -384,6 +492,50 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
         root, freeze=freeze, admission=admission, review_marker=marker)
     execution.run_v2_pipeline(resumed, operations)
     assert calls == [("verify", False)]
+
+
+def test_interrupted_audit_stage_reuses_exact_marker_on_resume(tmp_path):
+    repo, freeze, review, marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    completed = []
+    receipt_rows = []
+    for stage in execution.AUDIT_PREFLIGHT_STAGES:
+        raw = canonical_json_bytes({"stage": stage})
+        supervisor.register_verified_shard(stage, "receipt", raw)
+        supervisor._event(stage, status="complete",
+                          split=execution.ALLOWED_SPLITS[stage][0])
+        completed.append(stage)
+        receipt_rows.append([stage, __import__("hashlib").sha256(raw).hexdigest()])
+    supervisor._state = StageStateV2(
+        tuple(completed), verified_shards=supervisor.state.verified_shards)
+    body = {
+        "schema": execution.AUDIT_PREFLIGHT_SCHEMA,
+        "freeze_sha256": freeze.sha256(),
+        "admission_sha256": admission.sha256(),
+        "completed_stages": completed,
+        "upstream_receipt_sha256s": receipt_rows,
+        "audit_paths_absent": list(execution.AUDIT_UNOPENED_PATHS),
+    }
+    value = {**body, "preflight_sha256": _sha(body)}
+    (root / execution.AUDIT_PREFLIGHT_RELATIVE).write_bytes(
+        canonical_json_bytes(value))
+    os.chmod(root / execution.AUDIT_PREFLIGHT_RELATIVE, 0o400)
+    payload = {"preflight_relative_path": execution.AUDIT_PREFLIGHT_RELATIVE,
+               "preflight_sha256": value["preflight_sha256"]}
+    supervisor._validate_audit_preflight(payload)
+    supervisor._open_audit_marker(payload)
+
+    resumed = execution.reopen_supervisor(
+        root, freeze=freeze, admission=admission, review_marker=marker)
+    assert resumed.state.audit_opened is True
+    resumed._validate_audit_preflight(payload)
+    before = (root / "audit-attempt.json").read_bytes()
+    resumed._open_audit_marker(payload)
+    assert (root / "audit-attempt.json").read_bytes() == before
 
 
 def test_p0_stop_skips_training_and_seals_terminal_then_reconstruction(

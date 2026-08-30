@@ -1,4 +1,4 @@
-"""Population production-adapter binding and immutable-input tests."""
+"""Closed production stage-adapter binding and immutable-input tests."""
 
 from __future__ import annotations
 
@@ -98,6 +98,8 @@ def _stage_fixture(tmp_path: Path):
         "schema": adapters.STAGE_INPUT_SCHEMA,
         "artifact_root": str(evidence),
         "population_namespace_sha256": "c" * 64,
+        "label_workers": 1,
+        "label_deadline_seconds": 120,
         "p0-labels-gates": {}, "optimizer-canary": {}, "nested-curve": {},
     }
     raw = canonical_json_bytes(config)
@@ -212,18 +214,44 @@ def test_p0_adapter_selects_exact_96_from_complete_128_before_opening_labels(
     bundles = tuple(SimpleNamespace(candidates=(
         ("outcome", index, 0), ("outcome", index, 1)))
                     for index in range(128))
-    pairs = tuple(zip(materials, bundles, strict=True))
     slots = tuple(SimpleNamespace(
         group="natural-fit", slot_sha256=state.slot_sha256)
-                  for state in states)
-    observed = {}
+                   for state in states)
+    observed = {"events": []}
 
-    monkeypatch.setattr(adapters, "_natural_fit_inputs",
-                        lambda *_args, **_kwargs: pairs)
-    monkeypatch.setattr(adapters, "select_p0_population",
-                        lambda population, **_kwargs: tuple(population[:96]))
+    monkeypatch.setattr(adapters, "_population_materials",
+                        lambda *_args, **_kwargs: materials)
+
+    def select(population, **_kwargs):
+        observed["events"].append("select")
+        return tuple(population[:96])
+
+    monkeypatch.setattr(adapters, "select_p0_population", select)
     monkeypatch.setattr(adapters, "build_population_slot_ledger",
                         lambda _tier: slots)
+
+    class Receipt:
+        def payload(self):
+            return {
+                "schema": "world-afterstate-v2-label-controller-receipt-v1",
+                "split": "fit-select", "population_sha256": "a" * 64,
+                "manifest_sha256": "b" * 64, "material_count": 96,
+                "continuation_outcome_count": 96 * 16, "worker_count": 1,
+                "reused_shard_count": 0, "built_shard_count": 96,
+                "elapsed_nanoseconds": 1, "artifact_bytes": 1,
+                "authority": {}, "receipt_sha256": "c" * 64,
+            }
+
+    def build(root, selected, **kwargs):
+        observed["events"].append("build")
+        observed["build"] = (root, tuple(selected), kwargs)
+        return Receipt()
+
+    monkeypatch.setattr(adapters, "build_continuation_population_v2", build)
+    monkeypatch.setattr(
+        adapters, "reopen_continuation_manifest",
+        lambda _root, selected: tuple(
+            bundles[int(material.deal_sha256, 16)] for material in selected))
 
     def mechanics(outcomes, **kwargs):
         observed["mechanics"] = (tuple(outcomes), kwargs)
@@ -242,6 +270,9 @@ def test_p0_adapter_selects_exact_96_from_complete_128_before_opening_labels(
     adapter = adapters.p0_labels_gates_adapter(freeze=freeze, repo=repo)
     result = adapter(supervisor, ())
     assert result["decision"] == "PASS_P0_PRECISION"
+    assert observed["events"] == ["select", "build"]
+    assert observed["build"][0] == evidence_root / adapters.P0_CONTINUATION_ROOT
+    assert len(observed["build"][1]) == 96
     assert adapter.producer is evaluate
     outcomes, mechanics_kwargs = observed["mechanics"]
     assert len(outcomes) == 96 * 2
@@ -275,12 +306,29 @@ def test_p0_adapter_routes_reviewed_early_stop_before_later_work(
                   for index, state in enumerate(states))
     slots = tuple(SimpleNamespace(group="natural-fit", slot_sha256=state.slot_sha256)
                   for state in states)
-    monkeypatch.setattr(adapters, "_natural_fit_inputs",
-                        lambda *_args, **_kwargs: pairs)
+    monkeypatch.setattr(adapters, "_population_materials",
+                        lambda *_args, **_kwargs: tuple(pair[0] for pair in pairs))
     monkeypatch.setattr(adapters, "select_p0_population",
                         lambda population, **_kwargs: tuple(population[:96]))
     monkeypatch.setattr(adapters, "build_population_slot_ledger",
                         lambda _tier: slots)
+    class Receipt:
+        def payload(self):
+            return {
+                "schema": "world-afterstate-v2-label-controller-receipt-v1",
+                "split": "fit-select", "population_sha256": "a" * 64,
+                "manifest_sha256": "b" * 64, "material_count": 96,
+                "continuation_outcome_count": 96 * 16, "worker_count": 1,
+                "reused_shard_count": 0, "built_shard_count": 96,
+                "elapsed_nanoseconds": 1, "artifact_bytes": 1,
+                "authority": {}, "receipt_sha256": "c" * 64,
+            }
+    monkeypatch.setattr(adapters, "build_continuation_population_v2",
+                        lambda *_args, **_kwargs: Receipt())
+    monkeypatch.setattr(
+        adapters, "reopen_continuation_manifest",
+        lambda _root, selected: tuple(
+            pairs[int(material.deal_sha256, 16)][1] for material in selected))
     monkeypatch.setattr(adapters, "build_engine_p0_mechanics_evidence",
                         lambda *_args, **_kwargs: {"mechanics": "derived"})
     monkeypatch.setattr(adapters, "evaluate_precision_label",
@@ -321,9 +369,10 @@ def test_d256_only_producer_cannot_run_under_larger_frozen_tier(tmp_path: Path):
 def test_optimizer_failure_routes_training_recipe_refusal(
         tmp_path: Path, monkeypatch):
     repo, evidence_root, freeze = _stage_fixture(tmp_path)
-    pairs = tuple((SimpleNamespace(), SimpleNamespace()) for _ in range(128))
-    monkeypatch.setattr(adapters, "_natural_fit_inputs",
-                        lambda *_args, **_kwargs: pairs)
+    natural_fit = tuple(SimpleNamespace() for _ in range(128))
+    pairs = tuple((SimpleNamespace(), SimpleNamespace()) for _ in range(96))
+    monkeypatch.setattr(adapters, "_optimizer_canary_inputs",
+                        lambda *_args, **_kwargs: (natural_fit, pairs))
 
     class Receipt:
         passed = False
@@ -344,15 +393,16 @@ def test_optimizer_failure_routes_training_recipe_refusal(
     assert supervisor.verified_shards("optimizer-canary") == ("receipt",)
 
 
-def test_nested_curve_stays_closed_until_training_and_evaluation_are_composed(
+def test_nested_curve_binds_the_composed_training_and_evaluation_adapter(
         tmp_path: Path):
     repo, _evidence_root, freeze = _stage_fixture(tmp_path)
-    with pytest.raises(adapters.StageAdapterUnavailable,
-                       match="25/50/100% prefix"):
-        adapters.nested_curve_adapter(freeze=freeze, repo=repo)
+    adapter = adapters.nested_curve_adapter(freeze=freeze, repo=repo)
+    assert adapter.stage == "nested-curve"
+    assert adapter.producer is execution._production_callable(
+        "run_nested_curve_v2")
 
 
-def test_closed_execution_factory_accepts_only_the_two_composed_early_adapters(
+def test_closed_execution_factory_accepts_composed_early_adapters(
         tmp_path: Path):
     repo, _evidence_root, freeze = _stage_fixture(tmp_path)
     p0 = execution.bind_production_stage_controller(
@@ -362,6 +412,107 @@ def test_closed_execution_factory_accepts_only_the_two_composed_early_adapters(
     assert isinstance(p0.operation, adapters.P0LabelsGatesAdapterV2)
     assert isinstance(optimizer.operation, adapters.OptimizerCanaryAdapterV2)
     p0.validate(); optimizer.validate()
-    with pytest.raises(execution.MissingStageError, match="nested-curve"):
-        execution.bind_production_stage_controller(
-            "nested-curve", freeze=freeze, repo=repo)
+    nested = execution.bind_production_stage_controller(
+        "nested-curve", freeze=freeze, repo=repo)
+    assert nested.operation.stage == "nested-curve"
+    nested.validate()
+
+
+def test_fit_select_adapter_excludes_precision_and_uses_distinct_root(
+        tmp_path: Path, monkeypatch):
+    repo, evidence_root, freeze = _stage_fixture(tmp_path)
+
+    def material(index, split, source, subfold=None):
+        state = SimpleNamespace(
+            split=split, source=source, select_subfold=subfold,
+            deal_sha256=f"{index:064x}", slot_sha256=f"{index + 1000:064x}")
+        return SimpleNamespace(deal_sha256=state.deal_sha256, state=state)
+
+    fit = tuple(material(i, "fit", "natural" if i < 128 else "mechanics")
+                for i in range(160))
+    select = tuple(material(1000 + i, "select", "natural",
+                            "epoch-select" if i < 24 else "precision-select")
+                   for i in range(48))
+    calls = []
+
+    def reopen_population(_freeze, _repo, *, split, source=None):
+        calls.append((split, source))
+        return fit if split == "fit" else select
+
+    monkeypatch.setattr(adapters, "_population_materials", reopen_population)
+    monkeypatch.setattr(adapters, "select_p0_population",
+                        lambda population, **_kwargs: tuple(population[:96]))
+
+    class Receipt:
+        def payload(self):
+            return {"schema": "label-receipt"}
+
+    def build(root, values, **kwargs):
+        calls.append(("build", root, tuple(values), kwargs))
+        return Receipt()
+
+    monkeypatch.setattr(adapters, "build_fit_select_continuations_v2", build)
+    monkeypatch.setattr(adapters, "reopen_continuation_manifest",
+                        lambda root, values: calls.append(
+                            ("reopen", root, tuple(values))) or ())
+    supervisor = Supervisor(evidence_root)
+    supervisor.state = SimpleNamespace(
+        completed_stages=("population", "p0-labels-gates", "optimizer-canary"))
+    result = adapters.fit_select_labels_adapter(
+        freeze=freeze, repo=repo)(supervisor, ())
+    assert result == {"schema": "label-receipt"}
+    assert calls[0:2] == [("fit", None), ("select", "natural")]
+    build_call = next(item for item in calls if item[0] == "build")
+    assert build_call[1] == evidence_root / adapters.FIT_SELECT_CONTINUATION_ROOT
+    assert len(build_call[2]) == 184
+    assert build_call[3]["reuse_root"] == (
+        evidence_root / adapters.P0_CONTINUATION_ROOT)
+    assert len(build_call[3]["reuse_materials"]) == 96
+    assert all(item.state.select_subfold != "precision-select"
+               for item in build_call[2])
+    assert next(item for item in calls if item[0] == "reopen")[1] == build_call[1]
+
+
+def test_fit_select_requires_completed_p0_and_optimizer(tmp_path: Path):
+    repo, evidence_root, freeze = _stage_fixture(tmp_path)
+    supervisor = Supervisor(evidence_root)
+    supervisor.state = SimpleNamespace(completed_stages=("population",))
+    with pytest.raises(adapters.StageAdapterUnavailable, match="completed P0"):
+        adapters.fit_select_labels_adapter(freeze=freeze, repo=repo)(supervisor, ())
+
+
+@pytest.mark.parametrize("field,value", [
+    ("label_workers", 0), ("label_workers", 10**9),
+    ("label_deadline_seconds", 301),
+])
+def test_label_resource_binding_is_frozen_and_bounded(
+        tmp_path: Path, field: str, value: int):
+    repo, _evidence_root, freeze = _stage_fixture(tmp_path)
+    path = repo / "stage-config.json"
+    config = __import__("json").loads(path.read_bytes())
+    config[field] = value
+    path.chmod(0o600)
+    raw = canonical_json_bytes(config)
+    path.write_bytes(raw)
+    path.chmod(0o400)
+    freeze.artifact_bindings = (
+        ("config", "stage-config.json", hashlib.sha256(raw).hexdigest()),)
+    with pytest.raises(adapters.StageAdapterUnavailable,
+                       match="artifact|resource|binding"):
+        adapters.fit_select_labels_adapter(freeze=freeze, repo=repo)
+
+
+def test_closed_factory_dispatches_only_implemented_adapters_and_requires_bindings(
+        tmp_path: Path):
+    repo, _evidence_root, freeze = _stage_fixture(tmp_path)
+    with pytest.raises(adapters.StageAdapterUnavailable):
+        adapters.production_stage_adapter("p0-labels-gates", freeze=freeze, repo=None)
+    fit = adapters.production_stage_adapter("fit-select-labels",
+                                            freeze=freeze, repo=repo)
+    assert isinstance(fit, adapters.FitSelectLabelsAdapterV2)
+    assert fit.producer is adapters.build_fit_select_continuations_v2
+    training = adapters.production_stage_adapter(
+        "block-1-natural", freeze=freeze, repo=repo)
+    assert training.producer.__name__ == "train_named_cohort"
+    assert type(training).__module__ == (
+        "shengji.rl.world_afterstate_v2_training_stage_adapters")

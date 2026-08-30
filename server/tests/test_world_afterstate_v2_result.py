@@ -80,10 +80,12 @@ def _p0(**changes):
     mechanics = _mechanics_evidence(
         population, passed=changes.get("mechanics_passed", True))
     body = {
-        "schema": "world-afterstate-v2-p0-precision-label-v0",
+        "schema": "world-afterstate-v2-p0-precision-label-v1",
         "population_sha256": population, "deal_count": 96,
         "state_count": 96, "raw_outcome_count": 96 * (2 + 1) * 8,
         "replica_count": 8, "candidate_pair_count": 96 * 2,
+        "pair_target_population_variance": {
+            "numerator": 25, "denominator": 4},
         "cell_counts": {"/".join((phase, position, role)): 8
                          for phase in ("early", "middle", "late")
                          for position in ("lead", "follow")

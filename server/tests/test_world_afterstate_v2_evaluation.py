@@ -16,9 +16,14 @@ from shengji.rl.world_afterstate_v2_inference import (
 )
 from shengji.rl.world_afterstate_v2_continuation import ContinuationOutcomeV2
 from shengji.rl.world_afterstate_v2_evaluation import (
-    WorldAfterstateV2EvaluationError, evaluate_control_difference, evaluate_v2,
+    WorldAfterstateV2EvaluationError, evaluate_control_difference,
+    evaluate_nested_curve_v2, evaluate_v2,
 )
-from shengji.rl.world_afterstate_v2_inference import CandidatePredictionV2
+from shengji.rl.world_afterstate_v2_inference import (
+    CandidatePredictionV2, nested_curve_prediction_manifest_v2,
+    predict_nested_curve_v2,
+)
+from shengji.rl.world_afterstate_v2_model import new_world_afterstate_v2_model
 from shengji.rl.world_afterstate_v2_metrics import build_natural_fit_prior
 from shengji.rl.world_afterstate_v2_training import WorldAfterstateV2TrainingExample
 
@@ -219,3 +224,59 @@ def test_action_gate_bootstraps_ensemble_choice_not_mean_member_choices():
             deal_rps_improvement=((result.deal_rps_improvement[0][0],
                                    result.deal_rps_improvement[0][1] + 1),),
         ).validate()
+
+
+def test_nested_curve_score_is_one_model_and_rejects_audit_rows():
+    _predictions, outcomes, _prior, root = _population(root="nested-eval")
+    root = dataclasses.replace(root, split="fit", select_subfold=None)
+    fit_outcomes = tuple(dataclasses.replace(row, split="fit") for row in outcomes)
+    rows = predict_nested_curve_v2(
+        new_world_afterstate_v2_model(777), (root,), split="fit",
+        fraction_ppm=250_000)
+    manifest = nested_curve_prediction_manifest_v2(
+        (root,), rows, split="fit", fraction_ppm=250_000)
+    score = evaluate_nested_curve_v2(manifest, fit_outcomes)
+    score.validate()
+    assert score.consumer_eligible is False
+    with pytest.raises(WorldAfterstateV2EvaluationError, match="split"):
+        evaluate_nested_curve_v2(manifest, outcomes)
+
+
+def test_nested_curve_full_point_is_block1_member0_and_nonconsumer():
+    _predictions, outcomes, _prior, root = _population(root="nested-full")
+    root = dataclasses.replace(root, split="fit", select_subfold=None)
+    fit_outcomes = tuple(dataclasses.replace(row, split="fit")
+                         for row in outcomes)
+    rows = predict_nested_curve_v2(
+        new_world_afterstate_v2_model(779), (root,), split="fit",
+        fraction_ppm=1_000_000)
+    manifest = nested_curve_prediction_manifest_v2(
+        (root,), rows, split="fit", fraction_ppm=1_000_000)
+    score = evaluate_nested_curve_v2(manifest, fit_outcomes)
+    assert (score.fraction_ppm, score.seed_block, score.control_name,
+            score.consumer_eligible) == (1_000_000, 1, "natural", False)
+
+
+def test_nested_curve_score_balances_multiple_roots_before_deals():
+    _pa, outcomes_a, _prior, root_a = _population(root="nested-deal-a")
+    _pb, outcomes_b, _prior, root_b = _population(
+        root="nested-deal-b", predicted_categories=(100, 100))
+    root_a = dataclasses.replace(root_a, split="fit", select_subfold=None)
+    root_b = dataclasses.replace(
+        root_b, split="fit", select_subfold=None,
+        deal_sha256=root_a.deal_sha256)
+    outcomes_a = tuple(dataclasses.replace(row, split="fit") for row in outcomes_a)
+    outcomes_b = tuple(dataclasses.replace(
+        row, split="fit", deal_sha256=root_a.deal_sha256) for row in outcomes_b)
+    model = new_world_afterstate_v2_model(778)
+    rows = (predict_nested_curve_v2(
+        model, (root_a,), split="fit", fraction_ppm=250_000)
+        + predict_nested_curve_v2(
+            model, (root_b,), split="fit", fraction_ppm=250_000))
+    manifest = nested_curve_prediction_manifest_v2(
+        (root_a, root_b), rows, split="fit", fraction_ppm=250_000)
+    forward = evaluate_nested_curve_v2(manifest, outcomes_a + outcomes_b)
+    reverse = evaluate_nested_curve_v2(manifest, outcomes_b + outcomes_a)
+    assert forward.deal_count == 1
+    assert forward.rps_nano == reverse.rps_nano
+    assert forward.paired_target_error_nano == reverse.paired_target_error_nano

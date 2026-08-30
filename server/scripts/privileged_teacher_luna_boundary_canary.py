@@ -51,12 +51,14 @@ def _publish(path: Path, raw: bytes) -> None:
         os.close(directory)
 class _ObserveOnlyMailbox:
     """Ephemeral mailbox; no request, observation, or token leaves this thread."""
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, token: str):
         if path.exists() or path.is_symlink():
             raise ValueError("canary mailbox occupied")
         path.mkdir(mode=0o700)
         self.path = path
-        self.token = secrets.token_hex(32)
+        if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
+            raise ValueError("canary token identity drift")
+        self.token = token
         self.first_op: str | None = None
         self.counts: dict[str, int] = {}
         self.refused = False
@@ -144,9 +146,9 @@ def reopen_receipt(path: Path) -> dict[str, object]:
     receipt_sha = payload.pop("receipt_sha256", None)
     if type(receipt_sha) is not str or receipt_sha != _sha(canonical_json_bytes(payload)):
         raise ValueError("canary receipt self-hash drift")
-    expected = {"schema", "runtime_identity", "actual_subprocess",
-                "returncode", "first_op",
-                "op_counts", "codex_usage", "codex_event_type_counts",
+    expected = {"schema", "runtime_identity", "actual_subprocess", "returncode",
+                "model_first_op", "model_op_counts", "hook_first_op", "hook_op_counts",
+                "codex_usage", "codex_event_type_counts",
                 "prompt_sha256", "stdout_sha256", "final_sha256",
                 "command_sha256", "hook_source_sha256",
                 "hook_command_sha256", "hook_config_sha256",
@@ -156,15 +158,15 @@ def reopen_receipt(path: Path) -> dict[str, object]:
     if set(payload) != expected or payload["schema"] != SCHEMA:
         raise ValueError("canary receipt schema drift")
     _validate_runtime(payload["runtime_identity"])
-    if (payload["actual_subprocess"] is not True
-            or payload["returncode"] != 0
-            or payload["first_op"] != "observe"):
+    if (payload["actual_subprocess"] is not True or payload["returncode"] != 0):
         raise ValueError("canary receipt process drift")
-    if (type(payload["op_counts"]) is not dict
-            or set(payload["op_counts"]) != {"observe"}
-            or type(payload["op_counts"].get("observe")) is not int \
-            or not 1 <= payload["op_counts"]["observe"] <= 4):
-        raise ValueError("canary receipt operation drift")
+    for first, counts in (("model_first_op", "model_op_counts"),
+                          ("hook_first_op", "hook_op_counts")):
+        if payload[first] != "observe" or (type(payload[counts]) is not dict
+                or set(payload[counts]) != {"observe"}
+                or type(payload[counts].get("observe")) is not int
+                or not 1 <= payload[counts]["observe"] <= 4):
+            raise ValueError("canary receipt operation drift")
     if payload["opened"] != _PRIVACY or payload["retained"] != _PRIVACY:
         raise ValueError("canary receipt privacy drift")
     if payload["authority"] != luna.AUTHORITY:
@@ -205,19 +207,22 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
     with tempfile.TemporaryDirectory(prefix="pt-luna-canary-", dir="/tmp") as temporary:
         workspace = Path(temporary)
         os.chmod(workspace, 0o700)
-        mailbox_path = workspace / "mailbox"
+        model_mailbox_path = workspace / "model_mailbox"
+        hook_mailbox_path = workspace / "hook_mailbox"
         final_path = workspace / "final.json"
-        prompt = execution.planner_prompt(mailbox_path=mailbox_path,
+        prompt = execution.planner_prompt(mailbox_path=model_mailbox_path,
                                           tool_script=tool_script)
         command = execution.process_command(codex_binary=binary, workspace=workspace,
-                                            mailbox_path=mailbox_path,
+                                            mailbox_path=hook_mailbox_path,
                                             final_output_path=final_path)
-        hook = execution._stop_hook_binding(mailbox_path=mailbox_path)
+        hook = execution._stop_hook_binding(mailbox_path=hook_mailbox_path)
         environment = dict(os.environ)
         environment.pop("PYTHONPATH", None)
         environment.pop("SHENGJI_FAST", None)
         environment["SHENGJI_REQUIRE_VOIDS"] = "1"
-        with _ObserveOnlyMailbox(mailbox_path) as mailbox:
+        token = secrets.token_hex(32)
+        with (_ObserveOnlyMailbox(model_mailbox_path, token=token) as model_mailbox,
+              _ObserveOnlyMailbox(hook_mailbox_path, token=token) as hook_mailbox):
             process = subprocess.Popen(
                 command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, cwd=workspace, env=environment,
@@ -235,9 +240,11 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
                     pass
                 process.communicate()
                 raise ValueError("canary subprocess deadline exceeded") from exc
-        if (mailbox.error is not None or mailbox.refused
-                or mailbox.first_op != "observe" or not mailbox.counts
-                or set(mailbox.counts) != {"observe"}):
+        mailboxes = (model_mailbox, hook_mailbox)
+        if any(mailbox.error is not None or mailbox.refused
+               or mailbox.first_op != "observe" or not mailbox.counts
+               or set(mailbox.counts) != {"observe"}
+               for mailbox in mailboxes):
             raise ValueError("canary mailbox contract refused")
         stdout = bytes(stdout or b"")
         usage = execution._codex_jsonl_usage(stdout)
@@ -247,7 +254,7 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
         final_raw = execution._read_process_file(final_path, limit=1 << 20)
         expected_final = canonical_json_bytes({
             "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
-            "completion_token": mailbox.token})
+            "completion_token": token})
         # Codex's last-message file is the assistant message itself and may
         # omit the canonical artifact newline.  Accept only those two byte
         # forms of the same exact terminal JSON.
@@ -255,8 +262,11 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
             raise ValueError("canary final response drift")
         body = {"schema": SCHEMA, "runtime_identity": runtime,
                 "actual_subprocess": True,
-                "returncode": process.returncode, "first_op": mailbox.first_op,
-                "op_counts": dict(sorted(mailbox.counts.items())),
+                "returncode": process.returncode,
+                "model_first_op": model_mailbox.first_op,
+                "model_op_counts": dict(sorted(model_mailbox.counts.items())),
+                "hook_first_op": hook_mailbox.first_op,
+                "hook_op_counts": dict(sorted(hook_mailbox.counts.items())),
                 "codex_usage": usage,
                 "codex_event_type_counts": controller._capacity_codex_events(stdout),
                 "prompt_sha256": _sha(prompt.encode("utf-8")),

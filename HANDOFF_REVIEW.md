@@ -10029,3 +10029,46 @@ unchanged PT-Luna collector rest on the prior PASSes, and the from-scratch
 review of #170's 70,925-line stack remains outstanding work I have flagged for
 Jerry rather than absorbed into an hourly cycle.
 
+
+## 2026-08-30 — ✅ PASS (source-only, delta): PR #171 `b12eea0..b243368c` — fail-closed Codex Stop hook. Authorizes exactly one fresh census (the SEVENTH)
+
+The structural repair for the receipt-proven agent_message-instead-of-tool gap: a session-level
+Stop hook that blocks every early exit until the engine-owned mailbox independently reports
+`round_end`, then requires the final message to be exactly the engine-issued terminal JSON.
+Verified self-run at `b243368c` (parent byte-confirmed): focused **100/100**, full sweep
+**129 passed / 2 skipped** (ask says 127 — mine two higher); hook source pin
+`c038ac46…` matches the file byte-for-byte; breaking the pin turns **17 tests red** (a changed
+hook refuses launch everywhere); TOCTOU-hardened read (O_NOFOLLOW, nlink==1, stable stat);
+hook/config/command SHA-bound into `STOP_HOOK_SCHEMA` evidence; fail-closed in every error path
+(malformed stdin, mailbox error, wrong shape → block; hook never prints observations or
+exceptions). One disclosed redundancy: dropping the hook's `status != "round_end"` clause leaves
+its 5 tests green — the exact-key-set clause covers it (only round_end responses carry exactly
+{schema, status, completion_token}); same producer/validator-redundancy family, non-blocking.
+The three launch-review fixtures remain REQUIRED and outstanding. Authorization: exactly one
+fresh non-scientific, score-free progressive Mini capacity census; if it succeeds, next review
+binds only the receipt + 52-deal × two-mirror freeze. Not: collection, outcomes, gameplay,
+strength, merge, retry beyond this one, promotion, deployment. — Claude (session `68f9c8bd`)
+
+## 2026-08-30 — ✅ PASS (delta): PR #170 `ba17ab1e..cf115cea` — capacity supply repair + verifier audit replay. Authorizes ONE replacement Perf census, then ONE rehearsal. One ask claim CORRECTED: marker reuse-refusal is NOT proven by any test
+
+The first Perf census refused honestly (14 of 32 eligible fixtures from the frozen 96; progress
+log sealed, nothing scientific opened). Verified self-run at `cf115cea` (two commits over
+baseline, seven files): wildcard battery **433 passed / 2 skipped** (exact), focused capacity
+**31/31** (exact); `git diff --check` clean this time; zero `.pyc`. The batch scheduler's
+no-surplus guard (`batch_size` capped by fixtures still needed) is witnessed — removing the term
+turns **1 red** — so post-hoc selection stays impossible while the ceiling extends to 384 with a
+byte-identical first-96 prefix.
+
+**Correction to the ask**: it claims the delta repairs the marker authenticator "while proving
+that an older marker cannot be reused." The repair is real — the V2 authenticator had the SAME
+one-marker-ever poisoning bug as Luna's `68efdec`, now append-only — but the proof is not:
+removing `or marker in previous_matches` leaves **23/23 green**. The one new test
+(`…appends_after_prior_freeze_without_reusing_it`) witnesses only the green direction. A replayed
+marker would satisfy append-only + `current == previous + [marker]`. Clause verified present at
+head, so the property holds today. REQUIRED before the freeze-binding review: a replay-refusal
+fixture (same requirement as Luna's, now in two lanes).
+
+Authorization: exactly one replacement score-free full-DAG Perf capacity census; only after it
+succeeds, one bounded target-free rehearsal. Not: labels/outcomes, scientific run, merge, retry
+beyond these two, gameplay/PUCT/BELIEF integration, promotion, deployment, strength claims.
+— Claude (session `68f9c8bd`)

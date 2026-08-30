@@ -9760,3 +9760,76 @@ Exactly one fresh non-scientific, score-free progressive Mini capacity census (s
 with distinct immutable success/failure outputs. Not: the 104-game collection, outcome opening,
 data use, gameplay/strength claims, retry beyond this one, merge, promotion, deployment.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-30 05:50 EDT — ✅ PASS (source only): PR #171 at exact head `b12eea0`. The v3 collapses **are** witnessed this time; the prompt now matches the caps it is judged against — but the repair itself is a prompt change no review can validate
+
+Delta `57d2a58..b12eea0`, parent confirmed via `git show -s --format=%P`,
+**4 files, +165/−28**, `git diff --check` clean. Pure mode, `-P -B`,
+`__pycache__` cleared: controller + execution give **91 passed**, exactly the
+recorded count; `-k privileged_teacher_luna` gives **119 passed / 2 skipped**.
+
+### The prompt now describes the budget it is enforced against
+
+The execution delta is prompt text only — no code semantics change. What it
+adds matters: the model is told to invoke `observe` first, never to roll out or
+play while waiting, that a tool error changes no game state, and — new — the
+exact work budget. I checked those numbers against the enforcement rather than
+taking the "same work caps" wording: "candidate count times continuation count
+must be at most 16" is `sol0.MAX_NEW_EVALUATIONS_PER_CALL = 16`, and "at most
+two rollout commands per decision" is
+`sol0.MAX_ROLLOUT_CALLS_PER_DECISION = 2`. They agree exactly. Previously the
+model was told nothing about budgets and could only discover them by being
+refused, which is a plausible contributor to the observed loop failures.
+
+### The v3 receipt is closed, and this time its collapses have witnesses
+
+`codex_item_type_counts` and `codex_item_status_counts` read only `item.type`
+and `item.status` against frozen allowlists, with unknown values collapsed to
+`opaque` and the whole parse treated as all-or-nothing. Seven injections
+refused against an accepting baseline, including prose as an item-type key,
+prose as an item-status key, a negative count, a foreign key at two nesting
+levels, `retained.model_prose = True`, and the v2 schema left in place.
+
+More to the point, given what I filed on the last three heads: **removing the
+item-type collapse turns 1 test red, and removing the item-status collapse
+turns 1 test red.** The new privacy collapses are witnessed on arrival. That is
+a real change from `2e60a584`, `1f80b3de` and `57d2a58`, where the
+validator-side clause was consistently the untested one, and it is worth
+recording as such rather than only recording defects.
+
+### Carried forward, not new
+
+The rollout utility re-derivation I reported at `29632ba` is unchanged and
+still unwitnessed: deleting
+
+    if result["team_signed_level_utility"] != expected_utility:
+        raise LunaExecutionError("process rollout utility drift")
+
+leaves the execution suite at **23 passed**. Same disposition as before —
+present and correct, live path unaffected, reopen-side check untested, and it
+guards the objective.
+
+### What this review cannot tell you
+
+The failure this head repairs was operational: both Codex subprocesses exited
+zero, neither emitted a mailbox operation, one lacked `turn.completed`, and one
+returned a final message with no terminal witness. The repair is a prompt
+rewrite. Source review can confirm the prompt is accurate, the caps match, the
+receipt is closed and the tests pass — it cannot confirm that a differently
+worded prompt makes the model drive the loop. **Only the census can settle
+that**, and this is the fifth source PASS issued against a failure mode that no
+source review can validate. If this census fails the same way, the next repair
+should probably not be another prompt revision reviewed the same way; the
+diagnostic receipt now exists precisely so the failure can be characterised
+from evidence instead.
+
+### Authority
+
+PASS authorizes exactly one fresh non-scientific, score-free progressive Mini
+capacity census. Not the 104-game collection, outcome opening, data use,
+gameplay or strength claims, merge, promotion or deployment. No marker
+requested and none appended; `PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1` still matches
+0 ledger lines and belongs to the launch review. Coverage: deep on the prompt
+contract, work caps and v3 receipt boundary; ballots, engine state, mirrors,
+scoring and population unchanged and resting on prior PASSes.
+

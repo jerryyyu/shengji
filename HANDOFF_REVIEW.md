@@ -9392,3 +9392,98 @@ Exactly one replacement non-scientific, score-free progressive Mini capacity cen
 immutable success/failure outputs (third census overall). Not: the 104-game population, outcome
 opening, data use, gameplay/strength claims, retry beyond this one, merge, promotion, deployment.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-30 02:45 EDT — ✅ PASS (source only) on PR #171 at exact head `2e60a584`. **No marker appended, for the second time and for the same reason**: `PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1` binds artifacts the authorized census has not produced
+
+Delta `814e64df..2e60a584`, parent confirmed via `git show -s --format=%P`,
+**2 files, +294/−2**, `git diff --check` clean. Batteries reproduced at the
+exact head in pure mode (the lane's `_require_pure_python_runtime` refuses
+`SHENGJI_FAST`): **67 passed** focused controller, **107 passed / 2 skipped**
+full PT-Luna battery, both `-P -B` with `__pycache__` cleared. Recorded counts
+match.
+
+**The "no semantics changed" claim is exactly true**, and I checked it rather
+than accepting it: the only removed line in the whole delta is
+`CAPACITY_FAILURE_SCHEMA` v1 → v2. Everything else is additive — `import
+base64`, one 224-line helper block, and three single-line additions inside
+`CapacityEvidenceRefusal`. No collection, gameplay, capacity-selection or
+scientific code is touched.
+
+### The privacy boundary holds, and it is two layers deep
+
+The producer (`_capacity_process_diagnostic`) collapses anything unrecognised —
+`process_error` outside the frozen set becomes `"other"`, Codex event types
+outside the vocabulary become `"other"`, unparseable stdout becomes
+`{"opaque": 1}`, trace ops outside `{observe, wait, rollout, play}` become
+`"other"`, and stdout/output appear only as SHA-256. The validator
+(`_validate_capacity_failure_body`) then re-checks the same invariants
+independently from closed key sets. Fifteen injections, one per nesting level
+the schema admits, all refused with distinct named errors, against a baseline
+that accepts:
+
+| injection | result |
+|---|---|
+| foreign key at top level | `capacity failure schema drift` |
+| foreign key in a classification item | `classification schema drift` |
+| foreign key in `opened` / `retained` | `privacy drift` |
+| foreign key in `authority` | `authority drift` |
+| prose in `process_error` | `process error drift` |
+| prose as a Codex event key | `count schema drift` |
+| prose as a trace-op key | `count schema drift` |
+| prose in `stdout_sha256` | `hash drift` |
+| `opened.model_prose = True` | `privacy drift` |
+| `retained.actions = True` | `privacy drift` |
+| any authority flag true | `authority drift` |
+| `scientific_admissible` / `collection_authorized` true | `authority drift` |
+| schema left at v1 | `identity drift` |
+
+**Two of the three collapses are unwitnessed** (disclosed, not blocking).
+Deleting the producer's `process_error` collapse turns
+`test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable` red.
+Deleting the producer's **Codex event-type** collapse leaves 67 passing, and so
+does deleting the **validator's** `process_error` check. The event-type gap has
+a concrete consequence: the planted-secret test hides its secret in `message`
+and `item` while using two in-vocabulary `type` values, so nothing exercises an
+out-of-vocabulary `type` — which is the one field that becomes a dict *key* in
+the public artifact. Composition still keeps it leak-safe, because the
+validator rejects the unknown key — but the result is a hard
+`count schema drift` refusal instead of a diagnosable one, which is the exact
+failure mode this delta exists to remove. One fixture with
+`type: "<unexpected>"` closes it.
+
+### Why there is still no marker
+
+`e45daaa` withheld the machine marker and asked that the moment-1 ask wording
+be corrected. It has not been, and this request asks for it again. The reason
+is unchanged and is in the source: `_review_claim` (:1403–1416) binds
+`census_sha256`, `capacity_receipt_sha256`, `candidate_freeze_sha256` and
+`worker_count`, and `authenticate_source_review` recomputes that claim from a
+live `RootCensus`, `CapacityReceipt` and launch freeze. Those are produced *by*
+the census this PASS authorizes — and this request's own text says the previous
+census failed at its first one-worker arm, so no successful receipt exists.
+There is nothing honest to put in the marker today.
+
+What has changed since `e45daaa` is the consequence. The predicate is now
+`current_lines != [*previous_lines, marker] or marker in previous_lines`
+(:1483), so a premature marker would no longer brick the lane permanently — it
+would simply never match the real launch claim and would need a second marker,
+which the repaired form allows. Recoverable, but still a false attestation, so
+I am not writing one. `PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1` matches **0** ledger
+lines and should stay that way until the launch review.
+
+The naming is doing real harm here. A constant called `SOURCE_REVIEW` whose
+payload requires census, capacity-receipt and freeze digests reads to every
+reviewer as belonging to a source review. Renaming it to something like
+`PT_LUNA_SELFPLAY_LAUNCH_REVIEW_V1` would end this recurrence more reliably
+than another note in the mailbox.
+
+### Authority
+
+This PASS authorizes exactly one replacement non-scientific, score-free
+progressive Mini capacity census with distinct immutable success/failure
+outputs. It does not authorize the 104-game collection, outcome opening,
+gameplay or strength claims, retry beyond this single replacement census,
+merge, promotion or deployment. Coverage: deep on the delta's diagnostic and
+validation surface; I did not re-audit the unchanged collector/capacity bytes,
+which prior PASSes cover.
+

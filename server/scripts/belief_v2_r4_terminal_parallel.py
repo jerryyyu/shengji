@@ -56,10 +56,20 @@ def _prepare_recovery_import_roots() -> None:
     native_root = sealed / "shengji" / "engine"
     if source != sealed and native_root.is_dir() \
             and any(native_root.glob("_fast*.so")):
-        __import__("shengji.engine")
+        require_fast = os.environ.pop("SHENGJI_FAST", None)
+        try:
+            __import__("shengji.engine")
+        finally:
+            if require_fast is not None:
+                os.environ["SHENGJI_FAST"] = require_fast
         engine = sys.modules["shengji.engine"]
         if str(native_root) not in engine.__path__:
             engine.__path__.append(str(native_root))
+        if require_fast == "1":
+            from shengji.engine import fast
+            if not fast.activate():
+                raise RuntimeError(
+                    "R4 recovery native extension activation refused")
 
 
 _prepare_recovery_import_roots()

@@ -17,14 +17,27 @@ import sys
 if not sys.flags.safe_path or not sys.dont_write_bytecode:
     raise RuntimeError("PT-Luna Stop hook requires Python -P -B")
 
-from shengji.rl.privileged_teacher_luna_selfplay_execution import (  # noqa: E402
-    FINAL_RESPONSE_SCHEMA,
-    tool_request,
-)
-from shengji.rl.privileged_teacher_luna_selfplay import (  # noqa: E402
-    GAME_SCHEMA,
-    MODEL,
-)
+try:
+    from shengji.rl.privileged_teacher_luna_selfplay_execution import (  # noqa: E402
+        FINAL_RESPONSE_SCHEMA,
+        tool_request,
+    )
+    from shengji.rl.privileged_teacher_luna_selfplay import (  # noqa: E402
+        GAME_SCHEMA,
+        MODEL,
+    )
+except Exception:
+    # The command may be launched with a different interpreter than the
+    # reviewed venv.  Keep an import failure fail-closed and private: Codex
+    # must receive the same bounded continuation decision as any other bad
+    # Stop event, never a traceback.
+    _PROJECT_IMPORT_FAILED = True
+    FINAL_RESPONSE_SCHEMA = None
+    GAME_SCHEMA = None
+    MODEL = None
+    tool_request = None
+else:
+    _PROJECT_IMPORT_FAILED = False
 
 
 MAX_STOP_INPUT_BYTES = 1 << 20
@@ -71,6 +84,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mailbox", type=Path, required=True)
     args = parser.parse_args()
+    if _PROJECT_IMPORT_FAILED:
+        return _block()
     stop = _stop_input(sys.stdin.buffer.read(MAX_STOP_INPUT_BYTES + 1))
     if stop is None:
         return _block()

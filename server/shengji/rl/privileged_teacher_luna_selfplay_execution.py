@@ -60,7 +60,7 @@ STOP_HOOK_SCRIPT = (Path(__file__).resolve().parents[2] / "scripts"
                     / "privileged_teacher_luna_stop_hook.py")
 # This is deliberately pinned separately from the generated config.  A
 # changed hook source must fail before a production planner is launched.
-STOP_HOOK_SOURCE_SHA256 = "c038ac466fdfe25389fbdabd99aadf0a093111de527a63615d154bc0d130093e"
+STOP_HOOK_SOURCE_SHA256 = "c078d656ff749bd796bf03f7be6d6536a96ac3ad279bb4eff4b11fc418a0afa9"
 
 
 class LunaExecutionError(ValueError):
@@ -263,6 +263,7 @@ class LunaPlannerConfig:
 
 def planner_prompt(*, mailbox_path: Path, tool_script: Path,
                    python: Path = Path(sys.executable)) -> str:
+    python = Path(python).absolute()
     tool = f"{python} -P -B {tool_script} --mailbox {mailbox_path}"
     return f"""You are PT-Luna, one team in a bounded full-information Shengji self-play round.
 You control both seats of your assigned partnership. Your sole objective is to
@@ -348,7 +349,10 @@ def stop_hook_config(*, mailbox_path: Path,
     """
     hook_script, _ = _reviewed_stop_hook_source(hook_script=hook_script)
     mailbox_path = Path(mailbox_path).resolve()
-    python = Path(python).resolve()
+    # Keep the venv launcher as argv[0].  ``resolve()`` follows that launcher's
+    # symlink to the base interpreter, which loses the venv import path under
+    # Python's isolated ``-P`` mode.
+    python = Path(python).absolute()
     command = " ".join(shlex.quote(value) for value in (
         str(python), "-P", "-B", str(hook_script.resolve()), "--mailbox",
         str(mailbox_path)))
@@ -359,7 +363,8 @@ def stop_hook_config(*, mailbox_path: Path,
 
 
 def _validate_stop_hook_config(config: object, *, mailbox_path: Path,
-                               hook_script: Path) -> str:
+                               hook_script: Path,
+                               python: Path = Path(sys.executable)) -> str:
     """Validate config shape before publishing it to an untrusted process."""
     if (type(config) is not dict or set(config) != {"hooks"}
             or type(config.get("hooks")) is not dict
@@ -378,20 +383,28 @@ def _validate_stop_hook_config(config: object, *, mailbox_path: Path,
             or hook.get("timeout") != STOP_HOOK_TIMEOUT_SECONDS):
         raise LunaExecutionError("stop hook config schema drift")
     command = hook["command"]
-    expected_script = shlex.quote(str(Path(hook_script).resolve()))
-    expected_mailbox = shlex.quote(str(Path(mailbox_path).resolve()))
-    if (expected_script not in command or expected_mailbox not in command
-            or " -P -B " not in command):
+    try:
+        parsed_command = tuple(shlex.split(command))
+    except ValueError as exc:
+        raise LunaExecutionError("stop hook config wiring drift") from exc
+    expected_command = (
+        str(Path(python).absolute()), "-P", "-B",
+        str(Path(hook_script).resolve()), "--mailbox",
+        str(Path(mailbox_path).resolve()))
+    if parsed_command != expected_command:
         raise LunaExecutionError("stop hook config wiring drift")
     return command
 
 
-def _stop_hook_binding(*, mailbox_path: Path) -> dict[str, object]:
+def _stop_hook_binding(*, mailbox_path: Path,
+                       python: Path = Path(sys.executable)) -> dict[str, object]:
+    python = Path(python).absolute()
     hook_script, source_sha256 = _reviewed_stop_hook_source()
     config = stop_hook_config(mailbox_path=mailbox_path,
-                              hook_script=hook_script)
+                              hook_script=hook_script, python=python)
     command = _validate_stop_hook_config(config, mailbox_path=mailbox_path,
-                                         hook_script=hook_script)
+                                         hook_script=hook_script,
+                                         python=python)
     raw = canonical_json_bytes(config)
     # Codex's session-level -c accepts a TOML inline table.  This is the
     # project-local equivalent that remains discoverable with user config and
@@ -423,7 +436,9 @@ def process_command(*, codex_binary: Path, workspace: Path,
                     sandbox_profile_path: Path | None = None) -> tuple[str, ...]:
     if model != MODEL or reasoning_effort != REASONING_EFFORT:
         raise LunaExecutionError("process identity drift")
-    hook = _stop_hook_binding(mailbox_path=Path(mailbox_path or workspace / "mailbox"))
+    hook = _stop_hook_binding(
+        mailbox_path=Path(mailbox_path or workspace / "mailbox"),
+        python=Path(sys.executable).absolute())
     command = (str(codex_binary), "exec", "--ephemeral", "--json",
             "--ignore-user-config",
             "--ignore-rules", "--skip-git-repo-check", "--sandbox",
@@ -477,7 +492,10 @@ def runtime_identity(*, codex_binary: Path, tool_script: Path) -> dict[str, obje
         except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
             version = None
     return {
-        "python_executable": str(Path(sys.executable).resolve()),
+        # Record the launcher path as invoked while hashing the followed
+        # interpreter target, so both venv selection and executable bytes are
+        # bound without collapsing the launcher symlink.
+        "python_executable": str(Path(sys.executable).absolute()),
         "python_version": sys.version,
         "python_sha256": _sha_bytes(Path(sys.executable).read_bytes()),
         "codex_binary": str(binary.resolve()) if binary.exists() else str(binary),
@@ -1248,6 +1266,7 @@ def run_luna_game(
     else:
         binary = Path(codex_binary)
     runtime = runtime_identity(codex_binary=binary, tool_script=tool_script)
+    python = Path(sys.executable).absolute()
     if planner_process is None and (sys.platform != "darwin"
                                     or shutil.which("sandbox-exec") is None):
         raise LunaExecutionError("production peer sandbox unavailable")
@@ -1289,7 +1308,7 @@ def run_luna_game(
                                                     attempt / "terminal-receipt.json"))
         _publish(profile_path, profile_raw.encode("utf-8"), mode=0o400)
         sandbox_binary = shutil.which("sandbox-exec") if sys.platform == "darwin" else None
-        hook = _stop_hook_binding(mailbox_path=mailbox)
+        hook = _stop_hook_binding(mailbox_path=mailbox, python=python)
         command = process_command(codex_binary=binary, workspace=workspace,
                                   final_output_path=final,
                                   mailbox_path=mailbox,
@@ -1304,7 +1323,8 @@ def run_luna_game(
         completed: subprocess.CompletedProcess[bytes] | None = None
         process_error: str | None = None
         stdout = b""
-        prompt = planner_prompt(mailbox_path=mailbox, tool_script=tool_script)
+        prompt = planner_prompt(mailbox_path=mailbox, tool_script=tool_script,
+                                python=python)
         try:
             with LunaToolServer(mailbox, session) as trace_server:
                 barrier.wait(timeout=10)

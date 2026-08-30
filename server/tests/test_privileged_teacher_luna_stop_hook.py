@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import threading
@@ -52,10 +53,16 @@ def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
             "turn_id": "test", "cwd": str(tmp_path),
             "stop_hook_active": stop_hook_active,
             "last_assistant_message": last}
+    config = execution.stop_hook_config(mailbox_path=mailbox,
+                                        python=Path(sys.executable))
+    command = config["hooks"]["Stop"][0]["hooks"][0]["command"]
+    argv = tuple(shlex.split(command))
+    assert argv[0] == str(Path(sys.executable).absolute())
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
+    env.pop("SHENGJI_FAST", None)
     process = subprocess.run(
-        (sys.executable, "-P", "-B", str(HOOK), "--mailbox", str(mailbox)),
+        argv, cwd=tmp_path,
         input=canonical_json_bytes(stop), stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, env=env, check=False, timeout=10)
     done.set()
@@ -128,3 +135,22 @@ def test_malformed_stop_input_fails_closed_without_mailbox_observe(tmp_path):
     assert process.returncode == 0
     assert json.loads(process.stdout)["decision"] == "block"
     assert not tuple(mailbox.iterdir())
+
+
+def test_project_import_failure_fails_closed_without_traceback(tmp_path):
+    """A missing project import still produces the bounded Stop response."""
+    mailbox = tmp_path / "mailbox"
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    environment.pop("SHENGJI_FAST", None)
+    process = subprocess.run(
+        (sys.executable, "-S", "-P", "-B", str(HOOK), "--mailbox",
+         str(mailbox)),
+        cwd=tmp_path, input=b"not-json", stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, env=environment, check=False, timeout=10)
+    assert process.returncode == 0
+    assert process.stderr == b""
+    payload = json.loads(process.stdout)
+    assert set(payload) == {"decision", "reason"}
+    assert payload["decision"] == "block"
+    assert len(payload["reason"]) < 200

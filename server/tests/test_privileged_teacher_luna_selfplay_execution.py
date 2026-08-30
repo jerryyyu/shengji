@@ -6,6 +6,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 import threading
@@ -76,6 +77,51 @@ def test_production_command_binds_reviewed_inline_stop_hook(tmp_path):
     assert ".codex" not in " ".join(command)
     assert execution.STOP_HOOK_SOURCE_SHA256 == execution._sha_bytes(
         execution.STOP_HOOK_SCRIPT.read_bytes())
+
+
+def test_stop_hook_command_runs_from_outside_repo_with_venv_launcher(tmp_path):
+    """The production hook command must retain the venv import context."""
+    python = Path(sys.executable)
+    config = execution.stop_hook_config(mailbox_path=tmp_path / "mailbox",
+                                        python=python)
+    command = config["hooks"]["Stop"][0]["hooks"][0]["command"]
+    argv = tuple(shlex.split(command))
+    assert argv[0] == str(python)
+    if python.is_symlink():
+        assert argv[0] != str(python.resolve())
+    assert argv[1:3] == ("-P", "-B")
+    runtime = execution.runtime_identity(codex_binary=python,
+                                         tool_script=TOOL)
+    assert runtime["python_executable"] == str(python)
+    assert runtime["python_sha256"] == execution._sha_bytes(
+        python.read_bytes())
+
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    environment.pop("SHENGJI_FAST", None)
+    process = subprocess.run(
+        argv, cwd=tmp_path, input=b"not-json", stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, env=environment, check=False, timeout=10)
+    assert process.returncode == 0
+    assert process.stderr == b""
+    payload = json.loads(process.stdout)
+    assert set(payload) == {"decision", "reason"}
+    assert payload["decision"] == "block"
+    assert type(payload["reason"]) is str
+    assert len(payload["reason"]) < 200
+
+
+def test_stop_hook_validator_rejects_extra_command_argv(tmp_path):
+    config = execution.stop_hook_config(mailbox_path=tmp_path / "mailbox",
+                                        python=Path(sys.executable))
+    hook = config["hooks"]["Stop"][0]["hooks"][0]
+    hook["command"] = "prefix " + hook["command"]
+    with pytest.raises(execution.LunaExecutionError,
+                       match="stop hook config wiring drift"):
+        execution._validate_stop_hook_config(
+            config, mailbox_path=tmp_path / "mailbox",
+            hook_script=execution.STOP_HOOK_SCRIPT,
+            python=Path(sys.executable))
 
 
 def test_production_command_refuses_removed_stop_hook_wiring(tmp_path, monkeypatch):

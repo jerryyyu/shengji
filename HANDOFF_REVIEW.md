@@ -9338,3 +9338,57 @@ Exactly one **replacement** non-scientific, score-free progressive Mini capacity
 distinct immutable success/failure outputs. Not: the 104-game population, outcome opening, data
 use, gameplay/strength claims, merge, retry beyond that replacement census, promotion, deployment.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-30 — ✅ PASS (source-only, delta): PR #171 `814e64df..2e60a584` — v2 bounded refusal diagnostics. Authorizes exactly one replacement census (the third). Marker request DECLINED again: the authentic claim is not yet generatable
+
+### Motivation verified the strongest possible way
+
+The two spent receipts (`…2f4fa09-r1` 05:13Z, `…814e64d-r1` 05:56Z) are **byte-identical** —
+same file SHA `685c357d…`, same `diagnostic_sha256 b48d02a8…`. Two different census failures,
+indistinguishable v1 artifacts. The replacement census ran at 05:56Z, after my 05:40Z
+authorization landed, and spent exactly its one-census scope. Root cause of failure two is still
+unnamed — which is precisely what this delta fixes forward: the next refusal will carry the
+process-error class, event/op counts, returncode, and stdout/output hashes.
+
+### Verified (worktree `pr171c` at `2e60a584`, parent `814e64df` byte-confirmed)
+
+- Two files only; refusal schema v1→v2; constructor now validates the sealed body
+  (`_validate_capacity_failure_body`) before publication. Battery: **108 passed / 2 skipped**
+  full luna sweep (ask says 107 — mine one higher); **67/67** focused controller, exact match.
+  Compile and `git diff --check` clean.
+- Bounded-ness verified surface-by-surface: process-error allowlist with `other` fallback
+  (mutation: collapse removed → **1 red**); stdout retained only as SHA-256; final response as
+  presence bool; event/op count keys allowlisted; arbitrary text refused at the validator.
+- Planted-secret witness passes as claimed (payload fields, trace, final response).
+
+### One disclosed gap — defense-in-depth pair, both layers individually unwitnessed
+
+Removing the unknown-event-type collapse alone: **67 green** (validator silently protects).
+Removing the constructor validator call alone: **67 green** (collapse silently protects). I then
+probed the property directly with a secret planted in the event **type** string (stdout is
+process-controlled, so type strings can carry prose): original code → collapsed to `other`, no
+leak; collapse removed → validator refuses fail-closed (receipt lost, nothing leaks); **both
+removed → the secret enters the public artifact as a count key**. The privacy property holds at
+this head under any single mutation, so this does not block. Should-fix: one fixture with an
+unknown type string asserting collapse to `other` and secret absence — same wrong-reason-coverage
+family as the still-open anti-replay witness.
+
+### Marker request declined — second time, different reason
+
+The ask again says "append the authentic exact-head marker." The module's own generator
+(`_review_claim` → `PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1`) binds `census_sha256`,
+`capacity_receipt_sha256`, `candidate_freeze_sha256`, `worker_count`, `output_root`, and
+`tool_script_sha256`. None of these exist — both censuses refused. A marker appended today would
+be hand-crafted bytes that `authenticate_source_review` can never match. Correct sequence: this
+prose PASS authorizes the replacement census; when a census SUCCEEDS, send the moment-2 packet
+with the freeze/census/capacity artifacts and I will generate the marker with the module's own
+generator and append it as a **marker-only commit** (the repaired predicate requires
+`current == previous + [marker]`). Please fix the ask template so it stops requesting markers
+that cannot exist yet.
+
+### Authorization
+
+Exactly one replacement non-scientific, score-free progressive Mini capacity census with distinct
+immutable success/failure outputs (third census overall). Not: the 104-game population, outcome
+opening, data use, gameplay/strength claims, retry beyond this one, merge, promotion, deployment.
+— Claude (session `68f9c8bd`)

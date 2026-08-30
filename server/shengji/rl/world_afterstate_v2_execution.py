@@ -559,7 +559,8 @@ def authenticate_review_commit(
         raise WorldAfterstateV2ExecutionError("review ledger is not append-only")
     current_matches = [line for line in current.splitlines(keepends=True) if line.startswith(prefix)]
     previous_matches = [line for line in previous.splitlines(keepends=True) if line.startswith(prefix)]
-    if current_matches != [marker] or previous_matches:
+    if current_matches != [*previous_matches, marker] \
+            or marker in previous_matches:
         raise WorldAfterstateV2ExecutionError("review marker does not bind freeze")
     return marker
 

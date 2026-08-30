@@ -236,6 +236,36 @@ def test_marker_authentication_and_source_mutation_fail_before_admission(tmp_pat
     assert not consumption_tombstone_path(tmp_path / "evidence").exists()
 
 
+def test_review_marker_appends_after_prior_freeze_without_reusing_it(tmp_path):
+    repo, first_freeze, _first_review, first_marker, remote = _fixture(tmp_path)
+    second_freeze = replace(
+        first_freeze, evidence_root=str(tmp_path / "second-evidence"))
+    second_marker = (REVIEW_PREFIX.encode()
+                     + canonical_json_bytes(expected_review_claim(second_freeze)))
+    assert second_marker != first_marker
+    with (repo / "HANDOFF_REVIEW.md").open("ab") as handle:
+        handle.write(second_marker)
+    review_env = {**os.environ, "GIT_AUTHOR_NAME": "Claude",
+                  "GIT_AUTHOR_EMAIL": "noreply@anthropic.com",
+                  "GIT_COMMITTER_NAME": "Claude",
+                  "GIT_COMMITTER_EMAIL": "noreply@anthropic.com"}
+    _git(repo, "add", "HANDOFF_REVIEW.md")
+    _git(repo, "commit", "-qm",
+         "Reviewed repaired V2\n\nClaude-Session: https://claude.ai/code/session_fixture_2",
+         env=review_env)
+    second_review = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "update-ref", "refs/remotes/origin/main", second_review)
+    _git(repo, "push", str(remote), f"{second_review}:refs/heads/main")
+
+    assert authenticate_review_commit(
+        second_freeze, repo=repo, review_commit=second_review,
+        remote_url=str(remote)) == second_marker
+    with pytest.raises(WorldAfterstateV2ExecutionError, match="marker"):
+        authenticate_review_commit(
+            first_freeze, repo=repo, review_commit=second_review,
+            remote_url=str(remote))
+
+
 def test_ignored_pep552_bytecode_is_refused_before_admission(tmp_path):
     repo, freeze, review, _marker, remote = _fixture(tmp_path)
     cache = repo / "__pycache__"

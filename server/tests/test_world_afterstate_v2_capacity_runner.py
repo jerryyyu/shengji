@@ -1,9 +1,14 @@
 """Fast contract tests for the score-free V2 capacity runner."""
 
+import os
 import pytest
 import subprocess
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from types import SimpleNamespace
+
+import shengji.rl.world_afterstate_v2_capacity_runner as runner
 
 from shengji.rl.world_afterstate_v2_capacity import (
     ARM_GRIDS, COMPOSED_STAGE_NAMES, composed_critical_path_seconds)
@@ -22,12 +27,137 @@ from shengji.rl.world_afterstate_v2_capacity_supervisor import (
 )
 
 
+def _real_preflight_process_probe(identity, slot):
+    """Pickle-safe witness that executes the real source driver in a child."""
+    return os.getpid(), runner.drive_population_attempt_v2(identity, slot)
+
+
 def _preflight() -> PreflightResultV2:
     fixture = FixtureV2({"score_free": True})
     return PreflightResultV2(
         accepted_fixtures=(fixture,) * 32, attempted=32, accepted=32,
         rejection_counts=(), candidate_distribution=((2, 32),),
         stratum_distribution=(("early/lead/attacker", 32),))
+
+
+def test_score_free_preflight_parallelizes_without_eligible_surplus(
+        monkeypatch):
+    assert (runner._preflight_executor_type(
+        runner.drive_population_attempt_v2) is runner.ProcessPoolExecutor)
+    monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 4)
+    monkeypatch.setattr(runner, "PREFLIGHT_ATTEMPT_CEILING", 12)
+    monkeypatch.setattr(runner, "PREFLIGHT_WORKERS", 4)
+
+    class FakeFixture:
+        def __init__(self, _prestate, _audit_raws, *, deal_sha256, material):
+            self.deal_sha256 = deal_sha256
+            self.fixture_sha256 = deal_sha256
+            self.material = material
+
+    monkeypatch.setattr(runner, "FixtureV2", FakeFixture)
+    slots = tuple(SimpleNamespace(slot_sha256=f"{index:064x}")
+                  for index in range(12))
+    active = 0
+    max_active = 0
+    lock = threading.Lock()
+    first_batch = threading.Event()
+
+    def attempt(identity, _slot):
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+            if max_active == 4:
+                first_batch.set()
+        assert first_batch.wait(timeout=2)
+        index = identity["attempt_index"]
+        accepted = index in {0, 2, 4, 5}
+        material = (SimpleNamespace(
+            prestate={"index": index}, audit_raws=(), candidates=(0, 1),
+            state=SimpleNamespace(
+                phase="early", position="lead", role="attacker"))
+                    if accepted else None)
+        with lock:
+            active -= 1
+        return SimpleNamespace(
+            accepted=accepted, rejection_reason=None if accepted else "miss",
+            material=material, deal_sha256=identity["deal_sha256"])
+
+    progress = []
+    result = runner.run_score_free_preflight(
+        attempt=attempt, slots=slots, progress=progress.append,
+        started_ns=time.perf_counter_ns())
+    assert max_active == 4
+    assert result.attempted == 6
+    assert result.accepted == 4
+    assert result.rejection_counts == (("miss", 2),)
+    assert len({fixture.deal_sha256
+                for fixture in result.accepted_fixtures}) == 4
+    assert [row["workers"] for row in progress] == [4, 2]
+    assert progress[-1]["accepted"] == 4
+    assert progress[-1]["rejection_counts"] == {"miss": 2}
+
+
+def test_real_preflight_driver_executes_in_a_process():
+    from shengji.rl.world_afterstate_v2_protocol import (
+        TIER_SPECS, _raw_slot_ledger)
+
+    slot = next(row for row in _raw_slot_ledger(TIER_SPECS[0])
+                if row.source in ("natural", "mechanics"))
+    identity = runner._attempt_identity(runner._namespace(), slot, 0)
+    with ProcessPoolExecutor(max_workers=1) as pool:
+        child_pid, result = pool.submit(
+            _real_preflight_process_probe, identity, slot).result(timeout=60)
+    assert child_pid != os.getpid()
+    result.validate()
+    assert result.deal_sha256 == identity["deal_sha256"]
+    assert result.slot_sha256 == slot.slot_sha256
+
+
+def test_score_free_preflight_refuses_expired_batch_and_worker_failure(
+        monkeypatch):
+    monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 1)
+    monkeypatch.setattr(runner, "PREFLIGHT_ATTEMPT_CEILING", 1)
+    monkeypatch.setattr(runner, "PREFLIGHT_WORKERS", 1)
+    slot = SimpleNamespace(slot_sha256="1" * 64)
+
+    def slow_rejection(_identity, _slot):
+        time.sleep(.02)
+        return SimpleNamespace(
+            accepted=False, rejection_reason="miss", material=None,
+            deal_sha256="2" * 64)
+
+    with pytest.raises(CapacityRunnerError, match="deadline"):
+        runner.run_score_free_preflight(
+            attempt=slow_rejection, slots=(slot,),
+            deadline_ns=time.perf_counter_ns() + 5_000_000)
+
+    def broken_worker(_identity, _slot):
+        raise RuntimeError("worker exploded")
+
+    with pytest.raises(CapacityRunnerError, match="preflight worker failed"):
+        runner.run_score_free_preflight(
+            attempt=broken_worker, slots=(slot,))
+
+
+def test_score_free_preflight_guards_aggregate_child_memory(monkeypatch):
+    monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 1)
+    monkeypatch.setattr(runner, "PREFLIGHT_ATTEMPT_CEILING", 1)
+    monkeypatch.setattr(runner, "PREFLIGHT_WORKERS", 1)
+    monkeypatch.setattr(runner, "_rss_bytes", lambda: 1)
+    memory_samples = iter((1, 1, runner.MEMORY_LIMIT_BYTES))
+    monkeypatch.setattr(
+        runner, "_cgroup_memory_bytes",
+        lambda: next(memory_samples, runner.MEMORY_LIMIT_BYTES))
+    slot = SimpleNamespace(slot_sha256="3" * 64)
+
+    def rejection(_identity, _slot):
+        return SimpleNamespace(
+            accepted=False, rejection_reason="miss", material=None,
+            deal_sha256="4" * 64)
+
+    with pytest.raises(CapacityRunnerError, match="memory headroom"):
+        runner.run_score_free_preflight(attempt=rejection, slots=(slot,))
 
 
 def _backend(fixture: FixtureV2, **changes):

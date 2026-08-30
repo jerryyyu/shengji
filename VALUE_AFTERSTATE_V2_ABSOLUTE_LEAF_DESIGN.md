@@ -589,8 +589,20 @@ one score-free, out-of-namespace census using the existing engine and V1 state
 extractor. It persists no terminal outcome or advantage.
 
 Use exactly 32 accepted independent preflight deals from a domain-separated
-namespace with a hard ceiling of 96 attempted deals. Fewer than 32 accepted
-deals is a score-free capacity refusal. Measure:
+namespace. The first exact post-implementation census at source `ba17ab1e`
+correctly refused before arm or DAG measurement: only 14 of the frozen 96
+attempts supplied an eligible fixture. That score-free result falsified the
+original 96-attempt sizing assumption; it did not open a label or outcome.
+
+The repaired preflight keeps the 32-fixture target and the same deterministic
+identity derivation (including a byte-identical first 96-attempt prefix), raises
+only the hard attempt ceiling to 384, and runs
+the CPU-bound attempts in fixed index-ordered batches of at most 16 processes.
+Each batch is also bounded by the number of fixtures still needed, so it cannot
+produce an eligible surplus requiring post-hoc selection. The measured
+14/96 supply would yield 56 fixtures over 384 attempts at the same rate; 32
+remain the fixed retained population. Fewer than 32 accepted deals by the new
+ceiling is still a score-free capacity refusal. Measure:
 
 - stratum acceptance and deal attempts needed per accepted state;
 - production-ballot and legal-tail candidate counts;

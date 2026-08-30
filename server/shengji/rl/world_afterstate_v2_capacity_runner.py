@@ -45,7 +45,8 @@ from .world_afterstate_v2_source_driver import drive_population_attempt_v2
 HOST_CPUS = 16
 ZERO_SWAP = 0
 PREFLIGHT_ACCEPTED = 32
-PREFLIGHT_ATTEMPT_CEILING = 96
+PREFLIGHT_ATTEMPT_CEILING = 384
+PREFLIGHT_WORKERS = HOST_CPUS
 SYNTHETIC_BRAND = "SYNTHETIC_TEST_MEASUREMENT_ONLY"
 RUNNER_SCHEMA = "world-afterstate-v2-capacity-runner-v1"
 _PRODUCTION_PROVENANCE = object()
@@ -257,6 +258,11 @@ class PreflightResultV2:
             raise CapacityRunnerError("preflight accepted fixture accounting drift")
         if self.accepted != PREFLIGHT_ACCEPTED:
             raise CapacityRunnerError("preflight requires exactly 32 accepted deals")
+        if (any(type(name) is not str or not name or type(count) is not int
+                or count < 1 for name, count in self.rejection_counts)
+                or sum(count for _, count in self.rejection_counts)
+                != self.attempted - self.accepted):
+            raise CapacityRunnerError("preflight rejection accounting drift")
         deal_ids = [fixture.deal_sha256 for fixture in self.accepted_fixtures
                     if fixture.deal_sha256]
         if deal_ids and len(deal_ids) != len(set(deal_ids)):
@@ -265,6 +271,11 @@ class PreflightResultV2:
             raise CapacityRunnerError("preflight outcomes were opened")
         if not self.candidate_distribution or not self.stratum_distribution:
             raise CapacityRunnerError("preflight candidate/stratum report missing")
+        if (sum(count for _, count in self.candidate_distribution)
+                != self.accepted
+                or sum(count for _, count in self.stratum_distribution)
+                != self.accepted):
+            raise CapacityRunnerError("preflight accepted distribution drift")
 
     def payload(self) -> dict[str, Any]:
         self.validate()
@@ -295,12 +306,18 @@ def _attempt_identity(namespace: str, slot: Any, index: int) -> dict[str, Any]:
             "engine_seed": int(deal[:16], 16) & ((1 << 63) - 1)}
 
 
+def _preflight_executor_type(attempt: Callable[..., Any]):
+    """Use processes for the real CPU-bound driver and threads for test seams."""
+    return (ProcessPoolExecutor
+            if attempt is drive_population_attempt_v2 else ThreadPoolExecutor)
+
+
 def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_attempt_v2,
                              slots: Sequence[Any] | None = None,
                              deadline_ns: int | None = None,
                              progress: Callable[[dict[str, Any]], None] | None = None,
                              started_ns: int | None = None) -> PreflightResultV2:
-    """Find 32 accepted natural/mechanics D256 deals, bounded at 96 attempts."""
+    """Find 32 accepted natural/mechanics D256 deals, bounded at 384 attempts."""
     from .world_afterstate_v2_protocol import _raw_slot_ledger
 
     if slots is None:
@@ -317,52 +334,126 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
     rejected: Counter[str] = Counter()
     candidates: Counter[int] = Counter()
     strata: Counter[str] = Counter()
-    for index in range(PREFLIGHT_ATTEMPT_CEILING):
-        if deadline_ns is not None and time.perf_counter_ns() >= deadline_ns:
-            raise CapacityRunnerError("capacity deadline exceeded during preflight")
-        if _rss_bytes() * 100 > MEMORY_LIMIT_BYTES * 85:
-            raise CapacityRunnerError("capacity memory headroom exhausted during preflight")
-        if _swap_bytes() != ZERO_SWAP:
-            raise CapacityRunnerError("capacity swap became non-zero during preflight")
-        if _task_count() > MAX_TASKS:
-            raise CapacityRunnerError("capacity task cap exceeded during preflight")
-        slot = slots[index % len(slots)]
-        result = attempt(_attempt_identity(namespace, slot, index), slot)
-        if progress is not None:
-            elapsed = max(0, time.perf_counter_ns() - (started_ns or time.perf_counter_ns()))
-            progress({
-                "stage": "preflight", "completed_units": index + 1,
-                "total_units": PREFLIGHT_ATTEMPT_CEILING, "workers": 1,
-                "utilization_ppm": 0, "elapsed_seconds": elapsed // 1_000_000_000,
-                "eta_seconds": 0, "headroom_seconds": max(
-                    0, MAX_COMMAND_WALL_SECONDS - elapsed // 1_000_000_000),
-                "accepted": len(accepted),
-                "memory_bytes": _cgroup_memory_bytes(),
-                "peak_memory_bytes": _cgroup_memory_bytes(),
-                "queue_depth": 0,
-                "disk_free_bytes": shutil.disk_usage(Path.cwd()).free,
-                "immutable_shards": 0, "checkpoint_count": 0,
-            })
-        if not getattr(result, "accepted", False):
-            rejected[str(getattr(result, "rejection_reason", "unknown"))] += 1
-            continue
-        material = getattr(result, "material", None)
-        if material is None:
-            rejected["missing-material"] += 1
-            continue
-        # Only the score-free canonical state and private audit bytes enter
-        # the in-memory fixture.  No continuation/result field is copied.
-        fixture = FixtureV2(
-            material.prestate, tuple(material.audit_raws),
-            deal_sha256=result.deal_sha256, material=material)
-        accepted.append(fixture)
-        candidates[len(material.candidates)] += 1
-        state = material.state
-        strata[f"{state.phase}/{state.position}/{state.role}"] += 1
-        if len(accepted) == PREFLIGHT_ACCEPTED:
-            break
+    index = 0
+    executor_type = _preflight_executor_type(attempt)
+    peak_memory = _cgroup_memory_bytes()
+    with executor_type(max_workers=PREFLIGHT_WORKERS) as pool:
+        while index < PREFLIGHT_ATTEMPT_CEILING \
+                and len(accepted) < PREFLIGHT_ACCEPTED:
+            if deadline_ns is not None and time.perf_counter_ns() >= deadline_ns:
+                raise CapacityRunnerError(
+                    "capacity deadline exceeded during preflight")
+            if _cgroup_memory_bytes() * 100 > MEMORY_LIMIT_BYTES * 85:
+                raise CapacityRunnerError(
+                    "capacity memory headroom exhausted during preflight")
+            if _swap_bytes() != ZERO_SWAP:
+                raise CapacityRunnerError(
+                    "capacity swap became non-zero during preflight")
+            if _task_count() > MAX_TASKS:
+                raise CapacityRunnerError(
+                    "capacity task cap exceeded during preflight")
+            # Never schedule more attempts than the number of fixtures still
+            # needed.  Therefore a concurrent batch cannot produce an eligible
+            # surplus that would require post-hoc selection or hidden accounting.
+            batch_size = min(
+                PREFLIGHT_WORKERS, PREFLIGHT_ACCEPTED - len(accepted),
+                PREFLIGHT_ATTEMPT_CEILING - index)
+            batch_started = time.perf_counter_ns()
+            batch_cpu_started = _proc_cpu_ns()
+            jobs = []
+            for offset in range(batch_size):
+                attempt_index = index + offset
+                slot = slots[attempt_index % len(slots)]
+                jobs.append((attempt_index, slot, pool.submit(
+                    attempt,
+                    _attempt_identity(namespace, slot, attempt_index), slot)))
+            try:
+                results = tuple((attempt_index, slot, future.result())
+                                for attempt_index, slot, future in jobs)
+            except Exception as exc:
+                # An infrastructure failure is not a scientific rejection and
+                # must never be counted toward the fixed 384-attempt supply.
+                raise CapacityRunnerError("capacity preflight worker failed") from exc
+            if deadline_ns is not None and time.perf_counter_ns() >= deadline_ns:
+                # A batch that finishes after the command deadline is not
+                # allowed to turn an expired capacity run into a success.
+                raise CapacityRunnerError(
+                    "capacity deadline exceeded during preflight")
+            if _cgroup_memory_bytes() * 100 > MEMORY_LIMIT_BYTES * 85:
+                raise CapacityRunnerError(
+                    "capacity memory headroom exhausted during preflight")
+            if _swap_bytes() != ZERO_SWAP:
+                raise CapacityRunnerError(
+                    "capacity swap became non-zero during preflight")
+            if _task_count() > MAX_TASKS:
+                raise CapacityRunnerError(
+                    "capacity task cap exceeded during preflight")
+            batch_elapsed = max(1, time.perf_counter_ns() - batch_started)
+            batch_cpu = max(1, _proc_cpu_ns() - batch_cpu_started)
+            utilization = min(
+                1_000_000, batch_cpu * 1_000_000
+                // max(1, batch_elapsed * HOST_CPUS))
+            for attempt_index, slot, result in results:
+                if not getattr(result, "accepted", False):
+                    rejected[str(getattr(
+                        result, "rejection_reason", "unknown"))] += 1
+                    continue
+                material = getattr(result, "material", None)
+                if material is None:
+                    rejected["missing-material"] += 1
+                    continue
+                # Only the score-free canonical state and private audit bytes
+                # enter the in-memory fixture.  No continuation/result field is
+                # copied.
+                fixture = FixtureV2(
+                    material.prestate, tuple(material.audit_raws),
+                    deal_sha256=result.deal_sha256, material=material)
+                accepted.append(fixture)
+                candidates[len(material.candidates)] += 1
+                state = material.state
+                strata[f"{state.phase}/{state.position}/{state.role}"] += 1
+            index += batch_size
+            peak_memory = max(peak_memory, _cgroup_memory_bytes())
+            if progress is not None:
+                elapsed = max(
+                    0, time.perf_counter_ns()
+                    - (started_ns or time.perf_counter_ns()))
+                projected_attempts = (index if not accepted else min(
+                    PREFLIGHT_ATTEMPT_CEILING,
+                    math.ceil(index * PREFLIGHT_ACCEPTED / len(accepted))))
+                eta = (max(0, projected_attempts - index) * elapsed
+                       // max(1, index))
+                progress({
+                    "stage": "preflight", "completed_units": index,
+                    "total_units": PREFLIGHT_ATTEMPT_CEILING,
+                    "workers": batch_size, "utilization_ppm": utilization,
+                    "elapsed_seconds": elapsed // 1_000_000_000,
+                    "eta_seconds": eta // 1_000_000_000,
+                    "headroom_seconds": max(
+                        0, MAX_COMMAND_WALL_SECONDS
+                        - elapsed // 1_000_000_000),
+                    "accepted": len(accepted),
+                    "rejection_counts": dict(sorted(rejected.items())),
+                    "memory_bytes": _cgroup_memory_bytes(),
+                    "peak_memory_bytes": peak_memory,
+                    "queue_depth": 0,
+                    "disk_free_bytes": shutil.disk_usage(Path.cwd()).free,
+                    "immutable_shards": 0, "checkpoint_count": 0,
+                })
+            if deadline_ns is not None and time.perf_counter_ns() >= deadline_ns:
+                raise CapacityRunnerError(
+                    "capacity deadline exceeded during preflight")
+            if _cgroup_memory_bytes() * 100 > MEMORY_LIMIT_BYTES * 85:
+                raise CapacityRunnerError(
+                    "capacity memory headroom exhausted during preflight")
+            if _swap_bytes() != ZERO_SWAP:
+                raise CapacityRunnerError(
+                    "capacity swap became non-zero during preflight")
+            if _task_count() > MAX_TASKS:
+                raise CapacityRunnerError(
+                    "capacity task cap exceeded during preflight")
     result = PreflightResultV2(
-        tuple(accepted), index + 1, len(accepted), tuple(sorted(rejected.items())),
+        tuple(accepted), index, len(accepted), tuple(sorted(rejected.items())),
         tuple(sorted(candidates.items())), tuple(sorted(strata.items())))
     result.validate()
     return result
@@ -1333,7 +1424,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 raise CapacityRunnerError("capacity deadline exceeded during measurement")
             if production:
                 live = observe_host()
-                if _rss_bytes() * 100 > MEMORY_LIMIT_BYTES * 85:
+                if _cgroup_memory_bytes() * 100 > MEMORY_LIMIT_BYTES * 85:
                     raise CapacityRunnerError("capacity memory headroom exhausted")
                 if live.swap_bytes != ZERO_SWAP:
                     raise CapacityRunnerError("capacity swap became non-zero")

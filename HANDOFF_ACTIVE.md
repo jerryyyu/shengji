@@ -4,16 +4,17 @@
 > belong in `HANDOFF_REVIEW.md`; plans belong in `BACKLOG.md` and `RL_PLAN.md`.
 > The latest authentic exact-head marker on remote main controls.
 
-Last reconciled: **2026-08-29 23:45 EDT**. Remote main before this update:
-`968f749`.
+Last reconciled: **2026-08-30 00:05 EDT**. Remote main before this update:
+`8cdc4a8`.
 
 ## Review queue — one urgent actionable ask
 
 ### PR #172 R4 sealed-inner timeout recovery
 
-Review from scratch at exact head
-`1d576e4d17baf609976a4369ba58c7083cc27028`, stacked on PR #168 exact head
-`a327abb8d7aa70b2970fa0b7d47001edcb8270a6`.
+Review only the repaired delta `1d576e4d..5a81d89c` at final exact head
+`5a81d89cd954a63ac97ca8588926b3367c28c5c1`. The source-only PASS at
+`1d576e4d` is canonical in `HANDOFF_REVIEW.md`; do not repeat its unchanged
+2,358-line recovery surface.
 
 This is one consolidated source-only review. Verify that the absolute clean
 old checkout authenticates the sealed scientific freeze/admission/runtime,
@@ -24,8 +25,14 @@ systemd timeout receipt, outcome-blind sealed-inner binding, dynamic pending
 review claim, route tombstone, single crash-safe verifier, receipt-only final
 reopen, and all-false retry/test/promotion/deployment/strength authority.
 
-Focused recovery tests: 54 passed. Result plus execution-identity/freeze
-battery: 90 passed. Diff-check clean.
+The delta makes the frozen venv execute the new reviewed Python checkout while
+reusing only the byte-bound native extension from the old sealed checkout,
+reads protocol JSON from the correct clean checkout, and adds the exact
+non-timeout witness requested in the prior PASS. A live score-free dry run on
+Strength Cloud reproduced the full source-review claim against sealed git
+`56bd35f0` and recovery git `5a81d89c` without opening result bytes or touching
+the scientific service/evidence. Focused recovery tests: 55 passed. Result
+plus execution-identity/freeze battery: 91 passed. Diff-check clean.
 
 Return PASS or HOLD with only load-bearing blockers. PASS authorizes only
 generating the timeout receipt and exact pending recovery claim if the live

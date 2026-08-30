@@ -26,8 +26,8 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-SCHEMA = "world-afterstate-v2-post-implementation-capacity-v2"
-ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v1"
+SCHEMA = "world-afterstate-v2-post-implementation-capacity-v3"
+ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v2"
 PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v2"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-recovery-v1"
 MEASUREMENT_SCOPE = "retained-32-material-sample-projection-v1"
@@ -38,12 +38,12 @@ ZERO_SWAP_BYTES = 0
 MIN_FREE_DISK_HEADROOM_PPM = DISK_RETAIN_PERCENT_MIN * 10_000
 MIN_CPU_UTILIZATION_PPM = 850_000
 MIN_WALL_SHARE_PPM = 50_000
+PINNED_TORCH_THREADS = 1
 
 ARM_GRIDS: dict[str, tuple[int, ...]] = {
     "state-successor": (1, 2, 4, 8, 16),
     "continuation-mechanics": (1, 2, 4, 8, 12, 16),
     "member-concurrency": (1, 2, 4),
-    "torch-threads-per-member": (1, 2, 4),
     "inference-batch": (32, 64, 128, 256),
     "reconstruction": (1, 4, 8, 16),
 }
@@ -51,7 +51,6 @@ ARM_DIMENSIONS = {
     "state-successor": "workers",
     "continuation-mechanics": "workers",
     "member-concurrency": "members",
-    "torch-threads-per-member": "torch_threads",
     "inference-batch": "batch_size",
     "reconstruction": "workers",
 }
@@ -674,13 +673,12 @@ class CapacityReceiptV2:
                         "CPU-bound stage utilization/next-arm gate drift")
         if any((self.member_workers, self.torch_threads, self.inference_batch)):
             if (self.member_workers not in ARM_GRIDS["member-concurrency"]
-                    or self.torch_threads not in ARM_GRIDS["torch-threads-per-member"]
+                    or type(self.torch_threads) is not int
+                    or self.torch_threads != PINNED_TORCH_THREADS
                     or self.inference_batch not in ARM_GRIDS["inference-batch"]):
                 raise WorldAfterstateV2CapacityError("capacity resource layout drift")
             selected_by_stage = {arm.stage: arm for arm in self.selected_arms}
             if (selected_by_stage["member-concurrency"].variant != self.member_workers
-                    or selected_by_stage["torch-threads-per-member"].variant
-                    != self.torch_threads
                     or selected_by_stage["inference-batch"].variant
                     != self.inference_batch):
                 raise WorldAfterstateV2CapacityError("capacity resource layout mismatch")
@@ -781,7 +779,8 @@ __all__ = [
     "TRAINING_RESOURCE_SERIALIZATION_EDGES", "ComposedProjectionV2",
     "MAX_COMMAND_WALL_SECONDS", "MAX_TASKS",
     "MEMORY_LIMIT_BYTES", "ProgressRecoveryV2", "TierProjectionV2",
-    "MEASUREMENT_SCOPE", "WorldAfterstateV2CapacityError", "choose_capacity_tier_v2",
+    "MEASUREMENT_SCOPE", "PINNED_TORCH_THREADS",
+    "WorldAfterstateV2CapacityError", "choose_capacity_tier_v2",
     "capacity_receipt_sha256", "composed_critical_path_seconds",
     "validate_capacity_receipt_v2",
 ]

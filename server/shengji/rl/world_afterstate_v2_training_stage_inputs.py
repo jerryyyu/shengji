@@ -22,6 +22,7 @@ from .world_afterstate_v2_artifacts import reopen_continuation_manifest
 from .world_afterstate_v2_capacity_runner import (
     reopen_capacity_receipt_v2_bytes,
 )
+from .world_afterstate_v2_capacity import PINNED_TORCH_THREADS
 from .world_afterstate_v2_dataset import build_training_examples_v2
 from .world_afterstate_v2_inference import (
     INFERENCE_BATCH_CAPS, build_inference_root_v2,
@@ -49,7 +50,6 @@ REVIEWED_GRADIENT_NORM_MILLI = 1_000
 REVIEWED_MAX_EPOCHS = MAX_EPOCHS
 REVIEWED_BATCH_EXAMPLE_CAP = DEFAULT_BATCH_EXAMPLE_CAP
 CAPACITY_MEMBER_STAGE = "member-concurrency"
-CAPACITY_TORCH_STAGE = "torch-threads-per-member"
 CAPACITY_BATCH_STAGE = "inference-batch"
 P0_REPORT_RELATIVE = Path("shards/p0-labels-gates/receipt.bin")
 
@@ -155,10 +155,14 @@ def _selected_variant(receipt: Any, stage: str, label: str) -> int:
 
 
 def _capacity_resources(receipt: Any) -> tuple[int, int, int, int]:
+    receipt_threads = getattr(receipt, "torch_threads", None)
+    if (isinstance(receipt_threads, bool)
+            or type(receipt_threads) is not int
+            or receipt_threads != PINNED_TORCH_THREADS):
+        raise WorldAfterstateV2TrainingStageInputError(
+            "training resource arm drift")
     member_workers = _selected_variant(receipt, CAPACITY_MEMBER_STAGE,
                                         "model-training-concurrency")
-    torch_threads = _selected_variant(receipt, CAPACITY_TORCH_STAGE,
-                                      "torch threads per member")
     # Inference batching is selected independently and consumed only by the
     # prediction adapters.  Training retains its reviewed fixed batch cap;
     # coupling the two makes a valid fastest inference arm alter the recipe.
@@ -168,7 +172,8 @@ def _capacity_resources(receipt: Any) -> tuple[int, int, int, int]:
     if REVIEWED_BATCH_EXAMPLE_CAP != 256:
         raise WorldAfterstateV2TrainingStageInputError(
             "reviewed training batch cap drift")
-    if member_workers not in (1, 2, 4) or not 1 <= torch_threads <= 64:
+    torch_threads = PINNED_TORCH_THREADS
+    if member_workers not in (1, 2, 4):
         raise WorldAfterstateV2TrainingStageInputError(
             "training resource arm drift")
     if inference_batch_cap not in INFERENCE_BATCH_CAPS:
@@ -309,7 +314,7 @@ class WorldAfterstateV2TrainingStageInputs:
         if (self.member_workers not in (1, 2, 4)
                 or isinstance(self.torch_threads, bool)
                 or not isinstance(self.torch_threads, int)
-                or not 1 <= self.torch_threads <= 64
+                or self.torch_threads != PINNED_TORCH_THREADS
                 or self.batch_example_cap != REVIEWED_BATCH_EXAMPLE_CAP
                 or isinstance(self.inference_batch_cap, bool)
                 or type(self.inference_batch_cap) is not int
@@ -561,7 +566,7 @@ WorldAfterstateV2TrainingInputs = WorldAfterstateV2TrainingStageInputs
 
 
 __all__ = [
-    "CAPACITY_BATCH_STAGE", "CAPACITY_MEMBER_STAGE", "CAPACITY_TORCH_STAGE",
+    "CAPACITY_BATCH_STAGE", "CAPACITY_MEMBER_STAGE", "PINNED_TORCH_THREADS",
     "FIT_SELECT_CONTINUATION_ROOT", "P0_REPORT_RELATIVE", "P0_SIGMA_FIELD", "SCHEMA",
     "WorldAfterstateV2TrainingStageInputError",
     "WorldAfterstateV2TrainingStageInputs", "WorldAfterstateV2TrainingInputs",

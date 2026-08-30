@@ -631,7 +631,7 @@ After implementation, but before a scientific freeze, measure on the isolated
 | state/successor construction | 1, 2, 4, 8, 16 workers |
 | continuation mechanics | 1, 2, 4, 8, 12, 16 workers |
 | member concurrency | 1, 2, 4 members |
-| Torch threads per member | 1, 2, 4 |
+| Torch threads per member | 1 (pinned; no width-selection arm) |
 | inference batch | 32, 64, 128, 256 |
 | reconstruction | 1, 4, 8, 16-worker scoring/hash verification |
 
@@ -660,8 +660,33 @@ mean/p50/p95 CPU utilization, scaling efficiency, queue depth, and wall share
 for every stage. A CPU-bound stage consuming at least 5% of projected wall
 must either sustain at least 85% aggregate utilization on the 16-core host or
 show that the next measured worker arm is byte-identical but slower. Otherwise
-the design repairs or closes before freeze. The chosen worker/thread layout is
-the fastest byte-identical arm, not automatically the largest arm.
+the design repairs or closes before freeze. The chosen worker and batch
+layouts are the fastest byte-identical arms, not automatically the largest
+arms; Torch training width is fixed at the pinned value above and is not
+selected by this gate.
+
+### V2 capacity amendment: deterministic intra-model Torch width
+
+The post-implementation capacity repair removes cross-width Torch training
+selection. CPU-threaded reductions can alter post-training model bytes across
+hosts, so comparing Torch widths as byte-identical arms is not an admissible
+reproducibility claim. Production has exactly one Torch training configuration:
+intra-model Torch threads are pinned to 1. This is a runtime invariant, not a
+selectable capacity arm, so a `(2, 4)` member/thread layout cannot enter
+production. The selected fixed configuration therefore remains reproducible
+while measured member concurrency still represents
+independent parallel work across model members; worker, batch, and
+reconstruction arms remain measured as specified above.
+
+The representative full-DAG utilization gate remains load-bearing. If training
+is a material share of projected wall and is underutilized, the receipt refuses
+unless the permitted next worker arm is slower but byte-identical; pinning
+Torch width does not waive that refusal condition.
+
+The capacity wire schema is bumped because the former receipt and arm
+population are incompatible with this layout. No migration is provided: the
+prior capacity run refused before publishing a receipt, so there is no
+previous production artifact to migrate.
 
 ## 14. Progress and recovery
 

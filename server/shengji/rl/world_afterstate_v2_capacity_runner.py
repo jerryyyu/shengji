@@ -31,7 +31,7 @@ from .belief_contract import canonical_json_bytes
 from .world_afterstate import canonical_successor, replay_canonical_successor
 from .world_afterstate_v2_capacity import (
     ARM_GRIDS, AUTHORITY, COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS, MEMORY_LIMIT_BYTES,
-    MEASUREMENT_SCOPE,
+    MEASUREMENT_SCOPE, PINNED_TORCH_THREADS,
     MAX_TASKS, CapacityArmV2, CapacityReceiptV2, ComposedProjectionV2,
     ProgressRecoveryV2, TierProjectionV2, WorldAfterstateV2CapacityError,
     composed_critical_path_seconds, validate_capacity_receipt_v2,
@@ -667,7 +667,7 @@ def _operation_output_identity(stage: str, output: Any) -> str:
 
 def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Any]:
     """Construct a score-free operation from the current V2 primitives."""
-    if stage in {"member-concurrency", "torch-threads-per-member"}:
+    if stage == "member-concurrency":
         # Keep the low-level operation seam honest for callers that exercise
         # an arm directly; the runner uses _model_operation for the full
         # retained fixture population.
@@ -812,10 +812,12 @@ def _batched_tensor_identity(values: Sequence[Any]) -> str:
 
 
 def _run_with_torch_threads(operation: Callable[[], str], variant: int) -> str:
-    """Run identical model work at one thread width and preserve its digest."""
+    """Run identical model work at the reviewed, reproducible width."""
     import torch
+    if type(variant) is not int or variant != PINNED_TORCH_THREADS:
+        raise CapacityRunnerError("Torch intra-model threads are pinned to 1")
     prior_threads = torch.get_num_threads()
-    torch.set_num_threads(variant)
+    torch.set_num_threads(PINNED_TORCH_THREADS)
     try:
         return operation()
     finally:
@@ -857,8 +859,7 @@ def _model_operation(stage: str, variant: int,
     """
     values = tuple(fixtures)
     training_batch = (_capacity_training_batch(values)
-                      if stage in {"member-concurrency",
-                                   "torch-threads-per-member"} else None)
+                      if stage == "member-concurrency" else None)
 
     def run() -> str:
         import torch
@@ -894,22 +895,6 @@ def _model_operation(stage: str, variant: int,
                     # Executor width is the only member-concurrency arm
                     # dimension; fixed population and order are retained.
                     tuple(pool.map(member, range(model_count)))
-            elif stage == "torch-threads-per-member":
-                from .world_afterstate_v2_training import (
-                    WorldAfterstateV2TrainingConfig, model_state_sha256,
-                    new_optimizer, train_epoch)
-                config = WorldAfterstateV2TrainingConfig(
-                    learning_rate_ppb=10_000_000, weight_decay_ppb=0,
-                    gradient_norm_milli=1_000, max_epochs=1,
-                    sigma_pair_squared=1.0)
-                # Thread arms alter torch's execution width only; one model
-                # train step over the same typed batch is performed for every
-                # arm.
-                model = new_world_afterstate_v2_model(0)
-                optimizer = new_optimizer(model, config)
-                train_epoch(model, optimizer, (training_batch,), epoch=1,
-                            config=config)
-                output = [model_state_sha256(model)]
             else:
                 from .world_afterstate import build_afterstate_tensors
                 from .world_afterstate_v2_model import collate_world_afterstate_tensors
@@ -1335,7 +1320,7 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
         arm.validate()
     selected = _select_arms(arms)
     layout = (selected["member-concurrency"].variant,
-               selected["torch-threads-per-member"].variant,
+               PINNED_TORCH_THREADS,
                selected["inference-batch"].variant)
     if (representative_dag.member_workers,
             representative_dag.torch_threads,
@@ -1444,11 +1429,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
             if stage == "member-concurrency":
                 operation_to_run = operation
                 operation = lambda: _run_with_torch_threads(
-                    operation_to_run, 1)
-            elif stage == "torch-threads-per-member":
-                operation_to_run = operation
-                operation = lambda: _run_with_torch_threads(
-                    operation_to_run, variant)
+                    operation_to_run, PINNED_TORCH_THREADS)
             raw = backend.measure(stage, variant, fixture,
                                   operation)
             if time.perf_counter_ns() >= deadline_ns:
@@ -1468,12 +1449,16 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 # those same bytes; fixture-input hashes are insufficient.
                 measured_output_identity = raw.byte_identity_sha256
                 expected_identity = measured_output_identity
-                if expected_identity == _ordered_fixture_identity(fixtures):
+                if expected_identity in {
+                        _ordered_fixture_identity(fixtures),
+                        *(item.fixture_sha256 for item in fixtures)}:
                     raise CapacityRunnerError(
                         "capacity arm returned input identity instead of operation output")
             else:
                 expected_identity = measured_output_identity
-                if raw.byte_identity_sha256 == _ordered_fixture_identity(fixtures):
+                if raw.byte_identity_sha256 in {
+                        _ordered_fixture_identity(fixtures),
+                        *(item.fixture_sha256 for item in fixtures)}:
                     raise CapacityRunnerError(
                         "capacity arm returned input identity instead of operation output")
             if raw.byte_identity_sha256 != expected_identity:
@@ -1490,7 +1475,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
     selected = _select_arms(arms)
     # Freeze the exact layout before any representative DAG work starts.
     member_workers = selected["member-concurrency"].variant
-    torch_threads = selected["torch-threads-per-member"].variant
+    torch_threads = PINNED_TORCH_THREADS
     inference_batch = selected["inference-batch"].variant
     if getattr(backend, "synthetic", False):
         return CapacityRunResultV2(None, tuple(arms), preflight, True,

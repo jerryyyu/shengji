@@ -19,6 +19,7 @@ import torch
 
 from .belief_contract import canonical_json_bytes
 from .world_afterstate_v2_checkpoint import checkpoint_bytes, reopen_checkpoint
+from .world_afterstate_v2_capacity import PINNED_TORCH_THREADS
 from .world_afterstate_v2_diagnostics import validate_optimizer_canary_v2
 from .world_afterstate_v2_model import WorldAfterstateValueV2, new_world_afterstate_v2_model
 from .world_afterstate_v2_schedule import (
@@ -362,7 +363,7 @@ def train_named_cohort(
         selection_population: EpochSelectPopulationV2,
         seed_block: int = 1,
         natural_values: Sequence[WorldAfterstateV2TrainingExample] | None = None,
-        member_workers: int = 1, torch_threads: int = 1,
+        member_workers: int = 1, torch_threads: int = PINNED_TORCH_THREADS,
         wall_budget_nanoseconds: int = 6 * 60 * 60 * 1_000_000_000,
         batch_example_cap: int = 256,
         optimizer_canary: Callable[[], object] | None = None,
@@ -410,7 +411,7 @@ def train_named_cohort(
                 "optimizer canary refused") from exc
     if (isinstance(member_workers, bool) or member_workers not in (1, 2, 4)
             or isinstance(torch_threads, bool) or not isinstance(torch_threads, int)
-            or not 1 <= torch_threads <= 64
+            or torch_threads != PINNED_TORCH_THREADS
             or isinstance(wall_budget_nanoseconds, bool)
             or not isinstance(wall_budget_nanoseconds, int)
             or wall_budget_nanoseconds <= 0
@@ -705,7 +706,7 @@ def validate_cohort_manifest(value: object) -> None:
             or value.get("member_workers") not in (1, 2, 4) \
             or isinstance(value.get("torch_threads"), bool) \
             or not isinstance(value.get("torch_threads"), int) \
-            or not 1 <= value["torch_threads"] <= 64 \
+            or value["torch_threads"] != PINNED_TORCH_THREADS \
             or isinstance(value.get("batch_example_cap"), bool) \
             or not isinstance(value.get("batch_example_cap"), int) \
             or value["batch_example_cap"] < 1:
@@ -950,7 +951,7 @@ def train_named_member(
         selection_population: EpochSelectPopulationV2,
         seed_block: int = 1, member_index: int = 0,
         cohort_name: str = "natural", member_workers: int = 1,
-        torch_threads: int = 1,
+        torch_threads: int = PINNED_TORCH_THREADS,
         wall_budget_nanoseconds: int = 6 * 60 * 60 * 1_000_000_000,
         batch_example_cap: int = 256,
         clock: Callable[[], int] = time.monotonic_ns,
@@ -1017,7 +1018,7 @@ def train_named_member(
             "epoch-select population refused") from exc
     if (isinstance(member_workers, bool) or member_workers != 1
             or isinstance(torch_threads, bool) or not isinstance(torch_threads, int)
-            or not 1 <= torch_threads <= 64
+            or torch_threads != PINNED_TORCH_THREADS
             or isinstance(wall_budget_nanoseconds, bool)
             or not isinstance(wall_budget_nanoseconds, int)
             or wall_budget_nanoseconds <= 0
@@ -1237,7 +1238,7 @@ def validate_member_manifest(value: object) -> None:
             or value.get("member_workers") != 1
             or isinstance(value.get("torch_threads"), bool)
             or not isinstance(value.get("torch_threads"), int)
-            or not 1 <= value["torch_threads"] <= 64
+            or value["torch_threads"] != PINNED_TORCH_THREADS
             or isinstance(value.get("batch_example_cap"), bool)
             or not isinstance(value.get("batch_example_cap"), int)
             or value["batch_example_cap"] < 1):

@@ -11,7 +11,11 @@ from shengji.rl.world_afterstate_v2_capacity import (
     TRAINING_RESOURCE_SERIALIZATION_EDGES, CapacityArmV2,
     CapacityReceiptV2, ComposedProjectionV2, ProgressRecoveryV2,
     TierProjectionV2, WorldAfterstateV2CapacityError,
-    choose_capacity_tier_v2, composed_critical_path_seconds,
+    PINNED_TORCH_THREADS, choose_capacity_tier_v2,
+    composed_critical_path_seconds,
+)
+from shengji.rl.world_afterstate_v2_capacity_runner import (
+    CapacityRunnerError, reopen_capacity_receipt_v2,
 )
 
 
@@ -104,10 +108,30 @@ def _receipt(**changes):
 def test_exact_arm_grid_caps_and_fastest_byte_identical_selection():
     receipt = _receipt()
     receipt.validate()
+    assert "torch-threads-per-member" not in ARM_GRIDS
+    assert len(receipt.arms) == 22
     assert len(receipt.arms) == sum(len(values) for values in ARM_GRIDS.values())
     assert receipt.sha256() == receipt.sha256()
     assert choose_capacity_tier_v2(receipt).name == "D1024"
     assert AUTHORITY and not any(AUTHORITY.values())
+
+
+@pytest.mark.parametrize("torch_threads", (2, 4))
+def test_receipt_refuses_cross_width_torch_layout(torch_threads):
+    with pytest.raises(WorldAfterstateV2CapacityError, match="resource layout"):
+        _receipt(member_workers=1, torch_threads=torch_threads,
+                 inference_batch=32).validate()
+
+
+def test_old_capacity_wire_schema_is_refused():
+    payload = _receipt().payload()
+    payload["schema"] = "world-afterstate-v2-post-implementation-capacity-v2"
+    with pytest.raises(CapacityRunnerError, match="reconstruction refused"):
+        reopen_capacity_receipt_v2(payload)
+    payload = _receipt().payload()
+    payload["arms"][0]["schema"] = "world-afterstate-v2-capacity-arm-v1"
+    with pytest.raises(CapacityRunnerError, match="reconstruction refused"):
+        reopen_capacity_receipt_v2(payload)
 
 
 @pytest.mark.parametrize("field,value", [
@@ -271,7 +295,7 @@ def test_production_command_wall_binds_sequential_arms_plus_dag():
     selected_by_stage = {arm.stage: arm.variant for arm in selected}
     layout = {
         "member_workers": selected_by_stage["member-concurrency"],
-        "torch_threads": selected_by_stage["torch-threads-per-member"],
+        "torch_threads": PINNED_TORCH_THREADS,
         "inference_batch": selected_by_stage["inference-batch"],
     }
     measured = tuple((name, 10) for name in COMPOSED_STAGE_NAMES)

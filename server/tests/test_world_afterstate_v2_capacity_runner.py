@@ -175,7 +175,7 @@ def _backend(fixture: FixtureV2, **changes):
 
 
 def _full_dag_measurement(*, capabilities=None, member_workers=2,
-                          torch_threads=4, inference_batch=128,
+                          torch_threads=1, inference_batch=128,
                           wall_seconds=1, cpu_seconds=1):
     capabilities = ({name: True for name in _RECOVERY_CAPABILITY_NAMES}
                     if capabilities is None else capabilities)
@@ -279,6 +279,41 @@ def test_member_concurrency_trains_four_members_and_only_changes_executor_width(
     assert len(set(digests)) == 1
 
 
+def test_torch_training_operation_runs_real_model_step_at_pinned_width(
+        monkeypatch):
+    import torch
+    import shengji.rl.world_afterstate_v2_capacity_runner as runner
+    import shengji.rl.world_afterstate_v2_model as model_module
+    import shengji.rl.world_afterstate_v2_training as training_module
+
+    class FakeModel:
+        pass
+
+    seen_widths = []
+    monkeypatch.setattr(runner, "_capacity_training_batch", lambda values: object())
+    monkeypatch.setattr(model_module, "new_world_afterstate_v2_model",
+                        lambda _seed: FakeModel())
+    monkeypatch.setattr(training_module, "new_optimizer",
+                        lambda model, config: object())
+    monkeypatch.setattr(
+        training_module, "train_epoch",
+        lambda *args, **kwargs: seen_widths.append(torch.get_num_threads()))
+    monkeypatch.setattr(training_module, "model_state_sha256",
+                        lambda model: "a" * 64)
+
+    operation = runner._model_operation(
+        "member-concurrency", 1, (FixtureV2({"score_free": True}),))
+    assert runner._run_with_torch_threads(operation, 1) \
+        == runner._sha(["a" * 64] * 4)
+    assert seen_widths == [1] * 4
+
+
+@pytest.mark.parametrize("width", (2, 4))
+def test_torch_width_helper_refuses_cross_width_training(width):
+    with pytest.raises(CapacityRunnerError, match="pinned to 1"):
+        _run_with_torch_threads(lambda: "a" * 64, width)
+
+
 def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
         monkeypatch):
     import shengji.rl.world_afterstate_v2_capacity_runner as runner
@@ -286,8 +321,7 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
     import shengji.rl.world_afterstate_v2_model as model_module
 
     preflight = _preflight()
-    target = {"member-concurrency": 2,
-              "torch-threads-per-member": 4, "inference-batch": 128}
+    target = {"member-concurrency": 2, "inference-batch": 128}
 
     class Backend:
         synthetic = False
@@ -329,9 +363,9 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
     result = runner.measure_capacity_v2(production=True)
     receipt = result.production_receipt()
     assert (seen["member_workers"], seen["torch_threads"],
-            seen["inference_batch"]) == (2, 4, 128)
+            seen["inference_batch"]) == (2, 1, 128)
     assert (receipt.member_workers, receipt.torch_threads,
-            receipt.inference_batch) == (2, 4, 128)
+            receipt.inference_batch) == (2, 1, 128)
     assert receipt.command_wall_seconds == (
         sum(arm.wall_seconds for arm in result.arms)
         + len(COMPOSED_STAGE_NAMES))
@@ -373,6 +407,37 @@ def test_refuses_byte_mismatch_and_preflight_not_32():
             accepted_fixtures=(fixture,) * 31, attempted=31, accepted=31,
             rejection_counts=(), candidate_distribution=((2, 31),),
             stratum_distribution=(("early/lead/attacker", 31),)).validate()
+
+
+def test_production_altitude_refuses_fixture_input_identity(monkeypatch):
+    preflight = _preflight()
+    fixture = preflight.accepted_fixtures[0]
+
+    class Backend:
+        synthetic = False
+
+        def measure(self, stage, variant, fixture, operation):
+            output = operation()
+            return RawMeasurementV2(
+                elapsed_ns=1_000_000_000, process_cpu_ns=14_400_000_000,
+                peak_rss_bytes=1_000_000, task_count=1,
+                sample_utilization_ppm=(900_000,),
+                byte_identity_sha256=output)
+
+    monkeypatch.setattr(runner, "run_score_free_preflight",
+                        lambda **kwargs: preflight)
+    monkeypatch.setattr(runner, "observe_host",
+                        lambda: HostTelemetryV2(16, free_disk_bytes=10**12))
+    monkeypatch.setattr(runner, "RealMeasurementBackendV2",
+                        lambda **kwargs: Backend())
+    monkeypatch.setattr(
+        runner, "_parallel_operation",
+        lambda stage, variant, fixtures: lambda: fixture.fixture_sha256)
+    monkeypatch.setattr(
+        runner, "_model_operation",
+        lambda stage, variant, fixtures: lambda: fixture.fixture_sha256)
+    with pytest.raises(CapacityRunnerError, match="input identity"):
+        runner.measure_capacity_v2(production=True)
 
 
 def test_receipt_reopens_exactly_and_host_caps_refuse():

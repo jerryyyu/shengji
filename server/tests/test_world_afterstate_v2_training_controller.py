@@ -113,6 +113,37 @@ def test_epoch_select_injection_and_invalid_concurrency_are_rejected():
         _build(member_workers=3)
 
 
+@pytest.mark.parametrize("torch_threads", (2, 4))
+def test_training_calls_and_manifests_refuse_cross_width_torch_threads(
+        torch_threads):
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="resource request"):
+        _build(torch_threads=torch_threads)
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="resource request"):
+        _member_build(torch_threads=torch_threads)
+
+    cohort_manifest = dict(_build().manifest)
+    cohort_manifest["torch_threads"] = torch_threads
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="resource/identity"):
+        validate_cohort_manifest(cohort_manifest)
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="resource/identity"):
+        reopen_cohort_build(CohortTrainingBuildV2(
+            cohort_manifest, tuple(_build().selected_checkpoint_raws)))
+
+    member_manifest = dict(_member_build().manifest)
+    member_manifest["torch_threads"] = torch_threads
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="resource/identity"):
+        validate_member_manifest(member_manifest)
+    with pytest.raises(WorldAfterstateV2TrainingControllerError,
+                       match="resource/identity"):
+        reopen_member_build(SingleMemberTrainingBuildV2(
+            member_manifest, _member_build().selected_checkpoint_raw))
+
+
 def test_control_reuses_natural_root_schedule():
     natural = tuple(_rows("matched", cohort="primary"))
     control = tuple(dataclasses.replace(row, cohort="control") for row in natural)

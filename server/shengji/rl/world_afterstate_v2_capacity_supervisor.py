@@ -24,7 +24,7 @@ from .world_afterstate_v2_artifacts import (
     reopen_checkpoint_shard, reopen_continuation_shard,
 )
 from .world_afterstate_v2_capacity import (
-    COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS)
+    COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS, PINNED_TORCH_THREADS)
 from .world_afterstate_v2_controls import (
     CONTROL_NAMES, action_association_permutation, complete_world_shuffle,
     control_training_examples, label_permutation,
@@ -172,7 +172,8 @@ class FullDAGCapacityMeasurementV2:
                 "full-DAG process CPU witness drift")
         if any((self.member_workers, self.torch_threads, self.inference_batch)) \
                 and (self.member_workers not in (1, 2, 4)
-                     or self.torch_threads not in (1, 2, 4)
+                     or type(self.torch_threads) is not int
+                     or self.torch_threads != PINNED_TORCH_THREADS
                      or self.inference_batch not in (32, 64, 128, 256)):
             raise FullDAGCapacityDependencyBlocked(
                 "full-DAG resource layout missing")
@@ -351,7 +352,8 @@ def run_full_dag_supervisor(
             raise _fail("material", exc) from exc
         materials.append(material)
     if (member_workers not in (1, 2, 4)
-            or torch_threads not in (1, 2, 4)
+            or type(torch_threads) is not int
+            or torch_threads != PINNED_TORCH_THREADS
             or inference_batch not in (32, 64, 128, 256)):
         raise FullDAGCapacityDependencyBlocked(
             "full-DAG resource layout missing")

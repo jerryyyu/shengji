@@ -118,30 +118,45 @@ def _select_root_and_outcomes(index: int) \
 def test_reviewed_capacity_arms_bind_training_resources():
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
-        _Arm("torch-threads-per-member", 4),
-        _Arm("inference-batch", 256),
-    ))
-    assert inputs._capacity_resources(receipt) == (2, 4, 256, 256)
+        _Arm("inference-batch", 256),), torch_threads=1)
+    assert inputs._capacity_resources(receipt) == (2, 1, 256, 256)
 
 
 def test_inference_arm_does_not_change_reviewed_training_batch_cap():
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
-        _Arm("torch-threads-per-member", 4),
-        _Arm("inference-batch", 64),
-    ))
-    assert inputs._capacity_resources(receipt) == (2, 4, 256, 64)
+        _Arm("inference-batch", 64),), torch_threads=1)
+    assert inputs._capacity_resources(receipt) == (2, 1, 256, 64)
+
+
+@pytest.mark.parametrize("torch_threads", (2, 4))
+def test_training_resource_adapter_refuses_cross_width_torch_threads(
+        torch_threads):
+    receipt = SimpleNamespace(selected_arms=(
+        _Arm("member-concurrency", 2),
+        _Arm("inference-batch", 256),), torch_threads=torch_threads)
+    with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
+                       match="resource arm"):
+        inputs._capacity_resources(receipt)
 
 
 def test_capacity_arm_drift_fails_closed():
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
         _Arm("member-concurrency", 4),
-        _Arm("torch-threads-per-member", 1),
         _Arm("inference-batch", 256),
-    ))
+    ), torch_threads=1)
     with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
                        match="missing or duplicated"):
+        inputs._capacity_resources(receipt)
+
+
+def test_training_resource_adapter_refuses_missing_torch_layout_field():
+    receipt = SimpleNamespace(selected_arms=(
+        _Arm("member-concurrency", 2),
+        _Arm("inference-batch", 256),))
+    with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
+                       match="resource arm"):
         inputs._capacity_resources(receipt)
 
 
@@ -311,9 +326,7 @@ def test_real_training_input_builder_closes_full_d256_and_epoch_select_wiring(
 
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
-        _Arm("torch-threads-per-member", 4),
-        _Arm("inference-batch", 256),
-    ))
+        _Arm("inference-batch", 256),), torch_threads=1)
     freeze = SimpleNamespace(
         evidence_root=tmp_path, population_tier="D256")
     supervisor = object()
@@ -354,9 +367,13 @@ def test_real_training_input_builder_closes_full_d256_and_epoch_select_wiring(
     assert len(result.epoch_select_population.roots) == 24
     assert len(result.epoch_select_population.outcomes) == 24 * 2 * 8
     assert (result.member_workers, result.torch_threads,
-            result.batch_example_cap, result.inference_batch_cap) == (2, 4, 256, 256)
+            result.batch_example_cap, result.inference_batch_cap) == (2, 1, 256, 256)
     assert result.manifest()["training_root_count"] == 160
     assert result.manifest()["inference_batch_cap"] == 256
     with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
                        match="inference batch source binding"):
         dataclasses.replace(result, inference_batch_cap=64).validate()
+    for torch_threads in (2, 4):
+        with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
+                           match="resource configuration"):
+            dataclasses.replace(result, torch_threads=torch_threads).validate()

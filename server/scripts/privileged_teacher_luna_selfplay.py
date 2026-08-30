@@ -113,6 +113,8 @@ def main(argv: list[str] | None = None) -> int:
     capacity.add_argument("--tool-script", type=Path,
                           help="reviewed PT-Luna mailbox tool")
     capacity.add_argument("--output", type=Path, required=True)
+    capacity.add_argument("--failure-output", type=Path,
+                          help="immutable diagnostic output for real-capacity refusal")
     capacity.add_argument("--deadline-seconds", type=int, default=1200)
     capacity.add_argument("--physical-memory-bytes", type=int, required=True)
     capacity.add_argument("--wall-budget-seconds", type=int, default=3600)
@@ -154,14 +156,29 @@ def main(argv: list[str] | None = None) -> int:
                 if args.secret_file is None or args.tool_script is None:
                     raise controller.ControllerError(
                         "real capacity requires secret and tool")
-                receipt = controller.run_real_capacity(
-                    capacity_secret=_secret(args.secret_file),
-                    tool_script=args.tool_script,
-                    deadline_nanoseconds=args.deadline_seconds * 1_000_000_000,
-                    physical_memory_bytes=args.physical_memory_bytes,
-                    cumulative_wall_budget_nanoseconds=(
-                        args.wall_budget_seconds * 1_000_000_000),
-                    cumulative_token_budget=args.token_budget)
+                if args.failure_output is None:
+                    raise controller.ControllerError(
+                        "real capacity requires failure output")
+                if (Path(args.output).resolve(strict=False)
+                        == Path(args.failure_output).resolve(strict=False)):
+                    raise controller.ControllerError(
+                        "capacity output and failure output must differ")
+                if (args.failure_output.exists()
+                        or args.failure_output.is_symlink()):
+                    raise controller.ControllerError(
+                        "capacity failure diagnostic slot occupied")
+                try:
+                    receipt = controller.run_real_capacity(
+                        capacity_secret=_secret(args.secret_file),
+                        tool_script=args.tool_script,
+                        deadline_nanoseconds=args.deadline_seconds * 1_000_000_000,
+                        physical_memory_bytes=args.physical_memory_bytes,
+                        cumulative_wall_budget_nanoseconds=(
+                            args.wall_budget_seconds * 1_000_000_000),
+                        cumulative_token_budget=args.token_budget)
+                except controller.CapacityEvidenceRefusal as exc:
+                    controller.publish_capacity_failure(args.failure_output, exc)
+                    raise
             _write_once(args.output, canonical_json_bytes(receipt.serialized()))
             return 0
         design = _design(args.design)

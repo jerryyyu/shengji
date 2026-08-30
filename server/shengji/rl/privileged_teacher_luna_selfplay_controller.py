@@ -11,11 +11,14 @@ trajectory or retried.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import ctypes
 from dataclasses import dataclass
+import errno
 import hashlib
 import json
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import threading
@@ -49,6 +52,7 @@ DEFAULT_TOKEN_BUDGET = 1 << 62
 CAPACITY_EXECUTION_SYNTHETIC = "synthetic-injected-capacity"
 CAPACITY_EXECUTION_VERIFIED = "verified-runtime-capacity"
 CAPACITY_PROVENANCE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-provenance-v1"
+CAPACITY_FAILURE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-failure-v1"
 _REVIEW_AUTHENTICATION = object()
 
 # Complete static local-Python import closure rooted at the collection CLI,
@@ -100,6 +104,60 @@ class ControllerError(ValueError):
 
 class SourceAdmissionError(ControllerError):
     """A structurally valid attempt is not admissible scientific evidence."""
+
+
+class CapacityEvidenceRefusal(ControllerError):
+    """A real capacity game was not admissible as verified evidence."""
+
+    def __init__(self, *, coordinate: tuple[str, int, int], workers: int,
+                 worker: int, game: int, reopened_status: str | None,
+                 evidence: Sequence[object], failure_kind: str = "evidence"):
+        classifications: list[dict[str, object]] = []
+        for item in evidence:
+            body = getattr(item, "body", {})
+            if not isinstance(body, Mapping):
+                body = {}
+            execution_kind = body.get("execution_kind")
+            if execution_kind not in (execution.PRODUCTION_EXECUTION_KIND,
+                                      execution.SYNTHETIC_EXECUTION_KIND):
+                execution_kind = None
+            team = getattr(item, "team", None)
+            classifications.append({
+                "team": team if isinstance(team, int) and not isinstance(team, bool)
+                else None,
+                "execution_kind": execution_kind,
+                "actual_subprocess": body.get("actual_subprocess") is True,
+                "synthetic": body.get("synthetic") is True,
+                "process_error_present": body.get("process_error") is not None,
+            })
+        body = {
+            "schema": CAPACITY_FAILURE_SCHEMA,
+            "failure_kind": failure_kind,
+            "coordinate": list(coordinate),
+            "workers": workers,
+            "worker": worker,
+            "game": game,
+            "reopened_status": reopened_status,
+            "evidence_count": len(evidence),
+            "expected_team_count": len(luna.TEAMS),
+            "evidence_classification": classifications,
+            "scientific_admissible": False,
+            "collection_authorized": False,
+            "opened": {"outcomes": False, "actions": False,
+                        "trajectories": False, "model_prose": False},
+            "retained": {"outcomes": False, "actions": False,
+                          "trajectories": False, "model_prose": False},
+            "authority": {key: False for key in luna.AUTHORITY},
+        }
+        self.body = body
+        self.payload = {**body, "diagnostic_sha256": _sha(body)}
+        super().__init__("capacity requires verified subprocess evidence")
+
+    def serialized(self) -> dict[str, object]:
+        return dict(self.payload)
+
+    def canonical_bytes(self) -> bytes:
+        return canonical_json_bytes(self.payload)
 
 
 @dataclass(frozen=True)
@@ -223,6 +281,133 @@ def _read_canonical(path: Path, *, limit: int = 64 << 20) -> dict[str, object]:
     if len(raw) > limit:
         raise ControllerError("sealed record too large")
     return payload
+
+
+def _rename_noreplace(source: Path, destination: Path) -> None:
+    """Atomically install ``source`` without ever replacing ``destination``."""
+    library = ctypes.CDLL(None, use_errno=True)
+    source_raw = os.fsencode(source)
+    destination_raw = os.fsencode(destination)
+    try:
+        if sys.platform.startswith("linux"):
+            operation = library.renameat2
+            operation.argtypes = (ctypes.c_int, ctypes.c_char_p,
+                                  ctypes.c_int, ctypes.c_char_p,
+                                  ctypes.c_uint)
+            operation.restype = ctypes.c_int
+            result = operation(-100, source_raw, -100, destination_raw, 1)
+        elif sys.platform == "darwin":
+            operation = library.renamex_np
+            operation.argtypes = (ctypes.c_char_p, ctypes.c_char_p,
+                                  ctypes.c_uint)
+            operation.restype = ctypes.c_int
+            result = operation(source_raw, destination_raw, 0x00000004)
+        else:
+            raise ControllerError(
+                "atomic no-replace publication is unavailable")
+    except AttributeError as exc:
+        raise ControllerError(
+            "atomic no-replace publication is unavailable") from exc
+    if result == 0:
+        return
+    error = ctypes.get_errno()
+    if error in (errno.EEXIST, errno.ENOTEMPTY):
+        raise FileExistsError(error, os.strerror(error), destination)
+    raise OSError(error, os.strerror(error), destination)
+
+
+def publish_capacity_failure(path: Path,
+                             refusal: CapacityEvidenceRefusal) -> str:
+    """Publish one redacted capacity refusal, accepting only an identical race."""
+    if not isinstance(refusal, CapacityEvidenceRefusal):
+        raise ControllerError("capacity failure diagnostic type drift")
+    path = Path(path)
+    raw = refusal.canonical_bytes()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor: int | None = None
+    temporary: Path | None = None
+
+    def existing_matches() -> bool:
+        try:
+            existing_fd = os.open(path, os.O_RDONLY |
+                                  getattr(os, "O_NOFOLLOW", 0))
+            try:
+                before = os.fstat(existing_fd)
+                chunks: list[bytes] = []
+                remaining = len(raw) + 1
+                while remaining:
+                    chunk = os.read(existing_fd, remaining)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                after = os.fstat(existing_fd)
+            finally:
+                os.close(existing_fd)
+            path_info = path.lstat()
+        except OSError as exc:
+            raise ControllerError("capacity failure diagnostic slot occupied") from exc
+        stable = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                or stat.S_IMODE(before.st_mode) != 0o400
+                or any(getattr(before, field) != getattr(after, field)
+                       for field in stable)
+                or before.st_dev != path_info.st_dev
+                or before.st_ino != path_info.st_ino
+                or b"".join(chunks) != raw):
+            raise ControllerError("capacity failure diagnostic slot occupied")
+        return True
+
+    try:
+        for attempt in range(100):
+            temporary = path.parent / (
+                f".{path.name}.{os.getpid()}.{threading.get_ident()}."
+                f"{time.monotonic_ns()}.{attempt}.tmp")
+            try:
+                descriptor = os.open(
+                    temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                    getattr(os, "O_NOFOLLOW", 0), 0o400)
+                break
+            except FileExistsError:
+                temporary = None
+        if descriptor is None or temporary is None:
+            raise ControllerError("capacity failure temporary slot unavailable")
+        offset = 0
+        while offset < len(raw):
+            written = os.write(descriptor, raw[offset:])
+            if written <= 0:
+                raise ControllerError(
+                    "capacity failure diagnostic write made no progress")
+            offset += written
+        os.fsync(descriptor)
+        descriptor_stat = os.fstat(descriptor)
+        if (not stat.S_ISREG(descriptor_stat.st_mode)
+                or descriptor_stat.st_nlink != 1
+                or stat.S_IMODE(descriptor_stat.st_mode) != 0o400):
+            raise ControllerError("capacity failure temporary identity drift")
+        os.close(descriptor)
+        descriptor = None
+        try:
+            _rename_noreplace(temporary, path)
+        except FileExistsError:
+            existing_matches()
+            return _sha_bytes(raw)
+        temporary = None
+        existing_matches()
+        parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(parent_fd)
+        finally:
+            os.close(parent_fd)
+        return _sha_bytes(raw)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
 
 
 def _record_hash(payload: Mapping[str, object], field: str) -> str:
@@ -805,16 +990,26 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
                     resource_meter=meter)
             finally:
                 telemetry = meter.close()
-            reopened = execution.reopen_attempt(result.attempt_path)
-            if (len(reopened.evidence) != len(luna.TEAMS)
+            try:
+                reopened = execution.reopen_attempt(result.attempt_path)
+            except Exception as exc:
+                raise CapacityEvidenceRefusal(
+                    coordinate=coordinate, workers=workers, worker=worker,
+                    game=game_index, reopened_status=None, evidence=(),
+                    failure_kind="reopen_failure") from exc
+            evidence = tuple(reopened.evidence)
+            if (len(evidence) != len(luna.TEAMS)
                     or not getattr(reopened, "scientific_admissible", False)
                     or any(item.body.get("execution_kind")
                            != execution.PRODUCTION_EXECUTION_KIND
                            or item.body.get("actual_subprocess") is not True
                            or item.body.get("synthetic") is not False
-                           for item in reopened.evidence)):
-                raise ControllerError(
-                    "capacity requires verified subprocess evidence")
+                           for item in evidence)):
+                raise CapacityEvidenceRefusal(
+                    coordinate=coordinate, workers=workers, worker=worker,
+                    game=game_index,
+                    reopened_status=getattr(reopened, "status", None),
+                    evidence=evidence)
             provenance = {"schema": CAPACITY_PROVENANCE_SCHEMA,
                           "execution_kind": CAPACITY_EXECUTION_VERIFIED,
                           "scientific_admissible": False,
@@ -1634,8 +1829,9 @@ def reopen_population_report(path: Path, *, design: luna.LunaDesign,
     return payload
 
 
-__all__ = ["CAPACITY_SCHEMA", "CAPACITY_WORKERS", "CAPACITY_ROUTE",
-           "CAPACITY_REFUSE_ROUTE", "ControllerError", "SourceAdmissionError", "CapacityMetric",
+__all__ = ["CAPACITY_SCHEMA", "CAPACITY_FAILURE_SCHEMA", "CAPACITY_WORKERS", "CAPACITY_ROUTE",
+           "CAPACITY_REFUSE_ROUTE", "ControllerError", "SourceAdmissionError",
+           "CapacityEvidenceRefusal", "CapacityMetric",
            "CapacityReceipt", "POPULATION_ADMISSION_SCHEMA", "run_capacity",
            "run_real_capacity", "validate_capacity_receipt", "LAUNCH_FREEZE_SCHEMA",
            "launch_freeze_payload", "validate_launch_freeze",
@@ -1643,4 +1839,4 @@ __all__ = ["CAPACITY_SCHEMA", "CAPACITY_WORKERS", "CAPACITY_ROUTE",
            "run_source_population", "finalize_source_population",
            "reopen_population_report", "production_game_runner",
            "completed_artifact_game_runner", "CAPACITY_EXECUTION_SYNTHETIC",
-           "CAPACITY_EXECUTION_VERIFIED"]
+           "CAPACITY_EXECUTION_VERIFIED", "publish_capacity_failure"]

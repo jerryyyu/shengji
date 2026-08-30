@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import stat
 import subprocess
 import threading
 import time
@@ -364,6 +365,163 @@ def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
             capacity_secret=SECRET, tool_script=TOOL,
             deadline_nanoseconds=1200 * 1_000_000_000,
             physical_memory_bytes=8_000_000_000)
+
+
+def test_real_capacity_refusal_is_typed_and_redacted_after_temp_cleanup(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1,))
+    roots = []
+
+    class Meter:
+        def close(self):
+            return {"schema": execution.RESOURCE_SCHEMA,
+                    "busy_cpu_nanoseconds": 1,
+                    "peak_rss_bytes": 2, "swap_bytes": 0,
+                    "sample_count": 1}
+
+    monkeypatch.setattr(execution, "ProcessTreeResourceMeter", Meter)
+
+    def run(game, *, private_root, **_kwargs):
+        roots.append(Path(private_root))
+        return SimpleNamespace(attempt_path=Path(private_root) / "sealed")
+
+    monkeypatch.setattr(execution, "run_luna_game", run)
+    evidence = SimpleNamespace(
+        team=0,
+        body={"execution_kind": execution.PRODUCTION_EXECUTION_KIND,
+              "actual_subprocess": True, "synthetic": False,
+              "process_error": None})
+    monkeypatch.setattr(
+        execution, "reopen_attempt",
+        lambda _path: SimpleNamespace(status="incomplete",
+                                       evidence=(evidence,)))
+
+    with pytest.raises(controller.CapacityEvidenceRefusal) as caught:
+        controller.run_real_capacity(
+            capacity_secret=SECRET, tool_script=TOOL,
+            deadline_nanoseconds=1200 * 1_000_000_000,
+            physical_memory_bytes=8_000_000_000)
+    refusal = caught.value
+    assert refusal.body == {
+        "schema": controller.CAPACITY_FAILURE_SCHEMA,
+        "failure_kind": "evidence",
+        "coordinate": ["2", 0, 0], "workers": 1, "worker": 0, "game": 0,
+        "reopened_status": "incomplete", "evidence_count": 1,
+        "expected_team_count": 2,
+        "evidence_classification": [{
+            "team": 0,
+            "execution_kind": execution.PRODUCTION_EXECUTION_KIND,
+            "actual_subprocess": True, "synthetic": False,
+            "process_error_present": False}],
+        "scientific_admissible": False, "collection_authorized": False,
+        "opened": {"outcomes": False, "actions": False,
+                    "trajectories": False, "model_prose": False},
+        "retained": {"outcomes": False, "actions": False,
+                      "trajectories": False, "model_prose": False},
+        "authority": {key: False for key in luna.AUTHORITY},
+    }
+    payload = refusal.serialized()
+    assert payload["diagnostic_sha256"] == controller._sha(refusal.body)
+    assert not roots[0].exists()
+
+
+def test_capacity_failure_publication_is_exclusive_and_one_link(tmp_path):
+    def refusal(coordinate):
+        return controller.CapacityEvidenceRefusal(
+            coordinate=coordinate, workers=1, worker=0, game=0,
+            reopened_status="incomplete", evidence=())
+
+    output = tmp_path / "failure.json"
+    first = refusal(("2", 0, 0))
+    second = refusal(("2", 0, 1))
+    barrier = threading.Barrier(2)
+    results = []
+
+    def publish(item):
+        barrier.wait()
+        try:
+            results.append(controller.publish_capacity_failure(output, item))
+        except controller.ControllerError:
+            results.append(None)
+
+    threads = [threading.Thread(target=publish, args=(item,))
+               for item in (first, second)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(value is not None for value in results) == [False, True]
+    assert stat.S_IMODE(output.stat().st_mode) == 0o400
+    assert output.stat().st_nlink == 1
+    winning = output.read_bytes()
+    assert winning in (first.canonical_bytes(), second.canonical_bytes())
+    assert controller.publish_capacity_failure(output, first if winning == first.canonical_bytes()
+                                               else second) == controller._sha_bytes(winning)
+    assert output.read_bytes() == winning
+
+    link = tmp_path / "failure-link.json"
+    link.symlink_to(output)
+    with pytest.raises(controller.ControllerError, match="occupied"):
+        controller.publish_capacity_failure(link, first)
+
+
+def test_capacity_failure_preinstall_error_leaves_no_partial_final(tmp_path,
+                                                                    monkeypatch):
+    output = tmp_path / "failure.json"
+    refusal = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=())
+
+    def fail_install(source, destination):
+        assert Path(source).parent == output.parent
+        assert destination == output
+        assert not output.exists()
+        raise OSError("injected install failure")
+
+    monkeypatch.setattr(controller, "_rename_noreplace", fail_install)
+    with pytest.raises(OSError, match="injected install failure"):
+        controller.publish_capacity_failure(output, refusal)
+    assert not output.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_atomic_noreplace_install_refuses_destination_race(tmp_path):
+    source = tmp_path / "complete.tmp"
+    destination = tmp_path / "failure.json"
+    source.write_bytes(b"complete")
+    destination.write_bytes(b"prior-writer")
+    with pytest.raises(FileExistsError):
+        controller._rename_noreplace(source, destination)
+    assert source.read_bytes() == b"complete"
+    assert destination.read_bytes() == b"prior-writer"
+
+
+def test_cli_real_failure_publishes_diagnostic_and_fake_does_not(tmp_path,
+                                                                 monkeypatch):
+    cli = _cli_module()
+    secret = tmp_path / "secret"
+    secret.write_bytes(SECRET)
+    failure = tmp_path / "failure.json"
+    output = tmp_path / "capacity.json"
+    refusal = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=())
+    monkeypatch.setattr(cli.controller, "run_real_capacity",
+                        lambda **_kwargs: (_ for _ in ()).throw(refusal))
+    assert cli.main(["capacity", "--secret-file", str(secret),
+                     "--tool-script", str(TOOL), "--output", str(output),
+                     "--failure-output", str(failure),
+                     "--physical-memory-bytes", "8000000000"]) == 2
+    assert failure.read_bytes() == refusal.canonical_bytes()
+    assert not output.exists()
+
+    fake_failure = tmp_path / "fake-failure.json"
+    fake_output = tmp_path / "fake-capacity.json"
+    assert cli.main(["capacity", "--fake", "--output", str(fake_output),
+                     "--failure-output", str(fake_failure),
+                     "--physical-memory-bytes", "8000000000"]) == 0
+    assert fake_output.exists()
+    assert not fake_failure.exists()
 
 
 def test_public_capacity_api_cannot_issue_verified_runtime_or_science():

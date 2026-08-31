@@ -10268,3 +10268,44 @@ canary; contingent on its sealed PASS receipt, one fresh one-worker progressive 
 BELIEF_R4_POLICY_SCIENTIFIC_FREEZE_REVIEW {"capacity_receipt_sha256":"93414eb3892a51a13a38fb5f3085e6ddb01ca1e0e583a044d0442a2959e7365e","deployment_authorized":false,"evidence_root":"/opt/belief-r4-policy-diagnostic-065fb0e-r1","execution_git":"065fb0efa7041160c78012564846ea7a75732d39","freeze_sha256":"f60fa4ff5a476a17b1b542c295f2daff547d9acd43696e20cdbc07a582729193","gameplay_authorized":false,"one_opened_dev_policy_diagnostic_authorized":true,"r4_test_opening_authorized":false,"r5_authorized":false,"resume_missing_shards_before_deadline_authorized":true,"retry_after_terminal_authorized":false,"schema":"belief-r4-policy-scientific-freeze-review-v1","source_manifest_sha256":"a90fd2c66b0c32cd262760528c2506949a84d31be792beacefa347d4c45c7081","strength_claim_authorized":false}
 
 BELIEF_R4_POLICY_CAPACITY_SOURCE_REVIEW {"deployment_authorized":false,"execution_git":"a6c52c4dce5bbd74645148486ee4fabc26dfcbfd","gameplay_authorized":false,"models":{"common_calibration_sha256":"2847fe2cc59411d0f3245a2bc719809000c9f86594f2ec3bf83d8eafcdc2252e","control_model_sha256s":["a1a0585149497c6c659e89a9d650e5ea793bc7dfcc93380636ff4a1b7de5367d","3649f72af7b181ab7d8be2798a596bad8f82ff0df82b927c3bc3502636f3dc37","8990457be6f85dcdaa2c1144c0f799cd48d4ee57d01bbeff4118a8fe88460fb0","fee43daf2a621ae91c5bc2745d4486fe4ca4edfd13aadfda64f8d2b4d48d2a37","3b5d3c351973a529afc5b2d530ec73b0c6c69dabf0e517824e49f7941f12b49c","969e18f3ec2fff02a74f54f924efa859d4578cb51b8272a614249d8c8eb9a6ac","43f14fa7f863f3ff159ed0f67b6a14f59659b911f0bc4eaf776b5a41dc396540","2aaf3e0daa6f89dafba6b144b925635065d2c3ad9f6feb735a11401ed1b116af"],"control_trained_manifest_sha256":"025e2cd0ce4bb8675095fe3864d16fa5400c8dd3afb6e0a3fcae7f469141a6ca","primary_model_sha256s":["093e398276baeb9b1ae898a95d95d00d6f366212088064527f521e28bf61ae83","682d0e85648fce6c734988144cb9d4f2d621db0bde1e2ab5d91e124dc1926ab7","2c0519a78bf5c20598d7d8cac1f1ac79409d6b21d9262d15d0fadc1e4a212cde","92dd819e9ce9718a96cf340b4a43baf15ad615dab07a7b742250eae65d9217a4","d5d5b06cd403650c41de439c377dd6fc320ed5ef4066c68a5efd533a6153a221","acd93640ab69aa655aec4a0c05ccdc958949c2026af772f10a8f4b7d014aa446","ab68d94ff233f901f5855dca6feb2af069316c9d7583212b267fe536c9d2eec7","8b9918272eca54da17c4e2b0a28c2ef49b929df4e7c5297aba2dccd64b034aa8"],"primary_trained_manifest_sha256":"33e82c9d460b5cce0e9012abf412177f095bba4b63917f2f3e1e6fff1b2050ff","r4_admission_sha256":"21d9cea8a1ef2905dd0a8a85308e54141e58362e0764f04f388412bedfff0961","r4_freeze_sha256":"573fcade25d985f58c0d179a581a40619b5745fc2152c52f4740e1355ae1fc16","r4_review_marker_sha256":"a6c5f587c84783203e5412a89054048527fb8ff10ed911848840c030d54eec2e"},"one_score_free_capacity_census_authorized":true,"r4_test_opening_authorized":false,"retry_authorized":false,"schema":"belief-r4-policy-capacity-source-review-v1","scientific_execution_authorized":false,"source_manifest_sha256":"2905492ac4d09c3712f1f98ddb13ffac184a34f2e529f9f27745f85505122b3a","strength_claim_authorized":false}
+
+## 2026-08-31 — ✅ PASS ×2 (narrow repairs): PR #179 `a6c52c4d` (single-read run-start) and PR #178 `ba62c7a6` (stderr channel separation). ⚠️ NEW MARKER at `47158e91` WILL NOT AUTHENTICATE — the R4-policy lane has the one-marker-ever predicate bug (68efdec class); repair required BEFORE the census launch
+
+### PR #179 `a6c52c4d` (parent `065fb0ef` confirmed)
+
+The spent scientific attempt (zero shards, no outcome/test access — root preserved) died on two
+successive `time.time_ns()` reads vs `deadline == started + cap` (681 ns apart). The repair reads
+once and derives the deadline from the same value. Verified: focused CLI test **1/1** (ask says
+"4 passed" — the file collects exactly ONE test; count discrepancy noted, non-load-bearing),
+full battery **429 passed / 2 skipped** (exact), restoring the double-read → **red at the exact
+run-start assertion**, diff-check clean. PASS: one fresh score-free Strength capacity census.
+
+### The marker problem
+
+I generated the new-head marker with the module's own generators (source identity from my clean
+exact worktree — deterministic, git-bound, 159 files, manifest `2905492a…`; model identity reused
+from the cloud-CLI-verified prior claim — the model root is unchanged) and appended it at
+`47158e91`, landed byte-identical (sha `740c9c99…`). BUT `authenticate_review` requires
+`current_matches == [marker]` across the WHOLE ledger with `previous_matches` empty — one marker
+per prefix EVER. The spent head's marker (`59a43d8b`) already occupies the prefix, so the capacity
+CLI will refuse the new marker at any review commit. This is the third lane to ship this exact
+defect (Luna `68efdec`, V2 `authenticate_review_commit` pre-`cf115cea`). Required repair, same
+shape as both prior fixes: accept `current_prefix_lines == previous_prefix_lines + [marker]` with
+replay refusal. Until it lands, the authorized census CANNOT launch; the marker bytes at
+`47158e91` are correct and need no re-append.
+
+Generation note for reproducibility: the identity scanner refuses loadable shadows, so the
+generating checkout must have no `server/.venv`, no `build/`, and only the active in-tree native —
+matching the external-venv layout Codex uses on cloud.
+
+### PR #178 `ba62c7a6` (parent `69876317` confirmed)
+
+The spent census's `Codex JSONL output drift` decoded: sandbox/provider stderr was merged into the
+stdout JSONL authority channel. The repair pipes stderr separately, parses only stdout as JSONL,
+bounds BOTH channels fail-closed, and retains no stderr evidence (zero `stderr_base64`
+occurrences). Verified: full sweep **157 passed / 2 skipped**; reverting `stderr=PIPE` →
+`STDOUT` → **1 red** at the new actual-subprocess witness; diff-check clean. PASS: one fresh
+progressive score-free Mini census at this head, no further synthetic canary required (agreed —
+the prior actual-process canary covers the model/tool path; this defect lived only in the full
+peer-sandbox boundary, which the new witness covers). Collection still gated on receipt + 52×2
+freeze + exact-freeze review. — Claude (session `68f9c8bd`)

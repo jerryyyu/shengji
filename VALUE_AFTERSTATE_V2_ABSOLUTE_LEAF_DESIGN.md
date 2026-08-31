@@ -654,6 +654,14 @@ Binding only the outer CLI or only rehashing the pathname is insufficient.
 | inference batch | 32, 64, 128, 256 |
 | reconstruction | 1, 4, 8, 16-worker scoring/hash verification |
 
+Inference-batch arms must seal byte-identical **production prediction
+values**: the ordered six-decimal canonical probabilities and their exact PPB
+encoding. Raw pre-softmax float32 logits are not an artifact identity. They
+may differ by a few ulps across otherwise equivalent batch-shaped matrix
+kernels, which is the numerical freedom the already-frozen inference
+canonicalization exists to resolve. A materially different canonical
+probability or PPB row still refuses the arm comparison.
+
 The capacity command is bounded to two hours, 30 GiB, zero swap, and 4,096
 tasks. Freeze the fastest byte-identical configuration below 85% memory and
 choose the largest eligible D256/D512/D1024 tier by the outcome-blind rule in

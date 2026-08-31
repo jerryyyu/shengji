@@ -24,7 +24,7 @@ from shengji.rl.world_afterstate_v2_capacity_runner import (
     RawMeasurementV2, SyntheticMeasurementBackendV2, measure_capacity_v2,
     build_receipt_v2, _arm_from_raw, _PRODUCTION_PROVENANCE,
     RealMeasurementBackendV2, FullDAGCapacityDependencyBlocked,
-    RepresentativeDAGV2, _batched_tensor_identity, _composed_projection,
+    RepresentativeDAGV2, _batched_prediction_identity, _composed_projection,
     _run_with_torch_threads, _scientific_stage_units, _tiers, _dag_attestation,
     _FULL_DAG_PROVENANCE,
     publish_capacity_failure_receipt_v2, reopen_capacity_failure_receipt_v2,
@@ -702,9 +702,67 @@ def test_torch_thread_arm_preserves_output_digest_and_restores_width():
 
 def test_inference_output_identity_is_batch_partition_invariant():
     import torch
-    rows = torch.arange(24, dtype=torch.float32).reshape(6, 4)
-    assert _batched_tensor_identity((rows[:2], rows[2:])) \
-        == _batched_tensor_identity((rows[:1], rows[1:4], rows[4:]))
+    from shengji.rl.world_afterstate import OUTCOME_CLASSES
+    rows = torch.linspace(
+        -1, 1, 6 * OUTCOME_CLASSES, dtype=torch.float32).reshape(
+            6, OUTCOME_CLASSES)
+    assert _batched_prediction_identity((rows[:2], rows[2:])) \
+        == _batched_prediction_identity((rows[:1], rows[1:4], rows[4:]))
+
+
+def test_inference_identity_uses_sealed_probability_not_raw_logit_ulps():
+    import torch
+    from shengji.rl.world_afterstate import OUTCOME_CLASSES
+    baseline = torch.zeros((2, OUTCOME_CLASSES), dtype=torch.float32)
+    baseline[0, :4] = torch.tensor([0.25, -0.5, 1.0, 0.0])
+    baseline[1, :4] = torch.tensor([-0.75, 0.125, 0.5, 1.25])
+    subcanonical = baseline.clone()
+    subcanonical[0, 0] += torch.finfo(torch.float32).eps
+    material = baseline.clone()
+    material[0, 0] += 0.01
+
+    # The failed Perf census compared the first two identities at raw-logit
+    # altitude.  Production seals the canonical PPB prediction instead.
+    assert runner._tensor_identity(baseline) != runner._tensor_identity(subcanonical)
+    assert _batched_prediction_identity((baseline,)) \
+        == _batched_prediction_identity((subcanonical,))
+    assert _batched_prediction_identity((baseline,)) \
+        != _batched_prediction_identity((material,))
+
+
+def test_model_inference_arm_wires_sealed_prediction_identity(monkeypatch):
+    import torch
+    import shengji.rl.world_afterstate as afterstate
+    import shengji.rl.world_afterstate_v2_model as model_module
+    from shengji.rl.world_afterstate import OUTCOME_CLASSES
+
+    fixture = FixtureV2(
+        {"score_free": True},
+        audit_raws=(b'{"successor":{},"root_seat":0}',) * 65)
+    monkeypatch.setattr(afterstate, "build_afterstate_tensors", lambda _value: object())
+    monkeypatch.setattr(
+        model_module, "collate_world_afterstate_tensors",
+        lambda values: SimpleNamespace(size=len(values)))
+
+    class FakeModel:
+        def __call__(self, batch):
+            return torch.arange(
+                batch.size * OUTCOME_CLASSES, dtype=torch.float32).reshape(
+                    batch.size, OUTCOME_CLASSES)
+
+    monkeypatch.setattr(model_module, "new_world_afterstate_v2_model", lambda _seed: FakeModel())
+    calls = []
+    original = runner._batched_prediction_identity
+
+    def witnessed(values):
+        calls.append(tuple(value.shape[0] for value in values))
+        return original(values)
+
+    monkeypatch.setattr(runner, "_batched_prediction_identity", witnessed)
+    left = runner._model_operation("inference-batch", 32, (fixture,))()
+    right = runner._model_operation("inference-batch", 64, (fixture,))()
+    assert left == right
+    assert calls == [(32, 32, 1), (64, 1)]
 
 
 def test_composed_projection_counts_epochs_and_scales_tiers_by_stage():

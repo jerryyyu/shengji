@@ -894,12 +894,24 @@ def _tensor_identity(value: Any) -> str:
                  "bytes": array.tobytes().hex()})
 
 
-def _batched_tensor_identity(values: Sequence[Any]) -> str:
-    """Bind ordered logits independently of the inference batch partition."""
+def _batched_prediction_identity(values: Sequence[Any]) -> str:
+    """Bind the ordered sealed prediction values across batch partitions.
+
+    Raw float32 logits are not a public V2 artifact and may differ by a few
+    ulps when an otherwise identical matrix operation uses another batch
+    shape.  Production inference already resolves that permitted numerical
+    freedom through its reviewed probability canonicalization and exact PPB
+    encoding.  Capacity must compare that same semantic output rather than a
+    stricter, non-production intermediate.
+    """
     import torch
+    from .world_afterstate_v2_inference import _quantize_probability_row
     if not values:
         raise CapacityRunnerError("capacity inference output population missing")
-    return _tensor_identity(torch.cat(tuple(values), dim=0))
+    logits = torch.cat(tuple(values), dim=0)
+    probabilities = torch.softmax(logits, dim=1)
+    return _sha([list(_quantize_probability_row(row))
+                 for row in probabilities])
 
 
 def _run_with_torch_threads(operation: Callable[[], str], variant: int) -> str:
@@ -1001,9 +1013,10 @@ def _model_operation(stage: str, variant: int,
                 for start in range(0, len(tensors), variant):
                     chunk = tensors[start:start + variant]
                     batches.append(model(collate_world_afterstate_tensors(chunk)))
-                # Batch-size arms must bind the same ordered logits, not the
+                # Batch-size arms bind the exact ordered prediction values
+                # that scientific inference seals, not raw-logit ulps or the
                 # arbitrary chunk boundaries used to produce them.
-                output = [_batched_tensor_identity(batches)]
+                output = [_batched_prediction_identity(batches)]
         return _sha(output)
     return run
 

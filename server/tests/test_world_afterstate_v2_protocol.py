@@ -9,6 +9,7 @@ from shengji.rl.world_afterstate_v2_protocol import (
     CapacityTierReceiptV2, PopulationSlotV2, StateCandidateV2,
     WorldAfterstateV2ProtocolError, attempted_deal_identity,
     build_population_slot_ledger, choose_capacity_tier, prior_points_bucket,
+    fit_pair_id, fit_pair_id_from_slot_sha256, fit_slot_from_slot_sha256,
     protocol_payload,
     select_one_state_per_deal, select_p0_population, validate_p0_population,
     validate_population_slot_ledger,
@@ -113,6 +114,37 @@ def test_preplay_slot_ledgers_have_exact_groups_and_paired_select_census() \
         ]
         assert not ({slot.slot_sha256 for slot in left}
                     & {slot.slot_sha256 for slot in right})
+
+
+def test_every_fit_group_is_exactly_pair_partitioned_and_ordinal_mutation_fails():
+    for tier in TIER_SPECS:
+        slots = build_population_slot_ledger(tier)
+        for group in {slot.group for slot in slots if slot.split == "fit"}:
+            members = [slot for slot in slots if slot.group == group]
+            assert len(members) % 2 == 0
+            assert len({slot.slot_sha256 for slot in members}) == len(members)
+            for left, right in zip(members[::2], members[1::2]):
+                assert fit_pair_id(left) == fit_pair_id(right)
+                assert fit_pair_id_from_slot_sha256(left.slot_sha256) \
+                    == fit_pair_id(left)
+                assert fit_slot_from_slot_sha256(left.slot_sha256) == left
+                if left.source == "mechanics":
+                    assert (left.mechanics_surface, left.trump_rank,
+                            left.trump_mode) == (right.mechanics_surface,
+                                                  right.trump_rank,
+                                                  right.trump_mode)
+                else:
+                    assert (left.cell, left.trump_rank, left.trump_mode) \
+                        == (right.cell, right.trump_rank, right.trump_mode)
+        fit = [slot for slot in slots if slot.split == "fit"]
+        forged = list(fit)
+        forged[1] = PopulationSlotV2(
+            **{**forged[1].__dict__, "trump_mode":
+               "NT" if forged[1].trump_mode != "NT" else "S"})
+        with pytest.raises(WorldAfterstateV2ProtocolError):
+            validate_population_slot_ledger(
+                [*slots[:slots.index(fit[0])], *forged,
+                 *slots[slots.index(fit[-1]) + 1:]], tier=tier)
 
 
 def test_slot_derivation_and_attempt_identity_refuse_cross_binding() -> None:

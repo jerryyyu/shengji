@@ -54,6 +54,9 @@ ZERO_SWAP = 0
 PREFLIGHT_ACCEPTED = 32
 PREFLIGHT_ATTEMPT_CEILING = 384
 PREFLIGHT_WORKERS = HOST_CPUS
+PREFLIGHT_RESERVED_NATURAL_ROOTS = 16
+PREFLIGHT_RESERVED_NATURAL_PAIRS = PREFLIGHT_RESERVED_NATURAL_ROOTS // 2
+PREFLIGHT_MAX_NATURAL_ROOTS = 17
 SYNTHETIC_BRAND = "SYNTHETIC_TEST_MEASUREMENT_ONLY"
 RUNNER_SCHEMA = "world-afterstate-v2-capacity-runner-v1"
 OPERATION_OUTPUT_SCHEMA = "world-afterstate-v2-capacity-operation-output-v1"
@@ -353,9 +356,42 @@ def _population_category(value: Any) -> str | None:
     return "audit" if split == "audit" else None
 
 
-def _preflight_slot(slots: Sequence[Any], attempt_index: int) -> Any:
-    """Keep the reviewed first 96 attempts, then cover all held-out cells."""
+def _reserved_natural_pair_slots(slots: Sequence[Any]) -> tuple[Any, ...]:
+    """Return the first eight canonical natural-fit slot pairs.
+
+    Pair reservation uses only public slot metadata. Synthetic narrow test
+    seams without canonical slot IDs retain their caller-supplied schedule.
+    """
+    from .world_afterstate_v2_protocol import fit_pair_id_from_slot_sha256
+
+    groups: dict[str, list[Any]] = {}
+    for slot in slots:
+        if (getattr(slot, "split", None) != "fit"
+                or getattr(slot, "source", None) != "natural"):
+            continue
+        try:
+            pair = fit_pair_id_from_slot_sha256(slot.slot_sha256)
+        except Exception:
+            continue
+        groups.setdefault(pair, []).append(slot)
+    result: list[Any] = []
+    for pair in sorted(groups):
+        members = groups[pair]
+        if len({member.slot_sha256 for member in members}) != 2:
+            continue
+        result.extend(sorted(members, key=lambda member: member.ordinal))
+        if len(result) == PREFLIGHT_RESERVED_NATURAL_ROOTS:
+            break
+    return tuple(result)
+
+
+def _preflight_slot(slots: Sequence[Any], attempt_index: int,
+                    reserved_slots: Sequence[Any] = ()) -> Any:
+    """Reserve eight natural slot pairs, then cover held-out cells."""
     values = tuple(slots)
+    reserved = tuple(reserved_slots)
+    if reserved and attempt_index < len(reserved):
+        return reserved[attempt_index]
     if attempt_index < 96:
         return values[attempt_index % len(values)]
     first_wave_slot_ids = {
@@ -380,7 +416,8 @@ def _preflight_slot(slots: Sequence[Any], attempt_index: int) -> Any:
 
 def _required_population_counts() -> dict[str, int]:
     return {
-        "fit": max(1, min(17, PREFLIGHT_ACCEPTED - 3)),
+        "fit": max(1, min(PREFLIGHT_MAX_NATURAL_ROOTS,
+                          PREFLIGHT_ACCEPTED - 3)),
         "epoch-select": 1, "precision-select": 1, "audit": 1,
     }
 
@@ -426,7 +463,32 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
     coverage_required = (attempt is drive_population_attempt_v2
                          or required_splits <= {
                              _population_category(slot) for slot in slots})
+    reserved_slots = _reserved_natural_pair_slots(slots)
+    from .world_afterstate_v2_protocol import fit_pair_id_from_slot_sha256
+    canonical_natural_slots = []
+    for slot in slots:
+        if (getattr(slot, "split", None) == "fit"
+                and getattr(slot, "source", None) == "natural"):
+            try:
+                fit_pair_id_from_slot_sha256(slot.slot_sha256)
+            except Exception:
+                continue
+            canonical_natural_slots.append(slot)
+    reservation_required = len(canonical_natural_slots) >= PREFLIGHT_RESERVED_NATURAL_ROOTS
+    if reservation_required and len(reserved_slots) != PREFLIGHT_RESERVED_NATURAL_ROOTS:
+        raise CapacityRunnerError(
+            "preflight natural-fit pair reservation is not predeclared")
+    reserved_slot_ids = {slot.slot_sha256 for slot in reserved_slots}
+    general_slots = tuple(slot for slot in slots
+                          if slot.slot_sha256 not in reserved_slot_ids)
+    if not general_slots:
+        general_slots = slots
+    reserved_target = min(PREFLIGHT_RESERVED_NATURAL_ROOTS,
+                          PREFLIGHT_ACCEPTED, len(reserved_slots))
+    reserved_accepted: set[str] = set()
+    natural_fit_count = 0
     index = 0
+    general_index = 0
     executor_type = _preflight_executor_type(attempt)
     peak_memory = _cgroup_memory_bytes()
     pool_kwargs = (verified_process_pool_kwargs()
@@ -435,7 +497,8 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
         while index < PREFLIGHT_ATTEMPT_CEILING \
                 and (len(accepted) < PREFLIGHT_ACCEPTED
                      or (coverage_required
-                         and not _population_coverage_complete(accepted))):
+                         and not _population_coverage_complete(accepted))
+                     or len(reserved_accepted) < reserved_target):
             if deadline_ns is not None and time.perf_counter_ns() >= deadline_ns:
                 raise CapacityRunnerError(
                     "capacity deadline exceeded during preflight")
@@ -451,15 +514,23 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
             # Never schedule more attempts than the number of fixtures still
             # needed.  Therefore a concurrent batch cannot produce an eligible
             # surplus that would require post-hoc selection or hidden accounting.
+            pending_reserved = tuple(
+                slot for slot in reserved_slots
+                if slot.slot_sha256 not in reserved_accepted)
             batch_size = min(
                 PREFLIGHT_WORKERS, max(1, PREFLIGHT_ACCEPTED - len(accepted)),
+                len(pending_reserved) if pending_reserved else PREFLIGHT_WORKERS,
                 PREFLIGHT_ATTEMPT_CEILING - index)
             batch_started = time.perf_counter_ns()
             batch_cpu_started = _proc_cpu_ns()
             jobs = []
             for offset in range(batch_size):
                 attempt_index = index + offset
-                slot = _preflight_slot(slots, attempt_index)
+                if pending_reserved:
+                    slot = pending_reserved[offset]
+                else:
+                    slot = _preflight_slot(general_slots,
+                                           general_index + offset)
                 jobs.append((attempt_index, slot, pool.submit(
                     attempt,
                     _attempt_identity(namespace, slot, attempt_index), slot)))
@@ -518,6 +589,14 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
                                 and remaining <= deficits)):
                         rejected["split-reservation"] += 1
                         continue
+                category = _population_category(material)
+                if category == "fit" and getattr(
+                        getattr(material, "state", None), "source", None) == "natural":
+                    if (slot_sha256 not in reserved_slot_ids
+                            and natural_fit_count >= PREFLIGHT_MAX_NATURAL_ROOTS):
+                        rejected["natural-fit-cap"] += 1
+                        continue
+                    natural_fit_count += 1
                 # Only the score-free canonical state and private audit bytes
                 # enter the in-memory fixture.  No continuation/result field is
                 # copied.
@@ -526,10 +605,14 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
                     deal_sha256=result.deal_sha256, material=material)
                 accepted.append(fixture)
                 accepted_slots.add(slot_sha256)
+                if slot_sha256 in reserved_slot_ids:
+                    reserved_accepted.add(slot_sha256)
                 candidates[len(material.candidates)] += 1
                 state = material.state
                 strata[f"{state.phase}/{state.position}/{state.role}"] += 1
             index += batch_size
+            if not pending_reserved:
+                general_index += batch_size
             peak_memory = max(peak_memory, _cgroup_memory_bytes())
             if progress is not None:
                 elapsed = max(
@@ -569,6 +652,9 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
             if _task_count() > MAX_TASKS:
                 raise CapacityRunnerError(
                     "capacity task cap exceeded during preflight")
+    if (reserved_target and len(reserved_accepted) < reserved_target):
+        raise CapacityRunnerError(
+            "preflight natural-fit pair reservation is incomplete")
     if coverage_required and not _population_coverage_complete(accepted):
         raise CapacityRunnerError(
             "preflight retained split coverage is incomplete")
@@ -1903,7 +1989,9 @@ __all__ = [
     "validate_capacity_failure_receipt_v2",
     "run_capacity_v2", "run_score_free_preflight", "run_capacity",
     "measure_capacity", "reopen_capacity_receipt", "publish_capacity_receipt",
-    "PREFLIGHT_ACCEPTED", "PREFLIGHT_ATTEMPT_CEILING", "SYNTHETIC_BRAND",
+    "PREFLIGHT_ACCEPTED", "PREFLIGHT_ATTEMPT_CEILING",
+    "PREFLIGHT_MAX_NATURAL_ROOTS", "PREFLIGHT_RESERVED_NATURAL_PAIRS",
+    "PREFLIGHT_RESERVED_NATURAL_ROOTS", "SYNTHETIC_BRAND",
     "run_preflight_v2", "preflight_v2",
 ]
 

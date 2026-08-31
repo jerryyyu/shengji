@@ -12,18 +12,28 @@ from shengji.rl.world_afterstate_v2_controls import (
     label_permutation, mix_control_populations,
     validate_control_evidence,
 )
+from shengji.rl.world_afterstate_v2_protocol import (
+    TIER_SPECS, build_population_slot_ledger,
+)
 
 from test_world_afterstate_v2_training import _rows, _tensor
 
 
 def _population(*names):
     result = []
+    fit_slots = [slot for slot in build_population_slot_ledger(TIER_SPECS[0])
+                 if slot.group == "natural-fit"]
     for root_index, name in enumerate(names):
+        slot = fit_slots[root_index % 4]
+        phase, position, role = slot.cell
         for row in _rows(name, candidates=2):
             # The fixture's identity tensors are intentionally varied here so
             # complete-world shuffle has a measurable world-channel dose.
             result.append(dataclasses.replace(
-                row, tensors=_tensor(root_index * 3 + row.candidate_index),
+                row, slot_sha256=slot.slot_sha256, source=slot.source,
+                phase=phase, position=position, role=role,
+                trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+                tensors=_tensor(root_index * 3 + row.candidate_index),
                 signed_level_category=(root_index * 17
                                        + row.candidate_index * 3
                                        + row.replica) % 204))
@@ -112,6 +122,10 @@ def test_world_shuffle_only_changes_world_and_pairs_different_deals():
     natural = _population("a", "b", "c", "d")
     controlled, evidence = complete_world_shuffle(natural, seed=29)
     assert evidence["row_dose_ppm"] >= 900_000
+    assert evidence["pair_count"] == 2
+    assert evidence["self_donor_count"] == 0
+    assert evidence["cross_pair_count"] == 0
+    assert len(evidence["pair_mapping_sha256"]) == 64
     for row in controlled:
         source = row.natural
         assert np.array_equal(row.tensors.public, source.tensors.public)
@@ -123,12 +137,58 @@ def test_world_shuffle_only_changes_world_and_pairs_different_deals():
     validate_control_evidence(evidence, natural=natural, controlled=controlled)
 
 
+@pytest.mark.parametrize("replacement", (
+    {"source": "pt-luna"},
+    {"phase": "middle"},
+))
+def test_world_shuffle_binds_claimed_source_and_axes_to_canonical_slot(
+        replacement):
+    natural = _population("a", "b")
+    first_root = natural[0].root_key
+    forged = [dataclasses.replace(row, **replacement)
+              if row.root_key == first_root else row for row in natural]
+    with pytest.raises(WorldAfterstateV2ControlError,
+                       match="canonical slot binding drift"):
+        complete_world_shuffle(forged)
+
+
+def test_world_reassignment_maps_unequal_ballots_and_binds_donor_family():
+    slots = [slot for slot in build_population_slot_ledger(TIER_SPECS[0])
+             if slot.group == "natural-fit"][:2]
+    natural = []
+    for index, (name, count) in enumerate((("wide", 3), ("narrow", 2))):
+        for row in _rows(name, candidates=count):
+            natural.append(dataclasses.replace(
+                row, slot_sha256=slots[index].slot_sha256,
+                tensors=_tensor(40 + index * 10 + row.candidate_index)))
+    controlled, evidence = complete_world_shuffle(natural, seed=31)
+    assert evidence["root_pair_coverage_ppm"] == 1_000_000
+    roots = {row.root_key: row for row in natural}
+    wide_root = next(root for root, row in roots.items() if row.deal_sha256
+                     == natural[0].deal_sha256)
+    mapped = {(row.candidate_index, row.replica): row for row in controlled
+              if row.root_key == wide_root}
+    # Candidate 2 in the three-wide recipient wraps to donor candidate 1.
+    assert all(row.donor_key.endswith(":1") for (candidate, _), row in mapped.items()
+               if candidate == 2)
+    assert all(row.donor_key.split(":")[0] != row.root_key for row in mapped.values())
+    for row in controlled:
+        source = row.natural
+        assert np.array_equal(row.tensors.public, source.tensors.public)
+        assert np.array_equal(row.tensors.history, source.tensors.history)
+        assert np.array_equal(row.tensors.perspective, source.tensors.perspective)
+        assert row.target_category == source.signed_level_category
+    validate_control_evidence(evidence, natural=natural, controlled=controlled)
+
+
 def test_controls_refuse_incomplete_singleton_zero_dose_and_bad_receipts():
     natural = _population("a", "b", "c", "d")
     with pytest.raises(WorldAfterstateV2ControlError, match="incomplete"):
         action_association_permutation(natural[:-1])
     with pytest.raises(WorldAfterstateV2ControlError, match="compatible deal"):
         complete_world_shuffle(_population("only"))
+    with pytest.raises(WorldAfterstateV2ControlError, match="coverage"):
+        complete_world_shuffle(_population("a", "b", "c"))
     zero = [dataclasses.replace(row, signed_level_category=100)
             for row in natural]
     with pytest.raises(WorldAfterstateV2ControlError, match="minimum dose"):
@@ -142,12 +202,26 @@ def test_controls_refuse_incomplete_singleton_zero_dose_and_bad_receipts():
     forged["changed_row_count"] -= 1
     with pytest.raises(WorldAfterstateV2ControlError):
         validate_control_evidence(forged)
+    forged = copy.deepcopy(receipt)
+    forged["schema"] = "world-afterstate-v2-control-evidence-v1"
+    with pytest.raises(WorldAfterstateV2ControlError, match="schema drift"):
+        validate_control_evidence(forged)
+    _world_rows, world_receipt = complete_world_shuffle(natural)
+    forged = copy.deepcopy(world_receipt)
+    forged["cross_pair_count"] = 1
+    body = {key: value for key, value in forged.items()
+            if key != "evidence_sha256"}
+    forged["evidence_sha256"] = controls_module._sha(body)
+    with pytest.raises(WorldAfterstateV2ControlError,
+                       match="dose reconstruction drift"):
+        validate_control_evidence(forged)
 
 
 def test_controls_refuse_stratum_crossing_protected_leaks_and_mixed_controls():
     natural = _population("a", "b", "c", "d")
     bad = list(natural)
-    bad[-1] = dataclasses.replace(bad[-1], trump_mode="H")
+    bad[-1] = dataclasses.replace(
+        bad[-1], trump_mode="H" if bad[-1].trump_mode != "H" else "S")
     with pytest.raises(WorldAfterstateV2ControlError,
                        match="root mechanics|root identity"):
         action_association_permutation(bad)

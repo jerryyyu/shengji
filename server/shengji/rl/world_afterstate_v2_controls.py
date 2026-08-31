@@ -16,6 +16,9 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 
 from .belief_contract import canonical_json_bytes
+from .world_afterstate_v2_protocol import (
+    fit_pair_id_from_slot_sha256, fit_slot_from_slot_sha256,
+)
 from .world_afterstate import WorldAfterstateTensorsV0, OUTCOME_CLASSES
 from .world_afterstate_v2_training import (
     REPLICATES, WorldAfterstateV2TrainingExample,
@@ -23,14 +26,15 @@ from .world_afterstate_v2_training import (
 )
 
 
-CONTROL_ROW_SCHEMA = "world-afterstate-v2-control-row-v1"
-CONTROL_EVIDENCE_SCHEMA = "world-afterstate-v2-control-evidence-v1"
+CONTROL_ROW_SCHEMA = "world-afterstate-v2-control-row-v2"
+CONTROL_EVIDENCE_SCHEMA = "world-afterstate-v2-control-evidence-v2"
 CONTROL_NAMES = (
     "action-association-permutation", "label-permutation",
     "complete-world-shuffle",
 )
 MINIMUM_PERMUTATION_DOSE_PPM = 900_000
 MINIMUM_LABEL_EFFECTIVE_DOSE_PPM = 400_000
+MINIMUM_ROOT_PAIR_COVERAGE_PPM = 900_000
 AUTHORITY = {
     "dataset_opening_authorized": False,
     "training_execution_authorized": False,
@@ -249,13 +253,14 @@ class ControlledWorldAfterstateV2Example:
             raise WorldAfterstateV2ControlError(
                 "association donor was not deranged")
         if self.control_name != "action-association-permutation" \
+                and self.control_name != "complete-world-shuffle" \
                 and self.donor_successor_sha256 != self.successor_sha256:
             raise WorldAfterstateV2ControlError(
                 "non-association donor successor drift")
 
     def binding(self) -> dict[str, Any]:
         self.validate()
-        return {
+        result = {
             "key": self.example_key, "root": self.root_key,
             "control_name": self.control_name,
             "candidate_index": self.candidate_index, "replica": self.replica,
@@ -284,6 +289,14 @@ class ControlledWorldAfterstateV2Example:
                 "target_category": self.natural.signed_level_category,
             },
         }
+        if self.control_name == "complete-world-shuffle":
+            try:
+                result["pair_id"] = fit_pair_id_from_slot_sha256(
+                    self.natural.slot_sha256)
+            except Exception as exc:
+                raise WorldAfterstateV2ControlError(
+                    "world-shuffle pair binding drift") from exc
+        return result
 
     @property
     def transformed_candidate_set_sha256(self) -> str:
@@ -336,12 +349,52 @@ def _controlled_binding(values: Sequence[ControlledWorldAfterstateV2Example]) \
         values, key=lambda row: (row.root_key, row.candidate_index, row.replica))]
 
 
+def _world_mapping_stats(
+        natural: Sequence[WorldAfterstateV2TrainingExample],
+        controlled: Sequence[ControlledWorldAfterstateV2Example]) \
+        -> tuple[int, int, int, str]:
+    """Return pair count, self/cross counts, and a deterministic map digest."""
+    roots = _roots(natural)
+    root_pairs = {
+        root: fit_pair_id_from_slot_sha256(rows[0].slot_sha256)
+        for root, rows in roots.items()}
+    mapped_pairs: set[str] = set()
+    mappings = []
+    self_count = 0
+    cross_count = 0
+    for row in sorted(controlled, key=lambda value: (
+            value.root_key, value.candidate_index, value.replica)):
+        donor_root, donor_candidate = row.donor_key.rsplit(":", 1)
+        if donor_candidate == "self":
+            self_count += 1
+            donor_pair = None
+        else:
+            donor_pair = root_pairs.get(donor_root)
+            if donor_pair != root_pairs[row.root_key]:
+                cross_count += 1
+            else:
+                mapped_pairs.add(root_pairs[row.root_key])
+        mappings.append({
+            "root": row.root_key, "pair_id": root_pairs[row.root_key],
+            "candidate_index": row.candidate_index, "replica": row.replica,
+            "donor_root": donor_root, "donor_candidate": donor_candidate,
+            "donor_pair_id": donor_pair,
+        })
+    return len(mapped_pairs), self_count, cross_count, _sha(mappings)
+
+
 def _evidence(name: str, seed: int,
               natural: Sequence[WorldAfterstateV2TrainingExample],
               controlled: Sequence[ControlledWorldAfterstateV2Example], *,
               changed_rows: int, changed_cells: int,
               eligible_rows: int | None = None,
-              eligible_cells: int | None = None) -> dict[str, Any]:
+              eligible_cells: int | None = None,
+              eligible_roots: int | None = None,
+              paired_roots: int | None = None,
+              pair_count: int | None = None,
+              self_donor_count: int | None = None,
+              cross_pair_count: int | None = None,
+              pair_mapping_sha256: str | None = None) -> dict[str, Any]:
     if name not in CONTROL_NAMES or len(natural) != len(controlled) or not natural:
         raise WorldAfterstateV2ControlError("control evidence population drift")
     _seed(seed)
@@ -350,11 +403,48 @@ def _evidence(name: str, seed: int,
     row_count = len(natural)
     eligible_rows = row_count if eligible_rows is None else eligible_rows
     eligible_cells = row_count if eligible_cells is None else eligible_cells
+    root_count = len(_roots(natural))
+    eligible_roots = root_count if eligible_roots is None else eligible_roots
+    paired_roots = (eligible_roots if paired_roots is None else paired_roots)
+    if name == "complete-world-shuffle":
+        calculated = _world_mapping_stats(natural, controlled)
+        pair_count = calculated[0] if pair_count is None else pair_count
+        self_donor_count = (calculated[1] if self_donor_count is None
+                            else self_donor_count)
+        cross_pair_count = (calculated[2] if cross_pair_count is None
+                            else cross_pair_count)
+        pair_mapping_sha256 = (calculated[3] if pair_mapping_sha256 is None
+                               else pair_mapping_sha256)
+    else:
+        pair_count = 0 if pair_count is None else pair_count
+        self_donor_count = 0 if self_donor_count is None else self_donor_count
+        cross_pair_count = 0 if cross_pair_count is None else cross_pair_count
+        pair_mapping_sha256 = (_sha([]) if pair_mapping_sha256 is None
+                               else pair_mapping_sha256)
+    if any(value is None for value in (
+            pair_count, self_donor_count, cross_pair_count,
+            pair_mapping_sha256)):
+        raise WorldAfterstateV2ControlError("control mapping receipt drift")
+    _digest(pair_mapping_sha256, "control pair mapping SHA-256")
+    if not (0 <= paired_roots <= eligible_roots <= root_count):
+        raise WorldAfterstateV2ControlError("control root dose drift")
     if not (0 <= changed_rows <= eligible_rows <= row_count and
             0 <= changed_cells <= eligible_cells <= row_count):
         raise WorldAfterstateV2ControlError("control evidence dose drift")
+    if name == "complete-world-shuffle":
+        if cross_pair_count != 0 or pair_count * 2 != paired_roots \
+                or (paired_roots == root_count and self_donor_count != 0) \
+                or (paired_roots < root_count and self_donor_count == 0):
+            raise WorldAfterstateV2ControlError(
+                "world-shuffle mapping geometry drift")
+    elif (pair_count != 0 or self_donor_count != 0
+          or cross_pair_count != 0 or pair_mapping_sha256 != _sha([])):
+        raise WorldAfterstateV2ControlError(
+            "non-world control mapping geometry drift")
     row_dose = changed_rows * 1_000_000 // eligible_rows if eligible_rows else 0
     cell_dose = changed_cells * 1_000_000 // eligible_cells if eligible_cells else 0
+    root_dose = (paired_roots * 1_000_000 // eligible_roots
+                 if eligible_roots else 0)
     input_digest = _sha(_population_binding(natural))
     output_digest = _sha(_controlled_binding(controlled))
     if input_digest == output_digest or changed_rows == 0:
@@ -373,13 +463,22 @@ def _evidence(name: str, seed: int,
             MINIMUM_LABEL_EFFECTIVE_DOSE_PPM if name == "label-permutation"
             else MINIMUM_PERMUTATION_DOSE_PPM),
         "root_count": len(_roots(natural)),
+        "eligible_root_count": eligible_roots,
+        "paired_root_count": paired_roots,
+        "root_pair_coverage_ppm": root_dose,
+        "pair_count": pair_count,
+        "self_donor_count": self_donor_count,
+        "cross_pair_count": cross_pair_count,
+        "pair_mapping_sha256": pair_mapping_sha256,
         "source_population_sha256": input_digest,
         "input_population_sha256": input_digest,
         "output_population_sha256": output_digest,
         "authority": dict(AUTHORITY),
     }
     if row_dose < body["required_minimum_dose_ppm"] \
-            or cell_dose < body["required_minimum_effective_dose_ppm"]:
+            or cell_dose < body["required_minimum_effective_dose_ppm"] \
+            or (name == "complete-world-shuffle"
+                and root_dose < MINIMUM_ROOT_PAIR_COVERAGE_PPM):
         raise WorldAfterstateV2ControlError("control transform is below minimum dose")
     return {**body, "evidence_sha256": _sha(body)}
 
@@ -494,36 +593,71 @@ def complete_world_shuffle(
     """Derange complete-world channels across compatible distinct deals."""
     roots = _roots(natural)
     _seed(seed)
-    strata: dict[tuple[Any, ...], list[str]] = defaultdict(list)
+    pair_groups: dict[str, list[str]] = defaultdict(list)
     for root, rows in roots.items():
-        count = len({row.candidate_index for row in rows})
-        strata[_stratum(rows[0], count)].append(root)
+        try:
+            slot = fit_slot_from_slot_sha256(rows[0].slot_sha256)
+        except Exception as exc:
+            raise WorldAfterstateV2ControlError(
+                "world-shuffle slot is not in canonical fit ledger") from exc
+        row = rows[0]
+        if (row.source != slot.source or row.split != slot.split
+                or row.trump_rank != slot.trump_rank
+                or row.trump_mode != slot.trump_mode
+                or (slot.source != "mechanics" and
+                    (row.phase, row.position, row.role) != slot.cell)):
+            raise WorldAfterstateV2ControlError(
+                "world-shuffle canonical slot binding drift")
+        pair_groups[slot.fit_pair_id].append(root)
     root_donor: dict[str, str] = {}
     eligible_roots: set[str] = set()
-    for stratum, members in sorted(strata.items(), key=lambda item: str(item[0])):
-        if len(members) < 2:
+    for _pair, members in sorted(pair_groups.items()):
+        # A pair ID owns exactly two canonical slots and at most one accepted
+        # root per slot.  A missing partner remains an honest singleton; an
+        # extra root is population drift rather than donor discretion.
+        slot_by_root = {root: roots[root][0].slot_sha256 for root in members}
+        if len(members) == 1:
             continue
-        ordered = _order(members, seed=seed, namespace="world-afterstate-v2-world")
-        for index, root in enumerate(ordered):
-            root_donor[root] = ordered[(index + 1) % len(ordered)]
-            eligible_roots.add(root)
-    if not eligible_roots:
-        raise WorldAfterstateV2ControlError("world-shuffle has no compatible deal pair")
+        if len(members) != 2 or len(set(slot_by_root.values())) != 2:
+            raise WorldAfterstateV2ControlError(
+                "world-shuffle pair population drift")
+        left, right = sorted(members, key=lambda root: slot_by_root[root])
+        if roots[left][0].deal_sha256 == roots[right][0].deal_sha256:
+            raise WorldAfterstateV2ControlError(
+                "world-shuffle pair reused a deal")
+        root_donor[left], root_donor[right] = right, left
+        eligible_roots.update((left, right))
+    root_count = len(roots)
+    if not eligible_roots or len(eligible_roots) * 1_000_000 // root_count \
+            < MINIMUM_ROOT_PAIR_COVERAGE_PPM:
+        raise WorldAfterstateV2ControlError(
+            "world-shuffle has no compatible deal pair or root pair coverage "
+            "is below minimum")
     controls = []
     for root in sorted(roots):
-        by_candidate = {row.candidate_index: row for row in roots[root]}
         donor_root = root_donor.get(root)
-        donor_by_candidate = ({row.candidate_index: row
-                               for row in roots[donor_root]}
-                              if donor_root is not None else {})
+        donor_rows = roots[donor_root] if donor_root is not None else ()
+        donor_count = len({row.candidate_index for row in donor_rows})
+        if donor_root is not None and donor_count < 2:
+            raise WorldAfterstateV2ControlError(
+                "world-shuffle donor ballot is incomplete")
+        donor_by_candidate_replica = {
+            (row.candidate_index, row.replica): row for row in donor_rows}
         for row in roots[root]:
             if donor_root is None:
                 controls.append(_row(row, "complete-world-shuffle", row.tensors,
                                      row.successor_sha256, row.successor_sha256,
                                      row.signed_level_category,
-                                     root))
+                                     f"{root}:self"))
                 continue
-            donor = donor_by_candidate[row.candidate_index]
+            donor_candidate = (0 if row.candidate_index == 0 else
+                               1 + ((row.candidate_index - 1)
+                                    % (donor_count - 1)))
+            donor = donor_by_candidate_replica.get(
+                (donor_candidate, row.replica))
+            if donor is None:
+                raise WorldAfterstateV2ControlError(
+                    "world-shuffle donor candidate family incomplete")
             tensors = WorldAfterstateTensorsV0(
                 public=row.tensors.public.copy(),
                 history=row.tensors.history.copy(),
@@ -532,7 +666,8 @@ def complete_world_shuffle(
             tensors.validate()
             controls.append(_row(
                 row, "complete-world-shuffle", tensors, row.successor_sha256,
-                row.successor_sha256, row.signed_level_category, donor_root))
+                donor.successor_sha256, row.signed_level_category,
+                f"{donor_root}:{donor_candidate}"))
     controls.sort(key=lambda value: (value.root_key, value.candidate_index, value.replica))
     ordered = sorted(natural, key=lambda value: (value.root_key,
                                                   value.candidate_index,
@@ -546,8 +681,13 @@ def complete_world_shuffle(
     evidence = _evidence("complete-world-shuffle", seed, ordered, controls,
                          changed_rows=changed,
                          changed_cells=changed,
-                         eligible_rows=len(eligible_ordered),
-                         eligible_cells=len(eligible_ordered))
+                         # Dose is over the complete fit population, not only
+                         # the pairable subset.  Otherwise 90% paired x 90%
+                         # changed could falsely report a 90% control dose.
+                         eligible_rows=len(ordered),
+                         eligible_cells=len(ordered),
+                         eligible_roots=root_count,
+                         paired_roots=len(eligible_roots))
     return tuple(controls), evidence
 
 
@@ -643,15 +783,46 @@ def validate_control_evidence(value: Mapping[str, Any], *,
                      "row_dose_ppm", "cell_dose_ppm", "dose_ppm",
                      "effective_changed_count", "effective_dose_ppm",
                      "required_minimum_dose_ppm",
-                     "required_minimum_effective_dose_ppm", "root_count")
+                     "required_minimum_effective_dose_ppm", "root_count",
+                     "eligible_root_count", "paired_root_count",
+                     "root_pair_coverage_ppm", "pair_count",
+                     "self_donor_count", "cross_pair_count")
     if any(isinstance(value.get(key), bool) or not isinstance(value.get(key), int)
            for key in required_ints):
         raise WorldAfterstateV2ControlError("control evidence integer drift")
     _seed(value["seed"])
+    _digest(value.get("pair_mapping_sha256"),
+            "control pair mapping SHA-256")
     n = value["row_count"]
     er, ec = value["eligible_row_count"], value["eligible_cell_count"]
     cr, cc = value["changed_row_count"], value["changed_cell_count"]
+    root_count = value["root_count"]
+    eligible_roots, paired_roots = (value["eligible_root_count"],
+                                    value["paired_root_count"])
+    root_dose = (paired_roots * 1_000_000 // eligible_roots
+                 if eligible_roots else 0)
+    if value["control_name"] == "complete-world-shuffle":
+        mapping_geometry_invalid = (
+            value["cross_pair_count"] != 0
+            or value["pair_count"] * 2 != paired_roots
+            or (paired_roots == root_count
+                and value["self_donor_count"] != 0)
+            or (paired_roots < root_count
+                and value["self_donor_count"] == 0))
+    else:
+        mapping_geometry_invalid = (
+            value["pair_count"] != 0
+            or value["self_donor_count"] != 0
+            or value["cross_pair_count"] != 0
+            or value["pair_mapping_sha256"] != _sha([]))
     if n <= 0 or not (0 <= cr <= er <= n and 0 <= cc <= ec <= n) \
+            or not (0 < root_count and 0 <= paired_roots <= eligible_roots
+                    <= root_count) \
+            or value["pair_count"] < 0 \
+            or value["self_donor_count"] < 0 \
+            or value["cross_pair_count"] < 0 \
+            or mapping_geometry_invalid \
+            or value["root_pair_coverage_ppm"] != root_dose \
             or value["changed_count"] != cr \
             or value["effective_changed_count"] != cc \
             or value["row_dose_ppm"] != (cr * 1_000_000 // er if er else 0) \
@@ -659,7 +830,9 @@ def validate_control_evidence(value: Mapping[str, Any], *,
             or value["dose_ppm"] != value["row_dose_ppm"] \
             or value["effective_dose_ppm"] != value["cell_dose_ppm"] \
             or value["row_dose_ppm"] < value["required_minimum_dose_ppm"] \
-            or value["cell_dose_ppm"] < value["required_minimum_effective_dose_ppm"]:
+            or value["cell_dose_ppm"] < value["required_minimum_effective_dose_ppm"] \
+            or (value["control_name"] == "complete-world-shuffle"
+                and root_dose < MINIMUM_ROOT_PAIR_COVERAGE_PPM):
         raise WorldAfterstateV2ControlError("control evidence dose reconstruction drift")
     source_sha = _digest(value.get("source_population_sha256"), "control source SHA-256")
     if value.get("input_population_sha256") != source_sha:
@@ -691,6 +864,7 @@ __all__ = [
     "AUTHORITY", "CONTROL_EVIDENCE_SCHEMA", "CONTROL_NAMES",
     "CONTROL_ROW_SCHEMA", "ControlledWorldAfterstateV2Example",
     "MINIMUM_LABEL_EFFECTIVE_DOSE_PPM", "MINIMUM_PERMUTATION_DOSE_PPM",
+    "MINIMUM_ROOT_PAIR_COVERAGE_PPM",
     "WorldAfterstateV2ControlError", "action_association_permutation",
     "complete_world_shuffle", "collate_control_training_examples",
     "control_training_examples",

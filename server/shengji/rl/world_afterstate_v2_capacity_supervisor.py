@@ -8,6 +8,7 @@ callback) cannot satisfy the ``actual`` witness required for admission.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 import hashlib
 import inspect
@@ -53,6 +54,7 @@ from .world_afterstate_v2_training_controller import (
 )
 from .world_afterstate_v2_protocol import (
     TIER_SPECS, StateCandidateV2, build_population_slot_ledger,
+    fit_pair_id_from_slot_sha256, fit_slot_from_slot_sha256,
     select_p0_population,
 )
 from .world_afterstate_v2_continuation import (
@@ -430,15 +432,46 @@ def _capacity_stage_materials(materials: Sequence[Any]) -> tuple[
         and material.state.select_subfold == "precision-select")
     audit = tuple(
         material for material in ordered if material.state.split == "audit")
-    if (len(natural_fit) < 2 or not epoch_select or not precision or not audit):
+    try:
+        pair_counts = Counter(fit_pair_id_from_slot_sha256(
+            material.state.slot_sha256) for material in natural_fit)
+    except Exception as exc:
         raise FullDAGCapacityDependencyBlocked(
-            "retained capacity sample lacks fit/select/audit coverage")
+            "retained capacity pair population drift") from exc
+    paired_roots = sum(count for count in pair_counts.values() if count == 2)
+    if (len(natural_fit) != 17 or len({material.state.slot_sha256
+                                      for material in natural_fit}) != 17
+            or any(count not in (1, 2) for count in pair_counts.values())
+            or paired_roots < 16
+            or not epoch_select or not precision or not audit):
+        raise FullDAGCapacityDependencyBlocked(
+            "retained capacity sample lacks pair/fit/select/audit coverage")
     p0_count = min(16, len(natural_fit) - 1)
     p0 = natural_fit[:p0_count]
     fit_natural = natural_fit[p0_count:]
     fit_epoch_select = epoch_select[:max(1, len(epoch_select) // 2)]
     fit = fit_natural + fit_epoch_select
     return p0, fit, fit_natural, fit_epoch_select, precision, audit
+
+
+def _validate_fit_slot_binding(material: PopulationMaterialV2) -> None:
+    """Bind fit metadata to the canonical ledger before any measured work."""
+    state = material.state
+    if state.split != "fit":
+        return
+    try:
+        slot = fit_slot_from_slot_sha256(state.slot_sha256)
+    except Exception as exc:
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity canonical fit slot binding drift") from exc
+    if (state.source != slot.source or state.split != slot.split
+            or state.trump_rank != slot.trump_rank
+            or state.trump_mode != slot.trump_mode
+            or (slot.source == "mechanics"
+                and slot.mechanics_surface not in state.mechanics_surfaces)
+            or (slot.source != "mechanics" and state.cell != slot.cell)):
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity canonical fit slot binding drift")
 
 
 def _capacity_training_pairs(
@@ -457,6 +490,17 @@ def _capacity_training_pairs(
                     for material, _bundle in values}) != len(values)):
         raise FullDAGCapacityDependencyBlocked(
             "capacity training population membership drift")
+    try:
+        pair_counts = Counter(fit_pair_id_from_slot_sha256(
+            material.state.slot_sha256) for material, _bundle in values)
+    except Exception as exc:
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity training pair population drift") from exc
+    if (len(values) != 17
+            or sum(count for count in pair_counts.values() if count == 2) < 16
+            or any(count not in (1, 2) for count in pair_counts.values())):
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity training pair population drift")
     return values
 
 
@@ -491,6 +535,7 @@ def run_full_dag_supervisor(
             material.validate()
         except Exception as exc:
             raise _fail("material", exc) from exc
+        _validate_fit_slot_binding(material)
         materials.append(material)
     if (member_workers not in (1, 2, 4)
             or continuation_workers not in (1, 2, 4, 8, 12, 16)

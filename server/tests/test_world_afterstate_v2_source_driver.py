@@ -59,7 +59,7 @@ def test_forged_engine_seed_refuses_before_round(monkeypatch):
 
 def test_natural_attempt_is_byte_identical_and_forbidden_free():
     # This D256 cell is a bounded, deterministic witness for the live policy.
-    slot = _slot("natural-fit", 18)
+    slot = _slot("natural-fit", 4)
     attempt = attempted_deal_identity(_NAMESPACE, slot, 0)
     first = drive_population_attempt_v2(attempt, slot)
     second = drive_population_attempt_v2(attempt, slot)

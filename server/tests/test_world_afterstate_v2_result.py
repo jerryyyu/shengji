@@ -218,6 +218,7 @@ def _dose(name):
     minimum_effective = (MINIMUM_LABEL_EFFECTIVE_DOSE_PPM
                          if name == LABEL_CONTROL
                          else MINIMUM_PERMUTATION_DOSE_PPM)
+    is_world = name == WORLD_CONTROL
     body = {
         "schema": CONTROL_EVIDENCE_SCHEMA, "control_name": name,
         "name": name, "seed": 1, "row_count": 10,
@@ -228,7 +229,13 @@ def _dose(name):
         "effective_changed_count": 10, "effective_dose_ppm": 1_000_000,
         "required_minimum_dose_ppm": MINIMUM_PERMUTATION_DOSE_PPM,
         "required_minimum_effective_dose_ppm": minimum_effective,
-        "root_count": 1, "source_population_sha256": _sha(f"{name}-source"),
+        "root_count": 2, "eligible_root_count": 2,
+        "paired_root_count": 2, "root_pair_coverage_ppm": 1_000_000,
+        "pair_count": 1 if is_world else 0,
+        "self_donor_count": 0, "cross_pair_count": 0,
+        "pair_mapping_sha256": (_sha(f"{name}-pair-map")
+                                  if is_world else _sha([])),
+        "source_population_sha256": _sha(f"{name}-source"),
         "input_population_sha256": _sha(f"{name}-source"),
         "output_population_sha256": _sha(f"{name}-output"),
         "authority": dict(CONTROL_AUTHORITY),

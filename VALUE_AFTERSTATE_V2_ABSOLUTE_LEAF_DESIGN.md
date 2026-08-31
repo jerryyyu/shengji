@@ -156,13 +156,21 @@ trump_rank          = [2, 3, 4, 5, 6, 7, 8, 9, 10, J, Q, K, A]
 trump_mode          = [spades, hearts, diamonds, clubs, no-trump]
 ```
 
-Natural/diverse/audit slot `i` receives `phase_position_role[i mod 12]`;
-mechanics-fit slot `i` instead receives `mechanics_surface[i mod 3]`. Every
-non-select slot also receives `trump_rank[i mod 13]` and
-`trump_mode[i mod 5]`. Thus, for every dimension of size `k`, every cell
-receives `floor(n / k)` slots and exactly the first `n mod k` literal-order
-cells receive one extra. This also fixes the joint assignment rather than
-balancing each marginal through separate discretion.
+The former singleton joint-ordinal layout is superseded for every FIT group.
+Each FIT group count is even and is partitioned into adjacent pairs
+`(2j, 2j+1)`. Natural and diverse pair members share
+`phase_position_role[j mod 12]`, `trump_rank[j mod 13]`, and
+`trump_mode[j mod 5]`; mechanics pair members share
+`mechanics_surface[j mod 3]`, `trump_rank[j mod 13]`, and
+`trump_mode[j mod 5]`. A deterministic pair ID is derived from the validated
+canonical slot ID and is independent of outcomes, labels, and predictions.
+Pair members retain distinct slot and attempted-deal identities. Select
+pairing remains the separate epoch-select/precision-select construction below.
+This is a slightly coarser paired marginal balance than singleton assignment,
+and is the frozen geometry required by the world reassignment control.
+This changes no `V^pi_c` label, estimand, model input authority, or execution
+authority; it changes only the outcome-blind pairing geometry and control
+reassignment.
 Natural attempted deal identities are then derived from the domain-separated
 `tier | split | slot_id | attempt_index` hash schedule. Eligible sealed
 external-source game identities are ordered by a separately domain-separated
@@ -539,27 +547,40 @@ transition/legality/hash/fold mutations that refuse before prediction.
 
 Learning controls are within-root action/successor association permutation,
 label permutation within frozen outcome-blind collection/noise strata
-(`source x early/middle/late x lead/follow`), and complete-world shuffle
-within the stricter compatible public strata (source, trump rank/mode, phase,
-position, role, points bucket, and candidate count). Label permutation moves
-one whole candidate-by-eight-replica target family from a distinct donor and
-never crosses its collection/noise stratum; it deliberately does not
-condition on trump, role, points, or ballot width because those exact buckets
-can make the frozen numeric-dose floor mathematically unattainable even when
-every donor binding is deranged. The association- and label-permuted cohorts
+(`source x early/middle/late x lead/follow`), and complete-world reassignment
+by the canonical FIT pair ID only. Reassignment pairs roots from the two
+adjacent slots using distinct deal/root donors; it preserves each recipient's
+public, history, perspective, labels, successor and candidate identity, and
+replaces only world tensors. Recipient candidate 0 maps to donor candidate 0;
+recipient candidate `j > 0` maps to donor `1 + ((j-1) mod (n_donor-1))`.
+Each candidate's eight-replica family moves together, and donor root plus
+candidate are bound in evidence. At least 90% of FIT roots must have a pair,
+and changed world tensors must cover at least 90% of the complete FIT
+population, not merely 90% of the pairable subset; singleton or undercovered
+populations refuse. D256's full 128-natural plus 32-mechanics FIT population
+must reopen as exactly 64 natural pairs plus 16 mechanics pairs before any
+training stage begins. Before pair lookup, every reopened row must bind its
+source, split, rank, mode and natural phase/position/role cell to the canonical
+slot ledger; the material-input boundary additionally binds each mechanics
+slot to its named mechanics surface. Label permutation moves one whole
+candidate-by-eight-replica target family from a distinct donor and never
+crosses its collection/noise stratum; it deliberately does not condition on
+trump, role, points, or ballot width because those exact buckets can make the
+frozen numeric-dose floor mathematically unattainable even when every donor
+binding is deranged. The association- and label-permuted cohorts
 must each fail at least one of absolute-value learning gates 1--4 when scored
-as a candidate cohort. World shuffle must be rejected by both gate-5
+as a candidate cohort. World reassignment must be rejected by both gate-5
 natural-minus-shuffle lower bounds. Gate 6 is the nonrecursive conjunction of
 those three demanded failures. Failing only a production-action usefulness
 gate is insufficient. Failure of the association- or label-permutation
 component forces `REFUSE_MECHANICS_OR_CONTROL`, even when the natural model
 would otherwise route to `PASS_ABSOLUTE_VALUE_LEARNING_ONLY`; failure of the
-world-shuffle component instead routes to `SELECT_NONE_NO_WORLD_SIGNAL`.
+world-reassignment component instead routes to `SELECT_NONE_NO_WORLD_SIGNAL`.
 Association permutation must change at least 90% of bindings and successor
 tensors. Label permutation must change at least 90% of donor bindings and 40%
-of numeric targets. World shuffle must change at least 90% of eligible world
+of numeric targets. World reassignment must change at least 90% of all FIT world
 tensors. Association and label controls use the primary four seeds. Complete-
-world shuffle uses both disjoint four-seed blocks and the paired natural block
+world reassignment uses both disjoint four-seed blocks and the paired natural block
 defined in Section 8. All cohorts use the common-epoch rule and target-free
 audit order. Any incomplete or deadline-truncated member in either comparison
 block routes to `REFUSE_RESOURCE_INCOMPLETE` before audit opening; a forensic
@@ -602,8 +623,17 @@ attempts supplied an eligible fixture. That score-free result falsified the
 original 96-attempt sizing assumption; it did not open a label or outcome.
 
 The repaired preflight keeps the 32-fixture target and the same deterministic
-identity derivation (including a byte-identical first 96-attempt prefix), raises
-only the hard attempt ceiling to 384, and runs
+identity derivation; the former singleton first-96 schedule is superseded by
+the pair-reservation prefix below.
+Before general filling it predeclares and reserves 16 natural-fit roots as
+eight complete adjacent slot pairs. Each reserved batch schedules only the
+still-missing slots, and the general schedule excludes those already-reserved
+slots, so accepted partners do not consume later attempts. It
+then retains at most 17 natural-fit
+roots, so at least 16 of 17 are pairable, while retaining exactly 32 unique
+slots with epoch-select, precision-select, and audit coverage. Neutralizing
+the reservation or failing to complete it is a capacity refusal. The runner
+raises only the hard attempt ceiling to 384, and runs
 the CPU-bound attempts in fixed index-ordered batches of at most 16 processes.
 Each batch is also bounded by the number of fixtures still needed, so it cannot
 produce an eligible surplus requiring post-hoc selection. The measured

@@ -133,6 +133,82 @@ def test_preflight_preserves_first_96_then_interleaves_select_and_audit():
     assert runner._preflight_slot(expanded, 99) is fit_slots[96]
 
 
+def test_preflight_predeclares_eight_natural_fit_pairs():
+    from shengji.rl.world_afterstate_v2_protocol import (
+        TIER_SPECS, _raw_slot_ledger)
+    slots = tuple(slot for slot in _raw_slot_ledger(TIER_SPECS[0])
+                  if slot.group == "natural-fit")
+    reserved = runner._reserved_natural_pair_slots(slots)
+    assert len(reserved) == runner.PREFLIGHT_RESERVED_NATURAL_ROOTS == 16
+    assert len({slot.fit_pair_id for slot in reserved}) == 8
+    assert all(left.fit_pair_id == right.fit_pair_id
+               for left, right in zip(reserved[::2], reserved[1::2]))
+
+
+def test_preflight_refuses_neutralized_pair_reservation(monkeypatch):
+    from shengji.rl.world_afterstate_v2_protocol import (
+        TIER_SPECS, _raw_slot_ledger)
+    slots = tuple(slot for slot in _raw_slot_ledger(TIER_SPECS[0])
+                  if slot.group == "natural-fit")
+    monkeypatch.setattr(runner, "_reserved_natural_pair_slots", lambda _: ())
+    with pytest.raises(CapacityRunnerError, match="reservation"):
+        runner.run_score_free_preflight(
+            attempt=lambda *_args: None, slots=slots)
+
+
+def test_preflight_retries_only_missing_reserved_pair_slots(monkeypatch):
+    from shengji.rl.world_afterstate_v2_protocol import (
+        TIER_SPECS, _raw_slot_ledger)
+
+    ledger = _raw_slot_ledger(TIER_SPECS[0])
+    natural = tuple(slot for slot in ledger if slot.group == "natural-fit")
+    reserved = runner._reserved_natural_pair_slots(natural)
+    held_out = (
+        next(slot for slot in ledger
+             if slot.split == "select"
+             and slot.select_subfold == "epoch-select"),
+        next(slot for slot in ledger
+             if slot.split == "select"
+             and slot.select_subfold == "precision-select"),
+        next(slot for slot in ledger if slot.split == "audit"),
+    )
+    slots = (*reserved, *held_out)
+    monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 19)
+    monkeypatch.setattr(runner, "PREFLIGHT_ATTEMPT_CEILING", 40)
+    monkeypatch.setattr(runner, "PREFLIGHT_WORKERS", 16)
+
+    class FakeFixture:
+        def __init__(self, _prestate, _audit_raws, *, deal_sha256, material):
+            self.deal_sha256 = deal_sha256
+            self.fixture_sha256 = deal_sha256
+            self.material = material
+
+    monkeypatch.setattr(runner, "FixtureV2", FakeFixture)
+    attempts = {}
+
+    def attempt(identity, slot):
+        attempts[slot.slot_sha256] = attempts.get(slot.slot_sha256, 0) + 1
+        accepted = not (slot is reserved[0]
+                        and attempts[slot.slot_sha256] == 1)
+        material = (SimpleNamespace(
+            prestate={"slot": slot.slot_sha256}, audit_raws=(),
+            candidates=(0, 1), state=slot) if accepted else None)
+        return SimpleNamespace(
+            accepted=accepted,
+            rejection_reason=None if accepted else "first-attempt-miss",
+            material=material, deal_sha256=identity["deal_sha256"])
+
+    progress = []
+    result = runner.run_score_free_preflight(
+        attempt=attempt, slots=slots, progress=progress.append,
+        started_ns=time.perf_counter_ns())
+    assert result.accepted == 19
+    assert attempts[reserved[0].slot_sha256] == 2
+    assert all(attempts[slot.slot_sha256] == 1 for slot in reserved[1:])
+    assert progress[0]["workers"] == 16
+    assert progress[1]["workers"] == 1
+
+
 def test_score_free_preflight_rejects_duplicate_retained_population_slot(
         monkeypatch):
     monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 2)

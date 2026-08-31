@@ -20,6 +20,9 @@ from shengji.rl.world_afterstate_v2_execution import (
 )
 from shengji.rl.world_afterstate_v2_inference import ValueInferenceRootV2
 from shengji.rl.world_afterstate_v2_model import collate_world_afterstate_tensors
+from shengji.rl.world_afterstate_v2_protocol import (
+    StateCandidateV2, TIER_SPECS, build_population_slot_ledger,
+)
 from shengji.rl.world_afterstate_v2_training import (
     WorldAfterstateV2TrainingExample,
 )
@@ -50,10 +53,31 @@ def _tensor(seed: int) -> WorldAfterstateTensorsV0:
     )
 
 
+def _fit_material(slot, *, suffix: str = "") -> SimpleNamespace:
+    if slot.source == "mechanics":
+        phase, position, role = "early", "lead", "attacker"
+        mechanics_surfaces = (slot.mechanics_surface,)
+    else:
+        phase, position, role = slot.cell
+        mechanics_surfaces = ()
+    deal = _hex(f"fit:{slot.slot_sha256}:{suffix}")
+    state = StateCandidateV2(
+        deal_sha256=deal, slot_sha256=slot.slot_sha256,
+        state_sha256=_hex(f"state:{deal}"), source=slot.source,
+        split="fit", phase=phase, position=position, role=role,
+        trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+        select_subfold=None, mechanics_surfaces=mechanics_surfaces,
+        legal_candidate_count=2,
+    )
+    state.validate()
+    return SimpleNamespace(deal_sha256=deal, state=state)
+
+
 def _fit_rows(material: SimpleNamespace) \
         -> tuple[WorldAfterstateV2TrainingExample, ...]:
     deal = material.deal_sha256
-    slot, state = _hex(f"{deal}:slot"), _hex(f"{deal}:state")
+    slot = getattr(material.state, "slot_sha256", _hex(f"{deal}:slot"))
+    state = _hex(f"{deal}:state")
     successors = tuple(_hex(f"{deal}:successor:{index}") for index in range(2))
     candidate_set = _hex(canonical_json_bytes({
         "schema": "world-afterstate-v2-candidate-set-v1",
@@ -266,33 +290,64 @@ def test_p0_sigma_refuses_duck_typed_or_foreign_supervisor(
 
 
 def test_d256_fit_uses_all_128_natural_and_32_mechanics_deals():
-    natural = tuple(SimpleNamespace(state=SimpleNamespace(
-        source="natural", split="fit")) for _ in range(128))
-    mechanics = tuple(SimpleNamespace(state=SimpleNamespace(
-        source="mechanics", split="fit")) for _ in range(32))
-    population = (*natural, *mechanics)
+    slots = tuple(slot for slot in build_population_slot_ledger(TIER_SPECS[0])
+                  if slot.split == "fit")
+    population = tuple(_fit_material(slot) for slot in slots)
+    natural = tuple(row for row in population if row.state.source == "natural")
+    mechanics = tuple(row for row in population
+                      if row.state.source == "mechanics")
     assert inputs._d256_fit_materials(population) == population
 
     with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
                        match="population drift"):
         inputs._d256_fit_materials((*natural, *mechanics[:-1]))
+    forged_state = dataclasses.replace(mechanics[-1].state, source="natural")
     forged = (*natural, *mechanics[:-1], SimpleNamespace(
-        state=SimpleNamespace(source="natural", split="fit")))
+        deal_sha256=mechanics[-1].deal_sha256, state=forged_state))
     with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
-                       match="population drift"):
+                       match="metadata binding"):
         inputs._d256_fit_materials(forged)
+    unpaired = list(population)
+    unpaired[1] = SimpleNamespace(
+        deal_sha256=unpaired[1].deal_sha256,
+        state=dataclasses.replace(
+            unpaired[1].state, slot_sha256=unpaired[2].state.slot_sha256))
+    with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
+                       match="metadata binding|pair population drift"):
+        inputs._d256_fit_materials(tuple(unpaired))
+
+    natural_axis = next(row for row in population
+                        if row.state.source == "natural")
+    bad_axis = SimpleNamespace(
+        deal_sha256=natural_axis.deal_sha256,
+        state=dataclasses.replace(
+            natural_axis.state,
+            phase="middle" if natural_axis.state.phase != "middle" else "late"))
+    with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
+                       match="metadata binding"):
+        inputs._d256_fit_materials(tuple(
+            bad_axis if row is natural_axis else row for row in population))
+
+    mechanics_surface = next(row for row in population
+                             if row.state.source == "mechanics")
+    bad_surface = SimpleNamespace(
+        deal_sha256=mechanics_surface.deal_sha256,
+        state=dataclasses.replace(
+            mechanics_surface.state, mechanics_surfaces=()))
+    with pytest.raises(inputs.WorldAfterstateV2TrainingStageInputError,
+                       match="metadata binding"):
+        inputs._d256_fit_materials(tuple(
+            bad_surface if row is mechanics_surface else row
+            for row in population))
 
 
 def test_real_training_input_builder_closes_full_d256_and_epoch_select_wiring(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Witness the production builder, not only its individual helpers."""
-    fit = tuple(
-        SimpleNamespace(
-            deal_sha256=_hex(f"fit:{source}:{index}"),
-            state=SimpleNamespace(
-                source=source, split="fit", select_subfold=None))
-        for source, count in (("natural", 128), ("mechanics", 32))
-        for index in range(count))
+    fit_slots = tuple(
+        slot for slot in build_population_slot_ledger(TIER_SPECS[0])
+        if slot.split == "fit")
+    fit = tuple(_fit_material(slot) for slot in fit_slots)
 
     epoch = []
     bundles = []

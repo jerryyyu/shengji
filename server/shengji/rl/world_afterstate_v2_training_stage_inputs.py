@@ -8,6 +8,7 @@ the existing training controller.  No caller supplied metric is accepted.
 
 from __future__ import annotations
 
+from collections import Counter
 import hashlib
 import json
 import math
@@ -31,7 +32,9 @@ from .world_afterstate_v2_label import validate_precision_label
 from .world_afterstate_v2_population_artifacts import (
     material_sha256, reopen_population_manifest,
 )
-from .world_afterstate_v2_protocol import SELECT_SUBFOLDS, TIER_SPECS
+from .world_afterstate_v2_protocol import (
+    SELECT_SUBFOLDS, TIER_SPECS, fit_slot_from_slot_sha256,
+)
 from .world_afterstate_v2_selection import EpochSelectPopulationV2
 from .world_afterstate_v2_schedule import (
     DEFAULT_BATCH_EXAMPLE_CAP, MAX_EPOCHS, training_epoch_batches,
@@ -412,16 +415,41 @@ def _d256_fit_materials(materials: tuple[Any, ...]) -> tuple[Any, ...]:
     if type(materials) is not tuple:
         raise WorldAfterstateV2TrainingStageInputError(
             "fit/select material population drift")
-    counts = {
-        source: sum(getattr(material.state, "source", None) == source
-                    for material in materials)
-        for source in ("natural", "mechanics")}
-    if (len(materials) != 160
-            or counts != {"natural": 128, "mechanics": 32}
-            or any(getattr(material.state, "split", None) != "fit"
-                   for material in materials)):
+    if len(materials) != 160:
         raise WorldAfterstateV2TrainingStageInputError(
             "fit/select material population drift")
+    try:
+        resolved = []
+        for material in materials:
+            state = material.state
+            state.validate()
+            slot = fit_slot_from_slot_sha256(state.slot_sha256)
+            if (state.source != slot.source or state.split != slot.split
+                    or state.trump_rank != slot.trump_rank
+                    or state.trump_mode != slot.trump_mode
+                    or (slot.source == "mechanics"
+                        and slot.mechanics_surface
+                        not in state.mechanics_surfaces)
+                    or (slot.source != "mechanics" and state.cell != slot.cell)):
+                raise WorldAfterstateV2TrainingStageInputError(
+                    "fit slot metadata binding drift")
+            resolved.append((state, slot))
+    except Exception as exc:
+        if isinstance(exc, WorldAfterstateV2TrainingStageInputError):
+            raise
+        raise WorldAfterstateV2TrainingStageInputError(
+            "fit pair population drift") from exc
+    slots = tuple(state.slot_sha256 for state, _slot in resolved)
+    source_counts = Counter(slot.source for _state, slot in resolved)
+    pairs = Counter((slot.source, slot.fit_pair_id)
+                    for _state, slot in resolved)
+    pair_counts = Counter(source for source, _pair_id in pairs)
+    if (source_counts != {"natural": 128, "mechanics": 32}
+            or len(set(slots)) != len(slots)
+            or any(count != 2 for count in pairs.values())
+            or pair_counts != {"natural": 64, "mechanics": 16}):
+        raise WorldAfterstateV2TrainingStageInputError(
+            "fit pair population drift")
     return materials
 
 

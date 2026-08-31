@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 from typing import Mapping, Sequence
 
@@ -229,6 +230,25 @@ class PopulationSlotV2:
         return (None if self.phase is None else
                 (self.phase, self.position, self.role))  # type: ignore[return-value]
 
+    @property
+    def fit_pair_id(self) -> str:
+        """Return the frozen adjacent-pair identity for a fit slot.
+
+        Pair identity is deliberately derived only from the canonical slot
+        ledger.  Select and audit slots have separate construction rules and
+        therefore cannot be used as world-control pair members.
+        """
+        self.validate()
+        if self.split != "fit":
+            raise WorldAfterstateV2ProtocolError(
+                "fit pair identity requires a fit slot")
+        return f"{self.tier}:{self.group}:{self.ordinal // 2}"
+
+    @property
+    def pair_id(self) -> str:
+        """Stable short alias for callers serializing slot pair identity."""
+        return self.fit_pair_id
+
     def payload(self) -> dict[str, object]:
         self.validate()
         return {
@@ -259,15 +279,17 @@ def _raw_slot_ledger(tier: TierSpecV2) -> tuple[PopulationSlotV2, ...]:
                 surface = None
             elif source == "mechanics":
                 cell = (None, None, None)
-                rank = RANKS[ordinal % len(RANKS)]
-                mode = TRUMP_MODES[ordinal % len(TRUMP_MODES)]
+                pair = ordinal // 2
+                rank = RANKS[pair % len(RANKS)]
+                mode = TRUMP_MODES[pair % len(TRUMP_MODES)]
                 subfold = None
                 surface = MECHANICS_SURFACES[
-                    ordinal % len(MECHANICS_SURFACES)]
+                    pair % len(MECHANICS_SURFACES)]
             else:
-                cell = P0_CELLS[ordinal % len(P0_CELLS)]
-                rank = RANKS[ordinal % len(RANKS)]
-                mode = TRUMP_MODES[ordinal % len(TRUMP_MODES)]
+                pair = ordinal // 2
+                cell = P0_CELLS[pair % len(P0_CELLS)]
+                rank = RANKS[pair % len(RANKS)]
+                mode = TRUMP_MODES[pair % len(TRUMP_MODES)]
                 subfold = None
                 surface = None
             result.append(PopulationSlotV2(
@@ -299,6 +321,32 @@ def validate_population_slot_ledger(
     if tuple(slots) != expected \
             or len({slot.slot_sha256 for slot in slots}) != len(slots):
         raise WorldAfterstateV2ProtocolError("population slot derivation drift")
+    # Fit slots are an explicit adjacent-pair design.  Keep this check
+    # separate from equality with the derivation so a mutated ordinal/axis
+    # cannot silently become a new valid geometry.
+    for group, split, _source, count in _tier_groups(tier):
+        if split != "fit":
+            continue
+        if count % 2:
+            raise WorldAfterstateV2ProtocolError(
+                "fit slot group count is not even")
+        members = [slot for slot in slots if slot.group == group]
+        if len(members) != count:
+            raise WorldAfterstateV2ProtocolError("fit slot group coverage drift")
+        for index in range(0, count, 2):
+            left, right = members[index:index + 2]
+            if left.fit_pair_id != right.fit_pair_id:
+                raise WorldAfterstateV2ProtocolError("fit slot pair drift")
+            if left.source == "mechanics":
+                axes = (left.mechanics_surface, left.trump_rank,
+                        left.trump_mode)
+                right_axes = (right.mechanics_surface, right.trump_rank,
+                              right.trump_mode)
+            else:
+                axes = (left.cell, left.trump_rank, left.trump_mode)
+                right_axes = (right.cell, right.trump_rank, right.trump_mode)
+            if axes != right_axes or left.slot_sha256 == right.slot_sha256:
+                raise WorldAfterstateV2ProtocolError("fit slot pair geometry drift")
     select = [slot for slot in slots if slot.split == "select"]
     censuses = {}
     for subfold in SELECT_SUBFOLDS:
@@ -329,6 +377,37 @@ def attempted_deal_identity(
     digest = hashlib.sha256(canonical_json_bytes(body)).hexdigest()
     return {**body, "deal_sha256": digest,
             "engine_seed": int(digest[:16], 16) & ((1 << 63) - 1)}
+
+
+@lru_cache(maxsize=1)
+def _canonical_fit_slot_index() -> dict[str, tuple[PopulationSlotV2, ...]]:
+    index: dict[str, list[PopulationSlotV2]] = {}
+    for tier in TIER_SPECS:
+        for slot in build_population_slot_ledger(tier):
+            if slot.split == "fit":
+                index.setdefault(slot.slot_sha256, []).append(slot)
+    return {digest: tuple(slots) for digest, slots in index.items()}
+
+
+def fit_slot_from_slot_sha256(slot_sha256: object) -> PopulationSlotV2:
+    """Resolve the complete canonical fit slot, not only its pair label."""
+    _digest(slot_sha256, "fit slot SHA-256")
+    matches = _canonical_fit_slot_index().get(slot_sha256, ())
+    if len(matches) != 1:
+        raise WorldAfterstateV2ProtocolError("unknown canonical fit slot")
+    return matches[0]
+
+
+def fit_pair_id_from_slot_sha256(slot_sha256: object) -> str:
+    """Resolve a fit pair ID through the immutable canonical slot ledgers."""
+    return fit_slot_from_slot_sha256(slot_sha256).fit_pair_id
+
+
+def fit_pair_id(slot: PopulationSlotV2) -> str:
+    """Resolve a fit pair ID from a validated canonical slot object."""
+    if type(slot) is not PopulationSlotV2:
+        raise WorldAfterstateV2ProtocolError("fit pair slot type drift")
+    return fit_pair_id_from_slot_sha256(slot.slot_sha256)
 
 
 @dataclass(frozen=True)
@@ -684,6 +763,8 @@ __all__ = [
     "StateCandidateV2", "TierSpecV2", "WorldAfterstateV2ProtocolError",
     "attempted_deal_identity", "build_population_slot_ledger",
     "choose_capacity_tier", "protocol_payload", "select_one_state_per_deal",
+    "fit_pair_id", "fit_pair_id_from_slot_sha256",
+    "fit_slot_from_slot_sha256",
     "prior_points_bucket",
     "select_p0_population",
     "select_canonical_p0_subset", "validate_canonical_p0_subset",

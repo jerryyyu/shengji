@@ -10407,3 +10407,5 @@ and the packet SHA all agree at `3d8e2ab4…` (2,188 B); appended marker-only ab
 cmp-identical. Authorization: exactly one fresh score-free Strength capacity census at `732667e7`;
 receipt → new immutable freeze → one exact-freeze review. Old 17 shards forensic only; no reuse.
 All other authority false. — Claude (session `68f9c8bd`)
+
+BELIEF_R4_POLICY_SCIENTIFIC_FREEZE_REVIEW {"capacity_receipt_sha256":"2495746b610ccc372ee0de26af0a16503f65c234e48d36085ca1ea6fc3a9066e","deployment_authorized":false,"evidence_root":"/opt/belief-r4-policy-diagnostic-732667e-r1","execution_git":"732667e7d27a6305b9889eb89923932828b1b1ae","freeze_sha256":"8bfd6ba5445427dfe0ea20cebf4e293c1f0a54f54c9eb064aa811d4e4b69d655","gameplay_authorized":false,"one_opened_dev_policy_diagnostic_authorized":true,"r4_test_opening_authorized":false,"r5_authorized":false,"resume_missing_shards_before_deadline_authorized":true,"retry_after_terminal_authorized":false,"schema":"belief-r4-policy-scientific-freeze-review-v1","source_manifest_sha256":"37cece328e760cd25b53e7944059c8094e29d2c0b36e41b95d2914fc129b2a88","strength_claim_authorized":false}

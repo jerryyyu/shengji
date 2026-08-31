@@ -40,6 +40,28 @@ def test_codex_0150_usage_schema_is_bound_exactly():
     }
 
 
+def test_default_process_keeps_stderr_out_of_codex_jsonl(tmp_path):
+    launcher = tmp_path / "launcher.py"
+    launcher.write_text(
+        "import sys\n"
+        "sys.stdin.buffer.read()\n"
+        f"sys.stdout.buffer.write({_codex_stdout()!r})\n"
+        "sys.stderr.buffer.write(b'sandbox diagnostic\\n')\n")
+    game = _game()
+
+    completed = execution._default_process(
+        game.session(0), workspace=tmp_path,
+        mailbox_path=tmp_path / "mailbox", tool_script=TOOL,
+        codex_binary=Path(sys.executable), prompt="test",
+        final_output_path=tmp_path / "final.json",
+        command=(sys.executable, str(launcher)))
+
+    assert completed.returncode == 0
+    assert completed.stdout == _codex_stdout()
+    assert completed.stderr == b"sandbox diagnostic\n"
+    assert execution._codex_jsonl_usage(completed.stdout)["input_tokens"] == 10
+
+
 def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
     prompt = execution.planner_prompt(
         mailbox_path=tmp_path / "mailbox", tool_script=TOOL)

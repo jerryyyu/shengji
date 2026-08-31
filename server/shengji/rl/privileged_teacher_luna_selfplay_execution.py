@@ -798,7 +798,7 @@ def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
     process = subprocess.Popen(command, stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                cwd=workspace, env=env, start_new_session=(os.name == "posix"))
     if supervisor is not None:
         supervisor.register(session.team, process)
@@ -811,9 +811,9 @@ def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
                     supervisor.abort("shared Luna game deadline exceeded")
                 break
             try:
-                out, _ = process.communicate(timeout=0.05)
+                out, error = process.communicate(timeout=0.05)
                 completed = subprocess.CompletedProcess(
-                    command, process.returncode or 0, out or b"")
+                    command, process.returncode or 0, out or b"", error or b"")
                 # CompletedProcess is intentionally retained as the narrow
                 # handoff object, but this private marker proves that the
                 # default runner actually crossed Popen's launch boundary.
@@ -823,9 +823,9 @@ def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
                 continue
         if process.poll() is None:
             supervisor.abort(supervisor.reason or "shared Luna game deadline exceeded") if supervisor else process.terminate()
-        out, _ = process.communicate(timeout=1.0)
+        out, error = process.communicate(timeout=1.0)
         completed = subprocess.CompletedProcess(
-            command, process.returncode or 0, out or b"")
+            command, process.returncode or 0, out or b"", error or b"")
         completed._pt_luna_actual_subprocess = True
         return completed
     except subprocess.TimeoutExpired:
@@ -833,9 +833,9 @@ def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
             supervisor.abort("Luna process cleanup deadline exceeded")
         else:
             process.kill()
-        out, _ = process.communicate()
+        out, error = process.communicate()
         completed = subprocess.CompletedProcess(
-            command, process.returncode or -9, out or b"")
+            command, process.returncode or -9, out or b"", error or b"")
         completed._pt_luna_actual_subprocess = True
         return completed
     finally:
@@ -1377,6 +1377,7 @@ def run_luna_game(
         completed: subprocess.CompletedProcess[bytes] | None = None
         process_error: str | None = None
         stdout = b""
+        stderr = b""
         prompt = planner_prompt(mailbox_path=mailbox, tool_script=tool_script,
                                 python=python)
         try:
@@ -1420,9 +1421,11 @@ def run_luna_game(
                     except subprocess.TimeoutExpired as exc:
                         process_error = "Luna model process exceeded wall deadline"
                         stdout = bytes(exc.stdout or b"")
+                        stderr = bytes(exc.stderr or b"")
 
                 if completed is not None:
                     stdout = bytes(completed.stdout or b"")
+                    stderr = bytes(completed.stderr or b"")
                 if completed is not None and completed.returncode != 0:
                     process_error = "Luna model process did not complete engine round"
                 if completed is None and process_error is None:
@@ -1437,7 +1440,11 @@ def run_luna_game(
                 process_error = process_error or str(exc)
         else:
             final_raw = b""
-        if len(stdout) > MAX_PROCESS_BYTES or len(final_raw) > MAX_PROCESS_BYTES:
+        # Codex's JSONL authority channel is stdout only.  Keep sandbox/provider
+        # diagnostics on stderr out of that parser and out of retained private
+        # evidence; return code and a bounded-size check remain fail-closed.
+        if (len(stdout) > MAX_PROCESS_BYTES or len(stderr) > MAX_PROCESS_BYTES
+                or len(final_raw) > MAX_PROCESS_BYTES):
             process_error = process_error or "Luna model output too large"
         try:
             usage = _codex_jsonl_usage(stdout)

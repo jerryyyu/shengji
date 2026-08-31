@@ -10409,3 +10409,34 @@ receipt → new immutable freeze → one exact-freeze review. Old 17 shards fore
 All other authority false. — Claude (session `68f9c8bd`)
 
 BELIEF_R4_POLICY_SCIENTIFIC_FREEZE_REVIEW {"capacity_receipt_sha256":"2495746b610ccc372ee0de26af0a16503f65c234e48d36085ca1ea6fc3a9066e","deployment_authorized":false,"evidence_root":"/opt/belief-r4-policy-diagnostic-732667e-r1","execution_git":"732667e7d27a6305b9889eb89923932828b1b1ae","freeze_sha256":"8bfd6ba5445427dfe0ea20cebf4e293c1f0a54f54c9eb064aa811d4e4b69d655","gameplay_authorized":false,"one_opened_dev_policy_diagnostic_authorized":true,"r4_test_opening_authorized":false,"r5_authorized":false,"resume_missing_shards_before_deadline_authorized":true,"retry_after_terminal_authorized":false,"schema":"belief-r4-policy-scientific-freeze-review-v1","source_manifest_sha256":"37cece328e760cd25b53e7944059c8094e29d2c0b36e41b95d2914fc129b2a88","strength_claim_authorized":false}
+
+## 2026-08-31 — ✅ PASS ×2 (parallel asks): PR #178 `de0d80b1` model-command witness (one canary + contingent one-worker census) and PR #180 `12972c10` label-control geometry (one fresh Perf census)
+
+### PR #178 `de0d80b1` (parent `ba62c7a6` confirmed)
+
+The spent census exposed the last soft spot: rc=0 + final.json + a Stop-hook observe never proved
+LUNA ITSELF dispatched a command. The repair parses the Codex `command_execution` lifecycle
+fail-closed, binds the exact `/bin/zsh -lc` tool command + mailbox + request/response SHAs to the
+private trace (nothing published), and requires the MODEL's own completed command — not a residual
+hook observe — to receive the terminal response, live and on reopen. Verified: full sweep **171
+passed / 2 skipped** (ask 170, plus one), focused **136/136** exact; neutralizing the live gate →
+the named witness red at exact `'complete' == 'incomplete'` (my first mutation attempt hit a
+neighboring line and stayed green — disclosed; the corrected mutation reproduced cleanly).
+Authorization: one actual-process production-peer-sandbox canary; contingent on its sealed PASS,
+one fresh score-free one-worker Mini census. Then: 52×2 freeze + exact-freeze review only.
+
+### PR #180 `12972c10` (parent `744a8217` confirmed)
+
+The spent census reached DEEPEST-EVER (optimizer canary + five fit labels + nested-25/50/100 +
+natural and action-association block 1), failing only at block-1 label permutation — and the
+failure is MATHEMATICAL, not code: under the exact public stratum the optimal whole-family
+derangement moves 414/1,048 = 39.50% of targets, below the frozen 40% floor. The repair gives
+label permutation its own outcome-blind collection/noise geometry (source × phase × lead/follow —
+the V1 precedent from the reviewed #169 amendment), keeps every floor (40% dose, 90% donor
+binding, real histogram, whole 8-replica families), leaves complete-world shuffle on the strict
+stratum, and types the failure stage. Retained-label forensics: 77.86% dose under the new
+geometry. Verified: focused **31/31**, full **537/537** (exact); strict-stratum restoration →
+**1 red** at the mixed-trump/role/points/width witness; generic-attribution restoration → **1
+red** at the exact-stage witness. This amends the design PRE-freeze — legitimate; the eventual
+freeze binds the amended geometry. Authorization: one fresh score-free full-DAG Perf census, new
+namespace. All other authority false in both lanes. — Claude (session `68f9c8bd`)

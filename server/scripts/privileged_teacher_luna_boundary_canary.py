@@ -16,8 +16,34 @@ from shengji.rl import privileged_teacher_luna_selfplay as luna
 from shengji.rl import privileged_teacher_luna_selfplay_controller as controller
 from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
-SCHEMA = "privileged-teacher-luna-boundary-canary-v3"
+SCHEMA = "privileged-teacher-luna-boundary-canary-v4"
+FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v1"
 MAX_HOOK_OBSERVES = 2
+MODEL_COMMAND_SEQUENCE = ("observe", "rollout", "play", "wait")
+CANARY_PROMPT_SUFFIX = """
+Boundary-canary instruction: this synthetic decision exists only to prove the
+production command/mailbox path. Issue exactly one rollout for candidate 0
+with continuation smart-all, then play candidate 0 with low confidence. The
+play response is waiting; follow the production instruction by invoking wait,
+not observe, and finish only after wait returns round_end.
+"""
+FAILURE_REASON_BY_MESSAGE = {
+    "canary mailbox contract refused": "mailbox-contract-refused",
+    "canary command mailbox attribution refused":
+        "command-attribution-refused",
+    "canary hook attribution refused": "hook-attribution-refused",
+    "canary model operation contract refused":
+        "model-operation-contract-refused",
+    "canary hook operation contract refused":
+        "hook-operation-contract-refused",
+    "canary subprocess did not complete": "subprocess-completion-refused",
+    "canary final response drift": "final-response-refused",
+    "canary subprocess deadline exceeded": "subprocess-deadline-exceeded",
+    "production peer sandbox unavailable": "sandbox-unavailable",
+    "canary output occupied": "namespace-occupied",
+}
+FAILURE_REASONS = frozenset({
+    *FAILURE_REASON_BY_MESSAGE.values(), "boundary-validation-refused"})
 _SHA_KEYS = ("prompt_sha256", "stdout_sha256", "final_sha256",
              "command_sha256", "hook_source_sha256",
              "hook_command_sha256", "hook_config_sha256",
@@ -50,6 +76,56 @@ def _publish(path: Path, raw: bytes) -> None:
         os.fsync(directory)
     finally:
         os.close(directory)
+
+
+def _failure_reason(exc: BaseException) -> str:
+    return FAILURE_REASON_BY_MESSAGE.get(
+        str(exc), "boundary-validation-refused")
+
+
+def _failure_receipt(exc: BaseException) -> dict[str, object]:
+    body = {
+        "schema": FAILURE_SCHEMA,
+        "reason": _failure_reason(exc),
+        "detail_sha256": _sha(str(exc).encode("utf-8")),
+        "canary_source_sha256": _sha(Path(__file__).read_bytes()),
+        "execution_source_sha256": _sha(Path(execution.__file__).read_bytes()),
+        "opened": dict(_PRIVACY),
+        "retained": dict(_PRIVACY),
+        "authority": dict(luna.AUTHORITY),
+    }
+    body["receipt_sha256"] = _sha(canonical_json_bytes(body))
+    return body
+
+
+def reopen_failure_receipt(path: Path) -> dict[str, object]:
+    """Reopen the content-free evidence from a refused real canary."""
+    raw = execution._read_regular(Path(path), mode=0o400, limit=1 << 20)
+    payload = _strict(raw, "canary failure receipt")
+    receipt_sha = payload.pop("receipt_sha256", None)
+    if type(receipt_sha) is not str \
+            or receipt_sha != _sha(canonical_json_bytes(payload)):
+        raise ValueError("canary failure receipt self-hash drift")
+    if (set(payload) != {"schema", "reason", "detail_sha256",
+                         "canary_source_sha256", "execution_source_sha256",
+                         "opened", "retained", "authority"}
+            or payload["schema"] != FAILURE_SCHEMA
+            or payload["reason"] not in FAILURE_REASONS
+            or payload["opened"] != _PRIVACY
+            or payload["retained"] != _PRIVACY
+            or payload["authority"] != luna.AUTHORITY):
+        raise ValueError("canary failure receipt schema drift")
+    for key in ("detail_sha256", "canary_source_sha256",
+                "execution_source_sha256"):
+        value = payload[key]
+        if (type(value) is not str or len(value) != 64
+                or any(c not in "0123456789abcdef" for c in value)):
+            raise ValueError("canary failure receipt hash drift")
+    if (payload["canary_source_sha256"] != _sha(Path(__file__).read_bytes())
+            or payload["execution_source_sha256"]
+            != _sha(Path(execution.__file__).read_bytes())):
+        raise ValueError("canary failure receipt source drift")
+    return {**payload, "receipt_sha256": receipt_sha}
 class _CanaryState:
     """Shared private state for the model and Stop-hook mailbox."""
 
@@ -278,14 +354,14 @@ def reopen_receipt(path: Path) -> dict[str, object]:
     if (payload["actual_subprocess"] is not True or payload["returncode"] != 0):
         raise ValueError("canary receipt process drift")
     if (payload["model_first_op"] != "observe"
-            or payload["model_op_sequence"] != ["observe", "rollout", "play", "observe"]
-            or payload["model_op_counts"] != {"observe": 2, "play": 1,
-                                                "rollout": 1}
+            or payload["model_op_sequence"] != list(MODEL_COMMAND_SEQUENCE)
+            or payload["model_op_counts"] != {"observe": 1, "play": 1,
+                                                "rollout": 1, "wait": 1}
             or payload["model_nonterminal_observed"] is not True):
         raise ValueError("canary receipt model operation drift")
     if (payload["model_command_count"] != 4
             or payload["model_command_sequence"]
-            != ["observe", "rollout", "play", "observe"]):
+            != list(MODEL_COMMAND_SEQUENCE)):
         raise ValueError("canary receipt command witness drift")
     hook_counts = payload["hook_op_counts"]
     if (payload["hook_first_op"] != "observe" or type(hook_counts) is not dict
@@ -357,7 +433,8 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
         _publish(profile_path, profile_raw.encode("utf-8"))
         final_path = workspace / "final.json"
         prompt = execution.planner_prompt(mailbox_path=mailbox_path,
-                                          tool_script=tool_script)
+                                          tool_script=tool_script) \
+            + CANARY_PROMPT_SUFFIX
         command = execution.process_command(codex_binary=binary, workspace=workspace,
                                             mailbox_path=mailbox_path,
                                             final_output_path=final_path,
@@ -400,7 +477,7 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
             python_path=Path(sys.executable), tool_script_path=tool_script,
             require_shell=True)
         model_sequence, hook_sequence = _bind_model_commands(records, mailbox.trace)
-        if model_sequence != ["observe", "rollout", "play", "observe"]:
+        if model_sequence != list(MODEL_COMMAND_SEQUENCE):
             raise ValueError("canary model operation contract refused")
         if not 1 <= len(hook_sequence) <= MAX_HOOK_OBSERVES:
             raise ValueError("canary hook operation contract refused")
@@ -461,8 +538,15 @@ def main(argv: list[str] | None = None) -> int:
     try:
         run(codex_binary=args.codex_binary, output=args.output,
             deadline_seconds=args.deadline_seconds)
-    except Exception:
-        print("refused: PT-Luna canary boundary validation failed", file=sys.stderr)
+    except Exception as exc:
+        reason = _failure_reason(exc)
+        try:
+            if not args.output.exists() and not args.output.is_symlink():
+                _publish(args.output, canonical_json_bytes(_failure_receipt(exc)))
+        except Exception:
+            pass
+        print("refused: PT-Luna canary boundary validation failed "
+              f"({reason})", file=sys.stderr)
         return 2
     return 0
 if __name__ == "__main__":

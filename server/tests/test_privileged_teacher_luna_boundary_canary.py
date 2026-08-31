@@ -108,7 +108,7 @@ if rollout.get("status") != "rollout_complete": sys.exit(3)
 played = call({"op": "play", "decision_sha256": first["decision_sha256"],
                "candidate_index": 0, "confidence": "low"}, "c")
 if played.get("status") != "waiting": sys.exit(3)
-third = call({"op": "observe"}, "d")
+third = call({"op": "wait"}, "d")
 if third.get("status") != "round_end": sys.exit(3)
 token = third["completion_token"]
 payload = {"schema": "privileged-teacher-luna-selfplay-final-response-v2", "status": "complete", "completion_token": token}
@@ -162,9 +162,9 @@ def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
     assert canary.reopen_receipt(output)["receipt_sha256"] == payload["receipt_sha256"]
     assert payload["model_first_op"] == payload["hook_first_op"] == "observe"
     assert payload["actual_subprocess"] is True
-    assert payload["model_op_sequence"] == ["observe", "rollout", "play", "observe"]
-    assert payload["model_op_counts"] == {"observe": 2, "play": 1,
-                                            "rollout": 1}
+    assert payload["model_op_sequence"] == list(canary.MODEL_COMMAND_SEQUENCE)
+    assert payload["model_op_counts"] == {"observe": 1, "play": 1,
+                                            "rollout": 1, "wait": 1}
     assert payload["model_command_count"] == 4
     assert payload["model_command_sequence"] == payload["model_op_sequence"]
     assert payload["hook_op_sequence"] == ["observe", "observe"]
@@ -180,12 +180,34 @@ def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
     assert payload["codex_launcher"] == str(binary.absolute())
 
 
-def test_first_op_play_refuses_and_publishes_nothing(tmp_path, monkeypatch):
+def test_terminal_model_operation_follows_prompt_wait_contract(tmp_path):
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "10"]) == 0
+    payload = canary.reopen_receipt(output)
+    prompt = canary.execution.planner_prompt(
+        mailbox_path=tmp_path / "mailbox", tool_script=tmp_path / "tool")
+    assert "If it reports waiting, immediately call\nwait" in prompt
+    assert payload["model_command_sequence"][-1] == "wait"
+    assert payload["model_command_sequence"] == list(
+        canary.MODEL_COMMAND_SEQUENCE)
+
+
+def _assert_private_failure(output: Path) -> dict[str, object]:
+    payload = canary.reopen_failure_receipt(output)
+    assert payload["opened"] == payload["retained"] == canary._PRIVACY
+    assert all(value is False for value in payload["authority"].values())
+    return payload
+
+
+def test_first_op_play_refuses_with_private_failure_receipt(
+        tmp_path, monkeypatch):
     monkeypatch.setenv("CANARY_FAKE_MODE", "play")
     output = tmp_path / "receipt.json"
     assert canary.main(["--codex-binary", str(_fake(tmp_path)), "--output", str(output),
                         "--deadline-seconds", "10"]) == 2
-    assert not output.exists()
+    _assert_private_failure(output)
 
 
 def test_missing_stop_hook_observation_refuses(tmp_path, monkeypatch):
@@ -193,7 +215,42 @@ def test_missing_stop_hook_observation_refuses(tmp_path, monkeypatch):
     output = tmp_path / "receipt.json"
     assert canary.main(["--codex-binary", str(_fake(tmp_path)), "--output", str(output),
                         "--deadline-seconds", "10"]) == 2
-    assert not output.exists()
+    _assert_private_failure(output)
+
+
+def test_operation_mismatch_publishes_exact_private_failure_reason(
+        tmp_path, monkeypatch):
+    def refuse(**_kwargs):
+        raise ValueError("canary model operation contract refused")
+    monkeypatch.setattr(canary, "run", refuse)
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "10"]) == 2
+    assert _assert_private_failure(output)["reason"] \
+        == "model-operation-contract-refused"
+
+
+def test_failure_reason_allowlist_refuses_coordinated_rehash(
+        tmp_path, monkeypatch):
+    def refuse(**_kwargs):
+        raise ValueError("canary model operation contract refused")
+    monkeypatch.setattr(canary, "run", refuse)
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "10"]) == 2
+    payload = json.loads(output.read_bytes())
+    payload["reason"] = "unallowlisted-reason"
+    body = {key: value for key, value in payload.items()
+            if key != "receipt_sha256"}
+    payload["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    output.chmod(0o600)
+    output.write_bytes(canonical_json_bytes(payload))
+    output.chmod(0o400)
+    with pytest.raises(ValueError, match="schema drift"):
+        canary.reopen_failure_receipt(output)
 
 
 @pytest.mark.parametrize(
@@ -203,7 +260,7 @@ def test_malformed_final_or_telemetry_refuses(tmp_path, monkeypatch, mode):
     output = tmp_path / "receipt.json"
     assert canary.main(["--codex-binary", str(_fake(tmp_path)), "--output", str(output),
                         "--deadline-seconds", "10"]) == 2
-    assert not output.exists()
+    _assert_private_failure(output)
 
 
 def test_occupied_output_refuses_before_launch(tmp_path):

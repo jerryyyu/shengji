@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import hashlib
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,12 +14,58 @@ from shengji.rl.belief_policy_controller import CAPACITY_WORKER_ARMS
 from shengji.rl.belief_policy_execution import (
     BeliefPolicyExecutionError,
     MAX_SCIENTIFIC_WALL_NANOSECONDS,
+    authenticate_review,
     authenticate_capacity_envelope_source,
     authenticate_scientific_freeze_review,
     build_freeze,
     validate_capacity_receipt,
     validate_freeze,
 )
+
+
+def _review_git_fixture(monkeypatch, *, marker: bytes, replay: bool) -> Path:
+    repo = Path.cwd().parent.resolve()
+    review = "a" * 40
+    parent = "b" * 40
+    prefix = EXECUTION.SOURCE_REVIEW_PREFIX.encode("ascii")
+    prior = prefix + canonical_json_bytes({"prior": True})
+    previous = b"ledger\n" + prior + (marker if replay else b"")
+    current = previous + marker
+
+    def fake_git(_repo, *args, binary=False):
+        if args == ("show", "-s", "--format=%P", review):
+            return parent
+        if args[:3] == ("show", "-s", "--format=%an"):
+            return EXECUTION.REVIEWER_NAME
+        if args[:3] == ("show", "-s", "--format=%ae"):
+            return EXECUTION.REVIEWER_EMAIL
+        if args[:3] == ("show", "-s", "--format=%cn"):
+            return EXECUTION.REVIEWER_NAME
+        if args[:3] == ("show", "-s", "--format=%ce"):
+            return EXECUTION.REVIEWER_EMAIL
+        if args == ("show", "-s", "--format=%B", review):
+            return EXECUTION.REVIEWER_SESSION_TRAILER
+        if args == (
+                "diff-tree", "--no-commit-id", "--name-only", "-r",
+                review):
+            return EXECUTION.REVIEW_LEDGER
+        if args == ("show", f"{review}:{EXECUTION.REVIEW_LEDGER}"):
+            assert binary is True
+            return current
+        if args == ("show", f"{parent}:{EXECUTION.REVIEW_LEDGER}"):
+            assert binary is True
+            return previous
+        raise AssertionError(args)
+
+    def fake_run(args, **_kwargs):
+        if args[1] == "ls-remote":
+            return SimpleNamespace(stdout=f"{review}\trefs/heads/main\n")
+        assert args[:3] == ("git", "merge-base", "--is-ancestor")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(EXECUTION, "_git", fake_git)
+    monkeypatch.setattr(EXECUTION.subprocess, "run", fake_run)
+    return repo
 
 
 def _arm(workers: int) -> dict:
@@ -168,3 +215,26 @@ def test_freeze_and_run_boundaries_reauthenticate_review_provenance(
             BeliefPolicyExecutionError,
             match="capacity receipt reconstruction drift"):
         validate_capacity_receipt(receipt)
+
+
+def test_review_marker_appends_after_prior_spent_marker(monkeypatch):
+    claim = {"current": True}
+    marker = EXECUTION.SOURCE_REVIEW_PREFIX.encode("ascii") \
+        + canonical_json_bytes(claim)
+    repo = _review_git_fixture(monkeypatch, marker=marker, replay=False)
+    assert authenticate_review(
+        repo=repo, review_commit="a" * 40,
+        prefix=EXECUTION.SOURCE_REVIEW_PREFIX, claim=claim) == marker
+
+
+def test_review_marker_replay_refuses(monkeypatch):
+    claim = {"current": True}
+    marker = EXECUTION.SOURCE_REVIEW_PREFIX.encode("ascii") \
+        + canonical_json_bytes(claim)
+    repo = _review_git_fixture(monkeypatch, marker=marker, replay=True)
+    with pytest.raises(
+            BeliefPolicyExecutionError,
+            match="policy exact review marker introduction drift"):
+        authenticate_review(
+            repo=repo, review_commit="a" * 40,
+            prefix=EXECUTION.SOURCE_REVIEW_PREFIX, claim=claim)

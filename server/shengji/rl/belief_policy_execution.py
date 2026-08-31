@@ -316,7 +316,8 @@ def authenticate_review(
                        if line.startswith(prefix.encode("ascii"))]
     previous_matches = [line for line in previous.splitlines(keepends=True)
                         if line.startswith(prefix.encode("ascii"))]
-    if current_matches != [marker] or previous_matches:
+    if current_matches != [*previous_matches, marker] \
+            or marker in previous_matches:
         raise BeliefPolicyExecutionError(
             "policy exact review marker introduction drift")
     return marker

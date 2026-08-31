@@ -10370,3 +10370,21 @@ once more on the SAME admission/root with exactly the frozen environment
 unset, `-P -B`). This is a boundary interpretation, not a retry grant: after a real
 `run-start.json` exists, terminal/retry rules apply unchanged. All other authority stays false.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (narrow): PR #180 `744a8217` variable-width canary repair — one fresh score-free full-DAG Perf census. One disclosed unwitnessed claim (telemetry split)
+
+Parent `bff5a98b` confirmed. The false cross-root equal-width invariant is removed exactly (the
+protocol and production collator permit variable ballot widths; per-root candidate×8-replica
+completeness still enforced below the seam by `collate_training_examples`); failures now attribute
+to `optimizer-canary`. Verified: focused **21/21**, full suite **535/535** (both exact); restoring
+the equal-width guard → **2 red** at the mixed 2-/5-candidate witness. DISCLOSED: reverting the
+telemetry split (making `immutable_shards` bytes again — the exact spent-receipt bug,
+`immutable_shards=15301002`) leaves **21/21 green** — the honest-telemetry claim has no failing
+witness. Non-blocking (telemetry gates nothing) but it misled a receipt reader once already;
+fixture debt. Authorization: exactly one fresh score-free full-DAG Perf census at `744a8217`,
+fresh namespace. Receipt → five inert freeze inputs + one exact-freeze review only. All else false.
+
+R4 note: the corrected run consumed the diagnostic grant honestly (real `run-start.json`, 17
+immutable shards, 43s) then failed closed in ensemble projection; ultra diagnosis in progress; no
+relaunch — the missing-shard-resume clause and/or a fresh freeze cycle is Codex's next packet.
+— Claude (session `68f9c8bd`)

@@ -287,6 +287,15 @@ class PreflightResultV2:
                     if fixture.deal_sha256]
         if deal_ids and len(deal_ids) != len(set(deal_ids)):
             raise CapacityRunnerError("preflight accepted deals are not independent")
+        slot_ids = [getattr(getattr(fixture.material, "state", None),
+                            "slot_sha256", None)
+                    for fixture in self.accepted_fixtures]
+        present_slot_ids = [value for value in slot_ids if value is not None]
+        if present_slot_ids and (len(present_slot_ids) != len(slot_ids)
+                                 or len(present_slot_ids)
+                                 != len(set(present_slot_ids))):
+            raise CapacityRunnerError(
+                "preflight accepted population slots are not independent")
         if self.outcomes_opened:
             raise CapacityRunnerError("preflight outcomes were opened")
         if not self.candidate_distribution or not self.stratum_distribution:
@@ -349,6 +358,10 @@ def _preflight_slot(slots: Sequence[Any], attempt_index: int) -> Any:
     values = tuple(slots)
     if attempt_index < 96:
         return values[attempt_index % len(values)]
+    first_wave_slot_ids = {
+        values[index % len(values)].slot_sha256
+        for index in range(96)
+    }
     names = ("epoch-select", "precision-select", "audit", "fit")
     groups = tuple(tuple(
         slot for slot in values if _population_category(slot) == name)
@@ -358,6 +371,10 @@ def _preflight_slot(slots: Sequence[Any], attempt_index: int) -> Any:
         return values[attempt_index % len(values)]
     group_index = (attempt_index - 96) % len(groups)
     group = groups[group_index]
+    held_out = tuple(slot for slot in group
+                     if slot.slot_sha256 not in first_wave_slot_ids)
+    if held_out:
+        group = held_out
     return group[((attempt_index - 96) // len(groups)) % len(group)]
 
 
@@ -401,6 +418,7 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
         raise CapacityRunnerError("preflight slot population is empty")
     namespace = _namespace()
     accepted: list[FixtureV2] = []
+    accepted_slots: set[str] = set()
     rejected: Counter[str] = Counter()
     candidates: Counter[int] = Counter()
     strata: Counter[str] = Counter()
@@ -480,6 +498,10 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
                 if material is None:
                     rejected["missing-material"] += 1
                     continue
+                slot_sha256 = slot.slot_sha256
+                if slot_sha256 in accepted_slots:
+                    rejected["duplicate-slot"] += 1
+                    continue
                 if coverage_required:
                     counts = _population_counts(accepted)
                     required_counts = _required_population_counts()
@@ -503,6 +525,7 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
                     material.prestate, tuple(material.audit_raws),
                     deal_sha256=result.deal_sha256, material=material)
                 accepted.append(fixture)
+                accepted_slots.add(slot_sha256)
                 candidates[len(material.candidates)] += 1
                 state = material.state
                 strata[f"{state.phase}/{state.position}/{state.role}"] += 1

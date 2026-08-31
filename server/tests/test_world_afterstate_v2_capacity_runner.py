@@ -124,6 +124,50 @@ def test_preflight_preserves_first_96_then_interleaves_select_and_audit():
     assert [runner._preflight_slot(slots, index) for index in range(96, 102)] == [
         select_a, select_b, audit_a, fit, select_a, select_b]
 
+    fit_slots = tuple(SimpleNamespace(
+        split="fit", slot_sha256=f"{index:064x}") for index in range(97))
+    expanded = fit_slots + (select_a, select_b, audit_a)
+    assert runner._preflight_slot(expanded, 96) is select_a
+    assert runner._preflight_slot(expanded, 97) is select_b
+    assert runner._preflight_slot(expanded, 98) is audit_a
+    assert runner._preflight_slot(expanded, 99) is fit_slots[96]
+
+
+def test_score_free_preflight_rejects_duplicate_retained_population_slot(
+        monkeypatch):
+    monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 2)
+    monkeypatch.setattr(runner, "PREFLIGHT_ATTEMPT_CEILING", 3)
+    monkeypatch.setattr(runner, "PREFLIGHT_WORKERS", 1)
+
+    class FakeFixture:
+        def __init__(self, _prestate, _audit_raws, *, deal_sha256, material):
+            self.deal_sha256 = deal_sha256
+            self.fixture_sha256 = deal_sha256
+            self.material = material
+
+    monkeypatch.setattr(runner, "FixtureV2", FakeFixture)
+    repeated = SimpleNamespace(slot_sha256="1" * 64)
+    distinct = SimpleNamespace(slot_sha256="2" * 64)
+
+    def accept(identity, slot):
+        material = SimpleNamespace(
+            prestate={"index": identity["attempt_index"]}, audit_raws=(),
+            candidates=(0, 1), state=SimpleNamespace(
+                slot_sha256=slot.slot_sha256, phase="early",
+                position="lead", role="attacker"))
+        return SimpleNamespace(
+            accepted=True, rejection_reason=None, material=material,
+            deal_sha256=identity["deal_sha256"])
+
+    result = runner.run_score_free_preflight(
+        attempt=accept, slots=(repeated, repeated, distinct))
+    assert result.attempted == 3
+    assert result.accepted == 2
+    assert result.rejection_counts == (("duplicate-slot", 1),)
+    assert [fixture.material.state.slot_sha256
+            for fixture in result.accepted_fixtures] == [
+                repeated.slot_sha256, distinct.slot_sha256]
+
 
 def test_preflight_early_fit_acceptance_reserves_select_and_audit_slots(
         monkeypatch):

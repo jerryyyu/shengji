@@ -76,7 +76,7 @@ STOP_HOOK_SCRIPT = (Path(__file__).resolve().parents[2] / "scripts"
                     / "privileged_teacher_luna_stop_hook.py")
 # This is deliberately pinned separately from the generated config.  A
 # changed hook source must fail before a production planner is launched.
-STOP_HOOK_SOURCE_SHA256 = "732ad6d2609dc02305a6304be851f5c65154a7fc004b5811218cd77742c723e4"
+STOP_HOOK_SOURCE_SHA256 = "b20aef4abcbd288040a7fba94fd27763199a7d216cf90ecd932555710d8f3317"
 
 
 class LunaExecutionError(ValueError):

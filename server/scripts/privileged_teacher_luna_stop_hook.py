@@ -74,7 +74,9 @@ def _stop_input(raw: bytes) -> dict[str, object] | None:
     # metadata keeps an arbitrary stdin payload from becoming an allow signal.
     if (value.get("hook_event_name") != "Stop"
             or value.get("model") != MODEL
-            or type(value.get("last_assistant_message")) is not str
+            or "last_assistant_message" not in value
+            or (value.get("last_assistant_message") is not None
+                and type(value.get("last_assistant_message")) is not str)
             or type(value.get("stop_hook_active")) is not bool):
         return None
     return value
@@ -89,13 +91,11 @@ def main() -> int:
     stop = _stop_input(sys.stdin.buffer.read(MAX_STOP_INPUT_BYTES + 1))
     if stop is None:
         return _block()
-    # A blocked Stop causes Codex to continue and marks the next Stop event as
-    # hook-active.  Never block that reentrant event again: doing so can create
-    # an unbounded assistant-message/Stop-hook loop without advancing the
-    # engine.  The outer process/terminal-witness verifier remains the
-    # fail-closed authority if the continued model still stops before
-    # round_end.
-    if stop["stop_hook_active"]:
+    # A nullable message is valid Codex input, but can never be the exact
+    # terminal JSON.  Reentrant non-null messages remain non-blocking to avoid
+    # an unbounded continuation loop; nullable reentrant messages must still
+    # be checked against the private engine terminal witness below.
+    if stop["stop_hook_active"] and stop["last_assistant_message"] is not None:
         return 0
     try:
         observed = tool_request(args.mailbox, {"op": "observe"})
@@ -110,6 +110,11 @@ def main() -> int:
             or len(observed["completion_token"]) != 64
             or any(char not in "0123456789abcdef"
                    for char in observed["completion_token"])):
+        # Preserve the existing reentrant no-reblock behavior even when the
+        # nullable official field is present; only a terminal nullable message
+        # needs a corrective block.
+        if stop["stop_hook_active"]:
+            return 0
         return _block()
     terminal = _json({"schema": FINAL_RESPONSE_SCHEMA, "status": "complete",
                       "completion_token": observed["completion_token"]})

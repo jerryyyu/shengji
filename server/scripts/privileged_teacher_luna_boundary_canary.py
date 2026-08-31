@@ -18,7 +18,7 @@ from shengji.rl import privileged_teacher_luna_selfplay_controller as controller
 from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 SCHEMA = "privileged-teacher-luna-boundary-canary-v4"
-FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v2"
+FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v3"
 MAX_HOOK_OBSERVES = 2
 MODEL_COMMAND_SEQUENCE = ("observe", "rollout", "play", "wait")
 CANARY_PROMPT_SUFFIX = """
@@ -57,20 +57,124 @@ _PRIVACY = {"outcomes": False, "actions": False, "trajectories": False,
 _DIAGNOSTIC_OPS = frozenset(("observe", "rollout", "play", "wait"))
 _DIAGNOSTIC_PHASES = frozenset(
     ("decision", "rolled", "playing", "terminal", "unavailable"))
+_PROCESS_RETURN_CLASSES = frozenset(("zero", "nonzero", "unavailable"))
+_TERMINAL_EVENT_CLASSES = frozenset(
+    ("turn-completed", "turn-failed", "absent-or-opaque"))
+_OPAQUE = "opaque"
 
 
 class _CanaryBoundaryError(ValueError):
     """A privacy-safe failure carrying only accepted operation geometry."""
 
     def __init__(self, message: str, *, accepted_ops: tuple[str, ...] = (),
-                 phase: str = "unavailable"):
+                 phase: str = "unavailable",
+                 process_return_class: str = "unavailable",
+                 terminal_event_class: str = "absent-or-opaque",
+                 model_mailbox_op_sequence: list[str] | str = _OPAQUE,
+                 hook_observe_sequence: list[str] | str = _OPAQUE):
         super().__init__(message)
         if (type(accepted_ops) is not tuple
                 or any(op not in _DIAGNOSTIC_OPS for op in accepted_ops)
-                or phase not in _DIAGNOSTIC_PHASES):
+                or phase not in _DIAGNOSTIC_PHASES
+                or process_return_class not in _PROCESS_RETURN_CLASSES
+                or terminal_event_class not in _TERMINAL_EVENT_CLASSES
+                or not _valid_attribution_sequence(
+                    model_mailbox_op_sequence, allow_opaque=True)
+                or not _valid_attribution_sequence(
+                    hook_observe_sequence, allow_opaque=True,
+                    observe_only=True)):
             raise ValueError("canary failure diagnostic drift")
         self.accepted_ops = accepted_ops
         self.phase = phase
+        self.process_return_class = process_return_class
+        self.terminal_event_class = terminal_event_class
+        self.model_mailbox_op_sequence = model_mailbox_op_sequence
+        self.hook_observe_sequence = hook_observe_sequence
+
+
+def _valid_attribution_sequence(value: object, *, allow_opaque: bool,
+                                observe_only: bool = False) -> bool:
+    if allow_opaque and value == _OPAQUE:
+        return True
+    if type(value) is not list:
+        return False
+    allowed = {"observe"} if observe_only else _DIAGNOSTIC_OPS
+    return all(type(op) is str and op in allowed for op in value)
+
+
+def _terminal_event_class(raw: bytes) -> str:
+    """Reduce Codex JSONL to one allowlisted terminal event class."""
+    terminal_events: list[str] = []
+    try:
+        for line in raw.splitlines():
+            if not line:
+                continue
+            event = json.loads(line.decode("utf-8"))
+            if type(event) is not dict or type(event.get("type")) is not str:
+                return "absent-or-opaque"
+            if event["type"] not in execution.CODEX_EVENT_TYPES:
+                return "absent-or-opaque"
+            if event["type"] in ("turn.completed", "turn.failed"):
+                terminal_events.append(event["type"])
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return "absent-or-opaque"
+    if terminal_events == ["turn.completed"]:
+        return "turn-completed"
+    if terminal_events == ["turn.failed"]:
+        return "turn-failed"
+    return "absent-or-opaque"
+
+
+def _command_attribution_present(raw: bytes) -> tuple[bool, bool]:
+    """Return (command item seen, JSONL structure opaque) without retaining it."""
+    command_seen = False
+    try:
+        for line in raw.splitlines():
+            if not line:
+                continue
+            event = json.loads(line.decode("utf-8"))
+            if (type(event) is not dict or type(event.get("type")) is not str
+                    or event["type"] not in execution.CODEX_EVENT_TYPES):
+                return command_seen, True
+            if not event["type"].startswith("item."):
+                continue
+            item = event.get("item")
+            if type(item) is not dict or type(item.get("type")) is not str:
+                return command_seen, True
+            if item["type"] == "command_execution":
+                command_seen = True
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return command_seen, True
+    return command_seen, False
+
+
+def _derive_attribution(*, raw: bytes, mailbox_path: Path,
+                        trace: list[dict[str, object]],
+                        python_path: Path, tool_script_path: Path) \
+        -> tuple[str, list[str] | str, list[str] | str]:
+    """Derive only bounded process/mailbox attribution from private inputs."""
+    terminal_class = _terminal_event_class(raw)
+    command_seen, opaque = _command_attribution_present(raw)
+    try:
+        records = execution._codex_command_mailbox_records(
+            raw, mailbox_path=mailbox_path, python_path=python_path,
+            tool_script_path=tool_script_path, require_shell=True)
+    except Exception:
+        if not command_seen and not opaque:
+            model_sequence: list[str] | str = []
+            hook_sequence: list[str] | str = (
+                ["observe"] * len(trace)
+                if all(type(event) is dict
+                       and event.get("request") == {"op": "observe"}
+                       for event in trace)
+                else _OPAQUE)
+            return terminal_class, model_sequence, hook_sequence
+        return terminal_class, _OPAQUE, _OPAQUE
+    try:
+        model_sequence, hook_sequence = _bind_model_commands(records, trace)
+    except Exception:
+        return terminal_class, _OPAQUE, _OPAQUE
+    return terminal_class, model_sequence, hook_sequence
 def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 def _strict(raw: bytes, label: str) -> dict[str, object]:
@@ -107,6 +211,18 @@ def _failure_receipt(exc: BaseException) -> dict[str, object]:
     accepted_ops = (exc.accepted_ops
                     if isinstance(exc, _CanaryBoundaryError) else ())
     phase = exc.phase if isinstance(exc, _CanaryBoundaryError) else "unavailable"
+    process_return_class = (exc.process_return_class
+                            if isinstance(exc, _CanaryBoundaryError)
+                            else "unavailable")
+    terminal_event_class = (exc.terminal_event_class
+                            if isinstance(exc, _CanaryBoundaryError)
+                            else "absent-or-opaque")
+    model_mailbox_op_sequence = (
+        exc.model_mailbox_op_sequence
+        if isinstance(exc, _CanaryBoundaryError) else _OPAQUE)
+    hook_observe_sequence = (
+        exc.hook_observe_sequence
+        if isinstance(exc, _CanaryBoundaryError) else _OPAQUE)
     body = {
         "schema": FAILURE_SCHEMA,
         "reason": _failure_reason(exc),
@@ -117,6 +233,10 @@ def _failure_receipt(exc: BaseException) -> dict[str, object]:
         "accepted_op_counts": {
             op: accepted_ops.count(op) for op in sorted(set(accepted_ops))},
         "terminal_phase": phase,
+        "process_return_class": process_return_class,
+        "terminal_event_class": terminal_event_class,
+        "model_mailbox_op_sequence": model_mailbox_op_sequence,
+        "hook_observe_sequence": hook_observe_sequence,
         "opened": dict(_PRIVACY),
         "retained": dict(_PRIVACY),
         "authority": dict(luna.AUTHORITY),
@@ -136,7 +256,9 @@ def reopen_failure_receipt(path: Path) -> dict[str, object]:
     if (set(payload) != {"schema", "reason", "detail_sha256",
                          "canary_source_sha256", "execution_source_sha256",
                          "accepted_op_sequence", "accepted_op_counts",
-                         "terminal_phase",
+                         "terminal_phase", "process_return_class",
+                         "terminal_event_class", "model_mailbox_op_sequence",
+                         "hook_observe_sequence",
                          "opened", "retained", "authority"}
             or payload["schema"] != FAILURE_SCHEMA
             or payload["reason"] not in FAILURE_REASONS
@@ -144,6 +266,14 @@ def reopen_failure_receipt(path: Path) -> dict[str, object]:
             or payload["retained"] != _PRIVACY
             or payload["authority"] != luna.AUTHORITY):
         raise ValueError("canary failure receipt schema drift")
+    if (payload["process_return_class"] not in _PROCESS_RETURN_CLASSES
+            or payload["terminal_event_class"] not in _TERMINAL_EVENT_CLASSES
+            or not _valid_attribution_sequence(
+                payload["model_mailbox_op_sequence"], allow_opaque=True)
+            or not _valid_attribution_sequence(
+                payload["hook_observe_sequence"], allow_opaque=True,
+                observe_only=True)):
+        raise ValueError("canary failure diagnostic drift")
     sequence = payload["accepted_op_sequence"]
     counts = payload["accepted_op_counts"]
     if (type(sequence) is not list
@@ -520,6 +650,24 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
         token = secrets.token_hex(32)
         state = _CanaryState(token)
         with _CanaryMailbox(mailbox_path, state=state) as mailbox:
+            def boundary_error(message: str, raw: bytes,
+                               returncode: int | None) -> _CanaryBoundaryError:
+                accepted_ops = tuple(
+                    str(event["request"]["op"]) for event in mailbox.trace)
+                terminal_event_class, model_sequence, hook_sequence = (
+                    _derive_attribution(
+                        raw=bytes(raw), mailbox_path=mailbox_path,
+                        trace=mailbox.trace, python_path=Path(sys.executable),
+                        tool_script_path=tool_script))
+                return _CanaryBoundaryError(
+                    message, accepted_ops=accepted_ops, phase=state.phase,
+                    process_return_class=(
+                        "zero" if returncode == 0 else "nonzero"
+                        if isinstance(returncode, int) else "unavailable"),
+                    terminal_event_class=terminal_event_class,
+                    model_mailbox_op_sequence=model_sequence,
+                    hook_observe_sequence=hook_sequence)
+
             process = subprocess.Popen(
                 command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, cwd=workspace, env=environment,
@@ -535,38 +683,58 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
                         process.kill()
                 except ProcessLookupError:
                     pass
-                process.communicate()
-                raise ValueError("canary subprocess deadline exceeded") from exc
+                timeout_stdout, timeout_stderr = process.communicate()
+                if len(timeout_stderr or b"") > execution.MAX_PROCESS_BYTES:
+                    timeout_stderr = b""
+                raise boundary_error(
+                    "canary subprocess deadline exceeded",
+                    bytes(timeout_stdout or b""), process.returncode) from exc
             if len(stderr or b"") > execution.MAX_PROCESS_BYTES:
                 raise ValueError("canary stderr limit exceeded")
-        accepted_ops = tuple(
-            str(event["request"]["op"]) for event in mailbox.trace)
-        if mailbox.error is not None:
-            raise _CanaryBoundaryError(
-                "canary mailbox server failed", accepted_ops=accepted_ops,
-                phase=state.phase)
-        if mailbox.refused:
-            raise _CanaryBoundaryError(
-                "canary request contract refused", accepted_ops=accepted_ops,
-                phase=state.phase)
-        if not state.terminal:
-            raise _CanaryBoundaryError(
-                "canary terminal not reached", accepted_ops=accepted_ops,
-                phase=state.phase)
         stdout = bytes(stdout or b"")
-        usage = execution._codex_jsonl_usage(stdout)
-        records = execution._codex_command_mailbox_records(
-            stdout, mailbox_path=mailbox_path,
-            python_path=Path(sys.executable), tool_script_path=tool_script,
-            require_shell=True)
-        model_sequence, hook_sequence = _bind_model_commands(records, mailbox.trace)
+
+        if mailbox.error is not None:
+            raise boundary_error(
+                "canary mailbox server failed", stdout, process.returncode)
+        if mailbox.refused:
+            raise boundary_error(
+                "canary request contract refused", stdout, process.returncode)
+        if not state.terminal:
+            raise boundary_error(
+                "canary terminal not reached", stdout, process.returncode)
+        try:
+            usage = execution._codex_jsonl_usage(stdout)
+            records = execution._codex_command_mailbox_records(
+                stdout, mailbox_path=mailbox_path,
+                python_path=Path(sys.executable), tool_script_path=tool_script,
+                require_shell=True)
+        except Exception as exc:
+            raise boundary_error(
+                "canary command mailbox attribution refused", stdout,
+                process.returncode) from exc
+        try:
+            model_sequence, hook_sequence = _bind_model_commands(
+                records, mailbox.trace)
+        except Exception as exc:
+            raise boundary_error(
+                "canary command mailbox attribution refused", stdout,
+                process.returncode) from exc
         if model_sequence != list(MODEL_COMMAND_SEQUENCE):
-            raise ValueError("canary model operation contract refused")
+            raise boundary_error(
+                "canary model operation contract refused", stdout,
+                process.returncode)
         if not 1 <= len(hook_sequence) <= MAX_HOOK_OBSERVES:
-            raise ValueError("canary hook operation contract refused")
-        if (process.returncode != 0 or not final_path.is_file()
-                or final_path.is_symlink()):
-            raise ValueError("canary subprocess did not complete")
+            raise boundary_error(
+                "canary hook operation contract refused", stdout,
+                process.returncode)
+        if process.returncode != 0:
+            raise boundary_error(
+                "canary subprocess did not complete", stdout,
+                process.returncode)
+        if not final_path.is_file() or final_path.is_symlink():
+            raise boundary_error(
+                "canary subprocess did not complete", stdout,
+                process.returncode)
         final_raw = execution._read_process_file(final_path, limit=1 << 20)
         expected_final = canonical_json_bytes({
             "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",

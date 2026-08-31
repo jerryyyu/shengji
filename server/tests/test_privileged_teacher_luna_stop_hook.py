@@ -20,7 +20,7 @@ HOOK = Path(__file__).parents[1] / "scripts" / "privileged_teacher_luna_stop_hoo
 
 
 def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
-              last: str, *, stop_hook_active: bool = False,
+              last: str | None, *, stop_hook_active: bool = False,
               expect_observe: bool = True) -> tuple[int, bytes]:
     mailbox = tmp_path / "mailbox"
     mailbox.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -114,6 +114,26 @@ def test_nonterminal_stop_blocks_once_and_reentrant_stop_cannot_reblock(tmp_path
         stop_hook_active=True, expect_observe=False)
     assert requests == 0
     assert raw == b""
+
+
+def test_nullable_stop_message_is_accepted_but_nonterminal_still_blocks(tmp_path):
+    requests, raw = _run_hook(
+        tmp_path, {"schema": luna.GAME_SCHEMA, "status": "decision"}, None)
+    assert requests == 1
+    payload = json.loads(raw)
+    assert payload["decision"] == "block"
+
+
+def test_nullable_terminal_stop_message_gets_exact_private_correction(tmp_path):
+    token = "d" * 64
+    requests, raw = _run_hook(
+        tmp_path, {"schema": luna.GAME_SCHEMA, "status": "round_end",
+                   "completion_token": token}, None)
+    assert requests == 1
+    payload = json.loads(raw)
+    assert payload["decision"] == "block"
+    assert token in payload["reason"]
+    assert execution.FINAL_RESPONSE_SCHEMA in payload["reason"]
 
 
 def test_exact_terminal_response_is_allowed_even_after_prior_continuation(tmp_path):

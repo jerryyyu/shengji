@@ -44,6 +44,7 @@ mailbox = Path(re.search(r"--mailbox\\s+(\\S+)", prompt).group(1))
 final = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
 mode = os.environ.get("CANARY_FAKE_MODE", "ok")
 commands = []
+if mode == "timeout": time.sleep(5)
 def call(request, suffix):
     path = mailbox / ("request-" + suffix * 64 + ".json")
     path.write_bytes(json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode() + b"\\n")
@@ -134,6 +135,7 @@ events.append({"type": "turn.completed", "usage": {k: 1 for k in ("input_tokens"
 if mode == "bad-usage": events[1]["usage"].pop("reasoning_output_tokens")
 if mode == "duplicate-turn": events.append(dict(events[-1]))
 sys.stdout.write("\\n".join(json.dumps(e, separators=(",", ":")) for e in events) + "\\n")
+if mode == "nonzero-after-terminal": sys.exit(9)
 '''
 
 
@@ -226,6 +228,63 @@ def _assert_private_failure(output: Path) -> dict[str, object]:
     return payload
 
 
+def _model_observe_witness(tmp_path: Path) -> tuple[bytes, list[dict[str, object]]]:
+    """Build command-only JSONL without any model-authored text."""
+    mailbox = tmp_path / "mailbox"
+    tool = tmp_path / "tool.py"
+    command = shlex.join(("/bin/zsh", "-lc", shlex.join((
+        str(Path(sys.executable).absolute()), "-P", "-B", str(tool.resolve()),
+        "--mailbox", str(mailbox), "observe"))))
+    response = {"status": "decision"}
+    output = canonical_json_bytes(response).decode("ascii").removesuffix("\n")
+    item = {"id": "command", "type": "command_execution",
+            "command": command, "aggregated_output": output,
+            "exit_code": 0, "status": "completed"}
+    started = {"type": "item.started", "item": {
+        **item, "aggregated_output": "", "exit_code": None,
+        "status": "in_progress"}}
+    completed = {"type": "item.completed", "item": item}
+    raw = (json.dumps(started, separators=(",", ":")) + "\n"
+           + json.dumps(completed, separators=(",", ":")) + "\n").encode()
+    trace = [{"request": {"op": "observe"}, "response": response,
+              "response_sha256": canary._sha(canonical_json_bytes(response))}]
+    return raw, trace
+
+
+def test_clean_hook_observe_and_turn_completed_attribution(tmp_path):
+    result = canary._derive_attribution(
+        raw=b'{"type":"turn.completed"}\n', mailbox_path=tmp_path / "mailbox",
+        trace=[{"request": {"op": "observe"}}],
+        python_path=Path(sys.executable), tool_script_path=tmp_path / "tool.py")
+    assert result == ("turn-completed", [], ["observe"])
+
+
+def test_model_observe_only_is_nullable_stop_compatible(tmp_path):
+    raw, trace = _model_observe_witness(tmp_path)
+    assert canary._derive_attribution(
+        raw=raw, mailbox_path=tmp_path / "mailbox", trace=trace,
+        python_path=Path(sys.executable), tool_script_path=tmp_path / "tool.py") \
+        == ("absent-or-opaque", ["observe"], [])
+
+
+def test_model_observe_turn_failed_is_classified_without_error_text(tmp_path):
+    raw, trace = _model_observe_witness(tmp_path)
+    raw += b'{"type":"turn.failed"}\n'
+    assert canary._derive_attribution(
+        raw=raw, mailbox_path=tmp_path / "mailbox", trace=trace,
+        python_path=Path(sys.executable), tool_script_path=tmp_path / "tool.py") \
+        == ("turn-failed", ["observe"], [])
+
+
+def test_model_and_residual_hook_observes_are_attributed_separately(tmp_path):
+    raw, trace = _model_observe_witness(tmp_path)
+    trace.append({"request": {"op": "observe"}})
+    assert canary._derive_attribution(
+        raw=raw, mailbox_path=tmp_path / "mailbox", trace=trace,
+        python_path=Path(sys.executable), tool_script_path=tmp_path / "tool.py") \
+        == ("absent-or-opaque", ["observe"], ["observe"])
+
+
 def test_first_op_play_refuses_with_private_failure_receipt(
         tmp_path, monkeypatch):
     monkeypatch.setenv("CANARY_FAKE_MODE", "play")
@@ -249,6 +308,41 @@ def test_early_model_exit_is_distinct_from_invalid_request(
     assert payload["reason"] == "terminal-not-reached"
     assert payload["accepted_op_sequence"] == ["observe", "observe"]
     assert payload["terminal_phase"] == "decision"
+    assert payload["process_return_class"] == "zero"
+    assert payload["terminal_event_class"] == "absent-or-opaque"
+    assert payload["model_mailbox_op_sequence"] == []
+    assert payload["hook_observe_sequence"] == ["observe", "observe"]
+
+
+def test_nonzero_after_terminal_retains_process_and_command_attribution(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("CANARY_FAKE_MODE", "nonzero-after-terminal")
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "10"]) == 2
+    payload = _assert_private_failure(output)
+    assert payload["reason"] == "subprocess-completion-refused"
+    assert payload["process_return_class"] == "nonzero"
+    assert payload["terminal_event_class"] == "turn-completed"
+    assert payload["model_mailbox_op_sequence"] \
+        == list(canary.MODEL_COMMAND_SEQUENCE)
+    assert payload["hook_observe_sequence"] == ["observe", "observe"]
+
+
+def test_timeout_retains_killed_process_class_without_private_output(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("CANARY_FAKE_MODE", "timeout")
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "1"]) == 2
+    payload = _assert_private_failure(output)
+    assert payload["reason"] == "subprocess-deadline-exceeded"
+    assert payload["process_return_class"] == "nonzero"
+    assert payload["terminal_event_class"] == "absent-or-opaque"
+    assert payload["model_mailbox_op_sequence"] == []
+    assert payload["hook_observe_sequence"] == []
 
 
 def test_mailbox_server_failure_has_own_privacy_safe_reason(

@@ -10502,3 +10502,23 @@ budget clause → **1 red** (my first mutation attempt removed half a two-line c
 chained comparison that stayed green — corrected and cleanly red; disclosed). Authorization: one
 fresh real-process canary at `6722c88`, new namespace, 180s; only a sealed PASS unlocks the
 one-worker census. All other authority false. — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (consolidated): PR #180 `c17efb8c` adjacent-pair complete-world control — one fresh score-free full-DAG Perf census
+
+Parent `12972c10` confirmed; 13 files. The spent census crossed the repaired label control and
+refused at `block-1-complete-world-shuffle` after 2,931s because the exact public stratum yielded
+NO compatible deal pair — the same design-contradiction class as the label-permutation finding,
+in the next control. The repair pre-commits immutable adjacent FIT pairs (64 natural + 16
+mechanics for D256; capacity: 8 complete natural pairs + 1 singleton over 17 roots), swaps only
+the world tensor within a pair (candidate 0→0; j>0 deterministic over the donor's nonzero ballot;
+8-replica families intact; mixed widths supported), and binds evidence to canonical pair IDs with
+coverage + changed-world dose measured against the FULL FIT denominator at the unchanged 90%
+floor. Verified: full suite **545/545** (exact); dropping the coverage floor to 1% → **1 red**;
+skipping the pre-stage canonical-slot binding (Terra's masked-witness find, rebuilt) → **1 red**
+at the forged-rank witness; diff-check clean. No caps/gates/authority relaxed — checked in the
+diff. Authorization: one fresh score-free full-DAG Perf census, new namespace, at `c17efb8c`.
+Receipt → five inert freeze inputs + one exact-freeze review only. All else false.
+
+Luna note: the `6722c88` canary refused `terminal-not-reached` with the new split diagnostics
+recording the accepted-op sequence — Codex forensics in progress; no PT review ready.
+— Claude (session `68f9c8bd`)

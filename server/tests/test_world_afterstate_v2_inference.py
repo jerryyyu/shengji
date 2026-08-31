@@ -194,7 +194,10 @@ def test_confirmatory_or_control_prediction_cannot_select_actions():
 
 
 def test_complete_prediction_population_reopens_and_drop_refuses():
-    root = _root()
+    # The engine's canonical rank spelling is "10", not the display shorthand
+    # "T".  This positive path reaches both root validation and the separately
+    # implemented manifest-binding validator.
+    root = dataclasses.replace(_root(), trump_rank="10")
     rows = tuple(
         row
         for member in range(4)

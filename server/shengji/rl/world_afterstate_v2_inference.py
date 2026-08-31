@@ -17,6 +17,7 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 import torch
 
+from ..engine.cards import RANKS
 from .belief_contract import canonical_json_bytes
 from .world_afterstate import (
     OUTCOME_CLASSES,
@@ -155,7 +156,7 @@ class ValueInferenceRootV2:
                 or self.role not in ("attacker", "defender") \
                 or self.phase not in ("early", "middle", "late") \
                 or self.position not in ("lead", "follow") \
-                or self.trump_rank not in tuple("23456789TJQKA") \
+                or self.trump_rank not in RANKS \
                 or self.trump_mode not in ("S", "H", "D", "C", "NT") \
                 or (self.split == "select") != (
                     self.select_subfold in (
@@ -680,7 +681,7 @@ def validate_prediction_population_manifest_v2(value: Mapping[str, Any]) -> None
                 or binding.get("role") not in ("attacker", "defender") \
                 or binding.get("phase") not in ("early", "middle", "late") \
                 or binding.get("position") not in ("lead", "follow") \
-                or binding.get("trump_rank") not in tuple("23456789TJQKA") \
+                or binding.get("trump_rank") not in RANKS \
                 or binding.get("trump_mode") not in ("S", "H", "D", "C", "NT") \
                 or (binding.get("split") == "select") != (
                     binding.get("select_subfold") in (

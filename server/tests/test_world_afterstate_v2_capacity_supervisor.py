@@ -212,28 +212,37 @@ def test_audit_derivation_dependency_is_explicitly_non_admissible():
     assert "AuditDerivationInputV2" in FULL_DAG_MISSING_DEPENDENCY
 
 
-def test_capacity_p0_executes_real_precision_evaluator(monkeypatch):
+def test_capacity_p0_wires_all_materials_and_real_precision_evaluator(monkeypatch):
     import shengji.rl.world_afterstate_v2_capacity_supervisor as supervisor
 
     inputs = _capacity_p0_inputs()
-    seen = []
+    built = []
+    evaluated = []
+    validated = []
     monkeypatch.setattr(supervisor, "build_inference_root_v2",
-                        lambda material: ("root", material))
+                        lambda material: built.append(material) or
+                        ("root", material))
+    real_evaluate = supervisor.evaluate_precision_label
+    real_validate = supervisor.validate_precision_label
 
-    def evaluate(outcomes, **kwargs):
-        seen.append((outcomes, kwargs))
-        return {"decision": "STOP_NO_REPRODUCIBLE_VALUE_LABEL"}
+    def evaluate(*args, **kwargs):
+        result = real_evaluate(*args, **kwargs)
+        evaluated.append(result)
+        return result
+
+    def validate(result):
+        real_validate(result)
+        validated.append(result)
 
     monkeypatch.setattr(supervisor, "evaluate_precision_label", evaluate)
-    monkeypatch.setattr(supervisor, "validate_precision_label",
-                        lambda result: seen.append(result))
+    monkeypatch.setattr(supervisor, "validate_precision_label", validate)
 
-    roots = _execute_capacity_p0(("material-a", "material-b"), inputs)
-    assert roots == (("root", "material-a"), ("root", "material-b"))
-    assert len(seen) == 2
-    assert len(seen[0][0]) == 96 * 3 * 8
-    assert len(seen[0][1]["natural_fit_population"]) == 128
-    assert seen[1]["decision"] == "STOP_NO_REPRODUCIBLE_VALUE_LABEL"
+    materials = tuple(f"material-{index}" for index in range(32))
+    roots = _execute_capacity_p0(materials, inputs)
+    assert roots == tuple(("root", material) for material in materials)
+    assert tuple(built) == materials
+    assert len(evaluated) == 1
+    assert validated == evaluated
 
 
 def test_capacity_p0_fixture_passes_production_evaluator():

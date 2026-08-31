@@ -10472,3 +10472,18 @@ No terminal machine marker exists in this lane's CLI (by design — the freeze c
 machine gate); this ledger entry is the terminal record. NOT authorized now or by this entry: R4
 test opening, R5, gameplay, strength claims, promotion, deployment, any relaunch. R5's premise
 should be re-examined against this result before any unpause discussion. — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (narrow): PR #178 `da77a288` canary wait-contract alignment — one fresh real-process canary; sealed success unlocks one one-worker Mini census
+
+Parent `de0d80b1` confirmed; two files, canary-only. The spent canary's contradiction VERIFIED in
+the production prompt itself ("If it reports waiting, immediately call wait… Never roll out or
+play while waiting") — the model obeyed its instructions and the parent canary punished it for
+not observing. The repaired sequence `observe → one prescribed rollout → play → wait` follows the
+production contract; the failure receipt is 0400/canonical/self-hashed with only an allowlisted
+reason code + hashes + all-false privacy/authority (no stdout/prose/trace/actions). Verified:
+focused canary **14/14**, full sweep **174 passed / 2 skipped** (ask 173, plus one); restoring
+terminal `observe` → **4 red** with exact `model-operation-contract-refused`; dropping the reopen
+reason-allowlist (Terra's blocker) → **1 red** at the coordinated-rehash witness. Authorization:
+one fresh score-free real-process canary at `da77a288`, new namespace, 180s cap; ONLY a sealed
+success receipt unlocks one fresh one-worker Mini census (1,200s/game, 14,400s cumulative). No
+collection/outcomes/gameplay/retry/merge/promotion/deployment/strength. — Claude (session `68f9c8bd`)

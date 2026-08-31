@@ -53,7 +53,7 @@ DEFAULT_TOKEN_BUDGET = 1 << 62
 CAPACITY_EXECUTION_SYNTHETIC = "synthetic-injected-capacity"
 CAPACITY_EXECUTION_VERIFIED = "verified-runtime-capacity"
 CAPACITY_PROVENANCE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-provenance-v1"
-CAPACITY_FAILURE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-failure-v3"
+CAPACITY_FAILURE_SCHEMA = "privileged-teacher-luna-selfplay-capacity-failure-v4"
 _REVIEW_AUTHENTICATION = object()
 
 # Capacity refusals may expose only controller-owned classifications.  Keep
@@ -99,10 +99,71 @@ _CAPACITY_CODEX_ITEM_STATUSES = frozenset({
 })
 _CAPACITY_FAILURE_KEYS = frozenset({
     "schema", "failure_kind", "coordinate", "workers", "worker", "game",
-    "reopened_status", "evidence_count", "expected_team_count",
+    "reopened_status", "reopen_failure_code", "evidence_count",
+    "expected_team_count",
     "evidence_classification", "scientific_admissible",
     "collection_authorized", "opened", "retained", "authority",
 })
+
+# Only static verifier failures cross the redacted capacity boundary.  The
+# exact messages are defined by ``reopen_attempt``; unknown messages remain a
+# generic execution classification rather than exposing exception details.
+_CAPACITY_REOPEN_FAILURE_CODES = frozenset({
+    "manifest_hash_drift", "manifest_schema_drift", "manifest_binding_drift",
+    "attempt_hash_drift", "attempt_schema_drift", "attempt_binding_drift",
+    "attempt_population_drift", "recovery_drift", "trajectory_drift", "receipt_drift",
+    "process_evidence_drift", "process_trace_drift", "process_binding_drift",
+    "process_provenance_drift", "process_telemetry_drift",
+    "process_output_drift", "sandbox_drift", "completion_witness_drift",
+    "manifest_admission_drift", "luna_execution_other", "unexpected_exception",
+})
+_CAPACITY_REOPEN_MESSAGE_CODES = {
+    "manifest hash drift": "manifest_hash_drift",
+    "manifest schema drift": "manifest_schema_drift",
+    "manifest attempt binding drift": "manifest_binding_drift",
+    "manifest trajectory binding drift": "manifest_binding_drift",
+    "manifest receipt binding drift": "manifest_binding_drift",
+    "manifest evidence binding drift": "manifest_binding_drift",
+    "manifest scientific admission drift": "manifest_admission_drift",
+    "manifest execution provenance drift": "manifest_schema_drift",
+    "complete manifest error drift": "manifest_schema_drift",
+    "incomplete manifest error drift": "manifest_schema_drift",
+    "attempt hash drift": "attempt_hash_drift",
+    "attempt schema drift": "attempt_schema_drift",
+    "attempt manifest binding drift": "attempt_binding_drift",
+    "attempt path binding drift": "attempt_binding_drift",
+    "private attempt identity drift": "attempt_binding_drift",
+    "private attempt file population drift": "attempt_population_drift",
+    "pre-manifest recovery schema drift": "recovery_drift",
+    "pre-manifest recovery inventory drift": "recovery_drift",
+    "trajectory reopen refused": "trajectory_drift",
+    "incomplete trajectory mechanics refused": "trajectory_drift",
+    "trajectory decision identity collision": "trajectory_drift",
+    "terminal receipt reopen refused": "receipt_drift",
+    "incomplete receipt drift": "receipt_drift",
+    "process evidence hash drift": "process_evidence_drift",
+    "process trace schema/binding drift": "process_trace_drift",
+    "process trace event drift": "process_trace_drift",
+    "process trace event schema drift": "process_trace_drift",
+    "process trace event hash drift": "process_trace_drift",
+    "process completion binding drift": "process_binding_drift",
+    "process execution provenance drift": "process_provenance_drift",
+    "production process provenance drift": "process_provenance_drift",
+    "synthetic process provenance drift": "process_provenance_drift",
+    "process telemetry binding drift": "process_telemetry_drift",
+    "process output base64 schema drift": "process_output_drift",
+    "process output base64 drift": "process_output_drift",
+    "process output hash drift": "process_output_drift",
+    "sandbox profile reopen refused": "sandbox_drift",
+    "sandbox profile hash drift": "sandbox_drift",
+    "sandbox command binding drift": "sandbox_drift",
+    "sandbox fallback command drift": "sandbox_drift",
+    "process terminal mailbox witness absent": "completion_witness_drift",
+    "Codex usage binding drift": "process_telemetry_drift",
+    "complete process evidence drift": "process_evidence_drift",
+    "process play trace coverage drift": "process_trace_drift",
+    "process play binding drift": "process_binding_drift",
+}
 _CAPACITY_CLASSIFICATION_KEYS = frozenset({
     "team", "execution_kind", "actual_subprocess", "synthetic",
     "process_error_present", "process_returncode", "process_error",
@@ -115,6 +176,14 @@ _CAPACITY_PROCESS_DIAGNOSTIC_KEYS = frozenset({
     "codex_item_type_counts", "codex_item_status_counts", "final_output_present",
     "trace_operation_counts", "stdout_sha256", "output_sha256",
 })
+
+
+def _capacity_reopen_failure_code(error: BaseException) -> str:
+    """Classify a private reopen exception without publishing its details."""
+    if isinstance(error, execution.LunaExecutionError):
+        return _CAPACITY_REOPEN_MESSAGE_CODES.get(
+            str(error), "luna_execution_other")
+    return "unexpected_exception"
 
 
 def _capacity_digest(value: object) -> str | None:
@@ -286,6 +355,13 @@ def _validate_capacity_failure_body(body: Mapping[str, object]) -> None:
             raise ControllerError("capacity failure count drift")
     if body["worker"] >= body["workers"] or type(body["game"]) is not int:
         raise ControllerError("capacity failure identity drift")
+    reopen_failure_code = body["reopen_failure_code"]
+    if body["failure_kind"] == "reopen_failure":
+        if (type(reopen_failure_code) is not str
+                or reopen_failure_code not in _CAPACITY_REOPEN_FAILURE_CODES):
+            raise ControllerError("capacity failure reopen code drift")
+    elif reopen_failure_code is not None:
+        raise ControllerError("capacity failure reopen code drift")
     if body["reopened_status"] is not None \
             and type(body["reopened_status"]) is not str:
         raise ControllerError("capacity failure status drift")
@@ -415,7 +491,8 @@ class CapacityEvidenceRefusal(ControllerError):
 
     def __init__(self, *, coordinate: tuple[str, int, int], workers: int,
                  worker: int, game: int, reopened_status: str | None,
-                 evidence: Sequence[object], failure_kind: str = "evidence"):
+                 evidence: Sequence[object], failure_kind: str = "evidence",
+                 reopen_failure_code: str | None = None):
         classifications: list[dict[str, object]] = []
         for item in evidence:
             body = getattr(item, "body", {})
@@ -444,6 +521,7 @@ class CapacityEvidenceRefusal(ControllerError):
             "worker": worker,
             "game": game,
             "reopened_status": reopened_status,
+            "reopen_failure_code": reopen_failure_code,
             "evidence_count": len(evidence),
             "expected_team_count": len(luna.TEAMS),
             "evidence_classification": classifications,
@@ -1303,7 +1381,8 @@ def run_real_capacity(*, capacity_secret: bytes, tool_script: Path,
                 raise CapacityEvidenceRefusal(
                     coordinate=coordinate, workers=workers, worker=worker,
                     game=game_index, reopened_status=None, evidence=(),
-                    failure_kind="reopen_failure") from exc
+                    failure_kind="reopen_failure",
+                    reopen_failure_code=_capacity_reopen_failure_code(exc)) from exc
             evidence = tuple(reopened.evidence)
             if (len(evidence) != len(luna.TEAMS)
                     or not getattr(reopened, "scientific_admissible", False)

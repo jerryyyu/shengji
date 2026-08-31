@@ -444,7 +444,8 @@ def test_real_capacity_refusal_is_typed_and_redacted_after_temp_cleanup(
         "schema": controller.CAPACITY_FAILURE_SCHEMA,
         "failure_kind": "evidence",
         "coordinate": ["2", 0, 0], "workers": 1, "worker": 0, "game": 0,
-        "reopened_status": "incomplete", "evidence_count": 1,
+        "reopened_status": "incomplete", "reopen_failure_code": None,
+        "evidence_count": 1,
         "expected_team_count": 2,
         "evidence_classification": [{
             "team": 0,
@@ -469,6 +470,51 @@ def test_real_capacity_refusal_is_typed_and_redacted_after_temp_cleanup(
     payload = refusal.serialized()
     assert payload["diagnostic_sha256"] == controller._sha(refusal.body)
     assert not roots[0].exists()
+
+    def raising(error):
+        def reopen(_path):
+            raise error
+        return reopen
+
+    for error, expected_code in (
+            (execution.LunaExecutionError("manifest hash drift"),
+             "manifest_hash_drift"),
+            (execution.LunaExecutionError("unreviewed private /tmp/secret"),
+             "luna_execution_other"),
+            (RuntimeError("private model prose /tmp/secret"),
+             "unexpected_exception")):
+        monkeypatch.setattr(execution, "reopen_attempt", raising(error))
+        with pytest.raises(controller.CapacityEvidenceRefusal) as caught:
+            controller.run_real_capacity(
+                capacity_secret=SECRET, tool_script=TOOL,
+                deadline_nanoseconds=1200 * 1_000_000_000,
+                physical_memory_bytes=8_000_000_000)
+        refusal = caught.value
+        assert refusal.body["reopen_failure_code"] == expected_code
+        assert refusal.body["evidence_classification"] == []
+        raw = refusal.canonical_bytes()
+        assert b"private model prose" not in raw
+        assert b"unreviewed private" not in raw
+        assert b"/tmp/secret" not in raw
+        assert roots[-1].exists() is False
+
+
+def test_capacity_failure_reopen_code_validation_is_strict():
+    refusal = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status=None, evidence=(), failure_kind="reopen_failure",
+        reopen_failure_code="manifest_hash_drift")
+    for bad in (None, "raw exception", 1):
+        body = dict(refusal.body)
+        body["reopen_failure_code"] = bad
+        with pytest.raises(controller.ControllerError,
+                           match="reopen code drift"):
+            controller._validate_capacity_failure_body(body)
+    body = dict(refusal.body)
+    body["failure_kind"] = "evidence"
+    body["reopen_failure_code"] = "manifest_hash_drift"
+    with pytest.raises(controller.ControllerError, match="reopen code drift"):
+        controller._validate_capacity_failure_body(body)
 
 
 def test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable():

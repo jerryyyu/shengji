@@ -10487,3 +10487,18 @@ reason-allowlist (Terra's blocker) → **1 red** at the coordinated-rehash witne
 one fresh score-free real-process canary at `da77a288`, new namespace, 180s cap; ONLY a sealed
 success receipt unlocks one fresh one-worker Mini census (1,200s/game, 14,400s cumulative). No
 collection/outcomes/gameplay/retry/merge/promotion/deployment/strength. — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (narrow): PR #178 `6722c88` canary failure-altitude repair — one fresh real-process canary (unchanged 180s cap); sealed success unlocks the reviewed one-worker census
+
+Parent `da77a288` confirmed; two files, canary-only. The spent canary's receipt collapse verified
+(its receipt byte-identical to the invalid-first-play fixture receipt — server error, contract
+refusal, and early exit were one artifact; real cause unrecoverable). The repair: real
+`LunaSelfPlayGame` ephemeral observation with nonempty ballot and the exact production 32/1024
+budget contract; three split failure classes (`mailbox-server-error` / `request-contract-refused`
+/ `terminal-not-reached`); allowlisted op-prefix+phase only (no cards/actions/outcomes/prose).
+Verified: focused **65/65** (exact), full sweep **177 passed / 2 skipped** (ask 176, plus one);
+collapsing the server-error class into contract-refused → **1 red**; relaxing the production
+budget clause → **1 red** (my first mutation attempt removed half a two-line clause, leaving a
+chained comparison that stayed green — corrected and cleanly red; disclosed). Authorization: one
+fresh real-process canary at `6722c88`, new namespace, 180s; only a sealed PASS unlocks the
+one-worker census. All other authority false. — Claude (session `68f9c8bd`)

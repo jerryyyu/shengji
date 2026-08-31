@@ -4,6 +4,7 @@ import hashlib
 import numpy as np
 import pytest
 
+from shengji.engine.cards import RANKS
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
 from shengji.rl.encode import N_CARDS
@@ -131,7 +132,7 @@ def test_nested_prefixes_keep_exact_counts_when_every_stratum_is_sparse():
     rows = _rows("sparse-prefix", deals=16)
     deals = sorted({row.deal_sha256 for row in rows})
     deal_index = {deal: index for index, deal in enumerate(deals)}
-    ranks = tuple("23456789TJQKA")
+    ranks = RANKS
     modes = ("S", "H", "D", "C", "NT")
     sparse = tuple(dataclasses.replace(
         row, trump_rank=ranks[deal_index[row.deal_sha256] % len(ranks)],

@@ -24,6 +24,7 @@ from shengji.rl.world_afterstate_v2_population import (
 from shengji.rl.world_afterstate_v2_protocol import StateCandidateV2
 from shengji.rl import world_afterstate_v2_continuation as continuation
 from shengji.rl import world_afterstate_v2_dataset as dataset
+from shengji.rl import world_afterstate_v2_training as training
 
 
 def _sha(value: object) -> str:
@@ -35,7 +36,7 @@ def _material() -> PopulationMaterialV2:
     state = StateCandidateV2(
         deal_sha256=_sha("deal"), slot_sha256=_sha("slot"),
         state_sha256=_sha("state"), source="natural", split="fit",
-        phase="early", position="lead", role="attacker", trump_rank="2",
+        phase="early", position="lead", role="attacker", trump_rank="10",
         trump_mode="S", select_subfold=None, mechanics_surfaces=(),
         legal_candidate_count=2)
     candidates = tuple(PopulationCandidateV2(
@@ -105,6 +106,8 @@ def test_bridge_emits_complete_candidate_replica_examples_without_runner(
     assert rows[8].protected_incumbent is False
     assert all(row.split == "fit" for row in rows)
     assert all(row.points_bucket == "40-79" for row in rows)
+    batch = training.collate_training_examples(rows)
+    assert set(batch.trump_ranks) == {"10"}
 
 
 def test_manifest_is_target_free_and_hash_bound(source_fixture):

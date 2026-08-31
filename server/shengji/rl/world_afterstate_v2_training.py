@@ -17,6 +17,7 @@ from typing import Any, Sequence
 
 import torch
 
+from ..engine.cards import RANKS
 from .belief_contract import canonical_json_bytes
 from .world_afterstate import (
     OUTCOME_CLASSES, WorldAfterstateError, WorldAfterstateTensorsV0,
@@ -106,7 +107,7 @@ class WorldAfterstateV2TrainingExample:
                 or self.role not in ("attacker", "defender") \
                 or self.phase not in ("early", "middle", "late") \
                 or self.position not in ("lead", "follow") \
-                or self.trump_rank not in tuple("23456789TJQKA") \
+                or self.trump_rank not in RANKS \
                 or self.trump_mode not in TRUMP_MODES \
                 or self.points_bucket not in PRIOR_POINTS_BUCKETS:
             raise WorldAfterstateV2TrainingError("V2 training row identity drift")
@@ -275,7 +276,7 @@ class WorldAfterstateV2TrainingBatch:
                     or self.roles[index] not in ("attacker", "defender") \
                     or self.phases[index] not in ("early", "middle", "late") \
                     or self.positions[index] not in ("lead", "follow") \
-                    or self.trump_ranks[index] not in tuple("23456789TJQKA") \
+                    or self.trump_ranks[index] not in RANKS \
                     or self.trump_modes[index] not in TRUMP_MODES \
                     or self.points_buckets[index] not in PRIOR_POINTS_BUCKETS:
                 raise WorldAfterstateV2TrainingError(

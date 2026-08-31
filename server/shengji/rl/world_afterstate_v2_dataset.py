@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from ..engine.cards import RANKS
 from .belief_contract import canonical_json_bytes
 from .world_afterstate import (
     WorldAfterstateError,
@@ -261,7 +262,7 @@ class DatasetManifestRowV2:
                 or self.role not in ("attacker", "defender") \
                 or self.phase not in ("early", "middle", "late") \
                 or self.position not in ("lead", "follow") \
-                or self.trump_rank not in tuple("23456789TJQKA") \
+                or self.trump_rank not in RANKS \
                 or self.trump_mode not in ("S", "H", "D", "C", "NT") \
                 or self.points_bucket not in PRIOR_POINTS_BUCKETS:
             raise WorldAfterstateV2DatasetError("manifest identity drift")

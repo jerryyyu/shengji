@@ -531,6 +531,10 @@ def _trailing_decision_failure(session, *, mailbox_path, **_kwargs):
             "op": "rollout", "decision_sha256": observed["decision_sha256"],
             "candidate_indices": [0], "continuations": ["smart-all"]})
         assert rollout["status"] == "rollout_complete"
+        # Real planners may re-observe after a tool request before they commit.
+        # The engine state has not moved, so this is the same decision chain.
+        observed_again = execution.tool_request(mailbox_path, {"op": "observe"})
+        assert observed_again == observed
         raise RuntimeError("synthetic injected planner failure")
     while True:
         observed = execution.tool_request(mailbox_path, {"op": "observe"})
@@ -577,7 +581,7 @@ def test_trailing_decision_reopen_matches_live_ballot_card_canonicalization(
 
 
 @pytest.mark.parametrize("mutation", ("decision_sha", "candidates",
-                                       "second_decision"))
+                                       "conflicting_decision"))
 def test_trailing_decision_mutations_refuse(tmp_path, mutation):
     result = _trailing_failure_attempt(tmp_path)
     process_path = result.attempt_path / "process-team-0.json"
@@ -591,8 +595,12 @@ def test_trailing_decision_mutations_refuse(tmp_path, mutation):
         decision["response"]["candidates"] = list(
             reversed(decision["response"]["candidates"]))
         decision["response_sha256"] = execution._sha(decision["response"])
-    elif mutation == "second_decision":
-        process["trace"].append(dict(decision))
+    elif mutation == "conflicting_decision":
+        conflicting = json.loads(json.dumps(decision))
+        conflicting["response"]["current_state"]["turn"] = 1
+        conflicting["response_sha256"] = execution._sha(
+            conflicting["response"])
+        process["trace"].append(conflicting)
     process.pop("evidence_sha256")
     process["evidence_sha256"] = execution._sha(process)
     _rewrite(process_path, process)

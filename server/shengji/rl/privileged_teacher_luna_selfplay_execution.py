@@ -1863,11 +1863,20 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                     and request.get("op") in ("observe", "wait")
                     and response.get("status") == "decision"
                     and response.get("decision_sha256") not in committed_events):
-                if trailing_decision is not None:
+                candidate_trailing = (team, _trailing_decision_target(
+                    response, team=team, trajectory_body=trajectory_body))
+                # ``observe`` is intentionally idempotent.  A planner may
+                # observe again after correcting a rejected rollout request,
+                # so one incomplete process trace can legitimately contain
+                # the same uncommitted tail decision more than once.  Keep the
+                # one-decision invariant by comparing the fully reconstructed
+                # target, rather than confusing repeated observations with a
+                # second hidden state.
+                if (trailing_decision is not None
+                        and candidate_trailing != trailing_decision):
                     raise LunaExecutionError(
                         "process trailing decision chain drift")
-                trailing_decision = (team, _trailing_decision_target(
-                    response, team=team, trajectory_body=trajectory_body))
+                trailing_decision = candidate_trailing
                 validation_events[trailing_decision[1]["state_sha256"]] = \
                     trailing_decision[1]
             _validate_trace_semantics(

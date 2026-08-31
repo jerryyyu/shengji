@@ -342,6 +342,23 @@ def test_capacity_budget_stops_before_next_arm_and_is_bound_in_receipt():
     controller.validate_capacity_receipt(receipt)
 
 
+def test_capacity_wall_admission_uses_concurrent_arm_span(monkeypatch):
+    monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1, 2))
+    monkeypatch.setattr(
+        controller.time, "monotonic_ns",
+        _controlled_arm_clock(400_000_000, 400_000_000))
+    receipt = controller.run_capacity(
+        deadline_nanoseconds=12_000_000_000,
+        physical_memory_bytes=8_000_000_000,
+        cumulative_wall_budget_nanoseconds=900_000_000,
+        cumulative_token_budget=1_000_000, game_runner=_metric)
+    # The second arm is another two-wave concurrent span, not twice the first
+    # arm merely because it contains twice as many workers.
+    assert [arm["workers"] for arm in receipt.body["arms"]] == [1, 2]
+    assert receipt.body["arms"][-1]["cumulative_wall_nanoseconds"] \
+        == 800_000_000
+
+
 def test_real_capacity_uses_live_execution_meter_and_refuses_zero_measurement(
         tmp_path, monkeypatch):
     monkeypatch.setattr(controller, "CAPACITY_WORKERS", (1,))

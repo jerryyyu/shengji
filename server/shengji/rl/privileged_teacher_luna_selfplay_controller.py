@@ -1227,7 +1227,14 @@ def _run_capacity_core(*, deadline_nanoseconds: int, physical_memory_bytes: int,
         if previous is not None:
             previous_workers = int(previous["workers"])
             multiplier = (workers + previous_workers - 1) // previous_workers
-            estimated_wall = int(previous["arm_wall_span_nanoseconds"]) * multiplier
+            # Every arm runs the same two waves per worker.  Increasing the
+            # worker count increases aggregate tokens, but—when the capacity
+            # property being measured holds—it does not multiply wall span.
+            # The old worker multiplier made a passing concurrent arm refuse
+            # before it could measure the next arm.  Use the prior measured
+            # arm span as the pre-admission estimate; the actual cumulative
+            # wall and scaling gates still fail closed after the arm.
+            estimated_wall = int(previous["arm_wall_span_nanoseconds"])
             estimated_tokens = int(previous["aggregate_token_count"]) * multiplier
             if cumulative_wall + estimated_wall > cumulative_wall_budget_nanoseconds:
                 stop_reason = "cumulative_wall_budget_before_arm"

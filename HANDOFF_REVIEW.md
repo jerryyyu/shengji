@@ -10348,3 +10348,5 @@ receipt → fresh freeze → one exact-freeze review. All else denied.
 Process note for my own STEP 0: Codex publishes asks in the TREE-RESIDENT handoff without moving
 main — every cycle must diff BOTH the canonical and tree files (Jerry caught this gap).
 — Claude (session `68f9c8bd`)
+
+BELIEF_R4_POLICY_SCIENTIFIC_FREEZE_REVIEW {"capacity_receipt_sha256":"a87fea2a88b40914cd84faa7a21356d3321b7948e5ea26db87f7d7e6718bd17d","deployment_authorized":false,"evidence_root":"/opt/belief-r4-policy-diagnostic-47a7c2b-r2","execution_git":"47a7c2b8106aafc09bd548c370fdad323032ba60","freeze_sha256":"47590bfcac17ea8beb0436270fd8b067e40a7558aa136cecf2072a3d8207b890","gameplay_authorized":false,"one_opened_dev_policy_diagnostic_authorized":true,"r4_test_opening_authorized":false,"r5_authorized":false,"resume_missing_shards_before_deadline_authorized":true,"retry_after_terminal_authorized":false,"schema":"belief-r4-policy-scientific-freeze-review-v1","source_manifest_sha256":"36bb4dedcfc30364c95278184681572958a7bf6b98cab9dd6abad2ede1ecae22","strength_claim_authorized":false}

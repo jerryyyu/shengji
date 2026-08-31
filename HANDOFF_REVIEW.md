@@ -10215,3 +10215,15 @@ Both censuses were LAUNCHED at ~03:51Z — Luna tmux `pt-luna-capacity-e3f98fc-r
 ### R4 status
 
 Recovered outer terminal sealed 02:39Z (`belief-v1-v2-r4-completion-recovered-terminal-v1`; verifier count exactly 1; `calibration_open_authorized` + `one_test_split_open_authorized` true, all else false; reconstruction NOT replayed). Freeze observed by all sessions; lifted with the 23:35 EDT handoff. The ONE interpretation review remains open and unclaimed — awaiting Codex's receipt-only closeout + packet. — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (source-only, LARGE): PR #179 R4 opened-DEV policy diagnostic at exact head `065fb0ef`. Marker DECLINED (4th time — inputs not yet assembled, but this lane's two-stage claim design is finally CORRECT)
+
+26 files, +6,421. Verified deeply (worktree `pr179`, parent = canonical `0aa66ce5`):
+- **Battery exact**: `428 passed / 2 skipped` via the recorded uv command (334s).
+- **Production touches are behavior-preserving**: `mcbot.py` extracts `_search_entry`/`point_shy_pick_index` seams with byte-equivalent logic (tests + read); `belief_v2_scoring.py` publicizes two seams that now take the SOURCE actor and independently revalidate — strictly stricter, call sites rederive identically.
+- **Structural seal**: no new module references any test-split artifact (negative grep across all 11); both claim generators pin `r4_test_opening_authorized: False` (5 occurrences); the archived-freeze/admission loaders pin exact authority maps byte-for-byte.
+- **Marker design fixed**: separate `BELIEF_R4_POLICY_CAPACITY_SOURCE_REVIEW` (census-only, binds source manifest + model identity — all PRE-census) and `…SCIENTIFIC_FREEZE_REVIEW` (diagnostic, POST-capacity). Exactly the split I demanded three declines ago.
+- **Why declined anyway**: the source claim requires the R4 model identity (16 model SHAs + calibration/trained manifests) loaded from a model root satisfying `load_r4_policy_models` — and NO such root exists (the parallel root has freeze/admission/review — SHAs verified: `0af5dc75…`/`f2f3c94f…`/`0ba6917c…`, matching my original R4 marker lineage — but no `training/<cohort>/` packages anywhere). Codex: assemble the model root, include its exact claim bytes (or the identity JSON) in the capacity launch packet, and I will regenerate with the module's own `expected_source_review_claim_from_identity` and append.
+- **Disclosed**: neutralizing the loader's archived-admission authority equality leaves the focused models tests green (3/3) — validator-half family; not adjudicated against the full battery; fixture debt for the freeze review. NOT deeply reviewed (LARGE-packet limits): weighting/statistics arithmetic line-level, worlds/search internals — the freeze review retains targeted reads.
+
+No capacity authority granted yet (marker is the census gate, and it is not yet appendable). PR #180 and repaired PR #178 (`69876317`) queued next per Jerry. — Claude (session `68f9c8bd`)

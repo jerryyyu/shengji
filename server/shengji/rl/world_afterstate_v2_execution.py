@@ -432,12 +432,28 @@ def bind_runtime_expectation(expected: str) -> None:
     os.environ[RUNTIME_EXPECTATION_ENV] = expected
 
 
-def _verify_inherited_runtime_expectation() -> None:
-    expected = os.environ.get(RUNTIME_EXPECTATION_ENV)
+def _verify_inherited_runtime_expectation(
+        expected: str | None = None) -> None:
+    """Verify a pool worker and seed its own descendants with the binding.
+
+    The explicit initializer argument is load-bearing.  A multiprocessing
+    forkserver may have started before the admitted controller set its
+    environment, so ambient inheritance alone is not an authentic channel for
+    the expected runtime hash.
+    """
+    inherited = os.environ.get(RUNTIME_EXPECTATION_ENV)
     if expected is None:
-        raise WorldAfterstateV2ExecutionError(
-            "spawned runtime expectation is missing")
+        expected = inherited
+        if expected is None:
+            raise WorldAfterstateV2ExecutionError(
+                "spawned runtime expectation is missing")
+    else:
+        _digest(expected, "spawned runtime expectation")
+        if inherited is not None and inherited != expected:
+            raise WorldAfterstateV2ExecutionError(
+                "inherited runtime expectation drift")
     verify_live_runtime_sha256(expected)
+    os.environ[RUNTIME_EXPECTATION_ENV] = expected
 
 
 def verified_process_pool_kwargs() -> dict[str, Any]:
@@ -446,7 +462,8 @@ def verified_process_pool_kwargs() -> dict[str, Any]:
     if expected is None:
         return {}
     _digest(expected, "inherited runtime expectation")
-    return {"initializer": _verify_inherited_runtime_expectation}
+    return {"initializer": _verify_inherited_runtime_expectation,
+            "initargs": (expected,)}
 
 
 def _torch_profile() -> tuple[str, str]:

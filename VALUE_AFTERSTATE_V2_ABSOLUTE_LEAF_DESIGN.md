@@ -636,8 +636,11 @@ binary closes before capacity or admission.  This prevents the measured path
 from silently falling back to the materially slower pure-Python engine.
 Every scientific controller binds and rechecks that runtime in its own child;
 every nested capacity, label, and reconstruction process pool uses the same
-identity as a worker initializer, and the parent rechecks before accepting a
-child result.  On the Linux execution host, every profile also requires the
+identity as an explicit worker-initializer argument, seeds that verified
+identity for any worker descendants, and the parent rechecks before accepting
+a child result.  The binding must not rely only on ambient environment
+inheritance because a multiprocessing forkserver may predate controller
+admission.  On the Linux execution host, every profile also requires the
 mapped shared-library device/inode from `/proc/self/maps` to equal the exact
 path whose bytes are hashed, closing the import-then-atomic-replace window.
 Binding only the outer CLI or only rehashing the pathname is insufficient.

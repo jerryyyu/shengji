@@ -3,8 +3,10 @@
 import os
 import json
 import hashlib
+import multiprocessing
 import pytest
 import subprocess
+import sys
 import threading
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -189,6 +191,49 @@ def test_capacity_process_pool_worker_rechecks_inherited_runtime(monkeypatch):
         assert pool.submit(_runtime_pool_probe).result(timeout=60) == expected
 
 
+def test_pool_initializer_does_not_depend_on_predating_forkserver(tmp_path):
+    if "forkserver" not in multiprocessing.get_all_start_methods():
+        pytest.skip("forkserver is unavailable")
+    script = tmp_path / "forkserver_runtime_probe.py"
+    script.write_text("""
+import hashlib
+import multiprocessing
+import os
+import sys
+from concurrent.futures import ProcessPoolExecutor
+
+sys.path.insert(0, sys.argv[1])
+from shengji.rl import world_afterstate_v2_execution as execution
+from shengji.rl.belief_contract import canonical_json_bytes
+
+def probe():
+    return os.environ.get(execution.RUNTIME_EXPECTATION_ENV)
+
+def main():
+    context = multiprocessing.get_context("forkserver")
+    with ProcessPoolExecutor(max_workers=1, mp_context=context) as pool:
+        assert pool.submit(probe).result(timeout=60) is None
+    expected = hashlib.sha256(canonical_json_bytes(
+        execution.live_runtime_profile())).hexdigest()
+    os.environ[execution.RUNTIME_EXPECTATION_ENV] = expected
+    with ProcessPoolExecutor(
+            max_workers=1, mp_context=context,
+            **execution.verified_process_pool_kwargs()) as pool:
+        assert pool.submit(probe).result(timeout=60) == expected
+
+if __name__ == "__main__":
+    main()
+""", encoding="utf-8")
+    environment = os.environ.copy()
+    environment.pop(execution.RUNTIME_EXPECTATION_ENV, None)
+    server = os.path.dirname(os.path.dirname(os.path.dirname(
+        execution.__file__)))
+    completed = subprocess.run(
+        (sys.executable, "-P", "-B", str(script), server),
+        env=environment, capture_output=True, text=True, timeout=90)
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_parallel_capacity_operation_wires_runtime_initializer(monkeypatch):
     expected = hashlib.sha256(canonical_json_bytes(
         execution.live_runtime_profile())).hexdigest()
@@ -213,6 +258,7 @@ def test_parallel_capacity_operation_wires_runtime_initializer(monkeypatch):
         "state-successor", 1, (SimpleNamespace(fixture_sha256="1" * 64),))
     assert isinstance(operation(), str)
     assert seen["initializer"] is execution._verify_inherited_runtime_expectation
+    assert seen["initargs"] == (expected,)
 
 
 def test_score_free_preflight_refuses_expired_batch_and_worker_failure(

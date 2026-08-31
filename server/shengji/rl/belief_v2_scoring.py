@@ -171,9 +171,22 @@ def _validate_decision(value: V2ScoringDecisionV1) -> None:
             "V2 scoring reference public surface drift")
 
 
-def _adapt_reference(
-        actor: ActorObservationV1,
+def adapt_v2_reference_ownership(
+        source_actor: ActorObservationV1,
         batch: ReferenceWorldBatchV1) -> BeliefOwnershipV1:
+    """Rebind one authenticated REF-C marginal to the V2 scoring actor."""
+    try:
+        validate_reference_world_batch(batch)
+        actor = v2_scoring_actor(source_actor)
+        if v2_scoring_actor(batch.actor).canonical_bytes() \
+                != actor.canonical_bytes():
+            raise BeliefV2ScoringError(
+                "V2 scoring reference source actor drift")
+    except ValueError as exc:
+        if isinstance(exc, BeliefV2ScoringError):
+            raise
+        raise BeliefV2ScoringError(
+            "V2 scoring reference input refused") from exc
     original = batch.ownership()
     result = replace(
         original,
@@ -188,11 +201,25 @@ def _adapt_reference(
     return result
 
 
-def _predict_cohort(
-        actor: ActorObservationV1,
+def predict_v2_cohort_ownership(
+        source_actor: ActorObservationV1,
         common: V2CommonSurfaceTensorsV1,
         cohort: V2CohortModelsV1) \
         -> tuple[tuple[BeliefOwnershipV1, ...], BeliefOwnershipV1]:
+    """Return every member and the ensemble on the reviewed V2 surface.
+
+    This is the target-blind inference seam used by offline scoring and by a
+    future sampler-only diagnostic.  It deliberately accepts the source actor
+    rather than a caller-asserted adapted actor, then independently rederives
+    the scoring surface before projection.
+    """
+    try:
+        validate_common_surface_tensors(source_actor, common)
+        validate_v2_cohort_models(cohort)
+        actor = v2_scoring_actor(source_actor)
+    except ValueError as exc:
+        raise BeliefV2ScoringError(
+            "V2 scoring cohort input refused") from exc
     members = []
     for model, model_sha in zip(
             cohort.models, cohort.model_sha256s, strict=True):
@@ -259,10 +286,11 @@ def score_v2_round(
         cohort.cohort_id: [[] for _ in COHORT_SEEDS] for cohort in cohorts}
     for decision in decisions:
         actor = v2_scoring_actor(decision.source_actor)
-        reference = _adapt_reference(actor, decision.reference)
+        reference = adapt_v2_reference_ownership(
+            decision.source_actor, decision.reference)
         for cohort in cohorts:
-            members, ensemble = _predict_cohort(
-                actor, decision.common, cohort)
+            members, ensemble = predict_v2_cohort_ownership(
+                decision.source_actor, decision.common, cohort)
             scores = score_target_candidates(
                 actor, decision.target, reference, (*members, ensemble))
             for index, score in enumerate(scores[:-1]):

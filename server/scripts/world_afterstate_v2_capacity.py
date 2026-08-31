@@ -17,6 +17,13 @@ if not sys.flags.safe_path or not sys.dont_write_bytecode:
 if os.environ.get("PYTHONPATH"):
     raise RuntimeError("Value V2 capacity refuses PYTHONPATH")
 
+
+def _require_runtime_environment() -> None:
+    if (os.environ.get("SHENGJI_FAST") != "1"
+            or os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1"):
+        raise RuntimeError(
+            "Value V2 requires SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
+
 import argparse  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
@@ -46,7 +53,8 @@ def _preimport_bytecode_scan(
                     "Value V2 capacity refuses source bytecode artifacts")
 
 
-if __name__ == "__main__":
+if __name__ in ("__main__", "__mp_main__"):
+    _require_runtime_environment()
     _preimport_bytecode_scan()
 
 from shengji.rl.belief_contract import canonical_json_bytes  # noqa: E402
@@ -58,7 +66,9 @@ from shengji.rl.world_afterstate_v2_capacity_runner import (  # noqa: E402
 from shengji.rl.world_afterstate_v2_capacity import (  # noqa: E402
     MAX_COMMAND_WALL_SECONDS, CapacityFailureReceiptV2)
 from shengji.rl.world_afterstate_v2_freeze_builder import _source_closure  # noqa: E402
-from shengji.rl.world_afterstate_v2_execution import live_runtime_profile  # noqa: E402
+from shengji.rl.world_afterstate_v2_execution import (  # noqa: E402
+    bind_runtime_expectation, live_runtime_profile,
+)
 
 
 REPO = SERVER.parent
@@ -271,6 +281,7 @@ def _run_worker(args: argparse.Namespace, *, output: Path, failure_out: Path,
     started_ns = time.perf_counter_ns()
     source_sha256 = _source_sha256()
     runtime_sha256 = _runtime_sha256()
+    bind_runtime_expectation(runtime_sha256)
     try:
         receipt = run_capacity_v2(
             source_sha256=source_sha256,

@@ -16,12 +16,24 @@ def test_multiprocessing_reentry_scans_bytecode_before_project_import():
     shadow = cache / "spawn-shadow.pyc"
     cache.mkdir(exist_ok=True)
     shadow.write_bytes(b"unchecked-shadow")
+    prior_fast = os.environ.get("SHENGJI_FAST")
+    prior_voids = os.environ.get("SHENGJI_REQUIRE_VOIDS")
+    os.environ["SHENGJI_FAST"] = "1"
+    os.environ["SHENGJI_REQUIRE_VOIDS"] = "1"
     try:
         with pytest.raises(
                 RuntimeError,
                 match="scientific execution refuses source bytecode"):
             runpy.run_path(str(script), run_name="__mp_main__")
     finally:
+        if prior_fast is None:
+            os.environ.pop("SHENGJI_FAST", None)
+        else:
+            os.environ["SHENGJI_FAST"] = prior_fast
+        if prior_voids is None:
+            os.environ.pop("SHENGJI_REQUIRE_VOIDS", None)
+        else:
+            os.environ["SHENGJI_REQUIRE_VOIDS"] = prior_voids
         shadow.unlink(missing_ok=True)
         try:
             cache.rmdir()
@@ -87,5 +99,7 @@ assert seen[5][0] == "supervisor" and seen[6][0] == "pipeline"
 '''
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
+    env["SHENGJI_FAST"] = "1"
+    env["SHENGJI_REQUIRE_VOIDS"] = "1"
     subprocess.run((sys.executable, "-P", "-B", "-c", probe),
                    check=True, env=env)

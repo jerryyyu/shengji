@@ -31,9 +31,15 @@ def _patch_minimal(monkeypatch, tmp_path: Path):
                  for label in builder._ARTIFACT_LABELS)
     source = (SourceBindingV2("server/shengji/rl/example.py", 1,
                               _digest("source")),)
-    runtime = {"boot_identity": "boot-1", "python": "test"}
+    runtime = {
+        "boot_identity": "boot-1", "python": "test",
+        "environment": {"SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"},
+        "shengji_native_extension": {"status": "present", "path": "stub",
+                                       "sha256": _digest("native")},
+    }
     monkeypatch.setattr(builder, "_head", lambda _repo, _head: head)
-    monkeypatch.setattr(builder, "_clean_source_tree", lambda _repo: None)
+    monkeypatch.setattr(builder, "_clean_source_tree",
+                        lambda _repo, _runtime: None)
     monkeypatch.setattr(builder, "_bindings", lambda _repo, _head: source)
     monkeypatch.setattr(builder, "_validate_inputs",
                         lambda *_args, **_kwargs: (rows, "D256"))
@@ -61,7 +67,13 @@ def test_clean_success_roundtrips_and_binds_runtime(monkeypatch, tmp_path):
 def test_runtime_boot_mismatch_is_not_accepted(monkeypatch, tmp_path):
     repo, evidence, head, _rows = _patch_minimal(monkeypatch, tmp_path)
     monkeypatch.setattr(builder, "live_runtime_profile",
-                        lambda: {"boot_identity": "boot-2", "python": "test"})
+                        lambda: {
+                            "boot_identity": "boot-2", "python": "test",
+                            "environment": {"SHENGJI_FAST": "1",
+                                            "SHENGJI_REQUIRE_VOIDS": "1"},
+                            "shengji_native_extension": {
+                                "status": "present", "path": "stub",
+                                "sha256": _digest("native")}})
     # The live profile is bound into the new freeze; this test ensures the
     # binding is not silently replaced by a caller-provided boot witness.
     freeze = builder.build_execution_freeze(
@@ -87,15 +99,63 @@ def test_strict_input_rejects_noncanonical_and_duplicate_keys():
 def test_source_dirty_and_loadable_shadow_guards(monkeypatch, tmp_path):
     repo = tmp_path / "repo"
     (repo / "server" / "shengji").mkdir(parents=True)
+    monkeypatch.setattr(
+        builder, "_frozen_native_path",
+        lambda _repo, _runtime: _repo / "server" / "shengji" / "engine" /
+        "_fast.so")
     monkeypatch.setattr(builder, "_git",
                         lambda *_args, **_kwargs: " M server/shengji/x.py")
     with pytest.raises(builder.FreezeBuilderError, match="not clean"):
-        builder._clean_source_tree(repo)
+        builder._clean_source_tree(repo, {
+            "shengji_native_extension": {"status": "absent"}})
     monkeypatch.setattr(builder, "_git",
                         lambda *_args, **_kwargs: "!! server/shengji/x.py")
     (repo / "server" / "shengji" / "x.py").write_text("x")
     with pytest.raises(builder.FreezeBuilderError, match="ignored"):
-        builder._clean_source_tree(repo)
+        builder._clean_source_tree(repo, {
+            "shengji_native_extension": {"status": "absent"}})
+
+
+def test_clean_tree_allows_only_hash_bound_in_tree_fast_extension(
+        monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    engine = repo / "server" / "shengji" / "engine"
+    scripts = repo / "server" / "scripts"
+    engine.mkdir(parents=True)
+    scripts.mkdir(parents=True)
+    native = engine / "_fast.cpython-314-x86_64-linux-gnu.so"
+    native.write_bytes(b"bound-native")
+    runtime = {"shengji_native_extension": {
+        "status": "present", "path": str(native.resolve()),
+        "sha256": hashlib.sha256(b"bound-native").hexdigest(),
+        "loaded_file_identity": {"status": "verified"}}}
+    monkeypatch.setattr(
+        builder, "_git", lambda *_args, **_kwargs:
+        "!! server/shengji/engine/_fast.cpython-314-x86_64-linux-gnu.so")
+    builder._clean_source_tree(repo, runtime)
+
+    shadow = engine / "foreign.so"
+    shadow.write_bytes(b"shadow")
+    monkeypatch.setattr(
+        builder, "_git", lambda *_args, **_kwargs:
+        "!! server/shengji/engine/_fast.cpython-314-x86_64-linux-gnu.so\n"
+        "!! server/shengji/engine/foreign.so")
+    with pytest.raises(builder.FreezeBuilderError, match="ignored loadable"):
+        builder._clean_source_tree(repo, runtime)
+
+
+def test_clean_tree_refuses_changed_fast_extension(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    engine = repo / "server" / "shengji" / "engine"
+    (repo / "server" / "scripts").mkdir(parents=True)
+    engine.mkdir(parents=True)
+    native = engine / "_fast.cpython-314-x86_64-linux-gnu.so"
+    native.write_bytes(b"changed")
+    monkeypatch.setattr(builder, "_git", lambda *_args, **_kwargs: "")
+    with pytest.raises(builder.FreezeBuilderError, match="runtime path drift"):
+        builder._clean_source_tree(repo, {"shengji_native_extension": {
+            "status": "present", "path": str(native.resolve()),
+            "sha256": hashlib.sha256(b"original").hexdigest()}})
 
 
 def test_real_input_wiring_returns_tier_and_refuses_policy_drift(

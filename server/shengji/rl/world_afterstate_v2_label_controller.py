@@ -32,6 +32,7 @@ from .world_afterstate_v2_artifacts import (
     reopen_continuation_manifest,
     reopen_continuation_shard,
 )
+from .world_afterstate_v2_execution import verified_process_pool_kwargs
 from .world_afterstate_v2_population_artifacts import material_sha256
 from .world_afterstate_v2_continuation import (
     ContinuationBundleV2,
@@ -396,7 +397,8 @@ def build_continuation_population_v2(
                     "label deadline before continuation")
             accept(material, _build_one(material))
     elif built_missing:
-        pool = ProcessPoolExecutor(max_workers=workers)
+        pool = ProcessPoolExecutor(
+            max_workers=workers, **verified_process_pool_kwargs())
         try:
             futures = {pool.submit(_build_one, material): material
                        for material in built_missing}

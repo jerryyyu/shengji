@@ -59,6 +59,8 @@ MAX_PROGRESS_EVENT_BYTES = 64 * 1024
 PROGRESS_DIRECTORY = "progress"
 RESOURCE_CLOSEOUT_SCHEMA = "world-afterstate-v2-resource-incomplete-closeout-v1"
 RESOURCE_CLOSEOUT_RELATIVE = "resource-incomplete-closeout.json"
+RUNTIME_EXPECTATION_ENV = "SHENGJI_VALUE_V2_EXPECTED_RUNTIME_SHA256"
+_PROC_SELF_MAPS = Path("/proc/self/maps")
 
 # The names are part of the protocol.  A stage may consume only the listed
 # split; in particular no helper can accidentally label audit rows early.
@@ -193,6 +195,7 @@ def _controller_process_entry(operation: Callable[..., Any],
     """Run one scientific controller in its own killable process group."""
     try:
         os.setsid()
+        bind_runtime_expectation(supervisor.freeze.runtime_sha256)
         # Spawned controllers have their own process CPU counter.  Do not
         # compare it with the parent's invocation baseline carried through
         # pickling; reset all invocation-relative telemetry in the child.
@@ -403,8 +406,47 @@ def live_runtime_profile() -> dict[str, Any]:
             "cpu_count": os.cpu_count(), "torch_threads": _torch_threads(),
             "torch_version": torch_version, "torch_config_sha256": torch_config_sha,
             "numpy_version": numpy_version,
+            "environment": {
+                "SHENGJI_FAST": os.environ.get("SHENGJI_FAST", "absent"),
+                "SHENGJI_REQUIRE_VOIDS": os.environ.get(
+                    "SHENGJI_REQUIRE_VOIDS", "absent"),
+            },
             "shengji_native_extension": native,
             "boot_identity": _boot_identity()}
+
+
+def verify_live_runtime_sha256(expected: str) -> None:
+    """Refuse if this process did not import the exact frozen runtime."""
+    _digest(expected, "expected runtime SHA-256")
+    if _sha(live_runtime_profile()) != expected:
+        raise WorldAfterstateV2ExecutionError("spawned runtime identity drift")
+
+
+def bind_runtime_expectation(expected: str) -> None:
+    """Bind one controller tree before it may create nested process workers."""
+    verify_live_runtime_sha256(expected)
+    inherited = os.environ.get(RUNTIME_EXPECTATION_ENV)
+    if inherited is not None and inherited != expected:
+        raise WorldAfterstateV2ExecutionError(
+            "inherited runtime expectation drift")
+    os.environ[RUNTIME_EXPECTATION_ENV] = expected
+
+
+def _verify_inherited_runtime_expectation() -> None:
+    expected = os.environ.get(RUNTIME_EXPECTATION_ENV)
+    if expected is None:
+        raise WorldAfterstateV2ExecutionError(
+            "spawned runtime expectation is missing")
+    verify_live_runtime_sha256(expected)
+
+
+def verified_process_pool_kwargs() -> dict[str, Any]:
+    """Return a strict initializer only inside an admitted controller tree."""
+    expected = os.environ.get(RUNTIME_EXPECTATION_ENV)
+    if expected is None:
+        return {}
+    _digest(expected, "inherited runtime expectation")
+    return {"initializer": _verify_inherited_runtime_expectation}
 
 
 def _torch_profile() -> tuple[str, str]:
@@ -424,20 +466,105 @@ def _numpy_version() -> str:
         return "absent"
 
 
-def _native_extension_profile() -> dict[str, str]:
-    for name in ("shengji.engine._fast", "shengji._native", "shengji.engine._native"):
+def _loaded_native_file_identity(
+        resolved: Path, metadata: os.stat_result) -> dict[str, Any]:
+    """Bind Linux's mapped extension inode to the path bytes we hash.
+
+    Hashing the pathname alone cannot distinguish a library already mapped
+    from an inode that was atomically replaced before the hash.  Perf Cloud,
+    the only V2 execution host, exposes the loaded device/inode in procfs.
+    """
+    if not sys.platform.startswith("linux"):
+        return {"status": "unavailable", "device_major": "unavailable",
+                "device_minor": "unavailable", "inode": "unavailable"}
+    try:
+        rows = _PROC_SELF_MAPS.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        if os.environ.get("SHENGJI_FAST") == "1":
+            raise WorldAfterstateV2ExecutionError(
+                "loaded native extension telemetry unavailable") from exc
+        return {"status": "unavailable", "device_major": "unavailable",
+                "device_minor": "unavailable", "inode": "unavailable"}
+    mapped: set[tuple[int, int, int]] = set()
+    for row in rows:
+        fields = row.split(maxsplit=5)
+        if len(fields) != 6:
+            continue
+        mapped_path = fields[5].removesuffix(" (deleted)")
+        if mapped_path != str(resolved):
+            continue
         try:
-            spec = importlib.util.find_spec(name)
-        except (ImportError, ModuleNotFoundError, ValueError):
-            spec = None
-        origin = None if spec is None else spec.origin
-        if origin and origin not in ("built-in", "frozen") and Path(origin).is_file():
-            try:
-                return {"status": "present", "path": str(Path(origin).resolve()),
-                        "sha256": _sha_bytes(Path(origin).read_bytes())}
-            except OSError as exc:
-                raise WorldAfterstateV2ExecutionError(
-                    "native extension telemetry unavailable") from exc
+            major, minor = (int(value, 16) for value in fields[3].split(":"))
+            inode = int(fields[4])
+        except (TypeError, ValueError):
+            continue
+        mapped.add((major, minor, inode))
+    expected = (os.major(metadata.st_dev), os.minor(metadata.st_dev),
+                metadata.st_ino)
+    if expected not in mapped:
+        if os.environ.get("SHENGJI_FAST") == "1":
+            raise WorldAfterstateV2ExecutionError(
+                "loaded native extension inode drift")
+        return {"status": "not-loaded", "device_major": expected[0],
+                "device_minor": expected[1], "inode": expected[2]}
+    return {"status": "verified", "device_major": expected[0],
+            "device_minor": expected[1], "inode": expected[2]}
+
+
+def _native_file_snapshot(path: Path) -> tuple[bytes, os.stat_result]:
+    """Read and stat one already-open native inode, never the path twice."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+        try:
+            before = os.fstat(descriptor)
+            chunks = []
+            while True:
+                chunk = os.read(descriptor, 1024 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            after = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise WorldAfterstateV2ExecutionError(
+            "native extension telemetry unavailable") from exc
+    identity = lambda value: (
+        value.st_dev, value.st_ino, value.st_size,
+        value.st_mtime_ns, value.st_ctime_ns, value.st_nlink)
+    if (identity(before) != identity(after) or not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1 or before.st_size != sum(map(len, chunks))):
+        raise WorldAfterstateV2ExecutionError(
+            "native extension changed during read")
+    return b"".join(chunks), before
+
+
+def _native_extension_profile() -> dict[str, Any]:
+    try:
+        spec = importlib.util.find_spec("shengji.engine._fast")
+    except (ImportError, ModuleNotFoundError, ValueError):
+        spec = None
+    origin = None if spec is None else spec.origin
+    if origin and origin not in ("built-in", "frozen"):
+        path = Path(origin)
+        expected_parent = Path(__file__).resolve().parents[1] / "engine"
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            raise WorldAfterstateV2ExecutionError(
+                "native extension telemetry unavailable") from exc
+        if (path.is_symlink() or not path.is_file()
+                or resolved.parent != expected_parent.resolve()
+                or not resolved.name.startswith("_fast.")
+                or resolved.suffix.lower() not in {".so", ".dylib", ".pyd"}):
+            raise WorldAfterstateV2ExecutionError(
+                "native extension origin drift")
+        raw, metadata = _native_file_snapshot(resolved)
+        return {"status": "present", "path": str(resolved),
+                "sha256": _sha_bytes(raw),
+                "loaded_file_identity": _loaded_native_file_identity(
+                    resolved, metadata)}
     return {"status": "absent", "path": "absent", "sha256": "absent"}
 
 
@@ -1831,6 +1958,7 @@ class StageSupervisorV2:
             process.join(timeout=2.0)
             if process.is_alive():
                 _terminate_process_group(process)
+        verify_live_runtime_sha256(self.freeze.runtime_sha256)
         # Controllers publish only immutable shards/events.  Reopen those
         # child publications before the parent validates, seals the stage, or
         # snapshots a resource closeout at the wall.

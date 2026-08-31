@@ -128,7 +128,34 @@ def _head(repo: Path, expected: str) -> str:
     return actual
 
 
-def _clean_source_tree(repo: Path) -> None:
+def _frozen_native_path(repo: Path, runtime_profile: Mapping[str, Any]) -> Path:
+    native = runtime_profile.get("shengji_native_extension")
+    if type(native) is not dict or native.get("status") != "present":
+        _fail("compiled Value V2 runtime is unavailable")
+    if type(native.get("path")) is not str or type(native.get("sha256")) is not str:
+        _fail("compiled Value V2 runtime path drift")
+    path = Path(native["path"])
+    expected_parent = (repo / "server" / "shengji" / "engine").resolve()
+    try:
+        resolved = path.resolve(strict=True)
+        metadata = resolved.stat()
+    except OSError as exc:
+        _fail("compiled Value V2 runtime path drift", exc)
+    if (not path.is_absolute() or path.is_symlink() or resolved.parent != expected_parent
+            or not resolved.name.startswith("_fast.")
+            or resolved.suffix.lower() not in {".so", ".dylib", ".pyd"}
+            or not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+            or native.get("sha256") != _sha(_read(resolved, "native extension"))):
+        _fail("compiled Value V2 runtime path drift")
+    if str(runtime_profile.get("platform", "")).startswith("Linux") \
+            and (type(native.get("loaded_file_identity")) is not dict
+                 or native["loaded_file_identity"].get("status") != "verified"):
+        _fail("compiled Value V2 loaded runtime identity drift")
+    return resolved
+
+
+def _clean_source_tree(repo: Path, runtime_profile: Mapping[str, Any]) -> None:
+    native_path = _frozen_native_path(repo, runtime_profile)
     try:
         status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all",
                       "--ignored=matching")
@@ -144,6 +171,9 @@ def _clean_source_tree(repo: Path) -> None:
             if not ignored:
                 _fail("source checkout is not clean")
             normalized = name.rstrip("/")
+            candidate = repo / normalized
+            if candidate.resolve() == native_path:
+                continue
             if (Path(normalized).suffix.lower() in _LOADABLE
                     or normalized.startswith(("server/shengji/", "server/scripts/"))):
                 _fail("ignored loadable source state present")
@@ -169,6 +199,9 @@ def _clean_source_tree(repo: Path) -> None:
                     # ignored or untracked shadows are not admissible.
                     if path.suffix.lower() in {".pyc", ".pyo"}:
                         _fail("source bytecode artifact present")
+                    if path.suffix.lower() in {".so", ".dylib", ".pyd"} \
+                            and path.resolve() != native_path:
+                        _fail("ignored loadable source state present")
 
 
 def _module_path(repo: Path, name: str) -> Path | None:
@@ -449,13 +482,15 @@ def build_execution_freeze(
             or not 1 <= heartbeat_seconds <= 60):
         _fail("freeze heartbeat drift")
     source_git = _head(repo, expected_head)
-    _clean_source_tree(repo)
     try:
         runtime = live_runtime_profile()
     except Exception as exc:
         _fail("live runtime profile unavailable", exc)
-    if type(runtime) is not dict or not runtime.get("boot_identity"):
+    if (type(runtime) is not dict or not runtime.get("boot_identity")
+            or runtime.get("environment") != {
+                "SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"}):
         _fail("live runtime profile drift")
+    _clean_source_tree(repo, runtime)
     runtime_sha = _object_sha(runtime)
     artifacts, tier = _validate_inputs(
         repo, (("protocol", protocol_path), ("capacity", capacity_path),
@@ -495,7 +530,7 @@ def build_execution_freeze(
     if reopened != freeze:
         _fail("execution freeze roundtrip drift")
     # Do not allow importing/telemetry to have dirtied the checkout.
-    _clean_source_tree(repo)
+    _clean_source_tree(repo, runtime)
     return freeze
 
 

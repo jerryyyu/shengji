@@ -26,6 +26,7 @@ from .world_afterstate_v2_continuation import (
     reopen_continuation_bundle_v2,
 )
 from .world_afterstate_v2_population import PopulationMaterialV2
+from .world_afterstate_v2_execution import verified_process_pool_kwargs
 
 
 CONTINUATION_SCHEMA = "world-afterstate-v2-continuation-artifact-v1"
@@ -553,7 +554,8 @@ def reopen_continuation_manifest(
         if workers == 1:
             result = [_validate_continuation_process(item) for item in pending]
         else:
-            with ProcessPoolExecutor(max_workers=workers) as pool:
+            with ProcessPoolExecutor(
+                    max_workers=workers, **verified_process_pool_kwargs()) as pool:
                 result = list(pool.map(_validate_continuation_process, pending))
     except Exception as exc:
         raise WorldAfterstateV2ArtifactError(

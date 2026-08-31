@@ -186,9 +186,32 @@ def test_value_v2_preimport_clis_refuse_ignored_bytecode(
     shutil.copy2(source, target)
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
+    environment["SHENGJI_FAST"] = "1"
+    environment["SHENGJI_REQUIRE_VOIDS"] = "1"
     result = subprocess.run(
         (sys.executable, "-P", "-B", str(target)), env=environment,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         check=False)
     assert result.returncode != 0
     assert message in result.stderr
+
+
+@pytest.mark.parametrize("script_name", (
+    "world_afterstate_v2_capacity.py",
+    "build_world_afterstate_v2_freeze_inputs.py",
+    "build_world_afterstate_v2_freeze.py",
+    "world_afterstate_v2_run.py",
+))
+def test_value_v2_preimport_clis_require_compiled_strict_runtime(
+        script_name: str) -> None:
+    script = Path(__file__).parents[1] / "scripts" / script_name
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    environment.pop("SHENGJI_FAST", None)
+    environment.pop("SHENGJI_REQUIRE_VOIDS", None)
+    result = subprocess.run(
+        (sys.executable, "-P", "-B", str(script), "--help"),
+        env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, check=False)
+    assert result.returncode != 0
+    assert "requires SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1" in result.stderr

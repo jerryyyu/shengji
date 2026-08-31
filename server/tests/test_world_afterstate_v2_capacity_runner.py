@@ -11,6 +11,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from types import SimpleNamespace
 
 import shengji.rl.world_afterstate_v2_capacity_runner as runner
+import shengji.rl.world_afterstate_v2_execution as execution
 from shengji.rl.belief_contract import canonical_json_bytes
 
 from shengji.rl.world_afterstate_v2_capacity import (
@@ -35,6 +36,10 @@ from shengji.rl.world_afterstate_v2_capacity_supervisor import (
 def _real_preflight_process_probe(identity, slot):
     """Pickle-safe witness that executes the real source driver in a child."""
     return os.getpid(), runner.drive_population_attempt_v2(identity, slot)
+
+
+def _runtime_pool_probe():
+    return os.environ.get(execution.RUNTIME_EXPECTATION_ENV)
 
 
 def _preflight() -> PreflightResultV2:
@@ -173,6 +178,41 @@ def test_real_preflight_driver_executes_in_a_process():
     result.validate()
     assert result.deal_sha256 == identity["deal_sha256"]
     assert result.slot_sha256 == slot.slot_sha256
+
+
+def test_capacity_process_pool_worker_rechecks_inherited_runtime(monkeypatch):
+    expected = hashlib.sha256(canonical_json_bytes(
+        execution.live_runtime_profile())).hexdigest()
+    monkeypatch.setenv(execution.RUNTIME_EXPECTATION_ENV, expected)
+    with ProcessPoolExecutor(
+            max_workers=1, **execution.verified_process_pool_kwargs()) as pool:
+        assert pool.submit(_runtime_pool_probe).result(timeout=60) == expected
+
+
+def test_parallel_capacity_operation_wires_runtime_initializer(monkeypatch):
+    expected = hashlib.sha256(canonical_json_bytes(
+        execution.live_runtime_profile())).hexdigest()
+    monkeypatch.setenv(execution.RUNTIME_EXPECTATION_ENV, expected)
+    seen = {}
+
+    class Pool:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def map(self, _operation, payloads):
+            return tuple("a" * 64 for _ in payloads)
+
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", Pool)
+    operation = runner._parallel_operation(
+        "state-successor", 1, (SimpleNamespace(fixture_sha256="1" * 64),))
+    assert isinstance(operation(), str)
+    assert seen["initializer"] is execution._verify_inherited_runtime_expectation
 
 
 def test_score_free_preflight_refuses_expired_batch_and_worker_failure(

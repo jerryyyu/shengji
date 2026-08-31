@@ -47,6 +47,11 @@ def _unit_controller_context(monkeypatch):
     monkeypatch.setattr(
         execution, "_controller_context",
         lambda: multiprocessing.get_context("fork"))
+    # Torch's reported thread width can change across a fork.  These local
+    # callback tests exercise orchestration, not the production spawn/runtime
+    # boundary, which has its own real-child witness below.
+    monkeypatch.setattr(execution, "bind_runtime_expectation", lambda _sha: None)
+    monkeypatch.setattr(execution, "verify_live_runtime_sha256", lambda _sha: None)
 
 
 def _delayed_sentinel(path: Path, _supervisor, _shards) -> None:
@@ -61,6 +66,13 @@ def _spawn_publication(supervisor, _shards) -> str:
         stage="population", substage="spawn-proof", completed=1, total=1,
         sealed_shards=1, force=True)
     return "published"
+
+
+def _spawn_runtime_binding(supervisor, _shards) -> bool:
+    profile_sha = hashlib.sha256(
+        canonical_json_bytes(execution.live_runtime_profile())).hexdigest()
+    return (os.environ.get(execution.RUNTIME_EXPECTATION_ENV)
+            == supervisor.freeze.runtime_sha256 == profile_sha)
 
 
 class _StepClock:
@@ -349,20 +361,90 @@ def test_runtime_executable_and_native_claim_mutation_refuses(tmp_path):
 
 
 def test_fast_native_extension_path_and_sha_are_bound_when_present(tmp_path, monkeypatch):
-    binary = tmp_path / "_fast.cpython-314-darwin.so"
+    package = tmp_path / "server" / "shengji"
+    (package / "rl").mkdir(parents=True)
+    (package / "engine").mkdir()
+    binary = package / "engine" / "_fast.cpython-314-darwin.so"
     binary.write_bytes(b"native-extension")
-    real_find_spec = execution.importlib.util.find_spec
-
-    def find_spec(name):
-        if name == "shengji.engine._fast":
-            return __import__("types").SimpleNamespace(origin=str(binary))
-        return real_find_spec(name)
-
-    monkeypatch.setattr(execution.importlib.util, "find_spec", find_spec)
+    monkeypatch.setattr(execution, "__file__", str(package / "rl" / "execution.py"))
+    monkeypatch.setattr(
+        execution.importlib.util, "find_spec",
+        lambda _name: __import__("types").SimpleNamespace(origin=str(binary)))
+    loaded = {"status": "verified", "device_major": 1,
+              "device_minor": 2, "inode": 3}
+    monkeypatch.setattr(
+        execution, "_loaded_native_file_identity",
+        lambda _path, _metadata: loaded)
     profile = execution._native_extension_profile()
     assert profile == {"status": "present", "path": str(binary.resolve()),
                        "sha256": __import__("hashlib").sha256(
-                           b"native-extension").hexdigest()}
+                           b"native-extension").hexdigest(),
+                       "loaded_file_identity": loaded}
+
+
+def test_foreign_fast_native_extension_origin_is_refused(tmp_path, monkeypatch):
+    package = tmp_path / "server" / "shengji"
+    (package / "rl").mkdir(parents=True)
+    (package / "engine").mkdir()
+    foreign = tmp_path / "foreign" / "_fast.cpython-314-darwin.so"
+    foreign.parent.mkdir()
+    foreign.write_bytes(b"foreign")
+    monkeypatch.setattr(execution, "__file__", str(package / "rl" / "execution.py"))
+    monkeypatch.setattr(
+        execution.importlib.util, "find_spec",
+        lambda _name: __import__("types").SimpleNamespace(origin=str(foreign)))
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="native extension origin drift"):
+        execution._native_extension_profile()
+
+
+def test_linux_loaded_native_identity_refuses_atomic_replacement(
+        tmp_path, monkeypatch):
+    native = tmp_path / "_fast.cpython-314-x86_64-linux-gnu.so"
+    native.write_bytes(b"loaded-inode")
+    metadata = native.stat()
+    maps = tmp_path / "maps"
+    maps.write_text(
+        "1000-2000 r-xp 00000000 "
+        f"{os.major(metadata.st_dev):02x}:{os.minor(metadata.st_dev):02x} "
+        f"{metadata.st_ino} {native.resolve()}\n")
+    monkeypatch.setattr(execution.sys, "platform", "linux")
+    monkeypatch.setattr(execution, "_PROC_SELF_MAPS", maps)
+    monkeypatch.setenv("SHENGJI_FAST", "1")
+    assert execution._loaded_native_file_identity(
+        native.resolve(), metadata)["status"] == "verified"
+
+    replacement = tmp_path / "replacement.so"
+    replacement.write_bytes(b"replacement-inode")
+    replacement.replace(native)
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="loaded native extension inode drift"):
+        execution._loaded_native_file_identity(native.resolve(), native.stat())
+
+
+def test_native_snapshot_refuses_path_replacement_during_open_read(
+        tmp_path, monkeypatch):
+    native = tmp_path / "_fast.cpython-314-x86_64-linux-gnu.so"
+    native.write_bytes(b"opened-inode")
+    original = native.stat()
+    replacement = tmp_path / "replacement.so"
+    replacement.write_bytes(b"replacement-inode")
+    real_read = execution.os.read
+    replaced = False
+
+    def replace_then_read(descriptor, size):
+        nonlocal replaced
+        if not replaced:
+            replaced = True
+            replacement.replace(native)
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(execution.os, "read", replace_then_read)
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="native extension changed during read"):
+        execution._native_file_snapshot(native)
+    assert original.st_ino != native.stat().st_ino
+    assert native.read_bytes() == b"replacement-inode"
 
 
 def test_tombstone_prevents_rerun_after_root_deletion(tmp_path):
@@ -597,6 +679,22 @@ def test_spawn_controller_reopens_child_shard_and_progress_publications(
     event = json.loads(events[0].read_bytes())
     assert event["snapshot"]["substage"] == "spawn-proof"
     assert event["snapshot"]["sealed_shards"] == 1
+
+
+def test_spawn_controller_binds_runtime_inside_actual_child(tmp_path, monkeypatch):
+    monkeypatch.undo()
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    monkeypatch.setattr(
+        execution, "_controller_context",
+        lambda: multiprocessing.get_context("spawn"))
+
+    assert supervisor._invoke_controller(
+        _spawn_runtime_binding, "population", 1) is True
 
 
 def test_spawn_expiry_race_seals_closeout_in_parent(tmp_path, monkeypatch):

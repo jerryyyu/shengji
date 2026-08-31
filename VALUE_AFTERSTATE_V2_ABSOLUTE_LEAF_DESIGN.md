@@ -626,6 +626,22 @@ the design; it does not move a cap to fit the projection.
 After implementation, but before a scientific freeze, measure on the isolated
 16-logical-CPU Perf host:
 
+The capacity, freeze-input, freeze, scientific, spawned-controller, terminal,
+and reconstruction processes all require `SHENGJI_FAST=1` and
+`SHENGJI_REQUIRE_VOIDS=1`.  The exact in-tree `_fast` native-extension path and
+SHA-256 plus both environment values are part of the runtime profile.  The
+freeze permits that one hash-bound ignored native binary and refuses every
+other ignored loadable file; a missing, foreign, symlinked, or changed native
+binary closes before capacity or admission.  This prevents the measured path
+from silently falling back to the materially slower pure-Python engine.
+Every scientific controller binds and rechecks that runtime in its own child;
+every nested capacity, label, and reconstruction process pool uses the same
+identity as a worker initializer, and the parent rechecks before accepting a
+child result.  On the Linux execution host, every profile also requires the
+mapped shared-library device/inode from `/proc/self/maps` to equal the exact
+path whose bytes are hashed, closing the import-then-atomic-replace window.
+Binding only the outer CLI or only rehashing the pathname is insufficient.
+
 | stage | measured variants |
 |---|---|
 | state/successor construction | 1, 2, 4, 8, 16 workers |

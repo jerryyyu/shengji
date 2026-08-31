@@ -44,6 +44,9 @@ from .world_afterstate_v2_protocol import ATTEMPT_SCHEMA, P0_DEALS, TIER_SPECS
 from .world_afterstate_v2_schedule import MAX_EPOCHS
 from .world_afterstate_v2_population import PopulationMaterialV2
 from .world_afterstate_v2_source_driver import drive_population_attempt_v2
+from .world_afterstate_v2_execution import (
+    bind_runtime_expectation, verified_process_pool_kwargs,
+)
 
 
 HOST_CPUS = 16
@@ -408,7 +411,9 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
     index = 0
     executor_type = _preflight_executor_type(attempt)
     peak_memory = _cgroup_memory_bytes()
-    with executor_type(max_workers=PREFLIGHT_WORKERS) as pool:
+    pool_kwargs = (verified_process_pool_kwargs()
+                   if executor_type is ProcessPoolExecutor else {})
+    with executor_type(max_workers=PREFLIGHT_WORKERS, **pool_kwargs) as pool:
         while index < PREFLIGHT_ATTEMPT_CEILING \
                 and (len(accepted) < PREFLIGHT_ACCEPTED
                      or (coverage_required
@@ -928,7 +933,8 @@ def _parallel_operation(stage: str, variant: int,
     values = tuple(fixtures)
 
     def run() -> str:
-        with ProcessPoolExecutor(max_workers=variant) as pool:
+        with ProcessPoolExecutor(
+                max_workers=variant, **verified_process_pool_kwargs()) as pool:
             outputs = tuple(pool.map(
                 _process_fixture,
                 ((stage, variant, fixture) for fixture in values)))
@@ -1687,6 +1693,7 @@ def run_capacity_v2(*, source_sha256: str, runtime_sha256: str,
                     output_root: Path | None = None
                     ) -> CapacityReceiptV2:
     """Run the real bounded command with no caller-fabricated inputs."""
+    bind_runtime_expectation(runtime_sha256)
     result = measure_capacity_v2(
         progress=progress, output_root=output_root,
         source_sha256=source_sha256, runtime_sha256=runtime_sha256,

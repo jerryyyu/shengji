@@ -12,6 +12,13 @@ if not sys.flags.safe_path or not sys.dont_write_bytecode:
 if os.environ.get("PYTHONPATH"):
     raise RuntimeError("Value V2 scientific execution refuses PYTHONPATH")
 
+
+def _require_runtime_environment() -> None:
+    if (os.environ.get("SHENGJI_FAST") != "1"
+            or os.environ.get("SHENGJI_REQUIRE_VOIDS") != "1"):
+        raise RuntimeError(
+            "Value V2 requires SHENGJI_FAST=1 and SHENGJI_REQUIRE_VOIDS=1")
+
 from pathlib import Path  # noqa: E402
 
 SCRIPT = Path(__file__).resolve()
@@ -34,6 +41,7 @@ def _preimport_bytecode_scan() -> None:
 
 
 if __name__ in ("__main__", "__mp_main__"):
+    _require_runtime_environment()
     _preimport_bytecode_scan()
 
 import argparse  # noqa: E402

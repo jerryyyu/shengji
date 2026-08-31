@@ -2,6 +2,7 @@
 """Run one score-free PT-Luna multi-operation process-boundary canary."""
 from __future__ import annotations
 import argparse
+from collections import Counter
 import hashlib
 import json
 import os
@@ -17,7 +18,7 @@ from shengji.rl import privileged_teacher_luna_selfplay_controller as controller
 from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 SCHEMA = "privileged-teacher-luna-boundary-canary-v4"
-FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v1"
+FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v2"
 MAX_HOOK_OBSERVES = 2
 MODEL_COMMAND_SEQUENCE = ("observe", "rollout", "play", "wait")
 CANARY_PROMPT_SUFFIX = """
@@ -28,7 +29,9 @@ play response is waiting; follow the production instruction by invoking wait,
 not observe, and finish only after wait returns round_end.
 """
 FAILURE_REASON_BY_MESSAGE = {
-    "canary mailbox contract refused": "mailbox-contract-refused",
+    "canary mailbox server failed": "mailbox-server-error",
+    "canary request contract refused": "request-contract-refused",
+    "canary terminal not reached": "terminal-not-reached",
     "canary command mailbox attribution refused":
         "command-attribution-refused",
     "canary hook attribution refused": "hook-attribution-refused",
@@ -51,6 +54,23 @@ _SHA_KEYS = ("prompt_sha256", "stdout_sha256", "final_sha256",
              "codex_launcher_sha256", "sandbox_profile_sha256")
 _PRIVACY = {"outcomes": False, "actions": False, "trajectories": False,
             "model_prose": False}
+_DIAGNOSTIC_OPS = frozenset(("observe", "rollout", "play", "wait"))
+_DIAGNOSTIC_PHASES = frozenset(
+    ("decision", "rolled", "playing", "terminal", "unavailable"))
+
+
+class _CanaryBoundaryError(ValueError):
+    """A privacy-safe failure carrying only accepted operation geometry."""
+
+    def __init__(self, message: str, *, accepted_ops: tuple[str, ...] = (),
+                 phase: str = "unavailable"):
+        super().__init__(message)
+        if (type(accepted_ops) is not tuple
+                or any(op not in _DIAGNOSTIC_OPS for op in accepted_ops)
+                or phase not in _DIAGNOSTIC_PHASES):
+            raise ValueError("canary failure diagnostic drift")
+        self.accepted_ops = accepted_ops
+        self.phase = phase
 def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 def _strict(raw: bytes, label: str) -> dict[str, object]:
@@ -84,12 +104,19 @@ def _failure_reason(exc: BaseException) -> str:
 
 
 def _failure_receipt(exc: BaseException) -> dict[str, object]:
+    accepted_ops = (exc.accepted_ops
+                    if isinstance(exc, _CanaryBoundaryError) else ())
+    phase = exc.phase if isinstance(exc, _CanaryBoundaryError) else "unavailable"
     body = {
         "schema": FAILURE_SCHEMA,
         "reason": _failure_reason(exc),
         "detail_sha256": _sha(str(exc).encode("utf-8")),
         "canary_source_sha256": _sha(Path(__file__).read_bytes()),
         "execution_source_sha256": _sha(Path(execution.__file__).read_bytes()),
+        "accepted_op_sequence": list(accepted_ops),
+        "accepted_op_counts": {
+            op: accepted_ops.count(op) for op in sorted(set(accepted_ops))},
+        "terminal_phase": phase,
         "opened": dict(_PRIVACY),
         "retained": dict(_PRIVACY),
         "authority": dict(luna.AUTHORITY),
@@ -108,6 +135,8 @@ def reopen_failure_receipt(path: Path) -> dict[str, object]:
         raise ValueError("canary failure receipt self-hash drift")
     if (set(payload) != {"schema", "reason", "detail_sha256",
                          "canary_source_sha256", "execution_source_sha256",
+                         "accepted_op_sequence", "accepted_op_counts",
+                         "terminal_phase",
                          "opened", "retained", "authority"}
             or payload["schema"] != FAILURE_SCHEMA
             or payload["reason"] not in FAILURE_REASONS
@@ -115,6 +144,15 @@ def reopen_failure_receipt(path: Path) -> dict[str, object]:
             or payload["retained"] != _PRIVACY
             or payload["authority"] != luna.AUTHORITY):
         raise ValueError("canary failure receipt schema drift")
+    sequence = payload["accepted_op_sequence"]
+    counts = payload["accepted_op_counts"]
+    if (type(sequence) is not list
+            or any(op not in _DIAGNOSTIC_OPS for op in sequence)
+            or type(counts) is not dict
+            or counts != {op: sequence.count(op)
+                          for op in sorted(set(sequence))}
+            or payload["terminal_phase"] not in _DIAGNOSTIC_PHASES):
+        raise ValueError("canary failure diagnostic drift")
     for key in ("detail_sha256", "canary_source_sha256",
                 "execution_source_sha256"):
         value = payload[key]
@@ -136,8 +174,51 @@ class _CanaryState:
         self.phase = "decision"
         self.rollout_calls = 0
         self.terminal = False
-        self.decision_sha256 = _sha(token.encode("ascii"))
+        root = luna.build_root(bytes.fromhex(token), ("2", 0, 0))
+        game = luna.LunaSelfPlayGame(root, coordinate=("2", 0, 0))
+        observed = game.session(game.acting_team).observe()
+        if observed.get("status") != "decision":
+            raise ValueError("canary production decision fixture drift")
+        self.observation = observed
+        self.decision_sha256 = str(observed["decision_sha256"])
         self.lock = threading.Lock()
+
+    def decision_response(self) -> dict[str, object]:
+        """Return a deep, production-shaped decision with live canary budget."""
+        # JSON round-trip is deliberate: it prevents a model-tool caller from
+        # aliasing the private fixture while keeping exactly the public shape.
+        response = json.loads(json.dumps(self.observation))
+        hands = response.get("hands_by_seat")
+        candidates = response.get("candidates")
+        seat = response.get("acting_seat")
+        if (type(hands) is not list or len(hands) != 4
+                or isinstance(seat, bool) or not isinstance(seat, int)
+                or not 0 <= seat < 4 or type(hands[seat]) is not list
+                or type(candidates) is not list or not candidates
+                or any(type(candidate) is not list or not candidate
+                       for candidate in candidates)
+                or any(Counter(candidate) - Counter(hands[seat])
+                       for candidate in candidates)
+                or type(response.get("current_state")) is not dict
+                or not response["current_state"]
+                or response.get("candidate_zero_is_production_prior") is not True):
+            raise ValueError("canary production decision fixture drift")
+        budget = response.get("budget")
+        if (type(budget) is not dict
+                or set(budget) != {"rollout_calls", "rollout_calls_limit",
+                                   "used", "round_used", "decision_limit",
+                                   "round_limit"}
+                or budget["rollout_calls_limit"]
+                != luna.sol0.MAX_ROLLOUT_CALLS_PER_DECISION
+                or budget["decision_limit"]
+                != luna.sol0.MAX_EVALUATIONS_PER_DECISION
+                or budget["round_limit"]
+                != luna.sol0.MAX_EVALUATIONS_PER_ROUND):
+            raise ValueError("canary production decision fixture drift")
+        budget.update(rollout_calls=self.rollout_calls,
+                      used=self.rollout_calls,
+                      round_used=self.rollout_calls)
+        return response
 
 
 class _CanaryMailbox:
@@ -177,17 +258,7 @@ class _CanaryMailbox:
         with self.state.lock:
             if op == "observe":
                 if self.state.phase in ("decision", "rolled"):
-                    response = {"schema": luna.GAME_SCHEMA, "status": "decision",
-                                "decision_sha256": self.state.decision_sha256,
-                                "team": 0, "acting_seat": 0, "banker": 0,
-                                "trump_rank": "2", "hands_by_seat": [],
-                                "hidden_burial": [], "current_state": {},
-                                "candidates": [[]],
-                                "candidate_zero_is_production_prior": True,
-                                "budget": {"rollout_calls": self.state.rollout_calls,
-                                           "rollout_calls_limit": 2, "used": self.state.rollout_calls,
-                                           "round_used": self.state.rollout_calls,
-                                           "decision_limit": 16, "round_limit": 64}}
+                    response = self.state.decision_response()
                 elif self.state.phase == "playing":
                     self.state.terminal = True
                     self.state.phase = "terminal"
@@ -274,7 +345,7 @@ class _CanaryMailbox:
     def __exit__(self, *_args: object) -> None:
         self._stop.set()
         self._thread.join(timeout=5)
-        if self._thread.is_alive() or self.error is not None:
+        if self._thread.is_alive():
             raise ValueError("canary mailbox failed")
 def _validate_runtime(runtime: object) -> None:
     if type(runtime) is not dict:
@@ -468,8 +539,20 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
                 raise ValueError("canary subprocess deadline exceeded") from exc
             if len(stderr or b"") > execution.MAX_PROCESS_BYTES:
                 raise ValueError("canary stderr limit exceeded")
-        if mailbox.error is not None or mailbox.refused or not state.terminal:
-            raise ValueError("canary mailbox contract refused")
+        accepted_ops = tuple(
+            str(event["request"]["op"]) for event in mailbox.trace)
+        if mailbox.error is not None:
+            raise _CanaryBoundaryError(
+                "canary mailbox server failed", accepted_ops=accepted_ops,
+                phase=state.phase)
+        if mailbox.refused:
+            raise _CanaryBoundaryError(
+                "canary request contract refused", accepted_ops=accepted_ops,
+                phase=state.phase)
+        if not state.terminal:
+            raise _CanaryBoundaryError(
+                "canary terminal not reached", accepted_ops=accepted_ops,
+                phase=state.phase)
         stdout = bytes(stdout or b"")
         usage = execution._codex_jsonl_usage(stdout)
         records = execution._codex_command_mailbox_records(

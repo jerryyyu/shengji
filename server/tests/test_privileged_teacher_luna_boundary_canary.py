@@ -102,6 +102,7 @@ if mode != "no-hook":
         hook = run_hook(False, "early")
         if (hook.returncode != 0 or hook.stderr
                 or json.loads(hook.stdout).get("decision") != "block"): sys.exit(4)
+if mode == "early-exit": sys.exit(0)
 rollout = call({"op": "rollout", "decision_sha256": first["decision_sha256"],
                 "candidate_indices": [0], "continuations": ["smart-all"]}, "b")
 if rollout.get("status") != "rollout_complete": sys.exit(3)
@@ -154,6 +155,28 @@ def test_shared_mailbox_allows_repeat_observe_and_second_rollout(tmp_path):
         assert mailbox._dispatch(request)["status"] == "rollout_complete"
 
 
+def test_canary_decision_is_production_shaped_and_empty_ballot_mutation_refuses():
+    state = canary._CanaryState("b" * 64)
+    observed = state.decision_response()
+    assert len(observed["hands_by_seat"]) == 4
+    assert observed["current_state"]
+    assert observed["candidates"] and all(observed["candidates"])
+    assert observed["budget"] == {
+        "rollout_calls": 0,
+        "rollout_calls_limit": canary.luna.sol0.MAX_ROLLOUT_CALLS_PER_DECISION,
+        "used": 0, "round_used": 0,
+        "decision_limit": canary.luna.sol0.MAX_EVALUATIONS_PER_DECISION,
+        "round_limit": canary.luna.sol0.MAX_EVALUATIONS_PER_ROUND,
+    }
+    seat = observed["acting_seat"]
+    assert all(not (canary.Counter(candidate)
+                    - canary.Counter(observed["hands_by_seat"][seat]))
+               for candidate in observed["candidates"])
+    state.observation["candidates"] = [[]]
+    with pytest.raises(ValueError, match="production decision fixture drift"):
+        state.decision_response()
+
+
 def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
     binary, output = _fake(tmp_path), tmp_path / "receipt.json"
     assert canary.main(["--codex-binary", str(binary), "--output", str(output),
@@ -198,6 +221,8 @@ def _assert_private_failure(output: Path) -> dict[str, object]:
     payload = canary.reopen_failure_receipt(output)
     assert payload["opened"] == payload["retained"] == canary._PRIVACY
     assert all(value is False for value in payload["authority"].values())
+    assert set(payload["accepted_op_counts"]) <= canary._DIAGNOSTIC_OPS
+    assert payload["terminal_phase"] in canary._DIAGNOSTIC_PHASES
     return payload
 
 
@@ -207,7 +232,40 @@ def test_first_op_play_refuses_with_private_failure_receipt(
     output = tmp_path / "receipt.json"
     assert canary.main(["--codex-binary", str(_fake(tmp_path)), "--output", str(output),
                         "--deadline-seconds", "10"]) == 2
-    _assert_private_failure(output)
+    payload = _assert_private_failure(output)
+    assert payload["reason"] == "request-contract-refused"
+    assert payload["accepted_op_sequence"] == []
+    assert payload["terminal_phase"] == "decision"
+
+
+def test_early_model_exit_is_distinct_from_invalid_request(
+        tmp_path, monkeypatch):
+    monkeypatch.setenv("CANARY_FAKE_MODE", "early-exit")
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "10"]) == 2
+    payload = _assert_private_failure(output)
+    assert payload["reason"] == "terminal-not-reached"
+    assert payload["accepted_op_sequence"] == ["observe", "observe"]
+    assert payload["terminal_phase"] == "decision"
+
+
+def test_mailbox_server_failure_has_own_privacy_safe_reason(
+        tmp_path, monkeypatch):
+    def fail_response(_self, _path, _value):
+        raise OSError("private path detail")
+
+    monkeypatch.setattr(canary._CanaryMailbox, "_response", fail_response)
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "10"]) == 2
+    payload = _assert_private_failure(output)
+    assert payload["reason"] == "mailbox-server-error"
+    assert payload["accepted_op_sequence"] == ["observe"]
+    assert payload["terminal_phase"] == "decision"
+    assert "private path detail" not in output.read_text()
 
 
 def test_missing_stop_hook_observation_refuses(tmp_path, monkeypatch):

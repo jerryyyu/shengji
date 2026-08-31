@@ -317,10 +317,11 @@ def main() -> None:
     if start_path.exists():
         start = _strict(start_path)
     else:
+        started_unix_nanoseconds = time.time_ns()
         start = {
-            "started_unix_nanoseconds": time.time_ns(),
+            "started_unix_nanoseconds": started_unix_nanoseconds,
             "deadline_unix_nanoseconds": (
-                time.time_ns()
+                started_unix_nanoseconds
                 + freeze["scientific_wall_cap_nanoseconds"]),
             "resume_count": 0,
         }

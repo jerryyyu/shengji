@@ -76,6 +76,18 @@ def test_dependency_failure_carries_typed_stage_and_reason():
     assert "RuntimeError: boom" in str(failure)
 
 
+def test_label_permutation_construction_failure_keeps_exact_dag_stage():
+    def refuse(_examples):
+        raise RuntimeError("dose")
+
+    with pytest.raises(FullDAGCapacityDependencyBlocked,
+                       match="RuntimeError: dose") as raised:
+        supervisor._build_control_training_population(
+            "label-permutation", 1, (), refuse)
+    assert raised.value.stage == "block-1-label-permutation"
+    assert raised.value.reason_code == "full-dag-dependency-failed"
+
+
 def test_stage_material_partition_preserves_protocol_membership():
     def material(deal, split, *, source="natural", subfold=None):
         return SimpleNamespace(state=SimpleNamespace(

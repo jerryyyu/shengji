@@ -161,6 +161,21 @@ def _stratum(row: WorldAfterstateV2TrainingExample, candidate_count: int) \
             row.position, row.role, row.points_bucket, candidate_count)
 
 
+def _label_stratum(row: WorldAfterstateV2TrainingExample,
+                   _candidate_count: int) -> tuple[str, str, str]:
+    """Preserve collection/noise geometry without conditioning on outcomes.
+
+    Exact trump, role, points, and ballot-width buckets can contain only one
+    state whose candidate families all have the same numeric target.  In that
+    geometry even an optimal family derangement cannot satisfy the frozen
+    label-control dose.  Source, phase, and lead/follow position retain the
+    outcome-blind acquisition geometry while allowing whole eight-replica
+    families from distinct states to exchange targets.  Complete-world
+    shuffle deliberately keeps using the stricter ``_stratum`` above.
+    """
+    return (row.source, row.phase, row.position)
+
+
 @dataclass(frozen=True)
 class ControlledWorldAfterstateV2Example:
     """One natural row and its deliberately altered training payload."""
@@ -416,14 +431,14 @@ def label_permutation(
         natural: Sequence[WorldAfterstateV2TrainingExample], *,
         seed: int = 0xA57E_0002) \
         -> tuple[tuple[ControlledWorldAfterstateV2Example, ...], dict[str, Any]]:
-    """Rotate whole candidate×8 label families within exact public strata."""
+    """Rotate whole candidate×8 families within collection/noise strata."""
     roots = _roots(natural)
     _seed(seed)
     buckets: dict[tuple[Any, ...], list[tuple[str, int]]] = defaultdict(list)
     for root, rows in roots.items():
         count = len({row.candidate_index for row in rows})
         first = rows[0]
-        buckets[_stratum(first, count)].extend(
+        buckets[_label_stratum(first, count)].extend(
             (root, candidate) for candidate in range(count))
     donors: dict[tuple[str, int], tuple[str, int]] = {}
     for bucket, families in sorted(buckets.items(), key=lambda item: str(item[0])):

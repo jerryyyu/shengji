@@ -3,6 +3,7 @@ import dataclasses
 
 import numpy as np
 import pytest
+import shengji.rl.world_afterstate_v2_controls as controls_module
 
 from shengji.rl.world_afterstate_v2_controls import (
     AUTHORITY, WorldAfterstateV2ControlError,
@@ -48,7 +49,7 @@ def test_association_deranges_bindings_but_keeps_labels_and_metadata():
     validate_control_evidence(evidence, natural=natural, controlled=controlled)
 
 
-def test_label_permutation_uses_exact_strata_and_whole_replica_families():
+def test_label_permutation_uses_collection_strata_and_whole_replica_families():
     natural = _population("a", "b", "c", "d")
     controlled, evidence = label_permutation(natural, seed=23)
     assert evidence["effective_dose_ppm"] >= 400_000
@@ -60,6 +61,51 @@ def test_label_permutation_uses_exact_strata_and_whole_replica_families():
         assert np.array_equal(row.tensors.history, row.natural.tensors.history)
         assert row.successor_sha256 == row.natural.successor_sha256
     validate_control_evidence(evidence, natural=natural, controlled=controlled)
+
+
+def test_label_permutation_uses_outcome_blind_collection_geometry_not_predictive_public_buckets(
+        monkeypatch):
+    natural = []
+    roots = {}
+    specs = (
+        ("natural", "early", "lead", "attacker", "2", "S", "0-39", 2),
+        ("natural", "early", "lead", "defender", "3", "H", "40-79", 5),
+        ("natural", "early", "lead", "attacker", "4", "D", "80+", 2),
+        ("natural", "early", "lead", "defender", "5", "C", "0-39", 5),
+        ("pt-luna", "middle", "follow", "attacker", "6", "S", "40-79", 2),
+        ("pt-luna", "middle", "follow", "defender", "7", "H", "80+", 5),
+        ("pt-luna", "middle", "follow", "attacker", "8", "D", "0-39", 2),
+        ("pt-luna", "middle", "follow", "defender", "9", "C", "40-79", 5),
+    )
+    for index, (source, phase, position, role, trump_rank, trump_mode,
+                points_bucket, candidates) in enumerate(specs):
+        rows = [dataclasses.replace(
+            row, source=source, phase=phase, position=position, role=role,
+            trump_rank=trump_rank, trump_mode=trump_mode,
+            points_bucket=points_bucket, signed_level_category=10 + index)
+                for row in _rows(f"collection-{index}", candidates=candidates)]
+        natural.extend(rows)
+        roots[rows[0].root_key] = rows[0]
+
+    controlled, evidence = label_permutation(natural, seed=23)
+    assert evidence["effective_dose_ppm"] >= 400_000
+    assert sorted(row.target_category for row in controlled) == sorted(
+        row.signed_level_category for row in natural)
+    donor_families = {}
+    for row in controlled:
+        donor_root, donor_candidate = row.donor_key.rsplit(":", 1)
+        donor = roots[donor_root]
+        assert (donor.source, donor.phase, donor.position) == (
+            row.natural.source, row.natural.phase, row.natural.position)
+        donor_families.setdefault(
+            (row.root_key, row.candidate_index), set()).add(
+                (donor_root, int(donor_candidate)))
+    assert all(len(donors) == 1 for donors in donor_families.values())
+
+    monkeypatch.setattr(controls_module, "_label_stratum",
+                        controls_module._stratum)
+    with pytest.raises(WorldAfterstateV2ControlError, match="minimum dose"):
+        label_permutation(natural, seed=23)
 
 
 def test_world_shuffle_only_changes_world_and_pairs_different_deals():

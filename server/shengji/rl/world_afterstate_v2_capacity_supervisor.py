@@ -342,6 +342,18 @@ def _fail(stage: str, exc: BaseException) -> FullDAGCapacityDependencyBlocked:
         stage=bounded_stage, reason_code="full-dag-dependency-failed")
 
 
+def _build_control_training_population(
+        name: str, block: int, examples: Sequence[Any],
+        transform: Callable[[Sequence[Any]], tuple[Sequence[Any], Mapping[str, Any]]]
+        ) -> tuple[Any, ...]:
+    """Construct one control at its exact measured DAG boundary."""
+    try:
+        controlled, _evidence = transform(examples)
+        return control_training_examples(controlled)
+    except Exception as exc:
+        raise _fail(f"block-{block}-{name}", exc) from exc
+
+
 def _run_optimizer_canary(
         examples: Sequence[Any],
         training_cost: Callable[[Sequence[Any], int], Any]) -> None:
@@ -814,13 +826,10 @@ def run_full_dag_supervisor(
             CONTROL_NAMES[2]: complete_world_shuffle,
         }
         def control_train(name: str, block: int) -> str:
-            try:
-                if name not in control_rows:
-                    controlled, _evidence = transforms[name](examples)
-                    control_rows[name] = control_training_examples(controlled)
-                return train(name, block, control_rows[name], examples)
-            except Exception as exc:
-                raise _fail(f"{name}-construction", exc) from exc
+            if name not in control_rows:
+                control_rows[name] = _build_control_training_population(
+                    name, block, examples, transforms[name])
+            return train(name, block, control_rows[name], examples)
         def natural_block1() -> str:
             # The natural block-1 artifact is built once and cached by
             # ``train``.  Nested cost uses the raw train_epoch primitive and

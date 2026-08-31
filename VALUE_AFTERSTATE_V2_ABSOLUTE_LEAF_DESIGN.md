@@ -538,8 +538,15 @@ exact-zero advantage, root-team mirror, hidden-metadata absence, and
 transition/legality/hash/fold mutations that refuse before prediction.
 
 Learning controls are within-root action/successor association permutation,
-label permutation within frozen public strata, and complete-world shuffle
-within compatible public strata. The association- and label-permuted cohorts
+label permutation within frozen outcome-blind collection/noise strata
+(`source x early/middle/late x lead/follow`), and complete-world shuffle
+within the stricter compatible public strata (source, trump rank/mode, phase,
+position, role, points bucket, and candidate count). Label permutation moves
+one whole candidate-by-eight-replica target family from a distinct donor and
+never crosses its collection/noise stratum; it deliberately does not
+condition on trump, role, points, or ballot width because those exact buckets
+can make the frozen numeric-dose floor mathematically unattainable even when
+every donor binding is deranged. The association- and label-permuted cohorts
 must each fail at least one of absolute-value learning gates 1--4 when scored
 as a candidate cohort. World shuffle must be rejected by both gate-5
 natural-minus-shuffle lower bounds. Gate 6 is the nonrecursive conjunction of

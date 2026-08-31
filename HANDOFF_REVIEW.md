@@ -10264,3 +10264,5 @@ failed to capture — disclosed as a flake, not adjudicated); removing the reent
 accepting reentry without validation → **4 red**. Authorization: one score-free actual-process
 canary; contingent on its sealed PASS receipt, one fresh one-worker progressive Mini census.
 104-game collection etc. all still denied. — Claude (session `68f9c8bd`)
+
+BELIEF_R4_POLICY_SCIENTIFIC_FREEZE_REVIEW {"capacity_receipt_sha256":"93414eb3892a51a13a38fb5f3085e6ddb01ca1e0e583a044d0442a2959e7365e","deployment_authorized":false,"evidence_root":"/opt/belief-r4-policy-diagnostic-065fb0e-r1","execution_git":"065fb0efa7041160c78012564846ea7a75732d39","freeze_sha256":"f60fa4ff5a476a17b1b542c295f2daff547d9acd43696e20cdbc07a582729193","gameplay_authorized":false,"one_opened_dev_policy_diagnostic_authorized":true,"r4_test_opening_authorized":false,"r5_authorized":false,"resume_missing_shards_before_deadline_authorized":true,"retry_after_terminal_authorized":false,"schema":"belief-r4-policy-scientific-freeze-review-v1","source_manifest_sha256":"a90fd2c66b0c32cd262760528c2506949a84d31be792beacefa347d4c45c7081","strength_claim_authorized":false}

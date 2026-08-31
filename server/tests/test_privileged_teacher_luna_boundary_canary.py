@@ -78,7 +78,7 @@ def run_hook(active, last):
     suffix = format(hook_index, "x")
     request_path = mailbox / ("request-" + suffix * (64 // len(suffix))
                               + suffix[:64 % len(suffix)] + ".json")
-    request_path.write_bytes(b'{"op":"observe"}\\n')
+    request_path.write_bytes(b'{"hook_stop":true,"op":"observe"}\\n')
     request_path.chmod(0o600)
     response_path = mailbox / ("response-" + request_path.stem.removeprefix(
         "request-") + ".json")
@@ -88,10 +88,12 @@ def run_hook(active, last):
     if not response_path.is_file():
         return subprocess.CompletedProcess(("hook",), 3, b"", b"")
     response = json.loads(response_path.read_bytes())
-    if response.get("status") == "round_end":
+    if response.get("hook_action") == "terminal":
         output = b""
-    else:
+    elif response.get("hook_action") == "block":
         output = b'{"decision":"block","reason":"Continue"}\\n'
+    else:
+        output = b""
     return subprocess.CompletedProcess(("hook",), 0, output, b"")
 if mode != "no-hook":
     override = next(value for index, value in enumerate(sys.argv)
@@ -155,6 +157,16 @@ def test_shared_mailbox_allows_repeat_observe_and_second_rollout(tmp_path):
                    "candidate_indices": [0], "continuations": ["smart-all"]}
         assert mailbox._dispatch(request)["status"] == "rollout_complete"
         assert mailbox._dispatch(request)["status"] == "rollout_complete"
+
+
+def test_canary_mailbox_owns_bounded_stop_hook_counter(tmp_path):
+    state = canary._CanaryState("e" * 64)
+    request = {"op": "observe",
+               canary.execution.STOP_HOOK_REQUEST_FIELD: True}
+    with canary._CanaryMailbox(tmp_path / "mailbox", state=state) as mailbox:
+        actions = [mailbox._dispatch(request)[
+            canary.execution.STOP_HOOK_ACTION_FIELD] for _ in range(3)]
+    assert actions == ["block", "block", "exhausted"]
 
 
 def test_canary_decision_is_production_shaped_and_empty_ballot_mutation_refuses():
@@ -254,7 +266,8 @@ def _model_observe_witness(tmp_path: Path) -> tuple[bytes, list[dict[str, object
 def test_clean_hook_observe_and_turn_completed_attribution(tmp_path):
     result = canary._derive_attribution(
         raw=b'{"type":"turn.completed"}\n', mailbox_path=tmp_path / "mailbox",
-        trace=[{"request": {"op": "observe"}}],
+        trace=[{"request": {"op": "observe",
+                            canary.execution.STOP_HOOK_REQUEST_FIELD: True}}],
         python_path=Path(sys.executable), tool_script_path=tmp_path / "tool.py")
     assert result == ("turn-completed", [], ["observe"])
 
@@ -278,7 +291,8 @@ def test_model_observe_turn_failed_is_classified_without_error_text(tmp_path):
 
 def test_model_and_residual_hook_observes_are_attributed_separately(tmp_path):
     raw, trace = _model_observe_witness(tmp_path)
-    trace.append({"request": {"op": "observe"}})
+    trace.append({"request": {
+        "op": "observe", canary.execution.STOP_HOOK_REQUEST_FIELD: True}})
     assert canary._derive_attribution(
         raw=raw, mailbox_path=tmp_path / "mailbox", trace=trace,
         python_path=Path(sys.executable), tool_script_path=tmp_path / "tool.py") \

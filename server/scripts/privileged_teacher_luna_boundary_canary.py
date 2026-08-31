@@ -19,7 +19,7 @@ from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 SCHEMA = "privileged-teacher-luna-boundary-canary-v4"
 FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v3"
-MAX_HOOK_OBSERVES = 2
+MAX_HOOK_OBSERVES = 3
 MODEL_COMMAND_SEQUENCE = ("observe", "rollout", "play", "wait")
 CANARY_PROMPT_SUFFIX = """
 Boundary-canary instruction: this synthetic decision exists only to prove the
@@ -165,7 +165,10 @@ def _derive_attribution(*, raw: bytes, mailbox_path: Path,
             hook_sequence: list[str] | str = (
                 ["observe"] * len(trace)
                 if all(type(event) is dict
-                       and event.get("request") == {"op": "observe"}
+                       and event.get("request") in (
+                           {"op": "observe"},
+                           {"op": "observe",
+                            execution.STOP_HOOK_REQUEST_FIELD: True})
                        for event in trace)
                 else _OPAQUE)
             return terminal_class, model_sequence, hook_sequence
@@ -365,6 +368,7 @@ class _CanaryMailbox:
         self.trace: list[dict[str, object]] = []
         self.refused = False
         self.error: BaseException | None = None
+        self._nonterminal_stop_blocks = 0
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._serve, daemon=True)
     def _response(self, path: Path, value: dict[str, object]) -> None:
@@ -380,7 +384,12 @@ class _CanaryMailbox:
         op = request.get("op")
         if type(op) is not str:
             raise ValueError("canary request shape drift")
-        if op in ("observe", "wait") and set(request) != {"op"}:
+        hook_stop = (op == "observe"
+                     and set(request) == {"op", execution.STOP_HOOK_REQUEST_FIELD}
+                     and request.get(execution.STOP_HOOK_REQUEST_FIELD) is True)
+        if (op == "observe" and set(request) != {"op"} and not hook_stop):
+            raise ValueError("canary request shape drift")
+        if op == "wait" and set(request) != {"op"}:
             raise ValueError("canary request shape drift")
         self.first_op = self.first_op or op
         self.sequence.append(op)
@@ -399,6 +408,17 @@ class _CanaryMailbox:
                     self.state.phase = "terminal"
                     response = {"schema": luna.GAME_SCHEMA, "status": "round_end",
                                 "completion_token": self.state.token}
+                if hook_stop:
+                    if response.get("status") == "round_end":
+                        action = "terminal"
+                    elif (self._nonterminal_stop_blocks
+                          < execution.MAX_STOP_HOOK_NONTERMINAL_BLOCKS):
+                        self._nonterminal_stop_blocks += 1
+                        action = "block"
+                    else:
+                        action = "exhausted"
+                    response = dict(response)
+                    response[execution.STOP_HOOK_ACTION_FIELD] = action
             elif op == "wait":
                 if self.state.phase == "playing":
                     self.state.terminal = True
@@ -525,7 +545,8 @@ def _bind_model_commands(records: tuple[dict[str, object], ...],
     residual = [event for index, event in enumerate(trace) if index not in matched]
     if (len(residual) > MAX_HOOK_OBSERVES
             or any(type(event) is not dict
-                   or event.get("request") != {"op": "observe"}
+                   or event.get("request") != {
+                       "op": "observe", execution.STOP_HOOK_REQUEST_FIELD: True}
                    for event in residual)):
         raise ValueError("canary hook attribution refused")
     return model_sequence, ["observe"] * len(residual)

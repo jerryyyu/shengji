@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -55,6 +56,13 @@ def _recorded_request(mailbox: Path, request: dict[str, object], response):
     inner = " ".join(shlex.quote(str(value)) for value in (
         execution.sys.executable, "-P", "-B", TOOL, "--mailbox", mailbox, op, *args))
     return shlex.join(("/bin/zsh", "-lc", inner)), response
+
+
+def _terminal_response_bytes(token: str) -> bytes:
+    return execution.canonical_json_bytes({
+        "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
+        "completion_token": token,
+    }).removesuffix(b"\n")
 
 
 def _command_stdout(*, mailbox: Path, operation: str,
@@ -356,6 +364,38 @@ def _game() -> luna.LunaSelfPlayGame:
                                  coordinate=("2", 0, 0))
 
 
+def _hook_observe() -> dict[str, object]:
+    return {"op": "observe", execution.STOP_HOOK_REQUEST_FIELD: True}
+
+
+def test_engine_owned_stop_counter_blocks_twice_then_exhausts(tmp_path):
+    game = _game()
+    server = execution.LunaToolServer(
+        tmp_path / "mailbox", game.session(game.acting_team))
+
+    # Model observes are deliberately unadorned and cannot reset or consume
+    # the engine-owned Stop-hook allowance.
+    assert execution.STOP_HOOK_ACTION_FIELD not in server._dispatch({"op": "observe"})
+    assert server._dispatch(_hook_observe())[execution.STOP_HOOK_ACTION_FIELD] == "block"
+    assert execution.STOP_HOOK_ACTION_FIELD not in server._dispatch({"op": "observe"})
+    assert server._dispatch(_hook_observe())[execution.STOP_HOOK_ACTION_FIELD] == "block"
+    assert server._dispatch(_hook_observe())[execution.STOP_HOOK_ACTION_FIELD] == "exhausted"
+
+
+def test_engine_owned_stop_counter_is_atomic_under_concurrent_dispatch(tmp_path):
+    game = _game()
+    server = execution.LunaToolServer(
+        tmp_path / "mailbox", game.session(game.acting_team))
+
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        responses = tuple(pool.map(lambda _index: server._dispatch(_hook_observe()),
+                                   range(20)))
+    actions = [response[execution.STOP_HOOK_ACTION_FIELD]
+               for response in responses]
+    assert actions.count("block") == execution.MAX_STOP_HOOK_NONTERMINAL_BLOCKS
+    assert actions.count("exhausted") == 18
+
+
 def _rewrite(path: Path, value: dict[str, object]) -> None:
     path.chmod(0o600)
     path.write_bytes(execution.canonical_json_bytes(value))
@@ -431,9 +471,8 @@ def _fake(session, *, mailbox_path, final_output_path, **_kwargs):
             terminal = played
             break
     assert terminal is not None and terminal["status"] == "round_end"
-    final_output_path.write_text(json.dumps({
-        "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
-        "completion_token": terminal["completion_token"]}))
+    final_output_path.write_bytes(_terminal_response_bytes(
+        terminal["completion_token"]))
     return subprocess.CompletedProcess(("fake-luna",), 0,
                                        _codex_stdout(commands))
 
@@ -490,9 +529,8 @@ def test_fake_processes_launch_in_engine_turn_order_and_share_engine(tmp_path):
                 terminal = played
                 break
         assert terminal is not None and terminal["status"] == "round_end"
-        kwargs["final_output_path"].write_text(json.dumps({
-            "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
-            "completion_token": terminal["completion_token"]}))
+        kwargs["final_output_path"].write_bytes(_terminal_response_bytes(
+            terminal["completion_token"]))
         return subprocess.CompletedProcess(("fake-luna",), 0,
                                            _codex_stdout(commands))
 
@@ -528,7 +566,33 @@ def test_forced_actions_are_engine_only_and_artifacts_reopen(tmp_path):
         assert evidence.body["actual_subprocess"] is False
 
 
-def test_generic_or_wrong_completion_response_is_diagnostic_only(tmp_path):
+def test_terminal_stop_hook_trace_completes_and_reopens(tmp_path):
+    def planner(session, *, mailbox_path, **kwargs):
+        completed = _fake(session, mailbox_path=mailbox_path, **kwargs)
+        hooked = execution.tool_request(mailbox_path, _hook_observe())
+        assert hooked[execution.STOP_HOOK_ACTION_FIELD] == "terminal"
+        return completed
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=planner)
+    assert result.status == "complete"
+    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+
+
+def test_reopen_binds_published_final_bytes_to_process_evidence(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+    final = result.attempt_path / "workspace-team-0" / "final.json"
+    final.write_bytes(b"{}")
+    with pytest.raises(execution.LunaExecutionError,
+                       match="final response byte binding drift"):
+        execution.reopen_attempt(result.attempt_path)
+
+
+def test_wrong_completion_response_refuses_outer_success_gate(tmp_path):
     def wrong_final(session, *, mailbox_path, final_output_path, **_kwargs):
         commands = []
         while True:
@@ -557,14 +621,15 @@ def test_generic_or_wrong_completion_response_is_diagnostic_only(tmp_path):
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
         planner_process=wrong_final)
-    assert result.status == "complete"
+    assert result.status == "incomplete"
     assert result.scientific_admissible is False
-    team0 = json.loads((result.attempt_path / "process-team-0.json").read_text())
-    assert team0["process_error"] is None
-    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+    assert any("exact terminal response absent or malformed"
+               in (item.body["process_error"] or "")
+               for item in result.evidence)
+    assert execution.reopen_attempt(result.attempt_path).status == "incomplete"
 
 
-def test_absent_final_after_terminal_trace_is_complete(tmp_path):
+def test_absent_final_after_terminal_trace_refuses_outer_success_gate(tmp_path):
     def absent_final(session, *, mailbox_path, **_kwargs):
         commands = []
         terminal = None
@@ -593,9 +658,11 @@ def test_absent_final_after_terminal_trace_is_complete(tmp_path):
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
         planner_process=absent_final)
-    assert result.status == "complete"
-    assert all(item.body["process_error"] is None for item in result.evidence)
-    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+    assert result.status == "incomplete"
+    assert any("exact terminal response absent or malformed"
+               in (item.body["process_error"] or "")
+               for item in result.evidence)
+    assert execution.reopen_attempt(result.attempt_path).status == "incomplete"
 
 
 def test_missing_codex_turn_completed_fails_closed(tmp_path):

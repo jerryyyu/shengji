@@ -24,7 +24,7 @@ def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
               expect_observe: bool = True) -> tuple[int, bytes]:
     mailbox = tmp_path / "mailbox"
     mailbox.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    mailbox.mkdir(mode=0o700)
+    mailbox.mkdir(mode=0o700, exist_ok=True)
     requests = 0
     request_payload: object = None
     done = threading.Event()
@@ -38,11 +38,22 @@ def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
                 if response.exists():
                     continue
                 request_payload = json.loads(request.read_bytes())
-                if request_payload != {"op": "observe"}:
+                if request_payload != {
+                        "op": "observe",
+                        execution.STOP_HOOK_REQUEST_FIELD: True}:
                     raise AssertionError("Stop hook must observe exactly")
                 requests += 1
-                response.write_bytes(canonical_json_bytes(observed or {
-                    "schema": luna.GAME_SCHEMA, "status": "decision"}))
+                value = dict(observed or {
+                    "schema": luna.GAME_SCHEMA, "status": "decision"})
+                if value.get("status") == "round_end":
+                    action = "terminal"
+                else:
+                    ordinal = len(tuple(mailbox.glob("request-*.json")))
+                    action = ("block" if ordinal
+                              <= execution.MAX_STOP_HOOK_NONTERMINAL_BLOCKS
+                              else "exhausted")
+                value[execution.STOP_HOOK_ACTION_FIELD] = action
+                response.write_bytes(canonical_json_bytes(value))
                 response.chmod(0o400)
                 done.set()
                 return
@@ -71,7 +82,9 @@ def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
     if expect_observe:
         thread.join(timeout=5)
     assert process.stderr == b""
-    assert request_payload == ({"op": "observe"} if expect_observe else None)
+    assert request_payload == ({
+        "op": "observe", execution.STOP_HOOK_REQUEST_FIELD: True}
+        if expect_observe else None)
     return requests, process.stdout
 
 
@@ -101,18 +114,24 @@ def test_round_end_wrong_token_gets_exact_private_correction(tmp_path):
     assert execution.FINAL_RESPONSE_SCHEMA in payload["reason"]
 
 
-def test_nonterminal_stop_blocks_once_and_reentrant_stop_cannot_reblock(tmp_path):
+def test_nonterminal_stop_has_one_bounded_reentrant_continuation(tmp_path):
     observed = {"schema": luna.GAME_SCHEMA, "status": "decision"}
-    requests, raw = _run_hook(tmp_path / "first", observed, "early prose")
+    requests, raw = _run_hook(tmp_path, observed, "early prose")
     assert requests == 1
     payload = json.loads(raw)
     assert payload["decision"] == "block"
     assert len(payload["reason"]) < 200
 
     requests, raw = _run_hook(
-        tmp_path / "reentrant", observed, "early prose",
-        stop_hook_active=True, expect_observe=False)
-    assert requests == 0
+        tmp_path, observed, "early prose", stop_hook_active=True)
+    assert requests == 1
+    assert json.loads(raw)["decision"] == "block"
+
+    # A third nonterminal Stop is nonblocking so the outer terminal-witness
+    # gate refuses promptly instead of spending the full game wall in a loop.
+    requests, raw = _run_hook(
+        tmp_path, observed, "early prose", stop_hook_active=True)
+    assert requests == 1
     assert raw == b""
 
 
@@ -145,8 +164,8 @@ def test_exact_terminal_response_is_allowed_even_after_prior_continuation(tmp_pa
         tmp_path,
         {"schema": luna.GAME_SCHEMA, "status": "round_end",
          "completion_token": token}, terminal, stop_hook_active=True,
-        expect_observe=False)
-    assert requests == 0
+        expect_observe=True)
+    assert requests == 1
     assert raw == b""
 
 

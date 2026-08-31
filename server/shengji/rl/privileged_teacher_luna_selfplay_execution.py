@@ -72,11 +72,14 @@ SYNTHETIC_EXECUTION_KIND = "synthetic-injected-runner"
 STOP_HOOK_SCHEMA = "privileged-teacher-luna-stop-hook-v1"
 STOP_HOOK_TIMEOUT_SECONDS = 10
 STOP_HOOK_AUTOMATION_FLAG = "--dangerously-bypass-hook-trust"
+STOP_HOOK_REQUEST_FIELD = "hook_stop"
+STOP_HOOK_ACTION_FIELD = "hook_action"
+MAX_STOP_HOOK_NONTERMINAL_BLOCKS = 2
 STOP_HOOK_SCRIPT = (Path(__file__).resolve().parents[2] / "scripts"
                     / "privileged_teacher_luna_stop_hook.py")
 # This is deliberately pinned separately from the generated config.  A
 # changed hook source must fail before a production planner is launched.
-STOP_HOOK_SOURCE_SHA256 = "b20aef4abcbd288040a7fba94fd27763199a7d216cf90ecd932555710d8f3317"
+STOP_HOOK_SOURCE_SHA256 = "3a8096b4fc569f50424ca1b8b1643c7ef2bf5480f924664f39a86067fad982ad"
 
 
 class LunaExecutionError(ValueError):
@@ -1088,6 +1091,12 @@ class LunaToolServer:
         self._stop = threading.Event()
         self._error: BaseException | None = None
         self._handled: set[str] = set()
+        # Stop-hook liveness state belongs to the engine mailbox, never the
+        # model-writable planner workspace.  The lock also makes direct or
+        # future concurrent dispatches obey the exact same two-block bound as
+        # the single-threaded production server loop.
+        self._hook_lock = threading.Lock()
+        self._nonterminal_stop_blocks = 0
         self.trace: list[dict[str, object]] = []
         self._thread = threading.Thread(target=self._serve,
                                         name=f"pt-luna-tool-{session.team}",
@@ -1116,8 +1125,23 @@ class LunaToolServer:
             raise luna.LunaPlannerRequestError("tool request schema drift")
         op = request.get("op")
         if op == "observe":
-            if set(request) != {"op"}:
+            hook_stop = (set(request) == {"op", STOP_HOOK_REQUEST_FIELD}
+                         and request.get(STOP_HOOK_REQUEST_FIELD) is True)
+            if set(request) != {"op"} and not hook_stop:
                 raise luna.LunaPlannerRequestError("observe request shape drift")
+            if hook_stop:
+                with self._hook_lock:
+                    response = dict(self.session.observe())
+                    if response.get("status") == "round_end":
+                        action = "terminal"
+                    elif (self._nonterminal_stop_blocks
+                          < MAX_STOP_HOOK_NONTERMINAL_BLOCKS):
+                        self._nonterminal_stop_blocks += 1
+                        action = "block"
+                    else:
+                        action = "exhausted"
+                    response[STOP_HOOK_ACTION_FIELD] = action
+                    return response
             return self.session.observe()
         if op == "wait":
             if set(request) != {"op"}:
@@ -1251,10 +1275,8 @@ def _validate_workspace_population(workspace: Path, *, complete: bool) -> None:
             raise LunaExecutionError("planner workspace file population drift")
         names.add(child.name)
     allowed = {"sandbox.sb", "final.json"}
-    # ``final.json`` is model prose and may be absent or malformed after the
-    # engine has emitted its terminal mailbox witness.  It remains captured
-    # when present, but never gates completion or peer health.
-    if not names <= allowed or "sandbox.sb" not in names:
+    if (not names <= allowed or "sandbox.sb" not in names
+            or (complete and "final.json" not in names)):
         raise LunaExecutionError("planner workspace file population drift")
 
 
@@ -1313,6 +1335,32 @@ def _terminal_trace_witness(trace: object, *, team: int,
     return False
 
 
+def _terminal_final_response_witness(
+        final_raw: bytes, *, trace: object,
+        completion_token_sha256: object) -> bool:
+    """Bind the exact final model message to the engine terminal token."""
+    if (type(final_raw) is not bytes or type(trace) is not list
+            or not _valid_completion_token(completion_token_sha256)):
+        return False
+    tokens = set()
+    for event in trace:
+        response = event.get("response") if type(event) is dict else None
+        token = (response.get("completion_token")
+                 if type(response) is dict
+                 and response.get("status") == "round_end" else None)
+        if (type(token) is str and _valid_completion_token(token)
+                and _sha_bytes(token.encode("ascii"))
+                == completion_token_sha256):
+            tokens.add(token)
+    if len(tokens) != 1:
+        return False
+    expected = canonical_json_bytes({
+        "schema": FINAL_RESPONSE_SCHEMA, "status": "complete",
+        "completion_token": tokens.pop(),
+    })
+    return final_raw in (expected, expected.removesuffix(b"\n"))
+
+
 def _validate_trace_semantics(
         event: Mapping[str, object], *, team: int,
         trajectory_events: Mapping[str, Mapping[str, object]],
@@ -1331,8 +1379,20 @@ def _validate_trace_semantics(
             raise LunaExecutionError("process trace error response drift")
         return
     if op in ("observe", "wait"):
-        if set(request) != {"op"}:
+        hook_stop = (op == "observe"
+                     and set(request) == {"op", STOP_HOOK_REQUEST_FIELD}
+                     and request.get(STOP_HOOK_REQUEST_FIELD) is True)
+        if set(request) != {"op"} and not hook_stop:
             raise LunaExecutionError("process observe/wait request drift")
+        if hook_stop:
+            action = response.get(STOP_HOOK_ACTION_FIELD)
+            status = response.get("status")
+            if ((status == "round_end" and action != "terminal")
+                    or (status != "round_end"
+                        and action not in ("block", "exhausted"))):
+                raise LunaExecutionError("process Stop-hook action drift")
+            response = {key: value for key, value in response.items()
+                        if key != STOP_HOOK_ACTION_FIELD}
         status = response.get("status")
         if status == "round_end":
             if completion_token_sha256 is None:
@@ -1704,6 +1764,12 @@ def run_luna_game(
                     require_shell=True):
             process_error = (
                 "Luna model command mailbox witness absent or malformed")
+        elif process_error is None and completed is not None \
+                and completed.returncode == 0 \
+                and not _terminal_final_response_witness(
+                    final_raw, trace=trace,
+                    completion_token_sha256=token_sha256):
+            process_error = "Luna exact terminal response absent or malformed"
         if process_error is None and not game.complete:
             process_error = game.failed or (
                 "Luna model process did not complete engine round")
@@ -2150,6 +2216,19 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                     require_shell=True)):
             raise LunaExecutionError(
                 "process terminal command mailbox witness absent")
+        if body_schema == PRIVATE_TRACE_SCHEMA \
+                and manifest["status"] == "complete":
+            if not _terminal_final_response_witness(
+                    final, trace=trace,
+                    completion_token_sha256=completion_token_sha256):
+                raise LunaExecutionError(
+                    "process exact terminal response absent or malformed")
+            published_final = _read_process_file(
+                attempt / f"workspace-team-{team}" / "final.json",
+                limit=MAX_PROCESS_BYTES)
+            if published_final != final:
+                raise LunaExecutionError(
+                    "process final response byte binding drift")
         try:
             if _codex_jsonl_usage(stdout) != body["codex_usage"]:
                 raise LunaExecutionError("Codex usage binding drift")
@@ -2219,7 +2298,9 @@ __all__ = ["ARTIFACT_SCHEMA", "ATTEMPT_SCHEMA", "FINAL_RESPONSE_SCHEMA",
            "MAX_GAME_WALL_SECONDS", "MODEL", "PRIVATE_TRACE_SCHEMA",
            "REASONING_EFFORT", "planner_prompt", "process_command",
            "STOP_HOOK_SCHEMA", "STOP_HOOK_AUTOMATION_FLAG", "STOP_HOOK_SCRIPT",
-           "STOP_HOOK_SOURCE_SHA256", "stop_hook_config",
+           "STOP_HOOK_SOURCE_SHA256", "STOP_HOOK_REQUEST_FIELD",
+           "STOP_HOOK_ACTION_FIELD", "MAX_STOP_HOOK_NONTERMINAL_BLOCKS",
+           "stop_hook_config",
            "sandbox_profile", "run_luna_game", "run_luna_processes", "reopen_attempt",
            "runtime_identity", "tool_request", "RECOVERY_SCHEMA",
            "PRODUCTION_EXECUTION_KIND", "SYNTHETIC_EXECUTION_KIND",

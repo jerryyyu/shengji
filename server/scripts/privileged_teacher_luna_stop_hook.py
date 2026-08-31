@@ -20,6 +20,8 @@ if not sys.flags.safe_path or not sys.dont_write_bytecode:
 try:
     from shengji.rl.privileged_teacher_luna_selfplay_execution import (  # noqa: E402
         FINAL_RESPONSE_SCHEMA,
+        STOP_HOOK_ACTION_FIELD,
+        STOP_HOOK_REQUEST_FIELD,
         tool_request,
     )
     from shengji.rl.privileged_teacher_luna_selfplay import (  # noqa: E402
@@ -33,6 +35,8 @@ except Exception:
     # Stop event, never a traceback.
     _PROJECT_IMPORT_FAILED = True
     FINAL_RESPONSE_SCHEMA = None
+    STOP_HOOK_ACTION_FIELD = None
+    STOP_HOOK_REQUEST_FIELD = None
     GAME_SCHEMA = None
     MODEL = None
     tool_request = None
@@ -42,8 +46,9 @@ else:
 
 MAX_STOP_INPUT_BYTES = 1 << 20
 CONTINUATION_REASON = (
-    "Continue with the PT-Luna mailbox until round_end, then return only the "
-    "required terminal JSON."
+    "Do not answer with prose. Invoke the mailbox observe command from the "
+    "prompt now, continue until round_end, then return only the required "
+    "terminal JSON."
 )
 
 
@@ -91,31 +96,33 @@ def main() -> int:
     stop = _stop_input(sys.stdin.buffer.read(MAX_STOP_INPUT_BYTES + 1))
     if stop is None:
         return _block()
-    # A nullable message is valid Codex input, but can never be the exact
-    # terminal JSON.  Reentrant non-null messages remain non-blocking to avoid
-    # an unbounded continuation loop; nullable reentrant messages must still
-    # be checked against the private engine terminal witness below.
-    if stop["stop_hook_active"] and stop["last_assistant_message"] is not None:
-        return 0
     try:
-        observed = tool_request(args.mailbox, {"op": "observe"})
+        observed = tool_request(args.mailbox, {
+            "op": "observe", STOP_HOOK_REQUEST_FIELD: True})
     except Exception:
-        return _block()
+        # A mailbox failure cannot authorize completion.  Let the process end
+        # so the independent outer terminal-witness gate refuses promptly,
+        # rather than turning a broken mailbox into an unbounded Stop loop.
+        return 0
     # Only this exact, engine-issued response can allow the model to stop.
-    if (type(observed) is not dict
-            or set(observed) != {"schema", "status", "completion_token"}
+    action = (observed.get(STOP_HOOK_ACTION_FIELD)
+              if type(observed) is dict else None)
+    if action == "block":
+        return _block()
+    if action != "terminal":
+        # ``exhausted`` is the normal bounded exit.  Any malformed action also
+        # exits into the same fail-closed outer verifier; only the engine's
+        # exact terminal witness below can authorize a successful game.
+        return 0
+    if (set(observed) != {"schema", "status", "completion_token",
+                         STOP_HOOK_ACTION_FIELD}
             or observed.get("schema") != GAME_SCHEMA
             or observed.get("status") != "round_end"
             or type(observed.get("completion_token")) is not str
             or len(observed["completion_token"]) != 64
             or any(char not in "0123456789abcdef"
                    for char in observed["completion_token"])):
-        # Preserve the existing reentrant no-reblock behavior even when the
-        # nullable official field is present; only a terminal nullable message
-        # needs a corrective block.
-        if stop["stop_hook_active"]:
-            return 0
-        return _block()
+        return 0
     terminal = _json({"schema": FINAL_RESPONSE_SCHEMA, "status": "complete",
                       "completion_token": observed["completion_token"]})
     if stop["last_assistant_message"] != terminal:

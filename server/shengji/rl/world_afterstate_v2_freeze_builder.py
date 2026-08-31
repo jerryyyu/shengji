@@ -434,7 +434,7 @@ def _validate_inputs(repo: Path, paths: tuple[tuple[str, Path | str], ...],
         config_binding = tuple(row for row in rows if row[0] == "config")
         provisional = _ConfigBinding(artifact_bindings=config_binding,
             evidence_root=str(evidence_root), deadline_seconds=deadline_seconds)
-        _read_stage_config(repo, provisional, "world-afterstate-v2-early-stage-adapters-input-v1")
+        _read_stage_config(repo, provisional, "world-afterstate-v2-early-stage-adapters-input-v2")
     except WorldAfterstateV2FreezeBuilderError:
         raise
     except Exception as exc:

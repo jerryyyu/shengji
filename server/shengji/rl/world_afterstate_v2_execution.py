@@ -35,13 +35,14 @@ from .world_afterstate_v2_audit_attempt import (
 
 
 SCHEMA = "world-afterstate-v2-absolute-leaf-execution-v1"
-FREEZE_SCHEMA = "world-afterstate-v2-absolute-leaf-freeze-v2"
+FREEZE_SCHEMA = "world-afterstate-v2-absolute-leaf-freeze-v3"
 ADMISSION_SCHEMA = "world-afterstate-v2-absolute-leaf-admission-v1"
 TOMBSTONE_SCHEMA = "world-afterstate-v2-absolute-leaf-consumption-tombstone-v1"
 STATE_SCHEMA = "world-afterstate-v2-stage-state-v1"
 EVENT_SCHEMA = "world-afterstate-v2-stage-event-v1"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-v1"
 PROGRESS_EVENT_SCHEMA = "world-afterstate-v2-progress-event-v1"
+RUNTIME_PROFILE_SCHEMA = "world-afterstate-v2-runtime-profile-v1"
 META_SCHEMA = "world-afterstate-v2-supervisor-meta-v1"
 REVIEW_PREFIX = "WORLD_AFTERSTATE_V2_ABSOLUTE_LEAF_REVIEW "
 REVIEW_LEDGER = "HANDOFF_REVIEW.md"
@@ -389,6 +390,79 @@ def _live_telemetry(elapsed_nanoseconds: int, *,
     return cpu_ppm, memory if memory is not None else _process_memory_bytes(usage)
 
 
+def _python_environment_identity() -> dict[str, str]:
+    """Bind the resolved interpreter prefixes and ``pyvenv.cfg`` bytes.
+
+    An executable path by itself does not identify a virtual environment.
+    Include both prefix paths and an explicit config hash/absence marker so a
+    freeze cannot silently reuse an older environment.
+    """
+    try:
+        prefix = Path(sys.prefix).resolve(strict=True)
+        base_prefix = Path(sys.base_prefix).resolve(strict=True)
+        config = prefix / "pyvenv.cfg"
+        if config.is_symlink():
+            raise OSError("pyvenv.cfg is symlinked")
+        if config.exists():
+            if not config.is_file():
+                raise OSError("pyvenv.cfg is not a regular file")
+            config_sha256 = _sha_bytes(config.read_bytes())
+        else:
+            config_sha256 = "absent"
+    except OSError as exc:
+        raise WorldAfterstateV2ExecutionError(
+            "runtime Python environment telemetry unavailable") from exc
+    return {"python_prefix": str(prefix),
+            "python_base_prefix": str(base_prefix),
+            "pyvenv_cfg_path": str(config),
+            "pyvenv_cfg_sha256": config_sha256}
+
+
+_RUNTIME_PROFILE_KEYS = frozenset({
+    "schema", "python", "python_executable", "python_executable_lexical",
+    "python_executable_sha256", "python_prefix", "python_base_prefix",
+    "pyvenv_cfg_path", "pyvenv_cfg_sha256", "platform", "machine",
+    "cpu_count", "torch_threads", "torch_version", "torch_config_sha256",
+    "numpy_version", "environment", "shengji_native_extension",
+    "boot_identity",
+})
+
+
+def validate_runtime_profile(profile: Mapping[str, Any]) -> None:
+    """Validate the complete runtime identity, including virtualenv bytes."""
+    if type(profile) is not dict or set(profile) != _RUNTIME_PROFILE_KEYS:
+        raise WorldAfterstateV2ExecutionError("runtime profile field population drift")
+    if profile["schema"] != RUNTIME_PROFILE_SCHEMA:
+        raise WorldAfterstateV2ExecutionError("runtime profile schema drift")
+    for key in ("python", "python_executable", "python_executable_lexical",
+                "platform", "machine", "torch_version", "numpy_version",
+                "boot_identity"):
+        if type(profile[key]) is not str or not profile[key]:
+            raise WorldAfterstateV2ExecutionError("runtime profile value drift")
+    for key in ("python_prefix", "python_base_prefix", "pyvenv_cfg_path"):
+        if (type(profile[key]) is not str or not Path(profile[key]).is_absolute()):
+            raise WorldAfterstateV2ExecutionError("runtime Python path drift")
+    if profile["pyvenv_cfg_path"] != str(
+            Path(profile["python_prefix"]) / "pyvenv.cfg"):
+        raise WorldAfterstateV2ExecutionError("runtime pyvenv path drift")
+    cfg_hash = profile["pyvenv_cfg_sha256"]
+    if cfg_hash != "absent":
+        _digest(cfg_hash, "runtime pyvenv.cfg SHA-256")
+    _digest(profile["python_executable_sha256"],
+            "runtime executable SHA-256")
+    _digest(profile["torch_config_sha256"], "runtime Torch config SHA-256")
+    if (isinstance(profile["cpu_count"], bool)
+            or not isinstance(profile["cpu_count"], int)
+            or profile["cpu_count"] < 1
+            or isinstance(profile["torch_threads"], bool)
+            or not isinstance(profile["torch_threads"], int)
+            or profile["torch_threads"] < 1):
+        raise WorldAfterstateV2ExecutionError("runtime CPU telemetry drift")
+    if type(profile["environment"]) is not dict \
+            or type(profile["shengji_native_extension"]) is not dict:
+        raise WorldAfterstateV2ExecutionError("runtime environment telemetry drift")
+
+
 def live_runtime_profile() -> dict[str, Any]:
     """Build the minimal deterministic runtime witness for a new freeze."""
     executable = Path(sys.executable).resolve()
@@ -400,8 +474,11 @@ def live_runtime_profile() -> dict[str, Any]:
     torch_version, torch_config_sha = _torch_profile()
     numpy_version = _numpy_version()
     native = _native_extension_profile()
-    return {"python": sys.version, "python_executable": str(executable),
+    profile = {"schema": RUNTIME_PROFILE_SCHEMA, "python": sys.version,
+            "python_executable": str(executable),
+            "python_executable_lexical": sys.executable,
             "python_executable_sha256": executable_sha,
+            **_python_environment_identity(),
             "platform": platform.platform(), "machine": platform.machine(),
             "cpu_count": os.cpu_count(), "torch_threads": _torch_threads(),
             "torch_version": torch_version, "torch_config_sha256": torch_config_sha,
@@ -413,6 +490,8 @@ def live_runtime_profile() -> dict[str, Any]:
             },
             "shengji_native_extension": native,
             "boot_identity": _boot_identity()}
+    validate_runtime_profile(profile)
+    return profile
 
 
 def verify_live_runtime_sha256(expected: str) -> None:
@@ -695,8 +774,10 @@ class ExecutionFreezeV2:
             _digest(getattr(self, key), key)
         if not isinstance(self.evidence_root, str) or not Path(self.evidence_root).is_absolute():
             raise WorldAfterstateV2ExecutionError("freeze evidence root drift")
-        if type(self.runtime_profile) is not dict \
-                or self.runtime_sha256 != _sha(self.runtime_profile):
+        if type(self.runtime_profile) is not dict:
+            raise WorldAfterstateV2ExecutionError("runtime profile/hash drift")
+        validate_runtime_profile(self.runtime_profile)
+        if self.runtime_sha256 != _sha(self.runtime_profile):
             raise WorldAfterstateV2ExecutionError("runtime profile/hash drift")
         if type(self.boot_identity) is not str or not self.boot_identity \
                 or self.boot_identity != self.runtime_profile.get("boot_identity"):

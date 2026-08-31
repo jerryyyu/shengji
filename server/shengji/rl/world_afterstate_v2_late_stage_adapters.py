@@ -200,13 +200,18 @@ def _label_resources(supervisor: Any, freeze: Any, repo: Path) -> tuple[int, int
         raise LateStageAdapterUnavailable("late config artifact refused") from exc
     if _sha(stable_read_bytes(path)) != _digest(expected, "config artifact SHA-256"):
         raise LateStageAdapterUnavailable("late config artifact digest drift")
-    if value.get("schema") != "world-afterstate-v2-early-stage-adapters-input-v1":
+    if value.get("schema") != "world-afterstate-v2-early-stage-adapters-input-v2":
         raise LateStageAdapterUnavailable("late config artifact schema drift")
     workers, seconds = value.get("label_workers"), value.get("label_deadline_seconds")
     if (isinstance(workers, bool) or not isinstance(workers, int) or workers < 1
             or isinstance(seconds, bool) or not isinstance(seconds, int) or seconds < 1
             or seconds > getattr(freeze, "deadline_seconds", 0)):
         raise LateStageAdapterUnavailable("late label resource binding drift")
+    selected_workers = _selected_capacity_variant(
+        supervisor, freeze, repo, "continuation-mechanics",
+        (1, 2, 4, 8, 12, 16, 32))
+    if workers != selected_workers:
+        raise LateStageAdapterUnavailable("late label worker/capacity binding drift")
     return workers, seconds
 
 
@@ -311,7 +316,7 @@ def _inference_batch_cap(supervisor: Any, freeze: Any, repo: Path) -> int:
 def _reconstruction_workers(supervisor: Any, freeze: Any, repo: Path) -> int:
     """Select the frozen reconstruction worker arm."""
     return _selected_capacity_variant(
-        supervisor, freeze, repo, "reconstruction", (1, 4, 8, 16))
+        supervisor, freeze, repo, "reconstruction", (1, 4, 8, 16, 32))
 
 
 def _deadline(supervisor: Any, freeze: Any, seconds: int) -> int:
@@ -719,7 +724,7 @@ def _directory(root: Path, relative: str, label: str) -> Path:
     return path
 
 
-TERMINAL_INPUTS_SCHEMA = "world-afterstate-v2-terminal-inputs-v1"
+TERMINAL_INPUTS_SCHEMA = "world-afterstate-v2-terminal-inputs-v2"
 EARLY_ROUTE_RELATIVE = "early-route.json"
 
 
@@ -1151,7 +1156,7 @@ def _terminal_paths(supervisor: Any, freeze: Any, repo: Path) -> TerminalInputPa
         reconstruction_workers = value["reconstruction_workers"]
         if (isinstance(reconstruction_workers, bool)
                 or not isinstance(reconstruction_workers, int)
-                or reconstruction_workers not in (1, 4, 8, 16)):
+                or reconstruction_workers not in (1, 4, 8, 16, 32)):
             raise ValueError("reconstruction worker binding")
         # The controller will repeat this authentication immediately before
         # audit opening; adapter reconstruction also rejects a stale index.

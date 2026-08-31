@@ -95,6 +95,19 @@ class FullDAGCapacityDependencyBlocked(RuntimeError):
         self.reason_code = reason_code
 
 
+def _exact_cpu_utilization_ppm(*, wall_ns: int,
+                               process_cpu_ns: int) -> int:
+    """Derive aggregate host utilization from one exact stage interval."""
+    if (type(wall_ns) is not int or wall_ns < 1
+            or type(process_cpu_ns) is not int or process_cpu_ns < 1):
+        raise FullDAGCapacityDependencyBlocked(
+            "full-DAG exact CPU utilization witness drift")
+    if process_cpu_ns > wall_ns * 16:
+        raise FullDAGCapacityDependencyBlocked(
+            "full-DAG exact CPU utilization bound drift")
+    return max(1, process_cpu_ns * 1_000_000 // (wall_ns * 16))
+
+
 def _predict_roots_batched(predictor: Callable[..., Any], model: Any,
                            roots: Sequence[Any], *, seed_block: int,
                            member_index: int, control_name: str,
@@ -152,21 +165,24 @@ class FullDAGCapacityMeasurementV2:
     stage_source_unit_counts: tuple[tuple[str, int], ...] = ()
     stage_process_cpu_nanoseconds: tuple[tuple[str, int], ...] = ()
     member_workers: int = 0
+    continuation_workers: int = 0
     torch_threads: int = 0
     inference_batch: int = 0
     reconstruction_workers: int = 0
-
     @property
     def stage_cpu_nanoseconds(self) -> tuple[tuple[str, int], ...]:
         """Compatibility spelling for the process-CPU witness."""
         return self.stage_process_cpu_nanoseconds
 
     def validate(self) -> None:
-        if tuple(name for name, _ in self.stage_wall_nanoseconds) != FULL_DAG_STAGES:
+        if (type(self.stage_wall_nanoseconds) is not tuple
+                or tuple(name for name, _ in self.stage_wall_nanoseconds)
+                != FULL_DAG_STAGES):
             raise FullDAGCapacityDependencyBlocked("full-DAG stage population drift")
         if any(type(value) is not int or value < 1
                for _, value in self.stage_wall_nanoseconds):
             raise FullDAGCapacityDependencyBlocked("full-DAG timing drift")
+        wall_by_stage = dict(self.stage_wall_nanoseconds)
         if self.stage_source_unit_counts:
             if tuple(name for name, _ in self.stage_source_unit_counts) != FULL_DAG_STAGES \
                     or any(type(value) is not int or value < 1
@@ -181,12 +197,19 @@ class FullDAGCapacityMeasurementV2:
                        for _, value in self.stage_process_cpu_nanoseconds)):
             raise FullDAGCapacityDependencyBlocked(
                 "full-DAG process CPU witness drift")
-        if any((self.member_workers, self.torch_threads, self.inference_batch)) \
+        if self.stage_process_cpu_nanoseconds and any(
+                cpu > wall_by_stage[stage] * 16
+                for stage, cpu in self.stage_process_cpu_nanoseconds):
+            raise FullDAGCapacityDependencyBlocked(
+                "full-DAG process CPU bound drift")
+        if any((self.member_workers, self.torch_threads, self.inference_batch,
+                self.continuation_workers)) \
                 and (self.member_workers not in (1, 2, 4)
+                     or self.continuation_workers not in (1, 2, 4, 8, 12, 16, 32)
                      or type(self.torch_threads) is not int
                      or self.torch_threads != PINNED_TORCH_THREADS
                      or self.inference_batch not in (32, 64, 128, 256)
-                     or self.reconstruction_workers not in (1, 4, 8, 16)):
+                     or self.reconstruction_workers not in (1, 4, 8, 16, 32)):
             raise FullDAGCapacityDependencyBlocked(
                 "full-DAG resource layout missing")
         if self.reconstruction_workers and not self.member_workers:
@@ -194,7 +217,7 @@ class FullDAGCapacityMeasurementV2:
                 "full-DAG resource layout missing")
         if self.member_workers and not self.stage_process_cpu_nanoseconds:
             raise FullDAGCapacityDependencyBlocked(
-                "full-DAG process CPU witness missing")
+                "full-DAG process/cgroup CPU witness missing")
         if self.artifact_bytes < 1 or self.reconstruction_continuation_builds != 0:
             raise FullDAGCapacityDependencyBlocked("full-DAG artifact/reconstruction drift")
         if (len(self.actual_stage_witnesses) != len(FULL_DAG_STAGES)
@@ -538,11 +561,11 @@ def run_full_dag_supervisor(
         _validate_fit_slot_binding(material)
         materials.append(material)
     if (member_workers not in (1, 2, 4)
-            or continuation_workers not in (1, 2, 4, 8, 12, 16)
+            or continuation_workers not in (1, 2, 4, 8, 12, 16, 32)
             or type(torch_threads) is not int
             or torch_threads != PINNED_TORCH_THREADS
             or inference_batch not in (32, 64, 128, 256)
-            or reconstruction_workers not in (1, 4, 8, 16)):
+            or reconstruction_workers not in (1, 4, 8, 16, 32)):
         raise FullDAGCapacityDependencyBlocked(
             "full-DAG resource layout missing")
     identity = _identity(values)
@@ -581,8 +604,13 @@ def run_full_dag_supervisor(
             validator = getattr(raw, "validate", None)
             if callable(validator):
                 validator()
-            elapsed = int(raw.elapsed_ns)
-            cpu_elapsed = int(raw.process_cpu_ns)
+            if (isinstance(raw.elapsed_ns, bool)
+                    or not isinstance(raw.elapsed_ns, int)
+                    or isinstance(raw.process_cpu_ns, bool)
+                    or not isinstance(raw.process_cpu_ns, int)):
+                raise ValueError("stage timer type drift")
+            elapsed = raw.elapsed_ns
+            cpu_elapsed = raw.process_cpu_ns
             if elapsed < 1:
                 raise ValueError("non-positive stage timer")
             if cpu_elapsed < 1:
@@ -620,7 +648,14 @@ def run_full_dag_supervisor(
         event = {
             "stage": stage, "completed_units": completed,
             "total_units": len(FULL_DAG_STAGES), "workers": workers,
-            "utilization_ppm": getattr(raw, "mean_cpu_utilization_ppm", 1),
+            # Derive progress utilization from the measured nanoseconds.  A
+            # backend-provided summary or a fabricated ``1`` is not an
+            # admissible substitute for the exact stage counters.
+            # Capacity telemetry is aggregate host utilization: normalize the
+            # exact process/cgroup CPU interval by wall time and the pinned
+            # 16 logical CPUs.  Never use a placeholder utilization value.
+            "utilization_ppm": _exact_cpu_utilization_ppm(
+                wall_ns=elapsed, process_cpu_ns=cpu_elapsed),
             "elapsed_seconds": max(1, elapsed_total // 1_000_000_000),
             "eta_seconds": eta_seconds,
             "headroom_seconds": max(0, MAX_COMMAND_WALL_SECONDS
@@ -1210,7 +1245,7 @@ def run_full_dag_supervisor(
             "reconstruction": len(materials),
         }[stage]) for stage in FULL_DAG_STAGES),
         tuple((stage, process_cpu[stage]) for stage in FULL_DAG_STAGES),
-        member_workers, torch_threads, inference_batch,
+        member_workers, continuation_workers, torch_threads, inference_batch,
         reconstruction_workers)
     result.validate()
     return result

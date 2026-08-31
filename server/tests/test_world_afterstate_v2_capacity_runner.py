@@ -1,5 +1,6 @@
 """Fast contract tests for the score-free V2 capacity runner."""
 
+import dataclasses
 import os
 import json
 import hashlib
@@ -18,7 +19,8 @@ from shengji.rl.belief_contract import canonical_json_bytes
 
 from shengji.rl.world_afterstate_v2_capacity import (
     ARM_GRIDS, COMPOSED_STAGE_NAMES, CapacityFailureReceiptV2,
-    composed_critical_path_seconds)
+    composed_critical_path_seconds, projected_arm_wall_shares_ppm,
+    CapacityArmV2)
 from shengji.rl.world_afterstate_v2_capacity_runner import (
     CapacityRunnerError, FixtureV2, HostTelemetryV2, PreflightResultV2,
     RawMeasurementV2, SyntheticMeasurementBackendV2, measure_capacity_v2,
@@ -28,6 +30,7 @@ from shengji.rl.world_afterstate_v2_capacity_runner import (
     _run_with_torch_threads, _scientific_stage_units, _tiers, _dag_attestation,
     _FULL_DAG_PROVENANCE,
     publish_capacity_failure_receipt_v2, reopen_capacity_failure_receipt_v2,
+    validate_capacity_arm_census_v2,
 )
 from shengji.rl.world_afterstate_v2_capacity_supervisor import (
     FullDAGCapacityMeasurementV2,
@@ -302,6 +305,20 @@ def test_real_preflight_driver_executes_in_a_process():
     assert result.slot_sha256 == slot.slot_sha256
 
 
+def test_repaired_preflight_namespace_cannot_reuse_prior_attempt_identities():
+    slot = SimpleNamespace(slot_sha256="a" * 64)
+    prior = runner._sha({
+        "namespace": "world-afterstate-v2-capacity-preflight-v1"})
+    current = runner._namespace()
+    assert current != prior
+    old_identity = runner._attempt_identity(prior, slot, 0)
+    new_identity = runner._attempt_identity(current, slot, 0)
+    assert old_identity["population_namespace_sha256"] == prior
+    assert new_identity["population_namespace_sha256"] == current
+    assert old_identity["deal_sha256"] != new_identity["deal_sha256"]
+    assert old_identity["engine_seed"] != new_identity["engine_seed"]
+
+
 def test_capacity_process_pool_worker_rechecks_inherited_runtime(monkeypatch):
     expected = hashlib.sha256(canonical_json_bytes(
         execution.live_runtime_profile())).hexdigest()
@@ -443,8 +460,8 @@ def _backend(fixture: FixtureV2, **changes):
 
 def _full_dag_measurement(*, capabilities=None, member_workers=2,
                           torch_threads=1, inference_batch=128,
-                          reconstruction_workers=1,
-                          wall_seconds=1, cpu_seconds=1):
+                          reconstruction_workers=1, continuation_workers=1,
+                          wall_seconds=1, cpu_seconds=14):
     capabilities = ({name: True for name in _RECOVERY_CAPABILITY_NAMES}
                     if capabilities is None else capabilities)
     walls = tuple((name, wall_seconds) for name in COMPOSED_STAGE_NAMES)
@@ -454,8 +471,8 @@ def _full_dag_measurement(*, capabilities=None, member_workers=2,
     return FullDAGCapacityMeasurementV2(
         tuple((name, value * 1_000_000_000) for name, value in walls), 1,
         COMPOSED_STAGE_NAMES, 0, True, capabilities, _FULL_DAG_PROVENANCE,
-        units, cpu, member_workers, torch_threads, inference_batch,
-        reconstruction_workers)
+        units, cpu, member_workers, continuation_workers, torch_threads,
+        inference_batch, reconstruction_workers)
 
 
 def _selected_arms(fixture: FixtureV2):
@@ -471,6 +488,31 @@ def _selected_arms(fixture: FixtureV2):
             arms.append(_arm_from_raw(
                 stage, variant, raw, fixture.fixture_sha256, raw.elapsed_ns))
     return tuple(arms)
+
+
+def test_arm_selection_uses_exact_nanoseconds_not_rounded_display_seconds():
+    fixture = FixtureV2({"score_free": True})
+    arms = list(_selected_arms(fixture))
+    stage = "state-successor"
+    for variant, wall_ns in ((1, 1_900_000_000), (2, 1_100_000_000)):
+        index = next(index for index, arm in enumerate(arms)
+                     if arm.stage == stage and arm.variant == variant)
+        busy_ns = wall_ns * 14
+        arms[index] = dataclasses.replace(
+            arms[index], wall_ns=wall_ns, wall_seconds=2,
+            busy_core_ns=busy_ns, busy_core_seconds=16 if variant == 2 else 27,
+            mean_cpu_utilization_ppm=875_000)
+    assert runner._select_arms(arms)[stage].variant == 2
+
+
+def test_projected_wall_shares_are_bound_at_arm_wiring_site():
+    fixture = FixtureV2({"score_free": True})
+    arms = _selected_arms(fixture)
+    stage_walls = {name: index + 1
+                   for index, name in enumerate(COMPOSED_STAGE_NAMES)}
+    expected = projected_arm_wall_shares_ppm(stage_walls)
+    bound = runner._bind_projected_arm_shares(arms, stage_walls)
+    assert {arm.stage: arm.wall_share_ppm for arm in bound} == expected
 
 
 def test_every_frozen_arm_runs_and_synthetic_cannot_publish():
@@ -642,6 +684,7 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
     assert (receipt.member_workers, receipt.torch_threads,
             receipt.inference_batch, receipt.reconstruction_workers) \
         == (2, 1, 128, 1)
+    assert receipt.continuation_workers == 1
     assert receipt.command_wall_seconds == (
         sum(arm.wall_seconds for arm in result.arms)
         + len(COMPOSED_STAGE_NAMES))
@@ -650,12 +693,15 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
     bad = RepresentativeDAGV2(
         1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
         stage_walls_seconds=tuple((name, 1) for name in COMPOSED_STAGE_NAMES),
+        stage_wall_nanoseconds=tuple(
+            (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
         progress_recovery=_full_dag_measurement().progress_recovery,
         provenance_token=_FULL_DAG_PROVENANCE,
         stage_source_unit_counts=tuple((name, 32) for name in COMPOSED_STAGE_NAMES),
         stage_process_cpu_nanoseconds=tuple(
             (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
-        member_workers=1, torch_threads=4, inference_batch=128,
+        member_workers=2, continuation_workers=32, torch_threads=1,
+        inference_batch=128,
         reconstruction_workers=1)
     bad = replace(bad, attestation_sha256=_dag_attestation(bad))
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="layout"):
@@ -665,6 +711,61 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
             runtime_sha256="b" * 64,
             representative_dag=bad,
             _provenance=_PRODUCTION_PROVENANCE)
+
+
+def test_nanosecond_utilization_threshold_is_exact():
+    fixture = FixtureV2({"score_free": True})
+    for utilization in (849_999, 850_000):
+        elapsed_ns = 1_000_000_000
+        process_cpu_ns = elapsed_ns * 16 * utilization // 1_000_000
+        arm = _arm_from_raw(
+            "state-successor", 1,
+            RawMeasurementV2(
+                elapsed_ns=elapsed_ns, process_cpu_ns=process_cpu_ns,
+                peak_rss_bytes=1_000_000, task_count=1,
+                sample_utilization_ppm=(utilization,),
+                byte_identity_sha256=fixture.fixture_sha256),
+            fixture.fixture_sha256, elapsed_ns)
+        assert arm.mean_cpu_utilization_ppm == utilization
+
+
+def test_low_fastest_32_refuses_before_supervisor(monkeypatch):
+    preflight = _preflight()
+    fixture = preflight.accepted_fixtures[0]
+    calls = []
+
+    class Backend:
+        synthetic = False
+
+        def measure(self, stage, variant, fixture, operation):
+            wall = 1 if stage == "state-successor" and variant == 32 else 2
+            utilization = 800_000 if stage == "state-successor" and variant == 32 else 900_000
+            elapsed_ns = wall * 1_000_000_000
+            cpu_ns = elapsed_ns * 16 * utilization // 1_000_000
+            return RawMeasurementV2(
+                elapsed_ns=elapsed_ns, process_cpu_ns=cpu_ns,
+                peak_rss_bytes=1_000_000, task_count=1,
+                sample_utilization_ppm=(utilization,),
+                byte_identity_sha256="a" * 64)
+
+    import shengji.rl.world_afterstate_v2_capacity_supervisor as supervisor
+    monkeypatch.setattr(runner, "run_score_free_preflight",
+                        lambda **kwargs: preflight)
+    monkeypatch.setattr(runner, "observe_host",
+                        lambda: HostTelemetryV2(16, free_disk_bytes=10**12))
+    monkeypatch.setattr(runner, "RealMeasurementBackendV2",
+                        lambda **kwargs: Backend())
+    monkeypatch.setattr(runner, "_model_operation",
+                        lambda stage, variant, fixtures: lambda: "a" * 64)
+    monkeypatch.setattr(runner, "_parallel_operation",
+                        lambda stage, variant, fixtures: lambda: "a" * 64)
+    monkeypatch.setattr(supervisor, "run_full_dag_supervisor",
+                        lambda *args, **kwargs: calls.append(True))
+    with pytest.raises(CapacityRunnerError):
+        runner.measure_capacity_v2(
+            production=True, source_sha256="a" * 64,
+            runtime_sha256="b" * 64)
+    assert calls == []
 
 
 def test_refuses_byte_mismatch_and_preflight_not_32():
@@ -938,6 +1039,8 @@ def test_projected_label_cpu_uses_measured_stage_cpu_not_wall_times_sixteen():
     dag = RepresentativeDAGV2(
         10, 10, 10, 10, 10, 10, 10, 1, admissible=True,
         stage_walls_seconds=tuple((name, 10) for name in COMPOSED_STAGE_NAMES),
+        stage_wall_nanoseconds=tuple(
+            (name, 10_000_000_000) for name in COMPOSED_STAGE_NAMES),
         stage_source_unit_counts=tuple((name, 32) for name in COMPOSED_STAGE_NAMES),
         stage_process_cpu_nanoseconds=tuple(
             (name, value * 1_000_000_000)
@@ -961,10 +1064,13 @@ def test_build_receipt_cannot_promote_false_measured_progress_probe():
     dag = RepresentativeDAGV2(
         1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
         stage_walls_seconds=tuple((name, 1) for name in COMPOSED_STAGE_NAMES),
+        stage_wall_nanoseconds=tuple(
+            (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
         stage_source_unit_counts=tuple((name, 32) for name in COMPOSED_STAGE_NAMES),
         stage_process_cpu_nanoseconds=tuple(
             (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
-        member_workers=1, torch_threads=1, inference_batch=32,
+        member_workers=1, continuation_workers=1,
+        torch_threads=1, inference_batch=32,
         reconstruction_workers=1,
         progress_recovery=capabilities)
     dag = __import__("dataclasses").replace(
@@ -978,6 +1084,33 @@ def test_build_receipt_cannot_promote_false_measured_progress_probe():
             preflight=preflight, source_sha256="a" * 64,
             runtime_sha256="b" * 64,
             representative_dag=dag,
+            _provenance=_PRODUCTION_PROVENANCE)
+
+
+def test_build_receipt_cannot_hardcode_all_core_pass_over_full_dag_counters():
+    preflight = _preflight()
+    fixture = preflight.accepted_fixtures[0]
+    dag = RepresentativeDAGV2(
+        1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
+        stage_walls_seconds=tuple(
+            (name, 1) for name in COMPOSED_STAGE_NAMES),
+        stage_wall_nanoseconds=tuple(
+            (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
+        stage_source_unit_counts=tuple(
+            (name, 32) for name in COMPOSED_STAGE_NAMES),
+        stage_process_cpu_nanoseconds=tuple(
+            (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
+        member_workers=1, continuation_workers=1, torch_threads=1,
+        inference_batch=32, reconstruction_workers=1,
+        progress_recovery={name: True for name in _RECOVERY_CAPABILITY_NAMES},
+        provenance_token=_FULL_DAG_PROVENANCE)
+    dag = dataclasses.replace(dag, attestation_sha256=_dag_attestation(dag))
+    with pytest.raises(CapacityRunnerError, match="all-core gate did not pass"):
+        build_receipt_v2(
+            _selected_arms(fixture),
+            host=HostTelemetryV2(16, free_disk_bytes=10**12),
+            preflight=preflight, source_sha256="a" * 64,
+            runtime_sha256="b" * 64, representative_dag=dag,
             _provenance=_PRODUCTION_PROVENANCE)
 
 
@@ -1008,11 +1141,14 @@ def test_failure_receipt_publishes_once_at_distinct_sibling_path(tmp_path):
     success = tmp_path / "capacity.json"
     failure_path = tmp_path / "capacity-failure.json"
     source, input_sha = "1" * 64, "2" * 64
+    runtime_sha = "3" * 64
     namespace = hashlib.sha256(canonical_json_bytes({
-        "source_sha256": source, "input_sha256": input_sha})).hexdigest()
+        "source_sha256": source, "input_sha256": input_sha,
+        "runtime_sha256": runtime_sha})).hexdigest()
     failure = CapacityFailureReceiptV2(
         stage="runner", reason="capacity-runner-refused", elapsed_seconds=1,
         source_sha256=source, input_sha256=input_sha,
+        runtime_sha256=runtime_sha,
         namespace_sha256=namespace, detail_sha256="4" * 64)
     publish_capacity_failure_receipt_v2(failure_path, failure)
     assert not success.exists()

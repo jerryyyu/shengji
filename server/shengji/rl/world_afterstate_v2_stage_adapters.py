@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,9 +48,9 @@ from .world_afterstate_v2_late_stage_adapters import (
 
 
 ABI = "world-afterstate-v2-stage-adapter-supervisor-shards-v1"
-INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v2"
+INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v3"
 POPULATION_INPUT_SCHEMA = INPUT_SCHEMA
-STAGE_INPUT_SCHEMA = "world-afterstate-v2-early-stage-adapters-input-v1"
+STAGE_INPUT_SCHEMA = "world-afterstate-v2-early-stage-adapters-input-v2"
 # The six-label freeze ABI has one config artifact.  These aliases are kept
 # public for callers that name the stage, but all three resolve the same
 # unified envelope and are never three independent config artifacts.
@@ -60,6 +59,8 @@ OPTIMIZER_INPUT_SCHEMA = STAGE_INPUT_SCHEMA
 NESTED_INPUT_SCHEMA = STAGE_INPUT_SCHEMA
 P0_CONTINUATION_ROOT = "p0-continuations"
 FIT_SELECT_CONTINUATION_ROOT = "fit-select-continuations"
+# Continuation is a distinct frozen worker dimension from member concurrency.
+CONTINUATION_WORKER_ARMS = (1, 2, 4, 8, 12, 16, 32)
 _STAGE_CONFIG_FIELDS = frozenset({
     "schema", "artifact_root", "population_namespace_sha256",
     "label_workers", "label_deadline_seconds",
@@ -237,7 +238,7 @@ def _read_stage_config(repo: Path, freeze: Any, schema: str) -> dict[str, Any]:
     deadline = value["label_deadline_seconds"]
     freeze_deadline = getattr(freeze, "deadline_seconds", None)
     if (isinstance(workers, bool) or not isinstance(workers, int)
-            or not 1 <= workers <= (os.cpu_count() or 1)
+            or workers not in CONTINUATION_WORKER_ARMS
             or isinstance(deadline, bool) or not isinstance(deadline, int)
             or deadline < 1 or isinstance(freeze_deadline, bool)
             or not isinstance(freeze_deadline, int) or freeze_deadline < 1
@@ -353,7 +354,7 @@ def _stage_label_resources(config: dict[str, Any], freeze: Any) -> tuple[int, in
     deadline = config["label_deadline_seconds"]
     freeze_deadline = getattr(freeze, "deadline_seconds", None)
     if (isinstance(workers, bool) or not isinstance(workers, int)
-            or not 1 <= workers <= (os.cpu_count() or 1)
+            or workers not in CONTINUATION_WORKER_ARMS
             or isinstance(deadline, bool) or not isinstance(deadline, int)
             or deadline < 1 or isinstance(freeze_deadline, bool)
             or not isinstance(freeze_deadline, int) or freeze_deadline < 1

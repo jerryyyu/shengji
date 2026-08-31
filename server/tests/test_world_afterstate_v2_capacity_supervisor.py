@@ -272,6 +272,11 @@ def test_result_requires_every_actual_stage_and_no_reconstruction_replay():
             bad.validate()
 
 
+def test_supervisor_progress_utilization_uses_exact_cpu_and_wall_ns():
+    assert supervisor._exact_cpu_utilization_ppm(
+        wall_ns=2_000_000_000, process_cpu_ns=16_000_000_000) == 500_000
+
+
 def test_result_rejects_any_continuation_reconstruction_count():
     result = FullDAGCapacityMeasurementV2(
         tuple((stage, 1) for stage in FULL_DAG_STAGES), 1,
@@ -326,6 +331,19 @@ def test_full_dag_measurement_refuses_missing_reconstruction_layout():
         1, 1, 32, 0)
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="layout"):
         result.validate()
+
+
+def test_full_dag_measurement_round_trips_32_continuation_and_reconstruction():
+    result = FullDAGCapacityMeasurementV2(
+        tuple((stage, 1_000_000_000) for stage in FULL_DAG_STAGES), 1,
+        FULL_DAG_STAGES, 0, True, _capabilities(), None,
+        tuple((stage, 32) for stage in FULL_DAG_STAGES),
+        tuple((stage, 1_000_000_000) for stage in FULL_DAG_STAGES),
+        1, 32, 1, 32, 32)
+    result.validate()
+    bad = replace(result, continuation_workers=33)
+    with pytest.raises(FullDAGCapacityDependencyBlocked, match="layout"):
+        bad.validate()
 
 
 def test_audit_derivation_dependency_is_explicitly_non_admissible():

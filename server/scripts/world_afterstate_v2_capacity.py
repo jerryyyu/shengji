@@ -244,10 +244,12 @@ def _input_sha256(output: Path, failure_out: Path, work_root: Path) -> str:
 
 def _failure_receipt(exc: BaseException, *, started_ns: int, output: Path,
                      failure_out: Path, work_root: Path,
-                     source_sha256: str) -> CapacityFailureReceiptV2:
+                     source_sha256: str,
+                     runtime_sha256: str) -> CapacityFailureReceiptV2:
     input_sha256 = _input_sha256(output, failure_out, work_root)
     namespace_sha256 = hashlib.sha256(canonical_json_bytes({
         "source_sha256": source_sha256, "input_sha256": input_sha256,
+        "runtime_sha256": runtime_sha256,
     })).hexdigest()
     return CapacityFailureReceiptV2(
         stage=getattr(exc, "stage", "runner"),
@@ -255,6 +257,7 @@ def _failure_receipt(exc: BaseException, *, started_ns: int, output: Path,
         elapsed_seconds=min(MAX_COMMAND_WALL_SECONDS, max(
             0, (time.perf_counter_ns() - started_ns) // 1_000_000_000)),
         source_sha256=source_sha256, input_sha256=input_sha256,
+        runtime_sha256=runtime_sha256,
         namespace_sha256=namespace_sha256,
         detail_sha256=hashlib.sha256(str(exc).encode("utf-8")).hexdigest())
 
@@ -304,7 +307,8 @@ def _run_worker(args: argparse.Namespace, *, output: Path, failure_out: Path,
         return 2, canonical_json_bytes(_failure_receipt(
             exc, started_ns=started_ns, output=output,
             failure_out=failure_out, work_root=work_root,
-            source_sha256=source_sha256).payload())
+            source_sha256=source_sha256,
+            runtime_sha256=runtime_sha256).payload())
 
 
 def _kill_process_group(process: object) -> None:
@@ -325,14 +329,16 @@ def _kill_process_group(process: object) -> None:
 
 def _publish_failure(exc: BaseException, *, started_ns: int, output: Path,
                      failure_out: Path, work_root: Path,
-                     source_sha256: str) -> int:
+                     source_sha256: str,
+                     runtime_sha256: str) -> int:
     if output.exists() or output.is_symlink():
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
     failure = _failure_receipt(
         exc, started_ns=started_ns, output=output,
         failure_out=failure_out, work_root=work_root,
-        source_sha256=source_sha256)
+        source_sha256=source_sha256,
+        runtime_sha256=runtime_sha256)
     try:
         publish_capacity_failure_receipt_v2(failure_out, failure)
         reopened = reopen_capacity_failure_receipt_v2(
@@ -364,7 +370,8 @@ def _supervised_main(args: argparse.Namespace, *, output: Path,
                 "capacity deadline killed worker process group",
                 stage="measurement", reason_code="capacity-deadline-exceeded"),
                 started_ns=started_ns, output=output, failure_out=failure_out,
-                work_root=work_root, source_sha256=source_sha256)
+                work_root=work_root, source_sha256=source_sha256,
+                runtime_sha256=runtime_sha256)
         if process.returncode == 0:
             if (_source_sha256() != source_sha256
                     or _runtime_sha256() != runtime_sha256):
@@ -389,6 +396,8 @@ def _supervised_main(args: argparse.Namespace, *, output: Path,
                 json.loads(raw.decode("ascii")))
             if (failure.source_sha256 != source_sha256
                     or _source_sha256() != source_sha256
+                    or failure.runtime_sha256 != runtime_sha256
+                    or _runtime_sha256() != runtime_sha256
                     or failure.input_sha256 != _input_sha256(
                         output, failure_out, work_root)):
                 raise CapacityRunnerError(
@@ -413,7 +422,8 @@ def _supervised_main(args: argparse.Namespace, *, output: Path,
         return _publish_failure(
             exc, started_ns=started_ns, output=output,
             failure_out=failure_out, work_root=work_root,
-            source_sha256=source_sha256)
+            source_sha256=source_sha256,
+            runtime_sha256=runtime_sha256)
 
 
 def main(argv: list[str] | None = None) -> int:

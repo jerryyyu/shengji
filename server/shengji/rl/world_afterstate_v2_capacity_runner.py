@@ -39,8 +39,12 @@ from .world_afterstate_v2_capacity import (
     reopen_capacity_failure_receipt_v2,
     reopen_capacity_failure_receipt_v2_bytes,
     validate_capacity_failure_receipt_v2,
+    derive_all_core_gate_passed, projected_arm_wall_shares_ppm,
+    validate_capacity_arm_census_v2 as _validate_capacity_arm_census_contract,
 )
-from .world_afterstate_v2_protocol import ATTEMPT_SCHEMA, P0_DEALS, TIER_SPECS
+from .world_afterstate_v2_protocol import (
+    ATTEMPT_SCHEMA, MEMORY_PERCENT_MAX, P0_DEALS, TIER_SPECS,
+)
 from .world_afterstate_v2_schedule import MAX_EPOCHS
 from .world_afterstate_v2_population import PopulationMaterialV2
 from .world_afterstate_v2_source_driver import drive_population_attempt_v2
@@ -327,7 +331,7 @@ class PreflightResultV2:
 
 
 def _namespace() -> str:
-    return _sha({"namespace": "world-afterstate-v2-capacity-preflight-v1"})
+    return _sha({"namespace": "world-afterstate-v2-capacity-preflight-v2"})
 
 
 def _attempt_identity(namespace: str, slot: Any, index: int) -> dict[str, Any]:
@@ -1136,18 +1140,21 @@ def _arm_from_raw(stage: str, variant: int, raw: RawMeasurementV2,
     raw.validate()
     if raw.byte_identity_sha256 != fixture_sha:
         raise CapacityRunnerError("stage arms are not byte-identical")
-    wall = _ceil_seconds(raw.elapsed_ns)
-    busy = max(1, (raw.process_cpu_ns + 999_999_999) // 1_000_000_000)
-    busy = min(busy, wall * HOST_CPUS)
-    mean = busy * 1_000_000 // (wall * HOST_CPUS)
+    wall_ns = raw.elapsed_ns
+    busy_ns = max(1, raw.process_cpu_ns)
+    if busy_ns > wall_ns * HOST_CPUS:
+        raise CapacityRunnerError("measurement CPU exceeds wall/core envelope")
+    wall = _ceil_seconds(wall_ns)
+    busy = _ceil_seconds(busy_ns)
+    mean = busy_ns * 1_000_000 // (wall_ns * HOST_CPUS)
     samples = raw.sample_utilization_ppm or (mean,)
     p50 = sorted(samples)[len(samples) // 2]
     p95 = sorted(samples)[min(len(samples) - 1, math.ceil(len(samples) * .95) - 1)]
     scaling = min(1_000_000, max(1, mean * HOST_CPUS // max(1, variant)))
-    # The receipt's wall-share gate is a projected-DAG share, not a timer
-    # unit.  A conservative 10% share keeps the CPU-bound guard active even
-    # for a one-fixture benchmark; the next-arm rule then remains binding.
-    share = 100_000
+    # Shares are bound after all arms are measured, once the projected D256
+    # stage categories are available.  Zero is an honest pre-census value,
+    # never a fabricated constant.
+    share = 0
     arm = CapacityArmV2(
         stage=stage, variant=variant, wall_seconds=wall,
         busy_core_seconds=busy, mean_cpu_utilization_ppm=mean,
@@ -1156,7 +1163,7 @@ def _arm_from_raw(stage: str, variant: int, raw: RawMeasurementV2,
         wall_share_ppm=share, peak_memory_bytes=raw.peak_rss_bytes,
         swap_bytes=ZERO_SWAP, task_count=raw.task_count,
         byte_identity_sha256=fixture_sha, cpu_bound=raw.cpu_bound,
-        wall_nanoseconds=raw.elapsed_ns,
+        wall_ns=wall_ns, busy_core_ns=busy_ns,
         peak_task_count=max((raw.task_count, *raw.sample_task_counts)))
     # CapacityArmV2 intentionally remains the existing public wire type.  A
     # private in-memory provenance bit prevents a test seam from being
@@ -1174,14 +1181,36 @@ def _select_arms(arms: Sequence[CapacityArmV2]) -> dict[str, CapacityArmV2]:
         if len({arm.byte_identity_sha256 for arm in stage_arms}) != 1:
             raise CapacityRunnerError("stage arms are not byte-identical")
         eligible = [arm for arm in stage_arms
-                    if arm.peak_memory_bytes * 100 <= MEMORY_LIMIT_BYTES * 85]
+                    if arm.peak_memory_bytes * 100
+                    <= MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX]
         if not eligible:
             raise CapacityRunnerError("no memory-eligible arm")
         selected[stage] = min(
-            eligible, key=lambda arm: (arm.wall_nanoseconds or
-                                       arm.wall_seconds * 1_000_000_000,
-                                       arm.variant))
+            eligible, key=lambda arm: (arm.wall_ns, arm.variant))
     return selected
+
+
+def _bind_projected_arm_shares(
+        arms: Sequence[CapacityArmV2],
+        stage_walls_seconds: Mapping[str, int]) -> tuple[CapacityArmV2, ...]:
+    """Bind each measured arm to its disjoint projected D256 category share."""
+    shares = projected_arm_wall_shares_ppm(stage_walls_seconds)
+    return tuple(__import__("dataclasses").replace(
+        arm, wall_share_ppm=shares[arm.stage]) for arm in arms)
+
+
+def validate_capacity_arm_census_v2(
+        arms: Sequence[CapacityArmV2], selected: Mapping[str, CapacityArmV2],
+        stage_walls_seconds: Mapping[str, int]) -> None:
+    """Fail closed on material low-utilization arms before the full DAG call."""
+    try:
+        _validate_capacity_arm_census_contract(
+            arms, selected, stage_walls_seconds)
+    except WorldAfterstateV2CapacityError as exc:
+        raise CapacityRunnerError(
+            "capacity arm census refused low-utilization material arm",
+            stage="measurement",
+            reason_code="arm-census-low-utilization") from exc
 
 
 @dataclass(frozen=True)
@@ -1213,6 +1242,7 @@ class RepresentativeDAGV2:
     admissible: bool = False
     source_fixture_count: int = PREFLIGHT_ACCEPTED
     stage_walls_seconds: tuple[tuple[str, int], ...] = ()
+    stage_wall_nanoseconds: tuple[tuple[str, int], ...] = ()
     # Only the executable full-DAG supervisor may populate this witness.
     progress_recovery: Mapping[str, bool] | None = None
     provenance_token: object | None = None
@@ -1220,6 +1250,7 @@ class RepresentativeDAGV2:
     stage_source_unit_counts: tuple[tuple[str, int], ...] = ()
     stage_process_cpu_nanoseconds: tuple[tuple[str, int], ...] = ()
     member_workers: int = 0
+    continuation_workers: int = 0
     torch_threads: int = 0
     inference_batch: int = 0
     reconstruction_workers: int = 0
@@ -1240,9 +1271,11 @@ def _dag_attestation(value: RepresentativeDAGV2) -> str:
         "admissible": value.admissible,
         "source_fixture_count": value.source_fixture_count,
         "stage_walls_seconds": list(value.stage_walls_seconds),
+        "stage_wall_nanoseconds": list(value.stage_wall_nanoseconds),
         "stage_source_unit_counts": list(value.stage_source_unit_counts),
         "stage_process_cpu_nanoseconds": list(value.stage_process_cpu_nanoseconds),
         "member_workers": value.member_workers,
+        "continuation_workers": value.continuation_workers,
         "torch_threads": value.torch_threads,
         "inference_batch": value.inference_batch,
         "reconstruction_workers": value.reconstruction_workers,
@@ -1421,6 +1454,10 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
         stage_unit_counts=stage_units,
         measured_stage_walls_seconds=(
             tuple(dag.stage_walls_seconds) if dag else ()),
+        measured_stage_wall_nanoseconds=(
+            tuple(dag.stage_wall_nanoseconds) if dag else ()),
+        measured_stage_cpu_nanoseconds=(
+            tuple(dag.stage_process_cpu_nanoseconds) if dag else ()),
         stage_cpu_seconds=cpu_values,
         measured_stage_cpu_seconds=(
             tuple((name, max(1, (value + 999_999_999) // 1_000_000_000))
@@ -1503,6 +1540,15 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
                    for _, seconds in stage_rows)):
         raise FullDAGCapacityDependencyBlocked(
             "complete full-DAG stage timing witness is missing")
+    stage_ns_rows = representative_dag.stage_wall_nanoseconds
+    if (type(stage_ns_rows) is not tuple
+            or tuple(name for name, _ in stage_ns_rows) != COMPOSED_STAGE_NAMES
+            or any(type(value) is not int or value < 1
+                   for _, value in stage_ns_rows)
+            or any(seconds != _ceil_seconds(ns)
+                   for (_, seconds), (_, ns) in zip(stage_rows, stage_ns_rows))):
+        raise FullDAGCapacityDependencyBlocked(
+            "complete full-DAG exact wall timing witness is missing")
     unit_rows = representative_dag.stage_source_unit_counts
     if (type(unit_rows) is not tuple
             or tuple(name for name, _ in unit_rows) != COMPOSED_STAGE_NAMES
@@ -1538,10 +1584,12 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
         arm.validate()
     selected = _select_arms(arms)
     layout = (selected["member-concurrency"].variant,
+               selected["continuation-mechanics"].variant,
                PINNED_TORCH_THREADS,
                selected["inference-batch"].variant,
                selected["reconstruction"].variant)
     dag_layout = (representative_dag.member_workers,
+                  representative_dag.continuation_workers,
                   representative_dag.torch_threads,
                   representative_dag.inference_batch,
                   representative_dag.reconstruction_workers)
@@ -1551,6 +1599,14 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
     composed = _composed_projection(
         selected, len(preflight.accepted_fixtures), host.free_disk_bytes,
         representative_dag)
+    arms = _bind_projected_arm_shares(arms, dict(composed.stage_walls_seconds))
+    selected = {stage: next(arm for arm in arms if arm.stage == stage
+                            and arm.variant == selected[stage].variant)
+                for stage in ARM_GRIDS}
+    all_core_gate_passed = derive_all_core_gate_passed(
+        arms, dict(composed.stage_walls_seconds),
+        dict(representative_dag.stage_wall_nanoseconds),
+        dict(representative_dag.stage_process_cpu_nanoseconds))
     if (tuple(row[0] for row in composed.stage_unit_counts)
             != COMPOSED_STAGE_NAMES):
         raise FullDAGCapacityDependencyBlocked(
@@ -1597,8 +1653,10 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
         peak_task_count=max((arm.peak_task_count or arm.task_count)
                         for arm in arms), measurement_scope=MEASUREMENT_SCOPE)
     receipt = __import__("dataclasses").replace(
-        receipt, member_workers=layout[0], torch_threads=layout[1],
-        inference_batch=layout[2], reconstruction_workers=layout[3])
+        receipt, member_workers=layout[0], continuation_workers=layout[1],
+        torch_threads=layout[2], inference_batch=layout[3],
+        reconstruction_workers=layout[4],
+        all_core_gate_passed=all_core_gate_passed)
     try:
         validate_capacity_receipt_v2(receipt)
     except WorldAfterstateV2CapacityError as exc:
@@ -1672,7 +1730,8 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 raise CapacityRunnerError("capacity deadline exceeded during measurement")
             if production:
                 live = observe_host()
-                if _cgroup_memory_bytes() * 100 > MEMORY_LIMIT_BYTES * 85:
+                if (_cgroup_memory_bytes() * 100
+                        > MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX):
                     raise CapacityRunnerError("capacity memory headroom exhausted")
                 if live.swap_bytes != ZERO_SWAP:
                     raise CapacityRunnerError("capacity swap became non-zero")
@@ -1709,6 +1768,14 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
     if production and time.perf_counter_ns() - started > MAX_COMMAND_WALL_SECONDS * 1_000_000_000:
         raise CapacityRunnerError("capacity command wall cap exceeded")
     selected = _select_arms(arms)
+    if production:
+        # The census is deliberately before importing/calling the full-DAG
+        # supervisor.  Its projected D256 category shares are deterministic
+        # from the selected arm timings and frozen stage mapping.
+        provisional = _composed_projection(
+            selected, len(fixtures), host.free_disk_bytes)
+        validate_capacity_arm_census_v2(
+            arms, selected, dict(provisional.stage_walls_seconds))
     # Freeze the exact layout before any representative DAG work starts.
     member_workers = selected["member-concurrency"].variant
     torch_threads = PINNED_TORCH_THREADS
@@ -1752,9 +1819,11 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 stage_walls_seconds=tuple(
                     (name, _ceil_seconds(value))
                     for name, value in measured.stage_wall_nanoseconds),
+                stage_wall_nanoseconds=tuple(measured.stage_wall_nanoseconds),
                 stage_source_unit_counts=measured.stage_source_unit_counts,
                 stage_process_cpu_nanoseconds=measured.stage_process_cpu_nanoseconds,
                 member_workers=measured.member_workers,
+                continuation_workers=getattr(measured, "continuation_workers", 0),
                 torch_threads=measured.torch_threads,
                 inference_batch=measured.inference_batch,
                 reconstruction_workers=measured.reconstruction_workers,
@@ -1833,11 +1902,23 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
                 "authority", "model_parameter_count",
                 "candidate_distribution", "per_epoch_wall_seconds",
                 "peak_task_count", "measurement_scope", "member_workers",
-                "torch_threads", "inference_batch", "source_sha256",
-                "runtime_sha256", "reconstruction_workers"}
+                "continuation_workers", "torch_threads", "inference_batch", "source_sha256",
+                "runtime_sha256", "reconstruction_workers",
+                "all_core_gate_passed"}
     if set(payload) != required:
         raise CapacityRunnerError("capacity payload field population drift")
     try:
+        arm_fields = set(CapacityArmV2(
+            stage="state-successor", variant=1, wall_seconds=1,
+            busy_core_seconds=1, mean_cpu_utilization_ppm=62_500,
+            p50_cpu_utilization_ppm=1, p95_cpu_utilization_ppm=1,
+            scaling_efficiency_ppm=1, queue_depth=0, wall_share_ppm=0,
+            peak_memory_bytes=1, swap_bytes=0, task_count=1,
+            byte_identity_sha256="0" * 64, cpu_bound=False,
+            wall_ns=1_000_000_000, busy_core_ns=1_000_000_000).payload())
+        for row in (*payload["arms"], *payload["selected_arms"]):
+            if type(row) is not dict or set(row) != arm_fields:
+                raise CapacityRunnerError("capacity arm payload field population drift")
         arms = tuple(CapacityArmV2(**row) for row in payload["arms"])
         selected = tuple(CapacityArmV2(**row) for row in payload["selected_arms"])
         composed_payload = dict(payload["composed"])
@@ -1853,6 +1934,12 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
         composed_payload["measured_stage_cpu_seconds"] = tuple(
             tuple(row) for row in composed_payload.get(
                 "measured_stage_cpu_seconds", ()))
+        composed_payload["measured_stage_wall_nanoseconds"] = tuple(
+            tuple(row) for row in composed_payload.get(
+                "measured_stage_wall_nanoseconds", ()))
+        composed_payload["measured_stage_cpu_nanoseconds"] = tuple(
+            tuple(row) for row in composed_payload.get(
+                "measured_stage_cpu_nanoseconds", ()))
         composed_payload["scientific_dag_edges"] = tuple(
             tuple(row) for row in composed_payload.get("scientific_dag_edges", ()))
         composed_payload["dag_edges"] = tuple(
@@ -1881,9 +1968,11 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
             peak_task_count=payload["peak_task_count"],
             measurement_scope=payload["measurement_scope"],
             member_workers=payload["member_workers"],
+            continuation_workers=payload["continuation_workers"],
             torch_threads=payload["torch_threads"],
             inference_batch=payload["inference_batch"],
-            reconstruction_workers=payload["reconstruction_workers"])
+            reconstruction_workers=payload["reconstruction_workers"],
+            all_core_gate_passed=payload["all_core_gate_passed"])
         validate_capacity_receipt_v2(result)
     except Exception as exc:
         raise CapacityRunnerError("capacity payload reconstruction refused") from exc

@@ -27,12 +27,12 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-SCHEMA = "world-afterstate-v2-post-implementation-capacity-v5"
-FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v1"
-ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v2"
-PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v2"
+SCHEMA = "world-afterstate-v2-post-implementation-capacity-v6"
+FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v2"
+ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v3"
+PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v3"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-recovery-v1"
-MEASUREMENT_SCOPE = "retained-32-material-sample-projection-v1"
+MEASUREMENT_SCOPE = "retained-32-material-sample-projection-v2"
 MAX_COMMAND_WALL_SECONDS = 2 * 60 * 60
 MEMORY_LIMIT_BYTES = 30 * 1024**3
 MAX_TASKS = 4_096
@@ -43,11 +43,11 @@ MIN_WALL_SHARE_PPM = 50_000
 PINNED_TORCH_THREADS = 1
 
 ARM_GRIDS: dict[str, tuple[int, ...]] = {
-    "state-successor": (1, 2, 4, 8, 16),
-    "continuation-mechanics": (1, 2, 4, 8, 12, 16),
+    "state-successor": (1, 2, 4, 8, 16, 32),
+    "continuation-mechanics": (1, 2, 4, 8, 12, 16, 32),
     "member-concurrency": (1, 2, 4),
     "inference-batch": (32, 64, 128, 256),
-    "reconstruction": (1, 4, 8, 16),
+    "reconstruction": (1, 4, 8, 16, 32),
 }
 ARM_DIMENSIONS = {
     "state-successor": "workers",
@@ -100,6 +100,27 @@ CAPACITY_STAGE_TO_PRODUCTION_STAGE = {
 CAPACITY_ARM_TO_PRODUCTION_STAGE = {
     "state-successor": "population",
     "continuation-mechanics": "population",
+}
+# Every projected stage either maps to exactly one operationally matching arm
+# category or explicitly maps to ``None``. This disjoint relation is also the
+# source of arm wall shares: mapped stage walls are summed by category and
+# divided by the D256 projected total. Unmapped material stages must prove
+# their utilization directly from the full DAG. The closed table prevents a
+# census from borrowing an unrelated arm or using a fabricated constant share.
+CAPACITY_STAGE_TO_ARM = {
+    "label-p0": "continuation-mechanics", "p0": None,
+    "optimizer-canary": "member-concurrency", "label-fit": "continuation-mechanics",
+    "nested-curve-25": None, "nested-curve-50": None,
+    "block-1-natural": "member-concurrency", "nested-curve-100": None,
+    "block-1-action-association-permutation": "member-concurrency",
+    "block-1-label-permutation": "member-concurrency",
+    "block-1-complete-world-shuffle": "member-concurrency",
+    "block-2-natural": "member-concurrency",
+    "block-2-complete-world-shuffle": "member-concurrency",
+    "precision-select-inference": "inference-batch",
+    "label-precision-select": "continuation-mechanics",
+    "precision-select": None, "label-audit": "continuation-mechanics",
+    "audit": None, "reconstruction": "reconstruction",
 }
 CAPACITY_PRODUCTION_STAGE_COVERAGE = frozenset(
     (*CAPACITY_STAGE_TO_PRODUCTION_STAGE.values(),
@@ -188,6 +209,7 @@ class CapacityFailureReceiptV2:
     elapsed_seconds: int
     source_sha256: str
     input_sha256: str
+    runtime_sha256: str
     namespace_sha256: str
     detail_sha256: str
     deadline_seconds: int = MAX_COMMAND_WALL_SECONDS
@@ -198,7 +220,7 @@ class CapacityFailureReceiptV2:
         if self.schema != FAILURE_SCHEMA or self.status != "failure":
             raise WorldAfterstateV2CapacityError(
                 "capacity failure identity drift")
-        digests = (self.source_sha256, self.input_sha256,
+        digests = (self.source_sha256, self.input_sha256, self.runtime_sha256,
                    self.namespace_sha256, self.detail_sha256)
         if (type(self.stage) is not str or self.stage not in FAILURE_STAGES
                 or type(self.reason) is not str
@@ -212,7 +234,8 @@ class CapacityFailureReceiptV2:
                     "capacity failure evidence drift")
         if self.namespace_sha256 != _sha({
                 "source_sha256": self.source_sha256,
-                "input_sha256": self.input_sha256}):
+                "input_sha256": self.input_sha256,
+                "runtime_sha256": self.runtime_sha256}):
             raise WorldAfterstateV2CapacityError(
                 "capacity failure namespace binding drift")
         if (isinstance(self.elapsed_seconds, bool)
@@ -227,6 +250,7 @@ class CapacityFailureReceiptV2:
             "stage": self.stage, "reason": self.reason,
             "source_sha256": self.source_sha256,
             "input_sha256": self.input_sha256,
+            "runtime_sha256": self.runtime_sha256,
             "namespace_sha256": self.namespace_sha256,
             "detail_sha256": self.detail_sha256,
             "elapsed_seconds": self.elapsed_seconds,
@@ -240,7 +264,8 @@ def reopen_capacity_failure_receipt_v2(
         payload: Mapping[str, Any]) -> CapacityFailureReceiptV2:
     """Strictly reconstruct one canonical refusal artifact."""
     required = {"schema", "status", "stage", "reason", "source_sha256",
-                "input_sha256", "namespace_sha256", "detail_sha256",
+                "input_sha256", "runtime_sha256", "namespace_sha256",
+                "detail_sha256",
                 "elapsed_seconds",
                 "deadline_seconds", "authority", "failure_receipt_sha256"}
     if type(payload) is not dict or set(payload) != required \
@@ -256,6 +281,7 @@ def reopen_capacity_failure_receipt_v2(
         elapsed_seconds=payload["elapsed_seconds"],
         source_sha256=payload["source_sha256"],
         input_sha256=payload["input_sha256"],
+        runtime_sha256=payload["runtime_sha256"],
         namespace_sha256=payload["namespace_sha256"],
         detail_sha256=payload["detail_sha256"],
         deadline_seconds=payload["deadline_seconds"],
@@ -302,6 +328,10 @@ def _int(value: object, label: str, *, minimum: int = 0) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
         raise WorldAfterstateV2CapacityError(f"{label} drift")
     return value
+
+
+def _ceil_seconds(nanoseconds: int) -> int:
+    return max(1, (nanoseconds + 999_999_999) // 1_000_000_000)
 
 
 def _ppm(value: object, label: str, *, maximum: int = 1_000_000) -> int:
@@ -374,11 +404,16 @@ class CapacityArmV2:
     task_count: int
     byte_identity_sha256: str
     cpu_bound: bool
+    # Exact timer values are mandatory in both typed and serialized arms.
+    wall_ns: int
+    busy_core_ns: int
     schema: str = ARM_SCHEMA
-    # Nanoseconds are retained for arm selection; wall_seconds is the frozen
-    # receipt display unit and therefore must not decide subsecond ties.
-    wall_nanoseconds: int = 0
     peak_task_count: int = 0
+
+    @property
+    def wall_nanoseconds(self) -> int:
+        """Compatibility spelling; exact wire spelling is ``wall_ns``."""
+        return self.wall_ns
 
     def validate(self) -> None:
         if self.schema != ARM_SCHEMA or self.stage not in ARM_GRIDS \
@@ -392,7 +427,8 @@ class CapacityArmV2:
                 (self.peak_memory_bytes, "arm peak memory"),
                 (self.task_count, "arm task count")):
             _int(value, label)
-        _int(self.wall_nanoseconds, "arm wall nanoseconds")
+        _int(self.wall_ns, "arm wall_ns", minimum=1)
+        _int(self.busy_core_ns, "arm busy_core_ns", minimum=1)
         _int(self.peak_task_count, "arm peak task count")
         for value, label in (
                 (self.mean_cpu_utilization_ppm, "arm mean utilization"),
@@ -412,17 +448,18 @@ class CapacityArmV2:
         _digest(self.byte_identity_sha256, "arm byte identity SHA-256")
         if self.p50_cpu_utilization_ppm > self.p95_cpu_utilization_ppm:
             raise WorldAfterstateV2CapacityError("arm utilization quantile drift")
-        if self.busy_core_seconds > self.wall_seconds * CAPACITY_HOST_LOGICAL_CPUS:
+        if self.wall_seconds != _ceil_seconds(self.wall_ns):
+            raise WorldAfterstateV2CapacityError("arm wall display binding drift")
+        if self.busy_core_seconds != _ceil_seconds(self.busy_core_ns):
+            raise WorldAfterstateV2CapacityError(
+                "arm busy-core display binding drift")
+        if self.busy_core_ns > self.wall_ns * CAPACITY_HOST_LOGICAL_CPUS:
             raise WorldAfterstateV2CapacityError("arm busy-core bound drift")
-        implied = self.busy_core_seconds * 1_000_000 \
-            // (self.wall_seconds * CAPACITY_HOST_LOGICAL_CPUS)
-        tolerance = 1_000_000 \
-            // (self.wall_seconds * CAPACITY_HOST_LOGICAL_CPUS) + 1
-        if abs(self.mean_cpu_utilization_ppm - implied) > tolerance:
+        implied = self.busy_core_ns * 1_000_000 \
+            // (self.wall_ns * CAPACITY_HOST_LOGICAL_CPUS)
+        if self.mean_cpu_utilization_ppm != implied:
             raise WorldAfterstateV2CapacityError(
                 "arm busy-core/utilization binding drift")
-        if self.wall_nanoseconds and self.wall_nanoseconds < 1_000_000:
-            raise WorldAfterstateV2CapacityError("arm wall nanoseconds drift")
         if self.peak_task_count and self.peak_task_count < self.task_count:
             raise WorldAfterstateV2CapacityError("arm peak task count drift")
 
@@ -437,6 +474,7 @@ class CapacityArmV2:
             "schema": self.schema, "stage": self.stage,
             "variant": self.variant, "wall_seconds": self.wall_seconds,
             "busy_core_seconds": self.busy_core_seconds,
+            "wall_ns": self.wall_ns, "busy_core_ns": self.busy_core_ns,
             "mean_cpu_utilization_ppm": self.mean_cpu_utilization_ppm,
             "p50_cpu_utilization_ppm": self.p50_cpu_utilization_ppm,
             "p95_cpu_utilization_ppm": self.p95_cpu_utilization_ppm,
@@ -447,7 +485,6 @@ class CapacityArmV2:
             "swap_bytes": self.swap_bytes, "task_count": self.task_count,
             "byte_identity_sha256": self.byte_identity_sha256,
             "cpu_bound": self.cpu_bound,
-            "wall_nanoseconds": self.wall_nanoseconds,
             "peak_task_count": self.peak_task_count,
         }
 
@@ -469,6 +506,10 @@ class ComposedProjectionV2:
     # never be inferred by multiplying wall by host width.
     stage_cpu_seconds: tuple[tuple[str, int], ...] = ()
     measured_stage_cpu_seconds: tuple[tuple[str, int], ...] = ()
+    # Exact full-DAG wall witnesses travel beside exact CPU witnesses.  The
+    # display-second rows remain a bound (ceil), never the selection source.
+    measured_stage_wall_nanoseconds: tuple[tuple[str, int], ...] = ()
+    measured_stage_cpu_nanoseconds: tuple[tuple[str, int], ...] = ()
     scientific_dag_edges: tuple[tuple[str, str], ...] = SCIENTIFIC_DAG_EDGES
     dag_edges: tuple[tuple[str, str], ...] = COMPOSED_DAG_EDGES
     capacity_stage_to_production_stage: tuple[tuple[str, str], ...] = tuple(
@@ -500,6 +541,30 @@ class ComposedProjectionV2:
             raise WorldAfterstateV2CapacityError("measured stage walls missing")
         if self.stage_unit_counts and not self.measured_stage_cpu_seconds:
             raise WorldAfterstateV2CapacityError("measured stage CPU missing")
+        if self.measured_stage_wall_nanoseconds and (
+                tuple(row[0] for row in self.measured_stage_wall_nanoseconds)
+                != COMPOSED_STAGE_NAMES
+                or any(type(row) is not tuple or len(row) != 2
+                       or type(row[1]) is not int or row[1] < 1
+                       for row in self.measured_stage_wall_nanoseconds)):
+            raise WorldAfterstateV2CapacityError(
+                "measured stage wall nanoseconds drift")
+        if self.measured_stage_cpu_nanoseconds and (
+                tuple(row[0] for row in self.measured_stage_cpu_nanoseconds)
+                != COMPOSED_STAGE_NAMES
+                or any(type(row) is not tuple or len(row) != 2
+                       or type(row[1]) is not int or row[1] < 1
+                       for row in self.measured_stage_cpu_nanoseconds)):
+            raise WorldAfterstateV2CapacityError(
+                "measured stage CPU nanoseconds drift")
+        if (self.measured_stage_wall_nanoseconds
+                and self.measured_stage_cpu_nanoseconds
+                and any(cpu > wall * CAPACITY_HOST_LOGICAL_CPUS
+                        for (_, wall), (_, cpu) in zip(
+                            self.measured_stage_wall_nanoseconds,
+                            self.measured_stage_cpu_nanoseconds))):
+            raise WorldAfterstateV2CapacityError(
+                "measured stage CPU/wall bound drift")
         if self.stage_unit_counts:
             if tuple(row[0] for row in self.stage_unit_counts) != COMPOSED_STAGE_NAMES:
                 raise WorldAfterstateV2CapacityError("composed stage unit grid drift")
@@ -521,6 +586,31 @@ class ComposedProjectionV2:
                 tuple(row[0] for row in self.stage_cpu_seconds)
                 != COMPOSED_STAGE_NAMES):
             raise WorldAfterstateV2CapacityError("composed stage CPU grid drift")
+        measured_populations = (
+            self.measured_stage_walls_seconds,
+            self.measured_stage_cpu_seconds,
+            self.measured_stage_wall_nanoseconds,
+            self.measured_stage_cpu_nanoseconds,
+        )
+        if any(measured_populations) and not all(measured_populations):
+            raise WorldAfterstateV2CapacityError(
+                "complete measured stage counters missing")
+        if self.stage_unit_counts and not all(measured_populations):
+            raise WorldAfterstateV2CapacityError(
+                "complete measured stage counters missing")
+        if all(measured_populations):
+            if any(seconds != _ceil_seconds(nanoseconds)
+                   for (_, seconds), (_, nanoseconds) in zip(
+                       self.measured_stage_walls_seconds,
+                       self.measured_stage_wall_nanoseconds)):
+                raise WorldAfterstateV2CapacityError(
+                    "measured stage wall display binding drift")
+            if any(seconds != _ceil_seconds(nanoseconds)
+                   for (_, seconds), (_, nanoseconds) in zip(
+                       self.measured_stage_cpu_seconds,
+                       self.measured_stage_cpu_nanoseconds)):
+                raise WorldAfterstateV2CapacityError(
+                    "measured stage CPU display binding drift")
         if self.scientific_dag_edges != SCIENTIFIC_DAG_EDGES:
             raise WorldAfterstateV2CapacityError("scientific DAG contract drift")
         if (tuple(name for name, _ in self.capacity_stage_to_production_stage)
@@ -570,6 +660,10 @@ class ComposedProjectionV2:
             "stage_cpu_seconds": [list(row) for row in self.stage_cpu_seconds],
             "measured_stage_cpu_seconds": [
                 list(row) for row in self.measured_stage_cpu_seconds],
+            "measured_stage_wall_nanoseconds": [
+                list(row) for row in self.measured_stage_wall_nanoseconds],
+            "measured_stage_cpu_nanoseconds": [
+                list(row) for row in self.measured_stage_cpu_nanoseconds],
             "scientific_dag_edges": [list(row) for row in self.scientific_dag_edges],
             "dag_edges": [list(row) for row in self.dag_edges],
             "capacity_stage_to_production_stage": [
@@ -663,6 +757,134 @@ class TierProjectionV2:
             _int(value, label, minimum=1)
 
 
+def projected_arm_wall_shares_ppm(
+        stage_walls_seconds: Mapping[str, int]) -> dict[str, int]:
+    """Derive disjoint D256 projected wall shares for each arm category."""
+    if set(stage_walls_seconds) != set(COMPOSED_STAGE_NAMES):
+        raise WorldAfterstateV2CapacityError("projected stage share grid drift")
+    if any(type(value) is not int or value < 1
+           for value in stage_walls_seconds.values()):
+        raise WorldAfterstateV2CapacityError("projected stage share timing drift")
+    total = sum(stage_walls_seconds.values())
+    category_walls = {stage: 0 for stage in ARM_GRIDS}
+    for stage in COMPOSED_STAGE_NAMES:
+        arm_stage = CAPACITY_STAGE_TO_ARM[stage]
+        if arm_stage is not None:
+            category_walls[arm_stage] += stage_walls_seconds[stage]
+    return {stage: category_walls[stage] * 1_000_000 // total
+            for stage in ARM_GRIDS}
+
+
+def arm_has_immediate_next_slower(
+        arm: CapacityArmV2, stage_arms: Sequence[CapacityArmV2]) -> bool:
+    """Return whether the next frozen-grid item is slower and byte-identical."""
+    variants = ARM_GRIDS.get(arm.stage, ())
+    try:
+        position = variants.index(arm.variant)
+    except ValueError:
+        return False
+    if position + 1 >= len(variants):
+        return False
+    next_variant = variants[position + 1]
+    next_arms = [candidate for candidate in stage_arms
+                 if candidate.variant == next_variant]
+    return (len(next_arms) == 1
+            and next_arms[0].peak_memory_bytes * 100
+            <= MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX
+            and next_arms[0].byte_identity_sha256 == arm.byte_identity_sha256
+            and next_arms[0].wall_ns > arm.wall_ns)
+
+
+def validate_capacity_arm_census_v2(
+        arms: Sequence[CapacityArmV2],
+        selected: Mapping[str, CapacityArmV2],
+        stage_walls_seconds: Mapping[str, int]) -> None:
+    """Validate material arm saturation identically before and after the DAG."""
+    if set(selected) != set(ARM_GRIDS):
+        raise WorldAfterstateV2CapacityError(
+            "capacity arm census selection population drift")
+    by_stage = {stage: tuple(arm for arm in arms if arm.stage == stage)
+                for stage in ARM_GRIDS}
+    shares = projected_arm_wall_shares_ppm(stage_walls_seconds)
+    # Population construction is outside COMPOSED_STAGE_NAMES. Its dedicated
+    # state/successor arm is still material when it accounts for at least 5%
+    # of the selected pre-DAG arm budget, so the terminal receipt independently
+    # replays the same gate that ran before the expensive DAG.
+    selected_wall = sum(arm.wall_ns for arm in selected.values())
+    if selected_wall < 1:
+        raise WorldAfterstateV2CapacityError(
+            "capacity arm census selected wall drift")
+    shares["state-successor"] = max(
+        shares["state-successor"],
+        selected["state-successor"].wall_ns * 1_000_000 // selected_wall)
+    for stage in ARM_GRIDS:
+        chosen_rows = tuple(
+            arm for arm in by_stage[stage]
+            if arm.variant == selected[stage].variant)
+        if len(chosen_rows) != 1:
+            raise WorldAfterstateV2CapacityError(
+                "capacity arm census selection drift")
+        chosen = chosen_rows[0]
+        if (chosen.cpu_bound and shares[stage] >= MIN_WALL_SHARE_PPM
+                and chosen.mean_cpu_utilization_ppm < MIN_CPU_UTILIZATION_PPM
+                and not arm_has_immediate_next_slower(
+                    chosen, by_stage[stage])):
+            raise WorldAfterstateV2CapacityError(
+                "CPU-bound stage utilization/next-arm gate drift")
+
+
+def derive_all_core_gate_passed(
+        arms: Sequence[CapacityArmV2],
+        stage_walls_seconds: Mapping[str, int],
+        stage_wall_nanoseconds: Mapping[str, int] | None = None,
+        stage_cpu_nanoseconds: Mapping[str, int] | None = None) -> bool:
+    """Assess every material (>=5%) projected category from exact arm data."""
+    if (stage_wall_nanoseconds is None) != (stage_cpu_nanoseconds is None):
+        return False
+    if stage_wall_nanoseconds is not None and (
+            set(stage_wall_nanoseconds) != set(COMPOSED_STAGE_NAMES)
+            or set(stage_cpu_nanoseconds or ()) != set(COMPOSED_STAGE_NAMES)):
+        return False
+    eligible_by_arm = {
+        arm_stage: tuple(arm for arm in arms if arm.stage == arm_stage
+                         and arm.peak_memory_bytes * 100
+                         <= MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX)
+        for arm_stage in ARM_GRIDS}
+    selected_by_arm = {
+        arm_stage: min(eligible, key=lambda arm: (arm.wall_ns, arm.variant),
+                       default=None)
+        for arm_stage, eligible in eligible_by_arm.items()}
+    total = sum(stage_walls_seconds.values())
+    for stage in COMPOSED_STAGE_NAMES:
+        if stage_walls_seconds[stage] * 1_000_000 // total < MIN_WALL_SHARE_PPM:
+            continue
+        arm_stage = CAPACITY_STAGE_TO_ARM[stage]
+        if arm_stage is None:
+            if stage_wall_nanoseconds is None or stage_cpu_nanoseconds is None:
+                return False
+            exact_utilization = (stage_cpu_nanoseconds[stage] * 1_000_000
+                                 // (stage_wall_nanoseconds[stage]
+                                     * CAPACITY_HOST_LOGICAL_CPUS))
+            if exact_utilization < MIN_CPU_UTILIZATION_PPM:
+                return False
+            continue
+        selected = selected_by_arm[arm_stage]
+        if selected is None or not selected.cpu_bound:
+            continue
+        if stage_wall_nanoseconds is not None and stage_cpu_nanoseconds is not None:
+            exact_utilization = (stage_cpu_nanoseconds[stage] * 1_000_000
+                                 // (stage_wall_nanoseconds[stage]
+                                     * CAPACITY_HOST_LOGICAL_CPUS))
+        else:
+            exact_utilization = selected.mean_cpu_utilization_ppm
+        if exact_utilization >= MIN_CPU_UTILIZATION_PPM:
+            continue
+        stage_arms = eligible_by_arm[arm_stage]
+        if not arm_has_immediate_next_slower(selected, stage_arms):
+            return False
+    return True
+
+
 @dataclass(frozen=True)
 class CapacityReceiptV2:
     """Complete score-free capacity receipt, including every measured arm."""
@@ -693,9 +915,13 @@ class CapacityReceiptV2:
     # Zero defaults preserve construction of legacy typed fixtures; production
     # receipts are required to populate and bind these fields.
     member_workers: int = 0
+    continuation_workers: int = 0
     torch_threads: int = 0
     inference_batch: int = 0
     reconstruction_workers: int = 0
+    # This gate is derived from the exact selected-arm utilization and the
+    # mapped immediate-next witness for every material D256 category.
+    all_core_gate_passed: bool = False
 
     def validate(self) -> None:
         if self.schema != SCHEMA or self.authority != AUTHORITY \
@@ -705,6 +931,8 @@ class CapacityReceiptV2:
             raise WorldAfterstateV2CapacityError("capacity receipt identity drift")
         _digest(self.source_sha256, "capacity source SHA-256")
         _digest(self.runtime_sha256, "capacity runtime SHA-256")
+        if type(self.all_core_gate_passed) is not bool:
+            raise WorldAfterstateV2CapacityError("capacity all-core gate drift")
         if self.measurement_scope != MEASUREMENT_SCOPE:
             raise WorldAfterstateV2CapacityError("capacity measurement scope drift")
         _int(self.command_wall_seconds, "command wall", minimum=1)
@@ -724,37 +952,33 @@ class CapacityReceiptV2:
         actual_grid = {(arm.stage, arm.variant) for arm in self.arms}
         if actual_grid != expected_grid or len(actual_grid) != len(self.arms):
             raise WorldAfterstateV2CapacityError("capacity arm grid drift")
+        self.composed.validate()
+        if (not self.composed.stage_unit_counts
+                or not self.composed.measured_stage_walls_seconds
+                or not self.composed.measured_stage_cpu_seconds
+                or not self.composed.measured_stage_wall_nanoseconds
+                or not self.composed.measured_stage_cpu_nanoseconds):
+            raise WorldAfterstateV2CapacityError(
+                "capacity full-DAG exact witness missing")
         arm_peak_tasks = max((arm.peak_task_count or arm.task_count)
                              for arm in self.arms)
-        # New receipts bind command task_count to simultaneous peak telemetry.
-        # The zero-valued field remains accepted for old typed fixtures, whose
-        # legacy accounting was the sum of sequential arm samples.
         task_accounting_ok = (
-            self.task_count == self.peak_task_count == arm_peak_tasks
-            if self.peak_task_count else
-            self.task_count == sum(arm.task_count for arm in self.arms))
+            self.task_count == self.peak_task_count == arm_peak_tasks)
         # A production command executes the arm grid sequentially and then
         # runs the retained-sample DAG.  The six-hour scientific projection
         # is separate and must not be mistaken for measured command wall.
-        if self.peak_task_count and not self.composed.measured_stage_walls_seconds:
-            raise WorldAfterstateV2CapacityError(
-                "capacity command/arm accounting drift")
         arm_wall = sum(arm.wall_seconds for arm in self.arms)
-        required_command_wall = arm_wall + (
-            sum(value for _, value in self.composed.measured_stage_walls_seconds)
-            if self.peak_task_count else 0)
-        command_wall_ok = (
-            self.command_wall_seconds == required_command_wall
-            if self.peak_task_count else
-            self.command_wall_seconds >= arm_wall)
+        required_command_wall = arm_wall + sum(
+            value for _, value in self.composed.measured_stage_walls_seconds)
+        command_wall_ok = self.command_wall_seconds == required_command_wall
         if not command_wall_ok \
                 or not task_accounting_ok:
             raise WorldAfterstateV2CapacityError(
                 "capacity command/arm accounting drift")
-        _int(self.model_parameter_count, "model parameter count")
-        _int(self.per_epoch_wall_seconds, "per-epoch wall seconds")
-        _int(self.peak_task_count, "peak task count")
-        if self.peak_task_count and self.peak_task_count > MAX_TASKS:
+        _int(self.model_parameter_count, "model parameter count", minimum=1)
+        _int(self.per_epoch_wall_seconds, "per-epoch wall seconds", minimum=1)
+        _int(self.peak_task_count, "peak task count", minimum=1)
+        if self.peak_task_count > MAX_TASKS:
             raise WorldAfterstateV2CapacityError("peak task cap drift")
         if type(self.candidate_distribution) is not tuple:
             raise WorldAfterstateV2CapacityError("candidate distribution drift")
@@ -774,22 +998,36 @@ class CapacityReceiptV2:
             if not eligible:
                 raise WorldAfterstateV2CapacityError("no memory-eligible arm")
             fastest = min(eligible, key=lambda arm: (
-                arm.wall_nanoseconds or arm.wall_seconds * 1_000_000_000,
+                arm.wall_ns,
                 arm.variant))
             chosen = [arm for arm in self.selected_arms if arm.stage == stage]
             if len(chosen) != 1 or chosen[0] != fastest:
                 raise WorldAfterstateV2CapacityError(
                     "selected arm is not fastest eligible byte-identical arm")
-            if fastest.cpu_bound and fastest.wall_share_ppm >= MIN_WALL_SHARE_PPM \
-                    and fastest.mean_cpu_utilization_ppm < MIN_CPU_UTILIZATION_PPM:
-                next_arms = [arm for arm in stage_arms if arm.variant > fastest.variant]
-                if not next_arms or not any(
-                        arm.byte_identity_sha256 == fastest.byte_identity_sha256
-                        and arm.wall_seconds > fastest.wall_seconds
-                        for arm in next_arms):
-                    raise WorldAfterstateV2CapacityError(
-                        "CPU-bound stage utilization/next-arm gate drift")
+        validate_capacity_arm_census_v2(
+            self.arms,
+            {arm.stage: arm for arm in self.selected_arms},
+            dict(self.composed.stage_walls_seconds))
+        expected_shares = projected_arm_wall_shares_ppm(
+            dict(self.composed.stage_walls_seconds))
+        if any(arm.wall_share_ppm != expected_shares[arm.stage]
+               for arm in self.arms):
+            raise WorldAfterstateV2CapacityError(
+                "arm projected wall-share binding drift")
+        exact_wall = (dict(self.composed.measured_stage_wall_nanoseconds)
+                      if self.composed.measured_stage_wall_nanoseconds else None)
+        exact_cpu = (dict(self.composed.measured_stage_cpu_nanoseconds)
+                      if self.composed.measured_stage_cpu_nanoseconds else None)
+        if self.all_core_gate_passed != derive_all_core_gate_passed(
+                self.arms, dict(self.composed.stage_walls_seconds),
+                exact_wall, exact_cpu):
+            raise WorldAfterstateV2CapacityError("capacity all-core gate binding drift")
+        if not self.all_core_gate_passed:
+            raise WorldAfterstateV2CapacityError(
+                "capacity all-core gate did not pass")
         if (self.member_workers not in ARM_GRIDS["member-concurrency"]
+                or self.continuation_workers not in ARM_GRIDS[
+                    "continuation-mechanics"]
                 or type(self.torch_threads) is not int
                 or self.torch_threads != PINNED_TORCH_THREADS
                 or self.inference_batch not in ARM_GRIDS["inference-batch"]
@@ -798,6 +1036,8 @@ class CapacityReceiptV2:
             raise WorldAfterstateV2CapacityError("capacity resource layout drift")
         selected_by_stage = {arm.stage: arm for arm in self.selected_arms}
         if (selected_by_stage["member-concurrency"].variant != self.member_workers
+                or selected_by_stage["continuation-mechanics"].variant
+                != self.continuation_workers
                 or selected_by_stage["inference-batch"].variant
                 != self.inference_batch
                 or selected_by_stage["reconstruction"].variant
@@ -805,7 +1045,6 @@ class CapacityReceiptV2:
             raise WorldAfterstateV2CapacityError("capacity resource layout mismatch")
         if len(self.selected_arms) != len(ARM_GRIDS):
             raise WorldAfterstateV2CapacityError("selected arm population drift")
-        self.composed.validate()
         self.progress_recovery.validate()
         for tier in self.tiers:
             tier.validate()
@@ -821,7 +1060,7 @@ class CapacityReceiptV2:
             exact_source_supply=tier.exact_source_supply,
             byte_identical=tier.byte_identical,
             outcomes_opened=tier.outcomes_opened,
-            all_core_gate_passed=True,
+            all_core_gate_passed=self.all_core_gate_passed,
             label_wall_seconds=tier.label_wall_seconds,
             label_cpu_seconds=tier.label_cpu_seconds,
             complete_dag_wall_seconds=tier.complete_dag_wall_seconds,
@@ -861,9 +1100,11 @@ class CapacityReceiptV2:
             "peak_task_count": self.peak_task_count,
             "measurement_scope": self.measurement_scope,
             "member_workers": self.member_workers,
+            "continuation_workers": self.continuation_workers,
             "torch_threads": self.torch_threads,
             "inference_batch": self.inference_batch,
             "reconstruction_workers": self.reconstruction_workers,
+            "all_core_gate_passed": self.all_core_gate_passed,
             "authority": dict(self.authority),
         }
 
@@ -896,6 +1137,9 @@ __all__ = [
     "CapacityReceiptV2",
     "CAPACITY_ARM_TO_PRODUCTION_STAGE", "CAPACITY_PRODUCTION_STAGE_COVERAGE",
     "CAPACITY_STAGE_TO_PRODUCTION_STAGE",
+    "CAPACITY_STAGE_TO_ARM", "arm_has_immediate_next_slower",
+    "derive_all_core_gate_passed", "projected_arm_wall_shares_ppm",
+    "validate_capacity_arm_census_v2",
     "CAPACITY_SUBSTAGE_TO_PRODUCTION_STAGE",
     "COMPOSED_DAG_EDGES", "COMPOSED_STAGE_NAMES", "PRODUCTION_STAGE_NAMES",
     "SCIENTIFIC_DAG_EDGES",

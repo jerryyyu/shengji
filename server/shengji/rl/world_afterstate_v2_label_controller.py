@@ -15,7 +15,6 @@ from __future__ import annotations
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 import hashlib
-import os
 from pathlib import Path
 import time
 from typing import Any, Callable, Sequence
@@ -52,6 +51,9 @@ AUTHORITY = {
     "retry_authorized": False,
     "deployment_authorized": False,
 }
+# Continuation workers are selected from the preregistered capacity grid;
+# host CPU count is telemetry, not permission to invent a new width.
+CONTINUATION_WORKER_ARMS = (1, 2, 4, 8, 12, 16, 32)
 
 
 class WorldAfterstateV2LabelControllerError(ValueError):
@@ -295,7 +297,7 @@ def build_continuation_population_v2(
     values = _material_population(materials, split=split)
     if (not isinstance(root, Path) or root.is_symlink()
             or isinstance(workers, bool) or not isinstance(workers, int)
-            or not 1 <= workers <= (os.cpu_count() or 1)
+            or workers not in CONTINUATION_WORKER_ARMS
             or isinstance(deadline_monotonic_ns, bool)
             or not isinstance(deadline_monotonic_ns, int)
             or deadline_monotonic_ns < 1):

@@ -11,6 +11,8 @@ from types import SimpleNamespace
 import pytest
 
 from shengji.rl import world_afterstate_v2_late_stage_adapters as adapters
+from shengji.rl import world_afterstate_v2_label_controller as label_controller
+from shengji.rl import world_afterstate_v2_stage_adapters as stage_adapters
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_audit_attempt import build_audit_attempt_bytes
 from shengji.rl.world_afterstate_v2_model import new_world_afterstate_v2_model
@@ -79,8 +81,9 @@ def test_prediction_resume_reopens_without_inference_and_binds_roots_models(
             control="natural", block=1, subfold=None)
 
 
-def _capacity_bound_fixture(tmp_path, *, selected_arms=None):
-    receipt = _receipt(selected_arms=selected_arms) if selected_arms else _receipt()
+def _capacity_bound_fixture(tmp_path, *, selected_arms=None, receipt=None):
+    if receipt is None:
+        receipt = _receipt(selected_arms=selected_arms) if selected_arms else _receipt()
     raw = canonical_json_bytes(receipt.payload())
     path = tmp_path / "capacity.json"
     path.write_bytes(raw)
@@ -190,6 +193,56 @@ def test_reconstruction_arm_reopens_from_repository_when_evidence_has_no_copy(
                     if arm.stage == "reconstruction")
     assert adapters._reconstruction_workers(
         supervisor, freeze, repo) == expected
+
+
+def test_reconstruction_arm_32_is_the_upper_frozen_width():
+    assert adapters.TERMINAL_INPUTS_SCHEMA == "world-afterstate-v2-terminal-inputs-v2"
+    assert adapters._reconstruction_workers
+    assert 32 in stage_adapters.CONTINUATION_WORKER_ARMS
+    assert 32 in label_controller.CONTINUATION_WORKER_ARMS
+    assert 33 not in stage_adapters.CONTINUATION_WORKER_ARMS
+    assert 33 not in label_controller.CONTINUATION_WORKER_ARMS
+
+
+@pytest.mark.parametrize("configured, accepted", ((32, True), (33, False)))
+def test_audit_label_workers_bind_exact_selected_continuation_arm(
+        tmp_path, configured, accepted):
+    baseline = _receipt()
+    arms = tuple(
+        dataclasses.replace(
+            arm, wall_ns=1_000_000_000, wall_seconds=1,
+            busy_core_ns=14_000_000_000, busy_core_seconds=14,
+            mean_cpu_utilization_ppm=875_000)
+        if arm.stage == "continuation-mechanics" and arm.variant == 32
+        else arm
+        for arm in baseline.arms)
+    selected = tuple(
+        next(arm for arm in arms
+             if arm.stage == "continuation-mechanics" and arm.variant == 32)
+        if arm.stage == "continuation-mechanics" else arm
+        for arm in baseline.selected_arms)
+    receipt = _receipt(arms=arms, selected_arms=selected)
+    freeze, supervisor, _receipt_value, _path = _capacity_bound_fixture(
+        tmp_path, receipt=receipt)
+    config = {
+        "schema": "world-afterstate-v2-early-stage-adapters-input-v2",
+        "label_workers": configured,
+        "label_deadline_seconds": 120,
+    }
+    raw = canonical_json_bytes(config)
+    config_path = tmp_path / "config.json"
+    config_path.write_bytes(raw)
+    config_path.chmod(0o400)
+    digest = hashlib.sha256(raw).hexdigest()
+    freeze.artifact_bindings = (*freeze.artifact_bindings,
+                                ("config", "config.json", digest))
+    if accepted:
+        assert adapters._label_resources(
+            supervisor, freeze, tmp_path) == (32, 120)
+    else:
+        with pytest.raises(adapters.LateStageAdapterUnavailable,
+                           match="worker/capacity"):
+            adapters._label_resources(supervisor, freeze, tmp_path)
 
 
 def test_precision_requires_all_prediction_cohorts_before_label_opening(monkeypatch):

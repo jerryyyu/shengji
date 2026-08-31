@@ -23,6 +23,10 @@ def _sha(value: object) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 
 
+def test_label_controller_accepts_only_the_frozen_continuation_worker_grid():
+    assert controller.CONTINUATION_WORKER_ARMS == (1, 2, 4, 8, 12, 16, 32)
+
+
 def _second_material(material: PopulationMaterialV2,
                      label: str = "2") -> PopulationMaterialV2:
     """Make a second fixture deal while retaining the patched engine seam."""

@@ -32,8 +32,8 @@ from .world_afterstate_capacity import PRODUCTION_BALLOT_POLICY
 from .world_afterstate_label import IDENTITY_SCHEMA
 
 
-POPULATION_INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v2"
-STAGE_INPUT_SCHEMA = "world-afterstate-v2-early-stage-adapters-input-v1"
+POPULATION_INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v3"
+STAGE_INPUT_SCHEMA = "world-afterstate-v2-early-stage-adapters-input-v2"
 NAMESPACE_SCHEMA = "world-afterstate-v2-population-namespace-v1"
 SEED_REGISTRY_SCHEMA = "world-afterstate-v2-seed-registry-input-v1"
 CONTINUATION_POLICY_SCHEMA = "world-afterstate-v2-continuation-policy-input-v1"
@@ -177,7 +177,7 @@ def build_population_adapter_input_v2(*, source_git: str, protocol_sha256: str,
                                       max_attempts_per_slot: int) -> dict[str, Any]:
     namespace = population_namespace(source_git, protocol_sha256,
                                      capacity_sha256, selected_tier)
-    if workers not in (1, 2, 4, 8, 16):
+    if workers not in (1, 2, 4, 8, 16, 32):
         raise WorldAfterstateV2FreezeInputsError("population workers drift")
     _positive(deadline_seconds, "population deadline")
     _positive(heartbeat_seconds, "population heartbeat")
@@ -206,7 +206,7 @@ def reopen_population_adapter_input_v2_bytes(
         raise WorldAfterstateV2FreezeInputsError("population namespace binding drift")
     for field in ("max_attempts_per_slot", "workers", "deadline_seconds", "heartbeat_seconds"):
         _positive(value[field], f"population {field}")
-    if value["workers"] not in (1, 2, 4, 8, 16) or value["heartbeat_seconds"] > 60:
+    if value["workers"] not in (1, 2, 4, 8, 16, 32) or value["heartbeat_seconds"] > 60:
         raise WorldAfterstateV2FreezeInputsError("population adapter resource drift")
     if expected_workers is not None and value["workers"] != expected_workers:
         raise WorldAfterstateV2FreezeInputsError("population worker binding drift")
@@ -223,7 +223,7 @@ def build_early_stage_config_v2(*, source_git: str, protocol_sha256: str,
                                 deadline_seconds: int) -> dict[str, Any]:
     namespace = population_namespace(source_git, protocol_sha256,
                                      capacity_sha256, selected_tier)
-    if label_workers not in (1, 2, 4, 8, 12, 16):
+    if label_workers not in (1, 2, 4, 8, 12, 16, 32):
         raise WorldAfterstateV2FreezeInputsError("label workers drift")
     if not isinstance(evidence_root, str) or not evidence_root.startswith("/"):
         raise WorldAfterstateV2FreezeInputsError("evidence root drift")
@@ -253,7 +253,7 @@ def reopen_early_stage_config_v2_bytes(
         raise WorldAfterstateV2FreezeInputsError("config evidence root drift")
     if expected_evidence_root is not None and value["artifact_root"] != expected_evidence_root:
         raise WorldAfterstateV2FreezeInputsError("config evidence root binding drift")
-    if value["label_workers"] not in (1, 2, 4, 8, 12, 16):
+    if value["label_workers"] not in (1, 2, 4, 8, 12, 16, 32):
         raise WorldAfterstateV2FreezeInputsError("config label workers drift")
     _positive(value["label_deadline_seconds"], "config label deadline")
     if expected_deadline is not None and value["label_deadline_seconds"] != expected_deadline:

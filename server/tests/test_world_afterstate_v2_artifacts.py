@@ -16,6 +16,7 @@ from shengji.rl.world_afterstate_v2_artifacts import (
     publish_checkpoint_shard,
     publish_continuation_manifest,
     publish_continuation_shard,
+    RECONSTRUCTION_WORKER_ARMS,
     reopen_checkpoint_manifest as _reopen_checkpoint_manifest,
     reopen_checkpoint_shard,
     reopen_continuation_manifest,
@@ -234,6 +235,10 @@ def test_continuation_shard_and_manifest_round_trip(
     assert reopened == (bundle,)
     assert manifest["rows"][0]["bundle_sha256"] == bundle.bundle_sha256
     assert all(value is False for value in manifest["authority"].values())
+    assert 32 in RECONSTRUCTION_WORKER_ARMS and 33 not in RECONSTRUCTION_WORKER_ARMS
+    with pytest.raises(WorldAfterstateV2ArtifactError, match="worker"):
+        reopen_continuation_manifest(
+            tmp_path, {material.deal_sha256: material}, workers=33)
 
 
 def test_continuation_manifest_refuses_semantic_rebind_before_sealing(

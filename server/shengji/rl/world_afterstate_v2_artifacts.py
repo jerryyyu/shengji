@@ -32,6 +32,9 @@ from .world_afterstate_v2_execution import verified_process_pool_kwargs
 CONTINUATION_SCHEMA = "world-afterstate-v2-continuation-artifact-v1"
 CHECKPOINT_SCHEMA = "world-afterstate-v2-checkpoint-artifact-v1"
 CONTINUATION_MANIFEST_SCHEMA = "world-afterstate-v2-continuation-manifest-v1"
+# Widths are a frozen reconstruction dimension, not an arbitrary host CPU
+# count.  The preregistered 32-worker arm must round-trip at this boundary.
+RECONSTRUCTION_WORKER_ARMS = (1, 4, 8, 16, 32)
 CHECKPOINT_MANIFEST_SCHEMA = "world-afterstate-v2-checkpoint-manifest-v1"
 CONTINUATION_DIRNAME = "continuations"
 CHECKPOINT_DIRNAME = "checkpoints"
@@ -501,7 +504,7 @@ def reopen_continuation_manifest(
     """Reopen every deal in an aggregate, refusing drops and extras."""
     root = _root(root)
     if isinstance(workers, bool) or not isinstance(workers, int) \
-            or workers < 1 or workers > 16:
+            or workers not in RECONSTRUCTION_WORKER_ARMS:
         raise WorldAfterstateV2ArtifactError(
             "continuation reopen worker population drift")
     directory = _directory(root / CONTINUATION_DIRNAME)
@@ -854,7 +857,8 @@ reopen_checkpoint_aggregate_manifest = reopen_checkpoint_manifest
 __all__ = [
     "AUTHORITY", "CHECKPOINT_DIRNAME", "CHECKPOINT_MANIFEST_SCHEMA",
     "CHECKPOINT_SCHEMA", "CONTINUATION_DIRNAME",
-    "CONTINUATION_MANIFEST_SCHEMA", "CONTINUATION_SCHEMA", "MANIFEST_NAME",
+    "CONTINUATION_MANIFEST_SCHEMA", "CONTINUATION_SCHEMA",
+    "MANIFEST_NAME", "RECONSTRUCTION_WORKER_ARMS",
     "CheckpointShardV2", "ContinuationShardV2",
     "WorldAfterstateV2ArtifactError", "checkpoint_manifest_path",
     "checkpoint_path", "checkpoint_shard_path", "continuation_manifest_path",

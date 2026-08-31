@@ -92,7 +92,7 @@ def _digest(value: object, label: str) -> str:
 
 def _reconstruction_workers(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) \
-            or value not in (1, 4, 8, 16):
+            or value not in (1, 4, 8, 16, 32):
         raise WorldAfterstateV2TerminalControllerError(
             "reconstruction worker binding drift")
     return value

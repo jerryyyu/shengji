@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 
 from shengji.rl import world_afterstate_v2_freeze_builder as builder
-from shengji.rl.world_afterstate_v2_execution import SourceBindingV2
+from shengji.rl.world_afterstate_v2_execution import (
+    RUNTIME_PROFILE_SCHEMA, SourceBindingV2,
+)
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_freeze_inputs import (
     build_continuation_policy_v2, build_early_stage_config_v2,
@@ -22,6 +24,27 @@ def _digest(label: str) -> str:
     return hashlib.sha256(label.encode()).hexdigest()
 
 
+def _runtime_profile(boot_identity: str) -> dict[str, object]:
+    return {
+        "schema": RUNTIME_PROFILE_SCHEMA,
+        "python": "test", "python_executable": "/usr/bin/python3",
+        "python_executable_lexical": "/usr/bin/python3",
+        "python_executable_sha256": _digest("python"),
+        "python_prefix": "/tmp/value-v2-venv",
+        "python_base_prefix": "/usr",
+        "pyvenv_cfg_path": "/tmp/value-v2-venv/pyvenv.cfg",
+        "pyvenv_cfg_sha256": _digest("pyvenv"),
+        "platform": "test-platform", "machine": "test-machine",
+        "cpu_count": 16, "torch_threads": 1,
+        "torch_version": "test", "torch_config_sha256": _digest("torch"),
+        "numpy_version": "test",
+        "environment": {"SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"},
+        "shengji_native_extension": {
+            "status": "present", "path": "stub", "sha256": _digest("native")},
+        "boot_identity": boot_identity,
+    }
+
+
 def _patch_minimal(monkeypatch, tmp_path: Path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -31,12 +54,7 @@ def _patch_minimal(monkeypatch, tmp_path: Path):
                  for label in builder._ARTIFACT_LABELS)
     source = (SourceBindingV2("server/shengji/rl/example.py", 1,
                               _digest("source")),)
-    runtime = {
-        "boot_identity": "boot-1", "python": "test",
-        "environment": {"SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"},
-        "shengji_native_extension": {"status": "present", "path": "stub",
-                                       "sha256": _digest("native")},
-    }
+    runtime = _runtime_profile("boot-1")
     monkeypatch.setattr(builder, "_head", lambda _repo, _head: head)
     monkeypatch.setattr(builder, "_clean_source_tree",
                         lambda _repo, _runtime: None)
@@ -67,13 +85,7 @@ def test_clean_success_roundtrips_and_binds_runtime(monkeypatch, tmp_path):
 def test_runtime_boot_mismatch_is_not_accepted(monkeypatch, tmp_path):
     repo, evidence, head, _rows = _patch_minimal(monkeypatch, tmp_path)
     monkeypatch.setattr(builder, "live_runtime_profile",
-                        lambda: {
-                            "boot_identity": "boot-2", "python": "test",
-                            "environment": {"SHENGJI_FAST": "1",
-                                            "SHENGJI_REQUIRE_VOIDS": "1"},
-                            "shengji_native_extension": {
-                                "status": "present", "path": "stub",
-                                "sha256": _digest("native")}})
+                        lambda: _runtime_profile("boot-2"))
     # The live profile is bound into the new freeze; this test ensures the
     # binding is not silently replaced by a caller-provided boot witness.
     freeze = builder.build_execution_freeze(

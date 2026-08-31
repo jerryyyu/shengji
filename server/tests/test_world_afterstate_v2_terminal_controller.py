@@ -23,7 +23,8 @@ from shengji.rl.world_afterstate_v2_terminal_controller import (
 )
 from shengji.rl import world_afterstate_v2_terminal_controller as terminal
 from shengji.rl.world_afterstate_v2_execution import (
-    ExecutionFreezeV2, SourceBindingV2, source_manifest_sha256,
+    RUNTIME_PROFILE_SCHEMA, ExecutionFreezeV2, SourceBindingV2,
+    source_manifest_sha256,
 )
 from test_world_afterstate_v2_result import _p0
 from test_world_afterstate_v2_capacity import _receipt as _capacity_receipt
@@ -33,9 +34,30 @@ def _digest(text: str) -> str:
     return hashlib.sha256(text.encode("ascii")).hexdigest()
 
 
+def _runtime_profile() -> dict[str, object]:
+    return {
+        "schema": RUNTIME_PROFILE_SCHEMA,
+        "python": "test", "python_executable": "/usr/bin/python3",
+        "python_executable_lexical": "/usr/bin/python3",
+        "python_executable_sha256": _digest("python"),
+        "python_prefix": "/tmp/value-v2-terminal-venv",
+        "python_base_prefix": "/usr",
+        "pyvenv_cfg_path": "/tmp/value-v2-terminal-venv/pyvenv.cfg",
+        "pyvenv_cfg_sha256": _digest("pyvenv"),
+        "platform": "test-platform", "machine": "test-machine",
+        "cpu_count": 16, "torch_threads": 1,
+        "torch_version": "test", "torch_config_sha256": _digest("torch"),
+        "numpy_version": "test",
+        "environment": {"SHENGJI_FAST": "1", "SHENGJI_REQUIRE_VOIDS": "1"},
+        "shengji_native_extension": {
+            "status": "present", "path": "stub", "sha256": _digest("native")},
+        "boot_identity": "terminal-test-boot",
+    }
+
+
 def _inputs(tmp_path: Path) -> TerminalInputPathsV2:
     path = tmp_path / "input.json"
-    runtime_profile = {"boot_identity": "terminal-test-boot"}
+    runtime_profile = _runtime_profile()
     runtime_sha = _digest(json.dumps(
         runtime_profile, sort_keys=True, separators=(",", ":")) + "\n")
     capacity_receipt = _capacity_receipt(runtime_sha256=runtime_sha)
@@ -144,6 +166,12 @@ def test_direct_terminal_cannot_assert_a_capacity_unbound_worker_width(
                 *inputs.checkpoint_roots[2:],
             ),
         }).validate_shape()
+
+
+def test_terminal_reconstruction_width_accepts_preregistered_32_only():
+    assert terminal._reconstruction_workers(32) == 32
+    with pytest.raises(WorldAfterstateV2TerminalControllerError, match="worker"):
+        terminal._reconstruction_workers(33)
 
 
 def test_preflight_requires_the_shared_pipeline_audit_attempt(

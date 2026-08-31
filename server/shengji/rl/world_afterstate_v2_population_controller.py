@@ -42,14 +42,17 @@ from .world_afterstate_v2_source_driver import (
 
 SCHEMA = "world-afterstate-v2-population-controller-receipt-v1"
 ATTEMPT_RECORD_SCHEMA = "world-afterstate-v2-population-controller-attempt-v1"
-CONFIG_SCHEMA = "world-afterstate-v2-population-controller-config-v1"
+CONFIG_SCHEMA = "world-afterstate-v2-population-controller-config-v2"
 STARTED_SCHEMA = "world-afterstate-v2-population-controller-started-v1"
 CONTROLLER_DIRNAME = "population-controller"
 ATTEMPT_DIRNAME = "attempts"
 STARTED_DIRNAME = "started"
 CONFIG_NAME = "config.json"
 RECEIPT_NAME = "receipt.json"
-WORKER_ARMS = (1, 2, 4, 8, 16)
+# Keep this in lockstep with the frozen state/successor capacity arm grid.
+# The 32-worker arm is a valid preregistered width; member concurrency is a
+# separate dimension and is intentionally not widened here.
+WORKER_ARMS = (1, 2, 4, 8, 16, 32)
 DEFAULT_DEADLINE_SECONDS = 24 * 60 * 60
 DEFAULT_HEARTBEAT_SECONDS = 60
 AUTHORITY = {

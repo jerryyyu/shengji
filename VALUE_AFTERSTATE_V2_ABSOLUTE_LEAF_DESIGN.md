@@ -644,11 +644,19 @@ ceiling is still a score-free capacity refusal. Measure:
 - stratum acceptance and deal attempts needed per accepted state;
 - production-ballot and legal-tail candidate counts;
 - successor construction wall, CPU, memory, and bytes;
-- continuation throughput with outcomes discarded at 1/2/4/8/12/16 workers;
+- continuation throughput with outcomes discarded at 1/2/4/8/12/16/32 workers;
 - R=2/4/8 projected label CPU, wall, and storage;
 - full D256/D512/D1024 projected label cost, including each nominated
   continuation policy; and
 - whether label shards can seal and reopen independently.
+
+The complete arm census is the cheap gate: every preregistered state/successor,
+continuation, member, inference-batch, and reconstruction arm must be measured
+and byte-validated before the expensive 19-stage full-DAG run begins. A
+missing arm or failed byte identity is a conservative pre-DAG refusal; it is
+not repaired by extrapolating from a neighboring width. The census uses exact
+nanosecond wall and process/cgroup CPU counters from each operation, and the
+immediate-next-arm rule is evaluated on those exact counters.
 
 Implementation proceeds only if at least D256's projected label stage is at
 most three hours wall and 48 aggregate CPU-hours on the 16-core host, stays
@@ -684,12 +692,12 @@ Binding only the outer CLI or only rehashing the pathname is insufficient.
 
 | stage | measured variants |
 |---|---|
-| state/successor construction | 1, 2, 4, 8, 16 workers |
-| continuation mechanics | 1, 2, 4, 8, 12, 16 workers |
+| state/successor construction | 1, 2, 4, 8, 16, 32 workers |
+| continuation mechanics | 1, 2, 4, 8, 12, 16, 32 workers |
 | member concurrency | 1, 2, 4 members |
 | Torch threads per member | 1 (pinned; no width-selection arm) |
 | inference batch | 32, 64, 128, 256 |
-| reconstruction | 1, 4, 8, 16-worker scoring/hash verification |
+| reconstruction | 1, 4, 8, 16, 32-worker scoring/hash verification |
 
 Inference-batch arms must seal byte-identical **production prediction
 values**: the ordered six-decimal canonical probabilities and their exact PPB
@@ -728,6 +736,36 @@ the design repairs or closes before freeze. The chosen worker and batch
 layouts are the fastest byte-identical arms, not automatically the largest
 arms; Torch training width is fixed at the pinned value above and is not
 selected by this gate.
+
+Wall share is projected from measured stage work units; it is never fabricated
+as a convenient fraction of the composed wall. The representative full-DAG
+all-core gate is derived from the exact per-stage process/cgroup CPU and wall
+nanoseconds, then projected to the retained population. It is not a second
+measurement or an assumed 16-core utilization value. The capacity run starts
+from a fresh repaired-head virtual environment whose resolved prefixes and
+``pyvenv.cfg`` identity are bound into the runtime profile. No c17 artifacts,
+old virtual environment, or prior capacity namespace may be reused.
+
+This amendment changes executable contracts, so the capacity receipt, arm,
+projection, measurement-scope, failure, execution-freeze, population input,
+early-stage input, population-controller config, and terminal-input schemas are
+version-bumped. Legacy wire bytes refuse rather than inheriting the widened
+worker domain or repaired runtime identity implicitly.
+
+The resource mapping is closed: continuation-label stages use the
+continuation-mechanics arm, cohort training/optimizer stages use the
+member-concurrency arm, precision inference uses the inference-batch arm, and
+reconstruction uses the reconstruction arm. P0, nested-25/50/100,
+precision-select evaluation, and audit have no matching selectable arm in V2;
+the receipt may not borrow evidence from another workload. A stage is material
+when its projected wall is at least 5% of the sum of all projected stage walls,
+evaluated by exact integer cross-multiplication. Any material unmapped stage
+below 85% aggregate 16-core utilization refuses. For a material CPU-bound
+mapped stage below 85%, the only permitted saturation witness is the
+byte-identical, memory-eligible **immediate next** member of that exact arm
+grid taking strictly longer in exact nanoseconds. A later nonadjacent arm is
+irrelevant, and a low-utilization fastest 32-worker arm refuses because no
+next arm exists.
 
 ### V2 capacity amendment: deterministic intra-model Torch width
 

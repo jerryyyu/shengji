@@ -360,6 +360,24 @@ def test_runtime_executable_and_native_claim_mutation_refuses(tmp_path):
                              repo=repo, review_commit=review, remote_url=str(remote))
 
 
+def test_runtime_profile_binds_python_prefix_and_pyvenv_config(monkeypatch,
+                                                                tmp_path):
+    venv = tmp_path / "repaired-head-venv"
+    venv.mkdir()
+    monkeypatch.setattr(execution.sys, "prefix", str(venv))
+    monkeypatch.setattr(execution.sys, "base_prefix", str(tmp_path / "base"))
+    (tmp_path / "base").mkdir()
+    (venv / "pyvenv.cfg").write_bytes(b"home = repaired-head\n")
+    first = execution.live_runtime_profile()
+    assert first["python_prefix"] == str(venv.resolve())
+    assert first["python_base_prefix"] == str((tmp_path / "base").resolve())
+    assert first["pyvenv_cfg_sha256"] != "absent"
+    (venv / "pyvenv.cfg").write_bytes(b"home = different-head\n")
+    second = execution.live_runtime_profile()
+    assert second["pyvenv_cfg_sha256"] != first["pyvenv_cfg_sha256"]
+    assert execution._sha(first) != execution._sha(second)
+
+
 def test_fast_native_extension_path_and_sha_are_bound_when_present(tmp_path, monkeypatch):
     package = tmp_path / "server" / "shengji"
     (package / "rl").mkdir(parents=True)

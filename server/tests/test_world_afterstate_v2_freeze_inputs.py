@@ -12,6 +12,7 @@ from shengji.rl import world_afterstate_v2_freeze_inputs as inputs
 from shengji.rl.world_afterstate_v2_freeze_inputs import (
     FreezeInputsError, build_continuation_policy_v2, build_early_stage_config_v2,
     build_population_adapter_input_v2, build_seed_registry_v2, protocol_bytes,
+    reopen_early_stage_config_v2_bytes,
     publish_inputs_v2, reopen_continuation_policy_v2_bytes,
     reopen_population_adapter_input_v2_bytes, reopen_protocol_bytes,
 )
@@ -35,9 +36,42 @@ def test_population_input_is_deterministic_and_strict():
     raw = canonical_json_bytes(value)
     assert reopen_population_adapter_input_v2_bytes(raw,
         expected_workers=4, expected_deadline=100)["workers"] == 4
+    legacy = dict(value)
+    legacy["schema"] = "world-afterstate-v2-population-adapter-input-v2"
+    with pytest.raises(FreezeInputsError, match="schema"):
+        reopen_population_adapter_input_v2_bytes(canonical_json_bytes(legacy))
     with pytest.raises(FreezeInputsError, match="duplicate"):
         reopen_population_adapter_input_v2_bytes(
             b'{"schema":"x","schema":"y"}')
+
+
+def test_32_worker_state_and_continuation_inputs_round_trip_but_33_refuses():
+    population = build_population_adapter_input_v2(
+        source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
+        selected_tier="D256", workers=32, deadline_seconds=100,
+        heartbeat_seconds=10, max_attempts_per_slot=1)
+    assert reopen_population_adapter_input_v2_bytes(
+        canonical_json_bytes(population), expected_workers=32)["workers"] == 32
+    config = build_early_stage_config_v2(
+        source_git=SOURCE, protocol_sha256=PROTOCOL,
+        capacity_sha256=CAPACITY, selected_tier="D256", label_workers=32,
+        evidence_root="/unused", deadline_seconds=100)
+    assert reopen_early_stage_config_v2_bytes(
+        canonical_json_bytes(config), expected_label_workers=32)["label_workers"] == 32
+    legacy_config = dict(config)
+    legacy_config["schema"] = "world-afterstate-v2-early-stage-adapters-input-v1"
+    with pytest.raises(FreezeInputsError, match="schema"):
+        reopen_early_stage_config_v2_bytes(canonical_json_bytes(legacy_config))
+    with pytest.raises(FreezeInputsError, match="workers"):
+        build_population_adapter_input_v2(
+            source_git=SOURCE, protocol_sha256=PROTOCOL,
+            capacity_sha256=CAPACITY, selected_tier="D256", workers=33,
+            deadline_seconds=100, heartbeat_seconds=10, max_attempts_per_slot=1)
+    with pytest.raises(FreezeInputsError, match="workers"):
+        build_early_stage_config_v2(
+            source_git=SOURCE, protocol_sha256=PROTOCOL,
+            capacity_sha256=CAPACITY, selected_tier="D256", label_workers=33,
+            evidence_root="/unused", deadline_seconds=100)
 
 
 def test_all_typed_derivations_share_namespace():

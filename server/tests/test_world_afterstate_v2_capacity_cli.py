@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -49,6 +50,7 @@ def test_capacity_source_manifest_covers_the_executed_value_closure():
 def test_cli_refusal_publishes_only_typed_failure_and_cannot_retry(
         tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "_source_sha256", lambda: "f" * 64)
+    expected_runtime = cli._runtime_sha256()
     output = tmp_path / "capacity.json"
     failure = tmp_path / "capacity-failure.json"
     work = tmp_path / "capacity-work"
@@ -83,6 +85,13 @@ def test_cli_refusal_publishes_only_typed_failure_and_cannot_retry(
     receipt = reopen_capacity_failure_receipt_v2_bytes(failure.read_bytes())
     assert receipt.stage == "label-p0"
     assert receipt.reason == "full-dag-dependency-failed"
+    assert receipt.runtime_sha256 == expected_runtime
+    assert receipt.namespace_sha256 == hashlib.sha256(
+        cli.canonical_json_bytes({
+            "source_sha256": "f" * 64,
+            "input_sha256": receipt.input_sha256,
+            "runtime_sha256": expected_runtime,
+        })).hexdigest()
     assert receipt.payload()["authority"] == AUTHORITY
     stat = failure.stat()
     assert stat.st_mode & 0o777 == 0o400 and stat.st_nlink == 1
@@ -263,6 +272,39 @@ def test_supervisor_refuses_success_from_a_different_source(tmp_path,
         args, output=output, failure_out=failure, work_root=work) == 2
     assert refused == ["worker success receipt source/runtime binding drift"]
     assert not output.exists()
+
+
+def test_supervisor_refuses_failure_from_a_different_runtime(tmp_path,
+                                                              monkeypatch):
+    monkeypatch.setattr(cli, "_source_sha256", lambda: "f" * 64)
+    monkeypatch.setattr(cli, "_runtime_sha256", lambda: "d" * 64)
+    output = tmp_path / "capacity.json"
+    failure = tmp_path / "failure.json"
+    work = tmp_path / "work"
+    worker_failure = cli._failure_receipt(
+        CapacityRunnerError("worker refused"),
+        started_ns=time.perf_counter_ns(), output=output,
+        failure_out=failure, work_root=work,
+        source_sha256="f" * 64, runtime_sha256="e" * 64)
+
+    class Worker:
+        pid = 999996
+        returncode = 2
+
+        def communicate(self, timeout):
+            assert timeout == 7200
+            return cli.canonical_json_bytes(worker_failure.payload()), None
+
+    refused = []
+    monkeypatch.setattr(cli, "_spawn_worker", lambda *args, **kwargs: Worker())
+    monkeypatch.setattr(
+        cli, "_publish_failure",
+        lambda exc, **_kwargs: refused.append(str(exc)) or 2)
+    args = argparse.Namespace(progress=False)
+    assert cli._supervised_main(
+        args, output=output, failure_out=failure, work_root=work) == 2
+    assert refused == ["worker failure receipt binding drift"]
+    assert not output.exists() and not failure.exists()
 
 
 def test_hard_kill_stops_process_group_descendant_before_publication(tmp_path):

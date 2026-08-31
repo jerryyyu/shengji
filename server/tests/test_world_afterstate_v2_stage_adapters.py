@@ -605,6 +605,14 @@ def test_label_resource_binding_is_frozen_and_bounded(
         adapters.fit_select_labels_adapter(freeze=freeze, repo=repo)
 
 
+def test_stage_label_resource_contract_accepts_frozen_32_worker_arm():
+    freeze = SimpleNamespace(deadline_seconds=300)
+    assert adapters.CONTINUATION_WORKER_ARMS == (1, 2, 4, 8, 12, 16, 32)
+    assert adapters._stage_label_resources({
+        "label_workers": 32, "label_deadline_seconds": 300,
+    }, freeze) == (32, 300)
+
+
 def test_closed_factory_dispatches_only_implemented_adapters_and_requires_bindings(
         tmp_path: Path):
     repo, _evidence_root, freeze = _stage_fixture(tmp_path)

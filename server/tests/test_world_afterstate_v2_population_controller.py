@@ -121,6 +121,12 @@ def test_exact_ledger_and_invalid_admission_refuse(tmp_path):
             admission_sha256="bad", max_attempts_per_slot=1)
 
 
+def test_population_worker_arm_32_is_frozen_and_33_is_not():
+    assert controller.CONFIG_SCHEMA == "world-afterstate-v2-population-controller-config-v2"
+    assert 32 in controller.WORKER_ARMS
+    assert 33 not in controller.WORKER_ARMS
+
+
 def test_cap_parallel_resume_and_score_free_receipt(tmp_path, fast_primitives):
     calls = {}
 

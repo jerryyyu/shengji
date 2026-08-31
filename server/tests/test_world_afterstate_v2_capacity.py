@@ -14,7 +14,9 @@ from shengji.rl.world_afterstate_v2_capacity import (
     ProgressRecoveryV2,
     TierProjectionV2, WorldAfterstateV2CapacityError,
     PINNED_TORCH_THREADS, choose_capacity_tier_v2,
-    composed_critical_path_seconds,
+    composed_critical_path_seconds, projected_arm_wall_shares_ppm,
+    derive_all_core_gate_passed, ARM_SCHEMA, SCHEMA, FAILURE_SCHEMA,
+    arm_has_immediate_next_slower,
 )
 from shengji.rl.world_afterstate_v2_capacity_runner import (
     CapacityRunnerError, reopen_capacity_receipt_v2,
@@ -32,21 +34,25 @@ def _arms(*, memory=None, command_tasks=1, low_cpu=False, byte_suffix="same"):
             wall = 100 + variant
             if variant == min(variants):
                 wall = 10
+            # Keep a subsecond witness while preserving ceil display seconds.
+            wall_ns = wall * 1_000_000_000 - 1
             utilization = (800_000 if low_cpu and variant == min(variants)
                            else 900_000)
+            busy_ns = wall_ns * 16 * utilization // 1_000_000
             values.append(CapacityArmV2(
                 stage=stage, variant=variant, wall_seconds=wall,
-                busy_core_seconds=round(wall * 16 * utilization / 1_000_000),
-                mean_cpu_utilization_ppm=utilization,
+                busy_core_seconds=(busy_ns + 999_999_999) // 1_000_000_000,
+                mean_cpu_utilization_ppm=busy_ns * 1_000_000
+                // (wall_ns * 16),
                 p50_cpu_utilization_ppm=800_000 if low_cpu and variant == min(variants)
                 else 900_000,
                 p95_cpu_utilization_ppm=900_000,
                 scaling_efficiency_ppm=900_000, queue_depth=0,
-                wall_share_ppm=100_000 if variant == min(variants) else 10_000,
+                wall_share_ppm=0,
                 peak_memory_bytes=memory or 20 * 1024**3,
                 swap_bytes=0, task_count=command_tasks,
                 byte_identity_sha256=_sha(f"{stage}:{byte_suffix}"),
-                cpu_bound=low_cpu))
+                cpu_bound=low_cpu, wall_ns=wall_ns, busy_core_ns=busy_ns))
     return tuple(values)
 
 
@@ -57,7 +63,19 @@ def _composed(**changes):
                 composed_wall_seconds=composed_critical_path_seconds(values),
                 peak_memory_bytes=20 * 1024**3,
                 composed_artifact_bytes=75,
-                free_disk_bytes_before=100)
+                free_disk_bytes_before=100,
+                stage_unit_counts=tuple(
+                    (name, 1, 1) for name in COMPOSED_STAGE_NAMES),
+                measured_stage_walls_seconds=tuple(values.items()),
+                stage_cpu_seconds=tuple(
+                    (name, value * 14) for name, value in values.items()),
+                measured_stage_cpu_seconds=tuple(
+                    (name, value * 14) for name, value in values.items()),
+                measured_stage_wall_nanoseconds=tuple(
+                    (name, value * 1_000_000_000) for name, value in values.items()),
+                measured_stage_cpu_nanoseconds=tuple(
+                    (name, value * 1_000_000_000 * 14
+                     ) for name, value in values.items()))
     body.update(changes)
     return ComposedProjectionV2(**body)
 
@@ -86,13 +104,17 @@ def test_typed_capacity_failure_reopens_and_is_not_a_success_receipt():
         reopen_capacity_failure_receipt_v2)
 
     source, input_sha = "1" * 64, "2" * 64
+    runtime = "3" * 64
     namespace = hashlib.sha256(canonical_json_bytes({
-        "source_sha256": source, "input_sha256": input_sha})).hexdigest()
+        "source_sha256": source, "input_sha256": input_sha,
+        "runtime_sha256": runtime})).hexdigest()
     failure = CapacityFailureReceiptV2(
         stage="runner", reason="capacity-runner-refused", elapsed_seconds=4,
         source_sha256=source, input_sha256=input_sha,
+        runtime_sha256=runtime,
         namespace_sha256=namespace, detail_sha256="4" * 64)
     payload = failure.payload()
+    assert payload["schema"] == FAILURE_SCHEMA
     assert reopen_capacity_failure_receipt_v2(payload) == failure
     assert payload["status"] == "failure"
     assert set(payload["authority"].values()) == {False}
@@ -112,38 +134,102 @@ def _receipt(**changes):
         composed_artifact_bytes=75, free_disk_bytes_before=100)
                    for name in ("D256", "D512", "D1024"))
     body = dict(
-        host_logical_cpus=16, command_wall_seconds=7_200,
-        memory_limit_bytes=MEMORY_LIMIT_BYTES, swap_bytes=0, task_count=0,
+        host_logical_cpus=16, command_wall_seconds=1,
+        memory_limit_bytes=MEMORY_LIMIT_BYTES, swap_bytes=0, task_count=1,
         arms=_arms(), selected_arms=tuple(), composed=_composed(), tiers=tiers,
         progress_recovery=_progress(), source_sha256="a" * 64,
-        runtime_sha256="b" * 64)
+        runtime_sha256="b" * 64, model_parameter_count=1,
+        candidate_distribution=((2, 1),), per_epoch_wall_seconds=1,
+        peak_task_count=1)
     body.update(changes)
-    if "task_count" not in changes:
-        body["task_count"] = sum(arm.task_count for arm in body["arms"])
     if "selected_arms" not in changes:
         body["selected_arms"] = tuple(min(
             (arm for arm in body["arms"] if arm.stage == stage
              and arm.peak_memory_bytes * 100
              <= MEMORY_LIMIT_BYTES * 85),
-            key=lambda arm: (arm.wall_seconds, arm.variant))
+            key=lambda arm: (arm.wall_ns, arm.variant))
             for stage in ARM_GRIDS)
     selected = {arm.stage: arm.variant for arm in body["selected_arms"]}
     body.setdefault("member_workers", selected["member-concurrency"])
+    body.setdefault("continuation_workers", selected["continuation-mechanics"])
     body.setdefault("torch_threads", 1)
     body.setdefault("inference_batch", selected["inference-batch"])
     body.setdefault("reconstruction_workers", selected["reconstruction"])
+    shares = projected_arm_wall_shares_ppm(
+        dict(body["composed"].stage_walls_seconds))
+    body["arms"] = tuple(dataclasses.replace(arm, wall_share_ppm=shares[arm.stage])
+                          for arm in body["arms"])
+    body["selected_arms"] = tuple(
+        next(arm for arm in body["arms"] if arm.stage == selected_arm.stage
+             and arm.variant == selected_arm.variant)
+        for selected_arm in body["selected_arms"])
+    body.setdefault("all_core_gate_passed", derive_all_core_gate_passed(
+        body["arms"], dict(body["composed"].stage_walls_seconds),
+        dict(body["composed"].measured_stage_wall_nanoseconds),
+        dict(body["composed"].measured_stage_cpu_nanoseconds)))
+    if "peak_task_count" not in changes:
+        body["peak_task_count"] = max(
+            arm.peak_task_count or arm.task_count for arm in body["arms"])
+    if "task_count" not in changes:
+        body["task_count"] = body["peak_task_count"]
+    if "command_wall_seconds" not in changes:
+        body["command_wall_seconds"] = (
+            sum(arm.wall_seconds for arm in body["arms"])
+            + sum(value for _, value in
+                  body["composed"].measured_stage_walls_seconds))
     return CapacityReceiptV2(**body)
 
 
 def test_exact_arm_grid_caps_and_fastest_byte_identical_selection():
     receipt = _receipt()
     receipt.validate()
+    assert receipt.schema == SCHEMA
     assert "torch-threads-per-member" not in ARM_GRIDS
-    assert len(receipt.arms) == 22
+    assert len(receipt.arms) == 25
     assert len(receipt.arms) == sum(len(values) for values in ARM_GRIDS.values())
     assert receipt.sha256() == receipt.sha256()
     assert choose_capacity_tier_v2(receipt).name == "D1024"
     assert AUTHORITY and not any(AUTHORITY.values())
+
+
+def test_exact_arm_nanoseconds_bind_display_and_mean_utilization():
+    arm = _arms()[0]
+    assert arm.schema == ARM_SCHEMA
+    assert arm.wall_seconds == (arm.wall_ns + 999_999_999) // 1_000_000_000
+    assert arm.busy_core_seconds == (
+        arm.busy_core_ns + 999_999_999) // 1_000_000_000
+    assert arm.mean_cpu_utilization_ppm == (
+        arm.busy_core_ns * 1_000_000 // (arm.wall_ns * 16))
+    with pytest.raises(WorldAfterstateV2CapacityError, match="binding"):
+        dataclasses.replace(arm, wall_seconds=arm.wall_seconds + 1).validate()
+    with pytest.raises((TypeError, WorldAfterstateV2CapacityError)):
+        CapacityArmV2(**{key: value for key, value in arm.payload().items()
+                         if key not in {"wall_ns", "busy_core_ns"}})
+
+
+def test_v6_receipt_requires_complete_full_dag_exact_witnesses():
+    composed = dataclasses.replace(
+        _composed(), stage_unit_counts=(), measured_stage_walls_seconds=(),
+        measured_stage_cpu_seconds=(), measured_stage_wall_nanoseconds=(),
+        measured_stage_cpu_nanoseconds=())
+    with pytest.raises(WorldAfterstateV2CapacityError, match="exact witness"):
+        _receipt(composed=composed, all_core_gate_passed=True).validate()
+
+
+def test_full_dag_display_seconds_bind_exact_wall_and_cpu_counters():
+    composed = _composed()
+    wall_rows = list(composed.measured_stage_walls_seconds)
+    wall_rows[0] = (wall_rows[0][0], wall_rows[0][1] + 1)
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="wall display binding"):
+        _receipt(composed=dataclasses.replace(
+            composed, measured_stage_walls_seconds=tuple(wall_rows))).validate()
+    cpu_rows = list(composed.measured_stage_cpu_seconds)
+    cpu_rows[0] = (cpu_rows[0][0], cpu_rows[0][1] + 1)
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="CPU display binding"):
+        _receipt(composed=dataclasses.replace(
+            composed, measured_stage_cpu_seconds=tuple(cpu_rows))).validate()
 
 
 def test_receipt_refuses_missing_reconstruction_layout():
@@ -216,19 +302,45 @@ def test_command_accounting_and_low_cpu_without_a_larger_arm_refuse():
     with pytest.raises(WorldAfterstateV2CapacityError, match="accounting"):
         _receipt(command_wall_seconds=1).validate()
     arms = list(_arms())
-    stage = "state-successor"
+    stage = "continuation-mechanics"
     maximum = max(ARM_GRIDS[stage])
     for index, arm in enumerate(arms):
         if arm.stage == stage:
             wall = 10 if arm.variant == maximum else 100 + arm.variant
             utilization = 800_000 if arm.variant == maximum else 900_000
             arms[index] = dataclasses.replace(
-                arm, wall_seconds=wall,
-                busy_core_seconds=round(wall * 16 * utilization / 1_000_000),
+                arm, wall_seconds=wall, wall_ns=wall * 1_000_000_000,
+                busy_core_ns=(wall * 1_000_000_000 * 16 * utilization
+                              // 1_000_000),
+                busy_core_seconds=(wall * 16 * utilization
+                                   + 999_999) // 1_000_000,
                 mean_cpu_utilization_ppm=utilization,
                 p50_cpu_utilization_ppm=utilization,
                 cpu_bound=arm.variant == maximum,
                 wall_share_ppm=100_000 if arm.variant == maximum else 10_000)
+    with pytest.raises(WorldAfterstateV2CapacityError, match="next-arm"):
+        _receipt(arms=tuple(arms)).validate()
+
+
+def test_receipt_replays_pre_dag_state_successor_saturation_gate():
+    arms = list(_arms())
+    stage = "state-successor"
+    maximum = max(ARM_GRIDS[stage])
+    for index, arm in enumerate(arms):
+        if arm.stage != stage:
+            continue
+        wall_ns = (10 if arm.variant == maximum else 100 + arm.variant) \
+            * 1_000_000_000
+        utilization = 800_000 if arm.variant == maximum else 900_000
+        busy_ns = wall_ns * 16 * utilization // 1_000_000
+        arms[index] = dataclasses.replace(
+            arm, wall_ns=wall_ns,
+            wall_seconds=(wall_ns + 999_999_999) // 1_000_000_000,
+            busy_core_ns=busy_ns,
+            busy_core_seconds=(busy_ns + 999_999_999) // 1_000_000_000,
+            mean_cpu_utilization_ppm=utilization,
+            p50_cpu_utilization_ppm=utilization,
+            cpu_bound=arm.variant == maximum)
     with pytest.raises(WorldAfterstateV2CapacityError, match="next-arm"):
         _receipt(arms=tuple(arms)).validate()
 
@@ -244,12 +356,101 @@ def test_cpu_bound_five_percent_requires_utilization_or_next_identical_arm():
         _receipt(arms=broken).validate()
 
 
+def test_max16_low_utilization_is_saved_by_immediate_slower_32():
+    arms = [arm for arm in _arms() if arm.stage == "continuation-mechanics"]
+    low = next(arm for arm in arms if arm.variant == 16)
+    slower = next(arm for arm in arms if arm.variant == 32)
+    low = dataclasses.replace(
+        low, wall_ns=1_000_000_000, wall_seconds=1,
+        busy_core_ns=1_000_000_000 * 16 * 800_000 // 1_000_000,
+        busy_core_seconds=13, mean_cpu_utilization_ppm=800_000,
+        p50_cpu_utilization_ppm=800_000, cpu_bound=True)
+    slower = dataclasses.replace(
+        slower, wall_ns=2_000_000_000, wall_seconds=2,
+        busy_core_ns=2_000_000_000 * 16 * 900_000 // 1_000_000,
+        busy_core_seconds=29, mean_cpu_utilization_ppm=900_000)
+    assert arm_has_immediate_next_slower(low, (low, slower))
+
+
+def test_immediate_next_saturation_witness_must_be_memory_eligible():
+    arms = [arm for arm in _arms() if arm.stage == "continuation-mechanics"]
+    low = dataclasses.replace(
+        next(arm for arm in arms if arm.variant == 16),
+        cpu_bound=True)
+    slower = dataclasses.replace(
+        next(arm for arm in arms if arm.variant == 32),
+        wall_ns=low.wall_ns + 1_000_000_000,
+        wall_seconds=(low.wall_ns + 1_999_999_999) // 1_000_000_000,
+        peak_memory_bytes=MEMORY_LIMIT_BYTES)
+    assert not arm_has_immediate_next_slower(low, (low, slower))
+
+
+def test_immediate_next_must_be_slower_not_any_later_arm():
+    arms = list(_arms())
+    stage = "continuation-mechanics"
+    selected = next(arm for arm in arms if arm.stage == stage and arm.variant == 1)
+    next_arm = next(arm for arm in arms if arm.stage == stage and arm.variant == 2)
+    later = next(arm for arm in arms if arm.stage == stage and arm.variant == 4)
+    arms[arms.index(selected)] = dataclasses.replace(
+        selected, cpu_bound=True,
+        busy_core_ns=selected.wall_ns * 16 * 800_000 // 1_000_000,
+        busy_core_seconds=(selected.wall_ns * 16 * 800_000 // 1_000_000
+                           + 999_999_999) // 1_000_000_000,
+        mean_cpu_utilization_ppm=(selected.wall_ns * 16 * 800_000 // 1_000_000
+                                  * 1_000_000 // (selected.wall_ns * 16)),
+        p50_cpu_utilization_ppm=800_000)
+    arms[arms.index(next_arm)] = dataclasses.replace(
+        next_arm, wall_ns=selected.wall_ns // 2,
+        wall_seconds=(selected.wall_ns // 2 + 999_999_999)
+        // 1_000_000_000,
+        busy_core_ns=(selected.wall_ns // 2) * 16 * 900_000 // 1_000_000,
+        busy_core_seconds=((selected.wall_ns // 2) * 16 * 900_000
+                           // 1_000_000 + 999_999_999) // 1_000_000_000,
+        mean_cpu_utilization_ppm=((selected.wall_ns // 2) * 16 * 900_000
+                                  // 1_000_000 * 1_000_000
+                                  // (selected.wall_ns // 2 * 16)),
+        peak_memory_bytes=29 * 1024**3)
+    assert later.wall_ns > selected.wall_ns
+    with pytest.raises(WorldAfterstateV2CapacityError, match="next-arm"):
+        _receipt(arms=tuple(arms)).validate()
+
+
+def test_projected_share_boundary_and_derived_full_dag_gate():
+    stage_walls = {name: 1 for name in COMPOSED_STAGE_NAMES}
+    stage_walls["p0"] = 49_999
+    stage_walls["label-p0"] = 50_000
+    shares = projected_arm_wall_shares_ppm(stage_walls)
+    assert sum(shares.values()) <= 1_000_000
+    wall_ns = {name: value * 1_000_000_000
+               for name, value in stage_walls.items()}
+    cpu_ns = {name: value * 14 * 1_000_000_000
+              for name, value in stage_walls.items()}
+    assert derive_all_core_gate_passed(_arms(), stage_walls, wall_ns, cpu_ns)
+    cpu_ns["p0"] = 1_000_000_000
+    assert not derive_all_core_gate_passed(_arms(), stage_walls, wall_ns, cpu_ns)
+
+
+def test_receipt_cannot_hardcode_all_core_pass_over_exact_stage_counters():
+    composed = _composed()
+    cpu_rows = tuple(
+        (name, 1_000_000_000 if name == "p0" else value)
+        for name, value in composed.measured_stage_cpu_nanoseconds)
+    cpu_seconds = tuple(
+        (name, 1 if name == "p0" else value)
+        for name, value in composed.measured_stage_cpu_seconds)
+    composed = dataclasses.replace(
+        composed, measured_stage_cpu_nanoseconds=cpu_rows,
+        measured_stage_cpu_seconds=cpu_seconds)
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="all-core gate binding"):
+        _receipt(composed=composed, all_core_gate_passed=True).validate()
+
+
 def test_composed_dag_disk_and_progress_recovery_bindings():
     with pytest.raises(WorldAfterstateV2CapacityError, match="composed"):
-        _receipt(composed=_composed(
-            stage_walls_seconds={"audit": 21_000})).validate()
+        _composed(stage_walls_seconds={"audit": 21_000}).validate()
     with pytest.raises(WorldAfterstateV2CapacityError, match="composed"):
-        _receipt(composed=_composed(composed_artifact_bytes=76)).validate()
+        _composed(composed_artifact_bytes=76).validate()
     with pytest.raises(WorldAfterstateV2CapacityError, match="progress"):
         _receipt(progress_recovery=_progress(
             progress_interval_seconds=61)).validate()
@@ -332,11 +533,12 @@ def test_production_command_wall_binds_sequential_arms_plus_dag():
     selected_by_stage = {arm.stage: arm.variant for arm in selected}
     layout = {
         "member_workers": selected_by_stage["member-concurrency"],
+        "continuation_workers": selected_by_stage["continuation-mechanics"],
         "torch_threads": PINNED_TORCH_THREADS,
         "inference_batch": selected_by_stage["inference-batch"],
     }
-    measured = tuple((name, 10) for name in COMPOSED_STAGE_NAMES)
-    composed = _composed(measured_stage_walls_seconds=measured)
+    composed = _composed()
+    measured = composed.measured_stage_walls_seconds
     with pytest.raises(WorldAfterstateV2CapacityError, match="accounting"):
         _receipt(
             arms=arms, selected_arms=selected,

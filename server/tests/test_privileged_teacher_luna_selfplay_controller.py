@@ -517,6 +517,20 @@ def test_capacity_failure_reopen_code_validation_is_strict():
         controller._validate_capacity_failure_body(body)
 
 
+@pytest.mark.parametrize("message, expected", (
+    ("trajectory hash drift", "trajectory_drift"),
+    ("process decision observation binding drift", "process_binding_drift"),
+    ("process trailing decision binding drift", "process_binding_drift"),
+    ("process trailing decision chain drift", "process_trace_drift"),
+    ("process rollout budget drift", "process_trace_drift"),
+    ("process rollout utility drift", "process_binding_drift"),
+))
+def test_capacity_failure_reopen_codes_cover_trailing_chain_failures(
+        message, expected):
+    assert controller._capacity_reopen_failure_code(
+        execution.LunaExecutionError(message)) == expected
+
+
 def test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable():
     secret = b"MODEL PROSE SECRET"
     stdout = (json.dumps({"type": "thread.started", "message":

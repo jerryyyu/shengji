@@ -522,6 +522,137 @@ def test_process_failure_aborts_game_and_wakes_peer(tmp_path):
     assert not (result.attempt_path / "terminal-receipt.json").exists()
 
 
+def _trailing_decision_failure(session, *, mailbox_path, **_kwargs):
+    """Observe/search one real decision, then fail before committing it."""
+    if session.team == 0:
+        observed = execution.tool_request(mailbox_path, {"op": "observe"})
+        assert observed["status"] == "decision"
+        rollout = execution.tool_request(mailbox_path, {
+            "op": "rollout", "decision_sha256": observed["decision_sha256"],
+            "candidate_indices": [0], "continuations": ["smart-all"]})
+        assert rollout["status"] == "rollout_complete"
+        raise RuntimeError("synthetic injected planner failure")
+    while True:
+        observed = execution.tool_request(mailbox_path, {"op": "observe"})
+        if observed["status"] == "failed":
+            return subprocess.CompletedProcess(("fake-luna",), 1,
+                                               _codex_stdout())
+        if observed["status"] == "waiting":
+            execution.tool_request(mailbox_path, {"op": "wait"})
+        else:
+            raise AssertionError("peer reached a decision before abort")
+
+
+def _trailing_failure_attempt(tmp_path):
+    return execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_trailing_decision_failure)
+
+
+def test_incomplete_reopen_accepts_one_hash_bound_trailing_decision_chain(tmp_path):
+    result = _trailing_failure_attempt(tmp_path)
+    assert result.status == "incomplete"
+    reopened = execution.reopen_attempt(result.attempt_path)
+    assert reopened.status == "incomplete"
+    assert len(reopened.evidence) == 2
+    assert reopened.trajectory_sha256 == result.trajectory_sha256
+    assert reopened.terminal_receipt_sha256 is None
+    assert reopened.scientific_admissible is False
+
+
+def test_trailing_decision_reopen_matches_live_ballot_card_canonicalization(
+        tmp_path, monkeypatch):
+    original = execution.luna.c0.C0WideHeuristicBot._candidates
+
+    def reversed_cards(self, rnd, seat):
+        return [list(reversed(cards)) for cards in original(self, rnd, seat)]
+
+    monkeypatch.setattr(execution.luna.c0.C0WideHeuristicBot, "_candidates",
+                        reversed_cards)
+    result = _trailing_failure_attempt(tmp_path)
+    reopened = execution.reopen_attempt(result.attempt_path)
+    assert reopened.status == "incomplete"
+    assert len(reopened.evidence) == 2
+    assert reopened.scientific_admissible is False
+
+
+@pytest.mark.parametrize("mutation", ("decision_sha", "candidates",
+                                       "second_decision"))
+def test_trailing_decision_mutations_refuse(tmp_path, mutation):
+    result = _trailing_failure_attempt(tmp_path)
+    process_path = result.attempt_path / "process-team-0.json"
+    process = json.loads(process_path.read_text())
+    decision = next(event for event in process["trace"]
+                    if event["response"].get("status") == "decision")
+    if mutation == "decision_sha":
+        decision["response"]["decision_sha256"] = "0" * 64
+        decision["response_sha256"] = execution._sha(decision["response"])
+    elif mutation == "candidates":
+        decision["response"]["candidates"] = list(
+            reversed(decision["response"]["candidates"]))
+        decision["response_sha256"] = execution._sha(decision["response"])
+    elif mutation == "second_decision":
+        process["trace"].append(dict(decision))
+    process.pop("evidence_sha256")
+    process["evidence_sha256"] = execution._sha(process)
+    _rewrite(process_path, process)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["evidence"][0]["evidence_sha256"] = process[
+        "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    with pytest.raises(execution.LunaExecutionError):
+        execution.reopen_attempt(result.attempt_path)
+
+
+def test_complete_attempt_refuses_coherently_rehashed_uncommitted_decision(
+        tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+
+    process_path = None
+    process = None
+    decision_index = None
+    for team in luna.TEAMS:
+        candidate_path = result.attempt_path / f"process-team-{team}.json"
+        candidate = json.loads(candidate_path.read_text())
+        for index, event in enumerate(candidate["trace"]):
+            if event["response"].get("status") == "decision":
+                process_path = candidate_path
+                process = candidate
+                decision_index = index
+                break
+        if process is not None:
+            break
+    assert process_path is not None and process is not None
+    assert decision_index is not None
+
+    uncommitted = json.loads(json.dumps(process["trace"][decision_index]))
+    uncommitted["response"]["decision_sha256"] = "0" * 64
+    uncommitted["response_sha256"] = execution._sha(uncommitted["response"])
+    process["trace"].insert(decision_index + 1, uncommitted)
+    process.pop("evidence_sha256")
+    process["evidence_sha256"] = execution._sha(process)
+    _rewrite(process_path, process)
+
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    team = process["team"]
+    manifest["evidence"][team]["evidence_sha256"] = process[
+        "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+
+    with pytest.raises(execution.LunaExecutionError,
+                       match="process decision observation drift"):
+        execution.reopen_attempt(result.attempt_path)
+
+
 def test_tool_schema_rejects_wait_arguments(tmp_path):
     game = _game()
     mailbox = tmp_path / "mailbox"

@@ -1141,7 +1141,15 @@ def _validate_trace_semantics(
                     or response.get("decision_sha256") not in trajectory_events):
                 raise LunaExecutionError("process decision observation drift")
             target = trajectory_events[response["decision_sha256"]]
-            if (response.get("acting_seat") != target["seat"]
+            state_before = target["state_before"]
+            if (response.get("decision_sha256") != _sha(
+                        {"team": team, "snapshot": state_before})
+                    or response.get("current_state") != state_before
+                    or response.get("acting_seat") != target["seat"]
+                    or response.get("banker") != state_before["banker"]
+                    or response.get("trump_rank") != state_before["trump_rank"]
+                    or response.get("hands_by_seat") != state_before["hands_by_seat"]
+                    or response.get("hidden_burial") != state_before["hidden_burial"]
                     or response.get("candidates") != target["legal_ballot"]):
                 raise LunaExecutionError("process decision observation binding drift")
             _validate_budget(response.get("budget"))
@@ -1235,6 +1243,52 @@ def _validate_trace_semantics(
             raise LunaExecutionError("process play completion drift")
     elif "completion_token" in response:
         raise LunaExecutionError("process play completion drift")
+
+
+def _trailing_decision_target(
+        response: Mapping[str, object], *, team: int,
+        trajectory_body: Mapping[str, object]) -> dict[str, object]:
+    """Reconstruct the one decision observed after the last committed play.
+
+    A failed planner can have observed (and searched) the next decision before
+    its peer aborts the game.  That observation is not a trajectory action,
+    so it is accepted only when it is exactly the sealed trajectory tail and
+    the deterministic production ballot for that state.
+    """
+    snapshot = response.get("current_state")
+    events = trajectory_body.get("events")
+    if type(snapshot) is not dict or type(events) is not list:
+        raise LunaExecutionError("process trailing decision binding drift")
+    expected_tail = (events[-1]["state_after"] if events else None)
+    if expected_tail is not None:
+        if snapshot != expected_tail:
+            raise LunaExecutionError("process trailing decision binding drift")
+    else:
+        try:
+            root_match = (luna._root_identity_snapshot(snapshot)
+                          == trajectory_body["root_sha256"])
+        except Exception as exc:
+            raise LunaExecutionError(
+                "process trailing decision binding drift") from exc
+        if not root_match:
+            raise LunaExecutionError("process trailing decision binding drift")
+    try:
+        seat = snapshot["turn"]
+        if (isinstance(seat, bool) or not isinstance(seat, int)
+                or seat not in range(4) or seat % 2 != team):
+            raise ValueError
+        state_sha = _sha({"team": team, "snapshot": snapshot})
+        if response.get("decision_sha256") != state_sha:
+            raise ValueError
+        rnd = luna._round_from_snapshot(snapshot)
+        ballot = [list(luna._card_action(cards)) for cards in
+                  luna.c0.C0WideHeuristicBot(seed=0)._candidates(rnd, seat)]
+    except Exception as exc:
+        raise LunaExecutionError("process trailing decision binding drift") from exc
+    if response.get("candidates") != ballot:
+        raise LunaExecutionError("process trailing decision binding drift")
+    return {"state_sha256": state_sha, "seat": seat,
+            "state_before": snapshot, "legal_ballot": ballot}
 
 
 def run_luna_game(
@@ -1665,6 +1719,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                             for event in trajectory_body["events"]):
             raise LunaExecutionError("trajectory decision identity collision")
         trajectory_events_by_team[team] = rows
+    trailing_decision: tuple[int, dict[str, object]] | None = None
     entries: list[LunaProcessEvidence] = []
     for team in luna.TEAMS:
         body = _strict_json(_read_regular(
@@ -1792,6 +1847,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
         trace = body["trace"]
         if type(trace) is not list:
             raise LunaExecutionError("process trace event drift")
+        validation_events = dict(trajectory_events_by_team[team])
         for event in trace:
             if type(event) is not dict or set(event) != {"request", "response",
                     "request_sha256", "response_sha256"}:
@@ -1799,9 +1855,24 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             if (event["request_sha256"] != _sha(event["request"])
                     or event["response_sha256"] != _sha(event["response"])):
                 raise LunaExecutionError("process trace event hash drift")
+            request = event["request"]
+            response = event["response"]
+            committed_events = trajectory_events_by_team[team]
+            if (manifest["status"] == "incomplete"
+                    and type(request) is dict and type(response) is dict
+                    and request.get("op") in ("observe", "wait")
+                    and response.get("status") == "decision"
+                    and response.get("decision_sha256") not in committed_events):
+                if trailing_decision is not None:
+                    raise LunaExecutionError(
+                        "process trailing decision chain drift")
+                trailing_decision = (team, _trailing_decision_target(
+                    response, team=team, trajectory_body=trajectory_body))
+                validation_events[trailing_decision[1]["state_sha256"]] = \
+                    trailing_decision[1]
             _validate_trace_semantics(
                 event, team=team,
-                trajectory_events=trajectory_events_by_team[team],
+                trajectory_events=validation_events,
                 complete=manifest["status"] == "complete",
                 completion_token_sha256=completion_token_sha256)
         if (body_schema == PRIVATE_TRACE_SCHEMA

@@ -10440,3 +10440,35 @@ geometry. Verified: focused **31/31**, full **537/537** (exact); strict-stratum 
 red** at the exact-stage witness. This amends the design PRE-freeze — legitimate; the eventual
 freeze binds the amended geometry. Authorization: one fresh score-free full-DAG Perf census, new
 namespace. All other authority false in both lanes. — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ TERMINAL PASS: the R4 opened-DEV policy diagnostic SEALED with route `NO_PRIMARY_POLICY_SIGNAL` — the program's FIRST completed scientific result, and it is an honest NEGATIVE for BELIEF R4 on policy
+
+### Verified (all self-run on shengji-cloud, read-only)
+
+Manifest SHA `89c14fe0…` exact; unit `Result=success ExecMainStatus=0`; freeze binding `8bfd6ba5…`
+exact; `r4_test_opened: false`; all four downstream authorities false in the sealed manifest
+itself. I reproduced the code-defined cheap verifier from the exact-head checkout: output
+byte-identical to the packet (`round_count:104, route:NO_PRIMARY_POLICY_SIGNAL, verified:true,
+expensive_reconstruction_performed:false`). Every packet number matches the sealed terminal block:
+60,944/60,944 legal worlds; final-action flips primary 1/104, control 0/104; nomination flips
+4/104 vs 1/104; oracle agreement 50.0%/50.96%/50.0%; paired true-world value differences EXACTLY
+zero with [0,0] 10,000-replicate bootstrap intervals for both primary−production and
+primary−control; report ESS 290.2/300 and 298.6/300.
+
+### Adjudication
+
+`NO_PRIMARY_POLICY_SIGNAL` is the honest route for this evidence, and the exact zeros are
+STRUCTURALLY FORCED, not suspicious (checked deliberately against the surprising-results rule):
+with weights this close to uniform — ESS ≈ 97–99.5% of maximum — the paired design contributes
+exactly 0 on the 103 unflipped rounds, and the single flipped action reached equal true-world
+value. Internal consistency holds across all measures. SCIENTIFIC READING: R4's synthetic-primary
+belief weighting is operationally indistinguishable from the production MC-LCB sampler on
+opened-DEV — it almost never changes the decision, and where it does, it does not change the
+outcome. Together with the label-control behaving identically, BELIEF R4 provides NO usable
+policy signal at this operating point. This is the answer to the month's driving question, and it
+is negative — recorded per the honest-negatives goal (shengji-rl-goal).
+
+No terminal machine marker exists in this lane's CLI (by design — the freeze claim was the last
+machine gate); this ledger entry is the terminal record. NOT authorized now or by this entry: R4
+test opening, R5, gameplay, strength claims, promotion, deployment, any relaunch. R5's premise
+should be re-examined against this result before any unpause discussion. — Claude (session `68f9c8bd`)

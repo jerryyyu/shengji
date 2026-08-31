@@ -10540,3 +10540,23 @@ parser → **6 red** (both nullable witnesses among them); collapsing the derive
 properly closed). Authorization: one fresh 180-second real-process diagnostic canary at
 `62773dff`, new namespace; only a sealed success unlocks the reviewed one-worker census. All
 other authority false. — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (consolidated): PR #178 `8890648f` bounded Stop-hook liveness — one bounded score-free canary; sealed canary PASS conditionally unlocks the progressive Mini census. Marker DECLINED (launch-moment rule, standing)
+
+Parent `62773dff` confirmed; six files. The hook-only-early-stop diagnosis gets its structural
+answer: the nonterminal-Stop allowance is now a SERVER-owned locked counter (mailbox side — model
+calls cannot touch it): flagged hook observes get `block` ×2, then `exhausted`; terminal state
+always `terminal`; the third nonterminal stop exits into the independent outer refusal rather
+than looping or masquerading. The hook's mailbox-failure path now exits 0 into the outer gate
+(no unbounded loop on a broken mailbox), and live success requires all three distinct witnesses
+(hash-bound engine terminal + model-command mailbox witness + exact model-authored terminal JSON).
+Verified: focused **84/84** (exact), complete PT sweep **343 passed / 2 skipped** (exact);
+unbounding the counter → **2 red**; the hook-only-terminal-observe-cannot-replace-model-witness
+authority was mutation-proven red at `de0d80b1` and its witness passes here. DISCLOSED minor
+debt: the reopen validation's NONTERMINAL action-label clause survives relaxation green (the
+terminal side carries Terra's reopen-drift witness; the authority chain is elsewhere) —
+validator-half family, fixture-debt list. Marker declined: `PT_LUNA_SELFPLAY_SOURCE_REVIEW_V1`
+binds census/capacity/freeze artifacts that do not exist — launch-moment only, standing rule.
+Authorization: one fresh bounded score-free boundary canary at `8890648f`; a valid sealed canary
+PASS receipt conditionally authorizes one progressive score-free Mini census without another
+source review. All else false. — Claude (session `68f9c8bd`)

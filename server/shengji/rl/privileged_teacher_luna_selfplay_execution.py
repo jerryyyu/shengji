@@ -34,12 +34,24 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 
 MODEL = luna.MODEL
 REASONING_EFFORT = "high"
+PLANNER_DEVELOPER_INSTRUCTIONS = (
+    "You are a bounded Shengji game process. Your first assistant action must "
+    "be a shell-tool call that runs the exact observe command supplied in the "
+    "user prompt. Do not answer with text or finish before the engine reports "
+    "round_end. If a Stop hook blocks completion, immediately use the shell "
+    "tool and continue the mailbox protocol from the prompt.")
+PLANNER_DEVELOPER_OVERRIDE = (
+    "developer_instructions=" + json.dumps(PLANNER_DEVELOPER_INSTRUCTIONS))
 LEGACY_FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v1"
 FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v2"
 LEGACY_PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v1"
-PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v2"
+INTERMEDIATE_PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v2"
+PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v3"
 LEGACY_ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v1"
-ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v2"
+INTERMEDIATE_ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v2"
+ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v3"
+_MODERN_PRIVATE_TRACE_SCHEMAS = frozenset({
+    INTERMEDIATE_PRIVATE_TRACE_SCHEMA, PRIVATE_TRACE_SCHEMA})
 ARTIFACT_SCHEMA = "privileged-teacher-luna-selfplay-private-artifact-v1"
 MAX_REQUEST_BYTES = 1 << 20
 MAX_PROCESS_BYTES = 16 << 20
@@ -464,6 +476,7 @@ def process_command(*, codex_binary: Path, workspace: Path,
             "workspace-write", STOP_HOOK_AUTOMATION_FLAG, "-C", str(workspace),
             "-m", model, "-c", hook["config_override"], "-c",
             f'model_reasoning_effort="{reasoning_effort}"',
+            "-c", PLANNER_DEVELOPER_OVERRIDE,
             "--output-last-message", str(final_output_path), "-")
     if peer_workspace is None:
         return command
@@ -1954,6 +1967,13 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             and attempt_payload.get("private_trace_schema") == PRIVATE_TRACE_SCHEMA
             and attempt_payload.get("final_response_schema") == FINAL_RESPONSE_SCHEMA):
         expected_private_trace_schema = PRIVATE_TRACE_SCHEMA
+    elif (attempt_schema == INTERMEDIATE_ATTEMPT_SCHEMA
+            and set(attempt_payload) == current_attempt_keys
+            and attempt_payload.get("private_trace_schema")
+            == INTERMEDIATE_PRIVATE_TRACE_SCHEMA
+            and attempt_payload.get("final_response_schema")
+            == FINAL_RESPONSE_SCHEMA):
+        expected_private_trace_schema = INTERMEDIATE_PRIVATE_TRACE_SCHEMA
     elif (attempt_schema == LEGACY_ATTEMPT_SCHEMA
             and set(attempt_payload) == legacy_attempt_keys):
         expected_private_trace_schema = LEGACY_PRIVATE_TRACE_SCHEMA
@@ -2050,7 +2070,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                          "synthetic", "actual_subprocess", "authority"}
         body_schema = body.get("schema")
         expected_keys = (common_keys | {"completion_token_sha256", "stop_hook"}
-                         if body_schema == PRIVATE_TRACE_SCHEMA
+                         if body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                          else common_keys)
         # A v1 downgrade of a current attempt may retain the newer private
         # hook binding; genuinely old v1 evidence has no such field and
@@ -2064,7 +2084,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                 or body["runtime"] != attempt_payload["runtime"]:
             raise LunaExecutionError("process trace schema/binding drift")
         completion_token_sha256 = body.get("completion_token_sha256")
-        if (body_schema == PRIVATE_TRACE_SCHEMA
+        if (body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                 and not _valid_completion_token(completion_token_sha256)):
             raise LunaExecutionError("process completion binding drift")
         if (body["execution_kind"] not in (PRODUCTION_EXECUTION_KIND,
@@ -2075,7 +2095,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                 or body["authority"] != luna.AUTHORITY):
             raise LunaExecutionError("process execution provenance drift")
         stop_hook = body.get("stop_hook")
-        if (body_schema == PRIVATE_TRACE_SCHEMA
+        if (body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                 and (type(stop_hook) is not dict
                      or set(stop_hook) != {"schema", "script_sha256",
                          "config_sha256", "command_sha256", "script_path",
@@ -2121,12 +2141,14 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
         command = body["command"]
         if ("exec" not in command or "--ephemeral" not in command
                 or "--json" not in command
-                or (body_schema == PRIVATE_TRACE_SCHEMA
+                or (body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                     and STOP_HOOK_AUTOMATION_FLAG not in command)
                 or "-m" not in command or command[command.index("-m") + 1] != MODEL
-                or f'model_reasoning_effort="{REASONING_EFFORT}"' not in command):
+                or f'model_reasoning_effort="{REASONING_EFFORT}"' not in command
+                or (body_schema == PRIVATE_TRACE_SCHEMA
+                    and PLANNER_DEVELOPER_OVERRIDE not in command)):
             raise LunaExecutionError("process command identity drift")
-        if (body_schema == PRIVATE_TRACE_SCHEMA
+        if (body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                 and stop_hook["config_override"] not in command):
             raise LunaExecutionError("stop hook command binding drift")
         if (set(planner_identity) != {"team", "model",
@@ -2198,13 +2220,13 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                 trajectory_events=validation_events,
                 complete=manifest["status"] == "complete",
                 completion_token_sha256=completion_token_sha256)
-        if (body_schema == PRIVATE_TRACE_SCHEMA
+        if (body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                 and manifest["status"] == "complete"
                 and not _terminal_trace_witness(
                     trace, team=team,
                     completion_token_sha256=completion_token_sha256)):
             raise LunaExecutionError("process terminal mailbox witness absent")
-        if (body_schema == PRIVATE_TRACE_SCHEMA
+        if (body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                 and manifest["status"] == "complete"
                 and not _terminal_command_mailbox_witness(
                     stdout,
@@ -2216,7 +2238,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                     require_shell=True)):
             raise LunaExecutionError(
                 "process terminal command mailbox witness absent")
-        if body_schema == PRIVATE_TRACE_SCHEMA \
+        if body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS \
                 and manifest["status"] == "complete":
             if not _terminal_final_response_witness(
                     final, trace=trace,
@@ -2296,7 +2318,8 @@ __all__ = ["ARTIFACT_SCHEMA", "ATTEMPT_SCHEMA", "FINAL_RESPONSE_SCHEMA",
            "RESOURCE_SCHEMA",
            "SandboxIdentity", "SANDBOX_PROFILE_SCHEMA",
            "MAX_GAME_WALL_SECONDS", "MODEL", "PRIVATE_TRACE_SCHEMA",
-           "REASONING_EFFORT", "planner_prompt", "process_command",
+           "REASONING_EFFORT", "PLANNER_DEVELOPER_INSTRUCTIONS",
+           "PLANNER_DEVELOPER_OVERRIDE", "planner_prompt", "process_command",
            "STOP_HOOK_SCHEMA", "STOP_HOOK_AUTOMATION_FLAG", "STOP_HOOK_SCRIPT",
            "STOP_HOOK_SOURCE_SHA256", "STOP_HOOK_REQUEST_FIELD",
            "STOP_HOOK_ACTION_FIELD", "MAX_STOP_HOOK_NONTERMINAL_BLOCKS",

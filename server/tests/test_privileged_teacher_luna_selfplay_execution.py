@@ -274,6 +274,9 @@ def test_production_command_binds_reviewed_inline_stop_hook(tmp_path):
     assert ".codex" not in " ".join(command)
     assert execution.STOP_HOOK_SOURCE_SHA256 == execution._sha_bytes(
         execution.STOP_HOOK_SCRIPT.read_bytes())
+    assert execution.PLANNER_DEVELOPER_OVERRIDE in command
+    assert "first assistant action must be a shell-tool call" \
+        in execution.PLANNER_DEVELOPER_INSTRUCTIONS
 
 
 def test_stop_hook_command_runs_from_outside_repo_with_venv_launcher(tmp_path):
@@ -752,6 +755,61 @@ def test_coordinated_rehash_cannot_remove_terminal_mailbox_witness(tmp_path):
     with pytest.raises(execution.LunaExecutionError,
                        match="terminal mailbox witness absent"):
         execution.reopen_attempt(result.attempt_path)
+
+
+def test_coordinated_rehash_cannot_remove_tool_liveness_instruction(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+    process_path = result.attempt_path / "process-team-0.json"
+    process = json.loads(process_path.read_text())
+    process["command"].remove(execution.PLANNER_DEVELOPER_OVERRIDE)
+    process.pop("evidence_sha256")
+    process["evidence_sha256"] = execution._sha(process)
+    _rewrite(process_path, process)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["evidence"][0]["evidence_sha256"] = process[
+        "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    with pytest.raises(execution.LunaExecutionError,
+                       match="process command identity drift"):
+        execution.reopen_attempt(result.attempt_path)
+
+
+def test_pre_repair_v2_artifact_remains_reopenable_without_liveness_override(
+        tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+    attempt_path = result.attempt_path / "attempt.json"
+    attempt = json.loads(attempt_path.read_text())
+    attempt.pop("attempt_sha256")
+    attempt["schema"] = execution.INTERMEDIATE_ATTEMPT_SCHEMA
+    attempt["private_trace_schema"] = \
+        execution.INTERMEDIATE_PRIVATE_TRACE_SCHEMA
+    attempt["attempt_sha256"] = execution._sha(attempt)
+    _rewrite(attempt_path, attempt)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for team in luna.TEAMS:
+        process_path = result.attempt_path / f"process-team-{team}.json"
+        process = json.loads(process_path.read_text())
+        process["schema"] = execution.INTERMEDIATE_PRIVATE_TRACE_SCHEMA
+        process["command"].remove(execution.PLANNER_DEVELOPER_OVERRIDE)
+        process.pop("evidence_sha256")
+        process["evidence_sha256"] = execution._sha(process)
+        _rewrite(process_path, process)
+        manifest["evidence"][team]["evidence_sha256"] = process[
+            "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    assert execution.reopen_attempt(result.attempt_path).status == "complete"
 
 
 def test_legacy_v1_complete_attempt_remains_reopenable(tmp_path):

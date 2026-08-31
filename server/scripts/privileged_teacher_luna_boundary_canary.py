@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one score-free PT-Luna process-boundary first-observe canary."""
+"""Run one score-free PT-Luna multi-operation process-boundary canary."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -16,7 +16,8 @@ from shengji.rl import privileged_teacher_luna_selfplay as luna
 from shengji.rl import privileged_teacher_luna_selfplay_controller as controller
 from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
-SCHEMA = "privileged-teacher-luna-boundary-canary-v1"
+SCHEMA = "privileged-teacher-luna-boundary-canary-v2"
+MAX_HOOK_OBSERVES = 2
 _SHA_KEYS = ("prompt_sha256", "stdout_sha256", "final_sha256",
              "command_sha256", "hook_source_sha256",
              "hook_command_sha256", "hook_config_sha256",
@@ -49,17 +50,31 @@ def _publish(path: Path, raw: bytes) -> None:
         os.fsync(directory)
     finally:
         os.close(directory)
-class _ObserveOnlyMailbox:
-    """Ephemeral mailbox; no request, observation, or token leaves this thread."""
-    def __init__(self, path: Path, *, token: str):
-        if path.exists() or path.is_symlink():
-            raise ValueError("canary mailbox occupied")
-        path.mkdir(mode=0o700)
-        self.path = path
+class _CanaryState:
+    """Shared private state for the model and Stop-hook mailboxes."""
+
+    def __init__(self, token: str):
         if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
             raise ValueError("canary token identity drift")
         self.token = token
+        self.model_sequence: list[str] = []
+        self.nonterminal_observed = False
+        self.terminal = False
+        self.lock = threading.Lock()
+
+
+class _CanaryMailbox:
+    """Ephemeral mailbox; no request, observation, or token leaves this thread."""
+
+    def __init__(self, path: Path, *, state: _CanaryState, role: str):
+        if path.exists() or path.is_symlink():
+            raise ValueError("canary mailbox occupied")
+        path.mkdir(mode=0o700)
+        if role not in ("model", "hook"):
+            raise ValueError("canary mailbox role drift")
+        self.path, self.state, self.role = path, state, role
         self.first_op: str | None = None
+        self.sequence: list[str] = []
         self.counts: dict[str, int] = {}
         self.refused = False
         self.error: BaseException | None = None
@@ -73,6 +88,47 @@ class _ObserveOnlyMailbox:
             handle.write(raw)
             handle.flush()
             os.fsync(handle.fileno())
+
+    def _dispatch(self, request: dict[str, object]) -> dict[str, object]:
+        op = request.get("op") if set(request) == {"op"} else None
+        if type(op) is not str:
+            raise ValueError("canary request shape drift")
+        self.first_op = self.first_op or op
+        self.sequence.append(op)
+        self.counts[op] = self.counts.get(op, 0) + 1
+        if self.role == "hook":
+            if op != "observe" or len(self.sequence) > MAX_HOOK_OBSERVES:
+                raise ValueError("canary hook operation drift")
+            with self.state.lock:
+                terminal = self.state.terminal
+            if terminal:
+                return {"schema": luna.GAME_SCHEMA, "status": "round_end",
+                        "completion_token": self.state.token}
+            return {"schema": luna.GAME_SCHEMA, "status": "waiting"}
+
+        with self.state.lock:
+            if not self.state.model_sequence:
+                if op != "observe":
+                    raise ValueError("canary model first operation drift")
+                self.state.model_sequence.append(op)
+                self.state.nonterminal_observed = True
+                return {"schema": luna.GAME_SCHEMA, "status": "waiting",
+                        "acting_team": 1}
+            if self.state.model_sequence == ["observe"]:
+                if op != "wait":
+                    raise ValueError("canary model continuation drift")
+                self.state.model_sequence.append(op)
+                return {"schema": luna.GAME_SCHEMA, "status": "waiting",
+                        "acting_team": 1}
+            if self.state.model_sequence == ["observe", "wait"]:
+                if op != "wait":
+                    raise ValueError("canary model continuation drift")
+                self.state.model_sequence.append(op)
+                self.state.terminal = True
+                return {"schema": luna.GAME_SCHEMA, "status": "round_end",
+                        "completion_token": self.state.token}
+        raise ValueError("canary model operation limit")
+
     def _serve(self) -> None:
         try:
             while not self._stop.is_set():
@@ -85,29 +141,15 @@ class _ObserveOnlyMailbox:
                         continue
                     try:
                         request = _strict(request_path.read_bytes(), "canary request")
+                        response = self._dispatch(request)
                     except Exception:
                         self.refused = True
                         response = {"status": "error", "error": "canary request refused"}
-                    else:
-                        if request != {"op": "observe"}:
-                            self.refused = True
-                            response = {"status": "error", "error": "observe-only canary refusal"}
-                        else:
-                            self.first_op = self.first_op or "observe"
-                            self.counts["observe"] = self.counts.get("observe", 0) + 1
-                            if self.counts["observe"] > 4:
-                                self.refused = True
-                                response = {"status": "error",
-                                            "error": "canary operation limit"}
-                            else:
-                                response = {"schema": luna.GAME_SCHEMA,
-                                            "status": "round_end",
-                                            "completion_token": self.token}
                     self._response(response_path, response)
                 self._stop.wait(0.002)
         except BaseException as exc:  # surfaced only as a generic refusal
             self.error = exc
-    def __enter__(self) -> "_ObserveOnlyMailbox":
+    def __enter__(self) -> "_CanaryMailbox":
         self._thread.start()
         return self
     def __exit__(self, *_args: object) -> None:
@@ -147,7 +189,8 @@ def reopen_receipt(path: Path) -> dict[str, object]:
     if type(receipt_sha) is not str or receipt_sha != _sha(canonical_json_bytes(payload)):
         raise ValueError("canary receipt self-hash drift")
     expected = {"schema", "runtime_identity", "actual_subprocess", "returncode",
-                "model_first_op", "model_op_counts", "hook_first_op", "hook_op_counts",
+                "model_first_op", "model_op_counts", "model_op_sequence",
+                "model_nonterminal_observed", "hook_first_op", "hook_op_counts",
                 "codex_usage", "codex_event_type_counts",
                 "prompt_sha256", "stdout_sha256", "final_sha256",
                 "command_sha256", "hook_source_sha256",
@@ -160,13 +203,17 @@ def reopen_receipt(path: Path) -> dict[str, object]:
     _validate_runtime(payload["runtime_identity"])
     if (payload["actual_subprocess"] is not True or payload["returncode"] != 0):
         raise ValueError("canary receipt process drift")
-    for first, counts in (("model_first_op", "model_op_counts"),
-                          ("hook_first_op", "hook_op_counts")):
-        if payload[first] != "observe" or (type(payload[counts]) is not dict
-                or set(payload[counts]) != {"observe"}
-                or type(payload[counts].get("observe")) is not int
-                or not 1 <= payload[counts]["observe"] <= 4):
-            raise ValueError("canary receipt operation drift")
+    if (payload["model_first_op"] != "observe"
+            or payload["model_op_sequence"] != ["observe", "wait", "wait"]
+            or payload["model_op_counts"] != {"observe": 1, "wait": 2}
+            or payload["model_nonterminal_observed"] is not True):
+        raise ValueError("canary receipt model operation drift")
+    hook_counts = payload["hook_op_counts"]
+    if (payload["hook_first_op"] != "observe" or type(hook_counts) is not dict
+            or set(hook_counts) != {"observe"}
+            or type(hook_counts.get("observe")) is not int
+            or not 1 <= hook_counts["observe"] <= MAX_HOOK_OBSERVES):
+        raise ValueError("canary receipt hook operation drift")
     if payload["opened"] != _PRIVACY or payload["retained"] != _PRIVACY:
         raise ValueError("canary receipt privacy drift")
     if payload["authority"] != luna.AUTHORITY:
@@ -190,7 +237,8 @@ def reopen_receipt(path: Path) -> dict[str, object]:
             or any(type(v) is not int or isinstance(v, bool) or v < 0
                    for v in usage.values())):
         raise ValueError("canary receipt usage drift")
-    if type(payload["codex_event_type_counts"]) is not dict:
+    if (type(payload["codex_event_type_counts"]) is not dict
+            or payload["codex_event_type_counts"].get("turn.completed") != 1):
         raise ValueError("canary receipt event counts drift")
     return {**payload, "receipt_sha256": receipt_sha}
 def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str, object]:
@@ -221,8 +269,11 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
         environment.pop("SHENGJI_FAST", None)
         environment["SHENGJI_REQUIRE_VOIDS"] = "1"
         token = secrets.token_hex(32)
-        with (_ObserveOnlyMailbox(model_mailbox_path, token=token) as model_mailbox,
-              _ObserveOnlyMailbox(hook_mailbox_path, token=token) as hook_mailbox):
+        state = _CanaryState(token)
+        with (_CanaryMailbox(model_mailbox_path, state=state,
+                             role="model") as model_mailbox,
+              _CanaryMailbox(hook_mailbox_path, state=state,
+                             role="hook") as hook_mailbox):
             process = subprocess.Popen(
                 command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT, cwd=workspace, env=environment,
@@ -240,11 +291,13 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
                     pass
                 process.communicate()
                 raise ValueError("canary subprocess deadline exceeded") from exc
-        mailboxes = (model_mailbox, hook_mailbox)
-        if any(mailbox.error is not None or mailbox.refused
-               or mailbox.first_op != "observe" or not mailbox.counts
-               or set(mailbox.counts) != {"observe"}
-               for mailbox in mailboxes):
+        if (model_mailbox.error is not None or model_mailbox.refused
+                or model_mailbox.sequence != ["observe", "wait", "wait"]
+                or model_mailbox.counts != {"observe": 1, "wait": 2}
+                or hook_mailbox.error is not None or hook_mailbox.refused
+                or hook_mailbox.first_op != "observe"
+                or set(hook_mailbox.counts) != {"observe"}
+                or not 1 <= hook_mailbox.counts["observe"] <= MAX_HOOK_OBSERVES):
             raise ValueError("canary mailbox contract refused")
         stdout = bytes(stdout or b"")
         usage = execution._codex_jsonl_usage(stdout)
@@ -265,6 +318,8 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
                 "returncode": process.returncode,
                 "model_first_op": model_mailbox.first_op,
                 "model_op_counts": dict(sorted(model_mailbox.counts.items())),
+                "model_op_sequence": list(model_mailbox.sequence),
+                "model_nonterminal_observed": state.nonterminal_observed,
                 "hook_first_op": hook_mailbox.first_op,
                 "hook_op_counts": dict(sorted(hook_mailbox.counts.items())),
                 "codex_usage": usage,

@@ -20,7 +20,8 @@ HOOK = Path(__file__).parents[1] / "scripts" / "privileged_teacher_luna_stop_hoo
 
 
 def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
-              last: str, *, stop_hook_active: bool = False) -> tuple[int, bytes]:
+              last: str, *, stop_hook_active: bool = False,
+              expect_observe: bool = True) -> tuple[int, bytes]:
     mailbox = tmp_path / "mailbox"
     mailbox.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     mailbox.mkdir(mode=0o700)
@@ -48,7 +49,8 @@ def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
             time.sleep(0.001)
 
     thread = threading.Thread(target=answer)
-    thread.start()
+    if expect_observe:
+        thread.start()
     stop = {"hook_event_name": "Stop", "model": luna.MODEL,
             "turn_id": "test", "cwd": str(tmp_path),
             "stop_hook_active": stop_hook_active,
@@ -66,9 +68,10 @@ def _run_hook(tmp_path: Path, observed: dict[str, object] | None,
         input=canonical_json_bytes(stop), stdout=subprocess.PIPE,
         stderr=subprocess.PIPE, env=env, check=False, timeout=10)
     done.set()
-    thread.join(timeout=5)
+    if expect_observe:
+        thread.join(timeout=5)
     assert process.stderr == b""
-    assert request_payload == {"op": "observe"}
+    assert request_payload == ({"op": "observe"} if expect_observe else None)
     return requests, process.stdout
 
 
@@ -98,16 +101,19 @@ def test_round_end_wrong_token_gets_exact_private_correction(tmp_path):
     assert execution.FINAL_RESPONSE_SCHEMA in payload["reason"]
 
 
-def test_repeated_early_stops_remain_bounded_and_generic(tmp_path):
-    for index in range(3):
-        requests, raw = _run_hook(
-            tmp_path / str(index),
-            {"schema": luna.GAME_SCHEMA, "status": "decision"},
-            "early prose")
-        assert requests == 1
-        payload = json.loads(raw)
-        assert payload["decision"] == "block"
-        assert len(payload["reason"]) < 200
+def test_nonterminal_stop_blocks_once_and_reentrant_stop_cannot_reblock(tmp_path):
+    observed = {"schema": luna.GAME_SCHEMA, "status": "decision"}
+    requests, raw = _run_hook(tmp_path / "first", observed, "early prose")
+    assert requests == 1
+    payload = json.loads(raw)
+    assert payload["decision"] == "block"
+    assert len(payload["reason"]) < 200
+
+    requests, raw = _run_hook(
+        tmp_path / "reentrant", observed, "early prose",
+        stop_hook_active=True, expect_observe=False)
+    assert requests == 0
+    assert raw == b""
 
 
 def test_exact_terminal_response_is_allowed_even_after_prior_continuation(tmp_path):
@@ -118,8 +124,9 @@ def test_exact_terminal_response_is_allowed_even_after_prior_continuation(tmp_pa
     requests, raw = _run_hook(
         tmp_path,
         {"schema": luna.GAME_SCHEMA, "status": "round_end",
-         "completion_token": token}, terminal, stop_hook_active=True)
-    assert requests == 1
+         "completion_token": token}, terminal, stop_hook_active=True,
+        expect_observe=False)
+    assert requests == 0
     assert raw == b""
 
 

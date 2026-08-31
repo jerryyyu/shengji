@@ -26,36 +26,52 @@ assert os.environ.get("SHENGJI_REQUIRE_VOIDS") == "1"
 mailbox = Path(re.search(r"--mailbox\\s+(\\S+)", prompt).group(1))
 final = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
 mode = os.environ.get("CANARY_FAKE_MODE", "ok")
-request = {"op": "play"} if mode == "play" else {"op": "observe"}
-path = mailbox / ("request-" + "a" * 64 + ".json")
-path.write_bytes(json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode() + b"\\n")
-path.chmod(0o600)
-response = mailbox / ("response-" + "a" * 64 + ".json")
-for _ in range(5000):
-    if response.is_file(): break
-    time.sleep(.001)
-if mode == "play" or not response.is_file(): sys.exit(3)
-token = json.loads(response.read_bytes())["completion_token"]
-payload = {"schema": "privileged-teacher-luna-selfplay-final-response-v2", "status": "complete", "completion_token": token}
-if mode == "bad-final": payload["status"] = "wrong"
-final_raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-final.write_bytes(final_raw)
+def call(request, suffix):
+    path = mailbox / ("request-" + suffix * 64 + ".json")
+    path.write_bytes(json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode() + b"\\n")
+    path.chmod(0o600)
+    response = mailbox / ("response-" + suffix * 64 + ".json")
+    for _ in range(5000):
+        if response.is_file(): break
+        time.sleep(.001)
+    if not response.is_file(): sys.exit(3)
+    return json.loads(response.read_bytes())
+first = call({"op": "play"} if mode == "play" else {"op": "observe"}, "a")
+if mode == "play" or first.get("status") != "waiting": sys.exit(3)
+hook_command = None
+def run_hook(active, last):
+    stop = {"hook_event_name": "Stop", "model": "gpt-5.6-luna",
+            "turn_id": "fake", "cwd": str(Path.cwd()),
+            "stop_hook_active": active, "last_assistant_message": last}
+    return subprocess.run(shlex.split(hook_command), input=json.dumps(
+        stop, sort_keys=True, separators=(",", ":")).encode(),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+        env=os.environ.copy())
 if mode != "no-hook":
     override = next(value for index, value in enumerate(sys.argv)
                     if index and sys.argv[index - 1] == "-c" and value.startswith("hooks.Stop="))
     quoted = re.search(r'command=("(?:\\\\.|[^"\\\\])*")', override).group(1)
     hook_command = json.loads(quoted)
-    stop = {"hook_event_name": "Stop", "model": "gpt-5.6-luna",
-            "turn_id": "fake", "cwd": str(Path.cwd()),
-            "stop_hook_active": False,
-            "last_assistant_message": final_raw.decode()}
-    hook = subprocess.run(shlex.split(hook_command), input=json.dumps(
-        stop, sort_keys=True, separators=(",", ":")).encode(),
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-        env=os.environ.copy())
+    attempts = 3 if mode == "hook-overflow" else 1
+    for _ in range(attempts):
+        hook = run_hook(False, "early")
+        if (hook.returncode != 0 or hook.stderr
+                or json.loads(hook.stdout).get("decision") != "block"): sys.exit(4)
+second = call({"op": "wait"}, "b")
+if second.get("status") != "waiting": sys.exit(3)
+third = call({"op": "wait"}, "c")
+if third.get("status") != "round_end": sys.exit(3)
+token = third["completion_token"]
+payload = {"schema": "privileged-teacher-luna-selfplay-final-response-v2", "status": "complete", "completion_token": token}
+if mode == "bad-final": payload["status"] = "wrong"
+final_raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+final.write_bytes(final_raw)
+if mode != "no-hook":
+    hook = run_hook(True, final_raw.decode())
     if hook.returncode != 0 or hook.stdout or hook.stderr: sys.exit(4)
 events = [{"type": "thread.started"}, {"type": "turn.completed", "usage": {k: 1 for k in ("input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens")}}]
 if mode == "bad-usage": events[1]["usage"].pop("reasoning_output_tokens")
+if mode == "duplicate-turn": events.append(dict(events[1]))
 sys.stdout.write("\\n".join(json.dumps(e, separators=(",", ":")) for e in events) + "\\n")
 '''
 
@@ -75,7 +91,11 @@ def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
     assert canary.reopen_receipt(output)["receipt_sha256"] == payload["receipt_sha256"]
     assert payload["model_first_op"] == payload["hook_first_op"] == "observe"
     assert payload["actual_subprocess"] is True
-    assert payload["model_op_counts"] == payload["hook_op_counts"] == {"observe": 1}
+    assert payload["model_op_sequence"] == ["observe", "wait", "wait"]
+    assert payload["model_op_counts"] == {"observe": 1, "wait": 2}
+    assert payload["model_nonterminal_observed"] is True
+    assert payload["hook_op_counts"] == {"observe": 1}
+    assert payload["codex_event_type_counts"]["turn.completed"] == 1
     assert payload["opened"] == payload["retained"] == canary._PRIVACY
     assert all(value is False for value in payload["authority"].values())
     assert "completion_token" not in output.read_text()
@@ -101,7 +121,8 @@ def test_missing_stop_hook_observation_refuses(tmp_path, monkeypatch):
     assert not output.exists()
 
 
-@pytest.mark.parametrize("mode", ("bad-final", "bad-usage"))
+@pytest.mark.parametrize(
+    "mode", ("bad-final", "bad-usage", "duplicate-turn", "hook-overflow"))
 def test_malformed_final_or_telemetry_refuses(tmp_path, monkeypatch, mode):
     monkeypatch.setenv("CANARY_FAKE_MODE", mode)
     output = tmp_path / "receipt.json"

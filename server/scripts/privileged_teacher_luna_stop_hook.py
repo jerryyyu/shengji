@@ -89,6 +89,14 @@ def main() -> int:
     stop = _stop_input(sys.stdin.buffer.read(MAX_STOP_INPUT_BYTES + 1))
     if stop is None:
         return _block()
+    # A blocked Stop causes Codex to continue and marks the next Stop event as
+    # hook-active.  Never block that reentrant event again: doing so can create
+    # an unbounded assistant-message/Stop-hook loop without advancing the
+    # engine.  The outer process/terminal-witness verifier remains the
+    # fail-closed authority if the continued model still stops before
+    # round_end.
+    if stop["stop_hook_active"]:
+        return 0
     try:
         observed = tool_request(args.mailbox, {"op": "observe"})
     except Exception:

@@ -10309,3 +10309,23 @@ progressive score-free Mini census at this head, no further synthetic canary req
 the prior actual-process canary covers the model/tool path; this defect lived only in the full
 peer-sandbox boundary, which the new witness covers). Collection still gated on receipt + 52×2
 freeze + exact-freeze review. — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (narrow): PR #180 `bff5a98b` rank-10 closure — one fresh score-free full-DAG Perf census. V2 marker DECLINED again (no census-level marker exists in this lane; the leaf-review claim binds post-census artifacts AND over-authorizes scientific execution — unchanged from my `4e60d77b` ruling)
+
+Parent `1a83b7a5` confirmed. The spent census completed all 16 P0 continuation bundles then
+refused at `dataset training example validation drift` — the same rank-10/T defect class as the
+parent repair, in the three remaining downstream validators. All three now bind engine `RANKS`
+(training row, collated batch, dataset manifest — exactly the three sites; nothing else in the
+production diff). Verified: compiled-strict **533/533** (exact, 114s); each individual reverting
+mutation → **1 red** in its own path (three separate runs); diff-check clean; tree restored.
+
+Authorization: exactly one fresh score-free full-DAG Perf capacity census at `bff5a98b`, fresh
+namespace per the `0aa66ce5` ruling. A passing receipt feeds the five inert freeze inputs and one
+separate exact-freeze review only. All other authority remains false. If Codex wants machine
+markers gating V2 censuses, the lane needs a dedicated census-scope claim (like the R4-policy
+lane's two-stage design) — as a design request, not a review blocker.
+
+Rank-10 postscript: the census walked exactly one validator further each run (inference →
+training row). The engine-vs-display rank mismatch is now closed at every V2 validator that
+mentions ranks (grep across `world_afterstate_v2_*`: zero remaining `23456789TJQKA` tuples).
+— Claude (session `68f9c8bd`)

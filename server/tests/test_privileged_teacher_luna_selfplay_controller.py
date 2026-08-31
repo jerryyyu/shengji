@@ -7,8 +7,10 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import shlex
 import stat
 import subprocess
+import sys
 import threading
 import time
 from types import SimpleNamespace
@@ -37,12 +39,41 @@ TOOL = Path(__file__).parents[1] / "scripts" / "privileged_teacher_luna_selfplay
 MECHANICS = hashlib.sha256(b"fake-mechanics").hexdigest()
 
 
-def _codex_stdout() -> bytes:
-    return (json.dumps({"type": "thread.started", "thread_id": "fake"}) + "\n"
+def _codex_stdout(commands=()) -> bytes:
+    events = [{"type": "thread.started", "thread_id": "fake"}]
+    for index, (command, response) in enumerate(commands):
+        item = {"id": f"command-{index}", "type": "command_execution",
+                "command": command}
+        events.extend(({"type": "item.started", "item": {
+                           **item, "aggregated_output": "", "exit_code": None,
+                           "status": "in_progress"}},
+                       {"type": "item.completed", "item": {
+                           **item, "aggregated_output": json.dumps(
+                               response, sort_keys=True,
+                               separators=(",", ":")), "exit_code": 0,
+                           "status": "completed"}}))
+    return ("\n".join(json.dumps(event) for event in events) + "\n"
             + json.dumps({"type": "turn.completed", "usage": {
                 "input_tokens": 10, "cached_input_tokens": 2,
                 "cache_write_input_tokens": 1, "output_tokens": 3,
                 "reasoning_output_tokens": 4}}) + "\n").encode()
+
+
+def _recorded_request(mailbox: Path, request: dict[str, object], response):
+    op = request["op"]
+    args = []
+    if op == "rollout":
+        args = ["--decision", request["decision_sha256"], "--candidates",
+                ",".join(str(value) for value in request["candidate_indices"]),
+                "--continuations", ",".join(request["continuations"])]
+    elif op == "play":
+        args = ["--decision", request["decision_sha256"], "--candidate",
+                str(request["candidate_index"]), "--confidence",
+                request["confidence"]]
+    inner = " ".join(shlex.quote(str(value)) for value in (
+        execution.sys.executable,
+        "-P", "-B", TOOL, "--mailbox", mailbox, op, *args))
+    return shlex.join(("/bin/zsh", "-lc", inner)), response
 
 
 def _metric(workers: int, worker: int, game: int) -> dict[str, object]:
@@ -58,20 +89,27 @@ def _metric(workers: int, worker: int, game: int) -> dict[str, object]:
 
 def _fake_process(session, *, mailbox_path, final_output_path, **_kwargs):
     terminal = None
+    commands = []
     while True:
-        observed = execution.tool_request(mailbox_path, {"op": "observe"})
+        request = {"op": "observe"}
+        observed = execution.tool_request(mailbox_path, request)
+        commands.append(_recorded_request(mailbox_path, request, observed))
         if observed["status"] in ("round_end", "failed"):
             terminal = observed
             break
         if observed["status"] == "waiting":
-            waited = execution.tool_request(mailbox_path, {"op": "wait"})
+            request = {"op": "wait"}
+            waited = execution.tool_request(mailbox_path, request)
+            commands.append(_recorded_request(mailbox_path, request, waited))
             if waited["status"] in ("round_end", "failed"):
                 terminal = waited
                 break
         else:
-            played = execution.tool_request(mailbox_path, {
+            request = {
                 "op": "play", "decision_sha256": observed["decision_sha256"],
-                "candidate_index": 0, "confidence": "low"})
+                "candidate_index": 0, "confidence": "low"}
+            played = execution.tool_request(mailbox_path, request)
+            commands.append(_recorded_request(mailbox_path, request, played))
             if played["status"] in ("round_end", "failed"):
                 terminal = played
                 break
@@ -79,7 +117,8 @@ def _fake_process(session, *, mailbox_path, final_output_path, **_kwargs):
     final_output_path.write_bytes(canonical_json_bytes({
         "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
         "completion_token": terminal["completion_token"]}))
-    return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+    return subprocess.CompletedProcess(("fake-luna",), 0,
+                                       _codex_stdout(commands))
 
 
 class TinyDesign(luna.LunaDesign):
@@ -589,6 +628,14 @@ def test_capacity_failure_process_diagnostic_is_bounded_and_distinguishable():
         reopened_status="incomplete", evidence=(evidence,))
     assert terminal.body["evidence_classification"][0]["process_error"] == (
         "Luna terminal mailbox witness absent or malformed")
+
+    evidence.body["process_error"] = (
+        "Luna model command mailbox witness absent or malformed")
+    model_command = controller.CapacityEvidenceRefusal(
+        coordinate=("2", 0, 0), workers=1, worker=0, game=0,
+        reopened_status="incomplete", evidence=(evidence,))
+    assert model_command.body["evidence_classification"][0]["process_error"] \
+        == "Luna model command mailbox witness absent or malformed"
 
     evidence.body["process_error"] = "provider leaked: " + secret.decode()
     opaque = controller.CapacityEvidenceRefusal(

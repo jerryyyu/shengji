@@ -70,6 +70,7 @@ _CAPACITY_PROCESS_ERRORS = frozenset({
     "Codex token telemetry drift",
     "Luna model final response absent or malformed",
     "Luna terminal mailbox witness absent or malformed",
+    "Luna model command mailbox witness absent or malformed",
 })
 _CAPACITY_PROCESS_ERROR_OTHER = "other"
 _CAPACITY_OP_OTHER = "other"
@@ -182,6 +183,7 @@ _CAPACITY_REOPEN_MESSAGE_CODES = {
     "sandbox command binding drift": "sandbox_drift",
     "sandbox fallback command drift": "sandbox_drift",
     "process terminal mailbox witness absent": "completion_witness_drift",
+    "process terminal command mailbox witness absent": "completion_witness_drift",
     "Codex usage binding drift": "process_telemetry_drift",
     "complete process evidence drift": "process_evidence_drift",
     "process play trace coverage drift": "process_trace_drift",

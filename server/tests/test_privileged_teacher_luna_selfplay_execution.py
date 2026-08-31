@@ -22,12 +22,62 @@ SECRET = b"luna-self-play-secret-material!!"
 TOOL = Path(__file__).parents[1] / "scripts" / "privileged_teacher_luna_selfplay_tool.py"
 
 
-def _codex_stdout() -> bytes:
-    return (json.dumps({"type": "thread.started", "thread_id": "fake"}) + "\n"
+def _codex_stdout(commands=()) -> bytes:
+    events = [{"type": "thread.started", "thread_id": "fake"}]
+    for index, (command, response) in enumerate(commands):
+        item = {"id": f"command-{index}", "type": "command_execution",
+                "command": command}
+        events.append({"type": "item.started", "item": {
+            **item, "aggregated_output": "", "exit_code": None,
+            "status": "in_progress"}})
+        events.append({"type": "item.completed", "item": {
+            **item, "aggregated_output": json.dumps(
+                response, sort_keys=True, separators=(",", ":")),
+            "exit_code": 0, "status": "completed"}})
+    return ("\n".join(json.dumps(event) for event in events) + "\n"
             + json.dumps({"type": "turn.completed", "usage": {
                 "input_tokens": 10, "cached_input_tokens": 2,
                 "cache_write_input_tokens": 1, "output_tokens": 3,
                 "reasoning_output_tokens": 4}}) + "\n").encode()
+
+
+def _recorded_request(mailbox: Path, request: dict[str, object], response):
+    op = request["op"]
+    args = []
+    if op == "rollout":
+        args = ["--decision", request["decision_sha256"], "--candidates",
+                ",".join(str(value) for value in request["candidate_indices"]),
+                "--continuations", ",".join(request["continuations"])]
+    elif op == "play":
+        args = ["--decision", request["decision_sha256"], "--candidate",
+                str(request["candidate_index"]), "--confidence",
+                request["confidence"]]
+    inner = " ".join(shlex.quote(str(value)) for value in (
+        execution.sys.executable, "-P", "-B", TOOL, "--mailbox", mailbox, op, *args))
+    return shlex.join(("/bin/zsh", "-lc", inner)), response
+
+
+def _command_stdout(*, mailbox: Path, operation: str,
+                    response: dict[str, object], command_mailbox: Path | None = None,
+                    shell: str | None = None, command_suffix: str = "") -> bytes:
+    target = command_mailbox or mailbox
+    argv = tuple(str(value) for value in (
+        execution.sys.executable, "-P", "-B", TOOL, "--mailbox", target, operation))
+    inner = " ".join(shlex.quote(value) for value in argv) + command_suffix
+    command = (shlex.join((shell, "-lc", inner)) if shell is not None
+               else inner)
+    item = {"id": "command-1", "type": "command_execution",
+            "command": command,
+            "aggregated_output": json.dumps(
+                response, sort_keys=True, separators=(",", ":"))}
+    rows = [{"type": "item.started", "item": {
+                "id": "command-1", "type": "command_execution",
+                "command": command, "aggregated_output": "",
+                "exit_code": None, "status": "in_progress"}},
+            {"type": "item.completed", "item": item}]
+    rows[-1]["item"].update({"exit_code": 0, "status": "completed"})
+    return ("\n".join(json.dumps(row, separators=(",", ":"))
+                    for row in rows) + "\n").encode()
 
 
 def test_codex_0150_usage_schema_is_bound_exactly():
@@ -38,6 +88,123 @@ def test_codex_0150_usage_schema_is_bound_exactly():
         "output_tokens": 3,
         "reasoning_output_tokens": 4,
     }
+
+
+def test_terminal_witness_requires_completed_model_command(tmp_path):
+    assert not execution._terminal_command_mailbox_witness(
+        _codex_stdout(), mailbox_path=tmp_path / "mailbox", trace=[],
+        completion_token_sha256="a" * 64)
+
+
+def test_substituted_model_command_cannot_attribute_mailbox(tmp_path):
+    mailbox = tmp_path / "mailbox"
+    raw = _command_stdout(mailbox=mailbox,
+                          command_mailbox=tmp_path / "substituted",
+                          operation="observe",
+                          response={"schema": luna.GAME_SCHEMA,
+                                    "status": "waiting"})
+    with pytest.raises(execution.LunaExecutionError,
+                       match="(shell|command|mailbox) drift"):
+        execution._codex_command_mailbox_operations(raw,
+                                                     mailbox_path=mailbox)
+
+
+def test_shell_wrapped_model_command_binds_exact_tool(tmp_path):
+    mailbox = tmp_path / "mailbox"
+    raw = _command_stdout(
+        mailbox=mailbox, operation="observe", shell="/bin/zsh",
+        response={"schema": luna.GAME_SCHEMA, "status": "waiting"})
+    assert execution._codex_command_mailbox_operations(
+        raw, mailbox_path=mailbox, python_path=Path(execution.sys.executable),
+        tool_script_path=TOOL, require_shell=True) == ("observe",)
+
+
+@pytest.mark.parametrize("command_shape", ("/bin/bash", "/bin/sh", None))
+def test_production_parser_rejects_non_zsh_or_unwrapped_command(tmp_path,
+                                                                 command_shape):
+    raw = _command_stdout(mailbox=tmp_path / "mailbox", operation="observe",
+                          response={"schema": luna.GAME_SCHEMA,
+                                    "status": "waiting"}, shell=command_shape)
+    with pytest.raises(execution.LunaExecutionError, match="shell drift"):
+        execution._codex_command_mailbox_operations(
+            raw, mailbox_path=tmp_path / "mailbox",
+            python_path=Path(execution.sys.executable), tool_script_path=TOOL,
+            require_shell=True)
+
+
+def test_command_lifecycle_requires_one_matching_start(tmp_path):
+    mailbox = tmp_path / "mailbox"
+    raw = _command_stdout(mailbox=mailbox, operation="observe",
+                          response={"schema": luna.GAME_SCHEMA,
+                                    "status": "waiting"}, shell="/bin/zsh")
+    rows = [json.loads(line) for line in raw.splitlines()]
+    cases = (rows[1:], rows + [rows[0]],
+             [rows[0], {**rows[1], "item": {**rows[1]["item"],
+                                               "command": "/bin/zsh -lc pwd"}}],
+             [rows[0]])
+    for candidate in cases:
+        candidate_raw = ("\n".join(json.dumps(row, separators=(",", ":"))
+                                   for row in candidate) + "\n").encode()
+        with pytest.raises(execution.LunaExecutionError):
+            execution._codex_command_mailbox_operations(
+                candidate_raw, mailbox_path=mailbox,
+                python_path=Path(execution.sys.executable), tool_script_path=TOOL,
+                require_shell=True)
+
+
+def test_known_non_command_event_is_ignored_but_unknown_shapes_fail_closed(tmp_path):
+    mailbox = tmp_path / "mailbox"
+    raw = _command_stdout(mailbox=mailbox, operation="observe",
+                          response={"schema": luna.GAME_SCHEMA,
+                                    "status": "waiting"}, shell="/bin/zsh")
+    rows = [json.loads(line) for line in raw.splitlines()]
+    rows.insert(0, {"type": "item.updated", "item": {
+        "id": "message-1", "type": "agent_message", "text": "opaque"}})
+    accepted = ("\n".join(json.dumps(row, separators=(",", ":"))
+                for row in rows) + "\n").encode()
+    assert execution._codex_command_mailbox_operations(
+        accepted, mailbox_path=mailbox,
+        python_path=Path(execution.sys.executable), tool_script_path=TOOL,
+        require_shell=True) == ("observe",)
+    for bad in ({"type": "future.event", "payload": {}},
+                {"type": "item.updated", "item": {"type": "future_item"}}):
+        candidate = ("\n".join(json.dumps(row, separators=(",", ":"))
+                     for row in [bad, *rows]) + "\n").encode()
+        with pytest.raises(execution.LunaExecutionError):
+            execution._codex_command_mailbox_operations(
+                candidate, mailbox_path=mailbox,
+                python_path=Path(execution.sys.executable), tool_script_path=TOOL,
+                require_shell=True)
+
+
+@pytest.mark.parametrize("shell", ("/bin/zsh", "/bin/bash", "/bin/sh"))
+def test_shell_wrapped_extra_command_is_rejected(tmp_path, shell):
+    mailbox = tmp_path / "mailbox"
+    raw = _command_stdout(
+        mailbox=mailbox, operation="observe", shell=shell,
+        command_suffix="; echo extra",
+        response={"schema": luna.GAME_SCHEMA, "status": "waiting"})
+    with pytest.raises(execution.LunaExecutionError,
+                       match="(shell|arguments|command|mailbox) drift"):
+        execution._codex_command_mailbox_operations(
+            raw, mailbox_path=mailbox, python_path=Path(execution.sys.executable),
+            tool_script_path=TOOL, require_shell=True)
+
+
+def test_hook_only_terminal_response_cannot_satisfy_command_witness(tmp_path):
+    token = "a" * 64
+    terminal = {"schema": luna.GAME_SCHEMA, "status": "round_end",
+                "completion_token": token}
+    request = {"op": "observe"}
+    hook_event = {"request": request, "response": terminal,
+                  "request_sha256": execution._sha(request),
+                  "response_sha256": execution._sha(terminal)}
+    raw = _command_stdout(mailbox=tmp_path / "mailbox", operation="observe",
+                          response={"schema": luna.GAME_SCHEMA,
+                                    "status": "waiting"})
+    assert not execution._terminal_command_mailbox_witness(
+        raw, mailbox_path=tmp_path / "mailbox", trace=[hook_event],
+        completion_token_sha256=execution._sha_bytes(token.encode()))
 
 
 def test_default_process_keeps_stderr_out_of_codex_jsonl(tmp_path):
@@ -239,20 +406,27 @@ def _downgrade_attempt_to_v1(attempt: Path, *, drop_terminal_witness: bool) -> N
 
 def _fake(session, *, mailbox_path, final_output_path, **_kwargs):
     terminal = None
+    commands = []
     while True:
-        observed = execution.tool_request(mailbox_path, {"op": "observe"})
+        request = {"op": "observe"}
+        observed = execution.tool_request(mailbox_path, request)
+        commands.append(_recorded_request(mailbox_path, request, observed))
         if observed["status"] in ("round_end", "failed"):
             terminal = observed
             break
         if observed["status"] == "waiting":
-            waited = execution.tool_request(mailbox_path, {"op": "wait"})
+            request = {"op": "wait"}
+            waited = execution.tool_request(mailbox_path, request)
+            commands.append(_recorded_request(mailbox_path, request, waited))
             if waited["status"] in ("round_end", "failed"):
                 terminal = waited
                 break
             continue
-        played = execution.tool_request(mailbox_path, {
+        request = {
             "op": "play", "decision_sha256": observed["decision_sha256"],
-            "candidate_index": 0, "confidence": "low"})
+            "candidate_index": 0, "confidence": "low"}
+        played = execution.tool_request(mailbox_path, request)
+        commands.append(_recorded_request(mailbox_path, request, played))
         if played["status"] in ("round_end", "failed"):
             terminal = played
             break
@@ -260,7 +434,8 @@ def _fake(session, *, mailbox_path, final_output_path, **_kwargs):
     final_output_path.write_text(json.dumps({
         "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
         "completion_token": terminal["completion_token"]}))
-    return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+    return subprocess.CompletedProcess(("fake-luna",), 0,
+                                       _codex_stdout(commands))
 
 
 def test_fake_processes_launch_in_engine_turn_order_and_share_engine(tmp_path):
@@ -284,23 +459,33 @@ def test_fake_processes_launch_in_engine_turn_order_and_share_engine(tmp_path):
             # launch therefore deterministically trips the witness above.
             time.sleep(0.05)
         terminal = None
+        commands = []
         while True:
-            observed = execution.tool_request(kwargs["mailbox_path"], {"op": "observe"})
+            request = {"op": "observe"}
+            observed = execution.tool_request(kwargs["mailbox_path"], request)
+            commands.append(_recorded_request(kwargs["mailbox_path"], request,
+                                               observed))
             if observed["status"] in ("round_end", "failed"):
                 terminal = observed
                 break
             if observed["status"] == "waiting":
+                request = {"op": "wait"}
                 waited = execution.tool_request(
-                    kwargs["mailbox_path"], {"op": "wait"})
+                    kwargs["mailbox_path"], request)
+                commands.append(_recorded_request(kwargs["mailbox_path"],
+                                                   request, waited))
                 if waited["status"] in ("round_end", "failed"):
                     terminal = waited
                     break
                 continue
             with lock:
                 plays.append((session.team, observed["acting_seat"]))
-            played = execution.tool_request(kwargs["mailbox_path"], {
+            request = {
                 "op": "play", "decision_sha256": observed["decision_sha256"],
-                "candidate_index": 0, "confidence": "low"})
+                "candidate_index": 0, "confidence": "low"}
+            played = execution.tool_request(kwargs["mailbox_path"], request)
+            commands.append(_recorded_request(kwargs["mailbox_path"], request,
+                                               played))
             if played["status"] in ("round_end", "failed"):
                 terminal = played
                 break
@@ -308,7 +493,8 @@ def test_fake_processes_launch_in_engine_turn_order_and_share_engine(tmp_path):
         kwargs["final_output_path"].write_text(json.dumps({
             "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
             "completion_token": terminal["completion_token"]}))
-        return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+        return subprocess.CompletedProcess(("fake-luna",), 0,
+                                           _codex_stdout(commands))
 
     result = execution.run_luna_game(game, private_root=tmp_path, tool_script=TOOL,
                                      planner_process=planner)
@@ -344,21 +530,29 @@ def test_forced_actions_are_engine_only_and_artifacts_reopen(tmp_path):
 
 def test_generic_or_wrong_completion_response_is_diagnostic_only(tmp_path):
     def wrong_final(session, *, mailbox_path, final_output_path, **_kwargs):
+        commands = []
         while True:
-            observed = execution.tool_request(mailbox_path, {"op": "observe"})
+            request = {"op": "observe"}
+            observed = execution.tool_request(mailbox_path, request)
+            commands.append(_recorded_request(mailbox_path, request, observed))
             if observed["status"] in ("round_end", "failed"):
                 break
             if observed["status"] == "waiting":
-                execution.tool_request(mailbox_path, {"op": "wait"})
+                request = {"op": "wait"}
+                waited = execution.tool_request(mailbox_path, request)
+                commands.append(_recorded_request(mailbox_path, request, waited))
                 continue
-            execution.tool_request(mailbox_path, {
+            request = {
                 "op": "play", "decision_sha256": observed["decision_sha256"],
-                "candidate_index": 0, "confidence": "low"})
+                "candidate_index": 0, "confidence": "low"}
+            played = execution.tool_request(mailbox_path, request)
+            commands.append(_recorded_request(mailbox_path, request, played))
         token = session._completion_token if session.team else "0" * 64
         final_output_path.write_text(json.dumps({
             "schema": execution.FINAL_RESPONSE_SCHEMA, "status": "complete",
             "completion_token": token}))
-        return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+        return subprocess.CompletedProcess(("fake-luna",), 0,
+                                           _codex_stdout(commands))
 
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
@@ -372,21 +566,29 @@ def test_generic_or_wrong_completion_response_is_diagnostic_only(tmp_path):
 
 def test_absent_final_after_terminal_trace_is_complete(tmp_path):
     def absent_final(session, *, mailbox_path, **_kwargs):
+        commands = []
         terminal = None
         while terminal is None:
-            observed = execution.tool_request(mailbox_path, {"op": "observe"})
+            request = {"op": "observe"}
+            observed = execution.tool_request(mailbox_path, request)
+            commands.append(_recorded_request(mailbox_path, request, observed))
             if observed["status"] in ("round_end", "failed"):
                 terminal = observed
             elif observed["status"] == "waiting":
-                waited = execution.tool_request(mailbox_path, {"op": "wait"})
+                request = {"op": "wait"}
+                waited = execution.tool_request(mailbox_path, request)
+                commands.append(_recorded_request(mailbox_path, request, waited))
                 if waited["status"] in ("round_end", "failed"):
                     terminal = waited
             else:
-                execution.tool_request(mailbox_path, {
+                request = {
                     "op": "play", "decision_sha256": observed["decision_sha256"],
-                    "candidate_index": 0, "confidence": "low"})
+                    "candidate_index": 0, "confidence": "low"}
+                played = execution.tool_request(mailbox_path, request)
+                commands.append(_recorded_request(mailbox_path, request, played))
         assert terminal["status"] == "round_end"
-        return subprocess.CompletedProcess(("fake-luna",), 0, _codex_stdout())
+        return subprocess.CompletedProcess(("fake-luna",), 0,
+                                           _codex_stdout(commands))
 
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
@@ -421,6 +623,34 @@ def test_early_generic_final_without_terminal_trace_fails_closed(tmp_path):
     assert result.status == "incomplete"
     assert any("terminal mailbox witness absent" in (item.body["process_error"] or "")
                for item in result.evidence)
+
+
+def test_terminal_hook_trace_cannot_replace_model_command_witness(tmp_path):
+    def missing_terminal_command(session, **kwargs):
+        completed = _fake(session, **kwargs)
+        rows = [json.loads(line) for line in completed.stdout.splitlines()]
+        completed_indices = [
+            index for index, row in enumerate(rows)
+            if row.get("type") == "item.completed"
+            and row.get("item", {}).get("type") == "command_execution"
+        ]
+        assert completed_indices
+        completed_index = completed_indices[-1]
+        command_id = rows[completed_index]["item"]["id"]
+        rows = [row for row in rows if not (
+            row.get("type") in ("item.started", "item.completed")
+            and row.get("item", {}).get("type") == "command_execution"
+            and row.get("item", {}).get("id") == command_id)]
+        stdout = ("\n".join(json.dumps(row) for row in rows) + "\n").encode()
+        return subprocess.CompletedProcess(completed.args, 0, stdout)
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=missing_terminal_command)
+    assert result.status == "incomplete"
+    errors = [item.body["process_error"] for item in result.evidence
+              if item.body["process_error"] is not None]
+    assert "Luna model command mailbox witness absent or malformed" in errors
 
 
 def test_coordinated_rehash_cannot_remove_terminal_mailbox_witness(tmp_path):

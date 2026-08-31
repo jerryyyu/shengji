@@ -48,6 +48,22 @@ CODEX_USAGE_KEYS = frozenset({
     "input_tokens", "cached_input_tokens", "cache_write_input_tokens",
     "output_tokens", "reasoning_output_tokens",
 })
+# Event names accepted by the Codex JSONL boundary.  Attribution is stricter
+# than the public telemetry reducer: an unknown event cannot be silently
+# ignored while deciding whether a model actually invoked the mailbox.
+CODEX_EVENT_TYPES = frozenset({
+    "thread.started", "thread.completed", "thread.failed",
+    "turn.started", "turn.completed", "turn.failed",
+    "item.started", "item.updated", "item.completed",
+    "response.created", "response.completed", "response.failed",
+    "response.output_text.delta", "response.output_item.added",
+    "response.output_item.done", "error",
+})
+CODEX_ITEM_TYPES = frozenset({
+    "agent_message", "command_execution", "file_change", "mcp_tool_call",
+    "reasoning", "todo_list", "web_search", "error", "user_message",
+})
+CODEX_COMMAND_SHELL = ("/bin/zsh", "-lc")
 SANDBOX_PROFILE_SCHEMA = "privileged-teacher-luna-selfplay-sandbox-profile-v1"
 RESOURCE_SCHEMA = "privileged-teacher-luna-process-tree-resource-v1"
 RECOVERY_SCHEMA = "privileged-teacher-luna-selfplay-pre-manifest-recovery-v1"
@@ -784,6 +800,222 @@ def _codex_jsonl_usage(raw: bytes) -> dict[str, int]:
     return {key: usage[key] for key in sorted(CODEX_USAGE_KEYS)}
 
 
+def _codex_command_mailbox_records(
+        raw: bytes, *, mailbox_path: Path, python_path: Path | None = None,
+        tool_script_path: Path | None = None,
+        require_shell: bool = True) -> tuple[dict[str, object], ...]:
+    """Return completed model command operations bound to one mailbox.
+
+    Codex's command execution items are the only process-origin witness that
+    a JSONL turn actually invoked the local tool.  We intentionally consume
+    only the reviewed ``item.{started,completed}`` metadata, command argv, and
+    a hash of the canonical tool response; command output itself, ids, and
+    model prose never become authority.  Any malformed/unknown JSONL or
+    command item fails closed.
+    """
+    mailbox = str(Path(mailbox_path).resolve())
+    # The sealed runtime identity is the exact argv spelling; resolving a
+    # virtualenv symlink would accept a different command string.
+    python = str(Path(python_path or sys.executable).absolute())
+    tool_script = str(Path(tool_script_path).resolve()) \
+        if tool_script_path is not None else None
+    records: list[dict[str, object]] = []
+    started: dict[str, tuple[str, str]] = {}
+    completed_ids: set[str] = set()
+    saw_item = False
+    for line in raw.splitlines():
+        if not line:
+            continue
+        try:
+            event = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise LunaExecutionError("Codex command witness JSONL drift") from exc
+        if (type(event) is not dict or type(event.get("type")) is not str
+                or event["type"] not in CODEX_EVENT_TYPES):
+            raise LunaExecutionError("Codex command witness JSONL drift")
+        event_type = event["type"]
+        if not event_type.startswith("item."):
+            continue
+        saw_item = True
+        item = event.get("item")
+        if type(item) is not dict or type(item.get("type")) is not str:
+            raise LunaExecutionError("Codex command witness item drift")
+        item_type = item["type"]
+        if item_type not in CODEX_ITEM_TYPES:
+            raise LunaExecutionError("Codex command witness item drift")
+        if item_type != "command_execution":
+            continue
+        if event_type not in ("item.started", "item.completed"):
+            raise LunaExecutionError("Codex command witness item drift")
+        if set(item) != {"id", "type", "command", "aggregated_output",
+                         "exit_code", "status"}:
+            raise LunaExecutionError("Codex command witness item drift")
+        command = item["command"]
+        command_id = item["id"]
+        if (type(command) is not str or not command
+                or type(command_id) is not str or not command_id):
+            raise LunaExecutionError("Codex command witness item drift")
+        status = item.get("status")
+        if type(status) is not str:
+            raise LunaExecutionError("Codex command witness item drift")
+        if event_type == "item.started":
+            if (status != "in_progress" or item["aggregated_output"] != ""
+                    or item["exit_code"] is not None):
+                raise LunaExecutionError("Codex command witness item drift")
+            if command_id in started:
+                raise LunaExecutionError("Codex command witness item drift")
+            started[command_id] = (item_type, command)
+            continue
+        if (status != "completed" or item["exit_code"] != 0
+                or type(item["aggregated_output"]) is not str):
+            raise LunaExecutionError("Codex command witness item drift")
+        aggregated_output = item.get("aggregated_output")
+        if type(aggregated_output) is not str:
+            raise LunaExecutionError("Codex command witness item drift")
+        if command_id in completed_ids:
+            raise LunaExecutionError("Codex command witness item drift")
+        completed_ids.add(command_id)
+        if started.pop(command_id, None) != (item_type, command):
+            raise LunaExecutionError("Codex command witness lifecycle drift")
+        try:
+            argv = tuple(shlex.split(command))
+        except ValueError as exc:
+            raise LunaExecutionError("Codex command witness command drift") from exc
+        if require_shell:
+            if len(argv) != 3 or argv[:2] != CODEX_COMMAND_SHELL:
+                raise LunaExecutionError("Codex command witness shell drift")
+            try:
+                argv = tuple(shlex.split(argv[2]))
+            except ValueError as exc:
+                raise LunaExecutionError(
+                    "Codex command witness shell drift") from exc
+        elif argv and argv[0] == CODEX_COMMAND_SHELL[0]:
+            raise LunaExecutionError("Codex command witness shell drift")
+        if (len(argv) < 7 or argv[:3] != (python, "-P", "-B")
+                or (tool_script is not None and argv[3] != tool_script)):
+            raise LunaExecutionError("Codex command witness command drift")
+        try:
+            if argv[4] != "--mailbox":
+                raise ValueError
+            candidate_mailbox = argv[5]
+            operation = argv[6]
+        except (ValueError, IndexError) as exc:
+            raise LunaExecutionError("Codex command witness command drift") from exc
+        operation_args = argv[7:]
+        if operation in ("observe", "wait"):
+            if operation_args:
+                raise LunaExecutionError("Codex command witness arguments drift")
+        elif operation == "rollout":
+            if (len(operation_args) != 6
+                    or operation_args[0] != "--decision"
+                    or operation_args[2] != "--candidates"
+                    or operation_args[4] != "--continuations"):
+                raise LunaExecutionError("Codex command witness arguments drift")
+            if (len(operation_args[1]) != 64
+                    or any(c not in "0123456789abcdef" for c in operation_args[1])
+                    or not operation_args[3]
+                    or any(not value.isdigit() for value in operation_args[3].split(","))
+                    or not operation_args[5]
+                    or any(value not in sol0.CONTINUATIONS
+                           for value in operation_args[5].split(","))):
+                raise LunaExecutionError("Codex command witness arguments drift")
+        elif operation == "play":
+            if (len(operation_args) != 6
+                    or operation_args[0] != "--decision"
+                    or operation_args[2] != "--candidate"
+                    or operation_args[4] != "--confidence"
+                    or len(operation_args[1]) != 64
+                    or any(c not in "0123456789abcdef" for c in operation_args[1])
+                    or not operation_args[3].isdigit()
+                    or operation_args[5] not in sol0.CONFIDENCE_LEVELS):
+                raise LunaExecutionError("Codex command witness arguments drift")
+        try:
+            candidate_mailbox = str(Path(candidate_mailbox).resolve())
+        except (OSError, RuntimeError):
+            raise LunaExecutionError("Codex command witness mailbox drift")
+        if (candidate_mailbox != mailbox or operation not in
+                ("observe", "wait", "rollout", "play")):
+            raise LunaExecutionError("Codex command witness mailbox drift")
+        try:
+            output_bytes = aggregated_output.encode("ascii")
+            if output_bytes.endswith(b"\n"):
+                output_bytes = output_bytes[:-1]
+            output = json.loads(output_bytes.decode("ascii"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise LunaExecutionError("Codex command witness output drift") from exc
+        if (type(output) is not dict
+                or canonical_json_bytes(output).removesuffix(b"\n")
+                != output_bytes):
+            raise LunaExecutionError("Codex command witness output drift")
+        request: dict[str, object]
+        if operation in ("observe", "wait"):
+            request = {"op": operation}
+        elif operation == "rollout":
+            request = {"op": operation, "decision_sha256": operation_args[1],
+                       "candidate_indices": [int(value) for value in operation_args[3].split(",")],
+                       "continuations": operation_args[5].split(",")}
+        else:
+            request = {"op": operation, "decision_sha256": operation_args[1],
+                       "candidate_index": int(operation_args[3]),
+                       "confidence": operation_args[5]}
+        records.append({"id": command_id, "operation": operation,
+                        "request": request,
+                        "response_sha256": _sha_bytes(canonical_json_bytes(output))})
+    if not records or not saw_item or started:
+        raise LunaExecutionError("Codex command witness absent")
+    return tuple(records)
+
+
+def _codex_command_mailbox_operations(
+        raw: bytes, *, mailbox_path: Path, python_path: Path | None = None,
+        tool_script_path: Path | None = None,
+        require_shell: bool = True) \
+        -> tuple[str, ...]:
+    """Return the operation sequence from completed mailbox commands."""
+    return tuple(record["operation"] for record in _codex_command_mailbox_records(
+        raw, mailbox_path=mailbox_path, python_path=python_path,
+        tool_script_path=tool_script_path, require_shell=require_shell))
+
+
+def _terminal_command_mailbox_witness(
+        raw: bytes, *, mailbox_path: Path, trace: object,
+        completion_token_sha256: object, python_path: Path | None = None,
+        tool_script_path: Path | None = None,
+        require_shell: bool = True) -> bool:
+    """Require a completed model command for the terminal mailbox exchange."""
+    try:
+        records = _codex_command_mailbox_records(
+            raw, mailbox_path=mailbox_path, python_path=python_path,
+            tool_script_path=tool_script_path, require_shell=require_shell)
+    except LunaExecutionError:
+        return False
+    if type(trace) is not list:
+        return False
+    matched: list[dict[str, object]] = []
+    cursor = 0
+    for record in records:
+        operation = record["operation"]
+        response_sha256 = record["response_sha256"]
+        while cursor < len(trace):
+            event = trace[cursor]
+            cursor += 1
+            if (type(event) is dict and type(event.get("request")) is dict
+                    and type(event.get("response")) is dict
+                    and event["request"] == record["request"]
+                    and event.get("response_sha256") == response_sha256):
+                matched.append(event)
+                break
+        else:
+            return False
+    # The last completed model command must itself receive the terminal
+    # engine response.  Extra observe requests are permitted only as Stop-hook
+    # observations and therefore cannot satisfy this predicate.
+    terminal = matched[-1]
+    return (_terminal_trace_witness([terminal], team=-1,
+                                    completion_token_sha256=
+                                    completion_token_sha256))
+
+
 def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
                      mailbox_path: Path, tool_script: Path,
                      codex_binary: Path, prompt: str,
@@ -1463,6 +1695,15 @@ def run_luna_game(
                     trace, team=team,
                     completion_token_sha256=token_sha256):
             process_error = "Luna terminal mailbox witness absent or malformed"
+        elif process_error is None and completed is not None \
+                and completed.returncode == 0 \
+                and not _terminal_command_mailbox_witness(
+                    stdout, mailbox_path=mailbox, trace=trace,
+                    completion_token_sha256=token_sha256,
+                    python_path=python, tool_script_path=tool_script,
+                    require_shell=True):
+            process_error = (
+                "Luna model command mailbox witness absent or malformed")
         if process_error is None and not game.complete:
             process_error = game.failed or (
                 "Luna model process did not complete engine round")
@@ -1897,6 +2138,18 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                     trace, team=team,
                     completion_token_sha256=completion_token_sha256)):
             raise LunaExecutionError("process terminal mailbox witness absent")
+        if (body_schema == PRIVATE_TRACE_SCHEMA
+                and manifest["status"] == "complete"
+                and not _terminal_command_mailbox_witness(
+                    stdout,
+                    mailbox_path=attempt / f"workspace-team-{team}" / "mailbox",
+                    trace=trace,
+                    completion_token_sha256=completion_token_sha256,
+                    python_path=Path(attempt_payload["runtime"]["python_executable"]),
+                    tool_script_path=Path(attempt_payload["runtime"]["tool_script"]),
+                    require_shell=True)):
+            raise LunaExecutionError(
+                "process terminal command mailbox witness absent")
         try:
             if _codex_jsonl_usage(stdout) != body["codex_usage"]:
                 raise LunaExecutionError("Codex usage binding drift")

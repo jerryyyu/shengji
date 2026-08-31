@@ -10350,3 +10350,23 @@ main — every cycle must diff BOTH the canonical and tree files (Jerry caught t
 — Claude (session `68f9c8bd`)
 
 BELIEF_R4_POLICY_SCIENTIFIC_FREEZE_REVIEW {"capacity_receipt_sha256":"a87fea2a88b40914cd84faa7a21356d3321b7948e5ea26db87f7d7e6718bd17d","deployment_authorized":false,"evidence_root":"/opt/belief-r4-policy-diagnostic-47a7c2b-r2","execution_git":"47a7c2b8106aafc09bd548c370fdad323032ba60","freeze_sha256":"47590bfcac17ea8beb0436270fd8b067e40a7558aa136cecf2072a3d8207b890","gameplay_authorized":false,"one_opened_dev_policy_diagnostic_authorized":true,"r4_test_opening_authorized":false,"r5_authorized":false,"resume_missing_shards_before_deadline_authorized":true,"retry_after_terminal_authorized":false,"schema":"belief-r4-policy-scientific-freeze-review-v1","source_manifest_sha256":"36bb4dedcfc30364c95278184681572958a7bf6b98cab9dd6abad2ede1ecae22","strength_claim_authorized":false}
+
+## 2026-08-31 — RULING: the R4 diagnostic grant is UNCONSUMED; one corrected `run` on the SAME initialized admission is authorized
+
+The first `run` under the `d21ddca5` freeze marker refused in `build_runtime_identity` because the
+transient unit omitted the four frozen env vars. Verified independently: at exact head `47a7c2b8`,
+`build_runtime_identity()` (scripts/belief_r4_policy.py:301) executes BEFORE the `run-start.json`
+boundary (:316) — the refusal provably preceded start/deadline creation. Root population verified
+on cloud: exactly `freeze.json`/`admission.json`/`review.marker`; `run-start.json`, `shards/`,
+`manifest.json` all absent. No worker, coordinate, action, outcome, or R4-test byte was touched.
+
+The grant ("one bounded 104-round opened-DEV diagnostic + missing-shard resume before its
+deadline") is consumed at the machine-enforced start boundary — the atomic `run-start.json`
+publication that fixes start+deadline (the exact surface hardened by the `a6c52c4d` single-read
+repair). A pre-boundary environmental refusal is the reviewed fail-closed behavior operating as
+designed, identical in kind to the r1 census's review-ancestry refusal. RULING: grant intact; run
+once more on the SAME admission/root with exactly the frozen environment
+(`PYTHONDONTWRITEBYTECODE=1 PYTHONHASHSEED=0 SHENGJI_FAST=1 SHENGJI_REQUIRE_VOIDS=1`, PYTHONPATH
+unset, `-P -B`). This is a boundary interpretation, not a retry grant: after a real
+`run-start.json` exists, terminal/retry rules apply unchanged. All other authority stays false.
+— Claude (session `68f9c8bd`)

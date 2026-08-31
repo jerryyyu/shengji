@@ -10331,3 +10331,20 @@ mentions ranks (grep across `world_afterstate_v2_*`: zero remaining `23456789TJQ
 — Claude (session `68f9c8bd`)
 
 BELIEF_R4_POLICY_CAPACITY_SOURCE_REVIEW {"deployment_authorized":false,"execution_git":"47a7c2b8106aafc09bd548c370fdad323032ba60","gameplay_authorized":false,"models":{"common_calibration_sha256":"2847fe2cc59411d0f3245a2bc719809000c9f86594f2ec3bf83d8eafcdc2252e","control_model_sha256s":["a1a0585149497c6c659e89a9d650e5ea793bc7dfcc93380636ff4a1b7de5367d","3649f72af7b181ab7d8be2798a596bad8f82ff0df82b927c3bc3502636f3dc37","8990457be6f85dcdaa2c1144c0f799cd48d4ee57d01bbeff4118a8fe88460fb0","fee43daf2a621ae91c5bc2745d4486fe4ca4edfd13aadfda64f8d2b4d48d2a37","3b5d3c351973a529afc5b2d530ec73b0c6c69dabf0e517824e49f7941f12b49c","969e18f3ec2fff02a74f54f924efa859d4578cb51b8272a614249d8c8eb9a6ac","43f14fa7f863f3ff159ed0f67b6a14f59659b911f0bc4eaf776b5a41dc396540","2aaf3e0daa6f89dafba6b144b925635065d2c3ad9f6feb735a11401ed1b116af"],"control_trained_manifest_sha256":"025e2cd0ce4bb8675095fe3864d16fa5400c8dd3afb6e0a3fcae7f469141a6ca","primary_model_sha256s":["093e398276baeb9b1ae898a95d95d00d6f366212088064527f521e28bf61ae83","682d0e85648fce6c734988144cb9d4f2d621db0bde1e2ab5d91e124dc1926ab7","2c0519a78bf5c20598d7d8cac1f1ac79409d6b21d9262d15d0fadc1e4a212cde","92dd819e9ce9718a96cf340b4a43baf15ad615dab07a7b742250eae65d9217a4","d5d5b06cd403650c41de439c377dd6fc320ed5ef4066c68a5efd533a6153a221","acd93640ab69aa655aec4a0c05ccdc958949c2026af772f10a8f4b7d014aa446","ab68d94ff233f901f5855dca6feb2af069316c9d7583212b267fe536c9d2eec7","8b9918272eca54da17c4e2b0a28c2ef49b929df4e7c5297aba2dccd64b034aa8"],"primary_trained_manifest_sha256":"33e82c9d460b5cce0e9012abf412177f095bba4b63917f2f3e1e6fff1b2050ff","r4_admission_sha256":"21d9cea8a1ef2905dd0a8a85308e54141e58362e0764f04f388412bedfff0961","r4_freeze_sha256":"573fcade25d985f58c0d179a581a40619b5745fc2152c52f4740e1355ae1fc16","r4_review_marker_sha256":"a6c5f587c84783203e5412a89054048527fb8ff10ed911848840c030d54eec2e"},"one_score_free_capacity_census_authorized":true,"r4_test_opening_authorized":false,"retry_authorized":false,"schema":"belief-r4-policy-capacity-source-review-v1","scientific_execution_authorized":false,"source_manifest_sha256":"36bb4dedcfc30364c95278184681572958a7bf6b98cab9dd6abad2ede1ecae22","strength_claim_authorized":false}
+
+## 2026-08-31 — ✅ PASS (narrow): PR #179 `47a7c2b8` — append-only marker-rotation repair; marker APPENDED; census launch-ready
+
+Parent `a6c52c4d` confirmed. The predicate now accepts `current == previous + [marker]` and
+refuses replay — the exact repair shape from Luna (`68efdec` fix) and V2. Verified: focused
+**5/5** and policy battery **38/38** (exact); restoring the one-marker-ever predicate → **1 red**;
+dropping the replay clause → **1 red** (BOTH halves witnessed at first shipping — the recurring
+lesson fully absorbed). Marker regenerated locally with the module's own generators at the new
+head: source manifest `36bb4ded…` and marker SHA `508883f9…` both matching Codex's prepared packet
+independently; appended at the marker-only commit above, landed byte-identical. The two spent
+prefix lines (`59a43d8b`, `47158e91`) remain as history; the repaired predicate accepts the
+rotation. Authorization: exactly one fresh score-free Strength capacity census at `47a7c2b8`;
+receipt → fresh freeze → one exact-freeze review. All else denied.
+
+Process note for my own STEP 0: Codex publishes asks in the TREE-RESIDENT handoff without moving
+main — every cycle must diff BOTH the canonical and tree files (Jerry caught this gap).
+— Claude (session `68f9c8bd`)

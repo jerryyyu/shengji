@@ -342,6 +342,28 @@ def _fail(stage: str, exc: BaseException) -> FullDAGCapacityDependencyBlocked:
         stage=bounded_stage, reason_code="full-dag-dependency-failed")
 
 
+def _run_optimizer_canary(
+        examples: Sequence[Any],
+        training_cost: Callable[[Sequence[Any], int], Any]) -> None:
+    """Select complete retained roots and run the real canary cost seam."""
+    try:
+        groups: dict[str, list[Any]] = {}
+        for row in examples:
+            groups.setdefault(row.root_key, []).append(row)
+        if len(groups) < 16:
+            raise FullDAGCapacityDependencyBlocked(
+                "capacity canary requires 16 complete retained roots")
+        selected_keys = sorted(groups)[:16]
+        selected = tuple(row for key in selected_keys for row in groups[key])
+        # Per-root candidate widths are protocol data.  The reviewed collator
+        # validates each root's candidate/replica completeness below this seam.
+        training_cost(selected, 500)
+    except FullDAGCapacityDependencyBlocked as exc:
+        raise _fail("optimizer-canary", exc) from exc
+    except BaseException as exc:
+        raise _fail("optimizer-canary", exc) from exc
+
+
 def _build_capacity_label_population(
         work_root: Path, name: str, stage_materials: Sequence[Any], *,
         workers: int, deadline_perf_ns: int,
@@ -474,6 +496,8 @@ def run_full_dag_supervisor(
     process_cpu: dict[str, int] = {}
     witnesses: list[str] = []
     artifact_count = 0
+    immutable_shard_count = 0
+    immutable_shard_bytes = 0
     examples: tuple[Any, ...] = ()
     training_pairs: tuple[tuple[Any, Any], ...] = ()
     roots: tuple[Any, ...] = ()
@@ -550,7 +574,9 @@ def run_full_dag_supervisor(
             "peak_task_count": max(task_samples) if task_samples else 1,
             "queue_depth": getattr(raw, "queue_depth", 0),
             "disk_free_bytes": (getattr(raw, "sample_free_disk_bytes", (1,))[-1]),
-            "immutable_shards": artifact_count,
+            "immutable_shards": immutable_shard_count,
+            "immutable_shard_bytes": immutable_shard_bytes,
+            "artifact_bytes": artifact_count,
             "checkpoint_count": len(cohort_builds) * 4}
         first_event = not progress_events
         progress_events.append(event)
@@ -569,7 +595,9 @@ def run_full_dag_supervisor(
         capability_probes["reports_elapsed_eta_headroom"] = event_ok if first_event else (
             capability_probes["reports_elapsed_eta_headroom"] and event_ok)
         shard_ok = (
-            event["immutable_shards"] == artifact_count
+            event["immutable_shards"] == immutable_shard_count
+            and event["immutable_shard_bytes"] == immutable_shard_bytes
+            and event["artifact_bytes"] == artifact_count
             and event["checkpoint_count"] == len(cohort_builds) * 4)
         capability_probes["reports_immutable_shard_checkpoint_count"] = shard_ok if first_event else (
             capability_probes["reports_immutable_shard_checkpoint_count"] and shard_ok)
@@ -617,13 +645,16 @@ def run_full_dag_supervisor(
         label_roots: dict[str, Path] = {}
 
         def _label_population(name: str, stage_materials: Sequence[Any]) -> tuple[Any, ...]:
-            nonlocal artifact_count
+            nonlocal artifact_count, immutable_shard_count, immutable_shard_bytes
             stage_bundles, artifacts, root = _build_capacity_label_population(
                 artifact_root, name, stage_materials,
                 workers=continuation_workers, deadline_perf_ns=deadline_ns,
                 progress=progress)
             label_roots[name] = root
             artifact_count += artifacts
+            immutable_shard_count += len(stage_bundles)
+            immutable_shard_bytes += sum(
+                len(bundle.canonical_bytes) for bundle in stage_bundles)
             return stage_bundles
 
         def label_p0() -> str:
@@ -675,7 +706,8 @@ def run_full_dag_supervisor(
         selection: EpochSelectPopulationV2 | None = None
 
         def train(cohort: str, block: int, vals: Sequence[Any], natural: Sequence[Any] | None = None) -> str:
-            nonlocal artifact_count, training_invocations
+            nonlocal artifact_count, immutable_shard_count
+            nonlocal immutable_shard_bytes, training_invocations
             # The natural block-1 build is a shared reviewed artifact.  It is
             # consumed by canary/nested/primary stages, never retrained.
             if (cohort, block) in cohort_builds:
@@ -705,6 +737,8 @@ def run_full_dag_supervisor(
                         ephemeral_root, raw, cohort=cohort, seed_block=block,
                         member_index=member, epoch=1)
                     artifact_count += shard.byte_count
+                    immutable_shard_count += 1
+                    immutable_shard_bytes += shard.byte_count
                     _model, metadata = reopen_checkpoint_shard(
                         ephemeral_root, cohort, block, member, 1)
                     checkpoint_common_epochs.append(metadata["selected_epoch"])
@@ -726,19 +760,7 @@ def run_full_dag_supervisor(
             # producer emits scientific evidence and requires the full 128
             # natural-fit population.  Capacity measures the same 500 actual
             # optimizer steps over the 16 smallest complete retained roots.
-            groups: dict[str, list[Any]] = {}
-            for row in examples:
-                groups.setdefault(row.root_key, []).append(row)
-            if len(groups) < 16:
-                raise FullDAGCapacityDependencyBlocked(
-                    "capacity canary requires 16 complete retained roots")
-            selected_keys = sorted(groups)[:16]
-            selected = tuple(row for key in selected_keys for row in groups[key])
-            if any(len(groups[key]) != len(groups[selected_keys[0]])
-                   for key in selected_keys):
-                raise FullDAGCapacityDependencyBlocked(
-                    "capacity canary sibling population drift")
-            training_cost(selected, 500)
+            _run_optimizer_canary(examples, training_cost)
             return identity
         measure("optimizer-canary", run_canary, member_workers)
 

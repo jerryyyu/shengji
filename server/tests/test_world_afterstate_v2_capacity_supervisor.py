@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from types import SimpleNamespace
 import time
 
+import numpy as np
 import pytest
 import shengji.rl.world_afterstate_v2_capacity_supervisor as supervisor
 
+from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
+from shengji.rl.encode import N_CARDS
+from shengji.rl.world_afterstate import (
+    PUBLIC_DIM, WORLD_RECEIVERS, WorldAfterstateTensorsV0,
+)
 from shengji.rl.world_afterstate_v2_capacity_supervisor import (
     FULL_DAG_MISSING_DEPENDENCY, FULL_DAG_STAGES,
     FullDAGCapacityDependencyBlocked,
@@ -14,9 +22,12 @@ from shengji.rl.world_afterstate_v2_capacity_supervisor import (
     _capacity_p0_inputs, _capacity_stage_materials,
     _capacity_training_pairs, _execute_capacity_p0,
     _build_capacity_label_population, _fail,
+    _run_optimizer_canary,
     _verified_continuation_population,
     run_full_dag_supervisor,
 )
+from shengji.rl.world_afterstate_v2_training import (
+    WorldAfterstateV2TrainingExample, collate_training_examples)
 
 
 def test_label_population_uses_production_controller_with_distinct_roots(
@@ -125,6 +136,38 @@ class _Synthetic:
     synthetic: bool = True
 
 
+def _canary_digest(value):
+    return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def _canary_rows(root, candidates):
+    deal = _canary_digest((root, "deal"))
+    slot = _canary_digest((root, "slot"))
+    state = _canary_digest((root, "state"))
+    successors = tuple(_canary_digest((root, "successor", index))
+                       for index in range(candidates))
+    candidate_set = _canary_digest({
+        "schema": "world-afterstate-v2-candidate-set-v1",
+        "state_sha256": state, "successor_sha256s": list(successors)})
+    rows = []
+    for candidate, successor in enumerate(successors):
+        for replica in range(8):
+            public = np.zeros(PUBLIC_DIM, dtype=np.float32)
+            public[candidate % PUBLIC_DIM] = 1.0
+            world = np.zeros((WORLD_RECEIVERS, N_CARDS), dtype=np.float32)
+            world[0, candidate % N_CARDS] = 1.0
+            tensors = WorldAfterstateTensorsV0(
+                public, np.zeros((0, HISTORY_EVENT_DIM), dtype=np.float32),
+                world, np.asarray([1., 0.], dtype=np.float32))
+            rows.append(WorldAfterstateV2TrainingExample(
+                deal, slot, state, candidate_set, candidate,
+                candidate == 0, successor,
+                _canary_digest((root, "continuation", replica)), replica,
+                "natural", "fit", "attacker", "early", "lead", "2", "S",
+                "0-39", tensors, (candidate + replica) % 204))
+    return rows
+
+
 def test_supervisor_refuses_synthetic_or_hash_only_backends():
     fixtures = tuple(_Fixture(f"{index:064x}") for index in range(32))
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="synthetic"):
@@ -135,6 +178,40 @@ def test_supervisor_refuses_fixture_without_retained_material():
     fixtures = tuple(_Fixture(f"{index:064x}") for index in range(32))
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="PopulationMaterialV2"):
         run_full_dag_supervisor(fixtures, backend=object())
+
+
+def test_optimizer_canary_accepts_mixed_candidate_widths_at_wiring_boundary():
+    rows = tuple(
+        row for index in range(16)
+        for row in _canary_rows(f"root-{index:02d}",
+                                2 if index < 8 else 5))
+    seen = {}
+
+    def training_cost(selected, steps):
+        seen["steps"] = steps
+        seen["batch"] = collate_training_examples(selected)
+
+    _run_optimizer_canary(rows, training_cost)
+    assert seen["steps"] == 500
+    assert seen["batch"].root_count == 16
+    assert seen["batch"].size == (8 * 2 + 8 * 5) * 8
+
+
+def test_optimizer_canary_attributes_incomplete_sibling_to_its_stage():
+    rows = [
+        row for index in range(16)
+        for row in _canary_rows(f"root-{index:02d}",
+                                2 if index < 8 else 5)]
+    rows.pop()
+
+    def training_cost(selected, steps):
+        assert steps == 500
+        collate_training_examples(selected)
+
+    with pytest.raises(FullDAGCapacityDependencyBlocked,
+                       match="V2 incomplete sibling root") as raised:
+        _run_optimizer_canary(rows, training_cost)
+    assert raised.value.stage == "optimizer-canary"
 
 
 def test_result_requires_every_actual_stage_and_no_reconstruction_replay():

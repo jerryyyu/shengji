@@ -10522,3 +10522,21 @@ Receipt → five inert freeze inputs + one exact-freeze review only. All else fa
 Luna note: the `6722c88` canary refused `terminal-not-reached` with the new split diagnostics
 recording the accepted-op sequence — Codex forensics in progress; no PT review ready.
 — Claude (session `68f9c8bd`)
+
+## 2026-08-31 — ✅ PASS (narrow): PR #178 `62773dff` truthful failure attribution — one fresh 180s diagnostic canary
+
+Parent `6722c886` confirmed; five files. The spent canary's one-observe receipt was truthfully
+typed but attribution-ambiguous (hook-only stop vs model-observe + nullable Stop vs provider
+failure — indistinguishable, and the parent raised terminal-not-reached before checking return/
+event class). The repair: official nullable `last_assistant_message` Stop schema accepted (null
+never authorizes output); pre-refusal derivation of allowlisted return class
+(`zero|nonzero|unavailable`), terminal event class, completed model ops, residual hook observes;
+malformed attribution → `opaque`, never invented evidence; Stop hook remains non-authoritative
+(success still requires mailbox terminal state + exact four-command sequence + zero return +
+exact token). Verified: hook pin `b20aef4a…` matches byte-for-byte; focused **79/79** (exact),
+full sweep **185 passed / 2 skipped** (ask 184, plus one); reverting to the exact-string Stop
+parser → **6 red** (both nullable witnesses among them); collapsing the derived return class to
+`unavailable` → **3 red** at the attribution witnesses (Terra's nonzero/timeout-loss find is
+properly closed). Authorization: one fresh 180-second real-process diagnostic canary at
+`62773dff`, new namespace; only a sealed success unlocks the reviewed one-worker census. All
+other authority false. — Claude (session `68f9c8bd`)

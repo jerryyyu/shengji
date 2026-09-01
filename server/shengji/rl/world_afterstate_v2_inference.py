@@ -181,7 +181,7 @@ class ValueInferenceRootV2:
             raise WorldAfterstateV2InferenceError(
                 "inference root population drift")
         self.tensors.validate()
-        if self.tensors.size != count:
+        if self.tensors.public.shape[0] != count:
             raise WorldAfterstateV2InferenceError(
                 "inference root tensor count drift")
         for value in (*self.successor_sha256s, *self.tensor_sha256s):

@@ -48,6 +48,15 @@ def test_architecture_output_and_parameter_cap():
     assert torch.isfinite(output).all()
 
 
+def test_validated_forward_is_bit_exact_with_the_public_boundary():
+    model = new_world_afterstate_v2_model(17)
+    batch = collate_world_afterstate_tensors([_tensor(), _tensor(2)])
+    with torch.no_grad():
+        public = model(batch)
+        validated = model._forward_validated(batch)
+    assert torch.equal(public, validated)
+
+
 def test_uniform_absolute_rows_are_one():
     rows = absolute_cross_entropy_rows(
         torch.zeros((3, OUTCOME_CLASSES)), torch.tensor([0, 1, 203]))

@@ -3,6 +3,7 @@ import hashlib
 
 import pytest
 
+from shengji.rl import world_afterstate_v2_selection as selection
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_schedule import select_common_epoch
 from shengji.rl.world_afterstate_v2_checkpoint import (
@@ -60,6 +61,21 @@ def test_happy_path_reopens_four_checkpoints_and_progress():
     assert progress[-1]["percent_basis_points"] == 10_000
     assert all(item["authority"][key] is False
                for item in progress for key in item["authority"])
+
+
+def test_controller_validates_selection_population_once_before_hot_loop(
+        monkeypatch):
+    original = selection._validate_population
+    calls = 0
+
+    def counted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(selection, "_validate_population", counted)
+    _build()
+    assert calls == 1
 
 
 def test_repeat_is_deterministic_and_common_epoch_is_rederived():

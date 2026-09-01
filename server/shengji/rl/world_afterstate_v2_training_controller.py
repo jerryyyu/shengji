@@ -391,7 +391,8 @@ def train_named_cohort(
         raise WorldAfterstateV2TrainingControllerError(
             "sealed epoch-select population required")
     try:
-        selection_population.validate()
+        selection_plan = selection_population._validated_plan()
+        expected_selection_population_sha = selection_plan[2]
     except Exception as exc:
         raise WorldAfterstateV2TrainingControllerError(
             "epoch-select population refused") from exc
@@ -483,15 +484,16 @@ def train_named_cohort(
                     models[member], optimizers[member], member_batches,
                     epoch=epoch, config=config)
                 score = _selection_score(
-                    selection_population.score(
+                    selection_population._score_validated(
                         models[member], epoch=epoch, seed_block=seed_block,
                         member_index=member, control_name=cohort_name,
-                        sigma_pair_squared=config.sigma_pair_squared),
+                        sigma_pair_squared=config.sigma_pair_squared,
+                        plan=selection_plan),
                     model=models[member], epoch=epoch,
                     seed_block=seed_block, member_index=member,
                     control_name=cohort_name)
                 if score.selection_population_sha256 != \
-                        selection_population.population_sha256:
+                        expected_selection_population_sha:
                     raise WorldAfterstateV2TrainingControllerError(
                         "epoch-select sealed population binding drift")
                 return (member_schedule, receipt, score,
@@ -1012,7 +1014,8 @@ def train_named_member(
         raise WorldAfterstateV2TrainingControllerError(
             "sealed epoch-select population required")
     try:
-        selection_population.validate()
+        selection_plan = selection_population._validated_plan()
+        expected_selection_population_sha = selection_plan[2]
     except Exception as exc:
         raise WorldAfterstateV2TrainingControllerError(
             "epoch-select population refused") from exc
@@ -1085,13 +1088,15 @@ def train_named_member(
                 batch_example_cap=batch_example_cap)
             receipt = train_epoch(model, optimizer, batches, epoch=epoch, config=config)
             score = _selection_score(
-                selection_population.score(
+                selection_population._score_validated(
                     model, epoch=epoch, seed_block=seed_block,
                     member_index=member_index, control_name="natural",
-                    sigma_pair_squared=config.sigma_pair_squared),
+                    sigma_pair_squared=config.sigma_pair_squared,
+                    plan=selection_plan),
                 model=model, epoch=epoch, seed_block=seed_block,
                 member_index=member_index, control_name="natural")
-            if score.selection_population_sha256 != selection_population.population_sha256:
+            if score.selection_population_sha256 != \
+                    expected_selection_population_sha:
                 raise WorldAfterstateV2TrainingControllerError(
                     "epoch-select sealed population binding drift")
             receipts.append(receipt.payload())

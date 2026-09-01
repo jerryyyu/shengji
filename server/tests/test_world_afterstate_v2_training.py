@@ -148,6 +148,33 @@ def test_paired_crn_binding_and_actual_update_are_deterministic():
     assert model_state_sha256(first) == model_state_sha256(second)
 
 
+def test_train_epoch_validates_each_immutable_batch_once(monkeypatch):
+    batch = collate_training_examples(_rows("validate-once"))
+    config = WorldAfterstateV2TrainingConfig(
+        learning_rate_ppb=100_000_000, weight_decay_ppb=0,
+        gradient_norm_milli=1_000, max_epochs=1, sigma_pair_squared=2.0)
+    training_batch_type = type(batch)
+    model_batch_type = type(batch.tensors)
+    original_training_validate = training_batch_type.validate
+    original_model_validate = model_batch_type.validate
+    calls = {"training": 0, "model": 0}
+
+    def training_validate(self):
+        calls["training"] += 1
+        return original_training_validate(self)
+
+    def model_validate(self):
+        calls["model"] += 1
+        return original_model_validate(self)
+
+    monkeypatch.setattr(training_batch_type, "validate", training_validate)
+    monkeypatch.setattr(model_batch_type, "validate", model_validate)
+    model = new_world_afterstate_v2_model(22)
+    train_epoch(model, new_optimizer(model, config), (batch,),
+                epoch=1, config=config)
+    assert calls == {"training": 1, "model": 1}
+
+
 def test_train_epoch_rejects_nonfinite_weights_after_optimizer_step(monkeypatch):
     batch = collate_training_examples(_rows("nonfinite-step"))
     config = WorldAfterstateV2TrainingConfig(100_000_000, 0, 1_000, 1, 1.0)

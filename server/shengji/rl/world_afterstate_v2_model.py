@@ -199,7 +199,7 @@ class WorldAfterstateValueV2(nn.Module):
                       perspective_ids: torch.Tensor) -> tuple[torch.Tensor,
                                                                torch.Tensor]:
         device = batch.public.device
-        size = batch.size
+        size = batch.public.shape[0]
         base = self._card_base(device)
         card_zones = batch.public[:, :PUBLIC_CARD_DIM].reshape(
             size, CARD_PLANES, N_CARDS)
@@ -273,12 +273,25 @@ class WorldAfterstateValueV2(nn.Module):
             raise WorldAfterstateV2ModelError(
                 "V2 forward requires target-free batch input")
         batch.validate()
+        return self._forward_validated(batch)
+
+    def _forward_validated(self, batch: WorldAfterstateV2Batch) -> torch.Tensor:
+        """Run one already boundary-validated immutable batch.
+
+        Training and sealed-selection controllers validate their complete
+        batch/population once before entering a hot loop.  Keeping the tensor
+        work in this private helper avoids recursively re-walking the same
+        immutable metadata and tensors for every member and epoch.  Public
+        callers still enter through :meth:`forward` and receive the full
+        refusal contract.
+        """
+        size = batch.public.shape[0]
         perspective_ids = torch.argmax(batch.perspective, dim=1)
         public_cards, world = self._card_context(batch, perspective_ids)
         tail = self.public_context_encoder(batch.public[:, PUBLIC_CARD_DIM:])
         if batch.history.shape[1] == 0:
             history_context = torch.zeros(
-                (batch.size, HISTORY_WIDTH), dtype=batch.public.dtype,
+                (size, HISTORY_WIDTH), dtype=batch.public.dtype,
                 device=batch.public.device)
         else:
             events = self.history_event_encoder(batch.history)
@@ -296,7 +309,7 @@ class WorldAfterstateValueV2(nn.Module):
             public_cards, world, history_context, tail, perspective,
         ], dim=1))
         logits = self.value_head(fused)
-        if logits.shape != (batch.size, OUTCOME_CLASSES) \
+        if logits.shape != (size, OUTCOME_CLASSES) \
                 or not bool(torch.all(torch.isfinite(logits))):
             raise WorldAfterstateV2ModelError("V2 output drift")
         return logits

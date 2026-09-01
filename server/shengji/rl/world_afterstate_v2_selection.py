@@ -135,35 +135,48 @@ class EpochSelectPopulationV2:
     roots: tuple[ValueInferenceRootV2, ...]
     outcomes: tuple[ContinuationOutcomeV2, ...]
 
-    def validate(self) -> None:
+    def _validated_plan(self):
         if type(self.roots) is not tuple or type(self.outcomes) is not tuple:
             raise WorldAfterstateV2SelectionError(
                 "epoch-select sealed population type drift")
-        _validate_population(self.roots, self.outcomes)
+        ordered_roots, grouped = _validate_population(
+            self.roots, self.outcomes)
+        return ordered_roots, grouped, _root_population_sha(ordered_roots)
+
+    def validate(self) -> None:
+        self._validated_plan()
 
     @property
     def population_sha256(self) -> str:
-        self.validate()
-        return _root_population_sha(self.roots)
+        return self._validated_plan()[2]
 
-    def score(self, model: WorldAfterstateValueV2, *, epoch: int,
-              seed_block: int, member_index: int, control_name: str,
-              sigma_pair_squared: float) -> EpochSelectScoreV2:
-        self.validate()
-        return score_epoch_select_v2(
-            model, roots=self.roots, outcomes=self.outcomes, epoch=epoch,
+    def _score_validated(self, model: WorldAfterstateValueV2, *, epoch: int,
+                         seed_block: int, member_index: int,
+                         control_name: str, sigma_pair_squared: float,
+                         plan) -> EpochSelectScoreV2:
+        _validate_score_request(
+            model, epoch=epoch, sigma_pair_squared=sigma_pair_squared)
+        ordered_roots, grouped, population_sha256 = plan
+        return _score_epoch_select_validated(
+            model, ordered_roots=ordered_roots, grouped=grouped,
+            population_sha256=population_sha256, epoch=epoch,
             seed_block=seed_block, member_index=member_index,
             control_name=control_name,
             sigma_pair_squared=sigma_pair_squared)
 
+    def score(self, model: WorldAfterstateValueV2, *, epoch: int,
+              seed_block: int, member_index: int, control_name: str,
+              sigma_pair_squared: float) -> EpochSelectScoreV2:
+        plan = self._validated_plan()
+        return self._score_validated(
+            model, epoch=epoch, seed_block=seed_block,
+            member_index=member_index, control_name=control_name,
+            sigma_pair_squared=sigma_pair_squared, plan=plan)
 
-def score_epoch_select_v2(
-        model: WorldAfterstateValueV2, *,
-        roots: Sequence[ValueInferenceRootV2],
-        outcomes: Sequence[ContinuationOutcomeV2], epoch: int,
-        seed_block: int, member_index: int, control_name: str,
-        sigma_pair_squared: float) -> EpochSelectScoreV2:
-    """Score one immutable model on the complete epoch-select population."""
+
+def _validate_score_request(
+        model: object, *, epoch: object,
+        sigma_pair_squared: object) -> None:
     if type(model) is not WorldAfterstateValueV2 \
             or isinstance(epoch, bool) or not isinstance(epoch, int) \
             or epoch < 1 \
@@ -173,7 +186,16 @@ def score_epoch_select_v2(
             or sigma_pair_squared < 0:
         raise WorldAfterstateV2SelectionError(
             "epoch-select score request drift")
-    ordered_roots, grouped = _validate_population(roots, outcomes)
+
+
+def _score_epoch_select_validated(
+        model: WorldAfterstateValueV2, *,
+        ordered_roots: tuple[ValueInferenceRootV2, ...],
+        grouped: dict[str, dict[int, tuple[ContinuationOutcomeV2, ...]]],
+        population_sha256: str, epoch: int, seed_block: int,
+        member_index: int, control_name: str,
+        sigma_pair_squared: float) -> EpochSelectScoreV2:
+    """Score one model after the immutable selection population was checked."""
     before = model_state_sha256(model)
     root_losses = []
     prediction_rows = []
@@ -182,14 +204,15 @@ def score_epoch_select_v2(
     try:
         with torch.no_grad():
             for root in ordered_roots:
-                logits = model(root.tensors)
-                if logits.shape[0] != root.candidate_count \
+                candidate_count = len(root.successor_sha256s)
+                logits = model._forward_validated(root.tensors)
+                if logits.shape[0] != candidate_count \
                         or not bool(torch.all(torch.isfinite(logits))):
                     raise WorldAfterstateV2SelectionError(
                         "epoch-select model output drift")
                 log_probability = torch.log_softmax(logits, dim=1)
                 absolute_rows = []
-                for candidate in range(root.candidate_count):
+                for candidate in range(candidate_count):
                     categories = tuple(
                         row.signed_level_category
                         for row in grouped[root.root_sha256][candidate])
@@ -205,7 +228,7 @@ def score_epoch_select_v2(
                     })
                 absolute = torch.stack(absolute_rows).mean()
                 pair_rows = []
-                for candidate in range(1, root.candidate_count):
+                for candidate in range(1, candidate_count):
                     prediction = expected_signed_utility(
                         logits[candidate:candidate + 1]).mean() \
                         - expected_signed_utility(logits[0:1]).mean()
@@ -233,11 +256,29 @@ def score_epoch_select_v2(
     result = EpochSelectScoreV2(
         epoch=epoch, seed_block=seed_block, member_index=member_index,
         control_name=control_name, model_state_sha256=before,
-        selection_population_sha256=_root_population_sha(ordered_roots),
+        selection_population_sha256=population_sha256,
         prediction_manifest_sha256=_sha(prediction_rows),
         loss_nano=round(loss * LOSS_SCALE))
     result.validate()
     return result
+
+
+def score_epoch_select_v2(
+        model: WorldAfterstateValueV2, *,
+        roots: Sequence[ValueInferenceRootV2],
+        outcomes: Sequence[ContinuationOutcomeV2], epoch: int,
+        seed_block: int, member_index: int, control_name: str,
+        sigma_pair_squared: float) -> EpochSelectScoreV2:
+    """Score one immutable model on the complete epoch-select population."""
+    _validate_score_request(
+        model, epoch=epoch, sigma_pair_squared=sigma_pair_squared)
+    ordered_roots, grouped = _validate_population(roots, outcomes)
+    return _score_epoch_select_validated(
+        model, ordered_roots=ordered_roots, grouped=grouped,
+        population_sha256=_root_population_sha(ordered_roots), epoch=epoch,
+        seed_block=seed_block, member_index=member_index,
+        control_name=control_name,
+        sigma_pair_squared=sigma_pair_squared)
 
 
 __all__ = [

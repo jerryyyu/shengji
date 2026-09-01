@@ -248,7 +248,7 @@ class WorldAfterstateV2TrainingBatch:
                 or self.target_categories.shape != (count,):
             raise WorldAfterstateV2TrainingError("V2 training batch identity drift")
         self.tensors.validate()
-        if self.tensors.size != count:
+        if self.tensors.public.shape[0] != count:
             raise WorldAfterstateV2TrainingError("V2 model/target row count drift")
         if any(type(key) is not str or not key for key in self.example_keys) \
                 or any(type(root) is not str or not root for root in self.root_ids):
@@ -450,10 +450,22 @@ def root_balanced_loss(logits: torch.Tensor,
                        sigma_pair_squared: float | torch.Tensor = 1.0) -> torch.Tensor:
     """Absolute and paired terms, each root-balanced and weighted 1:1."""
     batch.validate()
-    if logits.shape != (batch.size, OUTCOME_CLASSES) \
+    _validate_loss_logits(logits, batch)
+    denominator = _pair_loss_denominator(sigma_pair_squared)
+    return _root_balanced_loss_calculation(logits, batch, denominator)
+
+
+def _validate_loss_logits(
+        logits: torch.Tensor, batch: WorldAfterstateV2TrainingBatch) -> None:
+    count = len(batch.example_keys)
+    if logits.shape != (count, OUTCOME_CLASSES) \
             or logits.dtype != torch.float32 \
             or not bool(torch.all(torch.isfinite(logits))):
         raise WorldAfterstateV2TrainingError("V2 training logits drift")
+
+
+def _pair_loss_denominator(
+        sigma_pair_squared: float | torch.Tensor) -> float:
     if isinstance(sigma_pair_squared, torch.Tensor):
         if sigma_pair_squared.ndim != 0 or sigma_pair_squared.dtype \
                 not in (torch.float32, torch.float64) \
@@ -467,7 +479,20 @@ def root_balanced_loss(logits: torch.Tensor,
         raise WorldAfterstateV2TrainingError("V2 frozen pair variance drift")
     else:
         sigma_value = float(sigma_pair_squared)
-    denominator = max(1.0, sigma_value)
+    return max(1.0, sigma_value)
+
+
+def _root_balanced_loss_validated(
+        logits: torch.Tensor, batch: WorldAfterstateV2TrainingBatch,
+        denominator: float) -> torch.Tensor:
+    """Loss implementation for one already validated immutable batch."""
+    _validate_loss_logits(logits, batch)
+    return _root_balanced_loss_calculation(logits, batch, denominator)
+
+
+def _root_balanced_loss_calculation(
+        logits: torch.Tensor, batch: WorldAfterstateV2TrainingBatch,
+        denominator: float) -> torch.Tensor:
     absolute_rows = absolute_cross_entropy_rows(logits, batch.target_categories)
     locations: dict[str, list[int]] = defaultdict(list)
     for index, root in enumerate(batch.root_ids):
@@ -595,8 +620,10 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
     paired_residual_root_count = 0
     split = batches[0].split
     cohort = batches[0].cohort
+    batch_counts = []
     for batch in batches:
         batch.validate()
+        batch_counts.append((len(batch.example_keys), len(set(batch.root_ids))))
         if batch.split != split or batch.cohort != cohort:
             raise WorldAfterstateV2TrainingError("V2 epoch split/cohort mixing")
         if roots_seen.intersection(batch.root_ids):
@@ -614,9 +641,11 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
     epoch_parameters_before = [parameter.detach().clone()
                                for parameter in model.parameters()]
     model.train(True)
-    for batch in batches:
+    denominator = _pair_loss_denominator(config.sigma_pair_squared)
+    for batch, (batch_size, batch_root_count) in zip(
+            batches, batch_counts, strict=True):
         optimizer.zero_grad(set_to_none=True)
-        logits = model(batch.tensors)
+        logits = model._forward_validated(batch.tensors)
         probabilities = torch.softmax(logits.detach(), dim=1)
         row_entropy = (-(probabilities *
                          torch.log(probabilities.clamp_min(1e-30)))
@@ -627,13 +656,13 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
         entropy_total += sum(sum(rows) / len(rows)
                              for rows in entropy_by_root.values())
         entropy_root_count += len(entropy_by_root)
-        loss = root_balanced_loss(logits, batch, config.sigma_pair_squared)
+        loss = _root_balanced_loss_validated(logits, batch, denominator)
         loss.backward()
         norm = torch.nn.utils.clip_grad_norm_(
             model.parameters(), config.gradient_norm_milli / 1000,
             error_if_nonfinite=True)
-        gradient_norm_total += float(norm.detach()) * batch.root_count
-        gradient_root_count += batch.root_count
+        gradient_norm_total += float(norm.detach()) * batch_root_count
+        gradient_root_count += batch_root_count
         # Pair residual is deliberately unnormalized: sigma belongs only to
         # the training objective, never to this diagnostic measurement.
         with torch.no_grad():
@@ -675,9 +704,9 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
                 "V2 non-finite parameter after optimizer step")
         if not math.isfinite(float(loss.detach())):
             raise WorldAfterstateV2TrainingError("V2 non-finite loss")
-        total_loss += float(loss.detach()) * batch.root_count
-        total_roots += batch.root_count
-        total_examples += batch.size
+        total_loss += float(loss.detach()) * batch_root_count
+        total_roots += batch_root_count
+        total_examples += batch_size
     mean = round(total_loss / total_roots * LOSS_SCALE)
     if total_roots != len(roots_seen) or total_examples != len(population) \
             or not math.isfinite(total_loss) or mean < 0:

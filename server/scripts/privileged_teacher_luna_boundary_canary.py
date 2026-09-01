@@ -17,12 +17,15 @@ from shengji.rl import privileged_teacher_luna_selfplay as luna
 from shengji.rl import privileged_teacher_luna_selfplay_controller as controller
 from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
-SCHEMA = "privileged-teacher-luna-boundary-canary-v4"
-SYNTHETIC_SCHEMA = "privileged-teacher-luna-boundary-canary-synthetic-v1"
-SYNTHETIC_DELAYED_SCHEMA = "privileged-teacher-luna-boundary-canary-synthetic-delay-v1"
+SCHEMA = "privileged-teacher-luna-boundary-canary-v5"
+SYNTHETIC_SCHEMA = "privileged-teacher-luna-boundary-canary-synthetic-v2"
+SYNTHETIC_DELAYED_SCHEMA = "privileged-teacher-luna-boundary-canary-synthetic-delay-v2"
 FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v3"
 MAX_HOOK_OBSERVES = 3
-CODE_MODE_INITIAL_YIELD_SECONDS = 30
+CODE_MODE_OUTER_YIELD_SECONDS = (
+    execution.CODE_MODE_OUTER_YIELD_MILLISECONDS // 1000)
+CODE_MODE_NESTED_YIELD_SECONDS = (
+    execution.CODE_MODE_NESTED_YIELD_MILLISECONDS // 1000)
 PRODUCTION_TERMINAL_WAIT_DELAY_SECONDS = 31
 SYNTHETIC_TERMINAL_WAIT_DELAY_SECONDS = 0
 SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS = 1
@@ -316,6 +319,8 @@ class _CanaryState:
         self.token = token
         self.terminal_wait_delay_seconds = terminal_wait_delay_seconds
         self.terminal_wait_delayed = False
+        self.terminal_wait_inflight = False
+        self.terminal_wait_started = threading.Event()
         self.phase = "decision"
         self.rollout_calls = 0
         self.terminal = False
@@ -381,6 +386,9 @@ class _CanaryMailbox:
         self.refused = False
         self.error: BaseException | None = None
         self._nonterminal_stop_blocks = 0
+        self._record_lock = threading.Lock()
+        self._inflight: set[Path] = set()
+        self._workers: list[threading.Thread] = []
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._serve, daemon=True)
     def _response(self, path: Path, value: dict[str, object]) -> None:
@@ -403,89 +411,131 @@ class _CanaryMailbox:
             raise ValueError("canary request shape drift")
         if op == "wait" and set(request) != {"op"}:
             raise ValueError("canary request shape drift")
-        self.first_op = self.first_op or op
-        self.sequence.append(op)
-        self.counts[op] = self.counts.get(op, 0) + 1
-        with self.state.lock:
-            if op == "observe":
-                if self.state.phase in ("decision", "rolled"):
-                    response = self.state.decision_response()
-                elif self.state.phase == "playing":
+        with self._record_lock:
+            self.first_op = self.first_op or op
+            self.sequence.append(op)
+            self.counts[op] = self.counts.get(op, 0) + 1
+        if op == "wait":
+            with self.state.lock:
+                phase = self.state.phase
+                if phase == "playing":
+                    self.state.terminal_wait_inflight = True
+                    self.state.terminal_wait_started.set()
+                    delay = self.state.terminal_wait_delay_seconds
+                else:
+                    delay = 0
+            delayed = bool(delay) and not self._stop.wait(delay)
+            with self.state.lock:
+                if phase == "playing":
+                    self.state.terminal_wait_delayed = delayed
+                    self.state.terminal_wait_inflight = False
                     self.state.terminal = True
                     self.state.phase = "terminal"
-                    response = {"schema": luna.GAME_SCHEMA, "status": "round_end",
+                    response = {"schema": luna.GAME_SCHEMA,
+                                "status": "round_end",
+                                "completion_token": self.state.token}
+                elif phase == "terminal":
+                    response = {"schema": luna.GAME_SCHEMA,
+                                "status": "round_end",
                                 "completion_token": self.state.token}
                 else:
-                    self.state.terminal = True
-                    self.state.phase = "terminal"
-                    response = {"schema": luna.GAME_SCHEMA, "status": "round_end",
-                                "completion_token": self.state.token}
-                if hook_stop:
-                    if response.get("status") == "round_end":
-                        action = "terminal"
-                    elif (self._nonterminal_stop_blocks
-                          < execution.MAX_STOP_HOOK_NONTERMINAL_BLOCKS):
-                        self._nonterminal_stop_blocks += 1
-                        action = "block"
+                    response = {"schema": luna.GAME_SCHEMA,
+                                "status": "waiting"}
+        else:
+            with self.state.lock:
+                if op == "observe":
+                    if self.state.phase in ("decision", "rolled"):
+                        response = self.state.decision_response()
+                    elif (self.state.phase == "playing"
+                          and self.state.terminal_wait_inflight):
+                        response = {"schema": luna.GAME_SCHEMA,
+                                    "status": "waiting", "acting_team": 1}
+                    elif self.state.phase == "playing":
+                        self.state.terminal = True
+                        self.state.phase = "terminal"
+                        response = {"schema": luna.GAME_SCHEMA,
+                                    "status": "round_end",
+                                    "completion_token": self.state.token}
                     else:
-                        action = "exhausted"
-                    response = dict(response)
-                    response[execution.STOP_HOOK_ACTION_FIELD] = action
-            elif op == "wait":
-                if self.state.phase == "playing":
-                    if self.state.terminal_wait_delay_seconds:
-                        # An Event wait is interruptible when the bounded
-                        # canary deadline kills the child, so teardown never
-                        # leaves a daemon thread holding the mailbox lock.
-                        self.state.terminal_wait_delayed = not self._stop.wait(
-                            self.state.terminal_wait_delay_seconds)
-                    self.state.terminal = True
-                    self.state.phase = "terminal"
-                    response = {"schema": luna.GAME_SCHEMA, "status": "round_end",
-                                "completion_token": self.state.token}
-                elif self.state.phase == "terminal":
-                    response = {"schema": luna.GAME_SCHEMA, "status": "round_end",
-                                "completion_token": self.state.token}
+                        self.state.terminal = True
+                        self.state.phase = "terminal"
+                        response = {"schema": luna.GAME_SCHEMA,
+                                    "status": "round_end",
+                                    "completion_token": self.state.token}
+                    if hook_stop:
+                        if response.get("status") == "round_end":
+                            action = "terminal"
+                        elif (self._nonterminal_stop_blocks
+                              < execution.MAX_STOP_HOOK_NONTERMINAL_BLOCKS):
+                            self._nonterminal_stop_blocks += 1
+                            action = "block"
+                        else:
+                            action = "exhausted"
+                        response = dict(response)
+                        response[execution.STOP_HOOK_ACTION_FIELD] = action
+                elif op == "rollout":
+                    if (self.state.phase not in ("decision", "rolled")
+                            or self.state.rollout_calls >= 2
+                            or set(request) != {
+                                "op", "decision_sha256", "candidate_indices",
+                                "continuations"}
+                            or request.get("decision_sha256")
+                            != self.state.decision_sha256
+                            or request.get("candidate_indices") != [0]
+                            or request.get("continuations") != ["smart-all"]):
+                        raise ValueError("canary model rollout drift")
+                    self.state.rollout_calls += 1
+                    self.state.phase = "rolled"
+                    response = {
+                        "schema": luna.GAME_SCHEMA,
+                        "status": "rollout_complete", "new_evaluations": 1,
+                        "cached_evaluations": 0,
+                        "results": [{"candidate_index": 0,
+                                     "continuation": "smart-all",
+                                     "rollout_points": 0,
+                                     "team_signed_level_utility": 0}],
+                        "budget": {"rollout_calls": self.state.rollout_calls,
+                                   "rollout_calls_limit": 2,
+                                   "used": self.state.rollout_calls,
+                                   "round_used": self.state.rollout_calls,
+                                   "decision_limit": 16, "round_limit": 64}}
+                elif op == "play":
+                    if (self.state.phase != "rolled"
+                            or set(request) != {"op", "decision_sha256",
+                                                "candidate_index", "confidence"}
+                            or request.get("decision_sha256")
+                            != self.state.decision_sha256
+                            or request.get("candidate_index") != 0
+                            or request.get("confidence") != "low"):
+                        raise ValueError("canary model play drift")
+                    self.state.phase = "playing"
+                    response = {"schema": luna.GAME_SCHEMA,
+                                "status": "waiting", "acting_team": 1}
                 else:
-                    response = {"schema": luna.GAME_SCHEMA, "status": "waiting"}
-            elif op == "rollout":
-                if (self.state.phase not in ("decision", "rolled")
-                        or self.state.rollout_calls >= 2
-                        or set(request) != {"op", "decision_sha256",
-                                             "candidate_indices", "continuations"}
-                        or request.get("decision_sha256") != self.state.decision_sha256
-                        or request.get("candidate_indices") != [0]
-                        or request.get("continuations") != ["smart-all"]):
-                    raise ValueError("canary model rollout drift")
-                self.state.rollout_calls += 1
-                self.state.phase = "rolled"
-                response = {"schema": luna.GAME_SCHEMA, "status": "rollout_complete",
-                            "new_evaluations": 1, "cached_evaluations": 0,
-                            "results": [{"candidate_index": 0,
-                                          "continuation": "smart-all",
-                                          "rollout_points": 0,
-                                          "team_signed_level_utility": 0}],
-                            "budget": {"rollout_calls": self.state.rollout_calls,
-                                       "rollout_calls_limit": 2,
-                                       "used": self.state.rollout_calls,
-                                       "round_used": self.state.rollout_calls,
-                                       "decision_limit": 16, "round_limit": 64}}
-            elif op == "play":
-                if (self.state.phase != "rolled"
-                        or set(request) != {"op", "decision_sha256",
-                                             "candidate_index", "confidence"}
-                        or request.get("decision_sha256") != self.state.decision_sha256
-                        or request.get("candidate_index") != 0
-                        or request.get("confidence") != "low"):
-                    raise ValueError("canary model play drift")
-                self.state.phase = "playing"
-                response = {"schema": luna.GAME_SCHEMA, "status": "waiting",
-                            "acting_team": 1}
-            else:
-                raise ValueError("canary mailbox operation limit")
-            self.trace.append({"request": dict(request), "response": response,
-                               "response_sha256": _sha(canonical_json_bytes(response))})
-            return response
+                    raise ValueError("canary mailbox operation limit")
+        with self._record_lock:
+            self.trace.append({
+                "request": dict(request), "response": response,
+                "response_sha256": _sha(canonical_json_bytes(response))})
+        return response
+
+    def _serve_request(self, request_path: Path,
+                       response_path: Path) -> None:
+        try:
+            try:
+                request = _strict(request_path.read_bytes(), "canary request")
+                response = self._dispatch(request)
+            except Exception:
+                with self._record_lock:
+                    self.refused = True
+                response = {"status": "error", "error": "canary request refused"}
+            self._response(response_path, response)
+        except BaseException as exc:
+            self.error = exc
+            self._stop.set()
+        finally:
+            with self._record_lock:
+                self._inflight.discard(request_path)
 
     def _serve(self) -> None:
         try:
@@ -495,15 +545,17 @@ class _CanaryMailbox:
                     if len(suffix) != 64 or any(c not in "0123456789abcdef" for c in suffix):
                         continue
                     response_path = self.path / f"response-{suffix}.json"
-                    if response_path.exists():
-                        continue
-                    try:
-                        request = _strict(request_path.read_bytes(), "canary request")
-                        response = self._dispatch(request)
-                    except Exception:
-                        self.refused = True
-                        response = {"status": "error", "error": "canary request refused"}
-                    self._response(response_path, response)
+                    with self._record_lock:
+                        if (response_path.exists()
+                                or request_path in self._inflight):
+                            continue
+                        self._inflight.add(request_path)
+                    worker = threading.Thread(
+                        target=self._serve_request,
+                        args=(request_path, response_path), daemon=True)
+                    with self._record_lock:
+                        self._workers.append(worker)
+                    worker.start()
                 self._stop.wait(0.002)
         except BaseException as exc:  # surfaced only as a generic refusal
             self.error = exc
@@ -514,6 +566,12 @@ class _CanaryMailbox:
         self._stop.set()
         self._thread.join(timeout=5)
         if self._thread.is_alive():
+            raise ValueError("canary mailbox failed")
+        with self._record_lock:
+            workers = list(self._workers)
+        for worker in workers:
+            worker.join(timeout=5)
+        if any(worker.is_alive() for worker in workers):
             raise ValueError("canary mailbox failed")
 def _validate_runtime(runtime: object) -> None:
     if type(runtime) is not dict:
@@ -589,7 +647,8 @@ def reopen_receipt(path: Path) -> dict[str, object]:
                 "model_nonterminal_observed", "hook_first_op", "hook_op_counts",
                 "hook_op_sequence", "model_command_count",
                 "model_command_sequence", "sandbox_enforced",
-                "code_mode_initial_yield_seconds",
+                "code_mode_outer_yield_seconds",
+                "code_mode_nested_yield_seconds",
                 "terminal_wait_delay_seconds", "terminal_wait_delayed",
                 "production_yield_witness",
                 "codex_usage", "codex_event_type_counts",
@@ -617,11 +676,13 @@ def reopen_receipt(path: Path) -> dict[str, object]:
             or payload["model_command_sequence"]
             != list(MODEL_COMMAND_SEQUENCE)):
         raise ValueError("canary receipt command witness drift")
-    initial_yield = payload["code_mode_initial_yield_seconds"]
+    outer_yield = payload["code_mode_outer_yield_seconds"]
+    nested_yield = payload["code_mode_nested_yield_seconds"]
     wait_delay = payload["terminal_wait_delay_seconds"]
     delayed = payload["terminal_wait_delayed"]
     production = payload["production_yield_witness"]
-    if (initial_yield != CODE_MODE_INITIAL_YIELD_SECONDS
+    if (outer_yield != CODE_MODE_OUTER_YIELD_SECONDS
+            or nested_yield != CODE_MODE_NESTED_YIELD_SECONDS
             or isinstance(wait_delay, bool) or not isinstance(wait_delay, int)
             or not 0 <= wait_delay <= 180 or type(delayed) is not bool
             or type(production) is not bool
@@ -693,7 +754,9 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int,
             or not 0 <= terminal_wait_delay_seconds <= 180):
         raise ValueError("terminal-wait-delay-seconds must be between 0 and 180")
     if (production_yield_witness
-            and terminal_wait_delay_seconds <= CODE_MODE_INITIAL_YIELD_SECONDS):
+            and not (CODE_MODE_NESTED_YIELD_SECONDS
+                     < terminal_wait_delay_seconds
+                     < CODE_MODE_OUTER_YIELD_SECONDS)):
         raise ValueError("production code-mode yield requirement drift")
     if (not production_yield_witness and terminal_wait_delay_seconds not in (
             SYNTHETIC_TERMINAL_WAIT_DELAY_SECONDS,
@@ -708,6 +771,8 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int,
         raise ValueError("canary output occupied")
     tool_script = Path(__file__).with_name("privileged_teacher_luna_selfplay_tool.py")
     runtime = execution.runtime_identity(codex_binary=binary, tool_script=tool_script)
+    if production_yield_witness:
+        execution.validate_codex_model_surface(codex_binary=binary)
     with tempfile.TemporaryDirectory(prefix="pt-luna-canary-", dir="/tmp") as temporary:
         workspace = Path(temporary)
         os.chmod(workspace, 0o700)
@@ -775,7 +840,19 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int,
                         process.kill()
                 except ProcessLookupError:
                     pass
-                timeout_stdout, timeout_stderr = process.communicate()
+                try:
+                    timeout_stdout, timeout_stderr = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired as drain_exc:
+                    process.kill()
+                    try:
+                        process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    timeout_stdout = bytes(drain_exc.stdout or exc.stdout or b"")
+                    timeout_stderr = bytes(drain_exc.stderr or exc.stderr or b"")
+                    for stream in (process.stdin, process.stdout, process.stderr):
+                        if stream is not None:
+                            stream.close()
                 if len(timeout_stderr or b"") > execution.MAX_PROCESS_BYTES:
                     timeout_stderr = b""
                 raise boundary_error(
@@ -859,7 +936,8 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int,
                 "hook_op_sequence": list(hook_sequence),
                 "model_command_count": len(records),
                 "model_command_sequence": list(model_sequence),
-                "code_mode_initial_yield_seconds": CODE_MODE_INITIAL_YIELD_SECONDS,
+                "code_mode_outer_yield_seconds": CODE_MODE_OUTER_YIELD_SECONDS,
+                "code_mode_nested_yield_seconds": CODE_MODE_NESTED_YIELD_SECONDS,
                 "terminal_wait_delay_seconds": terminal_wait_delay_seconds,
                 "terminal_wait_delayed": state.terminal_wait_delayed,
                 "production_yield_witness": production_yield_witness,

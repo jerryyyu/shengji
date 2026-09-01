@@ -40,8 +40,15 @@ REASONING_EFFORT = "high"
 # Keep this identity explicit: a prompt hash alone cannot detect a rerouted
 # model/tool contract after an attempt has been sealed.
 CODE_MODE_TOOL_MODE = "code_mode_only"
-CODE_MODE_SHELL_TYPE = "unified_exec"
+# Codex 0.149.0 deliberately composes a model cataloged with the legacy
+# ``shell_command`` type onto the nested unified-exec surface when
+# ``code_mode_only`` is enabled: code-mode receives ``exec_command`` plus
+# ``write_stdin`` while the legacy tool is hidden.  Keep the catalog identity
+# and the model-facing nested name separate; neither is a typo.
+CODE_MODE_SHELL_TYPE = "shell_command"
 CODE_MODE_TOOL_NAME = "exec_command"
+CODE_MODE_OUTER_YIELD_MILLISECONDS = 60_000
+CODE_MODE_NESTED_YIELD_MILLISECONDS = 30_000
 CODE_MODE_FEATURE_OVERRIDE = "features.code_mode_only=true"
 PLANNER_DEVELOPER_INSTRUCTIONS = (
     "You are a bounded Shengji game process. You are code-mode-only: your "
@@ -50,8 +57,12 @@ PLANNER_DEVELOPER_INSTRUCTIONS = (
     "prompt. Do not answer with text or finish before the engine reports "
     "round_end. If a Stop hook blocks completion, immediately use the same "
     "code-mode exec_command wrapper and continue the mailbox protocol from "
-    "the prompt. Use yield_time_ms=30000 for each command; if it yields a "
-    "session_id, poll that same command with tools.write_stdin until it exits.")
+    "the prompt. Start every JavaScript cell with the supplied @exec pragma "
+    "so the outer code cell remains live longer than the nested command. Use "
+    "yield_time_ms=30000 for each nested command; if it yields an inner "
+    "session_id, poll that command with tools.write_stdin until it exits. If "
+    "the outer code cell itself yields a cell_id, resume that same cell with "
+    "the top-level functions.wait continuation before starting another cell.")
 PLANNER_DEVELOPER_OVERRIDE = (
     "developer_instructions=" + json.dumps(PLANNER_DEVELOPER_INSTRUCTIONS))
 LEGACY_FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v1"
@@ -315,6 +326,8 @@ def planner_prompt(*, mailbox_path: Path, tool_script: Path,
     tool = shlex.join(tool_argv)
     first_exec = json.dumps(tool + " observe")
     workdir = json.dumps(str(mailbox_path.parent))
+    outer_pragma = ("// @exec: {\"yield_time_ms\": "
+                    + str(CODE_MODE_OUTER_YIELD_MILLISECONDS) + "}")
     return f"""You are PT-Luna, one team in a bounded full-information Shengji self-play round.
 You control both seats of your assigned partnership. Your sole objective is to
 maximize final signed-level utility for that partnership. Utility is
@@ -325,9 +338,10 @@ burial are exposed because this is a bounded teacher diagnostic, not a player
 information set. Use only the code-mode execution tool
 `{CODE_MODE_TOOL_NAME}`. Each command must be issued by a JavaScript code
 cell calling `tools.{CODE_MODE_TOOL_NAME}({{"cmd": COMMAND, "workdir": WORKDIR,
-"yield_time_ms": 30000}})`;
+"yield_time_ms": {CODE_MODE_NESTED_YIELD_MILLISECONDS}}})`;
 do not invoke a shell tool directly. The first cell must use this complete
 pattern, including any yielded-session continuation and the initial output:
+  {outer_pragma}
   let result = await tools.{CODE_MODE_TOOL_NAME}({{"cmd": {first_exec}, "workdir": {workdir}, "yield_time_ms": 30000}});
   let combined = result.output ?? "";
   while (result.session_id) {{
@@ -335,6 +349,15 @@ pattern, including any yielded-session continuation and the initial output:
     combined += result.output ?? "";
   }}
   text(combined);
+The pragma must be the first line of every JavaScript cell. There are two
+different continuation identities. `result.session_id` belongs to the nested
+command and is resumed inside the cell with `tools.write_stdin`. If the outer
+code-mode tool returns `Script running with cell ID ...`, that `cell_id`
+belongs to the JavaScript cell: immediately invoke the top-level
+`functions.wait` continuation on that exact cell until it completes. That
+top-level continuation is part of code-mode execution and is allowed. Never
+start another JavaScript cell or mailbox command while either continuation is
+live.
 The `cmd` value above is the exact first nested mailbox command. Use the same
 complete pattern for every subsequent command, substituting only the named
 command. Do not issue a second mailbox command while the first is yielded. The
@@ -578,6 +601,42 @@ def runtime_identity(*, codex_binary: Path, tool_script: Path) -> dict[str, obje
         "expected_shell_type": CODE_MODE_SHELL_TYPE,
         "expected_tool_name": CODE_MODE_TOOL_NAME,
     }
+
+
+def validate_codex_model_surface(*, codex_binary: Path) -> str:
+    """Refuse before model launch unless the live catalog matches the contract.
+
+    ``debug models`` resolves the same refreshable catalog used by ``exec``
+    without starting a model turn.  The returned digest is useful for a
+    launch log, while the source-level gate prevents a stale expected string
+    from standing in for the effective provider surface.
+    """
+    binary = Path(codex_binary).absolute()
+    command = (str(binary), "debug", "models", "-c",
+               CODE_MODE_FEATURE_OVERRIDE)
+    try:
+        completed = subprocess.run(
+            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            check=False, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise LunaExecutionError("code-mode model catalog drift") from exc
+    raw = bytes(completed.stdout or b"")
+    if (completed.returncode != 0 or completed.stderr
+            or not raw or len(raw) > MAX_PROCESS_BYTES):
+        raise LunaExecutionError("code-mode model catalog drift")
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise LunaExecutionError("code-mode model catalog drift") from exc
+    models = payload.get("models") if type(payload) is dict else None
+    matches = ([row for row in models
+                if type(row) is dict and row.get("slug") == MODEL]
+               if type(models) is list else [])
+    if (len(matches) != 1
+            or matches[0].get("tool_mode") != CODE_MODE_TOOL_MODE
+            or matches[0].get("shell_type") != CODE_MODE_SHELL_TYPE):
+        raise LunaExecutionError("code-mode model catalog drift")
+    return _sha_bytes(raw)
 
 
 def _code_mode_runtime_bound(runtime: object) -> bool:
@@ -1674,22 +1733,24 @@ def run_luna_game(
     if private_root.exists() and private_root.is_symlink():
         raise LunaExecutionError("private root identity drift")
     private_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-    attempt = _attempt_path(private_root, game)
-    try:
-        attempt.mkdir(mode=0o700)
-    except FileExistsError as exc:
-        raise LunaExecutionError("game attempt already exists; retry refused") from exc
     binary: Path
     if codex_binary is None:
         found = shutil.which("codex")
         binary = Path(found) if found else Path("codex")
     else:
         binary = Path(codex_binary)
-    runtime = runtime_identity(codex_binary=binary, tool_script=tool_script)
-    python = Path(sys.executable).absolute()
     if planner_process is None and (sys.platform != "darwin"
                                     or shutil.which("sandbox-exec") is None):
         raise LunaExecutionError("production peer sandbox unavailable")
+    if planner_process is None:
+        validate_codex_model_surface(codex_binary=binary)
+    attempt = _attempt_path(private_root, game)
+    try:
+        attempt.mkdir(mode=0o700)
+    except FileExistsError as exc:
+        raise LunaExecutionError("game attempt already exists; retry refused") from exc
+    runtime = runtime_identity(codex_binary=binary, tool_script=tool_script)
+    python = Path(sys.executable).absolute()
     attempt_body = {"schema": ATTEMPT_SCHEMA, "coordinate": list(game.coordinate),
                     "mirror": game.mirror, "root_sha256": game.root_sha256,
                     "planner": config.payload(), "runtime": runtime,

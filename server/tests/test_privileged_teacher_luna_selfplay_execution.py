@@ -98,6 +98,24 @@ def test_codex_0150_usage_schema_is_bound_exactly():
     }
 
 
+def test_live_model_catalog_surface_must_match_code_mode_contract(
+        tmp_path, monkeypatch):
+    catalog = {"models": [{"slug": execution.MODEL,
+                            "tool_mode": execution.CODE_MODE_TOOL_MODE,
+                            "shell_type": execution.CODE_MODE_SHELL_TYPE}]}
+    raw = json.dumps(catalog).encode()
+    monkeypatch.setattr(execution.subprocess, "run", lambda *args, **kwargs:
+                        subprocess.CompletedProcess(args[0], 0, raw, b""))
+    assert execution.validate_codex_model_surface(
+        codex_binary=tmp_path / "codex") == execution._sha_bytes(raw)
+    catalog["models"][0]["shell_type"] = "unified_exec"
+    raw = json.dumps(catalog).encode()
+    with pytest.raises(execution.LunaExecutionError,
+                       match="^code-mode model catalog drift$"):
+        execution.validate_codex_model_surface(
+            codex_binary=tmp_path / "codex")
+
+
 def test_terminal_witness_requires_completed_model_command(tmp_path):
     assert not execution._terminal_command_mailbox_witness(
         _codex_stdout(), mailbox_path=tmp_path / "mailbox", trace=[],
@@ -284,6 +302,11 @@ def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
     assert "tools.exec_command" in prompt
     assert "let result = await tools.exec_command" in prompt
     assert "tools.write_stdin" in prompt
+    assert (f'// @exec: {{"yield_time_ms": '
+            f'{execution.CODE_MODE_OUTER_YIELD_MILLISECONDS}}}' in prompt)
+    assert "code-mode tool returns `Script running with cell ID" in prompt
+    assert "top-level\n`functions.wait`" in prompt
+    assert "result.session_id" in prompt
     assert "let combined = result.output ?? \"\"" in prompt
     assert "while (result.session_id)" in prompt
     assert "combined += result.output ?? \"\"" in prompt

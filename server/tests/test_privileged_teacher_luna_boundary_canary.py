@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -9,6 +10,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 
 import pytest
@@ -58,16 +60,25 @@ final = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
 mode = os.environ.get("CANARY_FAKE_MODE", "ok")
 commands = []
 if mode == "timeout": time.sleep(5)
+def read_response(path):
+    for _ in range(5000):
+        if path.is_file():
+            try:
+                return json.loads(path.read_bytes())
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+        time.sleep(.001)
+    return None
 def call(request, suffix):
     path = mailbox / ("request-" + suffix * 64 + ".json")
-    path.write_bytes(json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode() + b"\\n")
-    path.chmod(0o600)
+    raw = json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode() + b"\\n"
+    temporary = path.with_suffix(".tmp")
+    temporary.write_bytes(raw)
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
     response = mailbox / ("response-" + suffix * 64 + ".json")
-    for _ in range(5000):
-        if response.is_file(): break
-        time.sleep(.001)
-    if not response.is_file(): sys.exit(3)
-    value = json.loads(response.read_bytes())
+    value = read_response(response)
+    if value is None: sys.exit(3)
     args = []
     if request["op"] == "rollout":
         args = ["--decision", request["decision_sha256"], "--candidates",
@@ -91,16 +102,15 @@ def run_hook(active, last):
     suffix = format(hook_index, "x")
     request_path = mailbox / ("request-" + suffix * (64 // len(suffix))
                               + suffix[:64 % len(suffix)] + ".json")
-    request_path.write_bytes(b'{"hook_stop":true,"op":"observe"}\\n')
-    request_path.chmod(0o600)
+    temporary = request_path.with_suffix(".tmp")
+    temporary.write_bytes(b'{"hook_stop":true,"op":"observe"}\\n')
+    temporary.chmod(0o600)
+    os.replace(temporary, request_path)
     response_path = mailbox / ("response-" + request_path.stem.removeprefix(
         "request-") + ".json")
-    for _ in range(5000):
-        if response_path.is_file(): break
-        time.sleep(.001)
-    if not response_path.is_file():
+    response = read_response(response_path)
+    if response is None:
         return subprocess.CompletedProcess(("hook",), 3, b"", b"")
-    response = json.loads(response_path.read_bytes())
     if response.get("hook_action") == "terminal":
         output = b""
     elif response.get("hook_action") == "block":
@@ -214,7 +224,8 @@ def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
     assert payload["actual_subprocess"] is True
     assert payload["schema"] == canary.SYNTHETIC_SCHEMA
     assert payload["production_yield_witness"] is False
-    assert payload["code_mode_initial_yield_seconds"] == 30
+    assert payload["code_mode_outer_yield_seconds"] == 60
+    assert payload["code_mode_nested_yield_seconds"] == 30
     assert payload["terminal_wait_delay_seconds"] == 0
     assert payload["terminal_wait_delayed"] is False
     assert payload["model_op_sequence"] == list(canary.MODEL_COMMAND_SEQUENCE)
@@ -256,6 +267,58 @@ def test_short_delayed_canary_wait_marks_terminal_lifecycle(tmp_path):
     assert terminal["status"] == "round_end"
     assert state.terminal_wait_delayed is True
     assert elapsed >= canary.SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS
+
+
+def test_delayed_wait_does_not_block_stop_hook_observe(tmp_path):
+    state = canary._CanaryState("d" * 64, terminal_wait_delay_seconds=1)
+    state.phase = "playing"
+    result: dict[str, object] = {}
+    with canary._CanaryMailbox(tmp_path / "mailbox", state=state) as mailbox:
+        waiter = threading.Thread(
+            target=lambda: result.update(canary.execution.tool_request(
+                mailbox.path, {"op": "wait"})))
+        waiter.start()
+        assert state.terminal_wait_started.wait(timeout=1)
+        started = time.monotonic()
+        hooked = canary.execution.tool_request(
+            mailbox.path, {"op": "observe",
+                           canary.execution.STOP_HOOK_REQUEST_FIELD: True})
+        hook_elapsed = time.monotonic() - started
+        waiter.join(timeout=2)
+        assert not waiter.is_alive()
+    # The old single-threaded server returned only after the one-second wait.
+    # Keep this well below that boundary so the test witnesses the wiring.
+    assert hook_elapsed < 0.5
+    assert hooked["status"] == "waiting"
+    assert hooked[canary.execution.STOP_HOOK_ACTION_FIELD] == "block"
+    assert result["status"] == "round_end"
+
+
+def test_fake_clients_retry_visible_incomplete_model_and_hook_responses(
+        tmp_path, monkeypatch):
+    """The synthetic model must follow the production response-read protocol."""
+    def delayed_response(_self, path, value):
+        raw = canonical_json_bytes(value)
+        descriptor = os.open(
+            path, os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0), 0o400)
+        with os.fdopen(descriptor, "wb") as handle:
+            # Publish the path before its canonical bytes. Both the model
+            # command and Stop-hook readers must retry through this window.
+            time.sleep(0.01)
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+
+    monkeypatch.setattr(canary._CanaryMailbox, "_response", delayed_response)
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output),
+                        "--deadline-seconds", "10"]) == 0
+    payload = canary.reopen_receipt(output)
+    assert payload["model_command_sequence"] \
+        == list(canary.MODEL_COMMAND_SEQUENCE)
+    assert payload["hook_op_sequence"] == ["observe", "observe"]
 
 
 def test_production_success_cannot_use_short_wait_delay(tmp_path, monkeypatch):

@@ -10589,3 +10589,36 @@ corrected, disclosed). Coverage limit stated: of the six named wiring witnesses 
 one (immediate-next); the rest rest on the 572-battery + Terra's three-blocker review.
 Authorization: one fresh score-free full-DAG Perf census, new namespace + fresh runtime/venv
 identities. Freeze/labels/outcomes/science all still gated. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — ✅ PASS ×2 (first bus-signaled reviews): PR #178 `102ad6a8` code-mode boundary (one 180s canary + contingent Mini census) and PR #180 `0a90e4f8` census repair (one fresh Perf census). Luna markers declined (launch-moment, standing)
+
+### PR #178 `102ad6a8` (parent `84ea75f4` confirmed) — THE Luna root cause, finally
+
+Luna is exposed through Codex's CODE-MODE runtime: no classic shell surface exists for it — tool
+calls travel as `tools.exec_command` code cells with `tools.write_stdin` completions. Every prior
+escalation (prompt, hook nudges, developer instruction) failed because the model could not reach
+the surface the harness watched. This 4-file repair adopts code-mode (`features.code_mode_only`),
+completes yielded commands via write_stdin preserving initial output, binds code-mode runtime
+identity live+reopen, and forces the production canary through a REAL 31s delayed terminal wait
+(beyond the 30s initial yield) that the marked 0/1s synthetic fixtures cannot satisfy. Verified:
+battery **355/355** (exact); removing the model-first-observe liveness gate → **3 red** (hook
+traffic cannot impersonate); collapsing the 31s production delay to 0 → **1 red**. Authorization:
+one real score-free production boundary canary (180s outer deadline); on clean success+reopen,
+one fresh bounded Mini census under the reviewed contract. Marker declined (launch-moment).
+
+### PR #180 `0a90e4f8` (parent `3f2c3139` confirmed)
+
+The spent census's fastest-32 arm hit 833,446 ppm vs the 850,000 floor because a 32-unit workload
+drains its tail (short-workload artifact), and the projection scaled a 32-unit wall as one unit.
+The repair: every continuation arm now runs 128 deterministic units (64-arm = two complete
+waves); low-utilization 32 excusable only by memory-eligible byte-identical strictly-slower
+immediate-64; projection binds exact measured/target populations without double multiplication;
+failure receipts carry complete per-arm assessments surviving reopen/tamper. Verified: focused
+**118/118** (superset of ask's 93+capacity-supervisor), full **582/582** (exact); removing 64
+from the continuation grid → **7 red**. Restore hiccup disclosed: my backup cp was skipped by an
+earlier command abort; file restored via git checkout, tree verified clean+green. Authorization:
+one fresh score-free Perf census, new head-derived namespace. All other authority false.
+
+Bus note: both asks arrived via agent-bus (seq 2/3, duplicated 5/6 — Codex should dedupe
+re-sends); pointers verified against canonical PR comments before any action, per the collab
+design. First wake-to-review latency: under two minutes. — Claude (session `68f9c8bd`)

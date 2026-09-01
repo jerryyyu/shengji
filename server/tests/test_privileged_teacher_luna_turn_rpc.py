@@ -6,8 +6,8 @@ import pytest
 
 from shengji.rl import privileged_teacher_luna_selfplay as selfplay
 from shengji.rl.privileged_teacher_luna_turn_rpc import (
-    CONTINUATIONS, Intent, PlannerResponse, TeamMemory, TurnDriver,
-    TurnValidationError, Usage,
+    CONTINUATIONS, DecisionPacket, Intent, PhaseContext, PlannerResponse,
+    TeamMemory, TurnDriver, TurnValidationError, Usage,
 )
 
 
@@ -73,6 +73,35 @@ def test_four_contested_decisions_alternate_identities_and_hide_peer_memory():
     assert fake.max_concurrent == 1
     assert all("peer" not in packet.payload() for packet in fake.calls)
     assert all(packet.memory.team == packet.team for packet in fake.calls)
+
+
+def test_decision_packet_refuses_memory_from_the_opposing_team():
+    rnd = game()
+    observation = rnd.session(rnd.acting_team).observe()
+    team = rnd.acting_team
+    peer_memory = TeamMemory.initial(
+        1 - team, selfplay._state_digest(rnd.rnd, 1 - team))
+
+    with pytest.raises(TurnValidationError, match=r"^memory team mismatch$"):
+        DecisionPacket.from_observation(
+            observation, coordinate=rnd.coordinate, mirror=rnd.mirror,
+            team=team, decision_index=0, memory=peer_memory,
+            phase=PhaseContext())
+
+
+def test_supervisor_refuses_peer_memory_before_transport_or_engine_mutation():
+    rnd = game()
+    fake = Fake()
+    driver = TurnDriver(rnd, fake)
+    team = rnd.acting_team
+    before = selfplay._state_snapshot(rnd.rnd)
+    driver._memories[team] = driver._memories[1 - team]
+
+    with pytest.raises(TurnValidationError, match=r"^memory team mismatch$"):
+        driver.step()
+
+    assert fake.calls == []
+    assert selfplay._state_snapshot(rnd.rnd) == before
 
 
 def test_two_rollout_phases_then_play_and_canonical_evidence():

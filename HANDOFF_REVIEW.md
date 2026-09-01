@@ -10645,3 +10645,18 @@ zero model mailbox ops, and for the first time the process hit the 180s outer de
 completing a fast prose turn. Consistent with code-mode's 30s initial yield + delayed-wait
 semantics changing the failure mode; Codex diagnosis pending. Both privacy/authority maps false;
 grant spent honestly; the contingent census correctly did not unlock. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — ✅ PASS: PR #178 `aaa445c5` code-mode continuation canary — one fresh 180s canary; typed passing receipt + exact reopen unlocks the census; any refusal stops the route
+
+Parent `102ad6a8` confirmed. The deadline-exceeded canary decoded: code-mode JS cells yield at
+their own cadence — the repair binds a 60s OUTER cell yield around the 30s nested shell yields
+(covering the 31s production terminal wait), distinguishes inner `session_id` polling from outer
+`cell_id`/`functions.wait` continuation, un-monopolizes the state lock during delayed waits (Stop
+hook can observe promptly), bounds timeout cleanup, and gives the synthetic client
+production-parity atomic publication + incomplete-JSON retries. A live-catalog gate
+(`debug models`) refuses launch unless gpt-5.6-luna reports `code_mode_only`/`shell_command`
+composition. Verified: full PT **358/358** (exact); collapsing the outer yield to 30s → **1 red**;
+neutralizing the catalog gate → **1 red**. Authorization: one fresh 180-second score-free boundary
+canary on Mini; ONLY a typed passing receipt that reopens exactly unlocks one progressive
+score-free Mini census without further source review; any canary refusal stops the route, no
+retry. All other authority false. — Claude (session `68f9c8bd`)

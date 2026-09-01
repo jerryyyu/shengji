@@ -428,6 +428,204 @@ def test_continuation_capacity_operation_has_128_units_and_fixed_32_cycle(monkey
         f"{i % 32:064x}" for i in range(128)]
 
 
+def _capacity_training_fixture(index, *, candidates=2, audit_salt=""):
+    from shengji.rl.world_afterstate_v2_population import PopulationMaterialV2
+
+    digest = lambda value: hashlib.sha256(value.encode("ascii")).hexdigest()
+    state = SimpleNamespace(
+        deal_sha256=digest(f"deal:{index}"),
+        slot_sha256=digest(f"slot:{index}"),
+        state_sha256=digest(f"state:{index}"),
+        source="natural", role="attacker", phase="early", position="lead",
+        trump_rank="2", trump_mode="S")
+    successor_sha256s = tuple(
+        digest(f"successor:{index}:{candidate}")
+        for candidate in range(candidates))
+    candidate_set_sha256 = hashlib.sha256(canonical_json_bytes({
+        "schema": "world-afterstate-v2-candidate-set-v1",
+        "state_sha256": state.state_sha256,
+        "successor_sha256s": list(successor_sha256s),
+    })).hexdigest()
+    audit_raws = tuple(canonical_json_bytes({
+        "fixture": index, "candidate": candidate, "salt": audit_salt,
+    }) for candidate in range(candidates))
+    candidate_rows = tuple(SimpleNamespace(
+        candidate_index=candidate, protected_incumbent=candidate == 0,
+        audit_sha256=hashlib.sha256(audit_raws[candidate]).hexdigest(),
+        successor_sha256=successor_sha256s[candidate])
+        for candidate in range(candidates))
+    material = object.__new__(PopulationMaterialV2)
+    object.__setattr__(material, "state", state)
+    object.__setattr__(material, "candidate_set_sha256", candidate_set_sha256)
+    object.__setattr__(material, "candidates", candidate_rows)
+    object.__setattr__(material, "audit_raws", audit_raws)
+    prestate = {"public": {"attacker_points": 0}, "fixture": index}
+    object.__setattr__(material, "prestate", prestate)
+    object.__setattr__(material, "schema", "capacity-test-material")
+    return FixtureV2(
+        prestate, audit_raws=audit_raws, deal_sha256=state.deal_sha256,
+        material=material)
+
+
+def test_capacity_training_batch_uses_128_complete_rows_and_binds_all_materials(
+        monkeypatch):
+    import numpy as np
+    import shengji.rl.world_afterstate as afterstate
+    from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
+    from shengji.rl.encode import N_CARDS
+    from shengji.rl.world_afterstate import (
+        PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS,
+        WorldAfterstateTensorsV0)
+
+    monkeypatch.setattr(
+        runner.PopulationMaterialV2, "validate", lambda _self: None)
+
+    def tensors(_audit):
+        return WorldAfterstateTensorsV0(
+            np.zeros(PUBLIC_DIM, dtype=np.float32),
+            np.zeros((0, HISTORY_EVENT_DIM), dtype=np.float32),
+            np.zeros((WORLD_RECEIVERS, N_CARDS), dtype=np.float32),
+            np.array([1.0, 0.0], dtype=np.float32))
+
+    monkeypatch.setattr(afterstate, "build_afterstate_tensors", tensors)
+    fixtures = tuple(_capacity_training_fixture(index) for index in range(32))
+    first = runner._capacity_training_batch(fixtures)
+    first.validate()
+    assert first.size == runner.CAPACITY_TRAINING_EXAMPLES == 128
+    assert first.root_count == 8
+    unselected = next(index for index, fixture in enumerate(fixtures)
+                      if fixture.deal_sha256 not in first.deal_sha256s)
+
+    # An unselected retained material must still bind the workload through the
+    # complete 32-material population digest.
+    changed = list(fixtures)
+    changed[unselected] = _capacity_training_fixture(
+        unselected, audit_salt="changed")
+    second = runner._capacity_training_batch(changed)
+    assert second.example_keys == first.example_keys
+    assert second.continuation_sha256s != first.continuation_sha256s
+    assert not __import__("torch").equal(
+        second.target_categories, first.target_categories)
+
+
+def test_capacity_training_batch_refuses_when_complete_roots_cannot_total_128(
+        monkeypatch):
+    import numpy as np
+    import shengji.rl.world_afterstate as afterstate
+    from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
+    from shengji.rl.encode import N_CARDS
+    from shengji.rl.world_afterstate import (
+        PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS,
+        WorldAfterstateTensorsV0)
+
+    monkeypatch.setattr(
+        runner.PopulationMaterialV2, "validate", lambda _self: None)
+    monkeypatch.setattr(afterstate, "build_afterstate_tensors", lambda _audit:
+        WorldAfterstateTensorsV0(
+            np.zeros(PUBLIC_DIM, dtype=np.float32),
+            np.zeros((0, HISTORY_EVENT_DIM), dtype=np.float32),
+            np.zeros((WORLD_RECEIVERS, N_CARDS), dtype=np.float32),
+            np.array([1.0, 0.0], dtype=np.float32)))
+    fixtures = tuple(_capacity_training_fixture(index, candidates=3)
+                     for index in range(32))
+    with pytest.raises(CapacityRunnerError, match="complete 128-example"):
+        runner._capacity_training_batch(fixtures)
+
+
+def test_capacity_training_batch_reaches_real_optimizer_and_model_state(
+        monkeypatch):
+    import numpy as np
+    import shengji.rl.world_afterstate as afterstate
+    from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
+    from shengji.rl.encode import N_CARDS
+    from shengji.rl.world_afterstate import (
+        PERSPECTIVE_DIM, PUBLIC_DIM, WORLD_RECEIVERS,
+        WorldAfterstateTensorsV0)
+
+    monkeypatch.setattr(
+        runner.PopulationMaterialV2, "validate", lambda _self: None)
+    monkeypatch.setattr(afterstate, "build_afterstate_tensors", lambda _audit:
+        WorldAfterstateTensorsV0(
+            np.zeros(PUBLIC_DIM, dtype=np.float32),
+            np.zeros((0, HISTORY_EVENT_DIM), dtype=np.float32),
+            np.zeros((WORLD_RECEIVERS, N_CARDS), dtype=np.float32),
+            np.array([1.0, 0.0], dtype=np.float32)))
+    fixtures = tuple(_capacity_training_fixture(index) for index in range(32))
+    operation = runner._model_operation("member-concurrency", 4, fixtures)
+    assert operation.measured_unit_count == 4
+    result = runner._run_with_torch_threads(operation, 1)
+    assert len(result) == 64 and result != runner._ordered_fixture_identity(fixtures)
+
+
+@pytest.mark.parametrize(("stage", "width", "member_count"), (
+    ("member-concurrency", 4, 4),
+    ("cohort-concurrency", 4, 16),
+))
+def test_training_capacity_operations_wire_real_128_row_batch_and_population(
+        monkeypatch, stage, width, member_count):
+    """Witness the repaired workload at the timed-operation boundary."""
+    import numpy as np
+    import shengji.rl.world_afterstate as afterstate
+    import shengji.rl.world_afterstate_v2_model as model_module
+    import shengji.rl.world_afterstate_v2_training as training_module
+    from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
+    from shengji.rl.encode import N_CARDS
+    from shengji.rl.world_afterstate import (
+        PUBLIC_DIM, WORLD_RECEIVERS, WorldAfterstateTensorsV0)
+
+    monkeypatch.setattr(
+        runner.PopulationMaterialV2, "validate", lambda _self: None)
+    monkeypatch.setattr(afterstate, "build_afterstate_tensors", lambda _audit:
+        WorldAfterstateTensorsV0(
+            np.zeros(PUBLIC_DIM, dtype=np.float32),
+            np.zeros((0, HISTORY_EVENT_DIM), dtype=np.float32),
+            np.zeros((WORLD_RECEIVERS, N_CARDS), dtype=np.float32),
+            np.array([1.0, 0.0], dtype=np.float32)))
+
+    class FakeModel:
+        state_sha256 = "0" * 64
+
+    calls = []
+
+    def train_epoch(model, _optimizer, batches, *, epoch, config):
+        assert len(batches) == 1
+        batch = batches[0]
+        batch.validate()
+        assert batch.size == runner.CAPACITY_TRAINING_EXAMPLES == 128
+        assert batch.root_count == 8
+        state_sha256 = hashlib.sha256(canonical_json_bytes({
+            "example_keys": list(batch.example_keys),
+            "continuation_sha256s": list(batch.continuation_sha256s),
+            "target_categories": batch.target_categories.tolist(),
+        })).hexdigest()
+        model.state_sha256 = state_sha256
+        calls.append((batch.size, batch.root_count, epoch))
+
+    monkeypatch.setattr(model_module, "new_world_afterstate_v2_model",
+                        lambda _seed: FakeModel())
+    monkeypatch.setattr(training_module, "new_optimizer",
+                        lambda _model, _config: object())
+    monkeypatch.setattr(training_module, "train_epoch", train_epoch)
+    monkeypatch.setattr(training_module, "model_state_sha256",
+                        lambda model: model.state_sha256)
+
+    fixtures = tuple(_capacity_training_fixture(index) for index in range(32))
+    selected = runner._capacity_training_batch(fixtures)
+    unselected = next(index for index, fixture in enumerate(fixtures)
+                      if fixture.deal_sha256 not in selected.deal_sha256s)
+    first = runner._run_with_torch_threads(
+        runner._model_operation(stage, width, fixtures), 1)
+
+    changed = list(fixtures)
+    changed[unselected] = _capacity_training_fixture(
+        unselected, audit_salt="operation-changed")
+    second = runner._run_with_torch_threads(
+        runner._model_operation(stage, width, changed), 1)
+
+    assert calls == [(128, 8, 1)] * (member_count * 2)
+    assert first != second
+
+
 def test_score_free_preflight_refuses_expired_batch_and_worker_failure(
         monkeypatch):
     monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 1)

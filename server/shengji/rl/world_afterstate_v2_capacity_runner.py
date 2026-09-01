@@ -48,7 +48,9 @@ from .world_afterstate_v2_capacity import (
 from .world_afterstate_v2_protocol import (
     ATTEMPT_SCHEMA, MEMORY_PERCENT_MAX, P0_DEALS, TIER_SPECS,
 )
-from .world_afterstate_v2_schedule import MAX_EPOCHS
+from .world_afterstate_v2_schedule import (
+    MAX_EPOCHS, ordered_root_ids_for_epoch, training_epoch_batches,
+)
 from .world_afterstate_v2_population import PopulationMaterialV2
 from .world_afterstate_v2_source_driver import drive_population_attempt_v2
 from .world_afterstate_v2_execution import (
@@ -65,6 +67,7 @@ PREFLIGHT_RESERVED_NATURAL_ROOTS = 16
 PREFLIGHT_RESERVED_NATURAL_PAIRS = PREFLIGHT_RESERVED_NATURAL_ROOTS // 2
 PREFLIGHT_MAX_NATURAL_ROOTS = 17
 CONTINUATION_MIN_WORK_UNITS = MIN_CONTINUATION_WORK_UNITS
+CAPACITY_TRAINING_EXAMPLES = 128
 SYNTHETIC_BRAND = "SYNTHETIC_TEST_MEASUREMENT_ONLY"
 RUNNER_SCHEMA = "world-afterstate-v2-capacity-runner-v1"
 OPERATION_OUTPUT_SCHEMA = "world-afterstate-v2-capacity-operation-output-v1"
@@ -958,8 +961,39 @@ def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Any
     return run
 
 
-def _capacity_training_batch(fixtures: Sequence[FixtureV2]) -> Any:
-    """Build one typed, score-free training batch before timing starts.
+def _capacity_training_population_identity(
+        fixtures: Sequence[FixtureV2]) -> str:
+    """Bind every retained material into the score-free training workload."""
+    values = tuple(fixtures)
+    if not values or any(type(item.material) is not PopulationMaterialV2
+                         for item in values):
+        raise CapacityRunnerError("capacity training material is missing")
+    rows = []
+    for fixture in values:
+        material = fixture.material
+        assert material is not None
+        material.validate()
+        rows.append({
+            "fixture_sha256": fixture.fixture_sha256,
+            "deal_sha256": material.state.deal_sha256,
+            "slot_sha256": material.state.slot_sha256,
+            "state_sha256": material.state.state_sha256,
+            "candidate_set_sha256": material.candidate_set_sha256,
+            "candidates": [{
+                "candidate_index": candidate.candidate_index,
+                "audit_sha256": candidate.audit_sha256,
+                "successor_sha256": candidate.successor_sha256,
+            } for candidate in material.candidates],
+        })
+    return _sha({
+        "schema": "world-afterstate-v2-capacity-training-population-v1",
+        "materials": rows,
+    })
+
+
+def _capacity_training_examples(
+        fixtures: Sequence[FixtureV2]) -> tuple[Any, ...]:
+    """Build complete score-free candidate x replica roots from all fixtures.
 
     Capacity labels are deterministic workload targets only.  They are kept in
     memory and are deliberately derived from sealed candidate/audit identity;
@@ -968,45 +1002,96 @@ def _capacity_training_batch(fixtures: Sequence[FixtureV2]) -> Any:
     import json as _json
     from .world_afterstate import build_afterstate_tensors
     from .world_afterstate_v2_training import (
-        WorldAfterstateV2TrainingExample, collate_training_examples)
+        WorldAfterstateV2TrainingExample)
     from .world_afterstate import OUTCOME_CLASSES
     values = tuple(fixtures)
     if not values or any(type(item.material) is not PopulationMaterialV2
                          for item in values):
         raise CapacityRunnerError("capacity training material is missing")
-    material = values[0].material
-    assert material is not None
-    material.validate()
+    population_identity = _capacity_training_population_identity(values)
     rows = []
-    points = material.prestate.get("public", {}).get("attacker_points")
     from .world_afterstate_v2_protocol import prior_points_bucket
-    points_bucket = prior_points_bucket(points)
-    for candidate, raw in zip(material.candidates, material.audit_raws, strict=True):
-        audit = _json.loads(raw.decode("ascii"))
-        tensors = build_afterstate_tensors(audit)
-        for replica in range(8):
-            continuation_identity = _sha({
-                "namespace": "world-afterstate-v2-capacity-label-v1",
-                "state": material.state.state_sha256,
-                "replica": replica})
-            target = int(continuation_identity[:8], 16) % OUTCOME_CLASSES
-            rows.append(WorldAfterstateV2TrainingExample(
-                deal_sha256=material.state.deal_sha256,
-                slot_sha256=material.state.slot_sha256,
-                state_sha256=material.state.state_sha256,
-                candidate_set_sha256=material.candidate_set_sha256,
-                candidate_index=candidate.candidate_index,
-                protected_incumbent=candidate.protected_incumbent,
-                successor_sha256=candidate.successor_sha256,
-                continuation_sha256=continuation_identity,
-                replica=replica, source=material.state.source, split="fit",
-                role=material.state.role, phase=material.state.phase,
-                position=material.state.position,
-                trump_rank=material.state.trump_rank,
-                trump_mode=material.state.trump_mode,
-                points_bucket=points_bucket, tensors=tensors,
-                signed_level_category=target))
-    return collate_training_examples(tuple(rows))
+    for fixture in values:
+        material = fixture.material
+        assert material is not None
+        points = material.prestate.get("public", {}).get("attacker_points")
+        points_bucket = prior_points_bucket(points)
+        for candidate, raw in zip(
+                material.candidates, material.audit_raws, strict=True):
+            audit = _json.loads(raw.decode("ascii"))
+            tensors = build_afterstate_tensors(audit)
+            for replica in range(8):
+                # The CRN identity stays common across candidates at one
+                # state/replica, matching production training semantics.
+                continuation_identity = _sha({
+                    "namespace": "world-afterstate-v2-capacity-label-v2",
+                    "population_sha256": population_identity,
+                    "state_sha256": material.state.state_sha256,
+                    "replica": replica})
+                target_identity = _sha({
+                    "namespace": "world-afterstate-v2-capacity-target-v2",
+                    "population_sha256": population_identity,
+                    "state_sha256": material.state.state_sha256,
+                    "candidate_set_sha256": material.candidate_set_sha256,
+                    "candidate_index": candidate.candidate_index,
+                    "audit_sha256": candidate.audit_sha256,
+                    "successor_sha256": candidate.successor_sha256,
+                    "replica": replica,
+                })
+                target = int(target_identity[:8], 16) % OUTCOME_CLASSES
+                rows.append(WorldAfterstateV2TrainingExample(
+                    deal_sha256=material.state.deal_sha256,
+                    slot_sha256=material.state.slot_sha256,
+                    state_sha256=material.state.state_sha256,
+                    candidate_set_sha256=material.candidate_set_sha256,
+                    candidate_index=candidate.candidate_index,
+                    protected_incumbent=candidate.protected_incumbent,
+                    successor_sha256=candidate.successor_sha256,
+                    continuation_sha256=continuation_identity,
+                    replica=replica, source=material.state.source, split="fit",
+                    role=material.state.role, phase=material.state.phase,
+                    position=material.state.position,
+                    trump_rank=material.state.trump_rank,
+                    trump_mode=material.state.trump_mode,
+                    points_bucket=points_bucket, tensors=tensors,
+                    signed_level_category=target))
+    return tuple(rows)
+
+
+def _capacity_training_batch(fixtures: Sequence[FixtureV2]) -> Any:
+    """Select one exact 128-row production-formatted capacity batch.
+
+    Roots remain complete and retain their relative production epoch order.
+    All retained fixtures enter the population identity even when the exact
+    root subset needed to total 128 rows does not contain every fixture.
+    """
+    examples = _capacity_training_examples(fixtures)
+    roots: dict[str, list[Any]] = {}
+    for example in examples:
+        roots.setdefault(example.root_key, []).append(example)
+    ordered_roots = ordered_root_ids_for_epoch(tuple(roots), epoch=1)
+    selections: dict[int, tuple[str, ...]] = {0: ()}
+    for root in ordered_roots:
+        count = len(roots[root])
+        for prior_count, prior_roots in tuple(
+                sorted(selections.items(), reverse=True)):
+            combined = prior_count + count
+            if (combined <= CAPACITY_TRAINING_EXAMPLES
+                    and combined not in selections):
+                selections[combined] = (*prior_roots, root)
+    selected_roots = selections.get(CAPACITY_TRAINING_EXAMPLES)
+    if selected_roots is None:
+        raise CapacityRunnerError(
+            "capacity training cannot form one complete 128-example batch")
+    selected = tuple(example for root in selected_roots
+                     for example in roots[root])
+    schedule, batches = training_epoch_batches(
+        selected, epoch=1, batch_example_cap=CAPACITY_TRAINING_EXAMPLES)
+    if (len(batches) != 1
+            or batches[0].size != CAPACITY_TRAINING_EXAMPLES
+            or tuple(schedule.ordered_root_ids) != selected_roots):
+        raise CapacityRunnerError("capacity training batch schedule drift")
+    return batches[0]
 
 
 def _tensor_identity(value: Any) -> str:
@@ -1122,9 +1207,10 @@ def _model_operation(stage: str, variant: int,
             # process-global RNG state.
             torch.manual_seed(0)
             if stage in {"member-concurrency", "cohort-concurrency"}:
-                # Every arm executes the same four-model/four-step population;
-                # only executor width varies.  State digests bind post-step
-                # model bytes rather than inference outputs.
+                # Every arm executes the same fixed model population and the
+                # same production-formatted 128-row optimizer batch; only
+                # executor width varies. State digests bind post-step model
+                # bytes rather than inference outputs.
                 from .world_afterstate_v2_training import (
                     WorldAfterstateV2TrainingConfig, model_state_sha256,
                     new_optimizer, train_epoch)

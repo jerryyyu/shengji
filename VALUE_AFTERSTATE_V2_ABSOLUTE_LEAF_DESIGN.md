@@ -709,6 +709,19 @@ Binding only the outer CLI or only rehashing the pathname is insufficient.
 | inference batch | 32, 64, 128, 256 |
 | reconstruction | 1, 4, 8, 16, 32-worker scoring/hash verification |
 
+The member- and cohort-concurrency arms each train every fixed model on one
+identical 128-example score-free batch.  The batch is assembled from complete
+candidate-by-eight-replica roots drawn across the 32 retained preflight
+materials in the production epoch order; roots are never split.  Every
+retained material is bound into the capacity-label identity, so changing an
+unselected material still changes the measured workload.  Deterministic
+pseudo-targets exercise the real collation, loss, optimizer, and state-digest
+path but open no continuation or outcome.  The member arm always trains four
+models and the cohort arm always trains four complete four-member cohorts;
+only executor concurrency changes between variants.  A retained population
+that cannot form the exact complete-root 128-example batch refuses before
+measurement rather than falling back to a singleton or partial root.
+
 Inference-batch arms must seal byte-identical **production prediction
 values**: the ordered six-decimal canonical probabilities and their exact PPB
 encoding. Raw pre-softmax float32 logits are not an artifact identity. They

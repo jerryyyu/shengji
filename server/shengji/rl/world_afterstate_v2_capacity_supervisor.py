@@ -879,7 +879,7 @@ def run_full_dag_supervisor(
             root, split="select", select_subfold="epoch-select")
             for root in roots if root.deal_sha256 in epoch_select_deals)
         precision_roots = tuple(__import__("dataclasses").replace(
-            root, split="select", select_subfold="epoch-select")
+            root, split="select", select_subfold="precision-select")
             for root in roots if root.deal_sha256 in precision_deals)
         audit_roots = tuple(__import__("dataclasses").replace(
             root, split="audit", select_subfold=None)

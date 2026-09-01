@@ -626,7 +626,7 @@ class _BoundedMeasurementBackend:
             byte_identity_sha256=self.identity, mean_cpu_utilization_ppm=1)
 
 
-def test_full_dag_supervisor_wires_adjacent_pair_world_control(
+def test_full_dag_supervisor_wires_pair_control_and_precision_subfold(
         monkeypatch, tmp_path):
     ledger = build_population_slot_ledger(TIER_SPECS[0])
     natural_slots = tuple(slot for slot in ledger if slot.group == "natural-fit")
@@ -821,13 +821,25 @@ def test_full_dag_supervisor_wires_adjacent_pair_world_control(
 
     monkeypatch.setattr(
         "shengji.rl.world_afterstate_v2_inference.predict_roots_v2", predict)
+    def prediction_manifest(roots, _rows, **kwargs):
+        return {
+            **kwargs,
+            "root_select_subfolds": tuple(
+                root.select_subfold for root in roots),
+        }
+
     monkeypatch.setattr(
         supervisor, "prediction_population_manifest_v2",
-        lambda _roots, _rows, **kwargs: dict(kwargs))
+        prediction_manifest)
     prediction_store = {}
 
     def publish_prediction(_root, manifest, *, control_name, seed_block,
                            split, subfold=None):
+        expected_subfolds = ((subfold,) if split == "select" else (None,))
+        actual_subfolds = tuple(sorted(
+            set(manifest["root_select_subfolds"]),
+            key=lambda value: "" if value is None else value))
+        assert actual_subfolds == expected_subfolds
         key = (control_name, seed_block, split)
         prediction_store[key] = manifest
         return SimpleNamespace(

@@ -57,6 +57,16 @@ def test_validated_forward_is_bit_exact_with_the_public_boundary():
     assert torch.equal(public, validated)
 
 
+def test_public_forward_refuses_malformed_batch_before_validated_hotpath():
+    model = new_world_afterstate_v2_model(19)
+    batch = collate_world_afterstate_tensors([_tensor()])
+    batch.public[0, 0] = 0.25
+    with pytest.raises(
+            WorldAfterstateV2ModelError,
+            match="V2 public card-plane encoding drift"):
+        model(batch)
+
+
 def test_uniform_absolute_rows_are_one():
     rows = absolute_cross_entropy_rows(
         torch.zeros((3, OUTCOME_CLASSES)), torch.tensor([0, 1, 203]))

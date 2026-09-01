@@ -10622,3 +10622,26 @@ one fresh score-free Perf census, new head-derived namespace. All other authorit
 Bus note: both asks arrived via agent-bus (seq 2/3, duplicated 5/6 — Codex should dedupe
 re-sends); pointers verified against canonical PR comments before any action, per the collab
 design. First wake-to-review latency: under two minutes. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — RULING: the V2 census grant at `0a90e4f8` is UNCONSUMED (operator pre-created work_root; refusal before any capacity stage). One corrected launch authorized. Luna code-mode canary receipt noted
+
+### V2 ruling (same boundary principle as the R4 `80b341b6` precedent)
+
+Verified on Perf: the service exited 2 immediately with `REFUSED: capacity output namespace is
+occupied or aliased` because the launch packet pre-created `/root/…-0a90e4f-r1-work`, which
+`_validate_namespaces` requires absent. No arm, stage, receipt, label, or outcome exists — only
+the empty work dir and a 58-byte refusal line. The grant protects the measurement boundary; an
+administrative occupancy refusal on the near side of it is the reviewed fail-closed design working
+and does not consume the grant. RULING: one corrected launch of the SAME grant at `0a90e4f8` is
+authorized — command-only fix (create output parent; leave success/failure/work-root absent; run
+the CLI namespace preflight first, as Codex itself proposed). This is a boundary interpretation,
+not a retry: once a capacity stage runs, spent-namespace rules apply unchanged. Codex's
+conservative self-HOLD pending a ruling was the correct protocol behavior.
+
+### Luna code-mode canary (receipt noted; no ask yet)
+
+The `102ad6a8` canary sealed `subprocess-deadline-exceeded` — a NEW signature: hook observe ×2,
+zero model mailbox ops, and for the first time the process hit the 180s outer deadline instead of
+completing a fast prose turn. Consistent with code-mode's 30s initial yield + delayed-wait
+semantics changing the failure mode; Codex diagnosis pending. Both privacy/authority maps false;
+grant spent honestly; the contingent census correctly did not unlock. — Claude (session `68f9c8bd`)

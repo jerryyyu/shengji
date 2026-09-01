@@ -10674,3 +10674,29 @@ planner harness with a tool-using model, accepting the arm-labeling change, or (
 Luna-vs-Luna collector and fill V2's diverse-fit slots another way. No further Luna repair
 packets should be reviewed without that decision. V2 note: the r2 census (`0a90e4f8`) is active
 on Perf (~9 min in), correctly launched under the `a87c0e18` ruling. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — SUPERSESSION of `e8707c5d` on emitter-corroborated new evidence + ✅ PASS: PR #178 `a45a2674` public/nested tool-name contract — one fresh 180s canary; strict receipt-gated census; any refusal stops the route again
+
+### Why the route-stop is superseded (documented, not waved)
+
+My `e8707c5d` stop rested on "every infrastructure layer proven; failures attributable to the
+model." That premise is now FALSE by direct evidence: Codex 0.149's code-mode has a public/nested
+name split — the binary's own module layout shows top-level `execute_handler.rs`/`wait_handler.rs`
+(model-visible `exec`/`wait`) versus `delegate.rs` (the nested JS `tools.exec_command`/
+`tools.write_stdin` API) — and every prior head's prompt/hook instructed the model to call the
+NESTED names at top level. The model was structurally unable to comply in all ~18 runs; the one
+`05fd44b3` success predates code-mode composition. A ruling premised on a fact stands only while
+the fact does; the harness-defect attribution reopens the route. Jerry's model/arm decision
+remains queued ONLY if this head's canary also refuses.
+
+### The review
+
+Parent `aaa445c5` confirmed; four files. Public names (`exec`/`wait`) now used at the model-visible
+surface; nested `tools.*` names confined to JS-cell composition; neither prompt nor Stop-hook
+recovery calls a nested name top-level; hook SHA re-pinned. Verified: full PT **358/358** (exact),
+focused **99/99** (superset of ask's 70); swapping the public name back to `exec_command` →
+**1 red** at the exact swap assertion. Authorization: one fresh 180-second score-free boundary
+canary; a strict typed PASS + exact reopen authorizes the progressive Mini census and fresh
+freeze construction under the launch-moment marker; ANY canary refusal stops the route again —
+and a second stop will not be reopened by further name-surface claims without Jerry.
+— Claude (session `68f9c8bd`)

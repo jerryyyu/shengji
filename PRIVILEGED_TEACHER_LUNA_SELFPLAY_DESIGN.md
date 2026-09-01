@@ -1,10 +1,14 @@
 # PT-Luna Self-Play — fresh full-round state-source acquisition
 
-Status: repaired design work only. This packet authorizes no Mini execution,
-model call, value label, strength claim, gameplay change, merge, promotion,
-retry, or deployment. It supersedes only the model-interaction contract of the
-failed concurrent collector; the population, mirrors, Value-use boundary, and
-all-false authority remain unchanged.
+Status: simplified repair design only. This packet authorizes no formal Mini
+capacity run, scientific execution, value label, strength claim, gameplay
+change, merge, promotion, retry, or deployment. Jerry separately authorizes
+bounded casual, non-scientific probes after this simplified design review;
+those probes use separate namespaces, cannot satisfy a formal capacity gate,
+and cannot enter the 52-deal population. This design supersedes only the
+model-interaction and capacity contract of the failed collectors; the
+population, mirrors, Value-use boundary, and all-false authority remain
+unchanged.
 
 ## 0. Failure evidence and redesign ruling
 
@@ -31,6 +35,23 @@ The supervisor constructs the observation, executes bounded rollouts, commits
 the selected legal candidate, journals the transition, and invokes at most one
 model call at a time per game.
 
+The reviewed `f4287954` implementation proved that boundary, but its first
+formal full-game capacity attempt refused at the one-worker arm. The receipt
+records zero completed games, 87 RPCs, 982,119 tokens, zero tool events, and
+1,622 seconds of wall time. Its first game crossed the 1,200-second deadline;
+its second failed after 406 seconds, but the capacity schema discarded the
+exception class. Both games ran `gpt-5.6-luna` at high reasoning effort and
+restarted the pinned Codex process for every message phase, with effectively
+no prompt-cache reuse. This is a resource/observability failure, not evidence
+against supervisor-owned RPC mechanics or Luna self-play quality.
+
+The launch-minimal repair keeps the proven supervisor-owned RPC boundary. It
+changes reasoning effort to medium, records a typed failure in each per-game
+metric, and replaces the progressive worker ladder with one fixed four-worker
+topology. Persistent model-owned tool loops, mailboxes, and a new transport are
+explicitly out of scope: the sealed `50d8a8c` failure already showed that the
+model-owned engine-tool route could exit cleanly without advancing the game.
+
 ## 1. Purpose
 
 PT-Luna self-play collects fresh, complete, full-information Shengji
@@ -52,7 +73,7 @@ not substitute late-endgame states for full-game evidence.
 ## 2. Supervisor-owned turn RPC contract
 
 Each played game has one engine-owned `Round` and two logical
-`gpt-5.6-luna` planners at high reasoning effort. Agent A controls both seats
+`gpt-5.6-luna` planners at medium reasoning effort. Agent A controls both seats
 of one partnership and agent B controls both seats of the other. They are
 identities and private memory streams, not concurrently running processes.
 
@@ -115,7 +136,7 @@ The first implementation pins the ChatGPT-authenticated Codex CLI at `0.149.0`
 and uses it as a message transport, not as an engine agent:
 
 - one `codex exec --ephemeral --output-schema` call per RPC phase;
-- model `gpt-5.6-luna`, high reasoning, ignored user/rule configuration;
+- model `gpt-5.6-luna`, medium reasoning, ignored user/rule configuration;
 - a fresh empty read-only workspace with no mailbox, engine tool, repo, peer
   path, hook, writable state, or world artifact;
 - the complete decision packet supplied in the prompt; and
@@ -151,10 +172,10 @@ silently deduplicated. The source canary proved that `uniqueItems` itself is
 not supported by this Codex schema path, so it is not falsely claimed as a
 provider-side guard.
 
-The supervisor may run independent games concurrently after capacity selects
-a worker count, but at most one model RPC is in flight per game. No model-call
-retry, game replacement, or partial-record deletion is allowed in the
-scientific namespace.
+The supervisor runs exactly four independent games concurrently after the
+fixed-topology capacity gate passes, but at most one model RPC is in flight per
+game. No model-call retry, game replacement, or partial-record deletion is
+allowed in the scientific namespace.
 
 The official canary and capacity census re-attest the exact runtime immediately
 before publishing their final receipts, after all model work has completed.
@@ -231,7 +252,7 @@ ineligible rather than silently selecting a different source.
 ## 5. Score-free Mini capacity census
 
 Capacity is separate from the 52 scientific source clusters and cannot use
-their namespace. Before the progressive census, one real nonterminal boundary
+their namespace. Before the fixed-topology census, one real nonterminal boundary
 canary must open a natural state with more than one legal candidate, obtain a
 schema-valid rollout intent, execute and return its results, obtain a legal
 play intent, and commit exactly one engine transition. It must observe zero
@@ -241,8 +262,9 @@ alternation canary must then complete at least four contested decisions across
 both team identities with no peer-memory exposure and at most one in-flight
 RPC per game. Neither canary retains outcomes or authorizes collection.
 
-Only then may capacity run progressive game-worker arms `1, 2, 4, 6, 8`, with
-exactly two complete capture-only games per worker at each reached arm. It
+Only then may capacity run game-worker arms `1, 4`, with exactly two complete
+capture-only games per worker at each reached arm. Arm 1 is a health and serial
+baseline; arm 4 is the only selectable scientific topology. It
 retains only completion and verification status, per-game and per-RPC wall
 time, busy CPU, process-tree peak RSS, swap, actual process/schema/tool-event
 counts, token-rate telemetry, prompt-cache telemetry when supplied by the
@@ -250,10 +272,30 @@ provider, and mechanics hashes. Outcomes, actions, trajectories, strategy
 notes, response bodies, and caller-asserted provider capacity are discarded
 and cannot choose the arm.
 
-### 5.1 Pre-review casual transport measurements
+Every per-game metric carries its own closed failure stage and kind (or
+`none`), last opened and committed call/decision counts, whether the engine
+deadline or per-call deadline fired, the exception type, and a sanitized
+message hash. Stages distinguish dispatch, provider response, validation,
+engine apply, journal commit, terminal verification, and resource metering;
+kinds distinguish deadline, call timeout, provider process/schema, forbidden
+tool, transport/engine validation, journal I/O, resource meter, and unknown.
+The value is returned with that game metric; it is not stored on a mutable
+runner shared by worker threads. Raw exception text remains private and is not
+a routing input. Tests run concurrent games with different injected failures
+and require every typed disposition to survive without cross-talk. Thus a
+future refusal remains attributable without retaining hidden gameplay.
 
-These measurements are non-scientific implementation probes authorized only
-after the design PASS. They carry no outcome or launch authority:
+The per-game deadline is one absolute monotonic boundary. Before each dispatch,
+the per-call timeout becomes `min(90 seconds, remaining game time)`. A late
+response cannot commit after the deadline, and the exact process group is
+killed and reaped before the typed terminal disposition is published.
+
+### 5.1 Recorded casual transport measurements
+
+These measurements are non-scientific implementation probes run under earlier
+design/owner authorization. They carry no outcome or launch authority. Any new
+casual probe waits for this simplified design review and remains outside formal
+capacity:
 
 - under the exact pinned `0.149.0` runtime, the sealed real-state canary
   (`receipt_sha256=5d5ac97d...b71789c`) completed one rollout-then-play
@@ -279,39 +321,78 @@ after the design PASS. They carry no outcome or launch authority:
   74 maximum), hence at least 6,378 model RPCs for 104 full games before any
   optional rollout phase.
 
+After the formal high-effort refusal, one separately authorized casual
+medium-effort game on a different capacity root completed and independently
+reopened in 782.368 seconds: 63 RPCs, 692,000 total tokens, p95 RPC wall
+20.976 seconds, max RPC wall 27.026 seconds, zero tool/process errors, zero
+swap, and 151,093,248 bytes peak RSS. Its canonical receipt file SHA-256 is
+`1c87361f45a012db608c75264b8d774ff583d5974b259b02651f14ea8914d96a`.
+It is `scientific:false` and
+`formal_evidence_eligible:false`; because it is one different root, it neither
+proves that reasoning effort caused the improvement nor satisfies capacity.
+It does show that the retained supervisor-owned RPC mechanics can complete a
+natural full game within the existing per-game deadline. At that measured
+pace, four workers project to 5.65 hours for 104 games, or 7.06 hours with the
+required 25% headroom, and 89.96 million tokens with the same headroom. Formal
+arm 4 must replace that projection with its own worst observed full-game wall
+and exact token accounting before any freeze.
+
+### 5.2 Post-review casual de-risking
+
+After this simplified design passes, casual work stops at the first failed
+step and never contributes formal evidence:
+
+1. Four fake one-decision transports inject four distinct failure kinds and
+   must retain the correct per-game disposition with no live process or shared
+   state after 30 seconds. This uses zero model calls.
+2. Four independent medium games each stop after four committed contested
+   decisions spanning both teams. Stop after 360 seconds or on any error, tool
+   event, swap, peak active RPC below 3, or observed parallelism below 2.8.
+3. One second independent medium full game stops at 886 seconds, 80 RPCs,
+   900,000 tokens, or the first typed failure. Passing keeps worker 4 as the
+   formal target; failure returns the design for review rather than silently
+   increasing concurrency.
+
+A matched packet-level high/medium timing probe is optional only if the effort
+change remains disputed. Persistent model-owned tool-loop experiments are a
+separate future transport question and cannot block this launch-minimal path.
+
 The capacity projection must use its measured full-game distribution, not
 extrapolate a passing token/wall budget from one short canary. The figures
 above make repeated scaffold cost a first-class kill condition rather than a
 surprise during collection.
 
-Stop before a larger arm at the first reached arm with any of:
+Stop at the first reached arm with any of:
 
 - swap or actual process error;
 - peak process-tree RSS above 85% of Mini physical memory;
 - mechanics or sealed-byte drift;
 - less than 25% deadline headroom at p95 game wall; or
-- less than 70% scaling efficiency relative to the preceding arm; or
+- for arm 4, less than 70% throughput scaling efficiency relative to arm 1; or
 - measured concurrency below 70% of the requested arm (the receipt computes
   `observed_parallelism_milli = sum(completed game wall nanoseconds) * 1000 /
   arm wall nanoseconds`) or any expected subprocess/result is incomplete or
   unverified; or
 - any tool event, schema/usage refusal, stale decision response, peer-memory
   exposure, or pre-validation engine mutation; or
-- a 104-game projection with 25% headroom outside frozen wall or token budgets.
+- for arm 4, a 104-game projection with 25% headroom outside frozen wall or
+  token budgets.
   A future separately admitted billed-API adapter must also freeze pricing and
   pass the same projection against a dollar-cost cap.
 
-An arm is selectable only when the next larger tested arm also passes the
-empirical concurrency/completeness rule. The final tested arm is never
-selected: if arm 8 passes, selection can be at most arm 6. The scientific
-worker count is the fastest eligible passing arm, not automatically the
-largest. It is frozen before the 52-cluster namespace opens. Capacity has its
-own hard wall/token budget and may stop early while preserving every reached
-arm.
+Arm 1 is not rejected merely because a serial 104-game projection exceeds the
+scientific wall cap; concurrency is the point of arm 4. Arm 4 is selected only
+if every one of its eight games completes and independently reopens, its
+measured concurrency/scaling and resource gates pass, and its 104-game
+projection fits both scientific budgets with 25% headroom. Otherwise capacity
+refuses and the design returns for review; it may not adapt upward to an
+untested worker count. Exactly four workers are frozen before the 52-cluster
+namespace opens. Capacity has its own hard wall/token budget and preserves
+every reached arm.
 
 Each arm also publishes its largest independently reopened per-RPC token use.
-The scientific `per_call_token_reserve` is fixed to 125% of that maximum from
-the selected arm; it is not an operator-entered estimate. Before any provider
+The scientific `per_call_token_reserve` is fixed to 125% of the arm-4 maximum;
+it is not an operator-entered estimate. Before any provider
 dispatch, a shared atomic ledger durably reserves that amount plus the frozen
 per-call wall allowance. Its immutable genesis binds the Mini boot, runtime,
 capacity receipt, output namespace, monotonic start, scientific wall/token
@@ -320,7 +401,7 @@ Ledger event elapsed times must be nondecreasing.
 
 ## 6. Progress, durability, and terminal routes
 
-At least once per completed or failed game, publish:
+At RPC start/end, transition commit, and game completion/failure, publish:
 
 ```text
 completed_games / 104
@@ -331,6 +412,8 @@ recent_throughput
 eta_seconds
 active_game_workers
 active_model_rpcs
+opened_rpc_count / committed_decision_count
+remaining_game_deadline_seconds
 failure_count
 ```
 
@@ -395,7 +478,7 @@ strength, promotion, or deployment verdict.
 
 ## 7. Review economy
 
-This repaired design receives one design-only review before implementation.
+This simplified repair receives one design-only review before implementation.
 After that, use exactly two execution review moments:
 
 1. one source review of the supervisor-owned RPC driver, schemas, runner,

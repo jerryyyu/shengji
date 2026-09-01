@@ -369,6 +369,34 @@ def test_complete_game_reopens_without_another_provider_call(tmp_path):
             expected_scientific_binding_sha256="e" * 64)
 
 
+def test_attempt_runner_refuses_peer_memory_before_provider_dispatch(
+        tmp_path, monkeypatch):
+    fake = FakeCodexRun()
+    base_driver = collection.TurnDriver
+
+    class PeerMemoryDriver(base_driver):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            team = self.game.acting_team
+            self._memories[team] = self._memories[1 - team]
+
+    monkeypatch.setattr(collection, "TurnDriver", PeerMemoryDriver)
+    runner = _runner(tmp_path, TransportFactory(fake))
+    with pytest.raises(collection.RPCCollectionError,
+                       match=r"^game attempt refused$"):
+        runner(("2", 0, 0), 0)
+    assert fake.calls == 0
+
+    monkeypatch.setattr(collection, "TurnDriver", base_driver)
+    attempt_path = tmp_path / "attempts" / "2-0-0-mirror-0"
+    reopened = collection.reopen_attempt(attempt_path, seed_secret=SECRET)
+    assert reopened.status == "incomplete"
+    assert reopened.failure_kind == "TurnValidationError"
+    assert reopened.failure_class == "mechanics-privacy"
+    manifest = json.loads((attempt_path / "manifest.json").read_text())
+    assert manifest["journal_summary"]["call_count"] == 0
+
+
 def test_returned_usage_crosses_cap_before_any_play_and_seals_refusal(tmp_path):
     fake = FakeCodexRun(total_tokens=120)
     runner = _runner(tmp_path, TransportFactory(fake), token_cap=50)

@@ -10700,3 +10700,16 @@ canary; a strict typed PASS + exact reopen authorizes the progressive Mini censu
 freeze construction under the launch-moment marker; ANY canary refusal stops the route again —
 and a second stop will not be reopened by further name-surface claims without Jerry.
 — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — PT-LUNA ROUTE STOPPED (FINAL, per the `37c0d768` pre-commitment): the catalog gate refused pre-launch — the LIVE provider surface now reports Luna `shell_type=unified_exec`, not the reviewed `shell_command`. No reopening without Jerry
+
+The gate I mutation-verified did exactly its job: `validate_codex_model_surface` refused BEFORE
+any model launch because the live refreshable catalog no longer matches the reviewed composition
+(unified_exec vs shell_command — the provider changed Luna's tool surface underneath the pinned
+review; Codex's note cites 0.150.1 at refusal time, also a runtime-selection question worth its
+own line in the eventual postmortem). Zero model processes, zero ops, canary grant spent
+honestly. Per my pre-commitment in `37c0d768`, name/tool-surface claims no longer reopen this
+route — the STOP is now final until Jerry's model/arm decision: (a) re-home the Luna-vs-Luna
+collector on the proven Sol0-style harness with a tool-reliable model, or (b) close the collector
+and source V2's diverse-fit slots elsewhere. Codex converged on the same stop independently.
+The lane's full receipt archive (19 runs) is preserved for the postmortem. — Claude (session `68f9c8bd`)

@@ -79,6 +79,54 @@ def test_production_command_binds_reviewed_inline_stop_hook(tmp_path):
         execution.STOP_HOOK_SCRIPT.read_bytes())
 
 
+def test_plain_luna_transport_has_no_hook_or_prompt_payload(tmp_path):
+    command = execution._plain_process_command(
+        codex_binary=Path("/usr/bin/codex"), workspace=tmp_path,
+        model=execution.MODEL, final_output_path=tmp_path / "final.json")
+    assert command == (
+        "/usr/bin/codex", "exec", "--ephemeral", "--json",
+        "--ignore-user-config",
+        "--ignore-rules", "--skip-git-repo-check", "--sandbox",
+        "workspace-write", "-C", str(tmp_path), "-m", "gpt-5.6-luna",
+        "-c", 'model_reasoning_effort="high"', "--output-last-message",
+        str(tmp_path / "final.json"), "-")
+    assert execution.STOP_HOOK_AUTOMATION_FLAG not in command
+    assert "maximize final signed-level utility" not in " ".join(command)
+
+
+def test_default_process_reads_prompt_on_stdin_and_retains_jsonl(tmp_path):
+    launcher = tmp_path / "launcher.py"
+    event = json.dumps({
+        "type": "turn.completed", "usage": {
+            "input_tokens": 1, "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0, "output_tokens": 1,
+            "reasoning_output_tokens": 1,
+        },
+    }) + "\n"
+    launcher.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        "pathlib.Path('argv.json').write_text(repr(sys.argv))\n"
+        "pathlib.Path('stdin.txt').write_text(sys.stdin.read())\n"
+        f"sys.stdout.write({event!r})\n")
+    launcher.chmod(0o755)
+    completed = execution._default_process(
+        _game().session(0), workspace=tmp_path, mailbox_path=tmp_path / "mailbox",
+        tool_script=TOOL, codex_binary=launcher, prompt="private prompt",
+        final_output_path=tmp_path / "final.json")
+    assert completed.returncode == 0
+    assert execution._codex_jsonl_usage(completed.stdout) == {
+        "cache_write_input_tokens": 0, "cached_input_tokens": 0,
+        "input_tokens": 1, "output_tokens": 1,
+        "reasoning_output_tokens": 1,
+    }
+    argv = (tmp_path / "argv.json").read_text()
+    assert "private prompt" not in argv
+    assert "--json" in argv
+    assert "gpt-5.6-luna" in argv
+    assert (tmp_path / "stdin.txt").read_text() == "private prompt"
+
+
 def test_stop_hook_command_runs_from_outside_repo_with_venv_launcher(tmp_path):
     """The production hook command must retain the venv import context."""
     python = Path(sys.executable)
@@ -320,7 +368,22 @@ def test_forced_actions_are_engine_only_and_artifacts_reopen(tmp_path):
         assert evidence.body["actual_subprocess"] is False
 
 
-def test_generic_or_wrong_completion_response_is_diagnostic_only(tmp_path):
+def test_luna_evidence_binds_plain_model_and_retains_no_hook_payload(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL, planner_process=_fake)
+    assert result.status == "complete"
+    for evidence in result.evidence:
+        body = evidence.body
+        command = body["command"]
+        assert command[command.index("-m") + 1] == "gpt-5.6-luna"
+        assert "--json" in command
+        assert execution.STOP_HOOK_AUTOMATION_FLAG not in command
+        assert "stop_hook" not in body
+        assert type(body["prompt_sha256"]) is str
+        assert len(body["prompt_sha256"]) == 64
+
+
+def test_wrong_completion_response_fails_closed_after_terminal_witness(tmp_path):
     def wrong_final(session, *, mailbox_path, final_output_path, **_kwargs):
         while True:
             observed = execution.tool_request(mailbox_path, {"op": "observe"})
@@ -341,14 +404,14 @@ def test_generic_or_wrong_completion_response_is_diagnostic_only(tmp_path):
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
         planner_process=wrong_final)
-    assert result.status == "complete"
+    assert result.status == "incomplete"
     assert result.scientific_admissible is False
     team0 = json.loads((result.attempt_path / "process-team-0.json").read_text())
-    assert team0["process_error"] is None
-    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+    assert "final response absent or malformed" in team0["process_error"]
+    assert execution.reopen_attempt(result.attempt_path).status == "incomplete"
 
 
-def test_absent_final_after_terminal_trace_is_complete(tmp_path):
+def test_absent_final_after_terminal_trace_fails_closed(tmp_path):
     def absent_final(session, *, mailbox_path, **_kwargs):
         terminal = None
         while terminal is None:
@@ -369,8 +432,43 @@ def test_absent_final_after_terminal_trace_is_complete(tmp_path):
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
         planner_process=absent_final)
-    assert result.status == "complete"
-    assert all(item.body["process_error"] is None for item in result.evidence)
+    assert result.status == "incomplete"
+    assert all("final response absent or malformed" in
+               (item.body["process_error"] or "") for item in result.evidence)
+    assert execution.reopen_attempt(result.attempt_path).status == "incomplete"
+
+
+def test_reopen_preserves_complete_current_schema_stop_hook_evidence(tmp_path):
+    """The new final-file gate must not invalidate retired v2 artifacts."""
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.pop("manifest_sha256")
+    evidence_rows = []
+    for team in luna.TEAMS:
+        path = result.attempt_path / f"process-team-{team}.json"
+        process = json.loads(path.read_text())
+        process.pop("evidence_sha256")
+        hook = execution._stop_hook_binding(
+            mailbox_path=(result.attempt_path / f"workspace-team-{team}"
+                          / "mailbox"))
+        process["stop_hook"] = hook
+        process["command"] += ["-c", hook["config_override"]]
+        stdout = base64.b64decode(process["stdout_base64"])
+        diagnostic = b"historical diagnostic final"
+        process["final_base64"] = base64.b64encode(diagnostic).decode("ascii")
+        process["output_sha256"] = execution._sha_bytes(
+            stdout + b"\0" + diagnostic)
+        evidence_sha = execution._sha(process)
+        process["evidence_sha256"] = evidence_sha
+        _rewrite(path, process)
+        evidence_rows.append({"team": team, "evidence_sha256": evidence_sha})
+    manifest["evidence"] = evidence_rows
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+
     assert execution.reopen_attempt(result.attempt_path).status == "complete"
 
 
@@ -432,6 +530,32 @@ def test_coordinated_rehash_cannot_remove_terminal_mailbox_witness(tmp_path):
     _rewrite(manifest_path, manifest)
     with pytest.raises(execution.LunaExecutionError,
                        match="terminal mailbox witness absent"):
+        execution.reopen_attempt(result.attempt_path)
+
+
+def test_coordinated_rehash_cannot_add_hook_to_plain_command(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    path = result.attempt_path / "process-team-0.json"
+    process = json.loads(path.read_text())
+    process["command"].insert(
+        process["command"].index("-C"),
+        execution.STOP_HOOK_AUTOMATION_FLAG)
+    process.pop("evidence_sha256")
+    process["evidence_sha256"] = execution._sha(process)
+    _rewrite(path, process)
+
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["evidence"][0]["evidence_sha256"] = process[
+        "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+
+    with pytest.raises(execution.LunaExecutionError,
+                       match="plain process command identity drift"):
         execution.reopen_attempt(result.attempt_path)
 
 
@@ -542,11 +666,13 @@ def test_sandbox_command_binds_peer_denial_or_pins_fallback(tmp_path, monkeypatc
     monkeypatch.setattr(execution.sys, "platform", "darwin")
     monkeypatch.setattr(execution.shutil, "which",
                         lambda name: "/usr/bin/sandbox-exec" if name == "sandbox-exec" else None)
-    command = execution.process_command(
+    command = execution._plain_process_command(
         codex_binary=Path("/usr/bin/codex"), workspace=own,
+        model=execution.MODEL,
         final_output_path=own / "final.json", peer_workspace=peer,
         sandbox_profile_path=own / "sandbox.sb")
     assert command[:3] == ("/usr/bin/sandbox-exec", "-f", str(own / "sandbox.sb"))
+    assert execution.STOP_HOOK_AUTOMATION_FLAG not in command
     if sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file():
         # The production path uses this same profile under the outer sandbox.
         assert "(deny file-read*" in profile

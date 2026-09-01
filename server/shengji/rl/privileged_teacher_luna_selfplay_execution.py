@@ -458,6 +458,39 @@ def process_command(*, codex_binary: Path, workspace: Path,
     return (sandbox, "-f", str(sandbox_profile_path), *command)
 
 
+def _plain_process_command(*, codex_binary: Path, workspace: Path,
+                           model: str = MODEL,
+                           reasoning_effort: str = REASONING_EFFORT,
+                           final_output_path: Path,
+                           peer_workspace: Path | None = None,
+                           peer_outputs: tuple[Path, ...] = (),
+                           sandbox_profile_path: Path | None = None
+                           ) -> tuple[str, ...]:
+    """Build the PT-Sol0 planner transport used by Luna model processes.
+
+    The planner prompt is supplied on stdin and the only model-authored file
+    is ``final.json``.  JSONL remains enabled only for measured token usage;
+    the command deliberately has no Stop hook or inline prompt/config payload.
+    The supervisor owns cancellation and the mailbox owns engine completion.
+    """
+    if model != MODEL or reasoning_effort != REASONING_EFFORT:
+        raise LunaExecutionError("process identity drift")
+    command = (str(codex_binary), "exec", "--ephemeral", "--json",
+               "--ignore-user-config", "--ignore-rules",
+               "--skip-git-repo-check", "--sandbox", "workspace-write",
+               "-C", str(workspace), "-m", model, "-c",
+               f'model_reasoning_effort="{reasoning_effort}"',
+               "--output-last-message", str(final_output_path), "-")
+    if peer_workspace is None:
+        return command
+    sandbox = shutil.which("sandbox-exec") if sys.platform == "darwin" else None
+    if sandbox is None:
+        return command
+    if sandbox_profile_path is None:
+        raise LunaExecutionError("sandbox profile path absent")
+    return (sandbox, "-f", str(sandbox_profile_path), *command)
+
+
 def _sb_quote(path: Path) -> str:
     return json.dumps(str(path.resolve()))
 
@@ -791,17 +824,26 @@ def _default_process(session: luna.LunaTeamSession, *, workspace: Path,
                      supervisor: ProcessSupervisor | None = None,
                      command: tuple[str, ...] | None = None) -> subprocess.CompletedProcess[bytes]:
     del tool_script
-    command = command or process_command(codex_binary=codex_binary,
-                                         workspace=workspace,
-                                         mailbox_path=mailbox_path,
-                                         final_output_path=final_output_path)
+    command = command or _plain_process_command(
+        codex_binary=codex_binary, workspace=workspace, model=session.model,
+        final_output_path=final_output_path)
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
+    # Match PT-Sol0's bounded transport when no shared supervisor is needed.
+    # Luna's production path supplies a supervisor so the peer can be killed
+    # immediately on failure; that path below uses the same argv/stdin/stdout
+    # contract with a Popen handle for cancellation.
+    if supervisor is None:
+        completed = subprocess.run(
+            command, input=prompt.encode("utf-8"), stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, cwd=workspace, env=env,
+            timeout=MAX_GAME_WALL_SECONDS, check=False)
+        completed._pt_luna_actual_subprocess = True
+        return completed
     process = subprocess.Popen(command, stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                cwd=workspace, env=env, start_new_session=(os.name == "posix"))
-    if supervisor is not None:
-        supervisor.register(session.team, process)
+    supervisor.register(session.team, process)
     try:
         process.stdin.write(prompt.encode("utf-8"))
         process.stdin.close()
@@ -1308,13 +1350,13 @@ def run_luna_game(
                                                     attempt / "terminal-receipt.json"))
         _publish(profile_path, profile_raw.encode("utf-8"), mode=0o400)
         sandbox_binary = shutil.which("sandbox-exec") if sys.platform == "darwin" else None
-        hook = _stop_hook_binding(mailbox_path=mailbox, python=python)
-        command = process_command(codex_binary=binary, workspace=workspace,
-                                  final_output_path=final,
-                                  mailbox_path=mailbox,
-                                  peer_workspace=peer,
-                                  peer_outputs=(peer_trace,),
-                                  sandbox_profile_path=profile_path)
+        # The model process uses the plain PT-Sol0 transport.  Its prompt is
+        # stdin and its only completion file is final.json; the mailbox is
+        # served by this thread and is never substituted by a process hook.
+        command = _plain_process_command(
+            codex_binary=binary, workspace=workspace, model=session.model,
+            final_output_path=final, peer_workspace=peer,
+            peer_outputs=(peer_trace,), sandbox_profile_path=profile_path)
         sandbox_identity = SandboxIdentity(
             sandbox_binary,
             _sha_bytes(profile_raw.encode("utf-8")), str(profile_path),
@@ -1390,6 +1432,15 @@ def run_luna_game(
         except LunaExecutionError as exc:
             usage = {key: 0 for key in sorted(CODEX_USAGE_KEYS)}
             process_error = process_error or str(exc)
+        try:
+            final_obj = json.loads(final_raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            final_obj = None
+        expected_final = {"schema": FINAL_RESPONSE_SCHEMA, "status": "complete",
+                          "completion_token": session._completion_token}
+        if final_obj != expected_final:
+            process_error = process_error or (
+                "Luna model final response absent or malformed")
         trace = list(trace_server.trace) if trace_server is not None else []
         token_sha256 = _sha_bytes(session._completion_token.encode("ascii"))
         peer_aborted = (supervisor.abort_team is not None
@@ -1397,10 +1448,13 @@ def run_luna_game(
         if peer_aborted:
             process_error = ("peer-aborted/cascade: "
                              + (supervisor.reason or "peer process failure"))
-        elif process_error is None and completed is not None \
-                and completed.returncode == 0 and not _terminal_trace_witness(
+        elif completed is not None and completed.returncode == 0 \
+                and not _terminal_trace_witness(
                     trace, team=team,
                     completion_token_sha256=token_sha256):
+            # The mailbox witness is the engine-origin completion boundary;
+            # retain this failure even when the model's final file is also
+            # malformed, so a premature model success cannot mask it.
             process_error = "Luna terminal mailbox witness absent or malformed"
         if process_error is None and not game.complete:
             process_error = game.failed or (
@@ -1418,7 +1472,6 @@ def run_luna_game(
                 "planner_identity": session.planner_identity,
                 "command": list(command),
                 "config": config.payload(), "trace": trace,
-                "stop_hook": hook,
                 "runtime": runtime,
                 "sandbox": sandbox_identity.payload(),
                 "prompt_sha256": _sha_bytes(prompt.encode("utf-8")),
@@ -1680,15 +1733,13 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                          "process_error", "output_sha256", "execution_kind",
                          "synthetic", "actual_subprocess", "authority"}
         body_schema = body.get("schema")
-        expected_keys = (common_keys | {"completion_token_sha256", "stop_hook"}
+        expected_keys = (common_keys | {"completion_token_sha256"}
                          if body_schema == PRIVATE_TRACE_SCHEMA
                          else common_keys)
-        # A v1 downgrade of a current attempt may retain the newer private
-        # hook binding; genuinely old v1 evidence has no such field and
-        # remains reopenable for historical compatibility.
-        if (body_schema == LEGACY_PRIVATE_TRACE_SCHEMA
-                and set(body) == common_keys | {"stop_hook"}):
-            expected_keys = common_keys | {"stop_hook"}
+        # Historical v1/v2 evidence may retain a Stop-hook binding, but
+        # new plain-transport evidence never publishes one.
+        if "stop_hook" in body:
+            expected_keys = expected_keys | {"stop_hook"}
         if (body_schema != expected_private_trace_schema
                 or set(body) != expected_keys) \
                 or body["team"] != team or body["config"] != attempt_payload["planner"] \
@@ -1707,7 +1758,7 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             raise LunaExecutionError("process execution provenance drift")
         stop_hook = body.get("stop_hook")
         if (body_schema == PRIVATE_TRACE_SCHEMA
-                and (type(stop_hook) is not dict
+                and stop_hook is not None and (type(stop_hook) is not dict
                      or set(stop_hook) != {"schema", "script_sha256",
                          "config_sha256", "command_sha256", "script_path",
                          "automation_flag", "config_override"}
@@ -1744,6 +1795,30 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             raise LunaExecutionError("process output base64 drift") from exc
         if body["output_sha256"] != _sha_bytes(stdout + b"\0" + final):
             raise LunaExecutionError("process output hash drift")
+        # Current-schema Stop-hook evidence from the retired transport treated
+        # the last assistant message as diagnostic; preserve exact-head reopen
+        # compatibility.  New plain evidence has no hook binding and requires
+        # the engine-issued completion token in both the mailbox trace and the
+        # final model-authored file.
+        if (body_schema == PRIVATE_TRACE_SCHEMA
+                and manifest["status"] == "complete" and stop_hook is None):
+            try:
+                final_obj = json.loads(final.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise LunaExecutionError(
+                    "complete process final response drift") from exc
+            expected_final = {
+                "schema": FINAL_RESPONSE_SCHEMA, "status": "complete",
+                "completion_token": None,
+            }
+            if (type(final_obj) is not dict
+                    or set(final_obj) != {"schema", "status", "completion_token"}
+                    or final_obj.get("schema") != expected_final["schema"]
+                    or final_obj.get("status") != expected_final["status"]
+                    or not _valid_completion_token(final_obj.get("completion_token"))
+                    or _sha_bytes(final_obj["completion_token"].encode("ascii"))
+                    != body["completion_token_sha256"]):
+                raise LunaExecutionError("complete process final response drift")
         planner_identity = body["planner_identity"]
         if (type(body["command"]) is not list
                 or any(type(item) is not str for item in body["command"])
@@ -1751,13 +1826,33 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             raise LunaExecutionError("process identity drift")
         command = body["command"]
         if ("exec" not in command or "--ephemeral" not in command
-                or "--json" not in command
-                or (body_schema == PRIVATE_TRACE_SCHEMA
-                    and STOP_HOOK_AUTOMATION_FLAG not in command)
                 or "-m" not in command or command[command.index("-m") + 1] != MODEL
                 or f'model_reasoning_effort="{REASONING_EFFORT}"' not in command):
             raise LunaExecutionError("process command identity drift")
-        if (body_schema == PRIVATE_TRACE_SCHEMA
+        if body_schema == PRIVATE_TRACE_SCHEMA and stop_hook is None:
+            try:
+                exec_index = command.index("exec")
+            except ValueError as exc:
+                raise LunaExecutionError(
+                    "plain process command identity drift") from exc
+            workspace = attempt / f"workspace-team-{team}"
+            final_path = workspace / "final.json"
+            if exec_index < 1:
+                raise LunaExecutionError("plain process command identity drift")
+            binary = command[exec_index - 1]
+            expected_inner = [
+                binary, "exec", "--ephemeral", "--json",
+                "--ignore-user-config", "--ignore-rules",
+                "--skip-git-repo-check", "--sandbox", "workspace-write",
+                "-C", str(workspace), "-m", MODEL, "-c",
+                f'model_reasoning_effort="{REASONING_EFFORT}"',
+                "--output-last-message", str(final_path), "-",
+            ]
+            if (command[exec_index - 1:] != expected_inner
+                    or str(Path(binary).resolve())
+                    != body["runtime"].get("codex_binary")):
+                raise LunaExecutionError("plain process command identity drift")
+        if (body_schema == PRIVATE_TRACE_SCHEMA and stop_hook is not None
                 and stop_hook["config_override"] not in command):
             raise LunaExecutionError("stop hook command binding drift")
         if (set(planner_identity) != {"team", "model",
@@ -1811,11 +1906,17 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                     completion_token_sha256=completion_token_sha256)):
             raise LunaExecutionError("process terminal mailbox witness absent")
         try:
-            if _codex_jsonl_usage(stdout) != body["codex_usage"]:
-                raise LunaExecutionError("Codex usage binding drift")
+            parsed_usage = _codex_jsonl_usage(stdout)
         except LunaExecutionError:
-            if manifest["status"] == "complete":
+            # A peer-aborted/incomplete process can produce no telemetry, but
+            # it may not carry invented nonzero counts.  Complete evidence
+            # always binds an exact measured Codex usage event.
+            if (manifest["status"] == "complete"
+                    or any(body["codex_usage"].values())):
                 raise
+        else:
+            if parsed_usage != body["codex_usage"]:
+                raise LunaExecutionError("Codex usage binding drift")
         entries.append(LunaProcessEvidence(team, {**body, "evidence_sha256": evidence_sha}, evidence_sha))
     expected_evidence = [{"team": item.team, "evidence_sha256": item.sha256}
                          for item in entries]

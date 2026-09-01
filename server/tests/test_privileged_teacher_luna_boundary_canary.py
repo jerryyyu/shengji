@@ -3,10 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-import re
-import shlex
 import stat
-import subprocess
 import sys
 
 import pytest
@@ -16,16 +13,25 @@ from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
 
 FAKE = '''#!/usr/bin/env python3
-import json, os, re, shlex, subprocess, sys, time
+import json, os, re, sys, time
 from pathlib import Path
 prompt = sys.stdin.read()
 assert "exec" in sys.argv and "--ephemeral" in sys.argv and "--json" in sys.argv
+assert "--dangerously-bypass-hook-trust" not in sys.argv
+assert not any(value.startswith("hooks.Stop=") for value in sys.argv)
 assert os.environ.get("PYTHONPATH") is None
 assert os.environ.get("SHENGJI_FAST") is None
 assert os.environ.get("SHENGJI_REQUIRE_VOIDS") == "1"
 mailbox = Path(re.search(r"--mailbox\\s+(\\S+)", prompt).group(1))
 final = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
 mode = os.environ.get("CANARY_FAKE_MODE", "ok")
+events = [{"type": "thread.started"}, {"type": "turn.completed", "usage": {k: 1 for k in ("input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens")}}]
+if mode == "bad-usage": events[1]["usage"].pop("reasoning_output_tokens")
+if mode == "no-observe":
+    payload = {"schema": "privileged-teacher-luna-selfplay-final-response-v2", "status": "complete", "completion_token": "0" * 64}
+    final.write_bytes(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode())
+    sys.stdout.write("\\n".join(json.dumps(e, separators=(",", ":")) for e in events) + "\\n")
+    sys.exit(0)
 request = {"op": "play"} if mode == "play" else {"op": "observe"}
 path = mailbox / ("request-" + "a" * 64 + ".json")
 path.write_bytes(json.dumps(request, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode() + b"\\n")
@@ -40,22 +46,6 @@ payload = {"schema": "privileged-teacher-luna-selfplay-final-response-v2", "stat
 if mode == "bad-final": payload["status"] = "wrong"
 final_raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
 final.write_bytes(final_raw)
-if mode != "no-hook":
-    override = next(value for index, value in enumerate(sys.argv)
-                    if index and sys.argv[index - 1] == "-c" and value.startswith("hooks.Stop="))
-    quoted = re.search(r'command=("(?:\\\\.|[^"\\\\])*")', override).group(1)
-    hook_command = json.loads(quoted)
-    stop = {"hook_event_name": "Stop", "model": "gpt-5.6-luna",
-            "turn_id": "fake", "cwd": str(Path.cwd()),
-            "stop_hook_active": False,
-            "last_assistant_message": final_raw.decode()}
-    hook = subprocess.run(shlex.split(hook_command), input=json.dumps(
-        stop, sort_keys=True, separators=(",", ":")).encode(),
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
-        env=os.environ.copy())
-    if hook.returncode != 0 or hook.stdout or hook.stderr: sys.exit(4)
-events = [{"type": "thread.started"}, {"type": "turn.completed", "usage": {k: 1 for k in ("input_tokens", "cached_input_tokens", "cache_write_input_tokens", "output_tokens", "reasoning_output_tokens")}}]
-if mode == "bad-usage": events[1]["usage"].pop("reasoning_output_tokens")
 sys.stdout.write("\\n".join(json.dumps(e, separators=(",", ":")) for e in events) + "\\n")
 '''
 
@@ -73,9 +63,11 @@ def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
                         "--deadline-seconds", "10"]) == 0
     payload = json.loads(output.read_bytes())
     assert canary.reopen_receipt(output)["receipt_sha256"] == payload["receipt_sha256"]
-    assert payload["model_first_op"] == payload["hook_first_op"] == "observe"
+    assert payload["transport"] == "plain-no-hook"
+    assert payload["model_first_op"] == "observe"
     assert payload["actual_subprocess"] is True
-    assert payload["model_op_counts"] == payload["hook_op_counts"] == {"observe": 1}
+    assert payload["model_op_counts"] == {"observe": 1}
+    assert not any(key.startswith("hook_") for key in payload)
     assert payload["opened"] == payload["retained"] == canary._PRIVACY
     assert all(value is False for value in payload["authority"].values())
     assert "completion_token" not in output.read_text()
@@ -93,8 +85,8 @@ def test_first_op_play_refuses_and_publishes_nothing(tmp_path, monkeypatch):
     assert not output.exists()
 
 
-def test_missing_stop_hook_observation_refuses(tmp_path, monkeypatch):
-    monkeypatch.setenv("CANARY_FAKE_MODE", "no-hook")
+def test_missing_model_observation_refuses(tmp_path, monkeypatch):
+    monkeypatch.setenv("CANARY_FAKE_MODE", "no-observe")
     output = tmp_path / "receipt.json"
     assert canary.main(["--codex-binary", str(_fake(tmp_path)), "--output", str(output),
                         "--deadline-seconds", "10"]) == 2

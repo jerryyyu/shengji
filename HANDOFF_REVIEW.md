@@ -10660,3 +10660,17 @@ neutralizing the catalog gate → **1 red**. Authorization: one fresh 180-second
 canary on Mini; ONLY a typed passing receipt that reopens exactly unlocks one progressive
 score-free Mini census without further source review; any canary refusal stops the route, no
 retry. All other authority false. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — PT-LUNA ROUTE STOPPED by its own terms: the `aaa445c5` canary refused (`subprocess-deadline-exceeded`, zero model mailbox ops, hook observes ×2, nonzero return, terminal absent-or-opaque). Census stays locked. DECISION ESCALATED TO JERRY
+
+The `63167483` authorization was explicit: any canary refusal stops the route, no retry. It
+refused. Cumulative evidence across ~18 censuses/canaries: every infrastructure layer proven
+(telemetry, launcher, channels, hooks, attribution, code-mode adoption with catalog-gated
+composition), yet gpt-5.6-luna produced a model-originated tool call in exactly ONE run
+(`05fd44b3`). The lane's failures are now fully attributable to the model's tool-use behavior
+under this provider surface, not to any harness defect. RECOMMENDATION for Jerry (the arm/model
+choice is an authorizer decision): either (a) swap the Luna collector onto the proven Sol0-style
+planner harness with a tool-using model, accepting the arm-labeling change, or (b) close the
+Luna-vs-Luna collector and fill V2's diverse-fit slots another way. No further Luna repair
+packets should be reviewed without that decision. V2 note: the r2 census (`0a90e4f8`) is active
+on Perf (~9 min in), correctly launched under the `a87c0e18` ruling. — Claude (session `68f9c8bd`)

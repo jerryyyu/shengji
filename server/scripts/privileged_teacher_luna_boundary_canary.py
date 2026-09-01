@@ -18,8 +18,14 @@ from shengji.rl import privileged_teacher_luna_selfplay_controller as controller
 from shengji.rl import privileged_teacher_luna_selfplay_execution as execution
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 SCHEMA = "privileged-teacher-luna-boundary-canary-v4"
+SYNTHETIC_SCHEMA = "privileged-teacher-luna-boundary-canary-synthetic-v1"
+SYNTHETIC_DELAYED_SCHEMA = "privileged-teacher-luna-boundary-canary-synthetic-delay-v1"
 FAILURE_SCHEMA = "privileged-teacher-luna-boundary-canary-failure-v3"
 MAX_HOOK_OBSERVES = 3
+CODE_MODE_INITIAL_YIELD_SECONDS = 30
+PRODUCTION_TERMINAL_WAIT_DELAY_SECONDS = 31
+SYNTHETIC_TERMINAL_WAIT_DELAY_SECONDS = 0
+SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS = 1
 MODEL_COMMAND_SEQUENCE = ("observe", "rollout", "play", "wait")
 CANARY_PROMPT_SUFFIX = """
 Boundary-canary instruction: this synthetic decision exists only to prove the
@@ -300,10 +306,16 @@ def reopen_failure_receipt(path: Path) -> dict[str, object]:
 class _CanaryState:
     """Shared private state for the model and Stop-hook mailbox."""
 
-    def __init__(self, token: str):
+    def __init__(self, token: str, *, terminal_wait_delay_seconds: int = 0):
         if len(token) != 64 or any(c not in "0123456789abcdef" for c in token):
             raise ValueError("canary token identity drift")
+        if (isinstance(terminal_wait_delay_seconds, bool)
+                or not isinstance(terminal_wait_delay_seconds, int)
+                or not 0 <= terminal_wait_delay_seconds <= 180):
+            raise ValueError("canary terminal wait delay drift")
         self.token = token
+        self.terminal_wait_delay_seconds = terminal_wait_delay_seconds
+        self.terminal_wait_delayed = False
         self.phase = "decision"
         self.rollout_calls = 0
         self.terminal = False
@@ -421,6 +433,12 @@ class _CanaryMailbox:
                     response[execution.STOP_HOOK_ACTION_FIELD] = action
             elif op == "wait":
                 if self.state.phase == "playing":
+                    if self.state.terminal_wait_delay_seconds:
+                        # An Event wait is interruptible when the bounded
+                        # canary deadline kills the child, so teardown never
+                        # leaves a daemon thread holding the mailbox lock.
+                        self.state.terminal_wait_delayed = not self._stop.wait(
+                            self.state.terminal_wait_delay_seconds)
                     self.state.terminal = True
                     self.state.phase = "terminal"
                     response = {"schema": luna.GAME_SCHEMA, "status": "round_end",
@@ -502,7 +520,9 @@ def _validate_runtime(runtime: object) -> None:
         raise ValueError("canary runtime identity drift")
     required = {"python_executable", "python_version", "python_sha256",
                 "codex_binary", "codex_binary_sha256", "codex_version",
-                "platform", "tool_script", "tool_script_sha256"}
+                "platform", "tool_script", "tool_script_sha256",
+                "expected_tool_mode", "expected_shell_type",
+                "expected_tool_name"}
     if set(runtime) != required:
         raise ValueError("canary runtime identity drift")
     for key in ("python_executable", "python_version", "codex_binary",
@@ -515,6 +535,10 @@ def _validate_runtime(runtime: object) -> None:
             raise ValueError("canary runtime identity drift")
     if runtime["codex_version"] is not None and type(runtime["codex_version"]) is not str:
         raise ValueError("canary runtime identity drift")
+    if (runtime["expected_tool_mode"] != execution.CODE_MODE_TOOL_MODE
+            or runtime["expected_shell_type"] != execution.CODE_MODE_SHELL_TYPE
+            or runtime["expected_tool_name"] != execution.CODE_MODE_TOOL_NAME):
+        raise ValueError("canary code-mode identity drift")
     for path_key, digest_key in (("python_executable", "python_sha256"),
                                  ("codex_binary", "codex_binary_sha256"),
                                  ("tool_script", "tool_script_sha256")):
@@ -529,6 +553,9 @@ def _bind_model_commands(records: tuple[dict[str, object], ...],
     matched: set[int] = set()
     cursor = 0
     model_sequence: list[str] = []
+    if (not records or not trace or type(trace[0]) is not dict
+            or trace[0].get("request") != {"op": "observe"}):
+        raise ValueError("canary model-origin first observe absent")
     for record in records:
         found = None
         for index in range(cursor, len(trace)):
@@ -562,6 +589,9 @@ def reopen_receipt(path: Path) -> dict[str, object]:
                 "model_nonterminal_observed", "hook_first_op", "hook_op_counts",
                 "hook_op_sequence", "model_command_count",
                 "model_command_sequence", "sandbox_enforced",
+                "code_mode_initial_yield_seconds",
+                "terminal_wait_delay_seconds", "terminal_wait_delayed",
+                "production_yield_witness",
                 "codex_usage", "codex_event_type_counts",
                 "prompt_sha256", "stdout_sha256", "final_sha256",
                 "command_sha256", "hook_source_sha256",
@@ -570,7 +600,9 @@ def reopen_receipt(path: Path) -> dict[str, object]:
                 "codex_launcher", "codex_launcher_sha256", "sandbox_profile_sha256",
                 "opened",
                 "retained", "authority"}
-    if set(payload) != expected or payload["schema"] != SCHEMA:
+    if (set(payload) != expected
+            or payload["schema"] not in (SCHEMA, SYNTHETIC_SCHEMA,
+                                           SYNTHETIC_DELAYED_SCHEMA)):
         raise ValueError("canary receipt schema drift")
     _validate_runtime(payload["runtime_identity"])
     if (payload["actual_subprocess"] is not True or payload["returncode"] != 0):
@@ -585,6 +617,28 @@ def reopen_receipt(path: Path) -> dict[str, object]:
             or payload["model_command_sequence"]
             != list(MODEL_COMMAND_SEQUENCE)):
         raise ValueError("canary receipt command witness drift")
+    initial_yield = payload["code_mode_initial_yield_seconds"]
+    wait_delay = payload["terminal_wait_delay_seconds"]
+    delayed = payload["terminal_wait_delayed"]
+    production = payload["production_yield_witness"]
+    if (initial_yield != CODE_MODE_INITIAL_YIELD_SECONDS
+            or isinstance(wait_delay, bool) or not isinstance(wait_delay, int)
+            or not 0 <= wait_delay <= 180 or type(delayed) is not bool
+            or type(production) is not bool
+            or delayed != (wait_delay > 0)):
+        raise ValueError("canary code-mode yield witness drift")
+    schema = payload["schema"]
+    if (schema == SCHEMA
+            and (not production
+                 or wait_delay != PRODUCTION_TERMINAL_WAIT_DELAY_SECONDS)):
+        raise ValueError("canary production yield witness drift")
+    if (schema == SYNTHETIC_SCHEMA
+            and (production or wait_delay != SYNTHETIC_TERMINAL_WAIT_DELAY_SECONDS)):
+        raise ValueError("canary synthetic yield witness drift")
+    if (schema == SYNTHETIC_DELAYED_SCHEMA
+            and (production
+                 or wait_delay != SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS)):
+        raise ValueError("canary synthetic delayed yield witness drift")
     hook_counts = payload["hook_op_counts"]
     if (payload["hook_first_op"] != "observe" or type(hook_counts) is not dict
             or set(hook_counts) != {"observe"}
@@ -625,10 +679,26 @@ def reopen_receipt(path: Path) -> dict[str, object]:
             or payload["codex_event_type_counts"].get("turn.completed") != 1):
         raise ValueError("canary receipt event counts drift")
     return {**payload, "receipt_sha256": receipt_sha}
-def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str, object]:
+def run(*, codex_binary: Path, output: Path, deadline_seconds: int,
+        terminal_wait_delay_seconds: int | None = None) -> dict[str, object]:
     if (isinstance(deadline_seconds, bool) or not isinstance(deadline_seconds, int)
             or not 1 <= deadline_seconds <= 180):
         raise ValueError("deadline-seconds must be between 1 and 180")
+    production_yield_witness = terminal_wait_delay_seconds is None
+    terminal_wait_delay_seconds = (
+        PRODUCTION_TERMINAL_WAIT_DELAY_SECONDS
+        if production_yield_witness else terminal_wait_delay_seconds)
+    if (isinstance(terminal_wait_delay_seconds, bool)
+            or not isinstance(terminal_wait_delay_seconds, int)
+            or not 0 <= terminal_wait_delay_seconds <= 180):
+        raise ValueError("terminal-wait-delay-seconds must be between 0 and 180")
+    if (production_yield_witness
+            and terminal_wait_delay_seconds <= CODE_MODE_INITIAL_YIELD_SECONDS):
+        raise ValueError("production code-mode yield requirement drift")
+    if (not production_yield_witness and terminal_wait_delay_seconds not in (
+            SYNTHETIC_TERMINAL_WAIT_DELAY_SECONDS,
+            SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS)):
+        raise ValueError("unsupported synthetic terminal wait delay")
     binary = Path(codex_binary).absolute()
     if not binary.is_file() or not os.access(binary, os.X_OK):
         raise ValueError("Codex binary absent or not executable")
@@ -669,7 +739,8 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
         environment.pop("SHENGJI_FAST", None)
         environment["SHENGJI_REQUIRE_VOIDS"] = "1"
         token = secrets.token_hex(32)
-        state = _CanaryState(token)
+        state = _CanaryState(
+            token, terminal_wait_delay_seconds=terminal_wait_delay_seconds)
         with _CanaryMailbox(mailbox_path, state=state) as mailbox:
             def boundary_error(message: str, raw: bytes,
                                returncode: int | None) -> _CanaryBoundaryError:
@@ -765,7 +836,17 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
         # forms of the same exact terminal JSON.
         if final_raw not in (expected_final, expected_final.removesuffix(b"\n")):
             raise ValueError("canary final response drift")
-        body = {"schema": SCHEMA, "runtime_identity": runtime,
+        receipt_schema = (SCHEMA if production_yield_witness
+                          else SYNTHETIC_SCHEMA
+                          if terminal_wait_delay_seconds
+                          == SYNTHETIC_TERMINAL_WAIT_DELAY_SECONDS
+                          else SYNTHETIC_DELAYED_SCHEMA
+                          if terminal_wait_delay_seconds
+                          == SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS
+                          else None)
+        if receipt_schema is None:
+            raise ValueError("unsupported synthetic terminal wait delay")
+        body = {"schema": receipt_schema, "runtime_identity": runtime,
                 "actual_subprocess": True,
                 "returncode": process.returncode,
                 "model_first_op": model_sequence[0],
@@ -778,6 +859,10 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
                 "hook_op_sequence": list(hook_sequence),
                 "model_command_count": len(records),
                 "model_command_sequence": list(model_sequence),
+                "code_mode_initial_yield_seconds": CODE_MODE_INITIAL_YIELD_SECONDS,
+                "terminal_wait_delay_seconds": terminal_wait_delay_seconds,
+                "terminal_wait_delayed": state.terminal_wait_delayed,
+                "production_yield_witness": production_yield_witness,
                 "sandbox_enforced": command[0] == str(
                     execution.shutil.which("sandbox-exec"))
                 if sys.platform == "darwin" else False,
@@ -806,10 +891,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--codex-binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--deadline-seconds", type=int, required=True)
+    parser.add_argument("--terminal-wait-delay-seconds", type=int,
+                        default=None,
+                        help="explicit non-production delay override for tests")
     args = parser.parse_args(argv)
     try:
         run(codex_binary=args.codex_binary, output=args.output,
-            deadline_seconds=args.deadline_seconds)
+            deadline_seconds=args.deadline_seconds,
+            terminal_wait_delay_seconds=args.terminal_wait_delay_seconds)
     except Exception as exc:
         reason = _failure_reason(exc)
         try:

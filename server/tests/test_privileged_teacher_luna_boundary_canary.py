@@ -9,6 +9,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -28,6 +29,18 @@ def _disable_host_sandbox_for_script_fixture(monkeypatch):
     monkeypatch.setattr(canary.execution.shutil, "which",
                         lambda name: None if name == "sandbox-exec"
                         else original(name))
+    production_run = canary.run
+
+    def synthetic_run(**kwargs):
+        # Unit fixtures explicitly select the short-delay path; receipts mark
+        # it non-production and therefore cannot stand in for the real yield.
+        if kwargs.get("terminal_wait_delay_seconds") is None:
+            kwargs["terminal_wait_delay_seconds"] = 0
+        return production_run(**kwargs)
+
+    monkeypatch.setattr(canary, "run", synthetic_run)
+    monkeypatch.setattr(canary, "_production_run_for_test", production_run,
+                        raising=False)
 
 
 FAKE = '''#!/usr/bin/env python3
@@ -38,7 +51,7 @@ assert "exec" in sys.argv and "--ephemeral" in sys.argv and "--json" in sys.argv
 assert os.environ.get("PYTHONPATH") is None
 assert os.environ.get("SHENGJI_FAST") is None
 assert os.environ.get("SHENGJI_REQUIRE_VOIDS") == "1"
-tool_prefix = re.search(r"Use only this tool:\\n\\s+(.+?) observe", prompt).group(1)
+tool_prefix = re.search(r"available commands are \\(each is passed as `cmd` to that wrapper\\):\\n\\s+(.+?) observe", prompt).group(1)
 tool_argv = shlex.split(tool_prefix)
 mailbox = Path(re.search(r"--mailbox\\s+(\\S+)", prompt).group(1))
 final = Path(sys.argv[sys.argv.index("--output-last-message") + 1])
@@ -199,6 +212,11 @@ def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
     assert canary.reopen_receipt(output)["receipt_sha256"] == payload["receipt_sha256"]
     assert payload["model_first_op"] == payload["hook_first_op"] == "observe"
     assert payload["actual_subprocess"] is True
+    assert payload["schema"] == canary.SYNTHETIC_SCHEMA
+    assert payload["production_yield_witness"] is False
+    assert payload["code_mode_initial_yield_seconds"] == 30
+    assert payload["terminal_wait_delay_seconds"] == 0
+    assert payload["terminal_wait_delayed"] is False
     assert payload["model_op_sequence"] == list(canary.MODEL_COMMAND_SEQUENCE)
     assert payload["model_op_counts"] == {"observe": 1, "play": 1,
                                             "rollout": 1, "wait": 1}
@@ -215,6 +233,78 @@ def test_happy_path_is_real_subprocess_and_private_receipt(tmp_path):
     assert stat.S_IMODE(info.st_mode) == 0o400
     assert info.st_nlink == 1
     assert payload["codex_launcher"] == str(binary.absolute())
+
+
+def test_short_delayed_canary_wait_marks_terminal_lifecycle(tmp_path):
+    state = canary._CanaryState(
+        "c" * 64,
+        terminal_wait_delay_seconds=
+        canary.SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS)
+    with canary._CanaryMailbox(tmp_path / "mailbox", state=state) as mailbox:
+        first = mailbox._dispatch({"op": "observe"})
+        rollout = mailbox._dispatch({
+            "op": "rollout", "decision_sha256": state.decision_sha256,
+            "candidate_indices": [0], "continuations": ["smart-all"]})
+        assert rollout["status"] == "rollout_complete"
+        played = mailbox._dispatch({
+            "op": "play", "decision_sha256": first["decision_sha256"],
+            "candidate_index": 0, "confidence": "low"})
+        assert played["status"] == "waiting"
+        started = time.monotonic()
+        terminal = mailbox._dispatch({"op": "wait"})
+        elapsed = time.monotonic() - started
+    assert terminal["status"] == "round_end"
+    assert state.terminal_wait_delayed is True
+    assert elapsed >= canary.SYNTHETIC_DELAYED_TERMINAL_WAIT_DELAY_SECONDS
+
+
+def test_production_success_cannot_use_short_wait_delay(tmp_path, monkeypatch):
+    # The production path has no delay override; changing its frozen constant
+    # must fail before a subprocess can mint a success receipt.
+    monkeypatch.setattr(canary, "PRODUCTION_TERMINAL_WAIT_DELAY_SECONDS", 0)
+    with pytest.raises(ValueError, match="production code-mode yield"):
+        canary._production_run_for_test(
+            codex_binary=_fake(tmp_path), output=tmp_path / "receipt.json",
+            deadline_seconds=10)
+    monkeypatch.setattr(canary, "PRODUCTION_TERMINAL_WAIT_DELAY_SECONDS", 31)
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output), "--deadline-seconds", "10"]) == 0
+    payload = json.loads(output.read_bytes())
+    payload["schema"] = canary.SCHEMA
+    payload["production_yield_witness"] = True
+    payload["terminal_wait_delay_seconds"] = 0
+    payload["terminal_wait_delayed"] = False
+    body = {key: value for key, value in payload.items()
+            if key != "receipt_sha256"}
+    payload["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    output.chmod(0o600)
+    output.write_bytes(canonical_json_bytes(payload))
+    output.chmod(0o400)
+    with pytest.raises(ValueError, match="(production yield witness|code-mode yield witness)"):
+        canary.reopen_receipt(output)
+
+
+def test_production_receipt_requires_observed_delayed_wait(tmp_path):
+    output = tmp_path / "receipt.json"
+    assert canary.main(["--codex-binary", str(_fake(tmp_path)),
+                        "--output", str(output), "--deadline-seconds", "10"]) == 0
+    payload = json.loads(output.read_bytes())
+    payload.update({"schema": canary.SCHEMA,
+                    "production_yield_witness": True,
+                    "terminal_wait_delay_seconds":
+                    canary.PRODUCTION_TERMINAL_WAIT_DELAY_SECONDS,
+                    "terminal_wait_delayed": False})
+    body = {key: value for key, value in payload.items()
+            if key != "receipt_sha256"}
+    payload["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    output.chmod(0o600)
+    output.write_bytes(canonical_json_bytes(payload))
+    output.chmod(0o400)
+    with pytest.raises(ValueError, match="yield witness"):
+        canary.reopen_receipt(output)
 
 
 def test_terminal_model_operation_follows_prompt_wait_contract(tmp_path):

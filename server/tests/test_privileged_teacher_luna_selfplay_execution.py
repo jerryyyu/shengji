@@ -215,6 +215,41 @@ def test_hook_only_terminal_response_cannot_satisfy_command_witness(tmp_path):
         completion_token_sha256=execution._sha_bytes(token.encode()))
 
 
+def test_stop_hook_first_observe_cannot_satisfy_model_liveness(tmp_path):
+    token = "b" * 64
+    terminal = {"schema": luna.GAME_SCHEMA, "status": "round_end",
+                "completion_token": token}
+    request = {"op": "observe"}
+    hook = {"request": {**request, execution.STOP_HOOK_REQUEST_FIELD: True},
+            "response": {**terminal, execution.STOP_HOOK_ACTION_FIELD: "terminal"}}
+    hook["request_sha256"] = execution._sha(hook["request"])
+    hook["response_sha256"] = execution._sha(hook["response"])
+    model = {"request": request, "response": terminal,
+             "request_sha256": execution._sha(request),
+             "response_sha256": execution._sha(terminal)}
+    raw = _command_stdout(mailbox=tmp_path / "mailbox", operation="observe",
+                          response=terminal, shell="/bin/zsh")
+    assert not execution._terminal_command_mailbox_witness(
+        raw, mailbox_path=tmp_path / "mailbox", trace=[hook, model],
+        completion_token_sha256=execution._sha_bytes(token.encode()),
+        require_model_first_observe=True)
+
+
+def test_run_refuses_hook_first_synthetic_planner(tmp_path):
+    def hook_first(session, *, mailbox_path, **kwargs):
+        hooked = execution.tool_request(mailbox_path, _hook_observe())
+        assert hooked[execution.STOP_HOOK_ACTION_FIELD] == "block"
+        return _fake(session, mailbox_path=mailbox_path, **kwargs)
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=hook_first)
+    assert result.status == "incomplete"
+    assert any(item.body["process_error"]
+               == "Luna model command mailbox witness absent or malformed"
+               for item in result.evidence)
+
+
 def test_default_process_keeps_stderr_out_of_codex_jsonl(tmp_path):
     launcher = tmp_path / "launcher.py"
     launcher.write_text(
@@ -245,7 +280,13 @@ def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
     assert "full-information privilege" in prompt
     assert "Candidate zero is always the production prior" in prompt
     assert "defender's utility is the exact opposite" in prompt
-    assert "Immediately invoke the local tool's observe command as your first action" in prompt
+    assert "Immediately invoke the local tool's observe command as your first code-mode" in prompt
+    assert "tools.exec_command" in prompt
+    assert "let result = await tools.exec_command" in prompt
+    assert "tools.write_stdin" in prompt
+    assert "let combined = result.output ?? \"\"" in prompt
+    assert "while (result.session_id)" in prompt
+    assert "combined += result.output ?? \"\"" in prompt
     assert "At every decision, call observe first" in prompt
     assert "If it reports waiting, immediately call" in prompt
     assert "A tool error changes no game state" in prompt
@@ -275,8 +316,9 @@ def test_production_command_binds_reviewed_inline_stop_hook(tmp_path):
     assert execution.STOP_HOOK_SOURCE_SHA256 == execution._sha_bytes(
         execution.STOP_HOOK_SCRIPT.read_bytes())
     assert execution.PLANNER_DEVELOPER_OVERRIDE in command
-    assert "first assistant action must be a shell-tool call" \
+    assert "first assistant action must be a JavaScript code cell" \
         in execution.PLANNER_DEVELOPER_INSTRUCTIONS
+    assert execution.CODE_MODE_FEATURE_OVERRIDE in command
 
 
 def test_stop_hook_command_runs_from_outside_repo_with_venv_launcher(tmp_path):
@@ -757,6 +799,44 @@ def test_coordinated_rehash_cannot_remove_terminal_mailbox_witness(tmp_path):
         execution.reopen_attempt(result.attempt_path)
 
 
+def test_coordinated_rehash_hook_first_trace_cannot_satisfy_model_witness(
+        tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    for team in luna.TEAMS:
+        process_path = result.attempt_path / f"process-team-{team}.json"
+        process = json.loads(process_path.read_text())
+        assert process["schema"] == execution.PRIVATE_TRACE_SCHEMA
+        first = process["trace"][0]
+        assert first["request"] == {"op": "observe"}
+        hook_request = {
+            **first["request"], execution.STOP_HOOK_REQUEST_FIELD: True}
+        hook_response = {
+            **first["response"], execution.STOP_HOOK_ACTION_FIELD: "block"}
+        hook = {
+            "request": hook_request,
+            "response": hook_response,
+            "request_sha256": execution._sha(hook_request),
+            "response_sha256": execution._sha(hook_response),
+        }
+        process["trace"] = [hook, *process["trace"]]
+        process.pop("evidence_sha256")
+        process["evidence_sha256"] = execution._sha(process)
+        _rewrite(process_path, process)
+        manifest["evidence"][team]["evidence_sha256"] = process[
+            "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    with pytest.raises(execution.LunaExecutionError,
+                       match="process terminal command mailbox witness absent"):
+        execution.reopen_attempt(result.attempt_path)
+
+
 def test_coordinated_rehash_cannot_remove_tool_liveness_instruction(tmp_path):
     result = execution.run_luna_game(
         _game(), private_root=tmp_path, tool_script=TOOL,
@@ -810,6 +890,82 @@ def test_pre_repair_v2_artifact_remains_reopenable_without_liveness_override(
     manifest["manifest_sha256"] = execution._sha(manifest)
     _rewrite(manifest_path, manifest)
     assert execution.reopen_attempt(result.attempt_path).status == "complete"
+
+
+def test_pre_code_mode_v3_artifact_remains_reopenable(tmp_path):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+    attempt_path = result.attempt_path / "attempt.json"
+    attempt = json.loads(attempt_path.read_text())
+    attempt.pop("attempt_sha256")
+    attempt["schema"] = execution.PRE_CODE_MODE_ATTEMPT_SCHEMA
+    attempt["private_trace_schema"] = \
+        execution.PRE_CODE_MODE_PRIVATE_TRACE_SCHEMA
+    for key in ("expected_tool_mode", "expected_shell_type",
+                "expected_tool_name"):
+        attempt["runtime"].pop(key)
+    attempt["attempt_sha256"] = execution._sha(attempt)
+    _rewrite(attempt_path, attempt)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["runtime"] = attempt["runtime"]
+    for team in luna.TEAMS:
+        process_path = result.attempt_path / f"process-team-{team}.json"
+        process = json.loads(process_path.read_text())
+        assert process["schema"] == execution.PRIVATE_TRACE_SCHEMA
+        process["schema"] = execution.PRE_CODE_MODE_PRIVATE_TRACE_SCHEMA
+        for key in ("expected_tool_mode", "expected_shell_type",
+                    "expected_tool_name"):
+            process["runtime"].pop(key)
+        process["command"].remove(execution.CODE_MODE_FEATURE_OVERRIDE)
+        process.pop("evidence_sha256")
+        process["evidence_sha256"] = execution._sha(process)
+        _rewrite(process_path, process)
+        manifest["evidence"][team]["evidence_sha256"] = process[
+            "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    assert execution.reopen_attempt(result.attempt_path).status == "complete"
+
+
+@pytest.mark.parametrize("identity_key,mutated_value", (
+    ("expected_tool_mode", "shell"),
+    ("expected_shell_type", "direct"),
+    ("expected_tool_name", "shell"),
+))
+def test_coordinated_rehash_rejects_code_mode_runtime_mutation(
+        tmp_path, identity_key, mutated_value):
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=_fake)
+    assert result.status == "complete"
+    attempt_path = result.attempt_path / "attempt.json"
+    attempt = json.loads(attempt_path.read_text())
+    attempt.pop("attempt_sha256")
+    attempt["runtime"][identity_key] = mutated_value
+    attempt["attempt_sha256"] = execution._sha(attempt)
+    _rewrite(attempt_path, attempt)
+    manifest_path = result.attempt_path / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["runtime"] = attempt["runtime"]
+    for team in luna.TEAMS:
+        process_path = result.attempt_path / f"process-team-{team}.json"
+        process = json.loads(process_path.read_text())
+        process["runtime"][identity_key] = mutated_value
+        process.pop("evidence_sha256")
+        process["evidence_sha256"] = execution._sha(process)
+        _rewrite(process_path, process)
+        manifest["evidence"][team]["evidence_sha256"] = process[
+            "evidence_sha256"]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = execution._sha(manifest)
+    _rewrite(manifest_path, manifest)
+    with pytest.raises(execution.LunaExecutionError,
+                       match="^code-mode runtime identity drift$"):
+        execution.reopen_attempt(result.attempt_path)
 
 
 def test_legacy_v1_complete_attempt_remains_reopenable(tmp_path):

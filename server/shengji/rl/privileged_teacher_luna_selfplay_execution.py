@@ -34,24 +34,39 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 
 MODEL = luna.MODEL
 REASONING_EFFORT = "high"
+# Luna is currently exposed through Codex's code-mode runtime.  The runtime
+# invokes the same ``exec_command`` tool used by the shell surface.  The
+# nested command item retains the normal shell-derived command spelling.
+# Keep this identity explicit: a prompt hash alone cannot detect a rerouted
+# model/tool contract after an attempt has been sealed.
+CODE_MODE_TOOL_MODE = "code_mode_only"
+CODE_MODE_SHELL_TYPE = "unified_exec"
+CODE_MODE_TOOL_NAME = "exec_command"
+CODE_MODE_FEATURE_OVERRIDE = "features.code_mode_only=true"
 PLANNER_DEVELOPER_INSTRUCTIONS = (
-    "You are a bounded Shengji game process. Your first assistant action must "
-    "be a shell-tool call that runs the exact observe command supplied in the "
-    "user prompt. Do not answer with text or finish before the engine reports "
-    "round_end. If a Stop hook blocks completion, immediately use the shell "
-    "tool and continue the mailbox protocol from the prompt.")
+    "You are a bounded Shengji game process. You are code-mode-only: your "
+    "first assistant action must be a JavaScript code cell that calls "
+    "tools.exec_command with the exact observe command supplied in the user "
+    "prompt. Do not answer with text or finish before the engine reports "
+    "round_end. If a Stop hook blocks completion, immediately use the same "
+    "code-mode exec_command wrapper and continue the mailbox protocol from "
+    "the prompt. Use yield_time_ms=30000 for each command; if it yields a "
+    "session_id, poll that same command with tools.write_stdin until it exits.")
 PLANNER_DEVELOPER_OVERRIDE = (
     "developer_instructions=" + json.dumps(PLANNER_DEVELOPER_INSTRUCTIONS))
 LEGACY_FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v1"
 FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v2"
 LEGACY_PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v1"
 INTERMEDIATE_PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v2"
-PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v3"
 LEGACY_ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v1"
 INTERMEDIATE_ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v2"
-ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v3"
+PRE_CODE_MODE_ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v3"
+ATTEMPT_SCHEMA = "privileged-teacher-luna-selfplay-private-attempt-v4"
+PRE_CODE_MODE_PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v3"
+PRIVATE_TRACE_SCHEMA = "privileged-teacher-luna-selfplay-private-process-trace-v4"
 _MODERN_PRIVATE_TRACE_SCHEMAS = frozenset({
-    INTERMEDIATE_PRIVATE_TRACE_SCHEMA, PRIVATE_TRACE_SCHEMA})
+    INTERMEDIATE_PRIVATE_TRACE_SCHEMA, PRE_CODE_MODE_PRIVATE_TRACE_SCHEMA,
+    PRIVATE_TRACE_SCHEMA})
 ARTIFACT_SCHEMA = "privileged-teacher-luna-selfplay-private-artifact-v1"
 MAX_REQUEST_BYTES = 1 << 20
 MAX_PROCESS_BYTES = 16 << 20
@@ -295,7 +310,11 @@ class LunaPlannerConfig:
 def planner_prompt(*, mailbox_path: Path, tool_script: Path,
                    python: Path = Path(sys.executable)) -> str:
     python = Path(python).absolute()
-    tool = f"{python} -P -B {tool_script} --mailbox {mailbox_path}"
+    tool_argv = (str(python), "-P", "-B", str(tool_script), "--mailbox",
+                 str(mailbox_path))
+    tool = shlex.join(tool_argv)
+    first_exec = json.dumps(tool + " observe")
+    workdir = json.dumps(str(mailbox_path.parent))
     return f"""You are PT-Luna, one team in a bounded full-information Shengji self-play round.
 You control both seats of your assigned partnership. Your sole objective is to
 maximize final signed-level utility for that partnership. Utility is
@@ -303,12 +322,29 @@ team-relative: positive means your partnership wins the round, and the
 defender's utility is the exact opposite of the attacker's for the same final
 attacker points. You have full-information privilege: all hands and the
 burial are exposed because this is a bounded teacher diagnostic, not a player
-information set. Use only this tool:
+information set. Use only the code-mode execution tool
+`{CODE_MODE_TOOL_NAME}`. Each command must be issued by a JavaScript code
+cell calling `tools.{CODE_MODE_TOOL_NAME}({{"cmd": COMMAND, "workdir": WORKDIR,
+"yield_time_ms": 30000}})`;
+do not invoke a shell tool directly. The first cell must use this complete
+pattern, including any yielded-session continuation and the initial output:
+  let result = await tools.{CODE_MODE_TOOL_NAME}({{"cmd": {first_exec}, "workdir": {workdir}, "yield_time_ms": 30000}});
+  let combined = result.output ?? "";
+  while (result.session_id) {{
+    result = await tools.write_stdin({{"session_id": result.session_id, "chars": "", "yield_time_ms": 30000}});
+    combined += result.output ?? "";
+  }}
+  text(combined);
+The `cmd` value above is the exact first nested mailbox command. Use the same
+complete pattern for every subsequent command, substituting only the named
+command. Do not issue a second mailbox command while the first is yielded. The
+available commands are (each is passed as `cmd` to that wrapper):
   {tool} observe
   {tool} wait
   {tool} rollout --decision SHA --candidates 0,1 --continuations smart-all,team-smart
   {tool} play --decision SHA --candidate 0 --confidence low
-Immediately invoke the local tool's observe command as your first action. At every decision, call observe first. If it reports waiting, immediately call
+Immediately invoke the local tool's observe command as your first code-mode
+action. At every decision, call observe first. If it reports waiting, immediately call
 wait; wait blocks until the other team acts, the round ends, or the game
 fails, and its response is the next observation. Never roll out or play while
 waiting. You may roll out only on your team's decision and may play only one
@@ -476,6 +512,7 @@ def process_command(*, codex_binary: Path, workspace: Path,
             "workspace-write", STOP_HOOK_AUTOMATION_FLAG, "-C", str(workspace),
             "-m", model, "-c", hook["config_override"], "-c",
             f'model_reasoning_effort="{reasoning_effort}"',
+            "-c", CODE_MODE_FEATURE_OVERRIDE,
             "-c", PLANNER_DEVELOPER_OVERRIDE,
             "--output-last-message", str(final_output_path), "-")
     if peer_workspace is None:
@@ -537,7 +574,23 @@ def runtime_identity(*, codex_binary: Path, tool_script: Path) -> dict[str, obje
         "platform": sys.platform,
         "tool_script": str(tool_script.resolve()),
         "tool_script_sha256": _sha_bytes(Path(tool_script).read_bytes()),
+        "expected_tool_mode": CODE_MODE_TOOL_MODE,
+        "expected_shell_type": CODE_MODE_SHELL_TYPE,
+        "expected_tool_name": CODE_MODE_TOOL_NAME,
     }
+
+
+def _code_mode_runtime_bound(runtime: object) -> bool:
+    """Check the non-secret model/tool identity sealed by repaired evidence."""
+    required = {"python_executable", "python_version", "python_sha256",
+                "codex_binary", "codex_binary_sha256", "codex_version",
+                "platform", "tool_script", "tool_script_sha256",
+                "expected_tool_mode", "expected_shell_type",
+                "expected_tool_name"}
+    return (type(runtime) is dict and set(runtime) == required
+            and runtime.get("expected_tool_mode") == CODE_MODE_TOOL_MODE
+            and runtime.get("expected_shell_type") == CODE_MODE_SHELL_TYPE
+            and runtime.get("expected_tool_name") == CODE_MODE_TOOL_NAME)
 
 
 def _cpu_time_nanoseconds(value: str) -> int:
@@ -997,7 +1050,8 @@ def _terminal_command_mailbox_witness(
         raw: bytes, *, mailbox_path: Path, trace: object,
         completion_token_sha256: object, python_path: Path | None = None,
         tool_script_path: Path | None = None,
-        require_shell: bool = True) -> bool:
+        require_shell: bool = True,
+        require_model_first_observe: bool = False) -> bool:
     """Require a completed model command for the terminal mailbox exchange."""
     try:
         records = _codex_command_mailbox_records(
@@ -1009,6 +1063,13 @@ def _terminal_command_mailbox_witness(
         return False
     matched: list[dict[str, object]] = []
     cursor = 0
+    # The first mailbox exchange is the model-origin liveness witness.  A
+    # Stop hook can issue an identical-looking observe, so a residual hook
+    # exchange must never be the first record attributed to the model.
+    if (require_model_first_observe
+            and (not records or not trace or type(trace[0]) is not dict
+            or trace[0].get("request") != {"op": "observe"})):
+        return False
     for record in records:
         operation = record["operation"]
         response_sha256 = record["response_sha256"]
@@ -1774,7 +1835,8 @@ def run_luna_game(
                     stdout, mailbox_path=mailbox, trace=trace,
                     completion_token_sha256=token_sha256,
                     python_path=python, tool_script_path=tool_script,
-                    require_shell=True):
+                    require_shell=True,
+                    require_model_first_observe=True):
             process_error = (
                 "Luna model command mailbox witness absent or malformed")
         elif process_error is None and completed is not None \
@@ -1967,6 +2029,14 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
             and attempt_payload.get("private_trace_schema") == PRIVATE_TRACE_SCHEMA
             and attempt_payload.get("final_response_schema") == FINAL_RESPONSE_SCHEMA):
         expected_private_trace_schema = PRIVATE_TRACE_SCHEMA
+        if not _code_mode_runtime_bound(attempt_payload.get("runtime")):
+            raise LunaExecutionError("code-mode runtime identity drift")
+    elif (attempt_schema == PRE_CODE_MODE_ATTEMPT_SCHEMA
+            and set(attempt_payload) == current_attempt_keys
+            and attempt_payload.get("private_trace_schema")
+            == PRE_CODE_MODE_PRIVATE_TRACE_SCHEMA
+            and attempt_payload.get("final_response_schema") == FINAL_RESPONSE_SCHEMA):
+        expected_private_trace_schema = PRE_CODE_MODE_PRIVATE_TRACE_SCHEMA
     elif (attempt_schema == INTERMEDIATE_ATTEMPT_SCHEMA
             and set(attempt_payload) == current_attempt_keys
             and attempt_payload.get("private_trace_schema")
@@ -2094,6 +2164,9 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                 or body["synthetic"] != (not body["actual_subprocess"])
                 or body["authority"] != luna.AUTHORITY):
             raise LunaExecutionError("process execution provenance drift")
+        if (body_schema == PRIVATE_TRACE_SCHEMA
+                and not _code_mode_runtime_bound(body["runtime"])):
+            raise LunaExecutionError("code-mode runtime identity drift")
         stop_hook = body.get("stop_hook")
         if (body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS
                 and (type(stop_hook) is not dict
@@ -2145,6 +2218,8 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                     and STOP_HOOK_AUTOMATION_FLAG not in command)
                 or "-m" not in command or command[command.index("-m") + 1] != MODEL
                 or f'model_reasoning_effort="{REASONING_EFFORT}"' not in command
+                or (body_schema == PRIVATE_TRACE_SCHEMA
+                    and CODE_MODE_FEATURE_OVERRIDE not in command)
                 or (body_schema == PRIVATE_TRACE_SCHEMA
                     and PLANNER_DEVELOPER_OVERRIDE not in command)):
             raise LunaExecutionError("process command identity drift")
@@ -2235,7 +2310,9 @@ def reopen_attempt(attempt: Path) -> LunaExecutionResult:
                     completion_token_sha256=completion_token_sha256,
                     python_path=Path(attempt_payload["runtime"]["python_executable"]),
                     tool_script_path=Path(attempt_payload["runtime"]["tool_script"]),
-                    require_shell=True)):
+                    require_shell=True,
+                    require_model_first_observe=(
+                        body_schema == PRIVATE_TRACE_SCHEMA))):
             raise LunaExecutionError(
                 "process terminal command mailbox witness absent")
         if body_schema in _MODERN_PRIVATE_TRACE_SCHEMAS \
@@ -2318,6 +2395,8 @@ __all__ = ["ARTIFACT_SCHEMA", "ATTEMPT_SCHEMA", "FINAL_RESPONSE_SCHEMA",
            "RESOURCE_SCHEMA",
            "SandboxIdentity", "SANDBOX_PROFILE_SCHEMA",
            "MAX_GAME_WALL_SECONDS", "MODEL", "PRIVATE_TRACE_SCHEMA",
+           "CODE_MODE_TOOL_MODE", "CODE_MODE_SHELL_TYPE",
+           "CODE_MODE_TOOL_NAME", "CODE_MODE_FEATURE_OVERRIDE",
            "REASONING_EFFORT", "PLANNER_DEVELOPER_INSTRUCTIONS",
            "PLANNER_DEVELOPER_OVERRIDE", "planner_prompt", "process_command",
            "STOP_HOOK_SCHEMA", "STOP_HOOK_AUTOMATION_FLAG", "STOP_HOOK_SCRIPT",

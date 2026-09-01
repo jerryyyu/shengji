@@ -30,7 +30,7 @@ from .privileged_teacher_luna_turn_rpc import (
 from .privileged_teacher_pt0 import canonical_json_bytes
 
 
-SCHEMA = "pt-luna-turn-journal-record-v1"
+SCHEMA = "pt-luna-turn-journal-record-v2"
 _NAME = re.compile(r"^(\d{6})-(open|response|refusal|commit)\.json$")
 
 
@@ -122,6 +122,72 @@ def _read(path: Path) -> dict[str, object]:
         raise TurnJournalError("journal seal drift")
     value["artifact_sha256"] = digest
     return value
+
+
+def _closed_failure_disposition(
+        exc: BaseException, *, stage: str) -> dict[str, object]:
+    """Classify once, before a rejected provider result becomes durable."""
+    from .privileged_teacher_luna_rpc_transport import (
+        CodexProviderResourceError, CodexToolEventError,
+        CodexTurnTransportError,
+    )
+    exception_type = type(exc).__name__
+    message = str(exc) or exception_type
+    lowered = message.lower()
+    game_deadline = "game deadline" in lowered
+    call_timeout = "turn deadline" in lowered or "call timeout" in lowered
+    if game_deadline:
+        kind = "game-deadline"
+        if "before dispatch" in lowered or "admission" in lowered:
+            stage = "dispatch"
+        elif "after" in lowered:
+            stage = "provider-response"
+    elif call_timeout:
+        stage, kind = "provider-response", "call-timeout"
+    elif isinstance(exc, CodexToolEventError):
+        stage, kind = "validation", "forbidden-tool"
+    elif isinstance(exc, CodexProviderResourceError):
+        kind = "provider-process"
+    elif isinstance(exc, CodexTurnTransportError):
+        stage, kind = "provider-response", "provider-schema"
+    elif isinstance(exc, TurnJournalError):
+        stage, kind = "journal-commit", "journal-io"
+    elif isinstance(exc, TurnRPCError):
+        stage, kind = "validation", "transport-validation"
+    else:
+        kind = "unknown"
+    return {
+        "stage": stage,
+        "kind": kind,
+        "game_deadline_fired": game_deadline,
+        "call_timeout_fired": call_timeout,
+        "exception_type": exception_type,
+        "message_sha256": hashlib.sha256(message.encode(
+            "utf-8", errors="replace")).hexdigest(),
+    }
+
+
+def _validate_closed_failure_disposition(value: object) -> dict[str, object]:
+    keys = {"stage", "kind", "game_deadline_fired",
+            "call_timeout_fired", "exception_type", "message_sha256"}
+    if type(value) is not dict or set(value) != keys \
+            or value["stage"] not in {
+                "dispatch", "provider-response", "validation", "engine-apply",
+                "journal-commit", "terminal-verification", "resource-meter"} \
+            or value["kind"] not in {
+                "game-deadline", "call-timeout", "provider-process",
+                "provider-schema", "forbidden-tool", "transport-validation",
+                "engine-validation", "journal-io", "resource-meter", "unknown"} \
+            or type(value["game_deadline_fired"]) is not bool \
+            or type(value["call_timeout_fired"]) is not bool \
+            or type(value["exception_type"]) is not str \
+            or not value["exception_type"] \
+            or type(value["message_sha256"]) is not str \
+            or len(value["message_sha256"]) != 64 \
+            or any(char not in "0123456789abcdef"
+                   for char in value["message_sha256"]):
+        raise TurnJournalError("journal failure disposition drift")
+    return dict(value)
 
 
 class FileTurnJournal:
@@ -274,6 +340,7 @@ class FileTurnJournal:
         body = group["refusal"]
         expected = {"schema", "kind", "call_index", "packet_sha256",
                     "failure_kind", "failure_class", "failure_sha256",
+                    "failure_disposition",
                     "usage", "tool_event_count",
                     "provider_private_evidence", "artifact_sha256"}
         if set(body) != expected \
@@ -283,6 +350,8 @@ class FileTurnJournal:
                 or body.get("packet_sha256") \
                 != group["open"].get("packet_sha256"):
             raise TurnJournalError("journal refusal body drift")
+        disposition = _validate_closed_failure_disposition(
+            body["failure_disposition"])
         private = body["provider_private_evidence"]
         if private is None:
             if body["usage"] is not None \
@@ -308,6 +377,7 @@ class FileTurnJournal:
             "packet_sha256": body["packet_sha256"],
             "failure_kind": body["failure_kind"],
             "failure_class": body["failure_class"],
+            "failure_disposition": disposition,
             "private_evidence_sha256": private_sha,
         }
         if body["failure_sha256"] != _sha(fingerprint):
@@ -349,9 +419,11 @@ class FileTurnJournal:
         call_index = len(self._groups)
         open_body = self._open_body(packet, call_index)
         _publish(self.root / f"{call_index:06d}-open.json", open_body)
+        failure_stage = "dispatch"
         try:
             if dispatch_reserver is not None:
                 dispatch_reserver(packet)
+            failure_stage = "provider-response"
             raw = transport.call(packet)
             response = raw if type(raw) is PlannerResponse \
                 else PlannerResponse.from_mapping(raw)
@@ -365,6 +437,8 @@ class FileTurnJournal:
                                else take_refusal(packet))
             failure_kind = type(exc).__name__
             failure_class = self._failure_class(exc)
+            failure_disposition = _closed_failure_disposition(
+                exc, stage=failure_stage)
             usage = (None if private_refusal is None
                      else private_refusal["usage"])
             tool_count = (None if private_refusal is None
@@ -375,6 +449,7 @@ class FileTurnJournal:
                 "packet_sha256": packet.sha256,
                 "failure_kind": failure_kind,
                 "failure_class": failure_class,
+                "failure_disposition": failure_disposition,
                 "private_evidence_sha256": private_sha,
             }
             failure = {
@@ -382,6 +457,7 @@ class FileTurnJournal:
                 "call_index": call_index, "packet_sha256": packet.sha256,
                 "failure_kind": failure_kind,
                 "failure_class": failure_class,
+                "failure_disposition": failure_disposition,
                 "failure_sha256": _sha(fingerprint),
                 "usage": usage,
                 "tool_event_count": tool_count,
@@ -553,6 +629,15 @@ class FileTurnJournal:
         value = self._refusal(self._groups[-1])["tool_event_count"]
         return 0 if value is None else int(value)
 
+    def pending_refusal_failure_disposition(self) \
+            -> dict[str, object] | None:
+        """Return the originally sealed closed failure classification."""
+        self._groups = self._scan()
+        if not self._groups or "refusal" not in self._groups[-1]:
+            return None
+        return _validate_closed_failure_disposition(
+            self._refusal(self._groups[-1])["failure_disposition"])
+
     def pending_rejected_response_disposition(
             self, *, failure_kind: str, failure_class: str) \
             -> dict[str, object] | None:
@@ -596,6 +681,15 @@ class FileTurnJournal:
             "packet_sha256": packet_sha256,
             "failure_kind": "UnknownProviderDisposition",
             "failure_class": "resource-provider",
+            "failure_disposition": {
+                "stage": "provider-response",
+                "kind": "provider-process",
+                "game_deadline_fired": False,
+                "call_timeout_fired": False,
+                "exception_type": "UnknownProviderDisposition",
+                "message_sha256": hashlib.sha256(
+                    b"provider disposition unknown").hexdigest(),
+            },
             "private_evidence_sha256": None,
         }
         body = {
@@ -603,6 +697,7 @@ class FileTurnJournal:
             "call_index": call_index, "packet_sha256": packet_sha256,
             "failure_kind": "UnknownProviderDisposition",
             "failure_class": "resource-provider",
+            "failure_disposition": fingerprint["failure_disposition"],
             "failure_sha256": _sha(fingerprint), "usage": None,
             "tool_event_count": None, "provider_private_evidence": None,
         }
@@ -625,9 +720,15 @@ class FileTurnJournal:
         pending = None
         if self._groups and set(self._groups[-1]) != {"open", "response", "commit"}:
             pending = sorted(self._groups[-1])
+        committed_decisions = sum(
+            group.get("commit", {}).get("evidence", {}).get(
+                "intent", {}).get("kind") == "play"
+            for group in self._groups)
         return {"schema": "pt-luna-turn-journal-summary-v1",
                 "call_count": len(self._groups),
+                "opened_rpc_count": len(self._groups),
                 "committed_call_count": completed,
+                "committed_decision_count": committed_decisions,
                 "refused_call_count": refused,
                 "private_evidence_count": private,
                 "pending_stages": pending}

@@ -57,11 +57,10 @@ class FakeCodexRun:
         if self.crash_before_response:
             raise KeyboardInterrupt("simulated controller death")
         final = {
-            "schema": "pt-luna-provider-intent-v1",
+            "schema": "pt-luna-provider-intent-v2",
             "decision_sha256": _decision_sha(prompt),
-            "kind": "play", "candidate_index": 0,
-            "confidence": "low", "candidate_indices": [],
-            "continuations": [], "planning_note": "bounded",
+            "action": {"kind": "play", "candidate_index": 0,
+                       "confidence": "low", "planning_note": "bounded"},
         }
         final_path = Path(command[command.index("--output-last-message") + 1])
         final_path.write_bytes(canonical_json_bytes(final))
@@ -844,10 +843,14 @@ def test_response_crossing_deadline_cannot_mutate_engine(tmp_path, monkeypatch):
         seed_secret=SECRET)
     assert reopened.failure_kind == "ResourceBoundaryError"
     assert reopened.failure_class == "resource-provider"
+    assert reopened.failure_disposition is not None
+    assert reopened.failure_disposition.kind == "game-deadline"
+    assert reopened.failure_disposition.game_deadline_fired is True
+    assert reopened.failure_disposition.last_committed_decision_count == 0
     assert reopened.usage["response_count"] == 1
 
 
-def test_post_settlement_game_deadline_seals_once_and_reopens(
+def test_late_response_is_charged_as_refusal_and_never_commits(
         tmp_path, monkeypatch):
     class Clock:
         value = 1_000_000_000
@@ -880,8 +883,8 @@ def test_post_settlement_game_deadline_seals_once_and_reopens(
         "spent_tokens", "reserved_call_count", "accepted_response_count",
         "refused_response_count", "crossed", "event_count")} == {
         "spent_tokens": 120, "reserved_call_count": 0,
-        "accepted_response_count": 1, "refused_response_count": 0,
-        "crossed": False, "event_count": 2}
+        "accepted_response_count": 0, "refused_response_count": 1,
+        "crossed": True, "event_count": 2}
     attempt = tmp_path / "attempts" / "2-0-0-mirror-0"
     reopened = collection.reopen_attempt(attempt, seed_secret=SECRET)
     assert reopened.failure_kind == "ResourceBoundaryError"
@@ -1085,6 +1088,46 @@ def test_failure_publication_resumes_without_changing_failure_kind(
     reopened = collection.reopen_attempt(root, seed_secret=SECRET)
     assert reopened.failure_kind == "CodexToolEventError"
     assert reopened.failure_class == "mechanics-privacy"
+
+
+def test_restart_after_journal_refusal_replays_exact_closed_disposition(
+        tmp_path, monkeypatch):
+    fake = FakeCodexRun(tool_event=True)
+    runner = _runner(tmp_path, TransportFactory(fake))
+    original = collection._publish_or_verify
+    def crash_before_failure_record(path, payload):
+        if path.name == "failure.json":
+            raise KeyboardInterrupt("failure record crash")
+        original(path, payload)
+    monkeypatch.setattr(
+        collection, "_publish_or_verify", crash_before_failure_record)
+    with pytest.raises(KeyboardInterrupt, match="failure record crash"):
+        runner(("2", 0, 0), 0)
+    provider_calls = fake.calls
+    root = tmp_path / "attempts" / "2-0-0-mirror-0"
+    journal = collection.FileTurnJournal(root / "journal")
+    sealed = journal.pending_refusal_failure_disposition()
+    assert sealed is not None
+    assert sealed == {
+        "stage": "validation", "kind": "forbidden-tool",
+        "game_deadline_fired": False, "call_timeout_fired": False,
+        "exception_type": "CodexToolEventError",
+        "message_sha256": hashlib.sha256(
+            b"Codex tool event forbidden").hexdigest(),
+    }
+    assert not (root / "failure.json").exists()
+
+    monkeypatch.setattr(collection, "_publish_or_verify", original)
+    with pytest.raises(collection.RPCCollectionError,
+                       match="sealed game attempt is incomplete"):
+        runner(("2", 0, 0), 0)
+    assert fake.calls == provider_calls
+    reopened = collection.reopen_attempt(root, seed_secret=SECRET)
+    assert reopened.failure_disposition is not None
+    payload = reopened.failure_disposition.payload()
+    assert {key: payload[key] for key in sealed} == sealed
+    assert payload["last_opened_rpc_count"] == 1
+    assert payload["last_committed_decision_count"] == 0
 
 
 def test_failure_after_final_commit_is_still_reopenable(tmp_path,

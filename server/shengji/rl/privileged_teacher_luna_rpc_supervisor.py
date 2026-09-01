@@ -43,7 +43,7 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 SCHEMA = "pt-luna-turn-rpc-supervisor-v1"
 ADMISSION_SCHEMA = "pt-luna-turn-rpc-admission-v1"
 LAUNCH_SCHEMA = "pt-luna-turn-rpc-launch-v1"
-PROGRESS_SCHEMA = "pt-luna-turn-rpc-progress-v1"
+PROGRESS_SCHEMA = "pt-luna-turn-rpc-progress-v2"
 TERMINAL_SCHEMA = "pt-luna-turn-rpc-terminal-v1"
 CASUAL_TERMINAL_SCHEMA = "pt-luna-turn-rpc-casual-terminal-v1"
 CONTROLLER_REFUSAL_SCHEMA = "pt-luna-turn-rpc-controller-refusal-v1"
@@ -811,6 +811,7 @@ class PTLunaRPCSupervisor:
         if hasattr(runner, "stop_event"):
             runner.stop_event = self.stop_event
         self._lock = threading.Lock()
+        self._progress_lock = threading.Lock()
         # Construction is deliberately side-effect-compatible with restart,
         # but execution is one-shot.  Acquire the cross-process lock only when
         # run() starts: a constructor refusal must never leak a descriptor and
@@ -834,6 +835,7 @@ class PTLunaRPCSupervisor:
             self._progress_index = 0
         self._active_games = 0
         self._wire_ledger()
+        self._wire_progress()
 
     def _wire_ledger(self) -> None:
         if self.ledger is None:
@@ -857,6 +859,33 @@ class PTLunaRPCSupervisor:
                 raise RPCSupervisorError("global ledger hook drift")
             else:
                 setattr(self.runner, name, callback)
+
+    def _wire_progress(self) -> None:
+        current = getattr(self.runner, "progress_callback", None)
+        if current is not None:
+            same = (getattr(current, "__self__", None) is self
+                    and getattr(current, "__func__", None)
+                    is getattr(self._runner_progress, "__func__", None))
+            if not same:
+                raise RPCSupervisorError("runner progress hook drift")
+        setattr(self.runner, "progress_callback", self._runner_progress)
+
+    def _runner_progress(self, row: Mapping[str, object]) -> None:
+        expected = {"event", "opened_rpc_count", "committed_decision_count",
+                    "remaining_game_deadline_seconds"}
+        if type(row) is not dict or set(row) != expected \
+                or row["event"] not in {
+                    "rpc-start", "rpc-end", "transition-commit",
+                    "game-complete", "game-failure"}:
+            raise RPCSupervisorError("runner progress event drift")
+        with self._lock:
+            active_games = self._active_games
+        self._progress(
+            active_workers=active_games, active_rpcs=self._active_rpcs(),
+            opened_rpc_count=int(row["opened_rpc_count"]),
+            committed_decision_count=int(row["committed_decision_count"]),
+            remaining_game_deadline_seconds=int(
+                row["remaining_game_deadline_seconds"]))
 
     def _terminate_active_calls(self) -> None:
         terminate = getattr(self.runner, "terminate_active_calls", None)
@@ -972,7 +1001,22 @@ class PTLunaRPCSupervisor:
                 totals[f"ledger_{key}"] = int(payload[key])
         return totals
 
-    def _progress(self, *, active_workers: int, active_rpcs: int) -> None:
+    def _progress(self, *, active_workers: int, active_rpcs: int,
+                  opened_rpc_count: int = 0,
+                  committed_decision_count: int = 0,
+                  remaining_game_deadline_seconds: int | None = None) -> None:
+        with self._progress_lock:
+            self._publish_progress(
+                active_workers=active_workers, active_rpcs=active_rpcs,
+                opened_rpc_count=opened_rpc_count,
+                committed_decision_count=committed_decision_count,
+                remaining_game_deadline_seconds=
+                    remaining_game_deadline_seconds)
+
+    def _publish_progress(self, *, active_workers: int, active_rpcs: int,
+                          opened_rpc_count: int,
+                          committed_decision_count: int,
+                          remaining_game_deadline_seconds: int | None) -> None:
         completed = sum(result is not None and result.status == "complete"
                         for result in self._statuses.values())
         failed = sum(result is not None and result.status == "incomplete"
@@ -1003,6 +1047,10 @@ class PTLunaRPCSupervisor:
                                 // throughput),
                 "active_game_workers": active_workers,
                 "active_model_rpcs": active_rpcs,
+                "opened_rpc_count": opened_rpc_count,
+                "committed_decision_count": committed_decision_count,
+                "remaining_game_deadline_seconds":
+                    remaining_game_deadline_seconds,
                 "failure_count": failed,
                 "resource_totals": self._resource_totals()}
         if _forbidden(body):

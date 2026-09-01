@@ -639,6 +639,11 @@ class TurnDriver:
     def memories(self) -> Mapping[int, TeamMemory]:
         return dict(self._memories)
 
+    @property
+    def decision_index(self) -> int:
+        """Number of validated live-engine decisions committed by this driver."""
+        return self._decision_index
+
     def _response(self, transport: object, packet: DecisionPacket) -> PlannerResponse:
         try:
             if hasattr(transport, "call"):

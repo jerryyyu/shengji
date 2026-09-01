@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import base64
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -18,6 +19,7 @@ from shengji.rl import privileged_teacher_luna_rpc_transport as transport_module
 from shengji.rl.privileged_teacher_luna_rpc_transport import (
     CODE_MODE_DISABLED_DIAGNOSTIC,
     CodexExecPlannerTransport,
+    CodexProviderResourceError,
     CodexTurnTransportError,
     DISABLED_FEATURES,
     InvocationResult,
@@ -191,11 +193,10 @@ def trace(final: dict[str, object], *, item_type="agent_message",
 
 
 def test_trace_requires_exact_fail_closed_diagnostic_before_turn():
-    final = {"schema": "pt-luna-provider-intent-v1",
-             "decision_sha256": "a" * 64, "kind": "play",
-             "candidate_index": 0, "confidence": "low",
-             "candidate_indices": [], "continuations": [],
-             "planning_note": "bounded"}
+    final = {"schema": "pt-luna-provider-intent-v2",
+             "decision_sha256": "a" * 64,
+             "action": {"kind": "play", "candidate_index": 0,
+                        "confidence": "low", "planning_note": "bounded"}}
     raw = trace(final)
     from shengji.rl import privileged_teacher_luna_rpc_transport as module
     module._events_and_usage(raw)
@@ -230,19 +231,22 @@ def test_trace_requires_exact_fail_closed_diagnostic_before_turn():
 
 
 class FakeRun:
-    def __init__(self, *, mutate=None, stderr=b""):
+    def __init__(self, *, mutate=None, stderr=b"", sleep_seconds=0):
         self.mutate = mutate
         self.stderr = stderr
+        self.sleep_seconds = sleep_seconds
         self.calls = []
 
     def __call__(self, command, prompt, workspace, timeout):
         self.calls.append((command, prompt, workspace, timeout))
+        if self.sleep_seconds:
+            time.sleep(self.sleep_seconds)
         decision = packet_sha_from_prompt(prompt)
-        final = {"schema": "pt-luna-provider-intent-v1",
-                 "decision_sha256": decision, "kind": "play",
-                 "candidate_index": 0, "confidence": "low",
-                 "candidate_indices": [], "continuations": [],
-                 "planning_note": "bounded"}
+        final = {"schema": "pt-luna-provider-intent-v2",
+                 "decision_sha256": decision,
+                 "action": {"kind": "play", "candidate_index": 0,
+                            "confidence": "low",
+                            "planning_note": "bounded"}}
         final_path = Path(command[command.index("--output-last-message") + 1])
         final_path.write_text(json.dumps(final), encoding="utf-8")
         item_type = "agent_message"
@@ -266,11 +270,13 @@ def packet_sha_from_prompt(prompt: bytes) -> str:
     return prompt[start:start + 64].decode("ascii")
 
 
-def transport(tmp_path, fake):
+def transport(tmp_path, fake, *, deadline_provider=None, timeout_seconds=90):
     return CodexExecPlannerTransport(
         codex_binary="/usr/bin/true", temp_root=tmp_path,
-        run_command=fake, runtime_attestor=lambda _: {
-            "schema": "pt-luna-codex-tool-catalog-v1"})
+        timeout_seconds=timeout_seconds, run_command=fake,
+        runtime_attestor=lambda _: {
+            "schema": "pt-luna-codex-tool-catalog-v1"},
+        deadline_provider=deadline_provider)
 
 
 def test_valid_call_has_no_tool_surface_and_binds_usage(tmp_path):
@@ -287,6 +293,38 @@ def test_valid_call_has_no_tool_surface_and_binds_usage(tmp_path):
     assert b'"hands_by_seat"' in prompt
     assert timeout == 90
     assert not workspace.exists()
+
+
+def test_dynamic_game_deadline_reaches_run_seam(tmp_path):
+    fake = FakeRun()
+    active = transport(
+        tmp_path, fake,
+        deadline_provider=lambda: time.monotonic_ns() + 5_000_000_000,
+        timeout_seconds=3)
+    active.call(packet())
+    assert len(fake.calls) == 1
+    assert isinstance(fake.calls[0][3], int)
+    assert 0 <= fake.calls[0][3] <= 3
+
+
+def test_expired_game_deadline_refuses_before_run(tmp_path):
+    fake = FakeRun()
+    active = transport(
+        tmp_path, fake,
+        deadline_provider=lambda: time.monotonic_ns() - 1)
+    with pytest.raises(CodexProviderResourceError, match="before dispatch"):
+        active.call(packet())
+    assert fake.calls == []
+
+
+def test_late_contained_return_is_refused_before_response(tmp_path):
+    fake = FakeRun(sleep_seconds=0.03)
+    active = transport(
+        tmp_path, fake,
+        deadline_provider=lambda: time.monotonic_ns() + 10_000_000)
+    with pytest.raises(CodexProviderResourceError, match="after dispatch"):
+        active.call(packet())
+    assert len(fake.calls) == 1
 
 
 def test_private_provider_trace_reopens_and_coordinated_rehash_fails(tmp_path):
@@ -312,15 +350,51 @@ def test_private_provider_trace_reopens_and_coordinated_rehash_fails(tmp_path):
         validate_private_evidence(forged, packet=decision, response=response)
 
 
-def test_canary_phase_schema_forces_nonempty_rollout_then_empty_play(tmp_path):
+def test_nested_phase_schema_structurally_separates_rollout_and_play(tmp_path):
     first = packet()
     from shengji.rl.privileged_teacher_luna_rpc_transport import intent_output_schema
+    free = intent_output_schema(first)
+    variants = free["properties"]["action"]["anyOf"]
+    assert [row["properties"]["kind"]["const"] for row in variants] \
+        == ["play", "rollout"]
+    assert "candidate_indices" not in variants[0]["properties"]
+    assert variants[1]["properties"]["candidate_indices"]["minItems"] == 1
     rollout = intent_output_schema(first, allowed_kinds=("rollout",))
-    assert rollout["properties"]["kind"]["enum"] == ["rollout"]
-    assert rollout["properties"]["candidate_indices"]["minItems"] == 1
+    rollout_action = rollout["properties"]["action"]
+    assert rollout_action["properties"]["kind"]["const"] == "rollout"
+    assert rollout_action["properties"]["candidate_indices"]["minItems"] == 1
     play = intent_output_schema(first, allowed_kinds=("play",))
-    assert play["properties"]["kind"]["enum"] == ["play"]
-    assert play["properties"]["candidate_indices"]["maxItems"] == 0
+    play_action = play["properties"]["action"]
+    assert play_action["properties"]["kind"]["const"] == "play"
+    assert "candidate_indices" not in play_action["properties"]
+
+
+def test_nested_intent_parser_enforces_variant_phase_and_forced_kind():
+    first = packet()
+    play = {"schema": "pt-luna-provider-intent-v2",
+            "decision_sha256": first.decision_sha256,
+            "action": {"kind": "play", "candidate_index": 0,
+                       "confidence": "medium", "planning_note": "play"}}
+    with pytest.raises(CodexTurnTransportError, match="policy kind drift"):
+        transport_module._provider_intent(
+            play, first, allowed_kinds=("rollout",))
+
+    rollout = {"schema": "pt-luna-provider-intent-v2",
+               "decision_sha256": first.decision_sha256,
+               "action": {"kind": "rollout", "candidate_indices": [],
+                          "continuations": ["smart-all"],
+                          "planning_note": "look"}}
+    with pytest.raises(CodexTurnTransportError, match="rollout list empty"):
+        transport_module._provider_intent(rollout, first)
+    rollout["action"]["candidate_index"] = 0
+    with pytest.raises(CodexTurnTransportError, match="rollout shape drift"):
+        transport_module._provider_intent(rollout, first)
+
+    rollout["action"].pop("candidate_index")
+    rollout["action"]["candidate_indices"] = [0]
+    third = replace(first, phase=PhaseContext(3), rollouts=({}, {}))
+    with pytest.raises(CodexTurnTransportError, match="policy kind drift"):
+        transport_module._provider_intent(rollout, third)
 
 
 @pytest.mark.parametrize("mutation,match", [

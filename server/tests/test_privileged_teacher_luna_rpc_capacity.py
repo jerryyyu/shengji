@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import inspect
 from pathlib import Path
@@ -13,12 +14,16 @@ import pytest
 
 from shengji.rl import privileged_teacher_luna_rpc_capacity as capacity
 from shengji.rl.privileged_teacher_luna_rpc_transport import (
+    CodexProviderResourceError,
+    CodexToolEventError,
     CodexTurnTransportError,
     DISABLED_FEATURES,
     MODEL,
     PINNED_CODEX_VERSION,
     REASONING_EFFORT,
 )
+from shengji.rl.privileged_teacher_luna_rpc_journal import TurnJournalError
+from shengji.rl.privileged_teacher_luna_turn_rpc import TurnValidationError
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 from shengji.rl.privileged_teacher_luna_rpc_capacity import (
     GameMetric,
@@ -207,7 +212,7 @@ class PassingRunner:
     def __init__(self, tracker):
         self.tracker = tracker
         self.barriers = {workers: threading.Barrier(workers)
-                         for workers in (1, 2, 4, 6, 8)}
+                         for workers in capacity.WORKER_ARMS}
 
     def __call__(self, workers, worker, game):
         started = time.monotonic_ns()
@@ -247,8 +252,8 @@ def receipt(*, runner=None, tracker=None, capacity_token_budget=1_000_000):
 def test_all_arms_pass_and_next_larger_rule_selects_a_supported_arm():
     result = receipt()
     assert result["route"] == ROUTE_PASS
-    assert result["selected_workers"] in (1, 2, 4, 6)
-    assert len(result["arms"]) == 5
+    assert result["selected_workers"] == 4
+    assert [arm["workers"] for arm in result["arms"]] == [1, 4]
     assert all(arm["passed"] for arm in result["arms"])
     validate_capacity_receipt(result)
 
@@ -328,6 +333,40 @@ def test_real_runner_snapshots_failed_journal_before_temp_cleanup(
     assert metric.process_errors == 1
     assert metric.input_tokens == metric.output_tokens == 0
     assert seen_catalogs == [runtime()["codex_tool_catalog"]]
+
+
+def test_concurrent_game_failures_keep_distinct_typed_dispositions(
+        tmp_path, monkeypatch):
+    failures = {
+        0: CodexToolEventError("synthetic forbidden tool"),
+        1: CodexProviderResourceError("Codex turn deadline exceeded"),
+        2: TurnValidationError("synthetic stale decision response"),
+        3: TurnJournalError("synthetic journal refusal"),
+    }
+    class RefusingTransport:
+        def __init__(self, **kwargs):
+            name = kwargs["temp_root"].name
+            self.worker = int(name.split("-")[4])
+        def call(self, _packet):
+            raise failures[self.worker]
+    monkeypatch.setattr(
+        capacity, "CodexExecPlannerTransport", RefusingTransport)
+    runner = capacity.RealGameRunner(
+        capacity_secret=b"capacity-test-secret-32-bytes!!!",
+        codex_binary=Path("/usr/bin/true"), temp_root=tmp_path,
+        per_call_timeout_seconds=90, per_game_deadline_seconds=600,
+        concurrency=RPCConcurrency(), runtime=runtime())
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        rows = list(executor.map(lambda worker: runner(4, worker, 0),
+                                 range(4)))
+    assert {(row.worker, row.failure_stage, row.failure_kind,
+             row.call_timeout_fired) for row in rows} == {
+        (0, "validation", "forbidden-tool", False),
+        (1, "provider-response", "call-timeout", True),
+        (2, "validation", "transport-validation", False),
+        (3, "journal-commit", "journal-io", False),
+    }
+    assert len({row.failure_message_sha256 for row in rows}) == 4
 
 
 @pytest.mark.parametrize("field", ["selected_workers", "total_token_count"])

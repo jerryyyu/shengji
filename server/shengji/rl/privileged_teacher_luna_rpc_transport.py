@@ -38,7 +38,7 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 
 
 MODEL = selfplay.MODEL
-REASONING_EFFORT = "high"
+REASONING_EFFORT = "medium"
 PINNED_CODEX_VERSION = "codex-cli 0.149.0"
 CODE_MODE_DISABLED_DIAGNOSTIC = (
     "Code Mode is unavailable because code-mode host is disabled. "
@@ -130,77 +130,101 @@ def intent_output_schema(packet: DecisionPacket, *,
         -> dict[str, object]:
     """Return the phase- and ballot-bound model output schema."""
     # The Responses structured-output subset requires a root object and all
-    # properties to be required.  Use explicit sentinels for the fields that
-    # do not apply to one variant, then enforce the variant relation locally.
-    # This avoids a top-level oneOf while retaining a closed provider schema.
+    # properties to be required.  Keep that root closed while placing the
+    # play/rollout union in one required nested object.  This structurally
+    # prevents an empty rollout without making a play carry fake sentinels.
     default = (("play",) if packet.phase.phase >= 3
                else ("play", "rollout"))
     kinds = list(default if allowed_kinds is None else allowed_kinds)
     if not kinds or any(kind not in default for kind in kinds):
         raise CodexTurnTransportError("Codex allowed intent kind drift")
-    rollout_only = kinds == ["rollout"]
-    play_only = kinds == ["play"]
+    play = {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "const": "play"},
+            "candidate_index": {"type": "integer", "minimum": 0,
+                                "maximum": len(packet.candidates) - 1},
+            "confidence": {"type": "string",
+                           "enum": list(CONFIDENCE_LEVELS)},
+            "planning_note": {"type": "string", "maxLength": 2048},
+        },
+        "required": ["kind", "candidate_index", "confidence",
+                     "planning_note"],
+        "additionalProperties": False,
+    }
+    rollout = {
+        "type": "object",
+        "properties": {
+            "kind": {"type": "string", "const": "rollout"},
+            "candidate_indices": {
+                "type": "array", "minItems": 1, "maxItems": 4,
+                "items": {"type": "integer", "minimum": 0,
+                          "maximum": len(packet.candidates) - 1}},
+            "continuations": {
+                "type": "array", "minItems": 1, "maxItems": 4,
+                "items": {"type": "string",
+                          "enum": list(CONTINUATIONS)}},
+            "planning_note": {"type": "string", "maxLength": 2048},
+        },
+        "required": ["kind", "candidate_indices", "continuations",
+                     "planning_note"],
+        "additionalProperties": False,
+    }
+    variants = {"play": play, "rollout": rollout}
+    action = (variants[kinds[0]] if len(kinds) == 1
+              else {"anyOf": [variants[kind] for kind in kinds]})
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
             "schema": {
-                "type": "string", "const": "pt-luna-provider-intent-v1"},
+                "type": "string", "const": "pt-luna-provider-intent-v2"},
             "decision_sha256": {
                 "type": "string", "const": packet.decision_sha256},
-            "kind": {"type": "string", "enum": kinds},
-            "candidate_index": {"type": "integer", "minimum": -1,
-                                "maximum": len(packet.candidates) - 1},
-            "confidence": {"type": "string",
-                           "enum": ["none", *CONFIDENCE_LEVELS]},
-            "candidate_indices": {
-                "type": "array", "minItems": 1 if rollout_only else 0,
-                "maxItems": 0 if play_only else 4,
-                "items": {"type": "integer", "minimum": 0,
-                          "maximum": len(packet.candidates) - 1}},
-            "continuations": {
-                "type": "array", "minItems": 1 if rollout_only else 0,
-                "maxItems": 0 if play_only else 4,
-                "items": {"type": "string", "enum": list(CONTINUATIONS)}},
-            "planning_note": {"type": "string", "maxLength": 2048},
+            "action": action,
         },
-        "required": ["schema", "decision_sha256", "kind",
-                     "candidate_index", "confidence", "candidate_indices",
-                     "continuations", "planning_note"],
+        "required": ["schema", "decision_sha256", "action"],
         "additionalProperties": False,
     }
 
 
-def _provider_intent(value: object, packet: DecisionPacket) -> Intent:
-    expected = {"schema", "decision_sha256", "kind", "candidate_index",
-                "confidence", "candidate_indices", "continuations",
-                "planning_note"}
+def _provider_intent(
+        value: object, packet: DecisionPacket, *,
+        allowed_kinds: tuple[str, ...] | None = None) -> Intent:
+    expected = {"schema", "decision_sha256", "action"}
     if type(value) is not dict or set(value) != expected \
-            or value.get("schema") != "pt-luna-provider-intent-v1" \
+            or value.get("schema") != "pt-luna-provider-intent-v2" \
             or value.get("decision_sha256") != packet.decision_sha256:
         raise CodexTurnTransportError("Codex intent refused: shape or decision drift")
-    kind = value.get("kind")
+    action = value.get("action")
+    if type(action) is not dict:
+        raise CodexTurnTransportError("Codex intent refused: action shape drift")
+    kind = action.get("kind")
+    permitted = (("play",) if packet.phase.phase >= 3
+                 else ("play", "rollout")) \
+        if allowed_kinds is None else allowed_kinds
+    if kind not in permitted:
+        raise CodexTurnTransportError("Codex intent refused: policy kind drift")
     if kind == "play":
-        if value.get("candidate_indices") != [] \
-                or value.get("continuations") != [] \
-                or value.get("confidence") not in CONFIDENCE_LEVELS:
-            raise CodexTurnTransportError("Codex intent refused: play sentinel drift")
+        if set(action) != {"kind", "candidate_index", "confidence",
+                           "planning_note"} \
+                or action.get("confidence") not in CONFIDENCE_LEVELS:
+            raise CodexTurnTransportError("Codex intent refused: play shape drift")
         try:
             return Intent("play", packet.decision_sha256,
-                          candidate_index=value["candidate_index"],
-                          confidence=value["confidence"],
-                          planning_note=value["planning_note"])
+                          candidate_index=action["candidate_index"],
+                          confidence=action["confidence"],
+                          planning_note=action["planning_note"])
         except TurnValidationError as exc:
             raise CodexTurnTransportError("Codex intent refused") from exc
     if kind == "rollout" and packet.phase.phase < 3:
-        if value.get("candidate_index") != -1 \
-                or value.get("confidence") != "none":
-            raise CodexTurnTransportError("Codex intent refused: rollout sentinel drift")
-        if type(value.get("candidate_indices")) is not list \
-                or type(value.get("continuations")) is not list:
+        if set(action) != {"kind", "candidate_indices", "continuations",
+                           "planning_note"} \
+                or type(action.get("candidate_indices")) is not list \
+                or type(action.get("continuations")) is not list:
             raise CodexTurnTransportError("Codex intent refused: rollout shape drift")
-        candidates = value["candidate_indices"]
-        continuations = value["continuations"]
+        candidates = action["candidate_indices"]
+        continuations = action["continuations"]
         if not candidates or not continuations:
             raise CodexTurnTransportError(
                 "Codex intent refused: rollout list empty")
@@ -225,7 +249,7 @@ def _provider_intent(value: object, packet: DecisionPacket) -> Intent:
             return Intent("rollout", packet.decision_sha256,
                           candidate_indices=tuple(candidates),
                           continuations=tuple(continuations),
-                          planning_note=value["planning_note"])
+                          planning_note=action["planning_note"])
         except TurnValidationError as exc:
             raise CodexTurnTransportError("Codex intent refused") from exc
     raise CodexTurnTransportError("Codex intent refused: phase or kind drift")
@@ -246,9 +270,9 @@ def planner_prompt(packet: DecisionPacket, *, policy_mode: str = "free") -> str:
     payload = canonical_json_bytes(packet.payload()).decode("utf-8").rstrip("\n")
     return f"""You are PT-Luna, one partnership in a full-information Shengji teacher game.
 The engine/supervisor owns all mechanics. You have no tools and must return one
-JSON object matching the supplied schema. For play, candidate_indices and
-continuations must be empty. For rollout, candidate_index must be -1 and
-confidence must be "none". Maximize final signed-level utility
+JSON object matching the supplied schema. Return one nested action: a play has
+candidate_index and confidence, while a rollout has nonempty candidate_indices
+and continuations. Maximize final signed-level utility
 for team {packet.team}; do not substitute raw attacker points for team utility.
 
 The packet contains the complete private engine state, the ordered legal
@@ -275,6 +299,9 @@ class InvocationResult:
 
 RunCommand = Callable[[tuple[str, ...], bytes, Path, int], InvocationResult]
 RuntimeAttestor = Callable[[Path | str], dict[str, object]]
+DeadlineProvider = Callable[[], int]
+
+
 class ActiveCallManager:
     """Own liveness FDs and process groups for one controller instance."""
 
@@ -539,7 +566,7 @@ def _refusal_trace_facts(raw: bytes, wall_ms: int) \
 
 def _validate_request_binding(
         request: object, schema: object, prompt: bytes,
-        packet: DecisionPacket | None) -> None:
+        packet: DecisionPacket | None) -> tuple[str, ...] | None:
     request_keys = {"schema", "model", "reasoning_effort", "policy_mode",
                     "disabled_features", "packet_sha256", "memory_sha256",
                     "prompt_sha256", "output_schema_sha256",
@@ -554,7 +581,7 @@ def _validate_request_binding(
             or request.get("output_schema_sha256") != _sha(schema):
         raise CodexTurnTransportError("Codex private request derivation drift")
     if packet is None:
-        return
+        return None
     policy_mode = request.get("policy_mode")
     if policy_mode == "canary-rollout-then-play":
         allowed = (("rollout",) if packet.phase.phase == 1 else ("play",))
@@ -568,6 +595,7 @@ def _validate_request_binding(
                 "utf-8") \
             or schema != intent_output_schema(packet, allowed_kinds=allowed):
         raise CodexTurnTransportError("Codex private packet binding drift")
+    return allowed
 
 
 def validate_private_refusal_evidence(
@@ -667,13 +695,14 @@ def validate_private_evidence(
     }
     if response_body != expected_response:
         raise CodexTurnTransportError("Codex private response derivation drift")
-    _validate_request_binding(request, schema, prompt, packet)
+    allowed = _validate_request_binding(request, schema, prompt, packet)
     if response is not None:
         mismatch = (response.provider_request_sha256 != _sha(request)
                     or response.provider_response_sha256 != _sha(response_body)
                     or response.usage.payload() != response_body["usage"])
         if packet is not None:
-            mismatch = mismatch or _provider_intent(final, packet) != response.intent
+            mismatch = mismatch or _provider_intent(
+                final, packet, allowed_kinds=allowed) != response.intent
         if mismatch:
             raise CodexTurnTransportError("Codex private response binding drift")
     return dict(payload)
@@ -689,7 +718,8 @@ class CodexExecPlannerTransport:
                  temp_root: Path | None = None,
                  run_command: RunCommand = _default_run,
                  policy_mode: str = "free",
-                 runtime_attestor: RuntimeAttestor = attest_codex_runtime):
+                 runtime_attestor: RuntimeAttestor = attest_codex_runtime,
+                 deadline_provider: DeadlineProvider | None = None):
         binary = shutil.which(str(codex_binary)) if Path(str(codex_binary)).name == str(codex_binary) \
             else str(Path(codex_binary))
         if binary is None or not Path(binary).is_file():
@@ -705,6 +735,8 @@ class CodexExecPlannerTransport:
             raise CodexTurnTransportError("Codex planner policy mode drift")
         if not callable(runtime_attestor):
             raise CodexTurnTransportError("Codex runtime attestor absent")
+        if deadline_provider is not None and not callable(deadline_provider):
+            raise CodexTurnTransportError("Codex deadline provider absent")
         runtime = runtime_attestor(Path(binary))
         if type(runtime) is not dict \
                 or runtime.get("schema") != "pt-luna-codex-tool-catalog-v1":
@@ -716,6 +748,7 @@ class CodexExecPlannerTransport:
         self.temp_root = None if temp_root is None else Path(temp_root)
         self.run_command = run_command
         self.policy_mode = policy_mode
+        self.deadline_provider = deadline_provider
         self.runtime = dict(runtime)
         self._private_evidence: dict[str, dict[str, object]] = {}
         self._private_refusal_evidence: dict[str, dict[str, object]] = {}
@@ -741,6 +774,35 @@ class CodexExecPlannerTransport:
         command.append("-")
         return tuple(command)
 
+    def _dispatch_deadline(self) -> tuple[int, int | None]:
+        """Resolve one dispatch timeout and retain its absolute boundary."""
+        if self.deadline_provider is None:
+            return self.timeout_seconds, None
+        try:
+            deadline_ns = self.deadline_provider()
+        except Exception as exc:
+            raise CodexProviderResourceError(
+                "Codex game deadline provider failed") from exc
+        if isinstance(deadline_ns, bool) or not isinstance(deadline_ns, int):
+            raise CodexProviderResourceError("Codex game deadline drift")
+        remaining_ns = deadline_ns - time.monotonic_ns()
+        if remaining_ns <= 0:
+            raise CodexProviderResourceError(
+                "Codex game deadline exceeded before dispatch")
+        # The contained runner accepts seconds.  Flooring keeps its timeout
+        # within the absolute game boundary; a sub-second remainder is
+        # represented by zero and is handled by the runner's immediate
+        # timeout path.
+        timeout_seconds = min(self.timeout_seconds,
+                              remaining_ns // 1_000_000_000)
+        return timeout_seconds, deadline_ns
+
+    @staticmethod
+    def _check_dispatch_deadline(deadline_ns: int | None) -> None:
+        if deadline_ns is not None and time.monotonic_ns() >= deadline_ns:
+            raise CodexProviderResourceError(
+                "Codex game deadline exceeded after dispatch")
+
     def call(self, packet: DecisionPacket) -> PlannerResponse:
         if type(packet) is not DecisionPacket:
             raise CodexTurnTransportError("Codex decision packet drift")
@@ -757,6 +819,7 @@ class CodexExecPlannerTransport:
             command = self._command(workspace=workspace,
                                     schema_path=schema_path,
                                     final_path=final_path)
+            dispatch_timeout, dispatch_deadline = self._dispatch_deadline()
             request_body = {
                 "schema": "pt-luna-codex-request-v1",
                 "model": self.model,
@@ -767,10 +830,10 @@ class CodexExecPlannerTransport:
                 "memory_sha256": packet.memory.sha256,
                 "prompt_sha256": _sha_bytes(prompt),
                 "output_schema_sha256": _sha(schema),
-                "timeout_seconds": self.timeout_seconds,
+                "timeout_seconds": dispatch_timeout,
             }
             result = self.run_command(
-                command, prompt, workspace, self.timeout_seconds)
+                command, prompt, workspace, dispatch_timeout)
             if type(result) is not InvocationResult:
                 raise CodexTurnTransportError("Codex runner result drift")
             final_raw = None
@@ -807,6 +870,10 @@ class CodexExecPlannerTransport:
                     raise CodexTurnTransportError(
                         "Codex private refusal packet reused")
                 self._private_refusal_evidence[packet.sha256] = refusal
+            # Preserve parseable usage/tool telemetry for a late provider
+            # result, then refuse before response validation can return to the
+            # journal or any engine transition can commit.
+            self._check_dispatch_deadline(dispatch_deadline)
             if result.returncode != 0:
                 raise CodexProviderResourceError("Codex turn process failed")
             if result.stderr:
@@ -821,7 +888,9 @@ class CodexExecPlannerTransport:
                                          "Codex agent message")
             if final_value != message_value:
                 raise CodexTurnTransportError("Codex final response binding drift")
-            intent = _provider_intent(final_value, packet)
+            intent = _provider_intent(
+                final_value, packet,
+                allowed_kinds=self._allowed_kinds(packet))
             if intent.kind == "play" and intent.candidate_index >= len(packet.candidates):
                 raise CodexTurnTransportError("Codex intent refused: candidate outside ballot")
             if intent.kind == "rollout" and any(
@@ -862,7 +931,6 @@ class CodexExecPlannerTransport:
                 raise CodexTurnTransportError(
                     "Codex private response identity reused")
             self._private_evidence[response.provider_response_sha256] = private
-            del self._private_refusal_evidence[packet.sha256]
             return response
         finally:
             shutil.rmtree(workspace)
@@ -874,6 +942,10 @@ class CodexExecPlannerTransport:
         if key is None or key not in self._private_evidence:
             raise CodexTurnTransportError("Codex private evidence absent")
         payload = self._private_evidence.pop(key)
+        # The raw invocation initially remains available as a refusal record
+        # so an outer absolute-deadline guard can still charge its actual
+        # parseable usage. A normal accepted response consumes both views here.
+        self._private_refusal_evidence.pop(packet.sha256, None)
         return validate_private_evidence(
             payload, packet=packet, response=response)
 

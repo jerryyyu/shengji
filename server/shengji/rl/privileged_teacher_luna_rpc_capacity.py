@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from fractions import Fraction
 import hashlib
 import math
 import os
@@ -20,9 +19,13 @@ from typing import Callable, Mapping, Sequence
 
 from . import privileged_teacher_luna_selfplay as selfplay
 from . import privileged_teacher_luna_selfplay_execution as legacy_execution
-from .privileged_teacher_luna_rpc_journal import FileTurnJournal
+from .privileged_teacher_luna_rpc_journal import (
+    FileTurnJournal,
+    TurnJournalError,
+)
 from .privileged_teacher_luna_rpc_transport import (
     CodexExecPlannerTransport,
+    CodexProviderResourceError,
     CodexToolEventError,
     CodexTurnTransportError,
     DISABLED_FEATURES,
@@ -33,18 +36,32 @@ from .privileged_teacher_luna_rpc_transport import (
     _start_contained_process,
     attest_codex_runtime,
 )
-from .privileged_teacher_luna_turn_rpc import TurnDriver
+from .privileged_teacher_luna_turn_rpc import (
+    TurnDriver,
+    TurnRPCError,
+    TurnValidationError,
+)
 from .privileged_teacher_pt0 import canonical_json_bytes
 
 
-SCHEMA = "pt-luna-turn-rpc-capacity-v1"
+SCHEMA = "pt-luna-turn-rpc-capacity-v2"
 CANARY_SCHEMA = "pt-luna-turn-rpc-real-canaries-v1"
 SOURCE_REVIEW_SCHEMA = "pt-luna-turn-rpc-source-review-v1"
-ARM_SCHEMA = "pt-luna-turn-rpc-capacity-arm-v1"
-METRIC_SCHEMA = "pt-luna-turn-rpc-capacity-game-v1"
+ARM_SCHEMA = "pt-luna-turn-rpc-capacity-arm-v2"
+METRIC_SCHEMA = "pt-luna-turn-rpc-capacity-game-v2"
 ROUTE_PASS = "CAPACITY_PASS"
 ROUTE_REFUSE = "REFUSE_RESOURCE_OR_PROVIDER"
-WORKER_ARMS = (1, 2, 4, 6, 8)
+WORKER_ARMS = (1, 4)
+FAILURE_STAGES = (
+    "none", "dispatch", "provider-response", "validation", "engine-apply",
+    "journal-commit", "terminal-verification", "resource-meter",
+)
+FAILURE_KINDS = (
+    "none", "game-deadline", "call-timeout", "provider-process",
+    "provider-schema", "forbidden-tool", "transport-validation",
+    "engine-validation", "journal-io", "resource-meter", "unknown",
+)
+NO_FAILURE_MESSAGE_SHA256 = hashlib.sha256(b"").hexdigest()
 REQUIRED_ENGINE_ENVIRONMENT = {
     "SHENGJI_FAST": None,
     "SHENGJI_REQUIRE_VOIDS": "1",
@@ -113,6 +130,46 @@ def _p95(values: Sequence[int]) -> int:
     return ordered[max(0, (95 * len(ordered) + 99) // 100 - 1)]
 
 
+def _failure_disposition(exc: BaseException, *, stage: str) \
+        -> tuple[str, str, bool, bool, str, str]:
+    """Reduce a private exception to the closed public failure vocabulary."""
+    exception_type = type(exc).__name__
+    message = str(exc) or type(exc).__name__
+    lowered = message.lower()
+    game_deadline = "game deadline" in lowered
+    call_timeout = ("turn deadline" in lowered or "call timeout" in lowered)
+    if game_deadline:
+        kind = "game-deadline"
+        if "after" in lowered:
+            stage = "provider-response"
+    elif call_timeout:
+        kind = "call-timeout"
+        stage = "provider-response"
+    elif isinstance(exc, CodexToolEventError):
+        kind = "forbidden-tool"
+        stage = "validation"
+    elif isinstance(exc, CodexProviderResourceError):
+        kind = "provider-process"
+        stage = "provider-response"
+    elif isinstance(exc, TurnJournalError):
+        kind = "journal-io"
+        stage = "journal-commit"
+    elif isinstance(exc, TurnValidationError):
+        kind = "engine-validation" if "engine" in lowered else \
+            "transport-validation"
+        stage = "engine-apply" if "engine" in lowered else "validation"
+    elif isinstance(exc, CodexTurnTransportError):
+        kind = "provider-schema"
+        stage = "provider-response"
+    elif isinstance(exc, TurnRPCError):
+        kind = "transport-validation"
+        stage = "validation"
+    else:
+        kind = "unknown"
+    return (stage, kind, game_deadline, call_timeout, exception_type,
+            hashlib.sha256(message.encode("utf-8", errors="replace")).hexdigest())
+
+
 @dataclass(frozen=True)
 class GameMetric:
     workers: int
@@ -139,6 +196,14 @@ class GameMetric:
     token_rate_milli: int
     mechanics_sha256: str
     evidence_sha256: str
+    failure_stage: str = "none"
+    failure_kind: str = "none"
+    game_deadline_fired: bool = False
+    call_timeout_fired: bool = False
+    exception_type: str = "none"
+    failure_message_sha256: str = NO_FAILURE_MESSAGE_SHA256
+    last_opened_rpc_count: int = 0
+    last_committed_decision_count: int = 0
 
     def __post_init__(self) -> None:
         if self.workers not in WORKER_ARMS:
@@ -160,7 +225,10 @@ class GameMetric:
                              (self.cache_write_input_tokens, "cache-write token"),
                              (self.output_tokens, "output token"),
                              (self.reasoning_output_tokens, "reasoning token"),
-                             (self.token_rate_milli, "token rate")):
+                             (self.token_rate_milli, "token rate"),
+                             (self.last_opened_rpc_count, "opened RPC"),
+                             (self.last_committed_decision_count,
+                              "committed decision")):
             _nonnegative(field, f"capacity {label}")
         if self.worker >= self.workers or self.game not in (0, 1):
             raise RPCCapacityError("capacity metric coordinate drift")
@@ -169,6 +237,29 @@ class GameMetric:
         _positive(self.wall_nanoseconds, "capacity game wall")
         _strict_sha(self.mechanics_sha256, "capacity mechanics SHA")
         _strict_sha(self.evidence_sha256, "capacity evidence SHA")
+        _strict_sha(self.failure_message_sha256,
+                    "capacity failure message SHA")
+        if self.failure_stage not in FAILURE_STAGES \
+                or self.failure_kind not in FAILURE_KINDS \
+                or type(self.game_deadline_fired) is not bool \
+                or type(self.call_timeout_fired) is not bool \
+                or type(self.exception_type) is not str \
+                or not self.exception_type:
+            raise RPCCapacityError("capacity failure disposition drift")
+        if self.complete:
+            if (self.failure_stage, self.failure_kind, self.exception_type,
+                    self.failure_message_sha256,
+                    self.game_deadline_fired, self.call_timeout_fired) != (
+                        "none", "none", "none", NO_FAILURE_MESSAGE_SHA256,
+                        False, False):
+                raise RPCCapacityError("complete game has failure disposition")
+        elif self.failure_stage == "none" or self.failure_kind == "none" \
+                or self.exception_type == "none" \
+                or self.failure_message_sha256 == NO_FAILURE_MESSAGE_SHA256:
+            raise RPCCapacityError("incomplete game lacks failure disposition")
+        if self.last_opened_rpc_count > self.rpc_count \
+                or self.last_committed_decision_count > self.rpc_count:
+            raise RPCCapacityError("capacity failure progress drift")
         if self.cached_input_tokens > self.input_tokens \
                 or self.reasoning_output_tokens > self.output_tokens:
             raise RPCCapacityError("capacity token subset drift")
@@ -221,12 +312,14 @@ class MeteredCodexRun:
     """Popen runner that exposes each process group to the reviewed meter."""
 
     def __init__(self, meter: legacy_execution.ProcessTreeResourceMeter,
-                 concurrency: RPCConcurrency):
+                 concurrency: RPCConcurrency,
+                 event_callback: Callable[[str], object] | None = None):
         self.meter = meter
         self.concurrency = concurrency
         self.active_calls = ActiveCallManager()
         self.invocation_count = 0
         self.invocation_wall_nanoseconds: list[int] = []
+        self.event_callback = event_callback
 
     def __call__(self, command: tuple[str, ...], prompt: bytes,
                  workspace: Path, timeout_seconds: int) -> InvocationResult:
@@ -243,6 +336,8 @@ class MeteredCodexRun:
             registered = True
             self.concurrency.enter()
             entered = True
+            if self.event_callback is not None:
+                self.event_callback("rpc-start")
             try:
                 stdout, stderr = process.communicate(
                     input=prompt, timeout=timeout_seconds)
@@ -265,6 +360,8 @@ class MeteredCodexRun:
             try:
                 if entered:
                     self.concurrency.leave()
+                    if self.event_callback is not None:
+                        self.event_callback("rpc-end")
             finally:
                 if registered:
                     self.meter.unregister(process.pid)
@@ -503,7 +600,9 @@ class RealGameRunner:
                  temp_root: Path, per_call_timeout_seconds: int,
                  per_game_deadline_seconds: int,
                  concurrency: RPCConcurrency,
-                 runtime: Mapping[str, object]):
+                 runtime: Mapping[str, object],
+                 progress_sink: Callable[[Mapping[str, object]], object]
+                 | None = None):
         if type(capacity_secret) is not bytes or len(capacity_secret) != 32:
             raise RPCCapacityError("capacity secret drift")
         self.secret = capacity_secret
@@ -519,9 +618,32 @@ class RealGameRunner:
         self.runtime = dict(runtime)
         self.catalog = dict(runtime["codex_tool_catalog"])
         self.mechanics = mechanics_sha256()
+        if progress_sink is not None and not callable(progress_sink):
+            raise RPCCapacityError("capacity progress sink drift")
+        self.progress_sink = progress_sink
+
+    def _emit_progress(self, event: str, *, workers: int, worker: int,
+                       game: int, journal: FileTurnJournal,
+                       absolute_deadline_ns: int) -> None:
+        if self.progress_sink is None:
+            return
+        summary = journal.summary()
+        self.progress_sink({
+            "schema": "pt-luna-rpc-capacity-progress-v1",
+            "event": event, "arm_workers": workers,
+            "worker": worker, "game": game,
+            "opened_rpc_count": summary["opened_rpc_count"],
+            "committed_decision_count": summary[
+                "committed_decision_count"],
+            "remaining_game_deadline_seconds": max(
+                0, absolute_deadline_ns - time.monotonic_ns())
+                // 1_000_000_000,
+            "active_model_rpcs": self.concurrency.active,
+        })
 
     def __call__(self, workers: int, worker: int, game_index: int) -> GameMetric:
         started = time.monotonic_ns()
+        absolute_deadline_ns = started + self.game_deadline_ns
         meter = legacy_execution.ProcessTreeResourceMeter()
         evidence_sha = _sha({"workers": workers, "worker": worker,
                              "game": game_index, "status": "incomplete"})
@@ -532,7 +654,10 @@ class RealGameRunner:
         journal = None
         usage_snapshot = None
         refusal_tool_event_snapshot = None
+        journal_summary_snapshot = None
         tool_event_count = 0
+        stage = "dispatch"
+        failure = None
         metered = MeteredCodexRun(meter, self.concurrency)
         try:
             key = canonical_json_bytes({"schema": "pt-luna-rpc-capacity-seed-v1",
@@ -549,19 +674,31 @@ class RealGameRunner:
                     prefix=f"pt-luna-cap-{workers}-{worker}-{game_index}-",
                     dir=self.temp_root) as directory:
                 journal = FileTurnJournal(Path(directory) / "journal")
+                metered.event_callback = lambda event: self._emit_progress(
+                    event, workers=workers, worker=worker, game=game_index,
+                    journal=journal,
+                    absolute_deadline_ns=absolute_deadline_ns)
                 try:
                     transport = CodexExecPlannerTransport(
                         codex_binary=self.codex_binary,
                         timeout_seconds=self.timeout, temp_root=Path(directory),
                         run_command=metered,
-                        runtime_attestor=lambda _: dict(self.catalog))
+                        runtime_attestor=lambda _: dict(self.catalog),
+                        deadline_provider=lambda: absolute_deadline_ns)
                     driver = TurnDriver(shared, transport, journal=journal)
                     while not shared.complete and shared.failed is None:
-                        if time.monotonic_ns() - started >= self.game_deadline_ns:
+                        if time.monotonic_ns() >= absolute_deadline_ns:
                             shared.fail("capacity game deadline exceeded")
                             raise CodexTurnTransportError(
                                 "capacity game deadline exceeded")
+                        stage = "dispatch"
                         driver.step()
+                        stage = "journal-commit"
+                        self._emit_progress(
+                            "transition-commit", workers=workers,
+                            worker=worker, game=game_index, journal=journal,
+                            absolute_deadline_ns=absolute_deadline_ns)
+                    stage = "terminal-verification"
                     evidence = tuple(driver.evidence)
                     artifacts = shared.completed_artifacts()
                     reopened = selfplay.SealedTrajectory.reopen(
@@ -577,24 +714,38 @@ class RealGameRunner:
                             row.provider_response_sha256 for row in evidence],
                     })
                     complete = verified = True
+                    self._emit_progress(
+                        "game-complete", workers=workers, worker=worker,
+                        game=game_index, journal=journal,
+                        absolute_deadline_ns=absolute_deadline_ns)
                 finally:
                     usage_snapshot = journal.usage_totals()
+                    journal_summary_snapshot = journal.summary()
                     refusal_tool_event_snapshot = \
                         journal.pending_refusal_tool_event_count()
         except Exception as exc:
             process_errors = 1
+            failure = _failure_disposition(exc, stage=stage)
             tool_event_count = (
                 int(isinstance(exc, CodexToolEventError))
                 if refusal_tool_event_snapshot is None
                 else refusal_tool_event_snapshot)
             if driver is not None:
                 evidence = tuple(driver.evidence)
+            if journal is not None:
+                self._emit_progress(
+                    "game-failure", workers=workers, worker=worker,
+                    game=game_index, journal=journal,
+                    absolute_deadline_ns=absolute_deadline_ns)
         observed_process_count = 0
         try:
             resource = meter.close()
             observed_process_count = meter.observed_process_count()
-        except Exception:
+        except Exception as exc:
             process_errors = 1
+            complete = verified = False
+            failure = _failure_disposition(exc, stage="resource-meter")
+            failure = ("resource-meter", "resource-meter", *failure[2:])
             resource = {"busy_cpu_nanoseconds": 0, "peak_rss_bytes": 0,
                         "swap_bytes": 0}
         wall = max(1, time.monotonic_ns() - started)
@@ -616,23 +767,30 @@ class RealGameRunner:
         max_rpc_wall = max(rpc_walls, default=0)
         max_rpc_tokens = max(
             (row.usage.total_tokens for row in evidence), default=0)
-        if not complete and usage is not None:
-            # A failed arm is never selected.  Conservatively treating all
-            # known usage as one call prevents its capacity receipt from
-            # understating the reserve required by a future repair.
-            max_rpc_tokens = max(max_rpc_tokens, usage["total_tokens"])
         total_tokens = input_tokens + output_tokens
         token_rate = total_tokens * 1_000_000_000_000 // wall
+        if failure is None:
+            failure = ("none", "none", False, False, "none",
+                       NO_FAILURE_MESSAGE_SHA256)
+        opened = (metered.invocation_count if journal_summary_snapshot is None
+                  else int(journal_summary_snapshot["call_count"]))
+        committed = int(getattr(driver, "decision_index", 0))
         return GameMetric(
             workers, worker, game_index, complete, verified, wall,
             int(resource["busy_cpu_nanoseconds"]),
             int(resource["peak_rss_bytes"]), int(resource["swap_bytes"]),
-            process_errors, tool_event_count, metered.invocation_count,
+            process_errors, tool_event_count,
+            max(metered.invocation_count, opened),
             observed_process_count,
             p95_rpc_wall, max_rpc_wall, max_rpc_tokens,
             input_tokens, cached_tokens,
             cache_write, output_tokens, reasoning_tokens, token_rate,
-            self.mechanics, evidence_sha)
+            self.mechanics, evidence_sha,
+            failure_stage=failure[0], failure_kind=failure[1],
+            game_deadline_fired=failure[2], call_timeout_fired=failure[3],
+            exception_type=failure[4], failure_message_sha256=failure[5],
+            last_opened_rpc_count=opened,
+            last_committed_decision_count=committed)
 
 
 def _arm(workers: int, metrics: Sequence[GameMetric], *,
@@ -684,9 +842,11 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
     projected_wall = math.ceil(p95 * batches * 125 / 100)
     projection_passed = (projected_tokens <= scientific_token_budget
                          and projected_wall <= scientific_wall_ns)
+    projection_required = workers == 4
     passed = (complete and process_passed and mechanics_passed and rss_passed
               and swap_passed and deadline_passed and parallelism_passed
-              and scaling_passed and projection_passed)
+              and scaling_passed
+              and (projection_passed or not projection_required))
     return {"schema": ARM_SCHEMA, "workers": workers,
             "metrics": [row.payload() for row in sorted(
                 metrics, key=lambda row: (row.worker, row.game))],
@@ -713,6 +873,7 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
             "deadline_passed": deadline_passed,
             "parallelism_passed": parallelism_passed,
             "scaling_passed": scaling_passed,
+            "projection_required": projection_required,
             "projection_passed": projection_passed, "passed": passed}
 
 
@@ -764,7 +925,7 @@ def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
                     raise RPCCapacityError("capacity runner result drift")
                 metrics.append(metric)
                 if progress_sink is not None:
-                    progress_sink({"schema": "pt-luna-rpc-capacity-progress-v1",
+                    progress_sink({"schema": "pt-luna-rpc-capacity-arm-progress-v1",
                                    "arm_workers": workers,
                                    "completed_games": len(metrics),
                                    "total_games": workers * 2})
@@ -790,12 +951,9 @@ def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
             stop_reason = "arm-condition-failed"
             break
         previous = summary
-    passing = [arm for arm in arms if arm["passed"]]
-    eligible = [arm for arm in passing if any(
-        later["workers"] > arm["workers"] and later["passed"] for later in arms)]
-    selected = (max(eligible, key=lambda arm: Fraction(
-                    arm["completed_games"], arm["arm_wall_nanoseconds"]))["workers"]
-                if eligible else None)
+    selected = (4 if len(arms) == len(WORKER_ARMS)
+                and arms[-1]["workers"] == 4 and arms[-1]["passed"]
+                else None)
     if stop_reason in {"capacity-token-overrun", "capacity-wall-overrun",
                        "capacity-wall-before-arm"}:
         selected = None
@@ -857,7 +1015,8 @@ def run_capacity(*, canary_receipt: Mapping[str, object],
         temp_root=temp_root,
         per_call_timeout_seconds=per_call_timeout_seconds,
         per_game_deadline_seconds=per_game_deadline_ns // 1_000_000_000,
-        concurrency=concurrency, runtime=runtime)
+        concurrency=concurrency, runtime=runtime,
+        progress_sink=progress_sink)
     receipt = _derive_capacity(
         game_runner=game_runner, runtime=runtime,
         secret_commitment_sha256=secret_commitment_sha256,
@@ -963,7 +1122,6 @@ def validate_capacity_receipt(receipt: object) -> None:
         expected_source_set_sha256=runtime["source_set_sha256"])
     previous = None
     total_tokens = 0
-    passing = []
     arms = receipt["arms"]
     if type(arms) is not list or not arms \
             or len(arms) > len(WORKER_ARMS):
@@ -985,18 +1143,15 @@ def validate_capacity_receipt(receipt: object) -> None:
             raise RPCCapacityError("capacity arm derivation drift")
         total_tokens += arm["aggregate_token_count"]
         if arm["passed"]:
-            passing.append(arm)
             previous = arm
         elif arm is not arms[-1]:
             raise RPCCapacityError("capacity continued after failed arm")
     if receipt["elapsed_nanoseconds"] < sum(
             arm["arm_wall_nanoseconds"] for arm in arms):
         raise RPCCapacityError("capacity elapsed derivation drift")
-    eligible = [arm for arm in passing if any(
-        later["workers"] > arm["workers"] and later["passed"] for later in arms)]
-    selected = (max(eligible, key=lambda arm: Fraction(
-                    arm["completed_games"], arm["arm_wall_nanoseconds"]))["workers"]
-                if eligible else None)
+    selected = (4 if len(arms) == len(WORKER_ARMS)
+                and arms[-1]["workers"] == 4 and arms[-1]["passed"]
+                else None)
     if receipt["stop_reason"] in {"capacity-token-overrun",
                                   "capacity-wall-overrun",
                                   "capacity-wall-before-arm"}:

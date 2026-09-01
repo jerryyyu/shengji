@@ -18,7 +18,13 @@ import time
 from typing import Callable, Mapping, Sequence
 
 from . import privileged_teacher_luna_selfplay as selfplay
-from .privileged_teacher_luna_rpc_capacity import RPCConcurrency, source_identity
+from .privileged_teacher_luna_rpc_capacity import (
+    FAILURE_KINDS,
+    FAILURE_STAGES,
+    NO_FAILURE_MESSAGE_SHA256,
+    RPCConcurrency,
+    source_identity,
+)
 from .privileged_teacher_luna_rpc_io import (
     AtomicPublishError, partial_path, promote_partial,
     publish_exclusive_bytes, recover_linked_partial,
@@ -26,6 +32,7 @@ from .privileged_teacher_luna_rpc_io import (
 from .privileged_teacher_luna_rpc_journal import (
     FileTurnJournal,
     SealedTurnRefusal,
+    TurnJournalError,
 )
 from .privileged_teacher_luna_rpc_transport import (
     CodexExecPlannerTransport,
@@ -41,15 +48,59 @@ from .privileged_teacher_luna_turn_rpc import (
     PlannerResponse,
     TurnDriver,
     TurnRPCError,
+    TurnValidationError,
 )
 from .privileged_teacher_pt0 import canonical_json_bytes
 
 
 ATTEMPT_SCHEMA = "pt-luna-turn-rpc-game-attempt-v1"
 EVIDENCE_SCHEMA = "pt-luna-turn-rpc-game-evidence-v1"
-FAILURE_SCHEMA = "pt-luna-turn-rpc-game-failure-v1"
-MANIFEST_SCHEMA = "pt-luna-turn-rpc-game-manifest-v1"
+FAILURE_SCHEMA = "pt-luna-turn-rpc-game-failure-v2"
+MANIFEST_SCHEMA = "pt-luna-turn-rpc-game-manifest-v2"
 SCIENTIFIC_BINDING_SCHEMA = "pt-luna-turn-rpc-scientific-attempt-binding-v1"
+
+
+@dataclass(frozen=True)
+class FailureDisposition:
+    stage: str
+    kind: str
+    game_deadline_fired: bool
+    call_timeout_fired: bool
+    exception_type: str
+    message_sha256: str
+    last_opened_rpc_count: int
+    last_committed_decision_count: int
+
+    def __post_init__(self) -> None:
+        if self.stage not in FAILURE_STAGES or self.stage == "none" \
+                or self.kind not in FAILURE_KINDS or self.kind == "none" \
+                or type(self.game_deadline_fired) is not bool \
+                or type(self.call_timeout_fired) is not bool \
+                or type(self.exception_type) is not str \
+                or not self.exception_type \
+                or type(self.message_sha256) is not str \
+                or len(self.message_sha256) != 64 \
+                or any(char not in "0123456789abcdef"
+                       for char in self.message_sha256) \
+                or self.message_sha256 == NO_FAILURE_MESSAGE_SHA256:
+            raise RPCCollectionError("game failure disposition drift")
+        for value in (self.last_opened_rpc_count,
+                      self.last_committed_decision_count):
+            if isinstance(value, bool) or not isinstance(value, int) \
+                    or value < 0:
+                raise RPCCollectionError("game failure progress drift")
+        if self.last_committed_decision_count > self.last_opened_rpc_count:
+            raise RPCCollectionError("game failure progress drift")
+
+    def payload(self) -> dict[str, object]:
+        return {name: getattr(self, name) for name in self.__dataclass_fields__}
+
+    @classmethod
+    def from_mapping(cls, value: object) -> "FailureDisposition":
+        fields = set(cls.__dataclass_fields__)
+        if type(value) is not dict or set(value) != fields:
+            raise RPCCollectionError("game failure disposition schema drift")
+        return cls(**{name: value[name] for name in fields})
 
 
 class RPCCollectionError(ValueError):
@@ -62,6 +113,48 @@ class ResourceBoundaryError(CodexProviderResourceError):
 
 class SettledResourceBoundaryError(ResourceBoundaryError):
     """A sealed provider response was charged once and refused by the ledger."""
+
+
+def _failure_disposition(exc: BaseException, *, stage: str,
+                         journal: FileTurnJournal) -> FailureDisposition:
+    message = str(exc) or type(exc).__name__
+    lowered = message.lower()
+    summary = journal.summary()
+    game_deadline = "game deadline" in lowered
+    call_timeout = ("turn deadline" in lowered or "call timeout" in lowered)
+    if game_deadline:
+        kind = "game-deadline"
+        if "after" in lowered:
+            stage = "provider-response"
+    elif call_timeout:
+        kind = "call-timeout"
+        stage = "provider-response"
+    elif isinstance(exc, CodexToolEventError):
+        stage, kind = "validation", "forbidden-tool"
+    elif isinstance(exc, ResourceBoundaryError):
+        stage, kind = "provider-response", "provider-process"
+    elif isinstance(exc, CodexProviderResourceError):
+        stage, kind = "provider-response", "provider-process"
+    elif isinstance(exc, TurnJournalError):
+        stage, kind = "journal-commit", "journal-io"
+    elif isinstance(exc, TurnValidationError):
+        engine = "engine" in lowered or "candidate" in lowered
+        stage, kind = (("engine-apply", "engine-validation") if engine
+                       else ("validation", "transport-validation"))
+    elif isinstance(exc, CodexTurnTransportError):
+        stage, kind = "provider-response", "provider-schema"
+    elif isinstance(exc, TurnRPCError):
+        stage, kind = "validation", "transport-validation"
+    elif isinstance(exc, RPCCollectionError):
+        kind = "engine-validation"
+    else:
+        kind = "unknown"
+    return FailureDisposition(
+        stage, kind, game_deadline, call_timeout, type(exc).__name__,
+        hashlib.sha256(message.encode(
+            "utf-8", errors="replace")).hexdigest(),
+        int(summary["opened_rpc_count"]),
+        int(summary["committed_decision_count"]))
 
 
 class ScientificBudgetLedger:
@@ -771,6 +864,7 @@ class AttemptReopen:
     failure_kind: str | None
     failure_class: str | None
     usage: Mapping[str, int]
+    failure_disposition: FailureDisposition | None = None
 
 
 class _Never:
@@ -836,7 +930,8 @@ def reopen_attempt(
     manifest_keys = {"schema", "status", "coordinate", "mirror",
                      "attempt_sha256", "runtime_sha256", "files",
                      "journal_files", "journal_summary", "usage",
-                     "failure_kind", "failure_class", "authority",
+                     "failure_kind", "failure_class",
+                     "failure_disposition", "authority",
                      "manifest_sha256"}
     if set(manifest) != manifest_keys or manifest["schema"] != MANIFEST_SCHEMA:
         raise RPCCollectionError("game manifest schema drift")
@@ -875,6 +970,7 @@ def reopen_attempt(
                          "terminal.json"} \
                 or manifest["failure_kind"] is not None \
                 or manifest["failure_class"] is not None \
+                or manifest["failure_disposition"] is not None \
                 or not game.complete or game.failed is not None:
             raise RPCCollectionError("complete game manifest drift")
         evidence = opened_files["evidence.json"]
@@ -901,11 +997,15 @@ def reopen_attempt(
                              "trajectory.json", "terminal.json"} \
             or type(manifest["failure_kind"]) is not str \
             or manifest["failure_class"] not in {
-                "mechanics-privacy", "resource-provider"}:
+                "mechanics-privacy", "resource-provider"} \
+            or type(manifest["failure_disposition"]) is not dict:
         raise RPCCollectionError("incomplete game manifest drift")
+    disposition = FailureDisposition.from_mapping(
+        manifest["failure_disposition"])
     failure = opened_files["failure.json"]
     if set(failure) != {"schema", "coordinate", "mirror", "failure_kind",
                        "failure_class", "failure_fingerprint_sha256",
+                       "failure_disposition",
                        "journal_summary_sha256",
                        "authority", "artifact_sha256"} \
             or failure["schema"] != FAILURE_SCHEMA \
@@ -913,9 +1013,11 @@ def reopen_attempt(
             or failure["mirror"] != mirror \
             or failure["failure_kind"] != manifest["failure_kind"] \
             or failure["failure_class"] != manifest["failure_class"] \
+            or failure["failure_disposition"] != disposition.payload() \
             or failure["failure_fingerprint_sha256"] != _sha({
                 "failure_kind": failure["failure_kind"],
-                "failure_class": failure["failure_class"]}) \
+                "failure_class": failure["failure_class"],
+                "failure_disposition": disposition.payload()}) \
             or failure["journal_summary_sha256"] \
             != _sha(manifest["journal_summary"]) \
             or failure["authority"] != selfplay.AUTHORITY:
@@ -927,7 +1029,7 @@ def reopen_attempt(
     return AttemptReopen(
         "incomplete", manifest["manifest_sha256"], None,
         manifest["failure_kind"], manifest["failure_class"],
-        dict(manifest["usage"]))
+        dict(manifest["usage"]), disposition)
 
 
 class _CountingRun:
@@ -949,6 +1051,45 @@ class _CountingRun:
 TransportFactory = Callable[[Path], PlannerTransport]
 
 
+class _DeadlineTransport:
+    """Game-owned absolute boundary around both real and injected transports."""
+
+    def __init__(self, inner: PlannerTransport,
+                 deadline_provider: Callable[[], int],
+                 event_callback: Callable[[str], object] | None = None,
+                 configure_inner_deadline: bool = True):
+        self.inner = inner
+        self.deadline_provider = deadline_provider
+        self.event_callback = event_callback
+        if configure_inner_deadline and hasattr(inner, "deadline_provider"):
+            setattr(inner, "deadline_provider", deadline_provider)
+
+    def call(self, packet: DecisionPacket):
+        deadline = self.deadline_provider()
+        if time.monotonic_ns() >= deadline:
+            raise ResourceBoundaryError(
+                "game deadline exceeded before dispatch")
+        if self.event_callback is not None:
+            self.event_callback("rpc-start")
+        try:
+            response = self.inner.call(packet)
+        finally:
+            if self.event_callback is not None:
+                self.event_callback("rpc-end")
+        if time.monotonic_ns() >= deadline:
+            raise ResourceBoundaryError(
+                "game deadline exceeded after provider response")
+        return response
+
+    def take_private_evidence(self, packet, response):
+        take = getattr(self.inner, "take_private_evidence", None)
+        return None if take is None else take(packet, response)
+
+    def take_private_refusal_evidence(self, packet):
+        take = getattr(self.inner, "take_private_refusal_evidence", None)
+        return None if take is None else take(packet)
+
+
 class RPCGameAttemptRunner:
     """Run/resume one schedule item and seal it exactly once."""
 
@@ -966,7 +1107,9 @@ class RPCGameAttemptRunner:
             per_call_token_reserve: int = 1,
             per_call_wall_reserve_milliseconds: int = 91_000,
             scientific_binding: Mapping[str, object] | None = None,
-            transport_factory: TransportFactory | None = None):
+            transport_factory: TransportFactory | None = None,
+            progress_callback: Callable[[Mapping[str, object]], object]
+            | None = None):
         if type(seed_secret) is not bytes or len(seed_secret) != 32:
             raise RPCCollectionError("collection seed secret drift")
         if isinstance(per_game_deadline_seconds, bool) \
@@ -1026,6 +1169,9 @@ class RPCGameAttemptRunner:
             per_call_wall_reserve_milliseconds // 1_000)
         self.concurrency = concurrency or RPCConcurrency()
         self.stop_event = stop_event or threading.Event()
+        if progress_callback is not None and not callable(progress_callback):
+            raise RPCCollectionError("collection progress callback drift")
+        self.progress_callback = progress_callback
         self.scientific_budget_provider = scientific_budget_provider
         if scientific_response_acceptor is not None \
                 and not callable(scientific_response_acceptor):
@@ -1071,6 +1217,21 @@ class RPCGameAttemptRunner:
         if self.active_call_manager is not None:
             self.active_call_manager.terminate()
 
+    def _emit_progress(self, event: str, journal: FileTurnJournal,
+                       absolute_deadline_ns: int) -> None:
+        if self.progress_callback is None:
+            return
+        summary = journal.summary()
+        self.progress_callback({
+            "event": event,
+            "opened_rpc_count": summary["opened_rpc_count"],
+            "committed_decision_count": summary[
+                "committed_decision_count"],
+            "remaining_game_deadline_seconds": max(
+                0, absolute_deadline_ns - time.monotonic_ns())
+                // 1_000_000_000,
+        })
+
     def _attempt_body(self, coordinate, mirror, root_sha, started):
         body = {"schema": ATTEMPT_SCHEMA, "coordinate": list(coordinate),
                 "mirror": mirror, "root_sha256": root_sha,
@@ -1114,7 +1275,9 @@ class RPCGameAttemptRunner:
 
     def _manifest(self, path: Path, *, status: str,
                   failure_kind: str | None,
-                  failure_class: str | None) -> dict[str, object]:
+                  failure_class: str | None,
+                  failure_disposition: FailureDisposition | None = None) \
+            -> dict[str, object]:
         attempt = _read(path / "attempt.json")
         files = {
             item.name: _sha_bytes(canonical_json_bytes(_read(item)))
@@ -1132,15 +1295,31 @@ class RPCGameAttemptRunner:
                 "usage": journal.usage_totals(),
                 "failure_kind": failure_kind,
                 "failure_class": failure_class,
+                "failure_disposition": (None if failure_disposition is None
+                                        else failure_disposition.payload()),
                 "authority": dict(selfplay.AUTHORITY)}
         return {**body, "manifest_sha256": _sha(body)}
 
     def _seal_failure(self, path: Path, coordinate, mirror,
-                      exc: Exception) -> None:
+                      exc: Exception, *, stage: str) -> None:
         if (path / "manifest.json").exists():
             return
         journal = FileTurnJournal(path / "journal")
         refusal = journal.pending_refusal_disposition()
+        persisted_disposition = \
+            journal.pending_refusal_failure_disposition()
+        if persisted_disposition is None:
+            disposition = _failure_disposition(
+                exc, stage=stage, journal=journal)
+        else:
+            progress = journal.summary()
+            disposition = FailureDisposition.from_mapping({
+                **persisted_disposition,
+                "last_opened_rpc_count": int(
+                    progress["opened_rpc_count"]),
+                "last_committed_decision_count": int(
+                    progress["committed_decision_count"]),
+            })
         if refusal is not None:
             kind = refusal["failure_kind"]
             failure_class = refusal["failure_class"]
@@ -1177,15 +1356,18 @@ class RPCGameAttemptRunner:
         body = {"schema": FAILURE_SCHEMA, "coordinate": list(coordinate),
                 "mirror": mirror, "failure_kind": kind,
                 "failure_class": failure_class,
+                "failure_disposition": disposition.payload(),
                 "failure_fingerprint_sha256": _sha({
-                    "failure_kind": kind, "failure_class": failure_class}),
+                    "failure_kind": kind, "failure_class": failure_class,
+                    "failure_disposition": disposition.payload()}),
                 "journal_summary_sha256": _sha(journal.summary()),
                 "authority": dict(selfplay.AUTHORITY)}
         _publish_or_verify(path / "failure.json",
                            {**body, "artifact_sha256": _sha(body)})
         _publish_or_verify(path / "manifest.json", self._manifest(
             path, status="incomplete", failure_kind=kind,
-            failure_class=failure_class))
+            failure_class=failure_class,
+            failure_disposition=disposition))
 
     def _finish_interrupted_failure(self, path: Path, coordinate, mirror) \
             -> None:
@@ -1193,6 +1375,7 @@ class RPCGameAttemptRunner:
         failure = _read(path / "failure.json")
         keys = {"schema", "coordinate", "mirror", "failure_kind",
                 "failure_class", "failure_fingerprint_sha256",
+                "failure_disposition",
                 "journal_summary_sha256", "authority", "artifact_sha256"}
         body = {key: value for key, value in failure.items()
                 if key != "artifact_sha256"}
@@ -1202,9 +1385,14 @@ class RPCGameAttemptRunner:
                 or failure.get("authority") != selfplay.AUTHORITY \
                 or failure.get("failure_class") not in {
                     "mechanics-privacy", "resource-provider"} \
+                or FailureDisposition.from_mapping(
+                    failure.get("failure_disposition")).payload() \
+                    != failure.get("failure_disposition") \
                 or failure.get("failure_fingerprint_sha256") != _sha({
                     "failure_kind": failure.get("failure_kind"),
-                    "failure_class": failure.get("failure_class")}) \
+                    "failure_class": failure.get("failure_class"),
+                    "failure_disposition": failure.get(
+                        "failure_disposition")}) \
                 or failure.get("artifact_sha256") != _sha(body) \
                 or failure.get("journal_summary_sha256") != _sha(
                     FileTurnJournal(path / "journal").summary()):
@@ -1212,7 +1400,9 @@ class RPCGameAttemptRunner:
         _publish_or_verify(path / "manifest.json", self._manifest(
             path, status="incomplete",
             failure_kind=failure["failure_kind"],
-            failure_class=failure["failure_class"]))
+            failure_class=failure["failure_class"],
+            failure_disposition=FailureDisposition.from_mapping(
+                failure["failure_disposition"])))
 
     def __call__(self, coordinate: tuple[str, int, int], mirror: int) \
             -> selfplay.CompletedGameArtifacts:
@@ -1268,21 +1458,30 @@ class RPCGameAttemptRunner:
             refusal = SealedTurnRefusal(
                 pending_refusal["failure_kind"],
                 pending_refusal["failure_class"])
-            self._seal_failure(path, coordinate, mirror, refusal)
+            self._seal_failure(
+                path, coordinate, mirror, refusal, stage="provider-response")
             self.stop_event.set()
             raise RPCCollectionError("sealed game attempt is incomplete") \
                 from refusal
         game = selfplay.LunaSelfPlayGame(
             root, coordinate=coordinate, mirror=mirror,
             seed_secret=self.seed_secret)
+        absolute_deadline_ns = started + self.per_game_deadline_ns
+        stage = "dispatch"
         try:
             if self.codex_binary is not None \
                     and source_identity(self.codex_binary) != self.runtime:
                 raise RPCCollectionError("collection live runtime drift")
-            transport = self.transport_factory(path)
+            transport = _DeadlineTransport(
+                self.transport_factory(path),
+                lambda: absolute_deadline_ns,
+                lambda event: self._emit_progress(
+                    event, journal, absolute_deadline_ns),
+                configure_inner_deadline=self.codex_binary is not None)
         except Exception as exc:
             game.fail(type(exc).__name__)
-            self._seal_failure(path, coordinate, mirror, exc)
+            self._seal_failure(
+                path, coordinate, mirror, exc, stage="dispatch")
             raise RPCCollectionError("game attempt refused") from exc
         budget = lambda: (journal.pending_model_budget()
                           or self._model_budget(journal, started))
@@ -1334,15 +1533,20 @@ class RPCGameAttemptRunner:
                         and journal.usage_totals()["total_tokens"] \
                         + self.per_call_token_reserve > self.per_game_token_cap:
                     raise ResourceBoundaryError("game token admission refused")
+                stage = "dispatch"
                 driver.step()
-                if time.monotonic_ns() - started > self.per_game_deadline_ns:
+                stage = "journal-commit"
+                self._emit_progress(
+                    "transition-commit", journal, absolute_deadline_ns)
+                if time.monotonic_ns() >= absolute_deadline_ns:
                     raise ResourceBoundaryError(
                         "game terminal deadline crossed")
                 if self.scientific_terminal_acceptor is not None:
                     self.scientific_terminal_acceptor()
             if not game.complete or game.failed is not None:
                 raise RPCCollectionError("game did not complete")
-            if time.monotonic_ns() - started > self.per_game_deadline_ns:
+            stage = "terminal-verification"
+            if time.monotonic_ns() >= absolute_deadline_ns:
                 raise ResourceBoundaryError("game terminal deadline crossed")
             if self.scientific_terminal_acceptor is not None:
                 self.scientific_terminal_acceptor()
@@ -1366,6 +1570,8 @@ class RPCGameAttemptRunner:
             _publish(path / "manifest.json", self._manifest(
                 path, status="complete", failure_kind=None,
                 failure_class=None))
+            self._emit_progress(
+                "game-complete", journal, absolute_deadline_ns)
             reopened = reopen_attempt(
                 path, seed_secret=self.seed_secret,
                 expected_runtime_sha256=self.runtime_sha256,
@@ -1377,7 +1583,10 @@ class RPCGameAttemptRunner:
             return reopened.artifacts
         except Exception as exc:
             game.fail(type(exc).__name__)
-            self._seal_failure(path, coordinate, mirror, exc)
+            self._seal_failure(
+                path, coordinate, mirror, exc, stage=stage)
+            self._emit_progress(
+                "game-failure", journal, absolute_deadline_ns)
             self.stop_event.set()
             raise RPCCollectionError("game attempt refused") from exc
 

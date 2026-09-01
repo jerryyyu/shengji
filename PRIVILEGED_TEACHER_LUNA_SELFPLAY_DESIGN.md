@@ -160,17 +160,21 @@ typed refusal. The private JSONL evidence and its hash retain that proof for
 independent reopening.
 
 The current Codex structured-output subset requires one root object with every
-property required. The transport therefore uses a closed provider-only object
-(`pt-luna-provider-intent-v1`) containing both play and rollout fields. For a
-play, the rollout arrays must be empty; for a rollout, `candidate_index=-1`
-and `confidence="none"`. The supervisor validates those sentinels and
-normalizes the provider object into the smaller logical intent above before
-the engine can act. To make the 16-evaluation cap structurally reachable, the
-provider schema admits at most four candidate indices and four continuation
-names per batch. Duplicate values remain a local typed refusal; they are never
-silently deduplicated. The source canary proved that `uniqueItems` itself is
-not supported by this Codex schema path, so it is not falsely claimed as a
-provider-side guard.
+property required. The transport therefore uses a closed provider-only root
+(`pt-luna-provider-intent-v2`) with one required nested `action` object. That
+object is a discriminated `play|rollout` union: a play carries only its index,
+confidence, and note; a rollout carries nonempty candidate/continuation arrays
+and its note. A post-design casual compatibility probe against the exact pinned
+0.149.0 CLI returned a schema-valid nested rollout on the first call. This
+structure prevents the observed flat-schema failure where an optional rollout
+could choose empty arrays, while preserving the logical intents above and
+adding no call, retry, or fallback. The supervisor normalizes the provider
+object into the smaller logical intent before the engine can act. To make the
+16-evaluation cap structurally reachable, the provider schema admits at most
+four candidate indices and four continuation names per batch. Duplicate values
+remain a local typed refusal; they are never silently deduplicated. The source
+canary proved that `uniqueItems` itself is not supported by this Codex schema
+path, so it is not falsely claimed as a provider-side guard.
 
 The supervisor runs exactly four independent games concurrently after the
 fixed-topology capacity gate passes, but at most one model RPC is in flight per
@@ -352,6 +356,19 @@ step and never contributes formal evidence:
    900,000 tokens, or the first typed failure. Passing keeps worker 4 as the
    formal target; failure returns the design for review rather than silently
    increasing concurrency.
+
+The authorized post-review probes reached step 3 once and then stopped. Step 2
+passed: four workers committed four decisions each in 95.995 seconds, issued
+26 total model RPCs, charged 279,948 tokens, emitted zero tool events, reached
+four active RPCs, and measured 3.3132-way parallelism. Step 3 refused at its
+predeclared token-admission boundary after 814.874 seconds, 73 RPCs, 60
+committed decisions, and 800,005 charged tokens. The engine had not failed and
+no tool event occurred; the 900,000-token envelope correctly retained its
+100,000-token next-call reserve. This is a failed casual step, not a completed
+game or capacity receipt. It authorizes neither a retry nor a larger casual
+budget. The formal arm-4 capacity census remains responsible for measuring
+eight complete games and deriving its per-game and per-call reserves; review
+must explicitly accept that route before capacity starts.
 
 A matched packet-level high/medium timing probe is optional only if the effort
 change remains disputed. Persistent model-owned tool-loop experiments are a

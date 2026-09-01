@@ -73,6 +73,7 @@ def test_committed_transition_reopens_and_replays_without_model_call(tmp_path):
     assert fake.calls == 1
     assert journal.summary() == {
         "schema": "pt-luna-turn-journal-summary-v1", "call_count": 1,
+        "opened_rpc_count": 1, "committed_decision_count": 1,
         "committed_call_count": 1, "refused_call_count": 0,
         "private_evidence_count": 0,
         "pending_stages": None}
@@ -227,6 +228,7 @@ def test_known_transport_refusal_is_sealed_and_never_retried(tmp_path):
         journal.call(first_packet(original), Fake(explode=True))
     assert journal.summary() == {
         "schema": "pt-luna-turn-journal-summary-v1", "call_count": 1,
+        "opened_rpc_count": 1, "committed_decision_count": 0,
         "committed_call_count": 0, "refused_call_count": 1,
         "private_evidence_count": 0,
         "pending_stages": ["open", "refusal"]}

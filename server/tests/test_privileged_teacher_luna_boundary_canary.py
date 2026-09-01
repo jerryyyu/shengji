@@ -49,8 +49,9 @@ if mode == "play" or not response.is_file(): sys.exit(3)
 token = json.loads(response.read_bytes())["completion_token"]
 payload = {"schema": "privileged-teacher-luna-selfplay-final-response-v2", "status": "complete", "completion_token": token}
 if mode == "bad-final": payload["status"] = "wrong"
+if mode == "prompt-order-wrong-token": payload["completion_token"] = "f" * 64
 final_raw = json.dumps(
-    payload, sort_keys=(mode != "prompt-order-final"),
+    payload, sort_keys=(mode not in ("prompt-order-final", "prompt-order-wrong-token")),
     separators=(",", ":"), ensure_ascii=True).encode()
 if mode != "absent-final": final.write_bytes(final_raw)
 sys.stdout.write("\\n".join(json.dumps(e, separators=(",", ":")) for e in events) + "\\n")
@@ -120,6 +121,20 @@ def test_prompt_order_final_is_semantically_bound(tmp_path, monkeypatch):
         "--deadline-seconds", "10"]) == 0
     payload = canary.reopen_receipt(output)
     assert payload["model_op_counts"] == {"observe": 1}
+    assert payload["final_sha256"] is not None
+    assert "completion_token" not in output.read_text()
+
+
+def test_prompt_order_wrong_token_refuses(tmp_path, monkeypatch):
+    monkeypatch.setenv("CANARY_FAKE_MODE", "prompt-order-wrong-token")
+    output = tmp_path / "receipt.json"
+    assert canary.main([
+        "--codex-binary", str(_fake(tmp_path)), "--output", str(output),
+        "--deadline-seconds", "10"]) == 2
+    payload = canary.reopen_failure_receipt(output)
+    assert payload["stage"] == "final-validation"
+    assert payload["reason_code"] == "final-response-refused"
+    assert payload["mailbox_op_counts"] == {"observe": 1}
     assert payload["final_sha256"] is not None
     assert "completion_token" not in output.read_text()
 

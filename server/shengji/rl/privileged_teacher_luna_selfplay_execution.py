@@ -718,6 +718,11 @@ class ProcessTreeResourceMeter:
                 "sample_count": self._sample_count,
             }
 
+    def observed_process_count(self) -> int:
+        """Return unique PIDs actually observed inside registered groups."""
+        with self._lock:
+            return len(self._cpu_by_pid)
+
 
 class ProcessSupervisor:
     """Owns process groups and one shared game deadline."""

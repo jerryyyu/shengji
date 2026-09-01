@@ -859,6 +859,7 @@ def test_process_tree_meter_counts_only_registered_group():
     meter._sample()
     meter.unregister(100)
     receipt = meter.close()
+    assert meter.observed_process_count() == 2
     assert receipt["schema"] == execution.RESOURCE_SCHEMA
     assert receipt["busy_cpu_nanoseconds"] == 2_000_000_000
     assert receipt["peak_rss_bytes"] == 3 * 1024 * 1024

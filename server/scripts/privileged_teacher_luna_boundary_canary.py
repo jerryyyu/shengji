@@ -501,14 +501,18 @@ def run(*, codex_binary: Path, output: Path, deadline_seconds: int) -> dict[str,
                 if not context.final_present:
                     _fail(context, "final-validation",
                           "final-response-refused")
-                expected_final = canonical_json_bytes({
+                expected_final = {
                     "schema": execution.FINAL_RESPONSE_SCHEMA,
-                    "status": "complete", "completion_token": token})
-                # Codex's last-message file is the assistant message itself
-                # and may omit the canonical artifact newline. Accept only
-                # those two byte forms of the same exact terminal JSON.
-                if final_raw not in (
-                        expected_final, expected_final.removesuffix(b"\n")):
+                    "status": "complete", "completion_token": token}
+                # Codex promises the raw last assistant message, not canonical
+                # JSON bytes.  Match the production Luna boundary: key order
+                # and insignificant whitespace may vary, while the exact
+                # three-field mapping and engine-issued token may not.
+                try:
+                    final_obj = json.loads(final_raw.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    final_obj = None
+                if final_obj != expected_final:
                     _fail(context, "final-validation",
                           "final-response-refused")
                 body = {

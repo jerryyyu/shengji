@@ -95,6 +95,8 @@ def test_early_prose_is_blocked_without_private_content(tmp_path):
     payload = json.loads(raw)
     assert requests == 1
     assert payload["decision"] == "block"
+    assert "model-visible exec" in payload["reason"]
+    assert "tools.exec_command" in payload["reason"]
     assert "secret" not in raw.decode()
     assert "completion_token" not in raw.decode()
 

@@ -35,34 +35,46 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 MODEL = luna.MODEL
 REASONING_EFFORT = "high"
 # Luna is currently exposed through Codex's code-mode runtime.  The runtime
-# invokes the same ``exec_command`` tool used by the shell surface.  The
-# nested command item retains the normal shell-derived command spelling.
+# exposes a public JavaScript executor while retaining the shell-derived
+# ``exec_command`` spelling for commands invoked from inside that cell.
 # Keep this identity explicit: a prompt hash alone cannot detect a rerouted
 # model/tool contract after an attempt has been sealed.
 CODE_MODE_TOOL_MODE = "code_mode_only"
-# Codex 0.149.0 deliberately composes a model cataloged with the legacy
-# ``shell_command`` type onto the nested unified-exec surface when
-# ``code_mode_only`` is enabled: code-mode receives ``exec_command`` plus
-# ``write_stdin`` while the legacy tool is hidden.  Keep the catalog identity
-# and the model-facing nested name separate; neither is a typo.
+# Codex 0.149.0 exposes ``exec``/``wait`` to the model.  The JavaScript cell
+# submitted through ``exec`` can in turn call the nested unified-exec tools
+# ``tools.exec_command``/``tools.write_stdin``.  These are two distinct
+# namespaces; presenting a nested name as a model-visible tool leaves the
+# mailbox unreachable even though the runtime itself is healthy.
+CODE_MODE_PUBLIC_TOOL_NAME = "exec"
+CODE_MODE_PUBLIC_WAIT_NAME = "wait"
+# Keep the catalog identity and nested tool identity separate as well.  The
+# runtime receipt retains ``CODE_MODE_TOOL_NAME`` for schema compatibility;
+# it names the nested shell tool, not the public code-mode tool.
 CODE_MODE_SHELL_TYPE = "shell_command"
-CODE_MODE_TOOL_NAME = "exec_command"
+CODE_MODE_NESTED_TOOL_NAME = "exec_command"
+CODE_MODE_NESTED_WAIT_NAME = "write_stdin"
+CODE_MODE_TOOL_NAME = CODE_MODE_NESTED_TOOL_NAME
 CODE_MODE_OUTER_YIELD_MILLISECONDS = 60_000
 CODE_MODE_NESTED_YIELD_MILLISECONDS = 30_000
 CODE_MODE_FEATURE_OVERRIDE = "features.code_mode_only=true"
 PLANNER_DEVELOPER_INSTRUCTIONS = (
     "You are a bounded Shengji game process. You are code-mode-only: your "
-    "first assistant action must be a JavaScript code cell that calls "
-    "tools.exec_command with the exact observe command supplied in the user "
+    "first tool call must invoke the model-visible exec tool with a "
+    "JavaScript code cell that calls nested tools.exec_command with the exact "
+    "observe command supplied in the user "
     "prompt. Do not answer with text or finish before the engine reports "
     "round_end. If a Stop hook blocks completion, immediately use the same "
-    "code-mode exec_command wrapper and continue the mailbox protocol from "
+    "model-visible exec tool and nested exec_command wrapper to continue the "
+    "mailbox protocol from "
     "the prompt. Start every JavaScript cell with the supplied @exec pragma "
     "so the outer code cell remains live longer than the nested command. Use "
     "yield_time_ms=30000 for each nested command; if it yields an inner "
     "session_id, poll that command with tools.write_stdin until it exits. If "
     "the outer code cell itself yields a cell_id, resume that same cell with "
-    "the top-level functions.wait continuation before starting another cell.")
+    "the model-visible wait tool before starting another cell. Never invoke "
+    "exec_command, write_stdin, or functions.wait as model-visible top-level "
+    "tools; the first two exist only inside JavaScript and functions.wait is "
+    "not the public continuation name.")
 PLANNER_DEVELOPER_OVERRIDE = (
     "developer_instructions=" + json.dumps(PLANNER_DEVELOPER_INSTRUCTIONS))
 LEGACY_FINAL_RESPONSE_SCHEMA = "privileged-teacher-luna-selfplay-final-response-v1"
@@ -117,7 +129,7 @@ STOP_HOOK_SCRIPT = (Path(__file__).resolve().parents[2] / "scripts"
                     / "privileged_teacher_luna_stop_hook.py")
 # This is deliberately pinned separately from the generated config.  A
 # changed hook source must fail before a production planner is launched.
-STOP_HOOK_SOURCE_SHA256 = "3a8096b4fc569f50424ca1b8b1643c7ef2bf5480f924664f39a86067fad982ad"
+STOP_HOOK_SOURCE_SHA256 = "371e8de2bf395b7849fbec09242d2c7cfe45fa804ba247868845a8be4669bad6"
 
 
 class LunaExecutionError(ValueError):
@@ -335,27 +347,32 @@ team-relative: positive means your partnership wins the round, and the
 defender's utility is the exact opposite of the attacker's for the same final
 attacker points. You have full-information privilege: all hands and the
 burial are exposed because this is a bounded teacher diagnostic, not a player
-information set. Use only the code-mode execution tool
-`{CODE_MODE_TOOL_NAME}`. Each command must be issued by a JavaScript code
-cell calling `tools.{CODE_MODE_TOOL_NAME}({{"cmd": COMMAND, "workdir": WORKDIR,
+information set. Invoke the model-visible code-mode tool
+`{CODE_MODE_PUBLIC_TOOL_NAME}` with a raw JavaScript cell. Inside that cell,
+each mailbox command must call the nested tool
+`tools.{CODE_MODE_NESTED_TOOL_NAME}({{"cmd": COMMAND, "workdir": WORKDIR,
 "yield_time_ms": {CODE_MODE_NESTED_YIELD_MILLISECONDS}}})`;
-do not invoke a shell tool directly. The first cell must use this complete
-pattern, including any yielded-session continuation and the initial output:
+`{CODE_MODE_NESTED_TOOL_NAME}` and `{CODE_MODE_NESTED_WAIT_NAME}` are not
+model-visible top-level tools. The first cell submitted to
+`{CODE_MODE_PUBLIC_TOOL_NAME}` must use this complete pattern, including any
+yielded-session continuation and the initial output:
   {outer_pragma}
-  let result = await tools.{CODE_MODE_TOOL_NAME}({{"cmd": {first_exec}, "workdir": {workdir}, "yield_time_ms": 30000}});
+  let result = await tools.{CODE_MODE_NESTED_TOOL_NAME}({{"cmd": {first_exec}, "workdir": {workdir}, "yield_time_ms": 30000}});
   let combined = result.output ?? "";
   while (result.session_id) {{
-    result = await tools.write_stdin({{"session_id": result.session_id, "chars": "", "yield_time_ms": 30000}});
+    result = await tools.{CODE_MODE_NESTED_WAIT_NAME}({{"session_id": result.session_id, "chars": "", "yield_time_ms": 30000}});
     combined += result.output ?? "";
   }}
   text(combined);
 The pragma must be the first line of every JavaScript cell. There are two
 different continuation identities. `result.session_id` belongs to the nested
-command and is resumed inside the cell with `tools.write_stdin`. If the outer
-code-mode tool returns `Script running with cell ID ...`, that `cell_id`
-belongs to the JavaScript cell: immediately invoke the top-level
-`functions.wait` continuation on that exact cell until it completes. That
-top-level continuation is part of code-mode execution and is allowed. Never
+command and is resumed inside the cell with
+`tools.{CODE_MODE_NESTED_WAIT_NAME}`. If the model-visible
+`{CODE_MODE_PUBLIC_TOOL_NAME}` tool returns `Script running with cell ID ...`,
+that `cell_id` belongs to the JavaScript cell: immediately invoke the
+model-visible `{CODE_MODE_PUBLIC_WAIT_NAME}` tool on that exact cell until it
+completes. Do not call `functions.wait`; that is not the public continuation
+name. Never
 start another JavaScript cell or mailbox command while either continuation is
 live.
 The `cmd` value above is the exact first nested mailbox command. Use the same
@@ -2457,6 +2474,8 @@ __all__ = ["ARTIFACT_SCHEMA", "ATTEMPT_SCHEMA", "FINAL_RESPONSE_SCHEMA",
            "SandboxIdentity", "SANDBOX_PROFILE_SCHEMA",
            "MAX_GAME_WALL_SECONDS", "MODEL", "PRIVATE_TRACE_SCHEMA",
            "CODE_MODE_TOOL_MODE", "CODE_MODE_SHELL_TYPE",
+           "CODE_MODE_PUBLIC_TOOL_NAME", "CODE_MODE_PUBLIC_WAIT_NAME",
+           "CODE_MODE_NESTED_TOOL_NAME", "CODE_MODE_NESTED_WAIT_NAME",
            "CODE_MODE_TOOL_NAME", "CODE_MODE_FEATURE_OVERRIDE",
            "REASONING_EFFORT", "PLANNER_DEVELOPER_INSTRUCTIONS",
            "PLANNER_DEVELOPER_OVERRIDE", "planner_prompt", "process_command",

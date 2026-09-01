@@ -46,9 +46,9 @@ else:
 
 MAX_STOP_INPUT_BYTES = 1 << 20
 CONTINUATION_REASON = (
-    "Do not answer with prose. Invoke the mailbox observe command from the "
-    "prompt now, continue until round_end, then return only the required "
-    "terminal JSON."
+    "No prose. Call model-visible exec with the prompt JavaScript; inside it "
+    "call tools.exec_command for mailbox observe. "
+    "Continue to round_end. Never call exec_command as a top-level tool."
 )
 
 

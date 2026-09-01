@@ -299,13 +299,20 @@ def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
     assert "Candidate zero is always the production prior" in prompt
     assert "defender's utility is the exact opposite" in prompt
     assert "Immediately invoke the local tool's observe command as your first code-mode" in prompt
+    assert execution.CODE_MODE_PUBLIC_TOOL_NAME == "exec"
+    assert execution.CODE_MODE_PUBLIC_WAIT_NAME == "wait"
+    assert execution.CODE_MODE_NESTED_TOOL_NAME == "exec_command"
+    assert execution.CODE_MODE_NESTED_WAIT_NAME == "write_stdin"
+    assert execution.CODE_MODE_PUBLIC_TOOL_NAME != execution.CODE_MODE_NESTED_TOOL_NAME
+    assert "model-visible code-mode tool\n`exec`" in prompt
+    assert "model-visible `wait` tool" in prompt
     assert "tools.exec_command" in prompt
     assert "let result = await tools.exec_command" in prompt
     assert "tools.write_stdin" in prompt
     assert (f'// @exec: {{"yield_time_ms": '
             f'{execution.CODE_MODE_OUTER_YIELD_MILLISECONDS}}}' in prompt)
-    assert "code-mode tool returns `Script running with cell ID" in prompt
-    assert "top-level\n`functions.wait`" in prompt
+    assert "`exec` tool returns `Script running with cell ID" in prompt
+    assert "Do not call `functions.wait`" in prompt
     assert "result.session_id" in prompt
     assert "let combined = result.output ?? \"\"" in prompt
     assert "while (result.session_id)" in prompt
@@ -339,7 +346,11 @@ def test_production_command_binds_reviewed_inline_stop_hook(tmp_path):
     assert execution.STOP_HOOK_SOURCE_SHA256 == execution._sha_bytes(
         execution.STOP_HOOK_SCRIPT.read_bytes())
     assert execution.PLANNER_DEVELOPER_OVERRIDE in command
-    assert "first assistant action must be a JavaScript code cell" \
+    assert "first tool call must invoke the model-visible exec tool" \
+        in execution.PLANNER_DEVELOPER_INSTRUCTIONS
+    assert "nested tools.exec_command" in execution.PLANNER_DEVELOPER_INSTRUCTIONS
+    assert "model-visible wait tool" in execution.PLANNER_DEVELOPER_INSTRUCTIONS
+    assert "functions.wait is not the public continuation name" \
         in execution.PLANNER_DEVELOPER_INSTRUCTIONS
     assert execution.CODE_MODE_FEATURE_OVERRIDE in command
 

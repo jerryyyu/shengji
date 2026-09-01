@@ -31,10 +31,13 @@ from .belief_contract import canonical_json_bytes
 from .world_afterstate import canonical_successor, replay_canonical_successor
 from .world_afterstate_v2_capacity import (
     ARM_GRIDS, AUTHORITY, COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS, MEMORY_LIMIT_BYTES,
-    MEASUREMENT_SCOPE, MIN_CONTINUATION_WORK_UNITS, PINNED_TORCH_THREADS,
+    COHORT_MEMBER_WORKERS, COHORT_WORKERS, MEASUREMENT_SCOPE,
+    MIN_CONTINUATION_WORK_UNITS,
+    PINNED_TORCH_THREADS,
     MAX_TASKS, CapacityArmV2, CapacityCensusAssessmentV2, CapacityFailureReceiptV2, CapacityReceiptV2,
     ComposedProjectionV2,
-    ProgressRecoveryV2, TierProjectionV2, WorldAfterstateV2CapacityError,
+    ProgressRecoveryV2, RejectedProjectionDiagnosticV2, TierProjectionV2,
+    WorldAfterstateV2CapacityError,
     composed_critical_path_seconds, validate_capacity_receipt_v2,
     reopen_capacity_failure_receipt_v2,
     reopen_capacity_failure_receipt_v2_bytes,
@@ -80,11 +83,14 @@ class CapacityRunnerError(RuntimeError):
 
     def __init__(self, message: str, *, stage: str = "runner",
                  reason_code: str = "capacity-runner-refused",
-                 assessments: Sequence[CapacityCensusAssessmentV2] = ()) -> None:
+                 assessments: Sequence[CapacityCensusAssessmentV2] = (),
+                 projection_diagnostic: RejectedProjectionDiagnosticV2 | None = None
+                 ) -> None:
         super().__init__(message)
         self.stage = stage
         self.reason_code = reason_code
         self.assessments = tuple(assessments)
+        self.projection_diagnostic = projection_diagnostic
 
 
 class FullDAGCapacityDependencyBlocked(CapacityRunnerError):
@@ -873,7 +879,7 @@ def _operation_output_identity(stage: str, output: Any) -> str:
 
 def _operation(stage: str, variant: int, fixture: FixtureV2) -> Callable[[], Any]:
     """Construct a score-free operation from the current V2 primitives."""
-    if stage == "member-concurrency":
+    if stage in {"member-concurrency", "cohort-concurrency"}:
         # Keep the low-level operation seam honest for callers that exercise
         # an arm directly; the runner uses _model_operation for the full
         # retained fixture population.
@@ -1093,10 +1099,13 @@ def _model_operation(stage: str, variant: int,
     """
     values = tuple(fixtures)
     training_batch = (_capacity_training_batch(values)
-                      if stage == "member-concurrency" else None)
+                      if stage in {"member-concurrency",
+                                   "cohort-concurrency"} else None)
 
     if stage == "member-concurrency":
         measured_units = 4
+    elif stage == "cohort-concurrency":
+        measured_units = 16
     elif stage == "inference-batch":
         measured_units = sum(len(fixture.audit_raws) for fixture in values)
     else:
@@ -1112,7 +1121,7 @@ def _model_operation(stage: str, variant: int,
             # reset it for every arm so output identity compares work, not
             # process-global RNG state.
             torch.manual_seed(0)
-            if stage == "member-concurrency":
+            if stage in {"member-concurrency", "cohort-concurrency"}:
                 # Every arm executes the same four-model/four-step population;
                 # only executor width varies.  State digests bind post-step
                 # model bytes rather than inference outputs.
@@ -1123,7 +1132,9 @@ def _model_operation(stage: str, variant: int,
                     learning_rate_ppb=10_000_000, weight_decay_ppb=0,
                     gradient_norm_milli=1_000, max_epochs=1,
                     sigma_pair_squared=1.0)
-                model_count = 4
+                cohort_count = (1 if stage == "member-concurrency" else
+                                COHORT_MEMBER_WORKERS)
+                model_count = COHORT_MEMBER_WORKERS * cohort_count
                 output: list[str] = [""] * model_count
                 with torch.random.fork_rng(devices=[]):
                     torch.manual_seed(0)
@@ -1134,10 +1145,23 @@ def _model_operation(stage: str, variant: int,
                     train_epoch(models[index], optimizer, (training_batch,),
                                 epoch=1, config=config)
                     output[index] = model_state_sha256(models[index])
-                with ThreadPoolExecutor(max_workers=variant) as pool:
-                    # Executor width is the only member-concurrency arm
-                    # dimension; fixed population and order are retained.
-                    tuple(pool.map(member, range(model_count)))
+                if stage == "member-concurrency":
+                    with ThreadPoolExecutor(max_workers=variant) as pool:
+                        # Executor width is the only member-concurrency arm
+                        # dimension; fixed population and order are retained.
+                        tuple(pool.map(member, range(model_count)))
+                else:
+                    def cohort(index: int) -> None:
+                        start = index * COHORT_MEMBER_WORKERS
+                        with ThreadPoolExecutor(
+                                max_workers=COHORT_MEMBER_WORKERS) as members:
+                            tuple(members.map(
+                                member, range(
+                                    start, start + COHORT_MEMBER_WORKERS)))
+                    with ThreadPoolExecutor(max_workers=variant) as cohorts:
+                        # Every arm executes four complete four-member
+                        # cohorts.  Only simultaneous cohort width changes.
+                        tuple(cohorts.map(cohort, range(cohort_count)))
             else:
                 from .world_afterstate import build_afterstate_tensors
                 from .world_afterstate_v2_model import collate_world_afterstate_tensors
@@ -1240,6 +1264,8 @@ def _arm_target_units(
             measured_counts.get("continuation-mechanics", CONTINUATION_MIN_WORK_UNITS),
             continuation_target),
         "member-concurrency": (measured_counts.get("member-concurrency", 4), 4),
+        "cohort-concurrency": (
+            measured_counts.get("cohort-concurrency", 16), 16),
         "inference-batch": (
             measured_counts.get("inference-batch", max(1, sum(
                 len(fixture.audit_raws) for fixture in fixtures))),
@@ -1263,6 +1289,16 @@ def _select_arms(arms: Sequence[CapacityArmV2]) -> dict[str, CapacityArmV2]:
         selected[stage] = min(
             eligible, key=lambda arm: (arm.wall_ns, arm.variant))
     return selected
+
+
+def _validate_cohort_wave_selection(
+        selected: Mapping[str, CapacityArmV2]) -> None:
+    arm = selected.get("cohort-concurrency")
+    if arm is None or arm.variant != COHORT_WORKERS:
+        raise CapacityRunnerError(
+            "cohort-concurrency fastest arm does not saturate four cohorts",
+            stage="measurement",
+            reason_code="cohort-concurrency-underfilled")
 
 
 def _bind_projected_arm_shares(
@@ -1491,6 +1527,35 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
             sample, projected = units[name]
             seconds = measured_cpu_seconds.get(name, fallback)
             return max(1, (seconds * projected + sample - 1) // sample)
+        def projected_parallel_wall(name: str, fallback: int,
+                                    arm_name: str) -> int:
+            """Project parallel work without scaling an underfilled makespan.
+
+            The representative label buckets may contain fewer deals than the
+            selected worker width.  Multiplying that stage wall by
+            target/source therefore counts the representative's idle cores in
+            every projected unit.  Scale the exact measured CPU work instead
+            and translate it back to wall with the independently measured,
+            saturated arm for the same operation class.  Retain the measured
+            stage wall as a fixed-cost/largest-task floor.
+            """
+            sample, projected = units[name]
+            cpu_ns = measured_cpu.get(name)
+            if cpu_ns is None:
+                return measured_wall(name, fallback)
+            arm = selected[arm_name]
+            utilization_ppm = arm.mean_cpu_utilization_ppm
+            if utilization_ppm < 1:
+                raise CapacityRunnerError(
+                    "parallel projection utilization drift")
+            projected_cpu_ns = (
+                cpu_ns * projected + sample - 1) // sample
+            projected_wall_ns = (
+                projected_cpu_ns * 1_000_000
+                + HOST_CPUS * utilization_ppm - 1
+            ) // (HOST_CPUS * utilization_ppm)
+            return max(measured.get(name, fallback),
+                       _ceil_seconds(projected_wall_ns))
     else:
         stage_units = ()
         def measured_wall(name: str, fallback: int) -> int:
@@ -1498,6 +1563,10 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
         measured_cpu_seconds = {}
         def projected_cpu(name: str, fallback: int) -> int:
             return fallback
+        def projected_parallel_wall(name: str, fallback: int,
+                                    arm_name: str) -> int:
+            del arm_name
+            return measured_wall(name, fallback)
     # Continuation target units already equal the complete candidate*8 label
     # workload; multiplying its wall by eight would count the population twice.
     label = max(1, base + continuation)
@@ -1511,10 +1580,12 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
                              dag.control_wall_seconds if dag else label)
     audit = measured_wall("audit", dag.audit_wall_seconds if dag else label)
     values = (
-        ("label-p0", measured_wall("label-p0", p0)),
+        ("label-p0", projected_parallel_wall(
+            "label-p0", p0, "continuation-mechanics")),
         ("p0", p0),
         ("optimizer-canary", measured_wall("optimizer-canary", wall("state-successor"))),
-        ("label-fit", measured_wall("label-fit", label)),
+        ("label-fit", projected_parallel_wall(
+            "label-fit", label, "continuation-mechanics")),
         ("nested-curve-25", measured_wall("nested-curve-25", max(1, base // 4))),
         ("nested-curve-50", measured_wall("nested-curve-50", max(1, base // 2))),
         ("block-1-natural", epoch),
@@ -1528,10 +1599,11 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
         ("block-2-complete-world-shuffle",
          measured_wall("block-2-complete-world-shuffle", controls)),
         ("precision-select-inference", inference),
-        ("label-precision-select",
-         measured_wall("label-precision-select", inference)),
+        ("label-precision-select", projected_parallel_wall(
+            "label-precision-select", inference, "continuation-mechanics")),
         ("precision-select", measured_wall("precision-select", inference)),
-        ("label-audit", measured_wall("label-audit", audit)),
+        ("label-audit", projected_parallel_wall(
+            "label-audit", audit, "continuation-mechanics")),
         ("audit", audit),
         ("reconstruction", reconstruction),)
     cpu_values = tuple((name, projected_cpu(name,
@@ -1680,6 +1752,7 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
             raise CapacityRunnerError("synthetic measurement cannot build production receipt")
         arm.validate()
     selected = _select_arms(arms)
+    _validate_cohort_wave_selection(selected)
     layout = (selected["member-concurrency"].variant,
                selected["continuation-mechanics"].variant,
                PINNED_TORCH_THREADS,
@@ -1763,6 +1836,13 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
     try:
         validate_capacity_receipt_v2(receipt)
     except WorldAfterstateV2CapacityError as exc:
+        if str(exc) == "composed projection cap drift":
+            raise CapacityRunnerError(
+                str(exc), stage="full-dag",
+                reason_code="composed-projection-cap-drift",
+                projection_diagnostic=(
+                    RejectedProjectionDiagnosticV2.from_projection(composed))) \
+                from exc
         raise CapacityRunnerError(str(exc)) from exc
     return receipt
 
@@ -1825,7 +1905,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                                            "continuation-mechanics",
                                            "reconstruction"}
                              else _model_operation(stage, variant, fixtures))
-            if stage == "member-concurrency":
+            if stage in {"member-concurrency", "cohort-concurrency"}:
                 operation_to_run = operation
                 operation = lambda: _run_with_torch_threads(
                     operation_to_run, PINNED_TORCH_THREADS)
@@ -1867,7 +1947,8 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 stage, variant, raw, expected_identity, raw.elapsed_ns,
                 synthetic=bool(getattr(backend, "synthetic", False)),
                 measured_unit_count=getattr(
-                    operation_to_run if stage == "member-concurrency" else operation,
+                    operation_to_run if stage in {
+                        "member-concurrency", "cohort-concurrency"} else operation,
                     "measured_unit_count", arm_targets[stage][0]))
             arms.append(arm)
             _progress_event(stage, position, len(variants),
@@ -1877,6 +1958,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         raise CapacityRunnerError("capacity command wall cap exceeded")
     selected = _select_arms(arms)
     if production:
+        _validate_cohort_wave_selection(selected)
         # The census is deliberately before importing/calling the full-DAG
         # supervisor.  Its projected D256 category shares are deterministic
         # from the selected arm timings and frozen stage mapping.

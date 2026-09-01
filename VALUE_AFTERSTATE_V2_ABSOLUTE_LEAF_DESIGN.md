@@ -406,6 +406,15 @@ not eight members presented as one ensemble. Every block and its full cost is
 included in the capacity projection, and each four-member cohort follows the
 same epoch-select-only common-epoch selection rule.
 
+After the nested 25/50/100% curve completes, the three block-1 controls and
+block-2 natural cohort may run as one four-cohort wave.  The wave fixes four
+members per cohort and therefore exposes exactly 16 independent model-training
+tasks; it does not pool data, seeds, selection, predictions, or evidence across
+cohorts.  Block-2 complete-world shuffle starts only after all four wave
+cohorts complete.  A first child refusal terminates its sibling controllers;
+already sealed immutable epoch shards remain resumable, but no completion
+event is published until the whole wave succeeds.
+
 ### Pre-audit recipe diagnosis
 
 The audit is not the first time the training recipe is allowed to fail. Before
@@ -695,6 +704,7 @@ Binding only the outer CLI or only rehashing the pathname is insufficient.
 | state/successor construction | 1, 2, 4, 8, 16, 32 workers |
 | continuation mechanics | 1, 2, 4, 8, 12, 16, 32 workers |
 | member concurrency | 1, 2, 4 members |
+| cohort concurrency | 1, 2, 4 simultaneous cohorts, each with four fixed members |
 | Torch threads per member | 1 (pinned; no width-selection arm) |
 | inference batch | 32, 64, 128, 256 |
 | reconstruction | 1, 4, 8, 16, 32-worker scoring/hash verification |
@@ -706,6 +716,12 @@ may differ by a few ulps across otherwise equivalent batch-shaped matrix
 kernels, which is the numerical freedom the already-frozen inference
 canonicalization exists to resolve. A materially different canonical
 probability or PPB row still refuses the arm comparison.
+
+The one production wave requires the four-cohort arm to be the fastest
+memory-eligible byte-identical cohort arm.  Widths 1 and 2 are scaling
+controls, not executable production layouts: if either is faster, the census
+refuses before starting the representative full DAG rather than timing one
+schedule and executing another.
 
 The capacity command is bounded to two hours, 30 GiB, zero swap, and 4,096
 tasks. Freeze the fastest byte-identical configuration below 85% memory and
@@ -724,6 +740,17 @@ providing 2x measured headroom under the immutable 12-hour scientific service
 cap. GPU support is
 out of scope. The composed peak artifact projection must retain at least 25%
 free-disk headroom after temporary and final artifacts coexist.
+
+Representative label buckets may contain fewer deals than the selected worker
+width.  Their retained-population wall is therefore projected from exact
+measured process CPU work divided by the separately measured saturated
+continuation-mechanics utilization, with the representative wall retained as
+a fixed-cost/largest-task floor.  The projection may not multiply an
+underfilled representative makespan by the deal-count ratio.  If the composed
+projection refuses a cap, the immutable failure receipt retains the complete
+projected wall/CPU/unit grids, exact measured wall/CPU nanoseconds, DAG edges,
+resource peaks, and named violated caps; refusal must not discard the result
+that explains why the capacity run failed.
 
 Independent deals, candidate successors, continuation replicas, control
 cohorts, inference batches, and reconstruction shards are the permitted
@@ -754,7 +781,9 @@ worker domain or repaired runtime identity implicitly.
 
 The resource mapping is closed: continuation-label stages use the
 continuation-mechanics arm, cohort training/optimizer stages use the
-member-concurrency arm, precision inference uses the inference-batch arm, and
+member-concurrency arm, the co-scheduled four-cohort wave uses the distinct
+cohort-concurrency arm with four fixed members per cohort, precision inference
+uses the inference-batch arm, and
 reconstruction uses the reconstruction arm. P0, nested-25/50/100,
 precision-select evaluation, and audit have no matching selectable arm in V2;
 the receipt may not borrow evidence from another workload. A stage is material

@@ -1,5 +1,6 @@
 import dataclasses
 import os
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -82,6 +83,79 @@ def test_closed_mapping_contains_exact_six_ordered_cohorts_and_rejects_drift():
     with pytest.raises(adapters.TrainingStageAdapterUnavailable,
                        match="cohort mapping"):
         misclassified(_Supervisor(), ())
+
+
+def test_block1_controls_enter_three_training_cohorts_concurrently(monkeypatch):
+    """Witness the adapter wiring, not merely ThreadPoolExecutor itself."""
+    adapter = adapters.block_1_controls_adapter(
+        freeze=_Freeze(), repo=Path("/tmp"))
+    names = adapter.control_names
+    barrier = threading.Barrier(3, timeout=2)
+    entered = []
+    member_widths = []
+
+    class Store:
+        def reopen_history(self):
+            return ()
+
+        def publish_epoch(self, _epoch, _bundle):
+            pass
+
+    inputs = SimpleNamespace(
+        training_examples=(object(),),
+        epoch_select=SimpleNamespace(population_sha256="e" * 64, roots=()),
+        config=SimpleNamespace(sha256=lambda: "f" * 64),
+        member_workers=2, cohort_workers=4, cohort_member_workers=4,
+        torch_threads=1,
+        batch_example_cap=256, inference_batch_cap=32,
+        validate=lambda: None)
+    monkeypatch.setattr(adapters, "_reopen_receipt", lambda *_args: None)
+    monkeypatch.setattr(adapters, "_completed", lambda *_args: None)
+    monkeypatch.setattr(adapters, "build_training_stage_inputs",
+                        lambda *_args, **_kwargs: inputs)
+    monkeypatch.setattr(
+        adapters._CohortAdapter, "_control_values",
+        lambda _self, _values, name: ((name,), {"control_name": name}))
+    monkeypatch.setattr(
+        adapters, "training_epoch_batches",
+        lambda *_args, **_kwargs: (
+            SimpleNamespace(population_sha256="d" * 64), None))
+    monkeypatch.setattr(adapters, "_recovery_store",
+                        lambda *_args, **_kwargs: Store())
+    monkeypatch.setattr(adapters, "_budget", lambda *_args: 10**12)
+
+    def train_named_cohort(*, cohort_name, member_workers, **_kwargs):
+        entered.append(cohort_name)
+        member_widths.append(member_workers)
+        barrier.wait()
+        return SimpleNamespace(
+            manifest={"cohort_name": cohort_name},
+            selected_checkpoint_raws=(b"a", b"b", b"c", b"d"))
+
+    monkeypatch.setattr(adapters, "train_named_cohort", train_named_cohort)
+    monkeypatch.setattr(adapters, "_publish_cohort_artifacts",
+                        lambda *_args, **_kwargs: {
+                            "cohort_manifest_path": "m",
+                            "cohort_manifest_sha256": "1" * 64,
+                            "checkpoint_root": "c",
+                            "checkpoint_manifest_path": "p",
+                            "checkpoint_manifest_sha256": "2" * 64,
+                            "checkpoint_shard_sha256s": ["3" * 64] * 4})
+    monkeypatch.setattr(adapters, "_publish", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        adapters, "validate_control_evidence", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(adapters, "reopen_cohort_build",
+                        lambda _build: ((), {}))
+    monkeypatch.setattr(adapters, "_training_roots", lambda _rows: ())
+    monkeypatch.setattr(adapters, "_prediction_receipts",
+                        lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(adapters, "_build_receipt",
+                        lambda *_args, **_kwargs: b"{}\n")
+    monkeypatch.setattr(adapters, "_strict_json", lambda _raw: {"ok": True})
+
+    assert adapter(_Supervisor(), ()) == {"ok": True}
+    assert tuple(entered) == names
+    assert member_widths == [4, 4, 4]
 
 
 def test_cohort_artifacts_publish_and_reopen_with_mutation_resistance(tmp_path):

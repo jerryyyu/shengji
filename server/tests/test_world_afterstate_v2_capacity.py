@@ -12,7 +12,7 @@ from shengji.rl.world_afterstate_v2_capacity import (
     TRAINING_RESOURCE_SERIALIZATION_EDGES, CapacityArmV2,
     CapacityCensusAssessmentV2,
     CapacityFailureReceiptV2, CapacityReceiptV2, ComposedProjectionV2,
-    ProgressRecoveryV2,
+    ProgressRecoveryV2, RejectedProjectionDiagnosticV2,
     TierProjectionV2, WorldAfterstateV2CapacityError,
     PINNED_TORCH_THREADS, choose_capacity_tier_v2,
     composed_critical_path_seconds, projected_arm_wall_shares_ppm,
@@ -35,7 +35,9 @@ def _arms(*, memory=None, command_tasks=1, low_cpu=False, byte_suffix="same"):
     for stage, variants in ARM_GRIDS.items():
         for variant in variants:
             wall = 100 + variant
-            if variant == min(variants):
+            if (stage == "cohort-concurrency" and variant == 4) \
+                    or (stage != "cohort-concurrency"
+                        and variant == min(variants)):
                 wall = 10
             # Keep a subsecond witness while preserving ceil display seconds.
             wall_ns = wall * 1_000_000_000 - 1
@@ -106,6 +108,13 @@ def _progress(**changes):
     return ProgressRecoveryV2(**body)
 
 
+def _rejected_projection():
+    projection = _composed(stage_walls_seconds={"label-p0": 100_000})
+    value = RejectedProjectionDiagnosticV2.from_projection(projection)
+    value.validate()
+    return value
+
+
 def test_typed_capacity_failure_reopens_and_is_not_a_success_receipt():
     from shengji.rl.world_afterstate_v2_capacity import (
         reopen_capacity_failure_receipt_v2)
@@ -122,7 +131,7 @@ def test_typed_capacity_failure_reopens_and_is_not_a_success_receipt():
         namespace_sha256=namespace,
         detail_sha256=hashlib.sha256(canonical_json_bytes({
             "message": "typed failure",
-            "assessments": []})).hexdigest(),
+            "assessments": [], "projection_diagnostic": None})).hexdigest(),
         detail_message="typed failure")
     payload = failure.payload()
     assert payload["schema"] == FAILURE_SCHEMA
@@ -134,6 +143,42 @@ def test_typed_capacity_failure_reopens_and_is_not_a_success_receipt():
     tampered = dict(payload, namespace_sha256="5" * 64)
     with pytest.raises(WorldAfterstateV2CapacityError):
         reopen_capacity_failure_receipt_v2(tampered)
+
+
+def test_rejected_projection_is_bound_into_typed_failure_receipt():
+    source, input_sha, runtime = "1" * 64, "2" * 64, "3" * 64
+    namespace = hashlib.sha256(canonical_json_bytes({
+        "source_sha256": source, "input_sha256": input_sha,
+        "runtime_sha256": runtime})).hexdigest()
+    diagnostic = _rejected_projection()
+    assert "complete-dag-wall" in diagnostic.violations
+    detail = hashlib.sha256(canonical_json_bytes({
+        "message": "composed projection cap drift", "assessments": [],
+        "projection_diagnostic": diagnostic.payload()})).hexdigest()
+    failure = CapacityFailureReceiptV2(
+        stage="full-dag", reason="composed-projection-cap-drift",
+        elapsed_seconds=7_199, source_sha256=source,
+        input_sha256=input_sha, runtime_sha256=runtime,
+        namespace_sha256=namespace, detail_sha256=detail,
+        detail_message="composed projection cap drift",
+        projection_diagnostic=diagnostic)
+    payload = failure.payload()
+    assert reopen_capacity_failure_receipt_v2(payload) == failure
+    assert payload["projection_diagnostic"]["stage_walls_seconds"] \
+        == [list(row) for row in diagnostic.stage_walls_seconds]
+
+    tampered = diagnostic.payload()
+    tampered["stage_walls_seconds"][0][1] += 1
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="critical path"):
+        RejectedProjectionDiagnosticV2.reopen(tampered)
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="projection diagnostic"):
+        dataclasses.replace(failure, projection_diagnostic=None).payload()
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="projection diagnostic"):
+        dataclasses.replace(
+            failure, stage="runner", reason="capacity-runner-refused").payload()
 
 
 def _receipt(**changes):
@@ -196,7 +241,7 @@ def test_exact_arm_grid_caps_and_fastest_byte_identical_selection():
     receipt.validate()
     assert receipt.schema == SCHEMA
     assert "torch-threads-per-member" not in ARM_GRIDS
-    assert len(receipt.arms) == 26
+    assert len(receipt.arms) == sum(len(values) for values in ARM_GRIDS.values())
     assert len(receipt.arms) == sum(len(values) for values in ARM_GRIDS.values())
     assert receipt.sha256() == receipt.sha256()
     assert choose_capacity_tier_v2(receipt).name == "D1024"
@@ -535,7 +580,8 @@ def test_failure_detail_and_assessment_rows_are_strictly_bound():
     assessments = caught.value.assessments
     detail = hashlib.sha256(canonical_json_bytes({
         "message": "census refused", "assessments": [row.payload()
-                                                         for row in assessments]})).hexdigest()
+                                                         for row in assessments],
+        "projection_diagnostic": None})).hexdigest()
     failure = CapacityFailureReceiptV2(
         stage="measurement", reason="arm-census-low-utilization",
         elapsed_seconds=1, source_sha256=source, input_sha256=input_sha,

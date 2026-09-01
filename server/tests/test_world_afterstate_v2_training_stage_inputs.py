@@ -142,15 +142,17 @@ def _select_root_and_outcomes(index: int) \
 def test_reviewed_capacity_arms_bind_training_resources():
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
+        _Arm("cohort-concurrency", 4),
         _Arm("inference-batch", 256),), torch_threads=1)
-    assert inputs._capacity_resources(receipt) == (2, 1, 256, 256)
+    assert inputs._capacity_resources(receipt) == (2, 4, 4, 1, 256, 256)
 
 
 def test_inference_arm_does_not_change_reviewed_training_batch_cap():
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
+        _Arm("cohort-concurrency", 4),
         _Arm("inference-batch", 64),), torch_threads=1)
-    assert inputs._capacity_resources(receipt) == (2, 1, 256, 64)
+    assert inputs._capacity_resources(receipt) == (2, 4, 4, 1, 256, 64)
 
 
 @pytest.mark.parametrize("torch_threads", (2, 4))
@@ -381,6 +383,7 @@ def test_real_training_input_builder_closes_full_d256_and_epoch_select_wiring(
 
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
+        _Arm("cohort-concurrency", 4),
         _Arm("inference-batch", 256),), torch_threads=1)
     freeze = SimpleNamespace(
         evidence_root=tmp_path, population_tier="D256")

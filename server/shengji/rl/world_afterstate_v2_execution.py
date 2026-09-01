@@ -71,6 +71,7 @@ STAGE_ORDER = (
     "block-2-controls", "precision-select-power", "audit-attempt",
     "terminal", "reconstruction",
 )
+COHORT_TRAINING_WAVE = ("block-1-controls", "block-2-natural")
 WORK_STAGE_ORDER = STAGE_ORDER[:-2]
 TERMINAL_STAGE_ORDER = STAGE_ORDER[-2:]
 ALLOWED_SPLITS = {
@@ -2008,6 +2009,159 @@ class StageSupervisorV2:
         self.emit_progress(stage=stage, completed=total, total=total, force=True)
         return result
 
+    def run_cohort_training_wave(
+            self, operations: Mapping[str, StageControllerV2],
+            *, payloads: Mapping[str, Mapping[str, Any] | None] | None = None
+            ) -> tuple[Any, ...]:
+        """Run the one capacity-proven four-cohort production wave.
+
+        ``block-1-controls`` owns three internally concurrent cohorts and
+        ``block-2-natural`` owns the fourth.  Events remain wire-ordered and
+        are published only after both children return successfully.  A crash
+        may therefore leave reusable immutable shards but can never claim a
+        half-complete wave as a completed later stage.
+        """
+        if self.resource_closeout_only:
+            raise WorldAfterstateV2ExecutionError(
+                "resource closeout cannot run scientific stages")
+        self._deadline()
+        if self.next_stage != COHORT_TRAINING_WAVE[0] \
+                or type(operations) is not dict \
+                or tuple(operations) != COHORT_TRAINING_WAVE:
+            raise WorldAfterstateV2ExecutionError(
+                "cohort training wave order drift")
+        payload_rows = dict(payloads or {})
+        if set(payload_rows) - set(COHORT_TRAINING_WAVE):
+            raise WorldAfterstateV2ExecutionError(
+                "cohort training wave payload drift")
+        for stage in COHORT_TRAINING_WAVE:
+            operation = operations[stage]
+            if (not isinstance(operation, StageControllerV2)
+                    or not operation.production or operation.stage != stage
+                    or "fit" not in ALLOWED_SPLITS[stage]):
+                raise MissingStageError(
+                    f"missing typed controller for {stage}")
+            operation.validate()
+        results = self._invoke_controller_wave(tuple(
+            (stage, operations[stage].operation)
+            for stage in COHORT_TRAINING_WAVE))
+        # _invoke_controller_wave refreshes every immutable child shard before
+        # returning.  Publish the prefix-ordered completion events only now.
+        for stage in COHORT_TRAINING_WAVE:
+            self._event(stage, status="complete", split="fit",
+                        payload=payload_rows.get(stage))
+            self._state = StageStateV2(
+                (*self._state.completed_stages, stage),
+                self._state.terminal_route, self._state.audit_opened,
+                self._state.reconstruction_completed,
+                self._state.verified_shards)
+            self.emit_progress(stage=stage, substage="cohort-wave",
+                               completed=1, total=1, force=True)
+        return tuple(results[stage] for stage in COHORT_TRAINING_WAVE)
+
+    def _invoke_controller_wave(
+            self, operations: tuple[tuple[str, Callable[..., Any]], ...]
+            ) -> dict[str, Any]:
+        """Run disjoint stage controllers concurrently under one deadline."""
+        if tuple(stage for stage, _operation in operations) \
+                != COHORT_TRAINING_WAVE:
+            raise WorldAfterstateV2ExecutionError(
+                "controller wave identity drift")
+        context = _controller_context()
+        entries: dict[str, tuple[Any, Any]] = {}
+        messages: dict[str, tuple[str, Any]] = {}
+        try:
+            for stage, operation in operations:
+                receive, send = context.Pipe(duplex=False)
+                process = context.Process(
+                    target=_controller_process_entry,
+                    args=(operation, self,
+                          tuple(self.verified_shards(stage)), send),
+                    name=f"world-afterstate-v2-{stage}")
+                process.start()
+                send.close()
+                entries[stage] = (process, receive)
+            last_progress = time.monotonic()
+            while len(messages) < len(entries):
+                remaining = (self._started
+                             + self.freeze.deadline_seconds * 1_000_000_000
+                             - self.clock())
+                if remaining <= 0:
+                    for process, _receive in entries.values():
+                        _terminate_process_group(process)
+                    self._deadline()
+                received = False
+                for stage, (process, receive) in entries.items():
+                    if stage in messages:
+                        continue
+                    if receive.poll(0.01):
+                        try:
+                            messages[stage] = receive.recv()
+                        except EOFError as exc:
+                            raise WorldAfterstateV2ExecutionError(
+                                f"{stage} controller process result missing") from exc
+                        received = True
+                    elif not process.is_alive():
+                        if receive.poll():
+                            messages[stage] = receive.recv()
+                            received = True
+                        else:
+                            raise WorldAfterstateV2ExecutionError(
+                                f"{stage} controller process exited without result")
+                    if stage in messages:
+                        status, value = messages[stage]
+                        if status == "error":
+                            if isinstance(value, Exception):
+                                raise value
+                            raise WorldAfterstateV2ExecutionError(
+                                f"{stage} controller process refusal drift")
+                        if status != "result":
+                            raise WorldAfterstateV2ExecutionError(
+                                f"{stage} controller process result status drift")
+                if (not received and time.monotonic() - last_progress
+                        >= self.freeze.heartbeat_seconds):
+                    self.emit_progress(
+                        stage=COHORT_TRAINING_WAVE[0],
+                        substage="cohort-wave", completed=0, total=2,
+                        active_workers=2, active_threads=0, force=True)
+                    last_progress = time.monotonic()
+        finally:
+            for stage, (process, receive) in entries.items():
+                receive.close()
+                if process.is_alive() and stage not in messages:
+                    _terminate_process_group(process)
+                process.join(timeout=2.0)
+                if process.is_alive():
+                    _terminate_process_group(process)
+        verify_live_runtime_sha256(self.freeze.runtime_sha256)
+        refreshed = StageSupervisorV2(
+            self.root, self.freeze, self.admission, clock=self.clock,
+            progress_callback=self.progress_callback)
+        self._state = refreshed._state
+        self._event_index = refreshed._event_index
+        self._deadline()
+        results: dict[str, Any] = {}
+        for stage, (process, _receive) in entries.items():
+            message = messages.get(stage)
+            if type(message) is not tuple or len(message) != 2:
+                raise WorldAfterstateV2ExecutionError(
+                    f"{stage} controller process result envelope drift")
+            status, value = message
+            if status == "result":
+                if process.exitcode != 0:
+                    raise WorldAfterstateV2ExecutionError(
+                        f"{stage} controller process exit drift")
+                results[stage] = value
+            elif status == "error":
+                if isinstance(value, Exception):
+                    raise value
+                raise WorldAfterstateV2ExecutionError(
+                    f"{stage} controller process refusal drift")
+            else:
+                raise WorldAfterstateV2ExecutionError(
+                    f"{stage} controller process result status drift")
+        return results
+
     def _invoke_controller(self, operation: Callable[..., Any], stage: str,
                            total: int) -> Any:
         """Run a controller in a killable group under the global deadline."""
@@ -2183,6 +2337,17 @@ def run_v2_pipeline(supervisor: StageSupervisorV2,
             or not operations[stage].production for stage in STAGE_ORDER):
         raise MissingStageError("scientific pipeline requires closed production adapters")
     while (stage := supervisor.next_stage) is not None:
+        if stage == COHORT_TRAINING_WAVE[0]:
+            wave = {name: operations[name] for name in COHORT_TRAINING_WAVE}
+            wave_payloads = {}
+            for name, controller in wave.items():
+                payload = controller.stage_payload
+                if controller.stage_payload_factory is not None:
+                    payload = controller.stage_payload_factory(supervisor)
+                wave_payloads[name] = payload
+            supervisor.run_cohort_training_wave(
+                wave, payloads=wave_payloads)
+            continue
         if stage in TERMINAL_STAGE_ORDER:
             if supervisor.state.audit_opened:
                 split = "audit"

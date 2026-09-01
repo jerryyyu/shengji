@@ -23,7 +23,9 @@ from .world_afterstate_v2_artifacts import reopen_continuation_manifest
 from .world_afterstate_v2_capacity_runner import (
     reopen_capacity_receipt_v2_bytes,
 )
-from .world_afterstate_v2_capacity import PINNED_TORCH_THREADS
+from .world_afterstate_v2_capacity import (
+    COHORT_MEMBER_WORKERS, COHORT_WORKERS, PINNED_TORCH_THREADS,
+)
 from .world_afterstate_v2_dataset import build_training_examples_v2
 from .world_afterstate_v2_inference import (
     INFERENCE_BATCH_CAPS, build_inference_root_v2,
@@ -44,7 +46,7 @@ from .world_afterstate_v2_training import (
 )
 
 
-SCHEMA = "world-afterstate-v2-training-stage-inputs-v1"
+SCHEMA = "world-afterstate-v2-training-stage-inputs-v2"
 FIT_SELECT_CONTINUATION_ROOT = "fit-select-continuations"
 P0_SIGMA_FIELD = "pair_target_population_variance"
 REVIEWED_LEARNING_RATE_PPB = 10_000_000
@@ -53,6 +55,7 @@ REVIEWED_GRADIENT_NORM_MILLI = 1_000
 REVIEWED_MAX_EPOCHS = MAX_EPOCHS
 REVIEWED_BATCH_EXAMPLE_CAP = DEFAULT_BATCH_EXAMPLE_CAP
 CAPACITY_MEMBER_STAGE = "member-concurrency"
+CAPACITY_COHORT_STAGE = "cohort-concurrency"
 CAPACITY_BATCH_STAGE = "inference-batch"
 P0_REPORT_RELATIVE = Path("shards/p0-labels-gates/receipt.bin")
 
@@ -157,7 +160,7 @@ def _selected_variant(receipt: Any, stage: str, label: str) -> int:
     return variant
 
 
-def _capacity_resources(receipt: Any) -> tuple[int, int, int, int]:
+def _capacity_resources(receipt: Any) -> tuple[int, int, int, int, int, int]:
     receipt_threads = getattr(receipt, "torch_threads", None)
     if (isinstance(receipt_threads, bool)
             or type(receipt_threads) is not int
@@ -166,6 +169,8 @@ def _capacity_resources(receipt: Any) -> tuple[int, int, int, int]:
             "training resource arm drift")
     member_workers = _selected_variant(receipt, CAPACITY_MEMBER_STAGE,
                                         "model-training-concurrency")
+    cohort_workers = _selected_variant(receipt, CAPACITY_COHORT_STAGE,
+                                        "cohort-training-concurrency")
     # Inference batching is selected independently and consumed only by the
     # prediction adapters.  Training retains its reviewed fixed batch cap;
     # coupling the two makes a valid fastest inference arm alter the recipe.
@@ -176,13 +181,14 @@ def _capacity_resources(receipt: Any) -> tuple[int, int, int, int]:
         raise WorldAfterstateV2TrainingStageInputError(
             "reviewed training batch cap drift")
     torch_threads = PINNED_TORCH_THREADS
-    if member_workers not in (1, 2, 4):
+    if member_workers not in (1, 2, 4) or cohort_workers != COHORT_WORKERS:
         raise WorldAfterstateV2TrainingStageInputError(
             "training resource arm drift")
     if inference_batch_cap not in INFERENCE_BATCH_CAPS:
         raise WorldAfterstateV2TrainingStageInputError(
             "inference batch arm drift")
-    return member_workers, torch_threads, batch_cap, inference_batch_cap
+    return (member_workers, cohort_workers, COHORT_MEMBER_WORKERS,
+            torch_threads, batch_cap, inference_batch_cap)
 
 
 def _p0_sigma(path: Path) -> tuple[float, str]:
@@ -276,6 +282,8 @@ class WorldAfterstateV2TrainingStageInputs:
     epoch_select_population: EpochSelectPopulationV2
     config: WorldAfterstateV2TrainingConfig
     member_workers: int
+    cohort_workers: int
+    cohort_member_workers: int
     torch_threads: int
     batch_example_cap: int
     inference_batch_cap: int
@@ -315,6 +323,8 @@ class WorldAfterstateV2TrainingStageInputs:
             raise WorldAfterstateV2TrainingStageInputError(
                 "reviewed training config drift")
         if (self.member_workers not in (1, 2, 4)
+                or self.cohort_workers != COHORT_WORKERS
+                or self.cohort_member_workers != COHORT_MEMBER_WORKERS
                 or isinstance(self.torch_threads, bool)
                 or not isinstance(self.torch_threads, int)
                 or self.torch_threads != PINNED_TORCH_THREADS
@@ -336,7 +346,9 @@ class WorldAfterstateV2TrainingStageInputs:
         for _label, digest in self.source_digests:
             _digest(digest, "training source digest")
         source_map = dict(self.source_digests)
-        if "capacity" not in source_map or "capacity-inference-batch" not in source_map:
+        if ("capacity" not in source_map
+                or "capacity-cohort-concurrency" not in source_map
+                or "capacity-inference-batch" not in source_map):
             raise WorldAfterstateV2TrainingStageInputError(
                 "training capacity source binding missing")
         expected_inference_binding = _sha({
@@ -346,6 +358,14 @@ class WorldAfterstateV2TrainingStageInputs:
         if source_map["capacity-inference-batch"] != expected_inference_binding:
             raise WorldAfterstateV2TrainingStageInputError(
                 "training inference batch source binding drift")
+        expected_cohort_binding = _sha({
+            "capacity_sha256": source_map["capacity"],
+            "cohort_workers": self.cohort_workers,
+            "cohort_member_workers": self.cohort_member_workers,
+        })
+        if source_map["capacity-cohort-concurrency"] != expected_cohort_binding:
+            raise WorldAfterstateV2TrainingStageInputError(
+                "training cohort concurrency source binding drift")
         keys = tuple(row.example_key for row in self.training_examples)
         if len(keys) != len(set(keys)) \
                 or any(row.split != "fit" or row.cohort != "primary"
@@ -372,6 +392,8 @@ class WorldAfterstateV2TrainingStageInputs:
             "epoch_select_outcome_count": len(self.epoch_select_population.outcomes),
             "config_sha256": self.config.sha256(),
             "member_workers": self.member_workers,
+            "cohort_workers": self.cohort_workers,
+            "cohort_member_workers": self.cohort_member_workers,
             "torch_threads": self.torch_threads,
             "batch_example_cap": self.batch_example_cap,
             "inference_batch_cap": self.inference_batch_cap,
@@ -469,7 +491,8 @@ def build_training_stage_inputs(
         raise WorldAfterstateV2TrainingStageInputError(
             "evidence root differs from freeze")
     receipt, capacity_digest = _capacity(freeze, root)
-    (member_workers, torch_threads, batch_cap,
+    (member_workers, cohort_workers, cohort_member_workers, torch_threads,
+     batch_cap,
      inference_batch_cap) = _capacity_resources(receipt)
     sigma, p0_digest = _bound_p0_sigma(root, supervisor, freeze=freeze)
 
@@ -560,6 +583,11 @@ def build_training_stage_inputs(
         max_epochs=REVIEWED_MAX_EPOCHS, sigma_pair_squared=sigma)
     source_rows = [
         ("capacity", capacity_digest),
+        ("capacity-cohort-concurrency", _sha({
+            "capacity_sha256": capacity_digest,
+            "cohort_workers": cohort_workers,
+            "cohort_member_workers": cohort_member_workers,
+        })),
         ("capacity-inference-batch", _sha({
             "capacity_sha256": capacity_digest,
             "inference_batch_cap": inference_batch_cap,
@@ -579,7 +607,9 @@ def build_training_stage_inputs(
     result = WorldAfterstateV2TrainingStageInputs(
         training_examples=training_examples,
         epoch_select_population=selection, config=config,
-        member_workers=member_workers, torch_threads=torch_threads,
+        member_workers=member_workers, cohort_workers=cohort_workers,
+        cohort_member_workers=cohort_member_workers,
+        torch_threads=torch_threads,
         batch_example_cap=batch_cap,
         inference_batch_cap=inference_batch_cap,
         source_digests=tuple(sorted(source_rows)))
@@ -594,7 +624,8 @@ WorldAfterstateV2TrainingInputs = WorldAfterstateV2TrainingStageInputs
 
 
 __all__ = [
-    "CAPACITY_BATCH_STAGE", "CAPACITY_MEMBER_STAGE", "PINNED_TORCH_THREADS",
+    "CAPACITY_BATCH_STAGE", "CAPACITY_COHORT_STAGE", "CAPACITY_MEMBER_STAGE",
+    "PINNED_TORCH_THREADS",
     "FIT_SELECT_CONTINUATION_ROOT", "P0_REPORT_RELATIVE", "P0_SIGMA_FIELD", "SCHEMA",
     "WorldAfterstateV2TrainingStageInputError",
     "WorldAfterstateV2TrainingStageInputs", "WorldAfterstateV2TrainingInputs",

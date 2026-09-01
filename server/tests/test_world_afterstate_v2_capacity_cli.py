@@ -12,7 +12,8 @@ import pytest
 
 from scripts import world_afterstate_v2_capacity as cli
 from shengji.rl.world_afterstate_v2_capacity import (
-    ARM_GRIDS, AUTHORITY, CapacityCensusAssessmentV2,
+    ARM_GRIDS, AUTHORITY, COMPOSED_STAGE_NAMES, CapacityCensusAssessmentV2,
+    RejectedProjectionDiagnosticV2, composed_critical_path_seconds,
     reopen_capacity_failure_receipt_v2_bytes)
 from shengji.rl.world_afterstate_v2_capacity_runner import CapacityRunnerError
 from shengji.rl.world_afterstate_v2_freeze_builder import capacity_source_sha256
@@ -37,12 +38,15 @@ def test_capacity_source_manifest_covers_the_executed_value_closure():
         "server/shengji/rl/world_afterstate_v2_capacity_runner.py",
         "server/shengji/rl/world_afterstate_v2_capacity_supervisor.py",
         "server/shengji/rl/world_afterstate_v2_continuation.py",
+        "server/shengji/rl/world_afterstate_v2_execution.py",
         "server/shengji/rl/world_afterstate_v2_inference.py",
         "server/shengji/rl/world_afterstate_v2_label_controller.py",
         "server/shengji/rl/world_afterstate_v2_population.py",
         "server/shengji/rl/world_afterstate_v2_protocol.py",
         "server/shengji/rl/world_afterstate_v2_source_driver.py",
         "server/shengji/rl/world_afterstate_v2_training.py",
+        "server/shengji/rl/world_afterstate_v2_training_stage_adapters.py",
+        "server/shengji/rl/world_afterstate_v2_training_stage_inputs.py",
     }
     assert required <= paths
     assert cli._source_sha256() == capacity_source_sha256(cli.REPO)
@@ -138,6 +142,38 @@ def test_cli_failure_receipt_preserves_structured_census_assessments(tmp_path):
     assert len(reopened.assessments) == len(ARM_GRIDS)
     assert any(row.violates_gate for row in reopened.assessments)
     assert reopened.payload()["authority"] == AUTHORITY
+
+
+def test_cli_failure_receipt_preserves_rejected_projection(tmp_path):
+    walls = tuple((name, 100_000 if name == "label-p0" else 1)
+                  for name in COMPOSED_STAGE_NAMES)
+    diagnostic = RejectedProjectionDiagnosticV2(
+        stage_walls_seconds=walls,
+        stage_cpu_seconds=tuple((name, 1) for name in COMPOSED_STAGE_NAMES),
+        stage_unit_counts=tuple(
+            (name, 1, 1) for name in COMPOSED_STAGE_NAMES),
+        measured_stage_wall_nanoseconds=tuple(
+            (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
+        measured_stage_cpu_nanoseconds=tuple(
+            (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
+        composed_wall_seconds=composed_critical_path_seconds(dict(walls)),
+        peak_memory_bytes=1, composed_artifact_bytes=1,
+        free_disk_bytes_before=10**12)
+    diagnostic.validate()
+    exc = CapacityRunnerError(
+        "composed projection cap drift", stage="full-dag",
+        reason_code="composed-projection-cap-drift",
+        projection_diagnostic=diagnostic)
+    receipt = cli._failure_receipt(
+        exc, started_ns=time.perf_counter_ns(),
+        output=tmp_path / "capacity.json",
+        failure_out=tmp_path / "failure.json", work_root=tmp_path / "work",
+        source_sha256="f" * 64, runtime_sha256="e" * 64)
+    reopened = reopen_capacity_failure_receipt_v2_bytes(
+        cli.canonical_json_bytes(receipt.payload()))
+    assert reopened.projection_diagnostic == diagnostic
+    assert reopened.stage == "full-dag"
+    assert reopened.reason == "composed-projection-cap-drift"
 
 
 def test_cli_refuses_aliased_success_failure_and_work_paths(

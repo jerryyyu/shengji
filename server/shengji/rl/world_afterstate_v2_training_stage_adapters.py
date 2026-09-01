@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -952,7 +954,9 @@ class _CohortAdapter:
         elif self.stage == "block-1-controls":
             _completed(supervisor, "block-1-natural")
         elif self.stage == "block-2-natural":
-            _completed(supervisor, "block-1-controls")
+            # This cohort is scientifically independent of the block-1
+            # controls and shares their reviewed four-cohort execution wave.
+            _completed(supervisor, "nested-curve")
         elif self.stage == "block-2-controls":
             _completed(supervisor, "block-2-natural")
         try:
@@ -968,7 +972,14 @@ class _CohortAdapter:
                 rows = ((values, {}),)
             builds = []
             prediction_rows = []
-            for (item, evidence), name in zip(rows, self.control_names or ("natural",), strict=True):
+            prepared = []
+            progress_reporter = _progress(supervisor, self.stage)
+            progress_lock = threading.Lock()
+            def locked_progress(value: dict[str, Any]) -> None:
+                with progress_lock:
+                    progress_reporter(value)
+            for (item, evidence), name in zip(
+                    rows, self.control_names or ("natural",), strict=True):
                 schedule, _ = training_epoch_batches(
                     item, epoch=1, data_order_seed=0,
                     cohort="primary" if name == "natural" else "control",
@@ -979,18 +990,43 @@ class _CohortAdapter:
                     seed_block=self.seed_block, population_sha=schedule.population_sha256,
                     selection_sha=inputs.epoch_select.population_sha256,
                     config_sha=inputs.config.sha256())
-                history = store.reopen_history()
-                def recover(bundle: tuple[bytes, ...], *, store=store) -> None:
+                prepared.append((name, item, evidence, store,
+                                 store.reopen_history()))
+            wall_budget = _budget(self.freeze, supervisor)
+            def train_one(row: tuple[Any, ...]) -> tuple[str, Any, Any, Any]:
+                name, item, evidence, store, history = row
+                def recover(bundle: tuple[bytes, ...]) -> None:
                     store.publish_epoch(len(store.reopen_history()) + 1, bundle)
                 build = train_named_cohort(
-                    cohort_name=name, values=item, natural_values=(natural if name != "natural" else None),
+                    cohort_name=name, values=item,
+                    natural_values=(natural if name != "natural" else None),
                     freeze_sha256=freeze_sha, config=inputs.config,
-                    selection_population=inputs.epoch_select, seed_block=self.seed_block,
-                    member_workers=inputs.member_workers, torch_threads=inputs.torch_threads,
-                    wall_budget_nanoseconds=_budget(self.freeze, supervisor),
+                    selection_population=inputs.epoch_select,
+                    seed_block=self.seed_block,
+                    member_workers=(
+                        inputs.cohort_member_workers
+                        if self.stage in {"block-1-controls", "block-2-natural"}
+                        else inputs.member_workers),
+                    torch_threads=inputs.torch_threads,
+                    wall_budget_nanoseconds=wall_budget,
                     batch_example_cap=inputs.batch_example_cap,
-                    progress=_progress(supervisor, self.stage),
+                    progress=locked_progress,
                     recovery_history=history, recovery_callback=recover)
+                return name, item, evidence, build
+            # The selected capacity layout is exactly four concurrent
+            # cohorts.  Three live inside block-1-controls and the fourth is
+            # block-2-natural in the supervisor wave.
+            stage_workers = (inputs.cohort_workers - 1
+                             if self.stage == "block-1-controls" else 1)
+            if stage_workers < 1 or stage_workers < len(prepared):
+                raise TrainingStageAdapterUnavailable(
+                    f"{self.stage} cohort concurrency is under-provisioned")
+            if len(prepared) == 1:
+                trained = (train_one(prepared[0]),)
+            else:
+                with ThreadPoolExecutor(max_workers=stage_workers) as pool:
+                    trained = tuple(pool.map(train_one, prepared))
+            for name, item, evidence, build in trained:
                 artifacts = _publish_cohort_artifacts(
                     supervisor, name, self.seed_block, build)
                 if evidence:

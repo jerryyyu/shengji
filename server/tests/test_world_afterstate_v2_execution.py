@@ -270,6 +270,12 @@ def test_actual_production_factory_binds_the_complete_reviewed_stage_set(
     controllers = production_stage_controllers(freeze=freeze, repo=repo)
     assert tuple(controllers) == STAGE_ORDER
     assert all(controller.production for controller in controllers.values())
+    # Production dispatch uses a clean ``spawn`` context.  Exercise the real
+    # closed adapters with the same pickler so a callback that works only
+    # under the unit suite's local ``fork`` context cannot reach a long run.
+    assert all(
+        multiprocessing.reduction.ForkingPickler.dumps(controller.operation)
+        for controller in controllers.values())
 
 
 def test_direct_low_level_controller_is_not_a_production_adapter(monkeypatch):
@@ -1047,8 +1053,7 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
         "matched": True, "sealed_terminal_result_sha256": result_sha})
     calls = []
 
-    def invoke(operation_supervisor, _shards):
-        stage = operation_supervisor.next_stage
+    def invoke(stage, operation_supervisor, _shards):
         if stage not in ("terminal", "reconstruction"):
             operation_supervisor.register_verified_shard(
                 stage, "receipt", canonical_json_bytes({"stage": stage}))
@@ -1091,8 +1096,10 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
     operations = {}
     for stage in STAGE_ORDER:
         name = execution.CONTROLLER_BINDINGS[stage][0]
+        def bound(operation_supervisor, shards, *, stage=stage):
+            return invoke(stage, operation_supervisor, shards)
         operations[stage] = execution.StageControllerV2(
-            stage, name, invoke, True,
+            stage, name, bound, True,
             stage_payload_factory=(prepare_audit
                                    if stage == "audit-attempt" else None))
     execution.run_v2_pipeline(supervisor, operations)
@@ -1103,6 +1110,90 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
         root, freeze=freeze, admission=admission, review_marker=marker)
     execution.run_v2_pipeline(resumed, operations)
     assert resumed.state.reconstruction_completed is True
+
+
+def _advance_to_cohort_training_wave(supervisor):
+    completed = []
+    for stage in STAGE_ORDER[:STAGE_ORDER.index("block-1-controls")]:
+        raw = canonical_json_bytes({"stage": stage})
+        supervisor.register_verified_shard(stage, "receipt", raw)
+        supervisor._event(stage, status="complete",
+                          split=ALLOWED_SPLITS[stage][0])
+        completed.append(stage)
+    supervisor._state = StageStateV2(
+        tuple(completed), verified_shards=supervisor.state.verified_shards)
+
+
+def test_cohort_training_wave_runs_both_stage_controllers_concurrently(
+        tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    _advance_to_cohort_training_wave(supervisor)
+    monkeypatch.setattr(execution.StageControllerV2, "validate",
+                        lambda _self: None)
+    barrier = multiprocessing.Barrier(2, timeout=2)
+
+    def operation(stage):
+        def run(operation_supervisor, _shards):
+            barrier.wait()
+            operation_supervisor.register_verified_shard(
+                stage, "receipt", canonical_json_bytes({"stage": stage}))
+            return stage
+        return run
+
+    operations = {
+        stage: StageControllerV2(
+            stage, execution.CONTROLLER_BINDINGS[stage][0],
+            operation(stage), True)
+        for stage in execution.COHORT_TRAINING_WAVE}
+    assert supervisor.run_cohort_training_wave(operations) \
+        == execution.COHORT_TRAINING_WAVE
+    assert supervisor.state.completed_stages[-2:] \
+        == execution.COHORT_TRAINING_WAVE
+    assert supervisor.verified_shards("block-1-controls") == ("receipt",)
+    assert supervisor.verified_shards("block-2-natural") == ("receipt",)
+
+
+def test_cohort_training_wave_terminates_sibling_on_first_refusal(
+        tmp_path, monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    _advance_to_cohort_training_wave(supervisor)
+    monkeypatch.setattr(execution.StageControllerV2, "validate",
+                        lambda _self: None)
+    sentinel = tmp_path / "slow-sibling-finished"
+
+    def refuse(_supervisor, _shards):
+        raise WorldAfterstateV2ExecutionError("cohort refused")
+
+    def slow(_supervisor, _shards):
+        time.sleep(3)
+        sentinel.write_text("late")
+
+    operations = {
+        "block-1-controls": StageControllerV2(
+            "block-1-controls",
+            execution.CONTROLLER_BINDINGS["block-1-controls"][0],
+            refuse, True),
+        "block-2-natural": StageControllerV2(
+            "block-2-natural",
+            execution.CONTROLLER_BINDINGS["block-2-natural"][0],
+            slow, True),
+    }
+    started = time.monotonic()
+    with pytest.raises(WorldAfterstateV2ExecutionError,
+                       match="cohort refused"):
+        supervisor.run_cohort_training_wave(operations)
+    assert time.monotonic() - started < 2
+    assert not sentinel.exists()
 
 
 def test_interrupted_audit_stage_reuses_exact_marker_on_resume(tmp_path):

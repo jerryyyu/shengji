@@ -28,7 +28,9 @@ from .world_afterstate_v2_protocol import (
 
 
 SCHEMA = "world-afterstate-v2-post-implementation-capacity-v7"
-FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v3"
+FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v4"
+REJECTED_PROJECTION_SCHEMA = (
+    "world-afterstate-v2-capacity-rejected-projection-v1")
 ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v4"
 PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v4"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-recovery-v1"
@@ -41,12 +43,19 @@ MIN_FREE_DISK_HEADROOM_PPM = DISK_RETAIN_PERCENT_MIN * 10_000
 MIN_CPU_UTILIZATION_PPM = 850_000
 MIN_WALL_SHARE_PPM = 50_000
 PINNED_TORCH_THREADS = 1
+COHORT_WORKERS = 4
+COHORT_MEMBER_WORKERS = 4
 MIN_CONTINUATION_WORK_UNITS = 128
 
 ARM_GRIDS: dict[str, tuple[int, ...]] = {
     "state-successor": (1, 2, 4, 8, 16, 32),
     "continuation-mechanics": (1, 2, 4, 8, 12, 16, 32, 64),
     "member-concurrency": (1, 2, 4),
+    # Four scientifically independent cohorts can share one training wave:
+    # the three block-1 controls plus block-2 natural.  The arm executes the
+    # same four-cohort/four-member population at every width; only the number
+    # of concurrently active cohorts changes.
+    "cohort-concurrency": (1, 2, COHORT_WORKERS),
     "inference-batch": (32, 64, 128, 256),
     "reconstruction": (1, 4, 8, 16, 32),
 }
@@ -54,6 +63,7 @@ ARM_DIMENSIONS = {
     "state-successor": "workers",
     "continuation-mechanics": "workers",
     "member-concurrency": "members",
+    "cohort-concurrency": "cohorts",
     "inference-batch": "batch_size",
     "reconstruction": "workers",
 }
@@ -101,6 +111,7 @@ CAPACITY_STAGE_TO_PRODUCTION_STAGE = {
 CAPACITY_ARM_TO_PRODUCTION_STAGE = {
     "state-successor": "population",
     "continuation-mechanics": "population",
+    "cohort-concurrency": "block-1-controls",
 }
 # Every projected stage either maps to exactly one operationally matching arm
 # category or explicitly maps to ``None``. This disjoint relation is also the
@@ -113,10 +124,10 @@ CAPACITY_STAGE_TO_ARM = {
     "optimizer-canary": "member-concurrency", "label-fit": "continuation-mechanics",
     "nested-curve-25": None, "nested-curve-50": None,
     "block-1-natural": "member-concurrency", "nested-curve-100": None,
-    "block-1-action-association-permutation": "member-concurrency",
-    "block-1-label-permutation": "member-concurrency",
-    "block-1-complete-world-shuffle": "member-concurrency",
-    "block-2-natural": "member-concurrency",
+    "block-1-action-association-permutation": "cohort-concurrency",
+    "block-1-label-permutation": "cohort-concurrency",
+    "block-1-complete-world-shuffle": "cohort-concurrency",
+    "block-2-natural": "cohort-concurrency",
     "block-2-complete-world-shuffle": "member-concurrency",
     "precision-select-inference": "inference-batch",
     "label-precision-select": "continuation-mechanics",
@@ -165,17 +176,22 @@ SCIENTIFIC_DAG_EDGES = (
     ("label-audit", "audit"),
     ("audit", "reconstruction"),
 )
-# Separate member-concurrency and torch-thread arms do not prove a joint
-# co-scheduled multi-cohort layout.  Until such an arm exists, these resource
-# edges conservatively serialize the otherwise independent training cohorts.
+# These are operational resource fences, not scientific dependencies.  The
+# selected cohort-concurrency arm proves that the middle four branches can run
+# as one 16-member wave.  Nested 25/50/100 remain one reviewed stage and the
+# final block-2 control follows the complete four-cohort wave.
 TRAINING_RESOURCE_SERIALIZATION_EDGES = (
     ("block-1-natural", "nested-curve-25"),
     ("nested-curve-25", "nested-curve-50"),
     ("nested-curve-50", "nested-curve-100"),
     ("nested-curve-100", "block-1-action-association-permutation"),
-    ("block-1-action-association-permutation", "block-1-label-permutation"),
-    ("block-1-label-permutation", "block-1-complete-world-shuffle"),
-    ("block-1-complete-world-shuffle", "block-2-natural"),
+    ("nested-curve-100", "block-1-label-permutation"),
+    ("nested-curve-100", "block-1-complete-world-shuffle"),
+    ("nested-curve-100", "block-2-natural"),
+    ("block-1-action-association-permutation",
+     "block-2-complete-world-shuffle"),
+    ("block-1-label-permutation", "block-2-complete-world-shuffle"),
+    ("block-1-complete-world-shuffle", "block-2-complete-world-shuffle"),
     ("block-2-natural", "block-2-complete-world-shuffle"),
 )
 COMPOSED_DAG_EDGES = SCIENTIFIC_DAG_EDGES + TRAINING_RESOURCE_SERIALIZATION_EDGES
@@ -318,6 +334,165 @@ class CapacityCensusAssessmentV2:
 
 
 @dataclass(frozen=True)
+class RejectedProjectionDiagnosticV2:
+    """Exact, score-free projection retained when the cap gate refuses."""
+
+    stage_walls_seconds: tuple[tuple[str, int], ...]
+    stage_cpu_seconds: tuple[tuple[str, int], ...]
+    stage_unit_counts: tuple[tuple[str, int, int], ...]
+    measured_stage_wall_nanoseconds: tuple[tuple[str, int], ...]
+    measured_stage_cpu_nanoseconds: tuple[tuple[str, int], ...]
+    composed_wall_seconds: int
+    peak_memory_bytes: int
+    composed_artifact_bytes: int
+    free_disk_bytes_before: int
+    dag_edges: tuple[tuple[str, str], ...] = COMPOSED_DAG_EDGES
+    schema: str = REJECTED_PROJECTION_SCHEMA
+
+    @property
+    def violations(self) -> tuple[str, ...]:
+        rows = []
+        if self.composed_wall_seconds > COMPLETE_DAG_WALL_SECONDS_MAX:
+            rows.append("complete-dag-wall")
+        if self.composed_wall_seconds * 2 > SCIENTIFIC_SERVICE_SECONDS:
+            rows.append("two-for-one-service-wall")
+        if self.peak_memory_bytes * 100 \
+                > MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX:
+            rows.append("memory")
+        if self.composed_artifact_bytes * 100 \
+                > self.free_disk_bytes_before * (100 - DISK_RETAIN_PERCENT_MIN):
+            rows.append("disk")
+        return tuple(rows)
+
+    @classmethod
+    def from_projection(cls, value: Any) -> "RejectedProjectionDiagnosticV2":
+        return cls(
+            stage_walls_seconds=tuple(value.stage_walls_seconds),
+            stage_cpu_seconds=tuple(value.stage_cpu_seconds),
+            stage_unit_counts=tuple(value.stage_unit_counts),
+            measured_stage_wall_nanoseconds=tuple(
+                value.measured_stage_wall_nanoseconds),
+            measured_stage_cpu_nanoseconds=tuple(
+                value.measured_stage_cpu_nanoseconds),
+            composed_wall_seconds=value.composed_wall_seconds,
+            peak_memory_bytes=value.peak_memory_bytes,
+            composed_artifact_bytes=value.composed_artifact_bytes,
+            free_disk_bytes_before=value.free_disk_bytes_before,
+            dag_edges=tuple(value.dag_edges))
+
+    def validate(self) -> None:
+        if self.schema != REJECTED_PROJECTION_SCHEMA \
+                or self.dag_edges != COMPOSED_DAG_EDGES:
+            raise WorldAfterstateV2CapacityError(
+                "rejected projection identity drift")
+        for rows, width, label in (
+                (self.stage_walls_seconds, 2, "wall"),
+                (self.stage_cpu_seconds, 2, "CPU"),
+                (self.stage_unit_counts, 3, "unit"),
+                (self.measured_stage_wall_nanoseconds, 2, "measured wall"),
+                (self.measured_stage_cpu_nanoseconds, 2, "measured CPU")):
+            if (type(rows) is not tuple
+                    or tuple(row[0] for row in rows) != COMPOSED_STAGE_NAMES
+                    or any(type(row) is not tuple or len(row) != width
+                           or any(type(item) is not int or item < 1
+                                  for item in row[1:]) for row in rows)):
+                raise WorldAfterstateV2CapacityError(
+                    f"rejected projection {label} grid drift")
+        if any(cpu > wall * CAPACITY_HOST_LOGICAL_CPUS
+               for (_, wall), (_, cpu) in zip(
+                   self.measured_stage_wall_nanoseconds,
+                   self.measured_stage_cpu_nanoseconds)):
+            raise WorldAfterstateV2CapacityError(
+                "rejected projection measured CPU/wall drift")
+        for value, label in (
+                (self.composed_wall_seconds, "wall"),
+                (self.peak_memory_bytes, "memory"),
+                (self.composed_artifact_bytes, "artifact"),
+                (self.free_disk_bytes_before, "disk")):
+            _int(value, f"rejected projection {label}", minimum=1)
+        if self.composed_wall_seconds != composed_critical_path_seconds(
+                dict(self.stage_walls_seconds), self.dag_edges):
+            raise WorldAfterstateV2CapacityError(
+                "rejected projection critical path drift")
+        if not self.violations:
+            raise WorldAfterstateV2CapacityError(
+                "rejected projection has no cap violation")
+
+    def payload(self) -> dict[str, Any]:
+        self.validate()
+        return {
+            "schema": self.schema,
+            "stage_walls_seconds": [list(row)
+                                     for row in self.stage_walls_seconds],
+            "stage_cpu_seconds": [list(row)
+                                    for row in self.stage_cpu_seconds],
+            "stage_unit_counts": [list(row)
+                                    for row in self.stage_unit_counts],
+            "measured_stage_wall_nanoseconds": [
+                list(row) for row in self.measured_stage_wall_nanoseconds],
+            "measured_stage_cpu_nanoseconds": [
+                list(row) for row in self.measured_stage_cpu_nanoseconds],
+            "composed_wall_seconds": self.composed_wall_seconds,
+            "complete_dag_wall_seconds_max": COMPLETE_DAG_WALL_SECONDS_MAX,
+            "scientific_service_seconds": SCIENTIFIC_SERVICE_SECONDS,
+            "peak_memory_bytes": self.peak_memory_bytes,
+            "memory_limit_bytes": MEMORY_LIMIT_BYTES,
+            "composed_artifact_bytes": self.composed_artifact_bytes,
+            "free_disk_bytes_before": self.free_disk_bytes_before,
+            "disk_retain_percent_min": DISK_RETAIN_PERCENT_MIN,
+            "dag_edges": [list(row) for row in self.dag_edges],
+            "violations": list(self.violations),
+        }
+
+    @classmethod
+    def reopen(cls, payload: Mapping[str, Any]) \
+            -> "RejectedProjectionDiagnosticV2":
+        required = {
+            "schema", "stage_walls_seconds", "stage_cpu_seconds",
+            "stage_unit_counts", "measured_stage_wall_nanoseconds",
+            "measured_stage_cpu_nanoseconds", "composed_wall_seconds",
+            "complete_dag_wall_seconds_max", "scientific_service_seconds",
+            "peak_memory_bytes", "memory_limit_bytes",
+            "composed_artifact_bytes", "free_disk_bytes_before",
+            "disk_retain_percent_min", "dag_edges", "violations"}
+        if (type(payload) is not dict or set(payload) != required
+                or payload["complete_dag_wall_seconds_max"]
+                != COMPLETE_DAG_WALL_SECONDS_MAX
+                or payload["scientific_service_seconds"]
+                != SCIENTIFIC_SERVICE_SECONDS
+                or payload["memory_limit_bytes"] != MEMORY_LIMIT_BYTES
+                or payload["disk_retain_percent_min"]
+                != DISK_RETAIN_PERCENT_MIN):
+            raise WorldAfterstateV2CapacityError(
+                "rejected projection schema drift")
+        value = cls(
+            stage_walls_seconds=tuple(
+                tuple(row) for row in payload["stage_walls_seconds"]),
+            stage_cpu_seconds=tuple(
+                tuple(row) for row in payload["stage_cpu_seconds"]),
+            stage_unit_counts=tuple(
+                tuple(row) for row in payload["stage_unit_counts"]),
+            measured_stage_wall_nanoseconds=tuple(
+                tuple(row) for row in
+                payload["measured_stage_wall_nanoseconds"]),
+            measured_stage_cpu_nanoseconds=tuple(
+                tuple(row) for row in
+                payload["measured_stage_cpu_nanoseconds"]),
+            composed_wall_seconds=payload["composed_wall_seconds"],
+            peak_memory_bytes=payload["peak_memory_bytes"],
+            composed_artifact_bytes=payload["composed_artifact_bytes"],
+            free_disk_bytes_before=payload["free_disk_bytes_before"],
+            dag_edges=tuple(tuple(row) for row in payload["dag_edges"]),
+            schema=payload["schema"])
+        value.validate()
+        if payload["violations"] != list(value.violations) \
+                or value.payload() != payload:
+            raise WorldAfterstateV2CapacityError(
+                "rejected projection canonical drift")
+        return value
+
+
+@dataclass(frozen=True)
 class CapacityFailureReceiptV2:
     """Bounded, immutable metadata for one refused CLI capacity attempt."""
 
@@ -334,6 +509,7 @@ class CapacityFailureReceiptV2:
     schema: str = FAILURE_SCHEMA
     detail_message: str = ""
     assessments: tuple[CapacityCensusAssessmentV2, ...] = ()
+    projection_diagnostic: RejectedProjectionDiagnosticV2 | None = None
 
     def payload(self) -> dict[str, Any]:
         if self.schema != FAILURE_SCHEMA or self.status != "failure":
@@ -385,9 +561,23 @@ class CapacityFailureReceiptV2:
             raise WorldAfterstateV2CapacityError("capacity failure census violation missing")
         if not census_failure and self.assessments:
             raise WorldAfterstateV2CapacityError("capacity failure unrelated assessment drift")
+        projection_failure = (
+            self.stage == "full-dag"
+            and self.reason == "composed-projection-cap-drift")
+        if projection_failure != (self.projection_diagnostic is not None):
+            raise WorldAfterstateV2CapacityError(
+                "capacity failure projection diagnostic drift")
+        if self.projection_diagnostic is not None:
+            if type(self.projection_diagnostic) is not RejectedProjectionDiagnosticV2:
+                raise WorldAfterstateV2CapacityError(
+                    "capacity failure projection diagnostic type drift")
+            self.projection_diagnostic.validate()
         if self.detail_sha256 != _sha({
                 "message": self.detail_message,
-                "assessments": [row.payload() for row in self.assessments]}):
+                "assessments": [row.payload() for row in self.assessments],
+                "projection_diagnostic": (
+                    None if self.projection_diagnostic is None else
+                    self.projection_diagnostic.payload())}):
             raise WorldAfterstateV2CapacityError("capacity failure detail binding drift")
         body = {
             "schema": self.schema, "status": self.status,
@@ -401,6 +591,9 @@ class CapacityFailureReceiptV2:
             "deadline_seconds": self.deadline_seconds,
             "detail_message": self.detail_message,
             "assessments": [row.payload() for row in self.assessments],
+            "projection_diagnostic": (
+                None if self.projection_diagnostic is None else
+                self.projection_diagnostic.payload()),
             "authority": dict(AUTHORITY),
         }
         return {**body, "failure_receipt_sha256": _sha(body)}
@@ -414,6 +607,7 @@ def reopen_capacity_failure_receipt_v2(
                 "detail_sha256",
                 "elapsed_seconds",
                 "deadline_seconds", "detail_message", "assessments",
+                "projection_diagnostic",
                 "authority", "failure_receipt_sha256"}
     if type(payload) is not dict or set(payload) != required \
             or payload.get("authority") != AUTHORITY:
@@ -435,7 +629,11 @@ def reopen_capacity_failure_receipt_v2(
         status=payload["status"], schema=payload["schema"],
         detail_message=payload["detail_message"],
         assessments=tuple(CapacityCensusAssessmentV2.reopen(row)
-                          for row in payload["assessments"]))
+                          for row in payload["assessments"]),
+        projection_diagnostic=(
+            None if payload["projection_diagnostic"] is None else
+            RejectedProjectionDiagnosticV2.reopen(
+                payload["projection_diagnostic"])))
     if receipt.payload() != payload:
         raise WorldAfterstateV2CapacityError("capacity failure canonical drift")
     return receipt
@@ -1256,6 +1454,9 @@ class CapacityReceiptV2:
                     "reconstruction"]):
             raise WorldAfterstateV2CapacityError("capacity resource layout drift")
         selected_by_stage = {arm.stage: arm for arm in self.selected_arms}
+        if selected_by_stage["cohort-concurrency"].variant != COHORT_WORKERS:
+            raise WorldAfterstateV2CapacityError(
+                "capacity cohort wave does not saturate four cohorts")
         if (selected_by_stage["member-concurrency"].variant != self.member_workers
                 or selected_by_stage["continuation-mechanics"].variant
                 != self.continuation_workers
@@ -1357,13 +1558,16 @@ __all__ = [
     "ARM_GRIDS", "AUTHORITY", "CapacityArmV2", "CapacityCensusAssessmentV2",
     "CapacityFailureReceiptV2",
     "CapacityReceiptV2",
+    "RejectedProjectionDiagnosticV2",
     "CAPACITY_ARM_TO_PRODUCTION_STAGE", "CAPACITY_PRODUCTION_STAGE_COVERAGE",
     "CAPACITY_STAGE_TO_PRODUCTION_STAGE",
     "CAPACITY_STAGE_TO_ARM", "arm_has_immediate_next_slower",
     "derive_all_core_gate_passed", "projected_arm_wall_shares_ppm",
     "validate_capacity_arm_census_v2",
     "CAPACITY_SUBSTAGE_TO_PRODUCTION_STAGE",
-    "COMPOSED_DAG_EDGES", "COMPOSED_STAGE_NAMES", "PRODUCTION_STAGE_NAMES",
+    "COHORT_MEMBER_WORKERS", "COHORT_WORKERS", "COMPOSED_DAG_EDGES",
+    "COMPOSED_STAGE_NAMES",
+    "PRODUCTION_STAGE_NAMES",
     "SCIENTIFIC_DAG_EDGES",
     "TRAINING_RESOURCE_SERIALIZATION_EDGES", "ComposedProjectionV2",
     "MAX_COMMAND_WALL_SECONDS", "MAX_TASKS",

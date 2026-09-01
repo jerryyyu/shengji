@@ -252,10 +252,14 @@ def _failure_receipt(exc: BaseException, *, started_ns: int, output: Path,
         "runtime_sha256": runtime_sha256,
     })).hexdigest()
     assessments = tuple(getattr(exc, "assessments", ()))
+    projection_diagnostic = getattr(exc, "projection_diagnostic", None)
     detail_message = str(exc)
     detail_sha256 = hashlib.sha256(canonical_json_bytes({
         "message": detail_message,
         "assessments": [row.payload() for row in assessments],
+        "projection_diagnostic": (
+            None if projection_diagnostic is None else
+            projection_diagnostic.payload()),
     })).hexdigest()
     return CapacityFailureReceiptV2(
         stage=getattr(exc, "stage", "runner"),
@@ -266,7 +270,8 @@ def _failure_receipt(exc: BaseException, *, started_ns: int, output: Path,
         runtime_sha256=runtime_sha256,
         namespace_sha256=namespace_sha256,
         detail_sha256=detail_sha256, detail_message=detail_message,
-        assessments=assessments)
+        assessments=assessments,
+        projection_diagnostic=projection_diagnostic)
 
 
 def _validate_namespaces(output: Path, failure_out: Path,

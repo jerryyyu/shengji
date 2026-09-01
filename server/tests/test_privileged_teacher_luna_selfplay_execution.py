@@ -108,7 +108,9 @@ def test_live_model_catalog_surface_must_match_code_mode_contract(
                         subprocess.CompletedProcess(args[0], 0, raw, b""))
     assert execution.validate_codex_model_surface(
         codex_binary=tmp_path / "codex") == execution._sha_bytes(raw)
-    catalog["models"][0]["shell_type"] = "unified_exec"
+    # The prior 0.149 catalog spelling must not be accepted as evidence for
+    # the current 0.150.1 execution surface.
+    catalog["models"][0]["shell_type"] = "shell_command"
     raw = json.dumps(catalog).encode()
     with pytest.raises(execution.LunaExecutionError,
                        match="^code-mode model catalog drift$"):

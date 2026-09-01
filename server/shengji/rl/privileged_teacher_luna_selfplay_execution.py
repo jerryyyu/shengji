@@ -40,17 +40,18 @@ REASONING_EFFORT = "high"
 # Keep this identity explicit: a prompt hash alone cannot detect a rerouted
 # model/tool contract after an attempt has been sealed.
 CODE_MODE_TOOL_MODE = "code_mode_only"
-# Codex 0.149.0 exposes ``exec``/``wait`` to the model.  The JavaScript cell
+# Codex 0.150.1 exposes ``exec``/``wait`` to the model.  The JavaScript cell
 # submitted through ``exec`` can in turn call the nested unified-exec tools
 # ``tools.exec_command``/``tools.write_stdin``.  These are two distinct
 # namespaces; presenting a nested name as a model-visible tool leaves the
 # mailbox unreachable even though the runtime itself is healthy.
 CODE_MODE_PUBLIC_TOOL_NAME = "exec"
 CODE_MODE_PUBLIC_WAIT_NAME = "wait"
-# Keep the catalog identity and nested tool identity separate as well.  The
-# runtime receipt retains ``CODE_MODE_TOOL_NAME`` for schema compatibility;
-# it names the nested shell tool, not the public code-mode tool.
-CODE_MODE_SHELL_TYPE = "shell_command"
+# Keep the catalog identity and nested tool identity separate as well.  In
+# Codex 0.150.1 the catalog calls this arm ``unified_exec``; that row names
+# the transport family, while ``CODE_MODE_TOOL_NAME`` retains the nested
+# command spelling used inside a JavaScript cell for schema compatibility.
+CODE_MODE_SHELL_TYPE = "unified_exec"
 CODE_MODE_NESTED_TOOL_NAME = "exec_command"
 CODE_MODE_NESTED_WAIT_NAME = "write_stdin"
 CODE_MODE_TOOL_NAME = CODE_MODE_NESTED_TOOL_NAME

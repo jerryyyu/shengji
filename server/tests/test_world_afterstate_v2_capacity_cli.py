@@ -12,7 +12,8 @@ import pytest
 
 from scripts import world_afterstate_v2_capacity as cli
 from shengji.rl.world_afterstate_v2_capacity import (
-    AUTHORITY, reopen_capacity_failure_receipt_v2_bytes)
+    ARM_GRIDS, AUTHORITY, CapacityCensusAssessmentV2,
+    reopen_capacity_failure_receipt_v2_bytes)
 from shengji.rl.world_afterstate_v2_capacity_runner import CapacityRunnerError
 from shengji.rl.world_afterstate_v2_freeze_builder import capacity_source_sha256
 
@@ -103,6 +104,40 @@ def test_cli_refusal_publishes_only_typed_failure_and_cannot_retry(
     assert cli.main(argv) == 2
     assert len(calls) == 1
     assert failure.read_bytes() == before and not output.exists()
+
+
+def test_cli_failure_receipt_preserves_structured_census_assessments(tmp_path):
+    rows = []
+    for category, variants in ARM_GRIDS.items():
+        selected = 64 if category == "continuation-mechanics" else variants[0]
+        rows.append(CapacityCensusAssessmentV2(
+            category=category, selected_variant=selected,
+            exact_wall_ns=1_000_000_000, exact_busy_core_ns=12_800_000_000,
+            measured_unit_count=128 if category == "continuation-mechanics" else 1,
+            observed_utilization_ppm=800_000,
+            required_utilization_ppm=850_000, projected_share_ppm=100_000,
+            material=True, cpu_bound=True,
+            immediate_next_variant=(None if selected == variants[-1]
+                                    else variants[variants.index(selected) + 1]),
+            next_memory_eligible=(None if selected == variants[-1] else True),
+            next_byte_identical=(None if selected == variants[-1] else True),
+            next_strictly_slower=False, violates_gate=True))
+    exc = CapacityRunnerError(
+        "capacity arm census refused low-utilization material arm",
+        stage="measurement", reason_code="arm-census-low-utilization",
+        assessments=tuple(rows))
+    output = tmp_path / "capacity.json"
+    failure = tmp_path / "failure.json"
+    work = tmp_path / "work"
+    receipt = cli._failure_receipt(
+        exc, started_ns=time.perf_counter_ns(), output=output,
+        failure_out=failure, work_root=work, source_sha256="f" * 64,
+        runtime_sha256="e" * 64)
+    reopened = reopen_capacity_failure_receipt_v2_bytes(
+        cli.canonical_json_bytes(receipt.payload()))
+    assert len(reopened.assessments) == len(ARM_GRIDS)
+    assert any(row.violates_gate for row in reopened.assessments)
+    assert reopened.payload()["authority"] == AUTHORITY
 
 
 def test_cli_refuses_aliased_success_failure_and_work_paths(

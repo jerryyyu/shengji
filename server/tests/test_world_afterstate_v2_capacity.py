@@ -10,6 +10,7 @@ from shengji.rl.world_afterstate_v2_capacity import (
     COMPOSED_DAG_EDGES, COMPOSED_STAGE_NAMES, PRODUCTION_STAGE_NAMES,
     MEMORY_LIMIT_BYTES, SCIENTIFIC_DAG_EDGES,
     TRAINING_RESOURCE_SERIALIZATION_EDGES, CapacityArmV2,
+    CapacityCensusAssessmentV2,
     CapacityFailureReceiptV2, CapacityReceiptV2, ComposedProjectionV2,
     ProgressRecoveryV2,
     TierProjectionV2, WorldAfterstateV2CapacityError,
@@ -17,6 +18,8 @@ from shengji.rl.world_afterstate_v2_capacity import (
     composed_critical_path_seconds, projected_arm_wall_shares_ppm,
     derive_all_core_gate_passed, ARM_SCHEMA, SCHEMA, FAILURE_SCHEMA,
     arm_has_immediate_next_slower,
+    validate_capacity_arm_census_v2,
+    reopen_capacity_failure_receipt_v2,
 )
 from shengji.rl.world_afterstate_v2_capacity_runner import (
     CapacityRunnerError, reopen_capacity_receipt_v2,
@@ -52,7 +55,11 @@ def _arms(*, memory=None, command_tasks=1, low_cpu=False, byte_suffix="same"):
                 peak_memory_bytes=memory or 20 * 1024**3,
                 swap_bytes=0, task_count=command_tasks,
                 byte_identity_sha256=_sha(f"{stage}:{byte_suffix}"),
-                cpu_bound=low_cpu, wall_ns=wall_ns, busy_core_ns=busy_ns))
+                cpu_bound=low_cpu, wall_ns=wall_ns, busy_core_ns=busy_ns,
+                measured_unit_count=(128 if stage == "continuation-mechanics"
+                                     else 32 if stage in ("state-successor",
+                                                           "reconstruction")
+                                     else 1)))
     return tuple(values)
 
 
@@ -112,7 +119,11 @@ def test_typed_capacity_failure_reopens_and_is_not_a_success_receipt():
         stage="runner", reason="capacity-runner-refused", elapsed_seconds=4,
         source_sha256=source, input_sha256=input_sha,
         runtime_sha256=runtime,
-        namespace_sha256=namespace, detail_sha256="4" * 64)
+        namespace_sha256=namespace,
+        detail_sha256=hashlib.sha256(canonical_json_bytes({
+            "message": "typed failure",
+            "assessments": []})).hexdigest(),
+        detail_message="typed failure")
     payload = failure.payload()
     assert payload["schema"] == FAILURE_SCHEMA
     assert reopen_capacity_failure_receipt_v2(payload) == failure
@@ -185,7 +196,7 @@ def test_exact_arm_grid_caps_and_fastest_byte_identical_selection():
     receipt.validate()
     assert receipt.schema == SCHEMA
     assert "torch-threads-per-member" not in ARM_GRIDS
-    assert len(receipt.arms) == 25
+    assert len(receipt.arms) == 26
     assert len(receipt.arms) == sum(len(values) for values in ARM_GRIDS.values())
     assert receipt.sha256() == receipt.sha256()
     assert choose_capacity_tier_v2(receipt).name == "D1024"
@@ -413,6 +424,143 @@ def test_immediate_next_must_be_slower_not_any_later_arm():
     assert later.wall_ns > selected.wall_ns
     with pytest.raises(WorldAfterstateV2CapacityError, match="next-arm"):
         _receipt(arms=tuple(arms)).validate()
+
+
+def test_continuation_grid_adds_64_and_current_arms_prove_128_units():
+    assert ARM_GRIDS["continuation-mechanics"][-1] == 64
+    assert all(arm.measured_unit_count >= 128
+               for arm in _arms() if arm.stage == "continuation-mechanics")
+    reduced = tuple(dataclasses.replace(arm, measured_unit_count=32)
+                    if arm.stage == "continuation-mechanics" else arm
+                    for arm in _arms())
+    with pytest.raises(WorldAfterstateV2CapacityError, match="population"):
+        _receipt(arms=reduced).validate()
+
+
+def _census_with_selected_32(*, next_wall=2_000_000_000,
+                             next_memory=20 * 1024**3,
+                             next_byte=True, selected_variant=32):
+    arms = list(_arms())
+    stage = "continuation-mechanics"
+    selected = {name: next(arm for arm in arms if arm.stage == name
+                           and arm.variant == variants[0])
+                for name, variants in ARM_GRIDS.items()}
+    low = next(arm for arm in arms if arm.stage == stage and arm.variant == selected_variant)
+    low = dataclasses.replace(
+        low, wall_ns=1_000_000_000, wall_seconds=1,
+        busy_core_ns=12_800_000_000, busy_core_seconds=13,
+        mean_cpu_utilization_ppm=800_000, p50_cpu_utilization_ppm=800_000,
+        cpu_bound=True)
+    following = next(arm for arm in arms if arm.stage == stage and arm.variant == 64)
+    following = dataclasses.replace(
+        following, wall_ns=next_wall, wall_seconds=(next_wall + 999_999_999) // 1_000_000_000,
+        busy_core_ns=next_wall * 14, busy_core_seconds=(next_wall * 14 + 999_999_999) // 1_000_000_000,
+        mean_cpu_utilization_ppm=875_000, p50_cpu_utilization_ppm=875_000,
+        peak_memory_bytes=next_memory,
+        byte_identity_sha256=low.byte_identity_sha256 if next_byte else _sha("different"))
+    arms[arms.index(next(arm for arm in arms if arm.stage == stage and arm.variant == selected_variant))] = low
+    arms[arms.index(next(arm for arm in arms if arm.stage == stage and arm.variant == 64))] = following
+    selected[stage] = low
+    return tuple(arms), selected
+
+
+def test_census_selected_32_only_passes_with_eligible_identical_slower_64():
+    stages = {name: 100 for name in COMPOSED_STAGE_NAMES}
+    arms, selected = _census_with_selected_32()
+    rows = validate_capacity_arm_census_v2(arms, selected, stages)
+    row = next(value for value in rows if value.category == "continuation-mechanics")
+    assert row.immediate_next_variant == 64 and row.next_strictly_slower
+    for kwargs in ({"next_wall": 500_000_000}, {"next_wall": 1_000_000_000},
+                   {"next_wall": 2_000_000_000, "next_memory": MEMORY_LIMIT_BYTES},
+                   {"next_wall": 2_000_000_000, "next_byte": False}):
+        arms, selected = _census_with_selected_32(**kwargs)
+        with pytest.raises(WorldAfterstateV2CapacityError):
+            validate_capacity_arm_census_v2(arms, selected, stages)
+
+
+def test_census_low_fastest_64_without_next_refuses():
+    stages = {name: 100 for name in COMPOSED_STAGE_NAMES}
+    arms, selected = _census_with_selected_32()
+    low64 = next(arm for arm in arms
+                 if arm.stage == "continuation-mechanics" and arm.variant == 64)
+    low64 = dataclasses.replace(
+        low64, wall_ns=1_000_000_000, wall_seconds=1,
+        busy_core_ns=12_800_000_000, busy_core_seconds=13,
+        mean_cpu_utilization_ppm=800_000, p50_cpu_utilization_ppm=800_000,
+        cpu_bound=True)
+    arms = tuple(low64 if arm.stage == low64.stage and arm.variant == 64 else arm
+                 for arm in arms)
+    selected["continuation-mechanics"] = low64
+    with pytest.raises(WorldAfterstateV2CapacityError):
+        validate_capacity_arm_census_v2(arms, selected, stages)
+
+
+def test_census_assessment_binds_cpu_bound_and_tampering_refuses():
+    stages = {name: 100 for name in COMPOSED_STAGE_NAMES}
+    arms, selected = _census_with_selected_32()
+    rows = validate_capacity_arm_census_v2(arms, selected, stages)
+    row = next(value for value in rows if value.category == "continuation-mechanics")
+    with pytest.raises(WorldAfterstateV2CapacityError):
+        dataclasses.replace(row, cpu_bound=False, violates_gate=True).validate()
+    with pytest.raises(WorldAfterstateV2CapacityError):
+        dataclasses.replace(row, exact_wall_ns=2_000_000_000).validate()
+
+
+def test_assessment_next_slower_requires_exact_successor_eligibility():
+    arms, selected = _census_with_selected_32()
+    rows = validate_capacity_arm_census_v2(
+        arms, selected, {name: 100 for name in COMPOSED_STAGE_NAMES})
+    row = next(value for value in rows if value.category == "continuation-mechanics")
+    for changes in ({"next_memory_eligible": False},
+                    {"next_byte_identical": False},
+                    {"immediate_next_variant": 12}):
+        tampered = dataclasses.replace(row, **changes)
+        with pytest.raises(WorldAfterstateV2CapacityError):
+            tampered.validate()
+        payload = dict(row.payload())
+        payload.update(changes)
+        with pytest.raises(WorldAfterstateV2CapacityError):
+            CapacityCensusAssessmentV2.reopen(payload)
+
+
+def test_failure_detail_and_assessment_rows_are_strictly_bound():
+    source, input_sha, runtime = "1" * 64, "2" * 64, "3" * 64
+    namespace = hashlib.sha256(canonical_json_bytes({
+        "source_sha256": source, "input_sha256": input_sha,
+        "runtime_sha256": runtime})).hexdigest()
+    arms, selected = _census_with_selected_32(next_wall=500_000_000)
+    with pytest.raises(WorldAfterstateV2CapacityError) as caught:
+        validate_capacity_arm_census_v2(
+            arms, selected, {name: 100 for name in COMPOSED_STAGE_NAMES})
+    assessments = caught.value.assessments
+    detail = hashlib.sha256(canonical_json_bytes({
+        "message": "census refused", "assessments": [row.payload()
+                                                         for row in assessments]})).hexdigest()
+    failure = CapacityFailureReceiptV2(
+        stage="measurement", reason="arm-census-low-utilization",
+        elapsed_seconds=1, source_sha256=source, input_sha256=input_sha,
+        runtime_sha256=runtime, namespace_sha256=namespace,
+        detail_sha256=detail, detail_message="census refused",
+        assessments=assessments)
+    payload = failure.payload()
+    assert len(payload["assessments"]) == len(ARM_GRIDS)
+    for field in ("exact_wall_ns", "category", "projected_share_ppm",
+                  "next_strictly_slower"):
+        tampered_row = dict(payload["assessments"][1])
+        tampered_row[field] = ("other" if field == "category"
+                               else not tampered_row[field]
+                               if field == "next_strictly_slower"
+                               else tampered_row[field] + 1)
+        tampered = dict(payload, assessments=[
+            tampered_row if index == 1 else row
+            for index, row in enumerate(payload["assessments"])])
+        with pytest.raises(WorldAfterstateV2CapacityError):
+            reopen_capacity_failure_receipt_v2(tampered)
+    with pytest.raises(WorldAfterstateV2CapacityError):
+        CapacityFailureReceiptV2(
+            stage="runner", reason="capacity-runner-refused", elapsed_seconds=0,
+            source_sha256=source, input_sha256=input_sha, runtime_sha256=runtime,
+            namespace_sha256=namespace, detail_sha256="4" * 64).payload()
 
 
 def test_projected_share_boundary_and_derived_full_dag_gate():

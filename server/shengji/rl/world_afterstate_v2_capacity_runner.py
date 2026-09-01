@@ -31,8 +31,8 @@ from .belief_contract import canonical_json_bytes
 from .world_afterstate import canonical_successor, replay_canonical_successor
 from .world_afterstate_v2_capacity import (
     ARM_GRIDS, AUTHORITY, COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS, MEMORY_LIMIT_BYTES,
-    MEASUREMENT_SCOPE, PINNED_TORCH_THREADS,
-    MAX_TASKS, CapacityArmV2, CapacityFailureReceiptV2, CapacityReceiptV2,
+    MEASUREMENT_SCOPE, MIN_CONTINUATION_WORK_UNITS, PINNED_TORCH_THREADS,
+    MAX_TASKS, CapacityArmV2, CapacityCensusAssessmentV2, CapacityFailureReceiptV2, CapacityReceiptV2,
     ComposedProjectionV2,
     ProgressRecoveryV2, TierProjectionV2, WorldAfterstateV2CapacityError,
     composed_critical_path_seconds, validate_capacity_receipt_v2,
@@ -61,6 +61,7 @@ PREFLIGHT_WORKERS = HOST_CPUS
 PREFLIGHT_RESERVED_NATURAL_ROOTS = 16
 PREFLIGHT_RESERVED_NATURAL_PAIRS = PREFLIGHT_RESERVED_NATURAL_ROOTS // 2
 PREFLIGHT_MAX_NATURAL_ROOTS = 17
+CONTINUATION_MIN_WORK_UNITS = MIN_CONTINUATION_WORK_UNITS
 SYNTHETIC_BRAND = "SYNTHETIC_TEST_MEASUREMENT_ONLY"
 RUNNER_SCHEMA = "world-afterstate-v2-capacity-runner-v1"
 OPERATION_OUTPUT_SCHEMA = "world-afterstate-v2-capacity-operation-output-v1"
@@ -78,10 +79,12 @@ class CapacityRunnerError(RuntimeError):
     """A capacity run was refused or could not be measured honestly."""
 
     def __init__(self, message: str, *, stage: str = "runner",
-                 reason_code: str = "capacity-runner-refused") -> None:
+                 reason_code: str = "capacity-runner-refused",
+                 assessments: Sequence[CapacityCensusAssessmentV2] = ()) -> None:
         super().__init__(message)
         self.stage = stage
         self.reason_code = reason_code
+        self.assessments = tuple(assessments)
 
 
 class FullDAGCapacityDependencyBlocked(CapacityRunnerError):
@@ -1057,13 +1060,27 @@ def _parallel_operation(stage: str, variant: int,
     """Run one independent process task per fixture at the requested arm width."""
     values = tuple(fixtures)
 
+    # Continuation arms must expose at least two waves at the immediate 64
+    # comparison.  Repeating the immutable source fixtures is deterministic
+    # and keeps the measured output population independent of arm width.
+    measured_units = (CONTINUATION_MIN_WORK_UNITS
+                      if stage == "continuation-mechanics" else len(values))
+    if measured_units < 1:
+        raise CapacityRunnerError("capacity operation fixture population missing")
+    if (stage == "continuation-mechanics" and variant >= 64
+            and measured_units < variant * 2):
+        raise CapacityRunnerError(
+            "continuation capacity arm lacks two deterministic work waves")
+    work = tuple(values[index % len(values)] for index in range(measured_units))
+
     def run() -> str:
         with ProcessPoolExecutor(
                 max_workers=variant, **verified_process_pool_kwargs()) as pool:
             outputs = tuple(pool.map(
                 _process_fixture,
-                ((stage, variant, fixture) for fixture in values)))
+                ((stage, variant, fixture) for fixture in work)))
         return _sha(outputs)
+    run.measured_unit_count = measured_units  # type: ignore[attr-defined]
     return run
 
 
@@ -1077,6 +1094,15 @@ def _model_operation(stage: str, variant: int,
     values = tuple(fixtures)
     training_batch = (_capacity_training_batch(values)
                       if stage == "member-concurrency" else None)
+
+    if stage == "member-concurrency":
+        measured_units = 4
+    elif stage == "inference-batch":
+        measured_units = sum(len(fixture.audit_raws) for fixture in values)
+    else:
+        measured_units = len(values)
+    if measured_units < 1:
+        raise CapacityRunnerError("capacity model fixture population missing")
 
     def run() -> str:
         import torch
@@ -1131,13 +1157,20 @@ def _model_operation(stage: str, variant: int,
                 # arbitrary chunk boundaries used to produce them.
                 output = [_batched_prediction_identity(batches)]
         return _sha(output)
+    run.measured_unit_count = measured_units  # type: ignore[attr-defined]
     return run
 
 
 def _arm_from_raw(stage: str, variant: int, raw: RawMeasurementV2,
                   fixture_sha: str, stage_wall: int,
-                  *, synthetic: bool = False) -> CapacityArmV2:
+                  *, synthetic: bool = False,
+                  measured_unit_count: int = 1) -> CapacityArmV2:
     raw.validate()
+    if (stage == "continuation-mechanics"
+            and (measured_unit_count < CONTINUATION_MIN_WORK_UNITS
+                 or (variant >= 64 and measured_unit_count < variant * 2))):
+        raise CapacityRunnerError(
+            "continuation capacity arm lacks required deterministic work population")
     if raw.byte_identity_sha256 != fixture_sha:
         raise CapacityRunnerError("stage arms are not byte-identical")
     wall_ns = raw.elapsed_ns
@@ -1164,6 +1197,7 @@ def _arm_from_raw(stage: str, variant: int, raw: RawMeasurementV2,
         swap_bytes=ZERO_SWAP, task_count=raw.task_count,
         byte_identity_sha256=fixture_sha, cpu_bound=raw.cpu_bound,
         wall_ns=wall_ns, busy_core_ns=busy_ns,
+        measured_unit_count=measured_unit_count,
         peak_task_count=max((raw.task_count, *raw.sample_task_counts)))
     # CapacityArmV2 intentionally remains the existing public wire type.  A
     # private in-memory provenance bit prevents a test seam from being
@@ -1171,6 +1205,47 @@ def _arm_from_raw(stage: str, variant: int, raw: RawMeasurementV2,
     if synthetic:
         object.__setattr__(arm, "_synthetic_measurement", True)
     return arm
+
+
+def _arm_target_units(
+        fixtures: Sequence[FixtureV2],
+        measured_counts: Mapping[str, int] | None = None,
+        continuation_target_units: int | None = None,
+        ) -> dict[str, tuple[int, int]]:
+    """Return (measured, target) unit populations for every arm category."""
+    source = len(fixtures)
+    if source < 1:
+        raise CapacityRunnerError("capacity fixture population missing")
+    continuation_target = 0
+    missing_material = False
+    for fixture in fixtures:
+        if fixture.material is None:
+            # Synthetic seams do not carry production material; their real
+            # operation is not executed, but retain the 128-unit shape.
+            missing_material = True
+        else:
+            continuation_target += len(fixture.material.candidates) * 8
+    if missing_material:
+        continuation_target = max(CONTINUATION_MIN_WORK_UNITS, source)
+    if continuation_target_units is not None:
+        if type(continuation_target_units) is not int or continuation_target_units < 1:
+            raise CapacityRunnerError("capacity continuation target population drift")
+        continuation_target = continuation_target_units
+    if continuation_target < 1:
+        raise CapacityRunnerError("capacity continuation target population missing")
+    measured_counts = measured_counts or {}
+    return {
+        "state-successor": (measured_counts.get("state-successor", source), source),
+        "continuation-mechanics": (
+            measured_counts.get("continuation-mechanics", CONTINUATION_MIN_WORK_UNITS),
+            continuation_target),
+        "member-concurrency": (measured_counts.get("member-concurrency", 4), 4),
+        "inference-batch": (
+            measured_counts.get("inference-batch", max(1, sum(
+                len(fixture.audit_raws) for fixture in fixtures))),
+            max(1, sum(len(fixture.audit_raws) for fixture in fixtures))),
+        "reconstruction": (measured_counts.get("reconstruction", source), source),
+    }
 
 
 def _select_arms(arms: Sequence[CapacityArmV2]) -> dict[str, CapacityArmV2]:
@@ -1201,16 +1276,17 @@ def _bind_projected_arm_shares(
 
 def validate_capacity_arm_census_v2(
         arms: Sequence[CapacityArmV2], selected: Mapping[str, CapacityArmV2],
-        stage_walls_seconds: Mapping[str, int]) -> None:
+        stage_walls_seconds: Mapping[str, int]) -> tuple[CapacityCensusAssessmentV2, ...]:
     """Fail closed on material low-utilization arms before the full DAG call."""
     try:
-        _validate_capacity_arm_census_contract(
+        return _validate_capacity_arm_census_contract(
             arms, selected, stage_walls_seconds)
     except WorldAfterstateV2CapacityError as exc:
         raise CapacityRunnerError(
             "capacity arm census refused low-utilization material arm",
             stage="measurement",
-            reason_code="arm-census-low-utilization") from exc
+            reason_code="arm-census-low-utilization",
+            assessments=getattr(exc, "assessments", ())) from exc
 
 
 @dataclass(frozen=True)
@@ -1339,11 +1415,28 @@ def _scientific_stage_units(spec: Any) -> dict[str, int]:
 
 def _composed_projection(selected: Mapping[str, CapacityArmV2],
                          fixture_count: int, free_disk_bytes: int,
-                         dag: RepresentativeDAGV2 | None = None) -> ComposedProjectionV2:
+                         dag: RepresentativeDAGV2 | None = None,
+                         arm_target_units: Mapping[str, tuple[int, int]] | None = None
+                         ) -> ComposedProjectionV2:
+    if arm_target_units is None:
+        arm_target_units = {
+            stage: (selected[stage].measured_unit_count, fixture_count)
+            for stage in ARM_GRIDS}
+    if set(arm_target_units) != set(ARM_GRIDS):
+        raise CapacityRunnerError("capacity arm target unit mapping drift")
+    for stage, (measured, target) in arm_target_units.items():
+        if (type(measured) is not int or measured < 1
+                or type(target) is not int or target < 1):
+            raise CapacityRunnerError("capacity arm target unit mapping drift")
+
     def wall(stage: str, multiplier: int = 1) -> int:
+        if stage in arm_target_units:
+            measured, target = arm_target_units[stage]
+            projected_ns = (selected[stage].wall_ns * target + measured - 1) // measured
+            return _ceil_seconds(projected_ns)
         return max(1, selected[stage].wall_seconds * max(1, multiplier))
-    base = wall("state-successor", fixture_count)
-    continuation = wall("continuation-mechanics", fixture_count)
+    base = wall("state-successor")
+    continuation = wall("continuation-mechanics")
     measured = dict(dag.stage_walls_seconds) if dag else {}
     measured_cpu = (dict(dag.stage_process_cpu_nanoseconds)
                     if dag else {})
@@ -1405,7 +1498,9 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
         measured_cpu_seconds = {}
         def projected_cpu(name: str, fallback: int) -> int:
             return fallback
-    label = max(1, base + continuation * 8)
+    # Continuation target units already equal the complete candidate*8 label
+    # workload; multiplying its wall by eight would count the population twice.
+    label = max(1, base + continuation)
     inference = measured_wall("precision-select-inference", dag.inference_wall_seconds
                               if dag else wall("inference-batch", fixture_count))
     reconstruction = measured_wall("reconstruction", dag.reconstruction_wall_seconds
@@ -1462,7 +1557,9 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
         measured_stage_cpu_seconds=(
             tuple((name, max(1, (value + 999_999_999) // 1_000_000_000))
                   for name, value in dag.stage_process_cpu_nanoseconds)
-            if dag else ()))
+            if dag else ()),
+        arm_target_unit_counts=tuple(
+            (stage, *arm_target_units[stage]) for stage in arm_target_units))
 
 
 def _tiers(composed: ComposedProjectionV2) -> tuple[TierProjectionV2, ...]:
@@ -1598,7 +1695,13 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
             "full-DAG resource layout mismatch")
     composed = _composed_projection(
         selected, len(preflight.accepted_fixtures), host.free_disk_bytes,
-        representative_dag)
+            representative_dag,
+            arm_target_units=_arm_target_units(
+                preflight.accepted_fixtures,
+                {stage: selected[stage].measured_unit_count for stage in ARM_GRIDS},
+                continuation_target_units=sum(
+                    candidate * count * 8
+                    for candidate, count in preflight.candidate_distribution)))
     arms = _bind_projected_arm_shares(arms, dict(composed.stage_walls_seconds))
     selected = {stage: next(arm for arm in arms if arm.stage == stage
                             and arm.variant == selected[stage].variant)
@@ -1701,6 +1804,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
     if time.perf_counter_ns() >= deadline_ns:
         raise CapacityRunnerError("capacity deadline exceeded before measurement")
     arms: list[CapacityArmV2] = []
+    arm_targets = _arm_target_units(fixtures)
     for stage, variants in ARM_GRIDS.items():
         fixture_sha = fixtures[0].fixture_sha256
         measured_output_identity: str | None = None
@@ -1714,6 +1818,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
             # material needed by the production training operations.
             if getattr(backend, "synthetic", False):
                 operation = lambda: fixture_sha
+                operation.measured_unit_count = arm_targets[stage][0]  # type: ignore[attr-defined]
             else:
                 operation = (_parallel_operation(stage, variant, fixtures)
                              if stage in {"state-successor",
@@ -1760,7 +1865,10 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 raise CapacityRunnerError("byte-identical fixture refusal")
             arm = _arm_from_raw(
                 stage, variant, raw, expected_identity, raw.elapsed_ns,
-                synthetic=bool(getattr(backend, "synthetic", False)))
+                synthetic=bool(getattr(backend, "synthetic", False)),
+                measured_unit_count=getattr(
+                    operation_to_run if stage == "member-concurrency" else operation,
+                    "measured_unit_count", arm_targets[stage][0]))
             arms.append(arm)
             _progress_event(stage, position, len(variants),
                             variant, started, raw.elapsed_ns,
@@ -1773,7 +1881,8 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         # supervisor.  Its projected D256 category shares are deterministic
         # from the selected arm timings and frozen stage mapping.
         provisional = _composed_projection(
-            selected, len(fixtures), host.free_disk_bytes)
+            selected, len(fixtures), host.free_disk_bytes,
+            arm_target_units=arm_targets)
         validate_capacity_arm_census_v2(
             arms, selected, dict(provisional.stage_walls_seconds))
     # Freeze the exact layout before any representative DAG work starts.
@@ -1926,6 +2035,8 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
             tuple(row) for row in composed_payload["stage_walls_seconds"])
         composed_payload["stage_unit_counts"] = tuple(
             tuple(row) for row in composed_payload.get("stage_unit_counts", ()))
+        composed_payload["arm_target_unit_counts"] = tuple(
+            tuple(row) for row in composed_payload.get("arm_target_unit_counts", ()))
         composed_payload["measured_stage_walls_seconds"] = tuple(
             tuple(row) for row in composed_payload.get(
                 "measured_stage_walls_seconds", ()))

@@ -251,6 +251,12 @@ def _failure_receipt(exc: BaseException, *, started_ns: int, output: Path,
         "source_sha256": source_sha256, "input_sha256": input_sha256,
         "runtime_sha256": runtime_sha256,
     })).hexdigest()
+    assessments = tuple(getattr(exc, "assessments", ()))
+    detail_message = str(exc)
+    detail_sha256 = hashlib.sha256(canonical_json_bytes({
+        "message": detail_message,
+        "assessments": [row.payload() for row in assessments],
+    })).hexdigest()
     return CapacityFailureReceiptV2(
         stage=getattr(exc, "stage", "runner"),
         reason=getattr(exc, "reason_code", "capacity-runner-refused"),
@@ -259,7 +265,8 @@ def _failure_receipt(exc: BaseException, *, started_ns: int, output: Path,
         source_sha256=source_sha256, input_sha256=input_sha256,
         runtime_sha256=runtime_sha256,
         namespace_sha256=namespace_sha256,
-        detail_sha256=hashlib.sha256(str(exc).encode("utf-8")).hexdigest())
+        detail_sha256=detail_sha256, detail_message=detail_message,
+        assessments=assessments)
 
 
 def _validate_namespaces(output: Path, failure_out: Path,

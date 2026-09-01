@@ -18,7 +18,8 @@ import shengji.rl.world_afterstate_v2_execution as execution
 from shengji.rl.belief_contract import canonical_json_bytes
 
 from shengji.rl.world_afterstate_v2_capacity import (
-    ARM_GRIDS, COMPOSED_STAGE_NAMES, CapacityFailureReceiptV2,
+    ARM_GRIDS, COMPOSED_STAGE_NAMES, CapacityCensusAssessmentV2,
+    CapacityFailureReceiptV2,
     composed_critical_path_seconds, projected_arm_wall_shares_ppm,
     CapacityArmV2)
 from shengji.rl.world_afterstate_v2_capacity_runner import (
@@ -398,6 +399,35 @@ def test_parallel_capacity_operation_wires_runtime_initializer(monkeypatch):
     assert seen["initargs"] == (expected,)
 
 
+def test_continuation_capacity_operation_has_128_units_and_fixed_32_cycle(monkeypatch):
+    expected = hashlib.sha256(canonical_json_bytes(
+        execution.live_runtime_profile())).hexdigest()
+    monkeypatch.setenv(execution.RUNTIME_EXPECTATION_ENV, expected)
+    seen = {}
+
+    class Pool:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return None
+        def map(self, _operation, payloads):
+            rows = tuple(payloads)
+            seen["payloads"] = rows
+            return tuple("a" * 64 for _ in rows)
+
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", Pool)
+    fixtures = tuple(SimpleNamespace(fixture_sha256=f"{i:064x}")
+                     for i in range(32))
+    operation = runner._parallel_operation("continuation-mechanics", 64, fixtures)
+    assert operation.measured_unit_count == 128
+    assert len(operation()) == 64
+    rows = seen["payloads"]
+    assert len(rows) == 128 and [row[2].fixture_sha256 for row in rows] == [
+        f"{i % 32:064x}" for i in range(128)]
+
+
 def test_score_free_preflight_refuses_expired_batch_and_worker_failure(
         monkeypatch):
     monkeypatch.setattr(runner, "PREFLIGHT_ACCEPTED", 1)
@@ -486,7 +516,11 @@ def _selected_arms(fixture: FixtureV2):
                 sample_utilization_ppm=(900_000,),
                 byte_identity_sha256=fixture.fixture_sha256)
             arms.append(_arm_from_raw(
-                stage, variant, raw, fixture.fixture_sha256, raw.elapsed_ns))
+                stage, variant, raw, fixture.fixture_sha256, raw.elapsed_ns,
+                measured_unit_count=(128 if stage == "continuation-mechanics"
+                                     else 32 if stage in ("state-successor",
+                                                           "reconstruction")
+                                     else 1)))
     return tuple(arms)
 
 
@@ -713,6 +747,61 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
             _provenance=_PRODUCTION_PROVENANCE)
 
 
+def test_census_collects_two_simultaneous_gate_violations():
+    fixture = _preflight().accepted_fixtures[0]
+    arms = list(_selected_arms(fixture))
+    selected = runner._select_arms(arms)
+    # Keep both mutated categories material in the selected-arm budget.
+    selected_keys = {(stage, value.variant) for stage, value in selected.items()}
+    for index, arm in enumerate(arms):
+        if (arm.stage, arm.variant) in selected_keys:
+            arms[index] = dataclasses.replace(
+                arm, wall_ns=1_000_000_000, wall_seconds=1,
+                busy_core_ns=14_000_000_000, busy_core_seconds=14,
+                mean_cpu_utilization_ppm=875_000,
+                p50_cpu_utilization_ppm=875_000)
+    selected = runner._select_arms(arms)
+    for stage in ("state-successor", "member-concurrency"):
+        index = next(i for i, arm in enumerate(arms)
+                     if arm.stage == stage and arm.variant == 1)
+        arm = arms[index]
+        wall_ns = 1_000_000_000
+        busy_ns = wall_ns * 16 * 800_000 // 1_000_000
+        arms[index] = dataclasses.replace(
+            arm, wall_ns=wall_ns, wall_seconds=1, busy_core_ns=busy_ns,
+            busy_core_seconds=13, mean_cpu_utilization_ppm=800_000,
+            p50_cpu_utilization_ppm=800_000, cpu_bound=True)
+        next_index = next(i for i, value in enumerate(arms)
+                          if value.stage == stage and value.variant == 2)
+        next_arm = arms[next_index]
+        arms[next_index] = dataclasses.replace(
+            next_arm, wall_ns=wall_ns, wall_seconds=1,
+            busy_core_ns=next_arm.wall_ns * 14,
+            busy_core_seconds=14, mean_cpu_utilization_ppm=875_000,
+            p50_cpu_utilization_ppm=875_000)
+        selected[stage] = arms[index]
+    with pytest.raises(CapacityRunnerError) as caught:
+        validate_capacity_arm_census_v2(
+            tuple(arms), selected,
+            {name: 100 for name in COMPOSED_STAGE_NAMES})
+    bad = {row.category for row in caught.value.assessments if row.violates_gate}
+    assert {"state-successor", "member-concurrency"} <= bad
+    assert len(caught.value.assessments) == len(ARM_GRIDS)
+
+
+def test_exact_32_unit_arm_projection_does_not_multiply_wall_by_32():
+    fixture = _preflight().accepted_fixtures[0]
+    selected = runner._select_arms(_selected_arms(fixture))
+    selected["state-successor"] = dataclasses.replace(
+        selected["state-successor"], measured_unit_count=32,
+        wall_ns=1_000_000_000, wall_seconds=1)
+    mapping = {stage: (arm.measured_unit_count, 32)
+               for stage, arm in selected.items()}
+    composed = _composed_projection(
+        selected, 32, 10**9, arm_target_units=mapping)
+    assert dict(composed.stage_walls_seconds)["nested-curve-100"] == 1
+
+
 def test_nanosecond_utilization_threshold_is_exact():
     fixture = FixtureV2({"score_free": True})
     for utilization in (849_999, 850_000):
@@ -832,7 +921,10 @@ def test_receipt_reopens_exactly_and_host_caps_refuse():
             peak_rss_bytes=1_000_000, task_count=1,
             sample_utilization_ppm=(900_000,),
             byte_identity_sha256=fixture.fixture_sha256), fixture.fixture_sha256,
-        1, synthetic=False)
+        1, synthetic=False,
+        measured_unit_count=(128 if stage == "continuation-mechanics"
+                             else 32 if stage in ("state-successor",
+                                                   "reconstruction") else 1))
                   for stage, variants in ARM_GRIDS.items() for variant in variants)
     with pytest.raises(FullDAGCapacityDependencyBlocked, match="full-DAG"):
         build_receipt_v2(
@@ -997,7 +1089,10 @@ def test_composed_projection_counts_epochs_and_scales_tiers_by_stage():
             sample_utilization_ppm=(62_500,),
             byte_identity_sha256=fixture.fixture_sha256)
         selected[stage] = _arm_from_raw(
-            stage, variants[0], raw, fixture.fixture_sha256, raw.elapsed_ns)
+            stage, variants[0], raw, fixture.fixture_sha256, raw.elapsed_ns,
+            measured_unit_count=(128 if stage == "continuation-mechanics"
+                                 else 32 if stage in ("state-successor",
+                                                       "reconstruction") else 1))
     dag = RepresentativeDAGV2(
         1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
         stage_walls_seconds=tuple((name, 1) for name in COMPOSED_STAGE_NAMES))
@@ -1032,7 +1127,11 @@ def test_projected_label_cpu_uses_measured_stage_cpu_not_wall_times_sixteen():
             peak_rss_bytes=1_000_000, task_count=1,
             sample_utilization_ppm=(900_000,),
             byte_identity_sha256=fixture.fixture_sha256),
-        fixture.fixture_sha256, 1) for stage, variants in ARM_GRIDS.items()}
+        fixture.fixture_sha256, 1,
+        measured_unit_count=(128 if stage == "continuation-mechanics"
+                             else 32 if stage in ("state-successor",
+                                                   "reconstruction") else 1))
+        for stage, variants in ARM_GRIDS.items()}
     cpu_seconds = {name: 1 for name in COMPOSED_STAGE_NAMES}
     cpu_seconds.update({"label-p0": 2, "label-fit": 3,
                         "label-precision-select": 1, "label-audit": 4})
@@ -1149,7 +1248,10 @@ def test_failure_receipt_publishes_once_at_distinct_sibling_path(tmp_path):
         stage="runner", reason="capacity-runner-refused", elapsed_seconds=1,
         source_sha256=source, input_sha256=input_sha,
         runtime_sha256=runtime_sha,
-        namespace_sha256=namespace, detail_sha256="4" * 64)
+        namespace_sha256=namespace,
+        detail_sha256=hashlib.sha256(canonical_json_bytes({
+            "message": "runner failure", "assessments": []})).hexdigest(),
+        detail_message="runner failure")
     publish_capacity_failure_receipt_v2(failure_path, failure)
     assert not success.exists()
     assert reopen_capacity_failure_receipt_v2(

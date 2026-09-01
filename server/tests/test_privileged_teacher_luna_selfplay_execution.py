@@ -40,6 +40,30 @@ def test_codex_0150_usage_schema_is_bound_exactly():
     }
 
 
+def test_default_process_keeps_stderr_out_of_codex_jsonl(tmp_path):
+    launcher = tmp_path / "launcher.py"
+    launcher.write_text(
+        "import sys\n"
+        "sys.stdin.buffer.read()\n"
+        f"sys.stdout.buffer.write({_codex_stdout()!r})\n"
+        "sys.stderr.buffer.write(b'sandbox diagnostic\\n')\n")
+    game = _game()
+    supervisor = execution.ProcessSupervisor(time.monotonic() + 60)
+
+    completed = execution._default_process(
+        game.session(0), workspace=tmp_path,
+        mailbox_path=tmp_path / "mailbox", tool_script=TOOL,
+        codex_binary=Path(sys.executable), prompt="test",
+        final_output_path=tmp_path / "final.json",
+        supervisor=supervisor,
+        command=(sys.executable, str(launcher)))
+
+    assert completed.returncode == 0
+    assert completed.stdout == _codex_stdout()
+    assert completed.stderr == b"sandbox diagnostic\n"
+    assert execution._codex_jsonl_usage(completed.stdout)["input_tokens"] == 10
+
+
 def test_planner_prompt_binds_team_relative_utility_objective(tmp_path):
     prompt = execution.planner_prompt(
         mailbox_path=tmp_path / "mailbox", tool_script=TOOL)
@@ -108,13 +132,15 @@ def test_default_process_reads_prompt_on_stdin_and_retains_jsonl(tmp_path):
         "import pathlib, sys\n"
         "pathlib.Path('argv.json').write_text(repr(sys.argv))\n"
         "pathlib.Path('stdin.txt').write_text(sys.stdin.read())\n"
-        f"sys.stdout.write({event!r})\n")
+        f"sys.stdout.write({event!r})\n"
+        "sys.stderr.write('plain transport diagnostic\\n')\n")
     launcher.chmod(0o755)
     completed = execution._default_process(
         _game().session(0), workspace=tmp_path, mailbox_path=tmp_path / "mailbox",
         tool_script=TOOL, codex_binary=launcher, prompt="private prompt",
         final_output_path=tmp_path / "final.json")
     assert completed.returncode == 0
+    assert completed.stderr == b"plain transport diagnostic\n"
     assert execution._codex_jsonl_usage(completed.stdout) == {
         "cache_write_input_tokens": 0, "cached_input_tokens": 0,
         "input_tokens": 1, "output_tokens": 1,
@@ -125,6 +151,23 @@ def test_default_process_reads_prompt_on_stdin_and_retains_jsonl(tmp_path):
     assert "--json" in argv
     assert "gpt-5.6-luna" in argv
     assert (tmp_path / "stdin.txt").read_text() == "private prompt"
+
+
+def test_runtime_identity_never_persists_provider_version_stderr(tmp_path):
+    launcher = tmp_path / "codex"
+    launcher.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "assert sys.argv == [sys.argv[0], '--version']\n"
+        "sys.stdout.write('codex-test 1.0\\n')\n"
+        "sys.stderr.write('private provider version diagnostic\\n')\n")
+    launcher.chmod(0o755)
+
+    runtime = execution.runtime_identity(
+        codex_binary=launcher, tool_script=TOOL)
+
+    assert runtime["codex_version"] == "codex-test 1.0"
+    assert "private provider version diagnostic" not in json.dumps(runtime)
 
 
 def test_stop_hook_command_runs_from_outside_repo_with_venv_launcher(tmp_path):
@@ -381,6 +424,24 @@ def test_luna_evidence_binds_plain_model_and_retains_no_hook_payload(tmp_path):
         assert "stop_hook" not in body
         assert type(body["prompt_sha256"]) is str
         assert len(body["prompt_sha256"]) == 64
+
+
+def test_plain_transport_stderr_is_bounded_and_private_to_memory(tmp_path):
+    diagnostic = b"private provider diagnostic: do not retain"
+
+    def planner(session, **kwargs):
+        completed = _fake(session, **kwargs)
+        return subprocess.CompletedProcess(
+            completed.args, completed.returncode, completed.stdout, diagnostic)
+
+    result = execution.run_luna_game(
+        _game(), private_root=tmp_path, tool_script=TOOL,
+        planner_process=planner)
+    assert result.status == "complete"
+    for evidence_path in result.attempt_path.glob("*.json"):
+        assert diagnostic not in evidence_path.read_bytes()
+        body = json.loads(evidence_path.read_text())
+        assert "stderr" not in body
 
 
 def test_wrong_completion_response_fails_closed_after_terminal_witness(tmp_path):

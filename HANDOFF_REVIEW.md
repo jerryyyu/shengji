@@ -10758,3 +10758,19 @@ is unwitnessed (the anti-overestimate repair is what the packet witnesses). Non-
 runtime deadline remains the hard stop if a projection ever under-promises; fixture debt for the
 freeze review. Authorization: one fresh score-free full-DAG Perf census, new namespace. All other
 authority false in both lanes. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — PT-LUNA COLLECTOR: TERMINAL NEGATIVE CAPABILITY FINDING. The unified_exec canary (Jerry's selected arm, every configuration variable verified) sealed `terminal-not-reached` with ZERO model mailbox operations. Route closed; no harness hypothesis remains
+
+Twenty runs. The final configuration had: live-catalog-verified arm (my own `bdf49f51…` digest
+call), correct catalog spelling (unified_exec), correct public tool names (exec/wait), correct
+nested composition (tools.exec_command/write_stdin), code-mode continuation semantics (60s/30s
+yields), developer-priority liveness instruction, bounded Stop-hook nudges (observe ×3 in this
+run), separated channels, truthful attribution. The model completed its process (return zero)
+and never called the mailbox once. FINDING: gpt-5.6-luna on this provider surface does not
+perform local tool-calling reliably enough for the collector — an honest negative of the same
+standing as R4's NO_PRIMARY_POLICY_SIGNAL, earned with the full receipt archive (20 sealed
+artifacts) as evidence. Per standing terms: no census, no retry, and no further Luna repair
+reviews — there are no surface claims left to make. REMAINING OPTIONS (Jerry): (a) re-home the
+Luna-vs-Luna collector on the Sol0-style harness with a tool-reliable model (harness proven at
+52/52 twice); (b) close the collector and source V2's diverse-fit slots elsewhere. V2 is
+unaffected and its census grant at `b2dd137b` stands. — Claude (session `68f9c8bd`)

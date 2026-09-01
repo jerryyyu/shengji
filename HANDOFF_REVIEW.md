@@ -10560,3 +10560,32 @@ binds census/capacity/freeze artifacts that do not exist — launch-moment only,
 Authorization: one fresh bounded score-free boundary canary at `8890648f`; a valid sealed canary
 PASS receipt conditionally authorizes one progressive score-free Mini census without another
 source review. All else false. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — ✅ PASS ×2: PR #178 `84ea75f4` tool-liveness developer instruction (one canary + conditional census) and PR #180 `3f2c3139` saturation contract (one fresh Perf census)
+
+### PR #178 `84ea75f4` (parent `8890648f` confirmed)
+
+The bounded counter worked exactly as designed on its spent canary (2 blocks → exhausted → fast
+typed refusal; receipt again: zero model mailbox ops, all observes the hook's). This child
+escalates to a DEVELOPER-priority instruction in the Codex command itself ("first assistant
+action must be a shell-tool call…"), bumps attempt/trace schemas to v3 with explicit v2/v1 reopen
+compatibility, and binds the new command through coordinated-rehash verification. Verified: full
+PT **345 passed / 2 skipped** (exact); dropping the developer override from the command → **15
+red** (the v3 binding + rehash checks refuse, exactly claim 4); v2/v1 compat paths read in the
+diff. Authorization: one fresh bounded score-free 180s canary; valid sealed PASS receipt
+conditionally unlocks the reviewed progressive Mini census. All else false.
+
+### PR #180 `3f2c3139` (parent `c17efb8c` confirmed)
+
+The spent census was the program's deepest run EVER — all 19 stages, 6,016s — refusing only on
+the 0.85 saturation floor with max-16 arms on a 16-core host (0.75–0.81 measured; physically
+cannot saturate without oversubscription) AND the cheap arm gate ran after the expensive DAG.
+The repair: named 32-worker arms on exactly the three CPU-bound grids; complete byte-validated
+arm selection BEFORE the expensive DAG; exact-nanosecond selection/utilization; low-utilization
+arms excused only by a byte-identical strictly-slower IMMEDIATE next arm. Verified: complete
+battery **572/572** (exact, 150s); replacing immediate-next with any-later → **1 red** at the
+named witness (my first mutant accidentally preserved immediate-next semantics via a [:1] slice —
+corrected, disclosed). Coverage limit stated: of the six named wiring witnesses I mutation-proved
+one (immediate-next); the rest rest on the 572-battery + Terra's three-blocker review.
+Authorization: one fresh score-free full-DAG Perf census, new namespace + fresh runtime/venv
+identities. Freeze/labels/outcomes/science all still gated. — Claude (session `68f9c8bd`)

@@ -10728,3 +10728,33 @@ CONVERTED from correctness to performance. Next: a label-path optimization sourc
 retaining this rejected projection as typed evidence; the projection gate must NOT be loosened to
 fit (same principle as my per-slot advisory: bounds are not descriptions). Grant spent honestly;
 launch discipline clean throughout. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — ✅ PASS ×2: PR #178 `29e14741` unified_exec catalog binding (route reopened on JERRY'S ARM SELECTION as attributed by Codex — Jerry please flag if misattributed) and PR #181 `b2dd137b` saturated projection + cohort scheduling (one fresh Perf census)
+
+### PR #178 `29e14741` (parent `a45a2674` confirmed) — stop condition met
+
+The `8a6e16b4` final stop held "until Jerry's model/arm decision"; the ask states the decision was
+made: KEEP gpt-5.6-luna on the code_mode_only/unified_exec arm (attribution: Codex quoting Jerry
+— provisionally accepted given Codex's unbroken factual record; Jerry, one line here corrects it
+if wrong). The two-file repair binds `CODE_MODE_SHELL_TYPE = "unified_exec"` (0.150.1's catalog
+spelling for the transport family) while keeping the model-visible `exec`/`wait` and nested
+`tools.*` identities unchanged. Verified: **358/358** (exact); reverting the spelling → **1 red**;
+AND my own live `validate_codex_model_surface` call against installed 0.150.1 succeeded with
+digest `bdf49f51…` byte-matching the packet. Authorization: at most one fresh 180s non-scientific
+boundary canary; the census ONLY on an exact typed pass + reopen. No game contract touched.
+
+### PR #181 `b2dd137b` (parent `0a90e4f8` confirmed)
+
+The saturated-projection repair is mathematically right: underfilled representatives project from
+measured CPU-work through the independently measured saturated arm's utilization, with the
+measured stage wall retained as a fixed-cost floor; four-cohort×four-member wave measured and
+required fastest before the full DAG; block-1 controls + block-2 natural run concurrently with
+first-refusal sibling termination; the rejected 11.8h projection is retained in receipts; new
+adapters bound into the freeze closure with spawn-serializability proven. Verified: full battery
+**591 passed** (superset of the ask's 587 — the compiled extension was already built in my
+worktree); dropping the four-cohort saturation refusal → **1 red**. DISCLOSED: dropping the
+measured-wall FLOOR from the projection leaves **48/48 green** — the anti-underestimate direction
+is unwitnessed (the anti-overestimate repair is what the packet witnesses). Non-blocking: the
+runtime deadline remains the hard stop if a projection ever under-promises; fixture debt for the
+freeze review. Authorization: one fresh score-free full-DAG Perf census, new namespace. All other
+authority false in both lanes. — Claude (session `68f9c8bd`)

@@ -10713,3 +10713,18 @@ route — the STOP is now final until Jerry's model/arm decision: (a) re-home th
 collector on the proven Sol0-style harness with a tool-reliable model, or (b) close the collector
 and source V2's diverse-fit slots elsewhere. Codex converged on the same stop independently.
 The lane's full receipt archive (19 runs) is preserved for the postmortem. — Claude (session `68f9c8bd`)
+
+## 2026-09-01 — V2 MILESTONE + honest scale refusal: the r2 census COMPLETED ALL 19 DAG STAGES AND RECONSTRUCTION (first ever), then refused the composed D256 projection — the science doesn't fit the frozen budget at current label cost. No freeze, no retry; optimization packet expected
+
+Receipt facts (Codex's PR comment; failure SHA `be107ce1`, internal `40b64b6a`): 6,724s of the
+7,200 budget; measured full-DAG wall ~4,353s after the arm census; 54 immutable shards + 24
+checkpoints sealed (~41.6 MB); peak memory 22.5 GB under the 30 GiB cap; capacity.json correctly
+absent; every authority including retry false. The refusal is the PROJECTION gate doing its job:
+continuation labels alone project ~6.4h and the composed D256 critical path ~11.8h against the
+frozen 6h DAG cap (2× headroom in a 12h service). This is not a defect — nine repair cycles have
+now fully validated the capacity machinery end-to-end — it is a measured statement that the
+label path is too expensive for the reviewed scientific envelope. The lane's question has
+CONVERTED from correctness to performance. Next: a label-path optimization source/design packet
+retaining this rejected projection as typed evidence; the projection gate must NOT be loosened to
+fit (same principle as my per-slot advisory: bounds are not descriptions). Grant spent honestly;
+launch discipline clean throughout. — Claude (session `68f9c8bd`)

@@ -240,7 +240,7 @@ def test_actual_production_factory_binds_the_complete_reviewed_stage_set(
     population_raw = canonical_json_bytes({
         "schema": stage_adapters.INPUT_SCHEMA,
         "population_namespace_sha256": "c" * 64,
-        "max_attempts_per_slot": 2, "workers": 2,
+        "max_attempts_per_slot": 128, "workers": 2,
         "deadline_seconds": 120, "heartbeat_seconds": 30,
     })
     config_raw = canonical_json_bytes({
@@ -1098,6 +1098,8 @@ def test_pipeline_runs_receipt_only_reconstruction_after_terminal(tmp_path, monk
         name = execution.CONTROLLER_BINDINGS[stage][0]
         def bound(operation_supervisor, shards, *, stage=stage):
             return invoke(stage, operation_supervisor, shards)
+        if stage in execution.COHORT_TRAINING_WAVE:
+            bound.cohort_workers = 4
         operations[stage] = execution.StageControllerV2(
             stage, name, bound, True,
             stage_payload_factory=(prepare_audit
@@ -1124,8 +1126,9 @@ def _advance_to_cohort_training_wave(supervisor):
         tuple(completed), verified_shards=supervisor.state.verified_shards)
 
 
-def test_cohort_training_wave_runs_both_stage_controllers_concurrently(
-        tmp_path, monkeypatch):
+@pytest.mark.parametrize("cohort_workers", (2, 4))
+def test_cohort_training_wave_runs_parallel_capacity_selected_controllers(
+        tmp_path, monkeypatch, cohort_workers):
     repo, freeze, review, _marker, remote = _fixture(tmp_path)
     root = tmp_path / "evidence"
     admission = initialize_admission(
@@ -1143,6 +1146,7 @@ def test_cohort_training_wave_runs_both_stage_controllers_concurrently(
             operation_supervisor.register_verified_shard(
                 stage, "receipt", canonical_json_bytes({"stage": stage}))
             return stage
+        run.cohort_workers = cohort_workers
         return run
 
     operations = {
@@ -1173,10 +1177,12 @@ def test_cohort_training_wave_terminates_sibling_on_first_refusal(
 
     def refuse(_supervisor, _shards):
         raise WorldAfterstateV2ExecutionError("cohort refused")
+    refuse.cohort_workers = 4
 
     def slow(_supervisor, _shards):
         time.sleep(3)
         sentinel.write_text("late")
+    slow.cohort_workers = 4
 
     operations = {
         "block-1-controls": StageControllerV2(
@@ -1194,6 +1200,51 @@ def test_cohort_training_wave_terminates_sibling_on_first_refusal(
         supervisor.run_cohort_training_wave(operations)
     assert time.monotonic() - started < 2
     assert not sentinel.exists()
+
+
+def test_cohort_training_width_one_runs_serially_and_seals_prefix(tmp_path,
+                                                                  monkeypatch):
+    repo, freeze, review, _marker, remote = _fixture(tmp_path)
+    root = tmp_path / "evidence"
+    admission = initialize_admission(
+        root, freeze_raw=freeze.canonical_bytes(), repo=repo,
+        review_commit=review, remote_url=str(remote))
+    supervisor = StageSupervisorV2(root, freeze, admission)
+    _advance_to_cohort_training_wave(supervisor)
+    monkeypatch.setattr(execution.StageControllerV2, "validate",
+                        lambda _self: None)
+    first_done = tmp_path / "first-cohort-stage.done"
+
+    def controls(operation_supervisor, _shards):
+        operation_supervisor.register_verified_shard(
+            "block-1-controls", "receipt",
+            canonical_json_bytes({"stage": "block-1-controls"}))
+        first_done.write_text("done")
+        return "block-1-controls"
+    controls.cohort_workers = 1
+
+    def natural(operation_supervisor, _shards):
+        assert first_done.is_file()
+        operation_supervisor.register_verified_shard(
+            "block-2-natural", "receipt",
+            canonical_json_bytes({"stage": "block-2-natural"}))
+        return "block-2-natural"
+    natural.cohort_workers = 1
+
+    operations = {
+        "block-1-controls": StageControllerV2(
+            "block-1-controls",
+            execution.CONTROLLER_BINDINGS["block-1-controls"][0],
+            controls, True),
+        "block-2-natural": StageControllerV2(
+            "block-2-natural",
+            execution.CONTROLLER_BINDINGS["block-2-natural"][0],
+            natural, True),
+    }
+    assert supervisor.run_cohort_training_wave(operations) \
+        == execution.COHORT_TRAINING_WAVE
+    assert supervisor.state.completed_stages[-2:] \
+        == execution.COHORT_TRAINING_WAVE
 
 
 def test_interrupted_audit_stage_reuses_exact_marker_on_resume(tmp_path):

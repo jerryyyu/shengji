@@ -28,6 +28,8 @@ from shengji.rl.world_afterstate_v2_capacity_supervisor import (
     _capacity_p0_inputs, _capacity_stage_materials,
     _capacity_training_pairs, _execute_capacity_p0,
     _build_capacity_label_population, _fail,
+    _open_capacity_audit_once,
+    _rederive_capacity_audit_from_sealed,
     _run_optimizer_canary,
     _verified_continuation_population,
     run_full_dag_supervisor,
@@ -87,6 +89,105 @@ def test_dependency_failure_carries_typed_stage_and_reason():
     assert failure.stage == "label-p0"
     assert failure.reason_code == "full-dag-dependency-failed"
     assert "RuntimeError: boom" in str(failure)
+
+
+def test_capacity_audit_marker_survives_and_refuses_second_label_open(tmp_path):
+    payload = canonical_json_bytes({"schema": "capacity-audit-test-v1"})
+    opens = []
+
+    def labels():
+        opens.append("opened")
+        return ("bundle",)
+
+    bundles, reopened = _open_capacity_audit_once(tmp_path, payload, labels)
+    marker = tmp_path / "audit-attempt.json"
+    assert bundles == ("bundle",)
+    assert reopened == payload
+    assert marker.read_bytes() == payload
+    assert marker.stat().st_mode & 0o777 == 0o400
+    assert opens == ["opened"]
+
+    with pytest.raises(FullDAGCapacityDependencyBlocked,
+                       match="audit attempt already consumed"):
+        _open_capacity_audit_once(tmp_path, payload, labels)
+    assert opens == ["opened"]
+
+    interrupted = tmp_path / "interrupted"
+    interrupted.mkdir()
+    with pytest.raises(RuntimeError, match="label interruption"):
+        _open_capacity_audit_once(
+            interrupted, payload,
+            lambda: (_ for _ in ()).throw(RuntimeError("label interruption")))
+    assert (interrupted / "audit-attempt.json").read_bytes() == payload
+    with pytest.raises(FullDAGCapacityDependencyBlocked,
+                       match="audit attempt already consumed"):
+        _open_capacity_audit_once(interrupted, payload, labels)
+    assert opens == ["opened"]
+
+
+def test_reconstruction_rederivation_reopens_each_prediction_artifact(
+        tmp_path, monkeypatch):
+    keys = (
+        ("action-association-permutation", 1),
+        ("complete-world-shuffle", 1),
+        ("complete-world-shuffle", 2),
+        ("label-permutation", 1),
+        ("natural", 1),
+        ("natural", 2),
+    )
+    receipts = {
+        key: SimpleNamespace(
+            sha256=_canary_digest(("bytes", key)),
+            manifest_sha256=_canary_digest(("manifest", key)))
+        for key in keys}
+    reopened = []
+
+    def reopen(_root, *, control_name, seed_block, split,
+               expected_sha256, expected_manifest_sha256):
+        key = (control_name, seed_block)
+        assert split == "audit"
+        assert expected_sha256 == receipts[key].sha256
+        assert expected_manifest_sha256 == receipts[key].manifest_sha256
+        reopened.append(key)
+        return {"control_name": control_name, "seed_block": seed_block,
+                "split": split}
+
+    @dataclass(frozen=True)
+    class Row:
+        split: str = "fit"
+
+    def evaluate(manifest, outcomes, _prior):
+        assert outcomes and all(row.split == "audit" for row in outcomes)
+        return SimpleNamespace(
+            control_name=manifest["control_name"],
+            seed_block=manifest["seed_block"],
+            sha256=lambda: _canary_digest(("evaluation", manifest)))
+
+    monkeypatch.setattr(supervisor, "reopen_prediction_population_manifest",
+                        reopen)
+    monkeypatch.setattr(supervisor, "evaluate_v2", evaluate)
+    monkeypatch.setattr(
+        supervisor, "evaluate_control_difference",
+        lambda _natural, control: SimpleNamespace(
+            sha256=lambda: _canary_digest(
+                ("comparison", control.control_name, control.seed_block))))
+
+    by_cohort, digest = _rederive_capacity_audit_from_sealed(
+        tmp_path, receipts,
+        (SimpleNamespace(candidates=(Row(),)),), object())
+    assert tuple(reopened) == keys
+    assert tuple(sorted(by_cohort)) == keys
+    assert digest == _canary_digest({
+        "evaluations": [[name, block, by_cohort[(name, block)].sha256()]
+                        for name, block in keys],
+        "control_comparisons": [
+            _canary_digest(("comparison", name, block))
+            for name, block in (
+                ("action-association-permutation", 1),
+                ("label-permutation", 1),
+                ("complete-world-shuffle", 1),
+                ("complete-world-shuffle", 2))],
+    })
 
 
 def test_label_permutation_construction_failure_keeps_exact_dag_stage():
@@ -525,7 +626,8 @@ class _BoundedMeasurementBackend:
             byte_identity_sha256=self.identity, mean_cpu_utilization_ppm=1)
 
 
-def test_full_dag_supervisor_wires_adjacent_pair_world_control(monkeypatch):
+def test_full_dag_supervisor_wires_adjacent_pair_world_control(
+        monkeypatch, tmp_path):
     ledger = build_population_slot_ledger(TIER_SPECS[0])
     natural_slots = tuple(slot for slot in ledger if slot.group == "natural-fit")
     slots_by_pair = {}
@@ -722,6 +824,30 @@ def test_full_dag_supervisor_wires_adjacent_pair_world_control(monkeypatch):
     monkeypatch.setattr(
         supervisor, "prediction_population_manifest_v2",
         lambda _roots, _rows, **kwargs: dict(kwargs))
+    prediction_store = {}
+
+    def publish_prediction(_root, manifest, *, control_name, seed_block,
+                           split, subfold=None):
+        key = (control_name, seed_block, split)
+        prediction_store[key] = manifest
+        return SimpleNamespace(
+            byte_count=1, sha256=_canary_digest(("bytes", key)),
+            manifest_sha256=_canary_digest(("manifest", key)))
+
+    prediction_reopens = []
+
+    def reopen_prediction(_root, *, control_name, seed_block, split,
+                          expected_sha256, expected_manifest_sha256):
+        key = (control_name, seed_block, split)
+        assert expected_sha256 == _canary_digest(("bytes", key))
+        assert expected_manifest_sha256 == _canary_digest(("manifest", key))
+        prediction_reopens.append(key)
+        return prediction_store[key]
+
+    monkeypatch.setattr(supervisor, "publish_prediction_population_manifest",
+                        publish_prediction)
+    monkeypatch.setattr(supervisor, "reopen_prediction_population_manifest",
+                        reopen_prediction)
     monkeypatch.setattr(
         supervisor, "evaluate_v2",
         lambda _manifest, _outcomes, _prior: SimpleNamespace(
@@ -755,13 +881,36 @@ def test_full_dag_supervisor_wires_adjacent_pair_world_control(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
             supervisor.WorldAfterstateV2ArtifactError("immutable")))
 
+    reconstruction_rederivations = []
+    real_rederive = supervisor._rederive_capacity_audit_from_sealed
+
+    def witnessed_rederive(*args, **kwargs):
+        reconstruction_rederivations.append(True)
+        return real_rederive(*args, **kwargs)
+
+    monkeypatch.setattr(supervisor, "_rederive_capacity_audit_from_sealed",
+                        witnessed_rederive)
+
+    output_root = tmp_path / "capacity-work"
     result = run_full_dag_supervisor(
         fixtures, backend=backend, member_workers=1, continuation_workers=1,
-        torch_threads=1, inference_batch=32, reconstruction_workers=1)
+        torch_threads=1, inference_batch=32, reconstruction_workers=1,
+        output_root=output_root)
     assert backend.synthetic is False
     assert backend.calls.index("block-1-complete-world-shuffle") < \
         backend.calls.index("block-2-complete-world-shuffle")
     assert result.actual_stage_witnesses == FULL_DAG_STAGES
+    assert reconstruction_rederivations == [True]
+    assert prediction_reopens == [
+        (name, block, "audit") for name, block in sorted({
+            ("natural", 1), ("natural", 2),
+            (supervisor.CONTROL_NAMES[0], 1),
+            (supervisor.CONTROL_NAMES[1], 1),
+            (supervisor.CONTROL_NAMES[2], 1),
+            (supervisor.CONTROL_NAMES[2], 2),
+        })]
+    assert (output_root / "audit-attempt.json").is_file()
+    assert (output_root / "audit-attempt.json").stat().st_mode & 0o777 == 0o400
     stage_units = dict(result.stage_source_unit_counts)
     for stage in (
             "block-1-natural", "block-1-action-association-permutation",

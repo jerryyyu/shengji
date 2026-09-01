@@ -16,6 +16,7 @@ from shengji.rl.world_afterstate_v2_freeze_inputs import (
     publish_inputs_v2, reopen_continuation_policy_v2_bytes,
     reopen_population_adapter_input_v2_bytes, reopen_protocol_bytes,
 )
+from shengji.rl.world_afterstate_v2_protocol import D256_MAX_ATTEMPTS_PER_SLOT
 
 
 SOURCE = "a" * 40
@@ -32,7 +33,8 @@ def test_population_input_is_deterministic_and_strict():
     value = build_population_adapter_input_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", workers=4, deadline_seconds=100,
-        heartbeat_seconds=10, max_attempts_per_slot=3)
+        heartbeat_seconds=10,
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     raw = canonical_json_bytes(value)
     assert reopen_population_adapter_input_v2_bytes(raw,
         expected_workers=4, expected_deadline=100)["workers"] == 4
@@ -45,11 +47,34 @@ def test_population_input_is_deterministic_and_strict():
             b'{"schema":"x","schema":"y"}')
 
 
+@pytest.mark.parametrize("attempt_cap", (127, 129))
+def test_population_input_refuses_any_non_d256_attempt_cap(attempt_cap):
+    with pytest.raises(FreezeInputsError,
+                       match="D256 population attempt cap drift"):
+        build_population_adapter_input_v2(
+            source_git=SOURCE, protocol_sha256=PROTOCOL,
+            capacity_sha256=CAPACITY, selected_tier="D256", workers=4,
+            deadline_seconds=100, heartbeat_seconds=10,
+            max_attempts_per_slot=attempt_cap)
+
+    valid = build_population_adapter_input_v2(
+        source_git=SOURCE, protocol_sha256=PROTOCOL,
+        capacity_sha256=CAPACITY, selected_tier="D256", workers=4,
+        deadline_seconds=100, heartbeat_seconds=10,
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
+    forged = dict(valid, max_attempts_per_slot=attempt_cap)
+    with pytest.raises(FreezeInputsError,
+                       match="D256 population attempt cap drift"):
+        reopen_population_adapter_input_v2_bytes(
+            canonical_json_bytes(forged))
+
+
 def test_32_worker_state_and_continuation_inputs_round_trip_but_33_refuses():
     population = build_population_adapter_input_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", workers=32, deadline_seconds=100,
-        heartbeat_seconds=10, max_attempts_per_slot=1)
+        heartbeat_seconds=10,
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     assert reopen_population_adapter_input_v2_bytes(
         canonical_json_bytes(population), expected_workers=32)["workers"] == 32
     config = build_early_stage_config_v2(
@@ -66,7 +91,8 @@ def test_32_worker_state_and_continuation_inputs_round_trip_but_33_refuses():
         build_population_adapter_input_v2(
             source_git=SOURCE, protocol_sha256=PROTOCOL,
             capacity_sha256=CAPACITY, selected_tier="D256", workers=33,
-            deadline_seconds=100, heartbeat_seconds=10, max_attempts_per_slot=1)
+            deadline_seconds=100, heartbeat_seconds=10,
+            max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     with pytest.raises(FreezeInputsError, match="workers"):
         build_early_stage_config_v2(
             source_git=SOURCE, protocol_sha256=PROTOCOL,
@@ -78,7 +104,8 @@ def test_all_typed_derivations_share_namespace():
     population = build_population_adapter_input_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", workers=1, deadline_seconds=20,
-        heartbeat_seconds=1, max_attempts_per_slot=1)
+        heartbeat_seconds=1,
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     config = build_early_stage_config_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", label_workers=2, evidence_root="/unused",
@@ -116,7 +143,8 @@ def test_publication_is_exclusive(tmp_path: Path):
     population = build_population_adapter_input_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", workers=1, deadline_seconds=20,
-        heartbeat_seconds=1, max_attempts_per_slot=1)
+        heartbeat_seconds=1,
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     config = build_early_stage_config_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", label_workers=1, evidence_root="/unused",
@@ -141,7 +169,8 @@ def test_publication_refuses_mixed_bundle_before_creating_directory(tmp_path: Pa
     population = build_population_adapter_input_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", workers=1, deadline_seconds=20,
-        heartbeat_seconds=1, max_attempts_per_slot=1)
+        heartbeat_seconds=1,
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     config = build_early_stage_config_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", label_workers=1, evidence_root="/unused",
@@ -165,7 +194,8 @@ def test_mid_bundle_failure_leaves_no_published_prefix(
     population = build_population_adapter_input_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", workers=1, deadline_seconds=20,
-        heartbeat_seconds=1, max_attempts_per_slot=1)
+        heartbeat_seconds=1,
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     config = build_early_stage_config_v2(
         source_git=SOURCE, protocol_sha256=PROTOCOL, capacity_sha256=CAPACITY,
         selected_tier="D256", label_workers=1, evidence_root="/unused",

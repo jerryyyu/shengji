@@ -139,12 +139,14 @@ def _select_root_and_outcomes(index: int) \
     return root, outcomes
 
 
-def test_reviewed_capacity_arms_bind_training_resources():
+@pytest.mark.parametrize("cohort_workers", (1, 2, 4))
+def test_reviewed_capacity_arms_bind_training_resources(cohort_workers):
     receipt = SimpleNamespace(selected_arms=(
         _Arm("member-concurrency", 2),
-        _Arm("cohort-concurrency", 4),
+        _Arm("cohort-concurrency", cohort_workers),
         _Arm("inference-batch", 256),), torch_threads=1)
-    assert inputs._capacity_resources(receipt) == (2, 4, 4, 1, 256, 256)
+    assert inputs._capacity_resources(receipt) == (
+        2, cohort_workers, 4, 1, 256, 256)
 
 
 def test_inference_arm_does_not_change_reviewed_training_batch_cap():

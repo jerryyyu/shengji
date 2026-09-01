@@ -62,6 +62,10 @@ from .world_afterstate_v2_continuation import (
     reopen_continuation_bundle_v2,
 )
 from .world_afterstate_v2_label_controller import build_continuation_population_v2
+from .world_afterstate_v2_prediction_artifacts import (
+    publish_prediction_population_manifest,
+    reopen_prediction_population_manifest,
+)
 
 
 FULL_DAG_STAGES = COMPOSED_STAGE_NAMES
@@ -144,6 +148,91 @@ def _verified_continuation_population(
                     artifact_root, material).bundle_sha256
                 == bundle_by_deal[material.deal_sha256].bundle_sha256
                 for material in materials))
+
+
+def _open_capacity_audit_once(
+        artifact_root: Path, attempt_payload: bytes,
+        open_labels: Callable[[], Sequence[Any]]) -> tuple[tuple[Any, ...], bytes]:
+    """Durably consume the capacity audit slot before opening any labels.
+
+    The retained capacity namespace is the restart witness.  A process that
+    reaches the same marker again may verify why the slot is occupied, but it
+    must not invoke the label producer a second time.
+    """
+    if (not isinstance(artifact_root, Path) or not artifact_root.is_dir()
+            or artifact_root.is_symlink() or type(attempt_payload) is not bytes
+            or not attempt_payload or not callable(open_labels)):
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity audit attempt input drift")
+    attempt_path = artifact_root / "audit-attempt.json"
+    if attempt_path.exists() or attempt_path.is_symlink():
+        if attempt_path.is_symlink():
+            raise FullDAGCapacityDependencyBlocked(
+                "capacity audit attempt marker is a symlink")
+        with attempt_path.open("rb") as handle:
+            reopened = handle.read()
+        if reopened != attempt_payload:
+            raise FullDAGCapacityDependencyBlocked(
+                "capacity audit attempt marker binding drift")
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity audit attempt already consumed")
+    try:
+        with attempt_path.open("xb") as handle:
+            handle.write(attempt_payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(attempt_path, 0o400)
+        directory_fd = os.open(artifact_root, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        with attempt_path.open("rb") as handle:
+            reopened = handle.read()
+    except OSError as exc:
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity audit attempt publication refused") from exc
+    if reopened != attempt_payload:
+        raise FullDAGCapacityDependencyBlocked(
+            "capacity audit attempt marker binding drift")
+    # This is deliberately below both file and parent-directory fsyncs.  A
+    # callback failure leaves the marker durable, so a restart cannot reopen
+    # labels or manufacture a second timing sample.
+    return tuple(open_labels()), reopened
+
+
+def _rederive_capacity_audit_from_sealed(
+        artifact_root: Path,
+        prediction_artifacts: Mapping[tuple[str, int], Any],
+        audit_bundles: Sequence[Any], prior: Any) \
+        -> tuple[dict[tuple[str, int], Any], str]:
+    """Reopen sealed predictions and independently repeat audit arithmetic."""
+    reopened_predictions: dict[tuple[str, int], dict[str, Any]] = {}
+    for cohort, block in sorted(prediction_artifacts):
+        receipt = prediction_artifacts[(cohort, block)]
+        reopened_predictions[(cohort, block)] = (
+            reopen_prediction_population_manifest(
+                artifact_root, control_name=cohort, seed_block=block,
+                split="audit", expected_sha256=receipt.sha256,
+                expected_manifest_sha256=receipt.manifest_sha256))
+    outcomes = tuple(__import__("dataclasses").replace(row, split="audit")
+                     for bundle in audit_bundles
+                     for row in bundle.candidates)
+    evaluated = tuple(evaluate_v2(manifest, outcomes, prior)
+                      for manifest in reopened_predictions.values())
+    by_cohort = {(value.control_name, value.seed_block): value
+                 for value in evaluated}
+    comparisons = []
+    for name, block in ((CONTROL_NAMES[0], 1), (CONTROL_NAMES[1], 1),
+                        (CONTROL_NAMES[2], 1), (CONTROL_NAMES[2], 2)):
+        comparisons.append(evaluate_control_difference(
+            by_cohort[("natural", block)], by_cohort[(name, block)]))
+    derivation_sha = _sha({
+        "evaluations": [[name, block, value.sha256()]
+                        for (name, block), value in sorted(by_cohort.items())],
+        "control_comparisons": [value.sha256() for value in comparisons],
+    })
+    return by_cohort, derivation_sha
 
 
 @dataclass(frozen=True)
@@ -585,6 +674,7 @@ def run_full_dag_supervisor(
     predictions: dict[tuple[str, int], dict[str, Any]] = {}
     evaluations: dict[tuple[str, int], Any] = {}
     audit_predictions: dict[tuple[str, int], dict[str, Any]] = {}
+    audit_prediction_artifacts: dict[tuple[str, int], Any] = {}
     audit_evaluations: dict[tuple[str, int], Any] = {}
     audit_derivation_sha256: str | None = None
     capability_probes = {name: False for name in _RECOVERY_CAPABILITY_NAMES}
@@ -989,6 +1079,7 @@ def run_full_dag_supervisor(
                     reopened_manifest["members"]))
 
         def infer() -> str:
+            nonlocal artifact_count
             # Import lazily so this capacity artifact can land before the
             # companion batched inference implementation.  Once present, a
             # root-by-root call is intentionally impossible here.
@@ -1010,12 +1101,24 @@ def run_full_dag_supervisor(
                         predict_roots_v2, model, audit_roots,
                         seed_block=block, member_index=member,
                         control_name=cohort, inference_batch=inference_batch))
-                predictions[(cohort, block)] = prediction_population_manifest_v2(
+                select_manifest = prediction_population_manifest_v2(
                     precision_roots, tuple(select_rows), split="select", control_name=cohort,
                     seed_block=block)
-                audit_predictions[(cohort, block)] = prediction_population_manifest_v2(
+                audit_manifest = prediction_population_manifest_v2(
                     audit_roots, tuple(audit_rows), split="audit", control_name=cohort,
                     seed_block=block)
+                predictions[(cohort, block)] = select_manifest
+                audit_predictions[(cohort, block)] = audit_manifest
+                select_artifact = publish_prediction_population_manifest(
+                    artifact_root, select_manifest, control_name=cohort,
+                    seed_block=block, split="select",
+                    subfold="precision-select")
+                audit_artifact = publish_prediction_population_manifest(
+                    artifact_root, audit_manifest, control_name=cohort,
+                    seed_block=block, split="audit")
+                artifact_count += (select_artifact.byte_count
+                                   + audit_artifact.byte_count)
+                audit_prediction_artifacts[(cohort, block)] = audit_artifact
             return identity
         measure("precision-select-inference", infer, member_workers)
         prior = build_natural_fit_prior(examples)
@@ -1060,39 +1163,10 @@ def run_full_dag_supervisor(
                     [root.root_sha256 for root in audit_roots]),
                 "upstream_complete": capability_probes[
                     "audit_requires_complete_upstream"]})
-            attempt_path = ephemeral_root / "audit-attempt.json"
-            if attempt_path.exists() or attempt_path.is_symlink():
-                if attempt_path.is_symlink():
-                    raise FullDAGCapacityDependencyBlocked(
-                        "capacity audit attempt marker is a symlink")
-                with attempt_path.open("rb") as handle:
-                    audit_open_count += 1
-                    reopened_attempt = handle.read()
-                if reopened_attempt != attempt_payload:
-                    raise FullDAGCapacityDependencyBlocked(
-                        "capacity audit attempt marker binding drift")
-            else:
-                with attempt_path.open("xb") as handle:
-                    handle.write(attempt_payload)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                with attempt_path.open("rb") as handle:
-                    audit_open_count += 1
-                    reopened_attempt = handle.read()
-            if reopened_attempt != attempt_payload:
-                capability_probes["audit_attempt_fsynced_before_open"] = False
-            try:
-                with attempt_path.open("xb"):
-                    pass
-            except FileExistsError:
-                pass
-            else:
-                capability_probes["one_audit_open"] = False
-            directory_fd = os.open(ephemeral_root, os.O_RDONLY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            opened, reopened_attempt = _open_capacity_audit_once(
+                artifact_root, attempt_payload,
+                lambda: _label_population("audit", audit_materials))
+            audit_open_count += 1
             capability_probes["audit_attempt_fsynced_before_open"] = (
                 upstream_reopened and reopened_attempt == attempt_payload)
             # The durable attempt marker and parent-directory fsync above are
@@ -1100,7 +1174,7 @@ def run_full_dag_supervisor(
             # charge their wall/CPU to the explicit label-audit stage.
             # Audit has its own immutable manifest and independently charged
             # representative continuation spend.
-            audit_bundles.extend(_label_population("audit", audit_materials))
+            audit_bundles.extend(opened)
             return identity
 
         measure("label-audit", open_audit_labels, continuation_workers)
@@ -1148,6 +1222,7 @@ def run_full_dag_supervisor(
             reused = True
             replace_refused = True
             wrong_admission_refused = True
+            reopened_audit_bundles: tuple[Any, ...] = ()
             populations = (
                 ("p0", p0_materials, tuple(p0_bundles)),
                 ("fit", fit_materials, tuple(fit_bundles)),
@@ -1166,6 +1241,8 @@ def run_full_dag_supervisor(
                 reopened_by_deal = {
                     bundle.deal_sha256: bundle
                     for bundle in reopened_population}
+                if name == "audit":
+                    reopened_audit_bundles = tuple(reopened_population)
                 for index, (material, expected) in enumerate(zip(
                         stage_materials, stage_bundles, strict=True)):
                     reopened = reopened_by_deal.get(material.deal_sha256)
@@ -1196,10 +1273,14 @@ def run_full_dag_supervisor(
             capability_probes["reconstruction_without_retraining"] = (
                 training_invocations == training_before)
             capability_probes["reconstruction_reuses_immutable_continuations"] = reused
-            # The scientific immediate verifier reopens the already-sealed
-            # predictions/outcomes and repeats audit arithmetic. Charge that
-            # work here without rebuilding any continuation.
-            _, reconstructed_sha = derive_audit_clone()
+            # The scientific immediate verifier reopens already-sealed
+            # predictions/outcomes and repeats audit arithmetic.  Do not call
+            # the in-memory audit helper here: this path must remain capable of
+            # disagreeing with the first derivation when a sealed artifact or
+            # reconstruction binding is wrong.
+            _, reconstructed_sha = _rederive_capacity_audit_from_sealed(
+                artifact_root, audit_prediction_artifacts,
+                reopened_audit_bundles, prior)
             capability_probes["reconstruction_rederives_audit_arithmetic"] = (
                 audit_derivation_sha256 is not None
                 and reconstructed_sha == audit_derivation_sha256)

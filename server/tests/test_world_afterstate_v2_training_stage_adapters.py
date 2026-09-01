@@ -85,14 +85,21 @@ def test_closed_mapping_contains_exact_six_ordered_cohorts_and_rejects_drift():
         misclassified(_Supervisor(), ())
 
 
-def test_block1_controls_enter_three_training_cohorts_concurrently(monkeypatch):
+@pytest.mark.parametrize(
+    ("cohort_workers", "expected_peak"), ((4, 3), (2, 1)))
+def test_block1_controls_follow_capacity_selected_schedule(
+        monkeypatch, cohort_workers, expected_peak):
     """Witness the adapter wiring, not merely ThreadPoolExecutor itself."""
     adapter = adapters.block_1_controls_adapter(
         freeze=_Freeze(), repo=Path("/tmp"))
     names = adapter.control_names
-    barrier = threading.Barrier(3, timeout=2)
+    barrier = (threading.Barrier(3, timeout=2)
+               if expected_peak == 3 else None)
     entered = []
     member_widths = []
+    active = 0
+    peak_active = 0
+    active_lock = threading.Lock()
 
     class Store:
         def reopen_history(self):
@@ -105,7 +112,8 @@ def test_block1_controls_enter_three_training_cohorts_concurrently(monkeypatch):
         training_examples=(object(),),
         epoch_select=SimpleNamespace(population_sha256="e" * 64, roots=()),
         config=SimpleNamespace(sha256=lambda: "f" * 64),
-        member_workers=2, cohort_workers=4, cohort_member_workers=4,
+        member_workers=2, cohort_workers=cohort_workers,
+        cohort_member_workers=4,
         torch_threads=1,
         batch_example_cap=256, inference_batch_cap=32,
         validate=lambda: None)
@@ -125,9 +133,16 @@ def test_block1_controls_enter_three_training_cohorts_concurrently(monkeypatch):
     monkeypatch.setattr(adapters, "_budget", lambda *_args: 10**12)
 
     def train_named_cohort(*, cohort_name, member_workers, **_kwargs):
+        nonlocal active, peak_active
         entered.append(cohort_name)
         member_widths.append(member_workers)
-        barrier.wait()
+        with active_lock:
+            active += 1
+            peak_active = max(peak_active, active)
+        if barrier is not None:
+            barrier.wait()
+        with active_lock:
+            active -= 1
         return SimpleNamespace(
             manifest={"cohort_name": cohort_name},
             selected_checkpoint_raws=(b"a", b"b", b"c", b"d"))
@@ -156,6 +171,7 @@ def test_block1_controls_enter_three_training_cohorts_concurrently(monkeypatch):
     assert adapter(_Supervisor(), ()) == {"ok": True}
     assert tuple(entered) == names
     assert member_widths == [4, 4, 4]
+    assert peak_active == expected_peak
 
 
 def test_cohort_artifacts_publish_and_reopen_with_mutation_resistance(tmp_path):

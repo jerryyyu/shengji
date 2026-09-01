@@ -2013,13 +2013,13 @@ class StageSupervisorV2:
             self, operations: Mapping[str, StageControllerV2],
             *, payloads: Mapping[str, Mapping[str, Any] | None] | None = None
             ) -> tuple[Any, ...]:
-        """Run the one capacity-proven four-cohort production wave.
+        """Run the capacity-selected cohort production schedule.
 
-        ``block-1-controls`` owns three internally concurrent cohorts and
-        ``block-2-natural`` owns the fourth.  Events remain wire-ordered and
-        are published only after both children return successfully.  A crash
-        may therefore leave reusable immutable shards but can never claim a
-        half-complete wave as a completed later stage.
+        ``block-1-controls`` owns three cohorts and ``block-2-natural`` owns
+        the fourth.  A measured width of one executes the two stage
+        controllers serially and seals each completed prefix for recovery.
+        Width two or four retains the concurrent two-controller wave, with
+        the controls adapter using the remaining measured slots internally.
         """
         if self.resource_closeout_only:
             raise WorldAfterstateV2ExecutionError(
@@ -2042,6 +2042,19 @@ class StageSupervisorV2:
                 raise MissingStageError(
                     f"missing typed controller for {stage}")
             operation.validate()
+        cohort_widths = {
+            getattr(operations[stage].operation, "cohort_workers", None)
+            for stage in COHORT_TRAINING_WAVE}
+        if (len(cohort_widths) != 1
+                or next(iter(cohort_widths)) not in (1, 2, 4)):
+            raise WorldAfterstateV2ExecutionError(
+                "cohort training wave resource drift")
+        cohort_workers = next(iter(cohort_widths))
+        if cohort_workers == 1:
+            return tuple(self.run_stage(
+                stage, split="fit", operation=operations[stage],
+                payload=payload_rows.get(stage))
+                for stage in COHORT_TRAINING_WAVE)
         results = self._invoke_controller_wave(tuple(
             (stage, operations[stage].operation)
             for stage in COHORT_TRAINING_WAVE))

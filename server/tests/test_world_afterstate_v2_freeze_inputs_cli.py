@@ -29,7 +29,7 @@ def _argv(tmp_path: Path) -> list[str]:
         "--capacity", str(capacity),
         "--evidence-root", str(tmp_path / "unused-evidence"),
         "--deadline-seconds", "100", "--heartbeat-seconds", "10",
-        "--max-attempts-per-slot", "3",
+        "--max-attempts-per-slot", "128",
         "--out-dir", str(tmp_path / "inputs"),
     ]
 
@@ -93,7 +93,7 @@ def test_cli_threads_authenticated_receipt_into_one_exclusive_publication(
         "source_git": SOURCE, "capacity_raw": b"capacity\n",
         "evidence_root": str(tmp_path / "unused-evidence"),
         "deadline_seconds": 100, "heartbeat_seconds": 10,
-        "max_attempts_per_slot": 3}
+        "max_attempts_per_slot": 128}
     directory, published = observed["publish"]
     assert directory == tmp_path / "inputs"
     assert set(published) == {

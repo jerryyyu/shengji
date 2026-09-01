@@ -181,7 +181,8 @@ def _capacity_resources(receipt: Any) -> tuple[int, int, int, int, int, int]:
         raise WorldAfterstateV2TrainingStageInputError(
             "reviewed training batch cap drift")
     torch_threads = PINNED_TORCH_THREADS
-    if member_workers not in (1, 2, 4) or cohort_workers != COHORT_WORKERS:
+    if (member_workers not in (1, 2, 4)
+            or cohort_workers not in (1, 2, COHORT_WORKERS)):
         raise WorldAfterstateV2TrainingStageInputError(
             "training resource arm drift")
     if inference_batch_cap not in INFERENCE_BATCH_CAPS:
@@ -323,7 +324,7 @@ class WorldAfterstateV2TrainingStageInputs:
             raise WorldAfterstateV2TrainingStageInputError(
                 "reviewed training config drift")
         if (self.member_workers not in (1, 2, 4)
-                or self.cohort_workers != COHORT_WORKERS
+                or self.cohort_workers not in (1, 2, COHORT_WORKERS)
                 or self.cohort_member_workers != COHORT_MEMBER_WORKERS
                 or isinstance(self.torch_threads, bool)
                 or not isinstance(self.torch_threads, int)
@@ -617,6 +618,16 @@ def build_training_stage_inputs(
     return result
 
 
+def frozen_cohort_workers_v2(freeze: Any) -> int:
+    """Read only the freeze-bound capacity layout for execution scheduling."""
+    root = Path(getattr(freeze, "evidence_root", ""))
+    if root.is_symlink() or not root.is_dir():
+        raise WorldAfterstateV2TrainingStageInputError(
+            "evidence root drift")
+    receipt, _capacity_digest = _capacity(freeze, root)
+    return _capacity_resources(receipt)[1]
+
+
 # Descriptive aliases for adapters that use the full contract name.
 build_world_afterstate_v2_training_stage_inputs = build_training_stage_inputs
 build_v2_training_stage_inputs = build_training_stage_inputs
@@ -631,4 +642,5 @@ __all__ = [
     "WorldAfterstateV2TrainingStageInputs", "WorldAfterstateV2TrainingInputs",
     "build_training_stage_inputs", "build_v2_training_stage_inputs",
     "build_world_afterstate_v2_training_stage_inputs",
+    "frozen_cohort_workers_v2",
 ]

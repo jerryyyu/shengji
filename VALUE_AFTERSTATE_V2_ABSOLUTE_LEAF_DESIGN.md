@@ -181,6 +181,29 @@ eligibility reason fires, advances only to the next preassigned identity for
 that slot and remains inside its frozen attempted ceiling. The builder API
 does not receive or persist terminal outcomes while assigning slots.
 
+For the first D256 scientific run, that ceiling is exactly **128 attempts per
+slot**.  This is a scientific population ceiling, not the capacity runner's
+separate 384-attempt total.  It was fixed from the repaired-head score-free
+preflight before any continuation outcome existed: 32 fixtures were retained
+after 301 attempted deals.  The pooled acceptance estimate is 32/301 and its
+one-sided 95% Wilson lower bound is 0.0805; under the explicitly planning-only
+i.i.d. approximation, 128 attempts gives the conservative family-wise bound
+`256 * (1 - 0.0805)^128 < 0.0056`.  That approximation sizes the cap; it does
+not assert equal acceptance across strata.  A slot that exhausts all 128
+identities remains unfilled and routes to `REFUSE_RESOURCE_INCOMPLETE`; it may
+not borrow an identity, slot, split, source, or stratum, and it does not
+authorize a retry.
+
+Population construction is part of the service wall even though it precedes
+the composed label/training DAG.  The runner records the exact wall
+nanoseconds needed to retain its 32 preflight fixtures and projects each tier
+as `measured_wall * tier_population / 32`, rounding up.  The typed receipt
+requires D256 complete wall to equal that population projection plus the
+composed label/training critical path, and the outcome-blind tier gate applies
+the 21,600-second ceiling to that sum.  Omitting the population term is a
+receipt refusal, not a reviewer-side arithmetic convention.  This preserves
+the promised 2x headroom under the immutable 43,200-second service deadline.
+
 Select slots use a paired construction before play. For pair ordinal
 `j = 0..(select_count / 2)-1`, create two distinct deal slots with the same
 `phase_position_role[j mod 12]`, `trump_rank[j mod 13]`, and
@@ -407,13 +430,17 @@ included in the capacity projection, and each four-member cohort follows the
 same epoch-select-only common-epoch selection rule.
 
 After the nested 25/50/100% curve completes, the three block-1 controls and
-block-2 natural cohort may run as one four-cohort wave.  The wave fixes four
-members per cohort and therefore exposes exactly 16 independent model-training
-tasks; it does not pool data, seeds, selection, predictions, or evidence across
-cohorts.  Block-2 complete-world shuffle starts only after all four wave
-cohorts complete.  A first child refusal terminates its sibling controllers;
-already sealed immutable epoch shards remain resumable, but no completion
-event is published until the whole wave succeeds.
+block-2 natural cohort use the outcome-blind fastest measured cohort width
+from `{1, 2, 4}`.  Every cohort still fixes four members and the four cohorts
+still expose exactly 16 independent model-training tasks; data, seeds,
+selection, predictions, and evidence are never pooled.  Width one runs the
+two stage controllers serially and seals each complete stage prefix.  Width
+two or four runs the controls and block-2-natural controllers together, with
+the controls stage using the remaining measured slots internally.  Block-2
+complete-world shuffle starts only after all four cohorts complete.  A child
+refusal terminates a concurrent sibling, while already sealed immutable epoch
+shards remain resumable.  Capacity admission conservatively serializes all
+four cohort walls in its projection even when execution uses a wider arm.
 
 ### Pre-audit recipe diagnosis
 
@@ -718,7 +745,10 @@ unselected material still changes the measured workload.  Deterministic
 pseudo-targets exercise the real collation, loss, optimizer, and state-digest
 path but open no continuation or outcome.  The member arm always trains four
 models and the cohort arm always trains four complete four-member cohorts;
-only executor concurrency changes between variants.  A retained population
+only executor concurrency changes between variants.  Each cohort constructs
+its models and optimizers inside its outer cohort task, matching the scientific
+stage altitude; serially constructing all 16 models before the outer executor
+is forbidden.  A retained population
 that cannot form the exact complete-root 128-example batch refuses before
 measurement rather than falling back to a singleton or partial root.
 
@@ -730,11 +760,12 @@ kernels, which is the numerical freedom the already-frozen inference
 canonicalization exists to resolve. A materially different canonical
 probability or PPB row still refuses the arm comparison.
 
-The one production wave requires the four-cohort arm to be the fastest
-memory-eligible byte-identical cohort arm.  Widths 1 and 2 are scaling
-controls, not executable production layouts: if either is faster, the census
-refuses before starting the representative full DAG rather than timing one
-schedule and executing another.
+The fastest memory-eligible byte-identical cohort arm is the executable
+production layout.  Widths 1, 2, and 4 all perform the same four complete
+cohorts, and the success receipt publishes every exact arm wall plus the
+selected width.  The scientific supervisor must consume that selected width;
+it may not insist on four-way concurrency when a narrower arm completes the
+same fixed workload faster.
 
 The capacity command is bounded to two hours, 30 GiB, zero swap, and 4,096
 tasks. Freeze the fastest byte-identical configuration below 85% memory and
@@ -794,7 +825,7 @@ worker domain or repaired runtime identity implicitly.
 
 The resource mapping is closed: continuation-label stages use the
 continuation-mechanics arm, cohort training/optimizer stages use the
-member-concurrency arm, the co-scheduled four-cohort wave uses the distinct
+member-concurrency arm, the four independent cohorts use the distinct selected
 cohort-concurrency arm with four fixed members per cohort, precision inference
 uses the inference-batch arm, and
 reconstruction uses the reconstruction arm. P0, nested-25/50/100,

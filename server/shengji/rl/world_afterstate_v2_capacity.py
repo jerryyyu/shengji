@@ -27,7 +27,7 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-SCHEMA = "world-afterstate-v2-post-implementation-capacity-v7"
+SCHEMA = "world-afterstate-v2-post-implementation-capacity-v8"
 FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v4"
 REJECTED_PROJECTION_SCHEMA = (
     "world-afterstate-v2-capacity-rejected-projection-v1")
@@ -46,6 +46,7 @@ PINNED_TORCH_THREADS = 1
 COHORT_WORKERS = 4
 COHORT_MEMBER_WORKERS = 4
 MIN_CONTINUATION_WORK_UNITS = 128
+CAPACITY_PREFLIGHT_ACCEPTED = 32
 
 ARM_GRIDS: dict[str, tuple[int, ...]] = {
     "state-successor": (1, 2, 4, 8, 16, 32),
@@ -176,18 +177,19 @@ SCIENTIFIC_DAG_EDGES = (
     ("label-audit", "audit"),
     ("audit", "reconstruction"),
 )
-# These are operational resource fences, not scientific dependencies.  The
-# selected cohort-concurrency arm proves that the middle four branches can run
-# as one 16-member wave.  Nested 25/50/100 remain one reviewed stage and the
-# final block-2 control follows the complete four-cohort wave.
+# These are operational resource fences, not scientific dependencies.  Keep
+# the projection conservative by serializing the four independent cohort
+# branches.  Execution may use the outcome-blind fastest measured cohort arm,
+# but admission never assumes that parallel branches reduce the wall.
 TRAINING_RESOURCE_SERIALIZATION_EDGES = (
     ("block-1-natural", "nested-curve-25"),
     ("nested-curve-25", "nested-curve-50"),
     ("nested-curve-50", "nested-curve-100"),
     ("nested-curve-100", "block-1-action-association-permutation"),
-    ("nested-curve-100", "block-1-label-permutation"),
-    ("nested-curve-100", "block-1-complete-world-shuffle"),
-    ("nested-curve-100", "block-2-natural"),
+    ("block-1-action-association-permutation",
+     "block-1-label-permutation"),
+    ("block-1-label-permutation", "block-1-complete-world-shuffle"),
+    ("block-1-complete-world-shuffle", "block-2-natural"),
     ("block-1-action-association-permutation",
      "block-2-complete-world-shuffle"),
     ("block-1-label-permutation", "block-2-complete-world-shuffle"),
@@ -1103,6 +1105,7 @@ class TierProjectionV2:
     exact_source_supply: bool
     label_wall_seconds: int
     label_cpu_seconds: int
+    population_wall_seconds: int
     complete_dag_wall_seconds: int
     peak_memory_bytes: int
     composed_artifact_bytes: int
@@ -1119,6 +1122,7 @@ class TierProjectionV2:
         for value, label in (
                 (self.label_wall_seconds, "tier label wall"),
                 (self.label_cpu_seconds, "tier label CPU"),
+                (self.population_wall_seconds, "tier population wall"),
                 (self.complete_dag_wall_seconds, "tier DAG wall"),
                 (self.peak_memory_bytes, "tier peak memory"),
                 (self.composed_artifact_bytes, "tier artifact bytes"),
@@ -1302,6 +1306,7 @@ class CapacityReceiptV2:
     progress_recovery: ProgressRecoveryV2
     source_sha256: str
     runtime_sha256: str
+    preflight_wall_nanoseconds: int
     schema: str = SCHEMA
     authority: Mapping[str, bool] = field(default_factory=lambda: dict(AUTHORITY))
     # These fields are populated by the post-implementation runner.  Defaults
@@ -1332,6 +1337,8 @@ class CapacityReceiptV2:
             raise WorldAfterstateV2CapacityError("capacity receipt identity drift")
         _digest(self.source_sha256, "capacity source SHA-256")
         _digest(self.runtime_sha256, "capacity runtime SHA-256")
+        _int(self.preflight_wall_nanoseconds,
+             "capacity preflight wall nanoseconds", minimum=1)
         if type(self.all_core_gate_passed) is not bool:
             raise WorldAfterstateV2CapacityError("capacity all-core gate drift")
         if self.measurement_scope != MEASUREMENT_SCOPE:
@@ -1387,7 +1394,8 @@ class CapacityReceiptV2:
         # runs the retained-sample DAG.  The six-hour scientific projection
         # is separate and must not be mistaken for measured command wall.
         arm_wall = sum(arm.wall_seconds for arm in self.arms)
-        required_command_wall = arm_wall + sum(
+        required_command_wall = _ceil_seconds(self.preflight_wall_nanoseconds) \
+            + arm_wall + sum(
             value for _, value in self.composed.measured_stage_walls_seconds)
         command_wall_ok = self.command_wall_seconds == required_command_wall
         if not command_wall_ok \
@@ -1454,9 +1462,6 @@ class CapacityReceiptV2:
                     "reconstruction"]):
             raise WorldAfterstateV2CapacityError("capacity resource layout drift")
         selected_by_stage = {arm.stage: arm for arm in self.selected_arms}
-        if selected_by_stage["cohort-concurrency"].variant != COHORT_WORKERS:
-            raise WorldAfterstateV2CapacityError(
-                "capacity cohort wave does not saturate four cohorts")
         if (selected_by_stage["member-concurrency"].variant != self.member_workers
                 or selected_by_stage["continuation-mechanics"].variant
                 != self.continuation_workers
@@ -1472,6 +1477,27 @@ class CapacityReceiptV2:
             tier.validate()
         if {tier.tier for tier in self.tiers} != {tier.name for tier in TIER_SPECS}:
             raise WorldAfterstateV2CapacityError("tier projection population drift")
+        if sum(count for _candidate, count in self.candidate_distribution) \
+                != CAPACITY_PREFLIGHT_ACCEPTED:
+            raise WorldAfterstateV2CapacityError(
+                "capacity preflight population binding drift")
+        tiers_by_name = {tier.tier: tier for tier in self.tiers}
+        for spec in TIER_SPECS:
+            expected_population_wall = _ceil_seconds(
+                (self.preflight_wall_nanoseconds * spec.total
+                 + CAPACITY_PREFLIGHT_ACCEPTED - 1)
+                // CAPACITY_PREFLIGHT_ACCEPTED)
+            if (tiers_by_name[spec.name].population_wall_seconds
+                    != expected_population_wall):
+                raise WorldAfterstateV2CapacityError(
+                    "tier population wall projection drift")
+        d256 = tiers_by_name["D256"]
+        d256_post_population_wall = composed_critical_path_seconds(
+            dict(self.composed.stage_walls_seconds), self.composed.dag_edges)
+        if d256.complete_dag_wall_seconds != (
+                d256.population_wall_seconds + d256_post_population_wall):
+            raise WorldAfterstateV2CapacityError(
+                "D256 complete wall omits population construction")
         if any(tier.outcomes_opened for tier in self.tiers):
             raise WorldAfterstateV2CapacityError("capacity outcomes opened")
 
@@ -1515,6 +1541,7 @@ class CapacityReceiptV2:
             "progress_recovery": self.progress_recovery.payload(),
             "source_sha256": self.source_sha256,
             "runtime_sha256": self.runtime_sha256,
+            "preflight_wall_nanoseconds": self.preflight_wall_nanoseconds,
             "model_parameter_count": self.model_parameter_count,
             "candidate_distribution": [list(row)
                                         for row in self.candidate_distribution],
@@ -1572,6 +1599,7 @@ __all__ = [
     "TRAINING_RESOURCE_SERIALIZATION_EDGES", "ComposedProjectionV2",
     "MAX_COMMAND_WALL_SECONDS", "MAX_TASKS",
     "MEMORY_LIMIT_BYTES", "ProgressRecoveryV2", "TierProjectionV2",
+    "CAPACITY_PREFLIGHT_ACCEPTED",
     "MEASUREMENT_SCOPE", "PINNED_TORCH_THREADS",
     "MIN_CONTINUATION_WORK_UNITS",
     "WorldAfterstateV2CapacityError", "choose_capacity_tier_v2",

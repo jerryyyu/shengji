@@ -31,6 +31,7 @@ from .belief_contract import canonical_json_bytes
 from .world_afterstate import canonical_successor, replay_canonical_successor
 from .world_afterstate_v2_capacity import (
     ARM_GRIDS, AUTHORITY, COMPOSED_STAGE_NAMES, MAX_COMMAND_WALL_SECONDS, MEMORY_LIMIT_BYTES,
+    CAPACITY_PREFLIGHT_ACCEPTED,
     COHORT_MEMBER_WORKERS, COHORT_WORKERS, MEASUREMENT_SCOPE,
     MIN_CONTINUATION_WORK_UNITS,
     PINNED_TORCH_THREADS,
@@ -79,6 +80,9 @@ _OPERATION_OUTPUT_SCHEMAS = {
 }
 _PRODUCTION_PROVENANCE = object()
 _FULL_DAG_PROVENANCE = object()
+
+if PREFLIGHT_ACCEPTED != CAPACITY_PREFLIGHT_ACCEPTED:
+    raise RuntimeError("capacity preflight population constant drift")
 
 
 class CapacityRunnerError(RuntimeError):
@@ -288,6 +292,7 @@ class PreflightResultV2:
     rejection_counts: tuple[tuple[str, int], ...]
     candidate_distribution: tuple[tuple[int, int], ...]
     stratum_distribution: tuple[tuple[str, int], ...]
+    elapsed_wall_nanoseconds: int
     outcomes_opened: bool = False
 
     def validate(self) -> None:
@@ -297,6 +302,9 @@ class PreflightResultV2:
             raise CapacityRunnerError("preflight accepted fixture accounting drift")
         if self.accepted != PREFLIGHT_ACCEPTED:
             raise CapacityRunnerError("preflight requires exactly 32 accepted deals")
+        if (type(self.elapsed_wall_nanoseconds) is not int
+                or self.elapsed_wall_nanoseconds < 1):
+            raise CapacityRunnerError("preflight wall timing drift")
         if (any(type(name) is not str or not name or type(count) is not int
                 or count < 1 for name, count in self.rejection_counts)
                 or sum(count for _, count in self.rejection_counts)
@@ -336,6 +344,7 @@ class PreflightResultV2:
                                         for key, value in self.candidate_distribution],
             "stratum_distribution": [[key, value]
                                       for key, value in self.stratum_distribution],
+            "elapsed_wall_nanoseconds": self.elapsed_wall_nanoseconds,
             "outcomes_opened": self.outcomes_opened,
             "accepted_fixture_sha256s": [fixture.fixture_sha256
                                           for fixture in self.accepted_fixtures],
@@ -459,6 +468,8 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
                              started_ns: int | None = None) -> PreflightResultV2:
     """Find 32 accepted natural/mechanics D256 deals, bounded at 384 attempts."""
     from .world_afterstate_v2_protocol import _raw_slot_ledger
+
+    preflight_started_ns = time.perf_counter_ns()
 
     if slots is None:
         # Natural cells are the broadest honest source.  Mechanics slots are
@@ -676,7 +687,8 @@ def run_score_free_preflight(*, attempt: Callable[..., Any] = drive_population_a
             "preflight retained split coverage is incomplete")
     result = PreflightResultV2(
         tuple(accepted), index, len(accepted), tuple(sorted(rejected.items())),
-        tuple(sorted(candidates.items())), tuple(sorted(strata.items())))
+        tuple(sorted(candidates.items())), tuple(sorted(strata.items())),
+        max(1, time.perf_counter_ns() - preflight_started_ns))
     result.validate()
     return result
 
@@ -1221,33 +1233,48 @@ def _model_operation(stage: str, variant: int,
                 cohort_count = (1 if stage == "member-concurrency" else
                                 COHORT_MEMBER_WORKERS)
                 model_count = COHORT_MEMBER_WORKERS * cohort_count
-                output: list[str] = [""] * model_count
-                with torch.random.fork_rng(devices=[]):
-                    torch.manual_seed(0)
+                if stage == "member-concurrency":
+                    output: list[str] = [""] * model_count
                     models = tuple(new_world_afterstate_v2_model(0)
                                    for _ in range(model_count))
-                def member(index: int) -> None:
-                    optimizer = new_optimizer(models[index], config)
-                    train_epoch(models[index], optimizer, (training_batch,),
-                                epoch=1, config=config)
-                    output[index] = model_state_sha256(models[index])
-                if stage == "member-concurrency":
+                    def member(index: int) -> None:
+                        optimizer = new_optimizer(models[index], config)
+                        train_epoch(models[index], optimizer, (training_batch,),
+                                    epoch=1, config=config)
+                        output[index] = model_state_sha256(models[index])
                     with ThreadPoolExecutor(max_workers=variant) as pool:
                         # Executor width is the only member-concurrency arm
                         # dimension; fixed population and order are retained.
                         tuple(pool.map(member, range(model_count)))
                 else:
-                    def cohort(index: int) -> None:
-                        start = index * COHORT_MEMBER_WORKERS
+                    def cohort(_index: int) -> tuple[str, ...]:
+                        # The scientific stage constructs each cohort inside
+                        # its concurrent stage task.  Constructing all sixteen
+                        # models serially before the outer pool made this arm
+                        # measure only one optimizer step and could falsely
+                        # select a narrower cohort wave.
+                        models = tuple(new_world_afterstate_v2_model(0)
+                                       for _ in range(COHORT_MEMBER_WORKERS))
+                        cohort_output: list[str] = [""] * COHORT_MEMBER_WORKERS
+                        def member(index: int) -> None:
+                            optimizer = new_optimizer(models[index], config)
+                            train_epoch(
+                                models[index], optimizer, (training_batch,),
+                                epoch=1, config=config)
+                            cohort_output[index] = model_state_sha256(
+                                models[index])
                         with ThreadPoolExecutor(
                                 max_workers=COHORT_MEMBER_WORKERS) as members:
                             tuple(members.map(
-                                member, range(
-                                    start, start + COHORT_MEMBER_WORKERS)))
+                                member, range(COHORT_MEMBER_WORKERS)))
+                        return tuple(cohort_output)
                     with ThreadPoolExecutor(max_workers=variant) as cohorts:
                         # Every arm executes four complete four-member
                         # cohorts.  Only simultaneous cohort width changes.
-                        tuple(cohorts.map(cohort, range(cohort_count)))
+                        cohort_outputs = tuple(
+                            cohorts.map(cohort, range(cohort_count)))
+                    output = [value for cohort_output in cohort_outputs
+                              for value in cohort_output]
             else:
                 from .world_afterstate import build_afterstate_tensors
                 from .world_afterstate_v2_model import collate_world_afterstate_tensors
@@ -1377,16 +1404,6 @@ def _select_arms(arms: Sequence[CapacityArmV2]) -> dict[str, CapacityArmV2]:
     return selected
 
 
-def _validate_cohort_wave_selection(
-        selected: Mapping[str, CapacityArmV2]) -> None:
-    arm = selected.get("cohort-concurrency")
-    if arm is None or arm.variant != COHORT_WORKERS:
-        raise CapacityRunnerError(
-            "cohort-concurrency fastest arm does not saturate four cohorts",
-            stage="measurement",
-            reason_code="cohort-concurrency-underfilled")
-
-
 def _bind_projected_arm_shares(
         arms: Sequence[CapacityArmV2],
         stage_walls_seconds: Mapping[str, int]) -> tuple[CapacityArmV2, ...]:
@@ -1484,17 +1501,25 @@ def _dag_attestation(value: RepresentativeDAGV2) -> str:
 def _progress_event(stage: str, completed: int, total: int, workers: int,
                     started_ns: int, stage_wall: int,
                     utilization_ppm: int,
-                    callback: Callable[[dict[str, Any]], None] | None) -> None:
+                    callback: Callable[[dict[str, Any]], None] | None,
+                    *, now_ns: int | None = None) -> None:
+    observed_ns = time.perf_counter_ns() if now_ns is None else now_ns
+    elapsed_ns = observed_ns - started_ns
+    if elapsed_ns < 0:
+        raise CapacityRunnerError("capacity progress clock moved backwards")
+    if elapsed_ns >= MAX_COMMAND_WALL_SECONDS * 1_000_000_000:
+        raise CapacityRunnerError("capacity command wall cap expired")
     if callback is None:
         return
-    elapsed = max(0, time.perf_counter_ns() - started_ns) / 1_000_000_000
+    elapsed_seconds = elapsed_ns // 1_000_000_000
+    elapsed = elapsed_ns / 1_000_000_000
     fraction = completed / max(1, total)
     eta = 0 if completed == 0 else max(0, int(elapsed * (1 - fraction) / fraction))
     callback({
         "stage": stage, "completed_units": completed, "total_units": total,
         "workers": workers, "utilization_ppm": utilization_ppm,
-        "elapsed_seconds": int(elapsed), "eta_seconds": eta,
-        "headroom_seconds": max(0, MAX_COMMAND_WALL_SECONDS - int(elapsed)),
+        "elapsed_seconds": elapsed_seconds, "eta_seconds": eta,
+        "headroom_seconds": MAX_COMMAND_WALL_SECONDS - elapsed_seconds,
         "memory_bytes": _cgroup_memory_bytes(),
         "peak_memory_bytes": _cgroup_memory_bytes(),
         "queue_depth": max(0, _task_count() - workers),
@@ -1720,7 +1745,11 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
             (stage, *arm_target_units[stage]) for stage in arm_target_units))
 
 
-def _tiers(composed: ComposedProjectionV2) -> tuple[TierProjectionV2, ...]:
+def _tiers(composed: ComposedProjectionV2, *,
+           preflight_wall_nanoseconds: int) -> tuple[TierProjectionV2, ...]:
+    if (type(preflight_wall_nanoseconds) is not int
+            or preflight_wall_nanoseconds < 1):
+        raise CapacityRunnerError("preflight wall projection drift")
     stage = dict(composed.stage_walls_seconds)
     base_units = {name: projected for name, _measured, projected
                   in composed.stage_unit_counts}
@@ -1742,6 +1771,11 @@ def _tiers(composed: ComposedProjectionV2) -> tuple[TierProjectionV2, ...]:
             name: max(1, (base_cpu[name] * target_units[name]
                           + base_units[name] - 1) // base_units[name])
             for name in stage}
+        population_wall_seconds = _ceil_seconds(
+            (preflight_wall_nanoseconds * spec.total
+             + PREFLIGHT_ACCEPTED - 1) // PREFLIGHT_ACCEPTED)
+        post_population_wall_seconds = composed_critical_path_seconds(
+            projected_stage, composed.dag_edges)
         result.append(TierProjectionV2(
             tier=spec.name,
             # The first reviewed scientific implementation composes only the
@@ -1756,8 +1790,9 @@ def _tiers(composed: ComposedProjectionV2) -> tuple[TierProjectionV2, ...]:
                 "label-p0", "label-fit", "label-precision-select", "label-audit")),
             label_cpu_seconds=sum(projected_cpu[name] for name in (
                 "label-p0", "label-fit", "label-precision-select", "label-audit")),
-            complete_dag_wall_seconds=composed_critical_path_seconds(
-                projected_stage, composed.dag_edges),
+            population_wall_seconds=population_wall_seconds,
+            complete_dag_wall_seconds=(population_wall_seconds
+                                       + post_population_wall_seconds),
             peak_memory_bytes=composed.peak_memory_bytes,
             composed_artifact_bytes=max(
                 1, composed.composed_artifact_bytes * spec.total
@@ -1838,7 +1873,6 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
             raise CapacityRunnerError("synthetic measurement cannot build production receipt")
         arm.validate()
     selected = _select_arms(arms)
-    _validate_cohort_wave_selection(selected)
     layout = (selected["member-concurrency"].variant,
                selected["continuation-mechanics"].variant,
                PINNED_TORCH_THREADS,
@@ -1899,14 +1933,19 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
         # Arms run sequentially and the complete DAG follows them.  Taking
         # max(arms, DAG) silently under-counts command wall time.
         command_wall_seconds=sum(arm.wall_seconds for arm in arms)
+        + _ceil_seconds(preflight.elapsed_wall_nanoseconds)
         + sum(value for _, value in composed.measured_stage_walls_seconds),
         memory_limit_bytes=host.memory_limit_bytes, swap_bytes=host.swap_bytes,
         task_count=max((arm.peak_task_count or arm.task_count)
                         for arm in arms), arms=arms,
         selected_arms=tuple(selected.values()), composed=composed,
-        tiers=_tiers(composed), progress_recovery=progress,
+        tiers=_tiers(
+            composed,
+            preflight_wall_nanoseconds=preflight.elapsed_wall_nanoseconds),
+        progress_recovery=progress,
         source_sha256=source_sha256,
         runtime_sha256=runtime_sha256,
+        preflight_wall_nanoseconds=preflight.elapsed_wall_nanoseconds,
         authority=dict(AUTHORITY), model_parameter_count=parameter_count,
         candidate_distribution=preflight.candidate_distribution,
         per_epoch_wall_seconds=(representative_dag.epoch_wall_seconds
@@ -2044,7 +2083,6 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         raise CapacityRunnerError("capacity command wall cap exceeded")
     selected = _select_arms(arms)
     if production:
-        _validate_cohort_wave_selection(selected)
         # The census is deliberately before importing/calling the full-DAG
         # supervisor.  Its projected D256 category shares are deterministic
         # from the selected arm timings and frozen stage mapping.
@@ -2181,7 +2219,7 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
                 "peak_task_count", "measurement_scope", "member_workers",
                 "continuation_workers", "torch_threads", "inference_batch", "source_sha256",
                 "runtime_sha256", "reconstruction_workers",
-                "all_core_gate_passed"}
+                "all_core_gate_passed", "preflight_wall_nanoseconds"}
     if set(payload) != required:
         raise CapacityRunnerError("capacity payload field population drift")
     try:
@@ -2240,6 +2278,7 @@ def reopen_capacity_receipt_v2(payload: Mapping[str, Any]) -> CapacityReceiptV2:
             progress_recovery=progress, schema=payload["schema"],
             source_sha256=payload["source_sha256"],
             runtime_sha256=payload["runtime_sha256"],
+            preflight_wall_nanoseconds=payload["preflight_wall_nanoseconds"],
             authority=payload["authority"],
             model_parameter_count=payload["model_parameter_count"],
             candidate_distribution=candidate_distribution,

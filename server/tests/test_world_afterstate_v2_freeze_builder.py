@@ -194,7 +194,7 @@ def test_real_input_wiring_returns_tier_and_refuses_policy_drift(
         source_git=source_git, protocol_sha256=protocol_sha,
         capacity_sha256=capacity_sha, selected_tier="D256", workers=4,
         deadline_seconds=100, heartbeat_seconds=10,
-        max_attempts_per_slot=3)
+        max_attempts_per_slot=128)
     config = build_early_stage_config_v2(
         source_git=source_git, protocol_sha256=protocol_sha,
         capacity_sha256=capacity_sha, selected_tier="D256", label_workers=8,

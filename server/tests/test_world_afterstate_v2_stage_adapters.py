@@ -18,7 +18,7 @@ from shengji.rl.world_afterstate_v2_population_controller import (
     PopulationSlotReceiptV2,
 )
 from shengji.rl.world_afterstate_v2_protocol import (
-    TIER_SPECS, build_population_slot_ledger,
+    D256_MAX_ATTEMPTS_PER_SLOT, TIER_SPECS, build_population_slot_ledger,
 )
 
 
@@ -87,7 +87,7 @@ def _input(**overrides) -> dict:
     value = {
         "schema": adapters.INPUT_SCHEMA,
         "population_namespace_sha256": "c" * 64,
-        "max_attempts_per_slot": 2,
+        "max_attempts_per_slot": D256_MAX_ATTEMPTS_PER_SLOT,
         "workers": 2,
         "deadline_seconds": 120,
         "heartbeat_seconds": 30,
@@ -117,7 +117,8 @@ def _controller_receipt() -> dict:
         freeze_sha256=FREEZE,
         population_namespace_sha256="c" * 64,
         admission_sha256=ADMISSION,
-        config_sha256="d" * 64, tier="D256", max_attempts_per_slot=2,
+        config_sha256="d" * 64, tier="D256",
+        max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT,
         slots=slots, attempts_total=256, accepted_slots=256,
         manifest_sha256="e" * 64, population_sha256="f" * 64,
         authority=dict(AUTHORITY)).payload()
@@ -224,7 +225,7 @@ def test_frozen_values_reach_real_producer_and_progress_is_bridged(
     assert kwargs["freeze_sha256"] == FREEZE
     assert kwargs["admission_sha256"] == ADMISSION
     assert kwargs["population_namespace_sha256"] == "c" * 64
-    assert kwargs["max_attempts_per_slot"] == 2
+    assert kwargs["max_attempts_per_slot"] == D256_MAX_ATTEMPTS_PER_SLOT
     assert kwargs["workers"] in WORKER_ARMS
     assert kwargs["deadline_seconds"] == 120
     assert kwargs["heartbeat_seconds"] == 30

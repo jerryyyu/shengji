@@ -57,7 +57,9 @@ from .world_afterstate_v2_training import model_state_sha256
 from .world_afterstate_v2_training_recovery_store import (
     RecoveryStoreBindingV2, WorldAfterstateV2RecoveryStore,
 )
-from .world_afterstate_v2_training_stage_inputs import build_training_stage_inputs
+from .world_afterstate_v2_training_stage_inputs import (
+    build_training_stage_inputs, frozen_cohort_workers_v2,
+)
 
 
 ABI = "world-afterstate-v2-stage-adapter-supervisor-shards-v1"
@@ -925,6 +927,10 @@ class _CohortAdapter:
     def producer(self) -> Callable[..., Any]:
         return train_named_cohort
 
+    @property
+    def cohort_workers(self) -> int:
+        return frozen_cohort_workers_v2(self.freeze)
+
     def _control_values(self, values: Sequence[Any], name: str) -> tuple[tuple[Any, ...], dict[str, Any]]:
         transforms = {
             "action-association-permutation": action_association_permutation,
@@ -955,7 +961,7 @@ class _CohortAdapter:
             _completed(supervisor, "block-1-natural")
         elif self.stage == "block-2-natural":
             # This cohort is scientifically independent of the block-1
-            # controls and shares their reviewed four-cohort execution wave.
+            # controls and shares their capacity-selected execution schedule.
             _completed(supervisor, "nested-curve")
         elif self.stage == "block-2-controls":
             _completed(supervisor, "block-2-natural")
@@ -1013,12 +1019,15 @@ class _CohortAdapter:
                     progress=locked_progress,
                     recovery_history=history, recovery_callback=recover)
                 return name, item, evidence, build
-            # The selected capacity layout is exactly four concurrent
-            # cohorts.  Three live inside block-1-controls and the fourth is
-            # block-2-natural in the supervisor wave.
-            stage_workers = (inputs.cohort_workers - 1
+            # The selected capacity width is shared across the scientific
+            # schedule.  During a concurrent supervisor wave, one slot is
+            # reserved for block-2-natural and the remainder schedule these
+            # three controls.  At width one the supervisor runs this stage as
+            # a sealed serial prefix.  A smaller pool still executes every
+            # fixed cohort; it changes only scheduling, never population.
+            stage_workers = (max(1, inputs.cohort_workers - 1)
                              if self.stage == "block-1-controls" else 1)
-            if stage_workers < 1 or stage_workers < len(prepared):
+            if stage_workers < 1:
                 raise TrainingStageAdapterUnavailable(
                     f"{self.stage} cohort concurrency is under-provisioned")
             if len(prepared) == 1:

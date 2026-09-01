@@ -22,7 +22,8 @@ from .world_afterstate_v2_capacity import (
 )
 from .world_afterstate_v2_capacity_runner import reopen_capacity_receipt_v2_bytes
 from .world_afterstate_v2_protocol import (
-    ATTEMPT_SCHEMA, PROTOCOL_SCHEMA, protocol_payload,
+    ATTEMPT_SCHEMA, D256_MAX_ATTEMPTS_PER_SLOT, PROTOCOL_SCHEMA,
+    protocol_payload,
 )
 from .world_afterstate_v2_schedule import SEED_BLOCKS
 from .world_afterstate_v2_continuation import (
@@ -32,7 +33,7 @@ from .world_afterstate_capacity import PRODUCTION_BALLOT_POLICY
 from .world_afterstate_label import IDENTITY_SCHEMA
 
 
-POPULATION_INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v3"
+POPULATION_INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v4"
 STAGE_INPUT_SCHEMA = "world-afterstate-v2-early-stage-adapters-input-v2"
 NAMESPACE_SCHEMA = "world-afterstate-v2-population-namespace-v1"
 SEED_REGISTRY_SCHEMA = "world-afterstate-v2-seed-registry-input-v1"
@@ -181,7 +182,9 @@ def build_population_adapter_input_v2(*, source_git: str, protocol_sha256: str,
         raise WorldAfterstateV2FreezeInputsError("population workers drift")
     _positive(deadline_seconds, "population deadline")
     _positive(heartbeat_seconds, "population heartbeat")
-    _positive(max_attempts_per_slot, "population attempt cap")
+    if max_attempts_per_slot != D256_MAX_ATTEMPTS_PER_SLOT:
+        raise WorldAfterstateV2FreezeInputsError(
+            "D256 population attempt cap drift")
     if heartbeat_seconds > 60:
         raise WorldAfterstateV2FreezeInputsError("population heartbeat drift")
     return {"schema": POPULATION_INPUT_SCHEMA,
@@ -206,6 +209,9 @@ def reopen_population_adapter_input_v2_bytes(
         raise WorldAfterstateV2FreezeInputsError("population namespace binding drift")
     for field in ("max_attempts_per_slot", "workers", "deadline_seconds", "heartbeat_seconds"):
         _positive(value[field], f"population {field}")
+    if value["max_attempts_per_slot"] != D256_MAX_ATTEMPTS_PER_SLOT:
+        raise WorldAfterstateV2FreezeInputsError(
+            "D256 population attempt cap drift")
     if value["workers"] not in (1, 2, 4, 8, 16, 32) or value["heartbeat_seconds"] > 60:
         raise WorldAfterstateV2FreezeInputsError("population adapter resource drift")
     if expected_workers is not None and value["workers"] != expected_workers:
@@ -385,7 +391,9 @@ def build_freeze_inputs_v2(*, source_git: str, capacity_raw: bytes,
     _source(source_git)
     _positive(deadline_seconds, "scientific deadline")
     _positive(heartbeat_seconds, "scientific heartbeat")
-    _positive(max_attempts_per_slot, "maximum attempts per slot")
+    if max_attempts_per_slot != D256_MAX_ATTEMPTS_PER_SLOT:
+        raise WorldAfterstateV2FreezeInputsError(
+            "D256 population attempt cap drift")
     if not isinstance(evidence_root, str) or not evidence_root.startswith("/"):
         raise WorldAfterstateV2FreezeInputsError("evidence root drift")
     _receipt, tier, population_workers, label_workers = capacity_context(capacity_raw)

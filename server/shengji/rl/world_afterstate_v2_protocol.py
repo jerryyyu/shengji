@@ -39,6 +39,7 @@ COMPLETE_DAG_WALL_SECONDS_MAX = 6 * 60 * 60
 SCIENTIFIC_SERVICE_SECONDS = 12 * 60 * 60
 MEMORY_PERCENT_MAX = 85
 DISK_RETAIN_PERCENT_MIN = 25
+D256_MAX_ATTEMPTS_PER_SLOT = 128
 TRUMP_MODES = ("S", "H", "D", "C", "NT")
 MECHANICS_SURFACES = ("multi-card", "wide-ballot", "late/high-point")
 SELECT_SUBFOLDS = ("epoch-select", "precision-select")
@@ -748,6 +749,7 @@ def protocol_payload() -> dict[str, object]:
         "scientific_service_seconds": SCIENTIFIC_SERVICE_SECONDS,
         "memory_percent_max": MEMORY_PERCENT_MAX,
         "disk_retain_percent_min": DISK_RETAIN_PERCENT_MIN,
+        "d256_max_attempts_per_slot": D256_MAX_ATTEMPTS_PER_SLOT,
         "authority": dict(AUTHORITY),
     }
     return {**body, "protocol_sha256": hashlib.sha256(
@@ -756,6 +758,7 @@ def protocol_payload() -> dict[str, object]:
 
 __all__ = [
     "ATTEMPT_SCHEMA", "AUTHORITY", "CAPACITY_HOST_LOGICAL_CPUS",
+    "D256_MAX_ATTEMPTS_PER_SLOT",
     "CapacityTierReceiptV2", "MECHANICS_SURFACES", "P0_CELLS", "P0_DEALS",
     "P0_PER_CELL", "P0_SUBSET_SCHEMA", "PRIOR_POINTS_BUCKETS",
     "PopulationSlotV2", "SELECT_SUBFOLDS", "SLOT_SCHEMA",

@@ -33,7 +33,8 @@ from .world_afterstate_v2_artifacts import reopen_continuation_manifest
 from .world_afterstate_v2_label_controller import (
     build_continuation_population_v2, reopen_label_stage_receipt)
 from .world_afterstate_v2_protocol import (
-    TIER_SPECS, build_population_slot_ledger, select_p0_population)
+    D256_MAX_ATTEMPTS_PER_SLOT, TIER_SPECS,
+    build_population_slot_ledger, select_p0_population)
 from .world_afterstate_v2_p0_mechanics import build_engine_p0_mechanics_evidence
 from .world_afterstate_v2_reopen import (
     reopen_optimizer_canary_v2,
@@ -48,7 +49,7 @@ from .world_afterstate_v2_late_stage_adapters import (
 
 
 ABI = "world-afterstate-v2-stage-adapter-supervisor-shards-v1"
-INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v3"
+INPUT_SCHEMA = "world-afterstate-v2-population-adapter-input-v4"
 POPULATION_INPUT_SCHEMA = INPUT_SCHEMA
 STAGE_INPUT_SCHEMA = "world-afterstate-v2-early-stage-adapters-input-v2"
 # The six-label freeze ABI has one config artifact.  These aliases are kept
@@ -158,6 +159,8 @@ def _read_input(path: Path, *, expected_digest: str,
                         (deadline, "deadline seconds"), (heartbeat, "heartbeat seconds")):
         if isinstance(item, bool) or not isinstance(item, int) or item < 1:
             raise StageAdapterUnavailable(f"population adapter {label} drift")
+    if cap != D256_MAX_ATTEMPTS_PER_SLOT:
+        raise StageAdapterUnavailable("D256 population attempt cap drift")
     if workers not in WORKER_ARMS:
         raise StageAdapterUnavailable("population adapter workers drift")
     if heartbeat > 60:

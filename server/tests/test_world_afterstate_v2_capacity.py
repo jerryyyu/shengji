@@ -182,22 +182,51 @@ def test_rejected_projection_is_bound_into_typed_failure_receipt():
 
 
 def _receipt(**changes):
+    composed = _composed()
+    post_population_wall = composed_critical_path_seconds(
+        dict(composed.stage_walls_seconds), composed.dag_edges)
+    population_walls = {"D256": 8, "D512": 16, "D1024": 32}
     tiers = tuple(TierProjectionV2(
         tier=name, exact_source_supply=True,
         label_wall_seconds=10_000, label_cpu_seconds=170_000,
-        complete_dag_wall_seconds=20_000,
+        population_wall_seconds=population_walls[name],
+        complete_dag_wall_seconds=population_walls[name] + post_population_wall,
         peak_memory_bytes=20 * 1024**3,
         composed_artifact_bytes=75, free_disk_bytes_before=100)
                    for name in ("D256", "D512", "D1024"))
     body = dict(
         host_logical_cpus=16, command_wall_seconds=1,
         memory_limit_bytes=MEMORY_LIMIT_BYTES, swap_bytes=0, task_count=1,
-        arms=_arms(), selected_arms=tuple(), composed=_composed(), tiers=tiers,
+        arms=_arms(), selected_arms=tuple(), composed=composed, tiers=tiers,
         progress_recovery=_progress(), source_sha256="a" * 64,
-        runtime_sha256="b" * 64, model_parameter_count=1,
-        candidate_distribution=((2, 1),), per_epoch_wall_seconds=1,
+        runtime_sha256="b" * 64,
+        preflight_wall_nanoseconds=1_000_000_000,
+        model_parameter_count=1,
+        candidate_distribution=((2, 32),), per_epoch_wall_seconds=1,
         peak_task_count=1)
     body.update(changes)
+    if "tiers" not in changes:
+        post_population_wall = composed_critical_path_seconds(
+            dict(body["composed"].stage_walls_seconds),
+            body["composed"].dag_edges)
+        measured_ns = body["preflight_wall_nanoseconds"]
+        population_walls = {
+            "D256": (measured_ns * 256 + 32_000_000_000 - 1)
+            // 32_000_000_000,
+            "D512": (measured_ns * 512 + 32_000_000_000 - 1)
+            // 32_000_000_000,
+            "D1024": (measured_ns * 1024 + 32_000_000_000 - 1)
+            // 32_000_000_000,
+        }
+        body["tiers"] = tuple(TierProjectionV2(
+            tier=name, exact_source_supply=True,
+            label_wall_seconds=10_000, label_cpu_seconds=170_000,
+            population_wall_seconds=population_walls[name],
+            complete_dag_wall_seconds=(population_walls[name]
+                                       + post_population_wall),
+            peak_memory_bytes=20 * 1024**3,
+            composed_artifact_bytes=75, free_disk_bytes_before=100)
+            for name in ("D256", "D512", "D1024"))
     if "selected_arms" not in changes:
         body["selected_arms"] = tuple(min(
             (arm for arm in body["arms"] if arm.stage == stage
@@ -230,7 +259,9 @@ def _receipt(**changes):
         body["task_count"] = body["peak_task_count"]
     if "command_wall_seconds" not in changes:
         body["command_wall_seconds"] = (
-            sum(arm.wall_seconds for arm in body["arms"])
+            ((body["preflight_wall_nanoseconds"] + 999_999_999)
+             // 1_000_000_000)
+            + sum(arm.wall_seconds for arm in body["arms"])
             + sum(value for _, value in
                   body["composed"].measured_stage_walls_seconds))
     return CapacityReceiptV2(**body)
@@ -736,23 +767,68 @@ def test_production_command_wall_binds_sequential_arms_plus_dag():
     with pytest.raises(WorldAfterstateV2CapacityError, match="accounting"):
         _receipt(
             arms=arms, selected_arms=selected,
-            command_wall_seconds=sum(arm.wall_seconds for arm in arms)
+            command_wall_seconds=1 + sum(arm.wall_seconds for arm in arms)
             + sum(value for _, value in measured) - 1,
             task_count=1, peak_task_count=1, composed=composed,
             **layout).validate()
     _receipt(
         arms=arms, selected_arms=selected,
-        command_wall_seconds=sum(arm.wall_seconds for arm in arms)
+        command_wall_seconds=1 + sum(arm.wall_seconds for arm in arms)
         + sum(value for _, value in measured),
         task_count=1, peak_task_count=1, composed=composed,
         **layout).validate()
     with pytest.raises(WorldAfterstateV2CapacityError, match="accounting"):
         _receipt(
             arms=arms, selected_arms=selected,
-            command_wall_seconds=sum(arm.wall_seconds for arm in arms)
+            command_wall_seconds=1 + sum(arm.wall_seconds for arm in arms)
             + sum(value for _, value in measured) + 1,
             task_count=1, peak_task_count=1, composed=composed,
             **layout).validate()
+
+
+def test_population_wall_is_inside_tier_projection_and_can_refuse_d256():
+    composed = _composed(stage_walls_seconds={"label-p0": 2_500})
+    post_population_wall = composed_critical_path_seconds(
+        dict(composed.stage_walls_seconds), composed.dag_edges)
+    assert post_population_wall == 4_300
+    fast_arms = tuple(dataclasses.replace(
+        arm,
+        wall_seconds=(1 if (
+            arm.stage == "cohort-concurrency" and arm.variant == 4
+            or arm.stage != "cohort-concurrency"
+            and arm.variant == min(ARM_GRIDS[arm.stage])) else 2),
+        wall_ns=(1_000_000_000 if (
+            arm.stage == "cohort-concurrency" and arm.variant == 4
+            or arm.stage != "cohort-concurrency"
+            and arm.variant == min(ARM_GRIDS[arm.stage])) else 2_000_000_000),
+        busy_core_seconds=(14 if (
+            arm.stage == "cohort-concurrency" and arm.variant == 4
+            or arm.stage != "cohort-concurrency"
+            and arm.variant == min(ARM_GRIDS[arm.stage])) else 28),
+        busy_core_ns=(14_000_000_000 if (
+            arm.stage == "cohort-concurrency" and arm.variant == 4
+            or arm.stage != "cohort-concurrency"
+            and arm.variant == min(ARM_GRIDS[arm.stage])) else 28_000_000_000),
+        mean_cpu_utilization_ppm=875_000)
+        for arm in _arms())
+    receipt = _receipt(
+        arms=fast_arms, composed=composed,
+        preflight_wall_nanoseconds=2_201_000_000_000)
+    receipt.validate()
+    d256 = next(tier for tier in receipt.tiers if tier.tier == "D256")
+    assert d256.population_wall_seconds == 17_608
+    assert d256.complete_dag_wall_seconds == 21_908
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="protocol capacity selection refused"):
+        choose_capacity_tier_v2(receipt)
+
+    omitted = dataclasses.replace(
+        d256, complete_dag_wall_seconds=post_population_wall)
+    tiers = tuple(omitted if tier.tier == "D256" else tier
+                  for tier in receipt.tiers)
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="omits population construction"):
+        dataclasses.replace(receipt, tiers=tiers).validate()
 
 
 def test_tier_selection_is_outcome_blind_and_uses_protocol_thresholds():

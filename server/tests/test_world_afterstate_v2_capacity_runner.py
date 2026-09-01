@@ -29,7 +29,7 @@ from shengji.rl.world_afterstate_v2_capacity_runner import (
     RealMeasurementBackendV2, FullDAGCapacityDependencyBlocked,
     RepresentativeDAGV2, _batched_prediction_identity, _composed_projection,
     _run_with_torch_threads, _scientific_stage_units, _tiers, _dag_attestation,
-    _FULL_DAG_PROVENANCE,
+    _FULL_DAG_PROVENANCE, _progress_event,
     publish_capacity_failure_receipt_v2, reopen_capacity_failure_receipt_v2,
     validate_capacity_arm_census_v2,
 )
@@ -53,7 +53,8 @@ def _preflight() -> PreflightResultV2:
     return PreflightResultV2(
         accepted_fixtures=(fixture,) * 32, attempted=32, accepted=32,
         rejection_counts=(), candidate_distribution=((2, 32),),
-        stratum_distribution=(("early/lead/attacker", 32),))
+        stratum_distribution=(("early/lead/attacker", 32),),
+        elapsed_wall_nanoseconds=1_000_000_000)
 
 
 def test_score_free_preflight_parallelizes_without_eligible_surplus(
@@ -872,6 +873,45 @@ def test_cohort_concurrency_trains_four_complete_cohorts_at_fixed_member_width(
     assert len(set(digests)) == 1
 
 
+def test_cohort_concurrency_constructs_cohorts_inside_outer_wave(monkeypatch):
+    import shengji.rl.world_afterstate_v2_capacity_runner as runner
+    import shengji.rl.world_afterstate_v2_model as model_module
+    import shengji.rl.world_afterstate_v2_training as training_module
+
+    barrier = threading.Barrier(4)
+    constructor_threads = set()
+    lock = threading.Lock()
+    thread_calls = {}
+
+    class FakeModel:
+        pass
+
+    def make_model(_seed):
+        thread = threading.get_ident()
+        with lock:
+            constructor_threads.add(thread)
+            count = thread_calls.get(thread, 0)
+            thread_calls[thread] = count + 1
+        if count == 0:
+            barrier.wait(timeout=2)
+        return FakeModel()
+
+    monkeypatch.setattr(runner, "_capacity_training_batch",
+                        lambda _values: object())
+    monkeypatch.setattr(model_module, "new_world_afterstate_v2_model", make_model)
+    monkeypatch.setattr(training_module, "new_optimizer",
+                        lambda _model, _config: object())
+    monkeypatch.setattr(training_module, "train_epoch",
+                        lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(training_module, "model_state_sha256",
+                        lambda _model: "a" * 64)
+
+    operation = runner._model_operation(
+        "cohort-concurrency", 4, (FixtureV2({"score_free": True}),))
+    runner._run_with_torch_threads(operation, 1)
+    assert len(constructor_threads) == 4
+
+
 def test_torch_training_operation_runs_real_model_step_at_pinned_width(
         monkeypatch):
     import torch
@@ -968,7 +1008,7 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
     assert receipt.continuation_workers == 1
     assert receipt.command_wall_seconds == (
         sum(arm.wall_seconds for arm in result.arms)
-        + len(COMPOSED_STAGE_NAMES))
+        + len(COMPOSED_STAGE_NAMES) + 1)
 
     from dataclasses import replace
     bad = RepresentativeDAGV2(
@@ -994,8 +1034,9 @@ def test_selected_layout_is_frozen_before_supervisor_and_bound_to_receipt(
             _provenance=_PRODUCTION_PROVENANCE)
 
 
-def test_capacity_refuses_underfilled_cohort_wave_before_full_dag(monkeypatch):
+def test_capacity_binds_fastest_measured_cohort_width_into_full_dag(monkeypatch):
     import shengji.rl.world_afterstate_v2_capacity_supervisor as supervisor
+    import shengji.rl.world_afterstate_v2_model as model_module
 
     preflight = _preflight()
 
@@ -1014,11 +1055,16 @@ def test_capacity_refuses_underfilled_cohort_wave_before_full_dag(monkeypatch):
                 byte_identity_sha256="a" * 64)
 
     reached_full_dag = False
+    seen = {}
 
-    def unexpected(*_args, **_kwargs):
+    def run_supervisor(*_args, **kwargs):
         nonlocal reached_full_dag
         reached_full_dag = True
-        raise AssertionError("underfilled cohort wave reached full DAG")
+        seen.update(kwargs)
+        return _full_dag_measurement(
+            member_workers=kwargs["member_workers"],
+            torch_threads=kwargs["torch_threads"],
+            inference_batch=kwargs["inference_batch"])
 
     monkeypatch.setattr(runner, "run_score_free_preflight",
                         lambda **_kwargs: preflight)
@@ -1030,16 +1076,20 @@ def test_capacity_refuses_underfilled_cohort_wave_before_full_dag(monkeypatch):
                         lambda *_args: lambda: "a" * 64)
     monkeypatch.setattr(runner, "_parallel_operation",
                         lambda *_args: lambda: "a" * 64)
-    monkeypatch.setattr(supervisor, "run_full_dag_supervisor", unexpected)
+    monkeypatch.setattr(supervisor, "run_full_dag_supervisor", run_supervisor)
+    monkeypatch.setattr(model_module, "count_trainable_parameters",
+                        lambda _model: 123)
+    monkeypatch.setattr(model_module, "new_world_afterstate_v2_model",
+                        lambda _seed: object())
 
-    with pytest.raises(CapacityRunnerError,
-                       match="does not saturate four cohorts") as caught:
-        runner.measure_capacity_v2(
-            production=True, source_sha256="a" * 64,
-            runtime_sha256="b" * 64)
-    assert caught.value.stage == "measurement"
-    assert caught.value.reason_code == "cohort-concurrency-underfilled"
-    assert reached_full_dag is False
+    result = runner.measure_capacity_v2(
+        production=True, source_sha256="a" * 64,
+        runtime_sha256="b" * 64)
+    assert reached_full_dag is True
+    assert seen["member_workers"] == 1
+    receipt = result.production_receipt()
+    selected = {arm.stage: arm.variant for arm in receipt.selected_arms}
+    assert selected["cohort-concurrency"] == 2
 
 
 def test_census_collects_two_simultaneous_gate_violations():
@@ -1170,7 +1220,8 @@ def test_refuses_byte_mismatch_and_preflight_not_32():
         PreflightResultV2(
             accepted_fixtures=(fixture,) * 31, attempted=31, accepted=31,
             rejection_counts=(), candidate_distribution=((2, 31),),
-            stratum_distribution=(("early/lead/attacker", 31),)).validate()
+            stratum_distribution=(("early/lead/attacker", 31),),
+            elapsed_wall_nanoseconds=1_000_000_000).validate()
 
 
 def test_production_altitude_refuses_fixture_input_identity(monkeypatch):
@@ -1406,9 +1457,10 @@ def test_composed_projection_counts_epochs_and_scales_tiers_by_stage():
     assert sum(units[name][1] for name in (
         "label-p0", "label-fit", "label-precision-select", "label-audit")) == 256
     assert units["block-1-natural"] == (32, 3_200)
-    tiers = _tiers(composed)
-    assert tiers[0].complete_dag_wall_seconds == composed_critical_path_seconds(
-        dict(composed.stage_walls_seconds))
+    tiers = _tiers(composed, preflight_wall_nanoseconds=1_000_000_000)
+    assert tiers[0].population_wall_seconds == 8
+    assert tiers[0].complete_dag_wall_seconds == 8 \
+        + composed_critical_path_seconds(dict(composed.stage_walls_seconds))
     assert tiers[1].complete_dag_wall_seconds \
         > tiers[0].complete_dag_wall_seconds * 2
     assert [tier.exact_source_supply for tier in tiers] == [True, False, False]
@@ -1443,7 +1495,7 @@ def test_projected_label_cpu_uses_measured_stage_cpu_not_wall_times_sixteen():
         reconstruction_workers=1,
         progress_recovery={name: True for name in _RECOVERY_CAPABILITY_NAMES})
     composed = _composed_projection(selected, 32, 10**12, dag)
-    tiers = _tiers(composed)
+    tiers = _tiers(composed, preflight_wall_nanoseconds=1_000_000_000)
     assert dict(composed.measured_stage_cpu_seconds)["label-p0"] == 2
     assert dict(composed.stage_cpu_seconds)["label-p0"] == 6
     assert tiers[0].label_cpu_seconds == 22
@@ -1486,6 +1538,69 @@ def test_underfilled_parallel_label_projection_uses_cpu_not_deal_linear_wall():
     label_fit_wall = dict(composed.stage_walls_seconds)["label-fit"]
     assert label_fit_wall == 612
     assert label_fit_wall != 100 * 88 // 2
+
+
+def test_projected_label_wall_keeps_representative_floor_when_cpu_is_lower():
+    fixture = _preflight().accepted_fixtures[0]
+    selected = {stage: _arm_from_raw(
+        stage, variants[0], RawMeasurementV2(
+            elapsed_ns=1_000_000_000,
+            process_cpu_ns=14_400_000_000,
+            peak_rss_bytes=1_000_000, task_count=1,
+            sample_utilization_ppm=(900_000,),
+            byte_identity_sha256=fixture.fixture_sha256),
+        fixture.fixture_sha256, 1,
+        measured_unit_count=(128 if stage == "continuation-mechanics"
+                             else 32 if stage in ("state-successor",
+                                                   "reconstruction") else 1))
+        for stage, variants in ARM_GRIDS.items()}
+    source_units = {name: 32 for name in COMPOSED_STAGE_NAMES}
+    source_units["label-fit"] = 2
+    dag = RepresentativeDAGV2(
+        100, 100, 100, 100, 100, 100, 100, 1, admissible=True,
+        stage_walls_seconds=tuple(
+            (name, 100) for name in COMPOSED_STAGE_NAMES),
+        stage_wall_nanoseconds=tuple(
+            (name, 100_000_000_000) for name in COMPOSED_STAGE_NAMES),
+        stage_source_unit_counts=tuple(source_units.items()),
+        stage_process_cpu_nanoseconds=tuple(
+            (name, 1_000_000_000) for name in COMPOSED_STAGE_NAMES),
+        member_workers=1, continuation_workers=1,
+        torch_threads=1, inference_batch=32,
+        reconstruction_workers=1,
+        progress_recovery={name: True for name in _RECOVERY_CAPABILITY_NAMES})
+
+    composed = _composed_projection(selected, 32, 10**12, dag)
+    # CPU scaling predicts only a few seconds for the 88 projected units;
+    # the exact representative 100-second wall remains the floor.
+    assert dict(composed.stage_walls_seconds)["label-fit"] == 100
+
+
+def test_progress_event_uses_measured_interval_and_monotonic_headroom():
+    started_ns = 10_000_000_000
+    events = []
+    for elapsed_ns in (3_000_000_000, 7_000_000_000):
+        _progress_event(
+            "state-successor", 1, 2, 1, started_ns, 1, 500_000,
+            events.append, now_ns=started_ns + elapsed_ns)
+
+    assert [event["elapsed_seconds"] for event in events] == [3, 7]
+    assert [event["headroom_seconds"] for event in events] == [
+        runner.MAX_COMMAND_WALL_SECONDS - 3,
+        runner.MAX_COMMAND_WALL_SECONDS - 7,
+    ]
+    assert events[1]["headroom_seconds"] < events[0]["headroom_seconds"]
+
+
+def test_progress_event_refuses_exact_command_cap_expiry():
+    events = []
+    started_ns = 10_000_000_000
+    with pytest.raises(CapacityRunnerError, match="wall cap expired"):
+        _progress_event(
+            "state-successor", 1, 2, 1, started_ns, 1, 500_000,
+            events.append,
+            now_ns=started_ns + runner.MAX_COMMAND_WALL_SECONDS * 1_000_000_000)
+    assert events == []
 
 
 def test_build_receipt_cannot_promote_false_measured_progress_probe():

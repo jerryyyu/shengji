@@ -271,6 +271,22 @@ def test_retry_ordinal_two_is_exhausted_and_settled_once(tmp_path, monkeypatch):
         "spent_tokens": 300, "refused_response_count": 3,
         "reserved_call_count": 0, "event_count": 6, "crossed": True}
 
+    class FourthDispatch:
+        calls = 0
+
+        def call(self, current):
+            self.calls += 1
+            return _response(current)
+
+    fourth = FourthDispatch()
+    with pytest.raises(
+            journal_module.SealedTurnRefusal,
+            match=r"^provider call previously refused$"):
+        journal.call(packet, fourth)
+    assert fourth.calls == 0
+    assert [journal._attempt(group).attempt_ordinal
+            for group in journal._scan()] == [0, 1, 2]
+
 
 def test_runner_restart_replays_durable_eligible_refusal_with_ledger(
         tmp_path, monkeypatch):

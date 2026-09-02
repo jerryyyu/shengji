@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import copy
 import base64
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import hashlib
 import json
 import os
 from pathlib import Path
 import sys
+import threading
 import time
 
 import pytest
@@ -98,6 +100,52 @@ def test_contained_run_proxies_exact_result_and_enforces_timeout(tmp_path):
             (sys.executable, "-c", "import time; time.sleep(60)"),
             b"", tmp_path, 1)
     assert time.monotonic() - started < 5
+
+
+def test_clean_contained_run_does_not_signal_a_reaped_process_group(
+        tmp_path, monkeypatch):
+    def refuse_post_wait_signal(_process_group, _signal):
+        raise PermissionError(1, "Operation not permitted")
+    monkeypatch.setattr(transport_module.os, "killpg",
+                        refuse_post_wait_signal)
+    exact = transport_module._default_run(
+        (sys.executable, "-c", "pass"), b"", tmp_path, 5)
+    assert exact.returncode == 0
+    failed = transport_module._default_run(
+        (sys.executable, "-c", "raise SystemExit(7)"), b"", tmp_path, 5)
+    assert failed.returncode == 7
+
+
+def test_cancellation_owns_process_group_cleanup_once(tmp_path, monkeypatch):
+    manager = transport_module.ActiveCallManager()
+    original_killpg = os.killpg
+    calls = []
+    lock = threading.Lock()
+    def one_signal(process_group, sent_signal):
+        with lock:
+            calls.append((process_group, sent_signal))
+            ordinal = len(calls)
+        if ordinal > 1:
+            raise PermissionError(1, "Operation not permitted")
+        original_killpg(process_group, sent_signal)
+    monkeypatch.setattr(transport_module.os, "killpg", one_signal)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(
+            transport_module._default_run,
+            (sys.executable, "-c", "import time; time.sleep(60)"),
+            b"", tmp_path, 60, _active_call_manager=manager)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with manager._lock:
+                if manager._calls:
+                    break
+            time.sleep(0.01)
+        else:
+            raise AssertionError("contained process was not registered")
+        manager.terminate()
+        result = future.result(timeout=5)
+    assert result.returncode != 0
+    assert len(calls) == 1
 
 
 def test_active_call_manager_kills_concurrent_groups_and_helper_orphan(

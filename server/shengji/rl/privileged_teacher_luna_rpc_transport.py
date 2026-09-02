@@ -350,14 +350,19 @@ class ActiveCallManager:
             raise CodexProviderResourceError(
                 "Codex process-group registration refused")
 
-    def release(self, process_group: int, watchdog_fd: int) -> None:
+    def claim_release(self, process_group: int, watchdog_fd: int) -> bool:
+        """Atomically transfer cleanup ownership back to one caller."""
         owned = False
         with self._lock:
             if self._calls.get(process_group) == watchdog_fd:
                 self._calls.pop(process_group, None)
                 owned = True
+        return owned
+
+    def release(self, process_group: int, watchdog_fd: int) -> None:
         # Cancellation owns closure after it removes the mapping.  Never
         # close an already-removed descriptor: its integer may be reused.
+        owned = self.claim_release(process_group, watchdog_fd)
         if owned:
             try:
                 os.close(watchdog_fd)
@@ -418,10 +423,13 @@ def _default_run(command: tuple[str, ...], prompt: bytes, workspace: Path,
             active_calls=active_calls)
     except OSError as exc:
         raise CodexProviderResourceError("Codex turn launch failed") from exc
+    result: InvocationResult | None = None
     try:
         stdout, stderr = process.communicate(input=prompt,
                                              timeout=timeout_seconds)
         returncode = int(process.returncode or 0)
+        wall_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
+        result = InvocationResult(returncode, stdout, stderr, wall_ms)
     except subprocess.TimeoutExpired as exc:
         try:
             os.killpg(process.pid, signal.SIGKILL)
@@ -431,17 +439,35 @@ def _default_run(command: tuple[str, ...], prompt: bytes, workspace: Path,
         raise CodexProviderResourceError(
             "Codex turn deadline exceeded") from exc
     finally:
-        # Kill the recorded group even if the helper leader already exited:
-        # a helper-only crash must not orphan its Codex descendant.
+        # Exactly one path owns group cleanup.  Cancellation removes the
+        # mapping before signaling, so the completing call must not signal the
+        # same group again.  A clean helper return means the wrapper already
+        # waited for its Codex child; signaling after communicate() would act
+        # on a reaped group leader and can race with PGID reuse on macOS.
+        owned = active_calls.claim_release(process.pid, watchdog_fd)
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        if process.poll() is None:
-            process.communicate()
-        active_calls.release(process.pid, watchdog_fd)
-    wall_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
-    return InvocationResult(returncode, stdout, stderr, wall_ms)
+            # A positive result code is a clean wrapper exit carrying the
+            # already-waited provider's failure code.  Only an externally
+            # signaled wrapper (negative code) can strand its child group.
+            if owned and (process.poll() is None
+                          or result is not None and result.returncode < 0):
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                except PermissionError as exc:
+                    raise CodexProviderResourceError(
+                        "Codex process-group cleanup refused") from exc
+            if process.poll() is None:
+                process.communicate()
+        finally:
+            if owned:
+                try:
+                    os.close(watchdog_fd)
+                except OSError:
+                    pass
+    assert result is not None
+    return result
 
 
 def attest_codex_runtime(codex_binary: Path | str) -> dict[str, object]:

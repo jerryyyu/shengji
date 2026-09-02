@@ -841,13 +841,13 @@ worker domain or repaired runtime identity implicitly.
 The first repaired-head capacity attempt refused honestly before freeze: its
 unconditional serial projection was 24,283 seconds against the fixed
 21,600-second cap.  Replaying the same sealed stage walls through the exact
-selected-width topologies gives 24,283 seconds at width one, 22,965 at the
-attempt's selected width two, and 16,941 at width four.  These counterfactuals
-diagnose a projection/execution mismatch; they are not new capacity evidence,
-and the width-two result still exceeds the cap.  The cap remains fixed, the
-failed namespace is not retried, and this accounting repair alone does not
-authorize or predict a passing fresh census.  A further measured hot-path
-repair or a newly selected passing width is required before freeze.
+selected-width topologies gives 24,283 seconds at width one, 22,965 at width
+two, and 16,941 at width four.  The legacy failure receipt did not retain the
+selected cohort arm, so it cannot establish which counterfactual applies.
+These numbers diagnose a projection/execution mismatch; they are not new
+capacity evidence.  The cap remains fixed, the failed namespace is not
+retried, and this accounting repair alone does not predict a passing fresh
+census: widths one and two still refuse, while width four fits.
 
 This correction bumps the capacity receipt, composed/rejected projection,
 failure, and measurement-scope schemas.  The arm wire schema and production

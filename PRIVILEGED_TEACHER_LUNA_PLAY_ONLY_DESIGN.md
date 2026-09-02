@@ -1,0 +1,268 @@
+# PT-Luna play-only acquisition — simplified redesign
+
+Status: design only. This document authorizes no implementation, formal
+capacity run, scientific collection, outcome opening, Value label, gameplay
+claim, merge, promotion, retry of a spent namespace, or deployment. It
+supersedes the model-interaction and capacity portions of
+`PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md`; the fresh population, mirrored
+assignments, private/public boundary, Value-use restriction, and all-false
+authority remain unchanged.
+
+Jerry separately authorizes the bounded casual probes in section 7 after this
+design receives an independent review. Those probes are non-scientific, use
+fresh casual namespaces, and cannot satisfy capacity or enter a training or
+evaluation corpus.
+
+## 1. Why the previous lane closed
+
+The reviewed `d402bcb7` capacity attempt is terminally sealed at:
+
+```text
+/Users/jerryyu/.shengji-runs/pt-luna-rpc-d402bcb7-ladder-r1/capacity.json
+file sha256: ceb91adf217c2f4f1ff059cae856e6137a5d647358d9dab9d2662746aaa0e052
+receipt sha256: f8a899c90cc5556b362f4ec9aa796464a1cd36b0f9f27dc73f490304d02327a2
+route: REFUSE_RESOURCE_OR_PROVIDER
+```
+
+The one-worker health arm completed 2/2 games. The four-worker arm completed
+only 4/8 games. Two calls were rejected because a zero-exit Codex process
+emitted nonempty stderr; one lacked the exact required completion telemetry;
+and one public `journal-io` label was a wrapper-classification defect. Source
+inspection proves that `FileTurnJournal.call()` caught a non-`TurnRPCError`
+from dispatch/transport, sealed its original disposition privately, then
+raised `TurnJournalError("planner transport exception")`. Capacity snapshotted
+the wrapper rather than `pending_refusal_failure_disposition()` and deleted the
+temporary journal, so the underlying exception is unknowable. This is an
+observability defect, not evidence of filesystem corruption.
+
+Reliability is not the only failure. Arm-four p95 game wall was 1,199.406
+seconds. A four-worker 104-game run needs p95 at or below 886.154 seconds to
+fit 26 batches plus 25% headroom inside 28,800 seconds. The measured projection
+is 38,980.684 seconds (10.83 hours). Raw concurrency was healthy: four active
+RPCs, 3.363 effective workers, 0.824 scaling efficiency, no swap, and passing
+mechanics/RSS checks. More workers alone do not repair slow individual games.
+
+The arm-four record contains 671 RPCs, 529 committed plays, and 138 successful
+rollout-phase RPCs. Optional model-directed rollout phases therefore consumed
+about 20.6% of observed calls. This redesign removes them from acquisition
+rather than raising the wall cap to fit the failed recipe.
+
+## 2. Narrow purpose
+
+This lane collects fresh, full-information, whole-round PT-Luna trajectories
+for later engine relabeling in Value-Afterstate V2. It tests whether a
+reasoning policy supplies a useful, diverse state source. It is not itself a
+value, policy-strength, or belief experiment.
+
+The lane no longer promises a rollout-work atlas. If model-directed rollout
+allocation is studied again, it uses a separate small development experiment;
+it cannot block or contaminate state-source acquisition.
+
+## 3. Play-only supervisor contract
+
+The supervisor owns the engine, legality, state progression, private team
+memories, deadlines, journaling, and sealing. Two logical `gpt-5.6-luna`
+planners at medium reasoning control opposing partnerships. At most one RPC is
+in flight per game; independent games may run concurrently.
+
+Forced single-candidate moves advance mechanically with no model call. At each
+contested decision, the acting planner receives the same canonical
+full-information state, public history, private team memory, legal candidates,
+production-prior index, identity hashes, and remaining budgets already defined
+by the predecessor design. It returns exactly one closed object:
+
+```json
+{
+  "schema": "pt-luna-play-intent-v1",
+  "decision_sha256": "...",
+  "candidate_index": 0,
+  "confidence": "low|medium|high",
+  "planning_note": "at most 2048 UTF-8 bytes"
+}
+```
+
+There is no `rollout` intent, continuation choice, second planning phase, or
+model-owned engine tool. Candidate zero remains the production prior but is
+not a fallback: invalid, late, stale, tool-bearing, or illegal output refuses
+the game without mutating engine state or team memory.
+
+All model calls use the reviewed supervisor-owned Codex transport. Exact model,
+reasoning effort, CLI/catalog, schema, prompt template, environment, sandbox,
+and parser are source-bound before formal capacity. A direct Responses API
+adapter is out of scope.
+
+## 4. Narrow availability redispatch
+
+The scientific no-retry rule remains the default. A packet may be redispatched
+only for these two observed transport-availability failures, before any engine
+or memory commit:
+
+1. a zero-exit provider process with nonempty stderr; or
+2. exact Codex completion-envelope telemetry drift.
+
+At most two redispatches of the identical immutable decision packet are
+allowed, for at most three total attempts. Every attempt has a unique ordinal,
+retains its private trace hash and public typed disposition, and is charged to
+the shared wall/token ledgers. No prompt, state, memory, candidate order,
+deadline, model parameter, or parser byte may change between attempts.
+
+The following are never redispatchable: nonzero exit, missing or malformed
+model intent, tool event, illegal candidate, stale/binding mismatch, engine or
+privacy failure, journal/seal failure, resource-meter failure, per-call or
+game deadline, or any unknown exception. An exhausted eligible packet refuses
+the game. There is no game replacement or seed replacement.
+
+The journal must preserve the original sealed disposition when dispatch or
+transport raises a non-`TurnRPCError`. A production-altitude witness injects
+such an exception and requires the public metric to retain its original stage,
+kind, type, and sanitized message hash after temporary-journal cleanup.
+
+## 5. Population and outcome-blind routes
+
+The full population remains 52 fresh deal clusters x two mirrored team
+assignments = 104 whole games, with the same domain separation, all five trump
+modes, all 13 trump ranks, both banker partnerships, and mirror-root identity
+defined by the predecessor design.
+
+The first 16 smallest pre-play cluster hashes remain the only PT-Luna clusters
+eligible for the Value V2 D512 diverse-fit source. Capacity may select one of
+three routes using resource/reliability measurements only, before any
+scientific action or outcome is opened:
+
+- `FULL_104_ELIGIBLE`: run all 52 clusters x two mirrors.
+- `PILOT_32_ELIGIBLE`: run only the predeclared first 16 clusters x two
+  mirrors. This is a D512-oriented state-source pilot, not a complete atlas and
+  cannot later be described as the 104-game lane.
+- `REFUSE_RESOURCE_OR_PROVIDER`: run neither population.
+
+The route cannot depend on actions, outcomes, teacher advantage, Value
+performance, or post-capacity operator choice. A separate immutable launch
+freeze is still required after a passing capacity route.
+
+## 6. Formal canary and capacity gate
+
+One formal score-free attempt, in a fresh namespace, performs:
+
+1. a natural contested-decision boundary canary proving one validated play,
+   exact engine transition, private-memory isolation, zero tools, complete
+   usage, and no pre-validation mutation;
+2. a one-worker health arm with two complete play-only games; and
+3. a four-worker arm with eight complete play-only games.
+
+The arm-four run is selectable only when all eight games independently reopen,
+no availability packet exhausts its redispatches, no non-availability failure
+occurs, mechanics/privacy/RSS/swap checks pass, observed parallelism is at
+least 2.8, and scaling efficiency relative to arm one is at least 0.70.
+
+Capacity records per-attempt and per-game wall/tokens, first-attempt failure
+incidence by the two eligible classes, redispatch count, exhausted count,
+process-tree RSS, swap, CPU, active RPCs, provider/tool/schema counts, and exact
+typed failures. It discards actions, outcomes, model prose, and trajectories.
+
+Route selection then uses nearest-rank p95 complete-game wall (therefore the
+maximum at n=8) with 25% headroom. All comparisons use integer nanoseconds;
+the equations below are explanatory rather than a floating-point
+implementation:
+
+```text
+full_projection_seconds = ceil(104 / 4) * p95_game_seconds * 1.25
+pilot_projection_seconds = ceil(32 / 4) * p95_game_seconds * 1.25
+```
+
+- `FULL_104_ELIGIBLE` requires
+  `p95_game_wall_ns <= 886153846153` and full projection <= 28,800 seconds.
+- Otherwise, `PILOT_32_ELIGIBLE` requires p95 <= 1,200 seconds and pilot
+  projection <= 12,000 seconds.
+- Otherwise capacity refuses.
+
+Neither route permits increasing worker count, wall/token caps, retry count,
+or population after seeing the receipt. The pilot cannot be extended to the
+remaining clusters under the same admission.
+
+The scientific freeze derives its per-call token reserve from 125% of the
+largest independently reopened capacity attempt and binds the measured
+first-attempt/redispatch accounting. The full route retains the existing
+28,800-second population wall. The pilot route binds a separate 12,000-second
+population wall. Both retain the existing memory/swap constraints and publish
+visible completed-games, cluster, elapsed, ETA, active-worker/RPC, token,
+failure, and deadline-headroom progress.
+
+## 7. Authorized casual probes after design review
+
+These probes answer design questions only. They use fixed fresh packets or
+roots outside formal schedules, `scientific:false`, aggregate
+transport/resource reports, and no later source selection from actions or
+outcomes.
+
+### 7.1 Availability and concurrency probe
+
+Run 24 fixed play-only decision packets once serially and once at concurrency
+four. For the two eligible availability failures only, allow at most two
+same-packet redispatches. Stop at 600 seconds, 650,000 charged tokens, three
+first-attempt failures, any exhausted packet, tool event, identity drift, or
+engine mutation.
+
+This asks whether the observed provider failures concentrate under concurrency
+and whether they are transient. Zero failures is non-reproduction, not a
+formal reliability proof.
+
+### 7.2 Play-only whole-game falsification
+
+After the source implements sections 3-4 and passes focused tests, run two
+fresh casual deal clusters with both mirrors: four concurrent whole games,
+medium reasoning, and the proposed availability redispatch contract. Stop on
+any exhausted packet, tool/privacy/mechanics failure, any game above 886
+seconds, 4,000,000 charged tokens, or 2,400 seconds total.
+
+The full-104 route remains plausible only if 4/4 games complete, maximum game
+wall is at most 800 seconds, and no packet exhausts its redispatches. A game
+above 886 seconds kills the full route at worker four; it does not authorize a
+cap increase.
+
+### 7.3 Conditional probes
+
+Only if play-only is reliable but remains too slow may one paired low/medium
+packet-timing probe run on 24 fixed packets. Low effort is retained only with
+at least 20% lower p95 call wall and no additional refusal. Worker six is not
+probed unless worker four is reliable and lands in the 800-900-second marginal
+band; it must reach effective parallelism >=4.2, scaling efficiency >=0.70,
+and no more than 10% p95 RPC degradation. Either change requires a new formal
+source/capacity review.
+
+## 8. Fault tolerance and stop rule
+
+The predecessor write-ahead journal, per-game sealed artifacts, shared atomic
+budget ledger, restart-safe publication, exact-byte reopening, and no duplicate
+provider dispatch after a known response remain in force. A process death with
+unknown call disposition seals that game incomplete; it does not use the new
+availability redispatch path.
+
+If one reviewed play-only/redispatch design exhausts a transport packet or
+misses the selected route's wall projection, stop the full-104 PT-Luna effort
+on Mini. Do not iterate caps, drop mirrors, replace seeds, or shorten games
+while calling it the same lane. A future direct-transport design would be a new
+proposal.
+
+## 9. Review economy and authority
+
+Use three review moments total from this redesign:
+
+1. this one-file design review;
+2. one consolidated exact-head source + formal canary/capacity-launch review,
+   informed by the casual probes; and
+3. only after a validated passing capacity receipt, one immutable
+   receipt-bound population/runtime freeze review for the selected full or
+   pilot route.
+
+Do not add a separate formal rehearsal after capacity. Source tests must cover
+play-only schema closure, forced/contested plays, both team memories, exact
+redispatch eligibility, attempt charging, exhausted refusal, every forbidden
+redispatch class, preserved underlying failure disposition, no commit before a
+validated response, crash recovery, terminal routing, and complete schedule
+wiring with fake responders.
+
+Every capacity and collection terminal carries all gameplay-strength, Value
+label, BELIEF integration, promotion, merge, deployment, and production
+authorities false. A design PASS authorizes only the casual probes in section 7
+under Jerry's separate authorization; it does not authorize implementation or
+formal compute.

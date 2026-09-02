@@ -1305,6 +1305,46 @@ def test_cohort_checkpoint_controller_trains_and_reopens_in_real_child():
     assert all(row["seed_block"] == 2 for row in result["checkpoints"])
 
 
+def test_control_cohort_group_trains_three_controllers_in_real_spawn_child():
+    from test_world_afterstate_v2_controls import _population as _control_population
+    from test_world_afterstate_v2_evaluation import _population
+    from shengji.rl.world_afterstate_v2_controls import (
+        action_association_permutation, complete_world_shuffle,
+        control_training_examples, label_permutation,
+    )
+    from shengji.rl.world_afterstate_v2_training import (
+        WorldAfterstateV2TrainingConfig)
+    from shengji.rl.world_afterstate_v2_selection import EpochSelectPopulationV2
+
+    natural = tuple(_control_population("a", "b", "c", "d"))
+    tasks = []
+    for name, transform in (
+            (runner.CONTROL_NAMES[0], action_association_permutation),
+            (runner.CONTROL_NAMES[1], label_permutation),
+            (runner.CONTROL_NAMES[2], complete_world_shuffle)):
+        controlled, _evidence = transform(natural)
+        tasks.append((name, 1, control_training_examples(controlled), natural))
+    _predictions, outcomes, _prior, root = _population(
+        root="capacity-controls-real-child")
+    selection = EpochSelectPopulationV2(
+        (dataclasses.replace(
+            root, split="select", select_subfold="epoch-select"),),
+        tuple(dataclasses.replace(row, split="select") for row in outcomes))
+    config = WorldAfterstateV2TrainingConfig(
+        learning_rate_ppb=10_000_000, weight_decay_ppb=0,
+        gradient_norm_milli=1_000, max_epochs=1,
+        sigma_pair_squared=1.0)
+    payload = ("controls", tuple(tasks), selection, "d" * 64, config, 4)
+    with ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=multiprocessing.get_context("spawn")) as pool:
+        result, = tuple(pool.map(runner._cohort_controller_group, (payload,)))
+    assert tuple(row["task"] for row in result) == runner.CONTROL_NAMES
+    assert all(row["seed_block"] == 1 for row in result)
+    assert all(len(row["checkpoints"]) == runner.COHORT_MEMBER_WORKERS
+               for row in result)
+
+
 def test_torch_training_operation_runs_real_model_step_at_pinned_width(
         monkeypatch):
     import torch

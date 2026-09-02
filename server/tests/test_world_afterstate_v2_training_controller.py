@@ -51,7 +51,7 @@ def _build(*, max_epochs=1, selection_population=None, **kwargs):
         **options)
 
 
-def test_overlapping_cohorts_keep_process_global_torch_width_pinned(
+def test_overlapping_cohorts_keep_inherited_torch_width_pinned(
         monkeypatch):
     import shengji.rl.world_afterstate_v2_training_controller as controller
 

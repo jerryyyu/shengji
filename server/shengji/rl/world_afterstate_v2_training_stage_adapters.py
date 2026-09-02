@@ -51,7 +51,7 @@ from .world_afterstate_v2_schedule import derive_nested_prefixes, training_epoch
 from .world_afterstate_v2_training_controller import (
     CohortTrainingBuildV2, SingleMemberTrainingBuildV2, reopen_cohort_build,
     reopen_member_build, train_named_cohort, train_named_member,
-    validate_cohort_manifest,
+    validate_cohort_manifest, controller_process_torch_scope,
 )
 from .world_afterstate_v2_training import model_state_sha256
 from .world_afterstate_v2_training_recovery_store import (
@@ -1030,11 +1030,12 @@ class _CohortAdapter:
             if stage_workers < 1:
                 raise TrainingStageAdapterUnavailable(
                     f"{self.stage} cohort concurrency is under-provisioned")
-            if len(prepared) == 1:
-                trained = (train_one(prepared[0]),)
-            else:
-                with ThreadPoolExecutor(max_workers=stage_workers) as pool:
-                    trained = tuple(pool.map(train_one, prepared))
+            with controller_process_torch_scope(inputs.torch_threads):
+                if len(prepared) == 1:
+                    trained = (train_one(prepared[0]),)
+                else:
+                    with ThreadPoolExecutor(max_workers=stage_workers) as pool:
+                        trained = tuple(pool.map(train_one, prepared))
             for name, item, evidence, build in trained:
                 artifacts = _publish_cohort_artifacts(
                     supervisor, name, self.seed_block, build)

@@ -68,7 +68,7 @@ from .world_afterstate_v2_inference import build_inference_root_v2
 from .world_afterstate_v2_label import ContinuationOutcomeV2
 from .world_afterstate_v2_selection import EpochSelectPopulationV2
 from .world_afterstate_v2_training_controller import (
-    reopen_cohort_build, train_named_cohort,
+    controller_process_torch_scope, reopen_cohort_build, train_named_cohort,
 )
 from .world_afterstate_v2_artifacts import (
     publish_checkpoint_shard, reopen_checkpoint_shard,
@@ -1327,15 +1327,16 @@ def _cohort_controller_group(payload: tuple[
     prepared = tuple((name, block, rows, natural, selection,
                       freeze_sha256, config)
                     for name, block, rows, natural in tasks)
-    if group == "controls":
-        workers = 1 if variant == 1 else variant - 1
-        with ThreadPoolExecutor(max_workers=workers) as pool:
-            return tuple(pool.map(_cohort_checkpoint_rows, prepared))
-    if group == "natural":
-        if len(prepared) != 1:
-            raise CapacityRunnerError("capacity natural controller group drift")
-        return (_cohort_checkpoint_rows(prepared[0]),)
-    raise CapacityRunnerError("capacity controller group drift")
+    with controller_process_torch_scope(PINNED_TORCH_THREADS):
+        if group == "controls":
+            workers = 1 if variant == 1 else variant - 1
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                return tuple(pool.map(_cohort_checkpoint_rows, prepared))
+        if group == "natural":
+            if len(prepared) != 1:
+                raise CapacityRunnerError("capacity natural controller group drift")
+            return (_cohort_checkpoint_rows(prepared[0]),)
+        raise CapacityRunnerError("capacity controller group drift")
 
 
 def _run_cohort_concurrency_benchmark(

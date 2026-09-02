@@ -13,6 +13,7 @@ import hashlib
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
@@ -37,15 +38,45 @@ from .world_afterstate_v2_training import (
 )
 
 
-# ``torch.set_num_threads`` is process-global.  The capacity-selected
-# width-four schedule deliberately overlaps three cohort controllers in one
-# process, so per-call save/set/restore can restore a wider value while a
-# sibling is still training.  A shared lease keeps the pinned value live until
-# the final overlapping controller exits without serializing model work.
+# A newly-created Python worker thread inherits the creator's Torch thread
+# width, while later ``set_num_threads`` calls are not reliably reflected in
+# already-running siblings.  Production therefore pins the controller process
+# before it creates cohort threads.  The shared lease below then prevents any
+# overlapping cohort from restoring that inherited width before its siblings
+# finish.
 _TORCH_THREAD_SCOPE_LOCK = threading.Lock()
 _TORCH_THREAD_SCOPE_USERS = 0
 _TORCH_THREAD_SCOPE_WIDTH: int | None = None
 _TORCH_THREAD_SCOPE_PRIOR: int | None = None
+
+
+@contextmanager
+def controller_process_torch_scope(torch_threads: int):
+    """Pin the creator thread before any cohort-controller threads exist."""
+    if (isinstance(torch_threads, bool) or not isinstance(torch_threads, int)
+            or torch_threads != PINNED_TORCH_THREADS):
+        raise WorldAfterstateV2TrainingControllerError(
+            "controller process Torch thread scope drift")
+    with _TORCH_THREAD_SCOPE_LOCK:
+        if _TORCH_THREAD_SCOPE_USERS != 0:
+            raise WorldAfterstateV2TrainingControllerError(
+                "controller process Torch thread scope drift")
+        prior = torch.get_num_threads()
+        torch.set_num_threads(torch_threads)
+        if torch.get_num_threads() != torch_threads:
+            torch.set_num_threads(prior)
+            raise WorldAfterstateV2TrainingControllerError(
+                "controller process Torch thread scope drift")
+    try:
+        yield
+    finally:
+        with _TORCH_THREAD_SCOPE_LOCK:
+            drifted = (_TORCH_THREAD_SCOPE_USERS != 0
+                       or torch.get_num_threads() != torch_threads)
+            torch.set_num_threads(prior)
+        if drifted:
+            raise WorldAfterstateV2TrainingControllerError(
+                "controller process Torch thread scope drift")
 
 
 def _acquire_torch_thread_scope(torch_threads: int) -> None:

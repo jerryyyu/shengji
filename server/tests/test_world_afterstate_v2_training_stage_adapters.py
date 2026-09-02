@@ -90,6 +90,8 @@ def test_closed_mapping_contains_exact_six_ordered_cohorts_and_rejects_drift():
 def test_block1_controls_follow_capacity_selected_schedule(
         monkeypatch, cohort_workers, expected_peak):
     """Witness the adapter wiring, not merely ThreadPoolExecutor itself."""
+    import torch
+
     adapter = adapters.block_1_controls_adapter(
         freeze=_Freeze(), repo=Path("/tmp"))
     names = adapter.control_names
@@ -134,6 +136,7 @@ def test_block1_controls_follow_capacity_selected_schedule(
 
     def train_named_cohort(*, cohort_name, member_workers, **_kwargs):
         nonlocal active, peak_active
+        assert torch.get_num_threads() == 1
         entered.append(cohort_name)
         member_widths.append(member_workers)
         with active_lock:
@@ -168,10 +171,16 @@ def test_block1_controls_follow_capacity_selected_schedule(
                         lambda *_args, **_kwargs: b"{}\n")
     monkeypatch.setattr(adapters, "_strict_json", lambda _raw: {"ok": True})
 
-    assert adapter(_Supervisor(), ()) == {"ok": True}
-    assert tuple(entered) == names
-    assert member_widths == [4, 4, 4]
-    assert peak_active == expected_peak
+    prior_threads = torch.get_num_threads()
+    torch.set_num_threads(4)
+    try:
+        assert adapter(_Supervisor(), ()) == {"ok": True}
+        assert tuple(entered) == names
+        assert member_widths == [4, 4, 4]
+        assert peak_active == expected_peak
+        assert torch.get_num_threads() == 4
+    finally:
+        torch.set_num_threads(prior_threads)
 
 
 def test_cohort_artifacts_publish_and_reopen_with_mutation_resistance(tmp_path):

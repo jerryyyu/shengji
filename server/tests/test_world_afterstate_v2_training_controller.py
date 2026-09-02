@@ -51,6 +51,30 @@ def _build(*, max_epochs=1, selection_population=None, **kwargs):
         **options)
 
 
+def test_overlapping_cohorts_keep_process_global_torch_width_pinned(
+        monkeypatch):
+    import shengji.rl.world_afterstate_v2_training_controller as controller
+
+    assert controller._TORCH_THREAD_SCOPE_USERS == 0
+    state = {"threads": 8}
+    writes = []
+    monkeypatch.setattr(
+        controller.torch, "get_num_threads", lambda: state["threads"])
+
+    def set_threads(value):
+        writes.append(value)
+        state["threads"] = value
+
+    monkeypatch.setattr(controller.torch, "set_num_threads", set_threads)
+    controller._acquire_torch_thread_scope(1)
+    controller._acquire_torch_thread_scope(1)
+    controller._release_torch_thread_scope(1)
+    assert state["threads"] == 1
+    controller._release_torch_thread_scope(1)
+    assert state["threads"] == 8
+    assert writes == [1, 8]
+
+
 def test_happy_path_reopens_four_checkpoints_and_progress():
     progress = []
     build = _build(progress=lambda row: progress.append(row))

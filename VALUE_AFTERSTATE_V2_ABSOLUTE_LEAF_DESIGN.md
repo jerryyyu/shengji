@@ -772,6 +772,17 @@ selected width.  The scientific supervisor must consume that selected width;
 it may not insist on four-way concurrency when a narrower arm completes the
 same fixed workload faster.
 
+The cohort selector runs one score-free first pass at widths `1,2,4`, then a
+second pass in reverse order `4,2,1`.  Every pass executes the same complete
+16-model workload and is subject to the command deadline, memory, swap,
+runtime, and byte-identity checks.  For each width, the receipt-bearing arm
+aggregates both passes: elapsed wall, CPU, and disk work are summed; resource
+peaks are maximized; and samples are concatenated.  Selection therefore ranks
+the same fixed two-pass workload for every width, and the receipt's command
+wall and peak-task reconstruction include all six executions.  This fixed
+balanced order prevents first-import/page-cache startup from deciding the
+production topology; it is not an outcome-dependent repeat or retry.
+
 The composed projection uses the same selected-width topology as production.
 Block-1 natural and nested 25/50/100 remain serial.  At width one, the three
 controls and block-2 natural follow serially.  At width two, the serial controls

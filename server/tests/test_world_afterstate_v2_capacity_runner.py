@@ -48,6 +48,12 @@ def _runtime_pool_probe():
     return os.environ.get(execution.RUNTIME_EXPECTATION_ENV)
 
 
+def _cohort_payload_probe(payload):
+    name, block, rows, natural, selection, freeze, config = payload
+    return (name, block, len(rows), natural is None,
+            selection.population_sha256, freeze, config.max_epochs)
+
+
 def _preflight() -> PreflightResultV2:
     fixture = FixtureV2({"score_free": True})
     return PreflightResultV2(
@@ -560,7 +566,6 @@ def test_capacity_training_batch_reaches_real_optimizer_and_model_state(
 
 @pytest.mark.parametrize(("stage", "width", "member_count"), (
     ("member-concurrency", 4, 4),
-    ("cohort-concurrency", 4, 16),
 ))
 def test_training_capacity_operations_wire_real_128_row_batch_and_population(
         monkeypatch, stage, width, member_count):
@@ -772,6 +777,88 @@ def test_every_frozen_arm_runs_and_synthetic_cannot_publish():
     assert events[-1]["completed_units"] == len(ARM_GRIDS[events[-1]["stage"]])
 
 
+def test_real_cohort_selector_warms_ascending_then_measures_descending(
+        monkeypatch):
+    calls = []
+
+    class RecordingBackend:
+        synthetic = False
+
+        def measure(self, stage, variant, _fixture, _operation):
+            calls.append((stage, variant))
+            identity_stage = stage.removesuffix("-warm")
+            identity = hashlib.sha256(identity_stage.encode("ascii")).hexdigest()
+            return RawMeasurementV2(
+                elapsed_ns=(variant + 1) * 1_000_000,
+                process_cpu_ns=(variant + 1) * 8_000_000,
+                peak_rss_bytes=1_000_000, task_count=1,
+                sample_utilization_ppm=(500_000,),
+                byte_identity_sha256=identity)
+
+    monkeypatch.setattr(
+        runner, "_capacity_arm_operation",
+        lambda stage, variant, fixtures, fixture_sha, targets, synthetic: (
+            lambda: hashlib.sha256(stage.encode("ascii")).hexdigest(),
+            targets[stage][0]))
+    receipt = object()
+    monkeypatch.setattr(runner, "build_receipt_v2",
+                        lambda *_args, **_kwargs: receipt)
+    result = measure_capacity_v2(
+        preflight=_preflight(), backend=RecordingBackend(),
+        host=HostTelemetryV2(16, free_disk_bytes=10**9),
+        production=False)
+    assert result.receipt is receipt
+    assert [row for row in calls if row[0].startswith("cohort-concurrency")] \
+        == [("cohort-concurrency-warm", 1),
+            ("cohort-concurrency-warm", 2),
+            ("cohort-concurrency-warm", 4),
+            ("cohort-concurrency", 4),
+            ("cohort-concurrency", 2),
+            ("cohort-concurrency", 1)]
+    cohort_arms = {
+        arm.variant: arm for arm in result.arms
+        if arm.stage == "cohort-concurrency"}
+    assert set(cohort_arms) == {1, 2, 4}
+    for variant, arm in cohort_arms.items():
+        assert arm.measured_unit_count == 32
+        assert arm.wall_nanoseconds == 2 * (variant + 1) * 1_000_000
+        assert arm.busy_core_ns == 2 * (variant + 1) * 8_000_000
+        assert arm.peak_task_count == 1
+
+
+def test_capacity_repeat_accounting_sums_work_and_keeps_resource_peaks():
+    identity = hashlib.sha256(b"same-output").hexdigest()
+    warm = RawMeasurementV2(
+        elapsed_ns=11, process_cpu_ns=101, peak_rss_bytes=1_001,
+        task_count=2, sample_utilization_ppm=(100_000,),
+        sample_memory_bytes=(1_001,), sample_task_counts=(2,),
+        sample_swap_bytes=(0,), sample_free_disk_bytes=(9_001,),
+        queue_depth=3, disk_bytes_written=17,
+        byte_identity_sha256=identity)
+    measured = RawMeasurementV2(
+        elapsed_ns=13, process_cpu_ns=103, peak_rss_bytes=1_003,
+        task_count=4, sample_utilization_ppm=(200_000,),
+        sample_memory_bytes=(1_003,), sample_task_counts=(4,),
+        sample_swap_bytes=(0,), sample_free_disk_bytes=(8_999,),
+        queue_depth=5, disk_bytes_written=19,
+        byte_identity_sha256=identity)
+
+    combined = runner._combine_capacity_repeats(warm, measured)
+
+    assert combined.elapsed_ns == 24
+    assert combined.process_cpu_ns == 204
+    assert combined.peak_rss_bytes == 1_003
+    assert combined.task_count == 4
+    assert combined.sample_utilization_ppm == (100_000, 200_000)
+    assert combined.sample_memory_bytes == (1_001, 1_003)
+    assert combined.sample_task_counts == (2, 4)
+    assert combined.sample_swap_bytes == (0, 0)
+    assert combined.sample_free_disk_bytes == (9_001, 8_999)
+    assert combined.queue_depth == 5
+    assert combined.disk_bytes_written == 36
+    assert combined.byte_identity_sha256 == identity
+
+
 def test_member_concurrency_trains_four_members_and_only_changes_executor_width(
         monkeypatch):
     import torch
@@ -827,89 +914,258 @@ def test_member_concurrency_trains_four_members_and_only_changes_executor_width(
     assert len(set(digests)) == 1
 
 
-def test_cohort_concurrency_trains_four_complete_cohorts_at_fixed_member_width(
+def test_cohort_concurrency_runs_four_named_production_cohorts_and_reopens_outputs(
         monkeypatch):
     import shengji.rl.world_afterstate_v2_capacity_runner as runner
-    import shengji.rl.world_afterstate_v2_model as model_module
-    import shengji.rl.world_afterstate_v2_training as training_module
 
-    models = []
-    trained = []
     widths = []
+    outer_widths = []
+    calls = []
+    tasks = (("natural", 2, (), None), *tuple(
+        (name, 1, (), ()) for name in runner.CONTROL_NAMES))
+    monkeypatch.setattr(runner, "_capacity_cohort_populations",
+                        lambda _values: ((), tasks, object()))
 
-    class FakeModel:
-        def __init__(self, index):
-            self.index = index
+    class FakeBuild:
+        def __init__(self, name, seed_block):
+            self.selected_checkpoint_raws = tuple(
+                f"{name}:{member}".encode() for member in range(4))
+            self.manifest = {"cohort_name": name,
+                             "seed_block": seed_block}
+
+    def train(**kwargs):
+        calls.append(kwargs)
+        return FakeBuild(kwargs["cohort_name"], kwargs["seed_block"])
+
+    monkeypatch.setattr(runner, "train_named_cohort", train)
+    monkeypatch.setattr(runner, "reopen_cohort_build",
+                        lambda build: ((object(),) * 4, build.manifest))
+
+    class FakeShard:
+        def __init__(self, raw):
+            self.sha256 = __import__("hashlib").sha256(raw).hexdigest()
+
+    monkeypatch.setattr(runner, "publish_checkpoint_shard",
+                        lambda _root, raw, **_kwargs: FakeShard(raw))
+    reopened = []
+    monkeypatch.setattr(
+        runner, "reopen_checkpoint_shard",
+        lambda _root, cohort, block, member, epoch: (
+            reopened.append((cohort, block, member, epoch)) or
+            (object(), {"checkpoint_sha256": "c" * 64})))
+
+    class FakeProcessPool:
+        def __init__(self, *args, **kwargs):
+            outer_widths.append(kwargs.get("max_workers", args[0] if args else None))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def map(self, function, values):
+            return tuple(function(value) for value in values)
 
     class SpyExecutor(ThreadPoolExecutor):
         def __init__(self, *args, **kwargs):
             widths.append(kwargs.get("max_workers", args[0] if args else None))
             super().__init__(*args, **kwargs)
 
-    monkeypatch.setattr(runner, "_capacity_training_batch",
-                        lambda _values: object())
-    monkeypatch.setattr(
-        model_module, "new_world_afterstate_v2_model",
-        lambda _seed: models.append(FakeModel(len(models) % 16)) or models[-1])
-    monkeypatch.setattr(training_module, "new_optimizer",
-                        lambda _model, _config: object())
-    monkeypatch.setattr(
-        training_module, "train_epoch",
-        lambda model, *_args, **_kwargs: trained.append(model.index))
-    monkeypatch.setattr(training_module, "model_state_sha256",
-                        lambda model: f"{model.index + 1:064x}")
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", FakeProcessPool)
     monkeypatch.setattr(runner, "ThreadPoolExecutor", SpyExecutor)
     fixture = FixtureV2({"score_free": True})
-
     digests = tuple(runner._run_with_torch_threads(
         runner._model_operation("cohort-concurrency", width, (fixture,)), 1)
-        for width in (1, 2, 4))
+                    for width in (1, 2, 4))
 
-    assert len(models) == len(trained) == 48
-    assert sorted(trained) == sorted(list(range(16)) * 3)
-    assert widths.count(1) == 1 and widths.count(2) == 1
-    # Twelve inner four-member executors plus the width-four outer arm.
-    assert widths.count(4) == 13
+    assert outer_widths == [1, 1, 2, 2]
+    assert widths == [1, 1, 3]
+    assert len(calls) == 12
+    assert all(call["member_workers"] == runner.COHORT_MEMBER_WORKERS
+               and call["torch_threads"] == 1
+               and call["config"].max_epochs == 1 for call in calls)
+    assert sorted((call["cohort_name"], call["seed_block"])
+                  for call in calls) == sorted(
+        [("natural", 2), *[(name, 1) for name in runner.CONTROL_NAMES]] * 3)
+    assert all((cohort == "natural" and block == 2)
+               or (cohort in runner.CONTROL_NAMES and block == 1)
+               for cohort, block, _member, _epoch in reopened)
+    assert len(reopened) == 3 * 4 * runner.COHORT_MEMBER_WORKERS
     assert len(set(digests)) == 1
 
 
-def test_cohort_concurrency_constructs_cohorts_inside_outer_wave(monkeypatch):
+def test_cohort_population_uses_exact_batch_and_validates_every_control(
+        monkeypatch):
     import shengji.rl.world_afterstate_v2_capacity_runner as runner
-    import shengji.rl.world_afterstate_v2_model as model_module
-    import shengji.rl.world_afterstate_v2_training as training_module
 
-    barrier = threading.Barrier(4)
-    constructor_threads = set()
-    lock = threading.Lock()
-    thread_calls = {}
+    natural = tuple(object() for _ in range(128))
+    monkeypatch.setattr(
+        runner, "_capacity_training_example_population",
+        lambda _fixtures: natural)
+    monkeypatch.setattr(
+        runner, "_capacity_cohort_select_population", lambda _fixtures: object())
+    transformed = {}
+    validations = []
 
-    class FakeModel:
-        pass
+    def transform(name):
+        def apply(values):
+            assert values is natural
+            controlled = tuple((name, index) for index in range(128))
+            evidence = {"control": name}
+            transformed[name] = controlled
+            return controlled, evidence
+        return apply
 
-    def make_model(_seed):
-        thread = threading.get_ident()
-        with lock:
-            constructor_threads.add(thread)
-            count = thread_calls.get(thread, 0)
-            thread_calls[thread] = count + 1
-        if count == 0:
-            barrier.wait(timeout=2)
-        return FakeModel()
+    for name, attribute in zip(
+            runner.CONTROL_NAMES,
+            ("action_association_permutation", "label_permutation",
+             "complete_world_shuffle"), strict=True):
+        monkeypatch.setattr(runner, attribute, transform(name))
+    monkeypatch.setattr(
+        runner, "validate_control_evidence",
+        lambda evidence, *, natural, controlled: validations.append(
+            (evidence["control"], len(natural), controlled)))
+    monkeypatch.setattr(
+        runner, "control_training_examples", lambda values: values)
 
-    monkeypatch.setattr(runner, "_capacity_training_batch",
-                        lambda _values: object())
-    monkeypatch.setattr(model_module, "new_world_afterstate_v2_model", make_model)
-    monkeypatch.setattr(training_module, "new_optimizer",
-                        lambda _model, _config: object())
-    monkeypatch.setattr(training_module, "train_epoch",
-                        lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(training_module, "model_state_sha256",
-                        lambda _model: "a" * 64)
+    selected, tasks, _selection = runner._capacity_cohort_populations((object(),))
+    assert selected is natural
+    assert tasks[0] == ("natural", 2, natural, None)
+    assert [(name, block, rows, prior) for name, block, rows, prior in tasks[1:]] \
+        == [(name, 1, transformed[name], natural)
+            for name in runner.CONTROL_NAMES]
+    assert [(name, count) for name, count, _rows in validations] \
+        == [(name, 128) for name in runner.CONTROL_NAMES]
 
-    operation = runner._model_operation(
-        "cohort-concurrency", 4, (FixtureV2({"score_free": True}),))
-    runner._run_with_torch_threads(operation, 1)
-    assert len(constructor_threads) == 4
+
+def test_cohort_concurrency_keeps_fixed_unit_count_and_mutates_output_identity(
+        monkeypatch):
+    import shengji.rl.world_afterstate_v2_capacity_runner as runner
+
+    tasks = (("natural", 2, (), None), *tuple(
+        (name, 1, (), ()) for name in runner.CONTROL_NAMES))
+    monkeypatch.setattr(runner, "_capacity_cohort_populations",
+                        lambda _values: ((), tasks, object()))
+    class FakeBuild:
+        def __init__(self, name, seed_block):
+            self.selected_checkpoint_raws = (name.encode(),) * 4
+            self.manifest = {"cohort_name": name,
+                             "seed_block": seed_block}
+    monkeypatch.setattr(runner, "train_named_cohort",
+                        lambda **kwargs: FakeBuild(
+                            kwargs["cohort_name"], kwargs["seed_block"]))
+    monkeypatch.setattr(runner, "reopen_cohort_build",
+                        lambda build: ((object(),) * 4, build.manifest))
+    monkeypatch.setattr(runner, "publish_checkpoint_shard",
+                        lambda *_args, **_kwargs: type("Shard", (), {
+                            "sha256": "d" * 64})())
+    monkeypatch.setattr(runner, "reopen_checkpoint_shard",
+                        lambda *_args: (object(), {"checkpoint_sha256": "e" * 64}))
+    class FakeProcessPool:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def map(self, function, values):
+            return tuple(function(value) for value in values)
+
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", FakeProcessPool)
+    fixture = FixtureV2({"score_free": True})
+    operation = runner._model_operation("cohort-concurrency", 4, (fixture,))
+    assert operation.measured_unit_count == 16
+    result = runner._run_with_torch_threads(operation, 1)
+    assert result != runner._ordered_fixture_identity((fixture,))
+
+
+def test_cohort_controller_groups_match_production_topology(
+        monkeypatch):
+    import shengji.rl.world_afterstate_v2_capacity_runner as runner
+
+    tasks = (("natural", 2, (), None), *tuple(
+        (name, 1, (), ()) for name in runner.CONTROL_NAMES))
+    seen = []
+    widths = []
+    monkeypatch.setattr(runner, "_cohort_checkpoint_rows",
+                        lambda payload: seen.append(payload[0]) or
+                        {"task": payload[0], "checkpoints": ()})
+
+    class SpyExecutor(ThreadPoolExecutor):
+        def __init__(self, *args, **kwargs):
+            widths.append(kwargs.get("max_workers", args[0] if args else None))
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "ThreadPoolExecutor", SpyExecutor)
+    for variant, expected_width in ((1, 1), (2, 1), (4, 3)):
+        seen.clear()
+        widths.clear()
+        payload = ("controls", tasks[1:], object(), "f" * 64,
+                   object(), variant)
+        result = runner._cohort_controller_group(payload)
+        assert tuple(row["task"] for row in result) == runner.CONTROL_NAMES
+        assert sorted(seen) == sorted(runner.CONTROL_NAMES)
+        assert widths == [expected_width]
+
+
+def test_cohort_controller_payload_crosses_real_spawn_boundary():
+    from test_world_afterstate_v2_training import _rows
+    from test_world_afterstate_v2_evaluation import _population
+    from shengji.rl.world_afterstate_v2_training import (
+        WorldAfterstateV2TrainingConfig)
+    from shengji.rl.world_afterstate_v2_selection import EpochSelectPopulationV2
+
+    _predictions, outcomes, _prior, root = _population(
+        root="capacity-cohort-spawn")
+    selection = EpochSelectPopulationV2(
+        (dataclasses.replace(
+            root, split="select", select_subfold="epoch-select"),),
+        tuple(dataclasses.replace(row, split="select") for row in outcomes))
+    rows = tuple(_rows("capacity-cohort-spawn"))
+    config = WorldAfterstateV2TrainingConfig(
+        learning_rate_ppb=10_000_000, weight_decay_ppb=0,
+        gradient_norm_milli=1_000, max_epochs=1,
+        sigma_pair_squared=1.0)
+    payload = ("natural", 2, rows, None, selection, "f" * 64, config)
+    with ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=multiprocessing.get_context("spawn")) as pool:
+        result, = tuple(pool.map(_cohort_payload_probe, (payload,)))
+    assert result == ("natural", 2, len(rows), True,
+                      selection.population_sha256, "f" * 64, 1)
+
+
+def test_cohort_checkpoint_controller_trains_and_reopens_in_real_child():
+    from test_world_afterstate_v2_training import _rows
+    from test_world_afterstate_v2_evaluation import _population
+    from shengji.rl.world_afterstate_v2_training import (
+        WorldAfterstateV2TrainingConfig)
+    from shengji.rl.world_afterstate_v2_selection import EpochSelectPopulationV2
+
+    _predictions, outcomes, _prior, root = _population(
+        root="capacity-cohort-real-child")
+    selection = EpochSelectPopulationV2(
+        (dataclasses.replace(
+            root, split="select", select_subfold="epoch-select"),),
+        tuple(dataclasses.replace(row, split="select") for row in outcomes))
+    rows = tuple(_rows("capacity-cohort-real-child"))
+    config = WorldAfterstateV2TrainingConfig(
+        learning_rate_ppb=10_000_000, weight_decay_ppb=0,
+        gradient_norm_milli=1_000, max_epochs=1,
+        sigma_pair_squared=1.0)
+    payload = ("natural", 2, rows, None, selection, "e" * 64, config)
+    with ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=multiprocessing.get_context("spawn")) as pool:
+        result, = tuple(pool.map(runner._cohort_checkpoint_rows, (payload,)))
+    assert result["task"] == "natural"
+    assert result["seed_block"] == 2
+    assert len(result["checkpoints"]) == runner.COHORT_MEMBER_WORKERS
+    assert all(row["seed_block"] == 2 for row in result["checkpoints"])
 
 
 def test_torch_training_operation_runs_real_model_step_at_pinned_width(

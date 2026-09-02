@@ -19,6 +19,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 from pathlib import Path
 import resource
@@ -58,6 +59,20 @@ from .world_afterstate_v2_source_driver import drive_population_attempt_v2
 from .world_afterstate_v2_execution import (
     bind_runtime_expectation, verified_process_pool_kwargs,
 )
+from .world_afterstate_v2_controls import (
+    CONTROL_NAMES, action_association_permutation, complete_world_shuffle,
+    control_training_examples, label_permutation, validate_control_evidence,
+)
+from .world_afterstate_v2_inference import build_inference_root_v2
+from .world_afterstate_v2_label import ContinuationOutcomeV2
+from .world_afterstate_v2_selection import EpochSelectPopulationV2
+from .world_afterstate_v2_training_controller import (
+    reopen_cohort_build, train_named_cohort,
+)
+from .world_afterstate_v2_artifacts import (
+    publish_checkpoint_shard, reopen_checkpoint_shard,
+)
+from .world_afterstate_v2_capacity_supervisor import TRAINING_BATCH_EXAMPLE_CAP
 
 
 HOST_CPUS = 16
@@ -1071,8 +1086,9 @@ def _capacity_training_examples(
     return tuple(rows)
 
 
-def _capacity_training_batch(fixtures: Sequence[FixtureV2]) -> Any:
-    """Select one exact 128-row production-formatted capacity batch.
+def _capacity_training_example_population(
+        fixtures: Sequence[FixtureV2]) -> tuple[Any, ...]:
+    """Select the exact complete-root 128-example capacity population.
 
     Roots remain complete and retain their relative production epoch order.
     All retained fixtures enter the population identity even when the exact
@@ -1104,7 +1120,242 @@ def _capacity_training_batch(fixtures: Sequence[FixtureV2]) -> Any:
             or batches[0].size != CAPACITY_TRAINING_EXAMPLES
             or tuple(schedule.ordered_root_ids) != selected_roots):
         raise CapacityRunnerError("capacity training batch schedule drift")
+    return selected
+
+
+def _capacity_training_batch(fixtures: Sequence[FixtureV2]) -> Any:
+    """Collate the frozen exact 128-example capacity population."""
+    selected = _capacity_training_example_population(fixtures)
+    _schedule, batches = training_epoch_batches(
+        selected, epoch=1, batch_example_cap=CAPACITY_TRAINING_EXAMPLES)
     return batches[0]
+
+
+def _capacity_cohort_select_population(
+        fixtures: Sequence[FixtureV2]) -> EpochSelectPopulationV2:
+    """Build a deterministic, target-free epoch-select population.
+
+    The retained select roots are already sealed in the fixture materials.
+    Their synthetic category values are capacity workload inputs derived only
+    from public identities; no scientific continuation or outcome is opened.
+    """
+    values = tuple(sorted(
+        (fixture.material for fixture in fixtures
+         if fixture.material is not None
+         and fixture.material.state.split == "select"
+         and fixture.material.state.select_subfold == "epoch-select"),
+        key=lambda material: material.state.deal_sha256))
+    if not values:
+        raise CapacityRunnerError("capacity cohort select population missing")
+    roots = tuple(build_inference_root_v2(material) for material in values)
+    from .world_afterstate import OUTCOME_CLASSES
+    outcomes = []
+    for root in roots:
+        for candidate, successor in enumerate(root.successor_sha256s):
+            for replica in range(8):
+                continuation = _sha({
+                    "namespace": "world-afterstate-v2-capacity-cohort-continuation-v1",
+                    "root_sha256": root.root_sha256, "replica": replica})
+                category = int(_sha({
+                    "namespace": "world-afterstate-v2-capacity-cohort-category-v1",
+                    "root_sha256": root.root_sha256,
+                    "candidate_index": candidate, "replica": replica,
+                })[:8], 16) % OUTCOME_CLASSES
+                outcomes.append(ContinuationOutcomeV2(
+                    deal_sha256=root.deal_sha256,
+                    slot_sha256=root.slot_sha256,
+                    state_sha256=root.state_sha256,
+                    candidate_set_sha256=root.candidate_set_sha256,
+                    source=root.source, split="select", role=root.role,
+                    phase=root.phase, position=root.position,
+                    trump_rank=root.trump_rank, trump_mode=root.trump_mode,
+                    points_bucket=root.points_bucket,
+                    candidate_index=candidate,
+                    protected_incumbent=candidate == 0,
+                    successor_sha256=successor,
+                    continuation_sha256=continuation, replica=replica,
+                    signed_level_category=category))
+    result = EpochSelectPopulationV2(roots, tuple(outcomes))
+    result.validate()
+    return result
+
+
+def _capacity_cohort_populations(
+        fixtures: Sequence[FixtureV2]) -> tuple[
+            tuple[Any, ...], tuple[
+                tuple[str, int, tuple[Any, ...], tuple[Any, ...] | None], ...],
+            EpochSelectPopulationV2]:
+    """Prepare the exact concurrent-wave cohorts for one benchmark pass.
+
+    The scientific wave pairs the three block-1 controls with the independent
+    block-2 natural cohort.  Keeping the seed block in the task identity avoids
+    benchmarking four superficially named block-1 cohorts instead.
+    """
+    try:
+        # The design freezes one identical complete-root 128-example workload
+        # for every cohort arm.  The unpermuted cohort is called ``natural``
+        # because it is the control baseline; capacity pseudo-targets remain
+        # score-free and bind all 32 retained materials through their identity.
+        natural = _capacity_training_example_population(fixtures)
+        transforms = {
+            CONTROL_NAMES[0]: action_association_permutation,
+            CONTROL_NAMES[1]: label_permutation,
+            CONTROL_NAMES[2]: complete_world_shuffle,
+        }
+        tasks: list[tuple[
+            str, int, tuple[Any, ...], tuple[Any, ...] | None]] = [
+                ("natural", 2, natural, None)]
+        for name in CONTROL_NAMES:
+            controlled, evidence = transforms[name](natural)
+            validate_control_evidence(
+                evidence, natural=natural, controlled=controlled)
+            rows = control_training_examples(controlled)
+            tasks.append((name, 1, rows, natural))
+        selection = _capacity_cohort_select_population(fixtures)
+    except CapacityRunnerError:
+        raise
+    except Exception as exc:
+        raise CapacityRunnerError(
+            "capacity cohort populations could not be built") from exc
+    return natural, tuple(tasks), selection
+
+
+def _cohort_checkpoint_rows(payload: tuple[
+        str, int, tuple[Any, ...], tuple[Any, ...] | None,
+        EpochSelectPopulationV2, str, Any]) -> dict[str, Any]:
+    """Train one cohort and return only sealed checkpoint identity rows.
+
+    This is a process entry point on purpose.  The production stage isolates
+    controller processes because the reviewed controller temporarily changes
+    Torch's process-global thread setting.  Returning only digest rows keeps
+    the model/build objects inside the child and out of the parent IPC path.
+    """
+    name, seed_block, rows, natural, selection, freeze_sha256, config = payload
+    if seed_block not in (1, 2) \
+            or (name == "natural") is not (seed_block == 2):
+        raise CapacityRunnerError("capacity cohort seed-block drift")
+    import tempfile
+    build = train_named_cohort(
+        cohort_name=name, values=rows, natural_values=natural,
+        freeze_sha256=freeze_sha256, config=config,
+        selection_population=selection, seed_block=seed_block,
+        member_workers=COHORT_MEMBER_WORKERS,
+        torch_threads=PINNED_TORCH_THREADS,
+        batch_example_cap=TRAINING_BATCH_EXAMPLE_CAP,
+        wall_budget_nanoseconds=2 * 60 * 60 * 1_000_000_000)
+    models, manifest = reopen_cohort_build(build)
+    if (len(models) != COHORT_MEMBER_WORKERS
+            or manifest.get("cohort_name") != name
+            or manifest.get("seed_block") != seed_block
+            or len(build.selected_checkpoint_raws) != COHORT_MEMBER_WORKERS):
+        raise CapacityRunnerError("capacity cohort reopen drift")
+    with tempfile.TemporaryDirectory(
+            prefix="shengji-v2-capacity-cohort-ephemeral-") as raw_root:
+        ephemeral_root = Path(raw_root)
+        if tuple(ephemeral_root.iterdir()):
+            raise CapacityRunnerError("capacity cohort ephemeral root contaminated")
+        checkpoints = []
+        for member, raw in enumerate(build.selected_checkpoint_raws):
+            publish_checkpoint_shard(
+                ephemeral_root, raw, cohort=name, seed_block=seed_block,
+                member_index=member, epoch=1)
+            _model, metadata = reopen_checkpoint_shard(
+                ephemeral_root, name, seed_block, member, 1)
+            checkpoints.append({
+                "task": name, "seed_block": seed_block, "member": member,
+                "sha256": _sha_bytes(raw),
+                "checkpoint_sha256": metadata["checkpoint_sha256"],
+            })
+        if len(checkpoints) != COHORT_MEMBER_WORKERS:
+            raise CapacityRunnerError("capacity cohort checkpoint count drift")
+    return {"task": name, "seed_block": seed_block,
+            "checkpoints": tuple(checkpoints)}
+
+
+def _cohort_controller_group(payload: tuple[
+        str, tuple[
+            tuple[str, int, tuple[Any, ...], tuple[Any, ...] | None], ...],
+        EpochSelectPopulationV2, str, Any, int]) -> tuple[dict[str, Any], ...]:
+    """Run one production controller group inside its isolated process."""
+    group, tasks, selection, freeze_sha256, config, variant = payload
+    prepared = tuple((name, block, rows, natural, selection,
+                      freeze_sha256, config)
+                    for name, block, rows, natural in tasks)
+    if group == "controls":
+        workers = 1 if variant == 1 else variant - 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            return tuple(pool.map(_cohort_checkpoint_rows, prepared))
+    if group == "natural":
+        if len(prepared) != 1:
+            raise CapacityRunnerError("capacity natural controller group drift")
+        return (_cohort_checkpoint_rows(prepared[0]),)
+    raise CapacityRunnerError("capacity controller group drift")
+
+
+def _run_cohort_concurrency_benchmark(
+        fixtures: Sequence[FixtureV2], variant: int) -> str:
+    """Run four real cohorts at production member width and seal outputs."""
+    if variant not in (1, 2, 4):
+        raise CapacityRunnerError("cohort concurrency width drift")
+    _natural, tasks, selection = _capacity_cohort_populations(fixtures)
+    from .world_afterstate_v2_training import WorldAfterstateV2TrainingConfig
+
+    config = WorldAfterstateV2TrainingConfig(
+        learning_rate_ppb=10_000_000, weight_decay_ppb=0,
+        gradient_norm_milli=1_000, max_epochs=1, sigma_pair_squared=1.0)
+    freeze_sha256 = _sha({
+        "namespace": "world-afterstate-v2-capacity-cohort-freeze-v1",
+        "fixtures": [fixture.fixture_sha256 for fixture in fixtures]})
+
+    controls = tuple(tasks[1:])
+    groups = (
+        ("controls", controls),
+        ("natural", (tasks[0],)),
+    )
+    payloads = tuple((group, group_tasks, selection, freeze_sha256,
+                      config, variant)
+                    for group, group_tasks in groups)
+    pool_kwargs = {
+        **verified_process_pool_kwargs(),
+        "mp_context": multiprocessing.get_context("spawn"),
+    }
+    if variant == 1:
+        # Width one is a serial prefix, with a fresh isolated controller
+        # process for each production group.
+        grouped = []
+        for payload in payloads:
+            with ProcessPoolExecutor(max_workers=1, **pool_kwargs) as pool:
+                group_result, = tuple(
+                    pool.map(_cohort_controller_group, (payload,)))
+                grouped.append(group_result)
+        rows = tuple(item for result in grouped for item in result)
+    else:
+        # Width two/four retain the production two-controller wave.  The
+        # controls process schedules one or three controls internally.
+        with ProcessPoolExecutor(max_workers=2, **pool_kwargs) as pool:
+            grouped = tuple(pool.map(_cohort_controller_group, payloads))
+        rows = tuple(item for result in grouped for item in result)
+    by_name = {row["task"]: row for row in rows}
+    if set(by_name) != {"natural", *CONTROL_NAMES}:
+        raise CapacityRunnerError("capacity cohort task population drift")
+    if (by_name["natural"]["seed_block"] != 2
+            or any(by_name[name]["seed_block"] != 1
+                   for name in CONTROL_NAMES)):
+        raise CapacityRunnerError("capacity cohort seed-block drift")
+    checkpoint_hashes = [
+        checkpoint
+        for name in ("natural", *CONTROL_NAMES)
+        for checkpoint in by_name[name]["checkpoints"]]
+    if len(checkpoint_hashes) != 4 * COHORT_MEMBER_WORKERS:
+        raise CapacityRunnerError("capacity cohort checkpoint count drift")
+    output = _sha({
+        "schema": "world-afterstate-v2-capacity-cohort-output-v1",
+        "checkpoints": checkpoint_hashes,
+    })
+    fixture_identity = _ordered_fixture_identity(fixtures)
+    if output == fixture_identity:
+        raise CapacityRunnerError("capacity cohort output identity did not mutate")
+    return output
 
 
 def _tensor_identity(value: Any) -> str:
@@ -1192,13 +1443,14 @@ def _model_operation(stage: str, variant: int,
                      fixtures: Sequence[FixtureV2]) -> Callable[[], str]:
     """Run fixed model work with the requested member/batch shape.
 
-    Training arms capture a typed batch at factory time, outside the backend's
-    timed callback.  Inference-batch remains target-free and inference-only.
+    The member arm captures a typed batch at factory time, outside the
+    backend's timed callback.  Cohort-concurrency builds its complete
+    production population in isolated controller children. Inference-batch
+    remains target-free and inference-only.
     """
     values = tuple(fixtures)
     training_batch = (_capacity_training_batch(values)
-                      if stage in {"member-concurrency",
-                                   "cohort-concurrency"} else None)
+                      if stage == "member-concurrency" else None)
 
     if stage == "member-concurrency":
         measured_units = 4
@@ -1219,7 +1471,13 @@ def _model_operation(stage: str, variant: int,
             # reset it for every arm so output identity compares work, not
             # process-global RNG state.
             torch.manual_seed(0)
-            if stage in {"member-concurrency", "cohort-concurrency"}:
+            if stage == "cohort-concurrency":
+                # This arm is the production-altitude cohort boundary: four
+                # named cohorts, each with the real four-member controller,
+                # run in one outer wave.  All preparation and checkpoint
+                # reopening stay score-free and deterministic.
+                output = [_run_cohort_concurrency_benchmark(values, variant)]
+            elif stage == "member-concurrency":
                 # Every arm executes the same fixed model population and the
                 # same production-formatted 128-row optimizer batch; only
                 # executor width varies. State digests bind post-step model
@@ -1231,51 +1489,19 @@ def _model_operation(stage: str, variant: int,
                     learning_rate_ppb=10_000_000, weight_decay_ppb=0,
                     gradient_norm_milli=1_000, max_epochs=1,
                     sigma_pair_squared=1.0)
-                cohort_count = (1 if stage == "member-concurrency" else
-                                COHORT_MEMBER_WORKERS)
-                model_count = COHORT_MEMBER_WORKERS * cohort_count
-                if stage == "member-concurrency":
-                    output: list[str] = [""] * model_count
-                    models = tuple(new_world_afterstate_v2_model(0)
-                                   for _ in range(model_count))
-                    def member(index: int) -> None:
-                        optimizer = new_optimizer(models[index], config)
-                        train_epoch(models[index], optimizer, (training_batch,),
-                                    epoch=1, config=config)
-                        output[index] = model_state_sha256(models[index])
-                    with ThreadPoolExecutor(max_workers=variant) as pool:
-                        # Executor width is the only member-concurrency arm
-                        # dimension; fixed population and order are retained.
-                        tuple(pool.map(member, range(model_count)))
-                else:
-                    def cohort(_index: int) -> tuple[str, ...]:
-                        # The scientific stage constructs each cohort inside
-                        # its concurrent stage task.  Constructing all sixteen
-                        # models serially before the outer pool made this arm
-                        # measure only one optimizer step and could falsely
-                        # select a narrower cohort wave.
-                        models = tuple(new_world_afterstate_v2_model(0)
-                                       for _ in range(COHORT_MEMBER_WORKERS))
-                        cohort_output: list[str] = [""] * COHORT_MEMBER_WORKERS
-                        def member(index: int) -> None:
-                            optimizer = new_optimizer(models[index], config)
-                            train_epoch(
-                                models[index], optimizer, (training_batch,),
+                model_count = COHORT_MEMBER_WORKERS
+                output: list[str] = [""] * model_count
+                models = tuple(new_world_afterstate_v2_model(0)
+                               for _ in range(model_count))
+                def member(index: int) -> None:
+                    optimizer = new_optimizer(models[index], config)
+                    train_epoch(models[index], optimizer, (training_batch,),
                                 epoch=1, config=config)
-                            cohort_output[index] = model_state_sha256(
-                                models[index])
-                        with ThreadPoolExecutor(
-                                max_workers=COHORT_MEMBER_WORKERS) as members:
-                            tuple(members.map(
-                                member, range(COHORT_MEMBER_WORKERS)))
-                        return tuple(cohort_output)
-                    with ThreadPoolExecutor(max_workers=variant) as cohorts:
-                        # Every arm executes four complete four-member
-                        # cohorts.  Only simultaneous cohort width changes.
-                        cohort_outputs = tuple(
-                            cohorts.map(cohort, range(cohort_count)))
-                    output = [value for cohort_output in cohort_outputs
-                              for value in cohort_output]
+                    output[index] = model_state_sha256(models[index])
+                with ThreadPoolExecutor(max_workers=variant) as pool:
+                    # Executor width is the only member-concurrency arm
+                    # dimension; fixed population and order are retained.
+                    tuple(pool.map(member, range(model_count)))
             else:
                 from .world_afterstate import build_afterstate_tensors
                 from .world_afterstate_v2_model import collate_world_afterstate_tensors
@@ -1386,6 +1612,61 @@ def _arm_target_units(
             max(1, sum(len(fixture.audit_raws) for fixture in fixtures))),
         "reconstruction": (measured_counts.get("reconstruction", source), source),
     }
+
+
+def _capacity_arm_operation(
+        stage: str, variant: int, fixtures: Sequence[FixtureV2],
+        fixture_sha256: str, arm_targets: Mapping[str, tuple[int, int]],
+        *, synthetic: bool) -> tuple[Callable[[], str], int]:
+    """Build one fixed arm operation and retain its measured population."""
+    if synthetic:
+        def operation() -> str:
+            return fixture_sha256
+        return operation, arm_targets[stage][0]
+    raw_operation = (
+        _parallel_operation(stage, variant, fixtures)
+        if stage in {"state-successor", "continuation-mechanics",
+                     "reconstruction"}
+        else _model_operation(stage, variant, fixtures))
+    measured = getattr(raw_operation, "measured_unit_count",
+                       arm_targets[stage][0])
+    if stage in {"member-concurrency", "cohort-concurrency"}:
+        def operation() -> str:
+            return _run_with_torch_threads(
+                raw_operation, PINNED_TORCH_THREADS)
+        return operation, measured
+    return raw_operation, measured
+
+
+def _combine_capacity_repeats(
+        warm: RawMeasurementV2, measured: RawMeasurementV2) -> RawMeasurementV2:
+    """Combine two identical-work observations without hiding their cost."""
+    warm.validate()
+    measured.validate()
+    if (warm.byte_identity_sha256 != measured.byte_identity_sha256
+            or warm.cpu_bound is not measured.cpu_bound):
+        raise CapacityRunnerError("capacity repeat identity drift")
+    return RawMeasurementV2(
+        elapsed_ns=warm.elapsed_ns + measured.elapsed_ns,
+        process_cpu_ns=warm.process_cpu_ns + measured.process_cpu_ns,
+        peak_rss_bytes=max(warm.peak_rss_bytes, measured.peak_rss_bytes),
+        task_count=max(warm.task_count, measured.task_count),
+        sample_utilization_ppm=(
+            *warm.sample_utilization_ppm,
+            *measured.sample_utilization_ppm),
+        sample_memory_bytes=(
+            *warm.sample_memory_bytes, *measured.sample_memory_bytes),
+        sample_task_counts=(
+            *warm.sample_task_counts, *measured.sample_task_counts),
+        sample_swap_bytes=(
+            *warm.sample_swap_bytes, *measured.sample_swap_bytes),
+        sample_free_disk_bytes=(
+            *warm.sample_free_disk_bytes, *measured.sample_free_disk_bytes),
+        queue_depth=max(warm.queue_depth, measured.queue_depth),
+        disk_bytes_written=(
+            warm.disk_bytes_written + measured.disk_bytes_written),
+        byte_identity_sha256=warm.byte_identity_sha256,
+        cpu_bound=warm.cpu_bound)
 
 
 def _select_arms(arms: Sequence[CapacityArmV2]) -> dict[str, CapacityArmV2]:
@@ -2022,27 +2303,66 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
     for stage, variants in ARM_GRIDS.items():
         fixture_sha = fixtures[0].fixture_sha256
         measured_output_identity: str | None = None
-        for position, variant in enumerate(variants, 1):
+        synthetic = bool(getattr(backend, "synthetic", False))
+        warm_raws: dict[int, RawMeasurementV2] = {}
+
+        # Cohort topology is selected from a substantially more expensive
+        # process/controller workload than the raw model arms.  Warm every
+        # width once in ascending order, then measure in reverse order.  This
+        # balances import/page-cache/startup order without turning a cold
+        # first observation into the production topology.  Each width's two
+        # observations are combined into one receipt arm so no executed work
+        # disappears from command-wall or resource accounting.
+        if stage == "cohort-concurrency" and not synthetic:
+            for warm_position, warm_variant in enumerate(variants, 1):
+                warm_operation, _warm_count = _capacity_arm_operation(
+                    stage, warm_variant, fixtures, fixture_sha, arm_targets,
+                    synthetic=False)
+                warm_raw = backend.measure(
+                    f"{stage}-warm", warm_variant, fixtures[0],
+                    warm_operation)
+                warm_raw.validate()
+                warm_raws[warm_variant] = warm_raw
+                if time.perf_counter_ns() >= deadline_ns:
+                    raise CapacityRunnerError(
+                        "capacity deadline exceeded during measurement")
+                if production:
+                    live = observe_host()
+                    if (_cgroup_memory_bytes() * 100
+                            > MEMORY_LIMIT_BYTES * MEMORY_PERCENT_MAX):
+                        raise CapacityRunnerError(
+                            "capacity memory headroom exhausted")
+                    if live.swap_bytes != ZERO_SWAP:
+                        raise CapacityRunnerError(
+                            "capacity swap became non-zero")
+                if measured_output_identity is None:
+                    measured_output_identity = warm_raw.byte_identity_sha256
+                    if measured_output_identity in {
+                            _ordered_fixture_identity(fixtures),
+                            *(item.fixture_sha256 for item in fixtures)}:
+                        raise CapacityRunnerError(
+                            "capacity arm returned input identity instead of operation output")
+                elif warm_raw.byte_identity_sha256 != measured_output_identity:
+                    raise CapacityRunnerError(
+                        "byte-identical fixture refusal")
+                _progress_event(
+                    f"{stage}-warm", warm_position, len(variants),
+                    warm_variant, started, warm_raw.elapsed_ns,
+                    min(1_000_000, max(
+                        1, warm_raw.process_cpu_ns * 1_000_000
+                        // max(1, warm_raw.elapsed_ns * HOST_CPUS))),
+                    progress)
+            measured_variants = tuple(reversed(variants))
+        else:
+            measured_variants = variants
+
+        for position, variant in enumerate(measured_variants, 1):
             # Same bytes are supplied to all arms; a backend changing that
             # identity is refused before it can influence selection.
             fixture = fixtures[0]
-            # Synthetic measurements are a receipt-validation seam and never
-            # execute or publish workload evidence.  Do not require their
-            # deliberately minimal fixtures to carry the real population
-            # material needed by the production training operations.
-            if getattr(backend, "synthetic", False):
-                operation = lambda: fixture_sha
-                operation.measured_unit_count = arm_targets[stage][0]  # type: ignore[attr-defined]
-            else:
-                operation = (_parallel_operation(stage, variant, fixtures)
-                             if stage in {"state-successor",
-                                           "continuation-mechanics",
-                                           "reconstruction"}
-                             else _model_operation(stage, variant, fixtures))
-            if stage in {"member-concurrency", "cohort-concurrency"}:
-                operation_to_run = operation
-                operation = lambda: _run_with_torch_threads(
-                    operation_to_run, PINNED_TORCH_THREADS)
+            operation, measured_count = _capacity_arm_operation(
+                stage, variant, fixtures, fixture_sha, arm_targets,
+                synthetic=synthetic)
             raw = backend.measure(stage, variant, fixture,
                                   operation)
             if time.perf_counter_ns() >= deadline_ns:
@@ -2055,7 +2375,14 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 if live.swap_bytes != ZERO_SWAP:
                     raise CapacityRunnerError("capacity swap became non-zero")
             raw.validate()
-            if getattr(backend, "synthetic", False):
+            if stage == "cohort-concurrency" and not synthetic:
+                warm = warm_raws.get(variant)
+                if warm is None:
+                    raise CapacityRunnerError(
+                        "capacity cohort warm measurement missing")
+                raw = _combine_capacity_repeats(warm, raw)
+                measured_count *= 2
+            if synthetic:
                 expected_identity = fixture_sha
             elif measured_output_identity is None:
                 # The first real arm establishes the ordered population of
@@ -2079,11 +2406,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
                 raise CapacityRunnerError("byte-identical fixture refusal")
             arm = _arm_from_raw(
                 stage, variant, raw, expected_identity, raw.elapsed_ns,
-                synthetic=bool(getattr(backend, "synthetic", False)),
-                measured_unit_count=getattr(
-                    operation_to_run if stage in {
-                        "member-concurrency", "cohort-concurrency"} else operation,
-                    "measured_unit_count", arm_targets[stage][0]))
+                synthetic=synthetic, measured_unit_count=measured_count)
             arms.append(arm)
             _progress_event(stage, position, len(variants),
                             variant, started, raw.elapsed_ns,

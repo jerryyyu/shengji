@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -34,6 +35,54 @@ from .world_afterstate_v2_training import (
     WorldAfterstateV2TrainingExample, model_state_sha256, new_optimizer,
     train_epoch,
 )
+
+
+# ``torch.set_num_threads`` is process-global.  The capacity-selected
+# width-four schedule deliberately overlaps three cohort controllers in one
+# process, so per-call save/set/restore can restore a wider value while a
+# sibling is still training.  A shared lease keeps the pinned value live until
+# the final overlapping controller exits without serializing model work.
+_TORCH_THREAD_SCOPE_LOCK = threading.Lock()
+_TORCH_THREAD_SCOPE_USERS = 0
+_TORCH_THREAD_SCOPE_WIDTH: int | None = None
+_TORCH_THREAD_SCOPE_PRIOR: int | None = None
+
+
+def _acquire_torch_thread_scope(torch_threads: int) -> None:
+    global _TORCH_THREAD_SCOPE_USERS, _TORCH_THREAD_SCOPE_WIDTH
+    global _TORCH_THREAD_SCOPE_PRIOR
+    with _TORCH_THREAD_SCOPE_LOCK:
+        current = torch.get_num_threads()
+        if _TORCH_THREAD_SCOPE_USERS == 0:
+            torch.set_num_threads(torch_threads)
+            _TORCH_THREAD_SCOPE_WIDTH = torch_threads
+            _TORCH_THREAD_SCOPE_PRIOR = current
+        elif (_TORCH_THREAD_SCOPE_WIDTH != torch_threads
+              or current != torch_threads):
+            raise WorldAfterstateV2TrainingControllerError(
+                "concurrent Torch thread scope drift")
+        _TORCH_THREAD_SCOPE_USERS += 1
+
+
+def _release_torch_thread_scope(torch_threads: int) -> None:
+    global _TORCH_THREAD_SCOPE_USERS, _TORCH_THREAD_SCOPE_WIDTH
+    global _TORCH_THREAD_SCOPE_PRIOR
+    with _TORCH_THREAD_SCOPE_LOCK:
+        if (_TORCH_THREAD_SCOPE_USERS < 1
+                or _TORCH_THREAD_SCOPE_WIDTH != torch_threads
+                or _TORCH_THREAD_SCOPE_PRIOR is None):
+            raise WorldAfterstateV2TrainingControllerError(
+                "concurrent Torch thread scope drift")
+        drifted = torch.get_num_threads() != torch_threads
+        _TORCH_THREAD_SCOPE_USERS -= 1
+        if _TORCH_THREAD_SCOPE_USERS == 0:
+            prior = _TORCH_THREAD_SCOPE_PRIOR
+            _TORCH_THREAD_SCOPE_WIDTH = None
+            _TORCH_THREAD_SCOPE_PRIOR = None
+            torch.set_num_threads(prior)
+        if drifted:
+            raise WorldAfterstateV2TrainingControllerError(
+                "concurrent Torch thread scope drift")
 from .world_afterstate_v2_selection_contract import (
     CONTROL_NAMES, EpochSelectScoreV2)
 from .world_afterstate_v2_selection import EpochSelectPopulationV2
@@ -442,9 +491,8 @@ def train_named_cohort(
     deadline = started + wall_budget_nanoseconds
     truncated = False
     stop_reason = "max-epochs"
-    old_threads = torch.get_num_threads()
+    _acquire_torch_thread_scope(torch_threads)
     try:
-        torch.set_num_threads(torch_threads)
         if history and progress is not None:
             completed = recovered_epochs * 4
             total = config.max_epochs * 4
@@ -562,7 +610,7 @@ def train_named_cohort(
                 tuple(tuple(score.loss_nano for score in row)
                       for row in selection_scores), block_name=block.name)
     finally:
-        torch.set_num_threads(old_threads)
+        _release_torch_thread_scope(torch_threads)
 
     if not selection_scores[0]:
         raise WorldAfterstateV2TrainingControllerError("cohort produced no epoch")
@@ -1051,9 +1099,8 @@ def train_named_member(
     deadline = started + wall_budget_nanoseconds
     truncated = False
     stop_reason = "max-epochs"
-    old_threads = torch.get_num_threads()
+    _acquire_torch_thread_scope(torch_threads)
     try:
-        torch.set_num_threads(torch_threads)
         if history and progress is not None:
             completed = recovered_epochs
             total = config.max_epochs
@@ -1144,7 +1191,7 @@ def train_named_member(
                 stop_reason = "deadline-truncation"
                 break
     finally:
-        torch.set_num_threads(old_threads)
+        _release_torch_thread_scope(torch_threads)
     if not selection_scores:
         raise WorldAfterstateV2TrainingControllerError("member produced no epoch")
     decision = _select_member_epoch(

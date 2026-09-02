@@ -1290,9 +1290,13 @@ def _cohort_checkpoint_rows(payload: tuple[
         batch_example_cap=TRAINING_BATCH_EXAMPLE_CAP,
         wall_budget_nanoseconds=2 * 60 * 60 * 1_000_000_000)
     models, manifest = reopen_cohort_build(build)
+    selected_epoch = manifest.get("common_epoch", {}).get("selected_epoch")
     if (len(models) != COHORT_MEMBER_WORKERS
             or manifest.get("cohort_name") != name
             or manifest.get("seed_block") != seed_block
+            or isinstance(selected_epoch, bool)
+            or not isinstance(selected_epoch, int)
+            or not 1 <= selected_epoch <= config.max_epochs
             or len(build.selected_checkpoint_raws) != COHORT_MEMBER_WORKERS):
         raise CapacityRunnerError("capacity cohort reopen drift")
     with tempfile.TemporaryDirectory(
@@ -1304,9 +1308,9 @@ def _cohort_checkpoint_rows(payload: tuple[
         for member, raw in enumerate(build.selected_checkpoint_raws):
             publish_checkpoint_shard(
                 ephemeral_root, raw, cohort=name, seed_block=seed_block,
-                member_index=member, epoch=1)
+                member_index=member, epoch=selected_epoch)
             _model, metadata = reopen_checkpoint_shard(
-                ephemeral_root, name, seed_block, member, 1)
+                ephemeral_root, name, seed_block, member, selected_epoch)
             checkpoints.append({
                 "task": name, "seed_block": seed_block, "member": member,
                 "sha256": _sha_bytes(raw),
@@ -1314,8 +1318,15 @@ def _cohort_checkpoint_rows(payload: tuple[
             })
         if len(checkpoints) != COHORT_MEMBER_WORKERS:
             raise CapacityRunnerError("capacity cohort checkpoint count drift")
+    epoch_receipts = tuple(
+        len(row.get("epoch_receipts", ())) for row in manifest["members"])
+    if (len(epoch_receipts) != COHORT_MEMBER_WORKERS
+            or any(value < selected_epoch or value > config.max_epochs
+                   for value in epoch_receipts)):
+        raise CapacityRunnerError("capacity cohort epoch accounting drift")
     return {"task": name, "seed_block": seed_block,
-            "checkpoints": tuple(checkpoints)}
+            "checkpoints": tuple(checkpoints),
+            "member_epoch_count": sum(epoch_receipts)}
 
 
 def _cohort_controller_group(payload: tuple[
@@ -1340,19 +1351,26 @@ def _cohort_controller_group(payload: tuple[
 
 
 def _run_cohort_concurrency_benchmark(
-        fixtures: Sequence[FixtureV2], variant: int) -> str:
+        fixtures: Sequence[FixtureV2], variant: int, *,
+        max_epochs: int = 1,
+        report_units: bool = False) -> str | tuple[str, int]:
     """Run four real cohorts at production member width and seal outputs."""
-    if variant not in (1, 2, 4):
+    if (variant not in (1, 2, 4)
+            or isinstance(max_epochs, bool) or not isinstance(max_epochs, int)
+            or not 1 <= max_epochs <= MAX_EPOCHS
+            or type(report_units) is not bool):
         raise CapacityRunnerError("cohort concurrency width drift")
     _natural, tasks, selection = _capacity_cohort_populations(fixtures)
     from .world_afterstate_v2_training import WorldAfterstateV2TrainingConfig
 
     config = WorldAfterstateV2TrainingConfig(
         learning_rate_ppb=10_000_000, weight_decay_ppb=0,
-        gradient_norm_milli=1_000, max_epochs=1, sigma_pair_squared=1.0)
+        gradient_norm_milli=1_000, max_epochs=max_epochs,
+        sigma_pair_squared=1.0)
     freeze_sha256 = _sha({
         "namespace": "world-afterstate-v2-capacity-cohort-freeze-v1",
-        "fixtures": [fixture.fixture_sha256 for fixture in fixtures]})
+        "fixtures": [fixture.fixture_sha256 for fixture in fixtures],
+        "max_epochs": max_epochs})
 
     controls = tuple(tasks[1:])
     groups = (
@@ -1402,7 +1420,11 @@ def _run_cohort_concurrency_benchmark(
     fixture_identity = _ordered_fixture_identity(fixtures)
     if output == fixture_identity:
         raise CapacityRunnerError("capacity cohort output identity did not mutate")
-    return output
+    measured_units = sum(row["member_epoch_count"] for row in rows)
+    if not 4 * COHORT_MEMBER_WORKERS <= measured_units \
+            <= 4 * COHORT_MEMBER_WORKERS * max_epochs:
+        raise CapacityRunnerError("capacity cohort measured unit count drift")
+    return (output, measured_units) if report_units else output
 
 
 def _tensor_identity(value: Any) -> str:

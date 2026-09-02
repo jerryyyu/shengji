@@ -967,8 +967,12 @@ def test_cohort_concurrency_runs_four_named_production_cohorts_and_reopens_outpu
         def __init__(self, name, seed_block):
             self.selected_checkpoint_raws = tuple(
                 f"{name}:{member}".encode() for member in range(4))
-            self.manifest = {"cohort_name": name,
-                             "seed_block": seed_block}
+            self.manifest = {
+                "cohort_name": name, "seed_block": seed_block,
+                "common_epoch": {"selected_epoch": 1},
+                "members": tuple(
+                    {"epoch_receipts": ({"epoch": 1},)} for _ in range(4)),
+            }
 
     def train(**kwargs):
         calls.append(kwargs)
@@ -1030,6 +1034,97 @@ def test_cohort_concurrency_runs_four_named_production_cohorts_and_reopens_outpu
                for cohort, block, _member, _epoch in reopened)
     assert len(reopened) == 3 * 4 * runner.COHORT_MEMBER_WORKERS
     assert len(set(digests)) == 1
+
+
+def test_sustained_cohort_benchmark_reopens_selected_epoch_and_reports_units(
+        monkeypatch):
+    import shengji.rl.world_afterstate_v2_capacity_runner as runner
+
+    tasks = (("natural", 2, (), None), *tuple(
+        (name, 1, (), ()) for name in runner.CONTROL_NAMES))
+    monkeypatch.setattr(runner, "_capacity_cohort_populations",
+                        lambda _values: ((), tasks, object()))
+    seen_epochs = []
+
+    def group(payload):
+        _group, group_tasks, _selection, _freeze, config, _variant = payload
+        assert config.max_epochs == 3
+        seen_epochs.append(config.max_epochs)
+        return tuple({
+            "task": name, "seed_block": block,
+            "checkpoints": tuple({
+                "task": name, "seed_block": block, "member": member,
+                "sha256": f"{member + 1:064x}",
+                "checkpoint_sha256": f"{member + 5:064x}",
+            } for member in range(runner.COHORT_MEMBER_WORKERS)),
+            "member_epoch_count": runner.COHORT_MEMBER_WORKERS * 3,
+        } for name, block, _rows, _natural in group_tasks)
+
+    monkeypatch.setattr(runner, "_cohort_controller_group", group)
+
+    class FakeProcessPool:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def map(self, function, values):
+            return tuple(function(value) for value in values)
+
+    monkeypatch.setattr(runner, "ProcessPoolExecutor", FakeProcessPool)
+    fixture = FixtureV2({"score_free": True})
+    identity, units = runner._run_cohort_concurrency_benchmark(
+        (fixture,), 4, max_epochs=3, report_units=True)
+    assert len(identity) == 64 and units == 4 * 4 * 3
+    assert seen_epochs == [3, 3]
+
+    with pytest.raises(CapacityRunnerError, match="width drift"):
+        runner._run_cohort_concurrency_benchmark(
+            (fixture,), 4, max_epochs=3, report_units=1)
+
+
+def test_sustained_cohort_checkpoint_witness_uses_selected_epoch_three(
+        monkeypatch):
+    import shengji.rl.world_afterstate_v2_capacity_runner as runner
+
+    class FakeBuild:
+        selected_checkpoint_raws = tuple(
+            f"checkpoint:{member}".encode() for member in range(4))
+        manifest = {
+            "cohort_name": "natural", "seed_block": 2,
+            "common_epoch": {"selected_epoch": 3},
+            "members": tuple({
+                "epoch_receipts": tuple({"epoch": epoch}
+                                        for epoch in range(1, 4)),
+            } for _ in range(4)),
+        }
+
+    monkeypatch.setattr(runner, "train_named_cohort",
+                        lambda **_kwargs: FakeBuild())
+    monkeypatch.setattr(runner, "reopen_cohort_build",
+                        lambda build: ((object(),) * 4, build.manifest))
+    observed = []
+    monkeypatch.setattr(
+        runner, "publish_checkpoint_shard",
+        lambda _root, raw, **kwargs: observed.append(
+            ("publish", kwargs["member_index"], kwargs["epoch"])) or
+        SimpleNamespace(sha256=hashlib.sha256(raw).hexdigest()))
+    monkeypatch.setattr(
+        runner, "reopen_checkpoint_shard",
+        lambda _root, _name, _block, member, epoch: observed.append(
+            ("reopen", member, epoch)) or
+        (object(), {"checkpoint_sha256": f"{member + 1:064x}"}))
+    result = runner._cohort_checkpoint_rows((
+        "natural", 2, (), None, object(), "f" * 64,
+        SimpleNamespace(max_epochs=3)))
+    assert result["member_epoch_count"] == 12
+    assert observed == [
+        event for member in range(4)
+        for event in (("publish", member, 3), ("reopen", member, 3))]
 
 
 def test_cohort_population_uses_exact_batch_and_validates_every_control(
@@ -1187,8 +1282,12 @@ def test_cohort_concurrency_keeps_fixed_unit_count_and_mutates_output_identity(
     class FakeBuild:
         def __init__(self, name, seed_block):
             self.selected_checkpoint_raws = (name.encode(),) * 4
-            self.manifest = {"cohort_name": name,
-                             "seed_block": seed_block}
+            self.manifest = {
+                "cohort_name": name, "seed_block": seed_block,
+                "common_epoch": {"selected_epoch": 1},
+                "members": tuple(
+                    {"epoch_receipts": ({"epoch": 1},)} for _ in range(4)),
+            }
     monkeypatch.setattr(runner, "train_named_cohort",
                         lambda **kwargs: FakeBuild(
                             kwargs["cohort_name"], kwargs["seed_block"]))

@@ -907,6 +907,58 @@ population are incompatible with this layout. No migration is provided: the
 prior capacity run refused before publishing a receipt, so there is no
 previous production artifact to migrate.
 
+### Census-11 projection-only re-adjudication
+
+The exact `8ff9c79c` census completed every arm and every one of the 19
+representative-DAG stages, then refused only because its width-two composed
+D256 wall was 23,065 seconds against the unchanged 21,600-second and
+two-for-one limits.  The immutable refusal is file SHA-256
+`06019851ec4a2aecdc8541d623a02e9d8355c3d68d69c9fe29572a3d0d5be14d`
+and internal receipt SHA-256
+`3a059e3de3c506117bac71611acf20ec3e2fbfdeb3c64e1baadd8d145db5a8b7`.
+It retains the exact measured/projected wall, CPU, unit, resource, and DAG
+grids.  Repeating label generation, training controls, audit, or
+reconstruction would add no information and is forbidden for this recovery.
+
+The only unresolved quantity is sustained cohort topology.  The original
+selector trained each cohort for one epoch over one 128-example batch; fixed
+process/import/checkpoint overhead dominated the roughly 16-second arm and
+selected width two.  Recovery therefore runs one fresh score-free 32-deal
+preflight and exactly two production-topology cohort arms, widths two and
+four.  Each arm trains the same natural block-two cohort and the same three
+block-one controls, four fixed members per cohort, for up to eight common
+epochs under the unchanged patience rule.  Width two uses the production
+two-controller layout with the three controls serial in one child and natural
+in the other; width four runs the same two children with three controls
+concurrent in the controls child.  One warm pass runs `2,4`, then one measured
+pass runs `4,2`; both passes are charged and their exact wall/CPU/resource
+samples are combined.  Outputs must be byte-identical and all four cohorts
+must reopen their four selected checkpoints.  No outcome, scientific label,
+or audit row is opened.
+
+The fastest memory-eligible sustained arm is selected by exact combined wall.
+If width four is selected, it must either reach the unchanged 85% material
+CPU-utilization gate or refuse; there is no unmeasured wider arm.  If width two
+remains fastest, its immediate-next width-four witness must be strictly slower
+and the recomposed projection must still pass.  Recovery replaces only the
+cohort worker count and corresponding frozen DAG edges.  Every retained stage
+wall/CPU/unit value must be byte-for-byte equal to Census-11, while peak memory
+is the maximum of the old DAG and new arm peaks and free disk is the minimum of
+the old and new observations.  A fresh preflight wall supplies population
+construction economics; it may not reuse the unsealed progress log.
+
+The output is a typed composite capacity receipt binding the entire old
+failure bytes, current source/runtime, fresh preflight, both sustained arms,
+the inherited six-category passed assessments, the recomposed tiers, and the
+all-false authority map.  Downstream freeze/training/terminal adapters accept
+that composite through one shared capacity-evidence reopener and consume only
+its authenticated selected variants.  A composite may authorize a freeze only
+if D256 passes every unchanged wall, two-for-one, label, memory, disk,
+all-core, byte-identity, and exact-source gate.  A refusal spends only the new
+re-adjudication namespace; it never changes or retries Census-11.  The
+re-adjudication command is bounded to one hour, 30 GiB, zero swap, and 4,096
+tasks and emits the standard progress/resource fields.
+
 ## 14. Progress and recovery
 
 Every expensive stage emits at least every 60 seconds or 1%:

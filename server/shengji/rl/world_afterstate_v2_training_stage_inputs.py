@@ -20,8 +20,8 @@ from typing import Any
 from .belief_artifacts import stable_read_bytes
 from .belief_contract import canonical_json_bytes
 from .world_afterstate_v2_artifacts import reopen_continuation_manifest
-from .world_afterstate_v2_capacity_runner import (
-    reopen_capacity_receipt_v2_bytes,
+from .world_afterstate_v2_capacity_recovery import (
+    reopen_capacity_evidence_v2_bytes,
 )
 from .world_afterstate_v2_capacity import (
     COHORT_MEMBER_WORKERS, COHORT_WORKERS, PINNED_TORCH_THREADS,
@@ -132,7 +132,7 @@ def _capacity(freeze: Any, root: Path):
         raise WorldAfterstateV2TrainingStageInputError(
             "capacity artifact digest drift")
     try:
-        receipt = reopen_capacity_receipt_v2_bytes(raw)
+        receipt = reopen_capacity_evidence_v2_bytes(raw)
     except Exception as exc:
         raise WorldAfterstateV2TrainingStageInputError(
             "capacity receipt reopen refused") from exc

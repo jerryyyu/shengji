@@ -112,8 +112,8 @@ def _bind_full_terminal_inputs(inputs: "TerminalInputPathsV2") -> tuple[Any, Any
             "terminal freeze/capacity binding missing")
     try:
         from .world_afterstate_v2_execution import execution_freeze_from_bytes
-        from .world_afterstate_v2_capacity_runner import (
-            reopen_capacity_receipt_v2_bytes)
+        from .world_afterstate_v2_capacity_recovery import (
+            reopen_capacity_evidence_v2_bytes)
         freeze_raw = stable_read_bytes(inputs.freeze_path)
         freeze = execution_freeze_from_bytes(freeze_raw)
         if (_sha_bytes(freeze_raw) != inputs.freeze_sha256
@@ -134,7 +134,7 @@ def _bind_full_terminal_inputs(inputs: "TerminalInputPathsV2") -> tuple[Any, Any
         capacity_raw = stable_read_bytes(inputs.capacity_path)
         if _sha_bytes(capacity_raw) != expected_capacity_sha:
             raise ValueError("capacity artifact digest")
-        receipt = reopen_capacity_receipt_v2_bytes(capacity_raw)
+        receipt = reopen_capacity_evidence_v2_bytes(capacity_raw)
         receipt.validate()
         if receipt.runtime_sha256 != freeze.runtime_sha256:
             raise ValueError("capacity runtime binding")

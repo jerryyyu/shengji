@@ -17,10 +17,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .belief_contract import canonical_json_bytes
-from .world_afterstate_v2_capacity import (
-    CapacityReceiptV2, choose_capacity_tier_v2,
-)
-from .world_afterstate_v2_capacity_runner import reopen_capacity_receipt_v2_bytes
+from .world_afterstate_v2_capacity import choose_capacity_tier_v2
+from .world_afterstate_v2_capacity_recovery import (
+    reopen_capacity_evidence_v2_bytes)
 from .world_afterstate_v2_protocol import (
     ATTEMPT_SCHEMA, D256_MAX_ATTEMPTS_PER_SLOT, PROTOCOL_SCHEMA,
     protocol_payload,
@@ -138,11 +137,13 @@ def population_namespace(source_git: str, protocol_sha256: str,
     return _sha(body)
 
 
-def capacity_context(capacity_raw: bytes) -> tuple[CapacityReceiptV2, str, int, int]:
+def capacity_context(capacity_raw: bytes) -> tuple[Any, str, int, int]:
     """Reopen receipt and return it, selected tier, and measured worker arms."""
     try:
-        receipt = reopen_capacity_receipt_v2_bytes(capacity_raw)
-        selected = choose_capacity_tier_v2(receipt)
+        receipt = reopen_capacity_evidence_v2_bytes(capacity_raw)
+        selected = (receipt.choose_tier()
+                    if hasattr(receipt, "choose_tier")
+                    else choose_capacity_tier_v2(receipt))
     except Exception as exc:
         raise WorldAfterstateV2FreezeInputsError(
             "capacity receipt reopen refused") from exc

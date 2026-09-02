@@ -32,7 +32,7 @@ from shengji.rl.privileged_teacher_luna_rpc_capacity import (
     GameMetric,
     RPCCapacityError,
     RPCConcurrency,
-    ROUTE_PASS,
+    ROUTE_FULL,
     ROUTE_REFUSE,
     validate_canary_receipt,
     validate_capacity_receipt,
@@ -71,7 +71,10 @@ def source_review_auth(source_set_sha256: str):
         "schema": capacity.SOURCE_REVIEW_SCHEMA,
         "execution_git": "a" * 40,
         "source_set_sha256": source_set_sha256,
-        "design_sha256": "d" * 64,
+        "design_sha256s": {
+            "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md": "d" * 64,
+            "PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md": "e" * 64,
+        },
         "score_free_canary_authorized": True,
         "score_free_capacity_authorized": True,
         "scientific_execution_authorized": False,
@@ -81,6 +84,8 @@ def source_review_auth(source_set_sha256: str):
         "strength_claim_authorized": False,
         "authority": dict(capacity.selfplay.AUTHORITY),
     }
+    claim_body["design_sha256"] = hashlib.sha256(canonical_json_bytes(
+        claim_body["design_sha256s"])).hexdigest()
     claim = {**claim_body, "claim_sha256": hashlib.sha256(
         canonical_json_bytes(claim_body)).hexdigest()}
     return {"review_commit": "b" * 40,
@@ -234,7 +239,9 @@ class PassingRunner:
             hashlib.sha256(f"{workers}-{worker}-{game}".encode()).hexdigest())
 
 
-def receipt(*, runner=None, tracker=None, capacity_token_budget=1_000_000):
+def receipt(*, runner=None, tracker=None, capacity_token_budget=1_000_000,
+            scientific_token_budget=1_000_000_000,
+            per_game_deadline_ns=1_200_000_000_000):
     tracker = tracker or RPCConcurrency()
     runner = runner or PassingRunner(tracker)
     return capacity._derive_capacity(
@@ -243,13 +250,157 @@ def receipt(*, runner=None, tracker=None, capacity_token_budget=1_000_000):
         canary_receipt_sha256="c" * 64,
         source_review=source_review_auth(
             runtime()["source_set_sha256"]),
-        per_game_deadline_ns=10_000_000_000,
+        per_game_deadline_ns=per_game_deadline_ns,
         physical_memory_bytes=16 << 30,
         capacity_wall_ns=10_000_000_000,
         capacity_token_budget=capacity_token_budget,
         scientific_wall_ns=1_000_000_000_000,
-        scientific_token_budget=1_000_000_000,
+        scientific_token_budget=scientific_token_budget,
         concurrency=tracker)
+
+
+class FixedMetricRunner(PassingRunner):
+    def __init__(self, tracker, *, wall_nanoseconds, token_count=250,
+                 mutate=None):
+        super().__init__(tracker)
+        self.wall_nanoseconds = wall_nanoseconds
+        self.token_count = token_count
+        self.mutate = mutate
+
+    def __call__(self, workers, worker, game):
+        row = super().__call__(workers, worker, game)
+        output_tokens = self.token_count // 2
+        row = replace(
+            row, wall_nanoseconds=self.wall_nanoseconds,
+            input_tokens=self.token_count - output_tokens,
+            output_tokens=output_tokens)
+        if self.mutate is not None:
+            row = self.mutate(row, workers, worker, game)
+        return row
+
+
+def route_decision(*, wall_nanoseconds, token_count=2_000,
+                   arm_four_passed=True, scientific_token_budget=1_000_000_000):
+    """Exercise the pure route boundary without timing-sensitive arm setup."""
+    arms = [
+        {"workers": 1, "passed": True,
+         "p95_game_wall_nanoseconds": wall_nanoseconds,
+         "aggregate_token_count": token_count // 4},
+        {"workers": 4, "passed": arm_four_passed,
+         "p95_game_wall_nanoseconds": wall_nanoseconds,
+         "aggregate_token_count": token_count},
+    ]
+    return capacity._route_decision(
+        arms=arms, total_tokens=token_count,
+        capacity_token_budget=1_000_000,
+        stop_reason="none",
+        scientific_token_budget=scientific_token_budget)
+
+
+@pytest.mark.parametrize("wall,expected", [
+    (capacity.FULL_P95_LIMIT_NS, capacity.ROUTE_FULL),
+    (capacity.FULL_P95_LIMIT_NS + 1, capacity.ROUTE_PILOT),
+])
+def test_full_p95_boundary_uses_integer_route_threshold(wall, expected):
+    result = route_decision(wall_nanoseconds=wall)
+    assert result["route"] == expected
+    assert result["projected_full_wall_nanoseconds"] == \
+        capacity._population_projection(wall, 104, 4, 2_000, 8)[0]
+
+
+@pytest.mark.parametrize("wall,expected", [
+    (capacity.PILOT_P95_LIMIT_NS, capacity.ROUTE_PILOT),
+    (capacity.PILOT_P95_LIMIT_NS + 1, capacity.ROUTE_REFUSE),
+])
+def test_pilot_p95_boundary_and_projection_use_integer_nanoseconds(wall,
+                                                                    expected):
+    result = route_decision(wall_nanoseconds=wall)
+    assert result["route"] == expected
+    assert result["projected_pilot_wall_nanoseconds"] == \
+        capacity._population_projection(wall, 32, 4, 2_000, 8)[0]
+
+
+@pytest.mark.parametrize("budget,expected", [
+    (10_000, capacity.ROUTE_PILOT),
+    (9_999, capacity.ROUTE_REFUSE),
+])
+def test_pilot_token_projection_boundary_is_route_gating(budget, expected):
+    result = route_decision(
+        wall_nanoseconds=900_000_000_000,
+        scientific_token_budget=budget)
+    assert result["route"] == expected
+    assert result["projected_pilot_token_count"] == 10_000
+
+
+def test_route_never_falls_back_to_pilot_when_arm_four_health_fails():
+    result = route_decision(
+        wall_nanoseconds=900_000_000_000,
+        arm_four_passed=False)
+    assert result["route"] == capacity.ROUTE_REFUSE
+    assert result["selected_workers"] is None
+
+
+def test_exhausted_packet_fails_arm_health_before_any_route_selection():
+    tracker = RPCConcurrency()
+    passing = PassingRunner(tracker)
+
+    def exhausted(workers, worker, game):
+        return replace(passing(workers, worker, game), exhaustion_count=1)
+
+    result = receipt(runner=exhausted, tracker=tracker)
+    assert result["route"] == capacity.ROUTE_REFUSE
+    assert len(result["arms"]) == 1
+    assert result["arms"][0]["exhaustion_passed"] is False
+    assert result["arms"][0]["passed"] is False
+    validate_capacity_receipt(result)
+
+
+@pytest.mark.parametrize("field", [
+    "route", "selected_game_count", "selected_deal_cluster_count",
+    "selected_population_wall_nanoseconds",
+    "projected_full_wall_nanoseconds", "projected_full_token_count",
+    "projected_pilot_wall_nanoseconds", "projected_pilot_token_count",
+])
+def test_route_fields_cannot_be_rehashed_without_rederivation(field):
+    result = receipt()
+    forged = copy.deepcopy(result)
+    forged[field] = capacity.ROUTE_REFUSE if field == "route" else 1
+    body = {key: value for key, value in forged.items()
+            if key != "receipt_sha256"}
+    forged["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    with pytest.raises(RPCCapacityError, match="terminal derivation"):
+        validate_capacity_receipt(forged)
+
+
+def test_old_capacity_schema_cannot_reopen_after_rehash():
+    result = receipt()
+    forged = copy.deepcopy(result)
+    forged["schema"] = "pt-luna-turn-rpc-capacity-v3"
+    body = {key: value for key, value in forged.items()
+            if key != "receipt_sha256"}
+    forged["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    with pytest.raises(RPCCapacityError, match="receipt schema"):
+        validate_capacity_receipt(forged)
+
+
+def test_source_review_design_hashes_are_sealed():
+    result = receipt()
+    forged = copy.deepcopy(result)
+    claim = forged["source_review"]["review_claim"]
+    claim["design_sha256s"]["PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md"] = \
+        "f" * 64
+    claim_body = {key: value for key, value in claim.items()
+                  if key != "claim_sha256"}
+    claim["claim_sha256"] = hashlib.sha256(
+        canonical_json_bytes(claim_body)).hexdigest()
+    body = {key: value for key, value in forged.items()
+            if key != "receipt_sha256"}
+    forged["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    with pytest.raises(RPCCapacityError, match="claim seal"):
+        validate_capacity_receipt(forged)
 
 
 def test_retry_receipt_aggregation_is_derived_and_zeroing_it_refuses():
@@ -296,7 +447,7 @@ def test_retry_receipt_aggregation_preserves_exact_metric_totals():
 
 def test_all_arms_pass_and_next_larger_rule_selects_a_supported_arm():
     result = receipt()
-    assert result["route"] == ROUTE_PASS
+    assert result["route"] == ROUTE_FULL
     assert result["selected_workers"] == 4
     assert [arm["workers"] for arm in result["arms"]] == [1, 4]
     assert all(arm["passed"] for arm in result["arms"])

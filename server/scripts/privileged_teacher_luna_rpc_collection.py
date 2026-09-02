@@ -24,9 +24,11 @@ from shengji.rl.privileged_teacher_luna_rpc_collection import (
 )
 from shengji.rl.privileged_teacher_luna_rpc_supervisor import (
     FREEZE_REVIEW_PREFIX, SOURCE_REVIEW_PREFIX,
+    FULL_104_ELIGIBLE,
     RPCSupervisorError, run_population,
     authenticate_review_claim, freeze_review_claim,
-    launch_freeze_payload, source_review_claim, validate_launch_freeze,
+    build_root_census, launch_freeze_payload, schedule_for_capacity_route,
+    source_review_claim, validate_launch_freeze,
 )
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
@@ -151,7 +153,10 @@ def main(argv: list[str] | None = None) -> int:
     runtime = source_identity(args.codex_binary)
     if runtime != capacity["runtime"]:
         raise RPCSupervisorError("live runtime differs from capacity")
-    census = selfplay.root_census(secret).serialized()
+    schedule = schedule_for_capacity_route(secret, capacity.get("route"))
+    census = (selfplay.root_census(secret).serialized()
+              if capacity.get("route") == FULL_104_ELIGIBLE
+              else build_root_census(secret, schedule))
     if args.command == "build-freeze":
         freeze = launch_freeze_payload(
             repo_root=args.repo_root, seed_secret=secret, census=census,

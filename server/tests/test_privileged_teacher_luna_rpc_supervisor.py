@@ -37,6 +37,9 @@ def _freeze_payload(**updates):
         "census_sha256": "6" * 64,
         "capacity_receipt_sha256": "7" * 64,
         "runtime_sha256": "8" * 64,
+        "capacity_route": supervisor.FULL_104_ELIGIBLE,
+        "selected_game_count": 104,
+        "selected_deal_cluster_count": 52,
         "selected_workers": 2,
         "per_game_deadline_nanoseconds": 1_000_000_000,
         "per_game_token_cap": 100,
@@ -82,7 +85,8 @@ def _make(tmp_path, *, schedule=None, full=False):
         seed_secret=SECRET, private_root=tmp_path / "private",
         public_root=tmp_path / "public", runtime=RUNTIME,
         admission={"freeze": "freeze", "admission": "admission"},
-        capacity_receipt={"route": "CAPACITY_PASS", "selected_workers": 1},
+        capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
+                          "selected_workers": 1},
         runner=runner, schedule=schedule, require_full_population=full), runner
 
 
@@ -91,6 +95,44 @@ def test_schedule_rejects_duplicate_and_default_is_exact():
         supervisor.validate_schedule([(('2', 0, 0), 0), (('2', 0, 0), 0)],
                                      require_full_population=False)
     assert len(supervisor.validate_schedule()) == 104
+
+
+def test_pilot_schedule_is_first_sixteen_root_hashes_with_both_mirrors():
+    rows = supervisor.selfplay.root_census(SECRET).serialized()["coordinates"]
+    expected_coordinates = [
+        tuple(row["coordinate"])
+        for row in sorted(rows, key=lambda row: (
+            row["root_sha256"], tuple(row["coordinate"])))[:16]
+    ]
+    schedule = supervisor.schedule_for_capacity_route(
+        SECRET, supervisor.PILOT_32_ELIGIBLE)
+    assert len(schedule) == 32
+    assert list(dict.fromkeys(coordinate for coordinate, _ in schedule)) == \
+        expected_coordinates
+    assert all(
+        [mirror for coordinate, mirror in schedule if coordinate == expected]
+        == [0, 1]
+        for expected in expected_coordinates)
+
+
+def test_pilot_freeze_shape_and_review_claim_bind_selected_population():
+    freeze = _freeze_payload(
+        capacity_route=supervisor.PILOT_32_ELIGIBLE,
+        selected_game_count=32, selected_deal_cluster_count=16,
+        scientific_wall_nanoseconds=12_000_000_000_000)
+    supervisor.validate_launch_freeze_shape(freeze)
+    claim = supervisor.freeze_review_claim(freeze)
+    assert claim["capacity_route"] == supervisor.PILOT_32_ELIGIBLE
+    assert claim["selected_game_count"] == 32
+    assert claim["selected_deal_cluster_count"] == 16
+
+    forged = _freeze_payload(
+        capacity_route=supervisor.PILOT_32_ELIGIBLE,
+        selected_game_count=104, selected_deal_cluster_count=52,
+        scientific_wall_nanoseconds=12_000_000_000_000)
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="capacity route population"):
+        supervisor.validate_launch_freeze_shape(forged)
 
 
 def test_scientific_namespace_lock_refuses_second_live_controller(tmp_path):
@@ -137,7 +179,10 @@ def test_review_authentication_requires_exact_append_only_canonical_marker(
     body = {"schema": supervisor.SOURCE_REVIEW_SCHEMA,
             "execution_git": "a" * 40,
             "source_set_sha256": "b" * 64,
-            "design_sha256": "c" * 64,
+            "design_sha256s": {
+                "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md": "c" * 64,
+                "PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md": "d" * 64,
+            },
             "score_free_canary_authorized": True,
             "score_free_capacity_authorized": True,
             "scientific_execution_authorized": False,
@@ -146,6 +191,7 @@ def test_review_authentication_requires_exact_append_only_canonical_marker(
             "deployment_authorized": False,
             "strength_claim_authorized": False,
             "authority": dict(supervisor.selfplay.AUTHORITY)}
+    body["design_sha256"] = supervisor._sha(body["design_sha256s"])
     claim = {**body, "claim_sha256": hashlib.sha256(
         canonical_json_bytes(body)).hexdigest()}
     marker = (supervisor.SOURCE_REVIEW_PREFIX.encode() + b" "
@@ -210,7 +256,8 @@ def test_full_controller_authenticates_freeze_before_creating_namespace(
             public_root=tmp_path / "not-created-public", runtime=RUNTIME,
             admission={"review_commit": "1" * 40},
             capacity_receipt={
-                "route": "CAPACITY_PASS", "selected_workers": 2,
+                "route": supervisor.FULL_104_ELIGIBLE,
+                "selected_workers": 2,
                 "runtime": RUNTIME, "receipt_sha256": "7" * 64},
             runner=object(), launch_freeze=_freeze_payload(),
             require_full_population=True)
@@ -231,7 +278,10 @@ def test_formal_controller_internally_owns_bound_runner_ledger_and_timeout(
             "schema": "pt-luna-codex-tool-catalog-v1"},
     }
     capacity = {
-        "route": "CAPACITY_PASS", "selected_workers": 1,
+        "route": supervisor.FULL_104_ELIGIBLE, "selected_workers": 1,
+        "selected_game_count": 104,
+        "selected_deal_cluster_count": 52,
+        "selected_population_wall_nanoseconds": 10_000_000_000,
         "runtime": runtime, "receipt_sha256": "7" * 64,
         "scientific_wall_nanoseconds": 10_000_000_000,
         "scientific_token_budget": 10_000,
@@ -392,12 +442,23 @@ def test_terminal_death_after_link_restarts_without_second_runner_call(
     assert terminal.stat().st_nlink == 1
 
 
-def test_collection_cli_runs_formal_population_and_restart_through_public_entry(
-        tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize(
+    ("capacity_route", "expected_games", "expected_clusters", "selected_wall"),
+    [
+        (supervisor.FULL_104_ELIGIBLE, 104, 52,
+         28_800_000_000_000),
+        (supervisor.PILOT_32_ELIGIBLE, 32, 16,
+         12_000_000_000_000),
+    ])
+def test_collection_cli_runs_route_bound_population_and_restart_through_public_entry(
+        tmp_path, monkeypatch, capsys, capacity_route, expected_games,
+        expected_clusters, selected_wall):
     from scripts import privileged_teacher_luna_rpc_collection as cli
 
-    schedule = supervisor.validate_schedule()
-    census = supervisor.selfplay.root_census(SECRET).serialized()
+    schedule = supervisor.schedule_for_capacity_route(SECRET, capacity_route)
+    census = (supervisor.selfplay.root_census(SECRET).serialized()
+              if capacity_route == supervisor.FULL_104_ELIGIBLE
+              else supervisor.build_root_census(SECRET, schedule))
     private_root = (tmp_path / "private").resolve()
     public_root = (tmp_path / "public").resolve()
     runtime = {
@@ -411,7 +472,10 @@ def test_collection_cli_runs_formal_population_and_restart_through_public_entry(
         "schema": supervisor.SOURCE_REVIEW_SCHEMA,
         "execution_git": "1" * 40,
         "source_set_sha256": runtime["source_set_sha256"],
-        "design_sha256": "3" * 64,
+        "design_sha256s": {
+            "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md": "3" * 64,
+            "PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md": "4" * 64,
+        },
         "score_free_canary_authorized": True,
         "score_free_capacity_authorized": True,
         "scientific_execution_authorized": False,
@@ -421,6 +485,8 @@ def test_collection_cli_runs_formal_population_and_restart_through_public_entry(
         "strength_claim_authorized": False,
         "authority": dict(supervisor.selfplay.AUTHORITY),
     }
+    source_claim_body["design_sha256"] = supervisor._sha(
+        source_claim_body["design_sha256s"])
     source_claim = {**source_claim_body, "claim_sha256": hashlib.sha256(
         canonical_json_bytes(source_claim_body)).hexdigest()}
     source_auth = {
@@ -429,7 +495,10 @@ def test_collection_cli_runs_formal_population_and_restart_through_public_entry(
         "review_claim": source_claim,
     }
     capacity = {
-        "route": "CAPACITY_PASS", "selected_workers": 1,
+        "route": capacity_route, "selected_workers": 1,
+        "selected_game_count": expected_games,
+        "selected_deal_cluster_count": expected_clusters,
+        "selected_population_wall_nanoseconds": selected_wall,
         "runtime": runtime, "receipt_sha256": "7" * 64,
         "source_review": source_auth,
         "scientific_wall_nanoseconds": 10_000_000_000,
@@ -446,10 +515,13 @@ def test_collection_cli_runs_formal_population_and_restart_through_public_entry(
         census_sha256=census["census_sha256"],
         capacity_receipt_sha256=capacity["receipt_sha256"],
         runtime_sha256=supervisor._sha(runtime), selected_workers=1,
+        capacity_route=capacity_route,
+        selected_game_count=expected_games,
+        selected_deal_cluster_count=expected_clusters,
         per_game_deadline_nanoseconds=600_000_000_000,
         per_game_token_cap=1_000, per_call_token_reserve=50,
         per_call_wall_reserve_milliseconds=1_000,
-        scientific_wall_nanoseconds=10_000_000_000,
+        scientific_wall_nanoseconds=selected_wall,
         scientific_token_budget=10_000,
         private_root=str(private_root), public_root=str(public_root),
         namespace="formal-cli-test")
@@ -523,14 +595,14 @@ def test_collection_cli_runs_formal_population_and_restart_through_public_entry(
     first_output = json.loads(capsys.readouterr().out)
     terminal = json.loads((public_root / "terminal.json").read_text())
     assert first_output["route"] == supervisor.COMPLETE_STATE_SOURCE_ACQUISITION
-    assert terminal["completed_games"] == 104
-    assert terminal["completed_deal_clusters"] == 52
-    assert len(calls) == 104
+    assert terminal["completed_games"] == expected_games
+    assert terminal["completed_deal_clusters"] == expected_clusters
+    assert len(calls) == expected_games
 
     assert cli.main(args) == 0
     second_output = json.loads(capsys.readouterr().out)
     assert second_output == first_output
-    assert len(calls) == 104
+    assert len(calls) == expected_games
 
 
 def test_launch_receipts_precede_provider_and_public_progress_has_no_score(
@@ -550,7 +622,8 @@ def test_launch_receipts_precede_provider_and_public_progress_has_no_score(
 
 
 def test_explicit_full_population_rejects_small_injected_schedule(tmp_path):
-    with pytest.raises(supervisor.RPCSupervisorError, match="104"):
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="exact formal schedule"):
         supervisor.validate_schedule(
             [(("2", 0, 0), 0)], require_full_population=True)
 
@@ -763,7 +836,7 @@ def test_corrupt_partial_attempt_is_durable_mechanics_without_provider_call(
             seed_secret=SECRET, private_root=private, public_root=public,
             runtime=RUNTIME,
             admission={"freeze": "freeze", "admission": "admission"},
-            capacity_receipt={"route": "CAPACITY_PASS",
+            capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
                               "selected_workers": 1},
             runner=runner, schedule=schedule,
             require_full_population=False)

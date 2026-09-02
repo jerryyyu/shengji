@@ -44,13 +44,27 @@ from .privileged_teacher_luna_turn_rpc import (
 from .privileged_teacher_pt0 import canonical_json_bytes
 
 
-SCHEMA = "pt-luna-turn-rpc-capacity-v3"
+SCHEMA = "pt-luna-turn-rpc-capacity-v4"
 CANARY_SCHEMA = "pt-luna-turn-rpc-real-canaries-v1"
-SOURCE_REVIEW_SCHEMA = "pt-luna-turn-rpc-source-review-v1"
-ARM_SCHEMA = "pt-luna-turn-rpc-capacity-arm-v3"
-METRIC_SCHEMA = "pt-luna-turn-rpc-capacity-game-v3"
-ROUTE_PASS = "CAPACITY_PASS"
+SOURCE_REVIEW_SCHEMA = "pt-luna-turn-rpc-source-review-v2"
+ARM_SCHEMA = "pt-luna-turn-rpc-capacity-arm-v4"
+METRIC_SCHEMA = "pt-luna-turn-rpc-capacity-game-v4"
+ROUTE_FULL = "FULL_104_ELIGIBLE"
+ROUTE_PILOT = "PILOT_32_ELIGIBLE"
 ROUTE_REFUSE = "REFUSE_RESOURCE_OR_PROVIDER"
+# Descriptive aliases retain the route labels in code that imports constants
+# directly, while the receipt vocabulary remains exactly the three strings.
+ROUTE_FULL_104_ELIGIBLE = ROUTE_FULL
+ROUTE_PILOT_32_ELIGIBLE = ROUTE_PILOT
+PER_GAME_DEADLINE_NS = 1_200 * 1_000_000_000
+FULL_GAME_COUNT = 104
+PILOT_GAME_COUNT = 32
+FULL_DEAL_CLUSTER_COUNT = 52
+PILOT_DEAL_CLUSTER_COUNT = 16
+FULL_POPULATION_WALL_NS = 28_800 * 1_000_000_000
+PILOT_POPULATION_WALL_NS = 12_000 * 1_000_000_000
+FULL_P95_LIMIT_NS = 886_153_846_153
+PILOT_P95_LIMIT_NS = 1_200_000_000_000
 WORKER_ARMS = (1, 4)
 FAILURE_STAGES = (
     "none", "dispatch", "provider-response", "validation", "engine-apply",
@@ -128,6 +142,23 @@ def _p95(values: Sequence[int]) -> int:
         raise RPCCapacityError("capacity p95 absent")
     ordered = sorted(values)
     return ordered[max(0, (95 * len(ordered) + 99) // 100 - 1)]
+
+
+def _ceil_ratio(numerator: int, denominator: int) -> int:
+    if numerator < 0 or denominator <= 0:
+        raise RPCCapacityError("capacity ratio drift")
+    return (numerator + denominator - 1) // denominator
+
+
+def _population_projection(p95: int, game_count: int, workers: int,
+                           token_count: int, sampled_games: int) \
+        -> tuple[int, int]:
+    """Return integer nanosecond and token projections with 25% headroom."""
+    batches = math.ceil(game_count / workers)
+    wall = _ceil_ratio(p95 * batches * 125, 100)
+    tokens = _ceil_ratio(token_count * game_count * 125,
+                         sampled_games * 100)
+    return wall, tokens
 
 
 def _failure_disposition(exc: BaseException, *, stage: str) \
@@ -497,7 +528,7 @@ def validate_source_review_auth(
     _strict_sha(value["review_marker_sha256"], "source review marker")
     claim = value["review_claim"]
     keys = {"schema", "execution_git", "source_set_sha256",
-            "design_sha256", "score_free_canary_authorized",
+            "design_sha256s", "design_sha256", "score_free_canary_authorized",
             "score_free_capacity_authorized",
             "scientific_execution_authorized", "outcome_opening_authorized",
             "merge_authorized", "deployment_authorized",
@@ -516,11 +547,19 @@ def validate_source_review_auth(
     if type(execution) is not str or len(execution) != 40 \
             or any(char not in "0123456789abcdef" for char in execution):
         raise RPCCapacityError("source review execution Git drift")
+    design_hashes = claim["design_sha256s"]
+    if type(design_hashes) is not dict or set(design_hashes) != {
+            "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md",
+            "PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md"}:
+        raise RPCCapacityError("source review design hash population drift")
     for key in ("source_set_sha256", "design_sha256", "claim_sha256"):
         _strict_sha(claim[key], f"source review {key}")
+    for digest in design_hashes.values():
+        _strict_sha(digest, "source review design SHA")
     body = {key: item for key, item in claim.items()
             if key != "claim_sha256"}
-    if claim["claim_sha256"] != _sha(body) \
+    if claim["design_sha256"] != _sha(design_hashes) \
+            or claim["claim_sha256"] != _sha(body) \
             or (expected_source_set_sha256 is not None
                 and claim["source_set_sha256"]
                 != expected_source_set_sha256):
@@ -896,7 +935,9 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
     rss = sum(sorted((row.peak_rss_bytes for row in metrics), reverse=True)[:workers])
     rss_passed = rss * 100 <= physical_memory_bytes * 85
     swap_passed = all(row.swap_bytes == 0 for row in metrics)
-    deadline_passed = p95 * 100 <= per_game_deadline_ns * 75
+    # The provider/game execution deadline is an execution safety bound.  The
+    # route-specific population projections below apply their own headroom.
+    deadline_passed = p95 <= per_game_deadline_ns
     observed_parallelism_milli = sum(walls) * 1000 // max(1, arm_wall)
     parallelism_passed = (complete and max_active_rpcs * 100 >= workers * 70
                           and observed_parallelism_milli >= workers * 700)
@@ -928,16 +969,16 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
     per_call_wall_reserve_milliseconds = max(
         1, math.ceil(max_rpc_wall_nanoseconds * 125
                      / (100 * 1_000_000)))
-    projected_tokens = math.ceil(tokens * 104 * 125 / (len(metrics) * 100))
-    batches = math.ceil(104 / workers)
-    projected_wall = math.ceil(p95 * batches * 125 / 100)
+    projected_wall, projected_tokens = _population_projection(
+        p95, FULL_GAME_COUNT, workers, tokens, len(metrics))
     projection_passed = (projected_tokens <= scientific_token_budget
                          and projected_wall <= scientific_wall_ns)
-    projection_required = workers == 4
+    # Population projections are route gates, not arm health.  In particular,
+    # a full-lane miss must still permit the pilot lane to be considered.
+    projection_required = False
     passed = (complete and process_passed and mechanics_passed and rss_passed
-              and swap_passed and deadline_passed and parallelism_passed
-              and scaling_passed
-              and (projection_passed or not projection_required))
+              and swap_passed and parallelism_passed and scaling_passed
+              and exhaustions == 0)
     return {"schema": ARM_SCHEMA, "workers": workers,
             "metrics": [row.payload() for row in sorted(
                 metrics, key=lambda row: (row.worker, row.game))],
@@ -970,8 +1011,61 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
             "deadline_passed": deadline_passed,
             "parallelism_passed": parallelism_passed,
             "scaling_passed": scaling_passed,
+            "exhaustion_passed": exhaustions == 0,
             "projection_required": projection_required,
             "projection_passed": projection_passed, "passed": passed}
+
+
+def _route_decision(*, arms: Sequence[Mapping[str, object]],
+                    total_tokens: int, capacity_token_budget: int,
+                    stop_reason: str,
+                    scientific_token_budget: int) -> dict[str, object]:
+    """Derive the closed route and all receipt-bound route facts."""
+    full_wall = full_tokens = pilot_wall = pilot_tokens = None
+    if (len(arms) >= 2 and arms[-1].get("workers") == 4):
+        arm = arms[-1]
+        p95 = int(arm["p95_game_wall_nanoseconds"])
+        token_count = int(arm["aggregate_token_count"])
+        full_wall, full_tokens = _population_projection(
+            p95, FULL_GAME_COUNT, 4, token_count, 8)
+        pilot_wall, pilot_tokens = _population_projection(
+            p95, PILOT_GAME_COUNT, 4, token_count, 8)
+    healthy_four = (len(arms) == len(WORKER_ARMS)
+                    and arms[-1].get("workers") == 4
+                    and arms[-1].get("passed") is True)
+    capacity_ok = (total_tokens <= capacity_token_budget
+                   and stop_reason not in {
+                       "capacity-token-overrun", "capacity-wall-overrun",
+                       "capacity-wall-before-arm"})
+    full_ok = (healthy_four and capacity_ok
+               and full_wall is not None and full_tokens is not None
+               and arms[-1]["p95_game_wall_nanoseconds"] <= FULL_P95_LIMIT_NS
+               and full_wall <= FULL_POPULATION_WALL_NS
+               and full_tokens <= scientific_token_budget)
+    pilot_ok = (healthy_four and capacity_ok
+                and pilot_wall is not None and pilot_tokens is not None
+                and arms[-1]["p95_game_wall_nanoseconds"] <= PILOT_P95_LIMIT_NS
+                and pilot_wall <= PILOT_POPULATION_WALL_NS
+                and pilot_tokens <= scientific_token_budget)
+    route = ROUTE_FULL if full_ok else ROUTE_PILOT if pilot_ok else ROUTE_REFUSE
+    selected = 4 if route in (ROUTE_FULL, ROUTE_PILOT) else None
+    return {
+        "route": route,
+        "selected_workers": selected,
+        "selected_game_count": (FULL_GAME_COUNT if route == ROUTE_FULL
+                                 else PILOT_GAME_COUNT if route == ROUTE_PILOT
+                                 else None),
+        "selected_deal_cluster_count": (
+            FULL_DEAL_CLUSTER_COUNT if route == ROUTE_FULL
+            else PILOT_DEAL_CLUSTER_COUNT if route == ROUTE_PILOT else None),
+        "selected_population_wall_nanoseconds": (
+            FULL_POPULATION_WALL_NS if route == ROUTE_FULL
+            else PILOT_POPULATION_WALL_NS if route == ROUTE_PILOT else None),
+        "projected_full_wall_nanoseconds": full_wall,
+        "projected_full_token_count": full_tokens,
+        "projected_pilot_wall_nanoseconds": pilot_wall,
+        "projected_pilot_token_count": pilot_tokens,
+    }
 
 
 def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
@@ -1061,15 +1155,13 @@ def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
             stop_reason = "arm-condition-failed"
             break
         previous = summary
-    selected = (4 if len(arms) == len(WORKER_ARMS)
-                and arms[-1]["workers"] == 4 and arms[-1]["passed"]
-                else None)
-    if stop_reason in {"capacity-token-overrun", "capacity-wall-overrun",
-                       "capacity-wall-before-arm"}:
-        selected = None
+    route = _route_decision(
+        arms=arms, total_tokens=total_tokens,
+        capacity_token_budget=capacity_token_budget,
+        stop_reason=stop_reason,
+        scientific_token_budget=scientific_token_budget)
     body = {"schema": SCHEMA,
-            "route": ROUTE_PASS if selected is not None else ROUTE_REFUSE,
-            "selected_workers": selected, "stop_reason": stop_reason,
+            **route, "stop_reason": stop_reason,
             "secret_commitment_sha256": secret_commitment_sha256,
             "canary_receipt_sha256": canary_receipt_sha256,
             "source_review": dict(source_review),
@@ -1152,7 +1244,11 @@ def run_capacity(*, canary_receipt: Mapping[str, object],
 
 
 def validate_capacity_receipt(receipt: object) -> None:
-    keys = {"schema", "route", "selected_workers", "stop_reason",
+    keys = {"schema", "route", "selected_workers", "selected_game_count",
+            "selected_deal_cluster_count",
+            "selected_population_wall_nanoseconds", "stop_reason",
+            "projected_full_wall_nanoseconds", "projected_full_token_count",
+            "projected_pilot_wall_nanoseconds", "projected_pilot_token_count",
             "secret_commitment_sha256", "canary_receipt_sha256",
             "source_review",
             "per_game_deadline_nanoseconds",
@@ -1172,8 +1268,24 @@ def validate_capacity_receipt(receipt: object) -> None:
     if receipt["receipt_sha256"] != _sha(body):
         raise RPCCapacityError("capacity receipt seal drift")
     if receipt["authority"] != selfplay.AUTHORITY \
-            or receipt["route"] not in (ROUTE_PASS, ROUTE_REFUSE):
+            or receipt["route"] not in (ROUTE_FULL, ROUTE_PILOT, ROUTE_REFUSE):
         raise RPCCapacityError("capacity receipt authority drift")
+    for field in ("selected_game_count", "selected_deal_cluster_count",
+                  "selected_population_wall_nanoseconds",
+                  "projected_full_wall_nanoseconds",
+                  "projected_full_token_count",
+                  "projected_pilot_wall_nanoseconds",
+                  "projected_pilot_token_count"):
+        value = receipt[field]
+        if value is not None and (isinstance(value, bool)
+                                  or not isinstance(value, int)
+                                  or value < 0):
+            raise RPCCapacityError("capacity route projection drift")
+    selected_workers = receipt["selected_workers"]
+    if selected_workers is not None and (isinstance(selected_workers, bool)
+                                         or not isinstance(selected_workers, int)
+                                         or selected_workers < 0):
+        raise RPCCapacityError("capacity selected worker drift")
     _strict_sha(receipt["secret_commitment_sha256"],
                 "capacity secret commitment")
     _strict_sha(receipt["canary_receipt_sha256"],
@@ -1294,15 +1406,12 @@ def validate_capacity_receipt(receipt: object) -> None:
     if receipt["elapsed_nanoseconds"] < sum(
             arm["arm_wall_nanoseconds"] for arm in arms):
         raise RPCCapacityError("capacity elapsed derivation drift")
-    selected = (4 if len(arms) == len(WORKER_ARMS)
-                and arms[-1]["workers"] == 4 and arms[-1]["passed"]
-                else None)
-    if receipt["stop_reason"] in {"capacity-token-overrun",
-                                  "capacity-wall-overrun",
-                                  "capacity-wall-before-arm"}:
-        selected = None
-    if receipt["selected_workers"] != selected \
-            or (receipt["route"] == ROUTE_PASS) != (selected is not None) \
+    expected_route = _route_decision(
+        arms=arms, total_tokens=total_tokens,
+        capacity_token_budget=receipt["capacity_token_budget"],
+        stop_reason=receipt["stop_reason"],
+        scientific_token_budget=receipt["scientific_token_budget"])
+    if any(receipt[field] != expected_route[field] for field in expected_route) \
             or receipt["total_token_count"] != total_tokens:
         raise RPCCapacityError("capacity terminal derivation drift")
     if (receipt["physical_attempt_count"] != total_physical_attempts
@@ -1338,7 +1447,9 @@ def validate_capacity_receipt(receipt: object) -> None:
 
 
 __all__ = ["GameMetric", "MeteredCodexRun", "RPCCapacityError",
-           "RPCConcurrency", "RealGameRunner", "ROUTE_PASS", "ROUTE_REFUSE",
+           "RPCConcurrency", "RealGameRunner", "ROUTE_FULL", "ROUTE_PILOT",
+           "ROUTE_FULL_104_ELIGIBLE", "ROUTE_PILOT_32_ELIGIBLE",
+           "ROUTE_REFUSE",
            "SCHEMA", "WORKER_ARMS", "mechanics_sha256", "run_capacity",
            "source_identity", "validate_canary_receipt",
            "validate_capacity_receipt", "validate_source_review_auth"]

@@ -882,6 +882,20 @@ def test_capacity_repeat_accounting_sums_work_and_keeps_resource_peaks():
     assert combined.byte_identity_sha256 == identity
 
 
+def test_capacity_repeat_identity_drift_refuses_before_accounting():
+    warm = RawMeasurementV2(
+        elapsed_ns=11, process_cpu_ns=101, peak_rss_bytes=1_001,
+        task_count=2, sample_utilization_ppm=(100_000,),
+        byte_identity_sha256=hashlib.sha256(b"warm-output").hexdigest())
+    measured = dataclasses.replace(
+        warm,
+        byte_identity_sha256=hashlib.sha256(b"measured-output").hexdigest())
+
+    with pytest.raises(CapacityRunnerError,
+                       match="^capacity repeat identity drift$"):
+        runner._combine_capacity_repeats(warm, measured)
+
+
 def test_member_concurrency_trains_four_members_and_only_changes_executor_width(
         monkeypatch):
     import torch

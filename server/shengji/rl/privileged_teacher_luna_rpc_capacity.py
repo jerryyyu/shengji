@@ -44,11 +44,11 @@ from .privileged_teacher_luna_turn_rpc import (
 from .privileged_teacher_pt0 import canonical_json_bytes
 
 
-SCHEMA = "pt-luna-turn-rpc-capacity-v2"
+SCHEMA = "pt-luna-turn-rpc-capacity-v3"
 CANARY_SCHEMA = "pt-luna-turn-rpc-real-canaries-v1"
 SOURCE_REVIEW_SCHEMA = "pt-luna-turn-rpc-source-review-v1"
-ARM_SCHEMA = "pt-luna-turn-rpc-capacity-arm-v2"
-METRIC_SCHEMA = "pt-luna-turn-rpc-capacity-game-v2"
+ARM_SCHEMA = "pt-luna-turn-rpc-capacity-arm-v3"
+METRIC_SCHEMA = "pt-luna-turn-rpc-capacity-game-v3"
 ROUTE_PASS = "CAPACITY_PASS"
 ROUTE_REFUSE = "REFUSE_RESOURCE_OR_PROVIDER"
 WORKER_ARMS = (1, 4)
@@ -204,8 +204,21 @@ class GameMetric:
     failure_message_sha256: str = NO_FAILURE_MESSAGE_SHA256
     last_opened_rpc_count: int = 0
     last_committed_decision_count: int = 0
+    # Retry accounting is journal-derived.  ``None`` is retained only as a
+    # compatibility default for old injected witnesses; explicit zeroes are
+    # never repaired and therefore fail the wiring checks below.
+    physical_attempt_count: int | None = None
+    first_attempt_failure_by_class: dict[str, int] | None = None
+    redispatch_count: int = 0
+    exhaustion_count: int = 0
+    retry_wall_nanoseconds: int = 0
+    retry_token_count: int = 0
 
     def __post_init__(self) -> None:
+        if self.physical_attempt_count is None:
+            object.__setattr__(self, "physical_attempt_count", self.rpc_count)
+        if self.first_attempt_failure_by_class is None:
+            object.__setattr__(self, "first_attempt_failure_by_class", {})
         if self.workers not in WORKER_ARMS:
             raise RPCCapacityError("capacity metric worker-arm drift")
         for field, label in ((self.worker, "worker"), (self.game, "game"),
@@ -228,7 +241,13 @@ class GameMetric:
                              (self.token_rate_milli, "token rate"),
                              (self.last_opened_rpc_count, "opened RPC"),
                              (self.last_committed_decision_count,
-                              "committed decision")):
+                              "committed decision"),
+                             (self.physical_attempt_count,
+                              "physical attempt"),
+                             (self.redispatch_count, "redispatch"),
+                             (self.exhaustion_count, "exhaustion"),
+                             (self.retry_wall_nanoseconds, "retry wall"),
+                             (self.retry_token_count, "retry token")):
             _nonnegative(field, f"capacity {label}")
         if self.worker >= self.workers or self.game not in (0, 1):
             raise RPCCapacityError("capacity metric coordinate drift")
@@ -266,6 +285,15 @@ class GameMetric:
         if (self.process_errors == 0 and self.process_count < self.rpc_count) \
                 or self.p95_rpc_wall_nanoseconds > self.max_rpc_wall_nanoseconds:
             raise RPCCapacityError("capacity RPC process telemetry drift")
+        if type(self.first_attempt_failure_by_class) is not dict \
+                or any(type(key) is not str or not key or
+                       isinstance(value, bool) or not isinstance(value, int)
+                       or value < 0
+                       for key, value in self.first_attempt_failure_by_class.items()) \
+                or self.redispatch_count > self.physical_attempt_count \
+                or self.exhaustion_count > self.physical_attempt_count \
+                or self.retry_token_count > self.token_count:
+            raise RPCCapacityError("capacity retry accounting drift")
 
     @property
     def token_count(self) -> int:
@@ -666,6 +694,12 @@ class RealGameRunner:
         refusal_tool_event_snapshot = None
         journal_summary_snapshot = None
         tool_event_count = 0
+        physical_attempt_count = 0
+        first_attempt_failure_by_class: dict[str, int] = {}
+        redispatch_count = 0
+        exhaustion_count = 0
+        retry_wall_nanoseconds = 0
+        retry_token_count = 0
         stage = "dispatch"
         failure = None
         metered = MeteredCodexRun(meter, self.concurrency)
@@ -694,7 +728,8 @@ class RealGameRunner:
                         timeout_seconds=self.timeout, temp_root=Path(directory),
                         run_command=metered,
                         runtime_attestor=lambda _: dict(self.catalog),
-                        deadline_provider=lambda: absolute_deadline_ns)
+                        deadline_provider=lambda: absolute_deadline_ns,
+                        policy_mode="play-only")
                     driver = TurnDriver(shared, transport, journal=journal)
                     while not shared.complete and shared.failed is None:
                         if time.monotonic_ns() >= absolute_deadline_ns:
@@ -733,6 +768,29 @@ class RealGameRunner:
                     journal_summary_snapshot = journal.summary()
                     refusal_tool_event_snapshot = \
                         journal.pending_refusal_tool_event_count()
+                    groups = journal._scan()
+                    physical_attempt_count = len(groups)
+                    for group in groups:
+                        attempt = journal._attempt(group)
+                        ordinal = attempt.attempt_ordinal
+                        if ordinal > 0:
+                            redispatch_count += 1
+                            usage = (journal._response(group).usage.payload()
+                                     if "response" in group else
+                                     journal._refusal(group)["usage"])
+                            if usage is not None:
+                                retry_wall_nanoseconds += usage["wall_ms"] * 1_000_000
+                                retry_token_count += usage["total_tokens"]
+                        if (ordinal == 2 and "refusal" in group
+                                and journal._refusal(group)[
+                                    "redispatch_eligibility"] is not None):
+                            exhaustion_count += 1
+                        if ordinal == 0 and "refusal" in group:
+                            failure_class = journal._refusal(group)["failure_class"]
+                            failure_key = (journal._refusal(group)[
+                                "redispatch_eligibility"] or failure_class)
+                            first_attempt_failure_by_class[failure_key] = \
+                                first_attempt_failure_by_class.get(failure_key, 0) + 1
         except Exception as exc:
             process_errors = 1
             failure = _failure_disposition(exc, stage=stage)
@@ -800,7 +858,13 @@ class RealGameRunner:
             game_deadline_fired=failure[2], call_timeout_fired=failure[3],
             exception_type=failure[4], failure_message_sha256=failure[5],
             last_opened_rpc_count=opened,
-            last_committed_decision_count=committed)
+            last_committed_decision_count=committed,
+            physical_attempt_count=physical_attempt_count,
+            first_attempt_failure_by_class=first_attempt_failure_by_class,
+            redispatch_count=redispatch_count,
+            exhaustion_count=exhaustion_count,
+            retry_wall_nanoseconds=retry_wall_nanoseconds,
+            retry_token_count=retry_token_count)
 
 
 def _arm(workers: int, metrics: Sequence[GameMetric], *,
@@ -814,6 +878,14 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
     if {(row.worker, row.game) for row in metrics} != expected \
             or any(row.workers != workers for row in metrics):
         raise RPCCapacityError("capacity arm coordinate population drift")
+    if any(row.physical_attempt_count != row.rpc_count
+           or row.physical_attempt_count < 0
+           or row.redispatch_count > row.physical_attempt_count
+           for row in metrics):
+        raise RPCCapacityError("capacity retry wiring drift")
+    if all(row.complete and row.verified for row in metrics) \
+            and any(row.physical_attempt_count <= 0 for row in metrics):
+        raise RPCCapacityError("capacity retry aggregation absent")
     walls = [row.wall_nanoseconds for row in metrics]
     p95 = _p95(walls)
     complete = all(row.complete and row.verified for row in metrics)
@@ -838,6 +910,15 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
             // (arm_wall * previous_throughput_num * workers))
         scaling_passed = scaling_efficiency_milli >= 700
     tokens = sum(row.token_count for row in metrics)
+    physical_attempts = sum(row.physical_attempt_count for row in metrics)
+    redispatches = sum(row.redispatch_count for row in metrics)
+    exhaustions = sum(row.exhaustion_count for row in metrics)
+    retry_wall = sum(row.retry_wall_nanoseconds for row in metrics)
+    retry_tokens = sum(row.retry_token_count for row in metrics)
+    first_failures: dict[str, int] = {}
+    for row in metrics:
+        for key, value in row.first_attempt_failure_by_class.items():
+            first_failures[key] = first_failures.get(key, 0) + value
     max_game_token_count = max(row.token_count for row in metrics)
     per_game_token_cap = math.ceil(max_game_token_count * 125 / 100)
     max_rpc_token_count = max(row.max_rpc_token_count for row in metrics)
@@ -866,6 +947,12 @@ def _arm(workers: int, metrics: Sequence[GameMetric], *,
             "p95_game_wall_nanoseconds": p95,
             "aggregate_peak_rss_bytes": rss,
             "aggregate_token_count": tokens,
+            "physical_attempt_count": physical_attempts,
+            "first_attempt_failure_by_class": first_failures,
+            "redispatch_count": redispatches,
+            "exhaustion_count": exhaustions,
+            "retry_wall_nanoseconds": retry_wall,
+            "retry_token_count": retry_tokens,
             "max_game_token_count": max_game_token_count,
             "per_game_token_cap": per_game_token_cap,
             "max_rpc_token_count": max_rpc_token_count,
@@ -916,6 +1003,12 @@ def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
     started = time.monotonic_ns()
     arms: list[dict[str, object]] = []
     total_tokens = 0
+    total_physical_attempts = 0
+    total_redispatches = 0
+    total_exhaustions = 0
+    total_retry_wall = 0
+    total_retry_tokens = 0
+    total_first_failures: dict[str, int] = {}
     previous = None
     stop_reason = "all-arms-complete"
     for workers in WORKER_ARMS:
@@ -949,6 +1042,13 @@ def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
             scientific_token_budget=scientific_token_budget,
             max_active_rpcs=tracker.maximum)
         arms.append(summary)
+        total_physical_attempts += summary["physical_attempt_count"]
+        total_redispatches += summary["redispatch_count"]
+        total_exhaustions += summary["exhaustion_count"]
+        total_retry_wall += summary["retry_wall_nanoseconds"]
+        total_retry_tokens += summary["retry_token_count"]
+        for key, value in summary["first_attempt_failure_by_class"].items():
+            total_first_failures[key] = total_first_failures.get(key, 0) + value
         if arm_sink is not None:
             arm_sink(summary)
         if total_tokens > capacity_token_budget:
@@ -980,7 +1080,14 @@ def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
             "scientific_wall_nanoseconds": scientific_wall_ns,
             "scientific_token_budget": scientific_token_budget,
             "elapsed_nanoseconds": max(1, time.monotonic_ns() - started),
-            "total_token_count": total_tokens, "arms": arms,
+            "total_token_count": total_tokens,
+            "physical_attempt_count": total_physical_attempts,
+            "first_attempt_failure_by_class": total_first_failures,
+            "redispatch_count": total_redispatches,
+            "exhaustion_count": total_exhaustions,
+            "retry_wall_nanoseconds": total_retry_wall,
+            "retry_token_count": total_retry_tokens,
+            "arms": arms,
             "runtime": dict(runtime), "authority": dict(selfplay.AUTHORITY)}
     receipt = {**body, "receipt_sha256": _sha(body)}
     validate_capacity_receipt(receipt)
@@ -1052,7 +1159,10 @@ def validate_capacity_receipt(receipt: object) -> None:
             "physical_memory_bytes", "capacity_wall_nanoseconds",
             "capacity_token_budget", "scientific_wall_nanoseconds",
             "scientific_token_budget", "elapsed_nanoseconds",
-            "total_token_count", "arms", "runtime", "authority",
+            "total_token_count", "physical_attempt_count",
+            "first_attempt_failure_by_class", "redispatch_count",
+            "exhaustion_count", "retry_wall_nanoseconds",
+            "retry_token_count", "arms", "runtime", "authority",
             "receipt_sha256"}
     if type(receipt) is not dict or set(receipt) != keys \
             or receipt.get("schema") != SCHEMA:
@@ -1078,6 +1188,18 @@ def validate_capacity_receipt(receipt: object) -> None:
             ("elapsed_nanoseconds", "capacity elapsed")):
         _positive(receipt[field], label)
     _nonnegative(receipt["total_token_count"], "capacity total tokens")
+    for field_name, label in (("physical_attempt_count", "physical attempts"),
+                              ("redispatch_count", "redispatches"),
+                              ("exhaustion_count", "exhaustions"),
+                              ("retry_wall_nanoseconds", "retry wall"),
+                              ("retry_token_count", "retry tokens")):
+        _nonnegative(receipt[field_name], f"capacity {label}")
+    if type(receipt["first_attempt_failure_by_class"]) is not dict \
+            or any(type(key) is not str or isinstance(value, bool)
+                   or not isinstance(value, int) or value < 0
+                   for key, value in receipt[
+                       "first_attempt_failure_by_class"].items()):
+        raise RPCCapacityError("capacity retry failure accounting drift")
     runtime = receipt["runtime"]
     if type(runtime) is not dict \
             or runtime.get("schema") != "pt-luna-turn-rpc-runtime-v1":
@@ -1132,6 +1254,12 @@ def validate_capacity_receipt(receipt: object) -> None:
         expected_source_set_sha256=runtime["source_set_sha256"])
     previous = None
     total_tokens = 0
+    total_physical_attempts = 0
+    total_redispatches = 0
+    total_exhaustions = 0
+    total_retry_wall = 0
+    total_retry_tokens = 0
+    total_first_failures: dict[str, int] = {}
     arms = receipt["arms"]
     if type(arms) is not list or not arms \
             or len(arms) > len(WORKER_ARMS):
@@ -1152,6 +1280,13 @@ def validate_capacity_receipt(receipt: object) -> None:
         if arm != expected:
             raise RPCCapacityError("capacity arm derivation drift")
         total_tokens += arm["aggregate_token_count"]
+        total_physical_attempts += arm["physical_attempt_count"]
+        total_redispatches += arm["redispatch_count"]
+        total_exhaustions += arm["exhaustion_count"]
+        total_retry_wall += arm["retry_wall_nanoseconds"]
+        total_retry_tokens += arm["retry_token_count"]
+        for key, value in arm["first_attempt_failure_by_class"].items():
+            total_first_failures[key] = total_first_failures.get(key, 0) + value
         if arm["passed"]:
             previous = arm
         elif arm is not arms[-1]:
@@ -1170,6 +1305,13 @@ def validate_capacity_receipt(receipt: object) -> None:
             or (receipt["route"] == ROUTE_PASS) != (selected is not None) \
             or receipt["total_token_count"] != total_tokens:
         raise RPCCapacityError("capacity terminal derivation drift")
+    if (receipt["physical_attempt_count"] != total_physical_attempts
+            or receipt["redispatch_count"] != total_redispatches
+            or receipt["exhaustion_count"] != total_exhaustions
+            or receipt["retry_wall_nanoseconds"] != total_retry_wall
+            or receipt["retry_token_count"] != total_retry_tokens
+            or receipt["first_attempt_failure_by_class"] != total_first_failures):
+        raise RPCCapacityError("capacity retry terminal derivation drift")
     stop_reason = receipt["stop_reason"]
     allowed_stop_reasons = {"all-arms-complete", "capacity-wall-before-arm",
                             "capacity-token-overrun", "capacity-wall-overrun",

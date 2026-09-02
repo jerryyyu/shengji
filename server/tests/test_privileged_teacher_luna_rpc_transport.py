@@ -25,6 +25,7 @@ from shengji.rl.privileged_teacher_luna_rpc_transport import (
     InvocationResult,
     PINNED_CODEX_VERSION,
     attest_codex_runtime,
+    classify_refusal_redispatch_eligibility,
     validate_private_evidence,
     validate_private_refusal_evidence,
 )
@@ -231,10 +232,13 @@ def test_trace_requires_exact_fail_closed_diagnostic_before_turn():
 
 
 class FakeRun:
-    def __init__(self, *, mutate=None, stderr=b"", sleep_seconds=0):
+    def __init__(self, *, mutate=None, stderr=b"", sleep_seconds=0,
+                 returncode=0, write_final=True):
         self.mutate = mutate
         self.stderr = stderr
         self.sleep_seconds = sleep_seconds
+        self.returncode = returncode
+        self.write_final = write_final
         self.calls = []
 
     def __call__(self, command, prompt, workspace, timeout):
@@ -248,7 +252,8 @@ class FakeRun:
                             "confidence": "low",
                             "planning_note": "bounded"}}
         final_path = Path(command[command.index("--output-last-message") + 1])
-        final_path.write_text(json.dumps(final), encoding="utf-8")
+        if self.write_final:
+            final_path.write_text(json.dumps(final), encoding="utf-8")
         item_type = "agent_message"
         usage = None
         if self.mutate == "stale":
@@ -260,7 +265,8 @@ class FakeRun:
             usage = {"input_tokens": 1, "output_tokens": 1}
         elif self.mutate == "final-mismatch":
             final_path.write_text("{}", encoding="utf-8")
-        return InvocationResult(0, trace(final, item_type=item_type, usage=usage),
+        return InvocationResult(self.returncode,
+                                trace(final, item_type=item_type, usage=usage),
                                 self.stderr, 7)
 
 
@@ -270,13 +276,36 @@ def packet_sha_from_prompt(prompt: bytes) -> str:
     return prompt[start:start + 64].decode("ascii")
 
 
-def transport(tmp_path, fake, *, deadline_provider=None, timeout_seconds=90):
+class CompletionDriftRun(FakeRun):
+    def __call__(self, command, prompt, workspace, timeout):
+        result = super().__call__(command, prompt, workspace, timeout)
+        return InvocationResult(
+            result.returncode,
+            result.stdout.splitlines()[0] + b"\n",
+            result.stderr, result.wall_ms)
+
+
+def sealed_disposition(kind, message, *, stage="provider-response",
+                       game_deadline_fired=False, call_timeout_fired=False):
+    return {
+        "stage": stage, "kind": kind,
+        "game_deadline_fired": game_deadline_fired,
+        "call_timeout_fired": call_timeout_fired,
+        "exception_type": ("CodexProviderResourceError"
+                            if kind == "provider-process"
+                            else "CodexTurnTransportError"),
+        "message_sha256": hashlib.sha256(message.encode()).hexdigest(),
+    }
+
+
+def transport(tmp_path, fake, *, deadline_provider=None, timeout_seconds=90,
+              policy_mode="free"):
     return CodexExecPlannerTransport(
         codex_binary="/usr/bin/true", temp_root=tmp_path,
         timeout_seconds=timeout_seconds, run_command=fake,
         runtime_attestor=lambda _: {
             "schema": "pt-luna-codex-tool-catalog-v1"},
-        deadline_provider=deadline_provider)
+        deadline_provider=deadline_provider, policy_mode=policy_mode)
 
 
 def test_valid_call_has_no_tool_surface_and_binds_usage(tmp_path):
@@ -367,6 +396,122 @@ def test_nested_phase_schema_structurally_separates_rollout_and_play(tmp_path):
     play_action = play["properties"]["action"]
     assert play_action["properties"]["kind"]["const"] == "play"
     assert "candidate_indices" not in play_action["properties"]
+
+
+def test_play_only_binds_nested_schema_prompt_and_private_request(tmp_path):
+    decision = packet()
+    fake = FakeRun()
+    active = transport(tmp_path, fake, policy_mode="play-only")
+    response = active.call(decision)
+    private = active.take_private_evidence(decision, response)
+    action_schema = private["output_schema"]["properties"]["action"]
+    assert action_schema["properties"]["kind"]["const"] == "play"
+    assert "candidate_indices" not in action_schema["properties"]
+    assert private["request"]["policy_mode"] == "play-only"
+    assert b"request one bounded rollout" not in fake.calls[0][1]
+    assert b"If requesting rollouts" not in fake.calls[0][1]
+
+
+def test_play_only_rejects_rollout_through_nested_parser(tmp_path):
+    decision = packet()
+    rollout = {"schema": "pt-luna-provider-intent-v2",
+               "decision_sha256": decision.decision_sha256,
+               "action": {"kind": "rollout", "candidate_indices": [0],
+                           "continuations": ["smart-all"],
+                           "planning_note": "look"}}
+
+    class RolloutRun(FakeRun):
+        def __call__(self, command, prompt, workspace, timeout):
+            result = super().__call__(command, prompt, workspace, timeout)
+            final_path = Path(command[command.index("--output-last-message") + 1])
+            final_path.write_text(json.dumps(rollout), encoding="utf-8")
+            return InvocationResult(
+                result.returncode,
+                trace(rollout), result.stderr, result.wall_ms)
+
+    with pytest.raises(CodexTurnTransportError, match="policy kind drift"):
+        transport(tmp_path, RolloutRun(), policy_mode="play-only").call(decision)
+
+
+def test_refusal_redispatch_classifier_exact_positive_cases(tmp_path):
+    decision = packet()
+    stderr_transport = transport(
+        tmp_path, FakeRun(stderr=b"warning\n"),
+        policy_mode="play-only")
+    with pytest.raises(CodexTurnTransportError):
+        stderr_transport.call(decision)
+    stderr_private = stderr_transport.take_private_refusal_evidence(decision)
+    assert stderr_private is not None
+    assert classify_refusal_redispatch_eligibility(
+        sealed_disposition("provider-process", "Codex turn stderr refused"),
+        validate_private_refusal_evidence(stderr_private, packet=decision)) \
+        == "stderr-nonempty"
+
+    drift_transport = transport(
+        tmp_path, CompletionDriftRun(), policy_mode="play-only")
+    with pytest.raises(CodexTurnTransportError, match="completion telemetry"):
+        drift_transport.call(decision)
+    drift_private = drift_transport.take_private_refusal_evidence(decision)
+    assert drift_private is not None
+    assert drift_private["usage"] is None
+    assert drift_private["tool_event_count"] == 0
+    assert classify_refusal_redispatch_eligibility(
+        sealed_disposition("provider-schema", "Codex completion telemetry drift"),
+        validate_private_refusal_evidence(drift_private, packet=decision)) \
+        == "completion-telemetry-drift"
+
+
+@pytest.mark.parametrize("kind,message,private_changes", [
+    ("provider-process", "Codex turn stderr refused", {"returncode": 3}),
+    ("provider-process", "Codex turn stderr refused", {"final_base64": None}),
+    ("provider-process", "Codex turn stderr refused", {"tool_event_count": None}),
+    ("provider-process", "Codex turn stderr refused", {"tool_event_count": 1}),
+    ("provider-schema", "Codex completion telemetry drift", {}),
+])
+def test_refusal_redispatch_classifier_forbidden_cases(
+        tmp_path, kind, message, private_changes):
+    decision = packet()
+    active = transport(tmp_path, FakeRun(stderr=b"warning\n"),
+                       policy_mode="play-only")
+    with pytest.raises(CodexTurnTransportError):
+        active.call(decision)
+    private = active.take_private_refusal_evidence(decision)
+    assert private is not None
+    private = {**private, **private_changes}
+    if kind == "provider-schema":
+        disposition = sealed_disposition(
+            kind, message, game_deadline_fired=True)
+    else:
+        disposition = sealed_disposition(kind, message)
+    assert classify_refusal_redispatch_eligibility(disposition, private) is None
+
+
+def test_nonzero_unparseable_result_preserves_exact_private_bytes(tmp_path):
+    final_bytes = b"not-json\x00final"
+    stderr_bytes = b"provider-warning\xff"
+
+    class OpaqueRun(FakeRun):
+        def __call__(self, command, prompt, workspace, timeout):
+            final_path = Path(command[command.index("--output-last-message") + 1])
+            final_path.write_bytes(final_bytes)
+            return InvocationResult(9, b"", stderr_bytes, 11)
+
+    decision = packet()
+    active = transport(tmp_path, OpaqueRun(), policy_mode="play-only")
+    with pytest.raises(CodexProviderResourceError, match="process failed"):
+        active.call(decision)
+    private = active.take_private_refusal_evidence(decision)
+    assert private is not None
+    assert base64.b64decode(private["trace_base64"]) == b""
+    assert base64.b64decode(private["stderr_base64"]) == stderr_bytes
+    assert base64.b64decode(private["final_base64"]) == final_bytes
+    assert private["trace_sha256"] == hashlib.sha256(b"").hexdigest()
+    assert private["stderr_sha256"] == hashlib.sha256(stderr_bytes).hexdigest()
+    assert private["final_sha256"] == hashlib.sha256(final_bytes).hexdigest()
+    assert private["usage"] is None
+    assert private["tool_event_count"] is None
+    assert validate_private_refusal_evidence(
+        private, packet=decision) == private
 
 
 def test_nested_intent_parser_enforces_variant_phase_and_forced_kind():

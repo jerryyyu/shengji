@@ -260,29 +260,51 @@ def planner_prompt(packet: DecisionPacket, *, policy_mode: str = "free") -> str:
         phase_rule = ("This boundary canary requires one rollout batch now."
                       if packet.phase.phase == 1 else
                       "The boundary rollout is complete; you must play now.")
+        action_rule = ("Return one nested action: a play has candidate_index and "
+                       "confidence, while a rollout has nonempty "
+                       "candidate_indices and continuations.")
+        action_details = ("If requesting rollouts, choose 1–4 distinct candidate "
+                          "indices and 1–4 distinct continuation names. Never "
+                          "repeat an index or continuation; their Cartesian "
+                          "product must be at most 16.")
+        context_rule = ("the ordered legal candidate ballot, prior rollout "
+                        "results, the exact phase budget, and your team-private "
+                        "bounded strategy note")
     elif policy_mode == "free":
         phase_rule = (
             "You may either play now or request one bounded rollout batch."
             if packet.phase.phase < 3 else
             "Both rollout opportunities are spent; you must play now.")
+        action_rule = ("Return one nested action: a play has candidate_index and "
+                       "confidence, while a rollout has nonempty "
+                       "candidate_indices and continuations.")
+        action_details = ("If requesting rollouts, choose 1–4 distinct candidate "
+                          "indices and 1–4 distinct continuation names. Never "
+                          "repeat an index or continuation; their Cartesian "
+                          "product must be at most 16.")
+        context_rule = ("the ordered legal candidate ballot, prior rollout "
+                        "results, the exact phase budget, and your team-private "
+                        "bounded strategy note")
+    elif policy_mode == "play-only":
+        phase_rule = "You must play now; no alternate action is permitted."
+        action_rule = ("Return exactly one nested play action with "
+                       "candidate_index and confidence.")
+        action_details = "Do not return any other action shape."
+        context_rule = ("the ordered legal candidate ballot, the exact phase "
+                        "budget, and your team-private bounded strategy note")
     else:
         raise CodexTurnTransportError("Codex planner policy mode drift")
     payload = canonical_json_bytes(packet.payload()).decode("utf-8").rstrip("\n")
     return f"""You are PT-Luna, one partnership in a full-information Shengji teacher game.
 The engine/supervisor owns all mechanics. You have no tools and must return one
-JSON object matching the supplied schema. Return one nested action: a play has
-candidate_index and confidence, while a rollout has nonempty candidate_indices
-and continuations. Maximize final signed-level utility
+JSON object matching the supplied schema. {action_rule} Maximize final
+signed-level utility
 for team {packet.team}; do not substitute raw attacker points for team utility.
 
-The packet contains the complete private engine state, the ordered legal
-candidate ballot, prior rollout results, the exact phase budget, and your
-team-private bounded strategy note. Candidate index 0 is the production prior.
-Never invent a card, candidate, rollout result, or state transition. {phase_rule}
-If requesting rollouts, choose 1–4 distinct candidate indices and 1–4 distinct
-continuation names. Never repeat an index or continuation; their Cartesian
-product must be at most 16. Use planning_note for a concise team plan; it is
-private to your team.
+The packet contains the complete private engine state, {context_rule}.
+Candidate index 0 is the production prior. Never invent a card, candidate,
+state transition, or planning result. {phase_rule} Use planning_note for a
+concise team plan; it is private to your team. {action_details}
 
 DECISION_PACKET_JSON
 {payload}
@@ -530,7 +552,7 @@ def _unb64(value: object, label: str) -> bytes:
 def _refusal_trace_facts(raw: bytes, wall_ms: int) \
         -> tuple[dict[str, object] | None, int | None]:
     """Extract facts that remain trustworthy from an invalid provider trace."""
-    if not raw or len(raw) > MAX_TRACE_BYTES:
+    if type(raw) is not bytes or not raw or len(raw) > MAX_TRACE_BYTES:
         return None, None
     try:
         events = [_strict_json(line, "Codex refusal JSONL event")
@@ -541,11 +563,24 @@ def _refusal_trace_facts(raw: bytes, wall_ms: int) \
         return None, None
     tool_count = 0
     for event in events:
+        if event.get("type") not in {
+                "thread.started", "turn.started", "turn.completed",
+                "item.completed"}:
+            return None, None
         if event.get("type") != "item.completed":
             continue
         item = event.get("item")
-        if type(item) is not dict or item.get("type") not in {
-                "error", "agent_message"}:
+        if type(item) is not dict:
+            return None, None
+        if item.get("type") == "error":
+            if set(item) != {"id", "type", "message"} \
+                    or type(item.get("id")) is not str \
+                    or item.get("message") != CODE_MODE_DISABLED_DIAGNOSTIC:
+                return None, None
+        elif item.get("type") == "agent_message":
+            if type(item.get("text")) is not str:
+                return None, None
+        else:
             tool_count += 1
     completed = [event for event in events
                  if event.get("type") == "turn.completed"]
@@ -580,15 +615,17 @@ def _validate_request_binding(
             or request.get("prompt_sha256") != _sha_bytes(prompt) \
             or request.get("output_schema_sha256") != _sha(schema):
         raise CodexTurnTransportError("Codex private request derivation drift")
+    policy_mode = request.get("policy_mode")
+    if policy_mode not in ("free", "canary-rollout-then-play", "play-only"):
+        raise CodexTurnTransportError("Codex private policy-mode drift")
     if packet is None:
         return None
-    policy_mode = request.get("policy_mode")
     if policy_mode == "canary-rollout-then-play":
         allowed = (("rollout",) if packet.phase.phase == 1 else ("play",))
     elif policy_mode == "free":
         allowed = None
-    else:
-        raise CodexTurnTransportError("Codex private policy-mode drift")
+    elif policy_mode == "play-only":
+        allowed = ("play",)
     if request.get("packet_sha256") != packet.sha256 \
             or request.get("memory_sha256") != packet.memory.sha256 \
             or prompt != planner_prompt(packet, policy_mode=policy_mode).encode(
@@ -640,6 +677,108 @@ def validate_private_refusal_evidence(
         raise CodexTurnTransportError(
             "Codex private refusal derivation drift")
     return dict(payload)
+
+
+_STDERR_REFUSAL_MESSAGE_SHA256 = _sha_bytes(
+    b"Codex turn stderr refused")
+_COMPLETION_DRIFT_MESSAGE_SHA256 = _sha_bytes(
+    b"Codex completion telemetry drift")
+
+
+def _refusal_final_is_valid(payload: dict[str, object]) -> bool:
+    """Check the sealed final is a play intent without returning its bytes."""
+    request = payload.get("request")
+    schema = payload.get("output_schema")
+    final_value = payload.get("final_base64")
+    if type(request) is not dict or request.get("policy_mode") != "play-only" \
+            or type(schema) is not dict or final_value is None:
+        return False
+    try:
+        final_raw = _unb64(final_value, "refusal final")
+        final = _strict_json(final_raw, "Codex refusal final")
+    except CodexTurnTransportError:
+        return False
+    if type(final) is not dict or set(final) != {
+            "schema", "decision_sha256", "action"} \
+            or final.get("schema") != "pt-luna-provider-intent-v2":
+        return False
+    properties = schema.get("properties")
+    decision_schema = (None if type(properties) is not dict else
+                       properties.get("decision_sha256"))
+    action_schema = (None if type(properties) is not dict else
+                     properties.get("action"))
+    if type(decision_schema) is not dict \
+            or decision_schema.get("const") != final.get("decision_sha256"):
+        return False
+    action_properties = (None if type(action_schema) is not dict else
+                         action_schema.get("properties"))
+    kind_schema = (None if type(action_properties) is not dict else
+                   action_properties.get("kind"))
+    candidate_schema = (None if type(action_properties) is not dict else
+                        action_properties.get("candidate_index"))
+    if type(action_schema) is not dict or type(kind_schema) is not dict \
+            or type(candidate_schema) is not dict \
+            or kind_schema.get("const") != "play":
+        return False
+    action = final.get("action")
+    if type(action) is not dict or set(action) != {
+            "kind", "candidate_index", "confidence", "planning_note"} \
+            or action.get("kind") != "play" \
+            or isinstance(action.get("candidate_index"), bool) \
+            or not isinstance(action.get("candidate_index"), int) \
+            or action["candidate_index"] < 0 \
+            or action["candidate_index"] > candidate_schema.get(
+                "maximum", -1) \
+            or action.get("confidence") not in CONFIDENCE_LEVELS \
+            or type(action.get("planning_note")) is not str \
+            or len(action["planning_note"].encode("utf-8")) > 2048:
+        return False
+    return True
+
+
+def classify_refusal_redispatch_eligibility(
+        sealed_disposition: object,
+        validated_private_refusal: object) -> str | None:
+    """Return the sole reviewed redispatch classes, or ``None``.
+
+    ``validated_private_refusal`` is the private payload after
+    :func:`validate_private_refusal_evidence`; only its sealed scalar facts
+    are inspected here.  The return value is intentionally a public class,
+    never private provider bytes.
+    """
+    if type(sealed_disposition) is not dict \
+            or type(validated_private_refusal) is not dict:
+        return None
+    disposition = sealed_disposition
+    private = validated_private_refusal
+    if disposition.get("stage") != "provider-response" \
+            or disposition.get("game_deadline_fired") is not False \
+            or disposition.get("call_timeout_fired") is not False:
+        return None
+    if private.get("returncode") != 0 \
+            or isinstance(private.get("returncode"), bool) \
+            or private.get("tool_event_count") != 0 \
+            or isinstance(private.get("tool_event_count"), bool) \
+            or not _refusal_final_is_valid(private):
+        return None
+    try:
+        stderr = _unb64(private.get("stderr_base64"),
+                        "refusal stderr")
+    except CodexTurnTransportError:
+        return None
+    if (disposition.get("kind") == "provider-process"
+            and disposition.get("exception_type")
+            == "CodexProviderResourceError"
+            and disposition.get("message_sha256")
+            == _STDERR_REFUSAL_MESSAGE_SHA256 and stderr):
+        return "stderr-nonempty"
+    if (not stderr and disposition.get("kind") == "provider-schema"
+            and disposition.get("exception_type")
+            == "CodexTurnTransportError"
+            and disposition.get("message_sha256")
+            == _COMPLETION_DRIFT_MESSAGE_SHA256):
+        return "completion-telemetry-drift"
+    return None
 
 
 def validate_private_evidence(
@@ -731,7 +870,7 @@ class CodexExecPlannerTransport:
             raise CodexTurnTransportError("Codex turn timeout drift")
         if temp_root is not None and not Path(temp_root).is_dir():
             raise CodexTurnTransportError("Codex temp root absent")
-        if policy_mode not in ("free", "canary-rollout-then-play"):
+        if policy_mode not in ("free", "canary-rollout-then-play", "play-only"):
             raise CodexTurnTransportError("Codex planner policy mode drift")
         if not callable(runtime_attestor):
             raise CodexTurnTransportError("Codex runtime attestor absent")
@@ -756,6 +895,8 @@ class CodexExecPlannerTransport:
     def _allowed_kinds(self, packet: DecisionPacket) -> tuple[str, ...] | None:
         if self.policy_mode == "free":
             return None
+        if self.policy_mode == "play-only":
+            return ("play",)
         return ("rollout",) if packet.phase.phase == 1 else ("play",)
 
     def _command(self, *, workspace: Path, schema_path: Path,
@@ -838,38 +979,38 @@ class CodexExecPlannerTransport:
                 raise CodexTurnTransportError("Codex runner result drift")
             final_raw = None
             if final_path.is_file() and not final_path.is_symlink():
-                candidate = final_path.read_bytes()
-                if len(candidate) <= MAX_FINAL_BYTES:
-                    final_raw = candidate
-            if len(result.stdout) <= MAX_TRACE_BYTES \
-                    and len(result.stderr) <= MAX_TRACE_BYTES:
-                raw_usage, tool_count = _refusal_trace_facts(
-                    result.stdout, result.wall_ms)
-                refusal_body = {
-                    "schema": PRIVATE_REFUSAL_EVIDENCE_SCHEMA,
-                    "request": request_body,
-                    "prompt_base64": _b64(prompt),
-                    "output_schema": schema,
-                    "returncode": result.returncode,
-                    "wall_ms": result.wall_ms,
-                    "final_base64": (None if final_raw is None
-                                     else _b64(final_raw)),
-                    "trace_base64": _b64(result.stdout),
-                    "stderr_base64": _b64(result.stderr),
-                    "trace_sha256": _sha_bytes(result.stdout),
-                    "stderr_sha256": _sha_bytes(result.stderr),
-                    "final_sha256": (None if final_raw is None
-                                     else _sha_bytes(final_raw)),
-                    "usage": raw_usage,
-                    "tool_event_count": tool_count,
-                }
-                refusal = {**refusal_body,
-                           "evidence_sha256": _sha(refusal_body)}
-                validate_private_refusal_evidence(refusal, packet=packet)
-                if packet.sha256 in self._private_refusal_evidence:
-                    raise CodexTurnTransportError(
-                        "Codex private refusal packet reused")
-                self._private_refusal_evidence[packet.sha256] = refusal
+                # Preserve exact provider bytes for a refusal even when they
+                # exceed the accepted-response limits.  The response path
+                # still rejects oversized output; the refusal record must not
+                # silently turn those bytes into an absent response.
+                final_raw = final_path.read_bytes()
+            raw_usage, tool_count = _refusal_trace_facts(
+                result.stdout, result.wall_ms)
+            refusal_body = {
+                "schema": PRIVATE_REFUSAL_EVIDENCE_SCHEMA,
+                "request": request_body,
+                "prompt_base64": _b64(prompt),
+                "output_schema": schema,
+                "returncode": result.returncode,
+                "wall_ms": result.wall_ms,
+                "final_base64": (None if final_raw is None
+                                 else _b64(final_raw)),
+                "trace_base64": _b64(result.stdout),
+                "stderr_base64": _b64(result.stderr),
+                "trace_sha256": _sha_bytes(result.stdout),
+                "stderr_sha256": _sha_bytes(result.stderr),
+                "final_sha256": (None if final_raw is None
+                                 else _sha_bytes(final_raw)),
+                "usage": raw_usage,
+                "tool_event_count": tool_count,
+            }
+            refusal = {**refusal_body,
+                       "evidence_sha256": _sha(refusal_body)}
+            validate_private_refusal_evidence(refusal, packet=packet)
+            if packet.sha256 in self._private_refusal_evidence:
+                raise CodexTurnTransportError(
+                    "Codex private refusal packet reused")
+            self._private_refusal_evidence[packet.sha256] = refusal
             # Preserve parseable usage/tool telemetry for a late provider
             # result, then refuse before response validation can return to the
             # journal or any engine transition can commit.
@@ -970,6 +1111,7 @@ __all__ = [
     "PRIVATE_EVIDENCE_SCHEMA",
     "PRIVATE_REFUSAL_EVIDENCE_SCHEMA",
     "attest_codex_runtime",
+    "classify_refusal_redispatch_eligibility",
     "intent_output_schema",
     "planner_prompt",
     "validate_private_evidence",

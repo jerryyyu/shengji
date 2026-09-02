@@ -42,6 +42,7 @@ from .privileged_teacher_luna_rpc_transport import (
     _default_run,
 )
 from .privileged_teacher_luna_turn_rpc import (
+    AttemptRef,
     CallEvidence,
     DecisionPacket,
     PlannerTransport,
@@ -54,6 +55,9 @@ from .privileged_teacher_pt0 import canonical_json_bytes
 
 
 ATTEMPT_SCHEMA = "pt-luna-turn-rpc-game-attempt-v1"
+REDISPATCH_ELIGIBILITIES = frozenset({
+    "stderr-nonempty", "completion-telemetry-drift",
+})
 EVIDENCE_SCHEMA = "pt-luna-turn-rpc-game-evidence-v1"
 FAILURE_SCHEMA = "pt-luna-turn-rpc-game-failure-v2"
 MANIFEST_SCHEMA = "pt-luna-turn-rpc-game-manifest-v2"
@@ -197,8 +201,9 @@ class ScientificBudgetLedger:
         self.namespace = namespace
         self._lock = threading.Lock()
         self._reservations: set[str] = set()
-        self._responses: dict[str, tuple[str, int, bool]] = {}
+        self._responses: dict[str, tuple[str, int, bool, str, str | None]] = {}
         self._cancelled: set[str] = set()
+        self._attempts: dict[str, AttemptRef] = {}
         self._spent_tokens = 0
         self._crossed = False
         self._events: list[dict[str, object]] = []
@@ -246,7 +251,7 @@ class ScientificBudgetLedger:
 
     def _genesis_body(self) -> dict[str, object]:
         return {
-            "schema": "pt-luna-budget-genesis-v1",
+            "schema": "pt-luna-budget-genesis-v3",
             "started_monotonic_nanoseconds": self.started_ns,
             "wall_nanoseconds": self.wall_ns,
             "token_cap": self.token_cap,
@@ -312,12 +317,13 @@ class ScientificBudgetLedger:
             body = {key: value for key, value in event.items()
                     if key != "event_sha256"}
             keys = {"schema", "sequence", "event", "packet_sha256",
+                    "attempt", "redispatch_eligibility",
                     "provider_response_sha256", "tokens",
                     "elapsed_nanoseconds", "accepted",
                     "spent_tokens_after", "reserved_call_count_after",
                     "event_sha256"}
             if set(event) != keys \
-                    or event.get("schema") != "pt-luna-budget-event-v1" \
+                    or event.get("schema") != "pt-luna-budget-event-v3" \
                     or event.get("sequence") != index \
                     or event.get("event_sha256") != _sha(body):
                 raise RPCCollectionError("scientific budget event drift")
@@ -335,7 +341,7 @@ class ScientificBudgetLedger:
             }
             if (set(terminal) != expected
                     or terminal.get("schema")
-                    != "pt-luna-budget-terminal-accept-v1"
+                    != "pt-luna-budget-terminal-accept-v3"
                     or terminal.get("terminal_accept_sha256") != _sha(body)
                     or terminal.get("spent_tokens") != self._spent_tokens
                     or terminal.get("reserved_call_count")
@@ -358,6 +364,16 @@ class ScientificBudgetLedger:
 
     def _apply(self, event: Mapping[str, object], *, reopening: bool) -> None:
         packet = _strict_sha(event["packet_sha256"], "budget packet SHA")
+        try:
+            attempt = AttemptRef.from_mapping(event["attempt"])
+        except Exception as exc:
+            raise RPCCollectionError("scientific budget attempt drift") from exc
+        if attempt.logical_packet_sha256 != packet:
+            raise RPCCollectionError("scientific budget attempt packet drift")
+        attempt_key = str(attempt.attempt_sha256)
+        eligibility = event.get("redispatch_eligibility")
+        if eligibility is not None and type(eligibility) is not str:
+            raise RPCCollectionError("scientific budget redispatch drift")
         elapsed = event["elapsed_nanoseconds"]
         tokens = event["tokens"]
         if isinstance(elapsed, bool) or not isinstance(elapsed, int) \
@@ -371,20 +387,35 @@ class ScientificBudgetLedger:
             projected = (self._spent_tokens
                          + (len(self._reservations) + 1)
                          * self.reserve_tokens)
-            if packet in self._reservations or packet in self._responses \
-                    or packet in self._cancelled \
+            if attempt_key in self._reservations \
+                    or attempt_key in self._responses \
+                    or attempt_key in self._cancelled \
                     or event["provider_response_sha256"] is not None \
+                    or eligibility is not None \
                     or tokens != self.reserve_tokens \
                     or event["accepted"] is not True \
                     or self._crossed or projected > self.token_cap \
                     or elapsed + self.reserve_wall_ms * 1_000_000 \
-                    > self.wall_ns:
+                    > self.wall_ns \
+                    or (attempt.attempt_ordinal > 0 and not any(
+                        ref.logical_packet_sha256 == packet
+                        and ref.attempt_ordinal == attempt.attempt_ordinal - 1
+                        and key in self._responses
+                        and not self._responses[key][2]
+                        and self._responses[key][4] in REDISPATCH_ELIGIBILITIES
+                        for key, ref in self._attempts.items())) \
+                    or (attempt.attempt_ordinal == 0 and any(
+                        ref.logical_packet_sha256 == packet
+                        for ref in self._attempts.values())):
                 raise RPCCollectionError("scientific budget reserve drift")
-            self._reservations.add(packet)
+            self._reservations.add(attempt_key)
+            self._attempts[attempt_key] = attempt
         elif kind == "settle":
             provider = _strict_sha(
                 event["provider_response_sha256"], "budget response SHA")
-            if packet not in self._reservations or packet in self._responses:
+            if attempt_key not in self._reservations \
+                    or attempt_key in self._responses \
+                    or eligibility is not None:
                 raise RPCCollectionError("scientific budget settle drift")
             expected_accepted = (not self._crossed
                                  and tokens <= self.reserve_tokens
@@ -394,30 +425,45 @@ class ScientificBudgetLedger:
                                  and elapsed <= self.wall_ns)
             if event["accepted"] is not expected_accepted:
                 raise RPCCollectionError("scientific budget disposition drift")
-            self._reservations.remove(packet)
+            self._reservations.remove(attempt_key)
             self._spent_tokens += tokens
-            self._responses[packet] = (provider, tokens, expected_accepted)
+            self._responses[attempt_key] = (
+                provider, tokens, expected_accepted, packet, None)
+            self._attempts[attempt_key] = attempt
             if not expected_accepted:
                 self._crossed = True
         elif kind == "refuse":
             disposition = _strict_sha(
                 event["provider_response_sha256"],
                 "budget refusal disposition SHA")
-            if packet not in self._reservations or packet in self._responses \
-                    or event["accepted"] is not False:
+            if attempt_key not in self._reservations \
+                    or attempt_key in self._responses \
+                    or event["accepted"] is not False \
+                    or (eligibility is not None
+                        and eligibility not in REDISPATCH_ELIGIBILITIES):
                 raise RPCCollectionError("scientific budget refusal drift")
-            self._reservations.remove(packet)
+            self._reservations.remove(attempt_key)
             self._spent_tokens += tokens
-            self._responses[packet] = (disposition, tokens, False)
-            self._crossed = True
+            self._responses[attempt_key] = (
+                disposition, tokens, False, packet, eligibility)
+            self._attempts[attempt_key] = attempt
+            # A reviewed availability refusal is a settled physical attempt,
+            # but leaves exactly the next ordinal eligible.  Ordinal 2 is
+            # exhausted even if the provider-shaped refusal is otherwise
+            # redispatchable.
+            if (eligibility not in REDISPATCH_ELIGIBILITIES
+                    or attempt.attempt_ordinal >= 2):
+                self._crossed = True
         elif kind == "cancel":
-            if packet in self._responses \
-                    or packet in self._cancelled \
+            if attempt_key in self._responses \
+                    or attempt_key in self._cancelled \
                     or event["provider_response_sha256"] is not None \
+                    or eligibility is not None \
                     or tokens != 0 or event["accepted"] is not False:
                 raise RPCCollectionError("scientific budget cancel drift")
-            self._reservations.discard(packet)
-            self._cancelled.add(packet)
+            self._reservations.discard(attempt_key)
+            self._cancelled.add(attempt_key)
+            self._attempts[attempt_key] = attempt
         else:
             raise RPCCollectionError("scientific budget event kind drift")
         if event["spent_tokens_after"] != self._spent_tokens \
@@ -428,7 +474,7 @@ class ScientificBudgetLedger:
 
     def _append(self, body: Mapping[str, object]) -> None:
         sequence = len(self._events)
-        event_body = {"schema": "pt-luna-budget-event-v1",
+        event_body = {"schema": "pt-luna-budget-event-v3",
                       "sequence": sequence, **dict(body)}
         event = {**event_body, "event_sha256": _sha(event_body)}
         _publish(self.root / f"{sequence:012d}.json", event)
@@ -446,22 +492,36 @@ class ScientificBudgetLedger:
                     0, self.token_cap - self._spent_tokens - held),
             }
 
-    def reserve(self, packet: DecisionPacket) -> None:
+    @staticmethod
+    def _attempt_for(packet: DecisionPacket, attempt: AttemptRef | None) \
+            -> AttemptRef:
         if type(packet) is not DecisionPacket:
             raise ResourceBoundaryError("scientific dispatch packet drift")
+        result = (AttemptRef(packet.sha256, 0) if attempt is None else attempt)
+        if type(result) is not AttemptRef \
+                or result.logical_packet_sha256 != packet.sha256:
+            raise ResourceBoundaryError("scientific attempt binding drift")
+        return result
+
+    def reserve(self, packet: DecisionPacket,
+                attempt: AttemptRef | None = None) -> None:
+        if type(packet) is not DecisionPacket:
+            raise ResourceBoundaryError("scientific dispatch packet drift")
+        attempt = self._attempt_for(packet, attempt)
         key = packet.sha256
+        attempt_key = str(attempt.attempt_sha256)
         with self._lock:
             if self._terminal_accept is not None:
                 raise ResourceBoundaryError(
                     "scientific budget already terminal")
-            if key in self._responses:
-                if not self._responses[key][2]:
+            if attempt_key in self._responses:
+                if not self._responses[attempt_key][2]:
                     raise ResourceBoundaryError("scientific budget crossed")
                 return
-            if key in self._cancelled:
+            if attempt_key in self._cancelled:
                 raise ResourceBoundaryError(
                     "scientific dispatch was already cancelled")
-            if key in self._reservations:
+            if attempt_key in self._reservations:
                 return
             elapsed = max(0, time.monotonic_ns() - self.started_ns)
             projected = (self._spent_tokens
@@ -474,22 +534,31 @@ class ScientificBudgetLedger:
                     "scientific dispatch reservation refused")
             self._append({
                 "event": "reserve", "packet_sha256": key,
+                "attempt": attempt.payload(),
+                "redispatch_eligibility": None,
                 "provider_response_sha256": None,
                 "tokens": self.reserve_tokens,
                 "elapsed_nanoseconds": elapsed, "accepted": True,
                 "spent_tokens_after": self._spent_tokens,
                 "reserved_call_count_after": len(self._reservations) + 1})
 
-    def accept(self, response: PlannerResponse) -> None:
+    def accept(self, response: PlannerResponse,
+               attempt: AttemptRef | None = None) -> None:
         if type(response) is not PlannerResponse \
                 or response.packet_sha256 is None \
                 or response.provider_response_sha256 is None:
             raise ResourceBoundaryError("scientific response identity drift")
         key = response.packet_sha256
+        if attempt is None:
+            attempt = AttemptRef(key, 0)
+        if type(attempt) is not AttemptRef \
+                or attempt.logical_packet_sha256 != key:
+            raise ResourceBoundaryError("scientific attempt binding drift")
+        attempt_key = str(attempt.attempt_sha256)
         provider = response.provider_response_sha256
         tokens = response.usage.total_tokens
         with self._lock:
-            prior = self._responses.get(key)
+            prior = self._responses.get(attempt_key)
             if prior is not None:
                 if prior[:2] != (provider, tokens):
                     raise ResourceBoundaryError(
@@ -498,7 +567,7 @@ class ScientificBudgetLedger:
                     raise SettledResourceBoundaryError(
                         "scientific budget crossed")
                 return
-            if key not in self._reservations:
+            if attempt_key not in self._reservations:
                 raise ResourceBoundaryError(
                     "scientific response lacks dispatch reservation")
             elapsed = max(0, time.monotonic_ns() - self.started_ns)
@@ -509,6 +578,8 @@ class ScientificBudgetLedger:
                         and elapsed <= self.wall_ns)
             self._append({
                 "event": "settle", "packet_sha256": key,
+                "attempt": attempt.payload(),
+                "redispatch_eligibility": None,
                 "provider_response_sha256": provider, "tokens": tokens,
                 "elapsed_nanoseconds": elapsed, "accepted": accepted,
                 "spent_tokens_after": self._spent_tokens + tokens,
@@ -517,10 +588,15 @@ class ScientificBudgetLedger:
                 raise SettledResourceBoundaryError(
                     "scientific budget crossed")
 
+    def accept_attempt(self, attempt: AttemptRef,
+                       response: PlannerResponse) -> None:
+        """Settle the exact journal response, including its physical ordinal."""
+        self.accept(response, attempt)
+
     def refuse(self, disposition: Mapping[str, object]) -> None:
         expected = {"packet_sha256", "disposition_sha256", "total_tokens",
                     "failure_kind", "failure_class"}
-        if type(disposition) is not dict or set(disposition) != expected \
+        if type(disposition) is not dict or not expected.issubset(disposition) \
                 or type(disposition.get("failure_kind")) is not str \
                 or disposition.get("failure_class") not in {
                     "mechanics-privacy", "resource-provider"}:
@@ -528,6 +604,18 @@ class ScientificBudgetLedger:
                 "scientific refusal disposition drift")
         packet = _strict_sha(
             disposition["packet_sha256"], "scientific refusal packet")
+        attempt_value = disposition.get("attempt")
+        if attempt_value is None:
+            attempt = AttemptRef(packet, 0)
+        else:
+            try:
+                attempt = AttemptRef.from_mapping(attempt_value)
+            except Exception as exc:
+                raise ResourceBoundaryError(
+                    "scientific refusal attempt drift") from exc
+        if attempt.logical_packet_sha256 != packet:
+            raise ResourceBoundaryError("scientific refusal attempt binding drift")
+        attempt_key = str(attempt.attempt_sha256)
         evidence = _strict_sha(
             disposition["disposition_sha256"],
             "scientific refusal evidence")
@@ -537,40 +625,53 @@ class ScientificBudgetLedger:
                                    or actual < 0):
             raise ResourceBoundaryError("scientific refusal usage drift")
         tokens = self.reserve_tokens if actual is None else actual
+        eligibility = disposition.get("redispatch_eligibility")
+        if eligibility is not None \
+                and eligibility not in REDISPATCH_ELIGIBILITIES:
+            raise ResourceBoundaryError("scientific refusal redispatch drift")
         with self._lock:
-            prior = self._responses.get(packet)
+            prior = self._responses.get(attempt_key)
             if prior is not None:
-                if prior != (evidence, tokens, False):
+                if prior[:3] != (evidence, tokens, False) \
+                        or prior[4] != eligibility:
                     raise ResourceBoundaryError(
                         "scientific refusal replay drift")
                 return
-            if packet not in self._reservations:
+            if attempt_key not in self._reservations:
                 raise ResourceBoundaryError(
                     "scientific refusal lacks dispatch reservation")
             elapsed = max(0, time.monotonic_ns() - self.started_ns)
             self._append({
                 "event": "refuse", "packet_sha256": packet,
+                "attempt": attempt.payload(),
+                "redispatch_eligibility": disposition.get(
+                    "redispatch_eligibility"),
                 "provider_response_sha256": evidence, "tokens": tokens,
                 "elapsed_nanoseconds": elapsed, "accepted": False,
                 "spent_tokens_after": self._spent_tokens + tokens,
                 "reserved_call_count_after": len(self._reservations) - 1})
 
-    def cancel(self, packet: DecisionPacket) -> None:
+    def cancel(self, packet: DecisionPacket,
+               attempt: AttemptRef | None = None) -> None:
         """Release a reservation proven not to have launched a provider."""
         if type(packet) is not DecisionPacket:
             raise ResourceBoundaryError("scientific cancel packet drift")
         key = packet.sha256
+        attempt = self._attempt_for(packet, attempt)
+        attempt_key = str(attempt.attempt_sha256)
         with self._lock:
-            if key in self._cancelled:
+            if attempt_key in self._cancelled:
                 return
-            if key in self._responses:
+            if attempt_key in self._responses:
                 raise ResourceBoundaryError(
                     "scientific settled call cannot be cancelled")
             elapsed = max(0, time.monotonic_ns() - self.started_ns)
             remaining = len(self._reservations) - int(
-                key in self._reservations)
+                attempt_key in self._reservations)
             self._append({
                 "event": "cancel", "packet_sha256": key,
+                "attempt": attempt.payload(),
+                "redispatch_eligibility": None,
                 "provider_response_sha256": None, "tokens": 0,
                 "elapsed_nanoseconds": elapsed, "accepted": False,
                 "spent_tokens_after": self._spent_tokens,
@@ -581,10 +682,10 @@ class ScientificBudgetLedger:
             return {"spent_tokens": self._spent_tokens,
                     "reserved_call_count": len(self._reservations),
                     "accepted_response_count": sum(
-                        accepted for _, _, accepted
+                        accepted for _, _, accepted, _, _
                         in self._responses.values()),
                     "refused_response_count": sum(
-                        not accepted for _, _, accepted
+                        not accepted for _, _, accepted, _, _
                         in self._responses.values()),
                     "cancelled_dispatch_count": len(self._cancelled),
                     "crossed": self._crossed,
@@ -596,58 +697,79 @@ class ScientificBudgetLedger:
     def is_settled(self, packet_sha256: str) -> bool:
         packet = _strict_sha(packet_sha256, "scientific settlement packet")
         with self._lock:
-            return packet in self._responses
+            return any(row[3] == packet for row in self._responses.values())
 
     def packet_state(self, packet_sha256: str) -> str:
         packet = _strict_sha(packet_sha256, "scientific packet state")
         with self._lock:
-            if packet in self._responses:
+            if any(row[3] == packet for row in self._responses.values()):
                 return "settled"
-            if packet in self._reservations:
+            if any(ref.logical_packet_sha256 == packet
+                   for key, ref in self._attempts.items()
+                   if key in self._reservations):
                 return "reserved"
-            if packet in self._cancelled:
+            if any(ref.logical_packet_sha256 == packet
+                   for key, ref in self._attempts.items()
+                   if key in self._cancelled):
+                return "cancelled"
+            return "absent"
+
+    def attempt_state(self, attempt: AttemptRef) -> str:
+        """Return state for one physical attempt, never another retry."""
+        if type(attempt) is not AttemptRef:
+            raise ResourceBoundaryError("scientific attempt state drift")
+        key = str(attempt.attempt_sha256)
+        with self._lock:
+            if key in self._responses:
+                return "settled"
+            if key in self._reservations:
+                return "reserved"
+            if key in self._cancelled:
                 return "cancelled"
             return "absent"
 
     def reconcile_attempt_journals(self, attempts: Sequence[Path]) -> None:
         """Require a one-to-one durable journal/ledger disposition mapping."""
         expected_responses: dict[
-            str, tuple[set[str], int, set[bool]]] = {}
+            str, tuple[set[str], int, set[bool], str, str | None]] = {}
         expected_reservations: set[str] = set()
         cancelable_refusals: set[str] = set()
-        for attempt in attempts:
-            journal_root = Path(attempt) / "journal"
+        for attempt_path in attempts:
+            journal_root = Path(attempt_path) / "journal"
             if not journal_root.is_dir() or journal_root.is_symlink():
                 continue
             journal = FileTurnJournal(journal_root)
             groups = journal._scan()
             manifest = None
-            manifest_path = Path(attempt) / "manifest.json"
+            manifest_path = Path(attempt_path) / "manifest.json"
             if manifest_path.is_file() and not manifest_path.is_symlink():
                 manifest = _read(manifest_path)
             for group in groups:
                 packet = _strict_sha(
                     group["open"]["packet_sha256"],
                     "journal ledger packet")
-                if packet in expected_responses \
-                        or packet in expected_reservations:
+                attempt_ref = FileTurnJournal._attempt(group)
+                attempt_key = str(attempt_ref.attempt_sha256)
+                if attempt_key in expected_responses \
+                        or attempt_key in expected_reservations:
                     raise RPCCollectionError(
-                        "journal ledger packet duplication")
+                        "journal ledger attempt duplication")
                 stages = set(group)
                 if stages == {"open", "response", "commit"}:
                     response = journal._response(group)
-                    expected_responses[packet] = ({
+                    expected_responses[attempt_key] = ({
                         response.provider_response_sha256},
-                        response.usage.total_tokens, {True})
+                        response.usage.total_tokens, {True}, packet, None)
                 elif stages == {"open", "refusal"}:
                     refusal = journal._refusal(group)
                     tokens = (self.reserve_tokens
                               if refusal["usage"] is None
                               else refusal["usage"]["total_tokens"])
-                    expected_responses[packet] = ({
-                        refusal["failure_sha256"]}, tokens, {False})
+                    expected_responses[attempt_key] = (
+                        {refusal["failure_sha256"]}, tokens, {False}, packet,
+                        refusal["redispatch_eligibility"])
                     if refusal["usage"] is None:
-                        cancelable_refusals.add(packet)
+                        cancelable_refusals.add(attempt_key)
                 elif stages == {"open", "response"}:
                     response = journal._response(group)
                     identities = {response.provider_response_sha256}
@@ -660,11 +782,11 @@ class ScientificBudgetLedger:
                             failure_class=manifest["failure_class"])
                         if rejected is not None:
                             identities.add(rejected["disposition_sha256"])
-                    expected_responses[packet] = (
+                    expected_responses[attempt_key] = (
                         identities, response.usage.total_tokens,
-                        {True, False})
+                        {True, False}, packet, None)
                 elif stages == {"open"}:
-                    expected_reservations.add(packet)
+                    expected_reservations.add(attempt_key)
                 else:
                     raise RPCCollectionError(
                         "journal ledger stage population drift")
@@ -675,15 +797,17 @@ class ScientificBudgetLedger:
                     != set(expected_responses) - self._cancelled:
                 raise RPCCollectionError(
                     "journal ledger population drift")
-            for packet, (identities, tokens, accepted) \
+            for attempt_key, (identities, tokens, accepted, logical, eligibility) \
                     in expected_responses.items():
-                if packet in self._cancelled:
+                if attempt_key in self._cancelled:
                     continue
                 actual_identity, actual_tokens, actual_accepted = \
-                    self._responses[packet]
+                    self._responses[attempt_key][:3]
                 if actual_identity not in identities \
                         or actual_tokens != tokens \
-                        or actual_accepted not in accepted:
+                        or actual_accepted not in accepted \
+                        or self._responses[attempt_key][3] != logical \
+                        or self._responses[attempt_key][4] != eligibility:
                     raise RPCCollectionError(
                         "journal ledger disposition drift")
 
@@ -707,7 +831,7 @@ class ScientificBudgetLedger:
                 raise ResourceBoundaryError(
                     "scientific terminal budget crossed")
             body = {
-                "schema": "pt-luna-budget-terminal-accept-v1",
+                "schema": "pt-luna-budget-terminal-accept-v3",
                 "elapsed_nanoseconds": elapsed,
                 "spent_tokens": self._spent_tokens,
                 "reserved_call_count": len(self._reservations),
@@ -1102,6 +1226,12 @@ class RPCGameAttemptRunner:
             scientific_budget_provider: Callable[[], Mapping[str, int]] | None = None,
             scientific_response_acceptor: Callable[[object], object] | None = None,
             scientific_dispatch_reserver: Callable[[DecisionPacket], object] | None = None,
+            scientific_attempt_reserver: Callable[[DecisionPacket, object], object]
+            | None = None,
+            scientific_refusal_settler: Callable[[object, Mapping[str, object]], object]
+            | None = None,
+            scientific_journal_response_acceptor: Callable[[object, object], object]
+            | None = None,
             scientific_refusal_acceptor: Callable[[Mapping[str, object]], object] | None = None,
             scientific_terminal_acceptor: Callable[[], object] | None = None,
             per_call_token_reserve: int = 1,
@@ -1179,6 +1309,13 @@ class RPCGameAttemptRunner:
         if scientific_dispatch_reserver is not None \
                 and not callable(scientific_dispatch_reserver):
             raise RPCCollectionError("scientific dispatch reserver drift")
+        for callback, label in (
+                (scientific_attempt_reserver, "attempt reserver"),
+                (scientific_refusal_settler, "refusal settler"),
+                (scientific_journal_response_acceptor,
+                 "journal response acceptor")):
+            if callback is not None and not callable(callback):
+                raise RPCCollectionError(f"scientific {label} drift")
         if scientific_refusal_acceptor is not None \
                 and not callable(scientific_refusal_acceptor):
             raise RPCCollectionError("scientific refusal acceptor drift")
@@ -1192,8 +1329,20 @@ class RPCGameAttemptRunner:
                     scientific_terminal_acceptor is not None)
         if any(supplied) and not all(supplied):
             raise RPCCollectionError("scientific budget callback population drift")
+        attempt_hooks = (scientific_attempt_reserver,
+                         scientific_refusal_settler,
+                         scientific_journal_response_acceptor)
+        if any(hook is not None for hook in attempt_hooks) \
+                and not all(hook is not None for hook in attempt_hooks):
+            raise RPCCollectionError("scientific attempt callback population drift")
+        if all(hook is not None for hook in attempt_hooks) and not all(supplied):
+            raise RPCCollectionError("scientific budget callback population drift")
         self.scientific_response_acceptor = scientific_response_acceptor
         self.scientific_dispatch_reserver = scientific_dispatch_reserver
+        self.scientific_attempt_reserver = scientific_attempt_reserver
+        self.scientific_refusal_settler = scientific_refusal_settler
+        self.scientific_journal_response_acceptor = \
+            scientific_journal_response_acceptor
         self.scientific_refusal_acceptor = scientific_refusal_acceptor
         self.scientific_terminal_acceptor = scientific_terminal_acceptor
         self.codex_binary: Path | None = None
@@ -1209,7 +1358,8 @@ class RPCGameAttemptRunner:
             self.transport_factory = lambda temp: CodexExecPlannerTransport(
                 codex_binary=Path(codex_binary), temp_root=temp,
                 timeout_seconds=self.per_call_timeout_seconds,
-                run_command=counted, runtime_attestor=lambda _: dict(catalog))
+                run_command=counted, runtime_attestor=lambda _: dict(catalog),
+                policy_mode="play-only")
         else:
             self.transport_factory = transport_factory
 
@@ -1345,8 +1495,13 @@ class RPCGameAttemptRunner:
         ledger_state = None
         if refusal is not None and isinstance(
                 response_acceptor_owner, ScientificBudgetLedger):
-            ledger_state = response_acceptor_owner.packet_state(
-                refusal["packet_sha256"])
+            try:
+                refusal_attempt = AttemptRef.from_mapping(refusal["attempt"])
+                ledger_state = response_acceptor_owner.attempt_state(
+                    refusal_attempt)
+            except Exception as exc:
+                raise RPCCollectionError(
+                    "scientific refusal attempt drift") from exc
         already_settled = (
             isinstance(exc, SettledResourceBoundaryError)
             or (ledger_state is not None and ledger_state != "reserved"))
@@ -1458,11 +1613,25 @@ class RPCGameAttemptRunner:
             refusal = SealedTurnRefusal(
                 pending_refusal["failure_kind"],
                 pending_refusal["failure_class"])
-            self._seal_failure(
-                path, coordinate, mirror, refusal, stage="provider-response")
-            self.stop_event.set()
-            raise RPCCollectionError("sealed game attempt is incomplete") \
-                from refusal
+            try:
+                pending_attempt = AttemptRef.from_mapping(
+                    pending_refusal["attempt"])
+            except Exception as exc:
+                raise RPCCollectionError(
+                    "sealed refusal attempt drift") from exc
+            # An eligible refusal is deliberately left resumable: the next
+            # driver step settles that exact physical attempt idempotently
+            # and opens only ordinal + 1.  Unknown, ineligible, and exhausted
+            # refusals remain terminal and never redispatch.
+            if (pending_refusal["redispatch_eligibility"]
+                    not in REDISPATCH_ELIGIBILITIES
+                    or pending_attempt.attempt_ordinal >= 2):
+                self._seal_failure(
+                    path, coordinate, mirror, refusal,
+                    stage="provider-response")
+                self.stop_event.set()
+                raise RPCCollectionError("sealed game attempt is incomplete") \
+                    from refusal
         game = selfplay.LunaSelfPlayGame(
             root, coordinate=coordinate, mirror=mirror,
             seed_secret=self.seed_secret)
@@ -1511,6 +1680,24 @@ class RPCGameAttemptRunner:
                 if isinstance(owner, ScientificBudgetLedger):
                     owner.cancel(packet)
                 raise
+        def reserve_attempt(packet: DecisionPacket, attempt: AttemptRef) -> None:
+            owner = getattr(
+                self.scientific_attempt_reserver, "__self__", None)
+            try:
+                if self.stop_event.is_set():
+                    raise ResourceBoundaryError(
+                        "collection stopped before provider dispatch")
+                if self.scientific_attempt_reserver is None:
+                    raise ResourceBoundaryError(
+                        "scientific attempt reserver absent")
+                self.scientific_attempt_reserver(packet, attempt)
+                if self.stop_event.is_set():
+                    raise ResourceBoundaryError(
+                        "collection stopped during provider admission")
+            except Exception:
+                if isinstance(owner, ScientificBudgetLedger):
+                    owner.cancel(packet, attempt)
+                raise
         try:
             driver = TurnDriver(
                 game, transport, journal=journal,
@@ -1518,7 +1705,13 @@ class RPCGameAttemptRunner:
                 response_acceptor=self.scientific_response_acceptor,
                 dispatch_reserver=(reserve_dispatch
                                    if self.scientific_dispatch_reserver
-                                   is not None else None))
+                                   is not None else None),
+                attempt_reserver=(reserve_attempt
+                                  if self.scientific_attempt_reserver is not None
+                                  else None),
+                refusal_settler=self.scientific_refusal_settler,
+                journal_response_acceptor=
+                    self.scientific_journal_response_acceptor)
             while not game.complete and game.failed is None:
                 if self.stop_event.is_set():
                     raise ResourceBoundaryError(

@@ -69,17 +69,25 @@ Forced single-candidate moves advance mechanically with no model call. At each
 contested decision, the acting planner receives the same canonical
 full-information state, public history, private team memory, legal candidates,
 production-prior index, identity hashes, and remaining budgets already defined
-by the predecessor design. It returns exactly one closed object:
+by the predecessor design. It returns exactly one closed object using the
+existing nested production provider schema:
 
 ```json
 {
-  "schema": "pt-luna-play-intent-v1",
+  "schema": "pt-luna-provider-intent-v2",
   "decision_sha256": "...",
-  "candidate_index": 0,
-  "confidence": "low|medium|high",
-  "planning_note": "at most 2048 UTF-8 bytes"
+  "action": {
+    "kind": "play",
+    "candidate_index": 0,
+    "confidence": "low|medium|high",
+    "planning_note": "at most 2048 UTF-8 bytes"
+  }
 }
 ```
+
+The supervisor binds the request to `intent_output_schema(packet,
+allowed_kinds=("play",))`; the nested action is the production parser's only
+permitted variant for this mode.
 
 There is no `rollout` intent, continuation choice, second planning phase, or
 model-owned engine tool. Candidate zero remains the production prior but is

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 import hashlib
 import inspect
 from pathlib import Path
@@ -13,6 +14,7 @@ import time
 import pytest
 
 from shengji.rl import privileged_teacher_luna_rpc_capacity as capacity
+from shengji.rl import privileged_teacher_luna_rpc_journal as journal_module
 from shengji.rl.privileged_teacher_luna_rpc_transport import (
     CodexProviderResourceError,
     CodexToolEventError,
@@ -23,7 +25,8 @@ from shengji.rl.privileged_teacher_luna_rpc_transport import (
     REASONING_EFFORT,
 )
 from shengji.rl.privileged_teacher_luna_rpc_journal import TurnJournalError
-from shengji.rl.privileged_teacher_luna_turn_rpc import TurnValidationError
+from shengji.rl.privileged_teacher_luna_turn_rpc import (
+    Intent, PlannerResponse, TurnValidationError, Usage)
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 from shengji.rl.privileged_teacher_luna_rpc_capacity import (
     GameMetric,
@@ -249,6 +252,48 @@ def receipt(*, runner=None, tracker=None, capacity_token_budget=1_000_000):
         concurrency=tracker)
 
 
+def test_retry_receipt_aggregation_is_derived_and_zeroing_it_refuses():
+    result = receipt()
+    expected_physical = sum(
+        row["physical_attempt_count"]
+        for arm in result["arms"] for row in arm["metrics"])
+    assert result["physical_attempt_count"] == expected_physical
+    assert result["redispatch_count"] == 0
+    assert result["exhaustion_count"] == 0
+    forged = copy.deepcopy(result)
+    forged["physical_attempt_count"] = 0
+    body = {key: value for key, value in forged.items()
+            if key != "receipt_sha256"}
+    forged["receipt_sha256"] = hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()
+    with pytest.raises(RPCCapacityError, match="retry terminal derivation"):
+        validate_capacity_receipt(forged)
+
+
+def test_retry_receipt_aggregation_preserves_exact_metric_totals():
+    tracker = RPCConcurrency()
+    base = PassingRunner(tracker)
+
+    def retry_runner(workers, worker, game):
+        row = base(workers, worker, game)
+        return replace(
+            row, physical_attempt_count=row.rpc_count,
+            first_attempt_failure_by_class={"completion-telemetry-drift": 1},
+            redispatch_count=1, retry_wall_nanoseconds=7_000_000,
+            retry_token_count=90)
+
+    result = receipt(runner=retry_runner, tracker=tracker)
+    metric_count = 2 * sum(capacity.WORKER_ARMS)
+    assert result["physical_attempt_count"] == metric_count * 3
+    assert result["redispatch_count"] == metric_count
+    assert result["exhaustion_count"] == 0
+    assert result["retry_wall_nanoseconds"] == metric_count * 7_000_000
+    assert result["retry_token_count"] == metric_count * 90
+    assert result["first_attempt_failure_by_class"] == {
+        "completion-telemetry-drift": metric_count}
+    validate_capacity_receipt(result)
+
+
 def test_all_arms_pass_and_next_larger_rule_selects_a_supported_arm():
     result = receipt()
     assert result["route"] == ROUTE_PASS
@@ -313,11 +358,13 @@ def test_capacity_token_overrun_cannot_publish_a_passing_route():
 def test_real_runner_snapshots_failed_journal_before_temp_cleanup(
         tmp_path, monkeypatch):
     seen_catalogs = []
+    seen_modes = []
     progress = []
     class RefusingTransport:
         def __init__(self, **kwargs):
             seen_catalogs.append(kwargs["runtime_attestor"](
                 Path("/never-probed")))
+            seen_modes.append(kwargs["policy_mode"])
         def call(self, _packet):
             raise CodexTurnTransportError("Codex completion telemetry drift")
     monkeypatch.setattr(
@@ -339,9 +386,64 @@ def test_real_runner_snapshots_failed_journal_before_temp_cleanup(
         b"Codex completion telemetry drift").hexdigest()
     assert metric.input_tokens == metric.output_tokens == 0
     assert seen_catalogs == [runtime()["codex_tool_catalog"]]
+    assert seen_modes == ["play-only"]
     assert progress[-1]["event"] == "game-failure"
     assert progress[-1]["opened_rpc_count"] == 1
     assert progress[-1]["committed_decision_count"] == 0
+
+
+def test_real_runner_retry_metric_is_derived_from_durable_attempts(
+        tmp_path, monkeypatch):
+    """The real runner must expose both physical calls and the retry facts."""
+    monkeypatch.setattr(
+        journal_module, "classify_refusal_redispatch_eligibility",
+        lambda _disposition, _private: "completion-telemetry-drift")
+    monkeypatch.setattr(
+        journal_module.FileTurnJournal, "_refusal_eligibility",
+        staticmethod(lambda group: group["refusal"].get(
+            "redispatch_eligibility")))
+
+    class RetryTransport:
+        calls = 0
+
+        def __init__(self, **kwargs):
+            self.policy_mode = kwargs["policy_mode"]
+
+        def call(self, packet):
+            self.calls += 1
+            if self.calls == 1:
+                raise CodexProviderResourceError("synthetic provider refusal")
+            return PlannerResponse(
+                Intent("play", packet.decision_sha256, candidate_index=0,
+                       confidence="low"),
+                Usage(40, 50, 90, 7), 0, 1 - packet.team,
+                packet.sha256, packet.memory.sha256, "a" * 64, "b" * 64)
+
+    transports = []
+    def factory(**kwargs):
+        transport = RetryTransport(**kwargs)
+        transports.append(transport)
+        return transport
+
+    monkeypatch.setattr(capacity, "CodexExecPlannerTransport", factory)
+    runner = capacity.RealGameRunner(
+        capacity_secret=b"capacity-test-secret-32-bytes!!!",
+        codex_binary=Path("/usr/bin/true"), temp_root=tmp_path,
+        per_call_timeout_seconds=90, per_game_deadline_seconds=600,
+        concurrency=RPCConcurrency(), runtime=runtime())
+    metric = runner(1, 0, 0)
+    assert metric.complete is False
+    assert metric.rpc_count == 2
+    assert metric.physical_attempt_count == 2
+    assert metric.redispatch_count == 1
+    assert metric.exhaustion_count == 0
+    assert metric.first_attempt_failure_by_class == {
+        "completion-telemetry-drift": 1}
+    assert metric.retry_wall_nanoseconds == 7_000_000
+    assert metric.retry_token_count == 90
+    assert len(transports) == 1
+    assert transports[0].calls == 2
+    assert transports[0].policy_mode == "play-only"
 
 
 def test_concurrent_game_failures_keep_distinct_typed_dispositions(

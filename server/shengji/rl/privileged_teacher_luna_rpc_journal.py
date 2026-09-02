@@ -11,12 +11,16 @@ import stat
 from typing import Mapping
 
 from . import privileged_teacher_luna_selfplay as selfplay
+from .privileged_teacher_luna_rpc_transport import (
+    classify_refusal_redispatch_eligibility,
+)
 from .privileged_teacher_luna_rpc_io import (
     AtomicPublishError, partial_path, promote_partial,
     publish_exclusive_bytes,
     recover_linked_partial,
 )
 from .privileged_teacher_luna_turn_rpc import (
+    AttemptRef,
     CallEvidence,
     DecisionPacket,
     Intent,
@@ -30,7 +34,7 @@ from .privileged_teacher_luna_turn_rpc import (
 from .privileged_teacher_pt0 import canonical_json_bytes
 
 
-SCHEMA = "pt-luna-turn-journal-record-v2"
+SCHEMA = "pt-luna-turn-journal-record-v3"
 _NAME = re.compile(r"^(\d{6})-(open|response|refusal|commit)\.json$")
 
 
@@ -275,18 +279,45 @@ class FileTurnJournal:
                    {"open", "response", "commit"})
         if any(set(group) not in allowed for group in groups):
             raise TurnJournalError("journal stage population drift")
+        for group in groups:
+            attempt = self._attempt(group)
+            for kind in ("refusal", "response", "commit"):
+                if kind not in group:
+                    continue
+                try:
+                    record_attempt = AttemptRef.from_mapping(
+                        group[kind].get("attempt"))
+                except Exception as exc:
+                    raise TurnJournalError(
+                        f"journal {kind} attempt drift") from exc
+                if record_attempt != attempt:
+                    raise TurnJournalError(
+                        f"journal {kind} attempt binding drift")
         for index, group in enumerate(groups[:-1]):
-            if set(group) != {"open", "response", "commit"}:
+            if set(group) not in ({"open", "response", "commit"},
+                                  {"open", "refusal"}):
                 raise TurnJournalError("nonterminal journal group incomplete")
+            if set(group) == {"open", "refusal"}:
+                if index + 1 >= len(groups):
+                    raise TurnJournalError("refusal redispatch missing")
+                previous = AttemptRef.from_mapping(group["open"].get("attempt"))
+                following = AttemptRef.from_mapping(
+                    groups[index + 1]["open"].get("attempt"))
+                if (following.packet_sha256 != previous.packet_sha256
+                        or following.ordinal != previous.ordinal + 1
+                        or self._refusal_eligibility(group) is None):
+                    raise TurnJournalError("refusal redispatch identity drift")
         for group in groups:
             if "refusal" in group:
                 self._refusal(group)
         return groups
 
     @staticmethod
-    def _open_body(packet: DecisionPacket, call_index: int) -> dict[str, object]:
+    def _open_body(packet: DecisionPacket, call_index: int,
+                   attempt: AttemptRef) -> dict[str, object]:
         return {"schema": SCHEMA, "kind": "decision-open",
                 "call_index": call_index, "packet_sha256": packet.sha256,
+                "attempt": attempt.payload(),
                 "packet": packet.payload(),
                 "decision_sha256": packet.decision_sha256,
                 "decision_index": packet.decision_index,
@@ -303,6 +334,28 @@ class FileTurnJournal:
         if packet.sha256 != group["open"].get("packet_sha256"):
             raise TurnJournalError("journal open packet binding drift")
         return packet
+
+    @staticmethod
+    def _attempt(group: Mapping[str, dict[str, object]]) -> AttemptRef:
+        try:
+            attempt = AttemptRef.from_mapping(group["open"].get("attempt"))
+        except Exception as exc:
+            raise TurnJournalError("journal attempt reference drift") from exc
+        if attempt.packet_sha256 != group["open"].get("packet_sha256"):
+            raise TurnJournalError("journal attempt packet binding drift")
+        return attempt
+
+    @staticmethod
+    def _refusal_eligibility(
+            group: Mapping[str, dict[str, object]]) -> str | None:
+        refusal = group.get("refusal")
+        if refusal is None:
+            return None
+        private = refusal.get("provider_private_evidence")
+        if private is None:
+            return None
+        return classify_refusal_redispatch_eligibility(
+            refusal.get("failure_disposition"), private)
 
     def _response(
             self, group: Mapping[str, dict[str, object]],
@@ -339,6 +392,7 @@ class FileTurnJournal:
             -> dict[str, object]:
         body = group["refusal"]
         expected = {"schema", "kind", "call_index", "packet_sha256",
+                    "attempt", "redispatch_eligibility",
                     "failure_kind", "failure_class", "failure_sha256",
                     "failure_disposition",
                     "usage", "tool_event_count",
@@ -350,6 +404,13 @@ class FileTurnJournal:
                 or body.get("packet_sha256") \
                 != group["open"].get("packet_sha256"):
             raise TurnJournalError("journal refusal body drift")
+        attempt = self._attempt(group)
+        try:
+            stored_attempt = AttemptRef.from_mapping(body["attempt"])
+        except Exception as exc:
+            raise TurnJournalError("journal refusal attempt drift") from exc
+        if stored_attempt != attempt:
+            raise TurnJournalError("journal refusal attempt binding drift")
         disposition = _validate_closed_failure_disposition(
             body["failure_disposition"])
         private = body["provider_private_evidence"]
@@ -379,9 +440,15 @@ class FileTurnJournal:
             "failure_class": body["failure_class"],
             "failure_disposition": disposition,
             "private_evidence_sha256": private_sha,
+            "attempt": attempt.payload(),
+            "redispatch_eligibility": body["redispatch_eligibility"],
         }
         if body["failure_sha256"] != _sha(fingerprint):
             raise TurnJournalError("journal refusal fingerprint drift")
+        expected_eligibility = classify_refusal_redispatch_eligibility(
+            disposition, private)
+        if body["redispatch_eligibility"] != expected_eligibility:
+            raise TurnJournalError("journal refusal redispatch drift")
         return dict(body)
 
     @staticmethod
@@ -401,7 +468,8 @@ class FileTurnJournal:
 
     def call(self, packet: DecisionPacket,
              transport: PlannerTransport, *,
-             dispatch_reserver=None) -> PlannerResponse:
+             dispatch_reserver=None, attempt_reserver=None,
+             refusal_settler=None, response_acceptor=None) -> PlannerResponse:
         self._groups = self._scan()
         if self._groups and set(self._groups[-1]) != {"open", "response", "commit"}:
             group = self._groups[-1]
@@ -411,17 +479,37 @@ class FileTurnJournal:
                 raise TurnJournalError("provider call disposition unknown")
             if set(group) == {"open", "refusal"}:
                 refusal = self._refusal(group)
-                raise SealedTurnRefusal(
-                    refusal["failure_kind"], refusal["failure_class"])
-            if set(group) == {"open", "response"}:
-                return self._response(group, packet)
-            raise TurnJournalError("pending journal stage drift")
+                eligibility = self._refusal_eligibility(group)
+                attempt = self._attempt(group)
+                if eligibility is None or attempt.ordinal >= 2:
+                    raise SealedTurnRefusal(
+                        refusal["failure_kind"], refusal["failure_class"])
+                if refusal_settler is not None:
+                    refusal_settler(attempt, self.pending_refusal_disposition())
+            elif set(group) == {"open", "response"}:
+                response = self._response(group, packet)
+                if response_acceptor is not None:
+                    response_acceptor(self._attempt(group), response)
+                return response
+            else:
+                raise TurnJournalError("pending journal stage drift")
+        else:
+            attempt = AttemptRef(packet.sha256, 0)
+
         call_index = len(self._groups)
-        open_body = self._open_body(packet, call_index)
+        if attempt.packet_sha256 != packet.sha256:
+            raise TurnJournalError("attempt packet drift")
+        attempt = AttemptRef(packet.sha256, attempt.ordinal + 1
+                             if self._groups and
+                             set(self._groups[-1]) == {"open", "refusal"}
+                             else attempt.ordinal)
+        open_body = self._open_body(packet, call_index, attempt)
         _publish(self.root / f"{call_index:06d}-open.json", open_body)
         failure_stage = "dispatch"
         try:
-            if dispatch_reserver is not None:
+            if attempt_reserver is not None:
+                attempt_reserver(packet, attempt)
+            elif dispatch_reserver is not None:
                 dispatch_reserver(packet)
             failure_stage = "provider-response"
             raw = transport.call(packet)
@@ -451,10 +539,12 @@ class FileTurnJournal:
                 "failure_class": failure_class,
                 "failure_disposition": failure_disposition,
                 "private_evidence_sha256": private_sha,
+                "attempt": attempt.payload(),
             }
             failure = {
                 "schema": SCHEMA, "kind": "model-call-refused",
                 "call_index": call_index, "packet_sha256": packet.sha256,
+                "attempt": attempt.payload(),
                 "failure_kind": failure_kind,
                 "failure_class": failure_class,
                 "failure_disposition": failure_disposition,
@@ -463,18 +553,37 @@ class FileTurnJournal:
                 "tool_event_count": tool_count,
                 "provider_private_evidence": private_refusal,
             }
+            eligibility = classify_refusal_redispatch_eligibility(
+                failure_disposition, private_refusal)
+            failure["redispatch_eligibility"] = eligibility
+            # Re-seal after adding the public class to the durable body.
+            fingerprint["redispatch_eligibility"] = eligibility
+            failure["failure_sha256"] = _sha(fingerprint)
             _publish(self.root / f"{call_index:06d}-refusal.json", failure)
             self._groups = self._scan()
+            if eligibility is not None and attempt.ordinal < 2:
+                return self.call(packet, transport,
+                                  dispatch_reserver=dispatch_reserver,
+                                  attempt_reserver=attempt_reserver,
+                                  refusal_settler=refusal_settler,
+                                  response_acceptor=response_acceptor)
             if isinstance(exc, TurnRPCError):
+                if refusal_settler is not None:
+                    refusal_settler(attempt, self.pending_refusal_disposition())
                 raise
+            if refusal_settler is not None:
+                refusal_settler(attempt, self.pending_refusal_disposition())
             raise TurnJournalError("planner transport exception") from exc
         response_body = {"schema": SCHEMA, "kind": "model-response-sealed",
                          "call_index": call_index,
                          "packet_sha256": packet.sha256,
+                         "attempt": attempt.payload(),
                          "response": _response_payload(
                              response, private_evidence)}
         _publish(self.root / f"{call_index:06d}-response.json", response_body)
         self._groups = self._scan()
+        if response_acceptor is not None:
+            response_acceptor(attempt, response)
         return response
 
     def commit(self, evidence: CallEvidence) -> None:
@@ -493,6 +602,7 @@ class FileTurnJournal:
         body = {"schema": SCHEMA, "kind": "transition-committed",
                 "call_index": call_index,
                 "packet_sha256": evidence.packet_sha256,
+                "attempt": self._attempt(group).payload(),
                 "evidence": evidence.payload()}
         _publish(self.root / f"{call_index:06d}-commit.json", body)
         self._groups = self._scan()
@@ -510,6 +620,8 @@ class FileTurnJournal:
         committed_evidence: list[CallEvidence] = []
         for group in self._groups:
             if "commit" not in group:
+                if "refusal" in group:
+                    continue
                 break
             team = game.acting_team
             if team not in (0, 1):
@@ -614,7 +726,11 @@ class FileTurnJournal:
         usage = body["usage"]
         return {
             "packet_sha256": body["packet_sha256"],
+            "attempt": dict(body["attempt"]),
+            "redispatch_eligibility": body["redispatch_eligibility"],
             "disposition_sha256": body["failure_sha256"],
+            "failure_sha256": body["failure_sha256"],
+            "failure_disposition": dict(body["failure_disposition"]),
             "total_tokens": (None if usage is None
                              else usage["total_tokens"]),
             "failure_kind": body["failure_kind"],
@@ -663,6 +779,7 @@ class FileTurnJournal:
         }
         return {
             "packet_sha256": packet_sha256,
+            "attempt": self._attempt(group).payload(),
             "disposition_sha256": _sha(body),
             "total_tokens": response.usage.total_tokens,
             "failure_kind": failure_kind,
@@ -677,6 +794,7 @@ class FileTurnJournal:
         group = self._groups[-1]
         call_index = len(self._groups) - 1
         packet_sha256 = group["open"]["packet_sha256"]
+        attempt = self._attempt(group)
         fingerprint = {
             "packet_sha256": packet_sha256,
             "failure_kind": "UnknownProviderDisposition",
@@ -691,10 +809,13 @@ class FileTurnJournal:
                     b"provider disposition unknown").hexdigest(),
             },
             "private_evidence_sha256": None,
+            "attempt": attempt.payload(),
+            "redispatch_eligibility": None,
         }
         body = {
             "schema": SCHEMA, "kind": "model-call-refused",
             "call_index": call_index, "packet_sha256": packet_sha256,
+            "attempt": attempt.payload(), "redispatch_eligibility": None,
             "failure_kind": "UnknownProviderDisposition",
             "failure_class": "resource-provider",
             "failure_disposition": fingerprint["failure_disposition"],

@@ -25,7 +25,8 @@ from typing import Callable, Mapping, Sequence
 
 from . import privileged_teacher_luna_selfplay as selfplay
 from .privileged_teacher_luna_rpc_capacity import (
-    RPCCapacityError, SOURCE_PATHS, validate_capacity_receipt,
+    RPCCapacityError, SCHEMA as CAPACITY_SCHEMA, SOURCE_PATHS,
+    validate_capacity_receipt,
 )
 from .privileged_teacher_luna_rpc_collection import (
     AttemptReopen, ResourceBoundaryError, RPCCollectionError,
@@ -619,11 +620,13 @@ class PTLunaRPCSupervisor:
             raise RPCSupervisorError("explicit admission required")
         if type(capacity_receipt) is not dict:
             raise RPCSupervisorError("capacity receipt required")
-        if capacity_receipt.get("schema") == "pt-luna-turn-rpc-capacity-v1":
+        if capacity_receipt.get("schema") == CAPACITY_SCHEMA:
             try:
                 validate_capacity_receipt(capacity_receipt)
             except RPCCapacityError as exc:
                 raise RPCSupervisorError("capacity receipt refused") from exc
+        elif capacity_receipt.get("schema") == "pt-luna-turn-rpc-capacity-v2":
+            raise RPCSupervisorError("capacity receipt schema drift")
         if capacity_receipt.get("route") != "CAPACITY_PASS":
             raise RPCSupervisorError("capacity pass required")
         if require_full_population \
@@ -844,6 +847,10 @@ class PTLunaRPCSupervisor:
             "scientific_budget_provider": self.ledger.snapshot,
             "scientific_response_acceptor": self.ledger.accept,
             "scientific_dispatch_reserver": self.ledger.reserve,
+            "scientific_attempt_reserver": self.ledger.reserve,
+            "scientific_refusal_settler": self.ledger.refuse,
+            "scientific_journal_response_acceptor":
+                self.ledger.accept_attempt,
             "scientific_terminal_acceptor": self.ledger.assert_within_limits,
         }
         refusal = getattr(self.ledger, "refuse", None)

@@ -34,6 +34,9 @@ class TurnValidationError(TurnRPCError):
     """A planner response or supervisor input failed strict validation."""
 
 
+ATTEMPT_REF_SCHEMA = "pt-luna-attempt-ref-v1"
+
+
 def _sha(value: object) -> str:
     return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
 
@@ -55,6 +58,58 @@ def _sha_value(value: object, label: str) -> str:
             or any(c not in "0123456789abcdef" for c in value)):
         raise TurnValidationError(f"{label} must be a lowercase SHA-256")
     return value
+
+
+@dataclass(frozen=True)
+class AttemptRef:
+    """Stable identity for one provider attempt of an immutable packet."""
+
+    logical_packet_sha256: str
+    attempt_ordinal: int
+    attempt_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        _sha_value(self.logical_packet_sha256, "attempt packet hash")
+        if (isinstance(self.attempt_ordinal, bool)
+                or not isinstance(self.attempt_ordinal, int)
+                or not 0 <= self.attempt_ordinal <= 2):
+            raise TurnValidationError("attempt ordinal drift")
+        expected = _sha({"schema": ATTEMPT_REF_SCHEMA,
+                         "logical_packet_sha256": self.logical_packet_sha256,
+                         "attempt_ordinal": self.attempt_ordinal})
+        if self.attempt_sha256 is None:
+            object.__setattr__(self, "attempt_sha256", expected)
+        elif self.attempt_sha256 != expected:
+            raise TurnValidationError("attempt identity drift")
+
+    def payload(self) -> dict[str, object]:
+        return {"schema": ATTEMPT_REF_SCHEMA,
+                "logical_packet_sha256": self.logical_packet_sha256,
+                "attempt_ordinal": self.attempt_ordinal,
+                "attempt_sha256": self.attempt_sha256}
+
+    # These read-only aliases keep the callback surface source-compatible for
+    # existing callers while the durable schema is unambiguously new.
+    @property
+    def packet_sha256(self) -> str:
+        return self.logical_packet_sha256
+
+    @property
+    def ordinal(self) -> int:
+        return self.attempt_ordinal
+
+    @classmethod
+    def from_mapping(cls, value: object) -> "AttemptRef":
+        if type(value) is not dict or set(value) != {
+                "schema", "logical_packet_sha256", "attempt_ordinal",
+                "attempt_sha256"} \
+                or value.get("schema") != ATTEMPT_REF_SCHEMA:
+            raise TurnValidationError("attempt reference schema drift")
+        result = cls(value["logical_packet_sha256"], value["attempt_ordinal"],
+                     value["attempt_sha256"])
+        if result.payload() != value:
+            raise TurnValidationError("attempt reference derivation drift")
+        return result
 
 
 def _note(value: object, label: str = "strategy note") -> str:
@@ -573,6 +628,12 @@ class TurnJournal(Protocol):
     def call(self, packet: DecisionPacket,
              transport: PlannerTransport, *,
              dispatch_reserver: Callable[[DecisionPacket], object] | None = None,
+             attempt_reserver: Callable[[DecisionPacket, AttemptRef], object]
+             | None = None,
+             refusal_settler: Callable[[AttemptRef, Mapping[str, object]], object]
+             | None = None,
+             response_acceptor: Callable[[AttemptRef, PlannerResponse], object]
+             | None = None,
              ) -> PlannerResponse | Mapping[str, object]:
         """Open/seal one provider call or replay its sealed response."""
 
@@ -589,7 +650,13 @@ class TurnDriver:
                  budget_provider: Callable[[], Mapping[str, object]] | None = None,
                  usage_acceptor: Callable[[Usage], object] | None = None,
                  response_acceptor: Callable[[PlannerResponse], object] | None = None,
-                 dispatch_reserver: Callable[[DecisionPacket], object] | None = None):
+                 dispatch_reserver: Callable[[DecisionPacket], object] | None = None,
+                 attempt_reserver: Callable[[DecisionPacket, AttemptRef], object]
+                 | None = None,
+                 refusal_settler: Callable[[AttemptRef, Mapping[str, object]], object]
+                 | None = None,
+                 journal_response_acceptor: Callable[[AttemptRef, PlannerResponse], object]
+                 | None = None):
         if type(game) is not selfplay.LunaSelfPlayGame:
             raise TurnRPCError("driver requires LunaSelfPlayGame")
         if isinstance(transports, Mapping):
@@ -614,10 +681,20 @@ class TurnDriver:
             raise TurnRPCError("response acceptor is not callable")
         if dispatch_reserver is not None and not callable(dispatch_reserver):
             raise TurnRPCError("dispatch reserver is not callable")
+        if attempt_reserver is not None and not callable(attempt_reserver):
+            raise TurnRPCError("attempt reserver is not callable")
+        if refusal_settler is not None and not callable(refusal_settler):
+            raise TurnRPCError("refusal settler is not callable")
+        if journal_response_acceptor is not None \
+                and not callable(journal_response_acceptor):
+            raise TurnRPCError("journal response acceptor is not callable")
         self._budget_provider = budget_provider
         self._usage_acceptor = usage_acceptor
         self._response_acceptor = response_acceptor
         self._dispatch_reserver = dispatch_reserver
+        self._attempt_reserver = attempt_reserver
+        self._refusal_settler = refusal_settler
+        self._journal_response_acceptor = journal_response_acceptor
         self._memories: dict[int, TeamMemory] = {}
         for team in (0, 1):
             state_sha = selfplay._state_digest(game.rnd, team)
@@ -706,6 +783,7 @@ class TurnDriver:
                 phase_planning_note=self._phase_planning_note,
                 rollouts=tuple(self._rollouts))
             try:
+                journal_settled = False
                 if self._journal is None:
                     if self._dispatch_reserver is not None:
                         self._dispatch_reserver(packet)
@@ -713,12 +791,16 @@ class TurnDriver:
                 else:
                     raw = self._journal.call(
                         packet, self._transports[team],
-                        dispatch_reserver=self._dispatch_reserver)
+                        dispatch_reserver=self._dispatch_reserver,
+                        attempt_reserver=self._attempt_reserver,
+                        refusal_settler=self._refusal_settler,
+                        response_acceptor=self._journal_response_acceptor)
+                    journal_settled = self._journal_response_acceptor is not None
                     response = self._validate_response(raw, packet)
             except TurnRPCError as exc:
                 self.game.fail(str(exc))
                 raise
-            if self._response_acceptor is not None:
+            if self._response_acceptor is not None and not journal_settled:
                 try:
                     self._response_acceptor(response)
                 except TurnRPCError as exc:
@@ -861,7 +943,7 @@ class TurnDriver:
         return self.run(max_decisions=max_decisions)
 
 
-__all__ = ["CallEvidence", "DecisionPacket", "Intent", "JournalResume",
+__all__ = ["ATTEMPT_REF_SCHEMA", "AttemptRef", "CallEvidence", "DecisionPacket", "Intent", "JournalResume",
            "MEMORY_SCHEMA",
            "PhaseContext", "PlannerResponse", "PlannerTransport", "SCHEMA",
            "TeamMemory", "TurnDriver", "TurnJournal", "TurnRPCError",

@@ -10,6 +10,7 @@ import threading
 import pytest
 
 from shengji.rl import privileged_teacher_luna_rpc_collection as collection
+from shengji.rl import privileged_teacher_luna_rpc_journal as journal_module
 from shengji.rl import privileged_teacher_luna_rpc_io as rpc_io
 from shengji.rl.privileged_teacher_luna_rpc_transport import (
     CODE_MODE_DISABLED_DIAGNOSTIC,
@@ -18,7 +19,8 @@ from shengji.rl.privileged_teacher_luna_rpc_transport import (
 )
 from shengji.rl import privileged_teacher_luna_selfplay as selfplay
 from shengji.rl.privileged_teacher_luna_turn_rpc import (
-    DecisionPacket, Intent, PhaseContext, PlannerResponse, TeamMemory, Usage,
+    DecisionPacket, Intent, PhaseContext, PlannerResponse,
+    TeamMemory, Usage,
 )
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
@@ -110,6 +112,17 @@ def _runner(tmp_path, factory, *, token_cap=100_000):
         transport_factory=factory)
 
 
+def test_attempt_retry_hooks_cannot_be_partially_wired(tmp_path):
+    with pytest.raises(collection.RPCCollectionError,
+                       match="attempt callback population"):
+        collection.RPCGameAttemptRunner(
+            seed_secret=SECRET, attempts_root=tmp_path / "attempts",
+            codex_binary=None, runtime=RUNTIME,
+            per_game_deadline_seconds=600, per_game_token_cap=1_000,
+            transport_factory=TransportFactory(FakeCodexRun()),
+            scientific_attempt_reserver=lambda *_args: None)
+
+
 def _packet(coordinate=("2", 0, 0), mirror=0):
     game = selfplay.LunaSelfPlayGame(
         selfplay.build_root(SECRET, coordinate), coordinate=coordinate,
@@ -124,6 +137,204 @@ def _packet(coordinate=("2", 0, 0), mirror=0):
         phase=PhaseContext())
 
 
+def test_eligible_refusal_replay_redispatches_exact_next_attempt_once(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        journal_module, "classify_refusal_redispatch_eligibility",
+        lambda _disposition, _private: "stderr-nonempty")
+    monkeypatch.setattr(
+        journal_module.FileTurnJournal, "_refusal_eligibility",
+        staticmethod(lambda group: group["refusal"].get(
+            "redispatch_eligibility")))
+    packet = _packet()
+    journal = journal_module.FileTurnJournal(tmp_path / "journal")
+    attempts = []
+    settled = []
+    accepted = []
+
+    class RefuseOnce:
+        calls = 0
+        def call(self, current):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("availability refused")
+            return _response(current, tokens=90)
+
+    transport = RefuseOnce()
+    result = journal.call(
+        packet, transport,
+        attempt_reserver=lambda current, ref: attempts.append(ref),
+        refusal_settler=lambda ref, disposition: settled.append((
+            ref, disposition)),
+        response_acceptor=lambda ref, response: accepted.append((
+            ref, response)))
+    assert result.packet_sha256 == packet.sha256
+    assert [ref.attempt_ordinal for ref in attempts] == [0, 1]
+    assert [ref.attempt_ordinal for ref, _ in settled] == [0]
+    assert [ref.attempt_ordinal for ref, _ in accepted] == [1]
+    groups = journal._scan()
+    assert [journal._attempt(group).attempt_ordinal for group in groups] == [0, 1]
+    assert transport.calls == 2
+
+
+def test_crash_after_eligible_refusal_replays_next_ordinal(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        journal_module, "classify_refusal_redispatch_eligibility",
+        lambda _disposition, _private: "stderr-nonempty")
+    monkeypatch.setattr(
+        journal_module.FileTurnJournal, "_refusal_eligibility",
+        staticmethod(lambda group: group["refusal"].get(
+            "redispatch_eligibility")))
+    packet = _packet()
+    root = tmp_path / "journal"
+    first = journal_module.FileTurnJournal(root)
+    ledger = collection.ScientificBudgetLedger(
+        root=tmp_path / "ledger",
+        started_monotonic_nanoseconds=collection.time.monotonic_ns(),
+        wall_nanoseconds=1_000_000_000_000, token_cap=1_000,
+        per_call_token_reserve=150, **LEDGER_BINDING)
+    transport = type("Refuse", (), {
+        "calls": 0,
+        "call": lambda self, _packet: (_ for _ in ()).throw(
+            RuntimeError("availability refused"))
+    })()
+    settled = []
+    attempts = []
+    def crash_once(_ref, _disposition):
+        settled.append("crash")
+        raise KeyboardInterrupt("after durable refusal")
+    with pytest.raises(KeyboardInterrupt, match="durable refusal"):
+        first.call(packet, transport,
+                   attempt_reserver=ledger.reserve,
+                   refusal_settler=crash_once)
+    replay = journal_module.FileTurnJournal(root)
+    replay_transport = RefuseOnce = type("Replay", (), {
+        "calls": 0,
+        "call": lambda self, current: (
+            setattr(self, "calls", self.calls + 1) or _response(current))
+    })()
+    replayed = replay.call(
+        packet, replay_transport,
+        attempt_reserver=lambda current, ref: (
+            ledger.reserve(current, ref), attempts.append(ref.attempt_ordinal)),
+        refusal_settler=lambda ref, disposition: (
+            ledger.refuse(disposition), settled.append(ref.attempt_ordinal)),
+        response_acceptor=lambda ref, response: (
+            ledger.accept_attempt(ref, response), settled.append(
+                ref.attempt_ordinal)))
+    assert replayed.packet_sha256 == packet.sha256
+    assert settled == ["crash", 0, 1]
+    assert attempts == [1]
+    assert {key: ledger.payload()[key] for key in (
+        "spent_tokens", "accepted_response_count", "refused_response_count",
+        "reserved_call_count", "event_count")} == {
+        "spent_tokens": 240, "accepted_response_count": 1,
+        "refused_response_count": 1, "reserved_call_count": 0,
+        "event_count": 4}
+    assert [replay._attempt(group).attempt_ordinal for group in replay._scan()] == [0, 1]
+
+
+def test_retry_ordinal_two_is_exhausted_and_settled_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        journal_module, "classify_refusal_redispatch_eligibility",
+        lambda _disposition, _private: "stderr-nonempty")
+    monkeypatch.setattr(
+        journal_module.FileTurnJournal, "_refusal_eligibility",
+        staticmethod(lambda group: group["refusal"].get(
+            "redispatch_eligibility")))
+    packet = _packet()
+    journal = journal_module.FileTurnJournal(tmp_path / "journal")
+    ledger = collection.ScientificBudgetLedger(
+        root=tmp_path / "ledger",
+        started_monotonic_nanoseconds=collection.time.monotonic_ns(),
+        wall_nanoseconds=1_000_000_000_000, token_cap=1_000,
+        per_call_token_reserve=100, **LEDGER_BINDING)
+    attempts = []
+    settled = []
+    class AlwaysRefuse:
+        def call(self, _packet):
+            raise RuntimeError("availability refused")
+    with pytest.raises(journal_module.TurnJournalError):
+        journal.call(
+            packet, AlwaysRefuse(),
+            attempt_reserver=lambda current, ref: (
+                ledger.reserve(current, ref), attempts.append(ref.attempt_ordinal)),
+            refusal_settler=lambda ref, disposition: (
+                ledger.refuse(disposition), settled.append(ref.attempt_ordinal)))
+    assert attempts == [0, 1, 2]
+    assert settled == [0, 1, 2]
+    assert [journal._attempt(group).attempt_ordinal
+            for group in journal._scan()] == [0, 1, 2]
+    assert {key: ledger.payload()[key] for key in (
+        "spent_tokens", "refused_response_count", "reserved_call_count",
+        "event_count", "crossed")} == {
+        "spent_tokens": 300, "refused_response_count": 3,
+        "reserved_call_count": 0, "event_count": 6, "crossed": True}
+
+
+def test_runner_restart_replays_durable_eligible_refusal_with_ledger(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        journal_module, "classify_refusal_redispatch_eligibility",
+        lambda _disposition, _private: "stderr-nonempty")
+    monkeypatch.setattr(
+        journal_module.FileTurnJournal, "_refusal_eligibility",
+        staticmethod(lambda group: group["refusal"].get(
+            "redispatch_eligibility")))
+    ledger = collection.ScientificBudgetLedger(
+        root=tmp_path / "ledger",
+        started_monotonic_nanoseconds=collection.time.monotonic_ns(),
+        wall_nanoseconds=1_000_000_000_000, token_cap=1_000,
+        per_call_token_reserve=150, **LEDGER_BINDING)
+    class Refuse:
+        def call(self, _packet):
+            raise RuntimeError("availability refused")
+    def make_runner(transport, settle):
+        return collection.RPCGameAttemptRunner(
+            seed_secret=SECRET, attempts_root=tmp_path / "attempts",
+            codex_binary=None, runtime=RUNTIME,
+            per_game_deadline_seconds=600, per_game_token_cap=1_000,
+            per_call_token_reserve=150,
+            scientific_budget_provider=ledger.snapshot,
+            scientific_response_acceptor=ledger.accept,
+            scientific_dispatch_reserver=ledger.reserve,
+            scientific_refusal_acceptor=ledger.refuse,
+            scientific_terminal_acceptor=ledger.assert_within_limits,
+            scientific_attempt_reserver=ledger.reserve,
+            scientific_refusal_settler=settle,
+            scientific_journal_response_acceptor=ledger.accept_attempt,
+            transport_factory=lambda _path: transport)
+    def crash_settle(_ref, _disposition):
+        raise KeyboardInterrupt("after eligible refusal")
+    with pytest.raises(KeyboardInterrupt, match="eligible refusal"):
+        make_runner(Refuse(), crash_settle)(("2", 0, 0), 0)
+    class WrongTeam:
+        calls = 0
+        def call(self, packet):
+            self.calls += 1
+            response = _response(packet, tokens=90)
+            return PlannerResponse(
+                response.intent, response.usage, response.tool_event_count,
+                1 - packet.team, response.packet_sha256,
+                response.memory_sha256, response.provider_request_sha256,
+                response.provider_response_sha256)
+    second = WrongTeam()
+    with pytest.raises(collection.RPCCollectionError, match="game attempt refused"):
+        make_runner(second, lambda _ref, disposition: ledger.refuse(
+            disposition))(("2", 0, 0), 0)
+    journal = journal_module.FileTurnJournal(
+        tmp_path / "attempts" / "2-0-0-mirror-0" / "journal")
+    assert [journal._attempt(group).attempt_ordinal
+            for group in journal._scan()] == [0, 1]
+    assert second.calls == 1
+    assert {key: ledger.payload()[key] for key in (
+        "spent_tokens", "accepted_response_count", "refused_response_count",
+        "reserved_call_count", "event_count")} == {
+        "spent_tokens": 240, "accepted_response_count": 1,
+        "refused_response_count": 1, "reserved_call_count": 0,
+        "event_count": 4}
+
+
 def test_live_transport_timeout_never_exceeds_durable_wall_reserve(
         tmp_path, monkeypatch):
     active_runtime = {
@@ -134,7 +345,7 @@ def test_live_transport_timeout_never_exceeds_durable_wall_reserve(
     seen = []
     class CaptureTransport:
         def __init__(self, **kwargs):
-            seen.append(kwargs["timeout_seconds"])
+            seen.append((kwargs["timeout_seconds"], kwargs["policy_mode"]))
     monkeypatch.setattr(collection, "CodexExecPlannerTransport",
                         CaptureTransport)
     monkeypatch.setattr(collection, "source_identity",
@@ -145,8 +356,8 @@ def test_live_transport_timeout_never_exceeds_durable_wall_reserve(
         per_game_deadline_seconds=600, per_game_token_cap=1_000,
         per_call_wall_reserve_milliseconds=25_999)
     runner.transport_factory(tmp_path)
-    assert seen == [25]
-    assert seen[0] * 1_000 <= runner.per_call_wall_reserve_milliseconds
+    assert seen == [(25, "play-only")]
+    assert seen[0][0] * 1_000 <= runner.per_call_wall_reserve_milliseconds
 
 
 def _response(packet, *, tokens=90, provider="d" * 64):
@@ -193,6 +404,40 @@ def test_scientific_ledger_reserves_concurrent_dispatch_before_spend(tmp_path):
             wall_nanoseconds=ledger.wall_ns, token_cap=250,
             per_call_token_reserve=ledger.reserve_tokens,
             **LEDGER_BINDING)
+
+
+@pytest.mark.parametrize("legacy_file", ("genesis.json", "000000000000.json"))
+def test_legacy_v2_ledger_bytes_do_not_reopen_as_attempt_aware(
+        tmp_path, legacy_file):
+    ledger = collection.ScientificBudgetLedger(
+        root=tmp_path / "ledger",
+        started_monotonic_nanoseconds=collection.time.monotonic_ns(),
+        wall_nanoseconds=1_000_000_000_000, token_cap=1_000,
+        per_call_token_reserve=100, **LEDGER_BINDING)
+    if legacy_file != "genesis.json":
+        ledger.reserve(_packet())
+    path = tmp_path / "ledger" / legacy_file
+    value = json.loads(path.read_text())
+    digest_key = ("genesis_sha256" if legacy_file == "genesis.json"
+                  else "event_sha256")
+    body = {key: item for key, item in value.items() if key != digest_key}
+    body["schema"] = ("pt-luna-budget-genesis-v2"
+                       if legacy_file == "genesis.json"
+                       else "pt-luna-budget-event-v2")
+    if legacy_file != "genesis.json":
+        body.pop("attempt", None)
+        body.pop("redispatch_eligibility", None)
+    rewritten = {**body, digest_key: hashlib.sha256(
+        canonical_json_bytes(body)).hexdigest()}
+    path.chmod(0o600)
+    path.write_bytes(canonical_json_bytes(rewritten))
+    path.chmod(0o400)
+    with pytest.raises(collection.RPCCollectionError):
+        collection.ScientificBudgetLedger(
+            root=tmp_path / "ledger",
+            started_monotonic_nanoseconds=ledger.started_ns,
+            wall_nanoseconds=ledger.wall_ns, token_cap=ledger.token_cap,
+            per_call_token_reserve=ledger.reserve_tokens, **LEDGER_BINDING)
 
 
 @pytest.mark.parametrize("event_kind", ("reserve", "settle"))

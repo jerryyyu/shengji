@@ -313,12 +313,13 @@ def test_capacity_token_overrun_cannot_publish_a_passing_route():
 def test_real_runner_snapshots_failed_journal_before_temp_cleanup(
         tmp_path, monkeypatch):
     seen_catalogs = []
+    progress = []
     class RefusingTransport:
         def __init__(self, **kwargs):
             seen_catalogs.append(kwargs["runtime_attestor"](
                 Path("/never-probed")))
         def call(self, _packet):
-            raise CodexTurnTransportError("synthetic provider refusal")
+            raise CodexTurnTransportError("Codex completion telemetry drift")
     monkeypatch.setattr(
         capacity, "CodexExecPlannerTransport", RefusingTransport)
     tracker = RPCConcurrency()
@@ -327,12 +328,20 @@ def test_real_runner_snapshots_failed_journal_before_temp_cleanup(
         codex_binary=Path("/usr/bin/true"),
         temp_root=tmp_path, per_call_timeout_seconds=90,
         per_game_deadline_seconds=600, concurrency=tracker,
-        runtime=runtime())
+        runtime=runtime(), progress_sink=progress.append)
     metric = runner(1, 0, 0)
     assert metric.complete is False
     assert metric.process_errors == 1
+    assert metric.failure_stage == "provider-response"
+    assert metric.failure_kind == "provider-schema"
+    assert metric.exception_type == "CodexTurnTransportError"
+    assert metric.failure_message_sha256 == hashlib.sha256(
+        b"Codex completion telemetry drift").hexdigest()
     assert metric.input_tokens == metric.output_tokens == 0
     assert seen_catalogs == [runtime()["codex_tool_catalog"]]
+    assert progress[-1]["event"] == "game-failure"
+    assert progress[-1]["opened_rpc_count"] == 1
+    assert progress[-1]["committed_decision_count"] == 0
 
 
 def test_concurrent_game_failures_keep_distinct_typed_dispositions(

@@ -627,7 +627,17 @@ class RealGameRunner:
                        absolute_deadline_ns: int) -> None:
         if self.progress_sink is None:
             return
-        summary = journal.summary()
+        self._emit_progress_snapshot(
+            event, workers=workers, worker=worker, game=game,
+            summary=journal.summary(),
+            absolute_deadline_ns=absolute_deadline_ns)
+
+    def _emit_progress_snapshot(self, event: str, *, workers: int,
+                                worker: int, game: int,
+                                summary: Mapping[str, object],
+                                absolute_deadline_ns: int) -> None:
+        if self.progress_sink is None:
+            return
         self.progress_sink({
             "schema": "pt-luna-rpc-capacity-progress-v1",
             "event": event, "arm_workers": workers,
@@ -732,10 +742,10 @@ class RealGameRunner:
                 else refusal_tool_event_snapshot)
             if driver is not None:
                 evidence = tuple(driver.evidence)
-            if journal is not None:
-                self._emit_progress(
+            if journal_summary_snapshot is not None:
+                self._emit_progress_snapshot(
                     "game-failure", workers=workers, worker=worker,
-                    game=game_index, journal=journal,
+                    game=game_index, summary=journal_summary_snapshot,
                     absolute_deadline_ns=absolute_deadline_ns)
         observed_process_count = 0
         try:

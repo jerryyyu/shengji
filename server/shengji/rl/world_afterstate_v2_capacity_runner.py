@@ -39,7 +39,8 @@ from .world_afterstate_v2_capacity import (
     ComposedProjectionV2,
     ProgressRecoveryV2, RejectedProjectionDiagnosticV2, TierProjectionV2,
     WorldAfterstateV2CapacityError,
-    composed_critical_path_seconds, validate_capacity_receipt_v2,
+    composed_critical_path_seconds, composed_dag_edges_for_cohort_workers,
+    validate_capacity_receipt_v2,
     reopen_capacity_failure_receipt_v2,
     reopen_capacity_failure_receipt_v2_bytes,
     validate_capacity_failure_receipt_v2,
@@ -1720,7 +1721,9 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
     cpu_values = tuple((name, projected_cpu(name,
         max(1, values[index][1] * HOST_CPUS)))
         for index, (name, _value) in enumerate(values))
-    total = composed_critical_path_seconds(dict(values))
+    cohort_workers = selected["cohort-concurrency"].variant
+    dag_edges = composed_dag_edges_for_cohort_workers(cohort_workers)
+    total = composed_critical_path_seconds(dict(values), dag_edges)
     artifact = (max(1, (dag.artifact_bytes * TIER_SPECS[0].total
                         + max(1, dag.source_fixture_count) - 1)
                      // max(1, dag.source_fixture_count))
@@ -1741,6 +1744,8 @@ def _composed_projection(selected: Mapping[str, CapacityArmV2],
             tuple((name, max(1, (value + 999_999_999) // 1_000_000_000))
                   for name, value in dag.stage_process_cpu_nanoseconds)
             if dag else ()),
+        cohort_workers=cohort_workers,
+        dag_edges=dag_edges,
         arm_target_unit_counts=tuple(
             (stage, *arm_target_units[stage]) for stage in arm_target_units))
 
@@ -1807,6 +1812,8 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
                      runtime_sha256: str,
                      synthetic: bool = False,
                      representative_dag: RepresentativeDAGV2 | None = None,
+                     capacity_assessments: Sequence[
+                         CapacityCensusAssessmentV2] = (),
                      _provenance: object | None = None) -> CapacityReceiptV2:
     """Derive and validate one receipt from measured arms only."""
     if synthetic or _provenance is not _PRODUCTION_PROVENANCE:
@@ -1965,6 +1972,7 @@ def build_receipt_v2(arms: Sequence[CapacityArmV2], *, host: HostTelemetryV2,
             raise CapacityRunnerError(
                 str(exc), stage="full-dag",
                 reason_code="composed-projection-cap-drift",
+                assessments=capacity_assessments,
                 projection_diagnostic=(
                     RejectedProjectionDiagnosticV2.from_projection(composed))) \
                 from exc
@@ -2003,6 +2011,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         deadline_ns=deadline_ns, progress=progress, started_ns=started)
     preflight.validate()
     host = host or observe_host()
+    capacity_assessments: tuple[CapacityCensusAssessmentV2, ...] = ()
     if production:
         host.validate()
     fixtures = preflight.accepted_fixtures
@@ -2089,7 +2098,7 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
         provisional = _composed_projection(
             selected, len(fixtures), host.free_disk_bytes,
             arm_target_units=arm_targets)
-        validate_capacity_arm_census_v2(
+        capacity_assessments = validate_capacity_arm_census_v2(
             arms, selected, dict(provisional.stage_walls_seconds))
     # Freeze the exact layout before any representative DAG work starts.
     member_workers = selected["member-concurrency"].variant
@@ -2149,14 +2158,17 @@ def measure_capacity_v2(*, preflight: PreflightResultV2 | None = None,
             raise FullDAGCapacityDependencyBlocked(
                 str(exc), stage=getattr(exc, "stage", "full-dag"),
                 reason_code=getattr(exc, "reason_code",
-                                    "full-dag-dependency-failed")) from exc
+                                    "full-dag-dependency-failed"),
+                assessments=capacity_assessments) from exc
     else:
         dag = None
     receipt = build_receipt_v2(
         tuple(arms), host=host, preflight=preflight,
         source_sha256=source_sha256,
         runtime_sha256=runtime_sha256,
-        representative_dag=dag, _provenance=_PRODUCTION_PROVENANCE)
+        representative_dag=dag,
+        capacity_assessments=capacity_assessments,
+        _provenance=_PRODUCTION_PROVENANCE)
     return CapacityRunResultV2(receipt, tuple(arms), preflight, False, None)
 
 

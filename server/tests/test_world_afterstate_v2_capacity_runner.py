@@ -1443,6 +1443,8 @@ def test_composed_projection_counts_epochs_and_scales_tiers_by_stage():
         1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
         stage_walls_seconds=tuple((name, 1) for name in COMPOSED_STAGE_NAMES))
     composed = _composed_projection(selected, 32, 10**9, dag)
+    assert composed.cohort_workers == 1
+    assert composed.dag_edges == runner.composed_dag_edges_for_cohort_workers(1)
     units = {name: (measured, projected)
              for name, measured, projected in composed.stage_unit_counts}
     assert units["optimizer-canary"] == (8_000, 8_000)
@@ -1460,10 +1462,29 @@ def test_composed_projection_counts_epochs_and_scales_tiers_by_stage():
     tiers = _tiers(composed, preflight_wall_nanoseconds=1_000_000_000)
     assert tiers[0].population_wall_seconds == 8
     assert tiers[0].complete_dag_wall_seconds == 8 \
-        + composed_critical_path_seconds(dict(composed.stage_walls_seconds))
+        + composed_critical_path_seconds(
+            dict(composed.stage_walls_seconds), composed.dag_edges)
     assert tiers[1].complete_dag_wall_seconds \
         > tiers[0].complete_dag_wall_seconds * 2
     assert [tier.exact_source_supply for tier in tiers] == [True, False, False]
+
+
+@pytest.mark.parametrize("cohort_workers", (1, 2, 4))
+def test_composed_projection_binds_selected_cohort_width(cohort_workers):
+    fixture = _preflight().accepted_fixtures[0]
+    arms = _selected_arms(fixture)
+    selected = runner._select_arms(arms)
+    selected["cohort-concurrency"] = next(
+        arm for arm in arms
+        if arm.stage == "cohort-concurrency" and arm.variant == cohort_workers)
+    dag = RepresentativeDAGV2(
+        1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
+        stage_walls_seconds=tuple(
+            (name, 1) for name in COMPOSED_STAGE_NAMES))
+    composed = _composed_projection(selected, 32, 10**9, dag)
+    assert composed.cohort_workers == cohort_workers
+    assert composed.dag_edges == runner.composed_dag_edges_for_cohort_workers(
+        cohort_workers)
 
 
 def test_projected_label_cpu_uses_measured_stage_cpu_not_wall_times_sixteen():
@@ -1666,6 +1687,8 @@ def test_build_receipt_surfaces_exact_rejected_projection(monkeypatch):
     fixture = preflight.accepted_fixtures[0]
     arms = _selected_arms(fixture)
     selected = runner._select_arms(arms)
+    assessments = validate_capacity_arm_census_v2(
+        arms, selected, {name: 100 for name in COMPOSED_STAGE_NAMES})
     dag = RepresentativeDAGV2(
         1, 1, 1, 1, 1, 1, 1, 1, admissible=True,
         stage_walls_seconds=tuple(
@@ -1715,9 +1738,13 @@ def test_build_receipt_surfaces_exact_rejected_projection(monkeypatch):
             arms, host=HostTelemetryV2(16, free_disk_bytes=10**12),
             preflight=preflight, source_sha256="a" * 64,
             runtime_sha256="b" * 64, representative_dag=dag,
+            capacity_assessments=assessments,
             _provenance=_PRODUCTION_PROVENANCE)
     assert caught.value.stage == "full-dag"
     assert caught.value.reason_code == "composed-projection-cap-drift"
+    assert caught.value.assessments == assessments
+    assert tuple(row.category for row in caught.value.assessments) == tuple(
+        ARM_GRIDS)
     diagnostic = caught.value.projection_diagnostic
     assert diagnostic is not None
     assert dict(diagnostic.stage_walls_seconds)["label-p0"] == 100_000

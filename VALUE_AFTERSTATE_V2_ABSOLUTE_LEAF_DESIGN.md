@@ -439,8 +439,13 @@ two or four runs the controls and block-2-natural controllers together, with
 the controls stage using the remaining measured slots internally.  Block-2
 complete-world shuffle starts only after all four cohorts complete.  A child
 refusal terminates a concurrent sibling, while already sealed immutable epoch
-shards remain resumable.  Capacity admission conservatively serializes all
-four cohort walls in its projection even when execution uses a wider arm.
+shards remain resumable.  Capacity admission projects the exact topology of
+the selected cohort-concurrency arm: width one serializes the three controls
+and block-2 natural; width two serializes the controls in one branch beside
+block-2 natural; width four runs all four cohorts concurrently.  The natural /
+nested prefix remains serial, and block-2 complete-world shuffle starts only
+after the selected-width wave seals.  Admission may neither invent unmeasured
+overlap nor serialize concurrency that the selected arm already measured.
 
 ### Pre-audit recipe diagnosis
 
@@ -767,6 +772,15 @@ selected width.  The scientific supervisor must consume that selected width;
 it may not insist on four-way concurrency when a narrower arm completes the
 same fixed workload faster.
 
+The composed projection uses the same selected-width topology as production.
+Block-1 natural and nested 25/50/100 remain serial.  At width one, the three
+controls and block-2 natural follow serially.  At width two, the serial controls
+branch and block-2 natural run concurrently.  At width four, the three controls
+and block-2 natural are four independent branches.  Block-2 complete-world
+shuffle starts after every selected-width branch seals.  The selected cohort
+arm is the empirical authorization for that topology; no unmeasured overlap or
+arithmetic-only parallelism may be introduced.
+
 The capacity command is bounded to two hours, 30 GiB, zero swap, and 4,096
 tasks. Freeze the fastest byte-identical configuration below 85% memory and
 choose the largest eligible D256/D512/D1024 tier by the outcome-blind rule in
@@ -793,8 +807,9 @@ a fixed-cost/largest-task floor.  The projection may not multiply an
 underfilled representative makespan by the deal-count ratio.  If the composed
 projection refuses a cap, the immutable failure receipt retains the complete
 projected wall/CPU/unit grids, exact measured wall/CPU nanoseconds, DAG edges,
-resource peaks, and named violated caps; refusal must not discard the result
-that explains why the capacity run failed.
+resource peaks, named violated caps, and the complete already-passed arm-census
+assessments; refusal must not discard the result that explains why the
+capacity run failed.
 
 Independent deals, candidate successors, continuation replicas, control
 cohorts, inference batches, and reconstruction shards are the permitted
@@ -822,6 +837,24 @@ projection, measurement-scope, failure, execution-freeze, population input,
 early-stage input, population-controller config, and terminal-input schemas are
 version-bumped. Legacy wire bytes refuse rather than inheriting the widened
 worker domain or repaired runtime identity implicitly.
+
+The first repaired-head capacity attempt refused honestly before freeze: its
+unconditional serial projection was 24,283 seconds against the fixed
+21,600-second cap.  Replaying the same sealed stage walls through the exact
+selected-width topologies gives 24,283 seconds at width one, 22,965 at the
+attempt's selected width two, and 16,941 at width four.  These counterfactuals
+diagnose a projection/execution mismatch; they are not new capacity evidence,
+and the width-two result still exceeds the cap.  The cap remains fixed, the
+failed namespace is not retried, and this accounting repair alone does not
+authorize or predict a passing fresh census.  A further measured hot-path
+repair or a newly selected passing width is required before freeze.
+
+This correction bumps the capacity receipt, composed/rejected projection,
+failure, and measurement-scope schemas.  The arm wire schema and production
+stage contract are unchanged.  No valid earlier capacity receipt exists to
+migrate.  A late full-DAG refusal retains the complete already-passed arm
+census and the selected cohort width so the next optimization is based on
+measured evidence rather than another blind full census.
 
 The resource mapping is closed: continuation-label stages use the
 continuation-mechanics arm, cohort training/optimizer stages use the

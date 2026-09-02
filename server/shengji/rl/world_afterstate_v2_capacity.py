@@ -27,14 +27,14 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-SCHEMA = "world-afterstate-v2-post-implementation-capacity-v8"
-FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v4"
+SCHEMA = "world-afterstate-v2-post-implementation-capacity-v10"
+FAILURE_SCHEMA = "world-afterstate-v2-post-implementation-capacity-failure-v6"
 REJECTED_PROJECTION_SCHEMA = (
-    "world-afterstate-v2-capacity-rejected-projection-v1")
+    "world-afterstate-v2-capacity-rejected-projection-v3")
 ARM_SCHEMA = "world-afterstate-v2-capacity-arm-v4"
-PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v4"
+PROJECTION_SCHEMA = "world-afterstate-v2-composed-projection-v6"
 PROGRESS_SCHEMA = "world-afterstate-v2-progress-recovery-v1"
-MEASUREMENT_SCOPE = "retained-32-material-sample-projection-v2"
+MEASUREMENT_SCOPE = "retained-32-material-sample-projection-v4"
 MAX_COMMAND_WALL_SECONDS = 2 * 60 * 60
 MEMORY_LIMIT_BYTES = 30 * 1024**3
 MAX_TASKS = 4_096
@@ -82,6 +82,7 @@ COMPOSED_STAGE_NAMES = (
 FAILURE_STAGES = frozenset((*COMPOSED_STAGE_NAMES, "capacity-cli",
                             "preflight", "measurement", "publication",
                             "runner", "full-dag"))
+POST_CENSUS_FAILURE_STAGES = frozenset((*COMPOSED_STAGE_NAMES, "full-dag"))
 # The executable production supervisor has coarser boundaries than the
 # capacity witness.  Keep this relation closed and explicit so every measured
 # substage remains attributable when boundaries collapse (notably terminal).
@@ -177,26 +178,63 @@ SCIENTIFIC_DAG_EDGES = (
     ("label-audit", "audit"),
     ("audit", "reconstruction"),
 )
-# These are operational resource fences, not scientific dependencies.  Keep
-# the projection conservative by serializing the four independent cohort
-# branches.  Execution may use the outcome-blind fastest measured cohort arm,
-# but admission never assumes that parallel branches reduce the wall.
-TRAINING_RESOURCE_SERIALIZATION_EDGES = (
+# These operational edges mirror the production supervisor's reviewed
+# selected-width schedule.  The natural block-1 cohort and nested curve are
+# always sealed serially.  Width 1 then serializes every cohort; width 2 runs
+# the three serial block-1 controls beside block-2 natural; width 4 runs all
+# four cohorts as independent branches.  Block-2 complete-world shuffle starts
+# only after the selected-width wave seals.
+TRAINING_RESOURCE_PREFIX_EDGES = (
     ("block-1-natural", "nested-curve-25"),
     ("nested-curve-25", "nested-curve-50"),
     ("nested-curve-50", "nested-curve-100"),
+)
+TRAINING_RESOURCE_WIDTH_1_EDGES = TRAINING_RESOURCE_PREFIX_EDGES + (
     ("nested-curve-100", "block-1-action-association-permutation"),
-    ("block-1-action-association-permutation",
-     "block-1-label-permutation"),
+    ("block-1-action-association-permutation", "block-1-label-permutation"),
     ("block-1-label-permutation", "block-1-complete-world-shuffle"),
     ("block-1-complete-world-shuffle", "block-2-natural"),
+    ("block-2-natural", "block-2-complete-world-shuffle"),
+)
+TRAINING_RESOURCE_WIDTH_2_EDGES = TRAINING_RESOURCE_PREFIX_EDGES + (
+    ("nested-curve-100", "block-1-action-association-permutation"),
+    ("block-1-action-association-permutation", "block-1-label-permutation"),
+    ("block-1-label-permutation", "block-1-complete-world-shuffle"),
+    ("nested-curve-100", "block-2-natural"),
+    ("block-1-complete-world-shuffle", "block-2-complete-world-shuffle"),
+    ("block-2-natural", "block-2-complete-world-shuffle"),
+)
+TRAINING_RESOURCE_WIDTH_4_EDGES = TRAINING_RESOURCE_PREFIX_EDGES + (
+    ("nested-curve-100", "block-1-action-association-permutation"),
+    ("nested-curve-100", "block-1-label-permutation"),
+    ("nested-curve-100", "block-1-complete-world-shuffle"),
+    ("nested-curve-100", "block-2-natural"),
     ("block-1-action-association-permutation",
      "block-2-complete-world-shuffle"),
     ("block-1-label-permutation", "block-2-complete-world-shuffle"),
     ("block-1-complete-world-shuffle", "block-2-complete-world-shuffle"),
     ("block-2-natural", "block-2-complete-world-shuffle"),
 )
-COMPOSED_DAG_EDGES = SCIENTIFIC_DAG_EDGES + TRAINING_RESOURCE_SERIALIZATION_EDGES
+TRAINING_RESOURCE_EXECUTION_EDGES_BY_COHORT_WORKERS = (
+    (1, TRAINING_RESOURCE_WIDTH_1_EDGES),
+    (2, TRAINING_RESOURCE_WIDTH_2_EDGES),
+    (4, TRAINING_RESOURCE_WIDTH_4_EDGES),
+)
+
+
+def composed_dag_edges_for_cohort_workers(
+        cohort_workers: int) -> tuple[tuple[str, str], ...]:
+    if isinstance(cohort_workers, bool) or not isinstance(cohort_workers, int):
+        raise WorldAfterstateV2CapacityError("cohort DAG width drift")
+    for width, edges in TRAINING_RESOURCE_EXECUTION_EDGES_BY_COHORT_WORKERS:
+        if cohort_workers == width:
+            return SCIENTIFIC_DAG_EDGES + edges
+    raise WorldAfterstateV2CapacityError("cohort DAG width drift")
+
+
+# Width four remains the default for compact unit fixtures.  Production
+# projections always pass their selected cohort arm explicitly.
+COMPOSED_DAG_EDGES = composed_dag_edges_for_cohort_workers(4)
 AUTHORITY = {
     "capacity_execution_authorized": False,
     "data_collection_authorized": False,
@@ -348,6 +386,7 @@ class RejectedProjectionDiagnosticV2:
     peak_memory_bytes: int
     composed_artifact_bytes: int
     free_disk_bytes_before: int
+    cohort_workers: int = 4
     dag_edges: tuple[tuple[str, str], ...] = COMPOSED_DAG_EDGES
     schema: str = REJECTED_PROJECTION_SCHEMA
 
@@ -380,11 +419,13 @@ class RejectedProjectionDiagnosticV2:
             peak_memory_bytes=value.peak_memory_bytes,
             composed_artifact_bytes=value.composed_artifact_bytes,
             free_disk_bytes_before=value.free_disk_bytes_before,
+            cohort_workers=value.cohort_workers,
             dag_edges=tuple(value.dag_edges))
 
     def validate(self) -> None:
         if self.schema != REJECTED_PROJECTION_SCHEMA \
-                or self.dag_edges != COMPOSED_DAG_EDGES:
+                or self.dag_edges != composed_dag_edges_for_cohort_workers(
+                    self.cohort_workers):
             raise WorldAfterstateV2CapacityError(
                 "rejected projection identity drift")
         for rows, width, label in (
@@ -442,6 +483,7 @@ class RejectedProjectionDiagnosticV2:
             "composed_artifact_bytes": self.composed_artifact_bytes,
             "free_disk_bytes_before": self.free_disk_bytes_before,
             "disk_retain_percent_min": DISK_RETAIN_PERCENT_MIN,
+            "cohort_workers": self.cohort_workers,
             "dag_edges": [list(row) for row in self.dag_edges],
             "violations": list(self.violations),
         }
@@ -456,7 +498,8 @@ class RejectedProjectionDiagnosticV2:
             "complete_dag_wall_seconds_max", "scientific_service_seconds",
             "peak_memory_bytes", "memory_limit_bytes",
             "composed_artifact_bytes", "free_disk_bytes_before",
-            "disk_retain_percent_min", "dag_edges", "violations"}
+            "disk_retain_percent_min", "cohort_workers", "dag_edges",
+            "violations"}
         if (type(payload) is not dict or set(payload) != required
                 or payload["complete_dag_wall_seconds_max"]
                 != COMPLETE_DAG_WALL_SECONDS_MAX
@@ -484,6 +527,7 @@ class RejectedProjectionDiagnosticV2:
             peak_memory_bytes=payload["peak_memory_bytes"],
             composed_artifact_bytes=payload["composed_artifact_bytes"],
             free_disk_bytes_before=payload["free_disk_bytes_before"],
+            cohort_workers=payload["cohort_workers"],
             dag_edges=tuple(tuple(row) for row in payload["dag_edges"]),
             schema=payload["schema"])
         value.validate()
@@ -557,12 +601,20 @@ class CapacityFailureReceiptV2:
             raise WorldAfterstateV2CapacityError("capacity failure assessment order drift")
         census_failure = (self.stage == "measurement"
                           and self.reason == "arm-census-low-utilization")
-        if census_failure and tuple(row.category for row in self.assessments) != tuple(ARM_GRIDS):
+        completed_census = bool(self.assessments)
+        if completed_census and tuple(
+                row.category for row in self.assessments) != tuple(ARM_GRIDS):
             raise WorldAfterstateV2CapacityError("capacity failure census assessment completeness drift")
         if census_failure and not any(row.violates_gate for row in self.assessments):
             raise WorldAfterstateV2CapacityError("capacity failure census violation missing")
-        if not census_failure and self.assessments:
-            raise WorldAfterstateV2CapacityError("capacity failure unrelated assessment drift")
+        if (completed_census and not census_failure
+                and any(row.violates_gate for row in self.assessments)):
+            raise WorldAfterstateV2CapacityError(
+                "capacity failure passed census violation drift")
+        if (completed_census and not census_failure
+                and self.stage not in POST_CENSUS_FAILURE_STAGES):
+            raise WorldAfterstateV2CapacityError(
+                "capacity failure unrelated assessment drift")
         projection_failure = (
             self.stage == "full-dag"
             and self.reason == "composed-projection-cap-drift")
@@ -706,7 +758,10 @@ def composed_critical_path_seconds(
            for name, value in stage_walls_seconds.items()):
         raise WorldAfterstateV2CapacityError("composed stage wall drift")
     edges = tuple(dag_edges)
-    if edges != COMPOSED_DAG_EDGES:
+    if edges not in tuple(
+            SCIENTIFIC_DAG_EDGES + training_edges
+            for _width, training_edges in
+            TRAINING_RESOURCE_EXECUTION_EDGES_BY_COHORT_WORKERS):
         raise WorldAfterstateV2CapacityError("composed DAG contract drift")
     children: dict[str, list[str]] = {name: [] for name in COMPOSED_STAGE_NAMES}
     indegree = {name: 0 for name in COMPOSED_STAGE_NAMES}
@@ -871,6 +926,7 @@ class ComposedProjectionV2:
     measured_stage_wall_nanoseconds: tuple[tuple[str, int], ...] = ()
     measured_stage_cpu_nanoseconds: tuple[tuple[str, int], ...] = ()
     scientific_dag_edges: tuple[tuple[str, str], ...] = SCIENTIFIC_DAG_EDGES
+    cohort_workers: int = 4
     dag_edges: tuple[tuple[str, str], ...] = COMPOSED_DAG_EDGES
     capacity_stage_to_production_stage: tuple[tuple[str, str], ...] = tuple(
         CAPACITY_STAGE_TO_PRODUCTION_STAGE.items())
@@ -983,6 +1039,9 @@ class ComposedProjectionV2:
                     "measured stage CPU display binding drift")
         if self.scientific_dag_edges != SCIENTIFIC_DAG_EDGES:
             raise WorldAfterstateV2CapacityError("scientific DAG contract drift")
+        if self.dag_edges != composed_dag_edges_for_cohort_workers(
+                self.cohort_workers):
+            raise WorldAfterstateV2CapacityError("composed DAG contract drift")
         if (tuple(name for name, _ in self.capacity_stage_to_production_stage)
                 != COMPOSED_STAGE_NAMES
                 or tuple(stage for _, stage in
@@ -1036,6 +1095,7 @@ class ComposedProjectionV2:
             "measured_stage_cpu_nanoseconds": [
                 list(row) for row in self.measured_stage_cpu_nanoseconds],
             "scientific_dag_edges": [list(row) for row in self.scientific_dag_edges],
+            "cohort_workers": self.cohort_workers,
             "dag_edges": [list(row) for row in self.dag_edges],
             "capacity_stage_to_production_stage": [
                 list(row) for row in self.capacity_stage_to_production_stage],
@@ -1470,6 +1530,10 @@ class CapacityReceiptV2:
                 or selected_by_stage["reconstruction"].variant
                 != self.reconstruction_workers):
             raise WorldAfterstateV2CapacityError("capacity resource layout mismatch")
+        if self.composed.cohort_workers != selected_by_stage[
+                "cohort-concurrency"].variant:
+            raise WorldAfterstateV2CapacityError(
+                "capacity cohort topology binding drift")
         if len(self.selected_arms) != len(ARM_GRIDS):
             raise WorldAfterstateV2CapacityError("selected arm population drift")
         self.progress_recovery.validate()
@@ -1596,7 +1660,10 @@ __all__ = [
     "COMPOSED_STAGE_NAMES",
     "PRODUCTION_STAGE_NAMES",
     "SCIENTIFIC_DAG_EDGES",
-    "TRAINING_RESOURCE_SERIALIZATION_EDGES", "ComposedProjectionV2",
+    "TRAINING_RESOURCE_EXECUTION_EDGES_BY_COHORT_WORKERS",
+    "TRAINING_RESOURCE_WIDTH_1_EDGES", "TRAINING_RESOURCE_WIDTH_2_EDGES",
+    "TRAINING_RESOURCE_WIDTH_4_EDGES", "composed_dag_edges_for_cohort_workers",
+    "ComposedProjectionV2",
     "MAX_COMMAND_WALL_SECONDS", "MAX_TASKS",
     "MEMORY_LIMIT_BYTES", "ProgressRecoveryV2", "TierProjectionV2",
     "CAPACITY_PREFLIGHT_ACCEPTED",

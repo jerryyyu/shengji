@@ -1,5 +1,6 @@
 import dataclasses
 import hashlib
+import inspect
 
 import pytest
 
@@ -9,13 +10,15 @@ from shengji.rl.world_afterstate_v2_capacity import (
     CAPACITY_STAGE_TO_PRODUCTION_STAGE,
     COMPOSED_DAG_EDGES, COMPOSED_STAGE_NAMES, PRODUCTION_STAGE_NAMES,
     MEMORY_LIMIT_BYTES, SCIENTIFIC_DAG_EDGES,
-    TRAINING_RESOURCE_SERIALIZATION_EDGES, CapacityArmV2,
+    TRAINING_RESOURCE_WIDTH_1_EDGES, TRAINING_RESOURCE_WIDTH_2_EDGES,
+    TRAINING_RESOURCE_WIDTH_4_EDGES, CapacityArmV2,
     CapacityCensusAssessmentV2,
     CapacityFailureReceiptV2, CapacityReceiptV2, ComposedProjectionV2,
     ProgressRecoveryV2, RejectedProjectionDiagnosticV2,
     TierProjectionV2, WorldAfterstateV2CapacityError,
     PINNED_TORCH_THREADS, choose_capacity_tier_v2,
-    composed_critical_path_seconds, projected_arm_wall_shares_ppm,
+    composed_critical_path_seconds, composed_dag_edges_for_cohort_workers,
+    projected_arm_wall_shares_ppm,
     derive_all_core_gate_passed, ARM_SCHEMA, SCHEMA, FAILURE_SCHEMA,
     arm_has_immediate_next_slower,
     validate_capacity_arm_census_v2,
@@ -639,6 +642,33 @@ def test_failure_detail_and_assessment_rows_are_strictly_bound():
             source_sha256=source, input_sha256=input_sha, runtime_sha256=runtime,
             namespace_sha256=namespace, detail_sha256="4" * 64).payload()
 
+    # Once the arm census passes, a later full-DAG refusal retains the whole
+    # census instead of erasing the expensive topology/utilization evidence.
+    pass_arms, pass_selected = _census_with_selected_32()
+    passed = validate_capacity_arm_census_v2(
+        pass_arms, pass_selected,
+        {name: 100 for name in COMPOSED_STAGE_NAMES})
+    late_detail = hashlib.sha256(canonical_json_bytes({
+        "message": "late full-DAG refusal",
+        "assessments": [row.payload() for row in passed],
+        "projection_diagnostic": None,
+    })).hexdigest()
+    late = CapacityFailureReceiptV2(
+        stage="full-dag", reason="full-dag-dependency-failed",
+        elapsed_seconds=2, source_sha256=source, input_sha256=input_sha,
+        runtime_sha256=runtime, namespace_sha256=namespace,
+        detail_sha256=late_detail, detail_message="late full-DAG refusal",
+        assessments=passed)
+    assert len(late.payload()["assessments"]) == len(ARM_GRIDS)
+    assert dataclasses.replace(late, stage="label-p0").payload()[
+        "assessments"] == [row.payload() for row in passed]
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="assessment completeness"):
+        dataclasses.replace(late, assessments=passed[:-1]).payload()
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="passed census violation"):
+        dataclasses.replace(late, assessments=assessments).payload()
+
 
 def test_projected_share_boundary_and_derived_full_dag_gate():
     stage_walls = {name: 1 for name in COMPOSED_STAGE_NAMES}
@@ -700,6 +730,79 @@ def test_serialized_nested_100_cost_is_counted_on_the_critical_path():
     sibling_above.validate()
 
 
+def test_cohort_wave_projects_parallel_branches_then_one_block2_control():
+    from shengji.rl.world_afterstate_v2_execution import COHORT_TRAINING_WAVE
+
+    assert COHORT_TRAINING_WAVE == ("block-1-controls", "block-2-natural")
+    values = {name: 1 for name in COMPOSED_STAGE_NAMES}
+    values.update({
+        "block-1-action-association-permutation": 30,
+        "block-1-label-permutation": 40,
+        "block-1-complete-world-shuffle": 50,
+        "block-2-natural": 20,
+        "block-2-complete-world-shuffle": 60,
+    })
+    baseline = composed_critical_path_seconds(values)
+    # Only the slowest member of the four-cohort wave contributes to wall;
+    # the block-2 shuffle follows the completed wave exactly once.
+    values["block-1-action-association-permutation"] = 49
+    assert composed_critical_path_seconds(values) == baseline
+    values["block-1-action-association-permutation"] = 51
+    assert composed_critical_path_seconds(values) == baseline + 1
+    values["block-2-complete-world-shuffle"] = 61
+    assert composed_critical_path_seconds(values) == baseline + 2
+
+
+def test_selected_cohort_width_changes_only_the_reviewed_training_topology():
+    from shengji.rl.world_afterstate_v2_execution import (
+        COHORT_TRAINING_WAVE, StageSupervisorV2)
+    from shengji.rl.world_afterstate_v2_training_stage_adapters import (
+        _CohortAdapter)
+
+    assert COHORT_TRAINING_WAVE == ("block-1-controls", "block-2-natural")
+    supervisor_source = inspect.getsource(
+        StageSupervisorV2.run_cohort_training_wave)
+    adapter_source = inspect.getsource(_CohortAdapter.__call__)
+    # These source witnesses bind the projection to the actual scheduling
+    # branches, rather than merely testing another copy of the edge table.
+    assert "if cohort_workers == 1:" in supervisor_source
+    assert "self._invoke_controller_wave" in supervisor_source
+    assert "max(1, inputs.cohort_workers - 1)" in adapter_source
+    assert "ThreadPoolExecutor(max_workers=stage_workers)" in adapter_source
+    walls = {name: 1 for name in COMPOSED_STAGE_NAMES}
+    walls.update({
+        "label-p0": 4439,
+        "p0": 19,
+        "optimizer-canary": 665,
+        "label-fit": 816,
+        "nested-curve-25": 1018,
+        "nested-curve-50": 1099,
+        "block-1-natural": 1318,
+        "nested-curve-100": 208,
+        "block-1-action-association-permutation": 3012,
+        "block-1-label-permutation": 3012,
+        "block-1-complete-world-shuffle": 3200,
+        "block-2-natural": 1318,
+        "block-2-complete-world-shuffle": 2259,
+        "precision-select-inference": 48,
+        "label-precision-select": 1214,
+        "precision-select": 42,
+        "label-audit": 295,
+        "audit": 29,
+        "reconstruction": 272,
+    })
+    assert composed_critical_path_seconds(
+        walls, composed_dag_edges_for_cohort_workers(1)) == 24_283
+    assert composed_critical_path_seconds(
+        walls, composed_dag_edges_for_cohort_workers(2)) == 22_965
+    assert composed_critical_path_seconds(
+        walls, composed_dag_edges_for_cohort_workers(4)) == 16_941
+    with pytest.raises(WorldAfterstateV2CapacityError, match="DAG"):
+        dataclasses.replace(
+            _composed(), cohort_workers=2,
+            dag_edges=composed_dag_edges_for_cohort_workers(4)).validate()
+
+
 def test_capacity_substage_mapping_is_closed_over_production_stages():
     assert tuple(CAPACITY_STAGE_TO_PRODUCTION_STAGE) == COMPOSED_STAGE_NAMES
     assert set(CAPACITY_STAGE_TO_PRODUCTION_STAGE.values()) == (
@@ -729,6 +832,21 @@ def test_dag_edge_contract_and_wrong_wall_receipts_refuse():
         ).validate()
 
 
+def test_receipt_binds_projection_topology_to_selected_cohort_arm():
+    receipt = _receipt()
+    assert next(arm.variant for arm in receipt.selected_arms
+                if arm.stage == "cohort-concurrency") == 4
+    edges = composed_dag_edges_for_cohort_workers(2)
+    mismatched = dataclasses.replace(
+        receipt.composed, cohort_workers=2, dag_edges=edges,
+        composed_wall_seconds=composed_critical_path_seconds(
+            dict(receipt.composed.stage_walls_seconds), edges))
+    mismatched.validate()
+    with pytest.raises(WorldAfterstateV2CapacityError,
+                       match="cohort topology binding"):
+        dataclasses.replace(receipt, composed=mismatched).validate()
+
+
 def test_staged_label_dependencies_cannot_move_or_double_spend_label_work():
     assert ("label-p0", "p0") in SCIENTIFIC_DAG_EDGES
     assert ("p0", "optimizer-canary") in SCIENTIFIC_DAG_EDGES
@@ -744,10 +862,35 @@ def test_staged_label_dependencies_cannot_move_or_double_spend_label_work():
         < COMPOSED_STAGE_NAMES.index("label-audit") \
         < COMPOSED_STAGE_NAMES.index("audit") \
         < COMPOSED_STAGE_NAMES.index("reconstruction")
-    assert ("nested-curve-50", "nested-curve-100") \
-        in TRAINING_RESOURCE_SERIALIZATION_EDGES
+    for edges in (TRAINING_RESOURCE_WIDTH_1_EDGES,
+                  TRAINING_RESOURCE_WIDTH_2_EDGES,
+                  TRAINING_RESOURCE_WIDTH_4_EDGES):
+        assert ("nested-curve-50", "nested-curve-100") in edges
+        assert ("nested-curve-100",
+                "block-1-action-association-permutation") in edges
+        assert ("block-2-natural",
+                "block-2-complete-world-shuffle") in edges
     assert ("nested-curve-100", "block-1-action-association-permutation") \
-        in TRAINING_RESOURCE_SERIALIZATION_EDGES
+        in TRAINING_RESOURCE_WIDTH_4_EDGES
+    assert ("nested-curve-100", "block-1-label-permutation") \
+        in TRAINING_RESOURCE_WIDTH_4_EDGES
+    assert ("nested-curve-100", "block-1-complete-world-shuffle") \
+        in TRAINING_RESOURCE_WIDTH_4_EDGES
+    assert ("nested-curve-100", "block-2-natural") \
+        in TRAINING_RESOURCE_WIDTH_4_EDGES
+    assert ("block-1-action-association-permutation",
+            "block-1-label-permutation") \
+        not in TRAINING_RESOURCE_WIDTH_4_EDGES
+    for stage in (
+            "block-1-action-association-permutation",
+            "block-1-label-permutation",
+            "block-1-complete-world-shuffle", "block-2-natural"):
+        assert (stage, "block-2-complete-world-shuffle") \
+            in TRAINING_RESOURCE_WIDTH_4_EDGES
+    assert ("block-1-action-association-permutation",
+            "block-1-label-permutation") in TRAINING_RESOURCE_WIDTH_2_EDGES
+    assert ("block-1-complete-world-shuffle", "block-2-natural") \
+        in TRAINING_RESOURCE_WIDTH_1_EDGES
 
 
 def test_production_command_wall_binds_sequential_arms_plus_dag():
@@ -790,7 +933,7 @@ def test_population_wall_is_inside_tier_projection_and_can_refuse_d256():
     composed = _composed(stage_walls_seconds={"label-p0": 2_500})
     post_population_wall = composed_critical_path_seconds(
         dict(composed.stage_walls_seconds), composed.dag_edges)
-    assert post_population_wall == 4_300
+    assert post_population_wall == 4_000
     fast_arms = tuple(dataclasses.replace(
         arm,
         wall_seconds=(1 if (
@@ -817,7 +960,7 @@ def test_population_wall_is_inside_tier_projection_and_can_refuse_d256():
     receipt.validate()
     d256 = next(tier for tier in receipt.tiers if tier.tier == "D256")
     assert d256.population_wall_seconds == 17_608
-    assert d256.complete_dag_wall_seconds == 21_908
+    assert d256.complete_dag_wall_seconds == 21_608
     with pytest.raises(WorldAfterstateV2CapacityError,
                        match="protocol capacity selection refused"):
         choose_capacity_tier_v2(receipt)

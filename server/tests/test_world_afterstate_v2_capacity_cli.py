@@ -160,9 +160,24 @@ def test_cli_failure_receipt_preserves_rejected_projection(tmp_path):
         peak_memory_bytes=1, composed_artifact_bytes=1,
         free_disk_bytes_before=10**12)
     diagnostic.validate()
+    assessments = tuple(CapacityCensusAssessmentV2(
+        category=category, selected_variant=variants[0],
+        exact_wall_ns=1_000_000_000, exact_busy_core_ns=14_400_000_000,
+        measured_unit_count=(128 if category == "continuation-mechanics"
+                             else 1),
+        observed_utilization_ppm=900_000,
+        required_utilization_ppm=850_000, projected_share_ppm=100_000,
+        material=True, cpu_bound=True,
+        immediate_next_variant=(variants[1] if len(variants) > 1 else None),
+        next_memory_eligible=(True if len(variants) > 1 else None),
+        next_byte_identical=(True if len(variants) > 1 else None),
+        next_strictly_slower=(True if len(variants) > 1 else False),
+        violates_gate=False)
+        for category, variants in ARM_GRIDS.items())
     exc = CapacityRunnerError(
         "composed projection cap drift", stage="full-dag",
         reason_code="composed-projection-cap-drift",
+        assessments=assessments,
         projection_diagnostic=diagnostic)
     receipt = cli._failure_receipt(
         exc, started_ns=time.perf_counter_ns(),
@@ -172,6 +187,7 @@ def test_cli_failure_receipt_preserves_rejected_projection(tmp_path):
     reopened = reopen_capacity_failure_receipt_v2_bytes(
         cli.canonical_json_bytes(receipt.payload()))
     assert reopened.projection_diagnostic == diagnostic
+    assert reopened.assessments == assessments
     assert reopened.stage == "full-dag"
     assert reopened.reason == "composed-projection-cap-drift"
 

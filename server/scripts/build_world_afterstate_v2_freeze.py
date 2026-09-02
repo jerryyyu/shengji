@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=Path, required=True)
     parser.add_argument("--continuation-policy", type=Path, required=True)
     parser.add_argument("--evidence-root", type=Path, required=True)
-    parser.add_argument("--deadline-seconds", type=int, default=12 * 60 * 60)
+    parser.add_argument("--deadline-seconds", type=int, default=14 * 60 * 60)
     parser.add_argument("--heartbeat-seconds", type=int, default=60)
     parser.add_argument("--out", type=Path,
                         help="explicit new freeze file to publish")

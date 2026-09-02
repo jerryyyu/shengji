@@ -804,8 +804,9 @@ learning-control cohort. Reconstruction must reopen the immutable
 continuations and repeat audit scoring/control arithmetic exactly once,
 matching the scientific immediate verifier without rebuilding labels,
 continuations, or models. Later routine verification is receipt-only unless
-an explicit rescore is requested. The projection must be at most six hours,
-providing 2x measured headroom under the immutable 12-hour scientific service
+an explicit rescore is requested. Under the C1 economics amendment below, the
+projection must be at most seven hours, providing 2x measured headroom under
+the immutable 14-hour scientific service
 cap. GPU support is
 out of scope. The composed peak artifact projection must retain at least 25%
 free-disk headroom after temporary and final artifacts coexist.
@@ -907,6 +908,51 @@ population are incompatible with this layout. No migration is provided: the
 prior capacity run refused before publishing a receipt, so there is no
 previous production artifact to migrate.
 
+### C1 retained-evidence economics amendment
+
+Census-11 completed every arm and every representative-DAG stage, then refused
+only because its width-two D256 critical path was 23,065 seconds against the
+21,600-second complete-DAG cap and its two-for-one 43,200-second service cap.
+The sole targeted re-adjudication later confirmed that sustained production
+topology still selects width two and cannot reduce that retained path. The
+scientific question remains D256, but its resource economics are amended
+openly before any label, audit, or scientific outcome is opened: the
+complete-DAG cap is exactly **25,200 seconds (7 hours)** and the single
+admission-relative scientific service deadline is exactly **50,400 seconds
+(14 hours)**. The retained projection has 2,135 seconds (35m35s, 9.26%) of
+complete-DAG margin; two projections require 46,130 seconds and leave 4,270
+seconds (1h11m10s) of service margin. The two-for-one rule is unchanged.
+
+No thirteenth full census is permitted. A typed
+`capacity-economics-amendment` reopens the exact Census-11 failure bytes under
+the legacy 21,600/43,200-second contract. The exact external SHA-256 is
+`06019851ec4a2aecdc8541d623a02e9d8355c3d68d69c9fe29572a3d0d5be14d`
+and the exact internal receipt SHA-256 is
+`3a059e3de3c506117bac71611acf20ec3e2fbfdeb3c64e1baadd8d145db5a8b7`.
+It retains every stage wall/CPU/unit row,
+the exact DAG, width-two selections, memory/disk facts, all-core result, and
+the two and only two inherited violations (`complete-dag-wall` and
+`two-for-one-service-wall`), then re-evaluates D256 under 25,200/50,400. It
+refuses if any retained byte or inherited fact changes, if any other old
+violation appears, or if D256 is not eligible under the amended caps.
+
+Carry-forward from measured source head `8ff9c79c` is closed to cap constants,
+schema/version changes, the typed amendment/reopener, execution admission,
+tests, and this documentation. Training, labeling, population, model,
+optimizer, continuation, scientific DAG, worker topology, and inference
+changes are forbidden. The amendment records old/new blob SHA-256s for every
+changed path, while the freeze independently binds the complete current source
+closure and exact runtime. D256 is the only tier authorized by this retained
+evidence; the amendment cannot widen to D512 or D1024.
+
+Before scientific launch, run the already-reviewed target-free rehearsal once
+at the final source head and prepare one consolidated review packet containing
+the exact source diff, amendment receipt, rehearsal receipt, five inert freeze
+inputs, immutable freeze, runtime/native identities, progress/deadline and
+recovery plan, and exact launcher. The rehearsal cannot open scientific labels
+or outcomes. The review authorizes no execution by itself, and the scientific
+launch requires Jerry's explicit approval of the new 14-hour bound.
+
 ## 14. Progress and recovery
 
 Every expensive stage emits at least every 60 seconds or 1%:
@@ -918,7 +964,7 @@ Every expensive stage emits at least every 60 seconds or 1%:
 - immutable shard/checkpoint count.
 
 Every scientific controller runs in its own process group under the one
-admission-relative 12-hour monotonic deadline.  Stage-local limits are capped
+admission-relative 14-hour monotonic deadline.  Stage-local limits are capped
 by that original absolute deadline rather than renewed on resume or stage
 entry.  At expiry the supervisor terminates the controller process group
 before selecting `REFUSE_RESOURCE_INCOMPLETE`; no controller, nested worker,

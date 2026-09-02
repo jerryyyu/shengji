@@ -18,7 +18,7 @@ from ..engine.cards import RANKS
 from .belief_contract import canonical_json_bytes
 
 
-PROTOCOL_SCHEMA = "world-afterstate-v2-protocol-v1"
+PROTOCOL_SCHEMA = "world-afterstate-v2-protocol-v2"
 STATE_SCHEMA = "world-afterstate-v2-state-candidate-v1"
 CAPACITY_SCHEMA = "world-afterstate-v2-capacity-tier-v1"
 SLOT_SCHEMA = "world-afterstate-v2-population-slot-v1"
@@ -35,8 +35,8 @@ P0_CELLS = tuple(
 CAPACITY_HOST_LOGICAL_CPUS = 16
 LABEL_WALL_SECONDS_MAX = 3 * 60 * 60
 LABEL_CPU_SECONDS_MAX = 48 * 60 * 60
-COMPLETE_DAG_WALL_SECONDS_MAX = 6 * 60 * 60
-SCIENTIFIC_SERVICE_SECONDS = 12 * 60 * 60
+COMPLETE_DAG_WALL_SECONDS_MAX = 7 * 60 * 60
+SCIENTIFIC_SERVICE_SECONDS = 14 * 60 * 60
 MEMORY_PERCENT_MAX = 85
 DISK_RETAIN_PERCENT_MIN = 25
 D256_MAX_ATTEMPTS_PER_SLOT = 128

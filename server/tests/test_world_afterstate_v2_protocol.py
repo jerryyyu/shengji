@@ -44,7 +44,7 @@ def _receipt(tier: str, **changes: object) -> CapacityTierReceiptV2:
         "outcomes_opened": False, "all_core_gate_passed": True,
         "label_wall_seconds": 10_000, "label_cpu_seconds": 170_000,
         "complete_dag_wall_seconds": 20_000,
-        "service_wall_seconds": 43_200,
+        "service_wall_seconds": 50_400,
         "peak_memory_bytes": 25_000, "memory_limit_bytes": 30_000,
         "composed_artifact_bytes": 75_000,
         "free_disk_bytes_before": 100_000,
@@ -62,7 +62,7 @@ def test_tier_arithmetic_and_protocol_authority_are_exact() -> None:
     payload = protocol_payload()
     assert payload == protocol_payload()
     assert payload["capacity_host_logical_cpus"] == 16
-    assert payload["complete_dag_wall_seconds_max"] == 21_600
+    assert payload["complete_dag_wall_seconds_max"] == 25_200
     assert payload["trump_modes"] == list(TRUMP_MODES)
     assert set(payload["population_slot_ledger_sha256s"]) == {
         tier.name for tier in TIER_SPECS}
@@ -288,7 +288,7 @@ def test_capacity_selects_largest_eligible_tier_without_outcomes() -> None:
         "D1024", label_wall_seconds=20_000,
         label_cpu_seconds=300_000)
     # The 3h/48 CPUh label gate is the D256 entry condition. A larger tier is
-    # governed by the complete-DAG six-hour limit.
+    # governed by the complete-DAG seven-hour limit.
     assert choose_capacity_tier(receipts).name == "D1024"
 
 
@@ -296,7 +296,7 @@ def test_capacity_selects_largest_eligible_tier_without_outcomes() -> None:
     ("change", "value"),
     [
         ("all_core_gate_passed", False),
-        ("complete_dag_wall_seconds", 21_601),
+        ("complete_dag_wall_seconds", 25_201),
         ("peak_memory_bytes", 25_501),
         ("composed_artifact_bytes", 75_001),
     ],

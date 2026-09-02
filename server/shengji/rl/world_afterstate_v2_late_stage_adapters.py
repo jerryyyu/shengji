@@ -25,7 +25,9 @@ from .world_afterstate_v2_inference import (
     prediction_population_manifest_v2,
     validate_prediction_population_manifest_v2,
 )
-from .world_afterstate_v2_capacity_runner import reopen_capacity_receipt_v2_bytes
+from .world_afterstate_v2_capacity_economics import (
+    reopen_capacity_evidence_v2_bytes,
+)
 from .world_afterstate_v2_label_controller import (
     build_continuation_population_v2, reopen_label_stage_receipt,
 )
@@ -246,7 +248,7 @@ def _capacity_receipt(supervisor: Any, freeze: Any, repo: Path) -> Any:
     if any(raw != raws[0] for raw in raws) or _sha(raws[0]) != expected:
         raise LateStageAdapterUnavailable("late capacity artifact digest drift")
     try:
-        receipt = reopen_capacity_receipt_v2_bytes(raws[0])
+        receipt = reopen_capacity_evidence_v2_bytes(raws[0])
         receipt.validate()
     except Exception as exc:
         raise LateStageAdapterUnavailable("late capacity receipt reopen refused") from exc
@@ -279,7 +281,7 @@ def _capacity_binding(supervisor: Any, freeze: Any, repo: Path) -> tuple[Path, s
     if any(raw != raws[0] for raw in raws) or _sha(raws[0]) != expected:
         raise LateStageAdapterUnavailable("late capacity artifact digest drift")
     try:
-        receipt = reopen_capacity_receipt_v2_bytes(raws[0])
+        receipt = reopen_capacity_evidence_v2_bytes(raws[0])
         receipt.validate()
     except Exception as exc:
         raise LateStageAdapterUnavailable("late capacity receipt reopen refused") from exc

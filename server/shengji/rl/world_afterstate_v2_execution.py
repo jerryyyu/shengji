@@ -35,7 +35,7 @@ from .world_afterstate_v2_audit_attempt import (
 
 
 SCHEMA = "world-afterstate-v2-absolute-leaf-execution-v1"
-FREEZE_SCHEMA = "world-afterstate-v2-absolute-leaf-freeze-v3"
+FREEZE_SCHEMA = "world-afterstate-v2-absolute-leaf-freeze-v4"
 ADMISSION_SCHEMA = "world-afterstate-v2-absolute-leaf-admission-v1"
 TOMBSTONE_SCHEMA = "world-afterstate-v2-absolute-leaf-consumption-tombstone-v1"
 STATE_SCHEMA = "world-afterstate-v2-stage-state-v1"
@@ -51,7 +51,7 @@ REVIEWER_EMAIL = "noreply@anthropic.com"
 REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
 CANONICAL_REMOTE_URL = "https://github.com/jerryyyu/shengji.git"
 CANONICAL_REMOTE_REF = "refs/heads/main"
-MAX_DEADLINE_SECONDS = 12 * 60 * 60
+MAX_DEADLINE_SECONDS = 14 * 60 * 60
 # Progress is operational telemetry, rather than evidence.  Keep the sink
 # bounded even if a controller calls its callback more often than the frozen
 # heartbeat cadence.

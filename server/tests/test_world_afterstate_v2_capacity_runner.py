@@ -437,14 +437,27 @@ def test_continuation_capacity_operation_has_128_units_and_fixed_32_cycle(monkey
 
 def _capacity_training_fixture(index, *, candidates=2, audit_salt=""):
     from shengji.rl.world_afterstate_v2_population import PopulationMaterialV2
+    from shengji.rl.world_afterstate_v2_protocol import TIER_SPECS, _raw_slot_ledger
 
     digest = lambda value: hashlib.sha256(value.encode("ascii")).hexdigest()
+    reserved = runner._reserved_natural_pair_slots(_raw_slot_ledger(TIER_SPECS[0]))
+    if index < len(reserved):
+        slot = reserved[index]
+        phase, position, role = slot.cell
+        slot_sha256, split, source = slot.slot_sha256, slot.split, slot.source
+        trump_rank, trump_mode = slot.trump_rank, slot.trump_mode
+    else:
+        # Non-fit fixtures remain bound into pseudo-target identity but cannot
+        # enter the paired capacity optimizer batch.
+        slot_sha256, split, source = digest(f"slot:{index}"), "select", "natural"
+        phase, position, role = "early", "lead", "attacker"
+        trump_rank, trump_mode = "2", "S"
     state = SimpleNamespace(
         deal_sha256=digest(f"deal:{index}"),
-        slot_sha256=digest(f"slot:{index}"),
+        slot_sha256=slot_sha256,
         state_sha256=digest(f"state:{index}"),
-        source="natural", role="attacker", phase="early", position="lead",
-        trump_rank="2", trump_mode="S")
+        source=source, split=split, role=role, phase=phase, position=position,
+        trump_rank=trump_rank, trump_mode=trump_mode)
     successor_sha256s = tuple(
         digest(f"successor:{index}:{candidate}")
         for candidate in range(candidates))
@@ -496,10 +509,20 @@ def test_capacity_training_batch_uses_128_complete_rows_and_binds_all_materials(
 
     monkeypatch.setattr(afterstate, "build_afterstate_tensors", tensors)
     fixtures = tuple(_capacity_training_fixture(index) for index in range(32))
+    examples = runner._capacity_training_examples(fixtures)
+    assert {row.deal_sha256 for row in examples} == {
+        fixture.deal_sha256 for fixture in fixtures[:16]}
     first = runner._capacity_training_batch(fixtures)
     first.validate()
     assert first.size == runner.CAPACITY_TRAINING_EXAMPLES == 128
     assert first.root_count == 8
+    from shengji.rl.world_afterstate_v2_protocol import (
+        fit_pair_id_from_slot_sha256)
+    root_slots = {root: slot for root, slot in zip(
+        first.root_ids, first.slot_sha256s, strict=True)}
+    selected_pairs = [fit_pair_id_from_slot_sha256(slot)
+                      for slot in root_slots.values()]
+    assert all(selected_pairs.count(pair) == 2 for pair in set(selected_pairs))
     unselected = next(index for index, fixture in enumerate(fixtures)
                       if fixture.deal_sha256 not in first.deal_sha256s)
 
@@ -1037,6 +1060,106 @@ def test_cohort_population_uses_exact_batch_and_validates_every_control(
             for name in runner.CONTROL_NAMES]
     assert [(name, count) for name, count, _rows in validations] \
         == [(name, 128) for name in runner.CONTROL_NAMES]
+
+
+def test_cohort_population_preserves_control_refusal_detail(monkeypatch):
+    monkeypatch.setattr(
+        runner, "_capacity_training_example_population",
+        lambda _fixtures: tuple(object() for _ in range(128)))
+    monkeypatch.setattr(
+        runner, "action_association_permutation",
+        lambda _values: (_ for _ in ()).throw(
+            runner.WorldAfterstateV2ControlError(
+                "world-shuffle slot is not in canonical fit ledger")))
+
+    with pytest.raises(
+            CapacityRunnerError,
+            match=("^capacity cohort control population refused: "
+                   "world-shuffle slot is not in canonical fit ledger$")):
+        runner._capacity_cohort_populations((object(),))
+
+
+def test_cohort_population_selects_paired_fit_roots_from_real_shaped_mix(
+        monkeypatch):
+    """The capacity batch must not relabel select/audit slots as fit rows.
+
+    Production preflight intentionally retains held-out roots beside eight
+    canonical natural-fit pairs.  Before the paired selector, the generic
+    128-row subset could include a select slot whose training row said
+    ``split=fit``; the complete-world control then refused that real geometry.
+    """
+    from test_world_afterstate_v2_training import _rows, _tensor
+    from shengji.rl.world_afterstate_v2_protocol import (
+        TIER_SPECS, _raw_slot_ledger, fit_pair_id_from_slot_sha256,
+        fit_slot_from_slot_sha256,
+    )
+
+    ledger = _raw_slot_ledger(TIER_SPECS[0])
+    pair_groups = {}
+    for slot in ledger:
+        if slot.source != "natural" or slot.split != "fit":
+            continue
+        pair_groups.setdefault(
+            fit_pair_id_from_slot_sha256(slot.slot_sha256), []).append(slot)
+    pairs = [tuple(sorted(values, key=lambda slot: slot.ordinal))
+             for _pair, values in sorted(pair_groups.items())
+             if len(values) == 2][:4]
+    assert len(pairs) == 4
+
+    # The final 12+4 pair is the same uneven candidate-count geometry present
+    # in the sealed production P0 materials; it alone totals 128 rows.
+    candidate_counts = (8, 10, 10, 12, 2, 3, 12, 4)
+    values = []
+    for root_index, (slot, candidates) in enumerate(zip(
+            (slot for pair in pairs for slot in pair),
+            candidate_counts, strict=True)):
+        phase, position, role = slot.cell
+        for row in _rows(f"pair-{root_index}", candidates=candidates):
+            values.append(dataclasses.replace(
+                row, slot_sha256=slot.slot_sha256, source=slot.source,
+                split=slot.split, phase=phase, position=position, role=role,
+                trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+                tensors=_tensor(root_index * 7 + row.candidate_index),
+                signed_level_category=(root_index * 17
+                                       + row.candidate_index
+                                       + row.replica) % 204))
+
+    select_slot = next(slot for slot in ledger
+                       if slot.source == "natural" and slot.split == "select")
+    phase, position, role = select_slot.cell
+    for row in _rows("select-0"):
+        # This is the exact old capacity bug: retain the canonical select slot
+        # identity while presenting the pseudo example as a fit row.
+        values.append(dataclasses.replace(
+            row, slot_sha256=select_slot.slot_sha256,
+            source=select_slot.source, split="fit", phase=phase,
+            position=position, role=role, trump_rank=select_slot.trump_rank,
+            trump_mode=select_slot.trump_mode, tensors=_tensor(
+                100 + row.candidate_index),
+            signed_level_category=(153 + row.candidate_index
+                                   + row.replica) % 204))
+
+    monkeypatch.setattr(runner, "_capacity_training_examples",
+                        lambda _fixtures: tuple(values))
+    monkeypatch.setattr(runner, "_capacity_cohort_select_population",
+                        lambda _fixtures: object())
+
+    natural, tasks, _selection = runner._capacity_cohort_populations(
+        (object(),))
+
+    assert len(natural) == runner.CAPACITY_TRAINING_EXAMPLES
+    roots = {row.root_key: row for row in natural}.values()
+    assert len(roots) == 2
+    assert all(fit_slot_from_slot_sha256(row.slot_sha256).split == "fit"
+               for row in roots)
+    selected_pairs = [fit_pair_id_from_slot_sha256(row.slot_sha256)
+                      for row in roots]
+    assert all(selected_pairs.count(pair) == 2 for pair in set(selected_pairs))
+    assert [(name, block, len(rows), prior is None)
+            for name, block, rows, prior in tasks] == [
+                ("natural", 2, 128, True),
+                *[(name, 1, 128, False) for name in runner.CONTROL_NAMES],
+            ]
 
 
 def test_cohort_concurrency_keeps_fixed_unit_count_and_mutates_output_identity(

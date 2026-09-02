@@ -62,6 +62,7 @@ from .world_afterstate_v2_execution import (
 from .world_afterstate_v2_controls import (
     CONTROL_NAMES, action_association_permutation, complete_world_shuffle,
     control_training_examples, label_permutation, validate_control_evidence,
+    WorldAfterstateV2ControlError,
 )
 from .world_afterstate_v2_inference import build_inference_root_v2
 from .world_afterstate_v2_label import ContinuationOutcomeV2
@@ -1042,6 +1043,12 @@ def _capacity_training_examples(
     for fixture in values:
         material = fixture.material
         assert material is not None
+        # Select/audit and mechanics fixtures serve other capacity stages and
+        # remain bound into ``population_identity`` above.  They are not fit
+        # examples and must never be relabelled into the optimizer population.
+        if (material.state.split != "fit"
+                or material.state.source != "natural"):
+            continue
         points = material.prestate.get("public", {}).get("attacker_points")
         points_bucket = prior_points_bucket(points)
         for candidate, raw in zip(
@@ -1088,30 +1095,65 @@ def _capacity_training_examples(
 
 def _capacity_training_example_population(
         fixtures: Sequence[FixtureV2]) -> tuple[Any, ...]:
-    """Select the exact complete-root 128-example capacity population.
+    """Select an exact paired-fit 128-example capacity population.
 
-    Roots remain complete and retain their relative production epoch order.
-    All retained fixtures enter the population identity even when the exact
-    root subset needed to total 128 rows does not contain every fixture.
+    The preflight retains select/audit roots for later DAG stages as well as
+    eight complete natural-fit slot pairs for P0 and the world-shuffle
+    control.  Capacity pseudo rows must preserve that split boundary: treating
+    a select slot as fit makes the control correctly refuse it as absent from
+    the canonical fit ledger.  Roots remain complete, both members of every
+    chosen fit pair stay together, and their production epoch order is kept.
+    All retained fixtures still enter the pseudo-target population identity.
     """
     examples = _capacity_training_examples(fixtures)
     roots: dict[str, list[Any]] = {}
     for example in examples:
         roots.setdefault(example.root_key, []).append(example)
     ordered_roots = ordered_root_ids_for_epoch(tuple(roots), epoch=1)
-    selections: dict[int, tuple[str, ...]] = {0: ()}
+    root_position = {root: index for index, root in enumerate(ordered_roots)}
+
+    from .world_afterstate_v2_protocol import fit_pair_id_from_slot_sha256
+    pair_roots: dict[str, list[str]] = {}
     for root in ordered_roots:
-        count = len(roots[root])
+        rows = roots[root]
+        first = rows[0]
+        if first.source != "natural" or first.split != "fit":
+            continue
+        try:
+            pair = fit_pair_id_from_slot_sha256(first.slot_sha256)
+        except Exception:
+            continue
+        pair_roots.setdefault(pair, []).append(root)
+    paired_groups = []
+    for pair, members in pair_roots.items():
+        if (len(members) != 2
+                or len({roots[root][0].slot_sha256 for root in members}) != 2
+                or len({roots[root][0].deal_sha256 for root in members}) != 2):
+            continue
+        ordered_members = tuple(sorted(
+            members, key=lambda root: root_position[root]))
+        paired_groups.append((
+            min(root_position[root] for root in ordered_members),
+            pair, ordered_members))
+    paired_groups.sort()
+
+    selections: dict[int, tuple[tuple[str, ...], ...]] = {0: ()}
+    for _position, _pair, members in paired_groups:
+        count = sum(len(roots[root]) for root in members)
         for prior_count, prior_roots in tuple(
                 sorted(selections.items(), reverse=True)):
             combined = prior_count + count
             if (combined <= CAPACITY_TRAINING_EXAMPLES
                     and combined not in selections):
-                selections[combined] = (*prior_roots, root)
-    selected_roots = selections.get(CAPACITY_TRAINING_EXAMPLES)
-    if selected_roots is None:
+                selections[combined] = (*prior_roots, members)
+    selected_groups = selections.get(CAPACITY_TRAINING_EXAMPLES)
+    if selected_groups is None:
         raise CapacityRunnerError(
-            "capacity training cannot form one complete 128-example batch")
+            "capacity training cannot form one complete 128-example "
+            "paired-fit batch")
+    selected_set = {root for group in selected_groups for root in group}
+    selected_roots = tuple(root for root in ordered_roots
+                           if root in selected_set)
     selected = tuple(example for root in selected_roots
                      for example in roots[root])
     schedule, batches = training_epoch_batches(
@@ -1214,9 +1256,13 @@ def _capacity_cohort_populations(
         selection = _capacity_cohort_select_population(fixtures)
     except CapacityRunnerError:
         raise
+    except WorldAfterstateV2ControlError as exc:
+        raise CapacityRunnerError(
+            f"capacity cohort control population refused: {exc}") from exc
     except Exception as exc:
         raise CapacityRunnerError(
-            "capacity cohort populations could not be built") from exc
+            "capacity cohort populations could not be built: "
+            f"{type(exc).__name__}") from exc
     return natural, tuple(tasks), selection
 
 

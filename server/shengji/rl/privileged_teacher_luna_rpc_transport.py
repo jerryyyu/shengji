@@ -47,6 +47,7 @@ CODE_MODE_DISABLED_DIAGNOSTIC = (
 )
 MAX_TRACE_BYTES = 16 << 20
 MAX_FINAL_BYTES = 1 << 20
+MAX_STDERR_BYTES = 1 << 20
 CODEX_USAGE_KEYS = frozenset({
     "input_tokens",
     "cached_input_tokens",
@@ -92,7 +93,8 @@ class CodexToolEventError(CodexTurnTransportError):
     """The isolated Codex subprocess emitted a forbidden tool item."""
 
 
-PRIVATE_EVIDENCE_SCHEMA = "pt-luna-codex-private-evidence-v1"
+PRIVATE_EVIDENCE_SCHEMA = "pt-luna-codex-private-evidence-v2"
+LEGACY_PRIVATE_EVIDENCE_SCHEMA = "pt-luna-codex-private-evidence-v1"
 PRIVATE_REFUSAL_EVIDENCE_SCHEMA = (
     "pt-luna-codex-private-refusal-evidence-v1")
 
@@ -685,7 +687,8 @@ def validate_private_refusal_evidence(
     final_value = payload["final_base64"]
     final = None if final_value is None else _unb64(
         final_value, "refusal final")
-    if isinstance(payload["returncode"], bool) \
+    if len(stderr) > MAX_STDERR_BYTES \
+            or isinstance(payload["returncode"], bool) \
             or not isinstance(payload["returncode"], int) \
             or isinstance(payload["wall_ms"], bool) \
             or not isinstance(payload["wall_ms"], int) \
@@ -705,8 +708,6 @@ def validate_private_refusal_evidence(
     return dict(payload)
 
 
-_STDERR_REFUSAL_MESSAGE_SHA256 = _sha_bytes(
-    b"Codex turn stderr refused")
 _COMPLETION_DRIFT_MESSAGE_SHA256 = _sha_bytes(
     b"Codex completion telemetry drift")
 
@@ -792,12 +793,6 @@ def classify_refusal_redispatch_eligibility(
                         "refusal stderr")
     except CodexTurnTransportError:
         return None
-    if (disposition.get("kind") == "provider-process"
-            and disposition.get("exception_type")
-            == "CodexProviderResourceError"
-            and disposition.get("message_sha256")
-            == _STDERR_REFUSAL_MESSAGE_SHA256 and stderr):
-        return "stderr-nonempty"
     if (not stderr and disposition.get("kind") == "provider-schema"
             and disposition.get("exception_type")
             == "CodexTurnTransportError"
@@ -815,7 +810,8 @@ def validate_private_evidence(
             "response", "final_base64", "trace_base64", "stderr_base64",
             "evidence_sha256"}
     if type(payload) is not dict or set(payload) != keys \
-            or payload.get("schema") != PRIVATE_EVIDENCE_SCHEMA:
+            or payload.get("schema") not in (
+                PRIVATE_EVIDENCE_SCHEMA, LEGACY_PRIVATE_EVIDENCE_SCHEMA):
         raise CodexTurnTransportError("Codex private evidence schema drift")
     body = {key: value for key, value in payload.items()
             if key != "evidence_sha256"}
@@ -831,8 +827,10 @@ def validate_private_evidence(
     final_raw = _unb64(payload["final_base64"], "final")
     trace = _unb64(payload["trace_base64"], "trace")
     stderr = _unb64(payload["stderr_base64"], "stderr")
-    if stderr:
-        raise CodexTurnTransportError("Codex private stderr evidence drift")
+    if payload["schema"] == LEGACY_PRIVATE_EVIDENCE_SCHEMA and stderr:
+        raise CodexTurnTransportError("Codex legacy private stderr drift")
+    if len(stderr) > MAX_STDERR_BYTES:
+        raise CodexTurnTransportError("Codex private stderr size drift")
     final = _strict_json(final_raw, "Codex private final")
     _, raw_usage, message = _events_and_usage(trace)
     if _strict_json(message.encode("utf-8"), "Codex private message") != final:
@@ -1003,6 +1001,9 @@ class CodexExecPlannerTransport:
                 command, prompt, workspace, dispatch_timeout)
             if type(result) is not InvocationResult:
                 raise CodexTurnTransportError("Codex runner result drift")
+            if type(result.stderr) is not bytes \
+                    or len(result.stderr) > MAX_STDERR_BYTES:
+                raise CodexProviderResourceError("Codex stderr size drift")
             final_raw = None
             if final_path.is_file() and not final_path.is_symlink():
                 # Preserve exact provider bytes for a refusal even when they
@@ -1043,8 +1044,6 @@ class CodexExecPlannerTransport:
             self._check_dispatch_deadline(dispatch_deadline)
             if result.returncode != 0:
                 raise CodexProviderResourceError("Codex turn process failed")
-            if result.stderr:
-                raise CodexProviderResourceError("Codex turn stderr refused")
             if not final_path.is_file() or final_path.is_symlink():
                 raise CodexProviderResourceError(
                     "Codex final response absent")
@@ -1133,6 +1132,7 @@ __all__ = [
     "CodexTurnTransportError",
     "DISABLED_FEATURES",
     "InvocationResult",
+    "LEGACY_PRIVATE_EVIDENCE_SCHEMA",
     "PINNED_CODEX_VERSION",
     "PRIVATE_EVIDENCE_SCHEMA",
     "PRIVATE_REFUSAL_EVIDENCE_SCHEMA",

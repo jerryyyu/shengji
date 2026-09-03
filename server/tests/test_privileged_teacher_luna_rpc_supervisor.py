@@ -137,11 +137,11 @@ def test_pilot_freeze_shape_and_review_claim_bind_selected_population():
         == 1_200_000_000_000
     assert claim["scientific_game_deadline_nanoseconds"] \
         == 1_800_000_000_000
-    assert claim["pilot_attempt_lineage"]["attempt_ordinal"] == 3
+    assert claim["pilot_attempt_lineage"]["route_ordinal"] == 1
     assert claim["pilot_attempt_lineage"][
         "retry_after_this_attempt_authorized"] is False
-    assert claim["pilot_attempt_lineage"]["prior_spent_tokens"] == 7_195_067
-    assert claim["pilot_attempt_lineage"]["prior_completed_games"] == 7
+    assert claim["pilot_attempt_lineage"]["prior_spent_tokens"] == 9_929_705
+    assert claim["pilot_attempt_lineage"]["prior_completed_games"] == 10
 
     forged = _freeze_payload(
         capacity_route=supervisor.PILOT_32_ELIGIBLE,
@@ -167,7 +167,7 @@ def test_pilot_freeze_shape_and_review_claim_bind_selected_population():
         scientific_wall_nanoseconds=12_000_000_000_000,
         scientific_token_budget=26_404_925)
     with pytest.raises(supervisor.RPCSupervisorError,
-                       match="pilot final-attempt binding"):
+                       match="pilot resilient-route binding"):
         supervisor.validate_launch_freeze_shape(wrong_deadline)
 
     lineage = supervisor._pilot_attempt_lineage()
@@ -183,25 +183,25 @@ def test_pilot_freeze_shape_and_review_claim_bind_selected_population():
         scientific_wall_nanoseconds=12_000_000_000_000,
         scientific_token_budget=26_404_925)
     with pytest.raises(supervisor.RPCSupervisorError,
-                       match="pilot final-attempt binding"):
+                       match="pilot resilient-route binding"):
         supervisor.validate_launch_freeze_shape(wrong_lineage)
 
-    fourth = supervisor._pilot_attempt_lineage()
-    fourth["attempt_ordinal"] = 4
-    fourth["maximum_attempt_ordinal"] = 4
-    fourth_attempt = _freeze_payload(
+    second_route = supervisor._pilot_attempt_lineage()
+    second_route["route_ordinal"] = 2
+    second_route["maximum_route_ordinal"] = 2
+    second_route_freeze = _freeze_payload(
         capacity_route=supervisor.PILOT_32_ELIGIBLE,
         selected_game_count=32, selected_deal_cluster_count=16,
         capacity_measurement_game_deadline_nanoseconds=
             1_200_000_000_000,
         per_game_deadline_nanoseconds=
             supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
-        pilot_attempt_lineage=fourth,
+        pilot_attempt_lineage=second_route,
         scientific_wall_nanoseconds=12_000_000_000_000,
         scientific_token_budget=26_404_925)
     with pytest.raises(supervisor.RPCSupervisorError,
-                       match="pilot final-attempt binding"):
-        supervisor.validate_launch_freeze_shape(fourth_attempt)
+                       match="pilot resilient-route binding"):
+        supervisor.validate_launch_freeze_shape(second_route_freeze)
 
 
 def test_final_pilot_freeze_carries_exact_capacity_without_another_census(
@@ -902,7 +902,7 @@ def test_main_thread_interrupt_stops_and_cancels_pending_games(
     assert runner.calls == 1
 
 
-def test_one_game_deadline_keeps_inflight_peers_and_never_starts_queue(
+def test_one_game_deadline_keeps_collecting_predeclared_independent_games(
         tmp_path, monkeypatch):
     schedule = [
         ((rank, 0, 0), 0) for rank in ("2", "3", "4", "5", "6")]
@@ -941,14 +941,15 @@ def test_one_game_deadline_keeps_inflight_peers_and_never_starts_queue(
         def __call__(self, coordinate, mirror):
             with calls_lock:
                 calls.append((coordinate, mirror))
-            assert barrier.wait(timeout=2) < 4
+            if coordinate[0] != "6":
+                assert barrier.wait(timeout=2) < 4
             if coordinate[0] == "2":
                 return super().__call__(coordinate, mirror)
             path = supervisor._attempt_path(
                 self.attempts_root, coordinate, mirror)
             path.mkdir(mode=0o700)
             # Keep these peers genuinely in flight while the real deadline
-            # failure is handled and the fifth queued item is cancelled.
+            # failure is handled; the fifth item must still run afterward.
             time.sleep(0.05)
             (path / "manifest.json").write_text("complete")
             return object()
@@ -980,11 +981,11 @@ def test_one_game_deadline_keeps_inflight_peers_and_never_starts_queue(
     result = instance.run()
 
     assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
-    assert result.receipt["completed_games"] == 3
+    assert result.receipt["completed_games"] == 4
     assert result.receipt["failed_games"] == 1
-    assert result.receipt["pending_games"] == 1
+    assert result.receipt["pending_games"] == 0
     assert {coordinate[0] for coordinate, _mirror in calls} \
-        == {"2", "3", "4", "5"}
+        == {"2", "3", "4", "5", "6"}
     assert terminated == []
     assert not runner.stop_event.is_set()
     failed = instance._statuses[(("2", 0, 0), 0)]
@@ -992,8 +993,8 @@ def test_one_game_deadline_keeps_inflight_peers_and_never_starts_queue(
     assert failed.status == "incomplete"
     assert failed.failure_kind == "ResourceBoundaryError"
     assert failed.failure_class == "resource-provider"
-    assert not supervisor._attempt_path(
-        runner.attempts_root, ("6", 0, 0), 0).exists()
+    assert supervisor._attempt_path(
+        runner.attempts_root, ("6", 0, 0), 0).is_dir()
 
 
 def test_global_budget_boundary_stops_inflight_and_queued_population(

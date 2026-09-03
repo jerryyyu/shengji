@@ -69,11 +69,11 @@ PILOT_CAPACITY_SOURCE_EXECUTION_GIT = \
 PILOT_CAPACITY_SOURCE_CLAIM_SHA256 = \
     "882d436c7b572928582da6063f4b5d343d43f6c1750b3147f1e781cfb9088901"
 PILOT_ATTEMPT_LINEAGE = {
-    "schema": "pt-luna-pilot-attempt-lineage-v1",
-    "attempt_ordinal": 3,
-    "maximum_attempt_ordinal": 3,
+    "schema": "pt-luna-resilient-acquisition-lineage-v1",
+    "route_ordinal": 1,
+    "maximum_route_ordinal": 1,
     "retry_after_this_attempt_authorized": False,
-    "prior_attempts": [
+    "closed_predecessor_attempts": [
         {
             "attempt_ordinal": 1,
             "terminal_file_sha256":
@@ -92,9 +92,18 @@ PILOT_ATTEMPT_LINEAGE = {
             "ledger_spent_tokens": 3_520_281,
             "completed_games": 3,
         },
+        {
+            "attempt_ordinal": 3,
+            "terminal_file_sha256":
+                "eefa49c6031122822bfc4547206349972b7a33265a19ef2528fe67cf3efa3d53",
+            "terminal_receipt_sha256":
+                "c76dedfc02de7001b791de77a1304303f82d97db25e03d51660063891153a7e9",
+            "ledger_spent_tokens": 2_734_638,
+            "completed_games": 3,
+        },
     ],
-    "prior_spent_tokens": 7_195_067,
-    "prior_completed_games": 7,
+    "prior_spent_tokens": 9_929_705,
+    "prior_completed_games": 10,
 }
 DESIGN_PATHS = (
     "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md",
@@ -138,7 +147,7 @@ def _strict_sha(value: object, label: str) -> str:
 
 
 def _pilot_attempt_lineage() -> dict[str, object]:
-    """Return a fresh copy of the exact reviewed final-attempt lineage."""
+    """Return a fresh copy of the closed attempts plus the new-route identity."""
     return json.loads(json.dumps(PILOT_ATTEMPT_LINEAGE))
 
 
@@ -675,7 +684,7 @@ def validate_launch_freeze_shape(freeze: Mapping[str, object]) -> None:
                 != PILOT_SCIENTIFIC_TOKEN_BUDGET \
                 or freeze["pilot_attempt_lineage"] \
                 != _pilot_attempt_lineage():
-            raise RPCSupervisorError("pilot final-attempt binding drift")
+            raise RPCSupervisorError("pilot resilient-route binding drift")
     elif freeze["pilot_attempt_lineage"] is not None:
         raise RPCSupervisorError("non-pilot attempt lineage drift")
     if type(freeze["namespace"]) is not str or not freeze["namespace"] \
@@ -1560,7 +1569,6 @@ class PTLunaRPCSupervisor:
 
                     for _ in range(min(self.workers, len(pending))):
                         submit_one()
-                    population_refused = False
                     while futures:
                         future = next(as_completed(tuple(futures)))
                         coordinate, mirror = futures.pop(future)
@@ -1574,16 +1582,15 @@ class PTLunaRPCSupervisor:
                             self._errors[(coordinate, mirror)] = exc
                             self._record_preseal_mechanics_refusal(
                                 coordinate, mirror, exc)
-                            # One game-level refusal closes the population but
-                            # does not invalidate independent games already in
-                            # flight.  Cancel only work that has not started;
-                            # the running peers finish and seal normally.
+                            # A game-level refusal still makes the terminal
+                            # route incomplete, but it must not erase the
+                            # independently predeclared games that remain.
+                            # Only shared budget exhaustion is population-wide.
                             global_abort = self._global_budget_exhausted()
                             if global_abort and not self.stop_event.is_set():
                                 self.stop_event.set()
                                 self._terminate_active_calls()
-                            if not population_refused:
-                                population_refused = True
+                            if global_abort:
                                 for other in tuple(futures):
                                     other.cancel()
                         # The runner has sealed before returning/raising.  Read it
@@ -1592,7 +1599,7 @@ class PTLunaRPCSupervisor:
                         self._statuses[(coordinate, mirror)] = reopened
                         self._progress(active_workers=self._active_games,
                                        active_rpcs=self._active_rpcs())
-                        if not population_refused:
+                        if not self.stop_event.is_set():
                             submit_one()
                 except BaseException:
                     self.stop_event.set()

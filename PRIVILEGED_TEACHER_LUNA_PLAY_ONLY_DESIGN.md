@@ -1,7 +1,9 @@
 # PT-Luna play-only acquisition — simplified redesign
 
-Status: design only. This document authorizes no implementation, formal
-capacity run, scientific collection, outcome opening, Value label, gameplay
+Status: implemented predecessor plus proposed resilient-acquisition amendment.
+Section 10 supersedes the conflicting stderr, queue-cancellation, lineage, and
+review statements below. This document authorizes no formal capacity run,
+scientific collection, outcome opening, Value label, gameplay
 claim, merge, promotion, retry of a spent namespace, or deployment. It
 supersedes the model-interaction and capacity portions of
 `PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md`; the fresh population, mirrored
@@ -94,12 +96,12 @@ model-owned engine tool. Candidate zero remains the production prior but is
 not a fallback: invalid, late, stale, tool-bearing, or illegal output refuses
 the game without mutating engine state or team memory.
 
-One game refusal closes the population but is local to that schedule item.
-The supervisor stops admitting queued games, lets every already-running peer
-finish and seal, and publishes the remaining schedule items as pending. It
-must not set the shared controller-stop event or terminate active provider
-processes for a game deadline. Controller death and exhaustion of the shared
-population budget remain population-wide aborts.
+One game refusal makes the terminal population incomplete but is local to that
+schedule item. The supervisor continues the already-fixed schedule so later
+independent games can finish and seal. It must not set the shared
+controller-stop event or terminate active provider processes for a game
+deadline. Controller death and exhaustion of the shared population budget
+remain population-wide aborts.
 
 All model calls use the reviewed supervisor-owned Codex transport. Exact model,
 reasoning effort, CLI/catalog, schema, prompt template, environment, sandbox,
@@ -109,11 +111,14 @@ adapter is out of scope.
 ## 4. Narrow availability redispatch
 
 The scientific no-retry rule remains the default. A packet may be redispatched
-only for these two observed transport-availability failures, before any engine
-or memory commit:
+only for exact Codex completion-envelope telemetry drift, before any engine or
+memory commit.
 
-1. a zero-exit provider process with nonempty stderr; or
-2. exact Codex completion-envelope telemetry drift.
+A zero-exit provider process with a schema-valid final response, complete
+usage, zero tool events, and intact identity bindings is accepted even when it
+emits bounded stderr. Stderr is diagnostic evidence: its exact bytes and hash
+are sealed privately, never exposed to the decision model, and never used as
+decision authority. Stderr above the fixed 1 MiB evidence bound refuses.
 
 At most two redispatches of the identical immutable decision packet are
 allowed, for at most three total attempts. Every attempt has a unique ordinal,
@@ -212,9 +217,9 @@ token ceiling is the already-measured 25%-headroom pilot projection,
 26,404,925 tokens. The earlier Pilot-2 freeze incorrectly copied the generic
 1,000,000,000-token capacity ceiling despite Jerry approving 26.4M; its early
 deadline refusal limited actual spend to 3.52M and masked the overly broad
-guard. Pilot 3 binds the intended 26,404,925-token ceiling, so the scheduling
-repair does not increase Jerry's aggregate exposure. The per-call transport
-ceiling is unchanged.
+guard. The resilient-acquisition route carries the same intended
+26,404,925-token ceiling, so the transport and scheduling repairs do not
+increase the per-route exposure. The per-call transport ceiling is unchanged.
 
 ## 7. Authorized casual probes after design review
 
@@ -280,30 +285,34 @@ Two 32-game pilot attempts are already spent and are part of the next freeze:
   `c5034c2006f9f49355c29ee92debc6360a6f958cc23d573ecdf8dd95d43cad6c`,
   3,520,281
   ledger tokens, three completed games.
+- Pilot 3: terminal file
+  `eefa49c6031122822bfc4547206349972b7a33265a19ef2528fe67cf3efa3d53`,
+  receipt
+  `c76dedfc02de7001b791de77a1304303f82d97db25e03d51660063891153a7e9`,
+  2,734,638 ledger tokens, three completed games. Its sole game refusal was a
+  zero-exit, valid-final, zero-tool call accompanied by a model-registry
+  refresh warning on stderr.
 
-The exact combined accounting is 7,195,067 ledger tokens and seven completed
-games. The next pilot is ordinal 3, the maximum ordinal. Its freeze carries
-both complete terminal hashes, both receipt hashes, both spends, both complete
-counts, the combined totals, and `retry_after_this_attempt_authorized: false`.
-The freeze validator refuses any alteration, a lower hard deadline, or a
-fourth ordinal.
+The exact combined accounting is 9,929,705 ledger tokens and ten completed
+games. All three predecessor attempts are closed; there is no fourth attempt
+under their lane.
 
-If Pilot 3 fails on any per-call wall, per-game wall/deadline, or population
-wall ground, the PT-Luna full/pilot Mini effort stops. There is no fourth
-attempt, cap iteration, mirror drop, seed replacement, or shortened-game
-variant under this lane. A future direct-transport design would be a new
-proposal.
+The new route in section 10 is a source-defect repair with a fresh deterministic
+population and namespace, not a retry or seed replacement under the closed
+lane.
 
 ## 9. Review economy and authority
 
-Pilot 3 uses one consolidated exact-head source + immutable-freeze review. It
+The resilient-acquisition route uses one consolidated exact-head source +
+immutable-freeze review. It
 carries forward only the exact sealed Pilot-2 capacity receipt
 `1ba204ee855b0842a6388f243bb86a02eba6a22163b91cce9ac570b936470364`
 from source `d126ad019e1175cd6fe7d0a296c911bf28ae8883`; its p95, route, workers, reserves, token
 budget, and 12,000-second population wall do not change. No further canary,
 capacity census, rehearsal, or separate integrity run is authorized or
 needed. The consolidated review must witness the cascade wiring, deadline
-separation, exact carry-forward receipt, attempt lineage, and no-fourth rule.
+separation, exact carry-forward receipt, closed-attempt lineage, bounded
+diagnostic evidence, and independent-schedule continuation.
 
 Do not add a separate formal rehearsal after capacity. Source tests must cover
 play-only schema closure, forced/contested plays, both team memories, exact
@@ -317,3 +326,37 @@ label, BELIEF integration, promotion, merge, deployment, and production
 authorities false. A design PASS authorizes only the casual probes in section 7
 under Jerry's separate authorization; it does not authorize implementation or
 formal compute.
+
+## 10. Resilient acquisition after the closed pilots
+
+Pilot 3 established that the remaining stop was not a missing or invalid Luna
+play: the provider exited zero, returned a valid final play, emitted complete
+usage and no tools, and also wrote an unrelated model-registry refresh warning
+to stderr. Treating every stderr byte as turn failure made a diagnostic channel
+override stronger response evidence.
+
+The new route makes two source changes:
+
+1. bounded stderr is sealed as private diagnostic evidence but cannot veto an
+   otherwise valid response; nonzero exit, timeout, missing or malformed final,
+   tool use, identity drift, illegal play, and mechanics/privacy failures keep
+   refusing exactly as before; and
+2. a local game failure makes the terminal incomplete but does not cancel the
+   rest of the predeclared independent schedule. Shared wall/token exhaustion
+   still stops the population and terminates active calls.
+
+The route uses a fresh seed secret, census, 16-cluster/32-game mirrored
+schedule, private/public roots, namespace, source claim, and freeze. It carries
+the exact three closed predecessor terminal/receipt hashes and their cumulative
+9,929,705-token/10-game accounting. `route_ordinal` is exactly 1,
+`maximum_route_ordinal` is exactly 1, and
+`retry_after_this_attempt_authorized` is false. No predecessor namespace or
+partial game is resumed or selected.
+
+The passed four-worker capacity receipt is carried only for worker, RSS, swap,
+token-reserve, and wall bounds; the response-validity change does not add work.
+One exact-head source+freeze review must verify the real warning witness, the
+1 MiB stderr bound, every stronger refusal, the continue-after-local-failure
+witness, the global-budget stop witness, fresh schedule identity, and the
+closed predecessor lineage. On PASS, the route may execute once. There is no
+extra rehearsal, census, or post-freeze review.

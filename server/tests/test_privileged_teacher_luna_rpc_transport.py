@@ -412,6 +412,14 @@ def test_private_provider_trace_reopens_and_coordinated_rehash_fails(tmp_path):
     private = active.take_private_evidence(decision, response)
     assert validate_private_evidence(
         private, packet=decision, response=response) == private
+    legacy = copy.deepcopy(private)
+    legacy["schema"] = transport_module.LEGACY_PRIVATE_EVIDENCE_SCHEMA
+    legacy_body = {key: value for key, value in legacy.items()
+                   if key != "evidence_sha256"}
+    legacy["evidence_sha256"] = hashlib.sha256(
+        canonical_json_bytes(legacy_body)).hexdigest()
+    assert validate_private_evidence(
+        legacy, packet=decision, response=response) == legacy
     with pytest.raises(CodexTurnTransportError,
                        match="private evidence absent"):
         active.take_private_evidence(decision, response)
@@ -483,18 +491,6 @@ def test_play_only_rejects_rollout_through_nested_parser(tmp_path):
 
 def test_refusal_redispatch_classifier_exact_positive_cases(tmp_path):
     decision = packet()
-    stderr_transport = transport(
-        tmp_path, FakeRun(stderr=b"warning\n"),
-        policy_mode="play-only")
-    with pytest.raises(CodexTurnTransportError):
-        stderr_transport.call(decision)
-    stderr_private = stderr_transport.take_private_refusal_evidence(decision)
-    assert stderr_private is not None
-    assert classify_refusal_redispatch_eligibility(
-        sealed_disposition("provider-process", "Codex turn stderr refused"),
-        validate_private_refusal_evidence(stderr_private, packet=decision)) \
-        == "stderr-nonempty"
-
     drift_transport = transport(
         tmp_path, CompletionDriftRun(), policy_mode="play-only")
     with pytest.raises(CodexTurnTransportError, match="completion telemetry"):
@@ -510,16 +506,16 @@ def test_refusal_redispatch_classifier_exact_positive_cases(tmp_path):
 
 
 @pytest.mark.parametrize("kind,message,private_changes", [
-    ("provider-process", "Codex turn stderr refused", {"returncode": 3}),
-    ("provider-process", "Codex turn stderr refused", {"final_base64": None}),
-    ("provider-process", "Codex turn stderr refused", {"tool_event_count": None}),
-    ("provider-process", "Codex turn stderr refused", {"tool_event_count": 1}),
+    ("provider-process", "Codex turn process failed", {"returncode": 3}),
+    ("provider-process", "Codex turn process failed", {"final_base64": None}),
+    ("provider-process", "Codex turn process failed", {"tool_event_count": None}),
+    ("provider-process", "Codex turn process failed", {"tool_event_count": 1}),
     ("provider-schema", "Codex completion telemetry drift", {}),
 ])
 def test_refusal_redispatch_classifier_forbidden_cases(
         tmp_path, kind, message, private_changes):
     decision = packet()
-    active = transport(tmp_path, FakeRun(stderr=b"warning\n"),
+    active = transport(tmp_path, FakeRun(returncode=3),
                        policy_mode="play-only")
     with pytest.raises(CodexTurnTransportError):
         active.call(decision)
@@ -601,9 +597,41 @@ def test_stale_tool_usage_and_final_binding_fail(mutation, match, tmp_path):
         transport(tmp_path, FakeRun(mutate=mutation)).call(packet())
 
 
-def test_any_stderr_fails_closed(tmp_path):
-    with pytest.raises(CodexTurnTransportError, match="stderr"):
-        transport(tmp_path, FakeRun(stderr=b"warning\n")).call(packet())
+def test_diagnostic_stderr_is_sealed_but_does_not_override_valid_response(
+        tmp_path):
+    decision = packet()
+    diagnostic = (
+        b"ERROR codex_models_manager: failed to refresh available models: "
+        b"timeout waiting for child process to exit\n")
+    active = transport(tmp_path, FakeRun(stderr=diagnostic),
+                       policy_mode="play-only")
+    response = active.call(decision)
+    private = active.take_private_evidence(decision, response)
+    assert base64.b64decode(private["stderr_base64"]) == diagnostic
+    assert private["response"]["stderr_sha256"] == hashlib.sha256(
+        diagnostic).hexdigest()
+    assert validate_private_evidence(
+        private, packet=decision, response=response) == private
+    legacy = copy.deepcopy(private)
+    legacy["schema"] = transport_module.LEGACY_PRIVATE_EVIDENCE_SCHEMA
+    legacy_body = {key: value for key, value in legacy.items()
+                   if key != "evidence_sha256"}
+    legacy["evidence_sha256"] = hashlib.sha256(
+        canonical_json_bytes(legacy_body)).hexdigest()
+    with pytest.raises(CodexTurnTransportError,
+                       match="legacy private stderr"):
+        validate_private_evidence(
+            legacy, packet=decision, response=response)
+
+
+def test_oversized_stderr_refuses_before_acceptance(tmp_path):
+    active = transport(
+        tmp_path,
+        FakeRun(stderr=b"x" * (transport_module.MAX_STDERR_BYTES + 1)),
+        policy_mode="play-only")
+    with pytest.raises(CodexProviderResourceError,
+                       match="stderr size drift"):
+        active.call(packet())
 
 
 def test_tool_refusal_retains_exact_trace_usage_and_rejects_rehash(tmp_path):

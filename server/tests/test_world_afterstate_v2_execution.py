@@ -39,6 +39,7 @@ import shengji.rl.world_afterstate_v2_stage_adapters as stage_adapters
 from shengji.rl.world_afterstate_v2_stage_adapters import (
     StageAdapterUnavailable, population_reopen_adapter,
 )
+from shengji.rl.world_afterstate_v2_protocol import SCIENTIFIC_SERVICE_SECONDS
 
 
 @pytest.fixture(autouse=True)
@@ -96,6 +97,21 @@ def test_production_controller_context_is_clean_spawn(monkeypatch):
     assert execution._controller_context().get_start_method() == "spawn"
 
 
+def test_execution_freeze_accepts_the_full_scientific_service_window(tmp_path):
+    """Protocol service time must be constructible at the execution boundary."""
+    _repo, base_freeze, _review, _marker, _remote = _fixture(tmp_path)
+    assert execution.MAX_DEADLINE_SECONDS == SCIENTIFIC_SERVICE_SECONDS \
+        == 18 * 60 * 60
+    assert replace(
+        base_freeze, deadline_seconds=SCIENTIFIC_SERVICE_SECONDS
+    ).canonical_bytes()
+    with pytest.raises(
+            WorldAfterstateV2ExecutionError, match="freeze deadline drift"):
+        replace(
+            base_freeze, deadline_seconds=SCIENTIFIC_SERVICE_SECONDS + 1
+        ).canonical_bytes()
+
+
 def _sha(value) -> str:
     raw = value.encode() if isinstance(value, str) else canonical_json_bytes(value)
     return hashlib.sha256(raw).hexdigest()
@@ -119,7 +135,7 @@ def _fixture(tmp_path: Path):
     (repo / "payload.py").write_text("PAYLOAD = 1\n")
     artifact_rows = []
     for label in ("protocol", "capacity", "population", "config", "seed",
-                  "continuation-policy"):
+                  "continuation-policy", "population-rehearsal"):
         path = f"{label}.json"
         raw = (label + " artifact\n").encode()
         (repo / path).write_bytes(raw)
@@ -137,6 +153,7 @@ def _fixture(tmp_path: Path):
         capacity_sha256=artifact_rows[1][2], population_sha256=artifact_rows[2][2],
         config_sha256=artifact_rows[3][2], seed_sha256=artifact_rows[4][2],
         continuation_policy_sha256=artifact_rows[5][2],
+        population_rehearsal_sha256=artifact_rows[6][2],
         evidence_root=str(tmp_path / "evidence"),
         source_bindings=(source_binding,),
         runtime_profile=live_runtime_profile(), artifact_bindings=tuple(artifact_rows),

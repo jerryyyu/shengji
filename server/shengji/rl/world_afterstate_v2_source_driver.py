@@ -31,6 +31,7 @@ from .world_afterstate_v2_protocol import (
 SCHEMA = "world-afterstate-v2-source-attempt-v1"
 MAX_DECISIONS = 100  # Four players, twenty-five cards each.
 REJECTION_MODE_MISMATCH = "actual-trump-mode-mismatch"
+REJECTION_REQUESTED_MODE_UNAVAILABLE = "requested-trump-mode-unavailable"
 REJECTION_NO_ELIGIBLE_STATE = "no-eligible-state"
 REJECTION_ENGINE_ERROR = "engine-error"
 REJECTION_MATERIALIZATION_ERROR = "materialization-error"
@@ -93,6 +94,35 @@ def _trump_mode(rnd: Round) -> str:
     return "NT" if rnd.trump_is_nt else str(rnd.trump_suit)
 
 
+def _declare_requested_mechanics_mode(
+        rnd: Round, slot: PopulationSlotV2) -> bool:
+    """Declare the requested mode from the dealt hands, if it is legal.
+
+    This is intentionally a read of the canonical hands followed by the
+    engine's own ``declare`` transition.  In particular, it never edits the
+    deck, hands, or any of Round's derived trump fields.  Seat order is the
+    deterministic tie-break; for a no-trump seat holding both legal pairs,
+    BJ is preferred to LJ.
+    """
+    if slot.trump_mode == "NT":
+        for seat in range(4):
+            hand = rnd.hands[seat]
+            for code in ("BJ", "LJ"):
+                if hand.count(code) >= 2:
+                    rnd.declare(seat, [code, code])
+                    return True
+        return False
+
+    code = f"{slot.trump_mode}{slot.trump_rank}"
+    for seat in range(4):
+        hand = rnd.hands[seat]
+        count = hand.count(code)
+        if count:
+            rnd.declare(seat, [code, code] if count >= 2 else [code])
+            return True
+    return False
+
+
 @dataclass(frozen=True)
 class PopulationAttemptResultV2:
     """Score-free result of one exact D256 natural/mechanics attempt."""
@@ -153,8 +183,10 @@ class PopulationAttemptResultV2:
                 raise WorldAfterstateV2SourceDriverError("accepted material binding drift")
         elif self.material is not None \
                 or self.rejection_reason not in {
-                    REJECTION_MODE_MISMATCH, REJECTION_NO_ELIGIBLE_STATE,
-                    REJECTION_ENGINE_ERROR, REJECTION_MATERIALIZATION_ERROR}:
+                    REJECTION_MODE_MISMATCH,
+                    REJECTION_REQUESTED_MODE_UNAVAILABLE,
+                    REJECTION_NO_ELIGIBLE_STATE, REJECTION_ENGINE_ERROR,
+                    REJECTION_MATERIALIZATION_ERROR}:
             raise WorldAfterstateV2SourceDriverError("rejected result drift")
 
     def payload(self) -> dict[str, Any]:
@@ -226,15 +258,27 @@ def drive_population_attempt_v2(
             PRODUCTION_BALLOT_POLICY,
             seed=trajectory_policy_seed(deal, seat)) for seat in range(4)]
         rnd = Round(slot.trump_rank, banker, random.Random(engine_seed))
-        while rnd.phase == "deal":
-            seat, _, _ = rnd.deal_next()
-            cards = policies[seat].decide_declare(rnd, seat)
-            if cards:
-                rnd.declare(seat, cards)
-        for seat in range(4):
-            cards = policies[seat].decide_declare(rnd, seat, final=True)
-            if cards:
-                rnd.declare(seat, cards)
+        if slot.source == "mechanics":
+            # Mechanics targets are selected only after the complete deal, so
+            # the forced declaration is a function of all four hands.
+            while rnd.phase == "deal":
+                rnd.deal_next()
+            if not _declare_requested_mechanics_mode(rnd, slot):
+                return _result(
+                    attempted_deal_identity, deal, slot, accepted=False,
+                    reason=REJECTION_REQUESTED_MODE_UNAVAILABLE, material=None,
+                    decision_count=0)
+        else:
+            # Keep the natural production declaration stream byte-identical.
+            while rnd.phase == "deal":
+                seat, _, _ = rnd.deal_next()
+                cards = policies[seat].decide_declare(rnd, seat)
+                if cards:
+                    rnd.declare(seat, cards)
+            for seat in range(4):
+                cards = policies[seat].decide_declare(rnd, seat, final=True)
+                if cards:
+                    rnd.declare(seat, cards)
         rnd.finalize_declare()
         if rnd.banker is None:
             raise RuntimeError("banker missing")
@@ -324,7 +368,8 @@ V2SourceAttemptResult = PopulationAttemptResultV2
 __all__ = [
     "FORBIDDEN_TOKENS", "MAX_DECISIONS", "PopulationAttemptResultV2",
     "REJECTION_ENGINE_ERROR", "REJECTION_MATERIALIZATION_ERROR",
-    "REJECTION_MODE_MISMATCH", "REJECTION_NO_ELIGIBLE_STATE", "SCHEMA",
+    "REJECTION_MODE_MISMATCH", "REJECTION_NO_ELIGIBLE_STATE",
+    "REJECTION_REQUESTED_MODE_UNAVAILABLE", "SCHEMA",
     "WorldAfterstateV2SourceDriverError", "SourceDriverResultV2",
     "attempt_population_slot_v2",
     "SourceAttemptResultV2", "V2SourceAttemptResult",

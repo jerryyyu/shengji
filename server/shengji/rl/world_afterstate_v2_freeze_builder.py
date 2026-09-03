@@ -1,7 +1,7 @@
 """Read-only construction of the Value-Afterstate V2 execution freeze.
 
 The builder is deliberately boring: it authenticates one clean checkout,
-reopens six already-published inputs, and returns the typed freeze object.  It
+reopens seven already-published inputs, and returns the typed freeze object.  It
 does not create an evidence namespace or grant any execution authority.
 """
 
@@ -28,6 +28,7 @@ from .world_afterstate_v2_freeze_inputs import (
     reopen_early_stage_config_v2_bytes, reopen_population_adapter_input_v2_bytes,
     reopen_protocol_bytes, reopen_seed_registry_v2_bytes, population_namespace,
 )
+from .world_afterstate_v2_population_rehearsal import reopen_population_rehearsal
 
 
 class WorldAfterstateV2FreezeBuilderError(ValueError):
@@ -39,7 +40,7 @@ FreezeBuilderError = WorldAfterstateV2FreezeBuilderError
 _LOADABLE = {".py", ".pyc", ".pyo", ".so", ".dylib", ".pyd"}
 _ARTIFACT_LABELS = (
     "protocol", "capacity", "population", "config", "seed",
-    "continuation-policy",
+    "continuation-policy", "population-rehearsal",
 )
 def _sha(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
@@ -425,6 +426,22 @@ def _validate_inputs(repo: Path, paths: tuple[tuple[str, Path | str], ...],
             raws["continuation-policy"], source_git=source_git,
             protocol_sha256=protocol_sha, capacity_sha256=capacity_sha,
             selected_tier=tier)
+        # First recover the receipt identity, then strictly reopen the exact
+        # population root it names.  The second pass proves the self-hash is
+        # backed by the immutable collection receipt rather than by a forged
+        # standalone outer JSON blob.
+        rehearsal = reopen_population_rehearsal(raws["population-rehearsal"])
+        population_root = getattr(rehearsal, "population_root", None)
+        if type(population_root) is not str or not Path(population_root).is_absolute():
+            _fail("population rehearsal root binding drift")
+        rehearsal = reopen_population_rehearsal(
+            raws["population-rehearsal"], root=Path(population_root),
+            expected_head=source_git, capacity_raw=raws["capacity"])
+        if (rehearsal.source_git, rehearsal.protocol_sha256,
+                rehearsal.capacity_economics_sha256,
+                rehearsal.population_namespace_sha256) != (
+                    source_git, protocol_sha, capacity_sha, namespace):
+            _fail("population rehearsal source binding drift")
         # Existing adapter readers remain a useful independent ABI check.
         from .world_afterstate_v2_stage_adapters import _read_input, _read_stage_config
         supplied = dict(paths)
@@ -456,6 +473,8 @@ def build_execution_freeze(
         early_stage_config_path: Path | str | None = None,
         seed_input_path: Path | str | None = None,
         continuation_policy_input_path: Path | str | None = None,
+        population_rehearsal_path: Path | str | None = None,
+        population_rehearsal_input_path: Path | str | None = None,
         ) -> ExecutionFreezeV2:
     """Build and round-trip one canonical, inert :class:`ExecutionFreezeV2`."""
     expected_head = expected_head or expected_git or source_git
@@ -464,10 +483,13 @@ def build_execution_freeze(
     seed_path = seed_path or seed_input_path
     continuation_policy_path = (continuation_policy_path
                                 or continuation_policy_input_path)
+    population_rehearsal_path = (population_rehearsal_path
+                                 or population_rehearsal_input_path)
     if any(value is None for value in (expected_head, protocol_path,
                                        capacity_path, population_path,
                                        config_path, seed_path,
-                                       continuation_policy_path, evidence_root)):
+                                       continuation_policy_path,
+                                       population_rehearsal_path, evidence_root)):
         _fail("freeze input is missing")
     repo = Path(repo)
     if not repo.is_absolute() or repo.is_symlink() or not repo.is_dir():
@@ -496,7 +518,8 @@ def build_execution_freeze(
         repo, (("protocol", protocol_path), ("capacity", capacity_path),
                ("population", population_path), ("config", config_path),
                ("seed", seed_path),
-               ("continuation-policy", continuation_policy_path)),
+               ("continuation-policy", continuation_policy_path),
+               ("population-rehearsal", population_rehearsal_path)),
         source_git=source_git, evidence_root=evidence,
         deadline_seconds=deadline_seconds,
         heartbeat_seconds=heartbeat_seconds, runtime_sha256=runtime_sha)
@@ -512,6 +535,7 @@ def build_execution_freeze(
         "population_sha256": artifacts[2][2], "config_sha256": artifacts[3][2],
         "seed_sha256": artifacts[4][2],
         "continuation_policy_sha256": artifacts[5][2],
+        "population_rehearsal_sha256": artifacts[6][2],
     }
     freeze = ExecutionFreezeV2(
         **values, evidence_root=str(evidence), boot_identity=runtime["boot_identity"],
@@ -548,6 +572,8 @@ def build_freeze(repo: Path | str, source_git: str | None = None, **kwargs: Any
         "seed": "seed_path", "seed_input": "seed_path",
         "continuation_policy": "continuation_policy_path",
         "continuation_policy_input": "continuation_policy_path",
+        "population_rehearsal": "population_rehearsal_path",
+        "population_rehearsal_input": "population_rehearsal_path",
     }
     for old, new in names.items():
         if old in kwargs and new not in kwargs:

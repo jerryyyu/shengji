@@ -2,8 +2,9 @@
 
 This module does not measure capacity or execute scientific work.  It reopens
 the exact Census-11 refusal, proves that only the predeclared wall-economics
-gates failed, and exposes the unchanged D256 resource layout under the openly
-revised seven-hour / fourteen-hour contract.
+gates failed, and exposes the unchanged post-population D256 resource layout
+under the openly revised nine-hour / eighteen-hour contract.  The separate
+population allowance repairs the first amendment's omission of that stage.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from .world_afterstate_v2_protocol import (
 )
 
 
-AMENDMENT_SCHEMA = "world-afterstate-v2-capacity-economics-amendment-v1"
+AMENDMENT_SCHEMA = "world-afterstate-v2-capacity-economics-amendment-v2"
 SELECTED_ARM_SCHEMA = "world-afterstate-v2-capacity-economics-arm-v1"
 SOURCE_DIFF_SCHEMA = "world-afterstate-v2-capacity-economics-source-diff-v1"
 BASE_SOURCE_GIT = "8ff9c79cd294770b51127ec7a844694784b7d0bc"
@@ -39,7 +40,11 @@ BASE_FAILURE_SOURCE_SHA256 = (
     "53932edb01fabe8f9a3a93d962c34f589e2fe4dcfac1e90a6a6787fb155be6f7")
 LEGACY_COMPLETE_DAG_WALL_SECONDS_MAX = 6 * 60 * 60
 LEGACY_SCIENTIFIC_SERVICE_SECONDS = 12 * 60 * 60
-RETAINED_D256_WALL_SECONDS = 23_065
+RETAINED_D256_POST_POPULATION_WALL_SECONDS = 23_065
+POPULATION_WALL_SECONDS_MAX = 2 * 60 * 60
+REPAIRED_D256_COMPLETE_DAG_WALL_SECONDS = (
+    RETAINED_D256_POST_POPULATION_WALL_SECONDS
+    + POPULATION_WALL_SECONDS_MAX)
 INHERITED_VIOLATIONS = (
     "complete-dag-wall", "two-for-one-service-wall")
 LABEL_STAGES = (
@@ -55,20 +60,28 @@ ALLOWED_CARRY_FORWARD_PATHS = frozenset({
     "VALUE_AFTERSTATE_V2_ABSOLUTE_LEAF_DESIGN.md",
     "server/scripts/build_world_afterstate_v2_freeze.py",
     "server/scripts/world_afterstate_v2_capacity_economics.py",
+    "server/scripts/world_afterstate_v2_population_rehearsal.py",
     "server/shengji/rl/world_afterstate_v2_capacity_economics.py",
     "server/shengji/rl/world_afterstate_v2_execution.py",
+    "server/shengji/rl/world_afterstate_v2_freeze_builder.py",
     "server/shengji/rl/world_afterstate_v2_freeze_inputs.py",
     "server/shengji/rl/world_afterstate_v2_late_stage_adapters.py",
     "server/shengji/rl/world_afterstate_v2_population_controller.py",
+    "server/shengji/rl/world_afterstate_v2_population_rehearsal.py",
     "server/shengji/rl/world_afterstate_v2_protocol.py",
+    "server/shengji/rl/world_afterstate_v2_source_driver.py",
     "server/shengji/rl/world_afterstate_v2_terminal_controller.py",
     "server/shengji/rl/world_afterstate_v2_training_stage_inputs.py",
     "server/tests/fixtures/world_afterstate_v2_capacity_census11_failure.json",
     "server/tests/test_world_afterstate_v2_capacity.py",
     "server/tests/test_world_afterstate_v2_capacity_economics.py",
+    "server/tests/test_world_afterstate_v2_execution.py",
     "server/tests/test_world_afterstate_v2_freeze_builder.py",
     "server/tests/test_world_afterstate_v2_protocol.py",
     "server/tests/test_world_afterstate_v2_population_controller.py",
+    "server/tests/test_world_afterstate_v2_population_rehearsal.py",
+    "server/tests/test_world_afterstate_v2_source_driver.py",
+    "server/tests/test_world_afterstate_v2_terminal_controller.py",
 })
 
 
@@ -188,7 +201,7 @@ def _legacy_failure(raw: bytes) -> dict[str, Any]:
             or diagnostic["scientific_service_seconds"]
             != LEGACY_SCIENTIFIC_SERVICE_SECONDS
             or diagnostic["composed_wall_seconds"]
-            != RETAINED_D256_WALL_SECONDS
+            != RETAINED_D256_POST_POPULATION_WALL_SECONDS
             or tuple(diagnostic["violations"]) != INHERITED_VIOLATIONS
             or diagnostic["cohort_workers"] != 2
             or diagnostic["memory_limit_bytes"] != MEMORY_LIMIT_BYTES):
@@ -227,7 +240,7 @@ def _legacy_failure(raw: bytes) -> dict[str, Any]:
         raise CapacityEconomicsError("base capacity retained stage grid drift")
     edges = tuple(tuple(row) for row in diagnostic["dag_edges"])
     if (_longest_path_seconds(rows["stage_walls_seconds"], edges)
-            != RETAINED_D256_WALL_SECONDS):
+            != RETAINED_D256_POST_POPULATION_WALL_SECONDS):
         raise CapacityEconomicsError("base capacity retained wall drift")
     _digest(value["runtime_sha256"], "base capacity runtime")
     for key in ("peak_memory_bytes", "composed_artifact_bytes",
@@ -318,6 +331,7 @@ class CapacityEconomicsAmendmentV2:
     retained_stage_unit_counts: tuple[tuple[str, int, int], ...]
     retained_dag_edges: tuple[tuple[str, str], ...]
     inherited_violations: tuple[str, ...]
+    population_wall_seconds_max: int
     all_core_gate_passed: bool
     authority: Mapping[str, bool] = field(default_factory=lambda: dict(AUTHORITY))
     schema: str = AMENDMENT_SCHEMA
@@ -383,7 +397,10 @@ class CapacityEconomicsAmendmentV2:
         if (tier.tier != "D256" or tier.exact_source_supply is not True
                 or tier.outcomes_opened is not False
                 or tier.all_core_gate_passed is not True
-                or tier.complete_dag_wall_seconds != RETAINED_D256_WALL_SECONDS
+                or self.population_wall_seconds_max
+                != POPULATION_WALL_SECONDS_MAX
+                or tier.complete_dag_wall_seconds
+                != REPAIRED_D256_COMPLETE_DAG_WALL_SECONDS
                 or tier.service_wall_seconds != SCIENTIFIC_SERVICE_SECONDS
                 or not tier.eligible):
             raise CapacityEconomicsError("capacity economics D256 drift")
@@ -407,7 +424,7 @@ class CapacityEconomicsAmendmentV2:
                 or set(wall_map)
                 != {row[0] for row in self.retained_stage_unit_counts}
                 or _longest_path_seconds(wall_map, self.retained_dag_edges)
-                != RETAINED_D256_WALL_SECONDS
+                != RETAINED_D256_POST_POPULATION_WALL_SECONDS
                 or sum(wall_map[name] for name in LABEL_STAGES)
                 != tier.label_wall_seconds
                 or sum(dict(self.retained_stage_cpu_seconds)[name]
@@ -438,6 +455,7 @@ class CapacityEconomicsAmendmentV2:
             "retained_stage_unit_counts": [
                 list(row) for row in self.retained_stage_unit_counts],
             "retained_dag_edges": [list(row) for row in self.retained_dag_edges],
+            "population_wall_seconds_max": self.population_wall_seconds_max,
             "legacy_complete_dag_wall_seconds_max":
                 LEGACY_COMPLETE_DAG_WALL_SECONDS_MAX,
             "legacy_scientific_service_seconds":
@@ -472,7 +490,8 @@ def build_capacity_economics_amendment_v2(
         all_core_gate_passed=True,
         label_wall_seconds=sum(wall_map[name] for name in LABEL_STAGES),
         label_cpu_seconds=sum(cpu_map[name] for name in LABEL_STAGES),
-        complete_dag_wall_seconds=diagnostic["composed_wall_seconds"],
+        complete_dag_wall_seconds=(diagnostic["composed_wall_seconds"]
+                                   + POPULATION_WALL_SECONDS_MAX),
         service_wall_seconds=SCIENTIFIC_SERVICE_SECONDS,
         peak_memory_bytes=diagnostic["peak_memory_bytes"],
         memory_limit_bytes=diagnostic["memory_limit_bytes"],
@@ -491,6 +510,7 @@ def build_capacity_economics_amendment_v2(
         retained_stage_cpu_seconds=cpu,
         retained_stage_unit_counts=units, retained_dag_edges=edges,
         inherited_violations=INHERITED_VIOLATIONS,
+        population_wall_seconds_max=POPULATION_WALL_SECONDS_MAX,
         all_core_gate_passed=True)
     result.validate()
     return result
@@ -504,7 +524,8 @@ def reopen_capacity_economics_amendment_v2(
         "source_sha256", "runtime_sha256", "source_diff", "selected_arms",
         "tiers", "retained_stage_walls_seconds",
         "retained_stage_cpu_seconds", "retained_stage_unit_counts",
-        "retained_dag_edges", "legacy_complete_dag_wall_seconds_max",
+        "retained_dag_edges", "population_wall_seconds_max",
+        "legacy_complete_dag_wall_seconds_max",
         "legacy_scientific_service_seconds",
         "amended_complete_dag_wall_seconds_max",
         "amended_scientific_service_seconds", "inherited_violations",
@@ -548,6 +569,7 @@ def reopen_capacity_economics_amendment_v2(
         retained_dag_edges=tuple(
             tuple(row) for row in payload["retained_dag_edges"]),
         inherited_violations=tuple(payload["inherited_violations"]),
+        population_wall_seconds_max=payload["population_wall_seconds_max"],
         all_core_gate_passed=payload["all_core_gate_passed"],
         authority=payload["authority"], schema=payload["schema"])
     result.validate()
@@ -597,6 +619,9 @@ def publish_capacity_economics_amendment_v2(
 __all__ = [
     "ALLOWED_CARRY_FORWARD_PATHS", "AMENDMENT_SCHEMA", "BASE_SOURCE_GIT",
     "CapacityEconomicsAmendmentV2", "CapacityEconomicsError",
+    "POPULATION_WALL_SECONDS_MAX",
+    "REPAIRED_D256_COMPLETE_DAG_WALL_SECONDS",
+    "RETAINED_D256_POST_POPULATION_WALL_SECONDS",
     "SelectedArmEvidenceV2", "SourceDiffV2",
     "build_capacity_economics_amendment_v2",
     "publish_capacity_economics_amendment_v2",

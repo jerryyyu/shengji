@@ -703,7 +703,7 @@ def test_receipt_cannot_hardcode_all_core_pass_over_exact_stage_counters():
 
 def test_composed_dag_disk_and_progress_recovery_bindings():
     with pytest.raises(WorldAfterstateV2CapacityError, match="composed"):
-        _composed(stage_walls_seconds={"audit": 25_200}).validate()
+        _composed(stage_walls_seconds={"audit": 32_400}).validate()
     with pytest.raises(WorldAfterstateV2CapacityError, match="composed"):
         _composed(composed_artifact_bytes=76).validate()
     with pytest.raises(WorldAfterstateV2CapacityError, match="progress"):
@@ -929,7 +929,7 @@ def test_production_command_wall_binds_sequential_arms_plus_dag():
             **layout).validate()
 
 
-def test_population_wall_is_inside_tier_projection_and_can_refuse_d256():
+def test_population_wall_is_inside_tier_projection_and_omission_refuses():
     composed = _composed(stage_walls_seconds={"label-p0": 2_500})
     post_population_wall = composed_critical_path_seconds(
         dict(composed.stage_walls_seconds), composed.dag_edges)
@@ -961,9 +961,7 @@ def test_population_wall_is_inside_tier_projection_and_can_refuse_d256():
     d256 = next(tier for tier in receipt.tiers if tier.tier == "D256")
     assert d256.population_wall_seconds == 21_208
     assert d256.complete_dag_wall_seconds == 25_208
-    with pytest.raises(WorldAfterstateV2CapacityError,
-                       match="protocol capacity selection refused"):
-        choose_capacity_tier_v2(receipt)
+    assert choose_capacity_tier_v2(receipt).name == "D256"
 
     omitted = dataclasses.replace(
         d256, complete_dag_wall_seconds=post_population_wall)

@@ -68,9 +68,10 @@ def _patch_minimal(monkeypatch, tmp_path: Path):
 
 def test_clean_success_roundtrips_and_binds_runtime(monkeypatch, tmp_path):
     repo, evidence, head, rows = _patch_minimal(monkeypatch, tmp_path)
+    paths = [tmp_path / f"{label}.json" for label in builder._ARTIFACT_LABELS]
     freeze = builder.build_execution_freeze(
-        repo, head, *(tmp_path / f"{label}.json" for label in builder._ARTIFACT_LABELS),
-        evidence, 100, 10)
+        repo, head, *paths[:6], evidence, 100, 10,
+        population_rehearsal_path=paths[6])
     assert freeze.population_tier == "D256"
     assert freeze.boot_identity == "boot-1"
     assert freeze.artifact_bindings == rows
@@ -119,10 +120,19 @@ def test_runtime_boot_mismatch_is_not_accepted(monkeypatch, tmp_path):
                         lambda: _runtime_profile("boot-2"))
     # The live profile is bound into the new freeze; this test ensures the
     # binding is not silently replaced by a caller-provided boot witness.
+    paths = [tmp_path / f"{label}.json" for label in builder._ARTIFACT_LABELS]
     freeze = builder.build_execution_freeze(
-        repo, head, *(tmp_path / f"{label}.json" for label in builder._ARTIFACT_LABELS),
-        evidence, 100, 10)
+        repo, head, *paths[:6], evidence, 100, 10,
+        population_rehearsal_path=paths[6])
     assert freeze.boot_identity == "boot-2"
+
+
+def test_population_rehearsal_input_is_required(monkeypatch, tmp_path):
+    repo, evidence, head, _rows = _patch_minimal(monkeypatch, tmp_path)
+    paths = [tmp_path / f"{label}.json" for label in builder._ARTIFACT_LABELS]
+    with pytest.raises(builder.FreezeBuilderError, match="input is missing"):
+        builder.build_execution_freeze(
+            repo, head, *paths[:6], evidence, 100, 10)
 
 
 def test_occupied_output_refuses_without_overwrite(tmp_path):
@@ -236,9 +246,19 @@ def test_real_input_wiring_returns_tier_and_refuses_policy_drift(
     policy = build_continuation_policy_v2(
         source_git=source_git, protocol_sha256=protocol_sha,
         capacity_sha256=capacity_sha, selected_tier="D256")
+    rehearsal_raw = b"rehearsal"
     raws = (protocol_raw, capacity_raw, canonical_json_bytes(population),
             canonical_json_bytes(config), canonical_json_bytes(seed),
-            canonical_json_bytes(policy))
+            canonical_json_bytes(policy), rehearsal_raw)
+    namespace = builder.population_namespace(
+        source_git, protocol_sha, capacity_sha, "D256")
+    monkeypatch.setattr(
+        builder, "reopen_population_rehearsal",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            source_git=source_git, protocol_sha256=protocol_sha,
+            capacity_economics_sha256=capacity_sha,
+            population_namespace_sha256=namespace,
+            population_root=str(evidence / "rehearsal-population")))
     paths = []
     for label, raw in zip(builder._ARTIFACT_LABELS, raws, strict=True):
         path = inputs / f"{label}.json"
@@ -252,6 +272,32 @@ def test_real_input_wiring_returns_tier_and_refuses_policy_drift(
         runtime_sha256="c" * 64)
     assert tier == "D256"
     assert tuple(row[0] for row in bindings) == builder._ARTIFACT_LABELS
+
+    good_rehearsal = SimpleNamespace(
+        source_git=source_git, protocol_sha256=protocol_sha,
+        capacity_economics_sha256=capacity_sha,
+        population_namespace_sha256=namespace,
+        population_root=str(evidence / "rehearsal-population"))
+    for field, bad in (("source_git", "c" * 40),
+                       ("population_namespace_sha256", "e" * 64)):
+        broken = SimpleNamespace(
+            source_git=good_rehearsal.source_git,
+            protocol_sha256=good_rehearsal.protocol_sha256,
+            capacity_economics_sha256=good_rehearsal.capacity_economics_sha256,
+            population_namespace_sha256=good_rehearsal.population_namespace_sha256,
+            population_root=good_rehearsal.population_root)
+        setattr(broken, field, bad)
+        monkeypatch.setattr(builder, "reopen_population_rehearsal",
+                            lambda *_args, value=broken, **_kwargs: value)
+        with pytest.raises(builder.FreezeBuilderError,
+                           match="population rehearsal source binding"):
+            builder._validate_inputs(
+                repo, tuple(paths), source_git=source_git,
+                evidence_root=evidence, deadline_seconds=100,
+                heartbeat_seconds=10, runtime_sha256="c" * 64)
+        monkeypatch.setattr(
+            builder, "reopen_population_rehearsal",
+            lambda *_args, value=good_rehearsal, **_kwargs: value)
 
     population_path = paths[2][1]
     changed_population = dict(population)
@@ -268,7 +314,7 @@ def test_real_input_wiring_returns_tier_and_refuses_policy_drift(
     population_path.write_bytes(canonical_json_bytes(population))
     population_path.chmod(0o400)
 
-    policy_path = paths[-1][1]
+    policy_path = paths[5][1]
     changed = dict(policy)
     changed["continuation_policy"] = "wrong"
     policy_path.chmod(0o600)

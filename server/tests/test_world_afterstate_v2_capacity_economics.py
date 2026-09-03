@@ -8,6 +8,9 @@ import pytest
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_capacity_economics import (
     ALLOWED_CARRY_FORWARD_PATHS, AMENDMENT_SCHEMA, CapacityEconomicsError,
+    POPULATION_WALL_SECONDS_MAX,
+    REPAIRED_D256_COMPLETE_DAG_WALL_SECONDS,
+    RETAINED_D256_POST_POPULATION_WALL_SECONDS,
     SourceDiffV2,
     build_capacity_economics_amendment_v2,
     reopen_capacity_economics_amendment_v2_bytes,
@@ -56,8 +59,13 @@ def test_exact_census11_failure_rederives_one_d256_amendment() -> None:
     assert reopened == receipt
     assert reopen_capacity_evidence_v2_bytes(raw) == receipt
     assert reopened.choose_tier().name == "D256"
-    assert reopened.tiers[0].complete_dag_wall_seconds == 23_065
-    assert reopened.tiers[0].service_wall_seconds == 50_400
+    assert RETAINED_D256_POST_POPULATION_WALL_SECONDS == 23_065
+    assert reopened.population_wall_seconds_max == 7_200
+    assert POPULATION_WALL_SECONDS_MAX == 7_200
+    assert reopened.tiers[0].complete_dag_wall_seconds == 30_265
+    assert reopened.tiers[0].complete_dag_wall_seconds \
+        == REPAIRED_D256_COMPLETE_DAG_WALL_SECONDS
+    assert reopened.tiers[0].service_wall_seconds == 64_800
     assert reopened.tiers[0].eligible is True
     assert reopened.member_workers == 2
     assert reopened.continuation_workers == 16
@@ -92,9 +100,23 @@ def test_only_two_inherited_wall_violations_are_admissible() -> None:
 
 def test_amended_caps_are_exact_and_cannot_drift_in_resealed_bytes() -> None:
     payload = _receipt().payload()
-    payload["amended_scientific_service_seconds"] = 50_401
+    payload["amended_scientific_service_seconds"] = 64_801
     with pytest.raises(CapacityEconomicsError,
                        match="capacity economics schema drift"):
+        reopen_capacity_economics_amendment_v2_bytes(_reseal(payload))
+
+
+def test_population_allowance_is_separate_and_load_bearing() -> None:
+    payload = _receipt().payload()
+    payload["population_wall_seconds_max"] -= 1
+    with pytest.raises(CapacityEconomicsError,
+                       match="capacity economics D256 drift"):
+        reopen_capacity_economics_amendment_v2_bytes(_reseal(payload))
+
+    payload = _receipt().payload()
+    payload["tiers"][0]["complete_dag_wall_seconds"] = 23_065
+    with pytest.raises(CapacityEconomicsError,
+                       match="capacity economics D256 drift"):
         reopen_capacity_economics_amendment_v2_bytes(_reseal(payload))
 
 

@@ -35,7 +35,7 @@ from .world_afterstate_v2_audit_attempt import (
 
 
 SCHEMA = "world-afterstate-v2-absolute-leaf-execution-v1"
-FREEZE_SCHEMA = "world-afterstate-v2-absolute-leaf-freeze-v4"
+FREEZE_SCHEMA = "world-afterstate-v2-absolute-leaf-freeze-v5"
 ADMISSION_SCHEMA = "world-afterstate-v2-absolute-leaf-admission-v1"
 TOMBSTONE_SCHEMA = "world-afterstate-v2-absolute-leaf-consumption-tombstone-v1"
 STATE_SCHEMA = "world-afterstate-v2-stage-state-v1"
@@ -51,7 +51,7 @@ REVIEWER_EMAIL = "noreply@anthropic.com"
 REVIEWER_SESSION_TRAILER = "Claude-Session: https://claude.ai/code/session_"
 CANONICAL_REMOTE_URL = "https://github.com/jerryyyu/shengji.git"
 CANONICAL_REMOTE_REF = "refs/heads/main"
-MAX_DEADLINE_SECONDS = 14 * 60 * 60
+MAX_DEADLINE_SECONDS = 18 * 60 * 60
 # Progress is operational telemetry, rather than evidence.  Keep the sink
 # bounded even if a controller calls its callback more often than the frozen
 # heartbeat cadence.
@@ -758,6 +758,7 @@ class ExecutionFreezeV2:
     config_sha256: str
     seed_sha256: str
     continuation_policy_sha256: str
+    population_rehearsal_sha256: str
     evidence_root: str
     boot_identity: str
     source_bindings: tuple[SourceBindingV2, ...] = ()
@@ -774,7 +775,8 @@ class ExecutionFreezeV2:
         _digest(self.source_git, "source Git", length=40)
         for key in ("source_manifest_sha256", "runtime_sha256", "protocol_sha256",
                     "capacity_sha256", "population_sha256", "config_sha256",
-                    "seed_sha256", "continuation_policy_sha256"):
+                    "seed_sha256", "continuation_policy_sha256",
+                    "population_rehearsal_sha256"):
             _digest(getattr(self, key), key)
         if not isinstance(self.evidence_root, str) or not Path(self.evidence_root).is_absolute():
             raise WorldAfterstateV2ExecutionError("freeze evidence root drift")
@@ -799,17 +801,18 @@ class ExecutionFreezeV2:
                 != self.source_manifest_sha256:
             raise WorldAfterstateV2ExecutionError("source manifest/hash drift")
         required_artifacts = ("protocol", "capacity", "population", "config", "seed",
-                              "continuation-policy")
+                              "continuation-policy", "population-rehearsal")
         if any(type(row) is not tuple or len(row) != 3 for row in self.artifact_bindings) \
                 or tuple(row[0] for row in self.artifact_bindings) != required_artifacts or any(
                 row[0] not in (
                 "protocol", "capacity", "population", "config", "seed",
-                "continuation-policy") for row in self.artifact_bindings):
+                "continuation-policy", "population-rehearsal") for row in self.artifact_bindings):
             raise WorldAfterstateV2ExecutionError("freeze artifact binding drift")
         tops = {"protocol": self.protocol_sha256, "capacity": self.capacity_sha256,
                 "population": self.population_sha256, "config": self.config_sha256,
                 "seed": self.seed_sha256,
-                "continuation-policy": self.continuation_policy_sha256}
+                "continuation-policy": self.continuation_policy_sha256,
+                "population-rehearsal": self.population_rehearsal_sha256}
         for label, path, digest in self.artifact_bindings:
             _digest(digest, f"{label} artifact SHA-256")
             if (type(path) is not str or not path or Path(path).is_absolute()
@@ -826,6 +829,7 @@ class ExecutionFreezeV2:
             "population_sha256": self.population_sha256,
             "config_sha256": self.config_sha256, "seed_sha256": self.seed_sha256,
             "continuation_policy_sha256": self.continuation_policy_sha256,
+            "population_rehearsal_sha256": self.population_rehearsal_sha256,
             "evidence_root": self.evidence_root, "boot_identity": self.boot_identity,
             "population_tier": self.population_tier,
             "deadline_seconds": self.deadline_seconds,
@@ -853,6 +857,7 @@ def execution_freeze_from_bytes(raw: bytes) -> ExecutionFreezeV2:
     required = {"schema", "source_git", "source_manifest_sha256", "runtime_sha256",
                 "protocol_sha256", "capacity_sha256", "population_sha256",
                 "config_sha256", "seed_sha256", "continuation_policy_sha256",
+                "population_rehearsal_sha256",
                 "evidence_root", "boot_identity", "population_tier", "deadline_seconds",
                 "heartbeat_seconds", "source_bindings", "runtime_profile",
                 "artifact_bindings", "authority"}
@@ -868,7 +873,8 @@ def execution_freeze_from_bytes(raw: bytes) -> ExecutionFreezeV2:
         **{key: value[key] for key in ("source_git", "source_manifest_sha256",
           "runtime_sha256", "protocol_sha256", "capacity_sha256",
           "population_sha256", "config_sha256", "seed_sha256",
-          "continuation_policy_sha256", "evidence_root", "population_tier",
+          "continuation_policy_sha256", "population_rehearsal_sha256",
+          "evidence_root", "population_tier",
           "deadline_seconds", "heartbeat_seconds")},
         boot_identity=value["boot_identity"],
         source_bindings=tuple(bindings), runtime_profile=value["runtime_profile"],
@@ -892,6 +898,7 @@ def expected_review_claim(freeze: ExecutionFreezeV2) -> dict[str, Any]:
             "config_sha256": freeze.config_sha256,
             "seed_sha256": freeze.seed_sha256,
             "continuation_policy_sha256": freeze.continuation_policy_sha256,
+            "population_rehearsal_sha256": freeze.population_rehearsal_sha256,
             "boot_identity": freeze.boot_identity,
             # This is a review claim, not execution authority.  It authorizes
             # exactly one scientific execution and one audit opening for this

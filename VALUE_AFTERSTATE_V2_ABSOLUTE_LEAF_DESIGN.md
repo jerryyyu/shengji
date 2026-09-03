@@ -804,10 +804,10 @@ learning-control cohort. Reconstruction must reopen the immutable
 continuations and repeat audit scoring/control arithmetic exactly once,
 matching the scientific immediate verifier without rebuilding labels,
 continuations, or models. Later routine verification is receipt-only unless
-an explicit rescore is requested. Under the C1 economics amendment below, the
-projection must be at most seven hours, providing 2x measured headroom under
-the immutable 14-hour scientific service
-cap. GPU support is
+an explicit rescore is requested. Under the repaired C1 economics amendment
+below, the projection must be at most nine hours, including a separate
+two-hour population allowance and providing 2x measured headroom under the
+immutable 18-hour scientific service cap. GPU support is
 out of scope. The composed peak artifact projection must retain at least 25%
 free-disk headroom after temporary and final artifacts coexist.
 
@@ -915,13 +915,29 @@ only because its width-two D256 critical path was 23,065 seconds against the
 21,600-second complete-DAG cap and its two-for-one 43,200-second service cap.
 The sole targeted re-adjudication later confirmed that sustained production
 topology still selects width two and cannot reduce that retained path. The
-scientific question remains D256, but its resource economics are amended
-openly before any label, audit, or scientific outcome is opened: the
-complete-DAG cap is exactly **25,200 seconds (7 hours)** and the single
-admission-relative scientific service deadline is exactly **50,400 seconds
-(14 hours)**. The retained projection has 2,135 seconds (35m35s, 9.26%) of
-complete-DAG margin; two projections require 46,130 seconds and leave 4,270
-seconds (1h11m10s) of service margin. The two-for-one rule is unchanged.
+scientific question remains D256.  The first retained-evidence amendment set
+the complete-DAG cap to 25,200 seconds (7 hours) and the single
+admission-relative service deadline to 50,400 seconds (14 hours).  That
+amendment later proved incomplete: the retained 23,065-second value is the
+post-population critical path, not the complete DAG, because the rejected
+projection wire did not carry the separately measured population wall.  The
+first scientific attempt then spent 3,611 seconds in its one-worker population
+stage before refusing at slot 140.  No label, audit, training, or outcome was
+opened, but the omission made the nominal 7-hour bound understate real work.
+
+The repair economics are frozen before its complete-ledger rehearsal:
+population receives an exact **7,200-second (2-hour)** allowance.  The
+capacity amendment and exact future population-namespace inputs are immutable
+before rehearsal; the final scientific execution freeze is built only after a
+passing rehearsal and binds that receipt.  The retained post-population
+path remains 23,065 seconds, so the repaired D256 projection is **30,265
+seconds**.  The complete-DAG cap is exactly **32,400 seconds (9 hours)** and
+the single admission-relative scientific service deadline is exactly **64,800
+seconds (18 hours)**.  This preserves the prior absolute margins: 2,135
+seconds at the complete-DAG boundary and 4,270 seconds under the unchanged
+two-for-one service rule.  The rehearsal must prove that the entire canonical
+population fits the separate 7,200-second allowance; it cannot move the
+allowance or either cap after observing its result.
 
 No thirteenth full census is permitted. A typed
 `capacity-economics-amendment` reopens the exact Census-11 failure bytes under
@@ -932,26 +948,108 @@ and the exact internal receipt SHA-256 is
 It retains every stage wall/CPU/unit row,
 the exact DAG, width-two selections, memory/disk facts, all-core result, and
 the two and only two inherited violations (`complete-dag-wall` and
-`two-for-one-service-wall`), then re-evaluates D256 under 25,200/50,400. It
+`two-for-one-service-wall`), then adds the separately declared population
+allowance and re-evaluates D256 under 32,400/64,800. It
 refuses if any retained byte or inherited fact changes, if any other old
 violation appears, or if D256 is not eligible under the amended caps.
 
 Carry-forward from measured source head `8ff9c79c` is closed to cap constants,
 schema/version changes, the typed amendment/reopener, execution admission,
-tests, and this documentation. Training, labeling, population, model,
+the mechanics-only legal-declaration repair below, tests, and this
+documentation. Training, labeling, natural population semantics, model,
 optimizer, continuation, scientific DAG, worker topology, and inference
 changes are forbidden. The amendment records old/new blob SHA-256s for every
 changed path, while the freeze independently binds the complete current source
 closure and exact runtime. D256 is the only tier authorized by this retained
 evidence; the amendment cannot widen to D512 or D1024.
 
-Before scientific launch, run the already-reviewed target-free rehearsal once
+Before scientific launch, run the target-free complete-population rehearsal once
 at the final source head and prepare one consolidated review packet containing
 the exact source diff, amendment receipt, rehearsal receipt, five inert freeze
 inputs, immutable freeze, runtime/native identities, progress/deadline and
 recovery plan, and exact launcher. The rehearsal cannot open scientific labels
 or outcomes. The review authorizes no execution by itself, and the scientific
-launch requires Jerry's explicit approval of the new 14-hour bound.
+launch follows the project's standing reviewed-launch authorization for the
+new 18-hour bound; no additional per-launch pause is required.
+
+### D256 population refusal and mechanics-source repair
+
+The first D256 admission at source `a03d9b44` is terminally closed as
+`REFUSE_RESOURCE_INCOMPLETE` at the population stage.  Its independently
+reopened receipt records zero audit openings and no completed scientific
+stage.  The exact failing slot was mechanics-fit ordinal 10,
+`late/high-point / trump-rank 7 / spades`: all 128 frozen attempts were
+rejected, 100 because the organically declared mode was not spades and 28
+because a spade-trump production trajectory never reached the named surface.
+The adjacent slot had the same frozen stratum and accepted its first attempt.
+This proves the surface is feasible, but falsifies the pooled 32/301 capacity
+estimate as a reliable per-slot supply model.  The old namespace is spent: no
+cap increase, attempt 129, retry, artifact reassignment, or outcome opening is
+permitted.
+
+The replacement changes only construction of **mechanics-fit** roots.  Their
+rank, trump mode, mechanics surface, pair identity, continuation play policy,
+and all downstream controls remain exact.  After the 100-card deal, before
+`finalize_declare`, the mechanics driver makes one deterministic engine-legal
+declaration for the slot's requested mode:
+
+- for a suited mode, use the lowest-numbered seat holding that suit's trump-rank
+  card, declaring the pair when the seat holds both copies and otherwise the
+  single; and
+- for no-trump, use the lowest-numbered seat holding a joker pair, preferring
+  the big-joker pair to the little-joker pair.
+
+If no such legal declaration exists, the attempt records the typed score-free
+reason `requested-trump-mode-unavailable`.  The driver never writes trump,
+ordering, deck, hand, banker, or burial state directly.  `Round.declare` and
+`Round.finalize_declare` remain the sole rule authorities, and the selected
+banker still buries through the frozen production bot.  Natural fit, select,
+and audit attempts retain their prior organic declaration calls and ordering
+byte-for-byte.  The late/high-point threshold and the 128 outer-deal ceiling
+do not move.
+
+The pooled acceptance calculation above is now historical rationale only; it
+cannot authorize another one-shot population.  Before a replacement freeze,
+one score-free rehearsal must execute the **complete canonical D256 slot
+ledger** at the final source head, with the exact future population namespace
+derived from that head, protocol, retained capacity receipt, and D256 tier.
+It must seal all 256 slots within 128 outer deals each, including all 64 natural
+and 16 mechanics FIT pairs, every required rank/mode/surface binding, the full
+attempt-reason census, wall/CPU/RSS/disk receipts, and an all-false authority
+map.  Label, continuation-outcome, select, audit, training, and terminal
+namespaces must remain absent.  An incomplete slot closes this repair rather
+than triggering a rehearsal retry or a cap change.
+
+The executable boundary is
+`server/scripts/world_afterstate_v2_population_rehearsal.py`. It invokes the
+reviewed population controller exactly once in a fresh root, then strictly
+reopens every population artifact and seals a separate
+`world-afterstate-v2-population-rehearsal-v1` receipt. That outer receipt binds
+the capacity/protocol/source-derived namespace, distinct rehearsal freeze and
+admission identities, all 256 slots, attempt and rejection counts,
+wall/CPU/RSS/disk measurements, the selected worker count, absence of every
+non-population root entry, and the all-false authority map. Failure may leave
+diagnostic population artifacts and progress, but never a success receipt;
+the same root cannot be resumed or retried, and the deterministic identities
+make any alternate-root attempt visible to the consolidated review.
+
+The final replacement packet is one consolidated source + rehearsal + freeze
+review.  It includes the sealed refusal receipt and the exact 1,057-attempt /
+139-material forensic inventory from the spent namespace, but imports none of
+those materials into the replacement population.  Retained full-DAG capacity
+measurements may carry forward only when the closure proves that the mechanics
+declaration repair and rehearsal plumbing do not change any label, model,
+training, inference, evaluation, reconstruction, worker-topology, or downstream
+DAG source.  The complete-ledger rehearsal must fit the already-frozen
+7,200-second population allowance; its observed wall is reported but cannot
+change the capacity artifact, its hash-derived future namespace, or the
+32,400/64,800-second limits.  No new broad capacity census or target-free
+downstream rehearsal is required when those conditions hold.  The
+execution-freeze schema advances to v5 because the rehearsal receipt SHA-256
+is now a required seventh input; a v4 freeze cannot admit this recovery. The
+consolidated PASS authorizes exactly one fresh
+D256 admission under the standing launch policy; it grants no retry, BELIEF or
+PUCT integration, gameplay, merge, deployment, promotion, or strength claim.
 
 ## 14. Progress and recovery
 
@@ -964,7 +1062,7 @@ Every expensive stage emits at least every 60 seconds or 1%:
 - immutable shard/checkpoint count.
 
 Every scientific controller runs in its own process group under the one
-admission-relative 14-hour monotonic deadline.  Stage-local limits are capped
+admission-relative 18-hour monotonic deadline.  Stage-local limits are capped
 by that original absolute deadline rather than renewed on resume or stage
 entry.  At expiry the supervisor terminates the controller process group
 before selecting `REFUSE_RESOURCE_INCOMPLETE`; no controller, nested worker,

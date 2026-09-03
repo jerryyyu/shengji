@@ -74,6 +74,7 @@ def _inputs(tmp_path: Path) -> TerminalInputPathsV2:
         ("config", "config.json", _digest("config")),
         ("seed", "seed.json", _digest("seed")),
         ("continuation-policy", "policy.json", _digest("policy")),
+        ("population-rehearsal", "rehearsal.json", _digest("rehearsal")),
     )
     evidence_root = tmp_path / "population"
     evidence_root.mkdir(exist_ok=True)
@@ -87,6 +88,7 @@ def _inputs(tmp_path: Path) -> TerminalInputPathsV2:
         population_sha256=artifacts[2][2],
         config_sha256=artifacts[3][2], seed_sha256=artifacts[4][2],
         continuation_policy_sha256=artifacts[5][2],
+        population_rehearsal_sha256=artifacts[6][2],
         evidence_root=str(evidence_root), boot_identity="terminal-test-boot",
         source_bindings=(source,), runtime_profile=runtime_profile,
         artifact_bindings=artifacts)

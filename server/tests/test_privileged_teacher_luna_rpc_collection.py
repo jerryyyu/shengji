@@ -674,6 +674,7 @@ def test_returned_usage_crosses_cap_before_any_play_and_seals_refusal(tmp_path):
     assert journal["response"]["usage"]["total_tokens"] == 120
     assert not (tmp_path / "attempts" / "2-0-0-mirror-0"
                 / "trajectory.json").exists()
+    assert not runner.stop_event.is_set()
 
 
 def test_unknown_provider_disposition_is_never_retried(tmp_path):

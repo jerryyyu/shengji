@@ -41,6 +41,7 @@ def _freeze_payload(**updates):
         "selected_game_count": 104,
         "selected_deal_cluster_count": 52,
         "selected_workers": 2,
+        "capacity_measurement_game_deadline_nanoseconds": 1_000_000_000,
         "per_game_deadline_nanoseconds": 1_000_000_000,
         "per_game_token_cap": 100,
         "per_call_token_reserve": 50,
@@ -50,6 +51,7 @@ def _freeze_payload(**updates):
         "private_root": "/private/test",
         "public_root": "/public/test",
         "namespace": "test",
+        "pilot_attempt_lineage": None,
         "authenticated": False,
         "scientific_execution_authorized": False,
         "outcome_opening_authorized": False,
@@ -119,20 +121,182 @@ def test_pilot_freeze_shape_and_review_claim_bind_selected_population():
     freeze = _freeze_payload(
         capacity_route=supervisor.PILOT_32_ELIGIBLE,
         selected_game_count=32, selected_deal_cluster_count=16,
-        scientific_wall_nanoseconds=12_000_000_000_000)
+        capacity_measurement_game_deadline_nanoseconds=
+            1_200_000_000_000,
+        per_game_deadline_nanoseconds=
+            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
+        pilot_attempt_lineage=supervisor._pilot_attempt_lineage(),
+        scientific_wall_nanoseconds=12_000_000_000_000,
+        scientific_token_budget=26_404_925)
     supervisor.validate_launch_freeze_shape(freeze)
     claim = supervisor.freeze_review_claim(freeze)
     assert claim["capacity_route"] == supervisor.PILOT_32_ELIGIBLE
     assert claim["selected_game_count"] == 32
     assert claim["selected_deal_cluster_count"] == 16
+    assert claim["capacity_measurement_game_deadline_nanoseconds"] \
+        == 1_200_000_000_000
+    assert claim["scientific_game_deadline_nanoseconds"] \
+        == 1_800_000_000_000
+    assert claim["pilot_attempt_lineage"]["attempt_ordinal"] == 3
+    assert claim["pilot_attempt_lineage"][
+        "retry_after_this_attempt_authorized"] is False
+    assert claim["pilot_attempt_lineage"]["prior_spent_tokens"] == 7_195_067
+    assert claim["pilot_attempt_lineage"]["prior_completed_games"] == 7
 
     forged = _freeze_payload(
         capacity_route=supervisor.PILOT_32_ELIGIBLE,
         selected_game_count=104, selected_deal_cluster_count=52,
-        scientific_wall_nanoseconds=12_000_000_000_000)
+        capacity_measurement_game_deadline_nanoseconds=
+            1_200_000_000_000,
+        per_game_deadline_nanoseconds=
+            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
+        pilot_attempt_lineage=supervisor._pilot_attempt_lineage(),
+        scientific_wall_nanoseconds=12_000_000_000_000,
+        scientific_token_budget=26_404_925)
     with pytest.raises(supervisor.RPCSupervisorError,
                        match="capacity route population"):
         supervisor.validate_launch_freeze_shape(forged)
+
+    wrong_deadline = _freeze_payload(
+        capacity_route=supervisor.PILOT_32_ELIGIBLE,
+        selected_game_count=32, selected_deal_cluster_count=16,
+        capacity_measurement_game_deadline_nanoseconds=
+            1_200_000_000_000,
+        per_game_deadline_nanoseconds=1_200_000_000_000,
+        pilot_attempt_lineage=supervisor._pilot_attempt_lineage(),
+        scientific_wall_nanoseconds=12_000_000_000_000,
+        scientific_token_budget=26_404_925)
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="pilot final-attempt binding"):
+        supervisor.validate_launch_freeze_shape(wrong_deadline)
+
+    lineage = supervisor._pilot_attempt_lineage()
+    lineage["prior_spent_tokens"] -= 1
+    wrong_lineage = _freeze_payload(
+        capacity_route=supervisor.PILOT_32_ELIGIBLE,
+        selected_game_count=32, selected_deal_cluster_count=16,
+        capacity_measurement_game_deadline_nanoseconds=
+            1_200_000_000_000,
+        per_game_deadline_nanoseconds=
+            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
+        pilot_attempt_lineage=lineage,
+        scientific_wall_nanoseconds=12_000_000_000_000,
+        scientific_token_budget=26_404_925)
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="pilot final-attempt binding"):
+        supervisor.validate_launch_freeze_shape(wrong_lineage)
+
+    fourth = supervisor._pilot_attempt_lineage()
+    fourth["attempt_ordinal"] = 4
+    fourth["maximum_attempt_ordinal"] = 4
+    fourth_attempt = _freeze_payload(
+        capacity_route=supervisor.PILOT_32_ELIGIBLE,
+        selected_game_count=32, selected_deal_cluster_count=16,
+        capacity_measurement_game_deadline_nanoseconds=
+            1_200_000_000_000,
+        per_game_deadline_nanoseconds=
+            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS,
+        pilot_attempt_lineage=fourth,
+        scientific_wall_nanoseconds=12_000_000_000_000,
+        scientific_token_budget=26_404_925)
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="pilot final-attempt binding"):
+        supervisor.validate_launch_freeze_shape(fourth_attempt)
+
+
+def test_final_pilot_freeze_carries_exact_capacity_without_another_census(
+        tmp_path, monkeypatch):
+    schedule = supervisor.schedule_for_capacity_route(
+        SECRET, supervisor.PILOT_32_ELIGIBLE)
+    census = supervisor.build_root_census(SECRET, schedule)
+    current_claim = {
+        "execution_git": "9" * 40,
+        "source_set_sha256": "8" * 64,
+        "design_sha256": "7" * 64,
+    }
+    parent_claim = {
+        "execution_git": supervisor.PILOT_CAPACITY_SOURCE_EXECUTION_GIT,
+        "claim_sha256": supervisor.PILOT_CAPACITY_SOURCE_CLAIM_SHA256,
+    }
+    capacity = {
+        "route": supervisor.PILOT_32_ELIGIBLE,
+        "receipt_sha256": supervisor.PILOT_CAPACITY_RECEIPT_SHA256,
+        "runtime": RUNTIME,
+        "selected_workers": 4,
+        "selected_game_count": 32,
+        "selected_deal_cluster_count": 16,
+        "per_game_deadline_nanoseconds": 1_200_000_000_000,
+        "selected_population_wall_nanoseconds": 12_000_000_000_000,
+        "scientific_token_budget": 1_000_000_000,
+        "projected_pilot_token_count": 26_404_925,
+        "source_review": {"review_claim": parent_claim},
+        "arms": [{
+            "workers": 4, "passed": True,
+            "per_game_token_cap": 1_000_000,
+            "per_call_token_reserve": 100_000,
+            "per_call_wall_reserve_milliseconds": 90_000,
+        }],
+    }
+    monkeypatch.setattr(
+        supervisor, "validate_capacity_receipt", lambda _receipt: None)
+    monkeypatch.setattr(
+        supervisor, "source_review_claim", lambda _repo: current_claim)
+
+    freeze = supervisor.launch_freeze_payload(
+        repo_root=tmp_path, seed_secret=SECRET, census=census,
+        capacity_receipt=capacity, runtime=RUNTIME,
+        private_root=tmp_path / "private", public_root=tmp_path / "public",
+        namespace="pt-luna-final-pilot")
+
+    assert freeze["capacity_measurement_game_deadline_nanoseconds"] \
+        == 1_200_000_000_000
+    assert freeze["per_game_deadline_nanoseconds"] \
+        == supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS
+    assert freeze["scientific_wall_nanoseconds"] \
+        == 12_000_000_000_000
+    assert freeze["scientific_token_budget"] == 26_404_925
+    assert freeze["pilot_attempt_lineage"] \
+        == supervisor._pilot_attempt_lineage()
+
+    capacity["receipt_sha256"] = "0" * 64
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="freeze source review binding drift"):
+        supervisor.launch_freeze_payload(
+            repo_root=tmp_path, seed_secret=SECRET, census=census,
+            capacity_receipt=capacity, runtime=RUNTIME,
+            private_root=tmp_path / "private-2",
+            public_root=tmp_path / "public-2",
+            namespace="pt-luna-forged-capacity")
+
+
+def test_capacity_runtime_carry_forward_allows_only_source_identity_fields():
+    measured = {
+        "execution_git": supervisor.PILOT_CAPACITY_SOURCE_EXECUTION_GIT,
+        "git_tree": "1" * 40,
+        "sources": {"old.py": "2" * 64},
+        "source_set_sha256": "3" * 64,
+        "boot_identity_sha256": "4" * 64,
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "medium",
+    }
+    current = {
+        **measured,
+        "execution_git": "5" * 40,
+        "git_tree": "6" * 40,
+        "sources": {"new.py": "7" * 64},
+        "source_set_sha256": "8" * 64,
+    }
+    capacity = {
+        "route": supervisor.PILOT_32_ELIGIBLE,
+        "receipt_sha256": supervisor.PILOT_CAPACITY_RECEIPT_SHA256,
+        "runtime": measured,
+    }
+    supervisor.validate_capacity_runtime_for_freeze(capacity, current)
+
+    current["reasoning_effort"] = "low"
+    with pytest.raises(supervisor.RPCSupervisorError,
+                       match="capacity/runtime drift"):
+        supervisor.validate_capacity_runtime_for_freeze(capacity, current)
 
 
 def test_scientific_namespace_lock_refuses_second_live_controller(tmp_path):
@@ -294,7 +458,9 @@ def test_formal_controller_internally_owns_bound_runner_ledger_and_timeout(
         schedule_sha256=supervisor._schedule_sha(schedule),
         census_sha256=census["census_sha256"],
         runtime_sha256=supervisor._sha(runtime), selected_workers=1,
+        capacity_measurement_game_deadline_nanoseconds=600_000_000_000,
         per_game_deadline_nanoseconds=600_000_000_000,
+        pilot_attempt_lineage=None,
         per_game_token_cap=1_000, per_call_token_reserve=50,
         per_call_wall_reserve_milliseconds=1_000,
         scientific_wall_nanoseconds=10_000_000_000,
@@ -502,7 +668,9 @@ def test_collection_cli_runs_route_bound_population_and_restart_through_public_e
         "runtime": runtime, "receipt_sha256": "7" * 64,
         "source_review": source_auth,
         "scientific_wall_nanoseconds": 10_000_000_000,
-        "scientific_token_budget": 10_000,
+        "scientific_token_budget": (
+            26_404_925
+            if capacity_route == supervisor.PILOT_32_ELIGIBLE else 10_000),
         "arms": [{"workers": 1, "passed": True,
                   "per_game_token_cap": 1_000,
                   "per_call_token_reserve": 50,
@@ -518,11 +686,23 @@ def test_collection_cli_runs_route_bound_population_and_restart_through_public_e
         capacity_route=capacity_route,
         selected_game_count=expected_games,
         selected_deal_cluster_count=expected_clusters,
-        per_game_deadline_nanoseconds=600_000_000_000,
+        capacity_measurement_game_deadline_nanoseconds=(
+            1_200_000_000_000
+            if capacity_route == supervisor.PILOT_32_ELIGIBLE
+            else 600_000_000_000),
+        per_game_deadline_nanoseconds=(
+            supervisor.PILOT_SCIENTIFIC_GAME_DEADLINE_NS
+            if capacity_route == supervisor.PILOT_32_ELIGIBLE
+            else 600_000_000_000),
+        pilot_attempt_lineage=(
+            supervisor._pilot_attempt_lineage()
+            if capacity_route == supervisor.PILOT_32_ELIGIBLE else None),
         per_game_token_cap=1_000, per_call_token_reserve=50,
         per_call_wall_reserve_milliseconds=1_000,
         scientific_wall_nanoseconds=selected_wall,
-        scientific_token_budget=10_000,
+        scientific_token_budget=(
+            26_404_925
+            if capacity_route == supervisor.PILOT_32_ELIGIBLE else 10_000),
         private_root=str(private_root), public_root=str(public_root),
         namespace="formal-cli-test")
     freeze_auth = {
@@ -671,6 +851,7 @@ def test_self_sealed_complete_terminal_cannot_bypass_private_reconstruction(
             "completed_games": 1,
             "completed_deal_clusters": 1, "failed_games": 0,
             "pending_games": 0, "resource_totals": {},
+            "pilot_attempt_lineage": None,
             "ledger_terminal_accept_sha256": None,
             "authority": dict(supervisor.selfplay.AUTHORITY)}
     terminal = {**body, "receipt_sha256": hashlib.sha256(
@@ -719,6 +900,187 @@ def test_main_thread_interrupt_stops_and_cancels_pending_games(
     first = instance.run()
     assert first.route == supervisor.CASUAL_INCOMPLETE_ROUTE
     assert runner.calls == 1
+
+
+def test_one_game_deadline_keeps_inflight_peers_and_never_starts_queue(
+        tmp_path, monkeypatch):
+    schedule = [
+        ((rank, 0, 0), 0) for rank in ("2", "3", "4", "5", "6")]
+    barrier = threading.Barrier(4)
+    calls = []
+    calls_lock = threading.Lock()
+    terminated = []
+    expired_threads = set()
+    real_monotonic_ns = time.monotonic_ns
+    private_root = tmp_path / "private"
+    private_root.mkdir(mode=0o700)
+    private_root.chmod(0o700)
+
+    def deadline_clock():
+        now = real_monotonic_ns()
+        if threading.get_ident() in expired_threads:
+            return now + 601_000_000_000
+        return now
+
+    def expire_before_first_dispatch(_path):
+        expired_threads.add(threading.get_ident())
+        # The real runner refuses at its pre-dispatch deadline guard, before
+        # this otherwise-unused transport is called.
+        return object()
+
+    class BoundaryRunner(collection.RPCGameAttemptRunner):
+        def __init__(self):
+            super().__init__(
+                seed_secret=SECRET,
+                attempts_root=private_root / "attempts",
+                codex_binary=None, runtime=RUNTIME,
+                per_game_deadline_seconds=600,
+                per_game_token_cap=10_000,
+                transport_factory=expire_before_first_dispatch)
+
+        def __call__(self, coordinate, mirror):
+            with calls_lock:
+                calls.append((coordinate, mirror))
+            assert barrier.wait(timeout=2) < 4
+            if coordinate[0] == "2":
+                return super().__call__(coordinate, mirror)
+            path = supervisor._attempt_path(
+                self.attempts_root, coordinate, mirror)
+            path.mkdir(mode=0o700)
+            # Keep these peers genuinely in flight while the real deadline
+            # failure is handled and the fifth queued item is cancelled.
+            time.sleep(0.05)
+            (path / "manifest.json").write_text("complete")
+            return object()
+
+        def terminate_active_calls(self):
+            terminated.append(True)
+
+    runner = BoundaryRunner()
+    instance = supervisor.PTLunaRPCSupervisor(
+        seed_secret=SECRET, private_root=private_root,
+        public_root=tmp_path / "public", runtime=RUNTIME,
+        admission={"freeze": "freeze", "admission": "admission"},
+        capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
+                          "selected_workers": 4},
+        runner=runner, schedule=schedule, require_full_population=False)
+    real_reopen = supervisor.reopen_attempt
+
+    def reopen(path, **_kwargs):
+        if path.name.startswith("2-"):
+            return real_reopen(path, **_kwargs)
+        status = (path / "manifest.json").read_text()
+        return AttemptReopen(
+            status, hashlib.sha256(str(path).encode()).hexdigest(),
+            None, None, None, {"total_tokens": 0, "response_count": 0})
+
+    monkeypatch.setattr(collection.time, "monotonic_ns", deadline_clock)
+    monkeypatch.setattr(supervisor, "reopen_attempt", reopen)
+
+    result = instance.run()
+
+    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert result.receipt["completed_games"] == 3
+    assert result.receipt["failed_games"] == 1
+    assert result.receipt["pending_games"] == 1
+    assert {coordinate[0] for coordinate, _mirror in calls} \
+        == {"2", "3", "4", "5"}
+    assert terminated == []
+    assert not runner.stop_event.is_set()
+    failed = instance._statuses[(("2", 0, 0), 0)]
+    assert failed is not None
+    assert failed.status == "incomplete"
+    assert failed.failure_kind == "ResourceBoundaryError"
+    assert failed.failure_class == "resource-provider"
+    assert not supervisor._attempt_path(
+        runner.attempts_root, ("6", 0, 0), 0).exists()
+
+
+def test_global_budget_boundary_stops_inflight_and_queued_population(
+        tmp_path, monkeypatch):
+    schedule = [
+        ((rank, 0, 0), 0) for rank in ("2", "3", "4")]
+    instance, runner = _make(tmp_path, schedule=schedule)
+    instance.workers = 2
+    manager = rpc_transport.ActiveCallManager()
+    provider_pid_path = tmp_path / "global-budget-provider.pid"
+    calls = []
+    calls_lock = threading.Lock()
+
+    class Budget:
+        reserve_tokens = 100
+        reserve_wall_ms = 1_000
+        crossed = False
+
+        def payload(self):
+            return {
+                "crossed": self.crossed, "spent_tokens": 0,
+                "reserved_call_count": 0, "accepted_response_count": 0,
+            }
+
+        def snapshot(self):
+            return {
+                "remaining_scientific_tokens": (
+                    0 if self.crossed else 1_000),
+                "remaining_scientific_wall_ms": 2_000,
+            }
+
+    budget = Budget()
+    instance.ledger = budget
+
+    def cross_budget_or_wait(self, coordinate, mirror):
+        with calls_lock:
+            calls.append((coordinate, mirror))
+        path = supervisor._attempt_path(
+            self.attempts_root, coordinate, mirror)
+        path.mkdir(mode=0o700)
+        if coordinate[0] == "2":
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline \
+                    and not provider_pid_path.exists():
+                time.sleep(0.01)
+            assert provider_pid_path.exists()
+            budget.crossed = True
+            (path / "manifest.json").write_text("incomplete")
+            raise collection.ResourceBoundaryError(
+                "scientific budget crossed")
+        result = rpc_transport._default_run(
+            (sys.executable, "-c",
+             "import os,pathlib,sys,time; "
+             "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); "
+             "time.sleep(8)", str(provider_pid_path)),
+            b"", tmp_path, 10, _active_call_manager=manager)
+        (path / "manifest.json").write_text("incomplete")
+        raise collection.ResourceBoundaryError(
+            f"collection stopped after global budget {result.returncode}")
+
+    def reopen(path, **_kwargs):
+        status = (path / "manifest.json").read_text()
+        return AttemptReopen(
+            status, hashlib.sha256(str(path).encode()).hexdigest(),
+            None, "ResourceBoundaryError", "resource-provider",
+            {"total_tokens": 0, "response_count": 0})
+
+    monkeypatch.setattr(FakeRunner, "__call__", cross_budget_or_wait)
+    monkeypatch.setattr(supervisor, "reopen_attempt", reopen)
+    runner.terminate_active_calls = manager.terminate
+
+    started = time.monotonic()
+    result = instance.run()
+
+    assert time.monotonic() - started < 5
+    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert result.receipt["completed_games"] == 0
+    assert result.receipt["failed_games"] == 2
+    assert result.receipt["pending_games"] == 1
+    assert runner.stop_event.is_set()
+    assert {coordinate[0] for coordinate, _mirror in calls} \
+        == {"2", "3"}
+    assert not supervisor._attempt_path(
+        runner.attempts_root, ("4", 0, 0), 0).exists()
+    provider_pid = int(provider_pid_path.read_text())
+    with pytest.raises(ProcessLookupError):
+        supervisor.os.kill(provider_pid, 0)
 
 
 def test_main_interrupt_kills_a_real_active_provider_group(

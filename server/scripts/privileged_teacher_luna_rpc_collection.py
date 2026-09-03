@@ -28,7 +28,9 @@ from shengji.rl.privileged_teacher_luna_rpc_supervisor import (
     RPCSupervisorError, run_population,
     authenticate_review_claim, freeze_review_claim,
     build_root_census, launch_freeze_payload, schedule_for_capacity_route,
-    source_review_claim, validate_launch_freeze,
+    source_review_claim, validate_capacity_runtime_for_freeze,
+    validate_capacity_source_for_freeze,
+    validate_launch_freeze,
 )
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
@@ -144,15 +146,20 @@ def main(argv: list[str] | None = None) -> int:
     secret = _secret(args.seed_secret_file)
     capacity = _read(args.capacity_receipt)
     validate_capacity_receipt(capacity)
+    current_source_claim = source_review_claim(args.repo_root)
+    capacity_source_review = capacity.get("source_review")
+    if type(capacity_source_review) is not dict \
+            or type(capacity_source_review.get("review_claim")) is not dict:
+        raise RPCSupervisorError("capacity source review binding drift")
     source_auth = authenticate_review_claim(
-        claim=source_review_claim(args.repo_root),
+        claim=capacity_source_review["review_claim"],
         prefix=SOURCE_REVIEW_PREFIX,
-        review_commit=capacity["source_review"]["review_commit"])
-    if source_auth != capacity["source_review"]:
+        review_commit=capacity_source_review["review_commit"])
+    if source_auth != capacity_source_review:
         raise RPCSupervisorError("capacity source review authentication drift")
+    validate_capacity_source_for_freeze(capacity, current_source_claim)
     runtime = source_identity(args.codex_binary)
-    if runtime != capacity["runtime"]:
-        raise RPCSupervisorError("live runtime differs from capacity")
+    validate_capacity_runtime_for_freeze(capacity, runtime)
     schedule = schedule_for_capacity_route(secret, capacity.get("route"))
     census = (selfplay.root_census(secret).serialized()
               if capacity.get("route") == FULL_104_ELIGIBLE

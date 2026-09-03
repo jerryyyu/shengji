@@ -9,7 +9,7 @@ and resource telemetry only.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import fcntl
 import hashlib
@@ -43,22 +43,59 @@ from .privileged_teacher_luna_turn_rpc import TurnRPCError, TurnValidationError
 from .privileged_teacher_pt0 import canonical_json_bytes
 
 
-SCHEMA = "pt-luna-turn-rpc-supervisor-v2"
-ADMISSION_SCHEMA = "pt-luna-turn-rpc-admission-v2"
-LAUNCH_SCHEMA = "pt-luna-turn-rpc-launch-v2"
-PROGRESS_SCHEMA = "pt-luna-turn-rpc-progress-v2"
-TERMINAL_SCHEMA = "pt-luna-turn-rpc-terminal-v1"
-CASUAL_TERMINAL_SCHEMA = "pt-luna-turn-rpc-casual-terminal-v1"
+SCHEMA = "pt-luna-turn-rpc-supervisor-v3"
+ADMISSION_SCHEMA = "pt-luna-turn-rpc-admission-v3"
+LAUNCH_SCHEMA = "pt-luna-turn-rpc-launch-v3"
+PROGRESS_SCHEMA = "pt-luna-turn-rpc-progress-v3"
+TERMINAL_SCHEMA = "pt-luna-turn-rpc-terminal-v2"
+CASUAL_TERMINAL_SCHEMA = "pt-luna-turn-rpc-casual-terminal-v2"
 CONTROLLER_REFUSAL_SCHEMA = "pt-luna-turn-rpc-controller-refusal-v1"
 CASUAL_COMPLETE_ROUTE = "CASUAL_PROBE_COMPLETE"
 CASUAL_INCOMPLETE_ROUTE = "CASUAL_PROBE_INCOMPLETE"
-FREEZE_SCHEMA = "pt-luna-turn-rpc-launch-freeze-v2"
-SOURCE_REVIEW_SCHEMA = "pt-luna-turn-rpc-source-review-v2"
-FREEZE_REVIEW_SCHEMA = "pt-luna-turn-rpc-freeze-review-v2"
+FREEZE_SCHEMA = "pt-luna-turn-rpc-launch-freeze-v3"
+SOURCE_REVIEW_SCHEMA = "pt-luna-turn-rpc-source-review-v3"
+FREEZE_REVIEW_SCHEMA = "pt-luna-turn-rpc-freeze-review-v3"
 SOURCE_REVIEW_PREFIX = "PT_LUNA_RPC_SOURCE_REVIEW:"
 FREEZE_REVIEW_PREFIX = "PT_LUNA_RPC_FREEZE_REVIEW:"
 CANONICAL_REMOTE_URL = "https://github.com/jerryyyu/shengji.git"
 CAPACITY_ELIGIBLE_ROUTES = (FULL_104_ELIGIBLE, PILOT_32_ELIGIBLE)
+PILOT_SCIENTIFIC_GAME_DEADLINE_NS = 1_800 * 1_000_000_000
+PILOT_SCIENTIFIC_WALL_NS = 12_000 * 1_000_000_000
+PILOT_SCIENTIFIC_TOKEN_BUDGET = 26_404_925
+PILOT_CAPACITY_RECEIPT_SHA256 = \
+    "1ba204ee855b0842a6388f243bb86a02eba6a22163b91cce9ac570b936470364"
+PILOT_CAPACITY_SOURCE_EXECUTION_GIT = \
+    "d126ad019e1175cd6fe7d0a296c911bf28ae8883"
+PILOT_CAPACITY_SOURCE_CLAIM_SHA256 = \
+    "882d436c7b572928582da6063f4b5d343d43f6c1750b3147f1e781cfb9088901"
+PILOT_ATTEMPT_LINEAGE = {
+    "schema": "pt-luna-pilot-attempt-lineage-v1",
+    "attempt_ordinal": 3,
+    "maximum_attempt_ordinal": 3,
+    "retry_after_this_attempt_authorized": False,
+    "prior_attempts": [
+        {
+            "attempt_ordinal": 1,
+            "terminal_file_sha256":
+                "2e72102914bcf1e9ff262756aa33fad45a03f6213098a1982680ebc67f8fe7b6",
+            "terminal_receipt_sha256":
+                "4a53e4d28a4ffcc8230a88db95510265f493665627b0084a374e99fe8a319766",
+            "ledger_spent_tokens": 3_674_786,
+            "completed_games": 4,
+        },
+        {
+            "attempt_ordinal": 2,
+            "terminal_file_sha256":
+                "d1cc5c135e6cbda02e58849e3cd420b10d34a42b3ef5a78498dca70bf2251f25",
+            "terminal_receipt_sha256":
+                "c5034c2006f9f49355c29ee92debc6360a6f958cc23d573ecdf8dd95d43cad6c",
+            "ledger_spent_tokens": 3_520_281,
+            "completed_games": 3,
+        },
+    ],
+    "prior_spent_tokens": 7_195_067,
+    "prior_completed_games": 7,
+}
 DESIGN_PATHS = (
     "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md",
     "PRIVILEGED_TEACHER_LUNA_PLAY_ONLY_DESIGN.md",
@@ -100,6 +137,11 @@ def _strict_sha(value: object, label: str) -> str:
     return value
 
 
+def _pilot_attempt_lineage() -> dict[str, object]:
+    """Return a fresh copy of the exact reviewed final-attempt lineage."""
+    return json.loads(json.dumps(PILOT_ATTEMPT_LINEAGE))
+
+
 def _git(repo: Path, *args: str) -> str:
     try:
         result = subprocess.run(
@@ -132,7 +174,7 @@ def _acquire_scientific_run_lock(private_root: Path) -> int:
 
 
 def source_review_claim(repo_root: Path) -> dict[str, object]:
-    """Build the exact claim whose PASS authorizes only score-free capacity."""
+    """Build the exact claim for the consolidated final-pilot review."""
     repo = Path(repo_root).resolve()
     if _git(repo, "status", "--porcelain=v1", "--untracked-files=all"):
         raise RPCSupervisorError("source review requires exact-clean tree")
@@ -149,8 +191,14 @@ def source_review_claim(repo_root: Path) -> dict[str, object]:
         "source_set_sha256": _sha(sources),
         "design_sha256s": design_sha256s,
         "design_sha256": _sha(design_sha256s),
-        "score_free_canary_authorized": True,
-        "score_free_capacity_authorized": True,
+        "capacity_carry_forward": {
+            "receipt_sha256": PILOT_CAPACITY_RECEIPT_SHA256,
+            "source_execution_git": PILOT_CAPACITY_SOURCE_EXECUTION_GIT,
+            "source_claim_sha256": PILOT_CAPACITY_SOURCE_CLAIM_SHA256,
+        },
+        "pilot_attempt_lineage": _pilot_attempt_lineage(),
+        "score_free_canary_authorized": False,
+        "score_free_capacity_authorized": False,
         "scientific_execution_authorized": False,
         "outcome_opening_authorized": False,
         "merge_authorized": False,
@@ -173,6 +221,11 @@ def freeze_review_claim(freeze: Mapping[str, object]) -> dict[str, object]:
         "selected_game_count": freeze["selected_game_count"],
         "selected_deal_cluster_count": freeze[
             "selected_deal_cluster_count"],
+        "capacity_measurement_game_deadline_nanoseconds": freeze[
+            "capacity_measurement_game_deadline_nanoseconds"],
+        "scientific_game_deadline_nanoseconds": freeze[
+            "per_game_deadline_nanoseconds"],
+        "pilot_attempt_lineage": freeze["pilot_attempt_lineage"],
         "scientific_execution_authorized": True,
         "outcome_opening_authorized": True,
         "merge_authorized": False,
@@ -420,6 +473,68 @@ def _schedule_sha(
                  for coordinate, mirror in schedule])
 
 
+def validate_capacity_source_for_freeze(
+        capacity_receipt: Mapping[str, object],
+        current_source_claim: Mapping[str, object]) -> None:
+    """Accept current-source capacity or the one exact Pilot-2 carry-forward."""
+    source_review = capacity_receipt.get("source_review")
+    reviewed_claim = (source_review.get("review_claim")
+                      if isinstance(source_review, Mapping) else None)
+    if reviewed_claim == current_source_claim:
+        return
+    exact_carry_forward = (
+        capacity_receipt.get("route") == PILOT_32_ELIGIBLE
+        and capacity_receipt.get("receipt_sha256")
+        == PILOT_CAPACITY_RECEIPT_SHA256
+        and isinstance(reviewed_claim, Mapping)
+        and reviewed_claim.get("execution_git")
+        == PILOT_CAPACITY_SOURCE_EXECUTION_GIT
+        and reviewed_claim.get("claim_sha256")
+        == PILOT_CAPACITY_SOURCE_CLAIM_SHA256)
+    if not exact_carry_forward:
+        raise RPCSupervisorError("freeze source review binding drift")
+
+
+def validate_capacity_runtime_for_freeze(
+        capacity_receipt: Mapping[str, object],
+        current_runtime: Mapping[str, object]) -> None:
+    """Permit only reviewed source-identity drift on the carried receipt."""
+    measured_runtime = capacity_receipt.get("runtime")
+    if measured_runtime == current_runtime:
+        return
+    if (capacity_receipt.get("route") != PILOT_32_ELIGIBLE
+            or capacity_receipt.get("receipt_sha256")
+            != PILOT_CAPACITY_RECEIPT_SHA256
+            or type(measured_runtime) is not dict
+            or type(current_runtime) is not dict
+            or set(measured_runtime) != set(current_runtime)):
+        raise RPCSupervisorError("freeze capacity/runtime drift")
+    source_fields = {
+        "execution_git", "git_tree", "sources", "source_set_sha256"}
+    measured_stable = {
+        key: value for key, value in measured_runtime.items()
+        if key not in source_fields}
+    current_stable = {
+        key: value for key, value in current_runtime.items()
+        if key not in source_fields}
+    if measured_stable != current_stable:
+        raise RPCSupervisorError("freeze capacity/runtime drift")
+
+
+def _selected_scientific_token_budget(
+        capacity_receipt: Mapping[str, object]) -> int:
+    """Bind the final pilot to its approved 25%-headroom projection."""
+    if (capacity_receipt.get("route") == PILOT_32_ELIGIBLE
+            and capacity_receipt.get("receipt_sha256")
+            == PILOT_CAPACITY_RECEIPT_SHA256):
+        value = capacity_receipt.get("projected_pilot_token_count")
+    else:
+        value = capacity_receipt.get("scientific_token_budget")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise RPCSupervisorError("scientific token budget drift")
+    return value
+
+
 def launch_freeze_payload(
         *, repo_root: Path, seed_secret: bytes,
         census: Mapping[str, object], capacity_receipt: Mapping[str, object],
@@ -431,9 +546,9 @@ def launch_freeze_payload(
     except RPCCapacityError as exc:
         raise RPCSupervisorError("capacity receipt refused") from exc
     capacity_route = capacity_receipt.get("route")
-    if capacity_route not in CAPACITY_ELIGIBLE_ROUTES \
-            or runtime != capacity_receipt.get("runtime"):
+    if capacity_route not in CAPACITY_ELIGIBLE_ROUTES:
         raise RPCSupervisorError("freeze capacity/runtime drift")
+    validate_capacity_runtime_for_freeze(capacity_receipt, runtime)
     schedule = schedule_for_capacity_route(seed_secret, capacity_route)
     census_sha = validate_root_census(census, seed_secret, schedule)
     expected_game_count = 104 if capacity_route == FULL_104_ELIGIBLE else 32
@@ -450,10 +565,11 @@ def launch_freeze_payload(
     if type(namespace) is not str or not namespace or len(namespace) > 256:
         raise RPCSupervisorError("freeze namespace drift")
     source_claim = source_review_claim(repo_root)
-    source_review = capacity_receipt.get("source_review")
-    if not isinstance(source_review, Mapping) \
-            or source_review.get("review_claim") != source_claim:
-        raise RPCSupervisorError("freeze source review binding drift")
+    validate_capacity_source_for_freeze(capacity_receipt, source_claim)
+    scientific_game_deadline_ns = (
+        PILOT_SCIENTIFIC_GAME_DEADLINE_NS
+        if capacity_route == PILOT_32_ELIGIBLE
+        else capacity_receipt["per_game_deadline_nanoseconds"])
     body = {
         "schema": FREEZE_SCHEMA,
         "execution_git": source_claim["execution_git"],
@@ -468,19 +584,23 @@ def launch_freeze_payload(
         "selected_game_count": expected_game_count,
         "selected_deal_cluster_count": expected_cluster_count,
         "selected_workers": workers,
-        "per_game_deadline_nanoseconds": capacity_receipt[
+        "capacity_measurement_game_deadline_nanoseconds": capacity_receipt[
             "per_game_deadline_nanoseconds"],
+        "per_game_deadline_nanoseconds": scientific_game_deadline_ns,
         "per_game_token_cap": arm["per_game_token_cap"],
         "per_call_token_reserve": arm["per_call_token_reserve"],
         "per_call_wall_reserve_milliseconds": arm[
             "per_call_wall_reserve_milliseconds"],
         "scientific_wall_nanoseconds": capacity_receipt[
             "selected_population_wall_nanoseconds"],
-        "scientific_token_budget": capacity_receipt[
-            "scientific_token_budget"],
+        "scientific_token_budget": _selected_scientific_token_budget(
+            capacity_receipt),
         "private_root": str(Path(private_root).resolve()),
         "public_root": str(Path(public_root).resolve()),
         "namespace": namespace,
+        "pilot_attempt_lineage": (
+            _pilot_attempt_lineage()
+            if capacity_route == PILOT_32_ELIGIBLE else None),
         "authenticated": False,
         "scientific_execution_authorized": False,
         "outcome_opening_authorized": False,
@@ -495,11 +615,13 @@ def validate_launch_freeze_shape(freeze: Mapping[str, object]) -> None:
             "census_sha256", "capacity_receipt_sha256", "runtime_sha256",
             "capacity_route", "selected_game_count",
             "selected_deal_cluster_count", "selected_workers",
+            "capacity_measurement_game_deadline_nanoseconds",
             "per_game_deadline_nanoseconds",
             "per_game_token_cap", "per_call_token_reserve",
             "per_call_wall_reserve_milliseconds",
             "scientific_wall_nanoseconds", "scientific_token_budget",
-            "private_root", "public_root", "namespace", "authenticated",
+            "private_root", "public_root", "namespace",
+            "pilot_attempt_lineage", "authenticated",
             "scientific_execution_authorized", "outcome_opening_authorized",
             "authority", "freeze_sha256"}
     if type(freeze) is not dict or set(freeze) != keys \
@@ -522,7 +644,9 @@ def validate_launch_freeze_shape(freeze: Mapping[str, object]) -> None:
                 "census_sha256", "capacity_receipt_sha256",
                 "runtime_sha256", "freeze_sha256"):
         _strict_sha(freeze[key], f"freeze {key}")
-    for key in ("selected_workers", "per_game_deadline_nanoseconds",
+    for key in ("selected_workers",
+                "capacity_measurement_game_deadline_nanoseconds",
+                "per_game_deadline_nanoseconds",
                 "per_game_token_cap", "per_call_token_reserve",
                 "per_call_wall_reserve_milliseconds",
                 "scientific_wall_nanoseconds", "scientific_token_budget",
@@ -540,6 +664,20 @@ def validate_launch_freeze_shape(freeze: Mapping[str, object]) -> None:
                 and (freeze["selected_game_count"],
                      freeze["selected_deal_cluster_count"]) != (32, 16)):
         raise RPCSupervisorError("freeze capacity route population drift")
+    if freeze["capacity_route"] == PILOT_32_ELIGIBLE:
+        if freeze["capacity_measurement_game_deadline_nanoseconds"] \
+                != 1_200 * 1_000_000_000 \
+                or freeze["per_game_deadline_nanoseconds"] \
+                != PILOT_SCIENTIFIC_GAME_DEADLINE_NS \
+                or freeze["scientific_wall_nanoseconds"] \
+                != PILOT_SCIENTIFIC_WALL_NS \
+                or freeze["scientific_token_budget"] \
+                != PILOT_SCIENTIFIC_TOKEN_BUDGET \
+                or freeze["pilot_attempt_lineage"] \
+                != _pilot_attempt_lineage():
+            raise RPCSupervisorError("pilot final-attempt binding drift")
+    elif freeze["pilot_attempt_lineage"] is not None:
+        raise RPCSupervisorError("non-pilot attempt lineage drift")
     if type(freeze["namespace"]) is not str or not freeze["namespace"] \
             or type(freeze["private_root"]) is not str \
             or type(freeze["public_root"]) is not str:
@@ -598,7 +736,8 @@ def validate_terminal_receipt(receipt: Mapping[str, object]) -> None:
     if (set(receipt) != {"schema", "route", "schedule_sha256", "census_sha256",
                          "admission_sha256", "attempt_manifest", "completed_games",
                          "completed_deal_clusters", "failed_games", "pending_games",
-                         "resource_totals", "ledger_terminal_accept_sha256",
+                         "resource_totals", "pilot_attempt_lineage",
+                         "ledger_terminal_accept_sha256",
                          "authority", "receipt_sha256"}
             or receipt.get("schema") != TERMINAL_SCHEMA
             or receipt.get("route") not in ROUTES
@@ -606,6 +745,9 @@ def validate_terminal_receipt(receipt: Mapping[str, object]) -> None:
             or receipt.get("receipt_sha256") != _sha(body)
             or _forbidden(receipt)):
         raise RPCSupervisorError("terminal receipt schema drift")
+    lineage = receipt["pilot_attempt_lineage"]
+    if lineage is not None and lineage != _pilot_attempt_lineage():
+        raise RPCSupervisorError("terminal pilot attempt lineage drift")
     terminal_accept = receipt["ledger_terminal_accept_sha256"]
     if terminal_accept is not None:
         _strict_sha(terminal_accept, "terminal ledger acceptance")
@@ -708,9 +850,8 @@ class PTLunaRPCSupervisor:
         capacity_route = capacity_receipt.get("route")
         if require_full_population and capacity_route not in CAPACITY_ELIGIBLE_ROUTES:
             raise RPCSupervisorError("capacity route is not execution eligible")
-        if require_full_population \
-                and capacity_receipt.get("runtime") != runtime:
-            raise RPCSupervisorError("capacity runtime binding drift")
+        if require_full_population:
+            validate_capacity_runtime_for_freeze(capacity_receipt, runtime)
         selected = capacity_receipt.get("selected_workers")
         if isinstance(selected, bool) or not isinstance(selected, int) or selected <= 0:
             raise RPCSupervisorError("selected worker count drift")
@@ -751,6 +892,8 @@ class PTLunaRPCSupervisor:
         self.capacity_receipt = dict(capacity_receipt)
         self.capacity_route = capacity_route
         self.scientific = require_full_population
+        self.pilot_attempt_lineage = (
+            None if freeze is None else freeze["pilot_attempt_lineage"])
         if require_full_population:
             formal_schedule = schedule_for_capacity_route(
                 seed_secret, capacity_route)
@@ -872,7 +1015,7 @@ class PTLunaRPCSupervisor:
                     != capacity_receipt.get(
                         "selected_population_wall_nanoseconds")
                     or freeze["scientific_token_budget"]
-                    != capacity_receipt.get("scientific_token_budget")):
+                    != _selected_scientific_token_budget(capacity_receipt)):
                 raise RPCSupervisorError("scientific freeze execution drift")
         if per_call_token_reserve is None:
             per_call_token_reserve = 1
@@ -893,8 +1036,8 @@ class PTLunaRPCSupervisor:
                 != per_call_wall_reserve_milliseconds
                 or self.ledger.wall_ns != self.capacity_receipt.get(
                     "selected_population_wall_nanoseconds")
-                or self.ledger.token_cap != self.capacity_receipt.get(
-                    "scientific_token_budget")
+                or self.ledger.token_cap \
+                != _selected_scientific_token_budget(self.capacity_receipt)
                 or self.ledger.root.resolve()
                 != (self.private_root.resolve() / "ledger")):
             raise RPCSupervisorError("scientific ledger binding drift")
@@ -1172,11 +1315,7 @@ class PTLunaRPCSupervisor:
         with self._lock:
             self._active_games += 1
         try:
-            result = self.runner(coordinate, mirror)
-            return result
-        except BaseException as exc:
-            self.stop_event.set()
-            raise exc
+            return self.runner(coordinate, mirror)
         finally:
             with self._lock:
                 self._active_games -= 1
@@ -1184,6 +1323,18 @@ class PTLunaRPCSupervisor:
     def _active_rpcs(self) -> int:
         concurrency = getattr(self.runner, "concurrency", None)
         return int(getattr(concurrency, "active", 0))
+
+    def _global_budget_exhausted(self) -> bool:
+        """Detect a population-wide boundary without parsing error text."""
+        if self.ledger is None:
+            return False
+        payload = self.ledger.payload()
+        remaining = self.ledger.snapshot()
+        return bool(payload["crossed"]) or (
+            remaining["remaining_scientific_tokens"]
+            < self.ledger.reserve_tokens
+            or remaining["remaining_scientific_wall_ms"]
+            < self.ledger.reserve_wall_ms)
 
     def _manifest_rows(self) -> list[dict[str, object]]:
         rows = []
@@ -1222,6 +1373,7 @@ class PTLunaRPCSupervisor:
                 "failed_games": sum(row["status"] == "incomplete" for row in rows),
                 "pending_games": sum(row["status"] is None for row in rows),
                 "resource_totals": self._resource_totals(),
+                "pilot_attempt_lineage": self.pilot_attempt_lineage,
                 "ledger_terminal_accept_sha256":
                     ledger_terminal_accept_sha256,
                 "authority": dict(selfplay.AUTHORITY)}
@@ -1392,35 +1544,73 @@ class PTLunaRPCSupervisor:
         self._progress(active_workers=0, active_rpcs=0)
         if pending:
             with ThreadPoolExecutor(max_workers=self.workers) as executor:
+                futures = {}
                 try:
-                    futures = {executor.submit(self._run_one, coordinate, mirror):
-                               (coordinate, mirror) for coordinate, mirror in pending}
-                    for future in as_completed(futures):
-                        coordinate, mirror = futures[future]
+                    next_pending = iter(pending)
+
+                    def submit_one() -> bool:
+                        try:
+                            coordinate, mirror = next(next_pending)
+                        except StopIteration:
+                            return False
+                        future = executor.submit(
+                            self._run_one, coordinate, mirror)
+                        futures[future] = (coordinate, mirror)
+                        return True
+
+                    for _ in range(min(self.workers, len(pending))):
+                        submit_one()
+                    population_refused = False
+                    while futures:
+                        future = next(as_completed(tuple(futures)))
+                        coordinate, mirror = futures.pop(future)
+                        if future.cancelled():
+                            continue
                         try:
                             future.result()
+                        except CancelledError:
+                            continue
                         except BaseException as exc:
                             self._errors[(coordinate, mirror)] = exc
                             self._record_preseal_mechanics_refusal(
                                 coordinate, mirror, exc)
-                            self.stop_event.set()
-                            self._terminate_active_calls()
+                            # One game-level refusal closes the population but
+                            # does not invalidate independent games already in
+                            # flight.  Cancel only work that has not started;
+                            # the running peers finish and seal normally.
+                            global_abort = self._global_budget_exhausted()
+                            if global_abort and not self.stop_event.is_set():
+                                self.stop_event.set()
+                                self._terminate_active_calls()
+                            if not population_refused:
+                                population_refused = True
+                                for other in tuple(futures):
+                                    other.cancel()
                         # The runner has sealed before returning/raising.  Read it
                         # now so every game contributes durable progress.
                         reopened = self._reopen_one(coordinate, mirror)
                         self._statuses[(coordinate, mirror)] = reopened
                         self._progress(active_workers=self._active_games,
                                        active_rpcs=self._active_rpcs())
+                        if not population_refused:
+                            submit_one()
                 except BaseException:
                     self.stop_event.set()
                     self._terminate_active_calls()
-                    for future in futures:
+                    for future in tuple(futures):
                         future.cancel()
         # Exactly one terminal reopen pass.  It is also the restart path: no
         # provider call is made for either complete or already-incomplete work.
         for coordinate, mirror in self.schedule:
             if (coordinate, mirror) not in self._statuses:
-                self._statuses[(coordinate, mirror)] = self._reopen_one(coordinate, mirror)
+                path = _attempt_path(self.attempts_root, coordinate, mirror)
+                manifest = path / "manifest.json"
+                if (manifest.exists() or manifest.is_symlink()
+                        or self._has_controller_refusal(coordinate, mirror)):
+                    self._statuses[(coordinate, mirror)] = self._reopen_one(
+                        coordinate, mirror)
+                else:
+                    self._statuses[(coordinate, mirror)] = None
         self._progress(active_workers=self._active_games,
                        active_rpcs=self._active_rpcs())
         terminal_accept = None
@@ -1492,6 +1682,8 @@ __all__ = ["ADMISSION_SCHEMA", "FREEZE_SCHEMA", "FREEZE_REVIEW_PREFIX",
            "PTLunaRPCSupervisor", "Supervisor", "build_root_census",
            "authenticate_review_claim", "freeze_review_claim",
            "launch_freeze_payload", "source_review_claim",
+           "validate_capacity_runtime_for_freeze",
+           "validate_capacity_source_for_freeze",
            "validate_launch_freeze", "validate_launch_freeze_shape",
            "validate_root_census", "validate_schedule",
            "schedule_for_capacity_route",

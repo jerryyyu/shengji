@@ -1561,11 +1561,11 @@ class RPCGameAttemptRunner:
 
     def __call__(self, coordinate: tuple[str, int, int], mirror: int) \
             -> selfplay.CompletedGameArtifacts:
-        try:
-            return self._run_game(coordinate, mirror)
-        except BaseException:
-            self.stop_event.set()
-            raise
+        # A game-level refusal belongs to this schedule item.  The population
+        # supervisor decides whether queued work should start; it must not use
+        # this shared event to abort independent games that are already in
+        # flight.  The event is reserved for controller/global cancellation.
+        return self._run_game(coordinate, mirror)
 
     def _run_game(self, coordinate: tuple[str, int, int], mirror: int) \
             -> selfplay.CompletedGameArtifacts:
@@ -1581,7 +1581,6 @@ class RPCGameAttemptRunner:
                     self.scientific_binding_sha256,
                 expected_coordinate=coordinate, expected_mirror=mirror)
             if result.artifacts is None:
-                self.stop_event.set()
                 raise RPCCollectionError("sealed game attempt is incomplete")
             return result.artifacts
         if self.stop_event.is_set() and not path.exists():
@@ -1606,7 +1605,6 @@ class RPCGameAttemptRunner:
         journal = FileTurnJournal(path / "journal")
         if (path / "failure.json").is_file():
             self._finish_interrupted_failure(path, coordinate, mirror)
-            self.stop_event.set()
             raise RPCCollectionError("sealed game attempt is incomplete")
         pending_refusal = journal.pending_refusal_disposition()
         if pending_refusal is not None:
@@ -1629,7 +1627,6 @@ class RPCGameAttemptRunner:
                 self._seal_failure(
                     path, coordinate, mirror, refusal,
                     stage="provider-response")
-                self.stop_event.set()
                 raise RPCCollectionError("sealed game attempt is incomplete") \
                     from refusal
         game = selfplay.LunaSelfPlayGame(
@@ -1780,7 +1777,6 @@ class RPCGameAttemptRunner:
                 path, coordinate, mirror, exc, stage=stage)
             self._emit_progress(
                 "game-failure", journal, absolute_deadline_ns)
-            self.stop_event.set()
             raise RPCCollectionError("game attempt refused") from exc
 
 

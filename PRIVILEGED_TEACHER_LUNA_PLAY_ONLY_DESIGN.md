@@ -94,6 +94,13 @@ model-owned engine tool. Candidate zero remains the production prior but is
 not a fallback: invalid, late, stale, tool-bearing, or illegal output refuses
 the game without mutating engine state or team memory.
 
+One game refusal closes the population but is local to that schedule item.
+The supervisor stops admitting queued games, lets every already-running peer
+finish and seal, and publishes the remaining schedule items as pending. It
+must not set the shared controller-stop event or terminate active provider
+processes for a game deadline. Controller death and exhaustion of the shared
+population budget remain population-wide aborts.
+
 All model calls use the reviewed supervisor-owned Codex transport. Exact model,
 reasoning effort, CLI/catalog, schema, prompt template, environment, sandbox,
 and parser are source-bound before formal capacity. A direct Responses API
@@ -195,6 +202,20 @@ population wall. Both retain the existing memory/swap constraints and publish
 visible completed-games, cluster, elapsed, ETA, active-worker/RPC, token,
 failure, and deadline-headroom progress.
 
+The 1,200-second number above remains the outcome-blind p95 *admission gate*;
+it is not the scientific game's hard deadline. The final pilot freezes a
+1,800-second hard per-game deadline, a 50% tail margin over that gate. This is
+also 65% above the largest completed Pilot-2 provider wall (~1,090 seconds)
+and gives the healthy 78-decision tail that reached 1,200 seconds time to
+finish. The population wall remains exactly 12,000 seconds and the scientific
+token ceiling is the already-measured 25%-headroom pilot projection,
+26,404,925 tokens. The earlier Pilot-2 freeze incorrectly copied the generic
+1,000,000,000-token capacity ceiling despite Jerry approving 26.4M; its early
+deadline refusal limited actual spend to 3.52M and masked the overly broad
+guard. Pilot 3 binds the intended 26,404,925-token ceiling, so the scheduling
+repair does not increase Jerry's aggregate exposure. The per-call transport
+ceiling is unchanged.
+
 ## 7. Authorized casual probes after design review
 
 These probes answer design questions only. They use fixed fresh packets or
@@ -245,22 +266,44 @@ provider dispatch after a known response remain in force. A process death with
 unknown call disposition seals that game incomplete; it does not use the new
 availability redispatch path.
 
-If one reviewed play-only/redispatch design exhausts a transport packet or
-misses the selected route's wall projection, stop the full-104 PT-Luna effort
-on Mini. Do not iterate caps, drop mirrors, replace seeds, or shorten games
-while calling it the same lane. A future direct-transport design would be a new
+Two 32-game pilot attempts are already spent and are part of the next freeze:
+
+- Pilot 1: terminal file
+  `2e72102914bcf1e9ff262756aa33fad45a03f6213098a1982680ebc67f8fe7b6`,
+  receipt
+  `4a53e4d28a4ffcc8230a88db95510265f493665627b0084a374e99fe8a319766`,
+  3,674,786
+  ledger tokens, four completed games.
+- Pilot 2: terminal file
+  `d1cc5c135e6cbda02e58849e3cd420b10d34a42b3ef5a78498dca70bf2251f25`,
+  receipt
+  `c5034c2006f9f49355c29ee92debc6360a6f958cc23d573ecdf8dd95d43cad6c`,
+  3,520,281
+  ledger tokens, three completed games.
+
+The exact combined accounting is 7,195,067 ledger tokens and seven completed
+games. The next pilot is ordinal 3, the maximum ordinal. Its freeze carries
+both complete terminal hashes, both receipt hashes, both spends, both complete
+counts, the combined totals, and `retry_after_this_attempt_authorized: false`.
+The freeze validator refuses any alteration, a lower hard deadline, or a
+fourth ordinal.
+
+If Pilot 3 fails on any per-call wall, per-game wall/deadline, or population
+wall ground, the PT-Luna full/pilot Mini effort stops. There is no fourth
+attempt, cap iteration, mirror drop, seed replacement, or shortened-game
+variant under this lane. A future direct-transport design would be a new
 proposal.
 
 ## 9. Review economy and authority
 
-Use three review moments total from this redesign:
-
-1. this one-file design review;
-2. one consolidated exact-head source + formal canary/capacity-launch review,
-   informed by the casual probes; and
-3. only after a validated passing capacity receipt, one immutable
-   receipt-bound population/runtime freeze review for the selected full or
-   pilot route.
+Pilot 3 uses one consolidated exact-head source + immutable-freeze review. It
+carries forward only the exact sealed Pilot-2 capacity receipt
+`1ba204ee855b0842a6388f243bb86a02eba6a22163b91cce9ac570b936470364`
+from source `d126ad019e1175cd6fe7d0a296c911bf28ae8883`; its p95, route, workers, reserves, token
+budget, and 12,000-second population wall do not change. No further canary,
+capacity census, rehearsal, or separate integrity run is authorized or
+needed. The consolidated review must witness the cascade wiring, deadline
+separation, exact carry-forward receipt, attempt lineage, and no-fourth rule.
 
 Do not add a separate formal rehearsal after capacity. Source tests must cover
 play-only schema closure, forced/contested plays, both team memories, exact

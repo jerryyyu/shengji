@@ -135,6 +135,92 @@ def test_population_rehearsal_input_is_required(monkeypatch, tmp_path):
             repo, head, *paths[:6], evidence, 100, 10)
 
 
+def test_freeze_builder_requires_rehearsal_receipt_backed_by_named_root(
+        monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    inputs = repo / "inputs"
+    inputs.mkdir(parents=True)
+    evidence = tmp_path / "unused-evidence"
+    source_git = "a" * 40
+    capacity_raw = b"{}\n"
+    protocol_raw = protocol_bytes()
+    protocol_sha = hashlib.sha256(protocol_raw).hexdigest()
+    capacity_sha = hashlib.sha256(capacity_raw).hexdigest()
+    namespace = builder.population_namespace(
+        source_git, protocol_sha, capacity_sha, "D256")
+    population = build_population_adapter_input_v2(
+        source_git=source_git, protocol_sha256=protocol_sha,
+        capacity_sha256=capacity_sha, selected_tier="D256", workers=4,
+        deadline_seconds=100, heartbeat_seconds=10,
+        max_attempts_per_slot=128)
+    config = build_early_stage_config_v2(
+        source_git=source_git, protocol_sha256=protocol_sha,
+        capacity_sha256=capacity_sha, selected_tier="D256", label_workers=8,
+        evidence_root=str(evidence), deadline_seconds=100)
+    seed = build_seed_registry_v2(
+        source_git=source_git, protocol_sha256=protocol_sha,
+        capacity_sha256=capacity_sha, selected_tier="D256")
+    policy = build_continuation_policy_v2(
+        source_git=source_git, protocol_sha256=protocol_sha,
+        capacity_sha256=capacity_sha, selected_tier="D256")
+    raws = (
+        protocol_raw, capacity_raw, canonical_json_bytes(population),
+        canonical_json_bytes(config), canonical_json_bytes(seed),
+        canonical_json_bytes(policy), b"forged-outer-rehearsal\n")
+    paths = []
+    for label, raw in zip(builder._ARTIFACT_LABELS, raws, strict=True):
+        path = inputs / f"{label}.json"
+        path.write_bytes(raw)
+        path.chmod(0o400)
+        paths.append(path)
+
+    named_root = tmp_path / "missing-immutable-population-root"
+    outer = SimpleNamespace(
+        source_git=source_git, protocol_sha256=protocol_sha,
+        capacity_economics_sha256=capacity_sha,
+        population_namespace_sha256=namespace,
+        population_root=str(named_root))
+    calls = []
+
+    def reopen(raw, **kwargs):
+        calls.append((raw, kwargs))
+        if kwargs.get("root") is not None:
+            raise FileNotFoundError("named rehearsal population root absent")
+        return outer
+
+    runtime = _runtime_profile("boot-1")
+    runtime_sha = builder._object_sha(runtime)
+    source_sha = "b" * 64
+    monkeypatch.setattr(builder, "_head", lambda _repo, _head: source_git)
+    monkeypatch.setattr(builder, "_clean_source_tree",
+                        lambda _repo, _runtime: None)
+    monkeypatch.setattr(
+        builder, "_bindings",
+        lambda _repo, _head: (SourceBindingV2(
+            "server/shengji/rl/example.py", 1, _digest("source")),))
+    monkeypatch.setattr(builder, "live_runtime_profile", lambda: runtime)
+    monkeypatch.setattr(
+        builder, "capacity_context",
+        lambda _raw: (SimpleNamespace(
+            source_sha256=source_sha, runtime_sha256=runtime_sha),
+                      "D256", 4, 8))
+    monkeypatch.setattr(builder, "capacity_source_sha256",
+                        lambda _repo: source_sha)
+    monkeypatch.setattr(builder, "reopen_population_rehearsal", reopen)
+
+    with pytest.raises(builder.FreezeBuilderError,
+                       match="authoritative reopen refused"):
+        builder.build_execution_freeze(
+            repo, source_git, *paths[:6], evidence, 100, 10,
+            population_rehearsal_path=paths[6])
+
+    assert len(calls) == 2
+    assert calls[0][1] == {}
+    assert calls[1][1]["root"] == named_root
+    assert calls[1][1]["expected_head"] == source_git
+    assert calls[1][1]["capacity_raw"] == capacity_raw
+
+
 def test_occupied_output_refuses_without_overwrite(tmp_path):
     target = tmp_path / "freeze.json"
     target.write_bytes(b"existing")

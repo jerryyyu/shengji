@@ -166,6 +166,31 @@ def test_cap_parallel_resume_and_score_free_receipt(tmp_path, fast_primitives):
             max_attempts_per_slot=3, workers=4, attempt_driver=driver)
 
 
+def test_requested_trump_mode_unavailable_is_recorded_and_collection_continues(
+        tmp_path, fast_primitives):
+    calls = {}
+
+    def driver(identity, slot):
+        key = slot.slot_sha256
+        calls[key] = calls.get(key, 0) + 1
+        if calls[key] == 1:
+            return _Attempt(
+                identity, slot, False,
+                reason="requested-trump-mode-unavailable")
+        return _Attempt(identity, slot, True,
+                        _Material(slot, identity["deal_sha256"]))
+
+    receipt = controller.collect_population_v2(
+        tmp_path, freeze_sha256="f" * 64,
+        population_namespace_sha256="b" * 64, admission_sha256="a" * 64,
+        max_attempts_per_slot=2, workers=4, attempt_driver=driver)
+
+    assert receipt.accepted_slots == 256
+    assert receipt.attempts_total == 512
+    assert all(row.rejection_counts == (
+        ("requested-trump-mode-unavailable", 1),) for row in receipt.slots)
+
+
 def test_attempt_identity_binds_namespace_and_slot():
     slot = SLOTS[0]
     identity = attempted_deal_identity("b" * 64, slot, 0)

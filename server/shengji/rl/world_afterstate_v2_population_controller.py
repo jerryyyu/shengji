@@ -64,7 +64,7 @@ AUTHORITY = {
 }
 _REASONS = {
     "actual-trump-mode-mismatch", "no-eligible-state", "engine-error",
-    "materialization-error",
+    "materialization-error", "requested-trump-mode-unavailable",
 }
 MAX_DECISIONS = 100
 

@@ -47,8 +47,10 @@ LABEL_STAGES = (
 
 # The carry-forward head may change only resource economics, typed reopening,
 # execution admission, tests, and the reviewed design.  In particular, no
-# model, optimizer, label, continuation, population, DAG, worker topology, or
-# inference implementation is in this closed set.
+# model, optimizer, label, continuation, population semantics, DAG, worker
+# topology, or inference implementation is in this closed set.  The population
+# controller and its test enter only for the reviewed progress-schema and
+# queued-future cancellation repair.
 ALLOWED_CARRY_FORWARD_PATHS = frozenset({
     "VALUE_AFTERSTATE_V2_ABSOLUTE_LEAF_DESIGN.md",
     "server/scripts/build_world_afterstate_v2_freeze.py",
@@ -57,6 +59,7 @@ ALLOWED_CARRY_FORWARD_PATHS = frozenset({
     "server/shengji/rl/world_afterstate_v2_execution.py",
     "server/shengji/rl/world_afterstate_v2_freeze_inputs.py",
     "server/shengji/rl/world_afterstate_v2_late_stage_adapters.py",
+    "server/shengji/rl/world_afterstate_v2_population_controller.py",
     "server/shengji/rl/world_afterstate_v2_protocol.py",
     "server/shengji/rl/world_afterstate_v2_terminal_controller.py",
     "server/shengji/rl/world_afterstate_v2_training_stage_inputs.py",
@@ -65,6 +68,7 @@ ALLOWED_CARRY_FORWARD_PATHS = frozenset({
     "server/tests/test_world_afterstate_v2_capacity_economics.py",
     "server/tests/test_world_afterstate_v2_freeze_builder.py",
     "server/tests/test_world_afterstate_v2_protocol.py",
+    "server/tests/test_world_afterstate_v2_population_controller.py",
 })
 
 

@@ -99,6 +99,10 @@ def test_amended_caps_are_exact_and_cannot_drift_in_resealed_bytes() -> None:
 
 
 def test_performance_affecting_source_path_is_not_allowlisted() -> None:
+    assert {
+        "server/shengji/rl/world_afterstate_v2_population_controller.py",
+        "server/tests/test_world_afterstate_v2_population_controller.py",
+    } <= ALLOWED_CARRY_FORWARD_PATHS
     with pytest.raises(CapacityEconomicsError,
                        match="carry-forward source diff drift"):
         SourceDiffV2(

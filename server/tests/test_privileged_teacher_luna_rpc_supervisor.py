@@ -17,6 +17,9 @@ from shengji.rl import privileged_teacher_luna_rpc_io as rpc_io
 from shengji.rl import privileged_teacher_luna_rpc_collection as collection
 from shengji.rl import privileged_teacher_luna_rpc_transport as rpc_transport
 from shengji.rl.privileged_teacher_luna_rpc_collection import AttemptReopen
+from shengji.rl.privileged_teacher_luna_turn_rpc import (
+    DecisionPacket, PhaseContext, TeamMemory,
+)
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 
 
@@ -90,6 +93,19 @@ def _make(tmp_path, *, schedule=None, full=False):
         capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
                           "selected_workers": 1},
         runner=runner, schedule=schedule, require_full_population=full), runner
+
+
+def _packet(coordinate=("2", 0, 0), mirror=0):
+    game = supervisor.selfplay.LunaSelfPlayGame(
+        supervisor.selfplay.build_root(SECRET, coordinate),
+        coordinate=coordinate, mirror=mirror, seed_secret=SECRET)
+    team = game.acting_team
+    return DecisionPacket.from_observation(
+        game.session(team).observe(), coordinate=coordinate, mirror=mirror,
+        team=team, decision_index=0,
+        memory=TeamMemory.initial(
+            team, supervisor.selfplay._state_digest(game.rnd, team)),
+        phase=PhaseContext())
 
 
 def test_schedule_rejects_duplicate_and_default_is_exact():
@@ -995,6 +1011,93 @@ def test_one_game_deadline_keeps_collecting_predeclared_independent_games(
     assert failed.failure_class == "resource-provider"
     assert supervisor._attempt_path(
         runner.attempts_root, ("6", 0, 0), 0).is_dir()
+
+
+def test_local_ledger_refusal_does_not_kill_peers_or_erase_queue(
+        tmp_path, monkeypatch):
+    schedule = [
+        ((rank, 0, 0), 0) for rank in ("2", "3", "4", "5", "6")]
+    barrier = threading.Barrier(4)
+    calls = []
+    terminated = []
+    private_root = tmp_path / "private"
+    private_root.mkdir(mode=0o700)
+    private_root.chmod(0o700)
+    ledger = collection.ScientificBudgetLedger(
+        root=private_root / "ledger",
+        started_monotonic_nanoseconds=time.monotonic_ns(),
+        wall_nanoseconds=1_000_000_000_000, token_cap=10_000,
+        per_call_token_reserve=100,
+        per_call_wall_reserve_milliseconds=1_000,
+        boot_identity_sha256="b" * 64,
+        runtime_sha256="c" * 64,
+        capacity_receipt_sha256="d" * 64,
+        namespace="local-refusal-supervisor-test")
+
+    class LocalFailureRunner(FakeRunner):
+        def __call__(self, coordinate, mirror):
+            calls.append((coordinate, mirror))
+            if coordinate[0] != "6":
+                assert barrier.wait(timeout=2) < 4
+            path = supervisor._attempt_path(
+                self.attempts_root, coordinate, mirror)
+            path.mkdir(mode=0o700)
+            if coordinate[0] == "2":
+                packet = _packet(coordinate, mirror)
+                ledger.reserve(packet)
+                ledger.refuse({
+                    "packet_sha256": packet.sha256,
+                    "disposition_sha256": "e" * 64,
+                    "total_tokens": 50,
+                    "failure_kind": "CodexProviderResourceError",
+                    "failure_class": "resource-provider",
+                })
+                (path / "manifest.json").write_text("incomplete")
+                raise collection.RPCCollectionError(
+                    "sealed game attempt is incomplete")
+            time.sleep(0.05)
+            (path / "manifest.json").write_text("complete")
+            return object()
+
+        def terminate_active_calls(self):
+            terminated.append(True)
+
+    runner = LocalFailureRunner(private_root)
+    instance = supervisor.PTLunaRPCSupervisor(
+        seed_secret=SECRET, private_root=private_root,
+        public_root=tmp_path / "public", runtime=RUNTIME,
+        admission={"freeze": "freeze", "admission": "admission"},
+        capacity_receipt={"route": supervisor.FULL_104_ELIGIBLE,
+                          "selected_workers": 4},
+        runner=runner, schedule=schedule, require_full_population=False)
+    instance.workers = 4
+    instance.ledger = ledger
+
+    def reopen(path, **_kwargs):
+        status = (path / "manifest.json").read_text()
+        failure = ("CodexProviderResourceError"
+                   if status == "incomplete" else None)
+        failure_class = ("resource-provider"
+                         if status == "incomplete" else None)
+        return AttemptReopen(
+            status, hashlib.sha256(str(path).encode()).hexdigest(),
+            None, failure, failure_class,
+            {"total_tokens": 50 if status == "incomplete" else 0,
+             "response_count": 1 if status == "incomplete" else 0})
+
+    monkeypatch.setattr(supervisor, "reopen_attempt", reopen)
+
+    result = instance.run()
+
+    assert result.route == supervisor.CASUAL_INCOMPLETE_ROUTE
+    assert result.receipt["completed_games"] == 4
+    assert result.receipt["failed_games"] == 1
+    assert result.receipt["pending_games"] == 0
+    assert {coordinate[0] for coordinate, _mirror in calls} \
+        == {"2", "3", "4", "5", "6"}
+    assert ledger.payload()["crossed"] is False
+    assert terminated == []
+    assert not runner.stop_event.is_set()
 
 
 def test_global_budget_boundary_stops_inflight_and_queued_population(

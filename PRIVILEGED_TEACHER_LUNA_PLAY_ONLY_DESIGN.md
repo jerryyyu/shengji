@@ -345,6 +345,15 @@ The new route makes two source changes:
    rest of the predeclared independent schedule. Shared wall/token exhaustion
    still stops the population and terminates active calls.
 
+The scientific ledger's `crossed` bit means only that the shared wall or token
+budget was actually exhausted. A settled per-call, provider, schema,
+mechanics, or game-local refusal remains charged and makes that game (and thus
+the population result) incomplete, but it does not set `crossed`, reject new
+packets from other predeclared games, or kill already-running peers. Terminal
+ledger acceptance additionally requires that every availability refusal has a
+later accepted redispatch and that no terminal refusal remains, so this
+separation cannot turn an incomplete population into a successful one.
+
 The route uses a fresh seed secret, census, 16-cluster/32-game mirrored
 schedule, private/public roots, namespace, source claim, and freeze. It carries
 the exact three closed predecessor terminal/receipt hashes and their cumulative

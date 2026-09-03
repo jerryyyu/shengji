@@ -906,14 +906,16 @@ class _Progress:
         return value * (1024 if os.uname().sysname == "Darwin" else 1)
 
     def attempt_started(self, slot: PopulationSlotV2, index: int) -> None:
-        self.emit(active_workers=self.workers, stage="attempt",
-                  substage=f"slot-{slot.ordinal}-attempt-{index}")
+        # ``stage`` is the supervisor's closed DAG stage, while individual
+        # population attempts are operational detail within that stage.
+        self.emit(active_workers=self.workers, stage="population",
+                  substage=f"attempt/slot-{slot.ordinal}-attempt-{index}")
 
     def heartbeat_loop(self, stop: threading.Event, slot: PopulationSlotV2,
                        index: int, interval: int, deadline: int) -> None:
         while not stop.wait(interval):
-            self.emit(active_workers=self.workers, stage="attempt",
-                      substage=f"slot-{slot.ordinal}-attempt-{index}",
+            self.emit(active_workers=self.workers, stage="population",
+                      substage=f"attempt/slot-{slot.ordinal}-attempt-{index}",
                       deadline=deadline)
 
     def emit(self, *, active_workers: int, stage: str = "population",
@@ -1103,7 +1105,17 @@ def collect_population_v2(
                     config=config, progress=progress, driver=attempt_driver)
                 pending[future] = slot
             for future in as_completed(pending):
-                run = future.result()
+                try:
+                    run = future.result()
+                except Exception:
+                    # Do not drain every queued slot after the first failure.
+                    # Apart from wasting work, doing so can publish hundreds
+                    # of start receipts without matching result receipts and
+                    # make the retained prefix impossible to resume.
+                    for queued in pending:
+                        if queued is not future:
+                            queued.cancel()
+                    raise
                 runs[run.slot.slot_sha256] = run
                 records[run.slot.slot_sha256] = list(run.records)
                 progress.completed = sum(

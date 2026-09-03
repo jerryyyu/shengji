@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
+import threading
 
 import pytest
 
 from shengji.rl import world_afterstate_v2_population_controller as controller
+from shengji.rl import world_afterstate_v2_execution as execution
 from shengji.rl.world_afterstate_v2_population_artifacts import (
     PopulationMaterialShardV2,
 )
@@ -178,15 +180,58 @@ def test_wrong_full_stratum_and_heartbeat_schema_refuse():
     with pytest.raises(controller.WorldAfterstateV2PopulationControllerError):
         controller._validate_material_stratum(material, slot)
     events = []
-    progress = controller._Progress(events.append, 256, 0, 0, 1, int(__import__("time").time()) + 10)
-    progress.emit(active_workers=1, stage="attempt", substage="probe")
+
+    def supervisor_boundary(event):
+        # This is the closed production contract that the old ``attempt``
+        # top-level stage violated only after its first timed callback.
+        assert event["stage"] in execution.STAGE_ORDER
+        events.append(event)
+
+    progress = controller._Progress(
+        supervisor_boundary, 256, 0, 0, 1,
+        int(__import__("time").time()) + 10)
+    progress.attempt_started(slot, 3)
+
+    class OneHeartbeat:
+        calls = 0
+
+        def wait(self, _interval):
+            self.calls += 1
+            return self.calls > 1
+
+    progress.heartbeat_loop(
+        OneHeartbeat(), slot, 3, 60,
+        int(__import__("time").time()) + 10)
     event = events[-1]
+    assert event["stage"] == "population"
+    assert event["substage"] == f"attempt/slot-{slot.ordinal}-attempt-3"
     assert {"stage", "substage", "completed_slots", "total_slots",
             "active_workers", "cpu_utilization", "current_memory_bytes",
             "peak_memory_bytes", "deadline_headroom_seconds",
             "immutable_shards", "elapsed_seconds", "eta_seconds",
             "authority"} <= set(event)
     assert all(value is False for value in event["authority"].values())
+
+
+def test_first_worker_failure_cancels_queued_slots(
+        tmp_path, fast_primitives):
+    calls = []
+
+    def driver(_identity, slot):
+        calls.append(slot.slot_sha256)
+        if len(calls) == 2:
+            # Give the collector deterministic time to observe the first
+            # failed future and cancel the still-queued population.
+            threading.Event().wait(0.2)
+        raise RuntimeError("injected population worker failure")
+
+    with pytest.raises(controller.WorldAfterstateV2PopulationControllerError):
+        controller.collect_population_v2(
+            tmp_path, freeze_sha256="f" * 64,
+            population_namespace_sha256="b" * 64,
+            admission_sha256="a" * 64, max_attempts_per_slot=1,
+            workers=1, attempt_driver=driver)
+    assert len(calls) <= 2
 
 
 def test_persisted_acceptance_is_reused_after_publication_crash(

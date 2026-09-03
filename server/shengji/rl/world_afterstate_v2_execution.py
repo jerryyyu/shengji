@@ -726,7 +726,10 @@ class SourceBindingV2:
                 or Path(self.path).is_absolute() or "\\" in self.path
                 or any(part in ("", ".", "..") for part in Path(self.path).parts)):
             raise WorldAfterstateV2ExecutionError("source binding path drift")
-        if type(self.byte_count) is not int or self.byte_count < 1:
+        # Empty tracked modules (notably package ``__init__.py`` files) are
+        # legitimate members of the executed source closure.  Their identity
+        # is still bound by path, an exact zero byte count, and SHA-256.
+        if type(self.byte_count) is not int or self.byte_count < 0:
             raise WorldAfterstateV2ExecutionError("source binding byte count drift")
         return {"path": self.path, "byte_count": self.byte_count,
                 "sha256": self.sha256}

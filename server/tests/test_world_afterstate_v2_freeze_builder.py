@@ -12,6 +12,7 @@ import pytest
 from shengji.rl import world_afterstate_v2_freeze_builder as builder
 from shengji.rl.world_afterstate_v2_execution import (
     RUNTIME_PROFILE_SCHEMA, SourceBindingV2,
+    WorldAfterstateV2ExecutionError,
 )
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_freeze_inputs import (
@@ -80,6 +81,36 @@ def test_clean_success_roundtrips_and_binds_runtime(monkeypatch, tmp_path):
     assert stat.S_IMODE(target.stat().st_mode) == 0o400
     assert target.stat().st_nlink == 1
     assert not target.with_name(".freeze.json.partial").exists()
+
+
+def test_real_source_bindings_include_hash_bound_empty_package_initializer(
+        tmp_path):
+    """The production closure must accept, bind, and hash empty tracked files."""
+    repo = tmp_path / "repo"
+    package = repo / "server" / "shengji" / "rl"
+    package.mkdir(parents=True)
+    (repo / "server" / "shengji" / "__init__.py").write_text("# package\n")
+    (package / "__init__.py").write_bytes(b"")
+    (package / "world_afterstate_v2_probe.py").write_text("VALUE = 1\n")
+    builder._git(repo, "init", "-q")
+    builder._git(repo, "config", "user.name", "Jerry")
+    builder._git(repo, "config", "user.email", "jerry@example.com")
+    builder._git(repo, "add", ".")
+    builder._git(repo, "commit", "-qm", "fixture")
+    head = builder._git(repo, "rev-parse", "HEAD")
+
+    bindings = builder._bindings(repo, head)
+    by_path = {binding.path: binding for binding in bindings}
+    empty = by_path["server/shengji/rl/__init__.py"]
+    assert empty.byte_count == 0
+    assert empty.sha256 == hashlib.sha256(b"").hexdigest()
+    assert builder.source_manifest_sha256(head, bindings)
+
+    with pytest.raises(
+            WorldAfterstateV2ExecutionError,
+            match="source binding byte count drift"):
+        SourceBindingV2("server/shengji/rl/bad.py", -1,
+                        hashlib.sha256(b"").hexdigest()).payload()
 
 
 def test_runtime_boot_mismatch_is_not_accepted(monkeypatch, tmp_path):

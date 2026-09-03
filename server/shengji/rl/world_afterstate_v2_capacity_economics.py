@@ -63,6 +63,7 @@ ALLOWED_CARRY_FORWARD_PATHS = frozenset({
     "server/tests/fixtures/world_afterstate_v2_capacity_census11_failure.json",
     "server/tests/test_world_afterstate_v2_capacity.py",
     "server/tests/test_world_afterstate_v2_capacity_economics.py",
+    "server/tests/test_world_afterstate_v2_freeze_builder.py",
     "server/tests/test_world_afterstate_v2_protocol.py",
 })
 

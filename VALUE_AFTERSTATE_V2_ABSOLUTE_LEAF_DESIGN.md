@@ -1051,6 +1051,36 @@ consolidated PASS authorizes exactly one fresh
 D256 admission under the standing launch policy; it grants no retry, BELIEF or
 PUCT integration, gameplay, merge, deployment, promotion, or strength claim.
 
+### Target-free rehearsal controller refusal and narrow re-entry
+
+The target-free rehearsal at source `2f649070` is permanently closed as a
+score-free infrastructure refusal.  Its preserved root contains 135 accepted
+population materials, 765 completed attempt records, and 767 durable started
+records.  The service exited after 2,506 CPU seconds and about 2,509 wall
+seconds while processing mechanics-fit ordinal 8 (wide-ballot / rank 6 /
+no-trump), and it published no success receipt.  Label, continuation-outcome,
+select, training, calibration, audit, and terminal namespaces were never
+created.  The preserved stderr and progress SHA-256s are respectively
+`f2b1a58d4d0ad5b3aa10048583acf0e31f43e985a27f674b0e42cc307ed773b6`
+and
+`576624fa8f3c24e4d15239506a713ac386131b8d794f18a245a4c730075d020a`.
+
+The source driver emitted its valid typed rejection reason
+`requested-trump-mode-unavailable`, but the population controller's closed
+reason set omitted that value and refused it as `attempt record acceptance
+drift`.  This is an enum-linkage defect in target-free orchestration, not an
+incomplete-slot or population-supply result.  It therefore authorizes no cap,
+slot, topology, or acceptance-rule change.
+
+One replacement target-free rehearsal may be admitted only after exact-head
+review of the controller repair and a mutation witness that fails when the
+reason is removed again.  It must use a fresh root, namespace, admission,
+progress stream, and receipt; it may import none of the 135 prior materials and
+may not resume or retry the closed root.  D256, the 128-attempt slot ceiling,
+the reviewed worker topology, and the 7,200 / 32,400 / 64,800-second limits all
+remain unchanged.  Only its passing sealed receipt may enter the final
+scientific freeze.
+
 ## 14. Progress and recovery
 
 Every expensive stage emits at least every 60 seconds or 1%:

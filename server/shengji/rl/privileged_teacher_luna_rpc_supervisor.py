@@ -69,7 +69,7 @@ PILOT_CAPACITY_SOURCE_EXECUTION_GIT = \
 PILOT_CAPACITY_SOURCE_CLAIM_SHA256 = \
     "882d436c7b572928582da6063f4b5d343d43f6c1750b3147f1e781cfb9088901"
 PILOT_ATTEMPT_LINEAGE = {
-    "schema": "pt-luna-resilient-acquisition-lineage-v1",
+    "schema": "pt-luna-local-failure-isolated-lineage-v1",
     "route_ordinal": 1,
     "maximum_route_ordinal": 1,
     "retry_after_this_attempt_authorized": False,
@@ -101,9 +101,18 @@ PILOT_ATTEMPT_LINEAGE = {
             "ledger_spent_tokens": 2_734_638,
             "completed_games": 3,
         },
+        {
+            "attempt_ordinal": 4,
+            "terminal_file_sha256":
+                "9404154a5caac45f5fa6448f299cb8ff4949350710226510a0888c421980c8eb",
+            "terminal_receipt_sha256":
+                "2f2491b91f208f01522df112cc38c6d32f682aa4e75922d367b3c7bafe0ca83a",
+            "ledger_spent_tokens": 14_820_157,
+            "completed_games": 20,
+        },
     ],
-    "prior_spent_tokens": 9_929_705,
-    "prior_completed_games": 10,
+    "prior_spent_tokens": 24_749_862,
+    "prior_completed_games": 30,
 }
 DESIGN_PATHS = (
     "PRIVILEGED_TEACHER_LUNA_SELFPLAY_DESIGN.md",

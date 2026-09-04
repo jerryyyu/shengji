@@ -26,7 +26,7 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **P0** | **Value V2 — trajectory successor** | D64 sealed `D64_DEV_SEALED` at `11c43839`; exact-source reopen and the interpretation review at `784569ba` pass. Its 12-deal audit improved outcome-distribution RPS but worsened scalar absolute error and paired action sensitivity; action utility was inconclusive. The 256-slot ledger and 255 retained realizations are coverage-audit evidence only. Main-based trajectory Run A is producing natural self-play records on Perf; PR #207 carries the resumable generator. | Integrate the trajectory generator, then port a minimal learning core onto current main and train on trajectory data at scale. Luna outcomes are fine-tune/evaluation data; D64 slots are not training targets. | Tier i only. No missing-slot completion, slot-targeted D256 training, consumer integration, or strength claim. |
+| **P0** | **Value V2 — trajectory successor** | D64 sealed `D64_DEV_SEALED` at `11c43839`; exact-source reopen and the interpretation review at `784569ba` pass. Its 12-deal audit improved outcome-distribution RPS but worsened scalar absolute error and paired action sensitivity; action utility was inconclusive. The 256-slot ledger and 255 retained realizations are coverage-audit evidence only. Main now carries the resumable trajectory generator from #207 and a minimal reusable afterstate/metric/GRU-or-Transformer training core; Run A is producing natural self-play records on Perf. | Finish and verify Run A, then pretrain the Transformer path on trajectory outcomes. Use the GRU only as the same-input throughput baseline. Luna outcomes are fine-tune/evaluation data; D64 slots are not training targets. | Tier i only. No missing-slot completion, slot-targeted D256 training, consumer integration, or strength claim. |
 | **P0** | **Oracle policy probes** | Run1 completed on 256 fresh mirrored rounds. Identity was null; value-only `+0.051 [-0.031,+0.133]` and prior-only `-0.059 [-0.152,+0.039]` were inconclusive; the combined expensive heuristic probe was `+0.109 [+0.016,+0.203]` at about 9.6x production work. Run2 (deeper/exact-endgame variants) and run3 (wide ballot) are in progress on cloud. These are heuristic probes, not ceilings; weak/null results are non-closing. | Determine whether deeper value, incumbent-anchored prior, or wider ballot creates enough leverage to justify a learned consumer experiment. Oracle-belief remains unrun. | Tier i diagnostic evidence only. Later candidates must still match production work. |
 | **P1** | **Luna dataset as diagnostic + fine-tune source** | `pt-luna-rpc-isolated-b0b1bd95-r1` sealed COMPLETE (32/32 games; ledger `6c71bee3`). Readable only for scoped teacher/value research. 30 predecessor games are engineering-only. Collection is CLOSED (46,729,487 tokens lane total). | (a) Where do Sol/Luna disagree with production and win, classified by mechanism (ballot, continuation, rollout allocation, objective, partnership)? (b) After a minimal trajectory-pretrained learner demonstrates scalar/action-value transport, fine-tune on Luna outcomes with a held-out teacher-agreement slice; does search move toward the teacher on the disagreement set? | Value targets, not action imitation (PT1's negative). No more collection until transport is shown at 32-game scale. |
 | **P1** | **Search-policy variants in the RLCB paired harness** | The only harness that ever produced a confirmed gain (`+0.338 ± 0.068`). | Two or three variants derived from the Luna disagreement analysis, vs champion at equal work; promote only on the confirm bar. | Tier ii screen → tier iii confirm. |
@@ -37,12 +37,13 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 ## Immediate sequence
 
-1. Integrate the repaired trajectory generator and finish Run A's resumable
-   natural self-play dataset. Keep D256 slots as coverage-audit evidence only.
+1. Finish and verify Run A's resumable natural self-play dataset. Keep D256
+   slots as coverage-audit evidence only.
 2. Finish and interpret oracle heuristic probe runs 2/3; separately scope the
    still-unrun oracle-belief probe if it remains decision-relevant.
-3. Port the minimal Value learning core onto current main; pretrain on
-   trajectory outcomes, then use Luna outcomes for fine-tuning/evaluation.
+3. Use the minimal Value core to pretrain the Transformer on trajectory
+   outcomes, compare the same-input GRU throughput baseline, then use Luna
+   outcomes for fine-tuning/evaluation.
 4. Derive search-policy variants and run them through the RLCB paired harness.
 5. Nothing enters tier iii until a variant beats the champion on a paired screen.
 

@@ -73,7 +73,9 @@ when a candidate beats the champion on a tier ii paired screen.
 4. **Prove transport before promoting a consumer.** D64 did not establish a
    usable scalar/action-value recipe. The next pretraining source is natural
    trajectory self-play at scale from the harvest package and PR #207, with
-   raw states re-encoded by the current learner. Then fine-tune on Luna
+   raw states re-encoded by the minimal state-only Value core. Its Transformer
+   is the preferred experiment and its same-input GRU is a throughput baseline,
+   not a separate estimand. Then fine-tune on Luna
    outcomes (value targets, not
    action imitation) and test whether search with the fine-tuned leaf value
    moves toward the teacher on the disagreement set. The frozen 256-slot

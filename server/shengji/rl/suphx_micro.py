@@ -1,6 +1,7 @@
 """Feature boundary for a Suphx-style Shengji microbaseline.
 
-This module implements only the first code gate in ``SUPHX_MICRO_SPEC.md``:
+This module implements only the first code gate in
+``docs_archive/SUPHX_MICRO_SPEC.md``:
 the exact split between information a player may legally observe and
 simulator-only card ownership used during privileged training.  It contains no
 policy, learner, CLI, registry entry, experiment runner, or promotion rule.
@@ -210,4 +211,3 @@ def apply_privilege_mask(
     if not np.all(np.isfinite(perfect)):
         raise SuphxMicroError("perfect tensor contains non-finite values")
     return np.multiply(perfect, mask, dtype=np.float32)
-

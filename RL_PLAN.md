@@ -395,7 +395,11 @@ The compact plan above is the current research contract. Detailed v1–v13,
 DMC/DMC2, Direct-Q, O0, Teacher T3/T4, S3–S6, H0, high-N, and old artifact
 chronology stays in the existing RL archives, `HANDOFF_REVIEW.md`, incident
 records, and Git history. The closed BELIEF V1 design set
-(`BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`, `BELIEF_V1_B2_DESIGN.md`,
-`BELIEF_V1_B2_RUNBOOK.md`) and `SUPHX_MICRO_SPEC.md` moved to `docs_archive/`
-on 2026-09-04. Update this file only when the architecture, estimand, or live
-decision tree changes.
+(`docs_archive/BELIEF_V1_SPEC.md`,
+`docs_archive/BELIEF_V1_V2_DESIGN.md`,
+`docs_archive/BELIEF_V1_B2_DESIGN.md`,
+`docs_archive/BELIEF_V1_B2_RUNBOOK.md`) and
+`docs_archive/SUPHX_MICRO_SPEC.md` moved to `docs_archive/` on 2026-09-04.
+Their archived paths remain source-bound for reproducible future re-entry.
+Update this file only when the architecture, estimand, or live decision tree
+changes.

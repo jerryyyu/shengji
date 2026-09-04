@@ -566,4 +566,5 @@ def test_source_contract_includes_launcher_gate_and_engine_dependencies():
         in screen._MATERIAL_RELATIVE_PATHS
     assert "server/shengji/ai/smart.py" \
         in screen._MATERIAL_RELATIVE_PATHS
-    assert "SUPHX_MICRO_SPEC.md" in screen._MATERIAL_RELATIVE_PATHS
+    assert "docs_archive/SUPHX_MICRO_SPEC.md" \
+        in screen._MATERIAL_RELATIVE_PATHS

@@ -176,7 +176,7 @@ validation battery.
 | `RESEARCH_PRINCIPLES.md` | durable scientific doctrine, estimands and evidence boundaries |
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
 | `HANDOFF_ACTIVE.md` | compact current gate summary, fleet, and open review asks; history is rotated to `docs_archive/` |
-| `HANDOFF_REVIEW.md` | append-only exact-review ledger on canonical `main`; entries before 2026-09-01 are rotated losslessly into `docs_archive/` |
+| `HANDOFF_REVIEW.md` | append-only exact-review ledger on canonical `main`; its existing authenticated historical rotation is preserved in `docs_archive/` |
 | `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
 | `web/README.md` | client architecture, protocol contract, UI invariants |
 | `docs_archive/` | compacted history (RL chronology, old job snapshots, resolved work/reviews) |

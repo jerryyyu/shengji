@@ -58,6 +58,19 @@ STRUCTURED_BURY_TELEMETRY_FIELDS = (
 )
 
 
+def point_shy_pick_index(candidates, means, indices, *, epsilon: float) -> int:
+    """Production argmax and low-point tie break over explicit indices."""
+    from ..engine.cards import points as _pts
+
+    indices = list(indices)
+    if not indices:
+        raise ValueError("cannot choose from an empty candidate set")
+    best = max(indices, key=lambda i: means[i])
+    close = [i for i in indices if means[best] - means[i] <= epsilon]
+    return min(close, key=lambda i: (sum(_pts(c) for c in candidates[i]),
+                                     -means[i]))
+
+
 def random_state_from_json(value):
     """Restore the tuple tree that ``json`` turns into lists.
 
@@ -267,6 +280,23 @@ class MCBot(SmartBot):
         self.zero_world_decisions = 0
 
     # ------------------------------------------------------------------- play
+    def _search_entry(self, rnd: Round, seat: int) \
+            -> tuple[list[list[str]] | None, list[str] | None]:
+        """Return the literal contested ballot or the production early pick.
+
+        The R4 opened-DEV diagnostic uses this same seam to identify natural
+        search roots without executing a rollout or advancing the policy RNG.
+        """
+        if self.TRACTOR_LOCK and not rnd.trick.plays:
+            pick = self.canonical_lead(rnd, seat)
+            dec = decompose(pick, rnd.ordering)
+            if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
+                return None, pick
+        candidates = self._candidates(rnd, seat)
+        if len(candidates) <= 1:
+            return None, candidates[0]
+        return candidates, None
+
     def decide_play(self, rnd: Round, seat: int) -> list[str]:
         assert rnd.trick is not None and rnd.ordering is not None
         self.last_eval = None  # (candidates, per-candidate values) for distillation
@@ -278,14 +308,10 @@ class MCBot(SmartBot):
         self.last_override_stats = None
         self.last_alloc = None
         sampler_before = self._sampler_snapshot()
-        if self.TRACTOR_LOCK and not rnd.trick.plays:
-            pick = self.canonical_lead(rnd, seat)
-            dec = decompose(pick, rnd.ordering)
-            if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
-                return pick
-        candidates = self._candidates(rnd, seat)
-        if len(candidates) <= 1:
-            return candidates[0]
+        candidates, early_pick = self._search_entry(rnd, seat)
+        if candidates is None:
+            assert early_pick is not None
+            return early_pick
         if self.REPORT_RULE not in {"none", "mean", "lcb"}:
             raise ValueError(f"unknown REPORT_RULE {self.REPORT_RULE!r}")
         if self.REPORT_RULE != "none" and self.REPORT_FOLD_WORLDS <= 0:
@@ -532,16 +558,8 @@ class MCBot(SmartBot):
 
     def _pick_index(self, candidates, means, indices):
         """Argmax with the production point-shy tie-break, over `indices`."""
-        from ..engine.cards import points as _pts
-
-        indices = list(indices)
-        if not indices:
-            raise ValueError("cannot choose from an empty candidate set")
-        best = max(indices, key=lambda i: means[i])
-        close = [i for i in indices
-                 if means[best] - means[i] <= self.POINT_SHY_EPS]
-        return min(close, key=lambda i: (sum(_pts(c) for c in candidates[i]),
-                                         -means[i]))
+        return point_shy_pick_index(
+            candidates, means, indices, epsilon=self.POINT_SHY_EPS)
 
     def _finish_decision(self, candidates, played_index, reason, started,
                          sampler_before):

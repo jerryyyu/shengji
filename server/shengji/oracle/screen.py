@@ -320,6 +320,9 @@ class OraclePriorMixin:
         self.oracle_prior_accepted_worlds = 0
         self.oracle_prior_failed_worlds = 0
         self.oracle_prior_rejected_worlds = 0
+        # Wall time of the ranking itself; production's search_secs starts
+        # after the prior has run, so this is the only place it is charged.
+        self.oracle_prior_secs = 0.0
 
     def _candidates(self, rnd, seat):
         if self._oracle_pruned is not None:
@@ -380,6 +383,7 @@ class OraclePriorMixin:
         n = int(self.PRIOR_WORLDS)
         if n <= 0:
             raise OracleScreenError("PRIOR_WORLDS must be positive")
+        started = time.perf_counter()
         seed = _child_seed(self.rng.getstate(), "oracle-prior")
         mem = Memory(rnd, seat, own_kitty=getattr(self, "BANKER_KITTY", True))
         i_attack = rnd.is_attacker(seat)
@@ -409,6 +413,7 @@ class OraclePriorMixin:
         finally:
             self.rng = original_rng
             self.EXACT_ENDGAME = exact_flag
+            self.oracle_prior_secs += time.perf_counter() - started
         delta = self._sampler_delta(before)
         self.oracle_prior_sample_attempts += delta["sample_attempts"]
         self.oracle_prior_accepted_worlds += delta["accepted_worlds"]
@@ -644,6 +649,8 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int
         "cluster": cluster, "seed": seed, "mirror": mirror,
         "wall_secs": round(wall, 4),
         "arm_search_secs": round(a1.search_secs + a2.search_secs, 4),
+        "arm_prior_secs": round(
+            sum(getattr(b, "oracle_prior_secs", 0.0) for b in (a1, a2)), 4),
         "baseline_search_secs": round(b1.search_secs + b2.search_secs, 4),
     }
     return record, timing
@@ -922,6 +929,7 @@ def runtime_receipt(*, workers: int, wall_secs: float, argv: list[str],
         "round_wall_secs_mean": round(_mean(walls), 3) if walls else None,
         "round_wall_secs_max": round(max(walls), 3) if walls else None,
         "arm_search_secs": round(sum(t["arm_search_secs"] for t in timings), 3),
+        "arm_prior_secs": round(sum(t["arm_prior_secs"] for t in timings), 3),
         "baseline_search_secs": round(
             sum(t["baseline_search_secs"] for t in timings), 3),
         "started": time.strftime("%Y-%m-%d %H:%M:%S"),

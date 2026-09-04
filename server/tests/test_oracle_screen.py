@@ -1,4 +1,4 @@
-"""Oracle ceiling screen: neutral knobs are production, work is counted, and
+"""Oracle probe screen (not a ceiling): neutral knobs are production, work is counted, and
 fixed seeds reproduce byte for byte at any worker count.
 
 Every arm is a subclass mixed over the registered production class, so the

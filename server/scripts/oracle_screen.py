@@ -29,8 +29,10 @@ clusters, each played in both mirrors.  Fixed seeds reproduce rounds.jsonl and
 summary.json byte for byte at any worker count; wall-clock lives in
 timing.jsonl and runtime.json.
 
-This is a tier-i ceiling screen: non-promotable, verdict-free, and the arms
-are not candidate policies.
+This is a tier-i expensive-probe screen, NOT a ceiling: non-promotable,
+verdict-free, the arms are not candidate policies, and a weak or null
+result is non-closing for the learned value/prior direction (see the
+INTERPRETATION section of shengji/oracle/screen.py).
 """
 from __future__ import annotations
 

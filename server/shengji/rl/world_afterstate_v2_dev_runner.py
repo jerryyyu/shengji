@@ -37,7 +37,7 @@ from .world_afterstate_v2_metrics import build_natural_fit_prior
 from .world_afterstate_v2_reopen import reopen_jeffreys_prior_v2
 from .world_afterstate_v2_selection import EpochSelectPopulationV2
 from .world_afterstate_v2_training import (
-    WorldAfterstateV2TrainingConfig,
+    WorldAfterstateV2TrainingConfig, training_population_sha256,
 )
 from .world_afterstate_v2_training_controller import (
     CohortTrainingBuildV2, reopen_cohort_build, train_named_cohort,
@@ -384,14 +384,14 @@ def _train(root: Path, run_id: str, values: Sequence[Any], bundles: Sequence[Any
     config = WorldAfterstateV2TrainingConfig(
         learning_rate_ppb=10_000_000, weight_decay_ppb=0,
         gradient_norm_milli=1_000, max_epochs=20, sigma_pair_squared=sigma)
-    schedule, _ = training_epoch_batches(
+    _schedule, binding_batches = training_epoch_batches(
         rows, epoch=1, data_order_seed=0, cohort="primary",
         control_name="natural", batch_example_cap=256)
     binding = RecoveryStoreBindingV2(
         freeze_sha256=_identity(run_id, "legacy-freeze"),
         admission_sha256=_identity(run_id, "legacy-admission"),
         cohort_name="natural", seed_block=1,
-        population_sha256=schedule.population_sha256,
+        population_sha256=training_population_sha256(binding_batches),
         selection_population_sha256=selection.population_sha256,
         config_sha256=config.sha256(), member_count=4)
     store = WorldAfterstateV2RecoveryStore(private / "recovery", binding=binding)

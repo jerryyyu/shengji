@@ -15,6 +15,7 @@ from shengji.rl.world_afterstate_v2_training import (
     WorldAfterstateV2TrainingError, WorldAfterstateV2TrainingExample,
     WorldAfterstateV2TrainingConfig, collate_training_examples, model_state_sha256,
     new_optimizer, root_balanced_loss, train_epoch,
+    training_population_sha256,
 )
 
 
@@ -146,6 +147,7 @@ def test_paired_crn_binding_and_actual_update_are_deterministic():
     assert receipt1.paired_target_error_nano >= 0
     assert receipt1.model_state_sha256_before != receipt1.model_state_sha256_after
     assert model_state_sha256(first) == model_state_sha256(second)
+    assert receipt1.population_sha256 == training_population_sha256((batch,))
 
 
 def test_train_epoch_validates_each_immutable_batch_once(monkeypatch):

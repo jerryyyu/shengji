@@ -1,16 +1,25 @@
 import dataclasses
 import hashlib
 
+import numpy as np
 import pytest
 
 from shengji.rl import world_afterstate_v2_selection as selection
 from shengji.rl.belief_contract import canonical_json_bytes
+from shengji.rl.douzero_micro import HISTORY_EVENT_DIM
+from shengji.rl.world_afterstate import WorldAfterstateTensorsV0
 from shengji.rl.world_afterstate_v2_schedule import select_common_epoch
 from shengji.rl.world_afterstate_v2_checkpoint import (
     checkpoint_bytes, reopen_checkpoint)
 from shengji.rl.world_afterstate_v2_diagnostics import OptimizerCanaryReceiptV2
 from shengji.rl.world_afterstate_v2_training import (
-    WorldAfterstateV2TrainingConfig,
+    WorldAfterstateV2TrainingConfig, training_population_sha256,
+)
+from shengji.rl.world_afterstate_v2_schedule import (
+    BLOCK_1, training_epoch_batches,
+)
+from shengji.rl.world_afterstate_v2_training_recovery_store import (
+    RecoveryStoreBindingV2, WorldAfterstateV2RecoveryStore,
 )
 from shengji.rl.world_afterstate_v2_selection import EpochSelectPopulationV2
 from shengji.rl.world_afterstate_v2_training_controller import (
@@ -85,6 +94,53 @@ def test_happy_path_reopens_four_checkpoints_and_progress():
     assert progress[-1]["percent_basis_points"] == 10_000
     assert all(item["authority"][key] is False
                for item in progress for key in item["authority"])
+
+
+def test_real_recovery_callback_publishes_and_resumes_exact_cohort(tmp_path):
+    values = tuple(dataclasses.replace(
+        row, tensors=WorldAfterstateTensorsV0(
+            row.tensors.public,
+            np.zeros((1, HISTORY_EVENT_DIM), dtype=np.float32),
+            row.tensors.world, row.tensors.perspective))
+        for row in _rows("real-recovery"))
+    config = _config()
+    selection_population = _selection_population()
+    _schedule, batches = training_epoch_batches(
+        values, epoch=1, data_order_seed=BLOCK_1.data_order_seeds[0],
+        cohort="primary", control_name="natural", batch_example_cap=256)
+    freeze = hashlib.sha256(b"freeze").hexdigest()
+    store = WorldAfterstateV2RecoveryStore(
+        tmp_path / "recovery",
+        RecoveryStoreBindingV2(
+            freeze_sha256=freeze,
+            admission_sha256=hashlib.sha256(b"admission").hexdigest(),
+            cohort_name="natural", seed_block=1,
+            population_sha256=training_population_sha256(batches),
+            selection_population_sha256=
+            selection_population.population_sha256,
+            config_sha256=config.sha256(), member_count=4))
+
+    def persist(raws):
+        store.publish_epoch(len(store.reopen_history()) + 1, raws)
+
+    first = train_named_cohort(
+        cohort_name="natural", values=values, freeze_sha256=freeze,
+        config=config, selection_population=selection_population,
+        wall_budget_nanoseconds=10**15, torch_threads=1,
+        recovery_callback=persist, clock=lambda: 0)
+    history = store.reopen_history()
+    assert len(history) == 1 and len(history[0]) == 4
+
+    second = train_named_cohort(
+        cohort_name="natural", values=values, freeze_sha256=freeze,
+        config=config, selection_population=selection_population,
+        wall_budget_nanoseconds=10**15, torch_threads=1,
+        recovery_history=history,
+        recovery_callback=lambda _raws: (_ for _ in ()).throw(
+            AssertionError("sealed epoch was recomputed")),
+        clock=lambda: 0)
+    assert second.manifest == first.manifest
+    assert second.selected_checkpoint_raws == first.selected_checkpoint_raws
 
 
 def test_controller_validates_selection_population_once_before_hot_loop(

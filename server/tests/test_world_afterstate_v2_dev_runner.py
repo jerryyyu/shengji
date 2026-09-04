@@ -6,6 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from test_world_afterstate_v2_training import _rows
+from shengji.rl.world_afterstate_v2_training import (
+    collate_training_examples, training_population_sha256,
+)
+
 from shengji.rl.belief_contract import canonical_json_bytes
 from shengji.rl.world_afterstate_v2_dev_runner import (
     SCHEMA, WorldAfterstateV2DevRunnerError,
@@ -21,6 +26,60 @@ def test_sigma_pair_squared_is_population_variance_of_replica_means():
         (1, 1, 1, 1, 1, 1, 1, 1),
         (3, 3, 3, 3, 3, 3, 3, 3),
     )) == 1.0
+
+
+def test_train_binds_recovery_to_label_bearing_population(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    rows = tuple(_rows("runner-recovery-binding"))
+    batches = (collate_training_examples(rows),)
+    schedule_population = "a" * 64
+    expected_population = training_population_sha256(batches)
+    assert expected_population != schedule_population
+    captured = {}
+
+    monkeypatch.setattr(
+        runner, "build_training_examples_v2",
+        lambda _material, _bundle: rows)
+    monkeypatch.setattr(
+        runner, "build_natural_fit_prior",
+        lambda _rows: SimpleNamespace(payload=lambda: {"prior": True}))
+    monkeypatch.setattr(
+        runner, "build_inference_root_v2", lambda material: material)
+    monkeypatch.setattr(
+        runner, "EpochSelectPopulationV2",
+        lambda roots, outcomes: SimpleNamespace(
+            population_sha256="b" * 64))
+    monkeypatch.setattr(
+        runner, "training_epoch_batches",
+        lambda *args, **kwargs: (
+            SimpleNamespace(population_sha256=schedule_population), batches))
+
+    class Store:
+        def __init__(self, _root, binding):
+            captured["binding"] = binding
+
+        def reopen_history(self):
+            return ()
+
+    monkeypatch.setattr(runner, "WorldAfterstateV2RecoveryStore", Store)
+
+    class ExpectedStop(Exception):
+        pass
+
+    def stop_training(**_kwargs):
+        raise ExpectedStop
+
+    monkeypatch.setattr(runner, "train_named_cohort", stop_training)
+    material = SimpleNamespace(
+        deal_sha256="c" * 64,
+        state=SimpleNamespace(source="natural"))
+    bundle = SimpleNamespace(deal_sha256=material.deal_sha256,
+                             candidates=())
+    with pytest.raises(ExpectedStop):
+        runner._train(
+            tmp_path, "run", (material,), (bundle,), (material,),
+            (bundle,), 1.0, progress=None)
+    assert captured["binding"].population_sha256 == expected_population
 
 
 def test_reopen_requires_canonical_terminal_and_exact_run_id(tmp_path: Path):

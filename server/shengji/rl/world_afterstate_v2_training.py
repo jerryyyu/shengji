@@ -734,6 +734,30 @@ def train_epoch(model: WorldAfterstateValueV2, optimizer: torch.optim.Optimizer,
     return receipt
 
 
+def training_population_sha256(
+        batches: tuple[WorldAfterstateV2TrainingBatch, ...]) -> str:
+    """Return the exact label-bearing population identity used by an epoch."""
+    if type(batches) is not tuple or not batches \
+            or any(type(batch) is not WorldAfterstateV2TrainingBatch
+                   for batch in batches):
+        raise WorldAfterstateV2TrainingError(
+            "V2 training population request drift")
+    population = []
+    for batch in batches:
+        batch.validate()
+        population.extend({
+            "example_key": key, "target_category": int(target),
+            "successor_sha256": successor,
+            "continuation_sha256": continuation,
+        } for key, target, successor, continuation in zip(
+            batch.example_keys, batch.target_categories.tolist(),
+            batch.successor_sha256s, batch.continuation_sha256s,
+            strict=True))
+    return _sha({"schema": POPULATION_SCHEMA,
+                 "rows": sorted(population,
+                                key=lambda row: row["example_key"])})
+
+
 __all__ = [
     "REPLICATES", "TRAINING_SPLITS", "COHORTS",
     "WorldAfterstateV2TrainingError", "WorldAfterstateV2TrainingExample",
@@ -741,4 +765,5 @@ __all__ = [
     "WorldAfterstateV2EpochReceipt",
     "collate_training_examples", "model_state_sha256",
     "new_optimizer", "root_balanced_loss", "train_epoch",
+    "training_population_sha256",
 ]

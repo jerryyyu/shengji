@@ -34,7 +34,7 @@ from .world_afterstate_v2_training import (
     SCHEDULE_SCHEMA as TRAINING_SCHEDULE_SCHEMA,
     WorldAfterstateV2EpochReceipt, WorldAfterstateV2TrainingConfig,
     WorldAfterstateV2TrainingExample, model_state_sha256, new_optimizer,
-    train_epoch,
+    train_epoch, training_population_sha256,
 )
 
 
@@ -326,7 +326,7 @@ def _reopen_cohort_history(
             new_world_afterstate_v2_model(block.initialization_seeds[member]))
         for epoch_index, current in enumerate(opened, 1):
             item = current[member]
-            schedule, _ = _schedule_and_batches(
+            schedule, batches = _schedule_and_batches(
                 values, epoch=epoch_index,
                 data_order_seed=block.data_order_seeds[member], cohort=cohort,
                 control_name=cohort_name, natural_values=natural_values,
@@ -334,7 +334,8 @@ def _reopen_cohort_history(
             if (item.receipt.model_state_sha256_before != prior_state_sha
                     or item.receipt.schedule_sha256 !=
                     _training_schedule_sha(schedule)
-                    or item.receipt.population_sha256 != schedule.population_sha256
+                    or item.receipt.population_sha256 !=
+                    training_population_sha256(batches)
                     or item.receipt.model_state_sha256_after !=
                     model_state_sha256(item.model)
                     or item.score.model_state_sha256 !=
@@ -407,14 +408,15 @@ def _reopen_member_history(
     snapshots: list[dict[str, torch.Tensor]] = []
     schedules: list[EpochScheduleV2] = []
     for epoch_index, item in enumerate(opened, 1):
-        schedule, _ = _schedule_and_batches(
+        schedule, batches = _schedule_and_batches(
             point_values, epoch=epoch_index,
             data_order_seed=block.data_order_seeds[0], cohort="primary",
             control_name="natural", natural_values=None,
             batch_example_cap=batch_example_cap)
         if (item.receipt.model_state_sha256_before != prior_state_sha
                 or item.receipt.schedule_sha256 != _training_schedule_sha(schedule)
-                or item.receipt.population_sha256 != schedule.population_sha256
+                or item.receipt.population_sha256 !=
+                training_population_sha256(batches)
                 or item.receipt.model_state_sha256_after !=
                 model_state_sha256(item.model)
                 or item.score.model_state_sha256 !=

@@ -11366,3 +11366,12 @@ THE DIRECTION:
 7. PROCESS: tier i throughout — no design doc to bind, no freeze/packet/marker/confirmation; one dev-mode change after the D64 seal; one ledger line per seal; reviewer changes get Codex review and vice versa, over the bus. This is V2 with a new data plan, not V3.
 
 SUCCESS CRITERION: a search variant using the distilled value/prior beats mc-s0-report-lcb on a paired screen at equal work; then, and only then, tier iii confirmation.
+
+## 2026-09-04 — Claude: AMENDMENT to 29871a60 (Jerry, in-session) — training targets are AlphaZero-style, not imitation
+
+Jerry: "for value I think we care more about learning the final game state; for policy prediction I'm not sure we want to learn that exact policy — for AlphaGo MCTS/PUCT the policy objective was how many times we reach the tree, not whether the player picked it." Correct, and adopted:
+- VALUE head target = the FINAL OUTCOME from the afterstate (signed level utility / points): Luna game outcomes for fine-tuning, trajectory self-play outcomes at scale. Search-value means (high-N 240-world, production EV blobs) are at most auxiliary targets.
+- POLICY-PRIOR head target = the SEARCH'S OWN ALLOCATION DISTRIBUTION over candidates (the analog of AlphaZero visit counts: n_by_candidate / eligible set / report winner, already recorded in mc-decision-v2 blobs), NOT the teacher's or anyone's chosen move. The search is the policy-improvement operator. Luna actions are for EVALUATION and disagreement mining only (PT1's negative stands).
+- The prior is defined over the EXHAUSTIVE LEGAL ACTION SET (an enumerator is required; the production ballot is a capped heuristic subset: MAX 8 / LEAD 14 / FOLLOW 12 / BURY 32), and self-play adds ROOT EXPLORATION (occasional random ballot widening, the Dirichlet-noise analog) so off-ballot moves can earn mass.
+- Trajectory mode must persist, per decision: raw state, legal set, the search's allocation distribution, the played action, and the final outcome — never tensors.
+- Loop: prior guides ballot ordering/allocation -> search produces allocations + outcomes -> retrain value + prior -> repeat. Equal-work screen vs mc-s0-report-lcb in the RLCB paired harness remains the success criterion.

@@ -66,6 +66,9 @@ def test_public_rows_withhold_state(extraction):
     for public, private in zip(extraction.public, extraction.private):
         assert public["deck"] is None and public["round_seed"] is None
         assert public["state_private"] is True and public["hidden_hands"] is None
+        assert public["setup"]["buried"] is None and len(private["setup"]["buried"]) == 8
+        assert {k: v for k, v in public["setup"].items() if k != "buried"} == {
+            k: v for k, v in private["setup"].items() if k != "buried"}
         assert private["public_record_sha256"] == public["record_sha256"]
         assert public["ballot"] == private["ballot"]
         assert public["production_ballot"] == private["production_ballot"]

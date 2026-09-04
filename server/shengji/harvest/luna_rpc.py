@@ -20,7 +20,9 @@ Format facts this extractor relies on (verified against the data)
   (``_advance_forced``): ``policy = "forced:single-candidate"``;
 * the trajectory records hands, not a deal order.  A synthetic deck that
   reproduces the hands is built (``rebuild.synthetic_deck``) and, being
-  hidden-hand data, lives only in the private split (``state_private``).
+  hidden-hand data, lives only in the private split (``state_private``);
+  the burial (``hidden_burial``) is withheld from public rows for the same
+  reason (``setup.buried = null`` there).
 """
 
 from __future__ import annotations
@@ -210,7 +212,10 @@ def extract_luna(roots: Sequence[Path] = LUNA_ROOTS, *, cap: int | None = 256,
                 failed_throws += 1
                 record = finalize_record({**record, "engine_play": played})
             prefix.append({"seat": seat, "cards": played})
-            public, private = split_record(record, private_fields=("deck",))
+            # the deal order AND the burial are hidden-world data: public
+            # rows carry neither (state_private); the private twin has both
+            public, private = split_record(
+                record, private_fields=("deck", "setup.buried"))
             result.add(public, private)
             decisions += 1
         if rnd.phase != "round_end" or rnd.attacker_points != final_points:

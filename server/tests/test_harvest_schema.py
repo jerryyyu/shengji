@@ -82,10 +82,12 @@ def test_state_private_keeps_deck_only_in_private_split():
     hidden = {"hands_by_seat": [[], [], [], []], "buried": []}
     record = schema.finalize_record(_fields(round_seed=None, deck=deck,
                                             hidden_hands=hidden))
-    public, private = schema.split_record(record, private_fields=("deck",))
+    public, private = schema.split_record(record, private_fields=("deck", "setup.buried"))
     assert public["deck"] is None and public["round_seed"] is None
     assert public["state_private"] is True
     assert private["deck"] == deck and "state_private" not in private
+    assert public["setup"]["buried"] is None
+    assert public["setup"]["trump_rank"] == private["setup"]["trump_rank"]
 
 
 def test_pseudonym_matches_human_shards():

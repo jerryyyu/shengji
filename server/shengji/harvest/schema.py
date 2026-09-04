@@ -237,13 +237,18 @@ def public_projection(record: Mapping[str, Any],
     """The public row: ``hidden_hands`` (and any private-only field) removed.
 
     ``private_fields`` are set to null (the key stays, so the schema shape is
-    stable) and ``state_private`` is stamped when a state field is withheld.
+    stable; a dotted name such as ``setup.buried`` nulls a nested key) and
+    ``state_private`` is stamped when a state field is withheld.
     """
     public = {k: v for k, v in record.items()
               if k not in PRIVATE_ONLY_FIELDS}
     public["hidden_hands"] = None
     for key in private_fields:
-        if key in public:
+        if "." in key:
+            parent, child = key.split(".", 1)
+            if isinstance(public.get(parent), dict) and child in public[parent]:
+                public[parent] = {**public[parent], child: None}
+        elif key in public:
             public[key] = None
     if any(key in ("deck", "round_seed") for key in private_fields):
         public["state_private"] = True

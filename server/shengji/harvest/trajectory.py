@@ -26,9 +26,17 @@ Record mapping (``shengji-decision-record-v1``, ``source: "trajectory"``)
 * ``round_seed`` and ``deck`` are both public: the deal is the
   reproducibility handle (as for room-log/highn); ``hidden_hands`` is null
   and there is no private split.
-* ``ballot`` is the candidate list the search actually ran, exploration-added
-  entries included; ``production_ballot`` is present only when exploration
-  widened it and holds the plain ``MCBot._candidates`` list.
+* ``ballot`` is the candidate list the search actually ran: the data
+  policy's own ``_candidates`` list, then the ``--widen`` additions, then
+  the exploration draw.  ``production_ballot`` holds PRODUCTION's list --
+  the registry class's ``_candidates`` with NO ``--knob`` override applied
+  (computed on a separate, unmodified instance of the base class when
+  overrides are active) -- and is present whenever the ballot may differ
+  from it: on every decision that reached a ballot in a ``--knob`` or
+  ``--widen`` run, and on the decisions exploration widened otherwise.
+  This is load-bearing: the ballot-gap and prior analyses read
+  ``production_ballot`` as "what production would have considered", so it
+  is never the overridden class's list.
 * ``legal_actions`` is the BOUNDED listing of ``harvest.legal`` (cap 256 by
   default; the ballot and the taken action are always included, and
   ``legal_actions_complete`` / ``legal_actions_count`` say exactly what was
@@ -124,6 +132,50 @@ Added candidates receive selection worlds like any other candidate.  A
 tractor-locked lead returns before a ballot exists (as in the oracle prior
 arm) and is never widened.
 
+Class-knob overrides (``--knob NAME=VALUE``)
+--------------------------------------------
+The DATA policy may differ from production by class knobs alone.  Each
+override names an existing public scalar class attribute of the registry
+policy's class and is coerced to that attribute's own type (bool accepts
+0/1/true/false; int; finite float; str); unknown names, duplicates, bad
+values, names the registry factory sets per instance, and the two-sided
+work knobs ``N_DETERMINIZATIONS`` / ``REPORT_FOLD_WORLDS`` (those go
+through ``--select-worlds`` / ``--report-worlds``, stamped as effective
+work) refuse before any round.  The data policy is then
+``type("Knobs_<Base>", (base_cls,), overrides)`` with ``TrajectoryMixin``
+layered on top exactly as without overrides, so every seat searches the
+overridden class's ballot, while ``production_ballot`` is computed from the
+UNMODIFIED base class: a second, plain registry instance at the same seat
+seed is the probe, and its ``_candidates`` list is what the record stores.
+``policy`` stays the registry name (``make_bot(policy)`` still builds
+production).  The sorted override set is part of ``run_id`` and is stamped
+in ``run.json`` / ``manifest.json`` as ``config.knobs``, so a store
+generated with overrides can never be resumed or mixed with one generated
+without them (``--resume`` with a different set refuses).  ``policy_flags``
+and ``work.effective.report_rule`` describe the data policy (overrides
+applied); ``work.registered`` is production's.  Without ``--knob`` the
+records, sidecars and ``run_id`` are byte-identical to a run before this
+option existed.
+
+Ballot widening (``--widen VARIANT``)
+--------------------------------------
+On top of any overrides and before the exploration draw, the search ballot
+becomes the data policy's list followed by the candidates of the selected
+``harvest.ballot_capture`` variants (``wide``, ``all-trump``,
+``top-2-suit``, ``top-3-suit``, ``points``; ``union`` = wide + all-trump +
+top-3-suit + points) that are not already on it -- every one engine-legal
+(``harvest.legal.is_legal``), in sorted ``action_key`` order.  Each play
+record of such a run carries ``widening = {"variants": [the run's sorted
+variant names], "added": [the appended candidates]}`` (``null`` for a
+tractor-locked lead, which never reaches a ballot; ``--knob
+TRACTOR_LOCK=0`` searches every lead).  Widened candidates receive
+selection worlds like any other candidate, so the search work scales with
+the widened ballot (``allocation.selection_worlds`` has one entry per
+ballot candidate).  The sorted variant list is part of ``run_id`` and is
+stamped as ``config.widen``; runs without ``--widen`` omit the ``widening``
+key entirely and are byte-identical to a run of the same configuration
+before widening existed.
+
 Bury decisions
 --------------
 ``MCBot.decide_bury`` exposes ``last_bury_record`` only when ``MC_BURY`` is
@@ -147,8 +199,9 @@ temporary name and ``os.replace``d into place, then made read-only.  Memory
 holds one cluster at a time.  Progress lines carry counts only.
 
 ``run.json`` pins the run identity (``run_id`` = a digest of policy, seed0,
-exploration knobs, effective work and cap -- never the wall clock) alongside
-the package-source and native-backend identity.  ``--resume`` reopens an out
+exploration knobs, effective work, cap and, when present, the class-knob
+overrides and widening variants -- never the wall clock) alongside the
+package-source and native-backend identity.  ``--resume`` reopens an out
 dir with the SAME run_id:
 clusters whose shard and sidecar verify (identity, sha256, byte size,
 record count) are kept, missing or invalid ones are regenerated, and a
@@ -173,6 +226,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import inspect
 import json
 import math
 import multiprocessing
@@ -194,10 +248,11 @@ from ..ai.registry import make_bot
 from ..engine.game import Game
 from ..engine.round import actual_play_after
 from ..evaluation import counters as production_counters
+from . import ballot_capture
 from .common import action_key, sha256_file, write_jsonl
 from .legal import (COUNT_CEILING, DEFAULT_CAP, LegalSet, bury_action_count,
                     count_follow_actions, count_lead_actions, enumerate_legal,
-                    iter_follow_actions, iter_lead_actions)
+                    is_legal, iter_follow_actions, iter_lead_actions)
 from .rebuild import (actor_role, deck_from_seed, outcome_for,
                       round_from_setup, setup_from_round)
 from .schema import SCHEMA, canonical_json, finalize_record
@@ -226,9 +281,17 @@ SEAT_SEED_OFFSETS = (0, 500_000, 1_000_000, 1_500_000)
 #: test-only fault injection: comma-separated cluster indices whose task
 #: raises before doing any work (inherited by spawned workers)
 FAIL_CLUSTERS_ENV = "SHENGJI_TRAJECTORY_FAIL_CLUSTERS"
+#: search work has its own two-sided flags (``--select-worlds`` /
+#: ``--report-worlds``) and is stamped as ``work.effective``; a class-knob
+#: override of it would bypass that stamp, so it is refused
+KNOB_WORK_NAMES = ("N_DETERMINIZATIONS", "REPORT_FOLD_WORLDS")
+#: ``--widen`` names: the candidate-set variants of ``ballot_capture``
+#: (``production`` is their baseline, not a widening)
+WIDEN_VARIANTS = tuple(v for v in ballot_capture.VARIANTS if v != "production")
 COUNT_KEYS = ("rounds", "decisions", "bury_records", "searched", "tractor_locked",
               "single_candidate", "explore_opportunities", "explore_fired",
               "explore_added", "explore_played", "explore_pool_skipped",
+              "widen_decisions", "widen_added", "widen_played",
               "short_searches", "zero_world", "incomplete_work", "failed_throws",
               "plays", "records")
 SERVER = Path(__file__).resolve().parents[2]
@@ -285,35 +348,180 @@ def sample_off_ballot(rnd, seat: int, k: int, rng: random.Random,
     return [list(key) for _, key in reservoir], n
 
 
+# ----------------------------------------------------- class-knob overrides
+
+def _coerce_knob(name: str, current, raw):
+    """Coerce ``raw`` (a command-line string or a native value) to the type
+    of the attribute's current value; refuse anything that does not
+    round-trip."""
+    if isinstance(current, bool):
+        if isinstance(raw, bool):
+            return raw
+        text = str(raw).strip().lower()
+        if text in ("1", "true"):
+            return True
+        if text in ("0", "false"):
+            return False
+        raise TrajectoryError(
+            f"knob {name}: {raw!r} is not a bool (use 0/1/true/false)")
+    if isinstance(current, int):
+        if isinstance(raw, bool):
+            raise TrajectoryError(f"knob {name}: expects an int, got {raw!r}")
+        if isinstance(raw, int):
+            return raw
+        try:
+            return int(str(raw).strip())
+        except ValueError:
+            raise TrajectoryError(f"knob {name}: {raw!r} is not an int") from None
+    if isinstance(current, float):
+        if isinstance(raw, bool):
+            raise TrajectoryError(f"knob {name}: expects a float, got {raw!r}")
+        try:
+            value = float(str(raw).strip()) if isinstance(raw, str) else float(raw)
+        except (TypeError, ValueError):
+            raise TrajectoryError(f"knob {name}: {raw!r} is not a float") from None
+        if not math.isfinite(value):
+            raise TrajectoryError(f"knob {name}: {raw!r} is not finite")
+        return value
+    if isinstance(current, str):
+        if not isinstance(raw, str):
+            raise TrajectoryError(f"knob {name}: expects a str, got {raw!r}")
+        return raw
+    raise TrajectoryError(
+        f"knob {name}: its value {current!r} ({type(current).__name__}) is not "
+        "a bool/int/float/str class knob and cannot be overridden")
+
+
+def parse_knob_overrides(base_cls: type, specs) -> dict:
+    """``NAME=VALUE`` strings (or a ``{NAME: value}`` mapping) -> a dict of
+    class-attribute overrides, sorted by name and coerced to each
+    attribute's type.  Only public scalar class attributes that
+    ``base_cls`` already exposes are accepted; the work knobs with their own
+    two-sided flags are refused (module docstring)."""
+    if isinstance(specs, dict):
+        items = list(specs.items())
+    else:
+        items = []
+        for spec in specs or ():
+            if not isinstance(spec, str) or "=" not in spec:
+                raise TrajectoryError(f"knob {spec!r}: expected NAME=VALUE")
+            name, _, value = spec.partition("=")
+            items.append((name.strip(), value))
+    out: dict = {}
+    for name, raw in items:
+        if not name.isidentifier() or name.startswith("_"):
+            raise TrajectoryError(f"knob {name!r}: not a public attribute name")
+        if name in out:
+            raise TrajectoryError(f"knob {name}: given more than once")
+        if name in KNOB_WORK_NAMES:
+            raise TrajectoryError(
+                f"knob {name}: search work is not a policy knob; "
+                "--select-worlds/--report-worlds set it (stamped as effective work)")
+        try:
+            current = inspect.getattr_static(base_cls, name)
+        except AttributeError:
+            raise TrajectoryError(
+                f"unknown knob {name}: not a class attribute of "
+                f"{base_cls.__name__}") from None
+        if callable(current) or hasattr(current, "__get__"):
+            raise TrajectoryError(
+                f"knob {name}: {base_cls.__name__}.{name} is a method or "
+                "descriptor, not a class knob")
+        out[name] = _coerce_knob(name, current, raw)
+    return dict(sorted(out.items()))
+
+
+_KNOBS_CLASSES: dict[tuple, type] = {}
+
+
+def knobs_class(base_cls: type, overrides: dict) -> type:
+    """The registry class with class attributes overridden; one class per
+    (base, override set), so every seat of a run shares its identity."""
+    key = (base_cls, tuple(sorted(overrides.items())))
+    cls = _KNOBS_CLASSES.get(key)
+    if cls is None:
+        cls = type(f"Knobs_{base_cls.__name__}", (base_cls,),
+                   dict(sorted(overrides.items())))
+        _KNOBS_CLASSES[key] = cls
+    return cls
+
+
+# ---------------------------------------------------------- ballot widening
+
+def parse_widen(specs) -> list[str]:
+    """``--widen`` names -> the sorted, de-duplicated variant list; an
+    unknown name refuses."""
+    names: list[str] = []
+    for spec in specs or ():
+        name = spec.strip() if isinstance(spec, str) else spec
+        if name not in WIDEN_VARIANTS:
+            raise TrajectoryError(
+                f"unknown widen variant {spec!r}: expected one of "
+                + ", ".join(WIDEN_VARIANTS))
+        if name not in names:
+            names.append(name)
+    return sorted(names)
+
+
+def widen_extensions(variants) -> tuple[str, ...]:
+    """The ``ballot_capture`` extension functions a widen set expands to
+    (``union`` = its ``UNION_OF``), in the module's variant order."""
+    names: set[str] = set()
+    for name in variants:
+        names.update(ballot_capture.UNION_OF if name == "union" else (name,))
+    return tuple(n for n in ballot_capture.VARIANTS if n in names)
+
+
+def widen_candidates(rnd, seat: int, extensions, exclude) -> list[list[str]]:
+    """The candidates the widening appends at this state: the union of the
+    extensions' sets minus ``exclude``, engine-legal only, in sorted
+    ``action_key`` order (deterministic, so shard bytes stay reproducible)."""
+    excluded = {action_key(c) for c in exclude}
+    keys: set[tuple[str, ...]] = set()
+    for name in extensions:
+        keys.update(action_key(k) for k in ballot_capture.EXTENSIONS[name](rnd, seat))
+    return [list(k) for k in sorted(keys - excluded) if is_legal(rnd, seat, list(k))]
+
+
 # ------------------------------------------------------------------ the bot
 
 class TrajectoryMixin:
-    """Root exploration and ballot capture layered on a production MCBot.
+    """Root exploration, ballot widening and ballot capture layered on a
+    production MCBot (or on its ``Knobs_`` subclass).
 
     ``_candidates`` is the injection point: ``MCBot.decide_play`` calls it
     exactly once per decision that reaches a ballot and runs the search on
-    the list it returns.  The override records the production list, draws
-    the exploration sample from the dedicated stream over the full legal
-    enumeration, and enumerates the bounded listing for the record with the
-    whole ballot force-included.  The search stream ``self.rng`` is never
-    read here.
+    the list it returns.  The override records production's list (from the
+    unmodified probe when class knobs are active), appends the ``--widen``
+    candidates, draws the exploration sample from the dedicated stream over
+    the full legal enumeration, and enumerates the bounded listing for the
+    record with the whole ballot force-included.  The search stream
+    ``self.rng`` is never read here.
     """
 
     EXPLORE_RATE = 0.0
     EXPLORE_K = 0
     LEGAL_CAP: int | None = DEFAULT_CAP
+    #: the run's sorted ``--widen`` variant names (``()`` = no widening)
+    WIDEN: tuple[str, ...] = ()
 
-    def _trajectory_init(self, explore_rng: random.Random) -> None:
+    def _trajectory_init(self, explore_rng: random.Random,
+                         production_probe=None) -> None:
         self.explore_rng = explore_rng
+        #: an UNMODIFIED registry instance when class knobs are active: its
+        #: ``_candidates`` is what ``production_ballot`` records
+        self.production_probe = production_probe
         self.explore_opportunities = 0
         self.explore_fired = 0
         self.explore_added = 0
         self.explore_pool_skipped = 0
+        self.widen_added = 0
         self._trajectory_reset()
 
     def _trajectory_reset(self) -> None:
         self.last_ballot: list[list[str]] | None = None
         self.last_production_ballot: list[list[str]] | None = None
+        self.last_widening: dict | None = None
         self.last_exploration: dict | None = None
         self.last_legal: LegalSet | None = None
 
@@ -326,14 +534,28 @@ class TrajectoryMixin:
             raise TrajectoryError(
                 "MCBot._candidates was consulted twice in one decision; the "
                 "exploration draw would be repeated")
+        # the data policy's own list: the registry class's, or the Knobs_
+        # subclass's when overrides are active
         base = [list(c) for c in super()._candidates(rnd, seat)]
+        if self.production_probe is None:
+            production = [list(c) for c in base]
+        else:
+            production = [list(c) for c in self.production_probe._candidates(rnd, seat)]
         ballot = [list(c) for c in base]
+        widening = None
+        if self.WIDEN:
+            added = widen_candidates(rnd, seat, widen_extensions(self.WIDEN),
+                                     exclude=ballot)
+            ballot.extend(list(a) for a in added)
+            widening = {"variants": list(self.WIDEN),
+                        "added": [list(a) for a in added]}
+            self.widen_added += len(added)
         exploration = None
         if self.EXPLORE_RATE > 0 and self.EXPLORE_K > 0:
             self.explore_opportunities += 1
             if self.explore_rng.random() < self.EXPLORE_RATE:
                 added, pool_count = sample_off_ballot(
-                    rnd, seat, self.EXPLORE_K, self.explore_rng, exclude=base)
+                    rnd, seat, self.EXPLORE_K, self.explore_rng, exclude=ballot)
                 ballot.extend(list(a) for a in added)
                 exploration = {"rate": float(self.EXPLORE_RATE),
                                "added": [list(a) for a in added],
@@ -343,8 +565,9 @@ class TrajectoryMixin:
                 if pool_count is None:
                     self.explore_pool_skipped += 1
         legal = enumerate_legal(rnd, seat, cap=self.LEGAL_CAP, must_include=ballot)
-        self.last_production_ballot = base
+        self.last_production_ballot = production
         self.last_ballot = ballot
+        self.last_widening = widening
         self.last_exploration = exploration
         self.last_legal = legal
         return [list(c) for c in ballot]
@@ -364,17 +587,36 @@ def trajectory_class(base_cls: type) -> type:
 
 def make_trajectory_bot(config: dict, *, seed: int, explore_rng: random.Random):
     """The registry policy, built by name with its seed forwarded, re-classed
-    onto the mixin and given the run's exploration/work knobs."""
+    onto the mixin (over the ``Knobs_`` subclass when ``config["knobs"]`` is
+    non-empty) and given the run's exploration/widening/work knobs.
+
+    With overrides, a second, UNMODIFIED registry instance at the same seed
+    is attached as ``production_probe``: ``production_ballot`` is its
+    ``_candidates`` list, never the overridden class's (module docstring).
+    """
     bot = make_bot(config["policy"], seed=seed)
     if not isinstance(bot, MCBot):
         raise TrajectoryError(
             f"policy {config['policy']!r} is not an MCBot search policy: it "
             "has no ballot and no decision record to harvest")
-    bot.__class__ = trajectory_class(type(bot))
-    bot._trajectory_init(explore_rng)
+    overrides = dict(config.get("knobs") or {})
+    data_cls = type(bot)
+    probe = None
+    if overrides:
+        shadowed = [name for name in overrides if name in vars(bot)]
+        if shadowed:
+            raise TrajectoryError(
+                f"knob {shadowed[0]}: the registry factory for "
+                f"{config['policy']!r} sets it per instance; a class override "
+                "would be shadowed")
+        data_cls = knobs_class(type(bot), overrides)
+        probe = make_bot(config["policy"], seed=seed)
+    bot.__class__ = trajectory_class(data_cls)
+    bot._trajectory_init(explore_rng, production_probe=probe)
     bot.EXPLORE_RATE = float(config["explore_rate"])
     bot.EXPLORE_K = int(config["explore_k"])
     bot.LEGAL_CAP = config["cap"]
+    bot.WIDEN = tuple(config.get("widen") or ())
     work = config["work"]
     if work["select_worlds"] is not None:
         bot.N_DETERMINIZATIONS = int(work["select_worlds"])
@@ -401,7 +643,12 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                  explore_k: int = DEFAULT_EXPLORE_K,
                  select_worlds: int | None = None,
                  report_worlds: int | None = None,
-                 cap: int | None = DEFAULT_CAP) -> dict:
+                 cap: int | None = DEFAULT_CAP,
+                 knobs=None, widen=None) -> dict:
+    """``knobs`` (``--knob NAME=VALUE`` strings or a mapping) and ``widen``
+    (``--widen`` variant names) are validated here, so a bad override or an
+    unknown variant refuses before any round; they land in ``config.knobs``
+    (sorted, coerced) and ``config.widen`` (sorted, de-duplicated)."""
     if not 0.0 <= float(explore_rate) <= 1.0:
         raise TrajectoryError("explore_rate must be in [0, 1]")
     if int(explore_k) < 0:
@@ -413,12 +660,25 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         raise TrajectoryError(
             f"policy {policy!r} is not an MCBot search policy: it has no "
             "ballot and no decision record to harvest")
+    base_cls = type(probe)
+    overrides = parse_knob_overrides(base_cls, knobs)
+    shadowed = [name for name in overrides if name in vars(probe)]
+    if shadowed:
+        raise TrajectoryError(
+            f"knob {shadowed[0]}: the registry factory for {policy!r} sets it "
+            "per instance; a class override would be shadowed")
+    widen_names = parse_widen(widen)
     registered = {
         "n_determinizations": int(probe.N_DETERMINIZATIONS),
         "report_fold_worlds": int(probe.REPORT_FOLD_WORLDS),
         "report_rule": str(probe.REPORT_RULE),
     }
+    # from here on the probe IS the data policy: flags and the effective
+    # report rule describe what generates the records
+    data_cls = knobs_class(base_cls, overrides) if overrides else base_cls
+    probe.__class__ = data_cls
     effective = dict(registered)
+    effective["report_rule"] = str(probe.REPORT_RULE)
     if select_worlds is not None:
         if int(select_worlds) < 1:
             raise TrajectoryError("select_worlds must be >= 1")
@@ -439,8 +699,10 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
                               "worlds (MCBot refuses fewer)")
     config = {
         "policy": policy,
-        "policy_class": type(probe).__name__,
-        "trajectory_class": trajectory_class(type(probe)).__name__,
+        "policy_class": base_cls.__name__,
+        "trajectory_class": trajectory_class(data_cls).__name__,
+        "knobs": overrides,
+        "widen": widen_names,
         "seed0": int(seed0),
         "explore_rate": float(explore_rate),
         "explore_k": int(explore_k),
@@ -468,7 +730,11 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
 
 def run_id_for(config: dict) -> str:
     """A digest of what generates the records, so a rerun at the same seed
-    and knobs reproduces ``source_ref`` byte for byte."""
+    and knobs reproduces ``source_ref`` byte for byte.
+
+    Class-knob overrides and widening variants enter the payload only when
+    present, so a run without them keeps the run_id it had before those
+    options existed."""
     payload = {
         "policy": config["policy"],
         "seed0": config["seed0"],
@@ -477,6 +743,10 @@ def run_id_for(config: dict) -> str:
         "cap": config["cap"],
         "work": config["work"]["effective"],
     }
+    if config.get("knobs"):
+        payload["knobs"] = dict(sorted(config["knobs"].items()))
+    if config.get("widen"):
+        payload["widen"] = sorted(config["widen"])
     digest = hashlib.sha256(canonical_json(payload).encode("ascii")).hexdigest()
     return f"traj-s{config['seed0']}-{digest[:12]}"
 
@@ -658,6 +928,11 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
     legal = bot.last_legal
     production_ballot = None
     exploration = bot.last_exploration
+    widening = bot.last_widening
+    # class knobs or widening: the ballot may differ from production's list
+    # on ANY decision, so production's list is stamped on every one
+    if ballot is not None and (bot.production_probe is not None or bot.WIDEN):
+        production_ballot = bot.last_production_ballot
     if ballot is None:
         # a tractor-locked lead: returned before any ballot was enumerated
         stats["tractor_locked"] += 1
@@ -691,7 +966,12 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         added_keys = {action_key(a) for a in exploration["added"]}
         if action_key(action) in added_keys:
             stats["explore_played"] += 1
-    return {
+    if widening is not None:
+        stats["widen_decisions"] += 1
+        stats["widen_added"] += len(widening["added"])
+        if action_key(action) in {action_key(a) for a in widening["added"]}:
+            stats["widen_played"] += 1
+    fields = {
         **base,
         "source_ref": f"{run_id}:{cluster}:{mirror}:{seat}:{len(prefix)}",
         "decision_kind": "play",
@@ -711,6 +991,11 @@ def _play_fields(base: dict, run_id: str, cluster: int, mirror: int, rnd,
         "action": list(action),
         "exploration": exploration,
     }
+    if bot.WIDEN:
+        # only a widening run carries the key (null for a tractor-locked
+        # lead); other runs stay byte-identical
+        fields["widening"] = widening
+    return fields
 
 
 def _bury_fields(base: dict, run_id: str, cluster: int, mirror: int,
@@ -1255,6 +1540,19 @@ def _open_run(out_dir: Path, config: dict, ident: dict, *, resume: bool) -> bool
             raise TrajectoryError(
                 f"{out_dir} already holds run {existing.get('run_id')}; pass "
                 "--resume to continue it or choose a fresh directory")
+        old_config = existing.get("config") or {}
+        old_knobs = dict(old_config.get("knobs") or {})
+        if old_knobs != dict(config["knobs"]):
+            raise TrajectoryError(
+                f"resume refused: {out_dir} holds run {existing.get('run_id')} "
+                f"with class-knob overrides {old_knobs} but {dict(config['knobs'])} "
+                "were requested; shards of different data policies never mix")
+        old_widen = sorted(old_config.get("widen") or [])
+        if old_widen != sorted(config["widen"]):
+            raise TrajectoryError(
+                f"resume refused: {out_dir} holds run {existing.get('run_id')} "
+                f"widened by {old_widen} but {sorted(config['widen'])} was "
+                "requested; shards of different ballots never mix")
         if existing.get("run_id") != config["run_id"]:
             raise TrajectoryError(
                 f"resume refused: {out_dir} holds run {existing.get('run_id')} "
@@ -1283,12 +1581,13 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
              explore_k: int = DEFAULT_EXPLORE_K,
              select_worlds: int | None = None, report_worlds: int | None = None,
              cap: int | None = DEFAULT_CAP, merge: bool = False,
-             resume: bool = False,
+             resume: bool = False, knobs=None, widen=None,
              progress: Callable[[dict], None] | None = None,
              argv: list[str] | None = None) -> dict:
     """Generate the shard store in ``out_dir`` (+ ``trajectory.jsonl`` with
     ``merge``); returns the manifest.  Raises ``TrajectoryError`` when any
-    cluster failed (published shards are kept for ``--resume``)."""
+    cluster failed (published shards are kept for ``--resume``).
+    ``knobs`` / ``widen`` are the ``--knob`` / ``--widen`` lists."""
     os.environ.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
     if rounds < 2 or rounds % 2:
         raise TrajectoryError("rounds must be an even number >= 2: every "
@@ -1297,7 +1596,8 @@ def generate(*, rounds: int, seed0: int, out_dir: str | os.PathLike,
         raise TrajectoryError("workers must be >= 1")
     config = build_config(policy=policy, seed0=seed0, explore_rate=explore_rate,
                           explore_k=explore_k, select_worlds=select_worlds,
-                          report_worlds=report_worlds, cap=cap)
+                          report_worlds=report_worlds, cap=cap, knobs=knobs,
+                          widen=widen)
     out = Path(out_dir)
     ident = identity(config)
     resumed = _open_run(out, config, ident, resume=resume)
@@ -1348,6 +1648,16 @@ def build_parser() -> argparse.ArgumentParser:
                         help="override R report worlds (reduced work; LCB needs >= 30)")
     parser.add_argument("--cap", type=int, default=DEFAULT_CAP,
                         help=f"max legal actions listed per record (default {DEFAULT_CAP}; 0 = unbounded)")
+    parser.add_argument("--knob", action="append", default=[], metavar="NAME=VALUE",
+                        help="override one public scalar class attribute of the "
+                             "policy's class for the DATA policy (repeatable, e.g. "
+                             "V3_LEAD_SINGLES=1 LEAD_MAX_CANDIDATES=64); "
+                             "production_ballot stays the unmodified class's list; "
+                             "N_DETERMINIZATIONS/REPORT_FOLD_WORLDS go through "
+                             "--select-worlds/--report-worlds")
+    parser.add_argument("--widen", action="append", default=[], metavar="VARIANT",
+                        help="append a ballot_capture candidate-set variant to every "
+                             f"search ballot (repeatable; one of {', '.join(WIDEN_VARIANTS)})")
     parser.add_argument("--merge", action="store_true",
                         help="also write trajectory.jsonl (shards concatenated in cluster order)")
     parser.add_argument("--resume", action="store_true",
@@ -1373,7 +1683,8 @@ def main(argv: list[str] | None = None) -> int:
             workers=args.workers, policy=args.policy,
             explore_rate=args.explore_rate, explore_k=args.explore_k,
             select_worlds=args.select_worlds, report_worlds=args.report_worlds,
-            cap=cap, merge=args.merge, resume=args.resume, progress=progress,
+            cap=cap, merge=args.merge, resume=args.resume, knobs=args.knob,
+            widen=args.widen, progress=progress,
             argv=sys.argv if argv is None else ["trajectory", *argv])
     except TrajectoryError as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
@@ -1386,6 +1697,7 @@ def main(argv: list[str] | None = None) -> int:
           f"rounds={counts['rounds']} decisions={counts['decisions']} "
           f"bury_records={counts['bury_records']} searched={counts['searched']} "
           f"explored={counts['explore_fired']} added={counts['explore_added']} "
+          f"widened={counts['widen_decisions']} widen_added={counts['widen_added']} "
           f"short={counts['short_searches']} wall={wall}s "
           f"decisions/s={round(counts['decisions'] / wall, 3) if wall else None} "
           f"peak_rss_mb=self:{rss['self'] / 1e6:.1f},children:{rss['children_max'] / 1e6:.1f}",

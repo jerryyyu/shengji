@@ -1,9 +1,10 @@
 """trajectory generator: round-trip, determinism, width invariance,
 allocation vs preference, exploration over the full legal set, production
-identity, shard manifest, resume witnesses, bury path.
+identity, shard manifest, resume witnesses, bury path, class-knob overrides
+(``--knob``) and ballot widening (``--widen``).
 
 Reduced work (N=2 selection worlds, R=30 report worlds -- the LCB minimum)
-keeps the whole file around a minute of pure-engine self-play.
+keeps the whole file around a minute and a half of pure-engine self-play.
 """
 import hashlib
 import json
@@ -19,7 +20,7 @@ from shengji.ai.registry import make_bot
 from shengji.engine.combos import decompose
 from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
-from shengji.harvest import legal, rebuild, trajectory
+from shengji.harvest import ballot_capture, legal, rebuild, trajectory
 from shengji.harvest.common import action_key, sha256_file
 from shengji.harvest.schema import SchemaError, finalize_record, validate_record
 
@@ -28,6 +29,18 @@ ROUNDS = 2
 WORK = {"select_worlds": 2, "report_worlds": 30}
 EXPLORE = {"explore_rate": 0.5, "explore_k": 2}
 PLAIN = {"explore_rate": 0.0, "explore_k": 2}
+#: ``--knob`` overrides of the knobs fixture and their coerced values
+KNOBS = ["V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES=64"]
+KNOB_VALUES = {"LEAD_MAX_CANDIDATES": 64, "V3_LEAD_SINGLES": True}
+#: the Run B data-policy overrides (issue #205 follow-up)
+RUN_B_KNOBS = {"V3_LEAD_SINGLES": True, "LEAD_MAX_CANDIDATES": 64,
+               "FOLLOW_MAX_CANDIDATES": 64, "TRACTOR_LOCK": False,
+               "RETAIN_ALL_LEAD_PAIRS": True}
+WIDEN = ["union"]
+#: run_id of the PLAIN configuration as generated BEFORE --knob/--widen
+#: existed (c82eac20): the neutral witness -- a run without either option
+#: must keep the identity its stores already carry
+PLAIN_RUN_ID = "traj-s4100000-b8fbc705e8e1"
 
 
 def _read_dir(out):
@@ -44,9 +57,9 @@ def _read_dir(out):
 
 
 def _generate(out, *, workers=1, policy=trajectory.DEFAULT_POLICY, rounds=ROUNDS,
-              seed0=SEED0, merge=True, resume=False, **knobs):
+              seed0=SEED0, merge=True, resume=False, **options):
     trajectory.generate(rounds=rounds, seed0=seed0, out_dir=out, workers=workers,
-                        policy=policy, merge=merge, resume=resume, **WORK, **knobs)
+                        policy=policy, merge=merge, resume=resume, **WORK, **options)
     return _read_dir(out)
 
 
@@ -90,6 +103,19 @@ def clean4(tmp_path_factory):
     """An uninterrupted 4-round (2-cluster) plain run: the reference for the
     resume witnesses."""
     return _generate(tmp_path_factory.mktemp("clean4") / "run", rounds=4, **PLAIN)
+
+
+@pytest.fixture(scope="module")
+def knobs_run(tmp_path_factory):
+    """The plain configuration with the V3 lead singles and a 64-slot lead
+    cap as class-knob overrides: lead ballots widen, follows do not."""
+    return _generate(tmp_path_factory.mktemp("knobs") / "run", knobs=KNOBS, **PLAIN)
+
+
+@pytest.fixture(scope="module")
+def widen_run(tmp_path_factory):
+    """The plain configuration widened by ``--widen union``."""
+    return _generate(tmp_path_factory.mktemp("widen") / "run", widen=WIDEN, **PLAIN)
 
 
 # 1 ---------------------------------------------------------------- round trip
@@ -628,8 +654,8 @@ def test_refuses_unsupported_configurations(tmp_path):
         trajectory.run_clusters(config, rounds=2, seed0=1, out_dir=tmp_path, workers=0)
 
 
-def test_schema_exploration_and_preference_fields():
-    base = {
+def _schema_base():
+    return {
         "source": "trajectory", "source_ref": "r:0:0:1:1", "policy": "p",
         "round_seed": 7, "deck": None,
         "setup": {"trump_rank": "2", "banker": 0, "declarations": [],
@@ -642,6 +668,10 @@ def test_schema_exploration_and_preference_fields():
         "allocation": None, "action_values": None, "action": ["S4"],
         "outcome": None, "hidden_hands": None,
     }
+
+
+def test_schema_exploration_and_preference_fields():
+    base = _schema_base()
     ex = {"rate": 0.1, "added": [["S4"]], "pool_count": 1}
     ok = finalize_record({**base, "exploration": ex})
     assert ok["exploration"] == ex
@@ -662,3 +692,324 @@ def test_schema_exploration_and_preference_fields():
                 {**pref, "softmax": [1.5, -0.5]}, "nope"):
         with pytest.raises(SchemaError):
             finalize_record({**base, "preference": bad})
+
+
+def test_schema_widening_field():
+    base = _schema_base()
+    wd = {"variants": ["union"], "added": [["S4"]]}
+    assert finalize_record({**base, "widening": wd})["widening"] == wd
+    assert finalize_record({**base, "widening": None})["widening"] is None
+    assert "widening" not in finalize_record(base)          # sources that do not widen
+    empty = {"variants": ["points"], "added": []}
+    assert finalize_record({**base, "widening": empty})["widening"] == empty
+    for bad in ({"variants": [], "added": []}, {"variants": ["union"]},
+                {"variants": ["union"], "added": [["S9"]]},        # not on the ballot
+                {"variants": "union", "added": []}, {"variants": ["union"], "added": "S4"},
+                {"variants": [""], "added": []},
+                {"variants": ["union"], "added": [], "extra": 1}, "nope"):
+        with pytest.raises(SchemaError):
+            finalize_record({**base, "widening": bad})
+
+
+# K1 ------------------------------------ no --knob / --widen: bytes as today
+
+def test_no_knobs_and_no_widen_is_byte_identical(plain_run, tmp_path):
+    neutral = _generate(tmp_path / "neutral", knobs=[], widen=[], **PLAIN)
+    assert neutral["manifest"]["run_id"] == plain_run["manifest"]["run_id"] == PLAIN_RUN_ID
+    assert neutral["bytes"] == plain_run["bytes"]
+    assert neutral["shards"] == plain_run["shards"]
+    assert neutral["sidecars"] == plain_run["sidecars"]
+    assert neutral["manifest_bytes"] == plain_run["manifest_bytes"]
+    for spec in ({}, {"knobs": None}, {"knobs": []}, {"knobs": {}}, {"widen": None},
+                 {"widen": []}, {"knobs": [], "widen": []}):
+        cfg = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, **spec)
+        assert cfg["run_id"] == PLAIN_RUN_ID
+        assert cfg["knobs"] == {} and cfg["widen"] == []
+        assert cfg["trajectory_class"] == "Trajectory_MCS0ReportLCB"
+    cfg = plain_run["manifest"]["config"]
+    assert cfg["knobs"] == {} and cfg["widen"] == []
+    assert all("widening" not in r and "production_ballot" not in r
+               for r in plain_run["records"])
+
+
+# K2 ----------------------------------------------- refusals before any round
+
+def test_knob_and_widen_refusals_happen_before_any_round(tmp_path, capsys):
+    def refuses(match, **kw):
+        with pytest.raises(trajectory.TrajectoryError, match=match):
+            trajectory.build_config(seed0=1, **WORK, **kw)
+
+    refuses("unknown knob NOPE", knobs=["NOPE=1"])
+    refuses("not a bool", knobs=["V3_LEAD_SINGLES=maybe"])
+    refuses("given more than once", knobs=["LEAD_MAX_CANDIDATES=64",
+                                           "LEAD_MAX_CANDIDATES=32"])
+    refuses("search work is not a policy knob", knobs=["N_DETERMINIZATIONS=5"])
+    refuses("search work is not a policy knob", knobs=["REPORT_FOLD_WORLDS=30"])
+    refuses("not an int", knobs=["LEAD_MAX_CANDIDATES=1.5"])
+    refuses("not finite", knobs=["MARGIN=nan"])
+    refuses("not a public attribute name", knobs=["_rng=1"])
+    refuses("method or descriptor", knobs=["decide_play=1"])
+    refuses("expected NAME=VALUE", knobs=["LEAD_MAX_CANDIDATES"])
+    refuses("cannot be overridden", knobs=["LEAD_MARGIN=3"])          # None-valued
+    refuses("sets it per instance", policy="mc-s0-report-lcb-structured-bury",
+            knobs=["MC_BURY=0"])
+    refuses("unknown widen variant", widen=["nope"])
+    refuses("unknown widen variant", widen=["production"])
+    # accepted forms coerce to the attribute's own type, in any spelling
+    cfg = trajectory.build_config(seed0=1, **WORK, knobs=[
+        "V3_LEAD_SINGLES=true", "LEAD_MAX_CANDIDATES= 64 ", "MARGIN=2"])
+    assert cfg["knobs"] == {"LEAD_MAX_CANDIDATES": 64, "MARGIN": 2.0,
+                            "V3_LEAD_SINGLES": True}
+    assert cfg["knobs"] == trajectory.build_config(seed0=1, **WORK, knobs={
+        "MARGIN": 2, "V3_LEAD_SINGLES": 1, "LEAD_MAX_CANDIDATES": 64})["knobs"]
+    assert trajectory.parse_widen(["union", "wide", "union"]) == ["union", "wide"]
+    assert trajectory.widen_extensions(["union"]) == ballot_capture.UNION_OF
+    # the command line refuses the same way, before touching the out dir
+    out = tmp_path / "never"
+    base = ["--rounds", "2", "--seed", "1", "--out", str(out),
+            "--select-worlds", "2", "--report-worlds", "30"]
+    for extra, message in ((["--knob", "NOPE=1"], "unknown knob NOPE"),
+                           (["--knob", "N_DETERMINIZATIONS=5"], "search work"),
+                           (["--knob", "V3_LEAD_SINGLES=1", "--knob", "V3_LEAD_SINGLES=0"],
+                            "more than once"),
+                           (["--widen", "nope"], "unknown widen variant")):
+        assert trajectory.main([*base, *extra]) == 2
+        assert f"REFUSING: " in capsys.readouterr().err
+    assert not out.exists()
+
+
+# K3 ----------------- knobs widen the search; production_ballot stays production
+
+def _independent_knobs_bot(overrides, seed=0):
+    """The overridden class rebuilt from scratch, without the generator."""
+    bot = make_bot(trajectory.DEFAULT_POLICY, seed=seed)
+    bot.__class__ = type("IndependentKnobs", (type(bot),), dict(overrides))
+    return bot
+
+
+def test_knobs_widen_the_search_ballot_and_keep_production_ballot(knobs_run, plain_run):
+    records = knobs_run["records"]
+    manifest = knobs_run["manifest"]
+    assert manifest["run_id"] != plain_run["manifest"]["run_id"]
+    assert manifest["config"]["knobs"] == KNOB_VALUES
+    assert manifest["config"]["policy_class"] == "MCS0ReportLCB"
+    assert manifest["config"]["trajectory_class"] == "Trajectory_Knobs_MCS0ReportLCB"
+    assert manifest["counts"]["explore_fired"] == 0
+    production = make_bot(trajectory.DEFAULT_POLICY, seed=0)
+    knobbed = _independent_knobs_bot(KNOB_VALUES)
+    widened = 0
+    for r in records:
+        validate_record(r)
+        assert r["policy"] == trajectory.DEFAULT_POLICY   # make_bot(policy) builds production
+        assert "widening" not in r
+        rnd = rebuild.state_for_record(r)
+        if r["allocation"]["reason"] == "tractor_lock":
+            assert "production_ballot" not in r
+            continue
+        prod = r["production_ballot"]                      # on EVERY decision with a ballot
+        # production's list, computed independently from the base class ...
+        assert prod == [list(c) for c in production._candidates(rnd, r["seat"])]
+        # ... and the searched ballot is the overridden class's list
+        assert r["ballot"] == [list(c) for c in knobbed._candidates(rnd, r["seat"])]
+        assert r["ballot"][:len(prod)] == prod             # production first, then the widening
+        assert {action_key(c) for c in prod} <= {action_key(c) for c in r["ballot"]}
+        k = len(r["ballot"])
+        pref, alloc = r["preference"], r["allocation"]
+        for key in ("softmax", "final"):
+            assert len(pref[key]) == k and abs(sum(pref[key]) - 1.0) <= 1e-9
+        assert len(alloc["weights"]) == len(alloc["selection_worlds"]) == k
+        assert action_key(r["ballot"][alloc["played_index"]]) == action_key(r["action"])
+        if alloc["searched"]:
+            assert alloc["selection_worlds"] == [WORK["select_worlds"]] * k
+            assert len(r["action_values"]["means"]) == k
+        if k > len(prod):
+            widened += 1
+            assert r["ply"] % 4 == 0        # these overrides only touch LEAD ballots
+    assert widened > 0
+
+
+# K4 --------------------------------- manifest / run.json stamp the identity
+
+def test_manifest_and_run_json_stamp_knobs_and_widen(knobs_run, widen_run, plain_run):
+    for run, knobs, widen in ((knobs_run, KNOB_VALUES, []), (widen_run, {}, WIDEN),
+                              (plain_run, {}, [])):
+        manifest = run["manifest"]
+        run_json = json.loads((run["out"] / "run.json").read_text())
+        for cfg in (manifest["config"], run_json["config"]):
+            assert cfg["knobs"] == knobs and cfg["widen"] == widen
+        expected = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN,
+                                           knobs=knobs, widen=widen)["run_id"]
+        assert run_json["run_id"] == manifest["run_id"] == expected
+        assert all(s["run_id"] == manifest["run_id"] for s in
+                   (json.loads(b) for b in run["sidecars"].values()))
+        assert all(r["source_ref"].startswith(manifest["run_id"] + ":")
+                   for r in run["records"])
+    ids = {plain_run["manifest"]["run_id"], knobs_run["manifest"]["run_id"],
+           widen_run["manifest"]["run_id"]}
+    assert len(ids) == 3
+    # the override SET is the identity, not its spelling or order
+    for spelling in (["V3_LEAD_SINGLES=true", "LEAD_MAX_CANDIDATES=64"],
+                     ["LEAD_MAX_CANDIDATES=64", "V3_LEAD_SINGLES=1"], KNOB_VALUES):
+        cfg = trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, knobs=spelling)
+        assert cfg["run_id"] == knobs_run["manifest"]["run_id"]
+    for other in (["V3_LEAD_SINGLES=1"], ["V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES=32"],
+                  [*KNOBS, "TRACTOR_LOCK=0"]):
+        assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN,
+                                       knobs=other)["run_id"] not in ids
+    assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, widen=["union", "union"]
+                                   )["run_id"] == widen_run["manifest"]["run_id"]
+    assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, widen=["wide"]
+                                   )["run_id"] not in ids
+    assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, knobs=KNOBS,
+                                   widen=WIDEN)["run_id"] not in ids
+    # policy_flags describe the DATA policy; work.registered stays production's
+    cfg = trajectory.build_config(seed0=1, **WORK, knobs=["TRACTOR_LOCK=0", "MC_BURY=1"])
+    assert cfg["policy_flags"]["tractor_lock"] is False and cfg["policy_flags"]["mc_bury"] is True
+    assert cfg["work"]["registered"] == knobs_run["manifest"]["config"]["work"]["registered"]
+    assert cfg["work"]["registered"]["n_determinizations"] == 30
+
+
+# K5 ------------------------------ resume refuses a different knob / widen set
+
+def test_resume_refuses_a_different_knob_or_widen_set(knobs_run, widen_run, clean4,
+                                                      tmp_path):
+    knobs_copy, widen_copy, plain_copy = (tmp_path / n for n in ("knobs", "widen", "plain"))
+    shutil.copytree(knobs_run["out"], knobs_copy)
+    shutil.copytree(widen_run["out"], widen_copy)
+    shutil.copytree(clean4["out"], plain_copy)
+    cases = [
+        (knobs_copy, {}),                                                  # no overrides
+        (knobs_copy, {"knobs": ["V3_LEAD_SINGLES=1"]}),                   # a subset
+        (knobs_copy, {"knobs": [*KNOBS, "TRACTOR_LOCK=0"]}),               # a superset
+        (knobs_copy, {"knobs": ["V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES=32"]}),
+        (knobs_copy, {"knobs": KNOBS, "widen": WIDEN}),                    # widening added
+        (widen_copy, {}),
+        (widen_copy, {"widen": ["wide"]}),
+        (widen_copy, {"widen": [*WIDEN, "points"]}),
+        (widen_copy, {"widen": WIDEN, "knobs": KNOBS}),
+        (plain_copy, {"knobs": KNOBS}),
+        (plain_copy, {"widen": WIDEN}),
+    ]
+    for out, options in cases:
+        rounds = 4 if out is plain_copy else ROUNDS
+        with pytest.raises(trajectory.TrajectoryError, match="resume refused"):
+            _generate(out, rounds=rounds, resume=True, **PLAIN, **options)
+    # nothing was touched
+    assert _read_dir(knobs_copy)["manifest_bytes"] == knobs_run["manifest_bytes"]
+    assert _read_dir(widen_copy)["manifest_bytes"] == widen_run["manifest_bytes"]
+    assert _read_dir(plain_copy)["manifest_bytes"] == clean4["manifest_bytes"]
+    # the same set, in another spelling, resumes and reuses every shard
+    for out, run, options in ((knobs_copy, knobs_run,
+                               {"knobs": ["LEAD_MAX_CANDIDATES=64", "V3_LEAD_SINGLES=true"]}),
+                              (widen_copy, widen_run, {"widen": ["union", "union"]})):
+        resumed = _generate(out, resume=True, **PLAIN, **options)
+        runtime = json.loads((out / "runtime.json").read_text())
+        assert runtime["clusters"] == {"requested": 1, "reused": [0], "generated": [],
+                                       "failed": []}
+        assert resumed["shards"] == run["shards"] and resumed["bytes"] == run["bytes"]
+        assert resumed["manifest_bytes"] == run["manifest_bytes"]
+
+
+# K6 -------------------------- --widen union: every variant's candidates, work
+
+def test_widen_union_appends_every_variant_candidate(widen_run, plain_run):
+    records = widen_run["records"]
+    manifest = widen_run["manifest"]
+    counts = manifest["counts"]
+    assert manifest["run_id"] != plain_run["manifest"]["run_id"]
+    assert manifest["config"]["widen"] == ["union"] and manifest["config"]["knobs"] == {}
+    assert manifest["config"]["trajectory_class"] == "Trajectory_MCS0ReportLCB"
+    assert counts["explore_fired"] == 0
+    production = make_bot(trajectory.DEFAULT_POLICY, seed=0)
+    decisions = added_total = played_added = lead_widened = follow_widened = 0
+    for r in records:
+        validate_record(r)
+        assert r["policy"] == trajectory.DEFAULT_POLICY
+        rnd = rebuild.state_for_record(r)
+        seat = r["seat"]
+        if r["allocation"]["reason"] == "tractor_lock":
+            assert r["widening"] is None and "production_ballot" not in r
+            continue
+        decisions += 1
+        prod = r["production_ballot"]
+        assert prod == [list(c) for c in production._candidates(rnd, seat)]
+        wd = r["widening"]
+        assert wd["variants"] == ["union"]
+        assert r["ballot"] == prod + wd["added"]       # production first, then the widening
+        keys = {action_key(c) for c in r["ballot"]}
+        prod_keys = {action_key(c) for c in prod}
+        assert len(keys) == len(r["ballot"])           # no duplicates
+        # every variant's set, recomputed here, is covered -- and nothing else
+        expected = set()
+        for name in ballot_capture.UNION_OF:
+            expected |= {action_key(k) for k in ballot_capture.EXTENSIONS[name](rnd, seat)}
+        expected = {k for k in expected if legal.is_legal(rnd, seat, list(k))}
+        assert expected <= keys
+        assert {action_key(a) for a in wd["added"]} == expected - prod_keys
+        assert wd["added"] == [list(k) for k in sorted(action_key(a) for a in wd["added"])]
+        listing = {tuple(a) for a in r["legal_actions"]}
+        for a in wd["added"]:
+            assert legal.is_legal(rnd, seat, a) and legal.engine_accepts(rnd, seat, a)
+            assert action_key(a) in listing
+        added_total += len(wd["added"])
+        if action_key(r["action"]) in {action_key(a) for a in wd["added"]}:
+            played_added += 1
+        k = len(r["ballot"])
+        pref, alloc = r["preference"], r["allocation"]
+        for key in ("softmax", "final"):
+            assert len(pref[key]) == k and abs(sum(pref[key]) - 1.0) <= 1e-9
+        assert len(alloc["weights"]) == len(alloc["selection_worlds"]) == k
+        if alloc["searched"]:
+            # work accounting: N selection worlds for every widened candidate
+            assert alloc["selection_worlds"] == [WORK["select_worlds"]] * k
+            assert alloc["total_worlds"] == WORK["select_worlds"] * k + sum(alloc["report_worlds"])
+            assert len(r["action_values"]["means"]) == k
+        if wd["added"]:
+            if r["ply"] % 4 == 0:
+                lead_widened += 1
+            else:
+                follow_widened += 1
+    assert counts["widen_decisions"] == decisions > 0
+    assert counts["widen_added"] == added_total > 0
+    assert counts["widen_played"] == played_added
+    assert lead_widened > 0 and follow_widened > 0
+
+
+# K7 ----------------- knobs + widening + exploration compose on one decision
+
+def test_knobs_widening_and_exploration_compose(widen_run):
+    """The Run B shape without rollouts: one contested lead state, the bot's
+    ``_candidates`` called directly."""
+    config = trajectory.build_config(seed0=SEED0, **WORK, explore_rate=1.0, explore_k=2,
+                                     knobs=RUN_B_KNOBS, widen=WIDEN)
+    assert config["knobs"] == dict(sorted(RUN_B_KNOBS.items()))
+    assert config["policy_flags"]["tractor_lock"] is False
+    r = next(r for r in _plays(widen_run["records"])
+             if r["ply"] % 4 == 0 and len(r["production_ballot"]) > 1)
+    rnd = rebuild.state_for_record(r)
+    seat = r["seat"]
+    bot = trajectory.make_trajectory_bot(config, seed=7, explore_rng=random.Random(1))
+    assert type(bot).__name__ == "Trajectory_Knobs_MCS0ReportLCB"
+    assert type(bot.production_probe).__name__ == "MCS0ReportLCB"
+    ballot = bot._candidates(rnd, seat)
+    prod = bot.last_production_ballot
+    assert prod == r["production_ballot"]
+    assert prod == [list(c) for c in make_bot(trajectory.DEFAULT_POLICY, seed=0)
+                    ._candidates(rnd, seat)]
+    own = [list(c) for c in _independent_knobs_bot(RUN_B_KNOBS)._candidates(rnd, seat)]
+    wd, ex = bot.last_widening, bot.last_exploration
+    assert ex is not None and ex["rate"] == 1.0
+    assert ballot == own + wd["added"] + ex["added"]      # overrides, widening, exploration
+    parts = [own, wd["added"], ex["added"]]
+    assert len({action_key(a) for part in parts for a in part}) == len(ballot)
+    assert len(own) > len(prod) and len(ballot) > len(own)
+    assert wd["variants"] == ["union"]
+    expected = set()
+    for name in ballot_capture.UNION_OF:
+        expected |= {action_key(k) for k in ballot_capture.EXTENSIONS[name](rnd, seat)}
+    assert {k for k in expected if legal.is_legal(rnd, seat, list(k))} <= {
+        action_key(c) for c in ballot}
+    assert {action_key(c) for c in ballot} <= bot.last_legal.keys()
+    assert bot.explore_fired == 1 and bot.widen_added == len(wd["added"])
+    with pytest.raises(trajectory.TrajectoryError, match="consulted twice"):
+        bot._candidates(rnd, seat)

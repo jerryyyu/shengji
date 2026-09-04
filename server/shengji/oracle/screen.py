@@ -1,13 +1,14 @@
-"""Oracle ceiling screens: production search vs. the same search with an
-oracle leaf value and/or an oracle ballot prior, on paired mirrored deals.
+"""Expensive heuristic PROBES of the production search: the same search with
+a much deeper leaf evaluation and/or an oracle-ranked ballot, on paired
+mirrored deals.  These are NOT ceilings (see INTERPRETATION below).
 
 THE QUESTION.  ``mc-s0-report-lcb`` is a two-stage determinized search: an
 N=30 ballot/search nominates one challenger to the heuristic incumbent, then
 the fixed pair is re-compared on R=300 fresh shared hidden worlds under a
 one-sided paired LCB rule.  Every leaf of both stages is ONE deterministic
 heuristic continuation of a fully determinized world.  Before a learned
-value head or a learned ballot prior is built, this module bounds what each
-could buy by replacing it with a much more expensive oracle:
+value head or a learned ballot prior is built, this module asks what a much
+more expensive stand-in for each buys inside the unchanged search:
 
 ``value``
     Identical worlds and identical ballot.  Each leaf continuation is
@@ -38,6 +39,21 @@ could buy by replacing it with a much more expensive oracle:
     arm's seeds (the identity witness for a neutral-knob arm); ``null`` plays
     the champion-matched null (same policy, RNG stream shifted by the registry
     offset) so the reviewer sees the noise floor on the same deals.
+
+INTERPRETATION (Codex review of PR #203, 2026-09-04).  Neither arm is an
+upper bound on what a learned component could buy.  The value arm is a
+bounded greedy one-ply rollout-policy modification scored by the same
+heuristic continuation: it is not exact and is not guaranteed to rank root
+actions at least as well as production.  The prior arm is a finite-world
+estimate followed by hard pruning: noise or the prune can discard the best
+production-ballot action.  More compute here therefore does not create a
+ceiling.  A POSITIVE result says this expensive variant helps (a lower
+bound on the headroom); a WEAK or NULL result is NON-CLOSING for the learned
+value/prior direction.  Closing that direction needs a real tractable
+oracle (exact/minimax continuation on sealed late-game states with a
+demonstrated dominance relation) or the learned component itself.  The
+``oracle-ceiling-*`` schema identifiers are kept for continuity with the
+completed runs; read "ceiling" in them as "probe".
 
 Neutral knobs reproduce production decisions exactly: ``LEAF_MULTIPLIER=1``
 with the exact solver off routes every leaf through the production
@@ -802,8 +818,10 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
 
     return {
         "schema": SUMMARY_SCHEMA,
-        "claim": ("ceiling screen: non-promotable; arms may exceed production "
-                  "compute and are not candidate policies"),
+        "claim": ("expensive heuristic probe, NOT a ceiling: non-promotable; "
+                  "arms may exceed production compute and are not candidate "
+                  "policies; a weak or null result does not close the learned "
+                  "value/prior direction"),
         "arm": config["arm"],
         "arm_description": arm_description(config),
         "base_policy": config["base_policy"],

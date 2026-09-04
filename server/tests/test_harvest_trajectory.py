@@ -8,6 +8,7 @@ keeps the whole file around a minute and a half of pure-engine self-play.
 """
 import gc
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -42,6 +43,28 @@ WIDEN = ["union"]
 #: existed (c82eac20): the neutral witness -- a run without either option
 #: must keep the identity its stores already carry
 PLAIN_RUN_ID = "traj-s4100000-b8fbc705e8e1"
+#: run_id of the Run B configuration (RUN_B_KNOBS, --widen union,
+#: --explore-rate 0.1, production work) at seed0 4_100_000, computed at
+#: 131f1e81 -- the head Run B launched from; later commits must keep it
+RUN_B_RUN_ID = "traj-s4100000-610ab5d18010"
+#: the candidate-generator whitelist --knob accepts, each with a legal
+#: non-default value
+WHITELIST = {"TRACTOR_LOCK": False, "RETAIN_ALL_LEAD_PAIRS": True,
+             "V3_LEAD_SINGLES": True, "RISKY_THROWS": True, "TRUMP_BALLOT": True,
+             "WIDE_LEAD_BALLOT": False, "LEAD_MAX_CANDIDATES": 64,
+             "FOLLOW_MAX_CANDIDATES": 64, "MAX_CANDIDATES": 16,
+             "BURY_MAX_CANDIDATES": 64}
+#: refused BY NAME: work, sampling, report/statistical, allocation,
+#: exact-endgame, bury-search and other controls, plus non-knobs
+NOT_KNOBS = ("EXTRA_SELECTION_WORK", "REQUIRE_EXACT_WORK", "SAMPLE_ATTEMPT_FACTOR",
+             "SAMPLE_RETRIES", "EXACT_ENDGAME", "EXACT_ENDGAME_MAX_CARDS",
+             "EXACT_ENDGAME_MAX_NODES", "REPORT_RULE", "REPORT_MIN_GAIN",
+             "REPORT_ALPHA", "REPORT_T_CRITICAL", "MARGIN", "LEAD_MARGIN",
+             "POINT_SHY_EPS", "CONFIDENCE_OVERRIDE", "CONFIDENCE_Z",
+             "ADAPTIVE_ALLOCATION", "RANDOM_ALLOCATION", "LEVEL_OBJECTIVE",
+             "MC_BURY", "N_BURY_WORLDS", "STRUCTURED_BURY", "BURY_MAX_ROLLOUTS",
+             "BURY_REQUIRE_EXACT_WORK", "DECLARER_PIN", "V3_LEAD_RANDOM",
+             "WIDE_FOLLOW_BALLOT", "NOPE", "decide_play", "rng")
 
 
 def _read_dir(out):
@@ -806,42 +829,63 @@ def test_knob_and_widen_refusals_happen_before_any_round(tmp_path, capsys):
         with pytest.raises(trajectory.TrajectoryError, match=match):
             trajectory.build_config(seed0=1, **WORK, **kw)
 
-    refuses("unknown knob NOPE", knobs=["NOPE=1"])
-    refuses("not a bool", knobs=["V3_LEAD_SINGLES=maybe"])
-    refuses("given more than once", knobs=["LEAD_MAX_CANDIDATES=64",
-                                           "LEAD_MAX_CANDIDATES=32"])
+    assert set(trajectory.KNOB_WHITELIST) == set(WHITELIST)
+    assert set(trajectory.KNOB_CAP_NAMES) < set(WHITELIST)
+    # everything outside the candidate-generator whitelist refuses BY NAME
+    for name in NOT_KNOBS:
+        refuses(f"knob {name}: not on the candidate-generator whitelist",
+                knobs=[f"{name}=1"])
     refuses("search work is not a policy knob", knobs=["N_DETERMINIZATIONS=5"])
     refuses("search work is not a policy knob", knobs=["REPORT_FOLD_WORLDS=30"])
-    refuses("not an int", knobs=["LEAD_MAX_CANDIDATES=1.5"])
-    refuses("not finite", knobs=["MARGIN=nan"])
     refuses("not a public attribute name", knobs=["_rng=1"])
-    refuses("method or descriptor", knobs=["decide_play=1"])
     refuses("expected NAME=VALUE", knobs=["LEAD_MAX_CANDIDATES"])
-    refuses("cannot be overridden", knobs=["LEAD_MARGIN=3"])          # None-valued
-    refuses("sets it per instance", policy="mc-s0-report-lcb-structured-bury",
-            knobs=["MC_BURY=0"])
+    refuses("given more than once", knobs=["LEAD_MAX_CANDIDATES=64",
+                                           "LEAD_MAX_CANDIDATES=32"])
+    # values are coerced to the attribute's own type ...
+    refuses("not a bool", knobs=["V3_LEAD_SINGLES=maybe"])
+    refuses("not an int", knobs=["LEAD_MAX_CANDIDATES=1.5"])
+    # ... and bounded: a candidate cap is an int >= 1 (0 would crash at
+    # candidates[0] on the first decision), and retaining every lead pair
+    # needs the slots MCBot's guarantee assumes
+    for name in trajectory.KNOB_CAP_NAMES:
+        refuses("candidate cap must be >= 1", knobs=[f"{name}=0"])
+        refuses("candidate cap must be >= 1", knobs=[f"{name}=-3"])
+    refuses("RETAIN_ALL_LEAD_PAIRS needs LEAD_MAX_CANDIDATES >= 13",
+            knobs=["RETAIN_ALL_LEAD_PAIRS=1", "LEAD_MAX_CANDIDATES=8"])
+    for ok in (["RETAIN_ALL_LEAD_PAIRS=1"], ["LEAD_MAX_CANDIDATES=8"],
+               ["RETAIN_ALL_LEAD_PAIRS=1", "LEAD_MAX_CANDIDATES=13"]):
+        assert trajectory.build_config(seed0=1, **WORK, knobs=ok)["knobs"]
     refuses("unknown widen variant", widen=["nope"])
     refuses("unknown widen variant", widen=["production"])
-    # accepted forms coerce to the attribute's own type, in any spelling
-    cfg = trajectory.build_config(seed0=1, **WORK, knobs=[
-        "V3_LEAD_SINGLES=true", "LEAD_MAX_CANDIDATES= 64 ", "MARGIN=2"])
-    assert cfg["knobs"] == {"LEAD_MAX_CANDIDATES": 64, "MARGIN": 2.0,
-                            "V3_LEAD_SINGLES": True}
-    assert cfg["knobs"] == trajectory.build_config(seed0=1, **WORK, knobs={
-        "MARGIN": 2, "V3_LEAD_SINGLES": 1, "LEAD_MAX_CANDIDATES": 64})["knobs"]
+    # every whitelisted knob is accepted, in any spelling of its value
+    cfg = trajectory.build_config(seed0=1, **WORK,
+                                  knobs=[f"{n}={v}" for n, v in WHITELIST.items()])
+    assert cfg["knobs"] == dict(sorted(WHITELIST.items()))
+    spelled = trajectory.build_config(seed0=1, **WORK, knobs=[
+        "V3_LEAD_SINGLES=true", "LEAD_MAX_CANDIDATES= 64 ", "TRACTOR_LOCK=0"])
+    assert spelled["knobs"] == {"LEAD_MAX_CANDIDATES": 64, "TRACTOR_LOCK": False,
+                                "V3_LEAD_SINGLES": True}
+    assert spelled["knobs"] == trajectory.build_config(seed0=1, **WORK, knobs={
+        "TRACTOR_LOCK": 0, "V3_LEAD_SINGLES": 1, "LEAD_MAX_CANDIDATES": 64})["knobs"]
+    # the coercion rules themselves (no whitelisted knob is a float/str/None)
+    assert trajectory._coerce_knob("X", 1.5, "2") == 2.0
+    assert trajectory._coerce_knob("X", "lcb", "mean") == "mean"
+    for current, raw in ((1.5, "nan"), (1.5, "abc"), (None, "3"), ("lcb", 3),
+                         (5, True), (True, "yes")):
+        with pytest.raises(trajectory.TrajectoryError):
+            trajectory._coerce_knob("X", current, raw)
     assert trajectory.parse_widen(["union", "wide", "union"]) == ["union", "wide"]
     assert trajectory.widen_extensions(["union"]) == ballot_capture.UNION_OF
     # the command line refuses the same way, before touching the out dir
     out = tmp_path / "never"
     base = ["--rounds", "2", "--seed", "1", "--out", str(out),
             "--select-worlds", "2", "--report-worlds", "30"]
-    for extra, message in ((["--knob", "NOPE=1"], "unknown knob NOPE"),
-                           (["--knob", "N_DETERMINIZATIONS=5"], "search work"),
-                           (["--knob", "V3_LEAD_SINGLES=1", "--knob", "V3_LEAD_SINGLES=0"],
-                            "more than once"),
-                           (["--widen", "nope"], "unknown widen variant")):
+    for extra in (["--knob", "MARGIN=2"], ["--knob", "EXTRA_SELECTION_WORK=1"],
+                  ["--knob", "LEAD_MAX_CANDIDATES=0"], ["--knob", "N_DETERMINIZATIONS=5"],
+                  ["--knob", "V3_LEAD_SINGLES=1", "--knob", "V3_LEAD_SINGLES=0"],
+                  ["--widen", "nope"]):
         assert trajectory.main([*base, *extra]) == 2
-        assert f"REFUSING: " in capsys.readouterr().err
+        assert "REFUSING: " in capsys.readouterr().err
     assert not out.exists()
 
 
@@ -930,10 +974,55 @@ def test_manifest_and_run_json_stamp_knobs_and_widen(knobs_run, widen_run, plain
     assert trajectory.build_config(seed0=SEED0, **WORK, **PLAIN, knobs=KNOBS,
                                    widen=WIDEN)["run_id"] not in ids
     # policy_flags describe the DATA policy; work.registered stays production's
-    cfg = trajectory.build_config(seed0=1, **WORK, knobs=["TRACTOR_LOCK=0", "MC_BURY=1"])
-    assert cfg["policy_flags"]["tractor_lock"] is False and cfg["policy_flags"]["mc_bury"] is True
+    cfg = trajectory.build_config(seed0=1, **WORK, knobs=["TRACTOR_LOCK=0"])
+    assert cfg["policy_flags"]["tractor_lock"] is False and cfg["policy_flags"]["mc_bury"] is False
     assert cfg["work"]["registered"] == knobs_run["manifest"]["config"]["work"]["registered"]
     assert cfg["work"]["registered"]["n_determinizations"] == 30
+
+
+# K8 ---------------- every accepted knob leaves the work vector production's
+
+def _non_default(base_cls, name):
+    """A legal value that differs from the class default, by type."""
+    current = inspect.getattr_static(base_cls, name)
+    if isinstance(current, bool):
+        return not current
+    if isinstance(current, int):
+        return current + 1
+    if isinstance(current, float):
+        return current + 1.0
+    return str(current) + "x"
+
+
+def test_accepted_knobs_keep_the_effective_work_vector(knobs_run):
+    base_cls = type(make_bot(trajectory.DEFAULT_POLICY, seed=0))
+    production = trajectory.build_config(seed0=1)["work"]
+    assert production["effective"] == production["registered"] == {
+        "n_determinizations": 30, "report_fold_worlds": 300, "report_rule": "lcb"}
+    # one whitelisted knob at a time, then all of them: N, R and the report
+    # rule are production's -- no accepted knob touches the search
+    for name in trajectory.KNOB_WHITELIST:
+        work = trajectory.build_config(seed0=1, knobs={name: _non_default(base_cls, name)})["work"]
+        assert work["effective"] == work["registered"] == production["registered"], name
+        assert work["production"] is True, name
+    everything = {n: _non_default(base_cls, n) for n in trajectory.KNOB_WHITELIST}
+    work = trajectory.build_config(seed0=1, knobs=everything)["work"]
+    assert work["effective"] == production["registered"] and work["production"] is True
+    # the manifest stamps exactly that vector (plus the requested reduced work)
+    cfg = knobs_run["manifest"]["config"]
+    assert cfg["work"] == trajectory.build_config(seed0=SEED0, **WORK, **PLAIN,
+                                                  knobs=KNOBS)["work"]
+    assert cfg["work"]["registered"] == production["registered"]
+    assert cfg["work"]["effective"] == {**production["registered"],
+                                        "n_determinizations": WORK["select_worlds"],
+                                        "report_fold_worlds": WORK["report_worlds"]}
+    # the Run B knob set: all five on the whitelist, work and identity unchanged
+    run_b = trajectory.build_config(seed0=SEED0, knobs=RUN_B_KNOBS, widen=WIDEN,
+                                    explore_rate=0.1, explore_k=2)
+    assert run_b["knobs"] == dict(sorted(RUN_B_KNOBS.items()))
+    assert run_b["work"]["effective"] == production["registered"]
+    assert run_b["work"]["production"] is True
+    assert run_b["run_id"] == RUN_B_RUN_ID
 
 
 # K5 ------------------------------ resume refuses a different knob / widen set

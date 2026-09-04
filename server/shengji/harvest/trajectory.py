@@ -134,28 +134,41 @@ arm) and is never widened.
 
 Class-knob overrides (``--knob NAME=VALUE``)
 --------------------------------------------
-The DATA policy may differ from production by class knobs alone.  Each
-override names an existing public scalar class attribute of the registry
-policy's class and is coerced to that attribute's own type (bool accepts
-0/1/true/false; int; finite float; str); unknown names, duplicates, bad
-values, names the registry factory sets per instance, and the two-sided
-work knobs ``N_DETERMINIZATIONS`` / ``REPORT_FOLD_WORLDS`` (those go
-through ``--select-worlds`` / ``--report-worlds``, stamped as effective
-work) refuse before any round.  The data policy is then
-``type("Knobs_<Base>", (base_cls,), overrides)`` with ``TrajectoryMixin``
-layered on top exactly as without overrides, so every seat searches the
-overridden class's ballot, while ``production_ballot`` is computed from the
-UNMODIFIED base class: a second, plain registry instance at the same seat
-seed is the probe, and its ``_candidates`` list is what the record stores.
-``policy`` stays the registry name (``make_bot(policy)`` still builds
-production).  The sorted override set is part of ``run_id`` and is stamped
-in ``run.json`` / ``manifest.json`` as ``config.knobs``, so a store
-generated with overrides can never be resumed or mixed with one generated
-without them (``--resume`` with a different set refuses).  ``policy_flags``
-and ``work.effective.report_rule`` describe the data policy (overrides
-applied); ``work.registered`` is production's.  Without ``--knob`` the
-records, sidecars and ``run_id`` are byte-identical to a run before this
-option existed.
+The DATA policy may differ from production by CANDIDATE-GENERATOR knobs
+alone.  ``--knob`` accepts exactly ``KNOB_WHITELIST`` -- ``TRACTOR_LOCK``,
+``RETAIN_ALL_LEAD_PAIRS``, ``V3_LEAD_SINGLES``, ``RISKY_THROWS``,
+``TRUMP_BALLOT``, ``WIDE_LEAD_BALLOT``, ``LEAD_MAX_CANDIDATES``,
+``FOLLOW_MAX_CANDIDATES``, ``MAX_CANDIDATES``, ``BURY_MAX_CANDIDATES`` --
+and refuses every other name before any round: the work knobs
+``N_DETERMINIZATIONS`` / ``REPORT_FOLD_WORLDS`` go through
+``--select-worlds`` / ``--report-worlds`` (stamped as effective work), and
+sampling, report/statistical, allocation, exact-endgame and bury-search
+controls are not data-policy knobs at all (Codex's review of the probe
+screen's knobs arm, #212).  Values are coerced to the attribute's own type
+(bool accepts 0/1/true/false; int) and bounded: a candidate cap must be an
+int >= 1 (``LEAD_MAX_CANDIDATES=0`` would crash at ``candidates[0]`` on the
+first decision), and ``RETAIN_ALL_LEAD_PAIRS`` needs ``LEAD_MAX_CANDIDATES
+>= 13`` (candidate zero plus the 12 pair codes a 25-card hand can hold --
+MCBot's own guarantee, which it otherwise enforces mid-round); duplicates
+and names the registry factory sets per instance refuse too.  Because no
+accepted knob touches the search, the effective work vector (N, R, report
+rule) of a ``--knob`` run is production's plus any ``--select-worlds`` /
+``--report-worlds`` (tested for every whitelisted knob).  The data policy
+is then ``type("Knobs_<Base>", (base_cls,), overrides)`` with
+``TrajectoryMixin`` layered on top exactly as without overrides, so every
+seat searches the overridden class's ballot, while ``production_ballot``
+is computed from the UNMODIFIED base class: a second, plain registry
+instance at the same seat seed is the probe, and its ``_candidates`` list
+is what the record stores.  ``policy`` stays the registry name
+(``make_bot(policy)`` still builds production).  The sorted override set
+is part of ``run_id`` and is stamped in ``run.json`` / ``manifest.json``
+as ``config.knobs``, so a store generated with overrides can never be
+resumed or mixed with one generated without them (``--resume`` with a
+different set refuses).  ``policy_flags`` describe the data policy
+(``tractor_lock`` is the flag an accepted knob can change);
+``work.registered`` is production's.  Without ``--knob`` the records,
+sidecars and ``run_id`` are byte-identical to a run before this option
+existed.
 
 Ballot widening (``--widen VARIANT``)
 --------------------------------------
@@ -294,6 +307,21 @@ INFLIGHT_PER_WORKER = 2
 #: ``--report-worlds``) and is stamped as ``work.effective``; a class-knob
 #: override of it would bypass that stamp, so it is refused
 KNOB_WORK_NAMES = ("N_DETERMINIZATIONS", "REPORT_FOLD_WORLDS")
+#: the candidate-generator surface ``--knob`` accepts; every other class
+#: attribute (work, sampling, report/statistical, allocation, exact-endgame
+#: and bury-search controls) refuses by name (Codex review, #212)
+KNOB_WHITELIST = ("TRACTOR_LOCK", "RETAIN_ALL_LEAD_PAIRS", "V3_LEAD_SINGLES",
+                  "RISKY_THROWS", "TRUMP_BALLOT", "WIDE_LEAD_BALLOT",
+                  "LEAD_MAX_CANDIDATES", "FOLLOW_MAX_CANDIDATES", "MAX_CANDIDATES",
+                  "BURY_MAX_CANDIDATES")
+#: caps are ints >= 1: ``LEAD_MAX_CANDIDATES=0`` would crash at
+#: ``candidates[0]`` on the first decision instead of refusing up front
+KNOB_CAP_NAMES = ("LEAD_MAX_CANDIDATES", "FOLLOW_MAX_CANDIDATES", "MAX_CANDIDATES",
+                  "BURY_MAX_CANDIDATES")
+#: ``RETAIN_ALL_LEAD_PAIRS`` keeps candidate zero plus every pair code a
+#: 25-card hand can hold (12) under the lead cap; MCBot raises mid-round
+#: when the cap is narrower, so the combination refuses before any round
+RETAIN_ALL_LEAD_PAIRS_MIN_CAP = 13
 #: ``--widen`` names: the candidate-set variants of ``ballot_capture``
 #: (``production`` is their baseline, not a widening)
 WIDEN_VARIANTS = tuple(v for v in ballot_capture.VARIANTS if v != "production")
@@ -404,9 +432,10 @@ def _coerce_knob(name: str, current, raw):
 def parse_knob_overrides(base_cls: type, specs) -> dict:
     """``NAME=VALUE`` strings (or a ``{NAME: value}`` mapping) -> a dict of
     class-attribute overrides, sorted by name and coerced to each
-    attribute's type.  Only public scalar class attributes that
-    ``base_cls`` already exposes are accepted; the work knobs with their own
-    two-sided flags are refused (module docstring)."""
+    attribute's type.  Only the candidate-generator knobs of
+    ``KNOB_WHITELIST`` are accepted (every other name refuses), caps must be
+    >= 1, and retaining every lead pair needs ``LEAD_MAX_CANDIDATES >=
+    RETAIN_ALL_LEAD_PAIRS_MIN_CAP`` (module docstring)."""
     if isinstance(specs, dict):
         items = list(specs.items())
     else:
@@ -426,6 +455,10 @@ def parse_knob_overrides(base_cls: type, specs) -> dict:
             raise TrajectoryError(
                 f"knob {name}: search work is not a policy knob; "
                 "--select-worlds/--report-worlds set it (stamped as effective work)")
+        if name not in KNOB_WHITELIST:
+            raise TrajectoryError(
+                f"knob {name}: not on the candidate-generator whitelist; --knob "
+                f"accepts only {', '.join(KNOB_WHITELIST)}")
         try:
             current = inspect.getattr_static(base_cls, name)
         except AttributeError:
@@ -436,7 +469,21 @@ def parse_knob_overrides(base_cls: type, specs) -> dict:
             raise TrajectoryError(
                 f"knob {name}: {base_cls.__name__}.{name} is a method or "
                 "descriptor, not a class knob")
-        out[name] = _coerce_knob(name, current, raw)
+        value = _coerce_knob(name, current, raw)
+        if name in KNOB_CAP_NAMES and value < 1:
+            raise TrajectoryError(
+                f"knob {name}: a candidate cap must be >= 1, got {value}")
+        out[name] = value
+    if out:
+        def effective(name: str):
+            return out[name] if name in out else inspect.getattr_static(base_cls, name)
+
+        if (effective("RETAIN_ALL_LEAD_PAIRS")
+                and effective("LEAD_MAX_CANDIDATES") < RETAIN_ALL_LEAD_PAIRS_MIN_CAP):
+            raise TrajectoryError(
+                "knob RETAIN_ALL_LEAD_PAIRS needs LEAD_MAX_CANDIDATES >= "
+                f"{RETAIN_ALL_LEAD_PAIRS_MIN_CAP} (candidate zero plus every pair "
+                f"code a hand can hold), got {effective('LEAD_MAX_CANDIDATES')}")
     return dict(sorted(out.items()))
 
 
@@ -682,8 +729,9 @@ def build_config(*, policy: str = DEFAULT_POLICY, seed0: int,
         "report_fold_worlds": int(probe.REPORT_FOLD_WORLDS),
         "report_rule": str(probe.REPORT_RULE),
     }
-    # from here on the probe IS the data policy: flags and the effective
-    # report rule describe what generates the records
+    # from here on the probe IS the data policy: policy_flags describe what
+    # generates the records.  The whitelist keeps the search untouched, so
+    # the effective report rule read below is production's (tested per knob)
     data_cls = knobs_class(base_cls, overrides) if overrides else base_cls
     probe.__class__ = data_cls
     effective = dict(registered)
@@ -1715,12 +1763,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cap", type=int, default=DEFAULT_CAP,
                         help=f"max legal actions listed per record (default {DEFAULT_CAP}; 0 = unbounded)")
     parser.add_argument("--knob", action="append", default=[], metavar="NAME=VALUE",
-                        help="override one public scalar class attribute of the "
-                             "policy's class for the DATA policy (repeatable, e.g. "
-                             "V3_LEAD_SINGLES=1 LEAD_MAX_CANDIDATES=64); "
+                        help="override one candidate-generator class knob of the "
+                             "policy's class for the DATA policy (repeatable; one of "
+                             f"{', '.join(KNOB_WHITELIST)}; caps >= 1); "
                              "production_ballot stays the unmodified class's list; "
-                             "N_DETERMINIZATIONS/REPORT_FOLD_WORLDS go through "
-                             "--select-worlds/--report-worlds")
+                             "every other name refuses (search work goes through "
+                             "--select-worlds/--report-worlds)")
     parser.add_argument("--widen", action="append", default=[], metavar="VARIANT",
                         help="append a ballot_capture candidate-set variant to every "
                              f"search ballot (repeatable; one of {', '.join(WIDEN_VARIANTS)})")

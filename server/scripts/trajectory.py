@@ -20,9 +20,13 @@ clock, peak RSS).  ``--merge`` also writes ``DIR/trajectory.jsonl``;
 and regenerates the rest.  Fixed seeds reproduce every shard byte for byte
 at any worker count and across an interruption.
 
-``--knob NAME=VALUE`` (repeatable) overrides a public scalar class attribute
-of the policy's class for the DATA policy (e.g. ``V3_LEAD_SINGLES=1
-LEAD_MAX_CANDIDATES=64``); ``--widen VARIANT`` (repeatable) appends a
+``--knob NAME=VALUE`` (repeatable) overrides one CANDIDATE-GENERATOR class
+knob of the policy's class for the DATA policy -- exactly ``TRACTOR_LOCK``,
+``RETAIN_ALL_LEAD_PAIRS``, ``V3_LEAD_SINGLES``, ``RISKY_THROWS``,
+``TRUMP_BALLOT``, ``WIDE_LEAD_BALLOT``, ``LEAD_MAX_CANDIDATES``,
+``FOLLOW_MAX_CANDIDATES``, ``MAX_CANDIDATES``, ``BURY_MAX_CANDIDATES`` (caps
+are ints >= 1); every other name refuses before any round, so the search
+work vector stays production's; ``--widen VARIANT`` (repeatable) appends a
 ``ballot_capture`` candidate-set variant (``wide``, ``all-trump``,
 ``top-2-suit``, ``top-3-suit``, ``points``, ``union``) to every search
 ballot.  Either way each record's ``production_ballot`` is the UNMODIFIED

@@ -29,28 +29,30 @@ compact current-state summary.
 2. **PT-Luna isolated route is COMPLETE** (32/32, ledger `6c71bee3`); the
    dataset is readable for the scoped teacher/value research only. Collection
    is closed.
-3. **BELIEF R4 is terminal, R5 closed.** No belief compute unless the
-   oracle-belief ceiling screen is positive.
-4. **Next asks in order:** D64 interpretation; oracle-value and
-   oracle-belief ceiling screens; Luna disagreement analysis; V2 Luna
-   fine-tune; search-policy variants through the RLCB paired harness.
+3. **BELIEF R4 is terminal, R5 closed.** No belief compute unless a separate
+   oracle-belief probe shows a gain worth reopening.
+4. **Next asks in order:** finish and integrate the main-based trajectory
+   generator; interpret the running oracle probe extensions; port the minimal
+   Value learning core onto current main; then use trajectory data at scale
+   with Luna outcomes reserved for fine-tuning/evaluation. The D64
+   interpretation review is complete at canonical ledger commit `784569ba`.
 
 
 ## Fleet — 2026-09-04
 
 | host | state |
 |---|---|
-| shengji-perf (16c) | D64 sealed and exact-source-reopened; service exited successfully; currently idle |
-| Mini (10c) | idle for research; Codex tmux `codex-1`; pid 96175 is Jerry's dev server |
-| shengji-cloud (16c) | idle |
+| shengji-perf (16c) | trajectory self-play Run A active as of 17:07Z (`traj-runA.service`, 16 workers); D64 sealed and exact-source-reopened |
+| Mini (10c) | no active research compute as of 17:07Z; Codex/Claude development sessions remain active |
+| shengji-cloud (16c) | oracle heuristic probe run2 active; run3 wide-ballot probe queued behind it as of 17:07Z |
 | Air | not used for shengji |
 
 ## Review asks
 
-One compact D64 interpretation review may now read the sealed terminal. Exact
-recovery head `11c43839` passed 688/688 full Value V2 tests and 47/47 Linux
-recovery tests; the exact-source terminal reopener also passes. The review is
-interpretive only: all terminal authority is false. Do not request or launch
+The D64 interpretation review is complete at `784569ba`: pipeline proof PASS,
+learning signal weak on 12 audit deals, and all authority false. The current
+review asks are the repaired documentation-only milestone PR #210 and the
+repaired main-based trajectory generator PR #207. Do not request or launch
 D256 slot completion/training.
 
 Historical body through 2026-09-03 is preserved byte-for-byte in

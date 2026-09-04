@@ -58,25 +58,29 @@ when a candidate beats the champion on a tier ii paired screen.
    frozen 256-slot ledger remains a coverage-audit set only; do not complete
    its missing slot or use slot targeting as the next training-data recipe.
    No confirmatory ceremony.
-2. **Ceiling screens before any second spend.** Oracle-value ceiling
-   (near-perfect leaf value inside production search vs production) bounds
-   V2's upside; oracle-belief ceiling (true hidden worlds in the production
-   sampler vs production) bounds any belief model. C0 already suggests the
-   belief ceiling is near zero.
+2. **Use cheap heuristic probes before a second major spend.** Run1 on 256
+   fresh mirrored rounds found identity null, value-only and prior-only
+   inconclusive, and the combined value+prior probe `+0.109
+   [+0.016,+0.203]` at about 9.6x production work. These are expensive
+   heuristic probes, not upper-bound ceilings; weak/null results are
+   non-closing. Deeper/exact-endgame and wide-ballot probes are running. The
+   oracle-belief probe remains unrun, and C0 suggests its upside may be small.
 3. **Attack the planner.** C0 (perfect information, fixed planner) lost; PT-Sol0
    (perfect information, flexible planner) won `+17/26`. Use the sealed Luna
    dataset diagnostically — where the flexible planner disagrees with
    production and wins, by mechanism — to derive direct search-policy variants
    for the RLCB paired harness.
-4. **Prove transport before scaling data.** D64 did not yet establish a usable
-   scalar/action-value recipe. Any repair must first pass a small natural-data
-   diagnostic; only then fine-tune on Luna outcomes (value targets, not
+4. **Prove transport before promoting a consumer.** D64 did not establish a
+   usable scalar/action-value recipe. The next pretraining source is natural
+   trajectory self-play at scale from the harvest package and PR #207, with
+   raw states re-encoded by the current learner. Then fine-tune on Luna
+   outcomes (value targets, not
    action imitation) and test whether search with the fine-tuned leaf value
    moves toward the teacher on the disagreement set. The frozen 256-slot
-   population is coverage-audit evidence only, not a training-data target; any
-   larger training population must be selected under a separate natural or
-   teacher-data contract. No further teacher collection until that transports.
-5. **BELIEF R4/R5 closed** unless the oracle-belief ceiling is positive.
+   population is coverage-audit evidence only, not a training-data target.
+   No further teacher collection until that transports.
+5. **BELIEF R4/R5 closed** unless a separate oracle-belief probe shows a gain
+   worth reopening.
 6. **Confirm strength last.** Any successor must beat literal production and a
    behavior/work-matched null on fresh mirrored rounds under tier iii.
 
@@ -185,13 +189,15 @@ difference exactly zero for both primary−production and primary−control. The
 sealed R4 test population was never opened and stays sealed. R4 checkpoints
 are preserved as diagnostics only.
 
-### R5: closed unless the oracle-belief ceiling is positive
+### R5: closed unless an oracle-belief probe justifies reopening
 
-No R5 source, freeze, rehearsal, or execution. The lane reopens only if the
-oracle-belief ceiling screen — the production sampler given the true hidden
-worlds versus production, on existing opened roots — shows a gain worth a
-learned model. C0 (perfect information inside the fixed production planner
-lost to both parents) already suggests that ceiling is near zero. The
+No R5 source, freeze, rehearsal, or execution. The lane reopens only if a
+separate oracle-belief probe — the production sampler given the true hidden
+worlds versus production — shows a gain worth a learned model. Like the value
+and prior probes, this is an expensive heuristic diagnostic rather than an
+upper-bound ceiling, and a weak/null result is non-closing. C0 (perfect
+information inside the fixed production planner lost to both parents) already
+suggests that upside may be small. The
 operational lessons listed for R5 in earlier revisions (all trump ranks,
 disjoint human data, host-independent inputs, parallel cache/projection,
 curves, graceful truncation, in-loop deadlines) are retained as reusable
@@ -278,8 +284,8 @@ on exact states and then in realistic full-round populations.
 The sealed `pt-luna-rpc-isolated-b0b1bd95-r1` dataset (32 complete games,
 ledger `6c71bee3`) plus the 1,578 earlier reopenable Luna decisions are the
 teacher artifact; PT-Sol remains the higher-quality reference. Teacher
-collection is closed. The current path is: establish the Value V2 recipe on
-the retained D64 subset, fine-tune a usable D64 model on Luna outcomes as value
+collection is closed. The current path is: pretrain a minimal Value learner on
+natural trajectory self-play at scale, fine-tune it on Luna outcomes as value
 targets with a held-out teacher-agreement slice, and
 test whether search with the fine-tuned leaf value moves toward the teacher on
 the states where the flexible planner disagreed with production and won. That

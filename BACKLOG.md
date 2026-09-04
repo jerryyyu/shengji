@@ -26,25 +26,24 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **P0** | **Value V2 — DEV interpretation** | D64 sealed `D64_DEV_SEALED` at `11c43839`; exact-source reopen succeeds and the service exited successfully. The 12-deal audit passed outcome-distribution RPS (`+0.006400834`, lower bound `+0.002789151`, 4/4 members positive) but failed scalar absolute error (`-0.178319`), paired action sensitivity (`-0.045395`), and a useful-action conclusion (`+0.0625`, interval crosses zero). Precision-select was weaker: action utility `-0.333333` with an upper bound below zero. The frozen 256-slot ledger and 255 retained realizations are coverage-audit evidence only: do not complete the missing slot or use slot targeting as a training-data recipe. | One compact interpretation: diagnose why ordered-distribution learning did not transport to expected value/action ranking, then choose the smallest natural or teacher-data successor independently of the coverage ledger. | Tier i result only; authority is all false. Do not scale data, integrate a consumer, or claim strength from D64. |
-| **P0** | **Ceiling screens** | Not yet run; both are days of work on existing opened roots. | Oracle-value ceiling: production search with a near-perfect leaf value vs production. Oracle-belief ceiling: production sampler given true hidden worlds vs production (C0 already suggests ≈0). | Tier i/ii. Each lane's second major spend is gated on a positive ceiling. |
-| **P1** | **Luna dataset as diagnostic + fine-tune source** | `pt-luna-rpc-isolated-b0b1bd95-r1` sealed COMPLETE (32/32 games; ledger `6c71bee3`). Readable only for scoped teacher/value research. 30 predecessor games are engineering-only. Collection is CLOSED (46,729,487 tokens lane total). | (a) Where do Sol/Luna disagree with production and win, classified by mechanism (ballot, continuation, rollout allocation, objective, partnership)? (b) If D64 establishes a usable V2 recipe, fine-tune that model on Luna outcomes with a held-out teacher-agreement slice; does search with the fine-tuned leaf value move toward the teacher on the disagreement set? | Value targets, not action imitation (PT1's negative). No more collection until transport is shown at 32-game scale. |
+| **P0** | **Value V2 — trajectory successor** | D64 sealed `D64_DEV_SEALED` at `11c43839`; exact-source reopen and the interpretation review at `784569ba` pass. Its 12-deal audit improved outcome-distribution RPS but worsened scalar absolute error and paired action sensitivity; action utility was inconclusive. The 256-slot ledger and 255 retained realizations are coverage-audit evidence only. Main-based trajectory Run A is producing natural self-play records on Perf; PR #207 carries the resumable generator. | Integrate the trajectory generator, then port a minimal learning core onto current main and train on trajectory data at scale. Luna outcomes are fine-tune/evaluation data; D64 slots are not training targets. | Tier i only. No missing-slot completion, slot-targeted D256 training, consumer integration, or strength claim. |
+| **P0** | **Oracle policy probes** | Run1 completed on 256 fresh mirrored rounds. Identity was null; value-only `+0.051 [-0.031,+0.133]` and prior-only `-0.059 [-0.152,+0.039]` were inconclusive; the combined expensive heuristic probe was `+0.109 [+0.016,+0.203]` at about 9.6x production work. Run2 (deeper/exact-endgame variants) and run3 (wide ballot) are in progress on cloud. These are heuristic probes, not ceilings; weak/null results are non-closing. | Determine whether deeper value, incumbent-anchored prior, or wider ballot creates enough leverage to justify a learned consumer experiment. Oracle-belief remains unrun. | Tier i diagnostic evidence only. Later candidates must still match production work. |
+| **P1** | **Luna dataset as diagnostic + fine-tune source** | `pt-luna-rpc-isolated-b0b1bd95-r1` sealed COMPLETE (32/32 games; ledger `6c71bee3`). Readable only for scoped teacher/value research. 30 predecessor games are engineering-only. Collection is CLOSED (46,729,487 tokens lane total). | (a) Where do Sol/Luna disagree with production and win, classified by mechanism (ballot, continuation, rollout allocation, objective, partnership)? (b) After a minimal trajectory-pretrained learner demonstrates scalar/action-value transport, fine-tune on Luna outcomes with a held-out teacher-agreement slice; does search move toward the teacher on the disagreement set? | Value targets, not action imitation (PT1's negative). No more collection until transport is shown at 32-game scale. |
 | **P1** | **Search-policy variants in the RLCB paired harness** | The only harness that ever produced a confirmed gain (`+0.338 ± 0.068`). | Two or three variants derived from the Luna disagreement analysis, vs champion at equal work; promote only on the confirm bar. | Tier ii screen → tier iii confirm. |
 | **P1** | **Search-capacity confirmation** | T4 uninformed widening was positive but compute-confounded (+14.8% worlds, +80.9% searches). | Three-arm design: champion, widening at champion work, widening at original-null work. | Separate from BELIEF/PT. |
-| **CLOSED** | **BELIEF R4 / R5** | R4 terminal `NO_PRIMARY_POLICY_SIGNAL` (weights ≈ uniform, 1/104 flips, paired value exactly 0). R5 closed. | Reopens only if the oracle-belief ceiling screen is positive. | No belief compute otherwise. |
+| **CLOSED** | **BELIEF R4 / R5** | R4 terminal `NO_PRIMARY_POLICY_SIGNAL` (weights ≈ uniform, 1/104 flips, paired value exactly 0). R5 closed. | Reopens only if a separate oracle-belief probe shows a gain worth pursuing. | No belief compute otherwise. |
 | **CLOSED** | **PT-Luna collection** | Five attempts; one complete dataset; consumer unproven. | — | Reopens only after transport is demonstrated. |
 | **P2** | **Production-policy quality gaps** | User-reported bare-point / weak-fallback / point-insensitive play remain diagnosis surfaces. | Replay production decisions, classify cause, test one causal treatment with a matched null. | No blanket rules. |
 
 ## Immediate sequence
 
-1. Interpret the sealed D64 result once. Do not complete the missing D256 slot
-   or launch slot-targeted D256 training; retain the 256-slot ledger and 255
-   realized states only as the coverage audit set.
-2. Run both ceiling screens on existing opened roots (R4's 104 rounds, the
-   26 Sol0 roots).
-3. Luna disagreement analysis by mechanism; fine-tune the pretrained V2 model
-   on Luna outcomes; teacher-agreement evaluation.
-4. Derive search-policy variants; run them through the RLCB paired harness.
+1. Integrate the repaired trajectory generator and finish Run A's resumable
+   natural self-play dataset. Keep D256 slots as coverage-audit evidence only.
+2. Finish and interpret oracle heuristic probe runs 2/3; separately scope the
+   still-unrun oracle-belief probe if it remains decision-relevant.
+3. Port the minimal Value learning core onto current main; pretrain on
+   trajectory outcomes, then use Luna outcomes for fine-tuning/evaluation.
+4. Derive search-policy variants and run them through the RLCB paired harness.
 5. Nothing enters tier iii until a variant beats the champion on a paired screen.
 
 ## Entry criteria for new scientific lanes

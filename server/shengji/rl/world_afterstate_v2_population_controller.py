@@ -11,14 +11,15 @@ shard can be reused.
 from __future__ import annotations
 
 import base64
+from contextlib import ExitStack
 import hashlib
 import json
-import os
-import resource
 import threading
 import time
 from collections import Counter
-from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from concurrent.futures import (
+    Future, ProcessPoolExecutor, ThreadPoolExecutor, as_completed,
+)
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -37,6 +38,10 @@ from .world_afterstate_v2_protocol import (
 )
 from .world_afterstate_v2_source_driver import (
     PopulationAttemptResultV2, drive_population_attempt_v2,
+)
+from .world_afterstate_v2_execution import (
+    _cgroup_cpu_nanoseconds, _cgroup_v2_directory, _live_telemetry,
+    _process_cpu_nanoseconds, verified_process_pool_kwargs,
 )
 
 
@@ -898,12 +903,12 @@ class _Progress:
         self.completed, self.attempts, self.workers = completed, attempts, workers
         self.deadline = deadline
         self._lock = threading.Lock()
+        self._process_cpu_baseline = _process_cpu_nanoseconds()
+        self._cgroup_directory = _cgroup_v2_directory()
+        self._cgroup_cpu_baseline = _cgroup_cpu_nanoseconds(
+            self._cgroup_directory)
+        self._peak_memory = 0
         self.emit(active_workers=workers)
-
-    @staticmethod
-    def _memory_bytes() -> int:
-        value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
-        return value * (1024 if os.uname().sysname == "Darwin" else 1)
 
     def attempt_started(self, slot: PopulationSlotV2, index: int) -> None:
         # ``stage`` is the supervisor's closed DAG stage, while individual
@@ -928,14 +933,20 @@ class _Progress:
             eta = ((self.total - self.completed) / rate) if rate else None
             deadline = self.deadline if deadline is None else deadline
             deadline_headroom = None if deadline is None else deadline - time.time()
-            memory = self._memory_bytes()
+            cpu_ppm, memory = _live_telemetry(
+                int(elapsed * 1_000_000_000),
+                process_cpu_baseline=self._process_cpu_baseline,
+                cgroup_directory=self._cgroup_directory,
+                cgroup_cpu_baseline=self._cgroup_cpu_baseline)
+            self._peak_memory = max(self._peak_memory, memory)
             self.callback({
                 "schema": "world-afterstate-v2-population-progress-v1",
                 "stage": stage, "substage": substage,
                 "completed_slots": self.completed, "total_slots": self.total,
                 "attempts": self.attempts, "active_workers": active_workers,
-                "cpu_utilization": time.process_time() / elapsed if elapsed else 0.0,
-                "current_memory_bytes": memory, "peak_memory_bytes": memory,
+                "cpu_utilization": cpu_ppm / 1_000_000,
+                "current_memory_bytes": memory,
+                "peak_memory_bytes": self._peak_memory,
                 "deadline_headroom_seconds": deadline_headroom,
                 "immutable_shards": self.completed,
                 "elapsed_seconds": elapsed, "eta_seconds": eta,
@@ -1095,14 +1106,31 @@ def collect_population_v2(
     runs: dict[str, _SlotRun] = {}
     pending: dict[Future[_SlotRun], PopulationSlotV2] = {}
     try:
-        with ThreadPoolExecutor(max_workers=workers,
-                                thread_name_prefix="d256-population") as pool:
+        with ExitStack() as stack:
+            driver = attempt_driver
+            if attempt_driver is drive_population_attempt_v2:
+                # Slot orchestration owns mutable progress and immutable file
+                # publication in this process.  Only the CPU-bound, pure
+                # attempt driver crosses the process boundary; otherwise a
+                # wider ThreadPoolExecutor remains serialized by the GIL.
+                driver_pool = stack.enter_context(ProcessPoolExecutor(
+                    max_workers=workers, **verified_process_pool_kwargs()))
+
+                def process_driver(
+                        identity: Mapping[str, Any],
+                        slot: PopulationSlotV2) -> PopulationAttemptResultV2:
+                    return driver_pool.submit(
+                        drive_population_attempt_v2, identity, slot).result()
+
+                driver = process_driver
+            pool = stack.enter_context(ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="d256-population"))
             for slot in slots:
                 future = pool.submit(
                     _run_slot, root, slot, records[slot.slot_sha256],
                     freeze=freeze_sha256, namespace=population_namespace_sha256,
                     admission=admission_sha256, cap=max_attempts_per_slot,
-                    config=config, progress=progress, driver=attempt_driver)
+                    config=config, progress=progress, driver=driver)
                 pending[future] = slot
             for future in as_completed(pending):
                 try:
@@ -1121,7 +1149,8 @@ def collect_population_v2(
                 progress.completed = sum(
                     bool(rows and rows[-1]["accepted"]) for rows in records.values())
                 progress.attempts = sum(len(rows) for rows in records.values())
-                progress.emit(active_workers=sum(not item.done() for item in pending))
+                progress.emit(active_workers=min(
+                    workers, sum(not item.done() for item in pending)))
     except WorldAfterstateV2PopulationControllerError:
         raise
     except Exception as exc:

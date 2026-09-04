@@ -4,11 +4,13 @@ import json
 import hashlib
 from pathlib import Path
 import threading
+from concurrent.futures import Future
 
 import pytest
 
 from shengji.rl import world_afterstate_v2_population_controller as controller
 from shengji.rl import world_afterstate_v2_execution as execution
+from shengji.rl import world_afterstate_v2_source_driver as source_driver
 from shengji.rl.world_afterstate_v2_population_artifacts import (
     PopulationMaterialShardV2,
 )
@@ -127,6 +129,116 @@ def test_population_worker_arm_32_is_frozen_and_33_is_not():
     assert controller.CONFIG_SCHEMA == "world-afterstate-v2-population-controller-config-v2"
     assert 32 in controller.WORKER_ARMS
     assert 33 not in controller.WORKER_ARMS
+
+
+def test_controller_rejection_vocabulary_matches_source_driver_exactly():
+    exported = {
+        value for name, value in vars(source_driver).items()
+        if name.startswith("REJECTION_") and type(value) is str
+    }
+    assert controller._REASONS == exported
+
+
+def test_real_driver_uses_process_workers_and_reports_true_width(
+        tmp_path, fast_primitives, monkeypatch):
+    process_widths = []
+    calls = []
+
+    class ImmediateProcessPool:
+        def __init__(self, *, max_workers, **_kwargs):
+            process_widths.append(max_workers)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def submit(self, function, *args):
+            future = Future()
+            try:
+                future.set_result(function(*args))
+            except BaseException as exc:
+                future.set_exception(exc)
+            return future
+
+    def real_driver(identity, slot):
+        calls.append(slot.slot_sha256)
+        return _Attempt(identity, slot, True,
+                        _Material(slot, identity["deal_sha256"]))
+
+    monkeypatch.setattr(controller, "ProcessPoolExecutor", ImmediateProcessPool)
+    monkeypatch.setattr(controller, "drive_population_attempt_v2", real_driver)
+    progress = []
+    receipt = controller.collect_population_v2(
+        tmp_path, freeze_sha256="f" * 64,
+        population_namespace_sha256="b" * 64,
+        admission_sha256="a" * 64, max_attempts_per_slot=1,
+        workers=4, progress_callback=progress.append)
+
+    assert process_widths == [4]
+    assert len(calls) == receipt.accepted_slots == 256
+    assert max(row["active_workers"] for row in progress) == 4
+
+
+def test_injected_driver_stays_in_parent_process(
+        tmp_path, fast_primitives, monkeypatch):
+    class ForbiddenProcessPool:
+        def __init__(self, **_kwargs):
+            raise AssertionError("injected driver must not cross a process boundary")
+
+    def driver(identity, slot):
+        return _Attempt(identity, slot, True,
+                        _Material(slot, identity["deal_sha256"]))
+
+    monkeypatch.setattr(controller, "ProcessPoolExecutor", ForbiddenProcessPool)
+    receipt = controller.collect_population_v2(
+        tmp_path, freeze_sha256="f" * 64,
+        population_namespace_sha256="b" * 64,
+        admission_sha256="a" * 64, max_attempts_per_slot=1,
+        workers=4, attempt_driver=driver)
+    assert receipt.accepted_slots == 256
+
+
+def test_process_width_does_not_change_population_bytes(
+        tmp_path, fast_primitives, monkeypatch):
+    class ImmediateProcessPool:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def submit(self, function, *args):
+            future = Future()
+            try:
+                future.set_result(function(*args))
+            except BaseException as exc:
+                future.set_exception(exc)
+            return future
+
+    def real_driver(identity, slot):
+        return _Attempt(identity, slot, True,
+                        _Material(slot, identity["deal_sha256"]))
+
+    monkeypatch.setattr(controller, "ProcessPoolExecutor", ImmediateProcessPool)
+    monkeypatch.setattr(controller, "drive_population_attempt_v2", real_driver)
+    roots = (tmp_path / "width-1", tmp_path / "width-4")
+    receipts = []
+    for root, workers in zip(roots, (1, 4), strict=True):
+        receipts.append(controller.collect_population_v2(
+            root, freeze_sha256="f" * 64,
+            population_namespace_sha256="b" * 64,
+            admission_sha256="a" * 64, max_attempts_per_slot=1,
+            workers=workers))
+
+    assert [row.payload() for row in receipts[0].slots] == [
+        row.payload() for row in receipts[1].slots]
+    assert receipts[0].population_sha256 == receipts[1].population_sha256
+    assert receipts[0].manifest_sha256 == receipts[1].manifest_sha256
 
 
 def test_cap_parallel_resume_and_score_free_receipt(tmp_path, fast_primitives):

@@ -73,6 +73,28 @@ This small sample cannot establish a strength gain or authorize deployment;
 any positive must next face a cost-matched no-learning control and fresh data.
 No confirmation, expanded collection or training is authorized by this README.
 
+### Observed result — do not scale this recipe
+
+At source `89b3cf6be09347fe387223639eb4392bf6a457ab`, all 26 pairs finished
+in 110.4 seconds. Candidate won 21/52 rounds, with signed-level utility
+**−0.21154 per round**, deal-bootstrap interval **[−0.38510, −0.03846]**.
+CPU ratio was **0.97602** (within the predeclared approximate match band),
+with no short/zero-world searches. It played 108 off-ballot actions. Preserve
+the negative result; do not scale this exact combined model/search recipe.
+The sample does not identify whether prior extrapolation, leaf values,
+allocation or reduced selection dose caused the loss.
+
+Data limitation: the RunA producer creates a fresh `Game` and its first round
+for every seed, hence rank2. This sample cycles all13 ranks, so it also tests
+transfer outside the training-rank population. The four rank2 rounds alone
+are not a powered subgroup. RunA also includes 10% exploration with two
+off-ballot additions, not purely unmodified production ballots. None of this
+is evidence that the model has distilled PT-Luna yet.
+
+Full result and interpretation: [PR #222](https://github.com/jerryyyu/shengji/pull/222#issuecomment-5547202677).
+Local artifacts, including earlier unfavorable CPU calibration, remain under
+`/Users/jerryyu/shengji-archive/learned-search-20260904/`.
+
 ## Run and recover
 
 From `server/`, with the reviewed native extension built:

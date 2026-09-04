@@ -170,7 +170,7 @@ def build_records(path: Path, group: dict, replay: dict, *, cap: int | None,
                   root: Path) -> list[tuple[dict, dict | None]]:
     """Public/private record pairs for one group given its replayed state."""
     from ..ai.endgame import exhaustive_legal_actions
-    from ..rl.privileged_teacher_pt0 import pt0_public_state_sha256
+    from .pt0_compat import pt0_public_state_sha256
     rank, banker, role, threshold, replicate = group["state_key"]
     if not replay.get("hit"):
         raise RebuildError(f"{path}: natural capture did not hit {role}/{threshold}")

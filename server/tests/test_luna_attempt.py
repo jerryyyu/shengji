@@ -9,30 +9,29 @@ import threading
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_rpc_collection as collection
-from shengji.rl import privileged_teacher_luna_rpc_journal as journal_module
-from shengji.rl import privileged_teacher_luna_rpc_io as rpc_io
-from shengji.rl.privileged_teacher_luna_rpc_transport import (
+from shengji.luna import attempt as collection
+from shengji.luna import journal as journal_module
+from shengji.luna import atomic_io as rpc_io
+from shengji.luna.transport import (
     CODE_MODE_DISABLED_DIAGNOSTIC,
     CodexExecPlannerTransport,
     InvocationResult,
 )
-from shengji.rl import privileged_teacher_luna_selfplay as selfplay
-from shengji.rl.privileged_teacher_luna_turn_rpc import (
+from shengji.luna import game as selfplay
+from shengji.luna.turn import (
     DecisionPacket, Intent, PhaseContext, PlannerResponse,
     TeamMemory, Usage,
 )
-from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
+from shengji.luna.canonical import canonical_json_bytes
 
 
 SECRET = b"pt-luna-rpc-collection-secret!!!"
 assert len(SECRET) == 32
-RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v1", "test": True,
+RUNTIME = {"schema": "pt-luna-turn-rpc-runtime-v2", "test": True,
            "boot_identity_sha256": "b" * 64}
 LEDGER_BINDING = {
     "boot_identity_sha256": "b" * 64,
     "runtime_sha256": "c" * 64,
-    "capacity_receipt_sha256": "d" * 64,
     "namespace": "pt-luna-test-namespace",
 }
 
@@ -661,11 +660,10 @@ def test_complete_game_reopens_without_another_provider_call(tmp_path):
     assert attempt.status == "complete"
     assert attempt.usage["response_count"] == provider_calls
     with pytest.raises(collection.RPCCollectionError,
-                       match="scientific binding"):
+                       match="runtime binding"):
         collection.reopen_attempt(
             tmp_path / "attempts" / "2-0-0-mirror-0",
-            seed_secret=SECRET,
-            expected_scientific_binding_sha256="e" * 64)
+            seed_secret=SECRET, expected_runtime_sha256="e" * 64)
 
 
 def test_attempt_runner_refuses_peer_memory_before_provider_dispatch(
@@ -1478,3 +1476,13 @@ def test_coordinated_trajectory_and_manifest_rehash_still_refuses(tmp_path):
     manifest_path.chmod(0o400)
     with pytest.raises(Exception, match="trajectory|completed"):
         collection.reopen_attempt(root, seed_secret=SECRET)
+
+
+def test_runtime_stable_view_ignores_git_dirty_only():
+    from shengji.luna.attempt import runtime_stable_view
+    clean = {"execution_git": "a" * 40, "git_dirty": False, "codex_version": "codex-cli 0.149.0"}
+    dirty = {**clean, "git_dirty": True}
+    assert runtime_stable_view(clean) == runtime_stable_view(dirty)
+    assert runtime_stable_view({**clean, "codex_version": "other"}) != runtime_stable_view(clean)
+    assert "git_dirty" not in runtime_stable_view(dirty)
+

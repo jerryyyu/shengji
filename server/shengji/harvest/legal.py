@@ -219,8 +219,10 @@ def enumerate_legal(rnd: Round, seat: int, cap: int | None = DEFAULT_CAP,
     """The exhaustive legal set at ``rnd`` for ``seat`` (which must be to act).
 
     ``must_include`` actions (e.g. the taken action and the source's ballot)
-    are appended when a cap would otherwise drop them; they are verified legal
-    with the engine's own validators first.
+    are ALWAYS verified legal with the engine's own validators, complete or
+    not; a legal one missing from a capped enumeration is appended, and a
+    legal one missing from a COMPLETE enumeration is an enumerator defect and
+    refuses (a complete set that lacks a legal action is not complete).
     """
     if rnd.phase != "play" or rnd.turn != seat or rnd.trick is None \
             or rnd.ordering is None:
@@ -242,17 +244,22 @@ def enumerate_legal(rnd: Round, seat: int, cap: int | None = DEFAULT_CAP,
         if cap is not None and len(actions) >= cap:
             break
         actions.append(key)
-        seen.add(key)
+        seen.add(tuple(sorted(key)))
     complete = count is not None and len(actions) == count
-    if not complete:
-        for extra in must_include:
-            key = tuple(sorted(extra))
-            if key in seen:
-                continue
-            if not is_legal(rnd, seat, list(key)):
-                raise ValueError(f"must_include action is illegal: {key}")
-            actions.append(key)
-            seen.add(key)
+    for extra in must_include:
+        key = tuple(sorted(extra))
+        # legality is checked for every requested action, regardless of
+        # whether the enumeration was capped (a malformed source ballot must
+        # refuse in small states too)
+        if not is_legal(rnd, seat, list(key)):
+            raise ValueError(f"must_include action is illegal: {key}")
+        if key in seen:
+            continue
+        if complete:
+            raise ValueError(
+                f"complete enumeration lacks a legal must_include action: {key}")
+        actions.append(key)
+        seen.add(key)
     return LegalSet(kind, [list(a) for a in actions], count, complete)
 
 

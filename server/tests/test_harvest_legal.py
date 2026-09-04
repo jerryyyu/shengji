@@ -101,6 +101,7 @@ def test_agrees_with_engine_endgame_enumerator(states):
 
 
 def test_cap_prefix_and_must_include(states):
+    witnessed = {"complete": False, "capped": False}
     for rnd in states:
         seat = rnd.turn
         full = legal.enumerate_legal(rnd, seat, cap=None)
@@ -113,12 +114,16 @@ def test_cap_prefix_and_must_include(states):
         assert tuple(last) in with_extra.keys()
         if not with_extra.complete:
             assert with_extra.actions[:8] == full.actions[:8]
-        # an illegal must_include is refused, never silently listed
+        # an illegal must_include is refused, never silently listed — in
+        # COMPLETE (small) states as well as capped ones: a malformed source
+        # ballot must not be trusted just because the state is small
         hand = rnd.hands[seat]
         bad = ["BJ"] * 3
-        if Counter(hand)["BJ"] < 3 and not with_extra.complete:
-            with pytest.raises(ValueError):
+        if Counter(hand)["BJ"] < 3:
+            with pytest.raises(ValueError, match="illegal"):
                 legal.enumerate_legal(rnd, seat, cap=8, must_include=[bad])
+            witnessed["complete" if with_extra.complete else "capped"] = True
+    assert witnessed == {"complete": True, "capped": True}, witnessed
 
 
 def test_multiset_counting_matches_brute_force():

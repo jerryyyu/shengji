@@ -8,7 +8,9 @@ from shengji.engine.game import Game
 from shengji.engine.round import Round
 from shengji.harvest import common, rebuild, schema
 from shengji.rl.human_shards import _player_id
-from shengji.rl.privileged_teacher_pt0 import signed_level_utility as pt0_utility
+# PT0's module left main with the PT keep-set pruning (#197); the Luna package
+# carries the same signed-level convention and is on main
+from shengji.luna.game import signed_level_utility as pt0_utility
 
 
 def _fields(**over):

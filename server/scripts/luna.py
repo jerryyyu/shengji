@@ -29,10 +29,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from shengji.rl.privileged_teacher_luna_rpc_runtime import (  # noqa: E402
+from shengji.luna.runtime import (  # noqa: E402
     source_identity,
 )
-from shengji.rl.privileged_teacher_luna_rpc_supervisor import (  # noqa: E402
+from shengji.luna.supervisor import (  # noqa: E402
     COMPLETE_STATE_SOURCE_ACQUISITION,
     DEFAULT_GAME_DEADLINE_SECONDS,
     DEFAULT_PER_CALL_TOKEN_RESERVE,

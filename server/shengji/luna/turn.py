@@ -12,8 +12,8 @@ import hashlib
 import threading
 from typing import Callable, Mapping, Protocol
 
-from . import privileged_teacher_luna_selfplay as selfplay
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from . import game as selfplay
+from .canonical import canonical_json_bytes
 
 
 SCHEMA = "privileged-teacher-luna-turn-rpc-v1"

@@ -21,18 +21,18 @@ import threading
 import time
 from typing import Mapping, Sequence
 
-from . import privileged_teacher_luna_selfplay as selfplay
-from .privileged_teacher_luna_rpc_collection import (
+from . import game as selfplay
+from .attempt import (
     AttemptReopen, RPCGameAttemptRunner, reopen_attempt,
 )
-from .privileged_teacher_luna_rpc_ledger import (
+from .ledger import (
     ResourceBoundaryError, RPCCollectionError, ScientificBudgetLedger,
 )
-from .privileged_teacher_luna_rpc_io import (
+from .atomic_io import (
     AtomicPublishError, publish_exclusive_bytes, recover_linked_partial,
 )
-from .privileged_teacher_luna_turn_rpc import TurnRPCError
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from .turn import TurnRPCError
+from .canonical import canonical_json_bytes
 
 
 SCHEMA = "pt-luna-turn-rpc-supervisor-v4"

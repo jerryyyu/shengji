@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_rpc_io as rpc_io
+from shengji.luna import atomic_io as rpc_io
 
 
 class ProcessDeath(BaseException):

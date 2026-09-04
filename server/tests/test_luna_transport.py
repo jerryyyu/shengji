@@ -16,9 +16,9 @@ import time
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_selfplay as selfplay
-from shengji.rl import privileged_teacher_luna_rpc_transport as transport_module
-from shengji.rl.privileged_teacher_luna_rpc_transport import (
+from shengji.luna import game as selfplay
+from shengji.luna import transport as transport_module
+from shengji.luna.transport import (
     CODE_MODE_DISABLED_DIAGNOSTIC,
     CodexExecPlannerTransport,
     CodexProviderResourceError,
@@ -31,12 +31,12 @@ from shengji.rl.privileged_teacher_luna_rpc_transport import (
     validate_private_evidence,
     validate_private_refusal_evidence,
 )
-from shengji.rl.privileged_teacher_luna_turn_rpc import (
+from shengji.luna.turn import (
     DecisionPacket,
     PhaseContext,
     TeamMemory,
 )
-from shengji.rl.privileged_teacher_luna_canonical import canonical_json_bytes
+from shengji.luna.canonical import canonical_json_bytes
 
 
 SECRET = b"luna-rpc-transport-secret-32b!!!"
@@ -247,7 +247,7 @@ def test_trace_requires_exact_fail_closed_diagnostic_before_turn():
              "action": {"kind": "play", "candidate_index": 0,
                         "confidence": "low", "planning_note": "bounded"}}
     raw = trace(final)
-    from shengji.rl import privileged_teacher_luna_rpc_transport as module
+    from shengji.luna import transport as module
     module._events_and_usage(raw)
 
     rows = [json.loads(line) for line in raw.splitlines()]
@@ -437,7 +437,7 @@ def test_private_provider_trace_reopens_and_coordinated_rehash_fails(tmp_path):
 
 def test_nested_phase_schema_structurally_separates_rollout_and_play(tmp_path):
     first = packet()
-    from shengji.rl.privileged_teacher_luna_rpc_transport import intent_output_schema
+    from shengji.luna.transport import intent_output_schema
     free = intent_output_schema(first)
     variants = free["properties"]["action"]["anyOf"]
     assert [row["properties"]["kind"]["const"] for row in variants] \

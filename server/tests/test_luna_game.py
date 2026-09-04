@@ -7,7 +7,7 @@ import threading
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_selfplay as luna
+from shengji.luna import game as luna
 
 
 SECRET = b"luna-self-play-secret-material!!"

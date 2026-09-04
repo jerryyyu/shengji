@@ -17,13 +17,13 @@ import subprocess
 import sys
 import threading
 
-from .privileged_teacher_luna_rpc_transport import (
+from .transport import (
     CodexTurnTransportError,
     MODEL,
     REASONING_EFFORT,
     attest_codex_runtime,
 )
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from .canonical import canonical_json_bytes
 
 
 RUNTIME_SCHEMA = "pt-luna-turn-rpc-runtime-v2"
@@ -43,15 +43,19 @@ REQUIRED_ENGINE_ENVIRONMENT = {
 }
 LOADABLE_SHADOW_SUFFIXES = (".pyc", ".pyo", ".so", ".dylib", ".pyd")
 SOURCE_PATHS = (
-    "shengji/rl/privileged_teacher_luna_selfplay.py",
-    "shengji/rl/privileged_teacher_luna_turn_rpc.py",
-    "shengji/rl/privileged_teacher_luna_rpc_transport.py",
-    "shengji/rl/privileged_teacher_luna_rpc_watchdog.py",
-    "shengji/rl/privileged_teacher_luna_rpc_io.py",
-    "shengji/rl/privileged_teacher_luna_rpc_journal.py",
-    "shengji/rl/privileged_teacher_luna_rpc_runtime.py",
-    "shengji/rl/privileged_teacher_luna_rpc_collection.py",
-    "shengji/rl/privileged_teacher_luna_rpc_supervisor.py",
+    "shengji/luna/__init__.py",
+    "shengji/luna/canonical.py",
+    "shengji/luna/game.py",
+    "shengji/luna/turn.py",
+    "shengji/luna/transport.py",
+    "shengji/luna/watchdog.py",
+    "shengji/luna/atomic_io.py",
+    "shengji/luna/journal.py",
+    "shengji/luna/runtime.py",
+    "shengji/luna/ledger.py",
+    "shengji/luna/attempt.py",
+    "shengji/luna/supervisor.py",
+    "scripts/luna.py",
 )
 
 

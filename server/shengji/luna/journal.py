@@ -10,16 +10,16 @@ import re
 import stat
 from typing import Mapping
 
-from . import privileged_teacher_luna_selfplay as selfplay
-from .privileged_teacher_luna_rpc_transport import (
+from . import game as selfplay
+from .transport import (
     classify_refusal_redispatch_eligibility,
 )
-from .privileged_teacher_luna_rpc_io import (
+from .atomic_io import (
     AtomicPublishError, partial_path, promote_partial,
     publish_exclusive_bytes,
     recover_linked_partial,
 )
-from .privileged_teacher_luna_turn_rpc import (
+from .turn import (
     AttemptRef,
     CallEvidence,
     DecisionPacket,
@@ -31,7 +31,7 @@ from .privileged_teacher_luna_turn_rpc import (
     TeamMemory,
     TurnRPCError,
 )
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from .canonical import canonical_json_bytes
 
 
 SCHEMA = "pt-luna-turn-journal-record-v3"
@@ -131,7 +131,7 @@ def _read(path: Path) -> dict[str, object]:
 def _closed_failure_disposition(
         exc: BaseException, *, stage: str) -> dict[str, object]:
     """Classify once, before a rejected provider result becomes durable."""
-    from .privileged_teacher_luna_rpc_transport import (
+    from .transport import (
         CodexProviderResourceError, CodexToolEventError,
         CodexTurnTransportError,
     )
@@ -378,7 +378,7 @@ class FileTurnJournal:
                 key: value for key, value in body.items()
                 if key != "provider_private_evidence"})
             if private is not None:
-                from .privileged_teacher_luna_rpc_transport import (
+                from .transport import (
                     validate_private_evidence,
                 )
                 validate_private_evidence(
@@ -421,7 +421,7 @@ class FileTurnJournal:
             private_sha = None
         else:
             try:
-                from .privileged_teacher_luna_rpc_transport import (
+                from .transport import (
                     validate_private_refusal_evidence,
                 )
                 validated = validate_private_refusal_evidence(
@@ -453,7 +453,7 @@ class FileTurnJournal:
 
     @staticmethod
     def _failure_class(exc: Exception) -> str:
-        from .privileged_teacher_luna_rpc_transport import (
+        from .transport import (
             CodexProviderResourceError, CodexToolEventError,
             CodexTurnTransportError,
         )

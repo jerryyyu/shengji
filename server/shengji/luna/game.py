@@ -25,7 +25,7 @@ from ..ai.smart import SmartBot
 from ..engine.cards import Ordering, RANKS
 from ..engine.combos import decompose
 from ..engine.round import Round, Trick, TrickPlay
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from .canonical import canonical_json_bytes
 
 
 SCHEMA = "privileged-teacher-luna-selfplay-v1"

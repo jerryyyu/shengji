@@ -11,16 +11,16 @@ import time
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_rpc_supervisor as supervisor
-from shengji.rl import privileged_teacher_luna_rpc_io as rpc_io
-from shengji.rl import privileged_teacher_luna_rpc_collection as collection
-from shengji.rl import privileged_teacher_luna_rpc_transport as rpc_transport
-from shengji.rl.privileged_teacher_luna_rpc_collection import AttemptReopen
-from shengji.rl.privileged_teacher_luna_turn_rpc import (
+from shengji.luna import supervisor as supervisor
+from shengji.luna import atomic_io as rpc_io
+from shengji.luna import attempt as collection
+from shengji.luna import transport as rpc_transport
+from shengji.luna.attempt import AttemptReopen
+from shengji.luna.turn import (
     DecisionPacket, PhaseContext, TeamMemory,
 )
-from shengji.rl.privileged_teacher_luna_canonical import canonical_json_bytes
-from test_privileged_teacher_luna_rpc_collection import (
+from shengji.luna.canonical import canonical_json_bytes
+from test_luna_attempt import (
     FakeCodexRun, TransportFactory,
 )
 

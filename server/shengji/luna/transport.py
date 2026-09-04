@@ -23,8 +23,8 @@ import threading
 import time
 from typing import Callable
 
-from . import privileged_teacher_luna_selfplay as selfplay
-from .privileged_teacher_luna_turn_rpc import (
+from . import game as selfplay
+from .turn import (
     CONFIDENCE_LEVELS,
     CONTINUATIONS,
     DecisionPacket,
@@ -34,7 +34,7 @@ from .privileged_teacher_luna_turn_rpc import (
     TurnValidationError,
     Usage,
 )
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from .canonical import canonical_json_bytes
 
 
 MODEL = selfplay.MODEL
@@ -395,7 +395,7 @@ def _start_contained_process(command: tuple[str, ...], *, workspace: Path,
     read_fd, write_fd = os.pipe()
     wrapper = (
         sys.executable, "-B", "-m",
-        "shengji.rl.privileged_teacher_luna_rpc_watchdog",
+        "shengji.luna.watchdog",
         str(read_fd), *command)
     try:
         process = subprocess.Popen(

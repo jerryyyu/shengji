@@ -17,13 +17,13 @@ import threading
 import time
 from typing import Callable, Mapping
 
-from . import privileged_teacher_luna_selfplay as selfplay
-from .privileged_teacher_luna_rpc_journal import (
+from . import game as selfplay
+from .journal import (
     FileTurnJournal,
     SealedTurnRefusal,
     TurnJournalError,
 )
-from .privileged_teacher_luna_rpc_ledger import (
+from .ledger import (
     REDISPATCH_ELIGIBILITIES,
     RPCCollectionError,
     ResourceBoundaryError,
@@ -37,7 +37,7 @@ from .privileged_teacher_luna_rpc_ledger import (
     _strict_sha,
     _validate_private_dir,
 )
-from .privileged_teacher_luna_rpc_runtime import (
+from .runtime import (
     FAILURE_KINDS,
     FAILURE_STAGES,
     NO_FAILURE_MESSAGE_SHA256,
@@ -45,14 +45,14 @@ from .privileged_teacher_luna_rpc_runtime import (
     RUNTIME_SCHEMA,
     source_identity,
 )
-from .privileged_teacher_luna_rpc_transport import (
+from .transport import (
     CodexExecPlannerTransport,
     CodexProviderResourceError,
     CodexToolEventError,
     CodexTurnTransportError,
     _default_run,
 )
-from .privileged_teacher_luna_turn_rpc import (
+from .turn import (
     AttemptRef,
     DecisionPacket,
     PlannerTransport,
@@ -60,7 +60,7 @@ from .privileged_teacher_luna_turn_rpc import (
     TurnRPCError,
     TurnValidationError,
 )
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from .canonical import canonical_json_bytes
 
 
 ATTEMPT_SCHEMA = "pt-luna-turn-rpc-game-attempt-v2"
@@ -377,7 +377,7 @@ def reopen_attempt(
 class _CountingRun:
     def __init__(self, concurrency: RPCConcurrency):
         self.concurrency = concurrency
-        from .privileged_teacher_luna_rpc_transport import ActiveCallManager
+        from .transport import ActiveCallManager
         self.active_calls = ActiveCallManager()
 
     def __call__(self, command, prompt, workspace, timeout_seconds):

@@ -7,8 +7,8 @@ import sys
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_rpc_runtime as runtime_module
-from shengji.rl.privileged_teacher_luna_rpc_transport import (
+from shengji.luna import runtime as runtime_module
+from shengji.luna.transport import (
     CodexTurnTransportError, DISABLED_FEATURES, PINNED_CODEX_VERSION,
 )
 

@@ -7,11 +7,11 @@ import stat
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_rpc_collection as attempt_module
-from shengji.rl import privileged_teacher_luna_rpc_supervisor as supervisor
-from shengji.rl import privileged_teacher_luna_rpc_transport as rpc_transport
-from shengji.rl.privileged_teacher_luna_rpc_runtime import RUNTIME_SCHEMA
-from test_privileged_teacher_luna_rpc_collection import FakeCodexRun
+from shengji.luna import attempt as attempt_module
+from shengji.luna import supervisor as supervisor
+from shengji.luna import transport as rpc_transport
+from shengji.luna.runtime import RUNTIME_SCHEMA
+from test_luna_attempt import FakeCodexRun
 
 
 SECRET = b"pt-luna-cli-test-secret-bytes!!!"

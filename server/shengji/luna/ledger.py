@@ -19,18 +19,18 @@ import threading
 import time
 from typing import Mapping, Sequence
 
-from .privileged_teacher_luna_rpc_io import (
+from .atomic_io import (
     AtomicPublishError, partial_path, promote_partial,
     publish_exclusive_bytes, recover_linked_partial,
 )
-from .privileged_teacher_luna_rpc_journal import FileTurnJournal
-from .privileged_teacher_luna_rpc_transport import CodexProviderResourceError
-from .privileged_teacher_luna_turn_rpc import (
+from .journal import FileTurnJournal
+from .transport import CodexProviderResourceError
+from .turn import (
     AttemptRef,
     DecisionPacket,
     PlannerResponse,
 )
-from .privileged_teacher_luna_canonical import canonical_json_bytes
+from .canonical import canonical_json_bytes
 
 
 REDISPATCH_ELIGIBILITIES = frozenset({

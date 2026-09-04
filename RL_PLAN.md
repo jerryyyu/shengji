@@ -51,9 +51,11 @@ when a candidate beats the champion on a tier ii paired screen.
 
 ## Current decision tree
 
-1. **Value V2 in DEV mode.** First end-to-end D64 run (width-8 spawn
-   population → labels → train → calibrate → audit → sealed terminal), then
-   D256. One interpretation review per seal. No confirmatory ceremony.
+1. **Value V2 in DEV mode.** First end-to-end D64 run (retained coverage →
+   labels → train → calibrate → audit → sealed terminal), followed by one
+   interpretation review. The frozen 256-slot ledger remains a coverage-audit
+   set only; do not complete its missing slot or use slot targeting as the next
+   training-data recipe. No confirmatory ceremony.
 2. **Ceiling screens before any second spend.** Oracle-value ceiling
    (near-perfect leaf value inside production search vs production) bounds
    V2's upside; oracle-belief ceiling (true hidden worlds in the production
@@ -64,10 +66,13 @@ when a candidate beats the champion on a tier ii paired screen.
    dataset diagnostically — where the flexible planner disagrees with
    production and wins, by mechanism — to derive direct search-policy variants
    for the RLCB paired harness.
-4. **Prove transport before scaling data.** Fine-tune the D256-pretrained V2
-   model on Luna outcomes (value targets, not action imitation) and test
-   whether search with the fine-tuned leaf value moves toward the teacher on
-   the disagreement set. No further teacher collection until that transports.
+4. **Prove transport before scaling data.** If the D64 DEV model establishes a
+   usable V2 recipe, fine-tune that model on Luna outcomes (value targets, not
+   action imitation) and test whether search with the fine-tuned leaf value
+   moves toward the teacher on the disagreement set. The frozen 256-slot
+   population is coverage-audit evidence only, not a training-data target; any
+   larger training population must be selected under a separate natural or
+   teacher-data contract. No further teacher collection until that transports.
 5. **BELIEF R4/R5 closed** unless the oracle-belief ceiling is positive.
 6. **Confirm strength last.** Any successor must beat literal production and a
    behavior/work-matched null on fresh mirrored rounds under tier iii.
@@ -270,9 +275,9 @@ on exact states and then in realistic full-round populations.
 The sealed `pt-luna-rpc-isolated-b0b1bd95-r1` dataset (32 complete games,
 ledger `6c71bee3`) plus the 1,578 earlier reopenable Luna decisions are the
 teacher artifact; PT-Sol remains the higher-quality reference. Teacher
-collection is closed. The current path is: pretrain Value V2 on its own
-D256 production-continuation population (DEV mode, D64 first), fine-tune on
-Luna outcomes as value targets with a held-out teacher-agreement slice, and
+collection is closed. The current path is: establish the Value V2 recipe on
+the retained D64 subset, fine-tune a usable D64 model on Luna outcomes as value
+targets with a held-out teacher-agreement slice, and
 test whether search with the fine-tuned leaf value moves toward the teacher on
 the states where the flexible planner disagreed with production and won. That
 is an exploratory transport screen, not a powered strength claim; a fresh-root

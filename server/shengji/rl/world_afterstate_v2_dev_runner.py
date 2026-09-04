@@ -14,13 +14,18 @@ from typing import Any, Callable, Sequence
 
 from .belief_artifacts import publish_exclusive_bytes, stable_read_bytes
 from .belief_contract import canonical_json_bytes
-from .world_afterstate_v2_dev_protocol import build_value_v2_dev_protocol
+from .world_afterstate_v2_dev_protocol import (
+    build_value_v2_dev_partial_protocol, build_value_v2_dev_protocol,
+)
 from .world_afterstate_v2_label_controller import (
     build_continuation_population_v2, reopen_label_stage_receipt,
 )
-from .world_afterstate_v2_population_artifacts import reopen_population_manifest
+from .world_afterstate_v2_population_artifacts import (
+    population_partial_coverage_path, reopen_population_manifest,
+)
 from .world_afterstate_v2_population_controller import (
     collect_population_v2, reopen_population_collection_v2,
+    reopen_population_partial_coverage_v2,
 )
 from .world_afterstate_v2_protocol import D256_MAX_ATTEMPTS_PER_SLOT
 from .world_afterstate_v2_artifacts import reopen_continuation_manifest
@@ -210,6 +215,28 @@ def _population(root: Path, run_id: str, *, repo: Path, workers: int,
             root, freeze_sha256=freeze, population_namespace_sha256=namespace,
             admission_sha256=admission, max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
     else:
+        # A missing full receipt is the only entry point for the explicitly
+        # incomplete path. It authenticates retained shard bytes and refuses
+        # to manufacture a D256 manifest or receipt.
+        partial_path = population_partial_coverage_path(root)
+        partial_artifact_exists = partial_path.exists() or partial_path.is_symlink()
+        try:
+            partial = reopen_population_partial_coverage_v2(
+                root, freeze_sha256=freeze,
+                population_namespace_sha256=namespace,
+                admission_sha256=admission,
+                max_attempts_per_slot=D256_MAX_ATTEMPTS_PER_SLOT)
+        except Exception as exc:
+            if partial_artifact_exists:
+                raise WorldAfterstateV2DevRunnerError(
+                    "partial coverage reopen refused") from exc
+            partial = None
+        if partial is not None:
+            materials = tuple(partial.selected_materials)
+            partial_hash = _sha_bytes(stable_read_bytes(partial_path))
+            _report(progress, stage="d256-population", completed=partial.accepted_slots,
+                    total=256, active_workers=0, started=started)
+            return partial, materials, partial_hash
         receipt = collect_population_v2(
             root, freeze_sha256=freeze, population_namespace_sha256=namespace,
             admission_sha256=admission,
@@ -401,8 +428,11 @@ def run_value_v2_dev_d64(root: Path, *, repo: Path, run_id: str,
         root, run_id, repo=repo, workers=population_workers, progress=public_progress)
     stage_timings["d256_population"] = max(0, time.monotonic_ns() - stage_started)
     stage_started = time.monotonic_ns()
-    subset_path = private / "d64-subset.json"
-    subset = build_value_v2_dev_protocol(population)
+    partial_coverage = (getattr(receipt, "accepted_slots", 256) < 256)
+    subset_path = private / ("d64-partial-coverage.json" if partial_coverage
+                            else "d64-subset.json")
+    subset = (build_value_v2_dev_partial_protocol(receipt)
+              if partial_coverage else build_value_v2_dev_protocol(population))
     subset_payload = subset.payload()
     if subset_path.exists() and _json(stable_read_bytes(subset_path), "D64 subset") != subset_payload:
         raise WorldAfterstateV2DevRunnerError("D64 subset receipt drift")
@@ -486,8 +516,19 @@ def run_value_v2_dev_d64(root: Path, *, repo: Path, run_id: str,
                    "learning_rate_ppb": 10_000_000, "weight_decay_ppb": 0,
                    "gradient_norm_milli": 1_000, "max_epochs": 20,
                    "sigma_pair_squared": sigma},
-        "population": {"receipt_sha256": population_hash, "population_sha256": _payload(receipt).get("population_sha256")},
-        "d64_subset": {"receipt_sha256": _sha_bytes(stable_read_bytes(subset_path)), "manifest_sha256": subset.manifest_sha256},
+        "population": ({"partial_coverage_sha256": population_hash,
+                        "coverage_complete": False,
+                        "accepted_slots": receipt.accepted_slots,
+                        "missing_slot_count": len(receipt.missing_slots),
+                        "missing_slots": [dict(item) for item in receipt.missing_slots]}
+                       if partial_coverage else
+                       {"receipt_sha256": population_hash,
+                        "population_sha256": _payload(receipt).get("population_sha256")}),
+        "d64_subset": {"receipt_sha256": _sha_bytes(stable_read_bytes(subset_path)),
+                        "manifest_sha256": subset.manifest_sha256,
+                        **({"artifact": "d64-partial-coverage.json",
+                            "coverage_complete": False}
+                           if partial_coverage else {})},
         "labels": {"fit_epoch_receipt_sha256": _sha_bytes(stable_read_bytes(private / "labels" / "fit-epoch" / "receipt.json")),
                    "fit_epoch_manifest_sha256": _payload(fit_receipt).get("manifest_sha256"),
                    "precision_select_receipt_sha256": _sha_bytes(stable_read_bytes(private / "labels" / "precision-select" / "receipt.json")),
@@ -534,8 +575,16 @@ def reopen_value_v2_dev_d64(root: Path, *, expected_run_id: str | None = None) -
     # A terminal seal is meaningful only while every referenced immutable
     # private artifact still has its sealed bytes.
     refs = {
-        "d256-population-receipt.json": value.get("population", {}).get("receipt_sha256"),
-        "d64-subset.json": value.get("d64_subset", {}).get("receipt_sha256"),
+        ("../population-controller/partial-coverage.json" if value.get("population", {}).get(
+            "coverage_complete", True) is False
+         else "d256-population-receipt.json"): value.get(
+             "population", {}).get("partial_coverage_sha256",
+                                    value.get("population", {}).get(
+                                        "receipt_sha256")),
+        ("d64-partial-coverage.json" if value.get("d64_subset", {}).get(
+            "artifact") == "d64-partial-coverage.json"
+         else "d64-subset.json"): value.get("d64_subset", {}).get(
+             "receipt_sha256"),
         "labels/fit-epoch/receipt.json": value.get("labels", {}).get(
             "fit_epoch_receipt_sha256"),
         "labels/precision-select/receipt.json": value.get("labels", {}).get(

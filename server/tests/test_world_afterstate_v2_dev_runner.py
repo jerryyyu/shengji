@@ -175,6 +175,62 @@ def test_runner_persists_score_free_progress_and_resumes(tmp_path: Path,
     assert calls == first_calls
 
 
+def test_runner_terminal_binds_incomplete_coverage_without_fabricating_d256(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Witness the partial controller result at the terminal wiring altitude."""
+    _wire_fakes(monkeypatch, tmp_path)
+    materials = tuple(SimpleNamespace(deal_sha256=f"{i:064x}")
+                      for i in range(64))
+    missing = {"slot_sha256": "f" * 64, "ordinal": 144}
+    partial_path = (tmp_path / "population-controller" /
+                    "partial-coverage.json")
+    partial_value = {"schema": "fixture-partial-coverage",
+                     "coverage_complete": False,
+                     "accepted_slots": 255, "missing_slots": [missing]}
+    runner._publish(partial_path, partial_value)
+    partial_hash = runner._sha_bytes(partial_path.read_bytes())
+    receipt = SimpleNamespace(
+        accepted_slots=255, missing_slots=(missing,),
+        selected_materials=materials)
+
+    def population(*_args, **kwargs):
+        kwargs["progress"]({"stage": "d256-population", "completed": 255,
+                             "total": 256, "percent": 99,
+                             "active_workers": 0, "elapsed_nanoseconds": 1,
+                             "eta_nanoseconds": None})
+        return receipt, materials, partial_hash
+
+    class PartialSubset:
+        manifest_sha256 = "b" * 64
+
+        def __init__(self):
+            self.materials = materials
+
+        def payload(self):
+            return {"schema": "fixture-d64-partial",
+                    "coverage_complete": False,
+                    "manifest_sha256": self.manifest_sha256}
+
+    monkeypatch.setattr(runner, "_population", population)
+    monkeypatch.setattr(runner, "build_value_v2_dev_partial_protocol",
+                        lambda value: PartialSubset())
+
+    terminal = runner.run_value_v2_dev_d64(
+        tmp_path, repo=tmp_path, run_id="partial-terminal")
+
+    assert terminal["population"] == {
+        "partial_coverage_sha256": partial_hash,
+        "coverage_complete": False, "accepted_slots": 255,
+        "missing_slot_count": 1, "missing_slots": [missing],
+    }
+    assert terminal["d64_subset"]["artifact"] \
+        == "d64-partial-coverage.json"
+    assert not (tmp_path / "private" /
+                "d256-population-receipt.json").exists()
+    assert reopen_value_v2_dev_d64(
+        tmp_path, expected_run_id="partial-terminal") == terminal
+
+
 def test_runner_reopen_refuses_bound_checkpoint_drop(tmp_path: Path,
                                                      monkeypatch: pytest.MonkeyPatch):
     _wire_fakes(monkeypatch, tmp_path)

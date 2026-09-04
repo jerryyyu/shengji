@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,8 +20,10 @@ from shengji.rl.world_afterstate_v2_protocol import (
 from shengji.rl.world_afterstate_v2_dev_protocol import (
     DEV_GROUP_COUNTS,
     DEV_SUBFOLD_COUNTS,
+    ValueV2DevPartialCoverageReceipt,
     ValueV2DevProtocolReceipt,
     WorldAfterstateV2DevProtocolError,
+    build_value_v2_dev_partial_protocol,
     build_value_v2_dev_protocol,
     validate_value_v2_dev_protocol,
 )
@@ -122,3 +125,53 @@ def test_selection_mutation_is_refused(monkeypatch):
         forged.validate()
     with pytest.raises(WorldAfterstateV2DevProtocolError):
         validate_value_v2_dev_protocol(population, forged)
+
+
+def test_partial_protocol_keeps_fixed_d64_and_refuses_selected_missing_slot(
+        monkeypatch):
+    population = _population(monkeypatch)
+    full = build_value_v2_dev_protocol(population)
+    ledger = build_population_slot_ledger(TIER_SPECS[0])
+    selected_positions = (*range(0, 32), *range(128, 136),
+                          *range(160, 172), *range(208, 220))
+    rows = []
+    for position, material in zip(selected_positions, full.materials,
+                                  strict=True):
+        slot = ledger[position]
+        digest = hashlib.sha256(
+            canonical_json_bytes({"material": position})).hexdigest()
+        rows.append({
+            "schema": "world-afterstate-v2-population-material-artifact-v1",
+            "relative_path":
+                f"population/materials/state-{material.state_sha256}.json",
+            "tier": "D256", "split": slot.split, "source": slot.source,
+            "ordinal": slot.ordinal, "deal_sha256": material.deal_sha256,
+            "slot_sha256": slot.slot_sha256,
+            "state_sha256": material.state_sha256,
+            "candidate_set_sha256": material.candidate_set_sha256,
+            "byte_count": 1, "sha256": digest,
+            "material_sha256": full.selected_identities[
+                len(rows)].material_sha256,
+        })
+    missing = {**ledger[144].payload(),
+               "slot_sha256": ledger[144].slot_sha256}
+    coverage = SimpleNamespace(
+        freeze_sha256="f" * 64, population_namespace_sha256="b" * 64,
+        admission_sha256="a" * 64, config_sha256="c" * 64,
+        accepted_slots=255, missing_slots=(missing,),
+        selected_identities=tuple(item.payload()
+                                  for item in full.selected_identities),
+        selected_shard_rows=tuple(rows),
+        selected_materials=full.materials, orphan_started=())
+
+    partial = build_value_v2_dev_partial_protocol(coverage)
+    assert isinstance(partial, ValueV2DevPartialCoverageReceipt)
+    assert partial.materials == full.materials
+    assert partial.payload()["coverage_complete"] is False
+    assert partial.payload()["missing_slots"] == [missing]
+
+    coverage.missing_slots = (
+        {**ledger[0].payload(), "slot_sha256": ledger[0].slot_sha256},)
+    with pytest.raises(WorldAfterstateV2DevProtocolError,
+                       match="missing slot identity"):
+        build_value_v2_dev_partial_protocol(coverage)

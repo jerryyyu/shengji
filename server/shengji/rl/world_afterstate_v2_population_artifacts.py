@@ -32,6 +32,9 @@ MATERIAL_MAGIC = MATERIAL_ARTIFACT_SCHEMA
 POPULATION_DIRNAME = "population"
 MATERIAL_DIRNAME = "materials"
 MANIFEST_NAME = "manifest.json"
+PARTIAL_COVERAGE_SCHEMA = "world-afterstate-v2-population-partial-coverage-v1"
+PARTIAL_COVERAGE_NAME = "partial-coverage.json"
+PARTIAL_COVERAGE_DIRNAME = "population-controller"
 COMMITMENT_NAME = "population.commitment"
 
 AUTHORITY = {
@@ -393,6 +396,136 @@ publish_population_material_shard = publish_population_material
 publish_population_material_artifact = publish_population_material
 
 
+def population_partial_coverage_path(root: Path) -> Path:
+    """Return the separately named immutable incomplete-coverage artifact."""
+    root = _root(root)
+    return root / PARTIAL_COVERAGE_DIRNAME / PARTIAL_COVERAGE_NAME
+
+
+def _partial_coverage_value(value: object) -> dict[str, Any]:
+    if type(value) is not dict or value.get("schema") != PARTIAL_COVERAGE_SCHEMA:
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage schema drift")
+    expected = {"schema", "freeze_sha256", "population_namespace_sha256",
+                "admission_sha256", "config_sha256", "tier",
+                "coverage_complete", "accepted_slots", "missing_slot_count",
+                "missing_slots", "selected_identities", "selected_shard_rows",
+                "orphan_started", "coverage_sha256"}
+    if set(value) != expected:
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage field drift")
+    if value.get("tier") != "D256" or value.get("coverage_complete") is not False \
+            or type(value.get("accepted_slots")) is not int \
+            or isinstance(value.get("accepted_slots"), bool) \
+            or value["accepted_slots"] != 255 \
+            or value.get("missing_slot_count") != 1 \
+            or type(value.get("missing_slots")) is not list \
+            or len(value["missing_slots"]) != 1 \
+            or type(value.get("selected_identities")) is not list \
+            or len(value["selected_identities"]) != 64 \
+            or "population_sha256" in value or "manifest_sha256" in value:
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage completion drift")
+    if "coverage_sha256" not in value:
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage hash missing")
+    _digest(value["coverage_sha256"], "partial coverage SHA-256")
+    body = {key: item for key, item in value.items()
+            if key != "coverage_sha256"}
+    if value["coverage_sha256"] != _sha(canonical_json_bytes(body)):
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage hash drift")
+    return dict(value)
+
+
+def _validate_partial_rows(root: Path, value: dict[str, Any]) -> None:
+    rows = value.get("selected_shard_rows")
+    if type(rows) is not list or len(rows) != 64:
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial selected row population drift")
+    required = {"schema", "relative_path", "tier", "split", "source",
+                "ordinal", "deal_sha256", "slot_sha256", "state_sha256",
+                "candidate_set_sha256", "byte_count", "sha256",
+                "material_sha256"}
+    seen: set[str] = set()
+    selected_positions = tuple(range(0, 32)) + tuple(range(128, 136)) \
+        + tuple(range(160, 172)) + tuple(range(208, 220))
+    ledger = build_population_slot_ledger(TIER_SPECS[0])
+    for row in rows:
+        if type(row) is not dict or set(row) != required \
+                or row["schema"] != MATERIAL_ARTIFACT_SCHEMA:
+            raise WorldAfterstateV2PopulationArtifactError(
+                "partial selected row schema drift")
+        for key in ("deal_sha256", "slot_sha256", "state_sha256",
+                    "candidate_set_sha256", "sha256", "material_sha256"):
+            _digest(row[key], f"partial selected {key}")
+        if type(row["byte_count"]) is not int or isinstance(
+                row["byte_count"], bool) or row["byte_count"] <= 0:
+            raise WorldAfterstateV2PopulationArtifactError(
+                "partial selected row byte count drift")
+        slot = ledger[selected_positions[len(seen)]]
+        if (row["tier"], row["split"], row["source"], row["ordinal"],
+                row["slot_sha256"]) != (
+                    slot.tier, slot.split, slot.source, slot.ordinal,
+                    slot.slot_sha256):
+            raise WorldAfterstateV2PopulationArtifactError(
+                "partial selected row order drift")
+        path = _material_path(root, row["state_sha256"])
+        if row["relative_path"] != path.relative_to(root).as_posix() \
+                or row["relative_path"] in seen:
+            raise WorldAfterstateV2PopulationArtifactError(
+                "partial selected row path drift")
+        seen.add(row["relative_path"])
+        try:
+            raw = stable_read_bytes(path)
+            material = reopen_population_material(raw)
+        except Exception as exc:
+            raise WorldAfterstateV2PopulationArtifactError(
+                "partial selected shard reopen refused") from exc
+        if len(raw) != row["byte_count"] or _sha(raw) != row["sha256"] \
+                or _sha(raw) != row["material_sha256"] \
+                or (material.deal_sha256, material.slot_sha256,
+                    material.state_sha256, material.candidate_set_sha256) != (
+                        row["deal_sha256"], row["slot_sha256"],
+                        row["state_sha256"], row["candidate_set_sha256"]):
+            raise WorldAfterstateV2PopulationArtifactError(
+                "partial selected shard identity drift")
+
+
+def publish_population_partial_coverage(root: Path, value: dict[str, Any]) \
+        -> dict[str, Any]:
+    """Publish one immutable, explicitly incomplete D256 coverage record."""
+    root = _root(root)
+    checked = _partial_coverage_value(value)
+    _validate_partial_rows(root, checked)
+    path = population_partial_coverage_path(root)
+    _parent(root, path.parent, create=True)
+    try:
+        publish_exclusive_bytes(path, canonical_json_bytes(checked))
+        raw = stable_read_bytes(path)
+    except (OSError, ValueError) as exc:
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage publication refused") from exc
+    if raw != canonical_json_bytes(checked):
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage byte drift")
+    return _partial_coverage_value(_strict_json(raw, "partial coverage"))
+
+
+def reopen_population_partial_coverage(root: Path) -> dict[str, Any]:
+    """Reopen the immutable incomplete-coverage record without completing D256."""
+    try:
+        raw = stable_read_bytes(population_partial_coverage_path(root))
+        value = _partial_coverage_value(_strict_json(raw, "partial coverage"))
+        _validate_partial_rows(_root(root), value)
+        return value
+    except WorldAfterstateV2PopulationArtifactError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise WorldAfterstateV2PopulationArtifactError(
+            "partial coverage reopen refused") from exc
+
+
 def _manifest_bytes(*, freeze_sha256: str, namespace_sha256: str,
                     tier: str, split: str, source: str,
                     rows: Sequence[dict[str, Any]]) -> bytes:
@@ -676,6 +809,9 @@ __all__ = [
     "AUTHORITY", "MANIFEST_SCHEMA", "MATERIAL_ARTIFACT_SCHEMA",
     "POPULATION_MANIFEST_SCHEMA", "POPULATION_MATERIAL_SCHEMA",
     "COMMITMENT_NAME",
+    "PARTIAL_COVERAGE_SCHEMA", "PARTIAL_COVERAGE_NAME",
+    "population_partial_coverage_path", "publish_population_partial_coverage",
+    "reopen_population_partial_coverage",
     "PopulationMaterialShardV2",
     "WorldAfterstateV2PopulationArtifactError",
     "population_material_bytes", "serialize_population_material_v2",

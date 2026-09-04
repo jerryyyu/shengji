@@ -27,10 +27,13 @@ from typing import Any, Callable, Mapping, Sequence
 from .belief_artifacts import publish_exclusive_bytes, stable_read_bytes
 from .belief_contract import canonical_json_bytes
 from .world_afterstate_v2_population_artifacts import (
+    PARTIAL_COVERAGE_NAME, PARTIAL_COVERAGE_SCHEMA,
     PopulationMaterialShardV2, WorldAfterstateV2PopulationArtifactError,
     material_sha256, population_material_bytes, population_material_path,
+    population_partial_coverage_path, publish_population_partial_coverage,
     publish_population_manifest, publish_population_material,
     reopen_population_manifest, reopen_population_material,
+    reopen_population_partial_coverage,
 )
 from .world_afterstate_v2_protocol import (
     TIER_SPECS, PopulationSlotV2, attempted_deal_identity,
@@ -544,7 +547,9 @@ def _validate_record(value: Mapping[str, Any], *, freeze: str, namespace: str,
 
 
 def _read_records(root: Path, slots: Sequence[PopulationSlotV2], *, freeze: str,
-                  namespace: str, admission: str, cap: int) \
+                  namespace: str, admission: str, cap: int,
+                  allowed_unmatched_started: set[tuple[str, int]] | None = None,
+                  allow_unmatched_started: bool = False) \
         -> dict[str, list[dict[str, Any]]]:
     directory = root / CONTROLLER_DIRNAME / ATTEMPT_DIRNAME
     controller_dir = root / CONTROLLER_DIRNAME
@@ -596,7 +601,11 @@ def _read_records(root: Path, slots: Sequence[PopulationSlotV2], *, freeze: str,
                             admission=admission)
     recorded = {(slot.slot_sha256, row["attempt_index"])
                 for slot in slots for row in by_slot[slot.slot_sha256]}
-    if started != recorded:
+    allowed = set() if allowed_unmatched_started is None else set(
+        allowed_unmatched_started)
+    if (not allow_unmatched_started and
+            (started - recorded != allowed or recorded - started)) \
+            or (allow_unmatched_started and recorded - started):
         raise WorldAfterstateV2PopulationControllerError(
             "attempt start/result ledger mismatch")
     for slot in slots:
@@ -1031,6 +1040,217 @@ def reopen_population_collection_v2(root: Path, *, freeze_sha256: str,
             "population collection reopen refused") from exc
 
 
+def _d64_selected_positions() -> tuple[int, ...]:
+    return tuple(range(0, 32)) + tuple(range(128, 136)) \
+        + tuple(range(160, 172)) + tuple(range(208, 220))
+
+
+@dataclass(frozen=True)
+class PopulationPartialCoverageV2:
+    """Authenticated selected materials from an intentionally incomplete D256."""
+
+    freeze_sha256: str
+    population_namespace_sha256: str
+    admission_sha256: str
+    config_sha256: str
+    accepted_slots: int
+    missing_slots: tuple[dict[str, Any], ...]
+    selected_identities: tuple[dict[str, Any], ...]
+    selected_shard_rows: tuple[dict[str, Any], ...]
+    orphan_started: tuple[dict[str, Any], ...]
+    materials: tuple[Any, ...]
+    coverage_sha256: str
+    schema: str = PARTIAL_COVERAGE_SCHEMA
+
+    @property
+    def selected_materials(self) -> tuple[Any, ...]:
+        return self.materials
+
+    def payload(self) -> dict[str, Any]:
+        body = {
+            "schema": self.schema, "freeze_sha256": self.freeze_sha256,
+            "population_namespace_sha256": self.population_namespace_sha256,
+            "admission_sha256": self.admission_sha256,
+            "config_sha256": self.config_sha256, "tier": "D256",
+            "coverage_complete": False, "accepted_slots": self.accepted_slots,
+            "missing_slot_count": len(self.missing_slots),
+            "missing_slots": [dict(item) for item in self.missing_slots],
+            "selected_identities": [dict(item) for item in self.selected_identities],
+            "selected_shard_rows": [dict(item) for item in self.selected_shard_rows],
+            "orphan_started": [dict(item) for item in self.orphan_started],
+        }
+        return {**body, "coverage_sha256": _sha(body)}
+
+
+def _partial_identity(slot: PopulationSlotV2, material: Any) -> dict[str, Any]:
+    return {
+        "group": slot.group, "split": slot.split, "source": slot.source,
+        "ordinal": slot.ordinal, "select_subfold": slot.select_subfold,
+        "slot_sha256": slot.slot_sha256,
+        "material_sha256": material_sha256(material),
+        "state_sha256": material.state_sha256,
+        "deal_sha256": material.deal_sha256,
+    }
+
+
+def _partial_slot_identity(slot: PopulationSlotV2) -> dict[str, Any]:
+    return {**slot.payload(), "slot_sha256": slot.slot_sha256}
+
+
+def reopen_population_partial_coverage_v2(
+        root: Path, *, freeze_sha256: str, population_namespace_sha256: str,
+        admission_sha256: str | None = None, admission: str | None = None,
+        max_attempts_per_slot: int | None = None
+        ) -> PopulationPartialCoverageV2:
+    """Reopen retained accepted shards for the fixed D64 positions.
+
+    This is deliberately separate from ``reopen_population_collection_v2``:
+    it never opens or writes a D256 manifest/receipt.
+    """
+    root = _root(root, create=False)
+    admission_sha256 = _resolve_admission(admission_sha256, admission,
+                                          freeze_sha256)
+    for value, label in ((freeze_sha256, "freeze SHA-256"),
+                         (population_namespace_sha256, "namespace SHA-256"),
+                         (admission_sha256, "admission SHA-256")):
+        _digest(value, label)
+    if max_attempts_per_slot is not None:
+        _int(max_attempts_per_slot, "maximum attempts", minimum=1)
+    receipt_path = root / CONTROLLER_DIRNAME / RECEIPT_NAME
+    if receipt_path.exists() or receipt_path.is_symlink():
+        raise WorldAfterstateV2PopulationControllerError(
+            "full D256 receipt exists")
+    slots = _validate_d256_slots(build_population_slot_ledger(TIER_SPECS[0]))
+    config = _strict_json(stable_read_bytes(_config_path(root)),
+                          "population config")
+    cap = config.get("max_attempts_per_slot")
+    workers = config.get("worker_arm")
+    config = _validate_config(
+        config, freeze=freeze_sha256, namespace=population_namespace_sha256,
+        admission=admission_sha256, slots=slots, cap=cap, workers=workers,
+        deadline_seconds=config.get("deadline_seconds"),
+        heartbeat_seconds=config.get("heartbeat_seconds"))
+    if max_attempts_per_slot is not None and cap != max_attempts_per_slot:
+        raise WorldAfterstateV2PopulationControllerError(
+            "partial coverage config identity drift")
+
+    selected = set(_d64_selected_positions())
+    started = _read_started(root, slots, freeze=freeze_sha256,
+                            namespace=population_namespace_sha256,
+                            admission=admission_sha256)
+    # Only an in-flight excluded slot may have a durable start without result.
+    records = _read_records(
+        root, slots, freeze=freeze_sha256, namespace=population_namespace_sha256,
+        admission=admission_sha256, cap=cap,
+        allow_unmatched_started=True)
+    recorded = {(slot.slot_sha256, row["attempt_index"])
+                for slot in slots for row in records[slot.slot_sha256]}
+    unmatched = started - recorded
+    if len(unmatched) > 1:
+        raise WorldAfterstateV2PopulationControllerError(
+            "partial coverage has multiple in-flight starts")
+    if unmatched:
+        slot_sha, index = next(iter(unmatched))
+        position = next(i for i, slot in enumerate(slots)
+                        if slot.slot_sha256 == slot_sha)
+        prior = records[slot_sha]
+        if (position in selected or index != len(prior)
+                or (prior and prior[-1]["accepted"])):
+            raise WorldAfterstateV2PopulationControllerError(
+                "partial coverage selected in-flight start")
+        started_path = _started_path(root, slot_sha, index)
+        orphan = _strict_json(stable_read_bytes(started_path),
+                              "started attempt")
+        orphan_started = ({**orphan,
+                           "state": "aborted-in-flight-without-result"},)
+    else:
+        orphan_started = ()
+    # _read_records above intentionally rejects every mismatch. Re-read with
+    # precisely the one permitted orphan now that its identity was checked.
+    if unmatched:
+        records = _read_records(
+            root, slots, freeze=freeze_sha256,
+            namespace=population_namespace_sha256, admission=admission_sha256,
+            cap=cap, allowed_unmatched_started=unmatched)
+    completed = {i for i, slot in enumerate(slots)
+                 if records[slot.slot_sha256] and
+                 records[slot.slot_sha256][-1]["accepted"]}
+    missing_indices = tuple(i for i in range(256) if i not in completed)
+    if len(completed) != 255 or len(missing_indices) != 1:
+        raise WorldAfterstateV2PopulationControllerError(
+            "partial coverage requires exactly one missing D256 slot")
+    missing_slots = tuple(_partial_slot_identity(slots[i])
+                          for i in missing_indices)
+    if selected.intersection(missing_indices):
+        raise WorldAfterstateV2PopulationControllerError(
+            "partial coverage selected shard missing")
+    referenced: set[Path] = set()
+    for index in sorted(completed):
+        slot = slots[index]
+        shard = _verify_record_shard(root, records[slot.slot_sha256][-1], slot)
+        referenced.add(root / shard.relative_path)
+    selected_rows: list[dict[str, Any]] = []
+    selected_identities: list[dict[str, Any]] = []
+    materials: list[Any] = []
+    for index in _d64_selected_positions():
+        slot = slots[index]
+        row = records[slot.slot_sha256][-1]
+        shard = _verify_record_shard(root, row, slot)
+        try:
+            material = reopen_population_material(
+                stable_read_bytes(root / shard.relative_path))
+        except Exception as exc:
+            raise WorldAfterstateV2PopulationControllerError(
+                "partial selected shard reopen refused") from exc
+        selected_rows.append(shard.row())
+        selected_identities.append(_partial_identity(slot, material))
+        materials.append(material)
+    population_dir = root / "population"
+    if population_dir.exists():
+        observed = {path for path in population_dir.rglob("*")
+                    if path.is_file() or path.is_symlink()}
+        if observed != referenced:
+            raise WorldAfterstateV2PopulationControllerError(
+                "partial coverage population artifact drift")
+    value = {
+        "schema": PARTIAL_COVERAGE_SCHEMA, "freeze_sha256": freeze_sha256,
+        "population_namespace_sha256": population_namespace_sha256,
+        "admission_sha256": admission_sha256, "config_sha256": config["config_sha256"],
+        "tier": "D256", "coverage_complete": False,
+        "accepted_slots": len(completed), "missing_slot_count": len(missing_slots),
+        "missing_slots": [dict(item) for item in missing_slots],
+        "selected_identities": selected_identities,
+        "selected_shard_rows": selected_rows,
+        "orphan_started": [dict(item) for item in orphan_started],
+    }
+    value = {**value, "coverage_sha256": _sha(value)}
+    path = population_partial_coverage_path(root)
+    if path.exists() or path.is_symlink():
+        try:
+            if reopen_population_partial_coverage(root) != value:
+                raise WorldAfterstateV2PopulationControllerError(
+                    "partial coverage artifact drift")
+        except WorldAfterstateV2PopulationControllerError:
+            raise
+        except Exception as exc:
+            raise WorldAfterstateV2PopulationControllerError(
+                "partial coverage artifact reopen refused") from exc
+    else:
+        try:
+            publish_population_partial_coverage(root, value)
+        except Exception as exc:
+            raise WorldAfterstateV2PopulationControllerError(
+                "partial coverage artifact publication refused") from exc
+    return PopulationPartialCoverageV2(
+        freeze_sha256=freeze_sha256,
+        population_namespace_sha256=population_namespace_sha256,
+        admission_sha256=admission_sha256, config_sha256=config["config_sha256"],
+        accepted_slots=len(completed), missing_slots=missing_slots,
+        selected_identities=tuple(selected_identities),
+        selected_shard_rows=tuple(selected_rows), orphan_started=orphan_started,
+        materials=tuple(materials), coverage_sha256=value["coverage_sha256"])
+
+
 def _resolve_admission(admission_sha256: str | None, admission: str | None,
                        freeze: str) -> str:
     if admission_sha256 is not None and admission is not None \
@@ -1226,6 +1446,7 @@ __all__ = [
     "CONTROLLER_DIRNAME", "SCHEMA", "STARTED_SCHEMA", "WORKER_ARMS",
     "PopulationCollectionReceiptV2", "PopulationControllerError",
     "PopulationReceiptV2", "PopulationSlotReceiptV2",
+    "PopulationPartialCoverageV2", "reopen_population_partial_coverage_v2",
     "WorldAfterstateV2PopulationControllerError", "collect_population_v2",
     "run_population_collection_v2", "publish_population_v2",
     "collect_d256_population_v2", "run_d256_population_v2",

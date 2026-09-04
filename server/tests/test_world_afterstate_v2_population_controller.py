@@ -14,8 +14,12 @@ from shengji.rl import world_afterstate_v2_source_driver as source_driver
 from shengji.rl.world_afterstate_v2_population_artifacts import (
     PopulationMaterialShardV2,
 )
+from shengji.rl.world_afterstate_v2_population import (
+    PopulationCandidateV2, PopulationMaterialV2,
+)
 from shengji.rl.world_afterstate_v2_protocol import (
-    TIER_SPECS, attempted_deal_identity, build_population_slot_ledger,
+    StateCandidateV2, TIER_SPECS, attempted_deal_identity,
+    build_population_slot_ledger,
 )
 
 
@@ -77,6 +81,35 @@ def _shard(slot, deal):
         deal_sha256=deal, slot_sha256=slot.slot_sha256,
         state_sha256=slot.slot_sha256, candidate_set_sha256="b" * 64,
         byte_count=1, sha256=digest, material_sha256=digest)
+
+
+def _typed_material(slot, deal, index):
+    cell = slot.cell or ("early", "lead", "attacker")
+    state = StateCandidateV2(
+        deal_sha256=deal, slot_sha256=slot.slot_sha256,
+        state_sha256=hashlib.sha256(f"state-{index}".encode()).hexdigest(),
+        source=slot.source, split=slot.split,
+        phase=cell[0], position=cell[1], role=cell[2],
+        trump_rank=slot.trump_rank, trump_mode=slot.trump_mode,
+        select_subfold=slot.select_subfold,
+        mechanics_surfaces=(() if slot.mechanics_surface is None
+                            else (slot.mechanics_surface,)),
+        legal_candidate_count=2)
+    candidates = tuple(PopulationCandidateV2(
+        candidate_index=offset,
+        action_sha256=hashlib.sha256(
+            f"action-{index}-{offset}".encode()).hexdigest(),
+        audit_sha256=hashlib.sha256(bytes((97 + offset,))).hexdigest(),
+        successor_sha256=hashlib.sha256(
+            f"successor-{index}-{offset}".encode()).hexdigest(),
+        origin="production-ballot", protected_incumbent=offset == 0)
+                       for offset in range(2))
+    return PopulationMaterialV2(
+        state=state,
+        candidate_set_sha256=hashlib.sha256(
+            f"candidate-set-{index}".encode()).hexdigest(),
+        candidates=candidates, audit_raws=(b"a", b"b"),
+        prestate={"fixture": index})
 
 
 @pytest.fixture
@@ -334,6 +367,71 @@ def test_expired_partial_run_reuses_shards_under_fresh_bounded_watchdog(
     assert receipt.attempts_total == 257
     assert all(row.attempt_count == 1 for row in receipt.slots[:-1])
     assert receipt.slots[-1].attempt_count == 2
+
+
+def test_partial_d64_reopens_255_shards_after_failed_slot_and_next_start(
+        tmp_path, monkeypatch):
+    """The retained root's missing slot has prior failures plus one orphan start."""
+    clock = {"now": 100}
+    monkeypatch.setattr(controller.time, "time", lambda: clock["now"])
+    # This fixture exercises the real artifact serialization/reopen boundary;
+    # only the deep engine-audit validation that produced each material is
+    # replaced by the already-tested typed population boundary.
+    monkeypatch.setattr(PopulationMaterialV2, "validate", lambda self: None)
+    positions = {slot.slot_sha256: index for index, slot in enumerate(SLOTS)}
+
+    def driver(identity, slot):
+        position = positions[slot.slot_sha256]
+        if position == 255:
+            clock["now"] = 102
+            return source_driver.PopulationAttemptResultV2(
+                attempted_deal_identity=controller._public_attempt(identity),
+                deal_sha256=identity["deal_sha256"],
+                slot_sha256=slot.slot_sha256, attempted=True, accepted=False,
+                rejection_reason="no-eligible-state", material=None,
+                decision_count=1)
+        material = _typed_material(slot, identity["deal_sha256"], position)
+        return source_driver.PopulationAttemptResultV2(
+            attempted_deal_identity=controller._public_attempt(identity),
+            deal_sha256=identity["deal_sha256"],
+            slot_sha256=slot.slot_sha256, attempted=True, accepted=True,
+            rejection_reason=None, material=material, decision_count=1)
+
+    with pytest.raises(controller.WorldAfterstateV2PopulationControllerError,
+                       match="deadline expired"):
+        controller.collect_population_v2(
+            tmp_path, freeze_sha256="f" * 64,
+            population_namespace_sha256="b" * 64,
+            admission_sha256="a" * 64, max_attempts_per_slot=4,
+            workers=1, deadline_seconds=1, attempt_driver=driver)
+
+    missing = SLOTS[255]
+    # Model the controller stop window exactly: attempt 0 has a durable
+    # rejection, and attempt 1 has a durable start but no result.
+    controller._publish_started(
+        tmp_path, freeze="f" * 64, namespace="b" * 64,
+        admission="a" * 64, slot=missing, index=1)
+    partial = controller.reopen_population_partial_coverage_v2(
+        tmp_path, freeze_sha256="f" * 64,
+        population_namespace_sha256="b" * 64,
+        admission_sha256="a" * 64, max_attempts_per_slot=4)
+
+    assert partial.accepted_slots == 255
+    assert len(partial.selected_materials) == 64
+    assert partial.missing_slots == (
+        {**missing.payload(), "slot_sha256": missing.slot_sha256},)
+    assert len(partial.orphan_started) == 1
+    assert partial.orphan_started[0]["attempt_index"] == 1
+    assert partial.orphan_started[0]["state"] \
+        == "aborted-in-flight-without-result"
+    assert not (tmp_path / "population" / "manifest.json").exists()
+    assert not (tmp_path / controller.CONTROLLER_DIRNAME /
+                controller.RECEIPT_NAME).exists()
+    reopened = controller.reopen_population_partial_coverage_v2(
+        tmp_path, freeze_sha256="f" * 64,
+        population_namespace_sha256="b" * 64,
+        admission_sha256="a" * 64, max_attempts_per_slot=4)
+    assert reopened.payload() == partial.payload()
 
 
 def test_real_accepted_material_shard_reopens_for_resume(tmp_path):

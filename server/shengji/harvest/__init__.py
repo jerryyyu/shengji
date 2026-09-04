@@ -21,6 +21,9 @@ human       server/rl_data/human_v8 pointers resolved through room_log
 ballot_gap  teacher actions outside the production ballot (report)
 manifest    per-extraction manifest (counts + sha256 of inputs/outputs)
 cli         ``scripts/harvest.py`` entry point
+trajectory  natural-trajectory self-play generator (``scripts/trajectory.py``):
+            production search on mirrored seeded deals, root exploration,
+            allocation = the search's own world counts, outcome = final result
 """
 
 from .schema import SCHEMA, record_sha256  # noqa: F401

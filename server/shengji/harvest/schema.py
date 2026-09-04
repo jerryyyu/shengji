@@ -29,6 +29,15 @@ engine_play           only when the engine recorded different cards than the
                       submitted ``action`` (a failed lead throw is forced to
                       its lowest beatable component); ``plays_prefix`` of the
                       following records carries the engine's cards.
+exploration           self-play generator (``trajectory``) records only:
+                      ``{"rate": r, "added": [actions]}`` when the root
+                      exploration draw fired for this decision (``added`` are
+                      the legal actions appended to the search ballot, possibly
+                      empty when the ballot already covered the listed legal
+                      set), ``null`` when it did not fire (every decision of an
+                      ``--explore-rate 0`` run, and tractor-locked leads that
+                      never reach a ballot).  Sources that do not explore omit
+                      the key.
 
 Conventions
 -----------
@@ -68,8 +77,8 @@ FIELDS = (
     "seat", "ply", "trick", "role",
     "legal_actions", "legal_actions_complete", "legal_actions_count",
     "ballot", "production_ballot", "allocation", "action_values",
-    "action", "engine_play", "outcome", "authority", "state_private",
-    "hidden_hands", "record_sha256",
+    "action", "engine_play", "outcome", "authority", "exploration",
+    "state_private", "hidden_hands", "record_sha256",
 )
 PRIVATE_ONLY_FIELDS = ("hidden_hands", "public_record_sha256")
 REQUIRED = (
@@ -189,6 +198,18 @@ def validate_record(record: Mapping[str, Any]) -> None:
         raise SchemaError("engine_play must be a non-empty card list")
     if record["decision_kind"] == "bury" and len(record["action"]) != 8:
         raise SchemaError("a bury action has exactly 8 cards")
+    if "exploration" in record and record["exploration"] is not None:
+        ex = record["exploration"]
+        rate = ex.get("rate") if isinstance(ex, dict) else None
+        if (not isinstance(ex, dict) or set(ex) != {"rate", "added"}
+                or isinstance(rate, bool) or not isinstance(rate, (int, float))
+                or not 0 <= rate <= 1 or not _is_action_list(ex["added"])):
+            raise SchemaError("exploration must be {rate in [0, 1], added: "
+                              "[card lists]} or null")
+        if record["ballot"] is not None:
+            keys = {tuple(sorted(a)) for a in record["ballot"]}
+            if any(tuple(sorted(a)) not in keys for a in ex["added"]):
+                raise SchemaError("exploration.added must be on the ballot")
     if la is not None and record["decision_kind"] == "play":
         key = tuple(sorted(record["action"]))
         if key not in {tuple(sorted(a)) for a in la}:

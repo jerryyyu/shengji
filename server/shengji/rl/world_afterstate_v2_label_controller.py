@@ -159,17 +159,17 @@ def _reuse_source(
     source_values = tuple(reuse_materials)
     _material_population(source_values, split="fit-select")
     by_deal = {material.deal_sha256: material for material in values}
-    if (len(source_values) != len(set(material.deal_sha256
-                                      for material in source_values))
-            or any(material.deal_sha256 not in by_deal
-                   for material in source_values)):
+    source_deals = {material.deal_sha256 for material in source_values}
+    overlap = tuple(material for material in source_values
+                    if material.deal_sha256 in by_deal)
+    if len(source_values) != len(source_deals) or not overlap:
         raise WorldAfterstateV2LabelControllerError(
             "label reuse material population drift")
     # A continuation bundle does not contain every private material field.
     # Bind source and target to the exact sealed material bytes as well as to
     # the typed continuation identities before copying anything.
     try:
-        for source in source_values:
+        for source in overlap:
             if material_sha256(source) != material_sha256(
                     by_deal[source.deal_sha256]):
                 raise WorldAfterstateV2LabelControllerError(
@@ -187,7 +187,8 @@ def _reuse_source(
     if set(bundle_map) != {material.deal_sha256 for material in source_values}:
         raise WorldAfterstateV2LabelControllerError(
             "label reuse source manifest identity drift")
-    return bundle_map
+    return {material.deal_sha256: bundle_map[material.deal_sha256]
+            for material in overlap}
 
 
 @dataclass(frozen=True)

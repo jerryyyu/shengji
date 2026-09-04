@@ -57,6 +57,7 @@ AUTHORITY = {
     "strength_claim_authorized": False, "merge_authorized": False,
     "deployment_authorized": False,
 }
+FIT_EPOCH_STAGE = "fit-epoch-v2"
 
 
 class WorldAfterstateV2DevRunnerError(ValueError):
@@ -79,6 +80,25 @@ def _json(raw: bytes, label: str) -> dict[str, Any]:
     if type(value) is not dict or canonical_json_bytes(value) != raw:
         raise WorldAfterstateV2DevRunnerError(f"{label} is not canonical JSON")
     return value
+
+
+def _partition_d64_materials(materials: Sequence[Any]) -> tuple[
+        tuple[Any, ...], tuple[Any, ...], tuple[Any, ...], tuple[Any, ...]]:
+    """Partition the validated D64 subset by its frozen axes, not position."""
+    values = tuple(materials)
+    fit = tuple(item for item in values if item.state.split == "fit")
+    epoch = tuple(item for item in values
+                  if item.state.split == "select"
+                  and item.state.select_subfold == "epoch-select")
+    precision = tuple(item for item in values
+                      if item.state.split == "select"
+                      and item.state.select_subfold == "precision-select")
+    audit = tuple(item for item in values if item.state.split == "audit")
+    if tuple(map(len, (fit, epoch, precision, audit))) != (40, 6, 6, 12) \
+            or len({id(item) for group in (fit, epoch, precision, audit)
+                    for item in group}) != 64:
+        raise WorldAfterstateV2DevRunnerError("D64 stage partition drift")
+    return fit, epoch, precision, audit
 
 
 def _publish(path: Path, value: object) -> tuple[dict[str, Any], str]:
@@ -312,7 +332,10 @@ def _sigma_from_outcomes(outcomes: Sequence[Any]) -> float:
 
 
 def _label_stage(root: Path, name: str, materials: Sequence[Any], *, workers: int,
-                 progress: Callable[[dict[str, Any]], None] | None) -> tuple[Any, tuple[Any, ...]]:
+                 progress: Callable[[dict[str, Any]], None] | None,
+                 reuse_root: Path | None = None,
+                 reuse_materials: Sequence[Any] | None = None) \
+        -> tuple[Any, tuple[Any, ...]]:
     private = root / "private" / "labels" / name
     receipt_path = private / "receipt.json"
     values = tuple(materials)
@@ -323,7 +346,8 @@ def _label_stage(root: Path, name: str, materials: Sequence[Any], *, workers: in
             private, values, split=("audit" if name == "audit" else "fit-select"),
             workers=workers, deadline_monotonic_ns=time.monotonic_ns() +
             STAGE_WATCHDOG_SECONDS * 1_000_000_000,
-            progress=_safe_low_level_progress(progress, name))
+            progress=_safe_low_level_progress(progress, name),
+            reuse_root=reuse_root, reuse_materials=reuse_materials)
         _publish(receipt_path, _payload(receipt))
     bundles = reopen_continuation_manifest(private, values)
     return receipt, bundles
@@ -440,21 +464,33 @@ def run_value_v2_dev_d64(root: Path, *, repo: Path, run_id: str,
         _publish(subset_path, subset_payload)
     stage_timings["d64_subset"] = max(0, time.monotonic_ns() - stage_started)
     materials = subset.materials
-    fit = materials[:40]
-    epoch = materials[40:46]  # natural-select epoch-select
-    precision = materials[46:52]  # natural-select precision-select
+    fit, epoch, precision, audit = _partition_d64_materials(materials)
+    fit_epoch = fit + epoch
+    # The first live D64 attempt used the positional slice ``materials[:46]``.
+    # Its complete, sealed source contains all 40 fit roots plus three roots
+    # from each select subfold.  Reuse the 43 correct bundles into a new stage;
+    # the label controller authenticates the complete legacy source manifest
+    # before selecting exact-material overlaps.
+    legacy_root = root / "private" / "labels" / "fit-epoch"
+    legacy_values = tuple(materials[:46])
+    legacy_available = ((legacy_root / "receipt.json").is_file()
+                        and (legacy_root / "continuations" /
+                             "manifest.json").is_file())
     stage_started = time.monotonic_ns()
     # Only fit and epoch-selection labels exist while the model is training.
     # Precision labels are opened after its predictions have been sealed.
     fit_receipt, fit_bundles = _label_stage(
-        root, "fit-epoch", materials[:46], workers=label_workers,
-        progress=public_progress)
+        root, FIT_EPOCH_STAGE, fit_epoch, workers=label_workers,
+        progress=public_progress,
+        reuse_root=legacy_root if legacy_available else None,
+        reuse_materials=legacy_values if legacy_available else None)
     stage_timings["fit_select_labels"] = max(0, time.monotonic_ns() - stage_started)
     fit_bundle_map = {item.deal_sha256: item for item in fit_bundles}
     epoch_bundles = tuple(fit_bundle_map[item.deal_sha256] for item in epoch)
     fit_bundles_ordered = tuple(fit_bundle_map[item.deal_sha256] for item in fit)
-    natural_fit_bundles = tuple(fit_bundle_map[item.deal_sha256]
-                                for item in materials[:32])
+    natural_fit_bundles = tuple(
+        fit_bundle_map[item.deal_sha256] for item in fit
+        if item.state.source == "natural")
     fit_outcomes = tuple(row for bundle in natural_fit_bundles
                          for row in bundle.candidates)
     sigma = _sigma_from_outcomes(fit_outcomes)
@@ -483,10 +519,11 @@ def run_value_v2_dev_d64(root: Path, *, repo: Path, run_id: str,
     precision_result = evaluate_v2(precision_manifest, precision_outcomes, prior, control_name="natural", seed_block=1)
     stage_timings["precision_calibration"] = max(0, time.monotonic_ns() - stage_started)
     stage_started = time.monotonic_ns()
-    audit_receipt, audit_bundles = _label_stage(root, "audit", materials[52:], workers=label_workers, progress=public_progress)
+    audit_receipt, audit_bundles = _label_stage(
+        root, "audit", audit, workers=label_workers,
+        progress=public_progress)
     stage_timings["audit_labels"] = max(0, time.monotonic_ns() - stage_started)
     stage_started = time.monotonic_ns()
-    audit = materials[52:]
     audit_roots = tuple(build_inference_root_v2(item) for item in audit)
     audit_outcomes = tuple(row for bundle in audit_bundles for row in bundle.candidates)
     audit_predictions = tuple(
@@ -529,7 +566,8 @@ def run_value_v2_dev_d64(root: Path, *, repo: Path, run_id: str,
                         **({"artifact": "d64-partial-coverage.json",
                             "coverage_complete": False}
                            if partial_coverage else {})},
-        "labels": {"fit_epoch_receipt_sha256": _sha_bytes(stable_read_bytes(private / "labels" / "fit-epoch" / "receipt.json")),
+        "labels": {"fit_epoch_artifact": FIT_EPOCH_STAGE,
+                   "fit_epoch_receipt_sha256": _sha_bytes(stable_read_bytes(private / "labels" / FIT_EPOCH_STAGE / "receipt.json")),
                    "fit_epoch_manifest_sha256": _payload(fit_receipt).get("manifest_sha256"),
                    "precision_select_receipt_sha256": _sha_bytes(stable_read_bytes(private / "labels" / "precision-select" / "receipt.json")),
                    "precision_select_manifest_sha256": _payload(precision_receipt).get("manifest_sha256"),
@@ -574,6 +612,10 @@ def reopen_value_v2_dev_d64(root: Path, *, expected_run_id: str | None = None) -
         raise WorldAfterstateV2DevRunnerError("terminal authority drift")
     # A terminal seal is meaningful only while every referenced immutable
     # private artifact still has its sealed bytes.
+    labels = value.get("labels", {})
+    fit_epoch_artifact = labels.get("fit_epoch_artifact", "fit-epoch")
+    if fit_epoch_artifact not in ("fit-epoch", FIT_EPOCH_STAGE):
+        raise WorldAfterstateV2DevRunnerError("fit-epoch artifact drift")
     refs = {
         ("../population-controller/partial-coverage.json" if value.get("population", {}).get(
             "coverage_complete", True) is False
@@ -585,7 +627,7 @@ def reopen_value_v2_dev_d64(root: Path, *, expected_run_id: str | None = None) -
             "artifact") == "d64-partial-coverage.json"
          else "d64-subset.json"): value.get("d64_subset", {}).get(
              "receipt_sha256"),
-        "labels/fit-epoch/receipt.json": value.get("labels", {}).get(
+        f"labels/{fit_epoch_artifact}/receipt.json": labels.get(
             "fit_epoch_receipt_sha256"),
         "labels/precision-select/receipt.json": value.get("labels", {}).get(
             "precision_select_receipt_sha256"),

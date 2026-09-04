@@ -64,10 +64,29 @@ def test_source_stamp_refuses_a_dirty_worktree(
         runner._git_sha(tmp_path)
 
 
+def _fake_materials():
+    def state(index):
+        if index < 40:
+            return SimpleNamespace(
+                split="fit", source="natural" if index < 32 else "mechanics",
+                select_subfold=None)
+        if index < 52:
+            return SimpleNamespace(
+                split="select", source="natural",
+                select_subfold=("epoch-select" if (index - 40) % 2 == 0
+                                else "precision-select"))
+        return SimpleNamespace(
+            split="audit", source="natural", select_subfold=None)
+
+    return tuple(SimpleNamespace(
+        deal_sha256=f"{i:064x}", state=state(i)) for i in range(64))
+
+
 def _wire_fakes(monkeypatch: pytest.MonkeyPatch, root: Path):
-    materials = tuple(SimpleNamespace(deal_sha256=f"{i:064x}") for i in range(64))
+    materials = _fake_materials()
     bundles = tuple(SimpleNamespace(deal_sha256=m.deal_sha256, candidates=())
                     for m in materials)
+    bundle_by_deal = {item.deal_sha256: item for item in bundles}
     calls: list[str] = []
 
     def population(*args, **kwargs):
@@ -98,7 +117,8 @@ def _wire_fakes(monkeypatch: pytest.MonkeyPatch, root: Path):
         receipt = SimpleNamespace(payload=lambda: {"manifest_sha256": name[0] * 64})
         runner._publish(root_path / "private" / "labels" / name / "receipt.json",
                         receipt.payload())
-        return receipt, tuple(bundles[i] for i in range(len(values)))
+        return receipt, tuple(bundle_by_deal[value.deal_sha256]
+                              for value in values)
 
     def train(root_path, run_id, values, bundles, epoch_values, epoch_bundles,
               sigma, **kwargs):
@@ -143,6 +163,18 @@ def test_runner_wires_order_and_defers_audit_until_calibration(tmp_path: Path,
     events: list[str] = []
     def labels(*args, **kwargs):
         events.append(args[1])
+        values = args[2]
+        if args[1] == runner.FIT_EPOCH_STAGE:
+            assert len(values) == 46
+            assert sum(value.state.split == "fit" for value in values) == 40
+            assert sum(value.state.select_subfold == "epoch-select"
+                       for value in values) == 6
+            assert not any(value.state.select_subfold == "precision-select"
+                           for value in values)
+        elif args[1] == "precision-select":
+            assert len(values) == 6
+            assert all(value.state.select_subfold == "precision-select"
+                       for value in values)
         return original_labels(*args, **kwargs)
     def manifest(*args, **kwargs):
         events.append(f"prediction-{kwargs['split']}")
@@ -153,10 +185,45 @@ def test_runner_wires_order_and_defers_audit_until_calibration(tmp_path: Path,
                         (events.append("evaluation") or SimpleNamespace(
                             payload=lambda: {"metric": "sealed"})))
     runner.run_value_v2_dev_d64(tmp_path, repo=tmp_path, run_id="wire")
-    assert events == ["fit-epoch", "prediction-select", "precision-select",
+    assert events == [runner.FIT_EPOCH_STAGE, "prediction-select", "precision-select",
                       "evaluation", "audit", "prediction-audit",
                       "evaluation"]
-    assert calls[:4] == ["population", "subset", "fit-epoch", "training"]
+    assert calls[:4] == ["population", "subset", runner.FIT_EPOCH_STAGE,
+                         "training"]
+
+
+def test_runner_reuses_legacy_interleaved_fit_epoch_stage(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _wire_fakes(monkeypatch, tmp_path)
+    legacy = tmp_path / "private" / "labels" / "fit-epoch"
+    runner._publish(legacy / "receipt.json", {"legacy": True})
+    runner._publish(legacy / "continuations" / "manifest.json",
+                    {"legacy": True})
+    original = runner._label_stage
+    observed = []
+
+    def labels(*args, **kwargs):
+        if args[1] == runner.FIT_EPOCH_STAGE:
+            observed.append((kwargs["reuse_root"],
+                             tuple(kwargs["reuse_materials"]),
+                             tuple(args[2])))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "_label_stage", labels)
+    runner.run_value_v2_dev_d64(
+        tmp_path, repo=tmp_path, run_id="legacy-subfold-recovery")
+    assert len(observed) == 1
+    reuse_root, source, target = observed[0]
+    assert reuse_root == legacy
+    assert len(source) == len(target) == 46
+    assert len({value.deal_sha256 for value in source}
+               & {value.deal_sha256 for value in target}) == 43
+    assert sum(value.state.select_subfold == "precision-select"
+               for value in source) == 3
+    assert sum(value.state.select_subfold == "precision-select"
+               for value in target) == 0
+    assert sum(value.state.select_subfold == "epoch-select"
+               for value in target) == 6
 
 
 def test_runner_persists_score_free_progress_and_resumes(tmp_path: Path,
@@ -179,8 +246,7 @@ def test_runner_terminal_binds_incomplete_coverage_without_fabricating_d256(
         tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Witness the partial controller result at the terminal wiring altitude."""
     _wire_fakes(monkeypatch, tmp_path)
-    materials = tuple(SimpleNamespace(deal_sha256=f"{i:064x}")
-                      for i in range(64))
+    materials = _fake_materials()
     missing = {"slot_sha256": "f" * 64, "ordinal": 144}
     partial_path = (tmp_path / "population-controller" /
                     "partial-coverage.json")

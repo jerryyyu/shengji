@@ -187,6 +187,37 @@ def test_partial_copied_prefix_resumes_source_without_rebuilding_it(
     assert receipt.built_shard_count == 1
 
 
+def test_reuse_source_may_be_complete_superset_of_target(
+        tmp_path: Path, material_and_bundle, monkeypatch):
+    material, bundle = material_and_bundle
+    foreign = _second_material(material)
+    foreign_bundle = continuation.build_continuation_bundle_v2(foreign)
+    target_only = _second_material(material, "3")
+    target_bundle = continuation.build_continuation_bundle_v2(target_only)
+    bundles = {material.deal_sha256: bundle,
+               foreign.deal_sha256: foreign_bundle,
+               target_only.deal_sha256: target_bundle}
+    monkeypatch.setattr(controller, "_build_one",
+                        lambda value: bundles[value.deal_sha256])
+    source = tmp_path / "source-superset"
+    controller.build_continuation_population_v2(
+        source, (material, foreign), split="fit-select", workers=1,
+        deadline_monotonic_ns=time.monotonic_ns() + 10**12)
+
+    built = []
+    monkeypatch.setattr(
+        controller, "_build_one",
+        lambda value: built.append(value.deal_sha256) or
+        bundles[value.deal_sha256])
+    receipt = controller.build_continuation_population_v2(
+        tmp_path / "target", (material, target_only), split="fit-select",
+        workers=1, deadline_monotonic_ns=time.monotonic_ns() + 10**12,
+        reuse_root=source, reuse_materials=(material, foreign))
+    assert built == [target_only.deal_sha256]
+    assert receipt.reused_shard_count == 1
+    assert receipt.built_shard_count == 1
+
+
 def test_tampered_later_target_shard_refuses_before_source_copy(
         tmp_path: Path, material_and_bundle, monkeypatch):
     material, bundle = material_and_bundle

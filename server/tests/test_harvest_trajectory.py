@@ -12,6 +12,7 @@ import inspect
 import json
 import math
 import os
+import platform
 import random
 import shutil
 import subprocess
@@ -28,7 +29,8 @@ from shengji.engine.game import Game
 from shengji.engine.round import actual_play_after
 from shengji.harvest import ballot_capture, legal, rebuild, trajectory
 from shengji.harvest.common import action_key, sha256_file
-from shengji.harvest.schema import SchemaError, finalize_record, validate_record
+from shengji.harvest.schema import (SchemaError, canonical_json, finalize_record,
+                                    validate_record)
 
 SERVER = Path(__file__).resolve().parents[1]
 SEED0 = 4_100_000
@@ -36,6 +38,10 @@ ROUNDS = 2
 WORK = {"select_worlds": 2, "report_worlds": 30}
 EXPLORE = {"explore_rate": 0.5, "explore_k": 2}
 PLAIN = {"explore_rate": 0.0, "explore_k": 2}
+#: the committed anchor of the neutral-byte witness (see ``neutral_fixture``)
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "trajectory_neutral_digest.json"
+FIXTURE_CONFIG = {"policy": trajectory.DEFAULT_POLICY, "rounds": ROUNDS, "seed0": SEED0,
+                  **WORK, **PLAIN, "cap": legal.DEFAULT_CAP}
 #: ``--knob`` overrides of the knobs fixture and their coerced values
 KNOBS = ["V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES=64"]
 KNOB_VALUES = {"LEAD_MAX_CANDIDATES": 64, "V3_LEAD_SINGLES": True}
@@ -90,6 +96,71 @@ def _generate(out, *, workers=1, policy=trajectory.DEFAULT_POLICY, rounds=ROUNDS
     trajectory.generate(rounds=rounds, seed0=seed0, out_dir=out, workers=workers,
                         policy=policy, merge=merge, resume=resume, **WORK, **options)
     return _read_dir(out)
+
+
+def _structural(value):
+    """The parsed JSON with every float, and every field derived from exact
+    bytes, replaced by a placeholder: the keys, structure, ints, strings and
+    card lists a serialization drift changes.  Floats are excluded because
+    ``preference.softmax`` comes from ``math.exp``, whose last bit may
+    differ between libm implementations (macOS vs the Linux CI runner)."""
+    if isinstance(value, float):
+        return "<float>"
+    if isinstance(value, dict):
+        return {k: ("<bytes>" if k in ("record_sha256", "sha256", "bytes")
+                    else _structural(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_structural(v) for v in value]
+    return value
+
+
+def _structural_digest(documents) -> str:
+    digest = hashlib.sha256()
+    for doc in documents:
+        digest.update(canonical_json(_structural(doc)).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def fixture_digests(run) -> dict:
+    """What the committed fixture pins, from a generated run: the exact
+    shard / sidecar digests (platform-exact) and the float-free structural
+    digests (portable)."""
+    shard = run["manifest"]["shards"][0]
+    return {
+        "run_id": run["manifest"]["run_id"],
+        "shard": {"path": shard["path"],
+                  "sha256": hashlib.sha256(run["shards"][0]).hexdigest(),
+                  "bytes": len(run["shards"][0]), "records": shard["records"]},
+        "sidecar": {"path": shard["sidecar"],
+                    "sha256": hashlib.sha256(run["sidecars"][0]).hexdigest()},
+        "structural": {
+            "records_sha256": _structural_digest(run["records"]),
+            "sidecar_sha256": _structural_digest([json.loads(run["sidecars"][0])]),
+        },
+    }
+
+
+def neutral_fixture(out_dir) -> dict:
+    """Regenerate the content of ``tests/fixtures/trajectory_neutral_digest.json``
+    (the fixture file carries the one-liner).  A DELIBERATE record or
+    sidecar format change must rewrite that file in the same commit."""
+    run = _generate(Path(out_dir), **PLAIN)
+    return {
+        "schema": "shengji-trajectory-neutral-digest-v1",
+        "purpose": "anchor of test_no_knobs_and_no_widen_is_byte_identical: the shard "
+                   "and sidecar digests of a fixed tiny plain run, produced by the code "
+                   "as committed; a deliberate format change must regenerate this file "
+                   "in the same commit",
+        "recipe": "cd server && PYTHONPATH=.:tests SHENGJI_REQUIRE_VOIDS=1 python -P -B "
+                  "-c \"import json, tempfile, test_harvest_trajectory as t; "
+                  "print(json.dumps(t.neutral_fixture(tempfile.mkdtemp()), indent=1))\" "
+                  "> tests/fixtures/trajectory_neutral_digest.json",
+        "config": dict(FIXTURE_CONFIG),
+        "platform": {"system": platform.system(), "machine": platform.machine()},
+        "python": platform.python_version(),
+        **fixture_digests(run),
+    }
 
 
 def _by_round(records):
@@ -825,6 +896,26 @@ def test_no_knobs_and_no_widen_is_byte_identical(plain_run, tmp_path):
     assert cfg["knobs"] == {} and cfg["widen"] == []
     assert all("widening" not in r and "production_ballot" not in r
                for r in plain_run["records"])
+    # Anchored: both arms above come from the same code, so a serialization
+    # drift they share would pass.  The digests committed under
+    # tests/fixtures/ were produced by the code as committed (recipe in the
+    # file); a DELIBERATE record/sidecar format change must regenerate that
+    # file in the same commit.  The exact shard/sidecar digests are enforced
+    # on the platform that produced them; the float-free structural digests
+    # (keys, ints, strings, card lists) everywhere -- see ``_structural``.
+    fixture = json.loads(FIXTURE.read_text())
+    assert fixture["config"] == FIXTURE_CONFIG
+    same_platform = fixture["platform"] == {"system": platform.system(),
+                                            "machine": platform.machine()}
+    for run in (neutral, plain_run):
+        got = fixture_digests(run)
+        assert got["run_id"] == fixture["run_id"] == PLAIN_RUN_ID
+        assert got["structural"] == fixture["structural"]
+        assert got["shard"]["records"] == fixture["shard"]["records"]
+        assert got["shard"]["path"] == fixture["shard"]["path"]
+        if same_platform:
+            assert got["shard"] == fixture["shard"]
+            assert got["sidecar"] == fixture["sidecar"]
 
 
 # K9 --------------------- resume refuses a different sampling environment

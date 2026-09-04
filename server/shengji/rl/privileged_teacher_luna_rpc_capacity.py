@@ -9,35 +9,24 @@ import math
 import os
 from pathlib import Path
 import platform
-import signal
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from typing import Callable, Mapping, Sequence
 
 from . import privileged_teacher_luna_selfplay as selfplay
-from . import privileged_teacher_luna_selfplay_execution as legacy_execution
-from .privileged_teacher_luna_rpc_journal import (
-    FileTurnJournal,
-    TurnJournalError,
-)
+from .privileged_teacher_luna_rpc_journal import TurnJournalError
 from .privileged_teacher_luna_rpc_transport import (
-    CodexExecPlannerTransport,
     CodexProviderResourceError,
     CodexToolEventError,
     CodexTurnTransportError,
     DISABLED_FEATURES,
-    InvocationResult,
     MODEL,
     REASONING_EFFORT,
-    ActiveCallManager,
-    _start_contained_process,
     attest_codex_runtime,
 )
 from .privileged_teacher_luna_turn_rpc import (
-    TurnDriver,
     TurnRPCError,
     TurnValidationError,
 )
@@ -83,7 +72,6 @@ REQUIRED_ENGINE_ENVIRONMENT = {
 LOADABLE_SHADOW_SUFFIXES = (".pyc", ".pyo", ".so", ".dylib", ".pyd")
 SOURCE_PATHS = (
     "shengji/rl/privileged_teacher_luna_selfplay.py",
-    "shengji/rl/privileged_teacher_luna_selfplay_execution.py",
     "shengji/rl/privileged_teacher_luna_turn_rpc.py",
     "shengji/rl/privileged_teacher_luna_rpc_transport.py",
     "shengji/rl/privileged_teacher_luna_rpc_watchdog.py",
@@ -93,7 +81,6 @@ SOURCE_PATHS = (
     "shengji/rl/privileged_teacher_luna_rpc_collection.py",
     "shengji/rl/privileged_teacher_luna_rpc_supervisor.py",
     "scripts/privileged_teacher_luna_rpc_canary.py",
-    "scripts/privileged_teacher_luna_rpc_capacity.py",
     "scripts/privileged_teacher_luna_rpc_collection.py",
     "tests/test_privileged_teacher_luna_turn_rpc.py",
     "tests/test_privileged_teacher_luna_rpc_transport.py",
@@ -367,70 +354,6 @@ class RPCConcurrency:
             self.maximum = 0
 
 
-class MeteredCodexRun:
-    """Popen runner that exposes each process group to the reviewed meter."""
-
-    def __init__(self, meter: legacy_execution.ProcessTreeResourceMeter,
-                 concurrency: RPCConcurrency,
-                 event_callback: Callable[[str], object] | None = None):
-        self.meter = meter
-        self.concurrency = concurrency
-        self.active_calls = ActiveCallManager()
-        self.invocation_count = 0
-        self.invocation_wall_nanoseconds: list[int] = []
-        self.event_callback = event_callback
-
-    def __call__(self, command: tuple[str, ...], prompt: bytes,
-                 workspace: Path, timeout_seconds: int) -> InvocationResult:
-        env = dict(os.environ)
-        env.pop("PYTHONPATH", None)
-        started = time.monotonic_ns()
-        process, watchdog_fd = _start_contained_process(
-            command, workspace=workspace, env=env,
-            active_calls=self.active_calls)
-        self.invocation_count += 1
-        registered = entered = False
-        try:
-            self.meter.register(process.pid)
-            registered = True
-            self.concurrency.enter()
-            entered = True
-            if self.event_callback is not None:
-                self.event_callback("rpc-start")
-            try:
-                stdout, stderr = process.communicate(
-                    input=prompt, timeout=timeout_seconds)
-                returncode = int(process.returncode or 0)
-            except subprocess.TimeoutExpired as exc:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                process.communicate()
-                raise CodexTurnTransportError(
-                    "Codex turn deadline exceeded") from exc
-        finally:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            if process.poll() is None:
-                process.communicate()
-            try:
-                if entered:
-                    self.concurrency.leave()
-                    if self.event_callback is not None:
-                        self.event_callback("rpc-end")
-            finally:
-                if registered:
-                    self.meter.unregister(process.pid)
-            self.invocation_wall_nanoseconds.append(
-                max(1, time.monotonic_ns() - started))
-            self.active_calls.release(process.pid, watchdog_fd)
-        wall_ms = max(0, (time.monotonic_ns() - started) // 1_000_000)
-        return InvocationResult(returncode, stdout, stderr, wall_ms)
-
-
 def _source_hashes() -> dict[str, str]:
     server_root = Path(__file__).resolve().parents[2]
     return {name: _sha_bytes((server_root / name).read_bytes())
@@ -658,252 +581,6 @@ def validate_canary_receipt(receipt: object, *,
             or alternation["engine_complete"] is not False):
         raise RPCCapacityError("canary contract derivation drift")
     return receipt["receipt_sha256"]
-
-
-class RealGameRunner:
-    """Run one full score-free capacity game and discard all outcome bytes."""
-
-    def __init__(self, *, capacity_secret: bytes, codex_binary: Path,
-                 temp_root: Path, per_call_timeout_seconds: int,
-                 per_game_deadline_seconds: int,
-                 concurrency: RPCConcurrency,
-                 runtime: Mapping[str, object],
-                 progress_sink: Callable[[Mapping[str, object]], object]
-                 | None = None):
-        if type(capacity_secret) is not bytes or len(capacity_secret) != 32:
-            raise RPCCapacityError("capacity secret drift")
-        self.secret = capacity_secret
-        self.codex_binary = Path(codex_binary)
-        self.temp_root = Path(temp_root)
-        self.timeout = per_call_timeout_seconds
-        self.game_deadline_ns = _positive(
-            per_game_deadline_seconds, "capacity game deadline") * 1_000_000_000
-        self.concurrency = concurrency
-        if type(runtime) is not dict \
-                or type(runtime.get("codex_tool_catalog")) is not dict:
-            raise RPCCapacityError("capacity runtime drift")
-        self.runtime = dict(runtime)
-        self.catalog = dict(runtime["codex_tool_catalog"])
-        self.mechanics = mechanics_sha256()
-        if progress_sink is not None and not callable(progress_sink):
-            raise RPCCapacityError("capacity progress sink drift")
-        self.progress_sink = progress_sink
-
-    def _emit_progress(self, event: str, *, workers: int, worker: int,
-                       game: int, journal: FileTurnJournal,
-                       absolute_deadline_ns: int) -> None:
-        if self.progress_sink is None:
-            return
-        self._emit_progress_snapshot(
-            event, workers=workers, worker=worker, game=game,
-            summary=journal.summary(),
-            absolute_deadline_ns=absolute_deadline_ns)
-
-    def _emit_progress_snapshot(self, event: str, *, workers: int,
-                                worker: int, game: int,
-                                summary: Mapping[str, object],
-                                absolute_deadline_ns: int) -> None:
-        if self.progress_sink is None:
-            return
-        self.progress_sink({
-            "schema": "pt-luna-rpc-capacity-progress-v1",
-            "event": event, "arm_workers": workers,
-            "worker": worker, "game": game,
-            "opened_rpc_count": summary["opened_rpc_count"],
-            "committed_decision_count": summary[
-                "committed_decision_count"],
-            "remaining_game_deadline_seconds": max(
-                0, absolute_deadline_ns - time.monotonic_ns())
-                // 1_000_000_000,
-            "active_model_rpcs": self.concurrency.active,
-        })
-
-    def __call__(self, workers: int, worker: int, game_index: int) -> GameMetric:
-        started = time.monotonic_ns()
-        absolute_deadline_ns = started + self.game_deadline_ns
-        meter = legacy_execution.ProcessTreeResourceMeter()
-        evidence_sha = _sha({"workers": workers, "worker": worker,
-                             "game": game_index, "status": "incomplete"})
-        complete = verified = False
-        process_errors = 0
-        evidence = ()
-        driver = None
-        journal = None
-        usage_snapshot = None
-        refusal_tool_event_snapshot = None
-        journal_summary_snapshot = None
-        tool_event_count = 0
-        physical_attempt_count = 0
-        first_attempt_failure_by_class: dict[str, int] = {}
-        redispatch_count = 0
-        exhaustion_count = 0
-        retry_wall_nanoseconds = 0
-        retry_token_count = 0
-        stage = "dispatch"
-        failure = None
-        metered = MeteredCodexRun(meter, self.concurrency)
-        try:
-            key = canonical_json_bytes({"schema": "pt-luna-rpc-capacity-seed-v1",
-                                        "workers": workers, "worker": worker,
-                                        "game": game_index})
-            secret = hashlib.sha256(self.secret + key).digest()
-            coordinate = selfplay.LunaDesign().root_coordinates[
-                (workers * 7 + worker * 2 + game_index) % 52]
-            shared = selfplay.LunaSelfPlayGame(
-                selfplay.build_root(secret, coordinate),
-                coordinate=coordinate, mirror=game_index,
-                seed_secret=secret)
-            with tempfile.TemporaryDirectory(
-                    prefix=f"pt-luna-cap-{workers}-{worker}-{game_index}-",
-                    dir=self.temp_root) as directory:
-                journal = FileTurnJournal(Path(directory) / "journal")
-                metered.event_callback = lambda event: self._emit_progress(
-                    event, workers=workers, worker=worker, game=game_index,
-                    journal=journal,
-                    absolute_deadline_ns=absolute_deadline_ns)
-                try:
-                    transport = CodexExecPlannerTransport(
-                        codex_binary=self.codex_binary,
-                        timeout_seconds=self.timeout, temp_root=Path(directory),
-                        run_command=metered,
-                        runtime_attestor=lambda _: dict(self.catalog),
-                        deadline_provider=lambda: absolute_deadline_ns,
-                        policy_mode="play-only")
-                    driver = TurnDriver(shared, transport, journal=journal)
-                    while not shared.complete and shared.failed is None:
-                        if time.monotonic_ns() >= absolute_deadline_ns:
-                            shared.fail("capacity game deadline exceeded")
-                            raise CodexTurnTransportError(
-                                "capacity game deadline exceeded")
-                        stage = "dispatch"
-                        driver.step()
-                        stage = "journal-commit"
-                        self._emit_progress(
-                            "transition-commit", workers=workers,
-                            worker=worker, game=game_index, journal=journal,
-                            absolute_deadline_ns=absolute_deadline_ns)
-                    stage = "terminal-verification"
-                    evidence = tuple(driver.evidence)
-                    artifacts = shared.completed_artifacts()
-                    reopened = selfplay.SealedTrajectory.reopen(
-                        artifacts.trajectory.private_bytes())
-                    selfplay.CompletedGameArtifacts(
-                        reopened, artifacts.terminal_receipt)
-                    evidence_sha = _sha({
-                        "trajectory_sha256": artifacts.trajectory.sha256,
-                        "terminal_receipt_sha256":
-                            artifacts.terminal_receipt.receipt_sha256,
-                        "journal": journal.summary(),
-                        "provider_response_sha256s": [
-                            row.provider_response_sha256 for row in evidence],
-                    })
-                    complete = verified = True
-                    self._emit_progress(
-                        "game-complete", workers=workers, worker=worker,
-                        game=game_index, journal=journal,
-                        absolute_deadline_ns=absolute_deadline_ns)
-                finally:
-                    usage_snapshot = journal.usage_totals()
-                    journal_summary_snapshot = journal.summary()
-                    refusal_tool_event_snapshot = \
-                        journal.pending_refusal_tool_event_count()
-                    groups = journal._scan()
-                    physical_attempt_count = len(groups)
-                    for group in groups:
-                        attempt = journal._attempt(group)
-                        ordinal = attempt.attempt_ordinal
-                        if ordinal > 0:
-                            redispatch_count += 1
-                            usage = (journal._response(group).usage.payload()
-                                     if "response" in group else
-                                     journal._refusal(group)["usage"])
-                            if usage is not None:
-                                retry_wall_nanoseconds += usage["wall_ms"] * 1_000_000
-                                retry_token_count += usage["total_tokens"]
-                        if (ordinal == 2 and "refusal" in group
-                                and journal._refusal(group)[
-                                    "redispatch_eligibility"] is not None):
-                            exhaustion_count += 1
-                        if ordinal == 0 and "refusal" in group:
-                            failure_class = journal._refusal(group)["failure_class"]
-                            failure_key = (journal._refusal(group)[
-                                "redispatch_eligibility"] or failure_class)
-                            first_attempt_failure_by_class[failure_key] = \
-                                first_attempt_failure_by_class.get(failure_key, 0) + 1
-        except Exception as exc:
-            process_errors = 1
-            failure = _failure_disposition(exc, stage=stage)
-            tool_event_count = (
-                int(isinstance(exc, CodexToolEventError))
-                if refusal_tool_event_snapshot is None
-                else refusal_tool_event_snapshot)
-            if driver is not None:
-                evidence = tuple(driver.evidence)
-            if journal_summary_snapshot is not None:
-                self._emit_progress_snapshot(
-                    "game-failure", workers=workers, worker=worker,
-                    game=game_index, summary=journal_summary_snapshot,
-                    absolute_deadline_ns=absolute_deadline_ns)
-        observed_process_count = 0
-        try:
-            resource = meter.close()
-            observed_process_count = meter.observed_process_count()
-        except Exception as exc:
-            process_errors = 1
-            complete = verified = False
-            failure = _failure_disposition(exc, stage="resource-meter")
-            failure = ("resource-meter", "resource-meter", *failure[2:])
-            resource = {"busy_cpu_nanoseconds": 0, "peak_rss_bytes": 0,
-                        "swap_bytes": 0}
-        wall = max(1, time.monotonic_ns() - started)
-        usage = usage_snapshot
-        input_tokens = (sum(row.usage.input_tokens for row in evidence)
-                        if usage is None else usage["input_tokens"])
-        cached_tokens = (sum(row.usage.cached_input_tokens for row in evidence)
-                         if usage is None else usage["cached_input_tokens"])
-        cache_write = (sum(
-            row.usage.cache_write_input_tokens for row in evidence)
-            if usage is None else usage["cache_write_input_tokens"])
-        output_tokens = (sum(row.usage.output_tokens for row in evidence)
-                         if usage is None else usage["output_tokens"])
-        reasoning_tokens = (sum(
-            row.usage.reasoning_output_tokens for row in evidence)
-            if usage is None else usage["reasoning_output_tokens"])
-        rpc_walls = metered.invocation_wall_nanoseconds
-        p95_rpc_wall = _p95(rpc_walls) if rpc_walls else 0
-        max_rpc_wall = max(rpc_walls, default=0)
-        max_rpc_tokens = max(
-            (row.usage.total_tokens for row in evidence), default=0)
-        total_tokens = input_tokens + output_tokens
-        token_rate = total_tokens * 1_000_000_000_000 // wall
-        if failure is None:
-            failure = ("none", "none", False, False, "none",
-                       NO_FAILURE_MESSAGE_SHA256)
-        opened = (metered.invocation_count if journal_summary_snapshot is None
-                  else int(journal_summary_snapshot["call_count"]))
-        committed = int(getattr(driver, "decision_index", 0))
-        return GameMetric(
-            workers, worker, game_index, complete, verified, wall,
-            int(resource["busy_cpu_nanoseconds"]),
-            int(resource["peak_rss_bytes"]), int(resource["swap_bytes"]),
-            process_errors, tool_event_count,
-            max(metered.invocation_count, opened),
-            observed_process_count,
-            p95_rpc_wall, max_rpc_wall, max_rpc_tokens,
-            input_tokens, cached_tokens,
-            cache_write, output_tokens, reasoning_tokens, token_rate,
-            self.mechanics, evidence_sha,
-            failure_stage=failure[0], failure_kind=failure[1],
-            game_deadline_fired=failure[2], call_timeout_fired=failure[3],
-            exception_type=failure[4], failure_message_sha256=failure[5],
-            last_opened_rpc_count=opened,
-            last_committed_decision_count=committed,
-            physical_attempt_count=physical_attempt_count,
-            first_attempt_failure_by_class=first_attempt_failure_by_class,
-            redispatch_count=redispatch_count,
-            exhaustion_count=exhaustion_count,
-            retry_wall_nanoseconds=retry_wall_nanoseconds,
-            retry_token_count=retry_token_count)
 
 
 def _arm(workers: int, metrics: Sequence[GameMetric], *,
@@ -1186,63 +863,6 @@ def _derive_capacity(*, game_runner: Callable[[int, int, int], GameMetric],
     return receipt
 
 
-def run_capacity(*, canary_receipt: Mapping[str, object],
-                 capacity_secret: bytes, codex_binary: Path,
-                 temp_root: Path, per_call_timeout_seconds: int,
-                 runtime: Mapping[str, object],
-                 secret_commitment_sha256: str,
-                 source_review: Mapping[str, object],
-                 per_game_deadline_ns: int, physical_memory_bytes: int,
-                 capacity_wall_ns: int, capacity_token_budget: int,
-                 scientific_wall_ns: int, scientific_token_budget: int,
-                 progress_sink: Callable[[Mapping[str, object]], object] | None = None,
-                 arm_sink: Callable[[Mapping[str, object]], object] | None = None) \
-        -> dict[str, object]:
-    """Authenticated public capacity entry point used by the official CLI."""
-    canary_sha = validate_canary_receipt(
-        canary_receipt, expected_runtime=runtime)
-    if (type(capacity_secret) is not bytes or len(capacity_secret) != 32
-            or hashlib.sha256(capacity_secret).hexdigest()
-            != secret_commitment_sha256
-            or source_identity(Path(codex_binary)) != dict(runtime)):
-        raise RPCCapacityError("capacity real runner binding drift")
-    from .privileged_teacher_luna_rpc_supervisor import (
-        SOURCE_REVIEW_PREFIX, authenticate_review_claim,
-        source_review_claim,
-    )
-    repo_root = Path(__file__).resolve().parents[3]
-    current_claim = source_review_claim(repo_root)
-    authenticated = authenticate_review_claim(
-        claim=current_claim, prefix=SOURCE_REVIEW_PREFIX,
-        review_commit=source_review.get("review_commit", ""))
-    if dict(source_review) != authenticated \
-            or canary_receipt.get("source_review") != authenticated:
-        raise RPCCapacityError("capacity source review authentication drift")
-    concurrency = RPCConcurrency()
-    game_runner = RealGameRunner(
-        capacity_secret=capacity_secret, codex_binary=codex_binary,
-        temp_root=temp_root,
-        per_call_timeout_seconds=per_call_timeout_seconds,
-        per_game_deadline_seconds=per_game_deadline_ns // 1_000_000_000,
-        concurrency=concurrency, runtime=runtime,
-        progress_sink=progress_sink)
-    receipt = _derive_capacity(
-        game_runner=game_runner, runtime=runtime,
-        secret_commitment_sha256=secret_commitment_sha256,
-        canary_receipt_sha256=canary_sha, source_review=authenticated,
-        per_game_deadline_ns=per_game_deadline_ns,
-        physical_memory_bytes=physical_memory_bytes,
-        capacity_wall_ns=capacity_wall_ns,
-        capacity_token_budget=capacity_token_budget,
-        scientific_wall_ns=scientific_wall_ns,
-        scientific_token_budget=scientific_token_budget,
-        progress_sink=progress_sink, arm_sink=arm_sink,
-        concurrency=concurrency)
-    if source_identity(Path(codex_binary)) != dict(runtime):
-        raise RPCCapacityError("capacity terminal runtime drift")
-    return receipt
-
-
 def validate_capacity_receipt(receipt: object) -> None:
     keys = {"schema", "route", "selected_workers", "selected_game_count",
             "selected_deal_cluster_count",
@@ -1446,10 +1066,10 @@ def validate_capacity_receipt(receipt: object) -> None:
         raise RPCCapacityError("capacity stop-reason derivation drift")
 
 
-__all__ = ["GameMetric", "MeteredCodexRun", "RPCCapacityError",
-           "RPCConcurrency", "RealGameRunner", "ROUTE_FULL", "ROUTE_PILOT",
+__all__ = ["GameMetric", "RPCCapacityError",
+           "RPCConcurrency", "ROUTE_FULL", "ROUTE_PILOT",
            "ROUTE_FULL_104_ELIGIBLE", "ROUTE_PILOT_32_ELIGIBLE",
            "ROUTE_REFUSE",
-           "SCHEMA", "WORKER_ARMS", "mechanics_sha256", "run_capacity",
+           "SCHEMA", "WORKER_ARMS", "mechanics_sha256",
            "source_identity", "validate_canary_receipt",
            "validate_capacity_receipt", "validate_source_review_auth"]

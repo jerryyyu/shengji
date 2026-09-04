@@ -3,30 +3,20 @@
 from __future__ import annotations
 
 import copy
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import hashlib
-import inspect
-from pathlib import Path
 import threading
 import time
 
 import pytest
 
 from shengji.rl import privileged_teacher_luna_rpc_capacity as capacity
-from shengji.rl import privileged_teacher_luna_rpc_journal as journal_module
 from shengji.rl.privileged_teacher_luna_rpc_transport import (
-    CodexProviderResourceError,
-    CodexToolEventError,
-    CodexTurnTransportError,
     DISABLED_FEATURES,
     MODEL,
     PINNED_CODEX_VERSION,
     REASONING_EFFORT,
 )
-from shengji.rl.privileged_teacher_luna_rpc_journal import TurnJournalError
-from shengji.rl.privileged_teacher_luna_turn_rpc import (
-    Intent, PlannerResponse, TurnValidationError, Usage)
 from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
 from shengji.rl.privileged_teacher_luna_rpc_capacity import (
     GameMetric,
@@ -149,41 +139,6 @@ def test_canary_source_review_cannot_be_coordinately_rehashed_to_other_source():
         canonical_json_bytes(body)).hexdigest()
     with pytest.raises(RPCCapacityError, match="claim seal"):
         validate_canary_receipt(forged)
-
-
-def test_capacity_rechecks_live_runtime_after_all_game_arms(
-        tmp_path, monkeypatch):
-    from shengji.rl import privileged_teacher_luna_rpc_supervisor as sup
-
-    expected = runtime()
-    changed = copy.deepcopy(expected)
-    changed["codex_binary_sha256"] = "f" * 64
-    seen = iter((expected, changed))
-    review = source_review_auth(expected["source_set_sha256"])
-    canary = canary_receipt()
-    monkeypatch.setattr(capacity, "source_identity", lambda _path: next(seen))
-    monkeypatch.setattr(capacity, "RealGameRunner", lambda **_kwargs: object())
-    monkeypatch.setattr(capacity, "_derive_capacity",
-                        lambda **_kwargs: {"would_publish": True})
-    monkeypatch.setattr(sup, "source_review_claim",
-                        lambda _repo: review["review_claim"])
-    monkeypatch.setattr(sup, "authenticate_review_claim",
-                        lambda **_kwargs: review)
-
-    with pytest.raises(RPCCapacityError,
-                       match="capacity terminal runtime drift"):
-        capacity.run_capacity(
-            canary_receipt=canary, capacity_secret=b"x" * 32,
-            codex_binary=Path("/test/codex"), temp_root=tmp_path,
-            per_call_timeout_seconds=90, runtime=expected,
-            secret_commitment_sha256=hashlib.sha256(b"x" * 32).hexdigest(),
-            source_review=review,
-            per_game_deadline_ns=10_000_000_000,
-            physical_memory_bytes=16 << 30,
-            capacity_wall_ns=20_000_000_000,
-            capacity_token_budget=1_000_000,
-            scientific_wall_ns=100_000_000_000,
-            scientific_token_budget=10_000_000)
 
 
 def test_canary_rechecks_live_runtime_before_receipt_publication(
@@ -454,35 +409,6 @@ def test_all_arms_pass_and_next_larger_rule_selects_a_supported_arm():
     validate_capacity_receipt(result)
 
 
-def test_public_capacity_entry_refuses_unproven_canary_before_runner():
-    calls = 0
-    def runner(*_args):
-        nonlocal calls
-        calls += 1
-        raise AssertionError("runner must not open")
-    with pytest.raises(RPCCapacityError, match="canary receipt schema"):
-        capacity.run_capacity(
-            canary_receipt={}, capacity_secret=b"x" * 32,
-            codex_binary=Path("/not/opened"), temp_root=Path("/not/opened"),
-            per_call_timeout_seconds=90, runtime=runtime(),
-            secret_commitment_sha256="b" * 64,
-            source_review=source_review_auth(
-                runtime()["source_set_sha256"]),
-            per_game_deadline_ns=10_000_000_000,
-            physical_memory_bytes=16 << 30,
-            capacity_wall_ns=10_000_000_000,
-            capacity_token_budget=1_000_000,
-            scientific_wall_ns=1_000_000_000_000,
-            scientific_token_budget=1_000_000_000)
-    assert calls == 0
-
-
-def test_public_capacity_entry_has_no_injected_runner_or_tracker_seam():
-    parameters = inspect.signature(capacity.run_capacity).parameters
-    assert "game_runner" not in parameters
-    assert "concurrency" not in parameters
-
-
 def test_tool_event_fails_first_arm_and_routes_resource_refusal():
     tracker = RPCConcurrency()
     passing = PassingRunner(tracker)
@@ -504,131 +430,6 @@ def test_capacity_token_overrun_cannot_publish_a_passing_route():
     assert result["total_token_count"] > result["capacity_token_budget"]
     assert result["route"] == ROUTE_REFUSE
     assert result["selected_workers"] is None
-
-
-def test_real_runner_snapshots_failed_journal_before_temp_cleanup(
-        tmp_path, monkeypatch):
-    seen_catalogs = []
-    seen_modes = []
-    progress = []
-    class RefusingTransport:
-        def __init__(self, **kwargs):
-            seen_catalogs.append(kwargs["runtime_attestor"](
-                Path("/never-probed")))
-            seen_modes.append(kwargs["policy_mode"])
-        def call(self, _packet):
-            raise CodexTurnTransportError("Codex completion telemetry drift")
-    monkeypatch.setattr(
-        capacity, "CodexExecPlannerTransport", RefusingTransport)
-    tracker = RPCConcurrency()
-    runner = capacity.RealGameRunner(
-        capacity_secret=b"capacity-test-secret-32-bytes!!!",
-        codex_binary=Path("/usr/bin/true"),
-        temp_root=tmp_path, per_call_timeout_seconds=90,
-        per_game_deadline_seconds=600, concurrency=tracker,
-        runtime=runtime(), progress_sink=progress.append)
-    metric = runner(1, 0, 0)
-    assert metric.complete is False
-    assert metric.process_errors == 1
-    assert metric.failure_stage == "provider-response"
-    assert metric.failure_kind == "provider-schema"
-    assert metric.exception_type == "CodexTurnTransportError"
-    assert metric.failure_message_sha256 == hashlib.sha256(
-        b"Codex completion telemetry drift").hexdigest()
-    assert metric.input_tokens == metric.output_tokens == 0
-    assert seen_catalogs == [runtime()["codex_tool_catalog"]]
-    assert seen_modes == ["play-only"]
-    assert progress[-1]["event"] == "game-failure"
-    assert progress[-1]["opened_rpc_count"] == 1
-    assert progress[-1]["committed_decision_count"] == 0
-
-
-def test_real_runner_retry_metric_is_derived_from_durable_attempts(
-        tmp_path, monkeypatch):
-    """The real runner must expose both physical calls and the retry facts."""
-    monkeypatch.setattr(
-        journal_module, "classify_refusal_redispatch_eligibility",
-        lambda _disposition, _private: "completion-telemetry-drift")
-    monkeypatch.setattr(
-        journal_module.FileTurnJournal, "_refusal_eligibility",
-        staticmethod(lambda group: group["refusal"].get(
-            "redispatch_eligibility")))
-
-    class RetryTransport:
-        calls = 0
-
-        def __init__(self, **kwargs):
-            self.policy_mode = kwargs["policy_mode"]
-
-        def call(self, packet):
-            self.calls += 1
-            if self.calls == 1:
-                raise CodexProviderResourceError("synthetic provider refusal")
-            return PlannerResponse(
-                Intent("play", packet.decision_sha256, candidate_index=0,
-                       confidence="low"),
-                Usage(40, 50, 90, 7), 0, 1 - packet.team,
-                packet.sha256, packet.memory.sha256, "a" * 64, "b" * 64)
-
-    transports = []
-    def factory(**kwargs):
-        transport = RetryTransport(**kwargs)
-        transports.append(transport)
-        return transport
-
-    monkeypatch.setattr(capacity, "CodexExecPlannerTransport", factory)
-    runner = capacity.RealGameRunner(
-        capacity_secret=b"capacity-test-secret-32-bytes!!!",
-        codex_binary=Path("/usr/bin/true"), temp_root=tmp_path,
-        per_call_timeout_seconds=90, per_game_deadline_seconds=600,
-        concurrency=RPCConcurrency(), runtime=runtime())
-    metric = runner(1, 0, 0)
-    assert metric.complete is False
-    assert metric.rpc_count == 2
-    assert metric.physical_attempt_count == 2
-    assert metric.redispatch_count == 1
-    assert metric.exhaustion_count == 0
-    assert metric.first_attempt_failure_by_class == {
-        "completion-telemetry-drift": 1}
-    assert metric.retry_wall_nanoseconds == 7_000_000
-    assert metric.retry_token_count == 90
-    assert len(transports) == 1
-    assert transports[0].calls == 2
-    assert transports[0].policy_mode == "play-only"
-
-
-def test_concurrent_game_failures_keep_distinct_typed_dispositions(
-        tmp_path, monkeypatch):
-    failures = {
-        0: CodexToolEventError("synthetic forbidden tool"),
-        1: CodexProviderResourceError("Codex turn deadline exceeded"),
-        2: TurnValidationError("synthetic stale decision response"),
-        3: TurnJournalError("synthetic journal refusal"),
-    }
-    class RefusingTransport:
-        def __init__(self, **kwargs):
-            name = kwargs["temp_root"].name
-            self.worker = int(name.split("-")[4])
-        def call(self, _packet):
-            raise failures[self.worker]
-    monkeypatch.setattr(
-        capacity, "CodexExecPlannerTransport", RefusingTransport)
-    runner = capacity.RealGameRunner(
-        capacity_secret=b"capacity-test-secret-32-bytes!!!",
-        codex_binary=Path("/usr/bin/true"), temp_root=tmp_path,
-        per_call_timeout_seconds=90, per_game_deadline_seconds=600,
-        concurrency=RPCConcurrency(), runtime=runtime())
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        rows = list(executor.map(lambda worker: runner(4, worker, 0),
-                                 range(4)))
-    assert {(row.worker, row.failure_stage, row.failure_kind,
-             row.call_timeout_fired) for row in rows} == {
-        (0, "validation", "forbidden-tool", False),
-        (1, "provider-response", "call-timeout", True),
-        (2, "validation", "transport-validation", False),
-        (3, "journal-commit", "journal-io", False),
-    }
-    assert len({row.failure_message_sha256 for row in rows}) == 4
 
 
 @pytest.mark.parametrize("field", ["selected_workers", "total_token_count"])

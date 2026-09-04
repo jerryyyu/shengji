@@ -4,6 +4,8 @@ and of every output JSONL.  Encoder-free by design (records are raw)."""
 from __future__ import annotations
 
 import json
+import os
+import stat
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -92,13 +94,25 @@ def build_manifest(out_dir: Path) -> dict:
     outputs: dict[str, dict] = {}
     for name in sorted(declared):
         source, info = declared[name]
+        # the declared name must be one plain file name inside out_dir: no
+        # separators, no parent references, nothing a sidecar could use to
+        # bind the manifest to bytes outside the extraction directory
+        if (not name or name in (".", "..") or "/" in name or "\\" in name
+                or name != Path(name).name):
+            raise RuntimeError(f"{name!r}: output name must be a plain file name")
         path = out_dir / name
-        if not path.is_file():
-            raise RuntimeError(f"{name}: declared by {source} but missing")
+        try:
+            st = os.lstat(path)                      # never follow a symlink
+        except FileNotFoundError:
+            raise RuntimeError(f"{name}: declared by {source} but missing") from None
+        if stat.S_ISLNK(st.st_mode):
+            raise RuntimeError(f"{name}: declared output is a symlink")
+        if not stat.S_ISREG(st.st_mode):
+            raise RuntimeError(f"{name}: declared output is not a regular file")
         private = bool(info.get("private", False))
         if private != name.endswith(".private.jsonl"):
             raise RuntimeError(f"{name}: private flag does not match its name")
-        mode = path.stat().st_mode & 0o777
+        mode = st.st_mode & 0o777
         if private and mode != 0o600:
             raise RuntimeError(f"{name}: private output mode {oct(mode)} is not 0600")
         digest = sha256_file(path)
@@ -108,7 +122,7 @@ def build_manifest(out_dir: Path) -> dict:
         if records != int(info.get("records", -1)):
             raise RuntimeError(f"{name}: record count {records} differs from "
                                f"its sidecar ({info.get('records')})")
-        outputs[name] = {"sha256": digest, "bytes": path.stat().st_size,
+        outputs[name] = {"sha256": digest, "bytes": st.st_size,
                          "records": records, "private": private, "mode": oct(mode)}
     gap_path = out_dir / "ballot_gap.json"
     ballot_gap = None

@@ -68,3 +68,20 @@ def test_pointer_order_and_determinism(extraction):
         assert record["policy"] == f"human:{row['player_id']}"
     again = human.extract_human(registry=InputRegistry())
     assert [encode_line(r) for r in again.public] == [encode_line(r) for r in extraction.public]
+
+
+def test_pseudonym_mismatch_refuses(tmp_path):
+    """A pointer whose player_id does not reproduce from the seat fails closed."""
+    import shutil
+    if not HUMAN_V8.is_dir():
+        pytest.skip("human_v8 corpus not present")
+    corpus = tmp_path / "human_v8"
+    shutil.copytree(HUMAN_V8, corpus)
+    pointer_path = corpus / "play_decisions.jsonl"
+    lines = pointer_path.read_text().splitlines()
+    first = json.loads(lines[0])
+    first["player_id"] = "0" * 16
+    lines[0] = json.dumps(first)
+    pointer_path.write_text("\n".join(lines) + "\n")
+    with pytest.raises(human.HumanPointerError, match="pseudonym"):
+        human.extract_human(human_dir=corpus, registry=InputRegistry())

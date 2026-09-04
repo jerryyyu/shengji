@@ -8,10 +8,14 @@ from shengji.harvest import legal, rebuild, room_log
 from shengji.harvest.common import REPO, InputRegistry
 from shengji.harvest.schema import encode_line, validate_record
 
-EXPECTED_ROUNDS = {"main": 164, "archive": 17, "local": 11}   # 192
+#: logs/archive and logs/local are frozen directories (exact); logs/*.jsonl is
+#: the LIVE production log set, refreshed by scripts/fetch_fly_logs.sh, so it
+#: can only grow: 164 rounds when this suite was written (2026-09-04).
+EXPECTED_ROUNDS_FROZEN = {"archive": 17, "local": 11}
+MIN_ROUNDS_MAIN = 164
 #: the spec's "~12,700 plays" counts logs/*.jsonl + logs/archive; the 11
 #: local rounds add ~800 more (measured: 12,732 + 796 = 13,528)
-EXPECTED_PLAYS_MAIN_ARCHIVE = 12_700
+MIN_PLAYS_MAIN_ARCHIVE = 12_700 * 0.98
 EXPECTED_DECISION_BLOBS = 2_257
 
 
@@ -28,10 +32,11 @@ def test_counts(extraction):
     c = extraction.counts
     per_dir = extraction.extras["per_directory"]
     print(f"room-log counts: {c}\nroom-log per directory: {per_dir}")
-    assert c["rounds"] == sum(EXPECTED_ROUNDS.values()) == 192
-    assert {k: v["rounds"] for k, v in per_dir.items()} == EXPECTED_ROUNDS
+    assert {k: per_dir[k]["rounds"] for k in EXPECTED_ROUNDS_FROZEN} == EXPECTED_ROUNDS_FROZEN
+    assert per_dir["main"]["rounds"] >= MIN_ROUNDS_MAIN, per_dir["main"]
+    assert c["rounds"] == sum(v["rounds"] for v in per_dir.values())
     main_archive = per_dir["main"]["plays"] + per_dir["archive"]["plays"]
-    assert _within(main_archive, EXPECTED_PLAYS_MAIN_ARCHIVE), main_archive
+    assert main_archive >= MIN_PLAYS_MAIN_ARCHIVE, main_archive
     assert c["plays"] == main_archive + per_dir["local"]["plays"]
     assert c["decision_blobs"] >= EXPECTED_DECISION_BLOBS, c["decision_blobs"]
     assert c["rounds_rejected"] == 0, extraction.extras["rejections"]

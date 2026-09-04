@@ -60,6 +60,7 @@ from shengji.luna.supervisor import (  # noqa: E402
     _mkdir_private,
     schedule_for_games,
     verify_run,
+    PROMPT_PROFILES,
 )
 
 
@@ -271,7 +272,8 @@ def collect(args: argparse.Namespace) -> int:
         per_call_token_reserve=args.per_call_token_reserve,
         per_call_wall_reserve_milliseconds=args.per_call_wall_reserve_ms,
         per_game_deadline_seconds=args.per_game_deadline_seconds,
-        wall_seconds=args.wall_seconds)
+        wall_seconds=args.wall_seconds,
+        prompt_profile=args.prompt_profile)
     result = supervisor.run()
     print(json.dumps(_summary(result, root, seed_path), sort_keys=True))
     return 0 if result.route == COMPLETE_STATE_SOURCE_ACQUISITION else 1
@@ -286,7 +288,8 @@ def verify(args: argparse.Namespace) -> int:
             raise ValueError(
                 f"verify needs --seed-secret: {seed_path} does not exist")
     secret = _secret(seed_path)
-    result = verify_run(root, seed_secret=secret)
+    result = verify_run(root, seed_secret=secret,
+                        prompt_profile=args.prompt_profile)
     print(json.dumps(_summary(result, root, seed_path), sort_keys=True))
     return 0 if result.route == COMPLETE_STATE_SOURCE_ACQUISITION else 1
 
@@ -310,6 +313,9 @@ def _parser() -> argparse.ArgumentParser:
                      help="run root; ROOT/private and ROOT/public are created")
     run.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     run.add_argument("--codex-binary", default="codex")
+    run.add_argument("--prompt-profile", choices=PROMPT_PROFILES,
+                     default="baseline",
+                     help="opt-in planner prompt profile")
     run.add_argument("--per-game-deadline-seconds", type=int,
                      default=DEFAULT_GAME_DEADLINE_SECONDS)
     run.add_argument("--wall-seconds", type=int, default=DEFAULT_WALL_SECONDS)
@@ -327,6 +333,9 @@ def _parser() -> argparse.ArgumentParser:
     check.add_argument("root", type=Path)
     check.add_argument("--seed-secret", type=Path, default=None,
                        help="defaults to ROOT/private/seed_secret")
+    check.add_argument("--prompt-profile", choices=PROMPT_PROFILES,
+                       default=None,
+                       help="must match the sealed run profile")
     check.set_defaults(handler=verify)
     return parser
 

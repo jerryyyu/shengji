@@ -331,6 +331,62 @@ def test_launch_facts_precede_provider_and_public_progress_has_no_score(
     assert not supervisor._forbidden(terminal)
 
 
+def test_same_root_resume_cannot_mix_prompt_profiles(tmp_path):
+    first, first_runner = _make(tmp_path)
+    first.run()
+    guided_runner = FakeRunner(tmp_path / "private")
+    guided_runner.prompt_profile = "analysis-guided"
+    resumed = supervisor.PTLunaRPCSupervisor(
+        seed_secret=SECRET, private_root=tmp_path / "private",
+        public_root=tmp_path / "public", runtime=RUNTIME,
+        runner=guided_runner, schedule=[(("2", 0, 0), 0)],
+        prompt_profile="analysis-guided")
+    with pytest.raises(supervisor.RPCSupervisorError, match="profile"):
+        resumed.run()
+    assert guided_runner.calls == 0
+
+
+def test_fresh_analysis_guided_root_seals_its_profile(tmp_path):
+    runner = FakeRunner(tmp_path / "private")
+    runner.prompt_profile = "analysis-guided"
+    instance = supervisor.PTLunaRPCSupervisor(
+        seed_secret=SECRET, private_root=tmp_path / "private",
+        public_root=tmp_path / "public", runtime=RUNTIME,
+        runner=runner, schedule=[(("2", 0, 0), 0)],
+        prompt_profile="analysis-guided")
+    result = instance.run()
+    assert result.route == INCOMPLETE
+    profile = json.loads(
+        (tmp_path / "private" / "prompt-profile.json").read_text())
+    assert profile["prompt_profile"] == "analysis-guided"
+
+    resumed_runner = FakeRunner(tmp_path / "private")
+    resumed = supervisor.PTLunaRPCSupervisor(
+        seed_secret=SECRET, private_root=tmp_path / "private",
+        public_root=tmp_path / "public", runtime=RUNTIME,
+        runner=resumed_runner, schedule=[(("2", 0, 0), 0)],
+        prompt_profile="analysis-guided")
+    assert resumed.run().receipt == result.receipt
+    assert resumed_runner.calls == 0
+
+
+def test_legacy_root_without_profile_reopens_as_baseline(tmp_path):
+    instance, runner = _make(tmp_path)
+    result = instance.run()
+    (tmp_path / "private" / "prompt-profile.json").unlink()
+
+    resumed_runner = FakeRunner(tmp_path / "private")
+    resumed = supervisor.PTLunaRPCSupervisor(
+        seed_secret=SECRET, private_root=tmp_path / "private",
+        public_root=tmp_path / "public", runtime=RUNTIME,
+        runner=resumed_runner, schedule=[(("2", 0, 0), 0)])
+    assert resumed.run().receipt == result.receipt
+    assert resumed_runner.calls == 0
+    profile = json.loads(
+        (tmp_path / "private" / "prompt-profile.json").read_text())
+    assert profile["prompt_profile"] == "baseline"
+
+
 def test_partial_attempt_without_manifest_is_resumed_then_terminal_is_final(
         tmp_path, monkeypatch):
     instance, runner = _make(tmp_path)

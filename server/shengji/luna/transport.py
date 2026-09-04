@@ -79,6 +79,7 @@ DISABLED_FEATURES = (
     "tool_suggest",
     "workspace_dependencies",
 )
+PROMPT_PROFILES = ("baseline", "analysis-guided")
 
 
 class CodexTurnTransportError(TurnRPCError):
@@ -257,7 +258,10 @@ def _provider_intent(
     raise CodexTurnTransportError("Codex intent refused: phase or kind drift")
 
 
-def planner_prompt(packet: DecisionPacket, *, policy_mode: str = "free") -> str:
+def planner_prompt(packet: DecisionPacket, *, policy_mode: str = "free",
+                   prompt_profile: str = "baseline") -> str:
+    if prompt_profile not in PROMPT_PROFILES:
+        raise CodexTurnTransportError("Codex planner prompt profile drift")
     if policy_mode == "canary-rollout-then-play":
         phase_rule = ("This boundary canary requires one rollout batch now."
                       if packet.phase.phase == 1 else
@@ -297,6 +301,23 @@ def planner_prompt(packet: DecisionPacket, *, policy_mode: str = "free") -> str:
     else:
         raise CodexTurnTransportError("Codex planner policy mode drift")
     payload = canonical_json_bytes(packet.payload()).decode("utf-8").rstrip("\n")
+    guided = ""
+    if prompt_profile == "analysis-guided":
+        guided = """
+
+Analysis-guided rubric: prioritize final signed-level utility. Use points to
+reason about the next advancement threshold. Compare legal alternatives with
+the visible full state; do not default to candidate 0 when another candidate
+is robustly better. Keep a short multi-trick plan covering control, partner
+entry, point timing, trump exhaustion, and what would change your line.
+Distinguish calculated rollout evidence from your own reasoning.
+"""
+        if policy_mode != "play-only":
+            guided += """After rollout evidence arrives, compare worst-case, median,
+and mean signed-level outcomes across tested continuations. Note sensitivity
+to the continuation policy. Spend a second rollout only to resolve material
+ambiguity among leading candidates. Never invent rollout outcomes.
+"""
     return f"""You are PT-Luna, one partnership in a full-information Shengji teacher game.
 The engine/supervisor owns all mechanics. You have no tools and must return one
 JSON object matching the supplied schema. {action_rule} Maximize final
@@ -309,7 +330,7 @@ state transition, or planning result. {phase_rule} Use planning_note for a
 concise team plan; it is private to your team. {action_details}
 
 DECISION_PACKET_JSON
-{payload}
+{payload}{guided}
 """
 
 
@@ -631,11 +652,13 @@ def _validate_request_binding(
         request: object, schema: object, prompt: bytes,
         packet: DecisionPacket | None) -> tuple[str, ...] | None:
     request_keys = {"schema", "model", "reasoning_effort", "policy_mode",
+                    "prompt_profile",
                     "disabled_features", "packet_sha256", "memory_sha256",
                     "prompt_sha256", "output_schema_sha256",
                     "timeout_seconds"}
+    legacy_request_keys = request_keys - {"prompt_profile"}
     if type(request) is not dict or type(schema) is not dict \
-            or set(request) != request_keys \
+            or set(request) not in (request_keys, legacy_request_keys) \
             or request.get("schema") != "pt-luna-codex-request-v1" \
             or request.get("model") != MODEL \
             or request.get("reasoning_effort") != REASONING_EFFORT \
@@ -643,6 +666,9 @@ def _validate_request_binding(
             or request.get("prompt_sha256") != _sha_bytes(prompt) \
             or request.get("output_schema_sha256") != _sha(schema):
         raise CodexTurnTransportError("Codex private request derivation drift")
+    prompt_profile = request.get("prompt_profile", "baseline")
+    if prompt_profile not in PROMPT_PROFILES:
+        raise CodexTurnTransportError("Codex private prompt profile drift")
     policy_mode = request.get("policy_mode")
     if policy_mode not in ("free", "canary-rollout-then-play", "play-only"):
         raise CodexTurnTransportError("Codex private policy-mode drift")
@@ -656,7 +682,9 @@ def _validate_request_binding(
         allowed = ("play",)
     if request.get("packet_sha256") != packet.sha256 \
             or request.get("memory_sha256") != packet.memory.sha256 \
-            or prompt != planner_prompt(packet, policy_mode=policy_mode).encode(
+            or prompt != planner_prompt(
+                packet, policy_mode=policy_mode,
+                prompt_profile=prompt_profile).encode(
                 "utf-8") \
             or schema != intent_output_schema(packet, allowed_kinds=allowed):
         raise CodexTurnTransportError("Codex private packet binding drift")
@@ -881,6 +909,7 @@ class CodexExecPlannerTransport:
                  temp_root: Path | None = None,
                  run_command: RunCommand = _default_run,
                  policy_mode: str = "free",
+                 prompt_profile: str = "baseline",
                  runtime_attestor: RuntimeAttestor = attest_codex_runtime,
                  deadline_provider: DeadlineProvider | None = None):
         binary = shutil.which(str(codex_binary)) if Path(str(codex_binary)).name == str(codex_binary) \
@@ -896,6 +925,8 @@ class CodexExecPlannerTransport:
             raise CodexTurnTransportError("Codex temp root absent")
         if policy_mode not in ("free", "canary-rollout-then-play", "play-only"):
             raise CodexTurnTransportError("Codex planner policy mode drift")
+        if prompt_profile not in PROMPT_PROFILES:
+            raise CodexTurnTransportError("Codex planner prompt profile drift")
         if not callable(runtime_attestor):
             raise CodexTurnTransportError("Codex runtime attestor absent")
         if deadline_provider is not None and not callable(deadline_provider):
@@ -911,6 +942,7 @@ class CodexExecPlannerTransport:
         self.temp_root = None if temp_root is None else Path(temp_root)
         self.run_command = run_command
         self.policy_mode = policy_mode
+        self.prompt_profile = prompt_profile
         self.deadline_provider = deadline_provider
         self.runtime = dict(runtime)
         self._private_evidence: dict[str, dict[str, object]] = {}
@@ -980,7 +1012,9 @@ class CodexExecPlannerTransport:
             schema_path = workspace / "intent.schema.json"
             final_path = workspace / "final.json"
             schema_path.write_bytes(canonical_json_bytes(schema))
-            prompt = planner_prompt(packet, policy_mode=self.policy_mode).encode("utf-8")
+            prompt = planner_prompt(
+                packet, policy_mode=self.policy_mode,
+                prompt_profile=self.prompt_profile).encode("utf-8")
             command = self._command(workspace=workspace,
                                     schema_path=schema_path,
                                     final_path=final_path)
@@ -990,6 +1024,7 @@ class CodexExecPlannerTransport:
                 "model": self.model,
                 "reasoning_effort": self.reasoning_effort,
                 "policy_mode": self.policy_mode,
+                "prompt_profile": self.prompt_profile,
                 "disabled_features": list(DISABLED_FEATURES),
                 "packet_sha256": packet.sha256,
                 "memory_sha256": packet.memory.sha256,
@@ -1134,6 +1169,7 @@ __all__ = [
     "InvocationResult",
     "LEGACY_PRIVATE_EVIDENCE_SCHEMA",
     "PINNED_CODEX_VERSION",
+    "PROMPT_PROFILES",
     "PRIVATE_EVIDENCE_SCHEMA",
     "PRIVATE_REFUSAL_EVIDENCE_SCHEMA",
     "attest_codex_runtime",

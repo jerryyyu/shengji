@@ -59,6 +59,16 @@ jobs:
           tests/test_point_banking.py
           tests/test_structured_bury.py
 
+      - name: Test Luna collector prompt profiles
+        env:
+          SHENGJI_FAST: "1"
+        run: >-
+          uv run pytest -q
+          tests/test_luna_attempt.py
+          tests/test_luna_cli.py
+          tests/test_luna_supervisor.py
+          tests/test_luna_transport.py
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10

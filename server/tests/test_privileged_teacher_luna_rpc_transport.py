@@ -36,7 +36,7 @@ from shengji.rl.privileged_teacher_luna_turn_rpc import (
     PhaseContext,
     TeamMemory,
 )
-from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
+from shengji.rl.privileged_teacher_luna_canonical import canonical_json_bytes
 
 
 SECRET = b"luna-rpc-transport-secret-32b!!!"

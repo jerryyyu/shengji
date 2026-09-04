@@ -22,7 +22,7 @@ from shengji.rl.privileged_teacher_luna_turn_rpc import (
     DecisionPacket, Intent, PhaseContext, PlannerResponse,
     TeamMemory, Usage,
 )
-from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
+from shengji.rl.privileged_teacher_luna_canonical import canonical_json_bytes
 
 
 SECRET = b"pt-luna-rpc-collection-secret!!!"

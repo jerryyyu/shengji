@@ -19,7 +19,7 @@ from shengji.rl.privileged_teacher_luna_rpc_collection import AttemptReopen
 from shengji.rl.privileged_teacher_luna_turn_rpc import (
     DecisionPacket, PhaseContext, TeamMemory,
 )
-from shengji.rl.privileged_teacher_pt0 import canonical_json_bytes
+from shengji.rl.privileged_teacher_luna_canonical import canonical_json_bytes
 from test_privileged_teacher_luna_rpc_collection import (
     FakeCodexRun, TransportFactory,
 )

@@ -19,12 +19,13 @@ import threading
 import time
 from typing import Callable, Mapping, Sequence
 
+from ..ai.heuristic import HeuristicBot
+from ..ai.registry import REGISTRY
+from ..ai.smart import SmartBot
 from ..engine.cards import Ordering, RANKS
+from ..engine.combos import decompose
 from ..engine.round import Round, Trick, TrickPlay
-from . import privileged_teacher_c0 as c0
-from . import privileged_teacher_full_ab as full
-from . import privileged_teacher_sol0 as sol0
-from .privileged_teacher_pt0 import canonical_json_bytes
+from .privileged_teacher_luna_canonical import canonical_json_bytes
 
 
 SCHEMA = "privileged-teacher-luna-selfplay-v1"
@@ -44,6 +45,20 @@ REPLICATES = 2
 MIRRORS = (0, 1)
 TRUMP_MODES = ("S", "H", "C", "D", "NT")
 CANDIDATE_GAME_WORKERS = (1, 2, 4, 6, 8)
+PRODUCTION_POLICY = "mc-s0-report-lcb"
+DESIGN_HOSTNAME = "Jerrys-Mac-mini.local"
+CONTINUATIONS = (
+    "heuristic-all",
+    "smart-all",
+    "team-smart",
+    "opponent-smart",
+    "exact-endgame-smart",
+)
+CONFIDENCE_LEVELS = ("low", "medium", "high")
+MAX_NEW_EVALUATIONS_PER_CALL = 16
+MAX_ROLLOUT_CALLS_PER_DECISION = 2
+MAX_EVALUATIONS_PER_DECISION = 32
+MAX_EVALUATIONS_PER_ROUND = 1024
 AUTHORITY = {
     "scientific_execution_authorized": False,
     "training_authorized": False,
@@ -91,6 +106,144 @@ def _seed(secret: bytes, *parts: object) -> int:
         raise PrivilegedTeacherLunaSelfPlayError("seed secret identity drift")
     return int.from_bytes(hashlib.sha256(secret + canonical_json_bytes(
         [SCHEMA, *parts])).digest()[:8], "big") & ((1 << 63) - 1)
+
+
+def signed_level_utility(attacker_points: int, *, banker_seat: int,
+                         perspective_seat: int) -> int:
+    """Convert final attacker points to signed one-round level utility.
+
+    This matches ``Game.finish_round`` plus the evaluation convention that
+    an exact 80-point attacker takeover is worth one level even though the
+    raw ``(points - 80) // 40`` expression is zero at 80.  Positive values
+    mean the perspective seat's partnership won the round.
+    """
+    if isinstance(attacker_points, bool) or not isinstance(attacker_points, int) \
+            or attacker_points < 0:
+        raise PrivilegedTeacherLunaSelfPlayError("attacker points drift")
+    for value in (banker_seat, perspective_seat):
+        if isinstance(value, bool) or not isinstance(value, int) \
+                or not 0 <= value < 4:
+            raise PrivilegedTeacherLunaSelfPlayError("seat identity drift")
+    perspective_is_attacker = perspective_seat % 2 != banker_seat % 2
+    if attacker_points >= 80:
+        attacker_won = True
+        gain = max(1, (attacker_points - 80) // 40)
+    else:
+        attacker_won = False
+        gain = 3 if attacker_points == 0 else (2 if attacker_points < 40 else 1)
+    return gain if perspective_is_attacker == attacker_won else -gain
+
+
+# The production search policy owns the legal ballot and the exact-world
+# rollouts; the roots are dealt, declared, and buried by it as well.
+_Production = REGISTRY[PRODUCTION_POLICY]
+
+
+class TrueWorldProductionBot(_Production):
+    """Use the exact current world while preserving production search logic."""
+
+    def _sample_hands(self, rnd: Round, seat: int, memory):
+        if getattr(rnd, "_ptfull_true_world", False) is not True:
+            raise PrivilegedTeacherLunaSelfPlayError(
+                "true-world bot requires marked privileged round")
+        self.sample_attempts += 1
+        self.accepted_worlds += 1
+        return ({other: list(rnd.hands[other])
+                 for other in range(4) if other != seat},
+                list(rnd.buried))
+
+
+class ProductionBallotBot(TrueWorldProductionBot):
+    """One exact-world evaluation per production candidate."""
+
+    N_DETERMINIZATIONS = 1
+    REQUIRE_EXACT_WORK = True
+    EXTRA_SELECTION_WORK = 0
+    CONFIDENCE_OVERRIDE = False
+    ADAPTIVE_ALLOCATION = False
+    RANDOM_ALLOCATION = False
+    REPORT_FOLD_WORLDS = 0
+    REPORT_RULE = "none"
+    REPORT_MIN_GAIN = 0.0
+    MARGIN = 0.0
+    LEVEL_OBJECTIVE = True
+    POINT_SHY_EPS = 0.0
+    EXACT_ENDGAME = False
+
+    def _score(self, attacker_pts: float) -> float:
+        """Exact signed one-round level utility from the attacker side."""
+        if (isinstance(attacker_pts, bool)
+                or not isinstance(attacker_pts, (int, float))
+                or not math.isfinite(attacker_pts)
+                or attacker_pts < 0):
+            raise PrivilegedTeacherLunaSelfPlayError("terminal score drift")
+        if isinstance(attacker_pts, float) and not attacker_pts.is_integer():
+            raise PrivilegedTeacherLunaSelfPlayError("terminal score drift")
+        points = int(attacker_pts)
+        if points >= 80:
+            return float(max(1, (points - 80) // 40))
+        return float(-(3 if points == 0 else 2 if points < 40 else 1))
+
+
+class WideHeuristicBallotBot(ProductionBallotBot):
+    """One exact world, expanded bounded ballot, current continuation."""
+
+    TRACTOR_LOCK = False
+    RETAIN_ALL_LEAD_PAIRS = True
+    V3_LEAD_SINGLES = True
+    V3_LEAD_RANDOM = False
+    RISKY_THROWS = True
+    TRUMP_BALLOT = True
+    LEAD_MAX_CANDIDATES = 64
+    FOLLOW_MAX_CANDIDATES = 64
+
+
+def _production_ballot(rnd: Round, seat: int) -> set[tuple[str, ...]]:
+    """The exact set of actions the production policy would consider."""
+    probe = _Production(seed=0)
+    if probe.TRACTOR_LOCK and not rnd.trick.plays:
+        pick = probe.canonical_lead(rnd, seat)
+        dec = decompose(pick, rnd.ordering)
+        if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
+            return {tuple(sorted(pick))}
+    return {tuple(sorted(action)) for action in probe._candidates(rnd, seat)}
+
+
+class _SeatContinuation:
+    """Choose a deterministic public-style continuation by seat team."""
+
+    def __init__(self, treatment_team: int, *, treatment_smart: bool,
+                 opponents_smart: bool):
+        self._treatment_team = treatment_team
+        self._bots = [
+            (SmartBot() if ((seat % 2 == treatment_team and treatment_smart)
+                            or (seat % 2 != treatment_team
+                                and opponents_smart))
+             else HeuristicBot())
+            for seat in range(4)
+        ]
+
+    def decide_play(self, rnd: Round, seat: int) -> list[str]:
+        return self._bots[seat].decide_play(rnd, seat)
+
+
+def _continuation(name: str, treatment_team: int) -> tuple[object, bool]:
+    """Return the named rollout policy and whether the endgame is exact."""
+    if type(name) is not str or name not in CONTINUATIONS:
+        raise PrivilegedTeacherLunaSelfPlayError("continuation drift")
+    if name == "heuristic-all":
+        return HeuristicBot(), False
+    if name == "smart-all":
+        return SmartBot(), False
+    if name == "team-smart":
+        return _SeatContinuation(
+            treatment_team, treatment_smart=True,
+            opponents_smart=False), False
+    if name == "opponent-smart":
+        return _SeatContinuation(
+            treatment_team, treatment_smart=False,
+            opponents_smart=True), False
+    return SmartBot(), True
 
 
 def validate_game_workers(workers: object) -> int:
@@ -191,7 +344,7 @@ class LunaDesign:
     seed_commitment_sha256: str = "0" * 64
     execution_git: str = "0" * 40
     native_sha256: str = "0" * 64
-    hostname: str = full.MINI_HOSTNAME
+    hostname: str = DESIGN_HOSTNAME
     namespace: str = SCHEMA
 
     def __post_init__(self) -> None:
@@ -277,7 +430,7 @@ def build_root(seed_secret: bytes, coordinate: LunaCoordinate | tuple,
         raise PrivilegedTeacherLunaSelfPlayError("mirror identity drift")
     rnd = Round(coord.trump_rank, banker=coord.banker,
                 rng=random.Random(root_seed(seed_secret, coord)))
-    setup = [full._Production(seed=_seed(seed_secret, "setup", *coord.payload(), seat))
+    setup = [_Production(seed=_seed(seed_secret, "setup", *coord.payload(), seat))
              for seat in range(4)]
     while rnd.phase == "deal":
         seat, _, _ = rnd.deal_next()
@@ -852,7 +1005,7 @@ def validate_terminal_receipt(receipt: Mapping[str, object], *,
             or coordinate is not None and receipt["coordinate"] != list(coordinate)
             or mirror is not None and receipt["mirror"] != mirror):
         raise PrivilegedTeacherLunaSelfPlayError("terminal receipt cross-binding drift")
-    expected_utility = sol0.signed_level_utility(
+    expected_utility = signed_level_utility(
         receipt["final_attacker_points"], banker_seat=receipt_coordinate[1],
         perspective_seat=0)
     if receipt["signed_level_utility"] != expected_utility:
@@ -1060,7 +1213,7 @@ class LunaSelfPlayGame:
         self._sessions: dict[int, LunaTeamSession] = {}
         self.trajectory = PrivateTrajectory(coordinate, mirror,
                                             root_sha256=self.root_sha256)
-        self._ballots = [c0.C0WideHeuristicBot(seed=_seed(seed_secret, "ballot", *coordinate, seat))
+        self._ballots = [WideHeuristicBallotBot(seed=_seed(seed_secret, "ballot", *coordinate, seat))
                          for seat in range(4)]
         self._advance_forced()
 
@@ -1101,7 +1254,7 @@ class LunaSelfPlayGame:
             coordinate=self.coordinate, mirror=self.mirror,
             root_sha256=self.root_sha256, trajectory_sha256=trajectory.sha256,
             final_attacker_points=self.rnd.attacker_points,
-            signed_level_utility=sol0.signed_level_utility(
+            signed_level_utility=signed_level_utility(
                 self.rnd.attacker_points, banker_seat=self.rnd.banker,
                 perspective_seat=0), completion=True)
         validate_terminal_receipt(receipt.payload())
@@ -1153,7 +1306,7 @@ class LunaSelfPlayGame:
             cards = candidates[0]
             state_sha = _state_digest(self.rnd, seat % 2)
             before = _state_snapshot(self.rnd)
-            prior = sorted(c0._production_ballot(self.rnd, seat))
+            prior = sorted(_production_ballot(self.rnd, seat))
             self.rnd.play(seat, cards)
             self.trajectory.append(team=seat % 2, seat=seat,
                                   state_sha256=state_sha,
@@ -1198,7 +1351,7 @@ class LunaSelfPlayGame:
                 raise PrivilegedTeacherLunaSelfPlayError(self._failed)
             if self.acting_team != team:
                 raise LunaPlannerRequestError("non-acting planner cannot rollout")
-            if continuation not in sol0.CONTINUATIONS:
+            if continuation not in CONTINUATIONS:
                 raise LunaPlannerRequestError("continuation drift")
             seat = self.rnd.turn
             if seat is None:
@@ -1208,8 +1361,8 @@ class LunaSelfPlayGame:
                     or not 0 <= index < len(candidates):
                 raise LunaPlannerRequestError("candidate outside ballot")
             # Evaluate a copy: the live Round remains the sole state authority.
-            evaluator = c0.C0ProductionBallotBot(seed=0)
-            policy, exact = sol0._continuation(continuation, team)
+            evaluator = ProductionBallotBot(seed=0)
+            policy, exact = _continuation(continuation, team)
             evaluator.rollout_policy = policy
             evaluator.EXACT_ENDGAME = exact
             clone = self.rnd
@@ -1228,7 +1381,7 @@ class LunaSelfPlayGame:
                 raise PrivilegedTeacherLunaSelfPlayError("engine banker absent")
             return {"candidate_index": index, "continuation": continuation,
                     "rollout_points": attacker_points,
-                    "team_signed_level_utility": sol0.signed_level_utility(
+                    "team_signed_level_utility": signed_level_utility(
                         attacker_points, banker_seat=banker_seat,
                         perspective_seat=team)}
 
@@ -1251,7 +1404,7 @@ class LunaSelfPlayGame:
                 raise LunaPlannerRequestError("candidate outside ballot")
             cards = candidates[index]
             before = _state_snapshot(self.rnd)
-            prior = sorted(c0._production_ballot(self.rnd, seat))
+            prior = sorted(_production_ballot(self.rnd, seat))
             self.rnd.play(seat, cards)
             self.trajectory.append(team=team, seat=seat, state_sha256=state_sha,
                                   action=cards, candidate_index=index,
@@ -1324,11 +1477,11 @@ class LunaTeamSession:
     def budget_payload(self) -> dict[str, int]:
         self._sync_decision()
         return {"rollout_calls": self._calls,
-                "rollout_calls_limit": sol0.MAX_ROLLOUT_CALLS_PER_DECISION,
+                "rollout_calls_limit": MAX_ROLLOUT_CALLS_PER_DECISION,
                 "used": self._used,
                 "round_used": self._round_used,
-                "decision_limit": sol0.MAX_EVALUATIONS_PER_DECISION,
-                "round_limit": sol0.MAX_EVALUATIONS_PER_ROUND}
+                "decision_limit": MAX_EVALUATIONS_PER_DECISION,
+                "round_limit": MAX_EVALUATIONS_PER_ROUND}
 
     def observe(self) -> dict[str, object]:
         self._sync_decision()
@@ -1361,14 +1514,14 @@ class LunaTeamSession:
                 or len(set(continuations)) != len(continuations)):
             raise LunaPlannerRequestError("rollout request shape drift")
         keys = [(index, name) for index in candidates for name in continuations]
-        if len(keys) > sol0.MAX_NEW_EVALUATIONS_PER_CALL:
+        if len(keys) > MAX_NEW_EVALUATIONS_PER_CALL:
             raise LunaPlannerRequestError("rollout per-call budget exceeded")
         new = [key for key in keys if key not in self._cache]
-        if self._calls >= sol0.MAX_ROLLOUT_CALLS_PER_DECISION:
+        if self._calls >= MAX_ROLLOUT_CALLS_PER_DECISION:
             raise LunaPlannerRequestError("rollout call budget exceeded")
-        if self._used + len(new) > sol0.MAX_EVALUATIONS_PER_DECISION:
+        if self._used + len(new) > MAX_EVALUATIONS_PER_DECISION:
             raise LunaPlannerRequestError("rollout decision budget exceeded")
-        if self._round_used + len(new) > sol0.MAX_EVALUATIONS_PER_ROUND:
+        if self._round_used + len(new) > MAX_EVALUATIONS_PER_ROUND:
             raise LunaPlannerRequestError("rollout round budget exceeded")
         for index, name in new:
             self._cache[(index, name)] = self.game.evaluate(self.team, index, name)
@@ -1386,7 +1539,7 @@ class LunaTeamSession:
                 "op", "decision_sha256", "candidate_index", "confidence"} \
                 or request.get("op") != "play":
             raise LunaPlannerRequestError("play request shape drift")
-        if request["confidence"] not in sol0.CONFIDENCE_LEVELS:
+        if request["confidence"] not in CONFIDENCE_LEVELS:
             raise LunaPlannerRequestError("confidence drift")
         response = self.game.commit(self.team, request["decision_sha256"],
                                     request["candidate_index"])
@@ -1733,7 +1886,10 @@ def run_game(game: LunaSelfPlayGame,
         thread.join()
     return game.completed_artifacts() if game.complete else None
 
-__all__ = ["AUTHORITY", "BANKER_SEATS", "CANDIDATE_GAME_WORKERS", "GAME_SCHEMA",
+__all__ = ["AUTHORITY", "BANKER_SEATS", "CANDIDATE_GAME_WORKERS",
+           "CONFIDENCE_LEVELS", "CONTINUATIONS", "DESIGN_HOSTNAME", "GAME_SCHEMA",
+           "PRODUCTION_POLICY", "ProductionBallotBot", "WideHeuristicBallotBot",
+           "signed_level_utility",
            "TRUMP_MODES", "PrivilegedTeacherLunaSelfPlayError",
            "LunaPlannerRequestError",
            "TerminalReceipt", "CompletedGameArtifacts", "RootCensus",

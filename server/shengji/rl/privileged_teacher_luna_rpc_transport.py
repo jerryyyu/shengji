@@ -34,7 +34,7 @@ from .privileged_teacher_luna_turn_rpc import (
     TurnValidationError,
     Usage,
 )
-from .privileged_teacher_pt0 import canonical_json_bytes
+from .privileged_teacher_luna_canonical import canonical_json_bytes
 
 
 MODEL = selfplay.MODEL

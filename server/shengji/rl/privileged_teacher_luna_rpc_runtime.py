@@ -23,7 +23,7 @@ from .privileged_teacher_luna_rpc_transport import (
     REASONING_EFFORT,
     attest_codex_runtime,
 )
-from .privileged_teacher_pt0 import canonical_json_bytes
+from .privileged_teacher_luna_canonical import canonical_json_bytes
 
 
 RUNTIME_SCHEMA = "pt-luna-turn-rpc-runtime-v2"

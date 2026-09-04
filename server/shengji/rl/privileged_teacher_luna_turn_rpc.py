@@ -13,8 +13,7 @@ import threading
 from typing import Callable, Mapping, Protocol
 
 from . import privileged_teacher_luna_selfplay as selfplay
-from . import privileged_teacher_sol0 as sol0
-from .privileged_teacher_pt0 import canonical_json_bytes
+from .privileged_teacher_luna_canonical import canonical_json_bytes
 
 
 SCHEMA = "privileged-teacher-luna-turn-rpc-v1"
@@ -22,8 +21,8 @@ MEMORY_SCHEMA = "pt-luna-team-memory-v1"
 INTENT_SCHEMA = "pt-luna-intent-v1"
 USAGE_SCHEMA = "pt-luna-usage-v1"
 EVIDENCE_SCHEMA = "pt-luna-call-evidence-v1"
-CONTINUATIONS = tuple(sol0.CONTINUATIONS)
-CONFIDENCE_LEVELS = tuple(sol0.CONFIDENCE_LEVELS)
+CONTINUATIONS = tuple(selfplay.CONTINUATIONS)
+CONFIDENCE_LEVELS = tuple(selfplay.CONFIDENCE_LEVELS)
 
 
 class TurnRPCError(ValueError):

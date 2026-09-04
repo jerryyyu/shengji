@@ -27,6 +27,7 @@ import pytest
 from shengji.ai.env import play_round
 from shengji.ai.heuristic import HeuristicBot
 from shengji.ai.registry import make_bot
+from shengji.engine.combos import decompose
 from shengji.engine.game import Game
 from shengji.harvest.legal import is_legal
 from shengji.oracle import screen as S
@@ -417,8 +418,8 @@ def test_wide_stages_do_not_touch_the_production_streams():
 KNOBS_V3 = ["V3_LEAD_SINGLES=1"]
 #: The whitelist as the witness states it: ballot switches (0/1/true/false)
 #: and ballot caps (int >= 1), nothing else.
-SWITCH_KNOBS = ("TRACTOR_LOCK", "RETAIN_ALL_LEAD_PAIRS", "V3_LEAD_SINGLES",
-                "RISKY_THROWS", "TRUMP_BALLOT", "WIDE_LEAD_BALLOT")
+SWITCH_KNOBS = ("RETAIN_ALL_LEAD_PAIRS", "V3_LEAD_SINGLES", "RISKY_THROWS",
+                "TRUMP_BALLOT", "WIDE_LEAD_BALLOT")
 CAP_KNOBS = ("LEAD_MAX_CANDIDATES", "FOLLOW_MAX_CANDIDATES", "MAX_CANDIDATES",
              "BURY_MAX_CANDIDATES")
 #: Work, recovery, sampling, leaf-valuation, report/statistical and
@@ -436,6 +437,8 @@ WORK_REPORT_CONTROLS = (
     "EXACT_ENDGAME", "EXACT_ENDGAME_MAX_CARDS", "EXACT_ENDGAME_MAX_NODES",
     "MC_BURY", "N_BURY_WORLDS", "STRUCTURED_BURY", "BURY_MAX_ROLLOUTS",
     "BURY_REQUIRE_EXACT_WORK",
+    # A locked tractor lead returns before any search: the amount of search.
+    "TRACTOR_LOCK",
 )
 
 
@@ -500,11 +503,16 @@ def test_knobs_arm_accepts_only_candidate_generator_knobs_and_refuses_the_rest_b
         "EXACT_ENDGAME_MAX_CARDS": "6", "EXACT_ENDGAME_MAX_NODES": "10",
         "MC_BURY": "1", "N_BURY_WORLDS": "1", "STRUCTURED_BURY": "1",
         "BURY_MAX_ROLLOUTS": "1", "BURY_REQUIRE_EXACT_WORK": "0",
+        # Reads like a ballot switch, but a locked tractor lead skips the
+        # search entirely: the amount of search, so refused by name.
+        "TRACTOR_LOCK": "0",
         # Not work, still not whitelisted: refused by name all the same.
         "V3_LEAD_RANDOM": "1", "WIDE_FOLLOW_BALLOT": "0", "BURY_VOID": "0",
         "ACE_SEQ": "1",
     }
     assert set(WORK_REPORT_CONTROLS) <= set(refused)
+    with pytest.raises(S.OracleScreenError, match="amount of search"):
+        S.parse_knob_overrides(cls, ["TRACTOR_LOCK=0"])
     for name, value in refused.items():
         assert name not in S.KNOB_SPECS and hasattr(cls, name)
         with pytest.raises(S.OracleScreenError, match="refused by name"):
@@ -588,15 +596,15 @@ def test_knobs_arm_checks_semantic_bounds_before_any_round_runs(tmp_path):
 def test_knobs_arm_coerces_values_into_the_arm_class_and_stamps_them():
     cls = S.base_policy_class(BASE)
     cfg = S.build_config(arm="knobs", knob_overrides=[
-        "V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES= 64", "TRACTOR_LOCK=false",
+        "V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES= 64", "WIDE_LEAD_BALLOT=false",
         "RISKY_THROWS=TRUE", "FOLLOW_MAX_CANDIDATES=1"])
     overrides = cfg["knobs"]["overrides"]
     assert list(overrides) == sorted(overrides)
     assert overrides == {"FOLLOW_MAX_CANDIDATES": 1, "LEAD_MAX_CANDIDATES": 64,
-                         "RISKY_THROWS": True, "TRACTOR_LOCK": False,
-                         "V3_LEAD_SINGLES": True}
+                         "RISKY_THROWS": True, "V3_LEAD_SINGLES": True,
+                         "WIDE_LEAD_BALLOT": False}
     assert overrides["V3_LEAD_SINGLES"] is True
-    assert overrides["TRACTOR_LOCK"] is False
+    assert overrides["WIDE_LEAD_BALLOT"] is False
     assert type(overrides["LEAD_MAX_CANDIDATES"]) is int
     arm = S.make_side_bot(cfg, "arm", 1)
     base = S.make_side_bot(cfg, "baseline", 1)
@@ -608,32 +616,32 @@ def test_knobs_arm_coerces_values_into_the_arm_class_and_stamps_them():
         assert name in vars(type(arm))
     assert {n for n in vars(type(arm)) if not n.startswith("__")} == set(overrides)
     # The production class is untouched: the overrides live on the subclass.
-    assert cls.V3_LEAD_SINGLES is False and cls.TRACTOR_LOCK is True
+    assert cls.V3_LEAD_SINGLES is False and cls.WIDE_LEAD_BALLOT is True
     assert cls.RISKY_THROWS is False
     assert cls.LEAD_MAX_CANDIDATES == 14 and cls.FOLLOW_MAX_CANDIDATES == 12
     assert "V3_LEAD_SINGLES" not in vars(cls)
     # One class per override set, shared by every bot of the screen.
     assert type(S.make_side_bot(cfg, "arm", 2)) is type(arm)
-    assert type(S.make_knobs_bot(BASE, {"TRACTOR_LOCK": False}, seed=1)) \
+    assert type(S.make_knobs_bot(BASE, {"RISKY_THROWS": True}, seed=1)) \
         is not type(arm)
     assert arm.policy_name == ("mc-s0-report-lcb+knobs[FOLLOW_MAX_CANDIDATES=1,"
                                "LEAD_MAX_CANDIDATES=64,RISKY_THROWS=True,"
-                               "TRACTOR_LOCK=False,V3_LEAD_SINGLES=True]")
+                               "V3_LEAD_SINGLES=True,WIDE_LEAD_BALLOT=False]")
     assert S.arm_description(cfg) == (
         "mc-s0-report-lcb with FOLLOW_MAX_CANDIDATES=1, LEAD_MAX_CANDIDATES=64, "
-        "RISKY_THROWS=True, TRACTOR_LOCK=False, V3_LEAD_SINGLES=True")
+        "RISKY_THROWS=True, V3_LEAD_SINGLES=True, WIDE_LEAD_BALLOT=False")
     ident = S.identity(cfg)
     assert ident["knob_overrides"] == overrides
     assert ident["ballots"]["arm_class"] == "Knobs_MCS0ReportLCB"
     assert ident["ballots"]["arm"] != ident["ballots"]["baseline"]
     assert ident["search_vector"]["equal"] is True
-    # TRACTOR_LOCK is outside the ballot spec: only the override stamp tells
-    # two such screens apart.
-    lock = S.build_config(arm="knobs", knob_overrides=["TRACTOR_LOCK=0"])
-    lock_ident = S.identity(lock)
-    assert lock_ident["ballots"]["arm"] == lock_ident["ballots"]["baseline"]
-    assert lock_ident["knob_overrides"] == {"TRACTOR_LOCK": False}
-    assert S.arm_description(lock) == "mc-s0-report-lcb with TRACTOR_LOCK=False"
+    # BURY_MAX_CANDIDATES is outside the play-ballot spec: only the override
+    # stamp tells two such screens apart.
+    bury = S.build_config(arm="knobs", knob_overrides=["BURY_MAX_CANDIDATES=33"])
+    bury_ident = S.identity(bury)
+    assert bury_ident["ballots"]["arm"] == bury_ident["ballots"]["baseline"]
+    assert bury_ident["knob_overrides"] == {"BURY_MAX_CANDIDATES": 33}
+    assert S.arm_description(bury) == "mc-s0-report-lcb with BURY_MAX_CANDIDATES=33"
     # No override: the identity control, stamped as such.
     neutral = S.build_config(arm="knobs")
     assert neutral["knobs"]["overrides"] == {}
@@ -755,6 +763,77 @@ def test_knobs_arm_keeps_the_complete_work_report_vector_for_every_accepted_knob
     control = S.identity(S.build_config(arm="none"))
     assert control["search_vector"]["arm"] == \
         control["search_vector"]["baseline"] == vector
+
+
+def _locked_tractor_lead(seed: int):
+    """Deal ``seed`` with heuristics everywhere and stop at the first lead
+    whose canonical heuristic pick is a tractor: the decision production
+    settles under TRACTOR_LOCK without any search.  Returns the live round,
+    the acting seat and that pick (decide_play never mutates the round)."""
+    probe = make_bot(BASE, seed=0)
+    rnd = Game(random.Random(seed)).start_round()
+    pol = [HeuristicBot() for _ in range(4)]
+    while rnd.phase == "deal":
+        seat, _, _ = rnd.deal_next()
+        cards = pol[seat].decide_declare(rnd, seat)
+        if cards:
+            rnd.declare(seat, cards)
+    for seat in range(4):
+        cards = pol[seat].decide_declare(rnd, seat, final=True)
+        if cards:
+            rnd.declare(seat, cards)
+    rnd.finalize_declare()
+    rnd.bury(rnd.banker, pol[rnd.banker].decide_bury(rnd, rnd.banker))
+    while rnd.phase == "play":
+        seat = rnd.turn
+        if not rnd.trick.plays:
+            pick = probe.canonical_lead(rnd, seat)
+            dec = decompose(pick, rnd.ordering)
+            if len(dec.components) == 1 and dec.components[0].pair_len >= 2:
+                return rnd, seat, pick
+        rnd.play(seat, pol[seat].decide_play(rnd, seat))
+    raise AssertionError(f"seed {seed} has no locked tractor lead")
+
+
+def test_knobs_arm_performs_zero_search_on_a_locked_tractor_lead_like_production():
+    """Execution-level equal-work witness at the one decision production
+    settles WITHOUT search: under TRACTOR_LOCK a heuristic tractor lead
+    returns from decide_play before candidate construction, sampling,
+    selection and the report fold.  Under the knobs arm with ANY accepted
+    knob at a non-default value that decision still performs zero search,
+    exactly like production: same cards, no search call, no rollout, no
+    sampled world, RNG untouched, no decision record.  Re-admitting
+    TRACTOR_LOCK turns this RED: TRACTOR_LOCK=0 turns zero search into a full
+    search there while identity.search_vector would still read equal, which
+    is why it is refused by name."""
+    rnd, seat, pick = _locked_tractor_lead(1)
+    assert len(rnd.hands[seat]) == 25, "the fixture is the opening lead"
+    hand = sorted(rnd.hands[seat])
+    prod = _tiny(make_bot(BASE, seed=7))
+    before = prod.rng.getstate()
+    assert prod.decide_play(rnd, seat) == pick
+    assert prod.rng.getstate() == before
+    assert prod.last_decision_record is None and prod.last_n_worlds == 0
+    zero = S.work_counters([prod])
+    assert zero["searches"] == zero["rollouts"] == zero["sample_attempts"] == 0
+    assert not any(zero.values()), zero
+    cls = S.base_policy_class(BASE)
+    for name, kind in S.KNOB_SPECS.items():
+        default = getattr(cls, name)
+        value = (not default) if kind is bool else default + 1
+        arm = _tiny(S.make_knobs_bot(BASE, {name: value}, seed=7))
+        before = arm.rng.getstate()
+        assert arm.decide_play(rnd, seat) == pick, name
+        assert arm.rng.getstate() == before, f"{name} advanced the production stream"
+        assert arm.last_decision_record is None and arm.last_n_worlds == 0, name
+        assert S.work_counters([arm]) == zero, f"{name} searched a locked tractor lead"
+    assert sorted(rnd.hands[seat]) == hand
+    # The knob that WOULD search here is refused by name, for that reason.
+    with pytest.raises(S.OracleScreenError, match="amount of search"):
+        S.parse_knob_overrides(cls, ["TRACTOR_LOCK=0"])
+    with pytest.raises(S.OracleScreenError, match="refused by name"):
+        S.build_config(arm="knobs", knob_overrides={"TRACTOR_LOCK": True})
+    assert S.search_vector(prod, cls)["TRACTOR_LOCK"] is True
 
 
 def test_refusals():

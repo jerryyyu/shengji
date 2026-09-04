@@ -75,19 +75,24 @@ more expensive stand-in for each buys inside the unchanged search:
 ``knobs``
     Not an oracle: the production class itself with CANDIDATE-GENERATOR
     knobs overridden from the command line (``--knob NAME=VALUE``,
-    repeatable), so the ballot switches ``TRACTOR_LOCK``,
-    ``RETAIN_ALL_LEAD_PAIRS``, ``V3_LEAD_SINGLES``, ``RISKY_THROWS``,
-    ``TRUMP_BALLOT``, ``WIDE_LEAD_BALLOT`` (0/1/true/false) and the ballot
-    caps ``LEAD_MAX_CANDIDATES``, ``FOLLOW_MAX_CANDIDATES``,
-    ``MAX_CANDIDATES``, ``BURY_MAX_CANDIDATES`` (integers >= 1) can be
-    screened at equal work on the same paired mirrored deals.  That
-    whitelist (``KNOB_SPECS``) is the whole surface: every other class
-    attribute (search work such as ``N_DETERMINIZATIONS`` or
-    ``EXTRA_SELECTION_WORK``, recovery such as ``REQUIRE_EXACT_WORK``,
-    sampling such as ``SAMPLE_ATTEMPT_FACTOR``, the exact-endgame solver,
-    the report rule and its statistics, margins and allocation switches, the
-    heuristic's own knobs) is refused BY NAME, and a bad or out-of-bounds
-    value refuses too, all before any round runs.  The search is therefore
+    repeatable), so the ballot switches ``RETAIN_ALL_LEAD_PAIRS``,
+    ``V3_LEAD_SINGLES``, ``RISKY_THROWS``, ``TRUMP_BALLOT``,
+    ``WIDE_LEAD_BALLOT`` (0/1/true/false) and the ballot caps
+    ``LEAD_MAX_CANDIDATES``, ``FOLLOW_MAX_CANDIDATES``, ``MAX_CANDIDATES``,
+    ``BURY_MAX_CANDIDATES`` (integers >= 1) can be screened at equal work on
+    the same paired mirrored deals.  That whitelist (``KNOB_SPECS``) is the
+    whole surface: every other class attribute (search work such as
+    ``N_DETERMINIZATIONS`` or ``EXTRA_SELECTION_WORK``, recovery such as
+    ``REQUIRE_EXACT_WORK``, sampling such as ``SAMPLE_ATTEMPT_FACTOR``, the
+    exact-endgame solver, the report rule and its statistics, margins and
+    allocation switches, the heuristic's own knobs) is refused BY NAME, and
+    a bad or out-of-bounds value refuses too, all before any round runs.
+    ``TRACTOR_LOCK`` is refused by name although it reads like a ballot
+    switch: a locked tractor lead returns from ``decide_play`` before
+    candidate construction, sampling, selection and the report fold, so
+    switching it off turns zero search into a full search on those
+    decisions (the amount of search, not the candidate list) while the
+    search vector would still read equal.  The search is therefore
     untouched: an accepted knob changes only which actions the unchanged
     search compares, the complete work/report vector of both sides is
     stamped and compared in ``identity.search_vector``, and a wider ballot
@@ -175,8 +180,11 @@ KNOBS_ARM = "knobs"
 #: actions the unchanged search compares; identity.search_vector stamps the
 #: rest for both sides.  A cap of 0 passes int() but hands the search an
 #: empty ballot (mcbot crashes at candidates[0]), hence the bound.
+#: TRACTOR_LOCK is NOT here although it reads like a ballot switch: a locked
+#: tractor lead returns from decide_play before candidates, sampling,
+#: selection and the report fold, so TRACTOR_LOCK=0 changes the amount of
+#: search on those decisions, not the candidate list (KNOB_REFUSAL_REASONS).
 KNOB_SPECS = {
-    "TRACTOR_LOCK": bool,
     "RETAIN_ALL_LEAD_PAIRS": bool,
     "V3_LEAD_SINGLES": bool,
     "RISKY_THROWS": bool,
@@ -186,6 +194,15 @@ KNOB_SPECS = {
     "FOLLOW_MAX_CANDIDATES": int,
     "MAX_CANDIDATES": int,
     "BURY_MAX_CANDIDATES": int,
+}
+#: Names refused for a reason beyond "not a candidate-generator knob".
+KNOB_REFUSAL_REASONS = {
+    "TRACTOR_LOCK": (
+        "a locked tractor lead returns from decide_play before candidate "
+        "construction, sampling, selection and the report fold, so "
+        "TRACTOR_LOCK changes the amount of search on those decisions, not "
+        "the candidate list (zero search would become a full search while "
+        "identity.search_vector still read equal)"),
 }
 DEFAULT_BASE_POLICY = "mc-s0-report-lcb"
 #: Same shift the registry uses for every champion-matched null.
@@ -904,6 +921,9 @@ def _knob_refusal(base_cls: type, name) -> str:
     accepted = ", ".join(KNOB_SPECS)
     if not isinstance(name, str) or not name.isidentifier():
         return f"knob {name!r}: not an attribute name; accepted: {accepted}"
+    reason = KNOB_REFUSAL_REASONS.get(name)
+    if reason is not None:
+        return f"knob {name}: refused by name: {reason}; accepted: {accepted}"
     if hasattr(base_cls, name):
         return (f"knob {name}: {base_cls.__name__}.{name} is not a "
                 "candidate-generator knob and is refused by name (search work, "

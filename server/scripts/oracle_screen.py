@@ -24,14 +24,15 @@ Arms (see shengji/oracle/screen.py for the exact semantics and knobs):
   wide-value  wide + value
   knobs   NOT an oracle: the production class with candidate-generator knobs
           overridden by --knob NAME=VALUE (repeatable), screened at equal
-          work.  Accepted: the ballot switches TRACTOR_LOCK,
-          RETAIN_ALL_LEAD_PAIRS, V3_LEAD_SINGLES, RISKY_THROWS, TRUMP_BALLOT,
-          WIDE_LEAD_BALLOT (0/1/true/false) and the ballot caps
-          LEAD_MAX_CANDIDATES, FOLLOW_MAX_CANDIDATES, MAX_CANDIDATES,
-          BURY_MAX_CANDIDATES (int >= 1).  Every other class attribute
-          (search work, recovery, sampling, report/statistical and
-          exact-endgame controls) is refused BY NAME, so the work/report
-          vector stays production's on both sides (identity.search_vector);
+          work.  Accepted: the ballot switches RETAIN_ALL_LEAD_PAIRS,
+          V3_LEAD_SINGLES, RISKY_THROWS, TRUMP_BALLOT, WIDE_LEAD_BALLOT
+          (0/1/true/false) and the ballot caps LEAD_MAX_CANDIDATES,
+          FOLLOW_MAX_CANDIDATES, MAX_CANDIDATES, BURY_MAX_CANDIDATES (int
+          >= 1).  Every other class attribute (search work, recovery,
+          sampling, report/statistical and exact-endgame controls, and
+          TRACTOR_LOCK, whose locked leads skip the search entirely) is
+          refused BY NAME, so the work/report vector stays production's on
+          both sides (identity.search_vector);
           the override set is stamped in the summary and the extra ballot
           work is counted.  Without --knob it is the none control.
   none    production on both sides (identity control for neutral knobs)

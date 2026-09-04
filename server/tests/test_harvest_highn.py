@@ -55,3 +55,20 @@ def test_round_trip(extraction):
 def test_deterministic(extraction):
     again = highn.extract_highn(registry=InputRegistry(), limit=LIMIT)
     assert [encode_line(r) for r in again.public] == [encode_line(r) for r in extraction.public]
+
+
+def test_conflicting_duplicate_refuses(tmp_path, monkeypatch):
+    """Two rows for one (seed, ply) with different content fail closed."""
+    with open(HIGHN_FILES[0]) as fh:
+        row = json.loads(fh.readline())
+    twin = dict(row)
+    twin["conflict_marker"] = 1
+    path = tmp_path / "conflict.jsonl"
+    path.write_text(json.dumps(row) + "\n" + json.dumps(twin) + "\n")
+    monkeypatch.setattr(highn, "_ref", lambda p, repo: "tmp/conflict.jsonl")
+    with pytest.raises(highn.HighNFormatError, match="conflicting duplicate"):
+        highn.extract_highn(files=[path], registry=InputRegistry())
+    # the same file without the conflict extracts (the refusal is specific)
+    path.write_text(json.dumps(row) + "\n" + json.dumps(row) + "\n")
+    ok = highn.extract_highn(files=[path], registry=InputRegistry())
+    assert ok.counts["duplicates"] == 1 and ok.counts["conflicting_duplicates"] == 0

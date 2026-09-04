@@ -40,7 +40,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from shengji.luna import game as selfplay  # noqa: E402
 from shengji.luna.atomic_io import (  # noqa: E402
     AtomicPublishError,
+    partial_path,
+    promote_partial,
     publish_exclusive_bytes,
+    recover_linked_partial,
 )
 from shengji.luna.runtime import (  # noqa: E402
     source_identity,
@@ -160,6 +163,55 @@ def _refuse_used_root(root: Path) -> None:
             f" private/{SEED_SECRET_NAME}; supply --seed-secret for it")
 
 
+def _recover_sealed_secret(root: Path) -> bytes | None:
+    """Return the run's sealed secret, finishing an interrupted seal first.
+
+    The seal is ``publish_exclusive_bytes``: stage ``.seed_secret.partial``,
+    fsync, link it to ``seed_secret``, unlink the stage.  A death inside it
+    leaves one of two recoverable states -- only the staged file (complete
+    bytes, never linked) or both names on one two-link inode -- and both
+    are finished here with the publisher's own helpers.  Anything else is
+    left to the generic used-root refusal.  Returns ``None`` when neither
+    name exists.
+    """
+    sealed = _seed_secret_path(root)
+    staged = partial_path(sealed)
+    final_present = sealed.exists() or sealed.is_symlink()
+    staged_present = staged.exists() or staged.is_symlink()
+    if not final_present and not staged_present:
+        return None
+    if final_present and staged_present:
+        try:
+            recover_linked_partial(sealed, mode=0o400)
+        except AtomicPublishError as exc:
+            raise ValueError(
+                f"seed secret seal recovery refused: {sealed}") from exc
+        return _secret(sealed)
+    if staged_present:
+        others = sorted(set(os.listdir(sealed.parent)) - {staged.name})
+        if others:
+            raise ValueError(
+                f"run root {root} holds a staged seed secret beside other"
+                f" private artifacts {others}; supply --seed-secret for it")
+        try:
+            raw = _secret(staged)
+        except ValueError as exc:
+            raise ValueError(
+                f"staged seed secret {staged} is not a complete private"
+                " 32-byte file; remove it so collect can draw a fresh"
+                " secret") from exc
+        _require_coverage(raw, staged)
+        try:
+            promote_partial(sealed, raw, mode=0o400)
+        except AtomicPublishError as exc:
+            raise ValueError(
+                f"seed secret seal recovery refused: {sealed}") from exc
+        if _secret(sealed) != raw:
+            raise ValueError(f"seed secret publication drift: {sealed}")
+        return raw
+    return _secret(sealed)
+
+
 def _publish_seed_secret(path: Path, secret: bytes) -> None:
     """Seal a drawn secret as a private 0400 file before any game starts."""
     _mkdir_private(path.parent, "private supervisor root")
@@ -198,13 +250,12 @@ def collect(args: argparse.Namespace) -> int:
         seed_path = args.seed_secret
         secret = _secret(seed_path)
         _require_coverage(secret, seed_path)
-    elif sealed_path.exists() or sealed_path.is_symlink():
-        seed_path = sealed_path
-        secret = _secret(seed_path)
     else:
-        _refuse_used_root(root)
         seed_path = sealed_path
-        secret = drawn = _draw_covering_secret()
+        secret = _recover_sealed_secret(root)
+        if secret is None:
+            _refuse_used_root(root)
+            secret = drawn = _draw_covering_secret()
     codex_binary = _codex_binary(args.codex_binary)
     schedule = schedule_for_games(secret, args.games)
     runtime = source_identity(codex_binary)

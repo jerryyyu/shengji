@@ -323,3 +323,88 @@ def test_verify_reads_the_sealed_seed_secret_when_the_flag_is_omitted(
     with pytest.raises(ValueError, match="--seed-secret"):
         cli.main(["verify", str(root)])
     assert cli.fake.calls == provider_calls
+
+
+def _covering_secret():
+    for _ in range(64):
+        secret = os.urandom(32)
+        try:
+            selfplay.root_census(secret)
+        except selfplay.PrivilegedTeacherLunaSelfPlayError:
+            continue
+        return secret
+    raise AssertionError("no covering secret in 64 draws")
+
+
+def _no_fresh_draw(cli, monkeypatch):
+    def no_draw():
+        raise AssertionError("drew a fresh secret over a recoverable seal")
+    monkeypatch.setattr(cli, "_fresh_secret", no_draw)
+
+
+def test_flagless_collect_recovers_a_staged_seed_secret(tmp_path, cli, monkeypatch):
+    """Death after the stage fsync but before link(2): the staged bytes ARE
+    the run's secret and must be promoted, never refused or redrawn."""
+    root = tmp_path / "run"
+    private = root / "private"
+    private.mkdir(mode=0o700, parents=True)
+    secret = _covering_secret()
+    staged = private / ".seed_secret.partial"
+    staged.write_bytes(secret)
+    staged.chmod(0o400)
+    _no_fresh_draw(cli, monkeypatch)
+    assert cli.main(_collect_args(root)) == 0
+    sealed = private / "seed_secret"
+    assert sealed.is_file() and not staged.exists()
+    assert os.stat(sealed).st_nlink == 1
+    assert cli._secret(sealed) == secret
+    assert _census_commits_to(root, secret)
+    assert cli.fake.calls > 0
+
+
+def test_flagless_collect_recovers_a_linked_seed_secret(tmp_path, cli, monkeypatch):
+    """Death after link(2) but before the stage unlink: two names, one inode."""
+    root = tmp_path / "run"
+    private = root / "private"
+    private.mkdir(mode=0o700, parents=True)
+    secret = _covering_secret()
+    sealed = private / "seed_secret"
+    staged = private / ".seed_secret.partial"
+    staged.write_bytes(secret)
+    staged.chmod(0o400)
+    os.link(staged, sealed)
+    assert os.stat(sealed).st_nlink == 2
+    _no_fresh_draw(cli, monkeypatch)
+    assert cli.main(_collect_args(root)) == 0
+    assert os.stat(sealed).st_nlink == 1 and not staged.exists()
+    assert cli._secret(sealed) == secret
+    assert _census_commits_to(root, secret)
+
+
+def test_flagless_collect_refuses_a_stage_beside_unrelated_artifacts(
+        tmp_path, cli, monkeypatch):
+    root = tmp_path / "run"
+    private = root / "private"
+    private.mkdir(mode=0o700, parents=True)
+    staged = private / ".seed_secret.partial"
+    staged.write_bytes(_covering_secret())
+    staged.chmod(0o400)
+    (private / "census.json").write_bytes(b"{}")
+    _no_fresh_draw(cli, monkeypatch)
+    with pytest.raises(ValueError, match="beside other private artifacts"):
+        cli.main(_collect_args(root))
+    assert sorted(os.listdir(private)) == [".seed_secret.partial", "census.json"]
+    assert cli.fake.calls == 0
+
+
+def test_flagless_collect_refuses_an_incomplete_stage(tmp_path, cli, monkeypatch):
+    root = tmp_path / "run"
+    private = root / "private"
+    private.mkdir(mode=0o700, parents=True)
+    staged = private / ".seed_secret.partial"
+    staged.write_bytes(b"short")
+    staged.chmod(0o400)
+    _no_fresh_draw(cli, monkeypatch)
+    with pytest.raises(ValueError, match="remove it"):
+        cli.main(_collect_args(root))
+    assert staged.exists() and cli.fake.calls == 0

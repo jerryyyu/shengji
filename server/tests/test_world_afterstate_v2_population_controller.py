@@ -282,6 +282,60 @@ def test_cap_parallel_resume_and_score_free_receipt(tmp_path, fast_primitives):
             max_attempts_per_slot=3, workers=4, attempt_driver=driver)
 
 
+def test_expired_partial_run_reuses_shards_under_fresh_bounded_watchdog(
+        tmp_path, fast_primitives, monkeypatch):
+    clock = {"now": 100}
+    calls = []
+    positions = {slot.slot_sha256: index for index, slot in enumerate(SLOTS)}
+
+    monkeypatch.setattr(controller.time, "time", lambda: clock["now"])
+
+    def driver(identity, slot):
+        position = positions[slot.slot_sha256]
+        calls.append((position, identity["attempt_index"]))
+        if position == 255 and identity["attempt_index"] == 0:
+            clock["now"] = 102
+            return _Attempt(
+                identity, slot, False, reason="no-eligible-state")
+        return _Attempt(identity, slot, True,
+                        _Material(slot, identity["deal_sha256"]))
+
+    with pytest.raises(
+            controller.WorldAfterstateV2PopulationControllerError,
+            match="population deadline expired before new work"):
+        controller.collect_population_v2(
+            tmp_path, freeze_sha256="f" * 64,
+            population_namespace_sha256="b" * 64,
+            admission_sha256="a" * 64, max_attempts_per_slot=2,
+            workers=1, deadline_seconds=1, attempt_driver=driver)
+
+    config_path = tmp_path / controller.CONTROLLER_DIRNAME / controller.CONFIG_NAME
+    config_before = config_path.read_bytes()
+    assert calls == [(ordinal, 0) for ordinal in range(256)]
+    retained = controller._read_records(
+        tmp_path, SLOTS, freeze="f" * 64, namespace="b" * 64,
+        admission="a" * 64, cap=2)
+    assert sum(bool(rows and rows[-1]["accepted"])
+               for rows in retained.values()) == 255
+
+    clock["now"] = 200
+    receipt = controller.collect_population_v2(
+        tmp_path, freeze_sha256="f" * 64,
+        population_namespace_sha256="b" * 64,
+        admission_sha256="a" * 64, max_attempts_per_slot=2,
+        workers=1, deadline_seconds=1, attempt_driver=driver)
+
+    assert config_path.read_bytes() == config_before
+    assert calls == [
+        *((ordinal, 0) for ordinal in range(256)),
+        (255, 1),
+    ]
+    assert receipt.accepted_slots == 256
+    assert receipt.attempts_total == 257
+    assert all(row.attempt_count == 1 for row in receipt.slots[:-1])
+    assert receipt.slots[-1].attempt_count == 2
+
+
 def test_requested_trump_mode_unavailable_is_recorded_and_collection_continues(
         tmp_path, fast_primitives):
     calls = {}

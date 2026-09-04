@@ -282,8 +282,9 @@ def _open_or_publish_config(root: Path, *, freeze: str, namespace: str,
     return value
 
 
-def _check_deadline(config: Mapping[str, Any]) -> None:
-    if time.time() >= config["deadline_unix_seconds"]:
+def _check_deadline(deadline_unix_seconds: int) -> None:
+    _int(deadline_unix_seconds, "deadline", minimum=1)
+    if time.time() >= deadline_unix_seconds:
         raise WorldAfterstateV2PopulationControllerError(
             "population deadline expired before new work")
 
@@ -801,8 +802,12 @@ def _run_slot(root: Path, slot: PopulationSlotV2, existing: Sequence[dict[str, A
               *, freeze: str, namespace: str, admission: str, cap: int,
               config: Mapping[str, Any], progress: _Progress,
               driver: Callable[[Mapping[str, Any], PopulationSlotV2],
-                               PopulationAttemptResultV2]) -> _SlotRun:
+                               PopulationAttemptResultV2],
+              invocation_deadline_unix_seconds: int | None = None) -> _SlotRun:
     records = list(existing)
+    deadline = (config["deadline_unix_seconds"]
+                if invocation_deadline_unix_seconds is None
+                else invocation_deadline_unix_seconds)
     if records and records[-1]["accepted"]:
         row = records[-1]
         raw = base64.b64decode(row["material_base64"], validate=True)
@@ -811,7 +816,7 @@ def _run_slot(root: Path, slot: PopulationSlotV2, existing: Sequence[dict[str, A
         _publish_or_verify_shard(root, material, shard, raw, slot)
         return _SlotRun(slot, tuple(records))
     for index in range(len(records), cap):
-        _check_deadline(config)
+        _check_deadline(deadline)
         attempt = attempted_deal_identity(namespace, slot, index)
         _publish_started(root, freeze=freeze, namespace=namespace,
                          admission=admission, slot=slot, index=index)
@@ -820,7 +825,7 @@ def _run_slot(root: Path, slot: PopulationSlotV2, existing: Sequence[dict[str, A
         heartbeat = threading.Thread(
             target=progress.heartbeat_loop,
             args=(stop, slot, index, config["heartbeat_seconds"],
-                  config["deadline_unix_seconds"]), daemon=True)
+                  deadline), daemon=True)
         heartbeat.start()
         try:
             result = driver(attempt, slot)
@@ -1067,6 +1072,8 @@ def collect_population_v2(
     if heartbeat_seconds > 60:
         raise WorldAfterstateV2PopulationControllerError("heartbeat cadence drift")
     slots = _validate_d256_slots(build_population_slot_ledger(TIER_SPECS[0]))
+    config_path = _config_path(root)
+    config_preexisting = config_path.exists() or config_path.is_symlink()
     config = _open_or_publish_config(
         root, freeze=freeze_sha256, namespace=population_namespace_sha256,
         admission=admission_sha256, slots=slots,
@@ -1079,7 +1086,15 @@ def collect_population_v2(
             population_namespace_sha256=population_namespace_sha256,
             admission_sha256=admission_sha256,
             max_attempts_per_slot=max_attempts_per_slot)
-    _check_deadline(config)
+    # The immutable config binds the per-invocation watchdog duration and the
+    # total per-slot attempt cap.  A partial retained-evidence restart gets a
+    # fresh bounded watchdog; otherwise an expired absolute timestamp would
+    # make the advertised resume path impossible while preserving every
+    # accepted shard and consumed attempt.
+    invocation_deadline = (
+        config["deadline_unix_seconds"] if not config_preexisting
+        else int(time.time()) + config["deadline_seconds"])
+    _check_deadline(invocation_deadline)
     records = _read_records(
         root, slots, freeze=freeze_sha256, namespace=population_namespace_sha256,
         admission=admission_sha256, cap=max_attempts_per_slot)
@@ -1103,7 +1118,7 @@ def collect_population_v2(
     completed = sum(bool(rows and rows[-1]["accepted"]) for rows in records.values())
     attempts = sum(len(rows) for rows in records.values())
     progress = _Progress(progress_callback, 256, completed, attempts, workers,
-                         config["deadline_unix_seconds"])
+                         invocation_deadline)
     runs: dict[str, _SlotRun] = {}
     pending: dict[Future[_SlotRun], PopulationSlotV2] = {}
     try:
@@ -1132,7 +1147,8 @@ def collect_population_v2(
                     _run_slot, root, slot, records[slot.slot_sha256],
                     freeze=freeze_sha256, namespace=population_namespace_sha256,
                     admission=admission_sha256, cap=max_attempts_per_slot,
-                    config=config, progress=progress, driver=driver)
+                    config=config, progress=progress, driver=driver,
+                    invocation_deadline_unix_seconds=invocation_deadline)
                 pending[future] = slot
             for future in as_completed(pending):
                 try:

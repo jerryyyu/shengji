@@ -1,6 +1,7 @@
 """train v0 (train_spec.md): loader/encoder round trip, PRIVACY witness,
 split-by-cluster witness, stratified prior, prior masking + CE, training
-smoke with seed determinism, preference derivation / skip.
+smoke with seed determinism, preference derivation / skip, parallel cache
+build byte identity, auxiliary search-mean head, sweep driver.
 
 Pure engine + torch on CPU.  The shard store is generated here at reduced
 work (4 rounds = 2 deal clusters, N=2 selection worlds, R=30 report worlds)
@@ -9,6 +10,7 @@ and the Luna-like private rows are built from those records.
 import json
 import math
 import random
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -19,7 +21,7 @@ from shengji.harvest import rebuild, trajectory  # noqa: E402
 from shengji.harvest.common import action_key, write_jsonl  # noqa: E402
 from shengji.harvest.schema import finalize_record, split_record  # noqa: E402
 from shengji.rl import encode  # noqa: E402
-from shengji.train import baselines, data  # noqa: E402
+from shengji.train import baselines, data, sweep  # noqa: E402
 from shengji.train import model as model_mod  # noqa: E402
 from shengji.train import train_v0  # noqa: E402
 
@@ -288,8 +290,8 @@ def test_prior_masking_and_cross_entropy_match_manual():
     cand = torch.randn(3, 5, encode.ACT_DIM)
     mask = torch.tensor([[1, 1, 1, 0, 0], [1, 0, 0, 0, 0], [1, 1, 1, 1, 1]], dtype=torch.bool)
     target = torch.tensor([[0.2, 0.5, 0.3, 0, 0], [1, 0, 0, 0, 0], [0.1, 0.2, 0.3, 0.2, 0.2]])
-    value, aux, logits = net(obs, cand, mask)
-    assert value.shape == (3,) and aux is None
+    value, aux, logits, search = net(obs, cand, mask)
+    assert value.shape == (3,) and aux is None and search is None
     probs = model_mod.prior_distribution(logits, mask)
     assert torch.all(probs[~mask] == 0)                   # exactly zero outside the ballot
     assert torch.allclose(probs.sum(dim=1), torch.ones(3), atol=1e-6)
@@ -303,7 +305,7 @@ def test_prior_masking_and_cross_entropy_match_manual():
     # candidates outside the ballot never influence the distribution
     cand2 = cand.clone()
     cand2[~mask] = 100.0
-    _, _, logits2 = net(obs, cand2, mask)
+    logits2 = net(obs, cand2, mask).logits
     assert torch.allclose(model_mod.prior_distribution(logits2, mask), probs)
     uniform = torch.where(mask, 1.0 / mask.sum(1, keepdim=True), torch.zeros_like(target))
     ce_u = model_mod.prior_cross_entropy(logits, mask, uniform)
@@ -450,3 +452,233 @@ def test_rows_without_preference_are_derived_or_skipped(records, tmp_path):
             assert not block.has_softmax[i] and np.all(block.cand_softmax[lo:hi] == 0)
         else:
             assert block.has_softmax[i] and abs(block.cand_softmax[lo:hi].sum() - 1) < 1e-5
+
+
+# 8 ------------------------------------------ parallel cache build: byte identity
+
+def test_parallel_cache_build_is_byte_identical_to_sequential(store_dir, luna, tmp_path):
+    luna_path, _rows = luna
+    store = data.discover_store(store_dir)
+    lstore = data.discover_store(luna_path)
+    jobs = [(s, store.private) for s in store.shards] + [(s, True) for s in lstore.shards]
+    assert len(jobs) == 3 and 1 <= data.default_cache_workers() <= data.CACHE_WORKERS_CAP
+    one = data.build_caches(jobs, tmp_path / "w1", witness_seed=1, workers=1)
+    log = []
+    three = data.build_caches(jobs, tmp_path / "w3", witness_seed=1, workers=3,
+                              progress=log.append)
+    assert any("with 3 workers" in line for line in log)
+    assert (sorted(b["sha256"] for b in one) == sorted(b["sha256"] for b in three)
+            == sorted(s.sha256 for s, _ in jobs))
+    assert {b["sha256"]: b["encoded"] for b in one} == {b["sha256"]: b["encoded"] for b in three}
+    for shard, private in jobs:
+        a = data.cache_path(tmp_path / "w1", shard.sha256)
+        b = data.cache_path(tmp_path / "w3", shard.sha256)
+        # the cache key (file name) and the shard-hash binding are unchanged
+        assert a.name == b.name == f"{shard.sha256}.{encode.ENCODER_IMPLEMENTATION_SHA256[:12]}.npz"
+        assert a.read_bytes() == b.read_bytes(), shard.label
+        assert ((b.stat().st_mode & 0o077) == 0) == private
+        block = data.load_block(b, shard_sha256=shard.sha256)
+        assert block.meta["shard"]["sha256"] == shard.sha256
+        assert block.meta["schema"] == data.CACHE_SCHEMA and "built_secs" not in block.meta
+    assert not list((tmp_path / "w3").glob("*.tmp"))
+    # a worker builds, it never reorders: cache rows follow the shard's file order
+    shard0 = store.shards[0]
+    block = data.load_block(data.cache_path(tmp_path / "w3", shard0.sha256))
+    assert [s.decode() for s in block.record_sha256] == [
+        r["record_sha256"] for r in data.iter_records(shard0)]
+    # ensure_caches keeps the input order and reuses what is valid
+    again = data.ensure_caches(jobs, tmp_path / "w3", witness_seed=1, workers=3)
+    assert [rebuilt for _b, rebuilt in again] == [False] * 3
+    assert [b.meta["shard"]["sha256"] for b, _r in again] == [s.sha256 for s, _p in jobs]
+    # a stale cache (another schema) is rebuilt, byte-identical
+    stale = data.cache_path(tmp_path / "w3", shard0.sha256)
+    with np.load(stale, allow_pickle=False) as npz:
+        arrays = {k: npz[k] for k in npz.files if k != "meta"}
+    meta = {**block.meta, "schema": "shengji-train-cache-v0"}
+    np.savez_compressed(stale, meta=np.asarray(json.dumps(meta, sort_keys=True)), **arrays)
+    rebuilt = data.ensure_caches(jobs, tmp_path / "w3", witness_seed=1, workers=3)
+    assert [r for _b, r in rebuilt] == [True, False, False]
+    assert stale.read_bytes() == data.cache_path(tmp_path / "w1", shard0.sha256).read_bytes()
+    # the CLI flag reaches the pool and the receipt
+    rc = train_v0.main(["train", "--data", str(store_dir), "--out", str(tmp_path / "cli"),
+                        "--device", "cpu", "--epochs", "1", "--batch-size", "64",
+                        "--n-boot", "20", "--val-fraction", "0.5", "--cache-workers", "2"])
+    assert rc == 0
+    receipt = json.loads((tmp_path / "cli" / "receipt.json").read_text())
+    assert receipt["cache_workers"] == 2 and receipt["counts"]["cache_rebuilt"] == 2
+    assert "cache_workers" not in receipt["config"]          # execution detail, not config
+    for shard in store.shards:
+        assert (data.cache_path(tmp_path / "cli" / "cache", shard.sha256).read_bytes()
+                == data.cache_path(tmp_path / "w1", shard.sha256).read_bytes())
+
+
+# 9 ------------------------------------------------ auxiliary search-mean head
+
+def test_aux_search_mean_head_trains_and_is_reported_separately(store_dir, records, luna,
+                                                                tmp_path):
+    luna_path, _rows = luna
+    kw = dict(data=[str(store_dir)], eval_luna=str(luna_path), device="cpu", epochs=6,
+              seed=7, batch_size=32, patience=99, n_boot=20, val_fraction=0.5, log=None,
+              cache_dir=str(tmp_path / "cache"), cache_workers=1)
+    with_aux = train_v0.train(out=tmp_path / "aux", aux_search_mean=1.0, **kw)
+    # the receipt records the weight, the head and the rows with / without a target
+    assert with_aux["config"]["aux_search_mean"] == 1.0
+    assert with_aux["config"]["arch"]["aux_search_mean"] is True
+    counts = with_aux["counts"]["records"]["search_mean"]
+    with_means = [r for r in records
+                  if r["action_values"] and r["action_values"]["means"] is not None]
+    assert counts == {"present": len(with_means), "absent": len(records) - len(with_means),
+                      "unusable": 0}
+    assert 0 < len(with_means) < len(records)
+    assert with_aux["luna"]["counts"]["records"]["search_mean"] == {
+        "present": 0, "absent": N_LUNA, "unusable": 0}
+    # the cached target is exactly action_values.means[played_index] (the final target's index)
+    shard = data.discover_store(store_dir).shards[0]
+    block = data.load_block(data.cache_path(tmp_path / "cache", shard.sha256),
+                            shard_sha256=shard.sha256)
+    by_sha = {r["record_sha256"]: r for r in records}
+    for i in range(block.n):
+        r = by_sha[block.record_sha256[i].decode()]
+        if r["action_values"] is None:
+            assert not block.has_search_mean[i] and block.search_mean[i] == 0
+        else:
+            assert r["action_values"]["perspective"] == data.SEARCH_MEAN_PERSPECTIVE
+            assert block.has_search_mean[i]
+            assert block.played[i] == r["allocation"]["played_index"]
+            assert block.search_mean[i] == pytest.approx(
+                r["action_values"]["means"][block.played[i]], rel=1e-6)
+    # held-out MAE (points) improves over epochs and the training term falls
+    val = [e["val"]["aux_search_mae"] for e in with_aux["epochs"]]
+    tr = [e["train"]["aux_search_huber"] for e in with_aux["epochs"]]
+    assert len(val) == 6 and all(v is not None and v > 0 for v in val)
+    assert val[-1] < 0.98 * val[0], val
+    assert tr[-1] < 0.5 * tr[0], tr
+    # the aux term is in the TRAINING loss only; the selection loss is value + prior
+    e = with_aux["epochs"][0]
+    assert e["train"]["prior_rows"] == e["train"]["rows"]
+    assert e["train"]["loss"] > e["train"]["value_huber"] + e["train"]["prior_ce"] + 1e-6
+    assert e["val"]["loss"] == pytest.approx(e["val"]["value_huber"] + e["val"]["prior_ce"])
+    final = with_aux["final"]["val"]["aux_search_mean"]
+    best = with_aux["best_epoch"]
+    assert final["n"] == with_aux["epochs"][-1]["val"]["aux_search_rows"] > 0
+    assert final["model"]["mae"] == pytest.approx(val[best - 1], abs=1e-4)
+    assert final["stratified_prior"]["mae"] > 0 and "units" in final
+    assert final["paired_diff_model_minus_prior"]["abs_error"]["n"] == final["n"]
+    # the target's stratified prior is fitted on the training rows that carry it
+    assert with_aux["baselines"]["search_mean_prior"]["n"] == e["train"]["aux_search_rows"] > 0
+    assert "aux_search_mean" not in with_aux["final"]["luna"]     # no target on Luna
+    # without the head: no aux metrics, and the primary metrics have the same layout
+    without = train_v0.train(out=tmp_path / "plain", **kw)
+    assert without["config"]["aux_search_mean"] == 0.0
+    assert without["config"]["arch"]["aux_search_mean"] is False
+    assert "aux_search_mean" not in without["final"]["val"]
+    assert all(ep["val"]["aux_search_mae"] is None for ep in without["epochs"])
+    assert all("aux_search_huber" not in ep["train"] for ep in without["epochs"])
+    for key in ("value", "prior", "calibration"):
+        assert set(without["final"]["val"][key]) == set(with_aux["final"]["val"][key]), key
+    assert without["config_sha256"] != with_aux["config_sha256"]
+    # the weight is refused when negative; the head is refused without the arch flag
+    with pytest.raises(train_v0.TrainError):
+        train_v0.build_config(data=[str(store_dir)], aux_search_mean=-1.0)
+    net = model_mod.ValuePriorNet()
+    batch = data.collate(block, np.arange(4))
+    t = train_v0.to_tensors(batch, torch.device("cpu"), "softmax")
+    with pytest.raises(ValueError, match="aux_search_mean"):
+        model_mod.batch_losses(net, t, prior_weight=1.0, search_weight=1.0)
+    losses = model_mod.batch_losses(model_mod.ValuePriorNet({"aux_search_mean": True}), t,
+                                    prior_weight=1.0, search_weight=0.5)
+    assert losses["n_search"].item() == int(block.has_search_mean[:4].sum())
+    assert losses["total"].item() == pytest.approx(
+        losses["value"].item() + losses["prior"].item() + 0.5 * losses["search"].item(), abs=1e-5)
+
+
+# 10 --------------------------------------------------------------- sweep driver
+
+def test_sweep_reuses_one_cache_and_matches_standalone_runs(store_dir, luna, tmp_path):
+    luna_path, _rows = luna
+    base = {"epochs": 3, "seed": 7, "batch_size": 32, "n_boot": 50, "val_fraction": 0.5,
+            "lr": 1e-3}
+    grid = [{}, {"prior_target": "final", "hidden": 64, "aux_search_mean": 1.0, "seed": 8}]
+    summary = sweep.run_sweep(data=[str(store_dir)], grid=grid, out=tmp_path / "sweep",
+                              eval_luna=str(luna_path), device="cpu", base=base,
+                              cache_workers=2, log=None)
+    rows = summary["rows"]
+    assert summary["schema"] == sweep.SWEEP_SCHEMA and summary["status"] == {"ok": 2, "failed": 0}
+    assert [r["index"] for r in rows] == [0, 1] and [r["overrides"] for r in rows] == grid
+    # ONE shared cache, built up front in the pool; every run reused it
+    assert summary["cache"]["built"] == 3 and summary["cache"]["shards"] == 3
+    assert summary["cache"]["workers"] == 2
+    assert [r["cache"] for r in rows] == [{"rebuilt": 0, "reused": 3}] * 2
+    assert len(list((tmp_path / "sweep" / "cache").glob("*.npz"))) == 3
+    assert all(not (Path(r["run"]) / "cache").exists() for r in rows)
+    # every row equals a standalone run with the same config
+    s0 = train_v0.train(data=[str(store_dir)], out=tmp_path / "s0", eval_luna=str(luna_path),
+                        device="cpu", log=None, **base)
+    s1 = train_v0.train(data=[str(store_dir)], out=tmp_path / "s1", eval_luna=str(luna_path),
+                        device="cpu", log=None, **{**base, **grid[1]})
+    for row, ref in zip(rows, (s0, s1)):
+        assert row["config_sha256"] == ref["config_sha256"]
+        assert Path(row["run"]).name == f"{row['index']:02d}-{ref['config_sha256'][:12]}"
+        receipt = json.loads((Path(row["run"]) / "receipt.json").read_text())
+        assert receipt["config"] == ref["config"] and receipt["final"] == ref["final"]
+        v = ref["final"]["val"]["value"]
+        assert row["val"]["value_mae"] == v["model"]["mae"]
+        assert row["val"]["value_mse"] == v["model"]["mse"]
+        assert row["val"]["prior_mae"] == v["stratified_prior"]["mae"]
+        diff = v["paired_diff_model_minus_prior"]["abs_error"]
+        assert row["val"]["diff_abs_error"] == {"mean": diff["mean"], "ci95": diff["ci95"],
+                                                "clusters": diff["clusters"]}
+        target = ref["config"]["prior_target"]
+        p = ref["final"]["val"]["prior"][target]
+        ce = row["val"]["prior_ce"]
+        assert (ce["target"], ce["model"], ce["uniform"], ce["incumbent"]) == (
+            target, p["model_ce"], p["uniform_ce"], p["incumbent_ce"])
+        assert row["luna"]["value_mae"] == ref["final"]["luna"]["value"]["model"]["mae"]
+        assert row["epochs"] == len(ref["epochs"]) == 3
+        assert row["best_epoch"] == ref["best_epoch"] and row["wall_secs"] > 0
+        assert row["config"]["hidden"] == ref["config"]["hidden"]
+    # the overrides were applied: the two rows are different runs
+    assert rows[0]["config_sha256"] != rows[1]["config_sha256"]
+    assert rows[0]["val"]["value_mae"] != rows[1]["val"]["value_mae"]
+    assert rows[0]["val"]["aux_search_mae"] is None
+    assert rows[1]["val"]["aux_search_mae"] == s1["final"]["val"]["aux_search_mean"]["model"]["mae"]
+    assert (rows[1]["val"]["prior_ce"]["target"], rows[1]["config"]["hidden"],
+            rows[1]["config"]["seed"]) == ("final", 64, 8)
+    assert rows[0]["val"]["prior_ce"]["target"] == "softmax"
+    # sweep.json is the summary; sweep.md has one table row per config in grid order
+    assert json.loads((tmp_path / "sweep" / "sweep.json").read_text()) == summary
+    md = (tmp_path / "sweep" / "sweep.md").read_text()
+    table = [line for line in md.splitlines() if line.startswith("| 0 ") or line.startswith("| 1 ")]
+    assert len(table) == 2 and table[0].startswith("| 0 | baseline |")
+    assert rows[0]["config_sha256"][:12] in table[0] and 'prior_target="final"' in table[1]
+    assert f"{rows[1]['val']['aux_search_mae']:.2f}" in table[1]
+    # a failed config is recorded, not fatal; the order is the grid order; the
+    # ok row reproduces the earlier baseline row exactly (shared cache reused)
+    summary2 = sweep.run_sweep(data=[str(store_dir)], grid=[{"hidden": 1}, {}],
+                               out=tmp_path / "sweep2", eval_luna=str(luna_path), device="cpu",
+                               base=base, cache_dir=str(tmp_path / "sweep" / "cache"),
+                               cache_workers=1, log=None)
+    failed, ok = summary2["rows"]
+    assert failed["status"] == "failed" and "hidden" in failed["error"]
+    assert failed["config_sha256"] is None and failed["run"] is None
+    assert ok["status"] == "ok" and ok["index"] == 1
+    assert ok["config_sha256"] == rows[0]["config_sha256"] and ok["val"] == rows[0]["val"]
+    assert summary2["status"] == {"ok": 1, "failed": 1} and summary2["cache"]["built"] == 0
+    assert "FAILED" in (tmp_path / "sweep2" / "sweep.md").read_text()
+    # an unknown override key refuses the whole grid before anything runs
+    with pytest.raises(sweep.SweepError, match="unknown override"):
+        sweep.run_sweep(data=[str(store_dir)], grid=[{}, {"hiden": 64}], out=tmp_path / "sweep3",
+                        device="cpu", base=base, log=None)
+    assert not (tmp_path / "sweep3").exists()
+    # the CLI: --set base overrides, a grid file, exit 0 when every config ran
+    grid_path = tmp_path / "grid.json"
+    grid_path.write_text(json.dumps([{"prior_weight": 0.5}]))
+    rc = sweep.main(["--data", str(store_dir), "--grid", str(grid_path),
+                     "--out", str(tmp_path / "cli"), "--device", "cpu",
+                     "--cache-dir", str(tmp_path / "sweep" / "cache"), "--cache-workers", "1",
+                     "--set", "epochs=1", "--set", "batch_size=64", "--set", "n_boot=20",
+                     "--set", "val_fraction=0.5"])
+    assert rc == 0
+    cli = json.loads((tmp_path / "cli" / "sweep.json").read_text())
+    assert cli["base"] == {"epochs": 1, "batch_size": 64, "n_boot": 20, "val_fraction": 0.5}
+    assert cli["rows"][0]["config"]["prior_weight"] == 0.5 and cli["rows"][0]["epochs"] == 1

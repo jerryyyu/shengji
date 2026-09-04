@@ -36,12 +36,32 @@ and the row trains the value head only (``final`` still follows from
 ``action`` when it is on the ballot).  Nothing is trained on a guessed
 distribution.
 
+AUXILIARY SEARCH MEAN (``search_mean`` / ``has_search_mean``): the search's
+own estimate for the played action, exactly
+``record["action_values"]["means"][played_index(record)]`` -- the index the
+``final`` target uses (``preference.played_index``, else
+``allocation.played_index``, else the ballot entry matching ``action``).
+The generator stamps ``action_values.perspective == "acting-team"``: the
+mean over the selection worlds of the rollout score (attacker points from
+the attackers' view, negated on banker-team rows), so the sign convention
+matches the value target (positive is good for the acting seat's
+partnership) while the SCALE is points (about +-[0, 200]).  A row whose
+``action_values`` is null (single-candidate ballots, tractor locks, Luna),
+whose stated perspective is not ``acting-team``, whose played index is
+unknown or whose mean is null/non-finite carries no aux target
+(``has_search_mean`` false; counted under ``counts.search_mean`` as
+``absent`` / ``unusable``) and trains the aux head on nothing.
+
 Cache
 -----
 ``<out>/cache/<shard sha256>.<encoder sha256[:12]>.npz`` per shard: obs,
 ragged per-candidate action features (offsets), targets and ids, plus a
 ``meta`` JSON (schema, encoder identity, shard hash, counts).  Rebuilt when
-missing or when either key changes; never a source of truth.
+missing or when either key changes; never a source of truth.  The file is a
+pure function of (shard bytes, encoder, witness seed): no timing or host
+detail is stamped inside, so ``ensure_caches`` may build the missing shards
+in a pool of spawned worker processes (``workers`` at a time, one shard per
+task) and produce byte-identical files to the in-process build.
 """
 
 from __future__ import annotations
@@ -49,6 +69,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import multiprocessing
 import os
 import random
 import re
@@ -70,7 +91,7 @@ from ..rl.encode import (ACT_DIM, ENC_VERSION, ENCODER_IMPLEMENTATION_SHA256,
                          encode_action, encode_obs)
 from ..rl.encoder_identity import encoder_contract
 
-CACHE_SCHEMA = "shengji-train-cache-v1"
+CACHE_SCHEMA = "shengji-train-cache-v2"      # v2: + search_mean / has_search_mean
 HARVEST_MANIFEST_SCHEMA = "shengji-harvest-manifest-v1"
 LAYOUTS = ("shard-store", "merged", "jsonl")
 #: 25 tricks x 4 seats: a round has 100 plays; ply thirds are the phases
@@ -80,6 +101,10 @@ SKIP_REASONS = ("no_outcome", "wrong_schema", "rebuild_failed", "turn_mismatch",
                 "schema_invalid")
 PREFERENCE_KEYS = ("stored", "derived", "point_mass", "missing", "invalid",
                    "final_from_action", "final_missing")
+SEARCH_MEAN_KEYS = ("present", "absent", "unusable")
+SEARCH_MEAN_PERSPECTIVE = "acting-team"
+#: cache builds run at most this many shards at a time by default
+CACHE_WORKERS_CAP = 8
 
 
 class TrainDataError(RuntimeError):
@@ -421,6 +446,28 @@ def prior_targets(record: Mapping[str, Any], counts: dict[str, int]
     return softmax, played
 
 
+def search_mean_target(record: Mapping[str, Any], played: int, counts: dict[str, int]
+                       ) -> float | None:
+    """``action_values.means[played]`` in the acting-team perspective (see
+    the module docstring), or None; every outcome is counted in ``counts``
+    (``SEARCH_MEAN_KEYS``)."""
+    values = record.get("action_values")
+    means = values.get("means") if isinstance(values, dict) else None
+    if not isinstance(means, list):
+        counts["absent"] += 1
+        return None
+    if (values.get("perspective") != SEARCH_MEAN_PERSPECTIVE or played < 0
+            or played >= len(means)):
+        counts["unusable"] += 1
+        return None
+    m = means[played]
+    if isinstance(m, bool) or not isinstance(m, (int, float)) or not math.isfinite(m):
+        counts["unusable"] += 1
+        return None
+    counts["present"] += 1
+    return float(m)
+
+
 def phase_of(ply: int | None) -> int:
     """0 early / 1 middle / 2 late by ply thirds; a bury decision is early."""
     if ply is None:
@@ -490,10 +537,12 @@ class Sample:
     cluster: str
     sha256: str
     source_ref: str
+    search_mean: float | None = None   # aux target, points scale (module docstring)
 
 
 def encode_record(record: Mapping[str, Any], pref_counts: dict[str, int],
-                  *, witness_rng: random.Random | None = None) -> Sample:
+                  *, witness_rng: random.Random | None = None,
+                  search_counts: dict[str, int] | None = None) -> Sample:
     """Rebuild, encode and target one record (raises on a bad record)."""
     if record.get("schema") != SCHEMA:
         raise TrainDataError(f"record schema {record.get('schema')!r} != {SCHEMA!r}")
@@ -515,6 +564,9 @@ def encode_record(record: Mapping[str, Any], pref_counts: dict[str, int],
     cand = (np.asarray([encode_action(list(c), rnd) for c in ballot], dtype=np.float32)
             if ballot else np.zeros((0, ACT_DIM), dtype=np.float32))
     softmax, played = prior_targets(record, pref_counts)
+    search_mean = search_mean_target(
+        record, played, search_counts if search_counts is not None
+        else {k: 0 for k in SEARCH_MEAN_KEYS})
     return Sample(
         obs=obs, cand=cand,
         softmax=None if softmax is None else np.asarray(softmax, dtype=np.float32),
@@ -526,7 +578,8 @@ def encode_record(record: Mapping[str, Any], pref_counts: dict[str, int],
         role_attacker=(record["role"] == "attacker-team"),
         seat=seat, kind=kind, cluster=cluster_key(record),
         sha256=str(record.get("record_sha256") or ""),
-        source_ref=str(record["source_ref"]))
+        source_ref=str(record["source_ref"]),
+        search_mean=search_mean)
 
 
 # ------------------------------------------------------------------- blocks
@@ -536,7 +589,8 @@ class Block:
 
     ARRAYS = ("obs", "cand_offsets", "cand_feats", "cand_softmax", "has_softmax",
               "played", "utility", "attacker_points", "points_so_far", "ply",
-              "role_attacker", "seat", "cluster", "record_sha256", "source_ref")
+              "role_attacker", "seat", "cluster", "record_sha256", "source_ref",
+              "search_mean", "has_search_mean")
 
     def __init__(self, arrays: dict[str, np.ndarray], meta: dict, path: str | None = None):
         for name in self.ARRAYS:
@@ -590,6 +644,7 @@ def _fresh_counts() -> dict:
     return {"records": 0, "encoded": 0,
             "skipped": {k: 0 for k in SKIP_REASONS},
             "preference": {k: 0 for k in PREFERENCE_KEYS},
+            "search_mean": {k: 0 for k in SEARCH_MEAN_KEYS},
             "privacy_witness": {"records": 0, "permutations": 0},
             "validated": 0, "legacy_schema": 0}
 
@@ -604,7 +659,9 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
     The privacy witness runs on every ``witness_every``-th record (default:
     about 16 per shard, at least every 1000th) and the full schema
     validation on every ``validate_every``-th; both failures refuse the
-    whole shard.
+    whole shard.  The file's bytes depend on nothing but the shard, the
+    encoder and ``witness_seed`` (no timing inside: ``ensure_caches`` may
+    build it in another process).
     """
     counts = _fresh_counts()
     expected = shard.records or 0
@@ -642,7 +699,8 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         witness = i % witness_every == 0
         try:
             sample = encode_record(record, counts["preference"],
-                                   witness_rng=rng if witness else None)
+                                   witness_rng=rng if witness else None,
+                                   search_counts=counts["search_mean"])
         except PrivacyError:
             raise
         except TrainDataError as exc:
@@ -669,6 +727,9 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         scalars["cluster"].append(sample.cluster)
         scalars["record_sha256"].append(sample.sha256)
         scalars["source_ref"].append(sample.source_ref)
+        scalars["search_mean"].append(0.0 if sample.search_mean is None
+                                      else sample.search_mean)
+        scalars["has_search_mean"].append(sample.search_mean is not None)
         counts["encoded"] += 1
         if progress and counts["encoded"] % 5000 == 0:
             progress({"label": shard.label, "records": counts["records"],
@@ -693,6 +754,8 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         "cluster": np.asarray(scalars["cluster"], dtype=str),
         "record_sha256": np.asarray(scalars["record_sha256"], dtype="S64"),
         "source_ref": np.asarray(scalars["source_ref"], dtype=str),
+        "search_mean": np.asarray(scalars["search_mean"], dtype=np.float32),
+        "has_search_mean": np.asarray(scalars["has_search_mean"], dtype=bool),
     }
     meta = {
         "schema": CACHE_SCHEMA,
@@ -702,11 +765,10 @@ def build_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
         "counts": counts,
         "witness_seed": witness_seed,
         "witness_every": witness_every,
-        "built_secs": round(time.perf_counter() - started, 3),
     }
     path = cache_path(cache_dir, shard.sha256)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")   # unique per builder
     with open(tmp, "wb") as fh:
         if private:
             os.fchmod(fh.fileno(), 0o600)
@@ -746,6 +808,103 @@ def ensure_cache(shard: ShardRef, cache_dir: str | os.PathLike, *,
     build_cache(shard, cache_dir, witness_seed=witness_seed, private=private,
                 progress=progress)
     return load_block(path, shard_sha256=shard.sha256), True
+
+
+# ---------------------------------------------------------- parallel build
+
+def default_cache_workers() -> int:
+    """``min(CACHE_WORKERS_CAP, cpu count)``, at least 1."""
+    return max(1, min(CACHE_WORKERS_CAP, os.cpu_count() or 1))
+
+
+def _try_load(path: Path, shard_sha256: str) -> Block | None:
+    """The valid cached block at ``path`` or None (missing / stale / other
+    encoder / other shard)."""
+    if not path.is_file():
+        return None
+    try:
+        return load_block(path, shard_sha256=shard_sha256)
+    except (TrainDataError, OSError, ValueError, KeyError):
+        return None
+
+
+def _build_cache_task(task: tuple) -> dict:
+    """Pool worker: build one shard's cache (module-level so ``spawn`` can
+    import it); the return value carries counts only."""
+    shard, cache_dir, witness_seed, private = task
+    started = time.perf_counter()
+    _path, counts = build_cache(shard, cache_dir, witness_seed=witness_seed,
+                                private=private)
+    return {"sha256": shard.sha256, "label": shard.label, "records": counts["records"],
+            "encoded": counts["encoded"], "secs": round(time.perf_counter() - started, 3)}
+
+
+def build_caches(jobs: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
+                 witness_seed: int = 0, workers: int | None = None,
+                 progress: Callable[[str], None] | None = None) -> list[dict]:
+    """Build the caches of ``jobs`` (``(shard, private)`` pairs; a shard
+    listed twice is built once).  ``workers`` (default
+    ``default_cache_workers()``) shards are encoded at a time in a pool of
+    SPAWNED processes; with one worker, or one job, everything runs in this
+    process.  Both paths call the same ``build_cache`` on each shard, so the
+    files are byte-identical.  Returns one summary per shard built (the pool
+    reports in completion order; the parent later loads in store order)."""
+    unique: dict[str, tuple[ShardRef, bool]] = {}
+    for shard, private in jobs:
+        unique.setdefault(shard.sha256, (shard, private))
+    jobs = list(unique.values())
+    workers = default_cache_workers() if workers is None else max(1, int(workers))
+    say = progress or (lambda _s: None)
+    results: list[dict] = []
+    if workers == 1 or len(jobs) <= 1:
+        for shard, private in jobs:
+            started = time.perf_counter()
+
+            def note(event, label=shard.label):
+                say(f"cache {label}: records={event['records']} "
+                    f"encoded={event['encoded']} secs={event['secs']}")
+
+            _path, counts = build_cache(shard, cache_dir, witness_seed=witness_seed,
+                                        private=private, progress=note)
+            results.append({"sha256": shard.sha256, "label": shard.label,
+                            "records": counts["records"], "encoded": counts["encoded"],
+                            "secs": round(time.perf_counter() - started, 3)})
+            say(f"cache {shard.label}: built encoded={counts['encoded']} "
+                f"secs={results[-1]['secs']}")
+        return results
+    tasks = [(shard, str(cache_dir), int(witness_seed), bool(private))
+             for shard, private in jobs]
+    say(f"cache: building {len(tasks)} shard(s) with {min(workers, len(tasks))} workers")
+    ctx = multiprocessing.get_context("spawn")
+    with ctx.Pool(processes=min(workers, len(tasks))) as pool:
+        for result in pool.imap_unordered(_build_cache_task, tasks):
+            results.append(result)
+            say(f"cache {result['label']}: built encoded={result['encoded']} "
+                f"secs={result['secs']} ({len(results)}/{len(tasks)})")
+    return results
+
+
+def ensure_caches(shards: Sequence[tuple[ShardRef, bool]], cache_dir: str | os.PathLike, *,
+                  witness_seed: int = 0, workers: int | None = None,
+                  progress: Callable[[str], None] | None = None
+                  ) -> list[tuple[Block, bool]]:
+    """``[(block, rebuilt), ...]`` in the order of ``shards`` (``(shard,
+    private)`` pairs): the caches that are missing or whose keys (shard
+    hash, encoder hash) do not match are built first, ``workers`` at a time
+    (``build_caches``), then every block is loaded."""
+    loaded = [_try_load(cache_path(cache_dir, s.sha256), s.sha256) for s, _p in shards]
+    pending = [(s, p) for (s, p), b in zip(shards, loaded) if b is None]
+    if pending:
+        build_caches(pending, cache_dir, witness_seed=witness_seed, workers=workers,
+                     progress=progress)
+    out: list[tuple[Block, bool]] = []
+    for (shard, _private), block in zip(shards, loaded):
+        if block is None:
+            block = load_block(cache_path(cache_dir, shard.sha256), shard_sha256=shard.sha256)
+            out.append((block, True))
+        else:
+            out.append((block, False))
+    return out
 
 
 # ------------------------------------------------------------------ splits
@@ -800,6 +959,8 @@ def collate(block: Block, idx: np.ndarray) -> dict[str, np.ndarray]:
         "played": block.played[idx],
         "utility": block.utility[idx],
         "attacker_points": block.attacker_points[idx],
+        "search_mean": block.search_mean[idx],
+        "has_search_mean": block.has_search_mean[idx],
         "widths": widths,
         "idx": idx,
     }

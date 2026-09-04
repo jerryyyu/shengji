@@ -2,7 +2,8 @@
 
     train_v0.py train --data DIR [--data DIR ...] [--eval-luna PATH] --out DIR
         [--device mps|cpu] [--epochs 20] [--seed 1] [--prior-target softmax|final]
-        [--limit-clusters N] [--prior-weight 1.0] ...
+        [--limit-clusters N] [--prior-weight 1.0] [--hidden 512]
+        [--aux-search-mean W] [--cache-workers N] ...
     train_v0.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
 
 Outputs in ``--out``: ``receipt.json`` (git sha, encoder identity, data
@@ -13,6 +14,19 @@ encoding cache under ``cache/``.  Progress lines carry counts and losses
 only.  Splits are by deal cluster (90/10 by cluster hash with the run
 seed); Luna is evaluation only, scored against the stratified prior fitted
 on the TRAINING data.
+
+``--cache-workers N`` (default ``min(8, cpu)``) encodes the missing shard
+caches N at a time in spawned processes (``data.ensure_caches``); the cache
+keys and the receipt's shard-hash binding are unchanged and the files are
+byte-identical to a one-worker build.  ``--aux-search-mean W`` (default 0 =
+off) adds the auxiliary search-mean head (``model.py`` / ``data.py``: the
+target is ``action_values.means[played_index]``, acting-team perspective,
+points scale) with weight W in the TRAINING loss; its held-out MAE is
+reported separately (``final.<split>.aux_search_mean``, in points, against
+a stratified prior fitted on the training rows that carry the target) and
+the primary value / prior metrics and the validation loss that selects the
+best epoch are computed exactly as without it, so runs with and without
+the head are comparable.  ``--hidden N`` sets the trunk to ``[N, N // 2]``.
 """
 
 from __future__ import annotations
@@ -38,11 +52,12 @@ import torch
 from ..harvest.schema import canonical_json
 from .baselines import (StratifiedPrior, apply_affine, fit_affine, fit_incumbent_eps,
                         prior_summary, reliability_table, value_summary)
-from .data import (Block, BlockStore, Store, TrainDataError, cache_path, collate,
-                   discover_store, encoder_identity, ensure_cache, split_clusters,
-                   split_mask)
-from .model import (DEFAULT_ARCH, MODEL_SCHEMA, ValuePriorNet, batch_losses,
-                    prior_cross_entropy, prior_log_probs)
+from .data import (CACHE_WORKERS_CAP, Block, BlockStore, Store, TrainDataError, cache_path,
+                   collate, default_cache_workers, discover_store, encoder_identity,
+                   ensure_caches, split_clusters, split_mask)
+from .model import (DEFAULT_ARCH, DEFAULT_HIDDEN, MODEL_SCHEMA, SEARCH_MEAN_SCALE,
+                    ValuePriorNet, batch_losses, prior_cross_entropy, prior_log_probs,
+                    trunk_for)
 
 RECEIPT_SCHEMA = "shengji-train-v0-receipt-v1"
 CHECKPOINT_SCHEMA = "shengji-train-v0-checkpoint-v1"
@@ -50,8 +65,8 @@ PRIOR_TARGETS = ("softmax", "final")
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
     "patience": 3, "prior_weight": 1.0, "prior_target": "softmax", "val_fraction": 0.1,
-    "huber_delta": 1.0, "aux_points": False, "aux_weight": 0.1, "n_boot": 1000,
-    "window": 64, "limit_clusters": None,
+    "huber_delta": 1.0, "aux_points": False, "aux_weight": 0.1, "aux_search_mean": 0.0,
+    "hidden": DEFAULT_HIDDEN, "n_boot": 1000, "window": 64, "limit_clusters": None,
 }
 REQUIRED_RECEIPT_FIELDS = (
     "schema", "command", "git", "encoder", "data", "config", "config_sha256", "seeds",
@@ -114,23 +129,24 @@ def _merge_counts(total: dict, counts: dict) -> None:
 
 def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | None,
                    witness_seed: int, progress: Callable[[str], None] | None = None,
-                   ) -> Prepared:
-    """Discover, verify, encode (cache) and index every store."""
-    stores: list[Store] = []
+                   cache_workers: int | None = None) -> Prepared:
+    """Discover, verify, encode (cache; the missing shards ``cache_workers``
+    at a time, default ``data.default_cache_workers()``) and index every
+    store."""
+    stores = [discover_store(path, limit_clusters=limit_clusters) for path in paths]
+    jobs = [(shard, store.private) for store in stores for shard in store.shards]
+    if not jobs:
+        raise TrainError("no shard to train on")
+    built = ensure_caches(jobs, cache_dir, witness_seed=witness_seed,
+                          workers=cache_workers, progress=progress)
     entries: list[tuple] = []
     blocks: list[Block] = []
     counts: dict = {"shards": 0, "cache_rebuilt": 0, "cache_reused": 0}
     cache_files: list[dict] = []
-    for path in paths:
-        store = discover_store(path, limit_clusters=limit_clusters)
-        stores.append(store)
+    built_iter = iter(built)
+    for store in stores:
         for shard in store.shards:
-            def note(event, label=shard.label):
-                if progress:
-                    progress(f"cache {label}: records={event['records']} "
-                             f"encoded={event['encoded']} secs={event['secs']}")
-            block, rebuilt = ensure_cache(shard, cache_dir, witness_seed=witness_seed,
-                                          private=store.private, progress=note)
+            block, rebuilt = next(built_iter)
             counts["shards"] += 1
             counts["cache_rebuilt" if rebuilt else "cache_reused"] += 1
             _merge_counts(counts, {"records": block.meta["counts"]})
@@ -159,8 +175,6 @@ def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | N
             for i in range(len(blocks) - len(store.shards), len(blocks)):
                 sel = np.flatnonzero(np.asarray([str(c) in keep_set for c in blocks[i].cluster]))
                 blocks[i] = blocks[i].subset(sel)
-    if not entries:
-        raise TrainError("no shard to train on")
     block_store = BlockStore(entries)
     block_store.preload(blocks)
     counts["records_total"] = int(sum(b.n for b in blocks))
@@ -191,14 +205,20 @@ def to_tensors(batch: dict[str, np.ndarray], device: torch.device, prior_target:
         "utility": torch.from_numpy(np.ascontiguousarray(batch["utility"])).to(device),
         "attacker_points": torch.from_numpy(
             np.ascontiguousarray(batch["attacker_points"])).to(device),
+        "search_mean": torch.from_numpy(np.ascontiguousarray(batch["search_mean"])).to(device),
+        "has_search_mean": torch.from_numpy(
+            np.ascontiguousarray(batch["has_search_mean"])).to(device),
     }
 
 
 # --------------------------------------------------------------- baselines
 
 def fit_baselines(store: BlockStore, mask_fn: Callable[[Block], np.ndarray]) -> dict:
-    """The stratified prior and the incumbent eps, from the TRAINING rows."""
+    """The stratified prior (value, and the same strata over the aux
+    search-mean target where present) and the incumbent eps, from the
+    TRAINING rows."""
     prior = StratifiedPrior()
+    search_prior = StratifiedPrior()
     first_soft: list[np.ndarray] = []
     width_soft: list[np.ndarray] = []
     first_final: list[np.ndarray] = []
@@ -209,6 +229,11 @@ def fit_baselines(store: BlockStore, mask_fn: Callable[[Block], np.ndarray]) -> 
             continue
         prior.add(block.ply[sel], block.role_attacker[sel], block.points_so_far[sel],
                   block.utility[sel])
+        has_s = block.has_search_mean[sel]
+        if has_s.any():
+            rows = sel[has_s]
+            search_prior.add(block.ply[rows], block.role_attacker[rows],
+                             block.points_so_far[rows], block.search_mean[rows])
         widths = block.widths[sel]
         wide = widths >= 2
         has = block.has_softmax[sel] & wide
@@ -224,6 +249,7 @@ def fit_baselines(store: BlockStore, mask_fn: Callable[[Block], np.ndarray]) -> 
     cat = lambda parts: np.concatenate(parts) if parts else np.zeros(0)  # noqa: E731
     return {
         "stratified_prior": prior.to_dict(),
+        "search_mean_prior": search_prior.to_dict(),
         "incumbent": {
             "softmax": fit_incumbent_eps(cat(first_soft), cat(width_soft)),
             "final": fit_incumbent_eps(cat(first_final), cat(width_final)),
@@ -242,7 +268,8 @@ def run_eval(model: ValuePriorNet, store: BlockStore, mask_fn: Callable[[Block],
     out: dict[str, list] = {k: [] for k in (
         "pred", "utility", "ply", "role_attacker", "points_so_far", "cluster", "width",
         "has_softmax", "played", "ce_softmax", "nll_played", "top1", "first_softmax",
-        "loss_value", "loss_prior", "has_target")}
+        "loss_value", "loss_prior", "has_target", "search_pred", "search_target",
+        "has_search")}
     for block in store.iter_blocks():
         sel = np.flatnonzero(mask_fn(block))
         if not sel.size:
@@ -252,7 +279,7 @@ def run_eval(model: ValuePriorNet, store: BlockStore, mask_fn: Callable[[Block],
             idx = np.arange(b0, min(sub.n, b0 + batch_size))
             raw = collate(sub, idx)
             t = to_tensors(raw, device, prior_target)
-            value, _aux, logits = model(t["obs"], t["cand"], t["mask"])
+            value, _aux, logits, search = model(t["obs"], t["cand"], t["mask"])
             logp = prior_log_probs(logits, t["mask"])
             ce_soft = prior_cross_entropy(logits, t["mask"],
                                           torch.from_numpy(raw["target"]).to(device))
@@ -286,13 +313,26 @@ def run_eval(model: ValuePriorNet, store: BlockStore, mask_fn: Callable[[Block],
             out["loss_value"].append(v_loss.cpu().numpy())
             out["loss_prior"].append(ce_train.cpu().numpy())
             out["has_target"].append(t["has_softmax"].cpu().numpy())
+            # aux search mean back in points; NaN when the model has no head
+            out["search_pred"].append(
+                np.full(len(idx), np.nan, dtype=np.float32) if search is None
+                else search.cpu().numpy() * SEARCH_MEAN_SCALE)
+            out["search_target"].append(raw["search_mean"])
+            out["has_search"].append(raw["has_search_mean"])
     if not out["pred"]:
         return {k: np.zeros(0) for k in out}
     return {k: np.concatenate(v) for k, v in out.items()}
 
 
+def _search_rows(ev: dict[str, np.ndarray]) -> np.ndarray:
+    """Rows scored by the aux search-mean head: a target and a prediction."""
+    return ev["has_search"].astype(bool) & np.isfinite(ev["search_pred"])
+
+
 def quick_metrics(ev: dict[str, np.ndarray], *, prior_weight: float) -> dict:
-    """Cheap per-epoch metrics (no bootstrap)."""
+    """Cheap per-epoch metrics (no bootstrap).  ``loss`` (the checkpoint
+    selection criterion) is value + prior_weight * prior CE, never the aux
+    term; ``aux_search_mae`` is in points and None without the head."""
     n = int(ev["pred"].size)
     if n == 0:
         return {"n": 0, "loss": None}
@@ -302,6 +342,7 @@ def quick_metrics(ev: dict[str, np.ndarray], *, prior_weight: float) -> dict:
     known = (ev["played"] >= 0) & wide
     value = float(ev["loss_value"].mean())
     prior = float(ev["loss_prior"][has].mean()) if has.any() else 0.0
+    has_s = _search_rows(ev)
     return {
         "n": n,
         "loss": value + prior_weight * prior,
@@ -312,13 +353,20 @@ def quick_metrics(ev: dict[str, np.ndarray], *, prior_weight: float) -> dict:
         "prior_rows": int(has.sum()),
         "nll_played": float(np.nanmean(ev["nll_played"][known])) if known.any() else None,
         "top1_agreement": float(ev["top1"][known].mean()) if known.any() else None,
+        "aux_search_mae": (float(np.abs(ev["search_pred"][has_s]
+                                        - ev["search_target"][has_s]).mean())
+                           if has_s.any() else None),
+        "aux_search_rows": int(has_s.sum()),
     }
 
 
 def full_metrics(ev: dict[str, np.ndarray], baselines: dict, *, prior_target: str,
                  prior_weight: float, n_boot: int, seed: int, calibration: dict | None
                  ) -> dict:
-    """Held-out metrics with baselines, bootstrap CIs and calibration."""
+    """Held-out metrics with baselines, bootstrap CIs and calibration; the
+    primary blocks (``value``, ``prior``, ``calibration``) do not depend on
+    the aux head, which reports under ``aux_search_mean`` only when
+    present (points; against the training stratified prior of the target)."""
     metrics = quick_metrics(ev, prior_weight=prior_weight)
     n = metrics["n"]
     if n == 0:
@@ -327,6 +375,18 @@ def full_metrics(ev: dict[str, np.ndarray], baselines: dict, *, prior_target: st
     base_pred = prior.predict(ev["ply"], ev["role_attacker"], ev["points_so_far"])
     metrics["value"] = value_summary(ev["pred"], base_pred, ev["utility"], ev["cluster"],
                                      n_boot=n_boot, seed=seed)
+    has_s = _search_rows(ev)
+    if has_s.any():
+        sp = baselines.get("search_mean_prior")
+        search_prior = StratifiedPrior.from_dict(sp) if sp else StratifiedPrior()
+        s_base = search_prior.predict(ev["ply"][has_s], ev["role_attacker"][has_s],
+                                      ev["points_so_far"][has_s])
+        metrics["aux_search_mean"] = {
+            **value_summary(ev["search_pred"][has_s], s_base, ev["search_target"][has_s],
+                            ev["cluster"][has_s], n_boot=n_boot, seed=seed),
+            "units": "points, acting-team perspective (action_values.means[played_index])",
+            "rows_without_target": int((~ev["has_search"].astype(bool)).sum()),
+        }
     wide = ev["width"] >= 2
     has = ev["has_softmax"].astype(bool) & wide
     known = (ev["played"] >= 0) & wide
@@ -450,6 +510,51 @@ def _write_json(path: Path, payload: Any) -> None:
 
 # ------------------------------------------------------------------- train
 
+def build_config(*, data: list[str], eval_luna: str | None = None,
+                 epochs: int = DEFAULTS["epochs"], seed: int = DEFAULTS["seed"],
+                 prior_target: str = DEFAULTS["prior_target"],
+                 limit_clusters: int | None = None,
+                 prior_weight: float = DEFAULTS["prior_weight"], lr: float = DEFAULTS["lr"],
+                 weight_decay: float = DEFAULTS["weight_decay"],
+                 batch_size: int = DEFAULTS["batch_size"],
+                 patience: int = DEFAULTS["patience"],
+                 val_fraction: float = DEFAULTS["val_fraction"],
+                 huber_delta: float = DEFAULTS["huber_delta"], aux_points: bool = False,
+                 aux_weight: float = DEFAULTS["aux_weight"],
+                 aux_search_mean: float = DEFAULTS["aux_search_mean"],
+                 hidden: int = DEFAULTS["hidden"], n_boot: int = DEFAULTS["n_boot"],
+                 window: int = DEFAULTS["window"]) -> dict:
+    """The run configuration that ``config_sha256`` hashes: everything that
+    determines the trained model and its metrics (validated, fail closed);
+    execution details (device, cache workers, output paths) are not in it."""
+    if prior_target not in PRIOR_TARGETS:
+        raise TrainError(f"prior target must be one of {PRIOR_TARGETS}")
+    if epochs < 1 or batch_size < 1 or patience < 0:
+        raise TrainError("epochs/batch_size >= 1 and patience >= 0 are required")
+    if not (float(aux_search_mean) >= 0 and math.isfinite(float(aux_search_mean))):
+        raise TrainError("--aux-search-mean must be a finite weight >= 0")
+    try:
+        trunk = trunk_for(hidden)
+    except (TypeError, ValueError) as exc:
+        raise TrainError(f"--hidden: {exc}") from exc
+    arch = {**DEFAULT_ARCH, "trunk": trunk, "aux_points": bool(aux_points),
+            "aux_search_mean": float(aux_search_mean) > 0}
+    return {
+        "command": "train", "data": [str(Path(d).resolve()) for d in data],
+        "eval_luna": None if eval_luna is None else str(Path(eval_luna).resolve()),
+        "epochs": int(epochs), "seed": int(seed), "prior_target": prior_target,
+        "limit_clusters": limit_clusters, "prior_weight": float(prior_weight),
+        "lr": float(lr), "weight_decay": float(weight_decay), "batch_size": int(batch_size),
+        "patience": int(patience), "val_fraction": float(val_fraction),
+        "huber_delta": float(huber_delta), "aux_points": bool(aux_points),
+        "aux_weight": float(aux_weight) if aux_points else 0.0,
+        "aux_search_mean": float(aux_search_mean), "hidden": int(hidden),
+        "n_boot": int(n_boot), "window": int(window), "optimizer": "AdamW", "arch": arch,
+        "encoder_implementation_sha256": encoder_identity()["implementation_sha256"],
+        "enc_version": encoder_identity()["enc_version"],
+    }
+
+
 def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = None,
           device: str | None = None, epochs: int = DEFAULTS["epochs"],
           seed: int = DEFAULTS["seed"], prior_target: str = DEFAULTS["prior_target"],
@@ -458,41 +563,37 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
           batch_size: int = DEFAULTS["batch_size"], patience: int = DEFAULTS["patience"],
           val_fraction: float = DEFAULTS["val_fraction"],
           huber_delta: float = DEFAULTS["huber_delta"], aux_points: bool = False,
-          aux_weight: float = DEFAULTS["aux_weight"], n_boot: int = DEFAULTS["n_boot"],
+          aux_weight: float = DEFAULTS["aux_weight"],
+          aux_search_mean: float = DEFAULTS["aux_search_mean"],
+          hidden: int = DEFAULTS["hidden"], n_boot: int = DEFAULTS["n_boot"],
           window: int = DEFAULTS["window"], cache_dir: str | None = None,
-          argv: list[str] | None = None, log: Callable[[str], None] | None = print) -> dict:
+          cache_workers: int | None = None, argv: list[str] | None = None,
+          log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
-    if prior_target not in PRIOR_TARGETS:
-        raise TrainError(f"prior target must be one of {PRIOR_TARGETS}")
-    if epochs < 1 or batch_size < 1 or patience < 0:
-        raise TrainError("epochs/batch_size >= 1 and patience >= 0 are required")
+    config = build_config(
+        data=data, eval_luna=eval_luna, epochs=epochs, seed=seed, prior_target=prior_target,
+        limit_clusters=limit_clusters, prior_weight=prior_weight, lr=lr,
+        weight_decay=weight_decay, batch_size=batch_size, patience=patience,
+        val_fraction=val_fraction, huber_delta=huber_delta, aux_points=aux_points,
+        aux_weight=aux_weight, aux_search_mean=aux_search_mean, hidden=hidden,
+        n_boot=n_boot, window=window)
+    arch = config["arch"]
+    search_weight = float(config["aux_search_mean"])
     started = time.perf_counter()
     started_at = time.strftime("%Y-%m-%d %H:%M:%S")
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     cache = Path(cache_dir) if cache_dir else out_dir / "cache"
+    workers = default_cache_workers() if cache_workers is None else max(1, int(cache_workers))
     dev = pick_device(device)
     seeds = seed_everything(seed, dev)
-    arch = {**DEFAULT_ARCH, "aux_points": bool(aux_points)}
-    config = {
-        "command": "train", "data": [str(Path(d).resolve()) for d in data],
-        "eval_luna": None if eval_luna is None else str(Path(eval_luna).resolve()),
-        "epochs": int(epochs), "seed": int(seed), "prior_target": prior_target,
-        "limit_clusters": limit_clusters, "prior_weight": float(prior_weight),
-        "lr": float(lr), "weight_decay": float(weight_decay), "batch_size": int(batch_size),
-        "patience": int(patience), "val_fraction": float(val_fraction),
-        "huber_delta": float(huber_delta), "aux_points": bool(aux_points),
-        "aux_weight": float(aux_weight) if aux_points else 0.0, "n_boot": int(n_boot),
-        "window": int(window), "optimizer": "AdamW", "arch": arch,
-        "encoder_implementation_sha256": encoder_identity()["implementation_sha256"],
-        "enc_version": encoder_identity()["enc_version"],
-    }
     say = log or (lambda _s: None)
     say(f"train: device={dev.type} seed={seed} prior_target={prior_target} "
-        f"epochs<={epochs} batch={batch_size}")
+        f"epochs<={epochs} batch={batch_size} hidden={config['hidden']} "
+        f"aux_search_mean={search_weight} cache_workers={workers}")
 
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters,
-                              witness_seed=seed, progress=say)
+                              witness_seed=seed, progress=say, cache_workers=workers)
     store = prepared.block_store
     assignment = split_clusters(store.cluster_keys(), seed=seed, val_fraction=val_fraction)
     train_mask = lambda b: split_mask(b, assignment, "train")  # noqa: E731
@@ -520,7 +621,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
     luna_prepared = None
     if eval_luna is not None:
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None,
-                                       witness_seed=seed, progress=say)
+                                       witness_seed=seed, progress=say, cache_workers=workers)
         luna = (luna_prepared.stores[0], luna_prepared.block_store)
 
     model = ValuePriorNet(arch).to(dev)
@@ -536,15 +637,16 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         model.train()
-        sums = {"total": 0.0, "value": 0.0, "prior": 0.0, "aux": 0.0}
+        sums = {"total": 0.0, "value": 0.0, "prior": 0.0, "aux": 0.0, "search": 0.0}
         rows = 0
         prior_rows = 0
+        search_rows = 0
         batches = 0
         for raw in store.iter_batches(train_mask, batch_size, rng=rng, window=window):
             t = to_tensors(raw, dev, prior_target)
             losses = batch_losses(model, t, prior_weight=prior_weight,
                                   aux_weight=aux_weight if aux_points else 0.0,
-                                  huber_delta=huber_delta)
+                                  search_weight=search_weight, huber_delta=huber_delta)
             optim.zero_grad(set_to_none=True)
             losses["total"].backward()
             optim.step()
@@ -555,6 +657,10 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
             sums["prior"] += float(losses["prior"].item()) * npr
             if "aux" in losses:
                 sums["aux"] += float(losses["aux"].item()) * b
+            if "search" in losses:
+                nsr = int(losses["n_search"].item())
+                sums["search"] += float(losses["search"].item()) * nsr
+                search_rows += nsr
             rows += b
             prior_rows += npr
             batches += 1
@@ -565,6 +671,10 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         }
         if aux_points:
             train_metrics["aux_huber"] = sums["aux"] / max(rows, 1)
+        if search_weight > 0:
+            train_metrics["aux_search_huber"] = ((sums["search"] / search_rows)
+                                                 if search_rows else None)
+            train_metrics["aux_search_rows"] = search_rows
         val_metrics = quick_metrics(run_eval(model, store, val_mask, dev, **eval_kw),
                                     prior_weight=prior_weight)
         secs = round(time.perf_counter() - t0, 3)
@@ -579,11 +689,13 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
             shutil.copyfile(ckpt_dir / f"epoch-{epoch:02d}.pt", out_dir / "best.pt")
         else:
             since_best += 1
+        aux_note = ("" if val_metrics.get("aux_search_mae") is None
+                    else f"val_aux_search_mae={val_metrics['aux_search_mae']:.2f} ")
         say(f"epoch {epoch:02d}/{epochs} train_loss={train_metrics['loss']:.4f} "
             f"val_loss={val_metrics['loss']:.4f} val_value_mae={val_metrics['value_mae']:.4f} "
             f"val_prior_ce={val_metrics['prior_ce'] if val_metrics['prior_ce'] is None else round(val_metrics['prior_ce'], 4)} "
             f"top1={val_metrics['top1_agreement'] if val_metrics['top1_agreement'] is None else round(val_metrics['top1_agreement'], 4)} "
-            f"{'*' if improved else ''} ({secs}s)")
+            f"{aux_note}{'*' if improved else ''} ({secs}s)")
         if since_best >= patience and epoch < epochs:
             say(f"early stop: no validation improvement for {patience} epochs "
                 f"(best epoch {best['epoch']})")
@@ -645,6 +757,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
                                    for r in epoch_rows]},
         "peak_memory": peak_memory(dev),
         "cache_dir": str(cache),
+        "cache_workers": workers,
     }
     _write_json(out_dir / "receipt.json", receipt)
     _write_json(out_dir / "metrics.json", {"schema": RECEIPT_SCHEMA + "-metrics",
@@ -653,11 +766,14 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
                                            "calibration": calibration,
                                            "best_epoch": best["epoch"]})
     v = final["val"]["value"]
+    aux = final["val"].get("aux_search_mean")
     say(f"final: val n={v['n']} model_mae={v['model']['mae']:.4f} "
         f"prior_mae={v['stratified_prior']['mae']:.4f} "
         f"diff={v['paired_diff_model_minus_prior']['abs_error']['mean']:.4f} "
         f"ci95={[round(x, 4) for x in v['paired_diff_model_minus_prior']['abs_error']['ci95']]} "
-        f"wall={wall}s")
+        + ("" if aux is None else f"aux_search_mae={aux['model']['mae']:.2f} "
+                                  f"(prior {aux['stratified_prior']['mae']:.2f}) ")
+        + f"wall={wall}s")
     return receipt
 
 
@@ -667,7 +783,8 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
              eval_luna: str | None = None, device: str | None = None, split: str = "val",
              limit_clusters: int | None = None, n_boot: int | None = None,
              batch_size: int | None = None, cache_dir: str | None = None,
-             argv: list[str] | None = None, log: Callable[[str], None] | None = print) -> dict:
+             cache_workers: int | None = None, argv: list[str] | None = None,
+             log: Callable[[str], None] | None = print) -> dict:
     """Score a checkpoint on a data store's split and/or the Luna set with
     the checkpoint's own baselines and calibration."""
     if not data and not eval_luna:
@@ -679,6 +796,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
     cache = Path(cache_dir) if cache_dir else out_dir / "cache"
+    workers = default_cache_workers() if cache_workers is None else max(1, int(cache_workers))
     dev = pick_device(device)
     say = log or (lambda _s: None)
     model, payload = load_checkpoint(checkpoint, dev)
@@ -696,7 +814,8 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     split_info = None
     if data:
         prepared = prepare_stores(data, cache, limit_clusters=limit_clusters,
-                                  witness_seed=int(config["seed"]), progress=say)
+                                  witness_seed=int(config["seed"]), progress=say,
+                                  cache_workers=workers)
         store = prepared.block_store
         assignment = split_clusters(store.cluster_keys(), seed=int(config["seed"]),
                                     val_fraction=float(config["val_fraction"]))
@@ -716,7 +835,8 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     luna_receipt = None
     if eval_luna:
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None,
-                                       witness_seed=int(config["seed"]), progress=say)
+                                       witness_seed=int(config["seed"]), progress=say,
+                                       cache_workers=workers)
         ev = run_eval(model, luna_prepared.block_store, lambda b: np.ones(b.n, dtype=bool),
                       dev, **eval_kw)
         final["luna"] = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
@@ -752,6 +872,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
         "checkpoints": {"evaluated": str(Path(checkpoint).resolve())},
         "peak_memory": peak_memory(dev),
         "cache_dir": str(cache),
+        "cache_workers": workers,
     }
     _write_json(out_dir / "receipt.json", receipt)
     _write_json(out_dir / "metrics.json", {"schema": RECEIPT_SCHEMA + "-metrics",
@@ -776,6 +897,10 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--device", default=None, help="mps|cpu (default: mps when available)")
         p.add_argument("--cache-dir", default=None,
                        help="derived encoding cache (default: <out>/cache)")
+        p.add_argument("--cache-workers", type=int, default=None,
+                       help="shards encoded at a time when building the cache "
+                            f"(default: min({CACHE_WORKERS_CAP}, cpu) = "
+                            f"{default_cache_workers()})")
         p.add_argument("--limit-clusters", type=int, default=None,
                        help="use only the first N deal clusters of each data store")
         p.add_argument("--eval-luna", default=None,
@@ -798,6 +923,12 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--aux-points", action="store_true",
                    help="auxiliary attacker-points head (off by default)")
     t.add_argument("--aux-weight", type=float, default=DEFAULTS["aux_weight"])
+    t.add_argument("--aux-search-mean", type=float, default=DEFAULTS["aux_search_mean"],
+                   metavar="WEIGHT",
+                   help="weight of the auxiliary search-mean head "
+                        "(action_values.means[played_index]); 0 = off")
+    t.add_argument("--hidden", type=int, default=DEFAULTS["hidden"],
+                   help="trunk widths [N, N // 2]")
     t.add_argument("--n-boot", type=int, default=DEFAULTS["n_boot"])
     t.add_argument("--window", type=int, default=DEFAULTS["window"],
                    help="shards loaded per shuffle window (streaming)")
@@ -828,14 +959,16 @@ def main(argv: list[str] | None = None) -> int:
                   lr=args.lr, weight_decay=args.weight_decay, batch_size=args.batch_size,
                   patience=args.patience, val_fraction=args.val_fraction,
                   huber_delta=args.huber_delta, aux_points=args.aux_points,
-                  aux_weight=args.aux_weight, n_boot=args.n_boot, window=args.window,
-                  cache_dir=args.cache_dir, argv=full_argv, log=log)
+                  aux_weight=args.aux_weight, aux_search_mean=args.aux_search_mean,
+                  hidden=args.hidden, n_boot=args.n_boot, window=args.window,
+                  cache_dir=args.cache_dir, cache_workers=args.cache_workers,
+                  argv=full_argv, log=log)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,
                      limit_clusters=args.limit_clusters, n_boot=args.n_boot,
-                     batch_size=args.batch_size, cache_dir=args.cache_dir, argv=full_argv,
-                     log=log)
+                     batch_size=args.batch_size, cache_dir=args.cache_dir,
+                     cache_workers=args.cache_workers, argv=full_argv, log=log)
     except (TrainError, TrainDataError) as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         return 2

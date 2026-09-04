@@ -816,6 +816,10 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
     args = build_parser().parse_args(argv)
     full_argv = sys.argv if argv is None else ["train_v0", *argv]
+
+    def log(line: str) -> None:
+        print(line, flush=True)            # progress survives a redirected stdout
+
     try:
         if args.command == "train":
             train(data=args.data, out=args.out, eval_luna=args.eval_luna, device=args.device,
@@ -825,12 +829,13 @@ def main(argv: list[str] | None = None) -> int:
                   patience=args.patience, val_fraction=args.val_fraction,
                   huber_delta=args.huber_delta, aux_points=args.aux_points,
                   aux_weight=args.aux_weight, n_boot=args.n_boot, window=args.window,
-                  cache_dir=args.cache_dir, argv=full_argv)
+                  cache_dir=args.cache_dir, argv=full_argv, log=log)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,
                      limit_clusters=args.limit_clusters, n_boot=args.n_boot,
-                     batch_size=args.batch_size, cache_dir=args.cache_dir, argv=full_argv)
+                     batch_size=args.batch_size, cache_dir=args.cache_dir, argv=full_argv,
+                     log=log)
     except (TrainError, TrainDataError) as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         return 2

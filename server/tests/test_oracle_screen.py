@@ -9,6 +9,7 @@ per round against the ``none`` control through the CLI.
 """
 from __future__ import annotations
 
+import copy
 import json
 import os
 import random
@@ -37,10 +38,13 @@ NEUTRAL = {
     "prior": {"prior_keep_top": 0, "prior_worlds": 4},
     "both": {"leaf_multiplier": 1, "exact_endgame_cards": 0,
              "prior_keep_top": 0, "prior_worlds": 4},
-    "wide": {"wide_keep_top": 0, "wide_screen_worlds": 2, "prior_worlds": 4},
+    # WIDE_KEEP_TOP=0 never enumerates, so the fail-closed flag has nothing
+    # to refuse: it must be as neutral as the rest.
+    "wide": {"wide_keep_top": 0, "wide_screen_worlds": 2, "prior_worlds": 4,
+             "wide_require_complete": True},
     "wide-value": {"leaf_multiplier": 1, "exact_endgame_cards": 0,
                    "wide_keep_top": 0, "wide_screen_worlds": 2,
-                   "prior_worlds": 4},
+                   "prior_worlds": 4, "wide_require_complete": True},
 }
 # Reduced wide work: 2-world stages over a 32-action legal set, 6 stage-1
 # survivors, a 4-entry ballot.
@@ -292,11 +296,43 @@ def test_wide_ballot_covers_production_keeps_the_incumbent_first_and_is_legal():
         assert len({tuple(sorted(c)) for c in ballot}) == len(ballot)
         assert info["n_determinizations"] == 1 and info["wide_fixed_n"] is True
         assert info["legal_listed"] >= len(prod)
+        assert info["cap"] == 8
         if info["legal_complete"]:
             assert info["legal_count"] == info["legal_listed"]
-    assert bot.oracle_wide_capped > 0, "cap 8 never truncated a legal set"
+        else:
+            # The capped prefix plus the production ballot, never the set.
+            assert info["legal_listed"] >= 8
+            if info["legal_count"] is not None:
+                assert info["legal_listed"] <= info["legal_count"]
+    assert bot.oracle_wide_capped == sum(
+        not i["legal_complete"] for i in seen) > 0, "cap 8 never truncated a legal set"
+    assert bot.oracle_wide_legal_seen == sum(i["legal_listed"] for i in seen)
+    assert bot.oracle_wide_legal_count == sum(
+        i["legal_count"] for i in seen if i["legal_count"] is not None)
+    assert bot.oracle_wide_uncountable == sum(
+        i["legal_count"] is None for i in seen)
     assert bot.oracle_wide_incumbent_replaced == 0
     assert bot.N_DETERMINIZATIONS == 1
+
+
+def test_wide_require_complete_refuses_the_first_capped_decision():
+    """Fail closed: with WIDE_REQUIRE_COMPLETE the first legal set larger than
+    the cap refuses the decision before anything is ranked (so the round
+    fails), where the same knobs without the flag rank the prefix and count
+    the incompleteness."""
+    seed = 4_251
+    knobs = {**WIDE_TINY, "wide_cap": 8}
+    strict = _tiny(S.make_oracle_bot(BASE, "wide", seed=seed,
+                                     knobs={**knobs, "wide_require_complete": True}))
+    assert strict.WIDE_REQUIRE_COMPLETE is True
+    with pytest.raises(S.OracleScreenError, match="incomplete at cap 8"):
+        _play_seat0(strict, seed)
+    assert strict.oracle_wide_capped == 0, "a capped prefix was ranked"
+    loose = _tiny(S.make_oracle_bot(BASE, "wide", seed=seed, knobs=knobs))
+    assert loose.WIDE_REQUIRE_COMPLETE is False
+    _play_seat0(loose, seed)
+    assert loose.oracle_wide_capped > 0
+    assert strict.oracle_wide_decisions <= loose.oracle_wide_decisions
 
 
 def test_wide_counts_offballot_survivors_and_choices_and_stage_rollouts():
@@ -456,7 +492,8 @@ def cli_runs(tmp_path_factory):
             "--prior-worlds", "4", "--prior-keep-top", "2", "--workers", "2"),
         "wide_neutral": _run_cli(
             root / "wide_neutral", "--arm", "wide", "--wide-keep-top", "0",
-            "--wide-screen-worlds", "2", "--prior-worlds", "4", "--workers", "1"),
+            "--wide-screen-worlds", "2", "--prior-worlds", "4",
+            "--wide-require-complete", "--workers", "1"),
         "wide_w1": _run_cli(root / "wide_w1", *WIDE_CLI, "--workers", "1"),
         "wide_w2": _run_cli(root / "wide_w2", *WIDE_CLI, "--workers", "2"),
     }
@@ -545,6 +582,113 @@ def test_cli_wide_screen_reports_knobs_offballot_rates_and_stage_work(cli_runs):
     assert runtime["arm_wide_secs"] > 0 and runtime["arm_prior_secs"] == 0
     control = json.loads((cli_runs["none"] / "summary.json").read_text())
     assert control["oracle_wide_offballot_kept_rate"] is None
+
+
+def test_cli_wide_screen_reports_incomplete_enumeration_prominently(cli_runs):
+    """Cap 16 truncates legal sets in these rounds, so the arm ranked a capped
+    prefix + the production ballot: the description says so with the cap, the
+    summary carries the wide_coverage block, and problems names the
+    incompleteness rather than leaving it in a counter."""
+    out = cli_runs["wide_w1"]
+    summary = json.loads((out / "summary.json").read_text())
+    assert ("oracle wide: capped legal prefix (cap 16) + production ballot"
+            in summary["arm_description"])
+    assert "exhaustive" not in summary["arm_description"]
+    assert "complete enumeration required" not in summary["arm_description"]
+    assert summary["refused"] is None
+    totals = summary["work_totals"]["arm"]
+    cov = summary["wide_coverage"]
+    assert cov["cap"] == 16 and cov["require_complete"] is False
+    assert cov["decisions"] == totals["oracle_wide_decisions"] > 0
+    assert cov["capped"] == totals["oracle_wide_capped"] > 0, \
+        "cap 16 never truncated a legal set in these rounds"
+    assert cov["complete"] + cov["capped"] == cov["decisions"]
+    assert cov["capped_rate"] == cov["capped"] / cov["decisions"]
+    assert cov["listed_total"] == totals["oracle_wide_legal_seen"]
+    assert cov["legal_count_total"] == totals["oracle_wide_legal_count"]
+    assert cov["uncountable_decisions"] == totals["oracle_wide_uncountable"]
+    assert cov["listed_total"] >= 16 * cov["capped"]
+    if cov["uncountable_decisions"] == 0:
+        assert cov["legal_count_total"] > cov["listed_total"]
+    notes = [p for p in summary["problems"] if "wide enumeration capped" in p]
+    assert len(notes) == 1
+    assert f"capped at 16 in {cov['capped']}/{cov['decisions']}" in notes[0]
+    assert "NOT the legal set" in notes[0]
+    for r in _rounds(out):
+        arm = r["work"]["arm"]
+        assert arm["oracle_wide_capped"] <= arm["oracle_wide_decisions"]
+        assert arm["oracle_wide_legal_count"] >= arm["oracle_wide_legal_seen"] \
+            or arm["oracle_wide_uncountable"] > 0
+    control = json.loads((cli_runs["none"] / "summary.json").read_text())
+    assert control["wide_coverage"] is None
+    assert not any("capped" in p for p in control["problems"])
+
+
+def test_wide_coverage_note_appears_only_when_a_decision_was_capped(cli_runs):
+    """Same records, incompleteness zeroed: the block reports full coverage
+    and the problems note is gone (the note is a function of capped_rate)."""
+    out = cli_runs["wide_w1"]
+    records = _rounds(out)
+    summary = json.loads((out / "summary.json").read_text())
+    cfg = S.build_config(arm="wide", knobs=summary["knobs"], select_worlds=1,
+                         report_worlds=30)
+    capped = S.summarize(records, cfg, seed0=777, replicates=50, bootstrap_seed=1)
+    assert capped["wide_coverage"] == summary["wide_coverage"]
+    assert capped["wide_coverage"]["capped_rate"] > 0
+    assert any("wide enumeration capped" in p for p in capped["problems"])
+    clean = copy.deepcopy(records)
+    for r in clean:
+        arm = r["work"]["arm"]
+        arm["oracle_wide_capped"] = 0
+        arm["oracle_wide_uncountable"] = 0
+        arm["oracle_wide_legal_count"] = arm["oracle_wide_legal_seen"]
+    full = S.summarize(clean, cfg, seed0=777, replicates=50, bootstrap_seed=1)
+    cov = full["wide_coverage"]
+    assert cov["decisions"] == capped["wide_coverage"]["decisions"] > 0
+    assert cov["capped"] == 0 and cov["capped_rate"] == 0.0
+    assert cov["complete"] == cov["decisions"]
+    assert cov["legal_count_total"] == cov["listed_total"]
+    assert not any("capped" in p for p in full["problems"])
+    assert [p for p in full["problems"] if "wide" not in p] == \
+        [p for p in capped["problems"] if "wide" not in p]
+
+
+def test_cli_wide_require_complete_refuses_and_records_the_refusal(tmp_path):
+    """--wide-require-complete on a capped fixture: the first capped decision
+    refuses its round, the run stops with exit 2, and the refusal is on the
+    record (summary.problems headed by it, summary.refused, zero rounds) at
+    a worker count of 2."""
+    out = tmp_path / "refused"
+    env = dict(os.environ)
+    env.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
+    proc = subprocess.run(
+        [sys.executable, "-P", "-B", str(SCRIPT), *WIDE_CLI, "--wide-cap", "8",
+         "--wide-require-complete", "--rounds", "2", "--seed", "777",
+         "--out", str(out), *TINY_WORK, "--workers", "2"],
+        cwd=SERVER, env=env, capture_output=True, text=True, timeout=240)
+    assert proc.returncode == 2, proc.stderr + proc.stdout
+    assert "REFUSING: round refused (cluster 0, seed 777, mirror 0)" in proc.stderr
+    assert "enumeration incomplete at cap 8" in proc.stderr
+    assert f"refusal recorded in {out / 'summary.json'}" in proc.stderr
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["rounds"] == 0 and summary["clusters"] == 0
+    refused = summary["refused"]
+    assert (refused["cluster"], refused["seed"], refused["mirror"]) == (0, 777, 0)
+    assert "enumeration incomplete at cap 8" in refused["reason"]
+    assert "WIDE_REQUIRE_COMPLETE refuses to rank a capped prefix" in refused["reason"]
+    assert summary["problems"][0].startswith("REFUSED (cluster 0, seed 777, mirror 0)")
+    assert "recorded no round" in summary["problems"][0]
+    assert summary["knobs"]["wide_require_complete"] is True
+    cov = summary["wide_coverage"]
+    assert cov["require_complete"] is True and cov["cap"] == 8
+    assert cov["decisions"] == cov["capped"] == 0 and cov["capped_rate"] is None
+    assert "complete enumeration required" in summary["arm_description"]
+    assert "capped legal prefix (cap 8) + production ballot" in summary["arm_description"]
+    assert summary["arm_signed_level_utility"]["per_round"]["mean"] is None
+    assert (out / "rounds.jsonl").read_text() == ""
+    assert (out / "timing.jsonl").read_text() == ""
+    runtime = json.loads((out / "runtime.json").read_text())
+    assert runtime["rounds"] == 0 and runtime["workers"] == 2
 
 
 @pytest.mark.parametrize("neutral", ["value_neutral", "prior_neutral", "wide_neutral"])

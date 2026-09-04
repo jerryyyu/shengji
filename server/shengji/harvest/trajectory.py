@@ -220,11 +220,16 @@ only.
 ``run.json`` pins the run identity (``run_id`` = a digest of policy, seed0,
 exploration knobs, effective work, cap and, when present, the class-knob
 overrides and widening variants -- never the wall clock) alongside the
-package-source and native-backend identity.  ``--resume`` reopens an out
-dir with the SAME run_id:
-clusters whose shard and sidecar verify (identity, sha256, byte size,
-record count) are kept, missing or invalid ones are regenerated, and a
-different run_id or a different generator/engine code identity refuses.
+package-source and native-backend identity and the sampling environment
+(``SHENGJI_WEIGHTED_SPLITS``, ``SHENGJI_UNIFORM_DEAL``,
+``SHENGJI_PHYSICAL_FILLS`` -- import-time switches of ``ai/mcbot.py`` that
+change world sampling -- plus ``SHENGJI_FAST`` and
+``SHENGJI_REQUIRE_VOIDS``, each recorded as given, null when unset, and as
+the value the code resolved).  ``--resume`` reopens an out dir with the
+SAME run_id: clusters whose shard and sidecar verify (identity, sha256,
+byte size, record count) are kept, missing or invalid ones are
+regenerated, and a different run_id, generator/engine code identity or
+sampling environment refuses.
 Without ``--resume`` an out dir that already holds a run refuses.  A worker
 failure never discards published shards: the remaining clusters are still
 drained and published, then the run fails loudly, naming the failed
@@ -1527,8 +1532,50 @@ def _source_tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
+#: environment inputs that change generation: the import-time sampling
+#: switches of ``ai/mcbot.py`` (they change world sampling), the engine
+#: backend and the void constraint.  ``identity()["env"]`` records each as
+#: given (null when unset) AND as the value the code resolved; ``--resume``
+#: compares both, so a store generated under one setting never continues
+#: under another (Codex review of #218, blocker 2).
+ENV_IDENTITY_KEYS = ("SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL",
+                     "SHENGJI_PHYSICAL_FILLS", "SHENGJI_FAST", "SHENGJI_REQUIRE_VOIDS")
 CODE_IDENTITY_KEYS = ("source_tree_sha256", "fast_module_sha256_16", "ballot",
-                      "fast_engine", "require_voids")
+                      "fast_engine", "require_voids", "env")
+
+
+def environment_identity() -> dict:
+    """The behaviour-changing environment inputs, raw and resolved.
+
+    The mcbot switches are read once, when the module is imported, so the
+    resolved values are the module's constants, not a fresh look at
+    ``os.environ``."""
+    from ..ai import mcbot
+    from ..engine import combos, fast
+    return {
+        "raw": {name: os.environ.get(name) for name in ENV_IDENTITY_KEYS},
+        "resolved": {
+            "weighted_splits": bool(mcbot.WEIGHTED_SPLITS),
+            "uniform_deal": bool(mcbot.UNIFORM_DEAL),
+            "physical_fills": bool(mcbot.PHYSICAL_FILLS),
+            "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
+            "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
+        },
+    }
+
+
+def _env_drift(old: dict | None, new: dict) -> list[str]:
+    """The raw variables and resolved switches that differ between a stored
+    environment identity and the current one; every name when the store
+    predates the binding and recorded no environment at all."""
+    if not old:
+        return sorted(new.get("raw") or {}) + sorted(new.get("resolved") or {})
+    names: list[str] = []
+    for part in ("raw", "resolved"):
+        before, after = old.get(part) or {}, new.get(part) or {}
+        names.extend(sorted(n for n in set(before) | set(after)
+                            if before.get(n) != after.get(n)))
+    return names
 
 
 def identity(config: dict) -> dict:
@@ -1549,6 +1596,7 @@ def identity(config: dict) -> dict:
         "legal_sha256_16": _digest(SERVER / "shengji" / "harvest" / "legal.py"),
         "fast_engine": bool(fast.HAVE_FAST and combos.decompose is fast.decompose),
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
+        "env": environment_identity(),
         "ballot": str(mc_ballot(probe)),
         "python": sys.version.split()[0],
     }
@@ -1674,10 +1722,14 @@ def _open_run(out_dir: Path, config: dict, ident: dict, *, resume: bool) -> bool
         old = existing.get("identity") or {}
         drift = [k for k in CODE_IDENTITY_KEYS if old.get(k) != ident.get(k)]
         if drift:
+            detail = ""
+            if "env" in drift:
+                detail = ("; the sampling environment differs: "
+                          + ", ".join(_env_drift(old.get("env"), ident["env"])))
             raise TrajectoryError(
                 "resume refused: the generator/engine code identity differs "
-                f"from the run's ({', '.join(drift)}); shards would not be "
-                "byte-comparable")
+                f"from the run's ({', '.join(drift)}){detail}; shards would not "
+                "be byte-comparable")
         return True
     if (out_dir / "shards").exists():
         raise TrajectoryError(f"{out_dir}/shards exists without run.json; "

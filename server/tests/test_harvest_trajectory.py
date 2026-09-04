@@ -14,9 +14,13 @@ import math
 import os
 import random
 import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
+from shengji.ai import mcbot
 from shengji.ai.env import play_round
 from shengji.ai.registry import make_bot
 from shengji.engine.combos import decompose
@@ -26,6 +30,7 @@ from shengji.harvest import ballot_capture, legal, rebuild, trajectory
 from shengji.harvest.common import action_key, sha256_file
 from shengji.harvest.schema import SchemaError, finalize_record, validate_record
 
+SERVER = Path(__file__).resolve().parents[1]
 SEED0 = 4_100_000
 ROUNDS = 2
 WORK = {"select_worlds": 2, "report_worlds": 30}
@@ -820,6 +825,54 @@ def test_no_knobs_and_no_widen_is_byte_identical(plain_run, tmp_path):
     assert cfg["knobs"] == {} and cfg["widen"] == []
     assert all("widening" not in r and "production_ballot" not in r
                for r in plain_run["records"])
+
+
+# K9 --------------------- resume refuses a different sampling environment
+
+def test_identity_binds_the_sampling_environment(plain_run, tmp_path):
+    run_json = json.loads((plain_run["out"] / "run.json").read_text())
+    env = run_json["identity"]["env"]
+    assert "env" in trajectory.CODE_IDENTITY_KEYS
+    assert set(env["raw"]) == set(trajectory.ENV_IDENTITY_KEYS)
+    for name in trajectory.ENV_IDENTITY_KEYS:          # as given, null when unset
+        assert env["raw"][name] == os.environ.get(name)
+    assert env["raw"]["SHENGJI_REQUIRE_VOIDS"] == "1"
+    assert env["resolved"] == {
+        "weighted_splits": bool(mcbot.WEIGHTED_SPLITS),
+        "uniform_deal": bool(mcbot.UNIFORM_DEAL),
+        "physical_fills": bool(mcbot.PHYSICAL_FILLS),
+        "fast_engine": run_json["identity"]["fast_engine"],
+        "require_voids": True,
+    }
+    assert trajectory._env_drift(None, env) == sorted(env["raw"]) + sorted(env["resolved"])
+    assert trajectory._env_drift(env, env) == []
+    # a store generated under one sampling environment refuses --resume under
+    # another.  The switches are read when mcbot is imported, so the resume
+    # runs in a fresh interpreter through the command line.
+    out = tmp_path / "env"
+    shutil.copytree(plain_run["out"], out)
+    cli = [sys.executable, "-P", "-B", str(SERVER / "scripts" / "trajectory.py"),
+           "--rounds", str(ROUNDS), "--seed", str(SEED0), "--out", str(out),
+           "--select-worlds", str(WORK["select_worlds"]),
+           "--report-worlds", str(WORK["report_worlds"]),
+           "--explore-rate", "0", "--explore-k", "2", "--merge", "--resume"]
+    base_env = {**os.environ, "PYTHONPATH": str(SERVER), "PYTHONDONTWRITEBYTECODE": "1"}
+    # control: the same environment (and options) resumes and reuses the shard
+    ok = subprocess.run(cli, env=base_env, capture_output=True, text=True)
+    assert ok.returncode == 0, ok.stderr
+    assert json.loads((out / "runtime.json").read_text())["clusters"]["reused"] == [0]
+    for name in ("SHENGJI_WEIGHTED_SPLITS", "SHENGJI_UNIFORM_DEAL", "SHENGJI_PHYSICAL_FILLS"):
+        other = dict(base_env)
+        if other.get(name):
+            other.pop(name)
+        else:
+            other[name] = "1"
+        bad = subprocess.run(cli, env=other, capture_output=True, text=True)
+        assert bad.returncode == 2, (name, bad.stderr)
+        assert "resume refused" in bad.stderr and name in bad.stderr, (name, bad.stderr)
+    # nothing was touched
+    assert _read_dir(out)["shards"] == plain_run["shards"]
+    assert _read_dir(out)["manifest_bytes"] == plain_run["manifest_bytes"]
 
 
 # K2 ----------------------------------------------- refusals before any round

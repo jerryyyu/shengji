@@ -369,8 +369,10 @@ def build_continuation_population_v2(
         })
 
     def accept(material: PopulationMaterialV2,
-               bundle: ContinuationBundleV2, *, copied: bool = False) -> None:
-        if time.monotonic_ns() >= deadline_monotonic_ns:
+               bundle: ContinuationBundleV2, *, copied: bool = False,
+               retain_completed: bool = False) -> bool:
+        expired = time.monotonic_ns() >= deadline_monotonic_ns
+        if expired and not retain_completed:
             raise WorldAfterstateV2LabelControllerError(
                 "label deadline before shard publication")
         shard = publish_continuation_shard(root, material, bundle)
@@ -379,6 +381,7 @@ def build_continuation_population_v2(
         if copied:
             reused += 1
         emit()
+        return expired
 
     # Copy the sealed P0 prefix first.  These are immutable publications, not
     # engine calls, and remain resumable if the process dies mid-prefix.
@@ -397,15 +400,33 @@ def build_continuation_population_v2(
             if time.monotonic_ns() >= deadline_monotonic_ns:
                 raise WorldAfterstateV2LabelControllerError(
                     "label deadline before continuation")
-            accept(material, _build_one(material))
+            if accept(material, _build_one(material), retain_completed=True):
+                raise WorldAfterstateV2LabelControllerError(
+                    "label deadline after completed shard publication")
     elif built_missing:
         pool = ProcessPoolExecutor(
             max_workers=workers, **verified_process_pool_kwargs())
         try:
-            futures = {pool.submit(_build_one, material): material
-                       for material in built_missing}
-            for future in as_completed(futures):
-                accept(futures[future], future.result())
+            # Dispatch at most one worker-width batch at a time.  A whole
+            # bundle already in flight at expiry is valuable resumable work:
+            # retain every completed bundle from that batch, but never start
+            # the next batch after the deadline.
+            for start in range(0, len(built_missing), workers):
+                if time.monotonic_ns() >= deadline_monotonic_ns:
+                    raise WorldAfterstateV2LabelControllerError(
+                        "label deadline before continuation")
+                futures = {
+                    pool.submit(_build_one, material): material
+                    for material in built_missing[start:start + workers]
+                }
+                expired = False
+                for future in as_completed(futures):
+                    expired = accept(
+                        futures[future], future.result(),
+                        retain_completed=True) or expired
+                if expired:
+                    raise WorldAfterstateV2LabelControllerError(
+                        "label deadline after completed shard publication")
         except Exception:
             pool.shutdown(wait=False, cancel_futures=True)
             raise

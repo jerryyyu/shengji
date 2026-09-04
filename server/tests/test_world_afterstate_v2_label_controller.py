@@ -273,6 +273,74 @@ def test_label_stage_deadline_cannot_publish_manifest(
     assert not (root / "continuations" / "manifest.json").exists()
 
 
+def test_parallel_label_stage_retains_whole_shard_completed_after_deadline(
+        tmp_path: Path, material_and_bundle, monkeypatch):
+    material, bundle = material_and_bundle
+    second = _second_material(material)
+    third = _second_material(material, "3")
+    bundles = {
+        material.deal_sha256: bundle,
+        second.deal_sha256: continuation.build_continuation_bundle_v2(second),
+        third.deal_sha256: continuation.build_continuation_bundle_v2(third),
+    }
+    clock = {"now": 0}
+    shutdowns = []
+    submitted = []
+
+    class Future:
+        def __init__(self, value):
+            self.value = value
+
+        def result(self):
+            clock["now"] = 11
+            return bundles[self.value.deal_sha256]
+
+    class Pool:
+        def __init__(self, **_kwargs):
+            pass
+
+        def submit(self, _function, value):
+            submitted.append(value.deal_sha256)
+            return Future(value)
+
+        def shutdown(self, *, wait, cancel_futures=False):
+            shutdowns.append((wait, cancel_futures))
+
+    monkeypatch.setattr(controller.time, "monotonic_ns",
+                        lambda: clock["now"])
+    monkeypatch.setattr(controller, "ProcessPoolExecutor", Pool)
+    monkeypatch.setattr(controller, "as_completed", tuple)
+    root = tmp_path / "late-completion"
+    with pytest.raises(controller.WorldAfterstateV2LabelControllerError,
+                       match="deadline after completed shard publication"):
+        controller.build_continuation_population_v2(
+            root, (material, second, third), split="fit-select", workers=2,
+            deadline_monotonic_ns=10)
+
+    assert submitted == [material.deal_sha256, second.deal_sha256]
+    assert controller.continuation_shard_path(
+        root, material.deal_sha256).is_file()
+    assert controller.continuation_shard_path(
+        root, second.deal_sha256).is_file()
+    assert not controller.continuation_shard_path(
+        root, third.deal_sha256).exists()
+    assert not (root / "continuations" / "manifest.json").exists()
+    assert shutdowns == [(False, True)]
+
+    rebuilt = []
+    monkeypatch.setattr(
+        controller, "_build_one",
+        lambda value: rebuilt.append(value.deal_sha256) or
+        bundles[value.deal_sha256])
+    clock["now"] = 0
+    receipt = controller.build_continuation_population_v2(
+        root, (material, second, third), split="fit-select", workers=1,
+        deadline_monotonic_ns=10)
+    assert rebuilt == [third.deal_sha256]
+    assert receipt.reused_shard_count == 2
+    assert receipt.built_shard_count == 1
+
+
 def test_public_receipt_contains_no_labels_or_outcomes(
         tmp_path: Path, material_and_bundle, monkeypatch):
     material, bundle = material_and_bundle

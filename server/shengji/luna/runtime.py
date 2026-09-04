@@ -47,6 +47,7 @@ LOADABLE_SHADOW_SUFFIXES = (".pyc", ".pyo", ".so", ".dylib", ".pyd")
 # from the working tree, so uncommitted edits to any of these files change the
 # identity (dirt is stamped, never refused).
 SOURCE_GLOBS = (
+    "shengji/__init__.py",
     "shengji/engine/**/*.py",
     "shengji/engine/*.pyx",
     "shengji/ai/**/*.py",

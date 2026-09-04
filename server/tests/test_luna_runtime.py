@@ -110,6 +110,7 @@ def test_source_identity_binds_engine_and_policy_dirt_distinctly(
     for rel in ("shengji/engine", "shengji/ai", "shengji/luna"):
         shutil.copytree(server / rel, scratch / rel,
                         ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy(server / "shengji" / "__init__.py", scratch / "shengji" / "__init__.py")
     (scratch / "scripts").mkdir()
     shutil.copy(server / "scripts" / "luna.py", scratch / "scripts" / "luna.py")
     monkeypatch.setattr(runtime_module, "_server_root", lambda: scratch)
@@ -132,9 +133,18 @@ def test_source_identity_binds_engine_and_policy_dirt_distinctly(
     policy_file.write_text(policy_file.read_text() + "\n# dirt\n")
     policy_dirty = runtime_module.source_identity(Path("/usr/bin/true"))
 
+    shutil.copy(server / "shengji" / "ai" / "registry.py", policy_file)
+    root_init = scratch / "shengji" / "__init__.py"
+    assert "shengji/__init__.py" in clean["sources"]
+    root_init.write_text(root_init.read_text() + "\n# dirt\n")
+    init_dirty = runtime_module.source_identity(Path("/usr/bin/true"))
+
     ids = {clean["source_set_sha256"], engine_dirty["source_set_sha256"],
-           policy_dirty["source_set_sha256"]}
-    assert len(ids) == 3
+           policy_dirty["source_set_sha256"], init_dirty["source_set_sha256"]}
+    assert len(ids) == 4
+    assert {k for k in clean["sources"]
+            if clean["sources"][k] != init_dirty["sources"][k]} == {
+                "shengji/__init__.py"}
     assert {k for k in clean["sources"]
             if clean["sources"][k] != engine_dirty["sources"][k]} == {
                 "shengji/engine/round.py"}

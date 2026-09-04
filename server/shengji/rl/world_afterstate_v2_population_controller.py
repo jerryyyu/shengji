@@ -732,7 +732,7 @@ def _verify_record_shard(root: Path, row: Mapping[str, Any],
             raise ValueError("shard envelope bytes drift")
         _validate_material_stratum(material, slot)
         if (material.slot_sha256, material.deal_sha256, material.state_sha256,
-                material.source, material.state.split) != (
+                material.state.source, material.state.split) != (
                     slot.slot_sha256, row["attempted_deal"]["deal_sha256"],
                     shard.state_sha256, slot.source, slot.split):
             raise ValueError("shard semantic binding drift")

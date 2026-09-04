@@ -336,6 +336,26 @@ def test_expired_partial_run_reuses_shards_under_fresh_bounded_watchdog(
     assert receipt.slots[-1].attempt_count == 2
 
 
+def test_real_accepted_material_shard_reopens_for_resume(tmp_path):
+    slot = next(row for row in SLOTS
+                if row.group == "natural-fit" and row.ordinal == 4)
+    identity = attempted_deal_identity("a" * 64, slot, 0)
+    result = source_driver.drive_population_attempt_v2(identity, slot)
+    assert result.accepted and result.material is not None
+
+    material = result.material
+    raw = controller.population_material_bytes(material)
+    shard = controller._expected_shard(tmp_path, material, slot, raw)
+    assert controller.publish_population_material(
+        tmp_path, material, tier="D256") == shard
+    record = controller._record_payload(
+        freeze="f" * 64, namespace="a" * 64, admission="b" * 64,
+        slot=slot, attempt=identity, accepted=True, reason=None,
+        decision_count=result.decision_count, shard=shard, material_raw=raw)
+
+    assert controller._verify_record_shard(tmp_path, record, slot) == shard
+
+
 def test_requested_trump_mode_unavailable_is_recorded_and_collection_continues(
         tmp_path, fast_primitives):
     calls = {}

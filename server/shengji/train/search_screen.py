@@ -58,6 +58,8 @@ class TimedPolicy:
                     "report_worlds": rec["report_worlds_requested"],
                     "legal_size": learned.get("legal_size"),
                     "production_size": learned.get("production_size"),
+                    "ranking_basis": learned.get("ranking_basis"),
+                    "leaf_tricks": learned.get("config", {}).get("leaf_tricks"),
                     "counts": learned.get("counts"),
                 })
 
@@ -96,7 +98,8 @@ def run_cluster(config, cluster):
             if expected and heads.metadata["checkpoint_sha256"] != expected:
                 raise ValueError("checkpoint changed between parent and worker")
             bot = LearnedSearchBot(heads, seed=seed, config=SearchConfig(
-                arm=config["arm"], leaf_tricks=config["leaf_tricks"]))
+                arm=config["arm"], leaf_tricks=config["leaf_tricks"],
+                paired_advantage=config.get("paired_advantage", False)))
         # Small overrides are ONLY for source-wiring tests, not labelled as
         # production-work evidence by summarize().
         bot.N_DETERMINIZATIONS = config["select_worlds"]
@@ -149,7 +152,7 @@ def summary_for(shards, config):
     out.update({
         "schema": "learned-search-dev-summary-v1", "arm": config["arm"],
         "claim": "small DEV paired screen; not confirmation, promotion or deployment",
-        "arm_description": "learned root allocation and optional one-trick value; production fresh-world report",
+        "arm_description": "learned root allocation and optional bounded-trick value; production fresh-world report",
         "config": config, "completed_clusters": len(shards),
         "requested_clusters": config["clusters"],
         "complete": len(shards) == config["clusters"],
@@ -227,7 +230,9 @@ def main(argv=None):
     parser.add_argument("--clusters", type=int, default=4)
     parser.add_argument("--seed0", type=int, required=True)
     parser.add_argument("--workers", type=int, default=2)
-    parser.add_argument("--leaf-tricks", type=int, choices=(0, 1), default=1)
+    parser.add_argument("--leaf-tricks", type=int, choices=(0, 1, 3), default=1)
+    parser.add_argument("--paired-advantage", action="store_true",
+                        help="rank and allocate by paired improvement over the incumbent")
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--select-worlds", type=int, default=30)
     parser.add_argument("--candidate-select-worlds", type=int,

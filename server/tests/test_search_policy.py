@@ -86,7 +86,7 @@ def test_enumeration_overflow_refuses_instead_of_searching_a_prefix():
     assert bot.search_calls == bot.rollouts == 0
 
 
-@pytest.mark.parametrize("depth", [0, 1])
+@pytest.mark.parametrize("depth", [0, 1, 3])
 def test_value_leaf_depth_team_conversion_and_sampled_hidden_world(depth):
     rnd = play_state()
     policy = HeuristicBot()
@@ -106,7 +106,8 @@ def test_value_leaf_depth_team_conversion_and_sampled_hidden_world(depth):
         same_team = leaf.turn % 2 == seat % 2
         seen_parities.add(same_team)
         assert result == [80.0 if same_team else -80.0]
-        assert len(leaf.history) == initial_history + (1 if depth else int(len(rnd.trick.plays) == 3))
+        expected_tricks = depth if depth else int(len(rnd.trick.plays) == 3)
+        assert len(leaf.history) == initial_history + expected_tricks
         assert signature(rnd) == before
         assert leaf is not rnd and leaf.hands is not rnd.hands
         rnd.play(seat, action)
@@ -247,3 +248,68 @@ def test_bad_prior_cannot_enter_search():
     bot = LearnedSearchBot(heads)
     with pytest.raises(SearchError, match=r"^prior must normalize over the exact legal population$"):
         bot.decide_play(rnd, rnd.turn)
+
+
+def test_paired_advantage_changes_allocation_and_final_challenger():
+    """Raw candidate means and paired gaps disagree when worlds differ."""
+    class ControlledBot(LearnedSearchBot):
+        def __init__(self, config):
+            super().__init__(Heads(), seed=9, config=config)
+            self.N_DETERMINIZATIONS = 4
+            self.world = 0
+            self.controlled_candidates = None
+
+        def _candidates(self, rnd, seat):
+            self.controlled_candidates = [[rnd.hands[seat][i]] for i in range(3)]
+            self._root = {
+                "production_keys": {tuple(sorted(self.controlled_candidates[0]))},
+                "production_size": 2,
+                "production_would_search": True,
+                "priors": [0.33, 0.34, 0.33],
+                "visits": [0, 0, 0],
+                "enumeration_secs": 0.0,
+            }
+            return self.controlled_candidates
+
+        def _sample_hands(self, *args):
+            self.world += 1
+            return ({}, [])
+
+        def _new_exact_world_session(self, *args):
+            return None
+
+        def _selection_values(self, rnd, seat, hands, buried, actions, exact_session):
+            baseline = (-100.0, -100.0, -100.0, 0.0)[self.world - 1]
+            out = []
+            for action in actions:
+                index = next(i for i, candidate in enumerate(self.controlled_candidates)
+                             if candidate is action)
+                out.append(baseline if index == 0 else (-30.0 if index == 1 else 0.0))
+            return out
+
+    rnd = play_state()
+    seat = rnd.turn
+    configs = [SearchConfig(arm="both", puct_scale=1.0, paired_advantage=flag)
+               for flag in (False, True)]
+    bots = [ControlledBot(config) for config in configs]
+    for bot in bots:
+        bot.REPORT_RULE = "none"
+        bot.REPORT_FOLD_WORLDS = 0
+        bot.MARGIN = 0.0
+        bot.POINT_SHY_EPS = 0.0
+        bot.decide_play(rnd, seat)
+
+    raw, paired = [bot.last_decision_record for bot in bots]
+    assert raw["learned_search"]["ranking_basis"] == "absolute_value_mean"
+    assert paired["learned_search"]["ranking_basis"] == "paired_advantage"
+    assert raw["learned_search"]["allocation_visits"] != paired["learned_search"]["allocation_visits"]
+    assert raw["report_candidate_index"] == 2
+    assert paired["report_candidate_index"] == 1
+    assert paired["means"][0] == 0.0
+    assert paired["means"][1] != raw["means"][1]
+
+
+@pytest.mark.parametrize("value", [0, 1, 1.0, "true", None])
+def test_paired_advantage_requires_strict_bool(value):
+    with pytest.raises(ValueError, match="paired_advantage must be a bool"):
+        SearchConfig(paired_advantage=value)

@@ -38,11 +38,14 @@ def test_injected_identity_driver_reproduces_existing_paired_harness(monkeypatch
         assert actual == expected
 
 
-def test_learned_heads_finish_real_mirrored_game_and_count_actual_cost(monkeypatch, tmp_path):
+@pytest.mark.parametrize("paired,depth", [(False, 1), (True, 1), (False, 3)])
+def test_learned_heads_finish_real_mirrored_game_and_count_actual_cost(monkeypatch, tmp_path, paired, depth):
     monkeypatch.setenv("SHENGJI_REQUIRE_VOIDS", "1")
     monkeypatch.setattr(S, "loaded_heads", lambda *a: Heads())
     cfg = config("both")
     cfg["candidate_select_worlds"] = 2
+    cfg["paired_advantage"] = paired
+    cfg["leaf_tricks"] = depth
     shard = S.run_cluster(cfg, 0)
     assert [r["mirror"] for r in shard["records"]] == [0, 1]
     for row in shard["records"]:
@@ -59,6 +62,10 @@ def test_learned_heads_finish_real_mirrored_game_and_count_actual_cost(monkeypat
             assert decision["selection_N"] == (2 if trace["side"] == "arm" else 1)
             assert decision["report_worlds"] == 30
             assert decision["report"]["worlds"] == 30
+            if trace["side"] == "arm":
+                assert decision["leaf_tricks"] == depth
+                assert decision["ranking_basis"] == (
+                    "paired_advantage" if paired else "absolute_value_mean")
     path = tmp_path / "cluster-00000.json"
     S._publish(path, shard)
     assert S.reopen_shard(path, cfg, 0) == shard

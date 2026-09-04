@@ -33,7 +33,7 @@ class SearchError(RuntimeError):
 @dataclass(frozen=True)
 class SearchConfig:
     arm: str = "both"             # prior / value / both / uniform
-    leaf_tricks: int = 1          # 0 = immediate afterstate, 1 = current trick
+    leaf_tricks: int = 1          # 0 = afterstate, 1/3 = completed tricks
     prior_uniform_mass: float = 0.05
     puct_scale: float = 40.0
     legal_limit: int = 200_000    # refuse overflow; NEVER use a capped prefix
@@ -41,12 +41,15 @@ class SearchConfig:
     root_noise_fraction: float = 0.25
     root_noise_concentration: float = 10.0
     temperature: float = 1.0
+    paired_advantage: bool = False
 
     def __post_init__(self):
         if self.arm not in {"prior", "value", "both", "uniform"}:
             raise ValueError("unknown learned-search arm")
-        if type(self.leaf_tricks) is not int or self.leaf_tricks not in (0, 1):
-            raise ValueError("leaf_tricks must be 0 or 1")
+        if type(self.paired_advantage) is not bool:
+            raise ValueError("paired_advantage must be a bool")
+        if type(self.leaf_tricks) is not int or self.leaf_tricks not in (0, 1, 3):
+            raise ValueError("leaf_tricks must be 0, 1, or 3")
         if type(self.legal_limit) is not int or self.legal_limit < 2:
             raise ValueError("legal_limit must be an integer >= 2")
         for name in ("prior_uniform_mass", "root_noise_fraction"):
@@ -201,12 +204,16 @@ class LearnedSearchBot(REGISTRY["mc-s0-report-lcb"]):
                 continue
             hands, buried = sampled
             scale = math.sqrt(sum(visits) + 1)
+            def exploitation(i):
+                if not self.search_config.paired_advantage:
+                    return totals[i] / n_by[i] if n_by[i] else 0.0
+                return d_sum[i] / n_by[i] if i and n_by[i] else 0.0
             # Pairing evaluates the incumbent regardless of the allocation.
             # At least one alternative must be investigated before asking the
             # unchanged report stage to judge a challenger.
             pool = range(1, k) if worlds == 0 else range(k)
             index = max(pool, key=lambda i: (
-                (totals[i] / n_by[i] if n_by[i] else 0.0)
+                exploitation(i)
                 + self.search_config.puct_scale * root["priors"][i]
                 * scale / (1 + visits[i]), -i))
             session = self._new_exact_world_session(rnd, buried)
@@ -249,8 +256,13 @@ class LearnedSearchBot(REGISTRY["mc-s0-report-lcb"]):
             "dummy_rollouts": dummy, "budget": budget, "short": spent != budget,
             "survivors": len(survivors), "survivor_indices": survivors,
             "n_by_candidate": n_by,
+            "ranking_basis": ("paired_advantage" if
+                               self.search_config.paired_advantage else
+                               "absolute_value_mean"),
         }
-        return totals, d_sum, d_sq, n_by, worlds, spent
+        ranking_totals = ([0.0] + d_sum[1:] if self.search_config.paired_advantage
+                          else totals)
+        return ranking_totals, d_sum, d_sq, n_by, worlds, spent
 
     def decide_play(self, rnd, seat):
         before_counts = dict(self.learned_counts)
@@ -289,6 +301,9 @@ class LearnedSearchBot(REGISTRY["mc-s0-report-lcb"]):
                 "selection_units": ("acting-team signed levels x40" if
                                     self.search_config.arm in {"value", "both"} else "acting-team points"),
                 "report_evaluator": "production full heuristic rollout, point units",
+                "ranking_basis": ("paired_advantage" if
+                                   self.search_config.paired_advantage else
+                                   "absolute_value_mean"),
                 "enumeration_secs": root["enumeration_secs"],
                 "inference_secs": self.learned_inference_secs - before_inference,
                 "decision_wall_secs": time.perf_counter() - before,

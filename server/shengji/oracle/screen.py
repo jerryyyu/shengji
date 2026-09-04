@@ -618,7 +618,8 @@ def _history_digest(history) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
-def play_screen_round(config: dict, cluster: int, seed: int, mirror: int
+def play_screen_round(config: dict, cluster: int, seed: int, mirror: int, *,
+                      bot_factory=None, counter_fn=None, game_factory=None
                       ) -> tuple[dict, dict]:
     """One round: arm vs baseline on deal ``seed``; ``mirror`` swaps teams.
 
@@ -626,14 +627,19 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int
     ``seed``/``seed+500_000`` and the opponent ``seed+1_000_000``/
     ``seed+1_500_000``; mirror 0 seats the arm at 0 and 2 (team 0).
     """
-    a1 = make_side_bot(config, "arm", seed)
-    a2 = make_side_bot(config, "arm", seed + 500_000)
-    b1 = make_side_bot(config, "baseline", seed + 1_000_000)
-    b2 = make_side_bot(config, "baseline", seed + 1_500_000)
+    # Narrow dependency injection lets learned heads reuse the exact mirrored
+    # game driver and scoring convention without registering a live policy.
+    factory = bot_factory or make_side_bot
+    count = counter_fn or work_counters
+    a1 = factory(config, "arm", seed)
+    a2 = factory(config, "arm", seed + 500_000)
+    b1 = factory(config, "baseline", seed + 1_000_000)
+    b2 = factory(config, "baseline", seed + 1_500_000)
     pol = [a1, b1, a2, b2] if mirror == 0 else [b1, a1, b2, a2]
     arm_team = 0 if mirror == 0 else 1
     started = time.perf_counter()
-    log = play_round(Game(random.Random(seed)), pol, record=True)
+    game = (game_factory or Game)(random.Random(seed))
+    log = play_round(game, pol, record=True)
     wall = time.perf_counter() - started
     arm_won = int(log.winner_team == arm_team)
     level = max(1, int(log.level_change))
@@ -658,8 +664,8 @@ def play_screen_round(config: dict, cluster: int, seed: int, mirror: int
         "baseline_utility": -arm_utility,
         "plays": len(log.history),
         "history_sha256_16": _history_digest(log.history),
-        "work": {"arm": work_counters([a1, a2]),
-                 "baseline": work_counters([b1, b2])},
+        "work": {"arm": count([a1, a2]),
+                 "baseline": count([b1, b2])},
     }
     timing = {
         "cluster": cluster, "seed": seed, "mirror": mirror,

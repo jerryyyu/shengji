@@ -21,8 +21,8 @@ closed `NO_PRIMARY_POLICY_SIGNAL` (a better hidden-hand predictor changed
 1 of 104 decisions and no outcomes); the privileged-teacher lane produced its
 first complete 32-game Luna dataset after five attempts; Value-Afterstate V2
 produced six honest refusals and no data under its confirmatory protocol. The
-2026-09-04 retrospective (ledger `0088544f`) found the cause in the strategy,
-not the execution — component metrics that never transported, and deploy-grade
+2026-09-04 retrospective (ledger `0088544f`) found causes in both the strategy and
+the process — component metrics that never transported, and deploy-grade
 ceremony on exploratory runs — and reset the program: V2 now runs in a
 lightweight DEV mode, each lane's ceiling is measured before further spend,
 and the planner (not information) is the lever being attacked. See
@@ -175,8 +175,8 @@ validation battery.
 | `CODEX_WORKFLOW.md` | project-scoped Codex setup and exact rollback |
 | `RESEARCH_PRINCIPLES.md` | durable scientific doctrine, estimands and evidence boundaries |
 | `MAINTENANCE.md` | daily routine (any session can execute it) |
-| `HANDOFF_ACTIVE.md` | current fleet truth and compact executable Codex/Claude mailbox |
-| `HANDOFF_REVIEW.md` | short active exact-review mailbox; completed ledgers are archived |
+| `HANDOFF_ACTIVE.md` | compact current gate summary, fleet, and open review asks; history is rotated to `docs_archive/` |
+| `HANDOFF_REVIEW.md` | append-only exact-review ledger on canonical `main`; entries before 2026-09-01 are rotated losslessly into `docs_archive/` |
 | `DEPLOY.md` / `PROTOCOL.md` | hosting + wire protocol |
 | `web/README.md` | client architecture, protocol contract, UI invariants |
 | `docs_archive/` | compacted history (RL chronology, old job snapshots, resolved work/reviews) |

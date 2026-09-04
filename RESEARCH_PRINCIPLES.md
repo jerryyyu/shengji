@@ -3,7 +3,8 @@
 This document records the durable rules for choosing Shengji research. It is
 not a run queue, an evidence ledger, or execution authority. `BACKLOG.md` owns
 current work, `AI_POLICIES.md` owns measured policy evidence, `RL_PLAN.md` owns
-the roadmap, and `BELIEF_V1_SPEC.md` owns the next representation milestone.
+the roadmap. The BELIEF V1 specification is archived in `docs_archive/`; the
+lane is closed.
 Execution, parallelism, long-run readiness and review discipline live in
 `AGENTS.md`; this file stays limited to scientific choices and claim meaning.
 
@@ -174,8 +175,9 @@ spends again: an oracle ceiling (give production search the perfect version of
 the quantity — true hidden worlds, a near-perfect leaf value — and measure the
 gain; if the ceiling is small the lane is closed regardless of model quality),
 and a transport proof at the smallest scale that can show it (32 games are
-enough to test whether any consumer of teacher values beats production on
-those exact states). The C0 / PT-Sol0 pair is the standing example: identical
+enough for an exploratory transport screen — whether any consumer of teacher
+values moves search toward the teacher on those exact states — but not for a
+powered strength claim). The C0 / PT-Sol0 pair is the standing example: identical
 perfect information, a fixed planner lost, a flexible planner won — planner
 quality, not information, was the lever, and no amount of belief-model
 accuracy would have found that.

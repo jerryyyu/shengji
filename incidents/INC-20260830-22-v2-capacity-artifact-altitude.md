@@ -5,8 +5,7 @@
 **Severity**: S3 — a reviewed capacity admission was spent, but no scientific
 data, labels or outcomes were opened
 
-**Status**: repaired at `b6d5f256`; awaiting repaired-head source/capacity
-review
+**Status**: repaired at `b6d5f256`; the repaired head and its successors (`c3b135ce`, `2f649070`, `f7e9044d`) were reviewed and PASSed; the lane moved to DEV mode on 2026-09-04 (ledger `295136ba`)
 
 ## What happened
 

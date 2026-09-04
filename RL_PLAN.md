@@ -164,53 +164,30 @@ probability, never silently promoted to a deduction.
 
 ## R4 and R5
 
-### R4: obtain the first interpretable answer
+### R4: terminal — `NO_PRIMARY_POLICY_SIGNAL`
 
-R4 reuses the valid trained models, cache/index, capture, and reference assets
-from earlier resource-failed attempts. Serial R4 has now sealed all seven
-calibration-selection artifacts; its later failure was an omitted legacy-cache
-identity in mandatory reconstruction, not a calibration or model verdict. The
-replacement terminal imports those exact authenticated calibration bytes and
-parallelizes decision scoring across 16 workers. Redundant Perf calibration is
-preserved only until the replacement passes reviewed pre-test readiness.
+R4 is closed (ledger 2026-08-31). Offline, the preserved synthetic-primary
+cohort reduced held-out count Brier by 21.40% versus REF-C, but the
+permuted-label control also improved materially and failed on demand — a
+predictive channel, not behavioral belief learning. On the opened-DEV
+consumer diagnostic (104 rounds, identical ballot/work/RNG), belief weighting
+was operationally indistinguishable from the production sampler: ESS 97–99.5%
+of maximum, final-action flips 1/104 (control 0/104), paired true-world value
+difference exactly zero for both primary−production and primary−control. The
+sealed R4 test population was never opened and stays sealed. R4 checkpoints
+are preserved as diagnostics only.
 
-The sole R4 test population is still unopened. No cutover is safe until:
+### R5: closed unless the oracle-belief ceiling is positive
 
-- the imported calibration, model/cache identities, all-rank capacity receipt,
-  and exact freeze receive one consolidated review;
-- exact source/runtime/input identities match that reviewed packet;
-- score-free readiness reopens every selected model and all 16 workers while
-  proving both old and replacement test namespaces remain unopened;
-- stopping the redundant Perf lane is durably recorded only after readiness;
-- the one-test-open path has sufficient deadline/disk/memory headroom; and
-- immediate and independent terminal reconstruction reproduce exact bytes
-  without reopening training authority.
-
-R4 is an offline belief verdict, not a policy or strength run.
-
-### R5: efficient, diverse, and recoverable successor — paused pending R4
-
-Do not resume, review, freeze, or launch R5 until R4 has a reproduced terminal
-verdict and its learning curves have been interpreted with the user. Preserve
-the existing reusable artifacts and implementation work. If R5 remains
-justified afterward, it should retain the scientific estimand while repairing
-these operational lessons:
-
-- all trump ranks rather than a rank-2-only convenience population;
-- player/deal-disjoint human full-round data alongside simulation;
-- host-independent sealed inputs and an exact-host rehearsal/freeze;
-- parallel cache construction and projection/scoring where bit identity holds;
-- GPU/device use only where measured faster and deterministic enough;
-- epoch-level train/calibration curves and per-stage percent/ETA telemetry;
-- graceful truncation at the best complete common epoch rather than erasing a
-  healthy still-improving cohort at the wall;
-- durable, independently reopenable capture/reference/cache/checkpoint assets;
-- deadlines checked inside long loops; and
-- one consolidated source+freeze review.
-
-R5 does not warm-start the confirmatory cohort from an inspected R4 winner.
-R4 checkpoints may be retained as named diagnostics or future architecture
-seeds, but candidate selection and terminal claims follow the frozen R5 rule.
+No R5 source, freeze, rehearsal, or execution. The lane reopens only if the
+oracle-belief ceiling screen — the production sampler given the true hidden
+worlds versus production, on existing opened roots — shows a gain worth a
+learned model. C0 (perfect information inside the fixed production planner
+lost to both parents) already suggests that ceiling is near zero. The
+operational lessons listed for R5 in earlier revisions (all trump ranks,
+disjoint human data, host-independent inputs, parallel cache/projection,
+curves, graceful truncation, in-loop deadlines) are retained as reusable
+artifacts and performance work, not as a reason to run.
 
 ### Offline gates
 
@@ -290,16 +267,16 @@ continuation, candidate ballot, or planning procedure. Before distilling a
 privileged teacher, prove the teacher itself beats the public production policy
 on exact states and then in realistic full-round populations.
 
-The current PT-Luna artifact already contributes 1,578 mechanically reopenable
-Luna-controlled decisions across early, middle, and late full-round play, and
-PT-Sol provides the higher-quality policy parent.
-Do not scale more identical teacher games merely to accumulate rows. First use
-Value-Afterstate V0 to identify where held-out value error, action regret, or
-planner disagreement is concentrated. Then collect fresh teacher trajectories
-for those preregistered surfaces, preserving action values, rollout allocation,
-and partnership plans rather than merely imitating each agent's argmax. A
-separate fresh-root confirmation can measure teacher efficacy; it must not be
-silently pooled with these opened roots.
+The sealed `pt-luna-rpc-isolated-b0b1bd95-r1` dataset (32 complete games,
+ledger `6c71bee3`) plus the 1,578 earlier reopenable Luna decisions are the
+teacher artifact; PT-Sol remains the higher-quality reference. Teacher
+collection is closed. The current path is: pretrain Value V2 on its own
+D256 production-continuation population (DEV mode, D64 first), fine-tune on
+Luna outcomes as value targets with a held-out teacher-agreement slice, and
+test whether search with the fine-tuned leaf value moves toward the teacher on
+the states where the flexible planner disagreed with production and won. That
+is an exploratory transport screen, not a powered strength claim; a fresh-root
+tier ii/iii comparison follows only if it transports.
 
 ## Search and teacher strategy
 
@@ -417,5 +394,8 @@ oracle or infer true-person disjointness from mutable display names.
 The compact plan above is the current research contract. Detailed v1–v13,
 DMC/DMC2, Direct-Q, O0, Teacher T3/T4, S3–S6, H0, high-N, and old artifact
 chronology stays in the existing RL archives, `HANDOFF_REVIEW.md`, incident
-records, and Git history. Update this file only when the architecture,
-estimand, or live decision tree changes.
+records, and Git history. The closed BELIEF V1 design set
+(`BELIEF_V1_SPEC.md`, `BELIEF_V1_V2_DESIGN.md`, `BELIEF_V1_B2_DESIGN.md`,
+`BELIEF_V1_B2_RUNBOOK.md`) and `SUPHX_MICRO_SPEC.md` moved to `docs_archive/`
+on 2026-09-04. Update this file only when the architecture, estimand, or live
+decision tree changes.

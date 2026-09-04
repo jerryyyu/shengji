@@ -7,7 +7,7 @@
         [--aux-search-mean W] [--cache-workers N] [--resident-bytes B]
         [--privacy-witness-every 1 [--allow-sampled-privacy-witness]] ...
     train_v0.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
-        [--split test|val|train|all]
+        [--split test|novel|val|train|all]
 
 Outputs in ``--out``: ``receipt.json`` (git sha, encoder identity, data
 manifests + shard hashes, config hash, seeds, split summary, per-epoch
@@ -34,9 +34,24 @@ VALIDATION split, the rest TRAIN (default 80/10/10).  Roles are fixed:
   stratified prior fitted on TRAIN; refused when it shares a deal key with
   any row of the data stores (``final.luna``).
 
-``check_receipt`` refuses a receipt whose labels contradict these roles
-(a validation block marked held out, a headline that is not held out, a
-calibration fitted on a held-out split, a Luna set overlapping training).
+Populations (persisted identities)
+----------------------------------
+The deal keys of every part (``fit_population``: train = the fit
+population, val = the selection population, test) are persisted in every
+checkpoint and receipt (``population``, with per-part digests).
+``evaluate`` checks whatever it is asked to score against THOSE, never
+against the caller's store: a Luna set is refused when it shares a deal
+with the fit or selection population (with or without ``--data``); a
+``--data`` store's rows are scored by the checkpoint's persisted part
+(``--split test|val|train``; a different store is detected and reported
+in ``split.population_match``, and a part with no rows in it refuses) or
+as ``--split novel`` (the deals the checkpoint never saw; held out).
+Every held-out block carries its ``population`` report with an explicit
+zero overlap; ``check_receipt`` refuses a receipt whose labels contradict
+the roles (a validation block marked held out, a headline that is not
+held out, a calibration fitted on a held-out split, a held-out block
+whose population was not checked -- ``None`` -- or overlaps, a Luna
+overlap that is not an explicit zero, non-disjoint populations).
 
 Privacy, residency, cache
 -------------------------
@@ -73,7 +88,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Collection, Mapping, Sequence
 
 import numpy as np
 import torch
@@ -81,17 +96,19 @@ import torch
 from ..harvest.schema import canonical_json
 from .baselines import (StratifiedPrior, apply_affine, fit_affine, fit_incumbent_eps,
                         prior_summary, reliability_table, value_summary)
-from .data import (CACHE_WORKERS_CAP, PRIVACY_TRIALS, Block, BlockStore, Residency, Store,
-                   TrainDataError, cache_path, check_witness_every, collate,
+from .data import (CACHE_WORKERS_CAP, DEAL_KEY_SCHEMA, PRIVACY_TRIALS, Block, BlockStore,
+                   Residency, Store, TrainDataError, cache_path, check_witness_every, collate,
                    default_cache_workers, default_resident_bytes, discover_store,
-                   encoder_identity, ensure_caches, physical_memory_bytes, read_column,
+                   encoder_identity, ensure_caches, first_deals, physical_memory_bytes,
                    split_counts, split_deals, split_mask)
 from .model import (DEFAULT_ARCH, DEFAULT_HIDDEN, MODEL_SCHEMA, SEARCH_MEAN_SCALE,
                     ValuePriorNet, batch_losses, prior_cross_entropy, prior_log_probs,
                     trunk_for)
 
-RECEIPT_SCHEMA = "shengji-train-v0-receipt-v2"     # v2: three-way split, roles, residency
-CHECKPOINT_SCHEMA = "shengji-train-v0-checkpoint-v2"
+RECEIPT_SCHEMA = "shengji-train-v0-receipt-v3"     # v3: + persisted populations
+CHECKPOINT_SCHEMA = "shengji-train-v0-checkpoint-v3"
+POPULATION_SCHEMA = "shengji-train-v0-population-v1"
+EVAL_SPLITS = ("test", "novel", "val", "train", "all")
 PRIOR_TARGETS = ("softmax", "final")
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
@@ -102,7 +119,7 @@ DEFAULTS = {
 }
 REQUIRED_RECEIPT_FIELDS = (
     "schema", "command", "git", "encoder", "data", "config", "config_sha256", "seeds",
-    "split", "counts", "epochs", "final", "headline", "selection", "baselines",
+    "split", "population", "counts", "epochs", "final", "headline", "selection", "baselines",
     "calibration", "checkpoints", "wall_secs", "peak_memory", "residency",
     "privacy_witness", "device", "versions", "argv", "started",
 )
@@ -116,7 +133,9 @@ SPLIT_ROLES = {
     "test": {"held_out": True,
              "role": "held-out: reported metrics; never read by selection or calibration"},
     "luna": {"held_out": True,
-             "role": "held-out: external evaluation set, disjoint from the data stores by deal"},
+             "role": "held-out: external evaluation set, disjoint from the fit/selection deals"},
+    "novel": {"held_out": True,
+              "role": "held-out: deals the checkpoint never saw (a foreign store's clean rows)"},
 }
 HEADLINE = "test"
 SELECTION_SPLIT = "val"
@@ -176,12 +195,6 @@ def _merge_counts(total: dict, counts: dict) -> None:
             total[key] = total.get(key, 0) + value
 
 
-def _first_deals(path: str, limit: int) -> list[str]:
-    """The first ``limit`` deal keys of a cache file in file order."""
-    keys = dict.fromkeys(str(k) for k in read_column(path, "deal_key"))
-    return list(keys)[:int(limit)]
-
-
 def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | None,
                    witness_seed: int, progress: Callable[[str], None] | None = None,
                    cache_workers: int | None = None, residency: Residency | None = None,
@@ -234,7 +247,7 @@ def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | N
             # merged/jsonl layouts: keep the first N deals in file order
             kept: dict[str, None] = {}
             for _shard, path in entries[first:]:
-                for key in _first_deals(path, int(limit_clusters)):
+                for key in first_deals(path, int(limit_clusters)):
                     if len(kept) < int(limit_clusters):
                         kept.setdefault(key, None)
             for i in range(first, len(entries)):
@@ -518,14 +531,86 @@ def labelled(name: str, metrics: dict) -> dict:
     return {**metrics, "split": name, "held_out": bool(role["held_out"]), "role": role["role"]}
 
 
+# ------------------------------------------------------------- populations
+
+def fit_population(assignment: Mapping[str, str], *, stores: Sequence[Store]) -> dict:
+    """The deal identities a run fits, selects and tests on: the sorted
+    deal keys of every part (``train`` = the fit population, ``val`` = the
+    selection population, ``test``), their digests, and the stores they
+    came from.  Persisted in every checkpoint and receipt so that a later
+    evaluation can be checked against THESE deals rather than against
+    whatever store the caller supplies."""
+    parts = {part: sorted(k for k, v in assignment.items() if v == part)
+             for part in ("train", "val", "test")}
+    digest = {part: hashlib.sha256("\n".join(keys).encode("utf-8")).hexdigest()
+              for part, keys in parts.items()}
+    return {
+        "schema": POPULATION_SCHEMA,
+        "deal_key_schema": DEAL_KEY_SCHEMA,
+        **parts,
+        "counts": {part: len(keys) for part, keys in parts.items()},
+        "digest": digest,
+        "data": [{"root": s.root, "layout": s.layout,
+                  "shards": [{"label": sh.label, "sha256": sh.sha256} for sh in s.shards]}
+                 for s in stores],
+    }
+
+
+def population_sets(population: Mapping[str, Any] | None) -> dict[str, set[str]]:
+    """``{"train", "val", "test"}`` as sets from a persisted population,
+    validated: the schema, and the three parts pairwise disjoint."""
+    if not isinstance(population, Mapping) or population.get("schema") != POPULATION_SCHEMA:
+        raise TrainError("checkpoint carries no persisted fit/selection/test populations "
+                         f"({POPULATION_SCHEMA}); refusing to evaluate an unknown population")
+    if population.get("deal_key_schema") != DEAL_KEY_SCHEMA:
+        raise TrainError("population deal-key schema differs from this build's")
+    sets = {}
+    for part in ("train", "val", "test"):
+        keys = population.get(part)
+        if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+            raise TrainError(f"population.{part} is not a list of deal keys")
+        sets[part] = set(keys)
+    if sets["train"] & sets["val"] or sets["train"] & sets["test"] or sets["val"] & sets["test"]:
+        raise TrainError("persisted populations overlap: the checkpoint's split is not a split")
+    return sets
+
+
+def population_report(keys: Collection[str], population: Mapping[str, Any]) -> dict:
+    """How a set of deal keys relates to a persisted population: counts in
+    every part, the deals it never saw (``novel``), the overlap with the
+    fit (train) and selection (val) populations, and the digest it was
+    checked against.  A held-out label requires both overlaps to be 0."""
+    keys = set(str(k) for k in keys)
+    sets = population_sets(population)
+    novel = keys - sets["train"] - sets["val"] - sets["test"]
+    return {
+        "deals": len(keys),
+        "in_train": len(keys & sets["train"]),
+        "in_val": len(keys & sets["val"]),
+        "in_test": len(keys & sets["test"]),
+        "novel": len(novel),
+        "shared_with_fit": len(keys & sets["train"]),
+        "shared_with_selection": len(keys & sets["val"]),
+        "same_population": keys == (sets["train"] | sets["val"] | sets["test"]),
+        "checked_against": dict(population["digest"]),
+    }
+
+
+def _is_zero(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value == 0
+
+
 def check_receipt(receipt: dict) -> dict:
     """Refuse a receipt whose split labels contradict the fixed roles:
     every reported split must carry its fixed ``held_out`` flag (a
     validation block can never be labelled held out), the headline (when
     the receipt has one; a ``train`` receipt always does) must be a
     reported held-out split, the selection and calibration splits must be
-    tuning splits, and a Luna set checked against the data stores must
-    share no deal with them.  Returns the receipt."""
+    tuning splits, every held-out block must have been CHECKED against
+    the persisted fit/selection populations with zero overlap (an
+    unchecked population -- ``None`` -- is refused), the Luna overlap must
+    be an explicit zero, and a train receipt must carry disjoint
+    populations.  Returns the receipt."""
     final = receipt.get("final") or {}
     headline = receipt.get("headline")
     for name, block in final.items():
@@ -539,6 +624,14 @@ def check_receipt(receipt: dict) -> dict:
                 f"receipt: final.{name} is labelled held_out={block.get('held_out')!r}; "
                 f"the {name} split is {'' if role['held_out'] else 'NOT '}held out "
                 f"({role['role']})")
+        if block.get("held_out"):
+            pop = block.get("population") or {}
+            for field in ("shared_with_fit", "shared_with_selection"):
+                if not _is_zero(pop.get(field)):
+                    raise TrainError(
+                        f"receipt: final.{name} is labelled held out but its population "
+                        f"was not checked against the checkpoint's fit/selection deals "
+                        f"({field}={pop.get(field)!r})")
     if receipt.get("command") == "train" and headline is None:
         raise TrainError("receipt: a train receipt needs a held-out headline split")
     if headline is not None and (headline not in final or not final[headline].get("held_out")):
@@ -548,6 +641,7 @@ def check_receipt(receipt: dict) -> dict:
         sel = selection.get("split")
         if sel not in SPLIT_ROLES or SPLIT_ROLES[sel]["held_out"]:
             raise TrainError(f"receipt: selection split {sel!r} must be a tuning split")
+        population_sets(receipt.get("population"))
     cal = receipt.get("calibration")
     if cal is not None:
         fitted = cal.get("fitted_on")
@@ -558,8 +652,11 @@ def check_receipt(receipt: dict) -> dict:
             if c is not None and bool(c.get("in_sample")) != (name == fitted):
                 raise TrainError(f"receipt: final.{name}.calibration.in_sample mislabelled")
     luna = receipt.get("luna")
-    if luna is not None and luna.get("shared_deals_with_training") not in (0, None):
-        raise TrainError("receipt: the Luna set shares deals with the data stores")
+    if "luna" in final and final["luna"].get("held_out"):
+        shared = None if luna is None else luna.get("shared_deals_with_training")
+        if not _is_zero(shared):
+            raise TrainError("receipt: the Luna set's overlap with the fit/selection deals is "
+                             f"unknown or non-zero ({shared!r}); it cannot be labelled held out")
     return receipt
 
 
@@ -567,7 +664,9 @@ def check_receipt(receipt: dict) -> dict:
 
 def save_checkpoint(path: Path, model: ValuePriorNet, *, config: dict, epoch: int,
                     selection: dict, baselines: dict, calibration: dict | None,
-                    split: dict, metrics: dict | None = None) -> None:
+                    split: dict, population: dict, metrics: dict | None = None) -> None:
+    """``population`` (``fit_population``): the deal identities this model
+    was fitted, selected and tested on, carried by every checkpoint."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": CHECKPOINT_SCHEMA,
@@ -581,6 +680,7 @@ def save_checkpoint(path: Path, model: ValuePriorNet, *, config: dict, epoch: in
         "baselines": baselines,
         "calibration": calibration,
         "split": split,
+        "population": population,
         "metrics": metrics,
     }
     tmp = path.with_name(path.name + ".tmp")
@@ -806,6 +906,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
                          "need all three (at least three deals)")
     say(f"split: deals train={deals['train']} val={deals['val']} test={deals['test']} "
         f"records train={n_rows['train']} val={n_rows['val']} test={n_rows['test']}")
+    population = fit_population(assignment, stores=prepared.stores)
     baselines = fit_baselines(store, masks["train"])
     say(f"baselines: stratified cells={len(baselines['stratified_prior']['cells'])} "
         f"empty={baselines['stratified_prior']['empty_cells']} "
@@ -820,6 +921,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
                                        residency=residency, witness_every=witness_every,
                                        allow_sampled_witness=allow_sampled_privacy_witness)
         refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
+        luna_population = population_report(luna_prepared.block_store.keys(), population)
         luna = (luna_prepared.stores[0], luna_prepared.block_store)
         say(f"luna: {luna_prepared.counts['records_total']} rows over "
             f"{luna_prepared.counts['deals_total']} deals, none shared with the data stores")
@@ -884,7 +986,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
                            "val_role": SPLIT_ROLES["val"]["role"], "secs": secs})
         save_checkpoint(ckpt_dir / f"epoch-{epoch:02d}.pt", model, config=config, epoch=epoch,
                         selection={**selection, "val": val_metrics}, baselines=baselines,
-                        calibration=None, split=split)
+                        calibration=None, split=split, population=population)
         improved = val_metrics["loss"] is not None and val_metrics["loss"] < best["loss"]
         if improved:
             best = {"epoch": epoch, "loss": float(val_metrics["loss"])}
@@ -918,22 +1020,29 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         "val": labelled("val", full_metrics(ev_val, baselines, calibration_in_sample=True,
                                             **metric_kw)),
     }
+    final["test"]["population"] = population_report(population["test"], population)
+    final["val"]["population"] = population_report(population["val"], population)
     luna_receipt = None
     if luna is not None:
         luna_store, luna_blocks = luna
         ev_luna = run_eval(model, luna_blocks, lambda b: np.ones(b.n, dtype=bool), dev,
                            **eval_kw)
         final["luna"] = labelled("luna", full_metrics(ev_luna, baselines, **metric_kw))
+        final["luna"]["population"] = luna_population
         final["luna"]["prior_target_note"] = (
             "Luna rows carry no search evidence: only the final (played-action) "
             "target is derivable; the softmax block is empty by construction")
         luna_receipt = {**luna_store.describe(), "counts": luna_prepared.counts,
                         "cache": luna_prepared.cache_files,
-                        "shared_deals_with_training": 0}
+                        "shared_deals_with_training": int(luna_population["shared_with_fit"]
+                                                          + luna_population["shared_with_selection"]),
+                        "shared_with_test": int(luna_population["in_test"]),
+                        "population": luna_population,
+                        "checked_against": dict(population["digest"])}
     selection = {**selection, "best_epoch": best["epoch"], "best_loss": best["loss"]}
     save_checkpoint(out_dir / "best.pt", model, config=config, epoch=best["epoch"],
                     selection=selection, baselines=baselines, calibration=calibration,
-                    split=split, metrics=final)
+                    split=split, population=population, metrics=final)
     wall = round(time.perf_counter() - started, 3)
     receipt = {
         "schema": RECEIPT_SCHEMA,
@@ -955,6 +1064,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         "luna": luna_receipt,
         "counts": prepared.counts,
         "split": split,
+        "population": population,
         "headline": HEADLINE,
         "selection": selection,
         "baselines": baselines,
@@ -1007,13 +1117,30 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
              privacy_witness_every: int = 1, allow_sampled_privacy_witness: bool = False,
              argv: list[str] | None = None,
              log: Callable[[str], None] | None = print) -> dict:
-    """Score a checkpoint on a data store's split (default: the TEST split
-    of the checkpoint's own three-way split) and/or the Luna set with the
-    checkpoint's own baselines and calibration."""
+    """Score a checkpoint with its own baselines and calibration against
+    populations checked against the deal identities the checkpoint was
+    FITTED and SELECTED on (``population`` persisted in the checkpoint;
+    a checkpoint without one is refused):
+
+    * ``--data DIR --split test|val|train``: the rows of the store whose
+      deals belong to the checkpoint's persisted part (the split is NOT
+      re-derived from the store: a different store is detected and
+      reported in ``split.population_match``, and a part with no rows in
+      the store refuses); only ``test`` is held out;
+    * ``--split novel``: the store's rows whose deals the checkpoint never
+      saw (a foreign store's clean population; held out);
+    * ``--split all``: every row of the store, not held out;
+    * ``--eval-luna``: refused when it shares a deal with the fit or
+      selection population, whether or not ``--data`` is given; its
+      overlap with the test population is reported.
+
+    Every held-out block carries its ``population`` report (zero overlap
+    with fit and selection, explicitly); ``check_receipt`` refuses
+    anything else."""
     if not data and not eval_luna:
         raise TrainError("evaluate needs --data DIR and/or --eval-luna PATH")
-    if split not in ("train", "val", "test", "all"):
-        raise TrainError("--split must be train, val, test or all")
+    if split not in EVAL_SPLITS:
+        raise TrainError(f"--split must be one of {EVAL_SPLITS}")
     try:
         witness_every = check_witness_every(privacy_witness_every, allow_sampled_privacy_witness)
     except TrainDataError as exc:
@@ -1031,6 +1158,8 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     config = payload["config"]
     if "test_fraction" not in config:
         raise TrainError(f"{checkpoint}: trained without a test split; refusing to evaluate")
+    population = payload.get("population")
+    sets = population_sets(population)          # refuses a checkpoint without populations
     seeds = seed_everything(int(config["seed"]), dev)
     baselines = payload["baselines"]
     calibration = payload.get("calibration")
@@ -1048,50 +1177,73 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     data_receipt = []
     counts: dict = {}
     split_info = None
-    store = None
     decoded = 0
+    fitted = (calibration or {}).get("fitted_on")
     if data:
         prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, **prepare_kw)
         store = prepared.block_store
         decoded = prepared.counts["decoded_bytes"]
-        assignment = split_deals(store.keys(), seed=int(config["seed"]),
-                                 val_fraction=float(config["val_fraction"]),
-                                 test_fraction=float(config["test_fraction"]))
-        if split == "all":
-            mask_fn = lambda b: np.ones(b.n, dtype=bool)  # noqa: E731
-        else:
-            mask_fn = lambda b, part=split: split_mask(b, assignment, part)  # noqa: E731
+        data_keys = set(store.keys())
+        match = population_report(data_keys, population)
+        say(f"population: store deals={match['deals']} in_train={match['in_train']} "
+            f"in_val={match['in_val']} in_test={match['in_test']} novel={match['novel']} "
+            f"same_as_checkpoint={match['same_population']}")
+        parts = {"train": sets["train"], "val": sets["val"], "test": sets["test"],
+                 "novel": data_keys - sets["train"] - sets["val"] - sets["test"],
+                 "all": data_keys}
+        selected = parts[split] & data_keys
+        if not selected:
+            raise TrainError(
+                f"--data {data}: no deal of the checkpoint's {split!r} population is in this "
+                f"store ({match}); a foreign store's unseen deals are --split novel")
+        selected_arr = np.asarray(sorted(selected), dtype=str)
+        mask_fn = lambda b: np.isin(b.deal_key, selected_arr)  # noqa: E731
         ev = run_eval(model, store, mask_fn, dev, **eval_kw)
-        fitted = (calibration or {}).get("fitted_on")
         metrics = full_metrics(ev, baselines, calibration_in_sample=(split == fitted),
                                **metric_kw)
         if split == "all":
-            final["all"] = {**metrics, "split": "all", "held_out": False,
-                            "role": "every split together (train + val + test); not held out"}
+            block = {**metrics, "split": "all", "held_out": False,
+                     "role": "every row of the store (whatever part); not held out"}
         else:
-            final[split] = labelled(split, metrics)
+            block = labelled(split, metrics)
+        block["population"] = population_report(selected, population)
+        final[split] = block
         data_receipt = [{**s.describe(), "cache": prepared.cache_files} for s in prepared.stores]
         counts = prepared.counts
-        split_info = {"part": split, "seed": int(config["seed"]),
+        split_info = {"part": split, "records": int(ev["pred"].size), "deals": len(selected),
+                      "population_match": match,
+                      "checkpoint_population": dict(population["counts"]),
+                      "seed": int(config["seed"]),
                       "val_fraction": float(config["val_fraction"]),
-                      "test_fraction": float(config["test_fraction"]),
-                      "records": int(ev["pred"].size), **split_counts(assignment)}
+                      "test_fraction": float(config["test_fraction"])}
     luna_receipt = None
     luna_bytes = 0
     if eval_luna:
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None, **prepare_kw)
         luna_bytes = luna_prepared.counts["decoded_bytes"]
-        if store is not None:
-            refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
+        luna_population = population_report(luna_prepared.block_store.keys(), population)
+        shared = luna_population["shared_with_fit"] + luna_population["shared_with_selection"]
+        if shared:
+            raise TrainError(
+                f"--eval-luna {eval_luna} shares {shared} deal(s) with the checkpoint's "
+                f"fit/selection population (train {luna_population['shared_with_fit']}, val "
+                f"{luna_population['shared_with_selection']}): not held out; refusing")
+        say(f"luna: {luna_prepared.counts['records_total']} rows over "
+            f"{luna_population['deals']} deals; shared with fit/selection 0, with the "
+            f"checkpoint's test population {luna_population['in_test']}")
         ev = run_eval(model, luna_prepared.block_store, lambda b: np.ones(b.n, dtype=bool),
                       dev, **eval_kw)
         final["luna"] = labelled("luna", full_metrics(ev, baselines, **metric_kw))
+        final["luna"]["population"] = luna_population
         luna_receipt = {**luna_prepared.stores[0].describe(), "counts": luna_prepared.counts,
                         "cache": luna_prepared.cache_files,
-                        "shared_deals_with_training": 0 if store is not None else None,
-                        "overlap_checked_against": list(data or [])}
+                        "shared_deals_with_training": int(shared),
+                        "shared_with_test": int(luna_population["in_test"]),
+                        "population": luna_population,
+                        "checked_against": dict(population["digest"])}
     wall = round(time.perf_counter() - started, 3)
-    headline = "test" if "test" in final else ("luna" if "luna" in final else None)
+    headline = next((name for name in ("test", "novel", "luna")
+                     if name in final and final[name].get("held_out")), None)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "command": "evaluate",
@@ -1111,6 +1263,7 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
         "luna": luna_receipt,
         "counts": counts,
         "split": split_info,
+        "population": population,
         "headline": headline,
         "selection": payload.get("selection"),
         "baselines": baselines,
@@ -1205,7 +1358,9 @@ def build_parser() -> argparse.ArgumentParser:
     common(e)
     e.add_argument("--checkpoint", required=True)
     e.add_argument("--data", action="append", default=None)
-    e.add_argument("--split", choices=("train", "val", "test", "all"), default="test")
+    e.add_argument("--split", choices=EVAL_SPLITS, default="test",
+                   help="the checkpoint's persisted part of --data (test is held out), "
+                        "novel = deals the checkpoint never saw (held out), all = every row")
     e.add_argument("--n-boot", type=int, default=None)
     e.add_argument("--batch-size", type=int, default=None)
     return parser

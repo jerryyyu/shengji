@@ -91,11 +91,14 @@ RESIDENCY contract (bounded, honest)
 decoded blocks with a byte budget, shared by every store of one run): at
 most ``resident_bytes`` of decoded blocks are held at any time (``None``:
 everything stays resident; the store then IS the corpus in memory).  Room
-is made BEFORE a block is decoded (its size is in the cache meta), and
+is made BEFORE a block is decoded (its exact size is known up front: the
+cache meta's ``nbytes``, or ``filtered_nbytes`` for a ``keep``-filtered
+entry, which decodes ONLY its kept rows through ``load_block_rows``), and
 every array of a block is decoded straight into an anonymous ``mmap``
-(``_read_member``: no malloc'd temporary), so evicting a block unmaps its
-pages at once instead of leaving them in the allocator's cache -- the
-bound holds for the process RSS, not only for the bookkeeping.  A batch
+(``_read_member`` / ``_read_member_rows``: no malloc'd temporary, no
+unfiltered copy), so evicting a block unmaps its pages at once instead
+of leaving them in the allocator's cache -- the bound holds for the
+process RSS, not only for the bookkeeping.  A batch
 is gathered straight from the resident blocks of the current shuffle
 window (``gather``: one batch-sized copy, never a window-sized one), so
 the data's memory is ``resident_bytes`` plus one batch plus the per-window
@@ -731,12 +734,6 @@ class Block:
             arrays[name] = getattr(self, name)[idx]
         return Block(arrays, self.meta, self.path)
 
-    def anonymous(self) -> "Block":
-        """The same block with every array copied into an anonymous mmap
-        (``_anon_copy``), so that dropping it unmaps its pages at once."""
-        return Block({name: _anon_copy(getattr(self, name)) for name in self.ARRAYS},
-                     self.meta, self.path)
-
 
 #: bytes read per ``read`` call while decoding a cache member: small enough
 #: that the transient chunks are served from the allocator's recycled small
@@ -771,34 +768,281 @@ def _read_member_fallback(zf: zipfile.ZipFile, name: str) -> np.ndarray:
         return _anon_copy(npz[name])
 
 
-def _read_member(zf: zipfile.ZipFile, name: str) -> np.ndarray:
-    """Decode the ``.npy`` member ``name`` of a cache file straight into an
-    anonymous mmap (``readinto`` in ``_READ_CHUNK`` pieces; no malloc'd
-    temporary of the array's size).  A member in a layout this reader does
-    not handle (Fortran order, a later header version) falls back to
-    numpy's own reader, copied into an mmap afterwards."""
+def _member_header(fp) -> tuple[tuple[int, ...], np.dtype] | None:
+    """``(shape, dtype)`` of the ``.npy`` stream at ``fp`` (left positioned
+    at its data), or None for a layout this module does not decode itself
+    (Fortran order, object dtype, a later header version)."""
     readers = {(1, 0): npy_format.read_array_header_1_0,
                (2, 0): npy_format.read_array_header_2_0}
+    version = npy_format.read_magic(fp)
+    if version not in readers:
+        return None
+    shape, fortran, dtype = readers[version](fp)
+    if fortran or dtype.hasobject:
+        return None
+    return tuple(int(s) for s in shape), dtype
+
+
+def _row_bytes(shape: tuple[int, ...], dtype: np.dtype) -> int:
+    return int(dtype.itemsize) * int(np.prod(shape[1:], dtype=np.int64))
+
+
+def _bytes_view(array: np.ndarray) -> memoryview:
+    return memoryview(array.reshape(-1).view(np.uint8))
+
+
+def _read_exact(fp, view: memoryview, nbytes: int, *, what: str) -> None:
+    """``nbytes`` from ``fp`` into ``view``, in ``_READ_CHUNK`` pieces."""
+    got = 0
+    while got < nbytes:
+        chunk = fp.read(min(_READ_CHUNK, nbytes - got))
+        if not chunk:
+            raise TrainDataError(f"{what}: truncated")
+        view[got:got + len(chunk)] = chunk
+        got += len(chunk)
+
+
+def _skip(fp, nbytes: int, *, what: str) -> None:
+    """Discard ``nbytes`` of ``fp`` in ``_READ_CHUNK`` pieces (``ZipExtFile
+    .seek`` would read up to 16 MB at a time)."""
+    while nbytes > 0:
+        chunk = fp.read(min(_READ_CHUNK, nbytes))
+        if not chunk:
+            raise TrainDataError(f"{what}: truncated")
+        nbytes -= len(chunk)
+
+
+def _read_member(zf: zipfile.ZipFile, name: str) -> np.ndarray:
+    """Decode the ``.npy`` member ``name`` of a cache file straight into an
+    anonymous mmap (``_READ_CHUNK`` reads; no malloc'd temporary of the
+    array's size).  A member in a layout this reader does not handle falls
+    back to numpy's own reader, copied into an mmap afterwards."""
     with zf.open(name + ".npy") as fp:
-        version = npy_format.read_magic(fp)
-        if version not in readers:
+        header = _member_header(fp)
+        if header is None:
             return _read_member_fallback(zf, name)
-        shape, fortran, dtype = readers[version](fp)
-        if fortran or dtype.hasobject:
-            return _read_member_fallback(zf, name)
+        shape, dtype = header
         out = _anon_zeros(shape, dtype)
-        nbytes = int(out.nbytes)
-        if nbytes == 0:
-            return out
-        view = memoryview(out.reshape(-1).view(np.uint8))
-        got = 0
-        while got < nbytes:
-            chunk = fp.read(min(_READ_CHUNK, nbytes - got))
-            if not chunk:
-                raise TrainDataError(f"{zf.filename}: member {name} is truncated")
-            view[got:got + len(chunk)] = chunk
-            got += len(chunk)
+        if out.nbytes:
+            _read_exact(fp, _bytes_view(out), int(out.nbytes), what=f"{zf.filename}: {name}")
         return out
+
+
+def _read_member_rows(zf: zipfile.ZipFile, name: str, ranges: np.ndarray) -> np.ndarray:
+    """Rows ``[start, end)`` of the row-major member ``name`` for every
+    ``(start, end)`` of ``ranges`` (ascending, disjoint), concatenated into
+    ONE anonymous mmap of exactly that size: the stream is read once,
+    forward, in ``_READ_CHUNK`` pieces and the rows outside the ranges are
+    skipped, never materialised (a filtered block never decodes the whole
+    member)."""
+    ranges = np.asarray(ranges, dtype=np.int64).reshape(-1, 2)
+    with zf.open(name + ".npy") as fp:
+        header = _member_header(fp)
+        if header is None:
+            full = _read_member_fallback(zf, name)
+            idx = (np.concatenate([np.arange(s, e) for s, e in ranges]) if len(ranges)
+                   else np.zeros(0, np.int64))
+            return _anon_copy(full[idx])
+        shape, dtype = header
+        n_out = int((ranges[:, 1] - ranges[:, 0]).sum()) if len(ranges) else 0
+        out = _anon_zeros((n_out, *shape[1:]), dtype)
+        row_bytes = _row_bytes(shape, dtype)
+        if n_out == 0 or row_bytes == 0:
+            return out
+        view = _bytes_view(out)
+        what = f"{zf.filename}: {name}"
+        cursor = 0
+        opos = 0
+        for start, end in ranges.tolist():
+            if start < cursor or end < start or end > shape[0]:
+                raise TrainDataError(f"{what}: row ranges must be ascending and in bounds")
+            _skip(fp, (start - cursor) * row_bytes, what=what)
+            need = (end - start) * row_bytes
+            _read_exact(fp, view[opos:opos + need], need, what=what)
+            opos += need
+            cursor = end
+        return out
+
+
+#: rows per staging buffer of ``_iter_member``
+_SCAN_ROWS = 4096
+
+
+def _iter_member(zf: zipfile.ZipFile, name: str, *, rows_per_chunk: int = _SCAN_ROWS
+                 ) -> Iterator[tuple[int, np.ndarray]]:
+    """``(first_row, rows)`` chunks of the row-major member ``name``,
+    decoded through ONE staging buffer of ``rows_per_chunk`` rows (the
+    yielded array is a view into it: consume it before the next chunk)."""
+    with zf.open(name + ".npy") as fp:
+        header = _member_header(fp)
+        if header is None:
+            full = _read_member_fallback(zf, name)
+            for row0 in range(0, int(full.shape[0]), rows_per_chunk):
+                yield row0, full[row0:row0 + rows_per_chunk]
+            return
+        shape, dtype = header
+        n = int(shape[0]) if shape else 0
+        row_bytes = _row_bytes(shape, dtype)
+        staging = _anon_zeros((min(rows_per_chunk, max(n, 1)), *shape[1:]), dtype)
+        view = _bytes_view(staging)
+        for row0 in range(0, n, rows_per_chunk):
+            k = min(rows_per_chunk, n - row0)
+            _read_exact(fp, view, k * row_bytes, what=f"{zf.filename}: {name}")
+            yield row0, staging[:k]
+
+
+def _gather_member(zf: zipfile.ZipFile, name: str, positions: np.ndarray) -> np.ndarray:
+    """``member[positions]`` (ascending) gathered chunk by chunk."""
+    positions = np.asarray(positions, dtype=np.int64)
+    parts: list[np.ndarray] = []
+    dtype = None
+    for row0, chunk in _iter_member(zf, name):
+        dtype = chunk.dtype
+        lo = int(np.searchsorted(positions, row0))
+        hi = int(np.searchsorted(positions, row0 + int(chunk.shape[0])))
+        if hi > lo:
+            parts.append(chunk[positions[lo:hi] - row0].copy())
+    if not parts:
+        return np.zeros(0, dtype=dtype if dtype is not None else np.int64)
+    return np.concatenate(parts)
+
+
+def member_headers(zf: zipfile.ZipFile, names: Sequence[str]
+                   ) -> dict[str, tuple[tuple[int, ...], np.dtype]]:
+    """``{name: (shape, dtype)}`` from the members' headers alone."""
+    out: dict[str, tuple[tuple[int, ...], np.dtype]] = {}
+    for name in names:
+        with zf.open(name + ".npy") as fp:
+            header = _member_header(fp)
+        if header is None:
+            with np.load(zf.filename, allow_pickle=False) as npz:
+                arr = npz[name]
+                header = (tuple(int(s) for s in arr.shape), arr.dtype)
+        out[name] = header
+    return out
+
+
+def scan_deal_keys(path: str | os.PathLike, *, keep: Collection[str] | None = None
+                   ) -> tuple[np.ndarray, np.ndarray | None, int]:
+    """One streaming pass over the ``deal_key`` column of a cache file:
+    ``(sorted unique keys of the kept rows, kept row indices or None, kept
+    rows)``; ``keep`` (a set of deal keys) selects the rows."""
+    keep_arr = None if keep is None else np.asarray(sorted(set(keep)), dtype=str)
+    uniques: set[str] = set()
+    idx_parts: list[np.ndarray] = []
+    rows = 0
+    with zipfile.ZipFile(path) as zf:
+        for row0, chunk in _iter_member(zf, "deal_key"):
+            if keep_arr is not None:
+                hit = np.isin(chunk, keep_arr)
+                idx_parts.append(np.flatnonzero(hit).astype(np.int64) + row0)
+                chunk = chunk[hit]
+            uniques.update(np.unique(chunk).tolist())
+            rows += int(chunk.shape[0])
+    keep_idx = None
+    if keep_arr is not None:
+        keep_idx = (np.concatenate(idx_parts).astype(np.int64) if idx_parts
+                    else np.zeros(0, np.int64))
+    return np.asarray(sorted(uniques), dtype=str), keep_idx, rows
+
+
+def first_deals(path: str | os.PathLike, limit: int) -> list[str]:
+    """The first ``limit`` distinct deal keys of a cache file in file order
+    (a streaming scan that stops as soon as it has them)."""
+    found: dict[str, None] = {}
+    with zipfile.ZipFile(path) as zf:
+        for _row0, chunk in _iter_member(zf, "deal_key"):
+            uniq, first = np.unique(chunk, return_index=True)
+            for key in uniq[np.argsort(first)].tolist():
+                if key not in found:
+                    found[key] = None
+                    if len(found) >= int(limit):
+                        return list(found)
+    return list(found)
+
+
+def _runs(idx: np.ndarray) -> np.ndarray:
+    """Maximal runs of consecutive integers of the ascending ``idx`` as
+    ``[[start, end), ...]``."""
+    idx = np.asarray(idx, dtype=np.int64)
+    if idx.size == 0:
+        return np.zeros((0, 2), dtype=np.int64)
+    breaks = np.flatnonzero(np.diff(idx) != 1) + 1
+    starts = idx[np.concatenate([[0], breaks])]
+    ends = idx[np.concatenate([breaks - 1, [idx.size - 1]])] + 1
+    return np.stack([starts, ends], axis=1)
+
+
+def _merge_ranges(starts: np.ndarray, ends: np.ndarray) -> np.ndarray:
+    """Ascending ``[start, end)`` ranges with the empty ones dropped and
+    the adjacent ones merged."""
+    out: list[list[int]] = []
+    for s, e in zip(starts.tolist(), ends.tolist()):
+        if e <= s:
+            continue
+        if out and out[-1][1] == s:
+            out[-1][1] = e
+        else:
+            out.append([s, e])
+    return np.asarray(out, dtype=np.int64).reshape(-1, 2)
+
+
+def _candidate_ranges(zf: zipfile.ZipFile, keep_idx: np.ndarray
+                      ) -> tuple[np.ndarray, np.ndarray]:
+    """``(widths of the kept rows, merged candidate ranges)`` from the
+    ``cand_offsets`` member, gathered chunk by chunk (never decoded whole)."""
+    keep_idx = np.asarray(keep_idx, dtype=np.int64)
+    if keep_idx.size == 0:
+        return np.zeros(0, np.int64), np.zeros((0, 2), np.int64)
+    positions = np.unique(np.concatenate([keep_idx, keep_idx + 1]))
+    values = _gather_member(zf, "cand_offsets", positions).astype(np.int64)
+    starts = values[np.searchsorted(positions, keep_idx)]
+    ends = values[np.searchsorted(positions, keep_idx + 1)]
+    return ends - starts, _merge_ranges(starts, ends)
+
+
+def filtered_nbytes(headers: Mapping[str, tuple[tuple[int, ...], np.dtype]], *, rows: int,
+                    cand_rows: int) -> int:
+    """Decoded bytes of a block of ``rows`` kept rows holding ``cand_rows``
+    candidates: exactly what ``load_block_rows`` materialises."""
+    total = 0
+    for name in Block.ARRAYS:
+        shape, dtype = headers[name]
+        if name == "cand_offsets":
+            count = rows + 1
+        elif name in ("cand_feats", "cand_softmax"):
+            count = cand_rows
+        else:
+            count = rows
+        total += _row_bytes(shape, dtype) * int(count)
+    return int(total)
+
+
+def load_block_rows(path: str | os.PathLike, keep_idx: np.ndarray, *,
+                    shard_sha256: str | None = None, witness_every: int | None = None) -> Block:
+    """The rows ``keep_idx`` (ascending) of a cache file as a block, every
+    array decoded straight into its final anonymous mmap through
+    ``_read_member_rows``: nothing of the other rows is ever materialised,
+    so the block's footprint is its own ``nbytes`` (``filtered_nbytes``)
+    plus one ``_READ_CHUNK`` / staging buffer."""
+    meta = check_meta(read_meta(path), path=path, shard_sha256=shard_sha256,
+                      witness_every=witness_every)
+    keep_idx = np.unique(np.asarray(keep_idx, dtype=np.int64))
+    with zipfile.ZipFile(path) as zf:
+        widths, cand_ranges = _candidate_ranges(zf, keep_idx)
+        row_ranges = _runs(keep_idx)
+        arrays: dict[str, np.ndarray] = {}
+        for name in Block.ARRAYS:
+            if name == "cand_offsets":
+                offsets = _anon_zeros(keep_idx.size + 1, np.int64)
+                if widths.size:
+                    offsets[1:] = np.cumsum(widths)
+                arrays[name] = offsets
+            elif name in ("cand_feats", "cand_softmax"):
+                arrays[name] = _read_member_rows(zf, name, cand_ranges)
+            else:
+                arrays[name] = _read_member_rows(zf, name, row_ranges)
+    return Block(arrays, meta, str(path))
 
 
 def cache_path(cache_dir: str | os.PathLike, shard_sha256: str) -> Path:
@@ -1336,9 +1580,12 @@ class Residency:
 class BlockStore:
     """The cached blocks of one run (``entries``: ``(shard, cache path)``),
     decoded on demand into a ``Residency`` (module docstring: RESIDENCY
-    contract).  ``keep``: per entry, the deal keys to keep (None: all; the
-    filter is applied once, when the block is decoded).  ``witness_every``:
-    a cache witnessed more sparsely refuses to load."""
+    contract).  ``keep``: per entry, the deal keys to keep (None: all); a
+    filtered entry decodes ONLY its kept rows (``load_block_rows``), its
+    exact decoded size is known up front (``sizes``) and is what gets
+    reserved.  ``witness_every``: a cache witnessed more sparsely refuses
+    to load.  Construction makes one streaming pass over each entry's
+    ``deal_key`` column (keys, row counts, kept rows); nothing is decoded."""
 
     def __init__(self, entries: Sequence[tuple[ShardRef, str]], *,
                  residency: Residency | None = None, resident_bytes: int | None = None,
@@ -1346,35 +1593,51 @@ class BlockStore:
                  witness_every: int = 1):
         self.entries = [(shard, str(path)) for shard, path in entries]
         self.residency = residency if residency is not None else Residency(resident_bytes)
-        self.keep = ([None if k is None else np.asarray(sorted(set(k)), dtype=str)
-                      for k in keep] if keep is not None else [None] * len(self.entries))
-        if len(self.keep) != len(self.entries):
+        keep_list = list(keep) if keep is not None else [None] * len(self.entries)
+        if len(keep_list) != len(self.entries):
             raise TrainDataError("keep must have one entry per shard")
+        self.keep = [None if k is None else frozenset(str(x) for x in k) for k in keep_list]
         self.witness_every = int(witness_every)
         self.id = next(_STORE_IDS)
         self.metas = [check_meta(read_meta(path), path=path, shard_sha256=shard.sha256,
                                  witness_every=self.witness_every)
                       for shard, path in self.entries]
-        #: decoded bytes per block as built (an upper bound under ``keep``)
-        self.sizes = [int(m.get("nbytes") or 0) for m in self.metas]
+        self._keys: list[np.ndarray] = []
+        self.keep_idx: list[np.ndarray | None] = []
+        self._rows: list[int] = []
+        #: decoded bytes per block as it will be loaded (exact, filter applied)
+        self.sizes: list[int] = []
+        for (shard, path), meta, kept in zip(self.entries, self.metas, self.keep):
+            keys, keep_idx, rows = scan_deal_keys(path, keep=kept)
+            self._keys.append(keys)
+            self.keep_idx.append(keep_idx)
+            self._rows.append(int(rows))
+            if keep_idx is None:
+                self.sizes.append(int(meta.get("nbytes") or 0))
+            else:
+                with zipfile.ZipFile(path) as zf:
+                    headers = member_headers(zf, Block.ARRAYS)
+                    widths, _ranges = _candidate_ranges(zf, keep_idx)
+                self.sizes.append(filtered_nbytes(headers, rows=int(rows),
+                                                  cand_rows=int(widths.sum())))
 
     def __len__(self) -> int:
         return len(self.entries)
 
     @property
     def nbytes(self) -> int:
-        """Decoded bytes of the whole store (the all-resident size)."""
+        """Decoded bytes of the whole store as loaded (the all-resident size)."""
         return int(sum(self.sizes))
 
     def _key(self, i: int) -> tuple[int, int]:
         return (self.id, i)
 
     def block(self, i: int, *, pinned: Collection[int] = ()) -> Block:
-        """Block ``i``, decoded (and filtered) on first use and resident
-        until evicted; ``pinned`` blocks of this store are never evicted to
-        make room for it.  Room is made BEFORE the decode (the size comes
-        from the cache meta), so the budget is never overshot by a decode;
-        under ``keep`` the unfiltered block is transiently held as well."""
+        """Block ``i``, decoded on first use and resident until evicted;
+        ``pinned`` blocks of this store are never evicted to make room for
+        it.  Room for exactly ``sizes[i]`` is made BEFORE the decode, and a
+        filtered entry decodes only its kept rows, so a decode never
+        overshoots the budget by more than a ``_READ_CHUNK`` buffer."""
         key = self._key(i)
         block = self.residency.get(key)
         if block is not None:
@@ -1382,38 +1645,30 @@ class BlockStore:
         shard, path = self.entries[i]
         pins = {self._key(j) for j in pinned}
         self.residency.make_room(self.sizes[i], label=shard.label, pinned=pins)
-        block = load_block(path, shard_sha256=shard.sha256, witness_every=self.witness_every)
-        if self.keep[i] is not None:
-            block = block.subset(np.flatnonzero(np.isin(block.deal_key, self.keep[i]))).anonymous()
+        if self.keep_idx[i] is None:
+            block = load_block(path, shard_sha256=shard.sha256, witness_every=self.witness_every)
+        else:
+            block = load_block_rows(path, self.keep_idx[i], shard_sha256=shard.sha256,
+                                    witness_every=self.witness_every)
+        if block.nbytes != self.sizes[i]:
+            raise TrainDataError(f"{shard.label}: decoded to {block.nbytes} bytes, "
+                                 f"{self.sizes[i]} were reserved")
         self.residency.admit(key, block, label=shard.label, pinned=pins)
         return block
 
-    def column(self, i: int, name: str) -> np.ndarray:
-        """One per-row array of block ``i`` (after ``keep``), decoded from
-        the file when the block is not resident (only that member)."""
-        block = self.residency.get(self._key(i))
-        if block is not None:
-            return getattr(block, name)
-        path = self.entries[i][1]
-        col = read_column(path, name)
-        if self.keep[i] is not None:
-            keys = col if name == "deal_key" else read_column(path, "deal_key")
-            col = col[np.isin(keys, self.keep[i])]
-        return col
-
     def rows(self) -> list[int]:
         """Rows per block (after ``keep``)."""
-        return [int(self.column(i, "deal_key").shape[0]) for i in range(len(self.entries))]
+        return list(self._rows)
 
     def iter_blocks(self) -> Iterator[Block]:
         for i in range(len(self.entries)):
             yield self.block(i)
 
     def keys(self) -> list[str]:
-        """Sorted unique deal keys of the store (nothing stays resident for it)."""
+        """Sorted unique deal keys of the store (after ``keep``)."""
         keys: set[str] = set()
-        for i in range(len(self.entries)):
-            keys.update(str(k) for k in np.unique(self.column(i, "deal_key")))
+        for part in self._keys:
+            keys.update(part.tolist())
         return sorted(keys)
 
     def windows(self, order: Sequence[int], window: int) -> list[list[int]]:

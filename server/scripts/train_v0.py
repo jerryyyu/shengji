@@ -8,7 +8,7 @@
         [--test-fraction 0.1] [--resident-bytes B] \
         [--privacy-witness-every 1 [--allow-sampled-privacy-witness]]
     SHENGJI_REQUIRE_VOIDS=1 python -P -B scripts/train_v0.py evaluate \
-        --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR [--split test]
+        --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR [--split test|novel|val|train|all]
 
 Rebuilds every decision state with ``shengji.harvest.rebuild``, encodes it
 with the production ``shengji.rl.encode`` (the PRIVACY witness runs on
@@ -17,7 +17,9 @@ caches the encodings per shard, binds every row to its canonical DEAL key
 (a digest of the dealt deck, shared by every store / policy / mirror of the
 deal), splits three ways by deal (train / val = epoch selection and the
 calibration fit, tuning only / test = the reported held-out metrics),
-refuses a Luna set that shares a deal with the data stores, trains the v0
+refuses a Luna set that shares a deal with the data stores, persists the
+deal identities of every part in the checkpoint (``evaluate`` checks any
+population against them, never against the caller's store), trains the v0
 trunk + value/prior heads and reports the TEST metrics against the
 stratified prior (value) and the uniform / incumbent priors, with
 deal-bootstrap CIs, calibration and the Luna evaluation set.  Decoded shard

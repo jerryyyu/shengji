@@ -187,6 +187,8 @@ def summarize_receipt(receipt: Mapping[str, Any]) -> dict:
                   "reused": int(counts.get("cache_reused", 0))
                   + int(luna_counts.get("cache_reused", 0))},
         "split": receipt.get("split"),
+        "population": {"counts": _pick(receipt, "population", "counts"),
+                       "digest": _pick(receipt, "population", "digest")},
         "headline": receipt.get("headline"),
         "selection": receipt.get("selection"),
         "test": _split_summary(_pick(receipt, "final", "test"), config["prior_target"]),

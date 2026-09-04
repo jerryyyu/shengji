@@ -1,10 +1,11 @@
 """train v0 (train_spec.md): loader/encoder round trip with the canonical
 deal key, the STRUCTURAL (every-row) privacy witness, the three-way split
-by deal key across stores + the Luna overlap refusal + receipt labels,
-stratified prior, prior masking + CE, training smoke with seed
+by deal key across stores + the Luna overlap refusal + receipt labels +
+the persisted fit/selection populations (standalone evaluation, foreign
+stores), stratified prior, prior masking + CE, training smoke with seed
 determinism, preference derivation / skip, parallel cache build byte
 identity, auxiliary search-mean head, sweep driver, bounded residency
-with a peak-RSS memory witness.
+with a peak-RSS memory witness (unfiltered and ``keep``-filtered).
 
 Pure engine + torch on CPU.  Three shard stores are generated here at
 reduced work (N=2 selection worlds, R=30 report worlds):
@@ -95,11 +96,12 @@ def other_records(other_dir):
     return _records(other_dir)
 
 
-def _luna_rows(records, n=N_LUNA):
+def _luna_rows(records, n=N_LUNA, *, picks=None):
     """Luna-like private rows: hidden hands + deck, a wide ballot, no search
     evidence and no ``preference`` (only the played action is known)."""
-    rng = random.Random(3)
-    picks = rng.sample([r for r in records if len(r["ballot"]) >= 2], n)
+    if picks is None:
+        rng = random.Random(3)
+        picks = rng.sample([r for r in records if len(r["ballot"]) >= 2], n)
     rows = []
     for r in picks:
         rnd = rebuild.state_for_record(r)
@@ -132,6 +134,21 @@ def luna_overlap(tmp_path_factory, records):
     """Luna rows over deals of the TRAINING store: must be refused."""
     path = tmp_path_factory.mktemp("luna-overlap") / "luna-overlap.private.jsonl"
     write_jsonl(path, _luna_rows(records), private=True)
+    return path
+
+
+@pytest.fixture(scope="module")
+def luna_overlap_all(tmp_path_factory, records):
+    """One Luna row per deal of the training store (every part of any
+    split): contaminated for ANY checkpoint trained on it."""
+    picks = {}
+    for r in records:
+        cluster = r["source_ref"].split(":")[1]
+        if cluster not in picks and len(r["ballot"]) >= 2 and 10 <= r["ply"] <= 60:
+            picks[cluster] = r
+    assert len(picks) == 3
+    path = tmp_path_factory.mktemp("luna-overlap-all") / "luna-overlap-all.private.jsonl"
+    write_jsonl(path, _luna_rows(records, picks=list(picks.values())), private=True)
     return path
 
 
@@ -339,8 +356,9 @@ def test_privacy_boundary_is_structural_every_row(store_dir, records, tmp_path, 
 
 # 3 ------------------------------------ split by DEAL KEY, across stores, 3-way
 
-def test_split_is_by_deal_key_across_stores_and_three_way(store_dir, twin_dir, records,
-                                                          luna, luna_overlap, tmp_path):
+def test_split_is_by_deal_key_across_stores_and_three_way(store_dir, twin_dir, other_dir,
+                                                          records, luna, luna_overlap,
+                                                          luna_overlap_all, tmp_path):
     keys = [f"deck:{i:064x}" for i in range(200)]
     for seed in (1, 2):
         a = data.split_deals(keys, seed=seed, val_fraction=0.1, test_fraction=0.1)
@@ -423,12 +441,75 @@ def test_split_is_by_deal_key_across_stores_and_three_way(store_dir, twin_dir, r
     assert not (tmp_path / "overlap" / "receipt.json").exists()
     receipt = train_v0.train(out=tmp_path / "ok", eval_luna=str(luna[0]), **kw)
     assert receipt["luna"]["shared_deals_with_training"] == 0
-    with pytest.raises(train_v0.TrainError, match="shares"):
-        train_v0.evaluate(checkpoint=str(tmp_path / "ok" / "best.pt"), out=tmp_path / "ev",
-                          data=[str(store_dir)], eval_luna=str(luna_overlap), device="cpu",
-                          n_boot=20, log=None, cache_dir=str(cache))
+    assert receipt["luna"]["checked_against"] == receipt["population"]["digest"]
+    # the persisted populations: the deal keys of every part, disjoint, in
+    # the receipt and in every checkpoint
+    population = receipt["population"]
+    assert population["schema"] == train_v0.POPULATION_SCHEMA
+    assert population["counts"] == {"train": 1, "val": 1, "test": 1}
+    sets = train_v0.population_sets(population)
+    assert sets["train"] | sets["val"] | sets["test"] == set(bs.keys()) - {shared} | {shared}
+    for name in ("best.pt", "checkpoints/epoch-01.pt"):
+        payload = torch.load(tmp_path / "ok" / name, map_location="cpu", weights_only=False)
+        assert payload["population"] == population
+    ckpt = str(tmp_path / "ok" / "best.pt")
+    ev_kw = dict(checkpoint=ckpt, device="cpu", n_boot=20, log=None, cache_dir=str(cache))
+    # STANDALONE evaluate (no --data) on contaminated Luna sets: refused
+    # against the checkpoint's own fit/selection deals
+    with pytest.raises(train_v0.TrainError, match="fit/selection population"):
+        train_v0.evaluate(out=tmp_path / "ev-bad", eval_luna=str(luna_overlap_all), **ev_kw)
+    with pytest.raises(train_v0.TrainError, match="fit/selection population"):
+        train_v0.evaluate(out=tmp_path / "ev-bad2", eval_luna=str(luna_overlap), **ev_kw)
+    with pytest.raises(train_v0.TrainError, match="fit/selection population"):
+        train_v0.evaluate(out=tmp_path / "ev-bad3", data=[str(store_dir)],
+                          eval_luna=str(luna_overlap_all), **ev_kw)
+    assert not (tmp_path / "ev-bad" / "receipt.json").exists()
+    # a clean Luna set without --data: checked against the checkpoint,
+    # labelled held out with an explicit zero
+    ev = train_v0.evaluate(out=tmp_path / "ev-luna", eval_luna=str(luna[0]), **ev_kw)
+    assert ev["headline"] == "luna" and ev["final"]["luna"]["held_out"] is True
+    assert ev["luna"]["shared_deals_with_training"] == 0 and ev["luna"]["shared_with_test"] == 0
+    assert ev["luna"]["checked_against"] == population["digest"]
+    assert ev["final"]["luna"]["population"] == {
+        "deals": 1, "in_train": 0, "in_val": 0, "in_test": 0, "novel": 1,
+        "shared_with_fit": 0, "shared_with_selection": 0, "same_population": False,
+        "checked_against": population["digest"]}
+    assert ev["population"] == population
+    # FOREIGN-DATA substitution: store C is not the checkpoint's population;
+    # its deals are novel -> reported, held out only as --split novel, and
+    # the checkpoint's test part has no rows there (refused, not relabelled)
+    with pytest.raises(train_v0.TrainError, match="no deal of the checkpoint's 'test'"):
+        train_v0.evaluate(out=tmp_path / "ev-c-test", data=[str(other_dir)], **ev_kw)
+    ev = train_v0.evaluate(out=tmp_path / "ev-c-novel", data=[str(other_dir)], split="novel",
+                           **ev_kw)
+    assert ev["headline"] == "novel" and ev["final"]["novel"]["held_out"] is True
+    assert ev["split"]["population_match"] == {
+        "deals": 1, "in_train": 0, "in_val": 0, "in_test": 0, "novel": 1,
+        "shared_with_fit": 0, "shared_with_selection": 0, "same_population": False,
+        "checked_against": population["digest"]}
+    assert ev["final"]["novel"]["population"]["novel"] == 1 and ev["split"]["deals"] == 1
+    assert ev["final"]["novel"]["value"]["n"] == sum(b.n for b in _blocks(other_dir, cache)[1].iter_blocks())
+    # store B replays a deal the checkpoint HAS seen (A's deal 0) under
+    # another run_id: not novel; evaluating it as the part it belongs to
+    # reports the substitution, and it is held out only if that part is test
+    part = next(p for p in ("train", "val", "test") if shared in sets[p])
+    with pytest.raises(train_v0.TrainError, match="no deal of the checkpoint's 'novel'"):
+        train_v0.evaluate(out=tmp_path / "ev-b-novel", data=[str(twin_dir)], split="novel",
+                          **ev_kw)
+    ev = train_v0.evaluate(out=tmp_path / "ev-b", data=[str(twin_dir)], split=part, **ev_kw)
+    match = ev["split"]["population_match"]
+    assert match["same_population"] is False and match["deals"] == 1 and match["novel"] == 0
+    assert match[f"in_{part}"] == 1
+    assert ev["final"][part]["held_out"] is (part == "test")
+    assert ev["headline"] == ("test" if part == "test" else None)
+    for other in ("train", "val", "test"):
+        if other != part:
+            with pytest.raises(train_v0.TrainError, match="no deal of the checkpoint"):
+                train_v0.evaluate(out=tmp_path / f"ev-b-{other}", data=[str(twin_dir)],
+                                  split=other, **ev_kw)
     # the receipt refuses to label validation metrics as held out, a
-    # headline that is not held out, or a calibration fitted on a held-out split
+    # headline that is not held out, a calibration fitted on a held-out
+    # split, an UNCHECKED held-out population, and a Luna overlap of None
     assert train_v0.check_receipt(receipt) is receipt
     bad = json.loads(json.dumps(receipt))
     bad["final"]["val"]["held_out"] = True
@@ -450,6 +531,29 @@ def test_split_is_by_deal_key_across_stores_and_three_way(store_dir, twin_dir, r
     bad["luna"]["shared_deals_with_training"] = 2
     with pytest.raises(train_v0.TrainError, match="Luna"):
         train_v0.check_receipt(bad)
+    bad = json.loads(json.dumps(receipt))
+    bad["luna"]["shared_deals_with_training"] = None
+    with pytest.raises(train_v0.TrainError, match="unknown or non-zero"):
+        train_v0.check_receipt(bad)
+    bad = json.loads(json.dumps(receipt))
+    bad["final"]["luna"]["population"]["shared_with_fit"] = None
+    with pytest.raises(train_v0.TrainError, match="not checked"):
+        train_v0.check_receipt(bad)
+    bad = json.loads(json.dumps(receipt))
+    del bad["final"]["test"]["population"]
+    with pytest.raises(train_v0.TrainError, match="not checked"):
+        train_v0.check_receipt(bad)
+    bad = json.loads(json.dumps(receipt))
+    bad["population"]["val"] = bad["population"]["test"]
+    with pytest.raises(train_v0.TrainError, match="not a split"):
+        train_v0.check_receipt(bad)
+    # a checkpoint without persisted populations cannot be evaluated
+    payload = torch.load(ckpt, map_location="cpu", weights_only=False)
+    del payload["population"]
+    torch.save(payload, tmp_path / "no-population.pt")
+    with pytest.raises(train_v0.TrainError, match="no persisted"):
+        train_v0.evaluate(out=tmp_path / "ev-nopop", eval_luna=str(luna[0]),
+                          **{**ev_kw, "checkpoint": str(tmp_path / "no-population.pt")})
 
 
 # 4 ---------------------------------------------------------- stratified prior
@@ -563,6 +667,15 @@ def test_training_smoke_receipt_and_seed_determinism(store_dir, luna, tmp_path):
     assert (split["train_records"] + split["val_records"] + split["test_records"]
             == r1["counts"]["records_total"]) and r1["counts"]["deals_total"] == 3
     assert split["roles"]["val"] == train_v0.SPLIT_ROLES["val"]["role"]
+    # the persisted populations name the deals of every part (disjoint)
+    population = r1["population"]
+    assert population["counts"] == {"train": 1, "val": 1, "test": 1}
+    assert population["data"][0]["shards"] == [{"label": s["label"], "sha256": s["sha256"]}
+                                               for s in r1["data"][0]["shards"]]
+    sets = train_v0.population_sets(population)
+    assert all(k.startswith("deck:") for part in sets.values() for k in part)
+    assert r1["final"]["test"]["population"]["in_test"] == 1
+    assert r1["final"]["val"]["population"]["shared_with_selection"] == 1
     # per-epoch telemetry is VALIDATION (tuning); nothing of the test split
     assert len(r1["epochs"]) == 2
     for row in r1["epochs"]:
@@ -599,7 +712,8 @@ def test_training_smoke_receipt_and_seed_determinism(store_dir, luna, tmp_path):
     assert luna_m["prior"]["final"]["n"] == N_LUNA
     assert luna_m["prior"]["softmax"]["n"] == 0            # no search evidence on Luna
     assert "mae_after" in luna_m["calibration"] and luna_m["calibration"]["in_sample"] is False
-    assert r1["luna"]["shared_deals_with_training"] == 0
+    assert r1["luna"]["shared_deals_with_training"] == 0 and r1["luna"]["shared_with_test"] == 0
+    assert luna_m["population"]["novel"] == 1
     # residency and privacy are on the receipt
     res = r1["residency"]
     assert res["budget_bytes"] == data.default_resident_bytes() > 0
@@ -615,23 +729,34 @@ def test_training_smoke_receipt_and_seed_determinism(store_dir, luna, tmp_path):
     # a fixed seed reproduces every metric exactly
     assert _strip_secs(r1["epochs"]) == _strip_secs(r2["epochs"])
     assert r1["final"] == r2["final"] and r1["config_sha256"] == r2["config_sha256"]
+    assert r1["population"] == r2["population"]
     # a different seed changes them (the seed is applied)
     r3 = train_v0.train(out=tmp_path / "c", **{**kw, "seed": 8})
     assert _strip_secs(r3["epochs"]) != _strip_secs(r1["epochs"])
-    # evaluate reproduces the checkpoint's TEST metrics (its default split) and Luna
+    # evaluate reproduces the checkpoint's TEST metrics (its default split,
+    # the persisted test population of the same store) and Luna
     ev = train_v0.evaluate(checkpoint=str(out / "best.pt"), out=tmp_path / "e",
                            data=[str(store_dir)], eval_luna=str(luna_path), device="cpu",
                            n_boot=50, log=None)
     assert ev["command"] == "evaluate" and ev["headline"] == "test"
     assert ev["final"]["test"]["value"]["model"] == test["value"]["model"]
     assert ev["final"]["test"]["held_out"] is True
+    assert ev["final"]["test"]["population"] == test["population"]
     assert ev["final"]["luna"]["value"]["model"] == luna_m["value"]["model"]
     assert ev["split"]["records"] == split["test_records"]
+    assert ev["split"]["population_match"]["same_population"] is True
+    assert ev["split"]["population_match"]["novel"] == 0
+    assert ev["population"] == population
     ev_val = train_v0.evaluate(checkpoint=str(out / "best.pt"), out=tmp_path / "ev",
                                data=[str(store_dir)], device="cpu", split="val", n_boot=50,
                                log=None)
     assert ev_val["final"]["val"]["value"]["model"] == val["value"]["model"]
     assert ev_val["final"]["val"]["held_out"] is False and ev_val["headline"] is None
+    ev_all = train_v0.evaluate(checkpoint=str(out / "best.pt"), out=tmp_path / "ev-all",
+                               data=[str(store_dir)], device="cpu", split="all", n_boot=20,
+                               log=None)
+    assert ev_all["final"]["all"]["held_out"] is False and ev_all["headline"] is None
+    assert ev_all["final"]["all"]["value"]["n"] == r1["counts"]["records_total"]
     # a run needs all three parts: two deals cannot be split three ways
     with pytest.raises(train_v0.TrainError, match="need all three"):
         train_v0.train(out=tmp_path / "two", limit_clusters=2, **kw)
@@ -914,6 +1039,8 @@ def test_sweep_reuses_one_cache_and_matches_standalone_runs(store_dir, luna, lun
         assert row["best_epoch"] == ref["best_epoch"] and row["wall_secs"] > 0
         assert row["config"]["hidden"] == ref["config"]["hidden"]
         assert row["selection"]["split"] == "val"
+        assert row["population"] == {"counts": ref["population"]["counts"],
+                                     "digest": ref["population"]["digest"]}
     # the overrides were applied: the two rows are different runs
     assert rows[0]["config_sha256"] != rows[1]["config_sha256"]
     assert rows[0]["test"]["value_mae"] != rows[1]["test"]["value_mae"]
@@ -977,13 +1104,14 @@ def test_sweep_reuses_one_cache_and_matches_standalone_runs(store_dir, luna, lun
 
 def _synthetic_cache(cache_dir: Path, i: int, rows: int, *, kmax: int = 4):
     """A cache file of ``rows`` synthetic rows in the production layout
-    (schema, encoder identity, shard binding, witness settings, nbytes)."""
+    (schema, encoder identity, shard binding, witness settings, nbytes);
+    every 50 consecutive rows are one deal."""
     rng = np.random.default_rng(i)
     widths = rng.integers(1, kmax + 1, size=rows)
     offsets = np.zeros(rows + 1, dtype=np.int64)
     offsets[1:] = np.cumsum(widths)
     total = int(offsets[-1])
-    deals = [f"deck:{i:04d}{r // 50:060d}" for r in range(rows)]
+    deals = [_synthetic_deal(i, r // 50) for r in range(rows)]
     arrays = {
         "obs": rng.standard_normal((rows, encode.OBS_DIM), dtype=np.float32),
         "cand_offsets": offsets,
@@ -1004,7 +1132,7 @@ def _synthetic_cache(cache_dir: Path, i: int, rows: int, *, kmax: int = 4):
         "has_search_mean": np.zeros(rows, dtype=bool),
         "deal_key": np.asarray(deals, dtype=str),
     }
-    sha = hashlib.sha256(f"synthetic-{i}".encode("ascii")).hexdigest()
+    sha = hashlib.sha256(f"synthetic-{i}-{rows}".encode("ascii")).hexdigest()
     meta = {
         "schema": data.CACHE_SCHEMA, "encoder": data.encoder_identity(),
         "shard": {"label": f"synthetic-{i}", "sha256": sha, "records": rows, "cluster": i,
@@ -1025,6 +1153,10 @@ def _synthetic_cache(cache_dir: Path, i: int, rows: int, *, kmax: int = 4):
     return shard, str(path)
 
 
+def _synthetic_deal(block: int, deal: int) -> str:
+    return f"deck:{block:04d}{deal:060d}"
+
+
 MEMORY_PROBE = r"""
 import json, resource, sys
 import numpy as np
@@ -1032,30 +1164,55 @@ from shengji.train import data
 entries = [(data.ShardRef(**s), p) for s, p in json.loads(sys.argv[1])]
 budget = None if sys.argv[2] == "none" else int(sys.argv[2])
 window = int(sys.argv[3])
+mode = sys.argv[4]
+keep = json.loads(sys.argv[5])
 def peak():
     r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(r) if sys.platform == "darwin" else int(r) * 1024
-store = data.BlockStore(entries, resident_bytes=budget)
+store = data.BlockStore(entries, resident_bytes=budget,
+                        keep=None if keep is None else [None if k is None else set(k) for k in keep])
 before = peak()
 rng = np.random.default_rng(0)
 rows = 0
 digest = 0.0
-for epoch in range(2):
-    for batch in store.iter_batches(lambda b: np.ones(b.n, dtype=bool), 256, rng=rng,
-                                    window=window):
-        rows += int(batch["obs"].shape[0])
-        digest += float(batch["obs"][:, 0].sum())
+if mode == "batches":
+    for epoch in range(2):
+        for batch in store.iter_batches(lambda b: np.ones(b.n, dtype=bool), 256, rng=rng,
+                                        window=window):
+            rows += int(batch["obs"].shape[0])
+            digest += float(batch["obs"][:, 0].sum())
+elif mode == "blocks":
+    for i in range(len(store)):
+        block = store.block(i)
+        rows += block.n
+        digest += float(block.obs[:, 0].sum())
+        del block
+elif mode == "blocks_full_then_subset":
+    # the pre-repair filtered load: reserve the subset, decode the WHOLE
+    # block, then cut the kept rows out of it (the RED reference)
+    for i in range(len(store)):
+        shard, path = store.entries[i]
+        store.residency.make_room(store.sizes[i], label=shard.label)
+        full = data.load_block(path, shard_sha256=shard.sha256, witness_every=1)
+        block = full.subset(store.keep_idx[i])
+        del full
+        store.residency.admit((store.id, i), block, label=shard.label)
+        rows += block.n
+        digest += float(block.obs[:, 0].sum())
+        del block
 after = peak()
 print(json.dumps({"before": before, "after": after, "rows": rows, "digest": digest,
                   **store.residency.describe()}))
 """
 
 
-def _memory_probe(entries, budget, window):
+def _memory_probe(entries, budget, window, *, mode="batches", keep=None):
     payload = json.dumps([(dataclasses.asdict(s), p) for s, p in entries])
     env = {**os.environ, "PYTHONPATH": str(SERVER), "PYTHONDONTWRITEBYTECODE": "1"}
+    keep_arg = json.dumps(None if keep is None else [None if k is None else sorted(k) for k in keep])
     proc = subprocess.run([sys.executable, "-P", "-B", "-c", MEMORY_PROBE, payload,
-                           "none" if budget is None else str(budget), str(window)],
+                           "none" if budget is None else str(budget), str(window), mode,
+                           keep_arg],
                           capture_output=True, text=True, env=env, check=True)
     return json.loads(proc.stdout.strip().splitlines()[-1])
 
@@ -1070,7 +1227,7 @@ def test_residency_is_bounded_and_batches_do_not_depend_on_the_budget(tmp_path):
     budget = 2 * biggest + 2 ** 20            # room for a two-block window
     # the LRU: at most ``budget`` bytes resident, blocks reloaded past it
     store = data.BlockStore(entries, resident_bytes=budget)
-    assert store.nbytes == total and store.sizes == sizes
+    assert store.nbytes == total and store.sizes == sizes and store.rows() == [rows] * n_blocks
     for i in range(n_blocks):
         block = store.block(i)
         assert block.n == rows and store.residency.bytes <= budget
@@ -1115,13 +1272,6 @@ def test_residency_is_bounded_and_batches_do_not_depend_on_the_budget(tmp_path):
     assert r1["peak_resident_bytes"] <= 3 * biggest + 2 ** 20
     shuffled, _ = sequence(None, window=5)
     assert shuffled != unbounded                                 # the window changes the order
-    # keep filters and per-block columns without decoding the whole block
-    keep = [set(f"deck:{i:04d}{d:060d}" for d in range(10)) if i % 2 else None
-            for i in range(n_blocks)]
-    filtered = data.BlockStore(entries, resident_bytes=budget, keep=keep)
-    assert filtered.rows() == [rows if i % 2 == 0 else 500 for i in range(n_blocks)]
-    assert filtered.block(1).n == 500 and filtered.block(1).nbytes < sizes[1]
-    assert len(filtered.keys()) == n_blocks // 2 * (rows // 50 + 10)
     # MEMORY WITNESS (a fresh process: python + numpy + data.py, no torch):
     # peak RSS with the budget stays under budget + a fixed overhead over
     # the pre-iteration peak (measured: about 17-20 MB of zip / batch
@@ -1139,3 +1289,66 @@ def test_residency_is_bounded_and_batches_do_not_depend_on_the_budget(tmp_path):
     assert grew_bounded <= budget + overhead, (grew_bounded, budget, bounded)
     assert grew_all >= 0.8 * total, (grew_all, total, resident_all)
     assert grew_all > budget + overhead                          # RED without eviction
+
+
+def test_filtered_loading_decodes_only_the_kept_rows_within_the_budget(tmp_path):
+    n_blocks, rows = 6, 6000                       # about 19 MB decoded per block
+    entries = [_synthetic_cache(tmp_path / "cache", i, rows) for i in range(n_blocks)]
+    full_sizes = [data.read_meta(p)["nbytes"] for _s, p in entries]
+    assert all(16 * 2 ** 20 < s < 24 * 2 ** 20 for s in full_sizes)
+    # keep 12 of the 120 deals of every odd block, everything of the even ones
+    keep = [None if i % 2 == 0 else {_synthetic_deal(i, d) for d in range(3, 15)}
+            for i in range(n_blocks)]
+    unbounded = data.BlockStore(entries, keep=keep)
+    assert unbounded.rows() == [rows if i % 2 == 0 else 600 for i in range(n_blocks)]
+    assert len(unbounded.keys()) == 3 * 120 + 3 * 12
+    # a filtered entry decodes ONLY its kept rows: the block equals the full
+    # block's subset, byte for byte, and its exact size was known up front
+    for i in range(n_blocks):
+        block = unbounded.block(i)
+        assert block.nbytes == unbounded.sizes[i]
+        full = data.load_block(entries[i][1], shard_sha256=entries[i][0].sha256)
+        if keep[i] is None:
+            assert unbounded.keep_idx[i] is None and block.nbytes == full_sizes[i]
+            reference = full
+        else:
+            idx = np.flatnonzero(np.isin(full.deal_key, sorted(keep[i])))
+            assert np.array_equal(unbounded.keep_idx[i], idx)
+            reference = full.subset(idx)
+            assert block.n == 600 and block.nbytes < full_sizes[i] // 8
+        for name in data.Block.ARRAYS:
+            assert np.array_equal(getattr(block, name), getattr(reference, name)), (i, name)
+    # a window / the budget see the filtered sizes, so a store whose FULL
+    # blocks are far above the budget trains when its kept rows fit
+    subset = max(unbounded.sizes[i] for i in range(1, n_blocks, 2))
+    budget = 2 * subset + 2 ** 20
+    assert budget < min(full_sizes) // 3
+    filtered_only = [(entries[i], keep[i]) for i in range(1, n_blocks, 2)]
+    store = data.BlockStore([e for e, _k in filtered_only], resident_bytes=budget,
+                            keep=[k for _e, k in filtered_only])
+    assert [len(g) for g in store.windows(list(range(len(store))), 64)] == [2, 1]
+    seen = 0
+    for batch in store.iter_batches(lambda b: np.ones(b.n, dtype=bool), 128,
+                                    rng=np.random.default_rng(0), window=2):
+        seen += int(batch["obs"].shape[0])
+    assert seen == 3 * 600 and store.residency.peak_bytes <= budget
+    with pytest.raises(data.TrainDataError, match="above the residency budget"):
+        data.BlockStore(entries, resident_bytes=budget, keep=keep).block(0)   # unfiltered: full
+    # MEMORY WITNESS for the keep path (loads only, a fresh process): the
+    # peak RSS stays within budget + a small overhead -- nothing of the
+    # unkept rows is ever materialised; RED under the pre-repair load
+    # (decode the whole block, then subset), which overshoots by a full block
+    overhead = 8 * 2 ** 20
+    probe_entries = [e for e, _k in filtered_only]
+    probe_keep = [k for _e, k in filtered_only]
+    streaming = _memory_probe(probe_entries, budget, 1, mode="blocks", keep=probe_keep)
+    full_then_subset = _memory_probe(probe_entries, budget, 1, mode="blocks_full_then_subset",
+                                     keep=probe_keep)
+    assert streaming["rows"] == full_then_subset["rows"] == 3 * 600
+    assert streaming["digest"] == full_then_subset["digest"]
+    assert streaming["peak_resident_bytes"] <= budget and streaming["evictions"] == 1
+    grew_streaming = streaming["after"] - streaming["before"]
+    grew_full = full_then_subset["after"] - full_then_subset["before"]
+    assert grew_streaming <= budget + overhead, (grew_streaming, budget, streaming)
+    assert grew_full > budget + overhead, (grew_full, budget, full_then_subset)   # RED
+    assert grew_full >= min(full_sizes)                          # a whole block went resident

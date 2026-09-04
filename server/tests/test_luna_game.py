@@ -7,8 +7,7 @@ import threading
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_selfplay as luna
-from shengji.rl import privileged_teacher_sol0 as sol0
+from shengji.luna import game as luna
 
 
 SECRET = b"luna-self-play-secret-material!!"
@@ -60,16 +59,16 @@ def test_rollout_exposes_team_relative_utility_and_defender_prefers_fewer_points
         "op": "rollout", "decision_sha256": observed["decision_sha256"],
         "candidate_indices": [0], "continuations": ["heuristic-all"]})
     result = response["results"][0]
-    expected = sol0.signed_level_utility(
+    expected = luna.signed_level_utility(
         result["rollout_points"], banker_seat=root.banker,
         perspective_seat=team)
     assert result["team_signed_level_utility"] == expected
-    assert sol0.signed_level_utility(
-        20, banker_seat=0, perspective_seat=0) > sol0.signed_level_utility(
+    assert luna.signed_level_utility(
+        20, banker_seat=0, perspective_seat=0) > luna.signed_level_utility(
             60, banker_seat=0, perspective_seat=0)
-    assert sol0.signed_level_utility(
+    assert luna.signed_level_utility(
         result["rollout_points"], banker_seat=root.banker,
-        perspective_seat=0) == -sol0.signed_level_utility(
+        perspective_seat=0) == -luna.signed_level_utility(
             result["rollout_points"], banker_seat=root.banker,
             perspective_seat=1)
 
@@ -152,7 +151,7 @@ def test_workers_progress_and_no_retry_incomplete_retention():
         terminal = luna.TerminalReceipt(
             coordinate=coord, mirror=mirror, root_sha256=root_sha,
             trajectory_sha256=trajectory.sha256, final_attacker_points=0,
-            signed_level_utility=luna.sol0.signed_level_utility(
+            signed_level_utility=luna.signed_level_utility(
                 0, banker_seat=coord[1], perspective_seat=0), completion=True)
         return luna.CompletedGameArtifacts(trajectory, terminal)
 

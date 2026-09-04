@@ -6,13 +6,13 @@ import hashlib
 
 import pytest
 
-from shengji.rl import privileged_teacher_luna_selfplay as selfplay
-from shengji.rl import privileged_teacher_luna_rpc_io as rpc_io
-from shengji.rl.privileged_teacher_luna_rpc_journal import (
+from shengji.luna import game as selfplay
+from shengji.luna import atomic_io as rpc_io
+from shengji.luna.journal import (
     FileTurnJournal,
     TurnJournalError,
 )
-from shengji.rl.privileged_teacher_luna_turn_rpc import (
+from shengji.luna.turn import (
     DecisionPacket,
     Intent,
     PhaseContext,

@@ -5,7 +5,10 @@ Every arm is a subclass mixed over the registered production class, so the
 load-bearing guarantee is that a wrapper with a neutral knob changes NOTHING:
 same cards, same decision record, same RNG advance.  That is witnessed at two
 altitudes — per decision against a production twin on identical states, and
-per round against the ``none`` control through the CLI.
+per round against the ``none`` control through the CLI.  The ``knobs`` arm
+(production class attributes overridden from ``--knob NAME=VALUE``) gets the
+same two witnesses with no override, plus a witness that an override really
+reaches the ballot without touching the production RNG streams.
 """
 from __future__ import annotations
 
@@ -371,6 +374,185 @@ def test_wide_stages_do_not_touch_the_production_streams():
     assert wide.rng.getstate() == prod.rng.getstate()
 
 
+# ----------------------------------------------------------------- knobs arm
+
+KNOBS_V3 = ["V3_LEAD_SINGLES=1"]
+
+
+@pytest.mark.parametrize("seed", [4_242, 4_248, 4_249])
+def test_knobs_arm_without_overrides_reproduces_production_decisions(seed):
+    """Identity witness: the knobs arm with no override is production on
+    identical states (cards, record, RNG advance) - a bare subclass."""
+    prod = _tiny(make_bot(BASE, seed=seed))
+    arm = _tiny(S.make_knobs_bot(BASE, {}, seed=seed))
+    assert isinstance(arm, type(prod)) and type(arm).__mro__[1] is type(prod)
+    assert not [n for n in vars(type(arm)) if not n.startswith("__")], \
+        "a neutral knobs class must override nothing"
+    decisions = _play_seat0(arm, seed, twin=prod)
+    assert decisions > 5
+    assert arm.search_calls == prod.search_calls > 0
+    assert arm.rollouts == prod.rollouts
+    assert arm.accepted_worlds == prod.accepted_worlds
+    work = S.work_counters([arm])
+    assert work["total_rollouts"] == work["continuation_rollouts"] == work["rollouts"]
+    assert all(work[name] == 0 for name in S.ORACLE_COUNTERS)
+
+
+def test_knobs_arm_refuses_unknown_names_untyped_knobs_and_bad_values(tmp_path):
+    cls = S.base_policy_class(BASE)
+    bad = [
+        ["NO_SUCH_KNOB=1"],                 # not a class attribute
+        ["rollout_policy=1"],               # instance attribute, not a knob
+        ["decide_play=1"],                  # a method
+        ["_rollout=1"],                     # private
+        ["LEAD_MARGIN=3"],                  # untyped: its default is None
+        ["V3_LEAD_SINGLES=maybe"],          # not a bool
+        ["LEAD_MAX_CANDIDATES=many"],       # not an int
+        ["LEAD_MAX_CANDIDATES=6.5"],        # not an int either
+        ["MARGIN=nan"],                     # not a finite float
+        ["V3_LEAD_SINGLES"],                # no value
+        ["N_DETERMINIZATIONS=60"],          # work, not policy (two-sided flag)
+        ["REPORT_FOLD_WORLDS=30"],
+        ["V3_LEAD_SINGLES=1", "V3_LEAD_SINGLES=0"],  # given twice
+    ]
+    for specs in bad:
+        with pytest.raises(S.OracleScreenError):
+            S.parse_knob_overrides(cls, specs)
+        with pytest.raises(S.OracleScreenError):
+            S.build_config(arm="knobs", knob_overrides=specs)
+    # Native values from a Python caller get the same typing discipline.
+    for mapping in ({"LEAD_MAX_CANDIDATES": True}, {"REPORT_RULE": 1},
+                    {"MARGIN": "x"}, {"NO_SUCH_KNOB": 1}):
+        with pytest.raises(S.OracleScreenError):
+            S.make_knobs_bot(BASE, mapping, seed=1)
+    # Overrides belong to the knobs arm alone.
+    with pytest.raises(S.OracleScreenError):
+        S.build_config(arm="none", knob_overrides=KNOBS_V3)
+    with pytest.raises(S.OracleScreenError):
+        S.build_config(arm="wide", knobs={"overrides": {"V3_LEAD_SINGLES": True}})
+    # The command line refuses BEFORE any round runs: nothing is written.
+    out = tmp_path / "refused"
+    env = dict(os.environ)
+    env.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
+    proc = subprocess.run(
+        [sys.executable, "-P", "-B", str(SCRIPT), "--arm", "knobs", "--knob",
+         "NO_SUCH_KNOB=1", "--rounds", "2", "--seed", "1", "--out", str(out),
+         *TINY_WORK],
+        cwd=SERVER, env=env, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 2 and "REFUSING" in proc.stderr
+    assert "unknown knob NO_SUCH_KNOB" in proc.stderr
+    assert not out.exists()
+
+
+def test_knobs_arm_coerces_values_into_the_arm_class_and_stamps_them():
+    cls = S.base_policy_class(BASE)
+    cfg = S.build_config(arm="knobs", knob_overrides=[
+        "V3_LEAD_SINGLES=1", "LEAD_MAX_CANDIDATES= 64", "TRACTOR_LOCK=false",
+        "MARGIN=7", "REPORT_RULE=mean"])
+    overrides = cfg["knobs"]["overrides"]
+    assert list(overrides) == sorted(overrides)
+    assert overrides == {"LEAD_MAX_CANDIDATES": 64, "MARGIN": 7.0,
+                         "REPORT_RULE": "mean", "TRACTOR_LOCK": False,
+                         "V3_LEAD_SINGLES": True}
+    assert overrides["V3_LEAD_SINGLES"] is True
+    assert overrides["TRACTOR_LOCK"] is False
+    assert type(overrides["LEAD_MAX_CANDIDATES"]) is int
+    assert type(overrides["MARGIN"]) is float
+    arm = S.make_side_bot(cfg, "arm", 1)
+    base = S.make_side_bot(cfg, "baseline", 1)
+    assert type(base) is cls
+    assert isinstance(arm, cls) and type(arm).__mro__[1] is cls
+    for name, value in overrides.items():
+        got = getattr(type(arm), name)
+        assert got == value and type(got) is type(value)
+        assert name in vars(type(arm))
+    # The production class is untouched: the overrides live on the subclass.
+    assert cls.V3_LEAD_SINGLES is False and cls.TRACTOR_LOCK is True
+    assert cls.LEAD_MAX_CANDIDATES == 14 and cls.REPORT_RULE == "lcb"
+    assert "V3_LEAD_SINGLES" not in vars(cls)
+    # One class per override set, shared by every bot of the screen.
+    assert type(S.make_side_bot(cfg, "arm", 2)) is type(arm)
+    assert type(S.make_knobs_bot(BASE, {"TRACTOR_LOCK": False}, seed=1)) \
+        is not type(arm)
+    assert arm.policy_name == ("mc-s0-report-lcb+knobs[LEAD_MAX_CANDIDATES=64,"
+                               "MARGIN=7.0,REPORT_RULE='mean',"
+                               "TRACTOR_LOCK=False,V3_LEAD_SINGLES=True]")
+    assert S.arm_description(cfg) == (
+        "mc-s0-report-lcb with LEAD_MAX_CANDIDATES=64, MARGIN=7.0, "
+        "REPORT_RULE='mean', TRACTOR_LOCK=False, V3_LEAD_SINGLES=True")
+    ident = S.identity(cfg)
+    assert ident["knob_overrides"] == overrides
+    assert ident["ballots"]["arm_class"] == "Knobs_MCS0ReportLCB"
+    assert ident["ballots"]["arm"] != ident["ballots"]["baseline"]
+    # TRACTOR_LOCK is outside the ballot spec: only the override stamp tells
+    # two such screens apart.
+    lock = S.build_config(arm="knobs", knob_overrides=["TRACTOR_LOCK=0"])
+    lock_ident = S.identity(lock)
+    assert lock_ident["ballots"]["arm"] == lock_ident["ballots"]["baseline"]
+    assert lock_ident["knob_overrides"] == {"TRACTOR_LOCK": False}
+    assert S.arm_description(lock) == "mc-s0-report-lcb with TRACTOR_LOCK=False"
+    # No override: the identity control, stamped as such.
+    neutral = S.build_config(arm="knobs")
+    assert neutral["knobs"]["overrides"] == {}
+    assert S.arm_description(neutral) == \
+        "mc-s0-report-lcb with no knob overrides (identity control)"
+    neutral_ident = S.identity(neutral)
+    assert neutral_ident["knob_overrides"] == {}
+    assert neutral_ident["ballots"]["arm"] == neutral_ident["ballots"]["baseline"]
+    assert S.make_side_bot(neutral, "arm", 1).policy_name == "mc-s0-report-lcb+knobs"
+
+
+def test_knobs_v3_lead_singles_widens_lead_ballots_but_not_the_production_streams():
+    """Shadowing production on identical states, V3_LEAD_SINGLES=1 appends
+    middle-rank singles AFTER the production ballot on leads, leaves follows
+    alone and advances the production stream exactly as production does (same
+    pre-decision state, report seed and world count per decision); the extra
+    candidates are charged as selection rollouts and nothing else changes.
+    LEAD_MAX_CANDIDATES=64 on top lifts the 14-slot cap and widens further."""
+    seed = 4_262
+
+    def shadow(overrides, *, singles_only):
+        prod = _tiny(make_bot(BASE, seed=seed))
+        arm = _tiny(S.make_knobs_bot(BASE, overrides, seed=seed))
+        extra = []
+        charged = 0
+
+        def check(b, rnd):
+            nonlocal charged
+            mine, theirs = arm.last_decision_record, b.last_decision_record
+            assert (mine is None) == (theirs is None)
+            if mine is None:
+                return
+            assert mine["rng_state"] == theirs["rng_state"]
+            assert mine["report_seed"] == theirs["report_seed"]
+            assert mine["worlds"] == theirs["worlds"]
+            assert mine["work"]["report_rollouts"] == theirs["work"]["report_rollouts"]
+            p, k = theirs["candidates"], mine["candidates"]
+            if rnd.trick.plays:
+                assert k == p, "a follow ballot is production's"
+                return
+            assert k[:len(p)] == p, "the production ballot must lead the widened one"
+            assert len(k) <= type(arm).LEAD_MAX_CANDIDATES
+            if singles_only:
+                assert all(len(c) == 1 for c in k[len(p):])
+            added = len(k) - len(p)
+            assert mine["work"]["selection_rollouts"] == \
+                theirs["work"]["selection_rollouts"] + mine["worlds"] * added
+            charged += mine["worlds"] * added
+            extra.append(added)
+
+        _play_seat0(prod, seed, twin=arm, twin_agrees=False, on_decision=check)
+        assert extra, "seat 0 never led a contested trick"
+        assert arm.rng.getstate() == prod.rng.getstate()
+        assert arm.search_calls == prod.search_calls
+        assert arm.rollouts - prod.rollouts == charged
+        return sum(extra), sum(1 for e in extra if e)
+
+    extra_v3, widened_v3 = shadow(KNOBS_V3, singles_only=True)
+    extra_64, _ = shadow(KNOBS_V3 + ["LEAD_MAX_CANDIDATES=64"], singles_only=False)
+    assert widened_v3 > 0 and extra_64 > extra_v3 > 0
+
+
 def test_refusals():
     with pytest.raises(S.OracleScreenError):
         S.build_config(arm="value", base_policy="mc-s0-report-lcb-null")
@@ -405,11 +587,11 @@ def test_cluster_bootstrap_is_deterministic():
 
 # ------------------------------------------------------------- CLI altitude
 
-def _run_cli(out: Path, *args: str, timeout: int = 240) -> Path:
+def _run_cli(out: Path, *args: str, timeout: int = 240, seed: int = 777) -> Path:
     env = dict(os.environ)
     env.setdefault("SHENGJI_REQUIRE_VOIDS", "1")
     cmd = [sys.executable, "-P", "-B", str(SCRIPT), "--rounds", "2",
-           "--seed", "777", "--out", str(out), *TINY_WORK, *args]
+           "--seed", str(seed), "--out", str(out), *TINY_WORK, *args]
     proc = subprocess.run(cmd, cwd=SERVER, env=env, capture_output=True,
                           text=True, timeout=timeout)
     assert proc.returncode == 0, proc.stderr + proc.stdout
@@ -435,6 +617,7 @@ def _comparable(record: dict) -> dict:
 WIDE_CLI = ["--arm", "wide", "--wide-cap", "16", "--wide-screen-worlds", "2",
             "--prior-worlds", "2", "--wide-keep-stage1", "4",
             "--wide-keep-top", "3"]
+KNOBS_CLI = ["--arm", "knobs", "--knob", "V3_LEAD_SINGLES=1"]
 
 
 @pytest.fixture(scope="module")
@@ -459,6 +642,12 @@ def cli_runs(tmp_path_factory):
             "--wide-screen-worlds", "2", "--prior-worlds", "4", "--workers", "1"),
         "wide_w1": _run_cli(root / "wide_w1", *WIDE_CLI, "--workers", "1"),
         "wide_w2": _run_cli(root / "wide_w2", *WIDE_CLI, "--workers", "2"),
+        "knobs_neutral": _run_cli(
+            root / "knobs_neutral", "--arm", "knobs", "--workers", "1"),
+        "knobs_w1": _run_cli(root / "knobs_w1", *KNOBS_CLI, "--workers", "1",
+                             seed=1),
+        "knobs_w2": _run_cli(root / "knobs_w2", *KNOBS_CLI, "--workers", "2",
+                             seed=1),
     }
     return runs
 
@@ -505,7 +694,7 @@ def test_cli_writes_the_four_artifacts_with_the_declared_schema(cli_runs):
     assert runtime["schema"] == S.RUNTIME_SCHEMA and runtime["rounds"] == 2
 
 
-@pytest.mark.parametrize("arm", ["both", "wide"])
+@pytest.mark.parametrize("arm", ["both", "wide", "knobs"])
 def test_cli_output_is_byte_identical_across_runs_and_worker_counts(cli_runs, arm):
     a, b = cli_runs[f"{arm}_w1"], cli_runs[f"{arm}_w2"]
     assert (a / "rounds.jsonl").read_bytes() == (b / "rounds.jsonl").read_bytes()
@@ -547,13 +736,57 @@ def test_cli_wide_screen_reports_knobs_offballot_rates_and_stage_work(cli_runs):
     assert control["oracle_wide_offballot_kept_rate"] is None
 
 
-@pytest.mark.parametrize("neutral", ["value_neutral", "prior_neutral", "wide_neutral"])
+@pytest.mark.parametrize("neutral", ["value_neutral", "prior_neutral",
+                                     "wide_neutral", "knobs_neutral"])
 def test_neutral_arm_screen_equals_the_production_control(cli_runs, neutral):
     control = _rounds(cli_runs["none"])
     arm = _rounds(cli_runs[neutral])
     assert [_comparable(r) for r in arm] == [_comparable(r) for r in control]
     for r in arm:
         assert all(r["work"]["arm"][k] == 0 for k in S.ORACLE_COUNTERS)
+
+
+def test_cli_knobs_screen_stamps_the_override_set_and_counts_the_ballot_work(cli_runs):
+    """``--arm knobs --knob V3_LEAD_SINGLES=1 --rounds 2 --seed 1 --workers 2``
+    writes the four artifacts with the override set stamped in the summary,
+    the description and the identity; the arm logs no oracle work and its
+    wider ballot shows up only through the production counters."""
+    out = cli_runs["knobs_w2"]
+    for name in ("rounds.jsonl", "summary.json", "timing.jsonl", "runtime.json"):
+        assert (out / name).exists()
+    summary = json.loads((out / "summary.json").read_text())
+    assert summary["arm"] == "knobs" and summary["seed0"] == 1
+    assert summary["rounds"] == 2 and summary["clusters"] == 1
+    assert summary["knobs"]["overrides"] == {"V3_LEAD_SINGLES": True}
+    assert summary["arm_description"] == \
+        "mc-s0-report-lcb with V3_LEAD_SINGLES=True"
+    assert "NOT a promotion" in summary["claim"]
+    ident = summary["identity"]
+    assert ident["knob_overrides"] == {"V3_LEAD_SINGLES": True}
+    assert ident["ballots"]["arm_class"] == "Knobs_MCS0ReportLCB"
+    assert ident["ballots"]["arm"] != ident["ballots"]["baseline"]
+    totals = summary["work_totals"]["arm"]
+    assert all(totals[k] == 0 for k in S.ORACLE_COUNTERS)
+    assert totals["total_rollouts"] == totals["continuation_rollouts"] \
+        == totals["rollouts"] > 0
+    assert summary["arm_over_baseline_total_rollouts"] == \
+        summary["arm_over_baseline_continuation_rollouts"] > 0
+    assert summary["oracle_wide_offballot_kept_rate"] is None
+    records = _rounds(out)
+    assert [(r["cluster"], r["mirror"]) for r in records] == [(0, 0), (0, 1)]
+    assert all(r["seed"] == 1 and r["arm"] == "knobs" for r in records)
+    assert len((out / "timing.jsonl").read_text().splitlines()) == 2
+    runtime = json.loads((out / "runtime.json").read_text())
+    assert runtime["schema"] == S.RUNTIME_SCHEMA
+    assert runtime["workers"] == 2 and runtime["rounds"] == 2
+    assert "--knob" in runtime["argv"] and "V3_LEAD_SINGLES=1" in runtime["argv"]
+    assert runtime["arm_prior_secs"] == 0 and runtime["arm_wide_secs"] == 0
+    assert runtime["arm_search_secs"] > 0
+    neutral = json.loads((cli_runs["knobs_neutral"] / "summary.json").read_text())
+    assert neutral["knobs"]["overrides"] == {}
+    assert neutral["identity"]["knob_overrides"] == {}
+    assert neutral["arm_description"] == \
+        "mc-s0-report-lcb with no knob overrides (identity control)"
 
 
 def test_cli_refuses_to_mix_into_an_existing_run(cli_runs, tmp_path):

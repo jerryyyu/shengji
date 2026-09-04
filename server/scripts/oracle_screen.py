@@ -18,8 +18,18 @@ Arms (see shengji/oracle/screen.py for the exact semantics and knobs):
           ranked on --prior-worlds worlds, --wide-keep-top handed to the search
           (--prior-anchor lets the ranking replace the incumbent)
   wide-value  wide + value
+  knobs   NOT an oracle: the production class with its own class attributes
+          overridden by --knob NAME=VALUE (repeatable; e.g. TRACTOR_LOCK,
+          RETAIN_ALL_LEAD_PAIRS, V3_LEAD_SINGLES, RISKY_THROWS, TRUMP_BALLOT,
+          LEAD_MAX_CANDIDATES, FOLLOW_MAX_CANDIDATES, MAX_CANDIDATES), screened
+          at equal work; the override set is stamped in the summary and the
+          extra ballot work is counted.  Without --knob it is the none control.
   none    production on both sides (identity control for neutral knobs)
   null    production vs its champion-matched null (noise floor on these deals)
+
+    SHENGJI_REQUIRE_VOIDS=1 python -P -B scripts/oracle_screen.py --arm knobs \
+        --knob V3_LEAD_SINGLES=1 --knob LEAD_MAX_CANDIDATES=64 \
+        --rounds 64 --seed 145000000 --workers 16 --out runs/oracle/knobs-v3
 
 The baseline is always the registered production class (--base-policy,
 default mc-s0-report-lcb) at its registered work.  --select-worlds and
@@ -90,6 +100,11 @@ def parser() -> argparse.ArgumentParser:
     ap.add_argument("--wide-keep-top", type=int, default=d["wide_keep_top"],
                     help="ballot entries handed to the search incl. the "
                          "incumbent (0 = no oracle)")
+    ap.add_argument("--knob", action="append", default=[], metavar="NAME=VALUE",
+                    help="knobs arm only: override a scalar class attribute "
+                         "of the base policy (repeatable; the value is coerced "
+                         "to the attribute's type, bool takes 0/1/true/false); "
+                         "an unknown name or a bad value refuses the run")
     ap.add_argument("--select-worlds", type=int, default=None,
                     help="SMOKE ONLY: override N on both sides")
     ap.add_argument("--report-worlds", type=int, default=None,
@@ -127,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
             replicates=args.bootstrap_replicates,
             bootstrap_seed=args.bootstrap_seed, script_path=str(SCRIPT),
             argv=sys.argv if argv is None else [str(SCRIPT), *argv],
-            progress=args.progress)
+            progress=args.progress, knob_overrides=args.knob)
     except S.OracleScreenError as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         return 2

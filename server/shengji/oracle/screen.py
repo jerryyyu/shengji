@@ -57,6 +57,22 @@ more expensive stand-in for each buys inside the unchanged search:
     the champion-matched null (same policy, RNG stream shifted by the registry
     offset) so the reviewer sees the noise floor on the same deals.
 
+``knobs``
+    Not an oracle: the production class itself with CLASS ATTRIBUTES
+    overridden from the command line (``--knob NAME=VALUE``, repeatable), so
+    production-bot knobs such as ``TRACTOR_LOCK``, ``RETAIN_ALL_LEAD_PAIRS``,
+    ``V3_LEAD_SINGLES``, ``RISKY_THROWS``, ``TRUMP_BALLOT``,
+    ``LEAD_MAX_CANDIDATES``, ``FOLLOW_MAX_CANDIDATES`` and ``MAX_CANDIDATES``
+    can be screened at equal work on the same paired mirrored deals.  Only
+    names that already exist as scalar class attributes of the base class are
+    accepted, values are coerced to the attribute's type (bool takes
+    0/1/true/false), and an unknown name or a bad value refuses before any
+    round runs.  The search is untouched: a wider ballot simply costs more
+    selection worlds, which ``arm_over_baseline_total_rollouts`` records.  With
+    no override the arm is the ``none`` control (its neutral witness).  The
+    override set is stamped in ``knobs.overrides``, in the arm description and
+    in ``identity.knob_overrides``.
+
 INTERPRETATION (Codex review of PR #203, 2026-09-04).  Neither arm is an
 upper bound on what a learned component could buy.  The value arm is a
 bounded greedy one-ply rollout-policy modification scored by the same
@@ -116,12 +132,18 @@ from ..engine.round import Trick, TrickPlay
 from ..evaluation import counters as production_counters
 from ..harvest.legal import enumerate_legal
 
-ARMS = ("none", "null", "value", "prior", "both", "wide", "wide-value")
+ARMS = ("none", "null", "value", "prior", "both", "wide", "wide-value",
+        "knobs")
 #: Which mixin each oracle arm carries.
 VALUE_ARMS = ("value", "both", "wide-value")
 PRIOR_ARMS = ("prior", "both")
 WIDE_ARMS = ("wide", "wide-value")
 ORACLE_ARMS = ("value", "prior", "both", "wide", "wide-value")
+#: The production class with its own class knobs overridden; not an oracle.
+KNOBS_ARM = "knobs"
+#: Work knobs have dedicated flags that apply to BOTH sides; a one-sided
+#: override would silently void the summary's equal-work statement.
+KNOB_WORK_NAMES = ("N_DETERMINIZATIONS", "REPORT_FOLD_WORLDS")
 DEFAULT_BASE_POLICY = "mc-s0-report-lcb"
 #: Same shift the registry uses for every champion-matched null.
 NULL_SEED_OFFSET = 999_983
@@ -742,7 +764,111 @@ def knob_defaults() -> dict:
         "wide_keep_top": 8,
         # A stamp, not a switch: the wide ballot always meets production's N.
         "wide_fixed_n": True,
+        # knobs arm: {CLASS_ATTRIBUTE: coerced value}, sorted by name.
+        "overrides": {},
     }
+
+
+# ------------------------------------------------------------------ knobs arm
+
+def _coerce_knob(name: str, current, raw):
+    """Coerce ``raw`` (a command-line string or a native value) to the type of
+    the attribute's current value; refuse anything that does not round-trip."""
+    if isinstance(current, bool):
+        if isinstance(raw, bool):
+            return raw
+        text = str(raw).strip().lower()
+        if text in ("1", "true"):
+            return True
+        if text in ("0", "false"):
+            return False
+        raise OracleScreenError(
+            f"knob {name}: {raw!r} is not a bool (use 0/1/true/false)")
+    if isinstance(current, int):
+        if isinstance(raw, bool):
+            raise OracleScreenError(f"knob {name}: expects an int, got {raw!r}")
+        if isinstance(raw, int):
+            return raw
+        try:
+            return int(str(raw).strip())
+        except ValueError:
+            raise OracleScreenError(
+                f"knob {name}: {raw!r} is not an int") from None
+    if isinstance(current, float):
+        if isinstance(raw, bool):
+            raise OracleScreenError(f"knob {name}: expects a float, got {raw!r}")
+        try:
+            value = float(str(raw).strip()) if isinstance(raw, str) else float(raw)
+        except (TypeError, ValueError):
+            raise OracleScreenError(
+                f"knob {name}: {raw!r} is not a float") from None
+        if not math.isfinite(value):
+            raise OracleScreenError(f"knob {name}: {raw!r} is not finite")
+        return value
+    if isinstance(current, str):
+        if not isinstance(raw, str):
+            raise OracleScreenError(f"knob {name}: expects a str, got {raw!r}")
+        return raw
+    raise OracleScreenError(
+        f"knob {name}: its value {current!r} ({type(current).__name__}) is not "
+        "a bool/int/float/str class knob and cannot be overridden")
+
+
+def parse_knob_overrides(base_cls: type, specs) -> dict:
+    """``NAME=VALUE`` strings (or a ``{NAME: value}`` mapping) -> a dict of
+    class-attribute overrides, sorted by name and coerced to each attribute's
+    type.  Only scalar class attributes that ``base_cls`` already exposes are
+    accepted; work knobs with their own two-sided flags are refused."""
+    if isinstance(specs, dict):
+        items = list(specs.items())
+    else:
+        items = []
+        for spec in specs or ():
+            if not isinstance(spec, str) or "=" not in spec:
+                raise OracleScreenError(f"knob {spec!r}: expected NAME=VALUE")
+            name, _, value = spec.partition("=")
+            items.append((name.strip(), value))
+    out: dict = {}
+    for name, raw in items:
+        if not name.isidentifier() or name.startswith("_"):
+            raise OracleScreenError(f"knob {name!r}: not a public attribute name")
+        if name in out:
+            raise OracleScreenError(f"knob {name}: given more than once")
+        if name in KNOB_WORK_NAMES:
+            raise OracleScreenError(
+                f"knob {name}: search work is not a policy knob; "
+                "--select-worlds/--report-worlds set it on BOTH sides")
+        try:
+            current = inspect.getattr_static(base_cls, name)
+        except AttributeError:
+            raise OracleScreenError(
+                f"unknown knob {name}: not a class attribute of "
+                f"{base_cls.__name__}") from None
+        if callable(current) or hasattr(current, "__get__"):
+            raise OracleScreenError(
+                f"knob {name}: {base_cls.__name__}.{name} is a method or "
+                "descriptor, not a class knob")
+        out[name] = _coerce_knob(name, current, raw)
+    return dict(sorted(out.items()))
+
+
+@lru_cache(maxsize=None)
+def _knobs_class(base_cls: type, overrides: tuple) -> type:
+    """The production class with class attributes overridden; one class per
+    override set, so every bot of a screen shares its identity."""
+    return type(f"Knobs_{base_cls.__name__}", (base_cls,), dict(overrides))
+
+
+def make_knobs_bot(base_policy: str, overrides, *, seed: int | None):
+    """Construct the knobs arm's bot: production, with ``overrides`` applied
+    as class attributes of a subclass (validated and coerced again here, so a
+    Python caller gets the same refusals as the command line)."""
+    base_cls = base_policy_class(base_policy)
+    parsed = parse_knob_overrides(base_cls, overrides or {})
+    bot = _knobs_class(base_cls, tuple(parsed.items()))(seed)
+    stamp = ",".join(f"{n}={v!r}" for n, v in parsed.items())
+    bot.policy_name = f"{base_policy}+knobs" + (f"[{stamp}]" if stamp else "")
+    return bot
 
 
 def make_oracle_bot(base_policy: str, arm: str, *, seed: int | None,
@@ -797,6 +923,8 @@ def make_side_bot(config: dict, side: str, seed: int):
     elif arm == "null":
         bot = make_bot(base, seed=seed + NULL_SEED_OFFSET)
         bot.policy_name = f"{base}+null"
+    elif arm == KNOBS_ARM:
+        bot = make_knobs_bot(base, config["knobs"].get("overrides"), seed=seed)
     else:
         bot = make_oracle_bot(base, arm, seed=seed, knobs=config["knobs"])
     work = config.get("work") or {}
@@ -839,12 +967,25 @@ def work_counters(bots) -> dict:
 
 def build_config(*, arm: str, base_policy: str = DEFAULT_BASE_POLICY,
                  knobs: dict | None = None, select_worlds: int | None = None,
-                 report_worlds: int | None = None) -> dict:
+                 report_worlds: int | None = None,
+                 knob_overrides=None) -> dict:
+    """``knob_overrides`` (the knobs arm's ``--knob NAME=VALUE`` list or a
+    mapping) is validated against the base class here, so a bad override
+    refuses before any round runs; it lands in ``knobs.overrides``."""
     if arm not in ARMS:
         raise OracleScreenError(f"arm must be one of {ARMS}, got {arm!r}")
     base_cls = base_policy_class(base_policy)
     k = dict(knob_defaults())
     k.update(knobs or {})
+    overrides = (knob_overrides if knob_overrides is not None
+                 else k.get("overrides") or {})
+    if arm == KNOBS_ARM:
+        k["overrides"] = parse_knob_overrides(base_cls, overrides)
+    elif overrides:
+        raise OracleScreenError(
+            f"knob overrides belong to the {KNOBS_ARM!r} arm, not {arm!r}")
+    else:
+        k["overrides"] = {}
     registered = {
         "n_determinizations": int(base_cls.N_DETERMINIZATIONS),
         "report_fold_worlds": int(base_cls.REPORT_FOLD_WORLDS),
@@ -1092,12 +1233,20 @@ def summarize(records: list[dict], config: dict, *, seed0: int,
     if not config["work"]["production"]:
         problems.append("work override in effect: this is NOT production work")
 
+    if config["arm"] == KNOBS_ARM:
+        claim = ("equal-work screen of production class knobs, NOT a "
+                 "promotion: non-promotable on its own; the arm is the "
+                 "production search with the stamped class attributes "
+                 "overridden, and any extra ballot work it buys is charged in "
+                 "total_rollouts")
+    else:
+        claim = ("expensive heuristic probe, NOT a ceiling: non-promotable; "
+                 "arms may exceed production compute and are not candidate "
+                 "policies; a weak or null result does not close the learned "
+                 "value/prior direction")
     return {
         "schema": SUMMARY_SCHEMA,
-        "claim": ("expensive heuristic probe, NOT a ceiling: non-promotable; "
-                  "arms may exceed production compute and are not candidate "
-                  "policies; a weak or null result does not close the learned "
-                  "value/prior direction"),
+        "claim": claim,
         "arm": config["arm"],
         "arm_description": arm_description(config),
         "base_policy": config["base_policy"],
@@ -1142,6 +1291,12 @@ def arm_description(config: dict) -> str:
     if arm == "null":
         return (f"{base} vs its champion-matched null "
                 f"(seed offset {NULL_SEED_OFFSET})")
+    if arm == KNOBS_ARM:
+        overrides = k.get("overrides") or {}
+        if not overrides:
+            return f"{base} with no knob overrides (identity control)"
+        return f"{base} with " + ", ".join(
+            f"{name}={value!r}" for name, value in sorted(overrides.items()))
     parts = []
     if arm in VALUE_ARMS:
         parts.append(
@@ -1201,6 +1356,11 @@ def identity(config: dict, script_path: str | None = None) -> dict:
                                   seed=0, knobs=config["knobs"])
         ballots["arm"] = str(mc_ballot(arm_bot))
         ballots["arm_class"] = type(arm_bot).__name__
+    elif config["arm"] == KNOBS_ARM:
+        arm_bot = make_knobs_bot(config["base_policy"],
+                                 config["knobs"].get("overrides"), seed=0)
+        ballots["arm"] = str(mc_ballot(arm_bot))
+        ballots["arm_class"] = type(arm_bot).__name__
     return {
         "git_sha": _git(["rev-parse", "HEAD"], repo),
         "git_dirty": bool(_git(["status", "--porcelain",
@@ -1213,6 +1373,10 @@ def identity(config: dict, script_path: str | None = None) -> dict:
         "fast_engine": fast_engine_active(),
         "require_voids": bool(os.environ.get("SHENGJI_REQUIRE_VOIDS")),
         "ballots": ballots,
+        # The ballot spec only covers MC_BALLOT_ATTRS; TRACTOR_LOCK and the
+        # like would otherwise leave two knob screens looking alike.
+        "knob_overrides": dict(sorted(
+            (config["knobs"].get("overrides") or {}).items())),
     }
 
 
@@ -1279,10 +1443,11 @@ def run_screen(*, arm: str, rounds: int, seed0: int, out_dir, workers: int = 1,
                replicates: int = DEFAULT_BOOTSTRAP_REPLICATES,
                bootstrap_seed: int = DEFAULT_BOOTSTRAP_SEED,
                script_path: str | None = None, argv: list[str] | None = None,
-               progress: bool = False) -> dict:
+               progress: bool = False, knob_overrides=None) -> dict:
     config = build_config(arm=arm, base_policy=base_policy, knobs=knobs,
                           select_worlds=select_worlds,
-                          report_worlds=report_worlds)
+                          report_worlds=report_worlds,
+                          knob_overrides=knob_overrides)
     ident = identity(config, script_path)
     started = time.perf_counter()
 

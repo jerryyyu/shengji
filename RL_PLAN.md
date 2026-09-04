@@ -1,329 +1,421 @@
-# RL plan: belief-aware search and learned Sheng Ji
+# RL and belief research plan
 
-This file is the compact current research plan. It owns the scientific spine,
-milestones and evidence standards—not the live queue or run chronology.
+Last reconciled: **2026-09-04 (post-pivot)**. This document owns research architecture,
+estimands, and the decision tree. `BACKLOG.md` owns priority; live compute and
+exact review asks are in `HANDOFF_ACTIVE.md`; policy names and deployment state
+are in `AI_POLICIES.md`; immutable receipts and verdicts are in
+`HANDOFF_REVIEW.md`.
 
-- Live priority/order: `BACKLOG.md`
-- Fleet state: `HANDOFF_ACTIVE.md`
-- Current cross-agent handoff: `HANDOFF_ACTIVE.md`
-- Execution, review and long-run workflow: `AGENTS.md`
-- Callable policies and terminal synthesis: `AI_POLICIES.md`
-- BELIEF contracts: `BELIEF_V1_SPEC.md`, `BELIEF_V1_B2_DESIGN.md`
-- Full pre-compaction plan and model lineage:
-  `docs_archive/rl-plan-through-2026-08-15.md`
+Historical model chronology remains in
+`docs_archive/rl-plan-chronology-through-2026-08-03.md`,
+`docs_archive/rl-plan-experiments-1b-1o.md`, dated archives, and Git history.
+Do not append run diaries or duplicate exact packet hashes here.
 
 ## Objective and evidence standard
 
-Build a policy that beats the exact deployed `mc-s0-report-lcb` champion on
-fresh mirrored whole-round signed level utility, then improves against a fixed
-blinded human cohort. Search, offline loss, throughput, Elo and human agreement
-are intermediate instruments; none alone is a strength result.
+Build a Shengji policy that is demonstrably stronger than the exact live
+`mc-s0-report-lcb` champion under a correct engine and reproducible evaluator.
+The only confirmed strength gain to date is RLCB itself (`+0.338 ± 0.068`
+signed levels vs `mc-strong`, 2,048 clusters). Every other lane in the
+project's history — V11, Direct-Q, teacher direct play, S4/S6, PT1, C0,
+BELIEF R4 — improved a component metric that did not transport into
+whole-game utility. The 2026-09-04 retrospective (ledger `0088544f`) therefore
+reorders the program: ceiling before component, planner before information,
+transport before scale, rigor proportional to claim altitude.
 
-Every strength claim binds engine, source, actor perspective, policy, ballot,
-sampler, continuation, encoder, split, seeds, work, metric, null and stopping
-rule. Screens select one design. Fresh paired confirmation establishes a claim.
+Evidence labels:
 
-## What the closed campaign proved
+- **MECHANICS:** code, legality, parity, leakage, throughput, or rehearsal.
+- **OFFLINE:** held-out prediction, calibration, stability, or teacher value.
+- **SCREEN:** fresh state or whole-round evidence that selects a design.
+- **CONFIRM:** preregistered fresh mirrored evidence supporting a strength claim.
+- **REJECT/SELECT NONE:** the exact registered recipe failed its bar.
 
-1. **The report-LCB search guard is a real strength gain.** It is the live
-   champion and the parent every challenger must name exactly.
-2. **This generation of learned action ranking did not transfer globally.**
-   More data stabilized outcome prediction, but T4 global and trick-5+
-   protected uses selected none.
-3. **Local tactical patches were too sparse or failed composition.** S4 and S6
-   selected none; Pair produced no whole-game evidence.
-4. **The apparent generic-widening positive is attribution-incomplete.** Its
-   null matched treatment work, not champion work: +14.8% accepted worlds and
-   +80.9% searches versus champion. A valid confirmation needs champion,
-   widening-at-champion-work and widening-at-null-work arms.
-5. **Engine speed improved substantially, but strength did not.** Cheaper
-   worlds can buy wider search, better continuations or statistical power; the
-   performance result itself cannot choose among them.
+Primary policy metric is paired signed level utility clustered by deal seed.
+Win rate, role splits, advancement tails, and catastrophic losses are required
+diagnostics. Offline loss, Brier score, point regret, Elo pools, and human
+agreement never substitute for a fresh whole-game comparison.
 
-The program therefore changes axis rather than adding another isolated rule.
-The active milestone is BELIEF-V1: improve the hidden-world distribution that
-search reasons over, validate it offline, then test it at fixed work.
+## Operating modes (rigor tiers)
 
-## BELIEF-V1: tangible outcome
+Rigor is matched to the claim a run supports, never applied at flat rate.
 
-At a play decision, the existing engine has three different kinds of state:
-
-| layer | examples | treatment |
-|---|---|---|
-| **Public fact / sound deduction** | cards played, current trick, proven suit void, legal follow obligations, declarations that remain logically informative | Enforce exactly. These are not learned probabilities. |
-| **Actor-private fact** | the acting player's current hand | Available only to that actor and its search. Never exposed to another seat's model row. |
-| **Belief about hidden state** | probability a player has 0/1/2 copies of a card, is short in a suit, retains a higher pair, holds points, can ruff or can beat a current winner | Predict and calibrate from actor-visible history; never label as certain unless mechanics prove it. |
-
-The model does not store one guessed opponent hand. It emits a calibrated
-distribution over ownership/count events for each hidden receiver, conditioned
-on the public sequence and the acting hand. A later sampler projects those
-marginals into complete legal hidden worlds. Search then evaluates the same
-actions over better-weighted worlds at the same work budget.
-
-Concrete tactical examples:
-
-- “Seat 2 is out of hearts” is a hard fact only after a legal heart-follow
-  opportunity proves it. Before that, point shedding or unusual trump use may
-  raise the probability that seat 2 is short, but cannot set it to one.
-- “Seat 1 has no pair” is suit- and history-specific. A failed pair response
-  can impose a hard cap; declining to feed or choosing a single is behavioral
-  evidence only.
-- A joker spent when a cheaper trump could win may indicate low remaining
-  trump, but the model should express a posterior over trump length rather than
-  a hand-coded certainty.
-- Feeding points while a teammate is already winning may update beliefs about
-  remaining suit length, point inventory and alternative safe feeds. It is not
-  itself proof of any one hidden card.
-
-The first consumer is only the world sampler. PointContext already owns
-trick-points, points-left and boss-related public context; BELIEF extends that
-boundary rather than duplicating it. Learned value, Direct-Q, V11 pairwise
-ranking, action allocation and memory-aware rollout policy remain later,
-separately gated consumers.
-
-## Current BELIEF state — 2026-08-27
-
-- B0 typed actor/target boundaries, ownership schema and source contracts are
-  merged. V1/R3 failed on resources before test and produced no learning
-  verdict; their incidents motivated reusable artifacts, measured scheduling,
-  graceful truncation, and end-to-end rehearsals.
-- R4 training and its reusable capture/reference/cache/checkpoint assets are
-  sealed. Optimized exact source `d82ba224` is scoring calibration on Perf;
-  exact serial source `e10cb3d` remains a fallback on Strength Cloud. Test is
-  unopened. The fallback stops only after optimized calibration seals,
-  independently reopens, and the reviewed readiness/cutover controller says
-  `READY`.
-- R5 exact source `9c5928f2` retains all-rank and player/deal-disjoint human
-  inputs, durable train/calibration artifacts, progress/ETA, exact process
-  recovery and graceful deadline truncation. No R5 process, freeze, or review
-  is active. After R4 releases Perf, one 104-round full-DAG rehearsal on the
-  exact runtime precedes one consolidated source+freeze review and one run.
-- R4/R5 compare fixed multi-seed primary, label-control, human-mixture, and
-  half-scale cohorts against REF-C. Human n=51 test evidence is descriptive,
-  not a promotion gate.
-- Nothing in R4 samples belief-weighted worlds or changes gameplay. A reviewed
-  B2 calibration PASS is only permission to propose B3 sampler mechanics.
-
-## BELIEF milestone ladder
-
-| milestone | output | pass question | authority after pass |
+| tier | what it supports | keep | drop |
 |---|---|---|---|
-| **B0 — boundary** | `ActorObservationV1`, separately sealed privileged targets, exact fact/private/belief types | Can hidden twins produce byte-identical actor rows, with no target path reachable by runtime inputs? | Source development only. |
-| **B1 — population/design** | Frozen runtime/source/design identities, deterministic actor-only and paired capture plan, measured stage timing and enforced live deadlines | Is the population reproducible, sized, leakage-safe and operationally guaranteed to stop within caps? | One exact B2 pipeline admission after external design PASS. |
-| **B2 — offline learning** | Candidate and negative-control cohorts, REF-C reference, mechanics/calibration/behavior reports, one terminal result | Does the learned belief improve held-out proper score beyond a debiased current-sampler reference without leakage or mechanics drift? | If and only if terminal PASS: propose B3 sampler implementation review. |
-| **B3 — sampler** | Complete-world sampler that projects learned beliefs while preserving legal constraints | Do sampled-world marginals reproduce the certified belief and improve held-out true-world/value error at fixed worlds? What natural final-decision flip dose results? | One bounded same-work DEV mechanism screen design. |
-| **B4 — search screen** | Current sampler vs belief sampler, identical root/continuation/work, shuffled-belief null | Does better belief causally improve decisions, not merely change compute or hide a stronger rollout policy? | One fresh whole-game confirmation design only if dose × conditional edge clears MDE. |
-| **B5 — confirmation** | Fresh paired whole-round result versus champion and matched null | Does the complete policy beat production with integrity, role/tail and latency guards? | Promotion review; never automatic deployment. |
+| **i — exploratory / DEV** | pipeline works; a model exists; a diagnostic number | score-free until sealed (private artifacts closed until `terminal.json`), reproducibility stamp (git SHA, seeds, input hashes), never-delete, resumable runs, one up-front pipeline review for leakage and reproducibility | immutable freezes, one-shot admission, launch packets, per-launch confirmations, capacity rebinds, exact-head artifact coupling, machine markers, independent reconstruction |
+| **ii — selection screen** | choosing between designs | tier i plus a preregistered comparison, literal parent, matched null | the tier iii machinery |
+| **iii — confirmation** | a deploy or strength claim | the full immutable machinery: exact-head freeze, one-shot admission, independent reconstruction, ledger markers | — |
 
-### Immediate execution sequence
+Value V2 runs in tier i as of ledger `295136ba`. A lane enters tier iii only
+when a candidate beats the champion on a tier ii paired screen.
 
-1. **R4 terminal:** leave both live lanes unchanged until optimized calibration
-   seals and reopens. Execute the reviewed readiness, serial-stop, cutover,
-   one-test-open, and independent-terminal sequence without another review if
-   exact identities remain unchanged.
-2. **R5 freeze:** after R4 releases Perf, run one exact-host 104-round full-DAG
-   rehearsal, create fresh capacity/deadline/runtime receipts, seal one
-   immutable freeze, and request one consolidated source-plus-freeze review.
-   Launch once only after that exact PASS.
-3. **Terminal:** run each reviewed reopener, then obtain one consolidated
-   terminal/reproducibility review and one exact route: mechanics/resource
-   refusal, no-learning closeout, valid truncation, or B3 design permission.
-4. **Diagnosis:** publish complete per-epoch train/calibration curves, common-
-   epoch selection, eight-seed dispersion, negative-control behavior,
-   full-versus-half data scaling, human-mixture transfer and stage wall costs.
-5. **If learning is weak or incomplete:** use only the preserved development
-   and calibration surfaces for a small architecture/optimizer/data bakeoff.
-   Choose one recipe before any fresh sealed test; no lucky-seed promotion.
-6. **If B2 passes:** design B3 projection and sampling first. Measure legal
-   support, marginal drift, effective sample size, latency, true-world/value
-   error and natural final-decision flip dose before gameplay.
-7. **Strength path:** compare current sampler, belief sampler and shuffled-
-   belief null at equal work. Keep the separate three-arm ballot-widening
-   confirmation distinct from belief; only detectable causal gains earn fresh
-   whole-game confirmation.
+## Current decision tree
 
-The V1 incident changes the operational contract: a planning cap is not a cap
-unless running code checks it before starting work that cannot finish inside
-the remaining budget. V2 therefore binds epoch-time measurement, safety margin,
-deadline checks, non-sealing timeout behavior, and a durable spent admission.
+1. **Value V2 in DEV mode.** First end-to-end D64 run (width-8 spawn
+   population → labels → train → calibrate → audit → sealed terminal), then
+   D256. One interpretation review per seal. No confirmatory ceremony.
+2. **Ceiling screens before any second spend.** Oracle-value ceiling
+   (near-perfect leaf value inside production search vs production) bounds
+   V2's upside; oracle-belief ceiling (true hidden worlds in the production
+   sampler vs production) bounds any belief model. C0 already suggests the
+   belief ceiling is near zero.
+3. **Attack the planner.** C0 (perfect information, fixed planner) lost; PT-Sol0
+   (perfect information, flexible planner) won `+17/26`. Use the sealed Luna
+   dataset diagnostically — where the flexible planner disagrees with
+   production and wins, by mechanism — to derive direct search-policy variants
+   for the RLCB paired harness.
+4. **Prove transport before scaling data.** Fine-tune the D256-pretrained V2
+   model on Luna outcomes (value targets, not action imitation) and test
+   whether search with the fine-tuned leaf value moves toward the teacher on
+   the disagreement set. No further teacher collection until that transports.
+5. **BELIEF R4/R5 closed** unless the oracle-belief ceiling is positive.
+6. **Confirm strength last.** Any successor must beat literal production and a
+   behavior/work-matched null on fresh mirrored rounds under tier iii.
 
-## Current ownership model and post-R4 diagnosis
+The current prioritized form of this tree is in `BACKLOG.md`.
+## BELIEF world-model contract
 
-`HistoryOwnershipV1` is a sequence model because declarations and plays change
-the meaning of later actions. A two-layer GRU with 128 hidden units reads the
-actor-visible event history, combines it with public/global and per-card
-features, and predicts 0/1/2-copy ownership probabilities for each hidden
-receiver. Privileged hands and kitty supply labels during training only. The
-roughly 267k-parameter model is intentionally small enough that B2 can test the
-representation before model scale becomes the explanation for every result.
+### Four information layers
 
-The next ML choice comes from measured curves, not a generic model wishlist:
+The most important design constraint is that these are different types, not
+interchangeable features:
 
-| observed R4 pattern | most likely next question |
-|---|---|
-| train and calibration still improve at truncation | train longer or reduce epoch cost before changing architecture |
-| train improves while calibration worsens | regularization, capacity or data-mixture problem |
-| both plateau early | representation, target or optimizer problem |
-| large member spread | initialization/optimization stability problem |
-| full data beats half data cleanly | more diverse data may be economical |
-| human mixture improves human transfer without hurting synthetic | mixed-domain training is useful |
-| negative control tracks the primary | leakage, estimator or non-learning failure; do not advance |
+1. **Public facts:** rules, trump, banker, declarations actually visible to
+   the table, accepted plays, current trick, scores, hand sizes, and logically
+   proven void/pair/run bounds.
+2. **Actor-private facts:** the acting seat's hand and, for the banker only,
+   its own buried cards.
+3. **Beliefs:** probabilities inferred from compatible deals and behavior—for
+   example whether a seat is nearly void, still holds a higher pair, is likely
+   out of points, or retained a joker. These are not hard facts merely because
+   the action is suggestive.
+4. **Privileged labels:** true other hands and hidden burial available only in
+   simulation/offline training and evaluation.
 
-Later architecture, optimizer and scale experiments should reuse the frozen
-R4 train/calibration corpus through a separately defined reusable-data
-contract. They may run members or recipes in parallel across devices, but one
-fresh held-out test chooses the final recipe only after development selection.
+Runtime bytes contain layers 1 and 2 only. Layer 4 must live in separately
+sealed artifacts. Two states with identical actor-visible information but
+different hidden worlds must produce byte-identical runtime observations.
 
-## B2 scientific gate
+### Tactical representation
 
-B2 is deliberately offline and asks whether there is real learnable ownership
-signal before spending a scored fleet run.
+`ActorObservationV1`/its reviewed successors encode the acting hand, trump and
+role context, ordered declarations and plays, current/completed tricks, public
+points, remaining card population, hand sizes, void evidence, and pair/run or
+declaration constraints. The target records the true count of each physical
+card code at each hidden receiver: three other hands plus the burial.
 
-- **Reference:** current constraint-consistent sampler marginals, with the
-  finite-world Brier estimation bias corrected consistently in C1/N2/U1.
-- **Candidate:** one ownership model family, trained as a fixed eight-member
-  cohort; no lucky-seed selection.
-- **Negative controls:** history ablation and sealed label permutation with
-  explicit control schemas and nonzero dose.
-- **Mechanics:** exact conservation, hard-fact respect, target isolation,
-  hidden-twin invariance, seat rotation and synthetic small-domain checks.
-- **Statistics:** round is the paired/bootstrap unit. Aggregate lift needs a
-  positive lower bound and the frozen practical floor; behavior strata may not
-  pass vacuously when underpowered.
-- **Usefulness boundary:** marginal calibration is not yet a joint-world or
-  strength result. B3 must measure projection drift, joint sampling and final
-  search-decision dose.
+The current model is a small recurrent ownership predictor:
 
-The held-out real hands and kitty are labels only. Training learns from them in
-the same sense that supervised vision learns from annotations: runtime receives
-the observation, not the answer. Teacher labels should average values over
-worlds compatible with the same public observation; disagreement among those
-worlds is itself a useful uncertainty target.
+1. canonical public events are tokenized in chronological order;
+2. a GRU summarizes the variable-length declaration/play history;
+3. static actor/context features are combined with that summary; and
+4. a shared output head predicts, for each card code and possible receiver, a
+   distribution over 0/1/2 copies.
 
-## Literature-derived constraints
+The recurrent model is appropriate because an action's meaning depends on what
+happened before it: failing to feed, playing a joker under pressure, following
+short, or declining a declaration can update the posterior. Each decision in a
+round supplies a supervised example and is scored against the true hidden
+allocation. The GRU is a V1 engineering choice, not a claim that recurrence is
+optimal; transformer, set/graph, or hybrid encoders should be compared only
+after R4/R5 curves reveal the actual underfit/overfit and throughput regime.
 
-These systems inform architecture, not authority. Their equilibrium or
-perfect-information assumptions do not automatically transfer to four-player
-partnership Sheng Ji.
+### What V1 can and cannot express
 
-| evidence | durable constraint for Sheng Ji |
-|---|---|
-| [AlphaGo/AlphaZero](https://arxiv.org/abs/1712.01815) | Separate proposal, value and search roles. Search may teach later models, but each consumer needs its own gate. |
-| [Libratus](https://noambrown.github.io/papers/17-Science-Superhuman.pdf), [Pluribus](https://noambrown.github.io/papers/19-Science-Superhuman.pdf), [ReBeL](https://papers.nips.cc/paper/2020/hash/c61f571dbd2fb949d3fe5ae1608dd48b-Abstract.html) | Hidden-information search needs public history plus ranges/beliefs and named continuation strategies. A private observation has no universal strategy-independent scalar value. |
-| [DeepStack](https://arxiv.org/abs/1701.01724), [bridge belief Monte Carlo search](https://www.ieee-jas.com/article/doi/10.1109/JAS.2024.124488) | The closest BELIEF precedent is privileged true-deal supervision with actor-visible inference, calibrated ranges, complete compatible-world sampling, and search as final authority. Offline calibration is not strength. |
-| [Bayesian Action Decoder](https://arxiv.org/abs/1811.01458) | Public actions can update beliefs about private state. Shengji feeding, withholding, joker use, failed throws, and declaration timing remain probabilistic behavioral evidence and require chronology/policy-shift controls. |
-| [Suphx](https://arxiv.org/abs/2003.13590) | Privileged hands may shape a training curriculum, never leak into runtime inference. Decision-type specialization and controlled adaptation deserve separate tests. |
-| [DouZero](https://proceedings.mlr.press/v139/zha21a.html) | Direct return learning is a distinct role-conditioned/action-conditioned algorithm. Earlier residual/value experiments do not reject it wholesale. |
-| [Student of Games](https://arxiv.org/abs/2112.03178) and cooperative partially observed search | Teammates interpret public actions through a shared policy; preserve actor perspective and continuation identity. |
-| [COMA](https://ojs.aaai.org/index.php/AAAI/article/view/11794) | A privileged centralized critic may improve counterfactual credit assignment during training, but a deployed actor must remain decentralized and actor-visible. |
-| [Policy-Space Response Oracles](https://papers.neurips.cc/paper_files/paper/2017/file/3323fe11e9595c09af38fe67567a9394-Paper.pdf) | Evaluate a new self-play teacher against a frozen policy population, not only its latest partner, to expose cycling and narrow exploitation. |
+Per-card ownership probabilities directly answer questions such as “who is
+likely to hold either ace?” and same-code pair probabilities. They do not by
+themselves define a legal joint hand distribution. Suit length, trump length,
+points held, tractors, multi-card throws, ruff ability, and kitty composition
+depend on cross-card correlation.
 
-The first BELIEF head is ownership only because it is the cheapest head to
-falsify offline. Value, Q, pairwise and uncertainty heads wait until search has
-a belief stack worth distilling.
+Therefore the consumer path is:
 
-## Post-null admission rules
+```text
+actor-visible history
+        ↓
+per-card ownership posterior
+        ↓
+constraint-aware joint projection / complete-world sampler
+        ↓
+derived tactical distributions
+        ↓
+equal-work Monte Carlo search
+```
 
-A host-day-scale strength run begins only when:
+Derived outputs can include distributions over suit/trump length, remaining
+pairs/tractors, boss ownership, point holdings, kitty points, follow/ruff/beat
+availability, and uncertainty itself. Search must consume complete compatible
+worlds or an explicit joint model; it must not pretend independent marginals
+or one MAP world are the hidden truth.
 
-1. natural trigger or final-decision flip dose × conservative conditional edge
-   exceeds the intended whole-game MDE with margin;
-2. treatment is contrasted with the literal champion and an exact same-work
-   null;
-3. sign is robust across two named continuations or preregistered natural
-   role/phase strata;
-4. the design explains how local effects reach whole-game utility without
-   cancellation;
-5. source plus concrete design use one consolidated review chain where
-   possible, followed by one admission and one terminal review; and
-6. the result unlocks a named decision, not merely machine utilization.
+### Baselines and learning claim
 
-Before authorizing any projected multi-hour run, review the complete execution
-DAG with the user. Name every repeated full-data pass and justify why it is not
-duplicate integrity work; report the measured wall time, worker count, core
-utilization, memory and I/O bottleneck for each expensive node; demonstrate the
-exact checkpoint, restart and partial-result behavior at every failure
-boundary; and run the fastest realistic learning-bearing pilot before scaling.
-An integrity replay projected above four hours requires explicit user
-alignment rather than inheriting authority from an earlier scientific review.
+`REF-C` is the current constraint-consistent sampler converted to ownership
+marginals. It already receives every sound hard fact available to the actor.
+BELIEF earns an offline claim only by improving held-out proper scoring beyond
+REF-C after symmetric Monte Carlo-noise treatment, while satisfying mechanics,
+leakage, negative-control, seed-stability, and reliability gates.
 
-Compute may run cheap diagnostics and offline calibration in parallel when
-their authority and data are disjoint. It must not invent scored work merely
-to keep a host busy.
+A model may learn behavioral likelihoods from true hidden labels—for example
+that a policy tends to feed points when partner is secure—but the inference
+input remains actor-visible. Policy-dependent evidence must be audited under
+chronology ablation and across champion, named-bot, and human play. It is a
+probability, never silently promoted to a deduction.
 
-## Search and teacher architecture
+## R4 and R5
 
-| component | current role | next admissible test |
+### R4: obtain the first interpretable answer
+
+R4 reuses the valid trained models, cache/index, capture, and reference assets
+from earlier resource-failed attempts. Serial R4 has now sealed all seven
+calibration-selection artifacts; its later failure was an omitted legacy-cache
+identity in mandatory reconstruction, not a calibration or model verdict. The
+replacement terminal imports those exact authenticated calibration bytes and
+parallelizes decision scoring across 16 workers. Redundant Perf calibration is
+preserved only until the replacement passes reviewed pre-test readiness.
+
+The sole R4 test population is still unopened. No cutover is safe until:
+
+- the imported calibration, model/cache identities, all-rank capacity receipt,
+  and exact freeze receive one consolidated review;
+- exact source/runtime/input identities match that reviewed packet;
+- score-free readiness reopens every selected model and all 16 workers while
+  proving both old and replacement test namespaces remain unopened;
+- stopping the redundant Perf lane is durably recorded only after readiness;
+- the one-test-open path has sufficient deadline/disk/memory headroom; and
+- immediate and independent terminal reconstruction reproduce exact bytes
+  without reopening training authority.
+
+R4 is an offline belief verdict, not a policy or strength run.
+
+### R5: efficient, diverse, and recoverable successor — paused pending R4
+
+Do not resume, review, freeze, or launch R5 until R4 has a reproduced terminal
+verdict and its learning curves have been interpreted with the user. Preserve
+the existing reusable artifacts and implementation work. If R5 remains
+justified afterward, it should retain the scientific estimand while repairing
+these operational lessons:
+
+- all trump ranks rather than a rank-2-only convenience population;
+- player/deal-disjoint human full-round data alongside simulation;
+- host-independent sealed inputs and an exact-host rehearsal/freeze;
+- parallel cache construction and projection/scoring where bit identity holds;
+- GPU/device use only where measured faster and deterministic enough;
+- epoch-level train/calibration curves and per-stage percent/ETA telemetry;
+- graceful truncation at the best complete common epoch rather than erasing a
+  healthy still-improving cohort at the wall;
+- durable, independently reopenable capture/reference/cache/checkpoint assets;
+- deadlines checked inside long loops; and
+- one consolidated source+freeze review.
+
+R5 does not warm-start the confirmatory cohort from an inspected R4 winner.
+R4 checkpoints may be retained as named diagnostics or future architecture
+seeds, but candidate selection and terminal claims follow the frozen R5 rule.
+
+### Offline gates
+
+The exact design owns thresholds, but the conceptual gates are:
+
+1. **Mechanics:** legal support, conservation, hard facts, hidden-twin
+   invariance, actor/target isolation, exact artifact identity.
+2. **Primary calibration:** paired proper-score improvement versus REF-C on a
+   frozen held-out allocation population, with finite-reference Monte Carlo
+   bias handled symmetrically.
+3. **Behavior:** preregistered, adequately powered action-history strata; an
+   underpowered stratum is not a pass.
+4. **Negative controls:** chronology or label controls fail in the expected
+   direction; controls run through an explicitly typed path rather than forged
+   production rows.
+5. **Reliability:** non-vacuous curves and failing-direction witnesses for
+   marginal-expressible events; joint events wait for a sampleable posterior.
+6. **Training stability:** multi-seed cohort behavior is reported as stability,
+   not eight independent population confirmations.
+7. **Usefulness readiness:** exact projection succeeds, its calibration drift
+   is measured, and no gate merely restates the primary Brier comparison.
+
+## From belief to stronger play
+
+The deployment ladder is intentionally conservative:
+
+1. **Prediction only:** establish held-out ownership calibration.
+2. **Sampler only:** generate legal complete worlds from the posterior and
+   compare post-projection marginals with the certified model output.
+3. **Search-value mechanism:** on fixed public states, compare rollout value
+   error/variance under BELIEF worlds versus REF-C at equal work.
+4. **Decision dose:** measure how often BELIEF changes the N=30 nomination or
+   R=300 protected final action on natural decisions.
+5. **Fresh state screen:** test the changed decisions under an independent
+   report population.
+6. **Whole-game screen and confirmation:** literal champion, belief treatment,
+   and behavior/work-matched null on fresh mirrored deals.
+
+Search remains final authority through the first strength campaign. Learned
+value/Q/pairwise heads can later enter as bounded proposals, allocation signals,
+or calibrated leaves only after passing their own causal gate.
+
+## Privileged and perfect-information teachers
+
+Perfect information is useful only if its consumer turns it into better
+actions. Prior work exposed the distinction:
+
+- **PT0:** small exact late-endgame advantage over weak baselines, inconclusive
+  versus production.
+- **PT1:** exact teacher action guidance changed many actions but failed its
+  required utility gates.
+- **PT-Full:** evaluating only the literal true world performed badly; repeated
+  true-world search recovered the collapse but still did not beat the public
+  ensemble.
+- **C0:** fixed true-world consumer variants all lost to their required
+  parents, despite improving some visible local symptoms.
+- **PT-Sol0:** the reviewed 26-root/52-role full-round diagnostic gave Sol exact
+  hidden state plus engine-owned observe/rollout/play tools. Against the same
+  roots it averaged `+17/26` signed levels over exact production arm A,
+  `+37/52` over true-world production B, and `+23/26` over C0-S. Its exact
+  execution head is `e73f970e`.
+- **PT-Luna0:** the lower-cost Luna replication completed and independently
+  reopened all 52 roles. It averaged `+5/13` over A, `+23/52` over B, and
+  `+8/13` over C0-S, while trailing Sol by `-7/26`. Its exact execution head is
+  `2394140b`.
+
+This is the first reviewed evidence that two flexible reasoning agents can
+turn perfect information plus engine rollouts into better full-round decisions
+than the exact production-policy arm on the bounded open-DEV roots. It is a
+teacher milestone, not a fresh whole-game strength or deployment result: the
+roots are opened development evidence, the agents are privileged, and neither
+is a callable production policy.
+
+The key implication is that BELIEF and consumer policy are complementary.
+Perfect hidden-state prediction cannot fix a poor objective, partnership model,
+continuation, candidate ballot, or planning procedure. Before distilling a
+privileged teacher, prove the teacher itself beats the public production policy
+on exact states and then in realistic full-round populations.
+
+The current PT-Luna artifact already contributes 1,578 mechanically reopenable
+Luna-controlled decisions across early, middle, and late full-round play, and
+PT-Sol provides the higher-quality policy parent.
+Do not scale more identical teacher games merely to accumulate rows. First use
+Value-Afterstate V0 to identify where held-out value error, action regret, or
+planner disagreement is concentrated. Then collect fresh teacher trajectories
+for those preregistered surfaces, preserving action values, rollout allocation,
+and partnership plans rather than merely imitating each agent's argmax. A
+separate fresh-root confirmation can measure teacher efficacy; it must not be
+silently pooled with these opened roots.
+
+## Search and teacher strategy
+
+The research program has three ordered pillars:
+
+1. **Search capacity and allocation.** RLCB is the proven driver. The old T4
+   widening positive is compute-confounded, so confirm candidate width and
+   work in three arms before attributing the gain.
+2. **World representation.** Better public-history belief can improve the
+   worlds search sees at every decision. This is the R4/R5 question.
+3. **Learning from stronger search/teachers.** Only after the search stack is
+   stronger and its targets are contract-clean should it supervise direct Q,
+   value, pairwise, policy, or uncertainty heads.
+
+More search on a bad world distribution can waste compute; a better belief with
+a bad consumer can also lose. Measure search work, posterior quality, consumer
+decision dose, and whole-game utility separately.
+
+## Literature-derived design constraints
+
+This is an architecture filter, not evidence that a method transfers to
+four-seat partnership Shengji.
+
+| system | useful result | Shengji constraint |
 |---|---|---|
-| Proposal | Structured, human or learned sources keep legal actions visible. | Three-arm widening attribution before claiming generic widening; no T4/S6 retry. |
-| Belief sampler | Generates legal worlds consistent with actor-visible history. | BELIEF B2 offline calibration, then B3 projection/usefulness if B2 passes. |
-| Continuation | Plays worlds to terminal or a named horizon. | Memory-aware/MCSmartRoll only after dose × edge and equal-wall economics are frozen. |
-| Value/allocation | Truncates or allocates search. | Existing outcome/LEVEL_OBJECTIVE assets require a separate fixed-work gate. |
-| Report guard | Protects production from noisy overrides. | Remains the final authority until a challenger beats it fresh. |
+| [AlphaGo](https://storage.googleapis.com/deepmind-media/alphago/AlphaGoNaturePaper.pdf), [AlphaZero](https://arxiv.org/abs/1712.01815) | Policy focuses search, value truncates it, and improved search supplies later training targets. | Preserve the division of labor, but operate at a public-belief root. Fully observed two-player MCTS and one scalar observation value do not transfer directly. |
+| [Suphx](https://arxiv.org/abs/2003.13590) | Human pretraining, distributed self-play, decision specialization, privileged-information policy curriculum, and per-hand adaptation. | Privileged scalar subtraction was not a faithful Suphx test. Separate decision surfaces and gradually remove privileged policy features if this lane reopens. |
+| [DouZero](https://proceedings.mlr.press/v139/zha21a.html) | Role-specific recurrent action values learned from terminal returns at scale. | A faithful successor is from-scratch, role/action-conditioned Q with immutable actors and correct signed returns—not a warm-started oracle-residual hybrid. |
+| [Libratus](https://noambrown.github.io/papers/17-Science-Superhuman.pdf), [Pluribus](https://noambrown.github.io/papers/19-Science-Superhuman.pdf), [depth-limited solving](https://arxiv.org/abs/1805.08195) | Imperfect-information search reasons over ranges and robust continuation strategies. | Keep a fixed blueprint/partner policy and test a small continuation portfolio. Poker equilibrium guarantees do not transfer to decentralized partnership play. |
+| [DeepStack](https://arxiv.org/abs/1701.01724), [bridge belief Monte Carlo search](https://www.ieee-jas.com/article/doi/10.1109/JAS.2024.124488) | Maintain ranges over private hands; the bridge work supervises a belief network on true deals and samples deals from it for Monte Carlo search. | This is the closest BELIEF precedent: privileged labels, actor-visible inference, calibrated complete-world sampling, then search. Offline calibration is not strength. |
+| [Bayesian Action Decoder](https://arxiv.org/abs/1811.01458) | Public actions update approximate beliefs over private information. | Feeding, withholding, joker use, failed throws, and declaration timing may inform probabilities, but require policy-shift and chronology controls. |
+| [ReBeL](https://papers.nips.cc/paper/2020/hash/c61f571dbd2fb949d3fe5ae1608dd48b-Abstract.html), [Student of Games](https://arxiv.org/abs/2112.03178) | Public state plus a distribution over private states is an explicit search state. | Search a belief/range, not one determinization; two-player zero-sum convergence claims do not transfer. |
+| [Meowjong](https://arxiv.org/abs/2202.12847), [Mortal](https://mortal.ekyu.moe/), [Mahjax](https://arxiv.org/abs/2605.20577) | Specialized decisions plus enormous fast-simulator experience can make simple learning recipes strong. | Treat simulator/native throughput as research leverage and specialize heterogeneous Shengji surfaces; speed cannot repair a wrong target. |
+| [AutoGo](https://evjang.com/2026/04/28/autogo.html#cover) | Make the complete collect→train→evaluate loop work on a smaller domain before scaling and automation. | Rehearse the exact mechanics path at small scale, then freeze. Automation may execute a reviewed metric; it may not invent or promote one. |
 
-Better belief-aware search is also the intended future teacher: it can produce
-targets averaged over compatible hidden worlds for Direct-Q or pairwise
-ranking. Those learners remain downstream because earlier failures were
-dominated by target, information and causal-attribution contracts rather than
-raw model capacity.
+## Data and artifact contract
 
-`PRIVILEGED_TEACHER_V1_PROPOSAL.md` defines the complementary teacher path.
-It first requires a full-state policy to beat frozen continuations and a policy
-mixture, then reduces its action values to
-`E[Q(h, world, action) | actor-visible h]`. A true-world omniscient argmax is
-never a public target. BELIEF may improve the compatible-world distribution,
-but it does not substitute for proving that the continuation policy itself is
-strong.
+Keep these artifact classes distinct:
 
-Current evidence sharpens that requirement: PT0 found only small late-endgame
-headroom, PT1 was a clean negative, PT-Full showed that one true-world collapse
-is harmful, and C0's fixed full-information consumers all selected none.
-PT-Sol0 is the current open-DEV test of a materially different adaptive
-reasoning consumer. A perfect hidden-state predictor still cannot repair a bad
-objective, partnership model, continuation, ballot, or planning procedure.
+1. **State reservoir:** reconstructable actor-visible state plus frozen split;
+   old labels are not generic truth.
+2. **Belief corpus:** actor row and separately sealed hidden-allocation target,
+   with physical cross-binding and no world-generating metadata in model input.
+3. **Counterfactual teacher set:** complete ballot, common worlds,
+   continuation, objective, perspective, and paired outcomes—not only argmax.
+4. **Episodic RL set:** immutable actor/checkpoint identity, sequential history,
+   role-correct return, and retry-free provenance.
+5. **Human behavior set:** replay key, pseudonymous player/deal grouping, actual
+   action, source completeness, and counterfactual price before policy use.
 
-## Data and evaluation contract
+Every dataset binds selection and split, source/engine, observation semantics,
+ballot, sampler, continuation, objective/perspective, budget, producer, model,
+and transitive source identity. Repeated valid sampled worlds are retained with
+replacement when they represent probability mass. Invalid actor visibility,
+private-kitty drift, or target cross-binding quarantines an asset regardless of
+shape compatibility.
 
-- **Actor-visible input only.** World-generating seeds, other hands and hidden
-  kitty bytes are excluded from model inputs even when present in metadata.
-- **Encoder identity is data identity.** Bind transitive source and semantic
-  versions, not shape alone.
-- **Artifact classes stay separate:** state reservoirs, counterfactual teacher
-  sets, episodic RL trajectories and human behavior are not interchangeable.
-- **Fresh splits:** DEV may develop, CALIB may choose once, REPORT/test remains
-  unopened until the predeclared terminal step.
-- **Mirrored clusters:** whole-game evidence pairs the same deals and role
-  flips; utility is primary and win rate/tails are mandatory diagnostics.
-- **Graceful failure:** exploratory artifacts may survive only under a frozen
-  missingness rule. Confirmation remains fail-closed when missing work changes
-  the estimand.
-- **People claim:** a confirmed bot challenger must then improve against the
-  same blinded, consented, training-excluded human cohort. Site-average win rate
-  is descriptive, not a promotion metric.
+Human data supplies policy diversity and behavioral evidence. Use all trump
+ranks and player/deal-disjoint splits; do not call mixed-skill human moves an
+oracle or infer true-person disjointness from mutable display names.
 
-## Parked research assets
+## Compute, review, and recovery rules
 
-- V11 pairwise and Direct-Q remain bounded proposal/learner assets, never
-  generic scalar leaves.
-- MCSmartRoll and LEVEL_OBJECTIVE are existing continuation/value hypotheses,
-  not bundled into BELIEF-V1.
-- Human actions and S6's bury-side states are proposal/diagnostic sources, not
-  truth or execution authority.
-- Small exact endgames remain a good privileged-teacher domain; two-card roots
-  are the first meaningful action-selection case.
-- Pair, S4, S5 and the exact T4 composition are closed. A successor must be
-  materially new and pass the post-null admission rules.
+- Before authorizing a projected multi-hour run, review its complete execution
+  DAG with the user. The packet must identify any repeated full-data pass and
+  justify why it is not duplicate integrity work; give the worker count and
+  expected utilization for every expensive node; show the exact checkpoint,
+  resume, and partial-result behavior for each failure boundary; and put the
+  fastest learning-bearing pilot or intermediate artifact before scale. A
+  byte-integrity check is not automatically entitled to another multi-day
+  recomputation.
+- Profile the actual end-to-end DAG before setting caps. Admission uses measured
+  pace; a conservative wall cap must not intentionally sterilize usable time.
+- Long stages enforce deadlines inside their loops and publish stage, completed,
+  total, percent, elapsed, ETA, worker count, and deadline headroom.
+- Safe parallel stages should use available cores; GPU use must be justified by
+  measured end-to-end improvement, determinism, memory, and transfer cost.
+- A deadline may seal the best complete common epoch as explicitly truncated.
+  Truncation is valid evidence only when it cannot masquerade as convergence.
+- Durable capture/reference/index/cache/checkpoint/calibration artifacts should
+  be reusable across a repaired run only when their exact contract permits it.
+- Rehearsals exercise every DAG edge, refusal, reopen, and terminal route on a
+  small non-scientific population. They may not tune scientific seeds,
+  thresholds, architecture, or stopping behavior.
+- Review the smallest consolidated source+freeze packet once. Request another
+  review only after a load-bearing finding or material byte change.
+- Training and calibration may inspect train/calibration splits. Test bytes
+  remain closed until a durable readiness record proves every upstream artifact
+  independently reopens and the terminal path has headroom.
+- A missing/dirty manifest, seed-forwarding failure, hidden leakage, impossible
+  world, silent short-work fallback, or unreconciled counter invalidates the
+  result regardless of score.
+- Negative, incomplete, and resource-failed attempts remain in the ledger with
+  their useful artifacts and explicit non-claims. Rigor must prevent cherry
+  picking without erasing operational learning.
+
+## Measurement rules
+
+- Use deterministic factories and mirrored deal-seed clusters; report paired
+  uncertainty over the actual randomization unit.
+- Keep selection and strength separate. Sibling duels/Elo choose candidates;
+  only fresh direct comparison against the named champion supports strength.
+- Use common hidden worlds inside a fixed comparison and domain-separated RNG
+  streams across folds.
+- Select a complete multi-seed cohort by the frozen rule, never a lucky seed.
+- Bind target, perspective, continuation, state distribution/horizon, ballot,
+  encoder, and objective in every checkpoint.
+- Report utility primary plus win rate, role splits, and signed advancement
+  distribution. Do not replace the primary metric post hoc.
+- A local mechanism gain must survive realistic full-round composition.
+- A positive point estimate that misses its gate is a clue, not permission.
 
 ## Archive boundary
 
-The full model lineage, T3/T4 lane history, human-data narrative, high-N asset
-inventory and older roadmap are preserved byte-for-byte in
-`docs_archive/rl-plan-through-2026-08-15.md`. Earlier day-by-day chronology is
-in `docs_archive/rl-plan-chronology-through-2026-08-03.md`. Update this file
-only when the current scientific plan or evidence standard changes.
-
-Exact root-level BELIEF specifications remain in place because the V1/V2
-reopeners bind their paths and bytes. `SUPHX_MICRO_SPEC.md` is likewise a
-historical-in-place contract for the closed O0 lineage. Their status banners
-are the archive boundary; moving or shortening them would break historical or
-live reproducibility and is not documentation cleanup.
+The compact plan above is the current research contract. Detailed v1–v13,
+DMC/DMC2, Direct-Q, O0, Teacher T3/T4, S3–S6, H0, high-N, and old artifact
+chronology stays in the existing RL archives, `HANDOFF_REVIEW.md`, incident
+records, and Git history. Update this file only when the architecture,
+estimand, or live decision tree changes.

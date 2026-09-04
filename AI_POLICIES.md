@@ -1,183 +1,204 @@
 # AI policy ledger
 
-This file is the compact, current contract for callable bot policies and the
-research conclusions that affect them. It is not a run log.
+Last reconciled: **2026-09-04**. This file defines the current callable-policy
+contract and the scientific conclusions that constrain policy work. It is not
+a run log or policy registry duplicate.
 
-- Active order and gates: `BACKLOG.md`
-- Fleet state and current cross-agent handoff: `HANDOFF_ACTIVE.md`
-- Execution, review and long-run workflow: `AGENTS.md`
-- Exact external-review ledger: `HANDOFF_REVIEW.md`
-- Model and research plan: `RL_PLAN.md`
-- Full policy history through this compaction:
-  `docs_archive/ai-policies-through-2026-08-15.md`
+- Exact policy implementations and names: `server/shengji/ai/registry.py`
+- Production selection: `fly.toml`
+- Current priorities and review gates: `BACKLOG.md` and `HANDOFF_ACTIVE.md`
+- Research architecture and model lineage: `RL_PLAN.md`
+- Immutable verdicts, hashes, and reviewer corrections: `HANDOFF_REVIEW.md`
+- Engine and sampler contracts: `CORRECTNESS.md`
+- Runtime performance and deployment: `PERF.md` and `DEPLOY.md`
 
-## Current truth — 2026-08-27
+Historical detail remains in Git history and `docs_archive/`. Do not append
+dated status blocks here.
 
-- **Production champion:** `mc-s0-report-lcb` remains the only deployed policy
-  with a fresh confirmed strength gain.
-- **No new strength gain was proved by the closed campaign.** T4, S4 and S6
-  selected none. Pair-aware continuation produced no whole-game result: Air
-  timed out at `0/8` terminal shards and the checkpoint screen failed closed.
-- **T4's positive control is not yet a clean widening claim.** The uninformed
-  arm was work-matched to treatment, not champion, and used 14.8% more accepted
-  worlds and 80.9% more searches than champion. A confirmation must separate
-  candidate widening from added compute with three arms.
-- **BELIEF R4 is completing offline calibration.** Trained models and reusable
-  capture/reference/cache assets are sealed. Exact optimized source `d82ba224`
-  is scoring calibration on Perf while exact serial source `e10cb3d` remains a
-  fallback on Strength Cloud. Test is unopened. Only a reviewed readiness and
-  cutover sequence may stop the fallback and open test once.
-- **R5 is the efficient, recoverable successor on the same scientific question,
-  not an independent replication.** Exact source `9c5928f2` is locally green
-  and host-independent all-rank/human inputs are sealed. After R4 releases
-  Perf, one exact-host full-DAG rehearsal, immutable freeze, and consolidated
-  source+freeze review precede any run.
-- **Privileged-teacher evidence now constrains the BELIEF consumer.** PT0 found
-  only small late-endgame headroom; PT1 was a clean negative; PT-Full showed
-  that collapsing uncertainty onto one true world is not enough; and C0's
-  fixed full-information consumers all selected none. PT-Sol0 is the current
-  open-DEV diagnostic of whether a bounded reasoning agent can use exact state
-  and engine rollouts better. None authorizes gameplay or deployment.
-- **The next model decision waits for the complete curves.** After the terminal
-  reopener, compare train/calibration loss, eight-seed stability, full- versus
-  half-population cohorts, human-mixture transfer and the negative control.
-  Architecture, optimizer and larger-data experiments use preserved
-  train/calibration artifacts; they do not reopen or tune on the sealed test.
-- **Performance is enabling evidence, not strength evidence.** The accepted
-  native stack materially reduced rollout wall time, but runs use only exact
-  reviewed bytes and percentages from different baselines are never added.
+## Production contract
 
-## Callable policy registry
+Production explicitly sets:
 
-Policies are registered in `server/shengji/ai/registry.py`. Production sets
-`SHENGJI_BOT=mc-s0-report-lcb`; the source fallback remains `mc`.
+```toml
+SHENGJI_BOT = "mc-s0-report-lcb"
+SHENGJI_FAST = "1"
+```
 
-| name | role | current status |
+The server source fallback is `mc` when `SHENGJI_BOT` is absent. The named
+production rollback is `mc-strong`; changing the default, rollback, N/R work,
+ballot, sampler, continuation, or confidence rule is a new policy and needs
+fresh evidence.
+
+### `mc-s0-report-lcb`
+
+The live champion uses two independent search stages:
+
+1. the complete `mc-strong` N=30 ballot/search nominates one challenger to the
+   heuristic incumbent; and
+2. the fixed pair is compared on R=300 fresh shared hidden worlds.
+
+The challenger replaces the incumbent only when the one-sided paired lower
+confidence bound is positive. Short or invalid report folds fail back to the
+incumbent. The fresh 2,048-cluster confirmation measured
+`+0.338379 +/- 0.067706` signed levels against `mc-strong`; its collision-free
+matched extra-work null was `-0.019043 +/- 0.068270`. This establishes the
+registered one-round policy—not arbitrary extra search—as the only confirmed
+and deployed strength gain.
+
+## Callable policy families
+
+`server/shengji/ai/registry.py` is authoritative when this summary and source
+ever differ.
+
+| family | intended use | current status |
 |---|---|---|
-| `mc-s0-report-lcb` | Production two-stage Monte Carlo policy. N=30 nominates; R=300 fresh common worlds compare the nominee with the incumbent; a one-sided conservative LCB controls override. | **Live champion.** Fresh RLCB-C1 measured `+0.338379 +/- 0.067706` signed levels versus `mc-strong`; the matched current-policy null was flat. |
-| `mc-strong` | N=30 base Monte Carlo selection without the report fold. | Rollback and experiment control; not production. |
-| `mc` | N=10 determinized Monte Carlo source fallback. | Reproducible baseline and debug policy; not production. |
-| `smart` | Public-memory heuristic policy with boss, void, pair/run, point and endgame rules. | Fast rollout/baseline policy. Historical `smart-v1`/`smart-v2` remain reproducible. |
-| `heuristic` | Stateless rule baseline. | Fixed low-cost reference. |
-| `rl` | Experimental checkpoint argmax policy. | Opt-in only; requires `SHENGJI_RL_CKPT`. No checkpoint has deployment authority. |
+| `heuristic` | Stateless legal baseline and stable Elo anchor. | Supported baseline, not production. |
+| `smart`, `smart-v1`, `smart-v2` | Public-memory heuristics: card counting, boss/void inference, point flow, safe throws, ruff risk, bury and endgame rules. | Supported baselines and rollout policies. Exact lineage stays source-bound. |
+| `mc`, `mc-lite`, `mc-strong`, `mc-vstrong` | Determinized Monte Carlo at named work levels. `mc` is the source fallback; `mc-strong` is N=30 and the production rollback. | Supported. A legal sampler is not a calibrated belief model. |
+| `mc-s0-*`, nulls, prefix policies | Frozen search/report experiments and matched controls. | Experiment/reproduction only unless `fly.toml` names one. |
+| structured-bury, exact-endgame, point-banking, pair/throw and ballot variants | Mechanism-specific experimental constructors. Some intentionally remain outside the global registry to preserve evidence identity. | No production authority. |
+| learned checkpoint policies (`rl`, V11, teacher, Direct-Q and successors) | Offline diagnostics, bounded proposals/rankers, or explicitly reviewed experiments. | Lazy/opt-in only. No learned checkpoint is production-authorized. |
 
-Experiment-only constructors such as S4 point-banking remain outside the
-shared registry. A reviewed experiment arm is not a production policy.
-
-## Canonical research outcomes
-
-| label | question | terminal conclusion |
-|---|---|---|
-| **RLCB** | Does a fresh common-world report fold improve N=30 selection? | **Confirmed and deployed.** This exact two-stage rule is the named parent for challengers. |
-| **T4** | Can learned global ranking or one learned trick-5+ proposal improve protected search? | **Closed for this generation.** Whole-game treatment lost its conservative contrasts. The uninformed control's positive result is confounded with more compute and needs a three-arm confirmation. |
-| **S4** | Does point-aware banking inside rollouts improve whole games? | **SELECT_NONE.** The full 16,384-cluster confirmation was clean but missed efficacy; natural dose was about 0.7%. |
-| **S6** | Do targeted shuai-pai/bury ballot sources earn a fresh screen? | **SELECT_NONE_FOR_FRESH_SCREEN_DESIGN.** Bury-side criteria passed, lead-side criteria failed three gates. Preserve only a labelled bury hypothesis. |
-| **PAIR-ROLL** | Does exhausted-higher-pair memory improve continuations? | **No whole-game evidence.** Air timed out; checkpoint V1 failed closed. Both admissions are spent. |
-| **V11 / Direct-Q / O0** | Can learned ranking, return learning or privileged curricula replace current search? | **No promotable model.** Keep bounded proposal/diagnostic assets and the evaluation chassis; any successor must change target, credit, data or model use. |
-| **H0** | Are human moves useful proposals? | **No scored result.** The run exposed a candidate-geometry bug. The repair is score-free; human actions remain proposals, not truth labels. |
-| **BELIEF-V1** | Can actor-visible history predict hidden ownership well enough to improve same-work search? | **Question open; R4 is in calibration and R5 is held pending R4.** V1/R3 failed operationally before a learning result. Only a valid, independently reopened offline PASS may open B3 sampler implementation review. |
-| **PRIVILEGED-TEACHER** | Can an optimized full-state policy become a safe teacher for public play? | **Current fixed consumers selected none.** PT0 was small/inconclusive versus production, PT1 negative, PT-Full preserved the ensemble warning, and C0 negative. PT-Sol0 tests a materially different adaptive consumer. Never copy one true-world omniscient argmax into a runtime policy. |
-
-`SELECT_NONE` closes the exact population, policy and promotion claim tested.
-It does not erase predeclared dose, phase/role effects, disagreement states or
-tail failures. Those may motivate a materially different design, never a
-post-hoc promotion or retry.
-
-## Production search contract
-
-`mc-s0-report-lcb` is defined by all of the following, not by its short name:
-
-1. the exact engine and policy source;
-2. the root ballot and incumbent ordering;
-3. the public-information sampler and its strictness mode;
-4. N=30 nomination work;
-5. R=300 fresh, disjoint, common-world report work;
-6. the named rollout continuation;
-7. signed level utility and the one-sided paired LCB rule; and
-8. deterministic factory, RNG, counter and artifact identities.
-
-Changing any item creates a challenger. It does not inherit the champion's
-evidence. Wider search, a learned proposal, a new continuation, a belief
-sampler and a value leaf are different estimands and should be tested
-separately.
-
-## Correctness and information boundary
-
-- Search may use public history, the acting player's hand and sound deductions.
-  Opponent hands and hidden kitty contents are training/evaluation labels only.
-- Legal sampled worlds are not automatically calibrated posterior worlds.
-  Constraint validity, posterior calibration and search usefulness are
-  separate gates.
-- Public facts such as proven voids and legal follow obligations must not be
-  mixed with soft behavioral beliefs such as “this player is probably short”
-  or “probably lacks a pair.”
-- Privileged training may use every hand and the kitty, but public targets must
-  average over compatible worlds. An all-omniscient league measures a
-  capability ceiling, not a legal policy, deployable convention or strength
-  claim.
-- Factory seeds must reach every stochastic component. Evaluations use mirrored
-  deal clusters, independent folds, exact work counters and fail-closed short/
-  zero-world handling.
-- Policy evidence binds ballot, sampler, continuation, encoder semantics and
-  transitive source bytes. Equal tensor shape or a familiar policy name is not
-  semantic identity.
-- The banker-private-kitty encoder drift remains a permanent warning: assets
-  generated under incompatible information boundaries are quarantined even
-  when dimensions match.
-
-## Active production knobs
-
-Only the current load-bearing choices stay here. Historical rejected/tied
-flags and their exact measurements are retained in the archive snapshot.
-
-| knob | current value | purpose |
-|---|---:|---|
-| nomination worlds | `30` | Strong base selection before the report guard. |
-| report worlds | `300` | Fresh common-world comparison of incumbent and nominee. |
-| base override margin | `5.0` points/round | Protects SmartBot's incumbent from noisy early rollout estimates. |
-| maximum root candidates | `8` in the base contract | Bounds search work; experiment ballots must bind their own vector. |
-| tractor lock | on | Keeps the heuristic tractor lead final in the production parent. |
-| point-shy epsilon | `2.0` | Breaks near-ties toward risking fewer immediate points. |
-| strict confirming voids | required | Confirming evidence may not use the final void-relaxing retry. |
-| guarded report override | positive one-sided LCB | A point estimate alone never overrides production. |
-
-SmartBot's adopted public-memory behavior includes safe throws, control leads,
-late trump pairs, shortest-suit voiding, tempo guard, endgame control,
-trump-gated/void-oriented bury, eager declaration and ruff-safe tractor rules.
-These remain heuristics, not proof of optimal play.
-
-## Evaluation and promotion rules
-
-1. Name the exact champion, challenger and matched null.
-2. Measure screens on fresh paired deal clusters; report signed level utility,
-   uncertainty, role splits, win rate and tails.
-3. Treat pool Elo, human agreement, offline regret and small blocks as
-   selection/diagnosis only.
-4. Predeclare natural dose, conditional edge, implied whole-game effect, MDE,
-   maximum compute and the decision the result unlocks.
-5. Keep proposal, continuation, value, allocation and report-guard changes
-   separate until each earns its own evidence.
-6. Use whole multi-seed cohorts; never promote a lucky seed.
-7. Invalid provenance, dirty inputs, missing work, silent fallback or outcome-
-   aware retry voids the claim regardless of score.
-8. Deployment requires a fresh direct comparison with the named live champion.
-   Performance parity and throughput gains do not substitute.
-
-## Usage
+Example local selection:
 
 ```bash
 SHENGJI_BOT=smart uv run shengji-server
-uv run python -m shengji.ai.tournament
 ```
 
-Programmatic factories should pass deterministic seeds explicitly. Use
-`scripts/evaluate.py` for strength claims; `play_pairing`, Elo pools and human
-agreement tools remain exploratory instruments.
+Programmatic construction should always pass a deterministic policy seed:
 
-## Archive boundary
+```python
+from shengji.ai.registry import make_bot
 
-The pre-compaction ledger, including every historical toggle, exact artifact
-hash and long experiment narrative, is preserved byte-for-byte at
-`docs_archive/ai-policies-through-2026-08-15.md`. Dated operational chronology
-lives under `docs_archive/` and `server/runs/`. Update this file only when a
-current callable policy or durable conclusion changes.
+bot = make_bot("mc-strong", seed=1234)
+```
+
+## Search and heuristic behavior that survives
+
+These are governing conclusions, not an invitation to reproduce old toggle
+grids in this document.
+
+- N=30 Monte Carlo clearly improved on the smaller base search. Uniform N=60
+  did not establish another gain.
+- The conservative disjoint R=300 report fold is the confirmed improvement.
+  Alternative confidence and adaptive-allocation recipes did not establish an
+  additional winner.
+- The heuristic incumbent must remain candidate zero. Tractor-lock,
+  point-shy near-tie handling, deterministic ballot order, and exact work
+  counters are policy identity.
+- Public memory may use declarations, plays, voids, remaining-pair/run bounds,
+  actor-private hand, and banker-private burial where applicable. It may not
+  read other hidden hands or a non-banker burial.
+- Safe-shuai, boss/pair/tractor, point-flow, ruff-risk, void-building, and
+  endgame heuristics are useful parents and diagnostics. Their presence is not
+  evidence that every fallback is strong; production-policy quality gaps must
+  be replayed and attributed to legality, ballot, world sampling,
+  continuation, or value before patching.
+
+The old exhaustive toggle table is preserved in Git history. Source owns what
+is currently enabled; old head-to-head rates are screening evidence, not
+production claims.
+
+## Current scientific conclusions
+
+| lane | conclusion for policy work |
+|---|---|
+| **RLCB** | Confirmed and deployed. It is the literal parent all strength challengers must beat. |
+| **Global learned rankers / V11 / Direct-Q / teacher direct play** | Better label fit or isolated proposal signal did not transport into a stronger whole-game policy. Keep learned scores bounded to their reviewed role. |
+| **S4 point banking, S6 shuai sourcing, pair-aware continuations** | Mechanisms were plausible or locally positive but no registered whole-game successor cleared the required bar. Do not revive them as unchanged retries. |
+| **T4 model proposal** | Selected none. The uninformed widening control was positive against champion but used 14.8% more accepted worlds and 80.9% more searches; it requires a three-arm compute/candidate attribution test. |
+| **BELIEF R4/R5** | R4's preserved synthetic-primary cohort reduced held-out count Brier by 21.40% versus REF-C, but the permuted-label control also improved materially and failed on demand. This proves a predictive channel, not behavioral belief learning. R5 stays paused while opened-DEV equal-work diagnostics compare the primary and control inside the same constrained-world search. No BELIEF sampler, candidate, or policy is registered or deployable. |
+| **PT0** | Privileged late-endgame policy had a small edge over heuristic/smart and an inconclusive edge over production MC. |
+| **PT1** | Clean negative despite high action-flip dose: exact teacher guidance did not produce the required utility improvement. |
+| **PT-Full** | A single true-world collapse was bad; repeated true-world search recovered most of that loss but did not beat the public ensemble. |
+| **C0** | Fixed perfect-information consumer variants all lost to both required parents; local bare-point symptom fixes did not transport. |
+| **PT-Sol0 / PT-Luna0** | First reviewed flexible-planner milestone. On the same 26 full-round roots and 52 mirrored treatment roles, Sol beat exact production arm A by `+17/26` signed levels per role and Luna by `+5/13`; both also beat B and C0-S on average. Luna was `-7/26` versus Sol, so Sol remains the quality teacher while Luna is the cheaper scaling candidate. This is open-DEV privileged-information mechanism evidence—not a registered policy, fresh strength result, or deployment authority. |
+| **PT-Luna isolated (b0b1bd95)** | First COMPLETE terminal of the teacher lane (ledger `6c71bee3`): 32/32 games, 16/16 clusters, 0 failed, 21,979,625 tokens, independently reconstructed. Readable only for the scoped teacher/value research; label ingestion and training are separate gates. Four predecessor routes (30 games, 24,749,862 tokens) are engineering-only. Its planned use is diagnostic (where the flexible planner beats production, by mechanism) and as a fine-tuning/evaluation value target — not action imitation.
+| **Value V2 (2026-09)** | Six honest refusals and no scientific output under the confirmatory protocol (capacity-final, telemetry, slot supply, enum linkage, population allowance falsified at 7,200s). Repairs c3b135ce/2f649070/f7e9044d PASSed. Now in DEV mode (ledger `295136ba`): width-8 population, resumable end-to-end D64 → D256 runs, up-front review PASSed at `c4b8f7e8`. No model yet; no policy conclusion yet.
+
+## BELIEF policy boundary
+
+BELIEF is not a bot policy yet. Its current contract is:
+
+- training may use true other hands and burial as separately sealed privileged
+  labels;
+- runtime input is limited to bytes legally visible to the acting seat;
+- hidden-world twins with identical actor observations must produce identical
+  runtime input;
+- hard deductions and probabilistic behavioral evidence remain distinct;
+- per-card marginals must be projected into physically legal, correlated
+  complete worlds before search can consume them; and
+- the first consumer reweights or samples worlds while the existing search
+  remains final action authority.
+
+An offline calibration result is only one prerequisite for a sampler
+implementation review. A failed learning control blocks causal
+interpretation even when the primary score improves. Neither result authorizes
+a registered policy, whole-game strength claim, or deployment.
+
+## Evaluation and identity rules
+
+Every decision-bearing policy comparison binds:
+
+1. exact source, policy names/classes, engine/native mode, and runtime;
+2. ballot and incumbent identity;
+3. sampler, continuation, objective, perspective, and deterministic seeds;
+4. selection/report budgets and exact accepted-work counters;
+5. mirrored roles/deals and the round/deal cluster as the uncertainty unit;
+6. immutable population, split, artifact schemas, and terminal rule; and
+7. a behavior/work-matched null that differs only on the proposed mechanism.
+
+Elo pools, human agreement, individual decisions, offline loss, state regret,
+and open-DEV screens prioritize hypotheses. Strength requires a fresh mirrored
+whole-game comparison against the exact live champion, followed by confirmation
+when the design calls for it.
+
+## Correctness and runtime boundaries
+
+- Tied effective cards retain physical identity; throws may be ruffed; failed
+  throws force the engine-selected component; pair and follow obligations are
+  engine facts, not heuristic preferences.
+- The current sampler consumes public declarations, voids, remaining-pair/run
+  bounds, hand sizes, and actor-known burial once. Strict validity/support on
+  named reservoirs does not prove posterior calibration or globally complete
+  constructive dealing.
+- Banker declaration pins must allow a declared card to be in the hidden
+  burial when the rules permit it. Public failed-throw content is limited to
+  what the engine actually broadcasts.
+- `SHENGJI_FAST=1` routes through reviewed native kernels. Pure/compiled parity
+  and bit identity are correctness gates; a speedup is not strength evidence.
+- Production does not enable experimental posterior-changing sampler flags.
+- Factory seeds must reach every stochastic component; caches use canonical
+  keys and defensive copies; short/zero-work evaluations refuse rather than
+  silently fall back inside scientific packets.
+- Encoder identity includes semantics and transitive source bytes. Assets with
+  private-kitty or other actor-visibility drift remain quarantined even when
+  their tensor dimensions match.
+
+## Change and deployment rules
+
+- Name the literal parent; “current,” “MC,” and “champion” are not identities.
+- Review scientific source/freeze once as one packet. Add another review only
+  when the first finds a load-bearing defect or reviewed bytes materially
+  change.
+- Never use a rehearsal outcome to tune a frozen population, threshold, seed,
+  or terminal rule. Rehearsal proves the mechanics path only.
+- Correctness fixes, throughput gains, larger corpora, or better training loss
+  enable a policy experiment; none counts as an AI win.
+- No result may implicitly authorize merge, promotion, deployment, retry, test
+  opening, or a different policy. Those authorities are explicit and separate.
+- `mc-strong` remains the immediate rollback for production health regressions.
+
+## Durable pointers
+
+| topic | source |
+|---|---|
+| current queue | `BACKLOG.md` |
+| active fleet and exact review asks | `HANDOFF_ACTIVE.md` |
+| callable code | `server/shengji/ai/registry.py` |
+| production config | `fly.toml` |
+| model/belief/teacher design | `RL_PLAN.md` |
+| immutable evidence and review corrections | `HANDOFF_REVIEW.md` |
+| engine/sampler contract | `CORRECTNESS.md` |
+| performance and deployment | `PERF.md`, `DEPLOY.md` |
+| old policy/toggle ledger | Git history and `docs_archive/` |

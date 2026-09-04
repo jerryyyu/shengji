@@ -1,6 +1,6 @@
 # Backlog
 
-Last reconciled: **2026-08-27 08:35 EDT**. This file is the prioritized
+Last reconciled: **2026-09-04 (post-pivot)**. This file is the prioritized
 decision queue, not a run log. Live processes and exact operator authority are
 in `HANDOFF_ACTIVE.md`; immutable reviews and hashes are in
 `HANDOFF_REVIEW.md`; research architecture is in `RL_PLAN.md`; callable policy
@@ -11,39 +11,39 @@ Git history. Do not append dated progress blocks here.
 
 ## Program objective
 
-Produce a decision-grade answer on whether public-history belief learning
-improves hidden-hand prediction. Finish R4, run one efficient/recoverable R5,
-independently reproduce its terminal verdict, and decide whether calibrated
-belief should advance into gameplay search. The production strength standard
-remains a fresh mirrored whole-game comparison against
-`mc-s0-report-lcb`; offline prediction or open-DEV teacher evidence cannot
-promote a bot.
+Beat the live `mc-s0-report-lcb` champion on fresh mirrored whole games. The
+2026-08-28..09-03 week (retrospective at ledger `0088544f`) produced five honest
+adjudications and no strength learning because confirmatory-grade machinery was
+applied to exploratory questions and every lane targeted an *input* to a
+hypothetical future policy. The queue below inverts that: measure each lane's
+ceiling first, attack the planner (the demonstrated lever: C0 with perfect
+information lost, PT-Sol0 with perfect information and a flexible planner won
+`+17/26`), prove transport at tiny scale before collecting more data, and apply
+full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
+`RL_PLAN.md` "Operating modes").
 
 ## Now — ordered by decision value
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **P0** | **BELIEF R4 interpretation** | Optimized calibration is live on Perf at exact reviewed source `d82ba224`; the slower Strength-Cloud lane remains a reviewed fallback. Training, reusable cache/index artifacts, and test population are already sealed; test is unopened. | Independently reopened calibration, reviewed two-lane cutover, one test opening, independently reproduced terminal verdict. | Do not stop the fallback or open test until optimized calibration seals and the existing readiness/cutover controller says `READY`. No retry or partial-outcome inference. |
-| **P0** | **PT-Sol0 policy-use diagnostic** | One reviewed 26-root / 52-role Mini run is live at `e73f970e`. Fresh ephemeral `gpt-5.6-sol` agents receive exact hidden state only through a bounded engine-owned observe/rollout/play interface. | Reopened complete report comparing Sol with PT-Full A/B and C0-S; one honest conclusion on whether general reasoning can use perfect information better than the fixed consumers. | Open-DEV mechanism evidence only. No merge, BELIEF integration, strength claim, retry, promotion, or deployment. |
-| **P0** | **BELIEF R5** | Source is clean and locally validated at `9c5928f2`; host-independent all-rank/human inputs are sealed. No R5 process or review is active. | One exact-Perf 104-round full-DAG rehearsal, host receipts, immutable freeze, one consolidated source+freeze PASS, then a recoverable run and independently reproduced terminal verdict. | R4 releases Perf first. Rehearsal, freeze, and execution must share exact Git/source/runtime/device identity. Preserve train/calibration artifacts, curves, graceful deadline truncation, and zero test leakage. |
-| **P1** | **Belief-to-search consumer** | Design only. No offline result yet authorizes a sampler or gameplay change. PT-Full/C0 show that collapsing onto one true/likely world is not a sufficient consumer. | If R4/R5 is positive, implement the smallest belief-weighted complete-world sampler and measure post-projection calibration plus final-action flip dose before a whole-game screen. | Search stays final authority. Compare equal work against REF-C/current sampling; never expose a hidden label or use one MAP world as truth. |
-| **P1** | **Privileged/full-information teacher successor** | PT0 found small late-endgame headroom over weak baselines but not production; PT1 was a clean negative; PT-Full and C0 selected none. PT-Sol0 is the current meaningfully different probe. | After PT-Sol0, choose one axis only: bounded-depth partnership search, learned full-information Q/policy, or stop. | A perfect-information consumer must first beat public production under exact state before it can justify distillation or BELIEF use. |
-| **P1** | **Search-capacity confirmation** | The historical T4 uninformed widening arm was positive against champion but used 14.8% more accepted worlds and 80.9% more searches, so “same-work widening won” is not established. | Three-arm design: champion, widening at champion work, widening at original-null work. | Keep this separate from BELIEF and PT. It is a strength hypothesis, not a way to keep an idle host busy. |
-| **P1** | **Performance engineering** | Native rollout work and R5 cache/projection parallelism materially reduce wall time with byte-identical results. Calibration projection on Perf uses 16 workers; training/cache artifacts are reusable. | Retain exact parity while profiling the next actual bottleneck; use all cores when the operation is safely parallel. | Performance is an enabler, not strength evidence. Never benchmark beside or modify a live sealed run. |
-| **P2** | **Production-policy quality gaps** | User reports around bare points, weak fallback leads, and point-insensitive play are real diagnosis surfaces. C0 avoided some local symptoms but still lost whole rounds. | Replay current production decisions, classify legality/ballot/search/continuation/value cause, then test one causal treatment with a matched null. | Do not ship a blanket “never play a 10” rule or infer that BELIEF alone fixes policy/value defects. |
+| **P0** | **Value V2 — DEV mode** | Jerry-directed unblock at ledger `295136ba`. Up-front pipeline review PASSed at `c4b8f7e8` (ledger `ca459e14`); the first end-to-end D64 dev run (width-8 spawn population → labels → train → calibrate → audit → sealed `terminal.json`) is live on Perf. Runs are resumable; no freeze/packet/rebind/marker/confirmation ceremony. | A sealed D64 model with its interpretation review, then D256 in the same mode. | Tier i. Score-free until sealed (private/ closed until `terminal.json`), reproducibility stamp, never-delete. Escalate to tier iii only when a V2-guided search variant approaches a deploy claim. |
+| **P0** | **Ceiling screens** | Not yet run; both are days of work on existing opened roots. | Oracle-value ceiling: production search with a near-perfect leaf value vs production. Oracle-belief ceiling: production sampler given true hidden worlds vs production (C0 already suggests ≈0). | Tier i/ii. Each lane's second major spend is gated on a positive ceiling. |
+| **P1** | **Luna dataset as diagnostic + fine-tune source** | `pt-luna-rpc-isolated-b0b1bd95-r1` sealed COMPLETE (32/32 games; ledger `6c71bee3`). Readable only for scoped teacher/value research. 30 predecessor games are engineering-only. Collection is CLOSED (46,729,487 tokens lane total). | (a) Where do Sol/Luna disagree with production and win, classified by mechanism (ballot, continuation, rollout allocation, objective, partnership)? (b) Fine-tune the D256-pretrained V2 model on Luna outcomes with a held-out teacher-agreement slice; does search with the fine-tuned leaf value move toward the teacher on the disagreement set? | Value targets, not action imitation (PT1's negative). No more collection until transport is shown at 32-game scale. |
+| **P1** | **Search-policy variants in the RLCB paired harness** | The only harness that ever produced a confirmed gain (`+0.338 ± 0.068`). | Two or three variants derived from the Luna disagreement analysis, vs champion at equal work; promote only on the confirm bar. | Tier ii screen → tier iii confirm. |
+| **P1** | **Search-capacity confirmation** | T4 uninformed widening was positive but compute-confounded (+14.8% worlds, +80.9% searches). | Three-arm design: champion, widening at champion work, widening at original-null work. | Separate from BELIEF/PT. |
+| **CLOSED** | **BELIEF R4 / R5** | R4 terminal `NO_PRIMARY_POLICY_SIGNAL` (weights ≈ uniform, 1/104 flips, paired value exactly 0). R5 closed. | Reopens only if the oracle-belief ceiling screen is positive. | No belief compute otherwise. |
+| **CLOSED** | **PT-Luna collection** | Five attempts; one complete dataset; consumer unproven. | — | Reopens only after transport is demonstrated. |
+| **P2** | **Production-policy quality gaps** | User-reported bare-point / weak-fallback / point-insensitive play remain diagnosis surfaces. | Replay production decisions, classify cause, test one causal treatment with a matched null. | No blanket rules. |
 
 ## Immediate sequence
 
-1. Monitor PT-Sol0 and R4 without interference.
-2. When optimized R4 calibration seals, run the already-reviewed readiness,
-   serial-stop, cutover-receipt, one-test-open, and terminal-reopen sequence.
-3. Record the R4 prediction verdict and whether any calibration/mechanics gate
-   failed.
-4. Release Perf to the exact R5 rehearsal and freeze; request one review only.
-5. Run R5, reproduce its terminal result, and make the BELIEF gameplay-search
-   advance/stop decision.
-6. Interpret PT-Sol0 separately and use it to choose or close the next
-   full-information teacher axis.
+1. Let the D64 dev run seal; one interpretation review; then D256 in DEV mode.
+2. Run both ceiling screens on existing opened roots (R4's 104 rounds, the
+   26 Sol0 roots).
+3. Luna disagreement analysis by mechanism; fine-tune the pretrained V2 model
+   on Luna outcomes; teacher-agreement evaluation.
+4. Derive search-policy variants; run them through the RLCB paired harness.
+5. Nothing enters tier iii until a variant beats the champion on a paired screen.
 
 ## Entry criteria for new scientific lanes
 
@@ -53,12 +53,12 @@ A proposed lane enters the review queue only when it names:
 2. natural dose and the smallest effect worth detecting;
 3. candidate, literal parent, and behavior/work-matched null;
 4. one frozen population/split and one terminal rule;
-5. source/runtime/artifact identities plus recoverability behavior; and
+5. source/runtime/artifact identities plus recoverability behavior;
 6. one consolidated review surface; and
-7. for every projected multi-hour run, one pre-launch DAG audit that identifies
-   duplicate full-data integrity work, gives the worker/core utilization and
-   bottleneck for every expensive stage, proves checkpoint/recovery behavior,
-   and puts the cheapest learning-bearing output before fleet scale.
+7. for any projected multi-hour run, one pre-launch DAG audit proving there is
+   no duplicate full-data integrity work, naming worker/core utilization for
+   every expensive stage, demonstrating checkpoint/recovery behavior, and
+   identifying the cheapest learning-bearing result before fleet scale.
 
 Run a cheap score-free census or rehearsal first when dose, runtime, or
 candidate geometry is unknown. Rehearsals prove mechanics, not efficacy, and
@@ -94,7 +94,7 @@ must never be used to choose scientific seeds or thresholds.
 | **T4 widening control** | Positive but compute-confounded; requires the three-arm confirmation above before claiming widening itself won. |
 | **BELIEF V1/R3 resource failures** | They provide no learning verdict. They motivated reusable artifacts, measured scheduling, graceful truncation, progress telemetry, and the R4/R5 recovery path. |
 | **PT0** | Small privileged endgame edge over heuristic/smart; inconclusive versus production MC. |
-| **PT1** | Clean negative: exact teacher changed many actions but produced only `1/208` mean C−B and one positive state, missing all efficacy gates. |
+| **PT1** | Negative for the frozen scope: exact teacher changed many actions but produced only `1/208` mean C−B and one positive state, missing all efficacy gates. The recovered result carries a preregistration-governance caveat and is not a clean general closure of late-game teacher search. |
 | **PT-Full** | Repeated true-world search recovered a bad single-world collapse but did not beat the public ensemble. Preserve posterior ensembles. |
 | **C0** | All fixed perfect-information consumer arms were negative versus both required parents; local bare-point improvements did not transport. |
 

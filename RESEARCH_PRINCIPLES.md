@@ -152,3 +152,30 @@ privileged training, Direct-Q, pairwise ranking, or learning as broad families.
 Re-entry requires a material change and a cheaper test that distinguishes the
 new hypothesis from the closed one. “Train longer,” “add more patches,” and
 “run it again” are not material changes.
+
+## 11. Match rigor to claim altitude
+
+Confirmatory-grade machinery — immutable freezes, one-shot admissions,
+byte-bound launch packets, independent reconstruction, ledger markers —
+protects a deploy claim. Applied to an exploratory run it does the opposite:
+every defect becomes a multi-day re-entry, and the machinery's own surface area
+starts generating the defects (six of six Value V2 refusals in the week of
+2026-08-28 were integration bugs in evidence infrastructure). Three things
+protect the science at almost no cost: outcomes stay sealed until the run
+completes, every run carries a reproducibility stamp, and nothing spent is
+ever deleted. Everything else is added only when a result approaches a claim
+(`RL_PLAN.md`, "Operating modes").
+
+## 12. Measure the ceiling before building the component; prove transport before scaling data
+
+Every learned component in the project's history improved its own metric and
+failed to move whole-game utility. Two cheap tests come before any such lane
+spends again: an oracle ceiling (give production search the perfect version of
+the quantity — true hidden worlds, a near-perfect leaf value — and measure the
+gain; if the ceiling is small the lane is closed regardless of model quality),
+and a transport proof at the smallest scale that can show it (32 games are
+enough to test whether any consumer of teacher values beats production on
+those exact states). The C0 / PT-Sol0 pair is the standing example: identical
+perfect information, a fixed planner lost, a flexible planner won — planner
+quality, not information, was the lever, and no amount of belief-model
+accuracy would have found that.

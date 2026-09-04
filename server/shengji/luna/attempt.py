@@ -214,6 +214,16 @@ class AttemptReopen:
     failure_disposition: FailureDisposition | None = None
 
 
+def runtime_stable_view(runtime: Mapping[str, object]) -> dict[str, object]:
+    """Runtime identity minus the working-tree dirtiness flag.
+
+    ``git_dirty`` is stamped at launch for the record, but a tree flipping
+    clean<->dirty while a run is in flight is not a change of the executing
+    runtime and must not refuse the next game.
+    """
+    return {key: value for key, value in runtime.items() if key != "git_dirty"}
+
+
 class _Never:
     def call(self, packet):
         del packet
@@ -546,7 +556,8 @@ class RPCGameAttemptRunner:
         self.active_call_manager = None
         if transport_factory is None:
             if codex_binary is None \
-                    or source_identity(Path(codex_binary)) != dict(runtime):
+                    or runtime_stable_view(source_identity(Path(codex_binary))) \
+                    != runtime_stable_view(dict(runtime)):
                 raise RPCCollectionError("collection live runtime drift")
             self.codex_binary = Path(codex_binary).resolve()
             catalog = dict(runtime["codex_tool_catalog"])
@@ -829,7 +840,8 @@ class RPCGameAttemptRunner:
         stage = "dispatch"
         try:
             if self.codex_binary is not None \
-                    and source_identity(self.codex_binary) != self.runtime:
+                    and runtime_stable_view(source_identity(self.codex_binary)) \
+                    != runtime_stable_view(self.runtime):
                 raise RPCCollectionError("collection live runtime drift")
             transport = _DeadlineTransport(
                 self.transport_factory(path),

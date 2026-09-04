@@ -1476,3 +1476,13 @@ def test_coordinated_trajectory_and_manifest_rehash_still_refuses(tmp_path):
     manifest_path.chmod(0o400)
     with pytest.raises(Exception, match="trajectory|completed"):
         collection.reopen_attempt(root, seed_secret=SECRET)
+
+
+def test_runtime_stable_view_ignores_git_dirty_only():
+    from shengji.luna.attempt import runtime_stable_view
+    clean = {"execution_git": "a" * 40, "git_dirty": False, "codex_version": "codex-cli 0.149.0"}
+    dirty = {**clean, "git_dirty": True}
+    assert runtime_stable_view(clean) == runtime_stable_view(dirty)
+    assert runtime_stable_view({**clean, "codex_version": "other"}) != runtime_stable_view(clean)
+    assert "git_dirty" not in runtime_stable_view(dirty)
+

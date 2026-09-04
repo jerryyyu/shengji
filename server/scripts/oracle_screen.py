@@ -12,6 +12,12 @@ Arms (see shengji/oracle/screen.py for the exact semantics and knobs):
   prior   production work; ballot ranked/pruned per decision by a
           --prior-worlds high-N paired evaluation, keeping --prior-keep-top
   both    value + prior
+  wide    production work at N unchanged; the ballot is replaced by the best
+          of the EXHAUSTIVE legal set (--wide-cap): every legal action screened
+          on --wide-screen-worlds shared worlds, the top --wide-keep-stage1
+          ranked on --prior-worlds worlds, --wide-keep-top handed to the search
+          (--prior-anchor lets the ranking replace the incumbent)
+  wide-value  wide + value
   none    production on both sides (identity control for neutral knobs)
   null    production vs its champion-matched null (noise floor on these deals)
 
@@ -68,7 +74,20 @@ def parser() -> argparse.ArgumentParser:
                     help="keep N per candidate instead of scaling to equal "
                          "total selection work")
     ap.add_argument("--prior-anchor", action="store_true",
-                    help="let the ranking choose the incumbent too")
+                    help="let the ranking choose the incumbent too "
+                         "(prior and wide arms)")
+    ap.add_argument("--wide-cap", type=int, default=d["wide_cap"],
+                    help="legal actions enumerated per decision (the "
+                         "production ballot is always included)")
+    ap.add_argument("--wide-screen-worlds", type=int,
+                    default=d["wide_screen_worlds"],
+                    help="stage-1 shared worlds scoring EVERY legal action")
+    ap.add_argument("--wide-keep-stage1", type=int,
+                    default=d["wide_keep_stage1"],
+                    help="stage-1 survivors ranked on --prior-worlds worlds")
+    ap.add_argument("--wide-keep-top", type=int, default=d["wide_keep_top"],
+                    help="ballot entries handed to the search incl. the "
+                         "incumbent (0 = no oracle)")
     ap.add_argument("--select-worlds", type=int, default=None,
                     help="SMOKE ONLY: override N on both sides")
     ap.add_argument("--report-worlds", type=int, default=None,
@@ -91,6 +110,11 @@ def main(argv: list[str] | None = None) -> int:
         "prior_keep_top": args.prior_keep_top,
         "prior_equal_work": not args.prior_fixed_n,
         "prior_anchor": args.prior_anchor,
+        "wide_cap": args.wide_cap,
+        "wide_screen_worlds": args.wide_screen_worlds,
+        "wide_keep_stage1": args.wide_keep_stage1,
+        "wide_keep_top": args.wide_keep_top,
+        "wide_fixed_n": True,
     }
     try:
         summary = S.run_screen(

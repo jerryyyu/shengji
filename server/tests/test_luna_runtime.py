@@ -97,3 +97,47 @@ def test_bound_source_paths_exist_in_repository():
     missing = [p for p in runtime_module.SOURCE_PATHS
                if not (server / p).is_file()]
     assert missing == [], missing
+
+
+def test_source_identity_binds_engine_and_policy_dirt_distinctly(
+        monkeypatch, tmp_path):
+    """Dirt in the engine and dirt in the production policy must produce
+    different identities from each other and from the clean tree, even though
+    ``git_dirty`` is only a boolean.  (Codex #201 review.)"""
+    import shutil
+    server = Path(__file__).resolve().parents[1]
+    scratch = tmp_path / "server"
+    for rel in ("shengji/engine", "shengji/ai", "shengji/luna"):
+        shutil.copytree(server / rel, scratch / rel,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+    (scratch / "scripts").mkdir()
+    shutil.copy(server / "scripts" / "luna.py", scratch / "scripts" / "luna.py")
+    monkeypatch.setattr(runtime_module, "_server_root", lambda: scratch)
+    monkeypatch.setattr(runtime_module, "_git", _fake_git(" M x"))
+    monkeypatch.setattr(runtime_module, "_boot_identity_bytes",
+                        lambda: b"boot")
+    monkeypatch.setattr(runtime_module, "attest_codex_runtime",
+                        lambda binary: CATALOG)
+
+    clean = runtime_module.source_identity(Path("/usr/bin/true"))
+    assert "shengji/engine/round.py" in clean["sources"]
+    assert "shengji/ai/registry.py" in clean["sources"]
+
+    engine_file = scratch / "shengji" / "engine" / "round.py"
+    engine_file.write_text(engine_file.read_text() + "\n# dirt\n")
+    engine_dirty = runtime_module.source_identity(Path("/usr/bin/true"))
+    shutil.copy(server / "shengji" / "engine" / "round.py", engine_file)
+
+    policy_file = scratch / "shengji" / "ai" / "registry.py"
+    policy_file.write_text(policy_file.read_text() + "\n# dirt\n")
+    policy_dirty = runtime_module.source_identity(Path("/usr/bin/true"))
+
+    ids = {clean["source_set_sha256"], engine_dirty["source_set_sha256"],
+           policy_dirty["source_set_sha256"]}
+    assert len(ids) == 3
+    assert {k for k in clean["sources"]
+            if clean["sources"][k] != engine_dirty["sources"][k]} == {
+                "shengji/engine/round.py"}
+    assert {k for k in clean["sources"]
+            if clean["sources"][k] != policy_dirty["sources"][k]} == {
+                "shengji/ai/registry.py"}

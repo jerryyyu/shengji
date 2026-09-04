@@ -42,21 +42,34 @@ REQUIRED_ENGINE_ENVIRONMENT = {
     "SHENGJI_REQUIRE_VOIDS": "1",
 }
 LOADABLE_SHADOW_SUFFIXES = (".pyc", ".pyo", ".so", ".dylib", ".pyd")
-SOURCE_PATHS = (
-    "shengji/luna/__init__.py",
-    "shengji/luna/canonical.py",
-    "shengji/luna/game.py",
-    "shengji/luna/turn.py",
-    "shengji/luna/transport.py",
-    "shengji/luna/watchdog.py",
-    "shengji/luna/atomic_io.py",
-    "shengji/luna/journal.py",
-    "shengji/luna/runtime.py",
-    "shengji/luna/ledger.py",
-    "shengji/luna/attempt.py",
-    "shengji/luna/supervisor.py",
+# The executable source surface a collection binds: everything the engine,
+# the production policy, and the collector can execute.  Content is hashed
+# from the working tree, so uncommitted edits to any of these files change the
+# identity (dirt is stamped, never refused).
+SOURCE_GLOBS = (
+    "shengji/engine/**/*.py",
+    "shengji/engine/*.pyx",
+    "shengji/ai/**/*.py",
+    "shengji/luna/**/*.py",
     "scripts/luna.py",
 )
+
+
+def _server_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def executable_source_paths(server_root: Path | None = None) -> tuple[str, ...]:
+    root = _server_root() if server_root is None else server_root
+    found: set[str] = set()
+    for pattern in SOURCE_GLOBS:
+        for path in root.glob(pattern):
+            if path.is_file() and "__pycache__" not in path.parts:
+                found.add(path.relative_to(root).as_posix())
+    return tuple(sorted(found))
+
+
+SOURCE_PATHS = executable_source_paths()
 
 
 class RuntimeAttestationError(ValueError):
@@ -97,10 +110,10 @@ class RPCConcurrency:
             self.maximum = 0
 
 
-def _source_hashes() -> dict[str, str]:
-    server_root = Path(__file__).resolve().parents[2]
-    return {name: _sha_bytes((server_root / name).read_bytes())
-            for name in SOURCE_PATHS}
+def _source_hashes(server_root: Path | None = None) -> dict[str, str]:
+    root = _server_root() if server_root is None else server_root
+    return {name: _sha_bytes((root / name).read_bytes())
+            for name in executable_source_paths(root)}
 
 
 def _boot_identity_bytes() -> bytes:
@@ -188,4 +201,5 @@ def source_identity(codex_binary: Path) -> dict[str, object]:
 
 __all__ = ["FAILURE_KINDS", "FAILURE_STAGES", "NO_FAILURE_MESSAGE_SHA256",
            "REQUIRED_ENGINE_ENVIRONMENT", "RPCConcurrency", "RUNTIME_SCHEMA",
-           "RuntimeAttestationError", "SOURCE_PATHS", "source_identity"]
+           "RuntimeAttestationError", "SOURCE_GLOBS", "SOURCE_PATHS",
+           "executable_source_paths", "source_identity"]

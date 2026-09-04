@@ -3,7 +3,8 @@ shared encoding cache, one summary table.
 
     train_sweep.py --data DIR [--data DIR ...] [--eval-luna PATH] --grid GRID.json
         --out DIR [--device mps|cpu] [--base BASE.json] [--set KEY=JSON ...]
-        [--cache-dir DIR] [--cache-workers N]
+        [--cache-dir DIR] [--cache-workers N] [--resident-bytes B]
+        [--privacy-witness-every N [--allow-sampled-privacy-witness]]
 
 ``GRID.json`` is a JSON list of override objects, e.g.::
 
@@ -18,7 +19,8 @@ be a silently ignored override); an invalid value fails that config only.
 What one sweep does
 -------------------
 1. builds the encoding cache ONCE under ``<out>/cache`` (``--cache-workers``
-   shards at a time) for the data stores and the Luna set, before any
+   shards at a time; the privacy witness on every row unless sampling is
+   explicitly allowed) for the data stores and the Luna set, before any
    config runs, so every run reuses it (each row records
    ``cache.rebuilt == 0``);
 2. runs ``train_v0.train`` per config in grid order into
@@ -28,11 +30,14 @@ What one sweep does
    continues;
 3. writes ``sweep.json`` + ``sweep.md`` after every config: one row per
    config, in grid order -- config hash, overrides, epochs run, best epoch,
-   held-out value MAE / MSE for the model and the stratified prior, the
-   paired |error| difference with its cluster-bootstrap 95% CI, prior CE of
-   the model vs uniform and the smoothed incumbent (for the training
-   target), the aux search-mean MAE when the head is on, the same for Luna
-   when given, and wall time.
+   then the HEADLINE numbers from the TEST split (held out from epoch
+   selection and the calibration fit): value MAE / MSE for the model and
+   the stratified prior, the paired |error| difference with its
+   deal-bootstrap 95% CI, prior CE of the model vs uniform and the smoothed
+   incumbent (for the training target), the aux search-mean MAE when the
+   head is on; the same value numbers for Luna when given; the VALIDATION
+   value MAE labelled as tuning telemetry (the split that chose the epoch
+   and fitted the calibration; not held out); and wall time.
 
 Rows are pure functions of the receipts (the numbers equal a standalone
 ``train_v0`` run with the same config; the config hash is checked against
@@ -50,15 +55,17 @@ import traceback
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from .data import default_cache_workers, encoder_identity
-from .train_v0 import (DEFAULTS, TrainError, build_config, config_sha256, git_identity,
-                       prepare_stores, train, versions)
+from .data import Residency, default_cache_workers, default_resident_bytes, encoder_identity
+from .train_v0 import (DEFAULTS, HEADLINE, SPLIT_ROLES, TrainError, build_config,
+                       config_sha256, git_identity, prepare_stores, refuse_overlap, train,
+                       versions)
 
-SWEEP_SCHEMA = "shengji-train-sweep-v1"
+SWEEP_SCHEMA = "shengji-train-sweep-v2"    # v2: test-split headline, val = tuning
 #: ``train_v0.train`` keyword arguments a grid entry / base may set
 OVERRIDE_KEYS = ("epochs", "seed", "prior_target", "limit_clusters", "prior_weight", "lr",
-                 "weight_decay", "batch_size", "patience", "val_fraction", "huber_delta",
-                 "aux_points", "aux_weight", "aux_search_mean", "hidden", "n_boot", "window")
+                 "weight_decay", "batch_size", "patience", "val_fraction", "test_fraction",
+                 "huber_delta", "aux_points", "aux_weight", "aux_search_mean", "hidden",
+                 "n_boot", "window")
 
 
 class SweepError(RuntimeError):
@@ -132,6 +139,9 @@ def _split_summary(final: Mapping[str, Any] | None, prior_target: str) -> dict |
     aux = final.get("aux_search_mean")
     return {
         "n": final.get("n"),
+        "deals": final.get("deals"),
+        "held_out": final.get("held_out"),
+        "role": final.get("role"),
         "value_mae": _pick(value, "model", "mae"),
         "value_mse": _pick(value, "model", "mse"),
         "prior_mae": _pick(value, "stratified_prior", "mae"),
@@ -153,14 +163,18 @@ def _split_summary(final: Mapping[str, Any] | None, prior_target: str) -> dict |
         "aux_search_prior_mae": _pick(aux, "stratified_prior", "mae"),
         "aux_search_rows": aux.get("n") if aux else None,
         "calibration_mae_after": _pick(final, "calibration", "mae_after"),
+        "calibration_in_sample": _pick(final, "calibration", "in_sample"),
     }
 
 
 def summarize_receipt(receipt: Mapping[str, Any]) -> dict:
-    """The sweep row fields derived from one ``train`` receipt."""
+    """The sweep row fields derived from one ``train`` receipt: ``test``
+    (the headline, held out), ``val`` (tuning telemetry) and ``luna``."""
     config = receipt["config"]
     counts = receipt.get("counts") or {}
     luna_counts = _pick(receipt, "luna", "counts") or {}
+    if receipt.get("headline") != HEADLINE:
+        raise SweepError(f"receipt headline {receipt.get('headline')!r} != {HEADLINE!r}")
     return {
         "config_sha256": receipt["config_sha256"],
         "config": {k: config.get(k) for k in OVERRIDE_KEYS},
@@ -173,8 +187,13 @@ def summarize_receipt(receipt: Mapping[str, Any]) -> dict:
                   "reused": int(counts.get("cache_reused", 0))
                   + int(luna_counts.get("cache_reused", 0))},
         "split": receipt.get("split"),
+        "headline": receipt.get("headline"),
+        "selection": receipt.get("selection"),
+        "test": _split_summary(_pick(receipt, "final", "test"), config["prior_target"]),
         "val": _split_summary(_pick(receipt, "final", "val"), config["prior_target"]),
         "luna": _split_summary(_pick(receipt, "final", "luna"), config["prior_target"]),
+        "residency": receipt.get("residency"),
+        "privacy_witness": receipt.get("privacy_witness"),
         "receipt": _pick(receipt, "checkpoints", "best"),
     }
 
@@ -206,6 +225,14 @@ def describe_overrides(overrides: Mapping[str, Any]) -> str:
     return ", ".join(f"{k}={json.dumps(v)}" for k, v in sorted(overrides.items()))
 
 
+TABLE_HEADER = ("| # | config | hash | ep | best | TEST MAE model / prior "
+                "| TEST diff abs err [95% CI] | TEST MSE model / prior "
+                "| TEST prior CE model / uniform / incumbent | TEST aux MAE (prior) "
+                "| Luna MAE model / prior | Luna diff abs err [95% CI] "
+                "| val MAE model / prior (tuning) | wall s |")
+TABLE_RULE = "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+
+
 def render_markdown(summary: Mapping[str, Any]) -> str:
     """``sweep.md``: the run identity and one table row per config."""
     lines = [
@@ -219,35 +246,44 @@ def render_markdown(summary: Mapping[str, Any]) -> str:
         f"* base: {describe_overrides(summary['base']) if summary.get('base') else 'train_v0 defaults'}",
         f"* cache: {_pick(summary, 'cache', 'dir')} "
         f"(shards built up front: {_pick(summary, 'cache', 'built')}, "
-        f"workers: {_pick(summary, 'cache', 'workers')})",
+        f"workers: {_pick(summary, 'cache', 'workers')}, "
+        f"privacy witness every {_pick(summary, 'privacy_witness', 'every')} row(s)"
+        f"{' [SAMPLED]' if _pick(summary, 'privacy_witness', 'sampled') else ''})",
+        f"* residency budget: {_pick(summary, 'residency', 'budget_bytes')} bytes "
+        f"(data decodes to {_pick(summary, 'residency', 'decoded_bytes_data')} bytes)",
         f"* configs: {summary['status']['ok']} ok, {summary['status']['failed']} failed; "
         f"wall {_f(summary.get('wall_secs'), 1)} s",
         "",
-        "| # | config | hash | ep | best | val MAE model / prior | val diff abs err [95% CI] "
-        "| val MSE model / prior | prior CE model / uniform / incumbent | aux MAE (prior) "
-        "| Luna MAE model / prior | Luna diff abs err [95% CI] | wall s |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        f"HEADLINE = the TEST split ({SPLIT_ROLES['test']['role']}).  "
+        f"The val column is {SPLIT_ROLES['val']['role']}.",
+        "",
+        TABLE_HEADER,
+        TABLE_RULE,
     ]
     for row in summary["rows"]:
         label = describe_overrides(row.get("overrides") or {})
         if row["status"] != "ok":
             lines.append(f"| {row['index']} | {label} | {str(row.get('config_sha256') or '-')[:12]} "
-                         f"| FAILED: {row.get('error')} | | | | | | | | | {_f(row.get('wall_secs'), 1)} |")
+                         f"| FAILED: {row.get('error')} | | | | | | | | | | "
+                         f"{_f(row.get('wall_secs'), 1)} |")
             continue
-        val = row["val"] or {}
+        test = row["test"] or {}
+        val = row.get("val") or {}
         luna = row.get("luna") or {}
-        ce = val.get("prior_ce") or {}
-        aux = ("-" if val.get("aux_search_mae") is None
-               else f"{_f(val['aux_search_mae'], 2)} ({_f(val.get('aux_search_prior_mae'), 2)})")
+        ce = test.get("prior_ce") or {}
+        aux = ("-" if test.get("aux_search_mae") is None
+               else f"{_f(test['aux_search_mae'], 2)} ({_f(test.get('aux_search_prior_mae'), 2)})")
         lines.append(
             f"| {row['index']} | {label} | {row['config_sha256'][:12]} | {row['epochs']} "
-            f"| {row['best_epoch']} | {_f(val.get('value_mae'))} / {_f(val.get('prior_mae'))} "
-            f"| {_ci(val.get('diff_abs_error'))} "
-            f"| {_f(val.get('value_mse'))} / {_f(val.get('prior_mse'))} "
+            f"| {row['best_epoch']} | {_f(test.get('value_mae'))} / {_f(test.get('prior_mae'))} "
+            f"| {_ci(test.get('diff_abs_error'))} "
+            f"| {_f(test.get('value_mse'))} / {_f(test.get('prior_mse'))} "
             f"| {_f(ce.get('model'))} / {_f(ce.get('uniform'))} / {_f(ce.get('incumbent'))} "
             f"({ce.get('target')}) | {aux} "
             f"| {_f(luna.get('value_mae'))} / {_f(luna.get('prior_mae'))} "
-            f"| {_ci(luna.get('diff_abs_error'))} | {_f(row.get('wall_secs'), 1)} |")
+            f"| {_ci(luna.get('diff_abs_error'))} "
+            f"| {_f(val.get('value_mae'))} / {_f(val.get('prior_mae'))} "
+            f"| {_f(row.get('wall_secs'), 1)} |")
     lines.append("")
     return "\n".join(lines)
 
@@ -264,12 +300,15 @@ def _write_json(path: Path, payload: Any) -> None:
 def run_sweep(*, data: list[str], grid: Sequence[Mapping[str, Any]], out: str | os.PathLike,
               eval_luna: str | None = None, device: str | None = None,
               base: Mapping[str, Any] | None = None, cache_dir: str | None = None,
-              cache_workers: int | None = None, argv: list[str] | None = None,
+              cache_workers: int | None = None, resident_bytes: int | None = None,
+              privacy_witness_every: int = 1, allow_sampled_privacy_witness: bool = False,
+              argv: list[str] | None = None,
               log: Callable[[str], None] | None = print) -> dict:
     """Run the grid; returns the summary (also written as ``sweep.json`` /
     ``sweep.md``).  Raises ``SweepError`` for a malformed grid / base and
-    ``TrainDataError`` when the shared cache cannot be built; a config that
-    fails is a ``failed`` row."""
+    ``TrainDataError`` / ``TrainError`` when the shared cache cannot be
+    built or the Luna set overlaps the data stores; a config that fails is
+    a ``failed`` row."""
     base = check_overrides(base or {}, where="base")
     grid = [check_overrides(entry, where=f"grid[{i}]") for i, entry in enumerate(grid)]
     if not grid:
@@ -283,28 +322,43 @@ def run_sweep(*, data: list[str], grid: Sequence[Mapping[str, Any]], out: str | 
     workers = default_cache_workers() if cache_workers is None else max(1, int(cache_workers))
     data = [str(Path(d).resolve()) for d in data]
     luna_path = None if eval_luna is None else str(Path(eval_luna).resolve())
+    budget = default_resident_bytes() if resident_bytes is None else int(resident_bytes)
+    if budget <= 0:
+        raise SweepError("--resident-bytes must be positive")
+    exec_kw = dict(cache_dir=str(cache), cache_workers=workers, resident_bytes=budget,
+                   privacy_witness_every=privacy_witness_every,
+                   allow_sampled_privacy_witness=allow_sampled_privacy_witness)
 
-    # the shared cache, once, before any config runs
+    # the shared cache, once, before any config runs (nothing stays resident)
     seed = int(base.get("seed", DEFAULTS["seed"]))
     say(f"sweep: {len(grid)} config(s); building the shared cache under {cache} "
-        f"with {workers} worker(s)")
+        f"with {workers} worker(s), privacy witness every {privacy_witness_every} row(s)")
+    residency = Residency(budget)
+    prepare_kw = dict(witness_seed=seed, progress=say, cache_workers=workers,
+                      residency=residency, witness_every=privacy_witness_every,
+                      allow_sampled_witness=allow_sampled_privacy_witness)
     prepared = prepare_stores(data, cache, limit_clusters=base.get("limit_clusters"),
-                              witness_seed=seed, progress=say, cache_workers=workers)
+                              **prepare_kw)
     built = {"shards": int(prepared.counts["shards"]),
              "rebuilt": int(prepared.counts["cache_rebuilt"]),
              "reused": int(prepared.counts["cache_reused"]),
-             "records": int(prepared.counts["records_total"])}
+             "records": int(prepared.counts["records_total"]),
+             "deals": int(prepared.counts["deals_total"]),
+             "decoded_bytes": int(prepared.counts["decoded_bytes"])}
     if luna_path is not None:
-        luna_prepared = prepare_stores([luna_path], cache, limit_clusters=None,
-                                       witness_seed=seed, progress=say, cache_workers=workers)
+        luna_prepared = prepare_stores([luna_path], cache, limit_clusters=None, **prepare_kw)
+        refuse_overlap(prepared.block_store, luna_prepared.block_store,
+                       label=f"--eval-luna {luna_path}")
         built["shards"] += int(luna_prepared.counts["shards"])
         built["rebuilt"] += int(luna_prepared.counts["cache_rebuilt"])
         built["reused"] += int(luna_prepared.counts["cache_reused"])
         built["luna_records"] = int(luna_prepared.counts["records_total"])
+        built["luna_deals"] = int(luna_prepared.counts["deals_total"])
         del luna_prepared
     del prepared
+    residency.clear()
     say(f"sweep: cache ready: shards={built['shards']} rebuilt={built['rebuilt']} "
-        f"reused={built['reused']}")
+        f"reused={built['reused']} deals={built['deals']}")
 
     summary: dict = {
         "schema": SWEEP_SCHEMA,
@@ -319,9 +373,18 @@ def run_sweep(*, data: list[str], grid: Sequence[Mapping[str, Any]], out: str | 
         "eval_luna": luna_path,
         "base": base,
         "grid": grid,
+        "headline": HEADLINE,
+        "roles": {name: SPLIT_ROLES[name]["role"] for name in ("val", "test", "luna")},
         "cache": {"dir": str(cache), "workers": workers, "built": built["rebuilt"],
                   "shards": built["shards"], "reused_up_front": built["reused"],
-                  "records": built["records"], "luna_records": built.get("luna_records")},
+                  "records": built["records"], "deals": built["deals"],
+                  "luna_records": built.get("luna_records"),
+                  "luna_deals": built.get("luna_deals")},
+        "privacy_witness": {"every": int(privacy_witness_every),
+                            "sampled": int(privacy_witness_every) != 1,
+                            "allowed_sampled": bool(allow_sampled_privacy_witness)},
+        "residency": {"budget_bytes": residency.budget,
+                      "decoded_bytes_data": built["decoded_bytes"]},
         "rows": [],
         "status": {"ok": 0, "failed": 0},
     }
@@ -346,8 +409,7 @@ def run_sweep(*, data: list[str], grid: Sequence[Mapping[str, Any]], out: str | 
             say(f"sweep [{index + 1}/{len(grid)}] {describe_overrides(overrides)} "
                 f"-> {run_dir.name}")
             receipt = train(data=data, out=run_dir, eval_luna=luna_path, device=device,
-                            cache_dir=str(cache), cache_workers=workers, argv=argv, log=log,
-                            **cfg)
+                            argv=argv, log=log, **exec_kw, **cfg)
             if receipt["config_sha256"] != sha:
                 raise SweepError(f"receipt config hash {receipt['config_sha256'][:12]} != "
                                  f"planned {sha[:12]}: an override was not applied")
@@ -375,7 +437,8 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", action="append", required=True,
                         help="shard store / merged store directory (repeatable)")
-    parser.add_argument("--eval-luna", default=None, help="Luna private split (evaluation only)")
+    parser.add_argument("--eval-luna", default=None,
+                        help="Luna private split (evaluation only; must share no deal with --data)")
     parser.add_argument("--grid", required=True, help="JSON list of override objects")
     parser.add_argument("--out", required=True, help="sweep output directory")
     parser.add_argument("--device", default=None, help="mps|cpu (default: mps when available)")
@@ -388,6 +451,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-workers", type=int, default=None,
                         help=f"shards encoded at a time (default: min(8, cpu) = "
                              f"{default_cache_workers()})")
+    parser.add_argument("--resident-bytes", type=int, default=None,
+                        help="residency budget for decoded shard blocks (default: 40%% of "
+                             "physical memory; see train_v0)")
+    parser.add_argument("--privacy-witness-every", type=int, default=1, metavar="N",
+                        help="privacy witness on every N-th row (default 1 = every row; "
+                             "N > 1 needs --allow-sampled-privacy-witness)")
+    parser.add_argument("--allow-sampled-privacy-witness", action="store_true",
+                        help="permit --privacy-witness-every N > 1 (recorded in the summary)")
     return parser
 
 
@@ -411,7 +482,11 @@ def main(argv: list[str] | None = None) -> int:
         grid = load_grid(args.grid)
         summary = run_sweep(data=args.data, grid=grid, out=args.out, eval_luna=args.eval_luna,
                             device=args.device, base=base, cache_dir=args.cache_dir,
-                            cache_workers=args.cache_workers, argv=full_argv, log=log)
+                            cache_workers=args.cache_workers,
+                            resident_bytes=args.resident_bytes,
+                            privacy_witness_every=args.privacy_witness_every,
+                            allow_sampled_privacy_witness=args.allow_sampled_privacy_witness,
+                            argv=full_argv, log=log)
     except (SweepError, TrainError) as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         return 2

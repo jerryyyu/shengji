@@ -3,30 +3,59 @@
     train_v0.py train --data DIR [--data DIR ...] [--eval-luna PATH] --out DIR
         [--device mps|cpu] [--epochs 20] [--seed 1] [--prior-target softmax|final]
         [--limit-clusters N] [--prior-weight 1.0] [--hidden 512]
-        [--aux-search-mean W] [--cache-workers N] ...
+        [--val-fraction 0.1] [--test-fraction 0.1]
+        [--aux-search-mean W] [--cache-workers N] [--resident-bytes B]
+        [--privacy-witness-every 1 [--allow-sampled-privacy-witness]] ...
     train_v0.py evaluate --checkpoint CKPT (--data DIR | --eval-luna PATH) --out DIR
+        [--split test|val|train|all]
 
 Outputs in ``--out``: ``receipt.json`` (git sha, encoder identity, data
 manifests + shard hashes, config hash, seeds, split summary, per-epoch
-train/val metrics, final metrics, baseline metrics, calibration),
-``metrics.json``, ``checkpoints/epoch-NN.pt``, ``best.pt`` and the derived
-encoding cache under ``cache/``.  Progress lines carry counts and losses
-only.  Splits are by deal cluster (90/10 by cluster hash with the run
-seed); Luna is evaluation only, scored against the stratified prior fitted
-on the TRAINING data.
+train/validation telemetry, final metrics per split, baseline metrics,
+calibration, residency and peak memory), ``metrics.json``,
+``checkpoints/epoch-NN.pt``, ``best.pt`` and the derived encoding cache
+under ``cache/``.  Progress lines carry counts and losses only.
 
-``--cache-workers N`` (default ``min(8, cpu)``) encodes the missing shard
-caches N at a time in spawned processes (``data.ensure_caches``); the cache
-keys and the receipt's shard-hash binding are unchanged and the files are
-byte-identical to a one-worker build.  ``--aux-search-mean W`` (default 0 =
-off) adds the auxiliary search-mean head (``model.py`` / ``data.py``: the
-target is ``action_values.means[played_index]``, acting-team perspective,
-points scale) with weight W in the TRAINING loss; its held-out MAE is
-reported separately (``final.<split>.aux_search_mean``, in points, against
-a stratified prior fitted on the training rows that carry the target) and
-the primary value / prior metrics and the validation loss that selects the
-best epoch are computed exactly as without it, so runs with and without
-the head are comparable.  ``--hidden N`` sets the trunk to ``[N, N // 2]``.
+Splits (three-way, by DEAL)
+---------------------------
+Every row is bound to its canonical deal key (``data.deal_key``: a digest
+of the dealt deck, the same for every store, policy, knob set and mirror
+that replayed the deal) and the deals are ranked by ``sha256(seed|key)``:
+the top ``test_fraction`` are the TEST split, the next ``val_fraction`` the
+VALIDATION split, the rest TRAIN (default 80/10/10).  Roles are fixed:
+
+* train: the model, the stratified prior, the incumbent eps;
+* val: epoch selection (``best.pt``: lowest ``value + prior_weight *
+  prior CE``) and the affine calibration fit -- TUNING telemetry, reported
+  as such (``final.val.held_out == false``), never as held-out evidence;
+* test: the reported metrics (``final.test``, the receipt's ``headline``);
+  never read by selection or calibration;
+* Luna (``--eval-luna``): an external held-out set scored against the
+  stratified prior fitted on TRAIN; refused when it shares a deal key with
+  any row of the data stores (``final.luna``).
+
+``check_receipt`` refuses a receipt whose labels contradict these roles
+(a validation block marked held out, a headline that is not held out, a
+calibration fitted on a held-out split, a Luna set overlapping training).
+
+Privacy, residency, cache
+-------------------------
+The privacy witness (``data.privacy_witness``) runs on EVERY row of every
+shard the run encodes (``--privacy-witness-every 1``); ``N > 1`` is refused
+unless ``--allow-sampled-privacy-witness`` is passed, and the receipt
+records both (``privacy_witness``).  ``--resident-bytes B`` (default 40% of
+physical memory) bounds the decoded blocks held in memory (``data``:
+RESIDENCY contract; the receipt's ``residency`` block reports the budget,
+the corpus's decoded size and the peak resident bytes, ``peak_memory`` the
+process RSS).  ``--cache-workers N`` (default ``min(8, cpu)``) encodes the
+missing shard caches N at a time in spawned processes
+(``data.ensure_caches``); the files are byte-identical to a one-worker
+build.  ``--aux-search-mean W`` (default 0 = off) adds the auxiliary
+search-mean head (``model.py`` / ``data.py``) with weight W in the TRAINING
+loss; its MAE is reported separately (``final.<split>.aux_search_mean``, in
+points) and the primary value / prior metrics and the selection loss are
+computed exactly as without it.  ``--hidden N`` sets the trunk to ``[N, N
+// 2]``.
 """
 
 from __future__ import annotations
@@ -52,27 +81,46 @@ import torch
 from ..harvest.schema import canonical_json
 from .baselines import (StratifiedPrior, apply_affine, fit_affine, fit_incumbent_eps,
                         prior_summary, reliability_table, value_summary)
-from .data import (CACHE_WORKERS_CAP, Block, BlockStore, Store, TrainDataError, cache_path,
-                   collate, default_cache_workers, discover_store, encoder_identity,
-                   ensure_caches, split_clusters, split_mask)
+from .data import (CACHE_WORKERS_CAP, PRIVACY_TRIALS, Block, BlockStore, Residency, Store,
+                   TrainDataError, cache_path, check_witness_every, collate,
+                   default_cache_workers, default_resident_bytes, discover_store,
+                   encoder_identity, ensure_caches, physical_memory_bytes, read_column,
+                   split_counts, split_deals, split_mask)
 from .model import (DEFAULT_ARCH, DEFAULT_HIDDEN, MODEL_SCHEMA, SEARCH_MEAN_SCALE,
                     ValuePriorNet, batch_losses, prior_cross_entropy, prior_log_probs,
                     trunk_for)
 
-RECEIPT_SCHEMA = "shengji-train-v0-receipt-v1"
-CHECKPOINT_SCHEMA = "shengji-train-v0-checkpoint-v1"
+RECEIPT_SCHEMA = "shengji-train-v0-receipt-v2"     # v2: three-way split, roles, residency
+CHECKPOINT_SCHEMA = "shengji-train-v0-checkpoint-v2"
 PRIOR_TARGETS = ("softmax", "final")
 DEFAULTS = {
     "epochs": 20, "seed": 1, "lr": 3e-4, "weight_decay": 1e-4, "batch_size": 1024,
     "patience": 3, "prior_weight": 1.0, "prior_target": "softmax", "val_fraction": 0.1,
-    "huber_delta": 1.0, "aux_points": False, "aux_weight": 0.1, "aux_search_mean": 0.0,
-    "hidden": DEFAULT_HIDDEN, "n_boot": 1000, "window": 64, "limit_clusters": None,
+    "test_fraction": 0.1, "huber_delta": 1.0, "aux_points": False, "aux_weight": 0.1,
+    "aux_search_mean": 0.0, "hidden": DEFAULT_HIDDEN, "n_boot": 1000, "window": 64,
+    "limit_clusters": None,
 }
 REQUIRED_RECEIPT_FIELDS = (
     "schema", "command", "git", "encoder", "data", "config", "config_sha256", "seeds",
-    "split", "counts", "epochs", "final", "baselines", "calibration", "checkpoints",
-    "wall_secs", "peak_memory", "device", "versions", "argv", "started",
+    "split", "counts", "epochs", "final", "headline", "selection", "baselines",
+    "calibration", "checkpoints", "wall_secs", "peak_memory", "residency",
+    "privacy_witness", "device", "versions", "argv", "started",
 )
+#: the fixed role of every reported split: what it was used for, and
+#: whether its numbers are held-out evidence
+SPLIT_ROLES = {
+    "train": {"held_out": False,
+              "role": "fit: the model, the stratified prior and the incumbent eps"},
+    "val": {"held_out": False,
+            "role": "tuning telemetry: epoch selection and the calibration fit; NOT held out"},
+    "test": {"held_out": True,
+             "role": "held-out: reported metrics; never read by selection or calibration"},
+    "luna": {"held_out": True,
+             "role": "held-out: external evaluation set, disjoint from the data stores by deal"},
+}
+HEADLINE = "test"
+SELECTION_SPLIT = "val"
+SELECTION_CRITERION = "validation loss = value huber + prior_weight * prior CE (never the aux term)"
 SERVER = Path(__file__).resolve().parents[2]
 
 
@@ -114,6 +162,7 @@ class Prepared:
     block_store: BlockStore
     counts: dict
     cache_files: list[dict] = field(default_factory=list)
+    residency: Residency | None = None
 
 
 def _merge_counts(total: dict, counts: dict) -> None:
@@ -127,60 +176,93 @@ def _merge_counts(total: dict, counts: dict) -> None:
             total[key] = total.get(key, 0) + value
 
 
+def _first_deals(path: str, limit: int) -> list[str]:
+    """The first ``limit`` deal keys of a cache file in file order."""
+    keys = dict.fromkeys(str(k) for k in read_column(path, "deal_key"))
+    return list(keys)[:int(limit)]
+
+
 def prepare_stores(paths: list[str], cache_dir: Path, *, limit_clusters: int | None,
                    witness_seed: int, progress: Callable[[str], None] | None = None,
-                   cache_workers: int | None = None) -> Prepared:
+                   cache_workers: int | None = None, residency: Residency | None = None,
+                   resident_bytes: int | None = None, witness_every: int = 1,
+                   allow_sampled_witness: bool = False) -> Prepared:
     """Discover, verify, encode (cache; the missing shards ``cache_workers``
-    at a time, default ``data.default_cache_workers()``) and index every
-    store."""
+    at a time, default ``data.default_cache_workers()``; the privacy
+    witness on every ``witness_every``-th row, 1 = every row) and index
+    every store into one ``BlockStore`` over ``residency`` (or a new
+    ``Residency(resident_bytes)``).  Nothing is decoded here: ``counts``
+    come from the cache metas and the deal-key columns."""
+    witness_every = check_witness_every(witness_every, allow_sampled_witness)
     stores = [discover_store(path, limit_clusters=limit_clusters) for path in paths]
     jobs = [(shard, store.private) for store in stores for shard in store.shards]
     if not jobs:
         raise TrainError("no shard to train on")
     built = ensure_caches(jobs, cache_dir, witness_seed=witness_seed,
+                          witness_every=witness_every,
+                          allow_sampled_witness=allow_sampled_witness,
                           workers=cache_workers, progress=progress)
     entries: list[tuple] = []
-    blocks: list[Block] = []
+    keep: list = []
     counts: dict = {"shards": 0, "cache_rebuilt": 0, "cache_reused": 0}
     cache_files: list[dict] = []
     built_iter = iter(built)
     for store in stores:
+        first = len(entries)
         for shard in store.shards:
-            block, rebuilt = next(built_iter)
+            meta, rebuilt = next(built_iter)
             counts["shards"] += 1
             counts["cache_rebuilt" if rebuilt else "cache_reused"] += 1
-            _merge_counts(counts, {"records": block.meta["counts"]})
+            _merge_counts(counts, {"records": meta["counts"]})
+            path = str(cache_path(cache_dir, shard.sha256))
             cache_files.append({"label": shard.label, "shard_sha256": shard.sha256,
-                                "cache": str(cache_path(cache_dir, shard.sha256)),
-                                "records": block.n, "rebuilt": rebuilt})
-            entries.append((shard, str(cache_path(cache_dir, shard.sha256))))
-            blocks.append(block)
+                                "cache": path, "records": int(meta["counts"]["encoded"]),
+                                "nbytes": int(meta["nbytes"]),
+                                "witness_every": int(meta["witness_every"]),
+                                "rebuilt": rebuilt})
+            entries.append((shard, path))
+            keep.append(None)
             if progress:
-                progress(f"shard {shard.label}: encoded={block.n} "
-                         f"prior_stored={block.meta['counts']['preference']['stored']} "
-                         f"prior_derived={block.meta['counts']['preference']['derived']} "
-                         f"prior_missing={block.meta['counts']['preference']['missing']} "
-                         f"legacy_schema={block.meta['counts'].get('legacy_schema', 0)} "
-                         f"{'rebuilt' if rebuilt else 'cached'}")
+                pc = meta["counts"]["preference"]
+                progress(f"shard {shard.label}: encoded={meta['counts']['encoded']} "
+                         f"prior_stored={pc['stored']} prior_derived={pc['derived']} "
+                         f"prior_missing={pc['missing']} "
+                         f"legacy_schema={meta['counts'].get('legacy_schema', 0)} "
+                         f"witness_every={meta['witness_every']} "
+                         f"nbytes={meta['nbytes']} {'rebuilt' if rebuilt else 'cached'}")
         if limit_clusters is not None and store.layout != "shard-store":
-            # merged/jsonl layouts: keep the first N clusters in file order
-            keep: list[str] = []
-            seen: set[str] = set()
-            for block in blocks[-len(store.shards):]:
-                for key in block.cluster:
-                    if str(key) not in seen:
-                        seen.add(str(key))
-                        keep.append(str(key))
-            keep_set = set(keep[:int(limit_clusters)])
-            for i in range(len(blocks) - len(store.shards), len(blocks)):
-                sel = np.flatnonzero(np.asarray([str(c) in keep_set for c in blocks[i].cluster]))
-                blocks[i] = blocks[i].subset(sel)
-    block_store = BlockStore(entries)
-    block_store.preload(blocks)
-    counts["records_total"] = int(sum(b.n for b in blocks))
-    counts["clusters_total"] = len(block_store.cluster_keys())
+            # merged/jsonl layouts: keep the first N deals in file order
+            kept: dict[str, None] = {}
+            for _shard, path in entries[first:]:
+                for key in _first_deals(path, int(limit_clusters)):
+                    if len(kept) < int(limit_clusters):
+                        kept.setdefault(key, None)
+            for i in range(first, len(entries)):
+                keep[i] = set(kept)
+    block_store = BlockStore(entries, residency=residency, resident_bytes=resident_bytes,
+                             keep=keep, witness_every=witness_every)
+    rows = block_store.rows()
+    counts["records_total"] = int(sum(rows))
+    counts["deals_total"] = len(block_store.keys())
+    counts["decoded_bytes"] = int(block_store.nbytes)
     return Prepared(stores=stores, block_store=block_store, counts=counts,
-                    cache_files=cache_files)
+                    cache_files=cache_files, residency=block_store.residency)
+
+
+def shared_deals(a: BlockStore, b: BlockStore) -> list[str]:
+    """Deal keys present in both stores (sorted)."""
+    return sorted(set(a.keys()) & set(b.keys()))
+
+
+def refuse_overlap(training: BlockStore, evaluation: BlockStore, *, label: str) -> int:
+    """Refuse an evaluation set that shares a deal with the data stores
+    (the evaluation would not be independent); returns 0."""
+    shared = shared_deals(training, evaluation)
+    if shared:
+        raise TrainError(
+            f"{label} shares {len(shared)} deal(s) with the data stores (e.g. "
+            f"{shared[0]}): the evaluation is not independent of training; refusing")
+    return 0
 
 
 # ----------------------------------------------------------------- tensors
@@ -254,6 +336,7 @@ def fit_baselines(store: BlockStore, mask_fn: Callable[[Block], np.ndarray]) -> 
             "softmax": fit_incumbent_eps(cat(first_soft), cat(width_soft)),
             "final": fit_incumbent_eps(cat(first_final), cat(width_final)),
         },
+        "fitted_on": "train",
     }
 
 
@@ -263,10 +346,11 @@ def fit_baselines(store: BlockStore, mask_fn: Callable[[Block], np.ndarray]) -> 
 def run_eval(model: ValuePriorNet, store: BlockStore, mask_fn: Callable[[Block], np.ndarray],
              device: torch.device, *, prior_target: str, prior_weight: float,
              batch_size: int, huber_delta: float) -> dict[str, np.ndarray]:
-    """Per-record predictions and losses over the selected rows."""
+    """Per-record predictions and losses over the selected rows (one block
+    resident at a time; batches gathered from it)."""
     model.eval()
     out: dict[str, list] = {k: [] for k in (
-        "pred", "utility", "ply", "role_attacker", "points_so_far", "cluster", "width",
+        "pred", "utility", "ply", "role_attacker", "points_so_far", "deal_key", "width",
         "has_softmax", "played", "ce_softmax", "nll_played", "top1", "first_softmax",
         "loss_value", "loss_prior", "has_target", "search_pred", "search_target",
         "has_search")}
@@ -274,10 +358,9 @@ def run_eval(model: ValuePriorNet, store: BlockStore, mask_fn: Callable[[Block],
         sel = np.flatnonzero(mask_fn(block))
         if not sel.size:
             continue
-        sub = block.subset(sel)
-        for b0 in range(0, sub.n, batch_size):
-            idx = np.arange(b0, min(sub.n, b0 + batch_size))
-            raw = collate(sub, idx)
+        for b0 in range(0, sel.size, batch_size):
+            idx = sel[b0:b0 + batch_size]
+            raw = collate(block, idx)
             t = to_tensors(raw, device, prior_target)
             value, _aux, logits, search = model(t["obs"], t["cand"], t["mask"])
             logp = prior_log_probs(logits, t["mask"])
@@ -292,17 +375,17 @@ def run_eval(model: ValuePriorNet, store: BlockStore, mask_fn: Callable[[Block],
             argmax = logits.argmax(dim=1).cpu().numpy()
             widths = raw["widths"]
             first = np.zeros(len(idx), dtype=np.float32)
-            if sub.cand_softmax.size:
-                starts = sub.cand_offsets[idx]
-                first[widths > 0] = sub.cand_softmax[starts[widths > 0]]
+            if block.cand_softmax.size:
+                starts = block.cand_offsets[idx]
+                first[widths > 0] = block.cand_softmax[starts[widths > 0]]
             v_loss = torch.nn.functional.huber_loss(value, t["utility"], delta=huber_delta,
                                                     reduction="none")
             out["pred"].append(value.cpu().numpy())
             out["utility"].append(raw["utility"])
-            out["ply"].append(sub.ply[idx])
-            out["role_attacker"].append(sub.role_attacker[idx])
-            out["points_so_far"].append(sub.points_so_far[idx])
-            out["cluster"].append(sub.cluster[idx])
+            out["ply"].append(block.ply[idx])
+            out["role_attacker"].append(block.role_attacker[idx])
+            out["points_so_far"].append(block.points_so_far[idx])
+            out["deal_key"].append(block.deal_key[idx])
             out["width"].append(widths)
             out["has_softmax"].append(raw["has_softmax"])
             out["played"].append(played)
@@ -361,20 +444,23 @@ def quick_metrics(ev: dict[str, np.ndarray], *, prior_weight: float) -> dict:
 
 
 def full_metrics(ev: dict[str, np.ndarray], baselines: dict, *, prior_target: str,
-                 prior_weight: float, n_boot: int, seed: int, calibration: dict | None
-                 ) -> dict:
-    """Held-out metrics with baselines, bootstrap CIs and calibration; the
-    primary blocks (``value``, ``prior``, ``calibration``) do not depend on
-    the aux head, which reports under ``aux_search_mean`` only when
-    present (points; against the training stratified prior of the target)."""
+                 prior_weight: float, n_boot: int, seed: int, calibration: dict | None,
+                 calibration_in_sample: bool = False) -> dict:
+    """Metrics of one split with baselines, deal-bootstrap CIs and
+    calibration; the primary blocks (``value``, ``prior``, ``calibration``)
+    do not depend on the aux head, which reports under ``aux_search_mean``
+    only when present (points; against the training stratified prior of
+    the target).  ``calibration_in_sample`` marks the split the affine fit
+    was made on (its ``mae_after`` is in-sample)."""
     metrics = quick_metrics(ev, prior_weight=prior_weight)
     n = metrics["n"]
     if n == 0:
         return metrics
     prior = StratifiedPrior.from_dict(baselines["stratified_prior"])
     base_pred = prior.predict(ev["ply"], ev["role_attacker"], ev["points_so_far"])
-    metrics["value"] = value_summary(ev["pred"], base_pred, ev["utility"], ev["cluster"],
+    metrics["value"] = value_summary(ev["pred"], base_pred, ev["utility"], ev["deal_key"],
                                      n_boot=n_boot, seed=seed)
+    metrics["deals"] = int(np.unique(ev["deal_key"]).size)
     has_s = _search_rows(ev)
     if has_s.any():
         sp = baselines.get("search_mean_prior")
@@ -383,7 +469,7 @@ def full_metrics(ev: dict[str, np.ndarray], baselines: dict, *, prior_target: st
                                       ev["points_so_far"][has_s])
         metrics["aux_search_mean"] = {
             **value_summary(ev["search_pred"][has_s], s_base, ev["search_target"][has_s],
-                            ev["cluster"][has_s], n_boot=n_boot, seed=seed),
+                            ev["deal_key"][has_s], n_boot=n_boot, seed=seed),
             "units": "points, acting-team perspective (action_values.means[played_index])",
             "rows_without_target": int((~ev["has_search"].astype(bool)).sum()),
         }
@@ -396,14 +482,14 @@ def full_metrics(ev: dict[str, np.ndarray], baselines: dict, *, prior_target: st
         metrics["prior"]["softmax"] = prior_summary(
             ev["ce_softmax"][has], ev["nll_played"][has], ev["top1"][has],
             ev["first_softmax"][has], ev["width"][has], ev["played"][has],
-            ev["cluster"][has], incumbent_eps=eps["softmax"]["eps"], n_boot=n_boot, seed=seed)
+            ev["deal_key"][has], incumbent_eps=eps["softmax"]["eps"], n_boot=n_boot, seed=seed)
     else:
         metrics["prior"]["softmax"] = {"n": 0}
     if known.any():
         metrics["prior"]["final"] = prior_summary(
             ev["nll_played"][known], ev["nll_played"][known], ev["top1"][known],
             (ev["played"][known] == 0).astype(np.float64), ev["width"][known],
-            ev["played"][known], ev["cluster"][known],
+            ev["played"][known], ev["deal_key"][known],
             incumbent_eps=eps["final"]["eps"], n_boot=n_boot, seed=seed)
     else:
         metrics["prior"]["final"] = {"n": 0}
@@ -412,6 +498,8 @@ def full_metrics(ev: dict[str, np.ndarray], baselines: dict, *, prior_target: st
         cal_pred = apply_affine(ev["pred"], calibration)
         metrics["calibration"] = {
             "scale": calibration["scale"], "shift": calibration["shift"],
+            "fitted_on": calibration.get("fitted_on"),
+            "in_sample": bool(calibration_in_sample),
             "mae_before": float(np.abs(ev["pred"] - ev["utility"]).mean()),
             "mae_after": float(np.abs(cal_pred - ev["utility"]).mean()),
             "mse_before": float(((ev["pred"] - ev["utility"]) ** 2).mean()),
@@ -424,10 +512,61 @@ def full_metrics(ev: dict[str, np.ndarray], baselines: dict, *, prior_target: st
     return metrics
 
 
+def labelled(name: str, metrics: dict) -> dict:
+    """``metrics`` stamped with the split's fixed role (``SPLIT_ROLES``)."""
+    role = SPLIT_ROLES[name]
+    return {**metrics, "split": name, "held_out": bool(role["held_out"]), "role": role["role"]}
+
+
+def check_receipt(receipt: dict) -> dict:
+    """Refuse a receipt whose split labels contradict the fixed roles:
+    every reported split must carry its fixed ``held_out`` flag (a
+    validation block can never be labelled held out), the headline (when
+    the receipt has one; a ``train`` receipt always does) must be a
+    reported held-out split, the selection and calibration splits must be
+    tuning splits, and a Luna set checked against the data stores must
+    share no deal with them.  Returns the receipt."""
+    final = receipt.get("final") or {}
+    headline = receipt.get("headline")
+    for name, block in final.items():
+        role = SPLIT_ROLES.get(name)
+        if role is None:
+            if name == "all" and receipt.get("command") == "evaluate" and not block.get("held_out"):
+                continue
+            raise TrainError(f"receipt: unknown split {name!r} in final")
+        if block.get("held_out") is not bool(role["held_out"]):
+            raise TrainError(
+                f"receipt: final.{name} is labelled held_out={block.get('held_out')!r}; "
+                f"the {name} split is {'' if role['held_out'] else 'NOT '}held out "
+                f"({role['role']})")
+    if receipt.get("command") == "train" and headline is None:
+        raise TrainError("receipt: a train receipt needs a held-out headline split")
+    if headline is not None and (headline not in final or not final[headline].get("held_out")):
+        raise TrainError(f"receipt: headline {headline!r} is not a reported held-out split")
+    selection = receipt.get("selection") or {}
+    if receipt.get("command") == "train":
+        sel = selection.get("split")
+        if sel not in SPLIT_ROLES or SPLIT_ROLES[sel]["held_out"]:
+            raise TrainError(f"receipt: selection split {sel!r} must be a tuning split")
+    cal = receipt.get("calibration")
+    if cal is not None:
+        fitted = cal.get("fitted_on")
+        if fitted not in SPLIT_ROLES or SPLIT_ROLES[fitted]["held_out"]:
+            raise TrainError(f"receipt: calibration fitted on {fitted!r}, a held-out split")
+        for name, block in final.items():
+            c = block.get("calibration")
+            if c is not None and bool(c.get("in_sample")) != (name == fitted):
+                raise TrainError(f"receipt: final.{name}.calibration.in_sample mislabelled")
+    luna = receipt.get("luna")
+    if luna is not None and luna.get("shared_deals_with_training") not in (0, None):
+        raise TrainError("receipt: the Luna set shares deals with the data stores")
+    return receipt
+
+
 # ------------------------------------------------------------- checkpoints
 
 def save_checkpoint(path: Path, model: ValuePriorNet, *, config: dict, epoch: int,
-                    val: dict, baselines: dict, calibration: dict | None,
+                    selection: dict, baselines: dict, calibration: dict | None,
                     split: dict, metrics: dict | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -438,7 +577,7 @@ def save_checkpoint(path: Path, model: ValuePriorNet, *, config: dict, epoch: in
         "config": config,
         "encoder": encoder_identity(),
         "epoch": epoch,
-        "val": val,
+        "selection": selection,
         "baselines": baselines,
         "calibration": calibration,
         "split": split,
@@ -497,6 +636,23 @@ def peak_memory(device: torch.device) -> dict:
     return out
 
 
+def residency_receipt(residency: Residency, *, decoded_bytes: int, luna_bytes: int = 0) -> dict:
+    """The residency block of a receipt: the budget, the corpus's decoded
+    size (what an all-resident run would hold) and what was resident."""
+    total = physical_memory_bytes()
+    return {
+        **residency.describe(),
+        "physical_memory_bytes": total,
+        "budget_fraction_of_physical": (None if not total or residency.budget is None
+                                        else round(residency.budget / total, 4)),
+        "decoded_bytes_data": int(decoded_bytes),
+        "decoded_bytes_luna": int(luna_bytes),
+        "all_resident_bytes": int(decoded_bytes) + int(luna_bytes),
+        "contract": ("at most budget_bytes of decoded blocks resident at any time (LRU); "
+                     "batches gathered from the resident window; None = unbounded"),
+    }
+
+
 def config_sha256(config: dict) -> str:
     return hashlib.sha256(canonical_json(config).encode("ascii")).hexdigest()
 
@@ -506,6 +662,13 @@ def _write_json(path: Path, payload: Any) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, path)
+
+
+def _resident_budget(resident_bytes: int | None) -> int:
+    budget = default_resident_bytes() if resident_bytes is None else int(resident_bytes)
+    if budget <= 0:
+        raise TrainError("--resident-bytes must be positive")
+    return budget
 
 
 # ------------------------------------------------------------------- train
@@ -519,6 +682,7 @@ def build_config(*, data: list[str], eval_luna: str | None = None,
                  batch_size: int = DEFAULTS["batch_size"],
                  patience: int = DEFAULTS["patience"],
                  val_fraction: float = DEFAULTS["val_fraction"],
+                 test_fraction: float = DEFAULTS["test_fraction"],
                  huber_delta: float = DEFAULTS["huber_delta"], aux_points: bool = False,
                  aux_weight: float = DEFAULTS["aux_weight"],
                  aux_search_mean: float = DEFAULTS["aux_search_mean"],
@@ -526,13 +690,20 @@ def build_config(*, data: list[str], eval_luna: str | None = None,
                  window: int = DEFAULTS["window"]) -> dict:
     """The run configuration that ``config_sha256`` hashes: everything that
     determines the trained model and its metrics (validated, fail closed);
-    execution details (device, cache workers, output paths) are not in it."""
+    execution details (device, cache workers, residency budget, output
+    paths, privacy witness density) are not in it."""
     if prior_target not in PRIOR_TARGETS:
         raise TrainError(f"prior target must be one of {PRIOR_TARGETS}")
     if epochs < 1 or batch_size < 1 or patience < 0:
         raise TrainError("epochs/batch_size >= 1 and patience >= 0 are required")
     if not (float(aux_search_mean) >= 0 and math.isfinite(float(aux_search_mean))):
         raise TrainError("--aux-search-mean must be a finite weight >= 0")
+    for name, frac in (("val_fraction", val_fraction), ("test_fraction", test_fraction)):
+        if not (0.0 < float(frac) < 1.0):
+            raise TrainError(f"--{name.replace('_', '-')} must be in (0, 1): the run needs "
+                             "a validation split for selection and a test split to report")
+    if float(val_fraction) + float(test_fraction) >= 1.0:
+        raise TrainError("--val-fraction + --test-fraction must leave a training split")
     try:
         trunk = trunk_for(hidden)
     except (TypeError, ValueError) as exc:
@@ -546,10 +717,13 @@ def build_config(*, data: list[str], eval_luna: str | None = None,
         "limit_clusters": limit_clusters, "prior_weight": float(prior_weight),
         "lr": float(lr), "weight_decay": float(weight_decay), "batch_size": int(batch_size),
         "patience": int(patience), "val_fraction": float(val_fraction),
+        "test_fraction": float(test_fraction),
         "huber_delta": float(huber_delta), "aux_points": bool(aux_points),
         "aux_weight": float(aux_weight) if aux_points else 0.0,
         "aux_search_mean": float(aux_search_mean), "hidden": int(hidden),
         "n_boot": int(n_boot), "window": int(window), "optimizer": "AdamW", "arch": arch,
+        "split_method": "three-way by deal_key: rank of sha256(seed|deal_key); "
+                        "top test_fraction -> test, next val_fraction -> val, rest train",
         "encoder_implementation_sha256": encoder_identity()["implementation_sha256"],
         "enc_version": encoder_identity()["enc_version"],
     }
@@ -562,23 +736,31 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
           lr: float = DEFAULTS["lr"], weight_decay: float = DEFAULTS["weight_decay"],
           batch_size: int = DEFAULTS["batch_size"], patience: int = DEFAULTS["patience"],
           val_fraction: float = DEFAULTS["val_fraction"],
+          test_fraction: float = DEFAULTS["test_fraction"],
           huber_delta: float = DEFAULTS["huber_delta"], aux_points: bool = False,
           aux_weight: float = DEFAULTS["aux_weight"],
           aux_search_mean: float = DEFAULTS["aux_search_mean"],
           hidden: int = DEFAULTS["hidden"], n_boot: int = DEFAULTS["n_boot"],
           window: int = DEFAULTS["window"], cache_dir: str | None = None,
-          cache_workers: int | None = None, argv: list[str] | None = None,
+          cache_workers: int | None = None, resident_bytes: int | None = None,
+          privacy_witness_every: int = 1, allow_sampled_privacy_witness: bool = False,
+          argv: list[str] | None = None,
           log: Callable[[str], None] | None = print) -> dict:
     """Run the training pipeline; returns the receipt (also written)."""
     config = build_config(
         data=data, eval_luna=eval_luna, epochs=epochs, seed=seed, prior_target=prior_target,
         limit_clusters=limit_clusters, prior_weight=prior_weight, lr=lr,
         weight_decay=weight_decay, batch_size=batch_size, patience=patience,
-        val_fraction=val_fraction, huber_delta=huber_delta, aux_points=aux_points,
-        aux_weight=aux_weight, aux_search_mean=aux_search_mean, hidden=hidden,
-        n_boot=n_boot, window=window)
+        val_fraction=val_fraction, test_fraction=test_fraction, huber_delta=huber_delta,
+        aux_points=aux_points, aux_weight=aux_weight, aux_search_mean=aux_search_mean,
+        hidden=hidden, n_boot=n_boot, window=window)
     arch = config["arch"]
     search_weight = float(config["aux_search_mean"])
+    try:
+        witness_every = check_witness_every(privacy_witness_every, allow_sampled_privacy_witness)
+    except TrainDataError as exc:
+        raise TrainError(str(exc)) from exc
+    budget = _resident_budget(resident_bytes)
     started = time.perf_counter()
     started_at = time.strftime("%Y-%m-%d %H:%M:%S")
     out_dir = Path(out)
@@ -590,28 +772,41 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
     say = log or (lambda _s: None)
     say(f"train: device={dev.type} seed={seed} prior_target={prior_target} "
         f"epochs<={epochs} batch={batch_size} hidden={config['hidden']} "
-        f"aux_search_mean={search_weight} cache_workers={workers}")
+        f"aux_search_mean={search_weight} cache_workers={workers} "
+        f"privacy_witness_every={witness_every} resident_bytes={budget}")
 
+    residency = Residency(budget)
     prepared = prepare_stores(data, cache, limit_clusters=limit_clusters,
-                              witness_seed=seed, progress=say, cache_workers=workers)
+                              witness_seed=seed, progress=say, cache_workers=workers,
+                              residency=residency, witness_every=witness_every,
+                              allow_sampled_witness=allow_sampled_privacy_witness)
     store = prepared.block_store
-    assignment = split_clusters(store.cluster_keys(), seed=seed, val_fraction=val_fraction)
-    train_mask = lambda b: split_mask(b, assignment, "train")  # noqa: E731
-    val_mask = lambda b: split_mask(b, assignment, "val")  # noqa: E731
-    n_train = int(sum(int(train_mask(b).sum()) for b in store.iter_blocks()))
-    n_val = int(sum(int(val_mask(b).sum()) for b in store.iter_blocks()))
+    say(f"residency: {len(store)} shard(s) decode to {store.nbytes} bytes; budget {budget} "
+        f"({'fits' if store.nbytes <= budget else 'streams through the LRU'})")
+    assignment = split_deals(store.keys(), seed=seed, val_fraction=val_fraction,
+                             test_fraction=test_fraction)
+    masks = {part: (lambda b, p=part: split_mask(b, assignment, p)) for part in ("train", "val", "test")}
+    n_rows = {part: 0 for part in masks}
+    for block in store.iter_blocks():
+        for part, fn in masks.items():
+            n_rows[part] += int(fn(block).sum())
+    deals = split_counts(assignment)
     split = {
-        "method": "by deal cluster: rank of sha256(seed|cluster_key), top val_fraction held out",
+        "method": config["split_method"],
         "seed": int(seed), "val_fraction": float(val_fraction),
-        "train_clusters": sum(1 for v in assignment.values() if v == "train"),
-        "val_clusters": sum(1 for v in assignment.values() if v == "val"),
-        "train_records": n_train, "val_records": n_val,
+        "test_fraction": float(test_fraction),
+        "train_deals": deals["train"], "val_deals": deals["val"], "test_deals": deals["test"],
+        "train_records": n_rows["train"], "val_records": n_rows["val"],
+        "test_records": n_rows["test"],
+        "roles": {name: SPLIT_ROLES[name]["role"] for name in ("train", "val", "test")},
     }
-    if n_train == 0 or n_val == 0:
-        raise TrainError(f"split has {n_train} train / {n_val} val records; need both")
-    say(f"split: clusters train={split['train_clusters']} val={split['val_clusters']} "
-        f"records train={n_train} val={n_val}")
-    baselines = fit_baselines(store, train_mask)
+    if any(n == 0 for n in n_rows.values()):
+        raise TrainError(f"split has {n_rows['train']} train / {n_rows['val']} val / "
+                         f"{n_rows['test']} test records over {len(assignment)} deals; "
+                         "need all three (at least three deals)")
+    say(f"split: deals train={deals['train']} val={deals['val']} test={deals['test']} "
+        f"records train={n_rows['train']} val={n_rows['val']} test={n_rows['test']}")
+    baselines = fit_baselines(store, masks["train"])
     say(f"baselines: stratified cells={len(baselines['stratified_prior']['cells'])} "
         f"empty={baselines['stratified_prior']['empty_cells']} "
         f"incumbent_eps softmax={baselines['incumbent']['softmax']['eps']} "
@@ -621,8 +816,13 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
     luna_prepared = None
     if eval_luna is not None:
         luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None,
-                                       witness_seed=seed, progress=say, cache_workers=workers)
+                                       witness_seed=seed, progress=say, cache_workers=workers,
+                                       residency=residency, witness_every=witness_every,
+                                       allow_sampled_witness=allow_sampled_privacy_witness)
+        refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
         luna = (luna_prepared.stores[0], luna_prepared.block_store)
+        say(f"luna: {luna_prepared.counts['records_total']} rows over "
+            f"{luna_prepared.counts['deals_total']} deals, none shared with the data stores")
 
     model = ValuePriorNet(arch).to(dev)
     optim = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -634,6 +834,8 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     eval_kw = dict(prior_target=prior_target, prior_weight=prior_weight,
                    batch_size=batch_size, huber_delta=huber_delta)
+    selection = {"split": SELECTION_SPLIT, "criterion": SELECTION_CRITERION,
+                 "patience": int(patience)}
     for epoch in range(1, epochs + 1):
         t0 = time.perf_counter()
         model.train()
@@ -642,7 +844,7 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         prior_rows = 0
         search_rows = 0
         batches = 0
-        for raw in store.iter_batches(train_mask, batch_size, rng=rng, window=window):
+        for raw in store.iter_batches(masks["train"], batch_size, rng=rng, window=window):
             t = to_tensors(raw, dev, prior_target)
             losses = batch_losses(model, t, prior_weight=prior_weight,
                                   aux_weight=aux_weight if aux_points else 0.0,
@@ -675,13 +877,14 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
             train_metrics["aux_search_huber"] = ((sums["search"] / search_rows)
                                                  if search_rows else None)
             train_metrics["aux_search_rows"] = search_rows
-        val_metrics = quick_metrics(run_eval(model, store, val_mask, dev, **eval_kw),
+        val_metrics = quick_metrics(run_eval(model, store, masks["val"], dev, **eval_kw),
                                     prior_weight=prior_weight)
         secs = round(time.perf_counter() - t0, 3)
         epoch_rows.append({"epoch": epoch, "train": train_metrics, "val": val_metrics,
-                           "secs": secs})
+                           "val_role": SPLIT_ROLES["val"]["role"], "secs": secs})
         save_checkpoint(ckpt_dir / f"epoch-{epoch:02d}.pt", model, config=config, epoch=epoch,
-                        val=val_metrics, baselines=baselines, calibration=None, split=split)
+                        selection={**selection, "val": val_metrics}, baselines=baselines,
+                        calibration=None, split=split)
         improved = val_metrics["loss"] is not None and val_metrics["loss"] < best["loss"]
         if improved:
             best = {"epoch": epoch, "loss": float(val_metrics["loss"])}
@@ -695,35 +898,41 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
             f"val_loss={val_metrics['loss']:.4f} val_value_mae={val_metrics['value_mae']:.4f} "
             f"val_prior_ce={val_metrics['prior_ce'] if val_metrics['prior_ce'] is None else round(val_metrics['prior_ce'], 4)} "
             f"top1={val_metrics['top1_agreement'] if val_metrics['top1_agreement'] is None else round(val_metrics['top1_agreement'], 4)} "
-            f"{aux_note}{'*' if improved else ''} ({secs}s)")
+            f"{aux_note}{'*' if improved else ''} ({secs}s) [val = tuning]")
         if since_best >= patience and epoch < epochs:
             say(f"early stop: no validation improvement for {patience} epochs "
                 f"(best epoch {best['epoch']})")
             break
 
-    # final evaluation with the best checkpoint
+    # final evaluation with the best checkpoint: calibration fitted on the
+    # validation split, the reported numbers from the TEST split
     model, _payload = load_checkpoint(out_dir / "best.pt", dev)
-    ev_val = run_eval(model, store, val_mask, dev, **eval_kw)
+    ev_val = run_eval(model, store, masks["val"], dev, **eval_kw)
     calibration = fit_affine(ev_val["pred"], ev_val["utility"])
-    calibration["fitted_on"] = "validation split"
-    final = {"val": full_metrics(ev_val, baselines, prior_target=prior_target,
-                                 prior_weight=prior_weight, n_boot=n_boot, seed=seed,
-                                 calibration=calibration)}
+    calibration["fitted_on"] = SELECTION_SPLIT
+    metric_kw = dict(prior_target=prior_target, prior_weight=prior_weight, n_boot=n_boot,
+                     seed=seed, calibration=calibration)
+    ev_test = run_eval(model, store, masks["test"], dev, **eval_kw)
+    final = {
+        "test": labelled("test", full_metrics(ev_test, baselines, **metric_kw)),
+        "val": labelled("val", full_metrics(ev_val, baselines, calibration_in_sample=True,
+                                            **metric_kw)),
+    }
     luna_receipt = None
     if luna is not None:
         luna_store, luna_blocks = luna
         ev_luna = run_eval(model, luna_blocks, lambda b: np.ones(b.n, dtype=bool), dev,
                            **eval_kw)
-        final["luna"] = full_metrics(ev_luna, baselines, prior_target=prior_target,
-                                     prior_weight=prior_weight, n_boot=n_boot, seed=seed,
-                                     calibration=calibration)
+        final["luna"] = labelled("luna", full_metrics(ev_luna, baselines, **metric_kw))
         final["luna"]["prior_target_note"] = (
             "Luna rows carry no search evidence: only the final (played-action) "
             "target is derivable; the softmax block is empty by construction")
         luna_receipt = {**luna_store.describe(), "counts": luna_prepared.counts,
-                        "cache": luna_prepared.cache_files}
+                        "cache": luna_prepared.cache_files,
+                        "shared_deals_with_training": 0}
+    selection = {**selection, "best_epoch": best["epoch"], "best_loss": best["loss"]}
     save_checkpoint(out_dir / "best.pt", model, config=config, epoch=best["epoch"],
-                    val=final["val"], baselines=baselines, calibration=calibration,
+                    selection=selection, baselines=baselines, calibration=calibration,
                     split=split, metrics=final)
     wall = round(time.perf_counter() - started, 3)
     receipt = {
@@ -746,6 +955,8 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         "luna": luna_receipt,
         "counts": prepared.counts,
         "split": split,
+        "headline": HEADLINE,
+        "selection": selection,
         "baselines": baselines,
         "epochs": epoch_rows,
         "best_epoch": best["epoch"],
@@ -755,42 +966,59 @@ def train(*, data: list[str], out: str | os.PathLike, eval_luna: str | None = No
         "checkpoints": {"best": str(out_dir / "best.pt"),
                         "epochs": [str(ckpt_dir / f"epoch-{r['epoch']:02d}.pt")
                                    for r in epoch_rows]},
+        "privacy_witness": {"every": witness_every, "sampled": witness_every != 1,
+                            "allowed_sampled": bool(allow_sampled_privacy_witness),
+                            "trials_per_row": int(PRIVACY_TRIALS)},
+        "residency": residency_receipt(
+            residency, decoded_bytes=prepared.counts["decoded_bytes"],
+            luna_bytes=0 if luna_prepared is None else luna_prepared.counts["decoded_bytes"]),
         "peak_memory": peak_memory(dev),
         "cache_dir": str(cache),
         "cache_workers": workers,
     }
+    check_receipt(receipt)
     _write_json(out_dir / "receipt.json", receipt)
     _write_json(out_dir / "metrics.json", {"schema": RECEIPT_SCHEMA + "-metrics",
                                            "epochs": epoch_rows, "final": final,
+                                           "headline": HEADLINE, "selection": selection,
                                            "baselines": baselines,
                                            "calibration": calibration,
                                            "best_epoch": best["epoch"]})
-    v = final["val"]["value"]
-    aux = final["val"].get("aux_search_mean")
-    say(f"final: val n={v['n']} model_mae={v['model']['mae']:.4f} "
+    v = final["test"]["value"]
+    aux = final["test"].get("aux_search_mean")
+    tv = final["val"]["value"]
+    say(f"final: TEST n={v['n']} model_mae={v['model']['mae']:.4f} "
         f"prior_mae={v['stratified_prior']['mae']:.4f} "
         f"diff={v['paired_diff_model_minus_prior']['abs_error']['mean']:.4f} "
         f"ci95={[round(x, 4) for x in v['paired_diff_model_minus_prior']['abs_error']['ci95']]} "
         + ("" if aux is None else f"aux_search_mae={aux['model']['mae']:.2f} "
                                   f"(prior {aux['stratified_prior']['mae']:.2f}) ")
-        + f"wall={wall}s")
+        + f"| val (tuning) model_mae={tv['model']['mae']:.4f} | wall={wall}s")
     return receipt
 
 
 # ---------------------------------------------------------------- evaluate
 
 def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None = None,
-             eval_luna: str | None = None, device: str | None = None, split: str = "val",
+             eval_luna: str | None = None, device: str | None = None, split: str = "test",
              limit_clusters: int | None = None, n_boot: int | None = None,
              batch_size: int | None = None, cache_dir: str | None = None,
-             cache_workers: int | None = None, argv: list[str] | None = None,
+             cache_workers: int | None = None, resident_bytes: int | None = None,
+             privacy_witness_every: int = 1, allow_sampled_privacy_witness: bool = False,
+             argv: list[str] | None = None,
              log: Callable[[str], None] | None = print) -> dict:
-    """Score a checkpoint on a data store's split and/or the Luna set with
-    the checkpoint's own baselines and calibration."""
+    """Score a checkpoint on a data store's split (default: the TEST split
+    of the checkpoint's own three-way split) and/or the Luna set with the
+    checkpoint's own baselines and calibration."""
     if not data and not eval_luna:
         raise TrainError("evaluate needs --data DIR and/or --eval-luna PATH")
-    if split not in ("train", "val", "all"):
-        raise TrainError("--split must be train, val or all")
+    if split not in ("train", "val", "test", "all"):
+        raise TrainError("--split must be train, val, test or all")
+    try:
+        witness_every = check_witness_every(privacy_witness_every, allow_sampled_privacy_witness)
+    except TrainDataError as exc:
+        raise TrainError(str(exc)) from exc
+    budget = _resident_budget(resident_bytes)
     started = time.perf_counter()
     started_at = time.strftime("%Y-%m-%d %H:%M:%S")
     out_dir = Path(out)
@@ -801,6 +1029,8 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     say = log or (lambda _s: None)
     model, payload = load_checkpoint(checkpoint, dev)
     config = payload["config"]
+    if "test_fraction" not in config:
+        raise TrainError(f"{checkpoint}: trained without a test split; refusing to evaluate")
     seeds = seed_everything(int(config["seed"]), dev)
     baselines = payload["baselines"]
     calibration = payload.get("calibration")
@@ -808,44 +1038,60 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
     batch_size = int(batch_size if batch_size is not None else config["batch_size"])
     eval_kw = dict(prior_target=config["prior_target"], prior_weight=config["prior_weight"],
                    batch_size=batch_size, huber_delta=config["huber_delta"])
+    metric_kw = dict(n_boot=n_boot, seed=int(config["seed"]), calibration=calibration,
+                     prior_target=config["prior_target"], prior_weight=config["prior_weight"])
+    residency = Residency(budget)
+    prepare_kw = dict(witness_seed=int(config["seed"]), progress=say, cache_workers=workers,
+                      residency=residency, witness_every=witness_every,
+                      allow_sampled_witness=allow_sampled_privacy_witness)
     final: dict = {}
     data_receipt = []
     counts: dict = {}
     split_info = None
+    store = None
+    decoded = 0
     if data:
-        prepared = prepare_stores(data, cache, limit_clusters=limit_clusters,
-                                  witness_seed=int(config["seed"]), progress=say,
-                                  cache_workers=workers)
+        prepared = prepare_stores(data, cache, limit_clusters=limit_clusters, **prepare_kw)
         store = prepared.block_store
-        assignment = split_clusters(store.cluster_keys(), seed=int(config["seed"]),
-                                    val_fraction=float(config["val_fraction"]))
+        decoded = prepared.counts["decoded_bytes"]
+        assignment = split_deals(store.keys(), seed=int(config["seed"]),
+                                 val_fraction=float(config["val_fraction"]),
+                                 test_fraction=float(config["test_fraction"]))
         if split == "all":
             mask_fn = lambda b: np.ones(b.n, dtype=bool)  # noqa: E731
         else:
             mask_fn = lambda b, part=split: split_mask(b, assignment, part)  # noqa: E731
         ev = run_eval(model, store, mask_fn, dev, **eval_kw)
-        final[split] = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
-                                    calibration=calibration, prior_target=config["prior_target"],
-                                    prior_weight=config["prior_weight"])
+        fitted = (calibration or {}).get("fitted_on")
+        metrics = full_metrics(ev, baselines, calibration_in_sample=(split == fitted),
+                               **metric_kw)
+        if split == "all":
+            final["all"] = {**metrics, "split": "all", "held_out": False,
+                            "role": "every split together (train + val + test); not held out"}
+        else:
+            final[split] = labelled(split, metrics)
         data_receipt = [{**s.describe(), "cache": prepared.cache_files} for s in prepared.stores]
         counts = prepared.counts
         split_info = {"part": split, "seed": int(config["seed"]),
                       "val_fraction": float(config["val_fraction"]),
-                      "records": int(ev["pred"].size)}
+                      "test_fraction": float(config["test_fraction"]),
+                      "records": int(ev["pred"].size), **split_counts(assignment)}
     luna_receipt = None
+    luna_bytes = 0
     if eval_luna:
-        luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None,
-                                       witness_seed=int(config["seed"]), progress=say,
-                                       cache_workers=workers)
+        luna_prepared = prepare_stores([eval_luna], cache, limit_clusters=None, **prepare_kw)
+        luna_bytes = luna_prepared.counts["decoded_bytes"]
+        if store is not None:
+            refuse_overlap(store, luna_prepared.block_store, label=f"--eval-luna {eval_luna}")
         ev = run_eval(model, luna_prepared.block_store, lambda b: np.ones(b.n, dtype=bool),
                       dev, **eval_kw)
-        final["luna"] = full_metrics(ev, baselines, n_boot=n_boot, seed=int(config["seed"]),
-                                     calibration=calibration,
-                                     prior_target=config["prior_target"],
-                                     prior_weight=config["prior_weight"])
+        final["luna"] = labelled("luna", full_metrics(ev, baselines, **metric_kw))
         luna_receipt = {**luna_prepared.stores[0].describe(), "counts": luna_prepared.counts,
-                        "cache": luna_prepared.cache_files}
+                        "cache": luna_prepared.cache_files,
+                        "shared_deals_with_training": 0 if store is not None else None,
+                        "overlap_checked_against": list(data or [])}
     wall = round(time.perf_counter() - started, 3)
+    headline = "test" if "test" in final else ("luna" if "luna" in final else None)
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "command": "evaluate",
@@ -865,22 +1111,30 @@ def evaluate(*, checkpoint: str, out: str | os.PathLike, data: list[str] | None 
         "luna": luna_receipt,
         "counts": counts,
         "split": split_info,
+        "headline": headline,
+        "selection": payload.get("selection"),
         "baselines": baselines,
         "epochs": [],
         "final": final,
         "calibration": calibration,
         "checkpoints": {"evaluated": str(Path(checkpoint).resolve())},
+        "privacy_witness": {"every": witness_every, "sampled": witness_every != 1,
+                            "allowed_sampled": bool(allow_sampled_privacy_witness)},
+        "residency": residency_receipt(residency, decoded_bytes=decoded, luna_bytes=luna_bytes),
         "peak_memory": peak_memory(dev),
         "cache_dir": str(cache),
         "cache_workers": workers,
     }
+    check_receipt(receipt)
     _write_json(out_dir / "receipt.json", receipt)
     _write_json(out_dir / "metrics.json", {"schema": RECEIPT_SCHEMA + "-metrics",
-                                           "final": final, "baselines": baselines,
+                                           "final": final, "headline": headline,
+                                           "baselines": baselines,
                                            "calibration": calibration})
     for name, m in final.items():
         if "value" in m:
-            say(f"evaluate {name}: n={m['value']['n']} model_mae={m['value']['model']['mae']:.4f} "
+            say(f"evaluate {name}{'' if m.get('held_out') else ' (not held out)'}: "
+                f"n={m['value']['n']} model_mae={m['value']['model']['mae']:.4f} "
                 f"prior_mae={m['value']['stratified_prior']['mae']:.4f}")
     return receipt
 
@@ -901,10 +1155,21 @@ def build_parser() -> argparse.ArgumentParser:
                        help="shards encoded at a time when building the cache "
                             f"(default: min({CACHE_WORKERS_CAP}, cpu) = "
                             f"{default_cache_workers()})")
+        p.add_argument("--resident-bytes", type=int, default=None,
+                       help="residency budget: decoded shard blocks held in memory at "
+                            "any time, LRU-evicted past it (default: 40%% of physical "
+                            f"memory = {default_resident_bytes()})")
+        p.add_argument("--privacy-witness-every", type=int, default=1, metavar="N",
+                       help="run the privacy witness on every N-th encoded row "
+                            "(default 1 = every row; N > 1 needs "
+                            "--allow-sampled-privacy-witness)")
+        p.add_argument("--allow-sampled-privacy-witness", action="store_true",
+                       help="permit --privacy-witness-every N > 1 (recorded in the receipt)")
         p.add_argument("--limit-clusters", type=int, default=None,
-                       help="use only the first N deal clusters of each data store")
+                       help="use only the first N deals of each data store")
         p.add_argument("--eval-luna", default=None,
-                       help="Luna private split (evaluation only)")
+                       help="Luna private split (evaluation only; must share no deal "
+                            "with --data)")
 
     t = sub.add_parser("train", help="train model v0")
     common(t)
@@ -918,7 +1183,10 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("--weight-decay", type=float, default=DEFAULTS["weight_decay"])
     t.add_argument("--batch-size", type=int, default=DEFAULTS["batch_size"])
     t.add_argument("--patience", type=int, default=DEFAULTS["patience"])
-    t.add_argument("--val-fraction", type=float, default=DEFAULTS["val_fraction"])
+    t.add_argument("--val-fraction", type=float, default=DEFAULTS["val_fraction"],
+                   help="share of deals for epoch selection + calibration (tuning)")
+    t.add_argument("--test-fraction", type=float, default=DEFAULTS["test_fraction"],
+                   help="share of deals held out for the reported metrics")
     t.add_argument("--huber-delta", type=float, default=DEFAULTS["huber_delta"])
     t.add_argument("--aux-points", action="store_true",
                    help="auxiliary attacker-points head (off by default)")
@@ -931,13 +1199,13 @@ def build_parser() -> argparse.ArgumentParser:
                    help="trunk widths [N, N // 2]")
     t.add_argument("--n-boot", type=int, default=DEFAULTS["n_boot"])
     t.add_argument("--window", type=int, default=DEFAULTS["window"],
-                   help="shards loaded per shuffle window (streaming)")
+                   help="shards per shuffle window (also bounded by --resident-bytes)")
 
     e = sub.add_parser("evaluate", help="score a checkpoint")
     common(e)
     e.add_argument("--checkpoint", required=True)
     e.add_argument("--data", action="append", default=None)
-    e.add_argument("--split", choices=("train", "val", "all"), default="val")
+    e.add_argument("--split", choices=("train", "val", "test", "all"), default="test")
     e.add_argument("--n-boot", type=int, default=None)
     e.add_argument("--batch-size", type=int, default=None)
     return parser
@@ -951,6 +1219,11 @@ def main(argv: list[str] | None = None) -> int:
     def log(line: str) -> None:
         print(line, flush=True)            # progress survives a redirected stdout
 
+    exec_kw = dict(cache_dir=args.cache_dir, cache_workers=args.cache_workers,
+                   resident_bytes=args.resident_bytes,
+                   privacy_witness_every=args.privacy_witness_every,
+                   allow_sampled_privacy_witness=args.allow_sampled_privacy_witness,
+                   argv=full_argv, log=log)
     try:
         if args.command == "train":
             train(data=args.data, out=args.out, eval_luna=args.eval_luna, device=args.device,
@@ -958,17 +1231,15 @@ def main(argv: list[str] | None = None) -> int:
                   limit_clusters=args.limit_clusters, prior_weight=args.prior_weight,
                   lr=args.lr, weight_decay=args.weight_decay, batch_size=args.batch_size,
                   patience=args.patience, val_fraction=args.val_fraction,
-                  huber_delta=args.huber_delta, aux_points=args.aux_points,
-                  aux_weight=args.aux_weight, aux_search_mean=args.aux_search_mean,
-                  hidden=args.hidden, n_boot=args.n_boot, window=args.window,
-                  cache_dir=args.cache_dir, cache_workers=args.cache_workers,
-                  argv=full_argv, log=log)
+                  test_fraction=args.test_fraction, huber_delta=args.huber_delta,
+                  aux_points=args.aux_points, aux_weight=args.aux_weight,
+                  aux_search_mean=args.aux_search_mean, hidden=args.hidden,
+                  n_boot=args.n_boot, window=args.window, **exec_kw)
         else:
             evaluate(checkpoint=args.checkpoint, out=args.out, data=args.data,
                      eval_luna=args.eval_luna, device=args.device, split=args.split,
                      limit_clusters=args.limit_clusters, n_boot=args.n_boot,
-                     batch_size=args.batch_size, cache_dir=args.cache_dir,
-                     cache_workers=args.cache_workers, argv=full_argv, log=log)
+                     batch_size=args.batch_size, **exec_kw)
     except (TrainError, TrainDataError) as exc:
         print(f"REFUSING: {exc}", file=sys.stderr)
         return 2

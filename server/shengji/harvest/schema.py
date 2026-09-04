@@ -30,14 +30,27 @@ engine_play           only when the engine recorded different cards than the
                       its lowest beatable component); ``plays_prefix`` of the
                       following records carries the engine's cards.
 exploration           self-play generator (``trajectory``) records only:
-                      ``{"rate": r, "added": [actions]}`` when the root
-                      exploration draw fired for this decision (``added`` are
-                      the legal actions appended to the search ballot, possibly
-                      empty when the ballot already covered the listed legal
-                      set), ``null`` when it did not fire (every decision of an
-                      ``--explore-rate 0`` run, and tractor-locked leads that
-                      never reach a ballot).  Sources that do not explore omit
-                      the key.
+                      ``{"rate": r, "added": [actions], "pool_count": n}``
+                      when the root exploration draw fired for this decision
+                      (``added`` are the legal actions appended to the search
+                      ballot, drawn uniformly over the FULL exhaustive legal
+                      set minus the ballot -- ``pool_count`` is that set's
+                      exact size, null when it was uncountable and the draw
+                      was skipped), ``null`` when the draw did not fire (every
+                      decision of an ``--explore-rate 0`` run, and
+                      tractor-locked leads that never reach a ballot).
+                      Sources that do not explore omit the key.
+preference            self-play generator records only: the preregistered
+                      policy target, ``{"softmax": [...], "final": [...],
+                      "tau", "means", "paired_se", "refined_indices",
+                      "played_index"}`` -- two distributions aligned with
+                      ``ballot`` (each sums to 1, zero outside the ballot):
+                      ``softmax_i`` proportional to ``exp((mean_i - max mean)
+                      / tau)`` over the search's own per-candidate means, and
+                      ``final`` one-hot on the played action.  The
+                      ``trajectory`` ``allocation`` (kind ``search-work``) is
+                      the search's fixed-design work split, NOT a preference;
+                      see ``trajectory.py`` for the exact definition.
 
 Conventions
 -----------
@@ -76,7 +89,7 @@ FIELDS = (
     "round_seed", "deck", "setup", "plays_prefix",
     "seat", "ply", "trick", "role",
     "legal_actions", "legal_actions_complete", "legal_actions_count",
-    "ballot", "production_ballot", "allocation", "action_values",
+    "ballot", "production_ballot", "allocation", "preference", "action_values",
     "action", "engine_play", "outcome", "authority", "exploration",
     "state_private", "hidden_hands", "record_sha256",
 )
@@ -201,15 +214,32 @@ def validate_record(record: Mapping[str, Any]) -> None:
     if "exploration" in record and record["exploration"] is not None:
         ex = record["exploration"]
         rate = ex.get("rate") if isinstance(ex, dict) else None
-        if (not isinstance(ex, dict) or set(ex) != {"rate", "added"}
+        pool = ex.get("pool_count") if isinstance(ex, dict) else None
+        if (not isinstance(ex, dict) or set(ex) != {"rate", "added", "pool_count"}
                 or isinstance(rate, bool) or not isinstance(rate, (int, float))
-                or not 0 <= rate <= 1 or not _is_action_list(ex["added"])):
+                or not 0 <= rate <= 1 or not _is_action_list(ex["added"])
+                or (pool is not None and (isinstance(pool, bool)
+                                          or not isinstance(pool, int) or pool < 0))):
             raise SchemaError("exploration must be {rate in [0, 1], added: "
-                              "[card lists]} or null")
+                              "[card lists], pool_count: int >= 0 | null} or null")
         if record["ballot"] is not None:
             keys = {tuple(sorted(a)) for a in record["ballot"]}
             if any(tuple(sorted(a)) not in keys for a in ex["added"]):
                 raise SchemaError("exploration.added must be on the ballot")
+    if "preference" in record and record["preference"] is not None:
+        pref = record["preference"]
+        if not isinstance(pref, dict) or not {"softmax", "final"} <= set(pref):
+            raise SchemaError("preference must carry softmax and final, or be null")
+        width = None if record["ballot"] is None else len(record["ballot"])
+        for key in ("softmax", "final"):
+            dist = pref[key]
+            if (not isinstance(dist, list) or not dist
+                    or any(isinstance(p, bool) or not isinstance(p, (int, float))
+                           or not 0 <= p <= 1 for p in dist)
+                    or abs(sum(dist) - 1.0) > 1e-9
+                    or (width is not None and len(dist) != width)):
+                raise SchemaError(f"preference.{key} must be a distribution "
+                                  "over the ballot (sum 1, aligned with ballot)")
     if la is not None and record["decision_kind"] == "play":
         key = tuple(sorted(record["action"]))
         if key not in {tuple(sorted(a)) for a in la}:

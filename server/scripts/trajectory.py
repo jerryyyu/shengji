@@ -4,15 +4,22 @@
     SHENGJI_REQUIRE_VOIDS=1 python -P -B scripts/trajectory.py \
         --rounds N --seed S --workers W --out DIR [--policy NAME] \
         [--explore-rate R] [--explore-k K] [--select-worlds n] \
-        [--report-worlds n] [--cap 256]
+        [--report-worlds n] [--cap 256] [--merge] [--resume]
 
 Plays rounds/2 seeded deal clusters in both mirrors with all four seats on
 the same registry policy (default mc-s0-report-lcb), captures every play
-decision's ballot, allocation and action values from ``MCBot``'s decision
-record, fills the final round outcome, and writes ``trajectory.jsonl`` +
-``manifest.json`` to DIR.  Fixed seeds reproduce the JSONL byte for byte at
-any worker count.  See ``shengji/harvest/trajectory.py`` for the record
-mapping, the allocation definition and root exploration.
+decision's ballot, search-work allocation, preregistered preference target
+and action values from ``MCBot``'s decision record, fills the final round
+outcome, and publishes each cluster as an immutable shard as soon as it
+finishes: ``DIR/shards/cluster-<index:06d>.jsonl`` + ``.json`` sidecar
+(sha256, record count, counts), then ``DIR/manifest.json`` (deterministic:
+shards in cluster order with their hashes) and ``DIR/runtime.json`` (wall
+clock, peak RSS).  ``--merge`` also writes ``DIR/trajectory.jsonl``;
+``--resume`` reopens DIR for the same run_id, keeps the shards that verify
+and regenerates the rest.  Fixed seeds reproduce every shard byte for byte
+at any worker count and across an interruption.  See
+``shengji/harvest/trajectory.py`` for the record mapping, the allocation
+and preference definitions, root exploration and the shard/resume contract.
 """
 from __future__ import annotations
 

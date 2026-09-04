@@ -20,7 +20,7 @@ from __future__ import annotations
 import os
 import time
 import subprocess
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -46,6 +46,14 @@ from ..engine.round import Round, Trick, TrickPlay
 
 class DeterminizationContractError(RuntimeError):
     """A sampled world is incomplete or inconsistent with the round cards."""
+
+
+@dataclass(frozen=True)
+class _PreparedReportWorld:
+    """Validated immutable source shared by the two report continuations."""
+
+    hands: tuple[tuple[str, ...], ...]
+    buried: tuple[str, ...]
 
 
 STRUCTURED_BURY_TELEMETRY_FIELDS = (
@@ -732,6 +740,8 @@ class MCBot(SmartBot):
         attempts = 0
         cap = n * self.SAMPLE_ATTEMPT_FACTOR
         original_rng = self.rng
+        use_prepared = (getattr(self._rollout, "__func__", None)
+                        is MCBot._rollout)
         try:
             self.rng = random.Random(seed)
             while used < n and attempts < cap:
@@ -741,12 +751,14 @@ class MCBot(SmartBot):
                     continue
                 hands, buried = sampled
                 exact_session = self._new_exact_world_session(rnd, buried)
-                va = self._score(self._rollout(rnd, seat, hands, buried,
-                                               list(cand_a),
-                                               exact_session=exact_session))
-                vb = self._score(self._rollout(rnd, seat, hands, buried,
-                                               list(cand_b),
-                                               exact_session=exact_session))
+                prepared = (self._prepare_report_world(
+                    rnd, seat, hands, buried=buried) if use_prepared else None)
+                va = self._score(self._report_rollout(
+                    rnd, seat, hands, buried, list(cand_a),
+                    exact_session=exact_session, prepared=prepared))
+                vb = self._score(self._report_rollout(
+                    rnd, seat, hands, buried, list(cand_b),
+                    exact_session=exact_session, prepared=prepared))
                 if not i_attack:
                     va, vb = -va, -vb
                 delta = va - vb
@@ -1208,6 +1220,33 @@ class MCBot(SmartBot):
                 f"missing={dict(sorted(missing.items()))}, "
                 f"extra={dict(sorted(extra.items()))}")
         return hands
+
+    def _prepare_report_world(self, rnd: Round, seat: int,
+                              sampled: dict[int, list[str]], *,
+                              buried: list[str]) -> _PreparedReportWorld:
+        """Validate/canonicalise one report world without sharing mutables."""
+        hands = self._complete_determinized_hands(
+            rnd, seat, sampled, buried=buried)
+        return _PreparedReportWorld(
+            hands=tuple(tuple(hand) for hand in hands),
+            buried=tuple(sorted(buried)),
+        )
+
+    def _report_rollout(self, rnd: Round, seat: int, sampled,
+                        buried: list[str], candidate: list[str], *,
+                        exact_session, prepared):
+        """Use prepared report state only for the untouched native rollout.
+
+        A subclass or instance override may intentionally use a different
+        rollout contract.  Leave that path byte-for-byte on the old mapping
+        input rather than passing it a private prepared value or new keyword.
+        """
+        if prepared is None:
+            return self._rollout(rnd, seat, sampled, buried, candidate,
+                                 exact_session=exact_session)
+        return self._rollout(rnd, seat, sampled, buried, candidate,
+                             exact_session=exact_session,
+                             _prepared_report=prepared)
 
     def _new_exact_world_session(self, rnd: Round, buried: list[str]):
         """Create one cache for one accepted ordinary-play determinization."""
@@ -1865,15 +1904,24 @@ class MCBot(SmartBot):
     # -------------------------------------------------------------- rollout
     def _rollout(self, rnd: Round, seat: int, sampled: dict[int, list[str]],
                  buried: list[str], candidate: list[str], *,
-                 exact_session=None) -> float:
+                 exact_session=None, _prepared_report=None) -> float:
         clone: Round = copy.copy(rnd)
         # Sampled hands represent multisets, not sequences.  HeuristicBot's
         # continuation policy is intentionally simple and walks a list, so it
         # must receive a canonical representation or `_rollout` is a function
         # of sampler insertion order rather than of the game state.
-        clone.hands = self._complete_determinized_hands(
-            rnd, seat, sampled, buried=buried)
-        clone.buried = sorted(buried)
+        if _prepared_report is None:
+            clone.hands = self._complete_determinized_hands(
+                rnd, seat, sampled, buried=buried)
+            clone.buried = sorted(buried)
+        else:
+            if not isinstance(_prepared_report, _PreparedReportWorld):
+                raise DeterminizationContractError(
+                    "prepared report world has the wrong type")
+            # The immutable snapshot is private to this bot; each continuation
+            # still gets wholly fresh lists before Round.play mutates them.
+            clone.hands = [list(hand) for hand in _prepared_report.hands]
+            clone.buried = list(_prepared_report.buried)
         assert rnd.trick is not None
         clone.trick = Trick(
             leader=rnd.trick.leader,

@@ -13,24 +13,25 @@ The program pivoted on 2026-09-04 (ledger `0088544f` retrospective,
 authoritative; the agent bus is an untrusted pointer channel; this file is a
 compact current-state summary.
 
-1. **Value V2 is in DEV mode (tier i).** Up-front pipeline review PASSed at
-   `c4b8f7e8` (ledger `ca459e14`). The first end-to-end D64 dev run on Perf
-   retained exactly 255 D256 shards and sealed 46 label bundles, then stopped
-   before training on a select-subfold transition defect. Exact recovery head
-   `562f87af` is deployed cleanly and waiting on one substitution review before
-   the same root `/root/value-v2-dev-d64-c4b8f7e8-r1` resumes. No slot
-   completion is running. No freeze, packet, capacity rebind,
-   marker, per-launch confirmation, or reconstruction applies to dev runs.
-   Private artifacts and evaluations stay closed until `terminal.json` seals
-   (route `D64_DEV_SEALED`); then one interpretation review. The 256-slot
-   ledger and 255 retained realizations remain coverage-audit evidence only,
-   not a D256 training-data recipe.
+1. **Value V2 D64 sealed (tier i).** Up-front pipeline review PASSed at
+   `c4b8f7e8` (ledger `ca459e14`). Same-root recovery at exact source
+   `11c438396b46ef35fbeb9084e0674c0f5950e3e0` sealed route
+   `D64_DEV_SEALED`; the exact-source reopener succeeds and systemd reports a
+   successful exit. Terminal file SHA-256 is `c9ba457471cdd9a06c4e59116ec67825d5235bb81d3a3ca2fcfe1b2a87286e72`.
+   On 12 natural audit deals, RPS improvement was `+0.006400834` with interval
+   `[+0.002789151,+0.010361512]` and 4/4 positive members, while scalar
+   absolute-error improvement was `-0.178319`, paired action-sensitivity
+   improvement was `-0.045395`, and selected-action utility was an
+   inconclusive `+0.0625` (`[-0.21875,+0.375]`). This is distribution-shape
+   learning without a calibrated value/action result. The 256-slot ledger and
+   255 retained realizations remain coverage-audit evidence only, not a D256
+   training-data recipe; the one missing slot will not be completed.
 2. **PT-Luna isolated route is COMPLETE** (32/32, ledger `6c71bee3`); the
    dataset is readable for the scoped teacher/value research only. Collection
    is closed.
 3. **BELIEF R4 is terminal, R5 closed.** No belief compute unless the
    oracle-belief ceiling screen is positive.
-4. **Next asks in order:** D64 seal → interpretation; oracle-value and
+4. **Next asks in order:** D64 interpretation; oracle-value and
    oracle-belief ceiling screens; Luna disagreement analysis; V2 Luna
    fine-tune; search-policy variants through the RLCB paired harness.
 
@@ -39,20 +40,18 @@ compact current-state summary.
 
 | host | state |
 |---|---|
-| shengji-perf (16c) | D64 unit stopped at the select-subfold transition; clean recovery deploy `562f87af` staged, same-root resume pending one substitution review |
+| shengji-perf (16c) | D64 sealed and exact-source-reopened; service exited successfully; currently idle |
 | Mini (10c) | idle for research; Codex tmux `codex-1`; pid 96175 is Jerry's dev server |
 | shengji-cloud (16c) | idle |
 | Air | not used for shengji |
 
 ## Review asks
 
-One narrow ask is open: substitution-review exact recovery head
-`562f87afa224c4e914c8cd15d451d3bfc344e922`. It partitions D64 by the frozen
-select-subfold axis and reuses 43 legacy fit/epoch bundles without opening the
-three foreign precision-label bundles. Full V2: 686/686; exact Linux focused:
-33/33; live-root canary: 43 reopened, zero foreign reads. PASS authorizes only
-same-root D64 resume. After `terminal.json` seals, request one interpretation
-review. Do not request or launch D256 slot completion/training after D64.
+One compact D64 interpretation review may now read the sealed terminal. Exact
+recovery head `11c43839` passed 688/688 full Value V2 tests and 47/47 Linux
+recovery tests; the exact-source terminal reopener also passes. The review is
+interpretive only: all terminal authority is false. Do not request or launch
+D256 slot completion/training.
 
 Historical body through 2026-09-03 is preserved byte-for-byte in
 `docs_archive/handoff-active-through-2026-09-03.md`.

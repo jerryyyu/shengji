@@ -51,11 +51,13 @@ when a candidate beats the champion on a tier ii paired screen.
 
 ## Current decision tree
 
-1. **Value V2 in DEV mode.** First end-to-end D64 run (retained coverage →
-   labels → train → calibrate → audit → sealed terminal), followed by one
-   interpretation review. The frozen 256-slot ledger remains a coverage-audit
-   set only; do not complete its missing slot or use slot targeting as the next
-   training-data recipe. No confirmatory ceremony.
+1. **Value V2 D64 sealed in DEV mode.** Its ordered outcome-distribution score
+   improved over the train-only prior, but scalar expected-value error and
+   sibling-action sensitivity worsened; selected-action utility was
+   inconclusive. Interpret that mismatch before choosing any successor. The
+   frozen 256-slot ledger remains a coverage-audit set only; do not complete
+   its missing slot or use slot targeting as the next training-data recipe.
+   No confirmatory ceremony.
 2. **Ceiling screens before any second spend.** Oracle-value ceiling
    (near-perfect leaf value inside production search vs production) bounds
    V2's upside; oracle-belief ceiling (true hidden worlds in the production
@@ -66,8 +68,9 @@ when a candidate beats the champion on a tier ii paired screen.
    dataset diagnostically — where the flexible planner disagrees with
    production and wins, by mechanism — to derive direct search-policy variants
    for the RLCB paired harness.
-4. **Prove transport before scaling data.** If the D64 DEV model establishes a
-   usable V2 recipe, fine-tune that model on Luna outcomes (value targets, not
+4. **Prove transport before scaling data.** D64 did not yet establish a usable
+   scalar/action-value recipe. Any repair must first pass a small natural-data
+   diagnostic; only then fine-tune on Luna outcomes (value targets, not
    action imitation) and test whether search with the fine-tuned leaf value
    moves toward the teacher on the disagreement set. The frozen 256-slot
    population is coverage-audit evidence only, not a training-data target; any

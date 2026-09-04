@@ -26,7 +26,7 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 | priority | lane | current state | next decision-bearing output | gate |
 |---:|---|---|---|---|
-| **P0** | **Value V2 — DEV mode** | Jerry-directed unblock at ledger `295136ba`. Up-front pipeline review PASSed at `c4b8f7e8` (ledger `ca459e14`). The first D64 attempt retained 255 coverage shards and sealed 46 label bundles, then stopped on a select-subfold transition defect. Exact recovery head `562f87af` is staged for one substitution review and same-root resume. The frozen 256-slot ledger and its 255 retained realizations are now coverage-audit evidence only: do not complete the missing slot or use slot targeting as the next training-data recipe. | A sealed D64 model and its interpretation review. If the learning recipe survives, choose the next natural/teacher training population independently of the 256-slot coverage audit. | Tier i. Score-free until sealed (private/ closed until `terminal.json`), reproducibility stamp, never-delete. Escalate to tier iii only when a V2-guided search variant approaches a deploy claim. |
+| **P0** | **Value V2 — DEV interpretation** | D64 sealed `D64_DEV_SEALED` at `11c43839`; exact-source reopen succeeds and the service exited successfully. The 12-deal audit passed outcome-distribution RPS (`+0.006400834`, lower bound `+0.002789151`, 4/4 members positive) but failed scalar absolute error (`-0.178319`), paired action sensitivity (`-0.045395`), and a useful-action conclusion (`+0.0625`, interval crosses zero). Precision-select was weaker: action utility `-0.333333` with an upper bound below zero. The frozen 256-slot ledger and 255 retained realizations are coverage-audit evidence only: do not complete the missing slot or use slot targeting as a training-data recipe. | One compact interpretation: diagnose why ordered-distribution learning did not transport to expected value/action ranking, then choose the smallest natural or teacher-data successor independently of the coverage ledger. | Tier i result only; authority is all false. Do not scale data, integrate a consumer, or claim strength from D64. |
 | **P0** | **Ceiling screens** | Not yet run; both are days of work on existing opened roots. | Oracle-value ceiling: production search with a near-perfect leaf value vs production. Oracle-belief ceiling: production sampler given true hidden worlds vs production (C0 already suggests ≈0). | Tier i/ii. Each lane's second major spend is gated on a positive ceiling. |
 | **P1** | **Luna dataset as diagnostic + fine-tune source** | `pt-luna-rpc-isolated-b0b1bd95-r1` sealed COMPLETE (32/32 games; ledger `6c71bee3`). Readable only for scoped teacher/value research. 30 predecessor games are engineering-only. Collection is CLOSED (46,729,487 tokens lane total). | (a) Where do Sol/Luna disagree with production and win, classified by mechanism (ballot, continuation, rollout allocation, objective, partnership)? (b) If D64 establishes a usable V2 recipe, fine-tune that model on Luna outcomes with a held-out teacher-agreement slice; does search with the fine-tuned leaf value move toward the teacher on the disagreement set? | Value targets, not action imitation (PT1's negative). No more collection until transport is shown at 32-game scale. |
 | **P1** | **Search-policy variants in the RLCB paired harness** | The only harness that ever produced a confirmed gain (`+0.338 ± 0.068`). | Two or three variants derived from the Luna disagreement analysis, vs champion at equal work; promote only on the confirm bar. | Tier ii screen → tier iii confirm. |
@@ -37,9 +37,9 @@ full rigor only to deploy claims (`RESEARCH_PRINCIPLES.md` §11-12,
 
 ## Immediate sequence
 
-1. Let the D64 dev run seal, then perform one interpretation review. Do not
-   complete the missing D256 slot or launch slot-targeted D256 training; retain
-   the 256-slot ledger and 255 realized states only as the coverage audit set.
+1. Interpret the sealed D64 result once. Do not complete the missing D256 slot
+   or launch slot-targeted D256 training; retain the 256-slot ledger and 255
+   realized states only as the coverage audit set.
 2. Run both ceiling screens on existing opened roots (R4's 104 rounds, the
    26 Sol0 roots).
 3. Luna disagreement analysis by mechanism; fine-tune the pretrained V2 model

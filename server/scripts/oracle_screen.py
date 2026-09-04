@@ -22,12 +22,18 @@ Arms (see shengji/oracle/screen.py for the exact semantics and knobs):
           summary's wide_coverage block and a problems entry say so, or
           --wide-require-complete refuses the round and the run exits 2.
   wide-value  wide + value
-  knobs   NOT an oracle: the production class with its own class attributes
-          overridden by --knob NAME=VALUE (repeatable; e.g. TRACTOR_LOCK,
+  knobs   NOT an oracle: the production class with candidate-generator knobs
+          overridden by --knob NAME=VALUE (repeatable), screened at equal
+          work.  Accepted: the ballot switches TRACTOR_LOCK,
           RETAIN_ALL_LEAD_PAIRS, V3_LEAD_SINGLES, RISKY_THROWS, TRUMP_BALLOT,
-          LEAD_MAX_CANDIDATES, FOLLOW_MAX_CANDIDATES, MAX_CANDIDATES), screened
-          at equal work; the override set is stamped in the summary and the
-          extra ballot work is counted.  Without --knob it is the none control.
+          WIDE_LEAD_BALLOT (0/1/true/false) and the ballot caps
+          LEAD_MAX_CANDIDATES, FOLLOW_MAX_CANDIDATES, MAX_CANDIDATES,
+          BURY_MAX_CANDIDATES (int >= 1).  Every other class attribute
+          (search work, recovery, sampling, report/statistical and
+          exact-endgame controls) is refused BY NAME, so the work/report
+          vector stays production's on both sides (identity.search_vector);
+          the override set is stamped in the summary and the extra ballot
+          work is counted.  Without --knob it is the none control.
   none    production on both sides (identity control for neutral knobs)
   null    production vs its champion-matched null (noise floor on these deals)
 
@@ -110,10 +116,11 @@ def parser() -> argparse.ArgumentParser:
                          "the refusal in summary.json and exits 2 (default: "
                          "rank the capped prefix and report wide_coverage)")
     ap.add_argument("--knob", action="append", default=[], metavar="NAME=VALUE",
-                    help="knobs arm only: override a scalar class attribute "
-                         "of the base policy (repeatable; the value is coerced "
-                         "to the attribute's type, bool takes 0/1/true/false); "
-                         "an unknown name or a bad value refuses the run")
+                    help="knobs arm only: override a candidate-generator knob "
+                         "of the base policy (repeatable): a ballot switch "
+                         "takes 0/1/true/false, a ballot cap an int >= 1; any "
+                         "other name, or a bad or out-of-bounds value, refuses "
+                         "the run before any round")
     ap.add_argument("--select-worlds", type=int, default=None,
                     help="SMOKE ONLY: override N on both sides")
     ap.add_argument("--report-worlds", type=int, default=None,

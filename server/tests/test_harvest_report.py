@@ -138,3 +138,36 @@ def test_build_manifest_refuses_content_drift(tmp_path):
         fh.write("{}\n")
     with pytest.raises(RuntimeError, match="sha256 differs"):
         manifest.build_manifest(out)
+
+
+def _declare(out, name, target):
+    """Declare ``name`` in the pt1 sidecar with ``target``'s true digest and
+    record count (a corrupt sidecar that is internally consistent)."""
+    from shengji.harvest.common import sha256_file
+    sidecar_path = out / "pt1.manifest.json"
+    sidecar = json.loads(sidecar_path.read_text())
+    records = sum(1 for _ in open(target, "rb"))
+    sidecar["outputs"][name] = {"records": records, "sha256": sha256_file(target),
+                                "private": False}
+    sidecar_path.write_text(json.dumps(sidecar))
+
+
+def test_build_manifest_refuses_output_names_outside_the_root(tmp_path):
+    out = _written_source(tmp_path / "out")
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text('{"x": 1}\n')
+    _declare(out, "../outside.jsonl", outside)
+    with pytest.raises(RuntimeError, match="plain file name"):
+        manifest.build_manifest(out)
+    assert not (out / "manifest.json").exists() or \
+        "../outside.jsonl" not in json.loads((out / "manifest.json").read_text())["outputs"]
+
+
+def test_build_manifest_refuses_symlinked_outputs(tmp_path):
+    out = _written_source(tmp_path / "out")
+    outside = tmp_path / "outside.jsonl"
+    outside.write_text('{"x": 1}\n')
+    (out / "probe.jsonl").symlink_to(outside)
+    _declare(out, "probe.jsonl", outside)
+    with pytest.raises(RuntimeError, match="symlink"):
+        manifest.build_manifest(out)

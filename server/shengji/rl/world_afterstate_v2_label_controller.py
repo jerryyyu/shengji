@@ -29,6 +29,7 @@ from .world_afterstate_v2_artifacts import (
     publish_continuation_manifest,
     publish_continuation_shard,
     reopen_continuation_manifest,
+    reopen_selected_continuation_manifest,
     reopen_continuation_shard,
 )
 from .world_afterstate_v2_execution import verified_process_pool_kwargs
@@ -139,7 +140,7 @@ def _reuse_source(
         reuse_root: Path | None,
         reuse_materials: Sequence[PopulationMaterialV2] | None
         ) -> dict[str, ContinuationBundleV2]:
-    """Preflight a complete immutable source population for target reuse."""
+    """Validate a source inventory and reopen only exact target overlaps."""
     if reuse_root is None and reuse_materials is None:
         return {}
     if (not isinstance(reuse_root, Path)
@@ -174,17 +175,18 @@ def _reuse_source(
                     by_deal[source.deal_sha256]):
                 raise WorldAfterstateV2LabelControllerError(
                     "label reuse source/material binding drift")
-        bundles = reopen_continuation_manifest(reuse_root, source_values)
+        bundles = reopen_selected_continuation_manifest(
+            reuse_root, source_values, overlap)
     except WorldAfterstateV2LabelControllerError:
         raise
     except Exception as exc:
         raise WorldAfterstateV2LabelControllerError(
             "label reuse source manifest refused") from exc
-    if len(bundles) != len(source_values):
+    if len(bundles) != len(overlap):
         raise WorldAfterstateV2LabelControllerError(
             "label reuse source manifest population drift")
     bundle_map = {bundle.deal_sha256: bundle for bundle in bundles}
-    if set(bundle_map) != {material.deal_sha256 for material in source_values}:
+    if set(bundle_map) != {material.deal_sha256 for material in overlap}:
         raise WorldAfterstateV2LabelControllerError(
             "label reuse source manifest identity drift")
     return {material.deal_sha256: bundle_map[material.deal_sha256]

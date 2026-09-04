@@ -469,8 +469,8 @@ def run_value_v2_dev_d64(root: Path, *, repo: Path, run_id: str,
     # The first live D64 attempt used the positional slice ``materials[:46]``.
     # Its complete, sealed source contains all 40 fit roots plus three roots
     # from each select subfold.  Reuse the 43 correct bundles into a new stage;
-    # the label controller authenticates the complete legacy source manifest
-    # before selecting exact-material overlaps.
+    # the label controller validates the complete legacy manifest inventory
+    # while opening only exact-material overlaps.
     legacy_root = root / "private" / "labels" / "fit-epoch"
     legacy_values = tuple(materials[:46])
     legacy_available = ((legacy_root / "receipt.json").is_file()

@@ -16,6 +16,7 @@ from shengji.rl.world_afterstate_v2_population import (
 )
 from shengji.rl.world_afterstate_v2_protocol import StateCandidateV2
 from shengji.rl import world_afterstate_v2_continuation as continuation
+from shengji.rl import world_afterstate_v2_artifacts as artifacts
 from shengji.rl import world_afterstate_v2_label_controller as controller
 
 
@@ -204,6 +205,47 @@ def test_reuse_source_may_be_complete_superset_of_target(
         source, (material, foreign), split="fit-select", workers=1,
         deadline_monotonic_ns=time.monotonic_ns() + 10**12)
 
+    built = []
+    monkeypatch.setattr(
+        controller, "_build_one",
+        lambda value: built.append(value.deal_sha256) or
+        bundles[value.deal_sha256])
+    receipt = controller.build_continuation_population_v2(
+        tmp_path / "target", (material, target_only), split="fit-select",
+        workers=1, deadline_monotonic_ns=time.monotonic_ns() + 10**12,
+        reuse_root=source, reuse_materials=(material, foreign))
+    assert built == [target_only.deal_sha256]
+    assert receipt.reused_shard_count == 1
+    assert receipt.built_shard_count == 1
+
+
+def test_superset_reuse_does_not_open_unselected_label_bytes(
+        tmp_path: Path, material_and_bundle, monkeypatch):
+    material, bundle = material_and_bundle
+    foreign = _second_material(material)
+    foreign_bundle = continuation.build_continuation_bundle_v2(foreign)
+    target_only = _second_material(material, "3")
+    target_bundle = continuation.build_continuation_bundle_v2(target_only)
+    bundles = {material.deal_sha256: bundle,
+               foreign.deal_sha256: foreign_bundle,
+               target_only.deal_sha256: target_bundle}
+    monkeypatch.setattr(controller, "_build_one",
+                        lambda value: bundles[value.deal_sha256])
+    source = tmp_path / "source-superset"
+    controller.build_continuation_population_v2(
+        source, (material, foreign), split="fit-select", workers=1,
+        deadline_monotonic_ns=time.monotonic_ns() + 10**12)
+
+    foreign_path = artifacts.continuation_shard_path(
+        source, foreign.deal_sha256)
+    stable_read = artifacts.stable_read_bytes
+
+    def refuse_foreign_read(path):
+        if Path(path) == foreign_path:
+            raise AssertionError("unselected label bytes were opened")
+        return stable_read(path)
+
+    monkeypatch.setattr(artifacts, "stable_read_bytes", refuse_foreign_read)
     built = []
     monkeypatch.setattr(
         controller, "_build_one",

@@ -497,11 +497,12 @@ def _expected_continuation_files(root: Path, rows: Sequence[dict[str, Any]]) -> 
     return expected
 
 
-def reopen_continuation_manifest(
+def _reopen_continuation_manifest(
         root: Path, materials: Mapping[str, PopulationMaterialV2]
-        | Sequence[PopulationMaterialV2], *, workers: int = 1) \
+        | Sequence[PopulationMaterialV2], *, workers: int,
+        selected_deals: frozenset[str] | None) \
         -> tuple[ContinuationBundleV2, ...]:
-    """Reopen every deal in an aggregate, refusing drops and extras."""
+    """Validate one complete inventory and reopen only the selected shards."""
     root = _root(root)
     if isinstance(workers, bool) or not isinstance(workers, int) \
             or workers not in RECONSTRUCTION_WORKER_ARMS:
@@ -523,6 +524,11 @@ def reopen_continuation_manifest(
         raise WorldAfterstateV2ArtifactError("continuation material population drift")
     if len(material_map) != len(rows):
         raise WorldAfterstateV2ArtifactError("continuation deal drop/extra")
+    if selected_deals is None:
+        selected_deals = frozenset(material_map)
+    elif not selected_deals or not selected_deals.issubset(material_map):
+        raise WorldAfterstateV2ArtifactError(
+            "continuation selected population drift")
     if {path.name for path in directory.iterdir()} != _expected_continuation_files(root, rows):
         raise WorldAfterstateV2ArtifactError("continuation file population drift")
     result = []
@@ -547,6 +553,29 @@ def reopen_continuation_manifest(
                 or path.name != f"deal-{deal}.bin" \
                 or path.parent != directory:
             raise WorldAfterstateV2ArtifactError("continuation manifest path drift")
+        material = material_map[deal]
+        for label, value in (
+                ("manifest slot SHA-256", row["slot_sha256"]),
+                ("manifest state SHA-256", row["state_sha256"]),
+                ("manifest candidate-set SHA-256",
+                 row["candidate_set_sha256"]),
+                ("manifest shard SHA-256", row["sha256"]),
+                ("manifest bundle SHA-256", row["bundle_sha256"])):
+            _digest(value, label)
+        _strict_nonnegative(row["byte_count"], "continuation byte count")
+        if (row["slot_sha256"], row["state_sha256"],
+                row["candidate_set_sha256"]) != (
+                    material.state.slot_sha256,
+                    material.state.state_sha256,
+                    material.candidate_set_sha256):
+            raise WorldAfterstateV2ArtifactError(
+                "continuation manifest material drift")
+        # A superset source may contain outcome-bearing shards that belong to
+        # a later information boundary.  Validate their manifest identities
+        # and file population above, but do not read their bytes unless they
+        # were explicitly selected by the caller.
+        if deal not in selected_deals:
+            continue
         raw = _read(path)
         if row["byte_count"] != len(raw) or row["sha256"] != _sha(raw) \
                 or row["bundle_sha256"] != _sha(raw):
@@ -573,6 +602,42 @@ def reopen_continuation_manifest(
     if seen != set(material_map):
         raise WorldAfterstateV2ArtifactError("continuation deal drop/extra")
     return tuple(result)
+
+
+def reopen_continuation_manifest(
+        root: Path, materials: Mapping[str, PopulationMaterialV2]
+        | Sequence[PopulationMaterialV2], *, workers: int = 1) \
+        -> tuple[ContinuationBundleV2, ...]:
+    """Reopen every deal in an aggregate, refusing drops and extras."""
+    return _reopen_continuation_manifest(
+        root, materials, workers=workers, selected_deals=None)
+
+
+def reopen_selected_continuation_manifest(
+        root: Path, materials: Mapping[str, PopulationMaterialV2]
+        | Sequence[PopulationMaterialV2],
+        selected_materials: Sequence[PopulationMaterialV2], *,
+        workers: int = 1) -> tuple[ContinuationBundleV2, ...]:
+    """Validate a full manifest while opening only named material shards.
+
+    Unselected shard bytes are deliberately not read.  This permits recovery
+    from a sealed superset without crossing a later label boundary before its
+    predictions have been published.
+    """
+    if type(selected_materials) not in (tuple, list) or not selected_materials:
+        raise WorldAfterstateV2ArtifactError(
+            "continuation selected population drift")
+    try:
+        selected = tuple(item.deal_sha256 for item in selected_materials)
+    except AttributeError as exc:
+        raise WorldAfterstateV2ArtifactError(
+            "continuation selected population drift") from exc
+    if len(set(selected)) != len(selected):
+        raise WorldAfterstateV2ArtifactError(
+            "continuation selected population drift")
+    return _reopen_continuation_manifest(
+        root, materials, workers=workers,
+        selected_deals=frozenset(selected))
 
 
 def publish_checkpoint_shard(
